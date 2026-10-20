@@ -6,7 +6,7 @@ existing nodes and partial cubes; no production reducer or evaluator runs.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
@@ -38,15 +38,18 @@ class SemanticDeclarationPayloadRegistry:
         self.invalid_bindings: set[tuple[int, int]] = set()
         actual = dict(ledger.iter_containers())
         for arena in semantic.structures:
-            store, owner = arena._declarations._data, arena._declarations.owner
-            if (
-                type(store) is not LedgerDict
-                or actual.get(owner) is not store
-                or not ledger.is_factory_container(store)
-            ):
-                self.invalid_bindings.add((owner, id(store)))
+            snapshot = arena.declaration_audit_snapshot()
+            container, owner = snapshot.container, snapshot.owner
+            if type(container) is not LedgerDict or actual.get(owner) is not container:
+                self.invalid_bindings.add((owner, id(snapshot.container)))
                 continue
-            for key, value in store._data.items():
+            declaration_store = cast(
+                LedgerDict[StructureDeclarationKey, StructureID], container
+            )
+            if not ledger.is_factory_container(declaration_store):
+                self.invalid_bindings.add((owner, id(snapshot.container)))
+                continue
+            for key, value in declaration_store.items():
                 try:
                     accepted = self._binding(arena, key, value)
                 except (ValueError, TypeError, AttributeError, IndexError, KeyError):
@@ -60,13 +63,13 @@ class SemanticDeclarationPayloadRegistry:
         if (
             type(key) is not StructureDeclarationKey
             or type(key.inputs) is not tuple
-            or not self.semantic._signature(FunctionSignature(key.inputs, BOOL))
+            or not self.semantic.validate_signature(FunctionSignature(key.inputs, BOOL))
             or type(key.value) is not StructureID
             or key.value.owner is not arena.token
-            or not self.semantic._structure_handle(key.value)
+            or not self.semantic.validate_structure_handle(key.value)
             or type(value) is not StructureID
             or value.owner is not arena.token
-            or not self.semantic._structure_handle(value)
+            or not self.semantic.validate_structure_handle(value)
         ):
             return False
         original, target = arena.resolve(key.value), arena.resolve(value)
@@ -85,7 +88,13 @@ def _structures_agree(
     pending: list[
         tuple[StructureID, StructureID, tuple[tuple[PortVariable, PortVariable], ...]]
     ] = [(source, target, ())]
-    seen = set()
+    seen: set[
+        tuple[
+            StructureID,
+            StructureID,
+            tuple[tuple[PortVariable, PortVariable], ...],
+        ]
+    ] = set()
     while pending:
         left, right, renaming = pending.pop()
         state = (left, right, renaming)
@@ -159,11 +168,18 @@ def _booleans_agree(
         ((left,), (right,), (), initial_cube)
         for left, right in zip(source, target, strict=True)
     ]
-    seen = set()
+    seen: set[
+        tuple[
+            tuple[int, ...],
+            tuple[int, ...],
+            tuple[tuple[PortVariable, bool], ...],
+            tuple[tuple[int, int], ...],
+        ]
+    ] = set()
     while pending:
         roots, actual, assignments, cube = pending.pop()
         known = dict(assignments)
-        normalized = []
+        normalized: list[int] = []
         for root in roots:
             node = arena.nodes[root]
             while node.variable is not None and renamed(node.variable) in known:
@@ -171,13 +187,15 @@ def _booleans_agree(
                 node = arena.nodes[root]
             normalized.append(root)
         roots = tuple(normalized)
-        support = {renamed(var) for root in roots for var in arena.nodes[root].support}
+        support: set[PortVariable] = {
+            renamed(var) for root in roots for var in arena.nodes[root].support
+        }
         assignments = tuple((var, high) for var, high in assignments if var in support)
         state = (roots, actual, assignments, cube)
         if state in seen:
             continue
         seen.add(state)
-        variables = support.difference(known)
+        variables: set[PortVariable] = support.difference(known)
         variables.update(
             node.variable
             for root in actual

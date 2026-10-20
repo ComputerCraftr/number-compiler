@@ -33,7 +33,7 @@ class SpecialBinaryJumpProfile:
 
 
 def special_binary_jump_profiles() -> tuple[SpecialBinaryJumpProfile, ...]:
-    rows = []
+    rows: list[SpecialBinaryJumpProfile] = []
     for n in (2, 3, 4):
         program = build_fermat_binary_jump(n)
         horizon = (1 << n) - 1

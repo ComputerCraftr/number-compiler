@@ -6,7 +6,7 @@ import argparse
 import json
 from collections.abc import Callable
 from statistics import median
-from typing import Literal, TypedDict
+from typing import Literal, TypedDict, TypeGuard, cast
 
 from devtools.benchmarks.public_query_comparison import (
     cli_invocation,
@@ -40,17 +40,28 @@ class MatrixSample(TypedDict):
     trace_present: bool
 
 
+def _is_object_dict(value: object) -> TypeGuard[dict[str, object]]:
+    if not isinstance(value, dict):
+        return False
+    candidate = cast(dict[object, object], value)
+    return all(isinstance(key, str) for key in candidate)
+
+
+def _is_object_sequence(value: object) -> TypeGuard[tuple[object, ...] | list[object]]:
+    return isinstance(value, (tuple, list))
+
+
 def _sample(
     arguments: list[str], *, fresh: bool
 ) -> tuple[float, dict[str, object], int]:
     elapsed, code, output, error = cli_invocation(arguments, fresh=fresh)
     try:
-        packet = json.loads(output)
+        packet: object = json.loads(output)
     except json.JSONDecodeError as error_json:
         raise ValueError(
             f"CLI returned no JSON (exit {code}): {error or output}"
         ) from error_json
-    if code not in (0, 3) or not isinstance(packet, dict):
+    if code not in (0, 3) or not _is_object_dict(packet):
         raise ValueError(f"CLI failed (exit {code}): {error or output}")
     return elapsed, packet, code
 
@@ -65,11 +76,11 @@ def _endpoint_facts(
         trace_packet = matrix.get("trace")
         pointed_pair = (
             trace_packet.get("target_pair")
-            if trace and isinstance(trace_packet, dict)
+            if trace and _is_object_dict(trace_packet)
             else None
         )
         if pointed_pair is not None and (
-            not isinstance(relation_endpoints, (tuple, list))
+            not _is_object_sequence(relation_endpoints)
             or pointed_pair not in relation_endpoints
         ):
             raise AssertionError(
@@ -164,10 +175,10 @@ def compare_matrix_routes(
                         arguments, fresh=mode == "cold"
                     )
                     info = packet.get("info")
-                    if not isinstance(info, dict) or set(info) != {observation}:
+                    if not _is_object_dict(info) or set(info) != {observation}:
                         raise AssertionError("CLI returned an unexpected matrix packet")
                     matrix = info[observation]
-                    if not isinstance(matrix, dict):
+                    if not _is_object_dict(matrix):
                         raise TypeError("matrix observation must be a mapping")
                     status = matrix.get("status")
                     if status not in {"available", "unavailable"}:
@@ -234,13 +245,14 @@ def main() -> int:
     options = parser.parse_args()
     rows: list[MatrixSample] = []
 
-    configuration = {
-        "family": options.family,
-        "seed": options.seed,
-        "selected_term_index": options.term_index,
-        "horizons_physical_ticks": tuple(options.horizons),
-        "trace_max_physical_ticks": options.trace_max,
-        "trials": options.trials,
+    horizons = cast(tuple[int, ...], tuple(options.horizons))
+    configuration: dict[str, object] = {
+        "family": cast(str, options.family),
+        "seed": cast(int, options.seed),
+        "selected_term_index": cast(int, options.term_index),
+        "horizons_physical_ticks": horizons,
+        "trace_max_physical_ticks": cast(int, options.trace_max),
+        "trials": cast(int, options.trials),
         "modes": ("cold", "warm", "bypass"),
         "bypass_policy": (
             "clear process-shared caches before each request; request-local "
@@ -259,12 +271,12 @@ def main() -> int:
             options.family,
             options.seed,
             options.term_index,
-            tuple(options.horizons),
-            options.trials,
-            trace_max=options.trace_max,
+            horizons,
+            cast(int, options.trials),
+            trace_max=cast(int, options.trace_max),
             save_sample=record,
         )
-        summary = []
+        summary: list[dict[str, object]] = []
         keys = sorted(
             {(row["physical_steps"], row["trace"], row["mode"]) for row in rows}
         )

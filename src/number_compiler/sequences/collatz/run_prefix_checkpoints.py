@@ -100,7 +100,7 @@ def crosses_root_checkpoint(start: int, width: int, maximum: int) -> bool:
     return checkpoint <= start + width and checkpoint <= maximum
 
 
-def _checkpoint_widths(start: int, width: int, maximum: int) -> tuple[int, ...]:
+def checkpoint_widths(start: int, width: int, maximum: int) -> tuple[int, ...]:
     """Return global power-of-two boundaries crossed by one admitted block."""
     if width == 0 or start >= maximum:
         return ()
@@ -147,7 +147,7 @@ def _publish_checkpoints(
 
     ledger: ResourceLedger = macros.ledger
     published = 0
-    for checkpoint in _checkpoint_widths(
+    for checkpoint in checkpoint_widths(
         normalized_offset, block_width, anchor.bit_length()
     ):
         prefix_width = checkpoint - normalized_offset

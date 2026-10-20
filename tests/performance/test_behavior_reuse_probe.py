@@ -5,8 +5,8 @@ from __future__ import annotations
 from devtools.benchmarks.behavior_reuse_probe import (
     HORIZONS,
     TOTAL_WORK_COVERAGE,
-    _work_vector,
     summarize,
+    work_vector,
 )
 from devtools.benchmarks.causal_tile_growth_probe import WORK_FIELDS
 
@@ -17,7 +17,7 @@ def test_behavior_probe_maps_the_complete_causal_work_vector() -> None:
         "tile_boundary_transfer_descents": 11,
         "future_behavior_binding_requests": 13,
     }
-    vector = _work_vector(counters)
+    vector = work_vector(counters)
     assert set(vector) == set(WORK_FIELDS)
     assert vector["task_memo_evaluations"] == 7
     assert vector["boundary_transfer_descents"] == 11

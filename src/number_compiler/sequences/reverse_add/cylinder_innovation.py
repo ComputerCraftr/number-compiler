@@ -44,7 +44,9 @@ from number_compiler.arithmetic.fields.radial_innovation import (
 )
 from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
-    _node_units,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation_metadata import (
+    innovation_node_units as _node_units,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
@@ -81,16 +83,17 @@ def _planned_primitive_nodes(
     """Count interner misses and retained units for the fixed construction plan."""
     missing = 0
     units = 0
+    snapshot = arena.audit_snapshot()
 
     def reference(
         node: InnovationAtom | InnovationCharted | InnovationScale | InnovationAdd,
     ) -> InnovationID:
         nonlocal missing, units
-        found = arena._keys.get(node)
+        found = snapshot.keys.get(node)
         if found is not None:
             arena.resolve(found)
             return _copy_reference(found)
-        result = arena._handle(arena.node_count + missing)
+        result = arena.scoped_handle(len(snapshot.nodes) + missing)
         missing += 1
         units += _node_units(node)
         return result
@@ -161,7 +164,7 @@ class PrimitiveCarryAtomBinding:
             raise ValueError("carry atom geometry differs from its source ports")
         # The cache owner is a monotonic, nonrecycled number in this ledger and
         # is already part of SourceCarryPorts' authenticated authority tuple.
-        source_owner = ports._cache.owner
+        source_owner = ports.audit_snapshot().cache.owner
         semantic = _carry_semantic(source_owner, base, extent, growth)
         atom = arena.atom(semantic)
         return cls(
@@ -217,8 +220,9 @@ class PrimitiveCarryAtomBinding:
         ):
             raise ValueError("primitive carry atom has a foreign owner")
         self._ports.check_source(self._source)
+        ports_snapshot = self._ports.audit_snapshot()
         if (
-            self._ports._cache.owner != self._source_owner
+            ports_snapshot.cache.owner != self._source_owner
             or self._ports.width != self._extent
             or self._source.base != self._base
         ):
@@ -251,7 +255,8 @@ class PrimitiveCarryAtomBinding:
             return 0
         return self._ports.first_pair(index)
 
-    def _invalidate(self) -> None:
+    def close(self) -> None:
+        """Revoke this source-scoped atom without mutating its arena."""
         object.__setattr__(self, "_closed", True)
 
 
@@ -270,15 +275,17 @@ def _clause_authority(
     seal_owner: int,
     workspace_owner: int,
 ) -> SemanticIdentity:
+    binding_snapshot = binding.audit_snapshot()
+    arena_snapshot = arena.audit_snapshot()
     return SemanticIdentity(
         SemanticIdentityDomain.REVERSE_ADD_PRIMITIVE_CYLINDER_CLAUSE,
         (
             REVERSE_ADD_PRIMITIVE_CYLINDER_CLAUSE_TAG,
-            binding._source_owner,
-            arena._node_owner,
-            arena._key_owner,
-            binding._atom.local_id,
-            binding._atom.seal,
+            binding_snapshot.source_owner,
+            arena_snapshot.node_owner,
+            arena_snapshot.key_owner,
+            binding_snapshot.atom.local_id,
+            binding_snapshot.atom.seal,
             extent,
             growth,
             output_extent,
@@ -422,18 +429,20 @@ class PrimitiveSuccessorClause:
         record = self._record
         expected_authority = self._record_authority()
         record.authority.validate()
-        binding_account = self.arena.ledger._account(self._binding_owner)
-        seal_account = self.arena.ledger._account(self._seal_owner)
-        workspace_account = self.arena.ledger._account(self._workspace_owner)
+        atom_snapshot = self.carry_atom.audit_snapshot()
+        arena_snapshot = self.arena.audit_snapshot()
+        binding_account = self.arena.ledger.account_status(self._binding_owner)
+        seal_account = self.arena.ledger.account_status(self._seal_owner)
+        workspace_account = self.arena.ledger.account_status(self._workspace_owner)
         if (
             record.authority != expected_authority
-            or record.source_owner != self.carry_atom._source_owner
-            or record.arena_node_owner != self.arena._node_owner
-            or record.arena_key_owner != self.arena._key_owner
-            or record.q != self.carry_atom._atom
+            or record.source_owner != atom_snapshot.source_owner
+            or record.arena_node_owner != arena_snapshot.node_owner
+            or record.arena_key_owner != arena_snapshot.key_owner
+            or record.q != atom_snapshot.atom
             or self.extent != record.extent
             or self.growth != record.growth
-            or record.growth != self.carry_atom._growth
+            or record.growth != atom_snapshot.growth
             or self.output_extent != record.output_extent
             or self.base != record.base
             or self._correction != record.correction
@@ -471,10 +480,11 @@ class PrimitiveSuccessorClause:
             RadialMultiplier(1, 0) if self.growth == 0 else RadialMultiplier(0, 1)
         )
         if (
-            self.arena is not self.carry_atom._arena
-            or self.extent != self.carry_atom._extent
-            or self.base != self.carry_atom._base
+            self.arena is not atom_snapshot.arena
+            or self.extent != atom_snapshot.extent
+            or self.base != atom_snapshot.base
             or self.growth not in (0, 1)
+            or self.growth != atom_snapshot.growth
             or self.output_extent != self.extent + self.growth
             or self.action.multiplier != expected_multiplier
             or self.action.innovation != self._beta
@@ -546,7 +556,7 @@ class PrimitiveSuccessorClause:
                 if type(node) is InnovationZero:
                     continue
                 if type(node) is InnovationAtom:
-                    if node.semantic != self.carry_atom._semantic:
+                    if node.semantic != self.carry_atom.audit_snapshot().semantic:
                         raise ValueError(
                             "primitive clause contains a foreign carry atom"
                         )
@@ -622,7 +632,7 @@ class PrimitiveSuccessorClause:
             self.arena.ledger.release(self._seal_owner, entries=seal_count)
         self.arena.ledger.mark_disposed(self._seal_owner)
         self.arena.ledger.mark_disposed(self._workspace_owner)
-        self.carry_atom._invalidate()
+        self.carry_atom.close()
         object.__setattr__(self, "_closed", True)
 
 
@@ -649,7 +659,8 @@ def primitive_successor_clause(
     base = source.base
     arena.ledger.bump(_reverse_add_keys.REVERSE_PRIMITIVE_CYLINDER_SOURCE_ADMISSIONS)
 
-    source_owner = ports._cache.owner
+    source_owner = ports.audit_snapshot().cache.owner
+    arena_snapshot = arena.audit_snapshot()
     semantic = _carry_semantic(source_owner, base, extent, growth)
     missing_nodes, missing_units = _planned_primitive_nodes(
         arena, semantic, base=base, reflection=extent + growth - 1
@@ -711,10 +722,10 @@ def primitive_successor_clause(
             workspace_owner=workspace_owner,
         )
         record = PrimitiveClauseRecord(
-            binding._source_owner,
-            arena._node_owner,
-            arena._key_owner,
-            _copy_reference(binding._atom),
+            binding.audit_snapshot().source_owner,
+            arena_snapshot.node_owner,
+            arena_snapshot.key_owner,
+            _copy_reference(binding.atom),
             extent,
             growth,
             extent + growth,
@@ -768,7 +779,7 @@ def primitive_successor_clause(
             arena.ledger.mark_disposed(seal_owner)
             arena.ledger.mark_disposed(workspace_owner)
             if binding is not None:
-                binding._invalidate()
+                binding.close()
         raise
     arena.ledger.bump(_reverse_add_keys.REVERSE_PRIMITIVE_CYLINDER_BETA_NORMALIZATIONS)
     assert result is not None
@@ -778,5 +789,6 @@ def primitive_successor_clause(
 __all__ = [
     "PrimitiveCarryAtomBinding",
     "PrimitiveSuccessorClause",
+    "_node_units",
     "primitive_successor_clause",
 ]

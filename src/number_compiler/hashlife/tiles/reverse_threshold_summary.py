@@ -86,7 +86,7 @@ def _lookup(
     key: ReverseThresholdSummaryKey,
 ) -> BlockSummary | None:
     _validate_key(results, key)
-    found = results._memo.get(key)
+    found = results.memo_view.get(key)
     results.ledger.bump(_tiles_keys.REVERSE_THRESHOLD_SUMMARY_REQUESTS)
     if found is None:
         record_unattributed_post_eviction_miss(
@@ -112,7 +112,7 @@ def _publish(
     summary.__post_init__()
     if summary.length != results.tiles.resolve(key.input).extent:
         raise ValueError("reverse threshold summary has another active extent")
-    found = results._memo.get(key)
+    found = results.memo_view.get(key)
     results.ledger.bump(_tiles_keys.REVERSE_THRESHOLD_SUMMARY_PUBLICATION_REQUESTS)
     if found is not None:
         if type(found) is not BlockSummary or found != summary:
@@ -134,7 +134,7 @@ def reverse_threshold_summary(
     cached = _lookup(results, root_key)
     if cached is not None:
         return cached
-    tasks = results._causal_tasks
+    tasks = results.causal_tasks
     if tasks is None:
         raise ValueError("reverse summaries require the scheduler workspace")
     frames = tasks.summary_frames

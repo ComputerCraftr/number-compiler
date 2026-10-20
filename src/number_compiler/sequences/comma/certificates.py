@@ -16,7 +16,10 @@ from secrets import token_bytes
 from typing import Final
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+    require_integer,
+)
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import comma as _comma_keys
@@ -69,7 +72,9 @@ class UnresolvedCommaTerm(UnresolvedSequenceTerm):
     """The requested index is beyond currently admitted prefix evidence."""
 
 
-def _charge(ledger: ResourceLedger, max_work: int, amount: int = 1) -> None:
+def charge_certificate_work(
+    ledger: ResourceLedger, max_work: int, amount: int = 1
+) -> None:
     spent = ledger.counters.get(_comma_keys.COMMA_WORK, 0) + ledger.counters.get(
         _comma_keys.COMMA_CERTIFICATE_WORK, 0
     )
@@ -103,7 +108,7 @@ def _checked_asset(path: Path, ledger: ResourceLedger, max_work: int) -> None:
     total = 0
     with path.open("rb") as stream:
         while True:
-            _charge(ledger, max_work)
+            charge_certificate_work(ledger, max_work)
             chunk = stream.read(65536)
             if not chunk:
                 break
@@ -155,7 +160,7 @@ def _verify(
         raise ValueError("foreign comma certificate admission owner")
 
     def local_hit(local_key: tuple[str, str], tag: str) -> bool:
-        _charge(ledger, max_work)
+        charge_certificate_work(ledger, max_work)
         previous = memo.get(local_key) if memo is not None else None
         if previous is None:
             return False
@@ -203,11 +208,11 @@ def _verify(
             return
         key = (CERTIFIED_MAX_INDEX, FIRST_FORK_INDEX, FIRST_FORK_VALUE)
         expected = (CERTIFICATE_SHA256, tag)
-        _charge(ledger, max_work)
+        charge_certificate_work(ledger, max_work)
         cached = lease.get(key)
         if cached is not MISSING:
             if (
-                type(cached) is not tuple
+                not is_exact_object_tuple(cached)
                 or len(cached) != 2
                 or not _matches_marker(cached[0], expected[0])
                 or not _matches_marker(cached[1], expected[1])
@@ -218,7 +223,7 @@ def _verify(
             return
         ledger.bump(_comma_keys.COMMA_CERTIFICATE_CACHE_MISSES)
         check_asset()
-        _charge(ledger, max_work)
+        charge_certificate_work(ledger, max_work)
         if lease.put(key, expected):
             ledger.bump(_comma_keys.COMMA_CERTIFICATE_CACHE_PUBLICATIONS)
         publish_local()
@@ -347,7 +352,7 @@ def require_certified_index(
         raise TypeError("shared_cache must be a bool")
     if memo is not None and memo.ledger is not ledger:
         raise ValueError("foreign comma certificate admission owner")
-    _charge(ledger, max_work)
+    charge_certificate_work(ledger, max_work)
     if global_provider is not None:
         from number_compiler.sequences.comma.future_provider import (
             SemanticFutureProviderLease,

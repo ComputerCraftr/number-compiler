@@ -148,7 +148,7 @@ def main() -> None:
     }
 
     one = minimize_aligned_subsequential(collatz_accelerated_radix4_transducer())
-    powered_transducers = []
+    powered_transducers: list[dict[str, object]] = []
     current = one
     for power in range(1, 7):
         if power > 1:

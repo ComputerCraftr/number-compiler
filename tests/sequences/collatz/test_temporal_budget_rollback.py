@@ -36,7 +36,8 @@ def test_live_workspace_rolls_back_rejected_balanced_support(
     else:
         workspace = AntihydraArithmeticImageWorkspace(ledger, 514)
 
-    core = workspace.scheduler._source_image_core()
+    core = workspace.scheduler.source_image_core()
+    core_before = core.audit_snapshot()
     children = workspace.action_node(workspace.root_action).children
     assert children is not None
     action, after = children
@@ -55,13 +56,13 @@ def test_live_workspace_rolls_back_rejected_balanced_support(
         len(workspace.support_snapshots),
         len(workspace.images),
         len(workspace.image_snapshots),
-        len(core._nodes),
-        len(core._applications),
+        len(core_before.nodes),
+        len(core_before.applications),
     )
     original = ledger.reserve_many
     original_single = ledger.reserve
     appended = 0
-    source_image_owner = core._node_owner
+    source_image_owner = core_before.node_owner
     # Aggregate-only publication constructs one support node. An explicitly
     # chronological consumer still exercises rollback after several children.
     rejection_at = 4 if workspace.retain_chronological_support() else 1
@@ -115,8 +116,8 @@ def test_live_workspace_rolls_back_rejected_balanced_support(
         len(workspace.support_snapshots),
         len(workspace.images),
         len(workspace.image_snapshots),
-        len(core._nodes),
-        len(core._applications),
+        len(core.audit_snapshot().nodes),
+        len(core.audit_snapshot().applications),
     ) == before
     assert not workspace.balanced_stack and not workspace.macro_stack
     workspace.validate()

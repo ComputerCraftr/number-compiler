@@ -9,11 +9,6 @@ carrier enumeration or recurrence-equivalent reference arithmetic.
 from devtools.verification.oracles.bounded_filtration import (
     bounded_candidate_image_filtration,
 )
-from devtools.verification.oracles.digit_power import (
-    DigitPowerProjectionResult,
-    lucas_lehmer_digit_field,
-    pepin_digit_field,
-)
 from devtools.verification.oracles.special_binary_jump import (
     SpecialBinaryJumpApplication,
     SpecialBinaryJumpProgram,
@@ -21,6 +16,11 @@ from devtools.verification.oracles.special_binary_jump import (
     build_mersenne_binary_jump,
     fermat_radix_orbit_representative,
     mersenne_sign_representative,
+)
+from devtools.verification.oracles.special_digit_power import (
+    DigitPowerProjectionResult,
+    lucas_lehmer_digit_field,
+    pepin_digit_field,
 )
 from devtools.verification.oracles.special_power_reference import (
     SpecialPowerApplication,

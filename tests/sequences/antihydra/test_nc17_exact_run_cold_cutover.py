@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Hashable
+from collections.abc import Callable, Hashable
+from typing import cast
 
 import pytest
 
@@ -34,7 +35,10 @@ def test_exact_run_cold_producer_matches_balanced_issuer(
     # second copy of the new digit recurrence implementation.
     lengths = (17, 32, 63, 64, 127, 128, 255, 256, 511, 512, 1023, 1024, 2047, 2048)
     fast = {n: _certified_result(n) for n in lengths}
-    original = Workspace._run_candidate
+    original = cast(
+        Callable[..., SourceImageCandidate],
+        object.__getattribute__(Workspace, "_run_candidate"),
+    )
 
     def balanced_on_moderate_exact_root(
         self: Workspace,

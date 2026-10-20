@@ -90,9 +90,9 @@ def test_support_metadata_cannot_change_semantic_identity_but_is_audited() -> No
     try:
         diamond = DiamondPayloadRegistry(bits.ledger)
         registry = SemanticPayloadRegistry(
-            bits.ledger, lambda item: False, diamond._handle
+            bits.ledger, lambda item: False, diamond.valid_handle
         )
-        assert not registry.valid(bits.functions._handle(identity))
+        assert not registry.valid(bits.functions.scoped_handle(identity))
     finally:
         object.__setattr__(node, "support", original)
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Never, cast
 
 import pytest
 
@@ -256,17 +256,25 @@ def test_root_true_endpoint_conditional_path_replaces_eager_compile(
     import number_compiler.sequences.collatz.temporal_run_quotient as original
 
     # Force the old common-to-entire-fiber exit to exercise the conditional graph.
+    def no_forced_border_word(
+        _cylinder: CollatzTwoSidedCylinder,
+        *_args: object,
+        **_kwargs: object,
+    ) -> None:
+        return None
+
+    def no_eager_d8(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("eager D8 was invoked")
+
     monkeypatch.setattr(
         cylinders.CollatzTwoSidedCylinder,
         "forced_border_word_for_ticks",
-        lambda *_a, **_kw: None,
+        no_forced_border_word,
     )
     monkeypatch.setattr(
         original,
         "compile_collatz_temporal_run_quotient",
-        lambda *_a, **_kw: (_ for _ in ()).throw(
-            AssertionError("eager D8 was invoked")
-        ),
+        no_eager_d8,
     )
     powered = first.square()
     assert powered.port_action is not None

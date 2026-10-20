@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import fields, is_dataclass
+from typing import cast
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_containers import audit_mapping_items
@@ -71,13 +72,18 @@ def proof_objects(root: object) -> set[int]:
         if type(value).__module__.startswith("devtools.verification."):
             found.add(identity)
         elif isinstance(value, Mapping):
-            pending.extend(item for pair in audit_mapping_items(value) for item in pair)
+            mapping = cast(Mapping[object, object], value)
+            pending.extend(
+                item for pair in audit_mapping_items(mapping) for item in pair
+            )
         elif isinstance(value, (Sequence, set, frozenset)) and not isinstance(
             value, (str, bytes)
         ):
-            pending.extend(value)
+            pending.extend(cast(Iterable[object], value))
         elif is_dataclass(value) and not isinstance(value, type):
-            pending.extend(getattr(value, item.name) for item in fields(value))
+            pending.extend(
+                cast(object, getattr(value, item.name)) for item in fields(value)
+            )
     return found
 
 

@@ -46,12 +46,15 @@ from number_compiler.sequences.reverse_add.higher_interface import (
     ReverseHigherInterfaceCompilation,
     ReverseHigherInterfaceCompiler,
 )
-from tests.support.assertions import assert_rejected_atomically
+from tests.support.assertions import (
+    assert_no_forbidden_dataclass_fields,
+    assert_rejected_atomically,
+)
 from tests.support.reverse_higher_interface import direct_step
 from tests.support.reverse_higher_runtime import (
-    _fixture,
-    _macro_composer,
+    macro_composer,
     observed_macro,
+    reverse_higher_fixture,
 )
 
 
@@ -71,7 +74,7 @@ def test_reverse_leaf_activity_positions_use_harmless_zero_for_blank_and_active(
         compiler,
         _sources,
         _binding,
-    ) = _fixture()
+    ) = reverse_higher_fixture()
     compiled = compiler.compile(primitive)
     components = interfaces.resolve(compiled.interface).components
     left = semantics.evaluate(runtime.initial(primitive, 0))
@@ -83,7 +86,7 @@ def test_reverse_leaf_activity_positions_use_harmless_zero_for_blank_and_active(
 
 
 def test_reverse_schema_cache_cannot_be_entered_by_hash_equality_spoof() -> None:
-    _actions, primitive, semantics, *_ = _fixture()
+    _actions, primitive, semantics, *_ = reverse_higher_fixture()
     schema = semantics.schema
     schema.validate_action(primitive)
 
@@ -107,13 +110,20 @@ def test_reverse_schema_readonly_validation_does_not_publish_cache_entries() -> 
         ReverseHigherActionSchema,
     )
 
-    actions, primitive, semantics, *_ = _fixture()
+    actions, primitive, semantics, *_ = reverse_higher_fixture()
     action = actions.power(primitive, 3)
     before = semantics.ledger.snapshot()
     semantics.validate_sort(FieldStateSort(action, 0), readonly=True)
     assert semantics.ledger.snapshot() == before
     assert isinstance(semantics.schema, ReverseHigherActionSchema)
-    assert action not in semantics.schema._children
+    schema_children = cast(
+        MutableMapping[
+            FieldCellActionID,
+            tuple[FieldCellActionID, FieldCellActionID],
+        ],
+        object.__getattribute__(semantics.schema, "_children"),
+    )
+    assert action not in schema_children
 
 
 @pytest.mark.parametrize(
@@ -129,7 +139,7 @@ def test_reverse_higher_interface_nonbalanced_and_power_actions_are_exact(
     source: tuple[int, ...],
 ) -> None:
     actions, primitive, semantics, runtime, interfaces, compiler, sources, binding = (
-        _fixture(source)
+        reverse_higher_fixture(source)
     )
     action = actions.power(primitive, steps)
     compiled = compiler.compile(action)
@@ -163,7 +173,7 @@ def test_reverse_higher_interface_aliases_before_semantic_work_and_ignores_sourc
     None
 ):
     actions, primitive, semantics, _runtime, interfaces, compiler, sources, _binding = (
-        _fixture()
+        reverse_higher_fixture()
     )
     # These are distinct source occurrences of the same immutable blank leaf.
     # The semantic compiler has no source argument, and therefore cannot split
@@ -194,7 +204,7 @@ def test_reverse_higher_interface_distinguishes_complete_output_behavior() -> No
         compiler,
         _sources,
         _binding,
-    ) = _fixture()
+    ) = reverse_higher_fixture()
     t4, t8 = actions.power(primitive, 4), actions.power(primitive, 8)
     first, second = compiler.compile(t4), compiler.compile(t8)
     assert first.signature != second.signature
@@ -214,7 +224,7 @@ def test_reverse_higher_interface_records_have_no_future_or_proof_payloads() -> 
         compiler,
         _sources,
         _binding,
-    ) = _fixture()
+    ) = reverse_higher_fixture()
     compiled = compiler.compile(actions.power(primitive, 8))
     interfaces.resolve(compiled.interface)
     forbidden = {
@@ -230,10 +240,15 @@ def test_reverse_higher_interface_records_have_no_future_or_proof_payloads() -> 
         "slab",
         "cut",
     }
-    for record in semantics._expressions:
-        assert forbidden.isdisjoint(record.__dataclass_fields__)
-    for function_record in semantics._functions:
-        assert forbidden.isdisjoint(function_record.__dataclass_fields__)
+    semantic_snapshot = semantics.audit_snapshot()
+    assert_no_forbidden_dataclass_fields(
+        forbidden,
+        (record.__dataclass_fields__ for record in semantic_snapshot.expressions),
+        (
+            function_record.__dataclass_fields__
+            for function_record in semantic_snapshot.functions
+        ),
+    )
     higher = interfaces.resolve(compiled.interface)
     assert all(
         type(component) is HigherExpressionID
@@ -244,7 +259,7 @@ def test_reverse_higher_interface_records_have_no_future_or_proof_payloads() -> 
         value = pending.pop()
         assert not isinstance(value, ArenaHandle)
         if type(value) is tuple:
-            pending.extend(value)
+            pending.extend(cast(tuple[object, ...], value))
         elif hasattr(value, "behavior"):
             pending.append(cast(_HasBehavior, value).behavior)
 
@@ -259,7 +274,7 @@ def test_recursive_output_observes_one_branch_without_coordinate_tape() -> None:
         compiler,
         _sources,
         _binding,
-    ) = _fixture()
+    ) = reverse_higher_fixture()
     compiled = compiler.compile(primitive)
     local = interfaces.resolve(compiled.interface)
     signature = interfaces.interface(compiled.signature)
@@ -300,8 +315,11 @@ def test_recursive_output_observes_one_branch_without_coordinate_tape() -> None:
         )
         == expected
     )
-    assert len(outputs._nodes) == 3
-    assert all(not hasattr(record, "digits") for record in outputs._nodes.values())
+    output_snapshot = outputs.audit_snapshot()
+    assert len(output_snapshot.nodes) == 3
+    assert all(
+        not hasattr(record, "digits") for record in output_snapshot.nodes.values()
+    )
     with pytest.raises((TypeError, ValueError)):
         outputs.resolve(cast(CoordinateOutputMorphismID, parent.local_id))
 
@@ -316,7 +334,7 @@ def test_temporal_output_normalizes_before_interning() -> None:
         compiler,
         _sources,
         _binding,
-    ) = _fixture()
+    ) = reverse_higher_fixture()
     interface, outputs, source = _temporal_leaf(
         actions, primitive, semantics, interfaces, compiler
     )
@@ -328,7 +346,7 @@ def test_temporal_output_normalizes_before_interning() -> None:
     assert record.action == actions.compose(primitive, primitive)
     assert not isinstance(outputs.resolve(record.provider), RecursiveOutputTemporal)
     assert outputs.temporal(first, primitive, interface) == result
-    assert len(outputs._nodes) == 3
+    assert len(outputs.audit_snapshot().nodes) == 3
 
 
 def test_source_temporal_provider_is_canonical_before_boundary_binding() -> None:
@@ -341,7 +359,7 @@ def test_source_temporal_provider_is_canonical_before_boundary_binding() -> None
         compiler,
         sources,
         binding,
-    ) = _fixture((7,))
+    ) = reverse_higher_fixture((7,))
     source = sources.resolve_forest(binding).cells[0]
     interface = compiler.compile(primitive).interface
     observations: list[tuple[object, object]] = []
@@ -381,12 +399,12 @@ def test_source_temporal_provider_is_canonical_before_boundary_binding() -> None
         primitive,
         interface,
     )
-    foreign_sources = _fixture((8,))[6]
+    foreign_sources = reverse_higher_fixture((8,))[6]
     foreign = foreign_sources.resolve_forest(foreign_sources.forest(0, 1)).cells[0]
-    before = len(outputs._nodes)
+    before = len(outputs.audit_snapshot().nodes)
     with pytest.raises(ValueError, match="different arena"):
         outputs.source(foreign)
-    assert len(outputs._nodes) == before
+    assert len(outputs.audit_snapshot().nodes) == before
 
 
 def test_temporal_output_validates_foreign_action_before_publication() -> None:
@@ -399,16 +417,16 @@ def test_temporal_output_validates_foreign_action_before_publication() -> None:
         compiler,
         _sources,
         _binding,
-    ) = _fixture()
-    foreign_actions, foreign, *_unused = _fixture((7, 18))
+    ) = reverse_higher_fixture()
+    foreign_actions, foreign, *_unused = reverse_higher_fixture((7, 18))
     assert foreign_actions is not actions
     interface, outputs, source = _temporal_leaf(
         actions, primitive, semantics, interfaces, compiler
     )
-    before = len(outputs._nodes)
+    before = len(outputs.audit_snapshot().nodes)
     with pytest.raises(ValueError, match="different arena"):
         outputs.temporal(source, foreign, interface)
-    assert len(outputs._nodes) == before
+    assert len(outputs.audit_snapshot().nodes) == before
 
 
 def test_higher_spatial_macro_composes_source_without_output_tape() -> None:
@@ -421,7 +439,7 @@ def test_higher_spatial_macro_composes_source_without_output_tape() -> None:
         compiler,
         sources,
         binding,
-    ) = _fixture((7, 18, 7, 19, 19, 19, 19, 19))
+    ) = reverse_higher_fixture((7, 18, 7, 19, 19, 19, 19, 19))
     outputs, _unused_composer_binding, macro, left, right = observed_macro(
         semantics, interfaces, sources, primitive, compiler, runtime, binding
     )
@@ -433,10 +451,11 @@ def test_higher_spatial_macro_composes_source_without_output_tape() -> None:
         )
         == expected
     )
-    assert len(outputs._nodes) < 2 * macro.width
+    output_snapshot = outputs.audit_snapshot()
+    assert len(output_snapshot.nodes) < 2 * macro.width
     assert all(
         not hasattr(record, "digits") and not hasattr(record, "coordinate_values")
-        for record in outputs._nodes.values()
+        for record in output_snapshot.nodes.values()
     )
 
 
@@ -451,8 +470,8 @@ def test_reverse_macro_keeps_coordinate_magnitudes_outside_local_port_sorts() ->
         compiler,
         sources,
         binding,
-    ) = _fixture(source)
-    _unused_outputs_binding, composer = _macro_composer(
+    ) = reverse_higher_fixture(source)
+    _unused_outputs_binding, composer = macro_composer(
         semantics, interfaces, sources, primitive, compiler
     )
     macro = composer.compile(binding)
@@ -490,7 +509,7 @@ def test_higher_operations_validate_scoped_ids_before_warm_cache_probe() -> None
         _compiler,
         _sources,
         _binding,
-    ) = _fixture()
+    ) = reverse_higher_fixture()
     state = runtime.initial(primitive, 0)
     symbol = semantics.symbol(primitive, 0)
     runtime.step(primitive, 0, state, symbol)
@@ -504,7 +523,14 @@ def test_higher_operations_validate_scoped_ids_before_warm_cache_probe() -> None
         def get(self, _key: object, _default: object = None) -> Never:
             raise AssertionError("invalid scoped ID reached the operation cache")
 
-    runtime._operations = PoisonedOperations(runtime._operations)
+    operations = cast(
+        MutableMapping[
+            HigherInitialOperation | HigherStepOperation | HigherEmitOperation,
+            HigherExpressionID,
+        ],
+        object.__getattribute__(runtime, "_operations"),
+    )
+    object.__setattr__(runtime, "_operations", PoisonedOperations(operations))
     foreign_action = FieldCellActionID(
         ArenaToken("foreign-action"),
         primitive.kind,
@@ -536,14 +562,14 @@ def test_higher_temporal_provider_executes_without_midpoint_tile() -> None:
         compiler,
         sources,
         binding,
-    ) = _fixture(source)
+    ) = reverse_higher_fixture(source)
     outputs = RecursiveCoordinateMorphismArena(
         interfaces,
         evaluate=semantics.evaluate,
         validate_action=actions.resolve,
         compose_actions=actions.compose,
     )
-    outputs, composer = _macro_composer(
+    outputs, composer = macro_composer(
         semantics, interfaces, sources, primitive, compiler, outputs
     )
     macro = composer.compile(binding)
@@ -574,7 +600,7 @@ def test_higher_temporal_provider_executes_without_midpoint_tile() -> None:
     assert actions.compose_requests == compose_requests
     assert all(
         not hasattr(record, "digits") and not hasattr(record, "source_tile")
-        for record in outputs._nodes.values()
+        for record in outputs.audit_snapshot().nodes.values()
     )
 
 
@@ -582,7 +608,9 @@ def test_runtime_k_u_carrier_observes_power_without_syntax_replay(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = (7, 18, 7, 19, 19, 19, 19, 19)
-    actions, primitive, semantics, runtime, *_rest, binding = _fixture(source)
+    actions, primitive, semantics, runtime, *_rest, binding = reverse_higher_fixture(
+        source
+    )
     expected: tuple[int, ...] = source
     expectations: dict[int, tuple[int, ...]] = {}
     for step in range(1, 17):
@@ -615,12 +643,13 @@ def test_higher_compiler_payload_audit_rejects_integer_cache_key_alias() -> None
         compiler,
         _sources,
         _binding,
-    ) = _fixture()
+    ) = reverse_higher_fixture()
     compiled = compiler.compile(primitive)
-    storage_attribute = "_data"
+    cache_snapshot = compiler.audit_snapshot()
+    cache_store = compiler.ledger.registered_container(cache_snapshot.cache_owner)
     cache = cast(
         MutableMapping[object, ReverseHigherInterfaceCompilation],
-        getattr(compiler._cache, storage_attribute),
+        object.__getattribute__(cache_store, "_data"),
     )
     del cache[primitive]
     cache[primitive.local_id] = compiled
@@ -638,7 +667,7 @@ def test_temporal_leaf_reuses_existing_complete_operation_before_children(
         evaluate_operation,
     )
 
-    actions, primitive, semantics, *_ = _fixture()
+    actions, primitive, semantics, *_ = reverse_higher_fixture()
     action = actions.compose(primitive, primitive)
     left = evaluate_operation(semantics, "initial", action, 0, ())
     right = evaluate_operation(semantics, "initial", action, 1, ())
@@ -670,8 +699,8 @@ def test_temporal_leaf_rejects_foreign_handle_before_semantic_memo() -> None:
         evaluate_temporal_leaf,
     )
 
-    _, primitive, semantics, *_ = _fixture()
-    _, foreign, _, *_ = _fixture()
+    _, primitive, semantics, *_ = reverse_higher_fixture()
+    _, foreign, _, *_ = reverse_higher_fixture()
     before = semantics.ledger.snapshot()
     with pytest.raises(ValueError):
         evaluate_temporal_leaf(semantics, foreign, 7, 0, 0)
@@ -690,9 +719,11 @@ def test_runtime_identity_transfer_is_erased_before_state_publication(
         UnaryIdentity,
     )
 
-    _, primitive, semantics, runtime, *_ = _fixture()
+    _, primitive, semantics, runtime, *_ = reverse_higher_fixture()
     summaries = runtime.summaries
-    identity = summaries._intern(RuntimeUnarySummary(primitive, side, UnaryIdentity()))
+    identity = summaries.intern_summary(
+        RuntimeUnarySummary(primitive, side, UnaryIdentity())
+    )
     incoming = semantics.schema.initial(primitive, side)
     before = semantics.ledger.snapshot()
     assert summaries.transfer_value(identity, incoming) == incoming
@@ -706,7 +737,7 @@ def test_runtime_identity_transfer_is_erased_before_state_publication(
 
 def test_reverse_carry_reset_and_identity_do_not_erase_complete_output_state() -> None:
     """Carry-only aliases are not aliases of the complete two-sided machine."""
-    actions, primitive, semantics, *_ = _fixture()
+    actions, primitive, semantics, *_ = reverse_higher_fixture()
     schema = semantics.schema
     actions.validate_action(primitive)
 

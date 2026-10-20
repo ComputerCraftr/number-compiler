@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from array import array
+from collections.abc import Callable
 from itertools import product
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 import pytest
 
@@ -343,8 +344,8 @@ def test_exception_during_third_component_keeps_prior_semantic_arena_unchanged(
     handle = compiled.kernels.intern(CollatzPhysicalBlockEffect())
     before = _retained_snapshot(compiled)
     before_work = _construction_work_snapshot(compiled)
-    build = compiled._build
-    calls = []
+    build = cast(Callable[..., int], object.__getattribute__(compiled, "_build"))
+    calls: list[str] = []
 
     def fail_emit(
         transaction: _Transaction,

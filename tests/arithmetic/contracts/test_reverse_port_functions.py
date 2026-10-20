@@ -19,8 +19,8 @@ from number_compiler.arithmetic.contracts.block_effect import (
 )
 from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
-    _BaseLeftState,
-    _BaseRightState,
+    BaseLeftState,
+    BaseRightState,
 )
 from number_compiler.arithmetic.functions.finite_function_types import FinitePort
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
@@ -51,8 +51,8 @@ def test_reverse_port_codec_matches_the_admitted_primitive_domains(base: int) ->
     left = effect.boundary_universe(BoundarySide.LEFT)
     right = effect.boundary_universe(BoundarySide.RIGHT)
     assert left is not None and right is not None
-    left_states = cast(tuple[_BaseLeftState, ...], left)
-    right_states = cast(tuple[_BaseRightState, ...], right)
+    left_states = cast(tuple[BaseLeftState, ...], left)
+    right_states = cast(tuple[BaseRightState, ...], right)
     assert tuple(codec.decode_left(index) for index in range(codec.left_count)) == left
     assert (
         tuple(codec.decode_right(index) for index in range(codec.right_count)) == right
@@ -68,9 +68,7 @@ def test_reverse_port_codec_matches_the_admitted_primitive_domains(base: int) ->
 @pytest.mark.parametrize(
     "base",
     tuple(
-        base
-        if base in (2, 3, 10, 15)
-        else pytest.param(base, marks=pytest.mark.validation)
+        base if base in (2, 3, 10) else pytest.param(base, marks=pytest.mark.validation)
         for base in range(2, 16)
     ),
 )
@@ -88,7 +86,7 @@ def test_reverse_closed_leaf_transfers_and_outputs_match_exact_kernel(
     )
     for symbol in range(effect.blank + 1):
         advanced_right_states = tuple(
-            cast(_BaseRightState, effect.advance(BoundarySide.RIGHT, state, symbol))
+            cast(BaseRightState, effect.advance(BoundarySide.RIGHT, state, symbol))
             for state in right_states
         )
         with workspace.scope("leaf"):
@@ -101,7 +99,7 @@ def test_reverse_closed_leaf_transfers_and_outputs_match_exact_kernel(
         )
         for left, left_state in enumerate(left_states):
             advanced_left = cast(
-                _BaseLeftState,
+                BaseLeftState,
                 effect.advance(BoundarySide.LEFT, left_state, symbol),
             )
             for right, right_state in enumerate(right_states):
@@ -154,7 +152,7 @@ def test_reverse_activity_mask_does_not_decode_the_left_state_domain(
 ) -> None:
     codec = ReversePortCodec(10)
 
-    def forbidden(*_args: object, **_kwargs: object) -> _BaseLeftState:
+    def forbidden(*_args: object, **_kwargs: object) -> BaseLeftState:
         raise AssertionError("closed activity mask enumerated left states")
 
     monkeypatch.setattr(ReversePortCodec, "decode_left", forbidden)
@@ -184,21 +182,21 @@ def test_reverse_transfer_composition_is_closed_in_both_directions(
             right = right_leaves[second].then(right_leaves[first])
             for left_state in left_states:
                 expected_left = cast(
-                    _BaseLeftState,
+                    BaseLeftState,
                     effect.advance(BoundarySide.LEFT, left_state, first),
                 )
                 expected_left = cast(
-                    _BaseLeftState,
+                    BaseLeftState,
                     effect.advance(BoundarySide.LEFT, expected_left, second),
                 )
                 assert left.apply(left_state) == expected_left
             for right_state in right_states:
                 expected_right = cast(
-                    _BaseRightState,
+                    BaseRightState,
                     effect.advance(BoundarySide.RIGHT, right_state, second),
                 )
                 expected_right = cast(
-                    _BaseRightState,
+                    BaseRightState,
                     effect.advance(BoundarySide.RIGHT, expected_right, first),
                 )
                 assert right.apply(right_state) == expected_right
@@ -245,7 +243,7 @@ def test_reverse_parent_channels_match_two_cell_exact_bimachine(base: int) -> No
     for first, second in cases:
         right_mid_states = tuple(
             cast(
-                _BaseRightState,
+                BaseRightState,
                 effect.advance(BoundarySide.RIGHT, right_state, second),
             )
             for right_state in right_states
@@ -254,7 +252,7 @@ def test_reverse_parent_channels_match_two_cell_exact_bimachine(base: int) -> No
             (
                 right_mid,
                 cast(
-                    _BaseRightState,
+                    BaseRightState,
                     effect.advance(BoundarySide.RIGHT, right_mid, first),
                 ),
             )
@@ -279,7 +277,7 @@ def test_reverse_parent_channels_match_two_cell_exact_bimachine(base: int) -> No
                 first_output = effect.emit(left_state, first, right_mid)
                 second_output = effect.emit(left_mid, second, right_state)
                 assert functions[0].evaluate(concrete, ledger) == codec.encode_left(
-                    cast(_BaseLeftState, left_out)
+                    cast(BaseLeftState, left_out)
                 )
                 assert functions[1].evaluate(concrete, ledger) == codec.encode_right(
                     right_out

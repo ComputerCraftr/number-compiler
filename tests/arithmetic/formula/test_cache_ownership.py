@@ -49,19 +49,22 @@ _DIGIT = DigitSpec(3)
 _IDENTITY = DigitTransducer(3, (0,), 0, {(0, d): (0, d) for d in range(3)})
 
 
+QUERY_CASES: tuple[FormulaQuery, ...] = (
+    lambda a, r: get_summary(a, r, _PAIR, required=True),
+    lambda a, r: carry_out(a, r, _PAIR),
+    lambda a, r: carry_prefix_projection(a, r.planes, _PAIR),
+    lambda a, r: smb_formula_view(a, r, _PAIR),
+    lambda a, r: carry_event_formula_view(a, r, _PAIR),
+    lambda a, r: next_digit_formula(a, r, _PAIR),
+    lambda a, r: digit_value_masks(a, r, _DIGIT),
+    lambda a, r: compile_digit_transducer(a, r, _DIGIT, _IDENTITY),
+    lambda a, r: compile_formula_prefix_predicate(a, r.planes[0]),
+)
+
+
 @pytest.mark.parametrize(
     "query",
-    (
-        lambda a, r: get_summary(a, r, _PAIR, required=True),
-        lambda a, r: carry_out(a, r, _PAIR),
-        lambda a, r: carry_prefix_projection(a, r.planes, _PAIR),
-        lambda a, r: smb_formula_view(a, r, _PAIR),
-        lambda a, r: carry_event_formula_view(a, r, _PAIR),
-        lambda a, r: next_digit_formula(a, r, _PAIR),
-        lambda a, r: digit_value_masks(a, r, _DIGIT),
-        lambda a, r: compile_digit_transducer(a, r, _DIGIT, _IDENTITY),
-        lambda a, r: compile_formula_prefix_predicate(a, r.planes[0]),
-    ),
+    QUERY_CASES,
     ids=(
         "summary",
         "carry",
@@ -82,10 +85,10 @@ def test_warm_formula_views_reject_foreign_root_with_colliding_ids(
     other = root_from_values((2, 2, 2), foreign, _PAIR)
     assert canonical_root_key(root) == canonical_root_key(other)
     query(arena, root)
-    before = (arena.node_count, dict(arena._metadata), dict(arena._derived))
+    before = arena.cache_snapshot()
     with pytest.raises(ValueError, match="another arena"):
         query(arena, other)
-    assert (arena.node_count, arena._metadata, arena._derived) == before
+    assert arena.cache_snapshot() == before
     query(arena, root)
 
 

@@ -2,22 +2,33 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from random import Random
+from typing import cast
 
 import pytest
 
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.reverse_add import q19_periodic_cone
 from number_compiler.sequences.reverse_add.q19_output import ReversePairQ19OutputOwner
 from number_compiler.sequences.reverse_add.q19_periodic_cone import (
     CertifiedUniformizingCone,
-    _match_region,
-    _step,
     authorize_uniformizing_cone,
 )
 from number_compiler.sequences.reverse_add.q19_uniform_cone import (
     UniformConeNotAuthorized,
+)
+from tests.support.private_attributes import private_test_attribute
+
+match_region = cast(
+    Callable[[ReversePairQ19OutputOwner, int, int, int, tuple[int, ...]], bool],
+    private_test_attribute(q19_periodic_cone, "_match_region"),
+)
+periodic_step = cast(
+    Callable[[tuple[int, ...], int], tuple[int, ...]],
+    private_test_attribute(q19_periodic_cone, "_step"),
 )
 
 
@@ -31,7 +42,8 @@ def _pair_at(value: int, index: int) -> int:
 
 
 def _from_half_sums(half: list[int], rng: Random) -> int:
-    low, high = [], []
+    low: list[int] = []
+    high: list[int] = []
     for index, s in enumerate(half):
         lo, hi = max(0, s - 9), min(9, s)
         if index == 0:
@@ -65,7 +77,7 @@ def test_mixed_lt_gt_uniformizing_source_action_power_without_q19_kernels(
                 owner.initial, steps=40, coordinate=500
             ).square(owner)
             assert cert.steps == 80 and cert.period == period
-            assert cert.uniform_successor == _step(period, 0)[0]
+            assert cert.uniform_successor == periodic_step(period, 0)[0]
             for t in range(81):
                 assert cert.at(t) == _pair_at(x, 500), (period, t)
                 if t < 80:
@@ -108,10 +120,10 @@ def test_periodic_match_exact_slp_pumping_and_corrupted_leaf() -> None:
             owner.arena.concat(owner.arena.terminal(0), owner.arena.terminal(11)),
             10**18,
         )
-        assert _match_region(owner, root, 32, 2 * 10**18 - 32, (0, 11))
-        assert not _match_region(owner, root, 32, 2 * 10**18 - 32, (11, 0))
+        assert match_region(owner, root, 32, 2 * 10**18 - 32, (0, 11))
+        assert not match_region(owner, root, 32, 2 * 10**18 - 32, (11, 0))
         corrupt = owner.arena.concat(root, owner.arena.terminal(14))
-        assert not _match_region(owner, corrupt, 0, 2 * 10**18 + 1, (0, 11))
+        assert not match_region(owner, corrupt, 0, 2 * 10**18 + 1, (0, 11))
     finally:
         owner.dispose()
         assert ledger.entries == ledger.nodes == 0
@@ -120,8 +132,6 @@ def test_periodic_match_exact_slp_pumping_and_corrupted_leaf() -> None:
 def test_mixed_cell_records_are_live_owner_checked_observations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.sequences.reverse_add import q19_periodic_cone
-
     rng = Random(808)
     half = [rng.randrange(1, 19)]
     half += [rng.randrange(19) for _ in range(99)]

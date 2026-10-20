@@ -7,9 +7,9 @@ import pytest
 from devtools.experiments.collatz.free_cylinder_residual import (
     FreeCylinderResidualArena,
 )
-from devtools.experiments.collatz.physical_support import PhysicalSupportArena
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.sequences.collatz.hensel_cylinders import HenselAffineBlock
+from number_compiler.sequences.collatz.physical_support import PhysicalSupportArena
 
 
 def _bits(source: int) -> Callable[[int], int]:

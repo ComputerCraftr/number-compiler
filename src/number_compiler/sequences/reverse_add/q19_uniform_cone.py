@@ -107,7 +107,7 @@ def uniform_cone_moore_certificate() -> UniformConeMooreCertificate:
     )
 
 
-def _bulk_at(entry: int, ingress: int, steps: int) -> int:
+def bulk_at(entry: int, ingress: int, steps: int) -> int:
     """Finite-state exponentiation, with exact EQ puncture in the first tick."""
     if steps == 0:
         return entry
@@ -125,7 +125,7 @@ def _bulk_at(entry: int, ingress: int, steps: int) -> int:
     return states[pre + (remaining - pre) % (len(states) - pre)]
 
 
-def _same_symbol_range(
+def same_symbol_range(
     owner: ReversePairQ19OutputOwner,
     root: int,
     begin: int,
@@ -140,12 +140,12 @@ def _same_symbol_range(
     """
     if begin == end:
         return True
-    summary = owner._word_summary(root)
+    summary = owner.word_summary(root)
     if not 0 <= begin < end <= summary.symbols:
         raise ValueError("Q19 homogeneous guard has invalid half-word interval")
     node_bound = len(owner.arena.nodes)
     with owner.ledger.reservation(
-        owner._scratch_owner,
+        owner.scratch_owner,
         entries=4 * (node_bound + 1),
         nodes=4 * (node_bound + 1),
     ):
@@ -162,20 +162,20 @@ def _same_symbol_range(
                 )
                 if lo == hi:
                     continue
-                report = owner._summaries[node_id]
+                report = owner.published_word_summary(node_id)
                 if lo == 0 and hi == report.symbols:
                     if report.runs != 1 or report.first_symbol != symbol:
                         return False
                     continue
                 node = owner.arena.nodes[node_id]
                 if node.kind == "CONCAT":
-                    middle = owner._summaries[node.left].symbols
+                    middle = owner.published_word_summary(node.left).symbols
                     if lo < middle:
                         tasks.append((node.left, lo, min(hi, middle)))
                     if hi > middle:
                         tasks.append((node.right, max(0, lo - middle), hi - middle))
                 elif node.kind == "REPEAT":
-                    width = owner._summaries[node.child].symbols
+                    width = owner.published_word_summary(node.child).symbols
                     if not width:
                         raise AssertionError(
                             "partial Q19 repetition has no coefficient"
@@ -189,7 +189,7 @@ def _same_symbol_range(
                             tasks.append((node.child, offset, width))
                             first += 1
                         if last > first:
-                            child = owner._summaries[node.child]
+                            child = owner.published_word_summary(node.child)
                             if child.runs != 1 or child.first_symbol != symbol:
                                 return False
                         if tail:
@@ -211,14 +211,14 @@ def _full_pair_region_uniform(
     """Map the two reflected halves to the exact encoded Q19 half-word."""
     w = source.pair_width
     half = (w + 1) // 2
-    if begin < half and not _same_symbol_range(
+    if begin < half and not same_symbol_range(
         owner, source.root, begin, min(end, half), symbol
     ):
         return False
     if end > half:
         reflected_lo = w - end
         reflected_hi = w - max(begin, half)
-        if not _same_symbol_range(
+        if not same_symbol_range(
             owner, source.root, reflected_lo, reflected_hi, symbol
         ):
             return False
@@ -249,7 +249,7 @@ class CertifiedUniformCone:
             raise ValueError("uniform cone records are issued by a Q19 owner")
 
     @classmethod
-    def _issue(
+    def issue_after_uniform_guard(
         cls,
         source: ReversePairOutputOccurrence,
         owner: ReversePairQ19OutputOwner,
@@ -287,7 +287,7 @@ class CertifiedUniformCone:
         object.__setattr__(record, "_seal", _UNIFORM_CONE_SEAL)
         return record
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
         """Check the issued binding and live owner without re-deriving its halo."""
         from number_compiler.sequences.reverse_add.q19_output import (
             ReversePairQ19OutputOwner,
@@ -309,8 +309,8 @@ class CertifiedUniformCone:
 
     @property
     def coefficient(self) -> int:
-        self._validate()
-        return _bulk_at(self.source_symbol, self.source_ingress, self.steps)
+        self.validate()
+        return bulk_at(self.source_symbol, self.source_ingress, self.steps)
 
     @property
     def f5(self) -> int:
@@ -322,7 +322,7 @@ class CertifiedUniformCone:
 
     @property
     def bulk_carry(self) -> int | None:
-        self._validate()
+        self.validate()
         s = self.coefficient
         if s == 9:
             return self.source_ingress
@@ -335,7 +335,7 @@ class CertifiedUniformCone:
         borrow 0/1. A following *growth* comparison instead requires its
         shifted reversal seam and is not authorized by this table.
         """
-        self._validate()
+        self.validate()
         if type(offset) is not int or not 0 <= offset < self.steps:
             raise ValueError("borrow gate must have a certified following tick")
         old = self.at(offset)
@@ -372,10 +372,10 @@ class CertifiedUniformCone:
         return self.extend(owner, self.steps)
 
     def at(self, offset: int) -> int:
-        self._validate()
+        self.validate()
         if type(offset) is not int or not 0 <= offset <= self.steps:
             raise ValueError("cone query must stay within its certified span")
-        return _bulk_at(self.source_symbol, self.source_ingress, offset)
+        return bulk_at(self.source_symbol, self.source_ingress, offset)
 
 
 def authorize_uniform_cone(
@@ -411,7 +411,7 @@ def _derive_uniform_cone(
     w = source.pair_width
     if coordinate - halo < 0 or coordinate + halo >= w:
         raise UniformConeNotAuthorized("no protected source halo for this depth")
-    value = owner._pair_value_at(source, coordinate)
+    value = owner.pair_value_at(source, coordinate)
     if not _full_pair_region_uniform(
         owner, source, coordinate - halo, coordinate + halo + 1, value
     ):
@@ -434,7 +434,7 @@ def _derive_uniform_cone(
         ingress = low
     else:
         ingress = int(value > 9)
-    result = CertifiedUniformCone._issue(
+    result = CertifiedUniformCone.issue_after_uniform_guard(
         source, owner, coordinate, steps, value, ingress, halo
     )
     owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_AUTHORIZED_BULK_TEMPORAL_CELLS)

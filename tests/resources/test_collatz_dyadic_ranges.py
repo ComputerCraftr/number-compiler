@@ -13,7 +13,7 @@ from devtools.verification.collatz_carry_ranges import (
 )
 from devtools.verification.lazy_collatz import (
     LazyCollatzApplication,
-    _Program,
+    Program,
 )
 from devtools.verification.lazy_collatz_range import (
     CollatzRangeEffect,
@@ -47,7 +47,13 @@ def test_dag_queries_never_expand_or_stream_the_temporal_program(
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("DAG query expanded a stream or exact endpoint")
 
-    for name in ("_stream", "_operations", "materialize_bits", "_source_transfer"):
+    for name in (
+        "stream",
+        "_operations",
+        "append_program",
+        "materialize_bits",
+        "_source_transfer",
+    ):
         monkeypatch.setattr(LazyCollatzApplication, name, forbidden)
     rng = random.Random(5612)
     for seed in (27, 64, 255, *(rng.randrange(1, 1 << 32) for _ in range(5))):
@@ -64,8 +70,8 @@ def test_dag_queries_never_expand_or_stream_the_temporal_program(
 def test_warm_dyadic_parent_skips_all_descendants_and_keeps_action_ids() -> None:
     seed = (1 << 127) - 1
     app = LazyCollatzApplication(2, 0, bits(seed))
-    view = app._append(app.initial, _Program("mul3"), 129)
-    arena = app._range_evaluator
+    view = app.append_program(app.initial, Program("mul3"), 129)
+    arena = app.range_evaluator
     first = arena.range_effect(view.program, 0, 64)
     before = app.ledger.snapshot()
     second = arena.range_effect(view.program, 0, 64)
@@ -81,13 +87,14 @@ def test_warm_dyadic_parent_skips_all_descendants_and_keeps_action_ids() -> None
         after.counters["collatz_range_hits"]
         == before.counters.get("collatz_range_hits", 0) + 1
     )
-    assert len(arena._compositions) > 0
-    actions = tuple(arena._effects)
+    assert len(arena.audit_snapshot().compositions) > 0
+    actions = arena.audit_snapshot().effects
     app.ledger.evict_query_memos()
     assert arena.range_effect(view.program, 0, 64) == first
-    assert tuple(arena._effects) == actions
+    assert arena.audit_snapshot().effects == actions
     assert all(
-        key.length >= 8 and key.length & (key.length - 1) == 0 for key in arena._ranges
+        key.length >= 8 and key.length & (key.length - 1) == 0
+        for key in arena.audit_snapshot().ranges
     )
     assert collect_ledger_metrics(app.ledger).resource_accounting_mismatch == 0
 
@@ -95,14 +102,15 @@ def test_warm_dyadic_parent_skips_all_descendants_and_keeps_action_ids() -> None
 def test_distinct_eight_bit_words_alias_without_an_inverse_word_projection() -> None:
     source = bits(11, 8) + bits(15, 8)
     app = LazyCollatzApplication(2, 0, source)
-    arena = app._range_evaluator
+    arena = app.range_evaluator
     first = arena.range_effect(app.initial.program, 0, 8)
     second = arena.range_effect(app.initial.program, 8, 8)
     assert source[:8] != source[8:]
     assert first == second
-    assert len({action for action in arena._ranges.values()}) == 1
-    assert all(type(action) is TransferSummaryID for action in arena._ranges.values())
-    assert len(arena._effects) == 1
+    ranges = arena.audit_snapshot().ranges
+    assert len(set(ranges.values())) == 1
+    assert all(type(action) is TransferSummaryID for action in ranges.values())
+    assert len(arena.audit_snapshot().effects) == 1
 
 
 def test_equal_original_source_tiles_reuse_transfer_before_reading_the_second_tile() -> (
@@ -113,23 +121,26 @@ def test_equal_original_source_tiles_reuse_transfer_before_reading_the_second_ti
     geometry = SourceGeometry(ledger, ExactSource(source, 2, "collatz", 2))
     geometry.span(source, 2, len(source))
     app = LazyCollatzApplication(2, 0, source, ledger, source_geometry=geometry)
-    arena = app._range_evaluator
+    arena = app.range_evaluator
     first = arena.range_effect(app.initial.program, 0, 8)
     before = ledger.counters.get("collatz_source_reads", 0)
     assert arena.range_effect(app.initial.program, 8, 8) == first
     assert ledger.counters.get("collatz_source_reads", 0) == before
     assert ledger.counters["collatz_source_tile_effect_hits"] >= 1
-    assert len(arena._source_tiles) == 1
+    assert len(arena.audit_snapshot().source_tiles) == 1
     assert collect_ledger_metrics(ledger).forbidden_future_payloads == 0
 
 
 def test_range_action_owner_validation_precedes_composition_work() -> None:
     first = LazyCollatzApplication(2, 0, bits(11, 8))
     other = LazyCollatzApplication(2, 0, bits(11, 8))
-    a, b = first._range_evaluator, other._range_evaluator
+    a, b = first.range_evaluator, other.range_evaluator
     a.range_effect(first.initial.program, 0, 8)
     b.range_effect(other.initial.program, 0, 8)
-    local, foreign = next(iter(a._ids.values())), next(iter(b._ids.values()))
+    local, foreign = (
+        next(iter(a.audit_snapshot().ids.values())),
+        next(iter(b.audit_snapshot().ids.values())),
+    )
     before = first.ledger.snapshot()
     with pytest.raises(ValueError):
         a.compose(local, foreign)
@@ -138,12 +149,12 @@ def test_range_action_owner_validation_precedes_composition_work() -> None:
 
 def test_distinct_evaluators_of_one_application_have_distinct_action_scopes() -> None:
     application = LazyCollatzApplication(2, 0, bits(27))
-    first = application._range_evaluator
+    first = application.range_evaluator
     second = CollatzRangeEvaluator(application)
     first_effect = first.range_effect(application.initial.program, 0, 8)
     second_effect = second.range_effect(application.initial.program, 8, 8)
-    local = next(iter(first._ids.values()))
-    foreign = next(iter(second._ids.values()))
+    local = next(iter(first.audit_snapshot().ids.values()))
+    foreign = next(iter(second.audit_snapshot().ids.values()))
     assert local.local_id == foreign.local_id
     assert local != foreign
     assert first_effect != second_effect
@@ -163,16 +174,16 @@ def test_distinct_evaluators_of_one_application_have_distinct_action_scopes() ->
 
 def test_warm_covering_parent_cannot_change_truncated_event_prefix_semantics() -> None:
     cold = LazyCollatzApplication(2, 0, bits(27))
-    expected = cold._range_evaluator.event_summary(cold.initial.program, 3)
+    expected = cold.range_evaluator.event_summary(cold.initial.program, 3)
     warm = LazyCollatzApplication(2, 0, bits(27))
-    warm._range_evaluator.range_effect(warm.initial.program, 0, 8)
-    assert warm._range_evaluator.event_summary(warm.initial.program, 3) == expected
+    warm.range_evaluator.range_effect(warm.initial.program, 0, 8)
+    assert warm.range_evaluator.event_summary(warm.initial.program, 3) == expected
 
 
 def test_event_handle_and_extent_validation_precede_warm_shortcuts() -> None:
     first = LazyCollatzApplication(2, 0, bits(27))
     other = LazyCollatzApplication(2, 0, bits(27))
-    evaluator = first._range_evaluator
+    evaluator = first.range_evaluator
     evaluator.event_summary(first.initial.program, 5)
     before = first.ledger.snapshot()
     with pytest.raises(ValueError):

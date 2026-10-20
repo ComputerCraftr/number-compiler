@@ -4,18 +4,21 @@ from __future__ import annotations
 
 import random
 from dataclasses import asdict
+from typing import cast
 
 import pytest
 
 from number_compiler.sequences.double_reverse.boundary_cycles import (
     CANDIDATE_COMPONENTS,
+    Edge,
     candidate_component,
     edge_from_digits,
 )
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
+from number_compiler.sequences.double_reverse.source_adapter import DoubleReverseSource
 from number_compiler.sequences.double_reverse.temporal_border_bank import (
     OBSERVERS,
-    _output,
+    observer_output,
     power_temporal_border,
 )
 from number_compiler.sequences.double_reverse.temporal_carry_safety import (
@@ -178,7 +181,7 @@ def test_source_guarded_moore_envelopes_sharpen_unconstrained_ports() -> None:
                     next_value = _literal(real)
                     # Output has no unknown digits once actual successor is known.
                     ingress = int(int(str(real)[-3]) >= 5)
-                    value = _output(edge, ingress, observer)[0]
+                    value = observer_output(edge, ingress, observer)[0]
                     total += value
                     real = next_value
                 assert free.minimum_emission_sum <= total <= free.maximum_emission_sum
@@ -190,7 +193,7 @@ def test_powered_safety_lift_is_only_derived_from_an_owner_issued_prefix() -> No
         assert prefix == 16
         assert len(envelopes) == len(OBSERVERS) - 1
         assert all(envelope.steps == 48 for envelope in envelopes)
-        engine = term._adapter.temporal_hashlife
+        engine = term.temporal_engine
         entry = engine.source_prefix()
         assert entry is not None
         forged = type(entry)(
@@ -201,7 +204,7 @@ def test_powered_safety_lift_is_only_derived_from_an_owner_issued_prefix() -> No
         )
         with pytest.raises(ValueError, match="not owner-issued"):
             engine.validate_source_prefix(forged)
-        assert term._image is None
+        assert term.published_image is None
 
 
 def test_cli_source_carry_safety_and_no_endpoint(
@@ -220,7 +223,7 @@ def test_cli_source_carry_safety_and_no_endpoint(
         assert source.next_forced_carry == 1
         assert [p.maximum_internal_transitions for p in proofs] == [None, 5, 5, 4]
         assert asdict(source)["universally_closed_component"] is True
-        assert term._image is None
+        assert term.published_image is None
     with DoubleReverseTerm(1700542, 4) as term:
         prefix, source, _ = term.temporal_carry_safety()
         assert prefix == 0
@@ -235,29 +238,35 @@ def test_cli_source_carry_safety_and_no_endpoint(
 
 def test_carry_safety_rejects_forged_same_arena_source_without_rendering() -> None:
     with DoubleReverseTerm(173488, 0) as term:
-        source = term._source
+        source = cast(DoubleReverseSource, object.__getattribute__(term, "_source"))
         original_root = source.root
-        foreign_root = term._arena.word((9, 9, 9, 9, 9, 9))
+        foreign_root = term.source_arena.word((9, 9, 9, 9, 9, 9))
         object.__setattr__(source, "root", foreign_root)
         try:
             with pytest.raises(ValueError, match="source binding"):
                 term.temporal_carry_safety()
             with pytest.raises(ValueError, match="source binding"):
                 term.prepare_endpoint()
-            assert term._image is None
+            assert term.published_image is None
         finally:
             object.__setattr__(source, "root", original_root)
 
-        original_source = term._source
-        term._source = type(original_source)(
-            original_source.issuer, original_source.seed, foreign_root
+        original_source = cast(
+            DoubleReverseSource, object.__getattribute__(term, "_source")
+        )
+        object.__setattr__(
+            term,
+            "_source",
+            type(original_source)(
+                original_source.issuer, original_source.seed, foreign_root
+            ),
         )
         try:
             with pytest.raises(ValueError, match="source binding"):
                 term.temporal_carry_safety()
-            assert term._image is None
+            assert term.published_image is None
         finally:
-            term._source = original_source
+            object.__setattr__(term, "_source", original_source)
 
 
 def test_carry_safety_reuses_the_term_owned_refinement(
@@ -267,14 +276,14 @@ def test_carry_safety_reuses_the_term_owned_refinement(
     from number_compiler.sequences.double_reverse import temporal_carry_safety_audit
 
     with DoubleReverseTerm(173488, 0) as term:
-        owner_before = term.resource_ledger.inventory_owner(term._carry_safety_owner)
+        owner_before = term.resource_ledger.inventory_owner(term.carry_safety_owner)
         assert owner_before.role == "double_reverse_temporal_memo"
         assert owner_before.entries == owner_before.nodes == 0
         assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
 
         first = term.temporal_carry_safety()
-        assert len(term._carry_safety_cache) == 1
-        owner_after = term.resource_ledger.inventory_owner(term._carry_safety_owner)
+        assert len(term.carry_safety_entries()) == 1
+        owner_after = term.resource_ledger.inventory_owner(term.carry_safety_owner)
         assert owner_after.entries == 1
         assert owner_after.nodes > owner_after.entries
         report = collect_ledger_metrics(term.resource_ledger)
@@ -282,7 +291,7 @@ def test_carry_safety_reuses_the_term_owned_refinement(
         assert report.forbidden_future_payloads == 0
         assert report.resource_accounting_mismatch == 0
         assert any(
-            item.owner == term._carry_safety_owner
+            item.owner == term.carry_safety_owner
             and item.role == "double_reverse_temporal_memo"
             and item.observed_entries == 1
             for item in report.resource_inventory
@@ -293,7 +302,7 @@ def test_carry_safety_reuses_the_term_owned_refinement(
 
         monkeypatch.setattr(
             temporal_carry_safety_audit,
-            "_component_layers",
+            "component_layers",
             forbidden_component_rebuild,
         )
         assert term.temporal_carry_safety() == first
@@ -303,7 +312,7 @@ def test_carry_safety_cache_releases_its_reservation_on_dispose() -> None:
     term = DoubleReverseTerm(173488, 0)
     ledger = term.resource_ledger
     term.temporal_carry_safety()
-    owner = term._carry_safety_owner
+    owner = term.carry_safety_owner
     assert ledger.inventory_owner(owner).entries == 1
     term.dispose()
     snapshot = ledger.snapshot()
@@ -316,8 +325,7 @@ def test_carry_safety_cache_releases_its_reservation_on_dispose() -> None:
 def test_carry_safety_cache_rejects_same_key_mutated_result_fields() -> None:
     with DoubleReverseTerm(173488, 0) as term:
         term.temporal_carry_safety()
-        key = next(iter(term._carry_safety_cache))
-        issued = term._carry_safety_cache[key]
+        _key, issued = term.carry_safety_entries()[0]
         source = issued.result[1]
         mutations = (
             ("possible_next_edges", ()),
@@ -371,8 +379,8 @@ def test_backward_carry_safety_prunes_a_certified_edge_trace() -> None:
     # independently authenticated longer edge trace, backward compatibility
     # further removes impossible fourth-digit choices without guessing them.
     seed = 173488
-    edge_word = []
-    sources = []
+    edge_word: list[Edge] = []
+    sources: list[int] = []
     for _ in range(8):
         sources.append(seed)
         edge_word.append(edge_from_digits(str(seed)))

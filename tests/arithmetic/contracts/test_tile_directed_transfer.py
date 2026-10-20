@@ -98,8 +98,8 @@ def test_directed_workspace_releases_frames_after_failure(
         monkeypatch.setattr(type(law), "advance", forbidden)
         with pytest.raises(RuntimeError, match="injected primitive failure"):
             directed_transfer(adapter, primitive, source.tile, 0, 0, wiring)
-        assert len(scheduler._causal_tasks.directed_frames) == 0
-        assert len(scheduler._causal_tasks.directed_values) == 0
+        assert len(scheduler.causal_tasks.directed_frames) == 0
+        assert len(scheduler.causal_tasks.directed_values) == 0
     finally:
         source.close()
 

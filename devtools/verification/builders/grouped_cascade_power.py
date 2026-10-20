@@ -217,7 +217,7 @@ def build_left(
 
     trans: dict[tuple[int, int], int] = {}
     dq = deque([start])
-    seen = set()
+    seen: set[int] = set()
     t0 = time.perf_counter()
     capped = False
     while dq:
@@ -230,7 +230,7 @@ def build_left(
         seen.add(q)
         boxes = S.boxes(q)
         for a in A:
-            out = []
+            out: list[tuple[int, int, int]] = []
             for l1mask, l2mask, r1mask in boxes:
                 r2mask = pred_mask(a, r1mask)
                 for r2 in values(r2mask):
@@ -271,7 +271,7 @@ def build_right(
     start = S.intern_boxes(((alll, 1 << B2.right.start, 1 << B1.right.start),))
     trans: dict[tuple[int, int], int] = {}
     dq = deque([start])
-    seen = set()
+    seen: set[int] = set()
     t0 = time.perf_counter()
     capped = False
     while dq:
@@ -284,7 +284,7 @@ def build_right(
         seen.add(q)
         boxes = S.boxes(q)
         for a in A:
-            out = []
+            out: list[tuple[int, int, int]] = []
             for l2mask, rr2mask, r2mask in boxes:
                 for r2 in values(r2mask):
                     r1 = B1.right.step(r2, a)

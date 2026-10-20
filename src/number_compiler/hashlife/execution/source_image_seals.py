@@ -7,6 +7,9 @@ from dataclasses import dataclass, fields, is_dataclass
 from typing import Self, cast
 
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
+from number_compiler.arithmetic.contracts.exact_equality import (
+    extend_typed_tuple_pairs,
+)
 from number_compiler.arithmetic.contracts.iterative_queries import (
     enter_ordered_children,
     enter_tuple_node,
@@ -62,30 +65,34 @@ def _root_anchor(value: object) -> object:
             tuple(_anchor(item) for item in cast(tuple[object, ...], value)),
         )
     if type(value) is frozenset:
-        return ("frozenset", value)
+        return ("frozenset", cast(frozenset[object], value))
     return _anchor(value)
 
 
 def _root_matches(value: object, expected: object) -> bool:
     if type(value) is tuple:
-        if type(expected) is not tuple or len(expected) != 2 or expected[0] != "tuple":
+        if type(expected) is not tuple:
+            return False
+        expected_parts = cast(tuple[object, ...], expected)
+        if len(expected_parts) != 2 or expected_parts[0] != "tuple":
             return False
         children = cast(tuple[object, ...], value)
-        anchors = expected[1]
-        return (
-            type(anchors) is tuple
-            and len(children) == len(anchors)
-            and all(
-                _anchor_matches(child, anchor)
-                for child, anchor in zip(children, anchors, strict=True)
-            )
+        anchors = expected_parts[1]
+        if type(anchors) is not tuple:
+            return False
+        typed_anchors = cast(tuple[_FieldAnchor, ...], anchors)
+        return len(children) == len(typed_anchors) and all(
+            _anchor_matches(child, anchor)
+            for child, anchor in zip(children, typed_anchors, strict=True)
         )
     if type(value) is frozenset:
+        if type(expected) is not tuple:
+            return False
+        expected_parts = cast(tuple[object, ...], expected)
         return (
-            type(expected) is tuple
-            and len(expected) == 2
-            and expected[0] == "frozenset"
-            and expected[1] is value
+            len(expected_parts) == 2
+            and expected_parts[0] == "frozenset"
+            and expected_parts[1] is value
         )
     return type(expected) is tuple and _anchor_matches(
         value, cast(_FieldAnchor, expected)
@@ -135,7 +142,7 @@ def require_immutable_key(value: object, label: str) -> int:
         if enter_tuple_node(pending, active, current):
             continue
         if type(current) is frozenset:
-            pending.extend((item, False) for item in current)
+            pending.extend((item, False) for item in cast(frozenset[object], current))
             continue
         if is_dataclass(current) and not isinstance(current, type):
             parameters = getattr(type(current), "__dataclass_params__", None)
@@ -179,14 +186,16 @@ def typed_payload_equal(left: object, right: object) -> bool:
             )
             continue
         if type(first) is tuple:
-            assert isinstance(second, tuple)
-            if len(first) != len(second):
+            if not extend_typed_tuple_pairs(
+                pending, cast(tuple[object, ...], first), second
+            ):
                 return False
-            pending.extend(zip(first, second, strict=True))
         elif type(first) is frozenset:
             assert isinstance(second, frozenset)
-            if {TypedPayloadKey(item) for item in first} != {
-                TypedPayloadKey(item) for item in second
+            first_members = cast(frozenset[object], first)
+            second_members = cast(frozenset[object], second)
+            if {TypedPayloadKey(item) for item in first_members} != {
+                TypedPayloadKey(item) for item in second_members
             }:
                 return False
         elif is_dataclass(first):
@@ -207,6 +216,8 @@ def _typed_hash(value: object) -> int:
     active: set[int] = set()
     while pending:
         current, closing = pending.pop()
+        current_value: object = current
+        current_kind = type(current_value)
         identity = id(current)
         if identity in hashes:
             continue
@@ -215,7 +226,8 @@ def _typed_hash(value: object) -> int:
             continue
         if isinstance(current, ArenaHandle):
             children = tuple(
-                getattr(current, item.name) for item in fields(current)[3:]
+                cast(object, getattr(current, item.name))
+                for item in fields(current)[3:]
             )
             if not children:
                 hashes[identity] = hash(
@@ -223,11 +235,13 @@ def _typed_hash(value: object) -> int:
                 )
                 continue
         elif type(current) is tuple:
-            children = current
-        elif type(current) is frozenset:
-            children = tuple(current)
+            children = cast(tuple[object, ...], current)
+        elif current_kind is frozenset:
+            children = tuple(cast(frozenset[object], current))
         elif is_dataclass(current):
-            children = tuple(getattr(current, item.name) for item in fields(current))
+            children = tuple(
+                cast(object, getattr(current, item.name)) for item in fields(current)
+            )
         else:
             raise TypeError("source image key has an unsupported structural sort")
         if closing:
@@ -243,17 +257,17 @@ def _typed_hash(value: object) -> int:
                 )
                 active.remove(identity)
                 continue
-            if type(current) is frozenset:
+            if current_kind is frozenset:
                 parts: object = frozenset(hashes[id(item)] for item in children)
             else:
                 parts = tuple(hashes[id(item)] for item in children)
-            hashes[identity] = hash((type(current), parts))
+            hashes[identity] = hash((current_kind, parts))
             active.remove(identity)
             continue
         if identity in active:
             raise ValueError("source image typed key contains a reference cycle")
         active.add(identity)
-        pending.append((current, True))
+        pending.append((current_value, True))
         pending.extend((child, False) for child in children)
     return hashes[id(value)]
 
@@ -284,7 +298,7 @@ class PublicationSeal(tuple[object, tuple[_Guard, ...], int]):
     ) -> Self:
         # Keep tuple immutability without NamedTuple's mutable class-level
         # defaults dictionary entering every retained execution graph.
-        return tuple.__new__(cls, (root, guards, retained_nodes))
+        return super().__new__(cls, (root, guards, retained_nodes))
 
     @property
     def root(self) -> object:
@@ -388,7 +402,10 @@ def publication_seal(value: object, ledger: ResourceLedger) -> PublicationSeal:
     dataclass or arena handle retains an independent shallow field snapshot. Warm
     validation visits guarded objects instead of flattening large primitive tuples.
     """
-    root_nodes = 3 + (1 + 2 * len(value) if type(value) is tuple else 0)
+    root_value: object = value
+    root_nodes = 3 + (
+        1 + 2 * len(cast(tuple[object, ...], value)) if type(value) is tuple else 0
+    )
     retained_nodes = 4 + root_nodes
     ledger.check_capacity(nodes=retained_nodes)
     pending: list[tuple[object, bool]] = [(value, False)]
@@ -419,7 +436,7 @@ def publication_seal(value: object, ledger: ResourceLedger) -> PublicationSeal:
                 is_dataclass(current) and not isinstance(current, type)
             ):
                 names = tuple(item.name for item in fields(current))
-                pinned = tuple(getattr(current, name) for name in names)
+                pinned = tuple(cast(object, getattr(current, name)) for name in names)
                 retained_nodes += 5 + 2 * len(names)
                 ledger.check_capacity(nodes=retained_nodes)
                 guards.append(
@@ -445,7 +462,7 @@ def publication_seal(value: object, ledger: ResourceLedger) -> PublicationSeal:
             ledger.check_capacity(nodes=retained_nodes + len(pending) + len(children))
             enter_ordered_children(pending, active, current, children)
             consumed += 8 + 8 * len(children)
-        return PublicationSeal(_root_anchor(value), tuple(guards), retained_nodes)
+        return PublicationSeal(_root_anchor(root_value), tuple(guards), retained_nodes)
     finally:
         ledger.bump(_execution_keys.SOURCE_IMAGE_SEAL_CREATION_VISITS, visits)
         ledger.bump(_execution_keys.SOURCE_IMAGE_SEAL_CREATION_BYTES, consumed)

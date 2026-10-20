@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from time import perf_counter
+from typing import Literal
 
 from devtools.benchmarks.tile_projection_accounting import projection_accounting
 from devtools.git_source import git_source, same_git_revision
@@ -116,7 +117,7 @@ def cold_request(family: str, steps: int) -> dict[str, object]:
 
 
 def comma_arithmetic_requests(
-    mode: str,
+    mode: Literal["cold", "repeat", "bypass"],
     trials: int,
     indices: tuple[int, ...],
     *,
@@ -136,14 +137,12 @@ def comma_arithmetic_requests(
         for trial in range(trials):
             if certified and mode == "cold":
                 NumberCompiler.clear_shared_cache()
-            compiler = (
-                retained
-                if mode == "repeat"
-                else NumberCompiler(
-                    max_cached_terms=0 if mode == "bypass" else 8,
-                    shared_cache=mode != "bypass",
-                )
-            )
+            if mode == "repeat":
+                compiler = retained
+            elif mode == "bypass":
+                compiler = NumberCompiler(max_cached_terms=0, shared_cache=False)
+            else:
+                compiler = NumberCompiler(max_cached_terms=8, shared_cache=True)
             start = perf_counter()
             projected = compiler.project(CommaTermQuery(index))
             assert isinstance(projected.payload, CommaTermPayload)

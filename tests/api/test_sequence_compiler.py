@@ -228,27 +228,33 @@ def test_prime_and_collatz_use_same_compiler_without_cross_family_state_aliasing
     assert compiler.cache_size == 3
 
 
-def test_collatz_composite_radix_local_compiler_beats_binary_and_ternary_on_seed27() -> (
+@pytest.mark.validation
+def test_collatz_composite_radix_full_seed27_regression() -> None:
+    _assert_collatz_composite_radix_order(27, 200, (2, 3, 6, 12))
+
+
+def test_collatz_composite_radix_local_compiler_beats_binary_and_ternary_on_small_seed() -> (
     None
 ):
+    _assert_collatz_composite_radix_order(6, 14, (2, 3, 6))
+
+
+def _assert_collatz_composite_radix_order(
+    seed: int, steps: int, bases: tuple[int, ...]
+) -> None:
     compiler = CanonicalSequenceCompiler()
-    c2 = compiler.compile_diagnostic(CollatzSequenceSpec(27, 2, 200))
-    c3 = compiler.compile_diagnostic(CollatzSequenceSpec(27, 3, 200))
-    c6 = compiler.compile_diagnostic(CollatzSequenceSpec(27, 6, 200))
-    c12 = compiler.compile_diagnostic(CollatzSequenceSpec(27, 12, 200))
-    assert (
-        c2.terms[-1].value
-        == c3.terms[-1].value
-        == c6.terms[-1].value
-        == c12.terms[-1].value
-        == 1
-    )
-    n2 = max(t.formula_nodes for t in c2.terms)
-    n3 = max(t.formula_nodes for t in c3.terms)
-    n6 = max(t.formula_nodes for t in c6.terms)
+    compiled = {
+        base: compiler.compile_diagnostic(CollatzSequenceSpec(seed, base, steps))
+        for base in bases
+    }
+    assert all(sequence.terms[-1].value == 1 for sequence in compiled.values())
+    n2 = max(t.formula_nodes for t in compiled[2].terms)
+    n3 = max(t.formula_nodes for t in compiled[3].terms)
+    n6 = max(t.formula_nodes for t in compiled[6].terms)
     assert n6 < n3 < n2
     assert all(
-        b in {"seed", "divide_2_local", "multiply_3_add_1_local"} for b in c6.branches
+        branch in {"seed", "divide_2_local", "multiply_3_add_1_local"}
+        for branch in compiled[6].branches
     )
 
 
@@ -478,12 +484,21 @@ def test_prime_uses_cyclotomic_wheel_instead_of_default_output_jet_while_other_d
     assert mersenne.terms[0].reinterpretations[0].primary_jet is not None
 
 
+@pytest.mark.validation
+def test_collatz_radix18_full_seed27_regression() -> None:
+    _assert_collatz_radix18_compiler(seed=27, steps=200)
+
+
 def test_collatz_radix18_uses_same_local_multiply_divide_compiler_without_new_state() -> (
     None
 ):
+    _assert_collatz_radix18_compiler(seed=6, steps=14)
+
+
+def _assert_collatz_radix18_compiler(*, seed: int, steps: int) -> None:
     compiler = CanonicalSequenceCompiler()
-    c6 = compiler.compile_diagnostic(CollatzSequenceSpec(27, 6, 200))
-    c18 = compiler.compile_diagnostic(CollatzSequenceSpec(27, 18, 200))
+    c6 = compiler.compile_diagnostic(CollatzSequenceSpec(seed, 6, steps))
+    c18 = compiler.compile_diagnostic(CollatzSequenceSpec(seed, 18, steps))
     assert c6.terms[-1].value == c18.terms[-1].value == 1
     assert all(
         branch in {"seed", "divide_2_local", "multiply_3_add_1_local"}
@@ -512,16 +527,45 @@ def test_collatz_compiler_attaches_one_canonical_raw_field_theorem_quotient() ->
     )
 
 
+@pytest.mark.validation
+def test_reduced_growth_and_valuation_full_stress_is_not_retained() -> None:
+    _assert_reduced_growth_and_valuation_storage(
+        reverse_seed=196,
+        reverse_steps=64,
+        collatz_seed=27,
+        collatz_steps=200,
+        expected_odd_steps=41,
+        expected_valuation_sum=70,
+    )
+
+
 def test_reduced_growth_and_valuation_itineraries_are_not_retained_as_parallel_state() -> (
     None
 ):
+    _assert_reduced_growth_and_valuation_storage(
+        reverse_seed=196,
+        reverse_steps=16,
+        collatz_seed=6,
+        collatz_steps=16,
+    )
+
+
+def _assert_reduced_growth_and_valuation_storage(
+    *,
+    reverse_seed: int,
+    reverse_steps: int,
+    collatz_seed: int,
+    collatz_steps: int,
+    expected_odd_steps: int | None = None,
+    expected_valuation_sum: int | None = None,
+) -> None:
     from number_compiler.api.sequence_types import (
         CollatzCompilation,
         ReverseAddCompilation,
     )
 
     reverse = CanonicalSequenceCompiler().compile_diagnostic(
-        ReverseAddSequenceSpec(196, 10, 64)
+        ReverseAddSequenceSpec(reverse_seed, 10, reverse_steps)
     )
     assert "growths" not in ReverseAddCompilation.__dataclass_fields__
     assert reverse.carry_reset_max_bits == 0
@@ -532,10 +576,10 @@ def test_reduced_growth_and_valuation_itineraries_are_not_retained_as_parallel_s
         proof = with_carry_diagnostics(reverse)
     assert reverse.growth_state_max_bits < proof.carry_reset_max_bits
     assert reverse.carry_reset_max_bits == 0
-    assert len(reverse.growths) == 64
+    assert len(reverse.growths) == reverse_steps
 
     collatz = CanonicalSequenceCompiler().compile_diagnostic(
-        CollatzSequenceSpec(27, 2, 200)
+        CollatzSequenceSpec(collatz_seed, 2, collatz_steps)
     )
     assert not hasattr(CollatzCompilation, "valuation_symbols")
     assert (
@@ -543,16 +587,19 @@ def test_reduced_growth_and_valuation_itineraries_are_not_retained_as_parallel_s
         and collatz.raw_field_quotient is not None
     )
     assert (
-        collatz.valuation_projection.odd_steps
-        == collatz.raw_field_quotient.odd_steps
-        == 41
+        collatz.valuation_projection.odd_steps == collatz.raw_field_quotient.odd_steps
     )
     assert (
         collatz.valuation_projection.valuation_sum
         == collatz.raw_field_quotient.valuation_sum
-        == 70
     )
-    assert collatz.valuation_state_classes < collatz.valuation_projection.odd_steps
+    if expected_odd_steps is not None:
+        assert collatz.valuation_projection.odd_steps == expected_odd_steps
+    if expected_valuation_sum is not None:
+        assert collatz.valuation_projection.valuation_sum == expected_valuation_sum
+    assert 0 < collatz.valuation_state_classes <= collatz.valuation_projection.odd_steps
+    if expected_odd_steps is not None:
+        assert collatz.valuation_state_classes < collatz.valuation_projection.odd_steps
 
 
 def test_special_compiler_does_not_retain_a_second_prime_domain_depth_state() -> None:

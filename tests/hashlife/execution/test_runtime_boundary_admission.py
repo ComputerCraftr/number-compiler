@@ -31,14 +31,14 @@ from number_compiler.hashlife.execution.field_images import SourceCellID
 from number_compiler.resources.higher_value_record_audit import (
     valid_runtime_value_record,
 )
-from tests.support.reverse_higher_runtime import _fixture
+from tests.support.reverse_higher_runtime import reverse_higher_fixture
 
 
 def test_runtime_function_rejects_foreign_numeric_and_stale_ids_before_mutation() -> (
     None
 ):
-    _, primitive, semantics, _, _, _, _, _ = _fixture((7,))
-    _, foreign_primitive, foreign, _, _, _, _, _ = _fixture((7,))
+    _, primitive, semantics, _, _, _, _, _ = reverse_higher_fixture((7,))
+    _, foreign_primitive, foreign, _, _, _, _, _ = reverse_higher_fixture((7,))
     foreign_sort = foreign.state_sort(foreign_primitive, 0)
     foreign_parameter = foreign.variable(foreign_sort, "foreign")
     foreign_function = foreign.function(foreign_parameter, foreign_parameter)
@@ -69,7 +69,9 @@ def test_runtime_function_rejects_foreign_numeric_and_stale_ids_before_mutation(
 
 
 def test_runtime_value_records_enforce_unary_and_context_summary_sorts() -> None:
-    actions, primitive, semantics, runtime, _, _, sources, _ = _fixture((7, 18))
+    actions, primitive, semantics, runtime, _, _, sources, _ = reverse_higher_fixture(
+        (7, 18)
+    )
     temporal = actions.compose(primitive, primitive)
     unary = runtime.summaries.runtime_unary(
         temporal,
@@ -114,7 +116,9 @@ def _deferred(
 
 
 def test_action_continuation_accepts_only_a_deferred_state_of_its_exact_sort() -> None:
-    actions, primitive, semantics, runtime, _, _, sources, _ = _fixture((7, 18))
+    actions, primitive, semantics, runtime, _, _, sources, _ = reverse_higher_fixture(
+        (7, 18)
+    )
     two = actions.compose(primitive, primitive)
     four = actions.compose(two, two)
     source = sources.intern(0, 0)
@@ -145,7 +149,7 @@ def test_action_continuation_accepts_only_a_deferred_state_of_its_exact_sort() -
 
 
 def test_reverse_pair_symbols_use_the_complete_contiguous_alphabet() -> None:
-    actions, primitive, semantics, _, _, _, _, _ = _fixture((7, 18))
+    actions, primitive, semantics, _, _, _, _, _ = reverse_higher_fixture((7, 18))
     temporal = actions.compose(primitive, primitive)
     values = semantics.runtime_values
     _base, blank = semantics.schema.alphabet(temporal)
@@ -203,7 +207,7 @@ def test_cyclic_runtime_pair_anchor_rejects_without_mutation() -> None:
         RuntimeValueID,
     )
 
-    actions, primitive, semantics, _, _, _, _, _ = _fixture((7,))
+    actions, primitive, semantics, _, _, _, _, _ = reverse_higher_fixture((7,))
     two = actions.compose(primitive, primitive)
     four = actions.compose(two, two)
     state = evaluate_operation(semantics, "initial", four, 0, ())
@@ -216,7 +220,7 @@ def test_cyclic_runtime_pair_anchor_rejects_without_mutation() -> None:
     before = semantics.ledger.snapshot()
     try:
         with pytest.raises(ValueError, match="cyclic anchor"):
-            values._validate_action_atom(four, 0, state)
+            values.validate_action_atom(four, 0, state)
         assert semantics.ledger.snapshot() == before
     finally:
         object.__setattr__(pair, "anchor", anchor)

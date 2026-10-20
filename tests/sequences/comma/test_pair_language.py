@@ -54,7 +54,7 @@ def test_completed_child_pair_blocks_match_independent_physical_trace(
         f, d = block.leading, block.source
         value = d
         weight = 0
-        sums = []
+        sums: list[int] = []
         middle = None
         for position in range(block.width):
             previous = (value - f) % 10

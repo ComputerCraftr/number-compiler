@@ -190,7 +190,7 @@ class PhysicalSupportArena(OrderedBooleanSupportArena):
             result = self._join_physical(chunks.pop(), result)
         return result
 
-    def _proved_collatz_power_two_tail(
+    def proved_collatz_power_two_tail(
         self, entry_ticks: int, cycle_ticks: int
     ) -> PhysicalSupport:
         return self._proved_power_two_tail(entry_ticks, cycle_ticks)

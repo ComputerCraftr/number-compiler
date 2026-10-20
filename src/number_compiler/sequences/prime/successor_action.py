@@ -9,7 +9,9 @@ cycle nor a ``q``-entry port table is retained.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from math import prod
+from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.resources.ledger import OwnedMemo
@@ -153,7 +155,7 @@ class PrimeSuccessorActionArena:
             self._closed = True
             raise
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         if self._closed:
             raise RuntimeError("prime successor action arena is closed")
         descriptor, parent, period, fresh, forbidden = self._descriptor_authority
@@ -183,7 +185,7 @@ class PrimeSuccessorActionArena:
 
     def validate_open(self) -> None:
         """Validate source and lifecycle authority for a shared adapter."""
-        self._check_open()
+        self.check_open()
 
     def audit_snapshot(self) -> PrimeSuccessorActionAuditSnapshot:
         """Return fresh immutable rows and exact backing-identity evidence."""
@@ -254,9 +256,22 @@ class PrimeSuccessorActionArena:
             self._registered_node_owner,
             self._registered_normal_form_owner,
             self._registered_port_owner,
-            tuple(self._nodes.items()),
-            tuple(self._normal_forms.items()),
-            tuple(self._ports.items()),
+            tuple(
+                cast(Mapping[int, PrimeSuccessorActionNode], nodes.container).items()
+            ),
+            tuple(
+                cast(
+                    Mapping[int, PrimeSuccessorActionID], normal_forms.container
+                ).items()
+            ),
+            tuple(
+                cast(
+                    Mapping[
+                        tuple[PrimeSuccessorActionID, int], PrimeSuccessorPortEffect
+                    ],
+                    ports.container,
+                ).items()
+            ),
             self._next_node,
             self.identity,
             self.base,
@@ -312,7 +327,7 @@ class PrimeSuccessorActionArena:
         return PrimeSuccessorActionID(self._owner, "prime-successor-action", node_id)
 
     def node(self, action: PrimeSuccessorActionID) -> PrimeSuccessorActionNode:
-        self._check_open()
+        self.check_open()
         if type(action) is not PrimeSuccessorActionID:
             raise TypeError("expected a prime successor action ID")
         action.validate(self._owner, "prime-successor-action", size=len(self._nodes))
@@ -367,14 +382,14 @@ class PrimeSuccessorActionArena:
 
     def power(self, copies: int) -> PrimeSuccessorActionID:
         """Build a binary-composed action without replaying parent periods."""
-        self._check_open()
+        self.check_open()
         if type(copies) is not int or copies < 0:
             raise ValueError("prime successor power must be a nonnegative integer")
         return self._charged_power(self.base, copies)
 
     def prefix(self, width: int) -> PrimeSuccessorActionID:
         """Build a binary admitted integer prefix without enumerating its leaves."""
-        self._check_open()
+        self.check_open()
         if type(width) is not int or width < 0:
             raise ValueError("prime successor prefix width must be nonnegative")
         found = self._normal_forms.get(width)
@@ -431,7 +446,7 @@ class PrimeSuccessorActionArena:
         self, start: int, width: int, phase: int
     ) -> PrimeSuccessorPortEffect:
         """Public checked interval evaluator for source-image adapters."""
-        self._check_open()
+        self.check_open()
         return self._interval_effect(start, width, phase)
 
     def _base_rank(self, entering_phase: int, stop: int) -> int:
@@ -497,7 +512,7 @@ class PrimeSuccessorActionArena:
         self, action: PrimeSuccessorActionID, entering_phase: int
     ) -> PrimeSuccessorPortEffect:
         """Demand exactly one port through an explicit postorder traversal."""
-        self._check_open()
+        self.check_open()
         if type(entering_phase) is not int:
             raise TypeError("prime entering phase must be an integer")
         q = self.descriptor.fresh_prime

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from copy import copy
 from dataclasses import fields, replace
+from typing import Protocol, cast
 from unittest.mock import patch
 
 import pytest
 
+from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.arithmetic.fields.homogeneous_growth import (
     GrowthArithmeticEvaluator,
 )
@@ -16,6 +19,7 @@ from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.border_identity import (
     ENTRY_89_AT_NINE,
     ENTRY_421,
+    CollatzSegmentIdentity,
 )
 from number_compiler.sequences.collatz.boundary_macros import (
     BoundaryActionTemplateMemo,
@@ -25,15 +29,118 @@ from number_compiler.sequences.collatz.boundary_macros import (
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
+from number_compiler.sequences.collatz.radial_boundary_coupling import (
+    CollatzRadialBoundarySeam,
+)
 from number_compiler.sequences.collatz.skew_cylinder_repeat import (
     GuardedSkewCylinderPower,
     RepeatedWordMooreCylinder,
 )
 from number_compiler.sequences.collatz.unified_skew_chain import (
+    BoundaryWitness,
+    FactorSpecs,
     UnifiedSkewChain,
     select_unified_skew_chain,
 )
+from number_compiler.sequences.collatz.unified_skew_clock import SkewQuadraticClock
 from tests.support.collatz_finite_trace import physical_values
+
+
+class _IssuedPowerFactory(Protocol):
+    def __call__(
+        self,
+        *,
+        source: int,
+        expected_endpoint: int,
+        action: DyadicTerminalFieldAction,
+        odd_symbols: int,
+        physical_ticks: int,
+        clock: SkewQuadraticClock | None,
+        repetitions: int,
+        evaluator: GrowthArithmeticEvaluator | None,
+        preflight: Callable[[int], None] | None,
+        cylinder: RepeatedWordMooreCylinder | None = None,
+    ) -> GuardedSkewCylinderPower: ...
+
+
+class _UnifiedChainFactory(Protocol):
+    def __call__(
+        self,
+        source: int,
+        endpoint: int,
+        fields: DyadicTerminalFieldAction,
+        width_blank: BlankLedger,
+        clock: SkewQuadraticClock | None,
+        odd_symbols: int,
+        factors: FactorSpecs,
+        segment_identities: tuple[CollatzSegmentIdentity, ...],
+        first_boundary: tuple[int, BoundaryWitness] | None,
+        seams: tuple[CollatzRadialBoundarySeam, ...],
+        repeat_cylinder: RepeatedWordMooreCylinder | None = None,
+    ) -> UnifiedSkewChain: ...
+
+
+def _from_issued_action(
+    *,
+    source: int,
+    expected_endpoint: int,
+    action: DyadicTerminalFieldAction,
+    odd_symbols: int,
+    physical_ticks: int,
+    clock: SkewQuadraticClock | None,
+    repetitions: int,
+    evaluator: GrowthArithmeticEvaluator | None,
+    preflight: Callable[[int], None] | None,
+    cylinder: RepeatedWordMooreCylinder | None = None,
+) -> GuardedSkewCylinderPower:
+    factory = cast(
+        _IssuedPowerFactory,
+        type.__getattribute__(GuardedSkewCylinderPower, "_from_issued_action"),
+    )
+    return factory(
+        source=source,
+        expected_endpoint=expected_endpoint,
+        action=action,
+        odd_symbols=odd_symbols,
+        physical_ticks=physical_ticks,
+        clock=clock,
+        repetitions=repetitions,
+        evaluator=evaluator,
+        preflight=preflight,
+        cylinder=cylinder,
+    )
+
+
+def _issue_unified_chain(
+    source: int,
+    endpoint: int,
+    fields: DyadicTerminalFieldAction,
+    width_blank: BlankLedger,
+    clock: SkewQuadraticClock | None,
+    odd_symbols: int,
+    factors: FactorSpecs,
+    segment_identities: tuple[CollatzSegmentIdentity, ...],
+    first_boundary: tuple[int, BoundaryWitness] | None,
+    seams: tuple[CollatzRadialBoundarySeam, ...],
+    repeat_cylinder: RepeatedWordMooreCylinder | None = None,
+) -> UnifiedSkewChain:
+    factory = cast(
+        _UnifiedChainFactory,
+        type.__getattribute__(UnifiedSkewChain, "_issue"),
+    )
+    return factory(
+        source,
+        endpoint,
+        fields,
+        width_blank,
+        clock,
+        odd_symbols,
+        factors,
+        segment_identities,
+        first_boundary,
+        seams,
+        repeat_cylinder,
+    )
 
 
 def _issued_989_power() -> GuardedSkewCylinderPower:
@@ -126,7 +233,7 @@ def test_repeat_cylinder_requires_its_issuer_at_power_admission() -> None:
     with pytest.raises(ValueError, match="cylinder seal"):
         copied.verify_for(power.action, power.source)
     with pytest.raises(ValueError, match="cylinder seal"):
-        GuardedSkewCylinderPower._from_issued_action(
+        _from_issued_action(
             source=power.source,
             expected_endpoint=power.action.endpoint(power.source),
             action=power.action,
@@ -140,7 +247,7 @@ def test_repeat_cylinder_requires_its_issuer_at_power_admission() -> None:
         )
     object.__setattr__(cylinder, "remaining_repetitions", None)
     with pytest.raises(ValueError, match="cylinder seal"):
-        GuardedSkewCylinderPower._from_issued_action(
+        _from_issued_action(
             source=power.source,
             expected_endpoint=power.action.endpoint(power.source),
             action=power.action,
@@ -169,7 +276,7 @@ def test_unified_chain_rejects_copied_or_mutated_repeat_cylinder() -> None:
     cylinder = chain.repeat_cylinder
     copied = copy(cylinder)
     with pytest.raises(ValueError, match="cylinder seal"):
-        UnifiedSkewChain._issue(
+        _issue_unified_chain(
             chain.source,
             chain.endpoint,
             chain.fields,
@@ -227,7 +334,7 @@ def test_production_executor_powers_only_when_width_spine_is_not_demanded() -> N
     assert first_endpoint == 29
     assert first_endpoint.bit_length() - (77).bit_length() == -2
     assert (11).bit_length() - first_endpoint.bit_length() == -1
-    summary = width_demand._source_image().tape_width_summary
+    summary = width_demand.source_image().tape_width_summary
     assert summary is not None
     # Repeating the first segment's -2 displacement would predict width 3.
     # The exact second segment loses only one bit, so the endpoint is width 4.

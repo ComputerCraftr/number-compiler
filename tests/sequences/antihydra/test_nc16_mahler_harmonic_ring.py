@@ -6,6 +6,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import replace
 from itertools import pairwise
+from typing import cast
 
 import pytest
 
@@ -28,14 +29,15 @@ from number_compiler.sequences.antihydra.mahler_open_harmonic_moore import (
     MahlerConditionalOpenMoore as Moore,
 )
 from number_compiler.sequences.antihydra.mahler_open_harmonic_moore import (
-    _entry,
+    open_bank_entry,
 )
+from tests.support.exact_integer_power import exact_integer_power
 from tests.support.mahler_harmonic_reference import literal_q_harmonic_counts
 
 
 def _mapping(value: object) -> Mapping[object, object]:
     assert isinstance(value, Mapping)
-    return value
+    return cast(Mapping[object, object], value)
 
 
 def _literal(source: int, exponent: int, count: int) -> tuple[int, ...]:
@@ -55,7 +57,7 @@ def _source_for_deep_cone(exponent: int, copies: int, extra: int = 12) -> int:
     bits = exponent * copies + extra
     # Extend the unique Hensel root beyond the basic odd-seam guard.
     p, q, j = 3**exponent, 1 << exponent, 3 ** (exponent - 1)
-    source: int = j * pow(q - p, -1, 1 << bits) % (1 << bits)
+    source: int = j * exact_integer_power(q - p, -1, 1 << bits) % (1 << bits)
     assert source % 2 == 1
     return source
 
@@ -92,7 +94,9 @@ def test_moore_open_bank_matches_exact_pointed_source_and_all_input_transitions(
         for idx, state in enumerate(model.states):
             cls_id = model.class_ids[idx]
             for inlet in model.alphabet:
-                actual = _entry(ring, state, inlet, bits=b, places=1, position=0)
+                actual = open_bank_entry(
+                    ring, state, inlet, bits=b, places=1, position=0
+                )
                 target = model.transitions[cls_id][inlet]
                 emission = model.outputs[cls_id][inlet]
                 if actual is None:
@@ -297,10 +301,16 @@ def test_large_q_ring_walsh_is_source_derived_not_assumed_periodic() -> None:
         mask = 0
         for i, (here, following) in enumerate(pairwise(reference[:65])):
             modulus = 5 ** (bit + 1)
-            now = pow(2, 211 + 2 * i, modulus) * (3 * here + 1) % modulus
-            after = pow(2, 211 + 2 * i + 2, modulus) * (3 * following + 1) % modulus
+            now = (
+                exact_integer_power(2, 211 + 2 * i, modulus) * (3 * here + 1) % modulus
+            )
+            after = (
+                exact_integer_power(2, 211 + 2 * i + 2, modulus)
+                * (3 * following + 1)
+                % modulus
+            )
             product = 9 * now % modulus
-            summand = pow(2, 211 + 2 * i + 2, modulus)
+            summand = exact_integer_power(2, 211 + 2 * i + 2, modulus)
             carry = int(product + summand >= modulus)
             borrow = int(after < now)
             mask |= (carry ^ borrow) << i

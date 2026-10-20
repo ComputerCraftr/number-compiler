@@ -14,7 +14,7 @@ def _refine(
     part = {q: 0 for q in states}
     while True:
         ids: dict[tuple[tuple[int | None, int], ...], int] = {}
-        new = {}
+        new: dict[int, int] = {}
         for q in states:
             sig = tuple(
                 (
@@ -38,8 +38,8 @@ def minimize_eager(B: Bimachine) -> Bimachine:
     # raw cross-context vector inside every refinement round was an accidental
     # O(iterations * |L| * |R| * |A|) regression for powered bimachines.
     oi: dict[tuple[str, tuple[tuple[int, ...] | None, ...]], int] = {}
-    obsL = {}
-    obsR = {}
+    obsL: dict[tuple[int, int], int] = {}
+    obsR: dict[tuple[int, int], int] = {}
     for left_state in L:
         for a in A:
             vec = tuple(B.out.get((left_state, a, r)) for r in R)
@@ -58,8 +58,8 @@ def minimize_eager(B: Bimachine) -> Bimachine:
     rrep = {c: next(q for q in R if rp[q] == c) for c in rclasses}
     lm = {c: i for i, c in enumerate(lclasses)}
     rm = {c: i for i, c in enumerate(rclasses)}
-    lt = {}
-    rt = {}
+    lt: dict[tuple[int, int], int] = {}
+    rt: dict[tuple[int, int], int] = {}
     for c, q in lrep.items():
         for a in A:
             z = B.left.step(q, a)
@@ -85,7 +85,7 @@ def minimize_eager(B: Bimachine) -> Bimachine:
         {rm[c]: B.right.data[rrep[c]] for c in rclasses},
         right=True,
     )
-    out = {}
+    out: dict[tuple[int, int, int], tuple[int, ...]] = {}
     for lc, lq in lrep.items():
         for a in A:
             for rc, rq in rrep.items():

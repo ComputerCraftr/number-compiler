@@ -67,10 +67,8 @@ def forbid_replay(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(observers, "_expanded_saturated_support", forbidden)
     monkeypatch.setattr(observers, "balanced_residue_macro", forbidden)
-    monkeypatch.setattr(DyadicReturnImageWorkspace, "_source_value", forbidden)
-    monkeypatch.setattr(
-        AntihydraArithmeticImageWorkspace, "_punctured_steps", forbidden
-    )
+    monkeypatch.setattr(DyadicReturnImageWorkspace, "source_value", forbidden)
+    monkeypatch.setattr(AntihydraArithmeticImageWorkspace, "punctured_steps", forbidden)
 
 
 @pytest.mark.parametrize("seed,width", [(1, 129), (1 << 70, 160), (1 << 80, 129)])

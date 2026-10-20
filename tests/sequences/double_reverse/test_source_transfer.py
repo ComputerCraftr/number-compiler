@@ -4,6 +4,7 @@ from typing import cast
 
 import pytest
 
+from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import double_reverse as _double_reverse_keys
 from number_compiler.sequences.double_reverse.boundary_cycles import Edge
@@ -12,7 +13,7 @@ from number_compiler.sequences.double_reverse.source_transfer import (
     MAX_PHYSICAL_STEPS,
     MAX_POWERED_PHYSICAL_STEPS,
     PAIR_COORDINATE_ORDER,
-    _same_word,
+    same_word,
     source_transfer_packet,
 )
 from number_compiler.sequences.double_reverse.temporal_depth_transfer_matrix import (
@@ -49,7 +50,7 @@ def test_double_reverse_transfer_joins_forward_two_tick_children(steps: int) -> 
 
     details = packet["trace"]
     assert isinstance(details, dict)
-    detailed_packet = {**packet, **details}
+    detailed_packet = {**packet, **cast(dict[str, object], details)}
     expected_pairs = tuple(_pair(value, 1) for value in expected[::2])
     assert_exact_source_transfer_path(
         detailed_packet,
@@ -98,14 +99,12 @@ def test_double_reverse_transfer_reuses_a_warm_query_endpoint(
 ) -> None:
     generation = 32
     with DoubleReverseTerm(196, generation, max_state_bits=16384) as term:
-        endpoint_root = term._root()
+        endpoint_root = term.endpoint_root()
 
         def forbid_cold_source_image(*_args: object, **_kwargs: object) -> None:
             raise AssertionError("warm 2rev10 endpoint requested a cold image")
 
-        monkeypatch.setattr(
-            type(term._scheduler), "source_image", forbid_cold_source_image
-        )
+        monkeypatch.setattr(TileScheduler, "source_image", forbid_cold_source_image)
         packet = source_transfer_packet(term, steps=2, pair_depth=1)
 
         assert packet["status"] == "available"
@@ -129,15 +128,13 @@ def test_bounded_fallback_summary_keeps_chronology_only_in_explicit_trace(
     for _ in range(steps):
         target = _double_reverse(target)
 
+    def unavailable(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {"status": "unavailable", "reason": "injected powered-cylinder refusal"}
+
     monkeypatch.setattr(
-        temporal_predictive_border,
-        "predictive_source_transfer",
-        lambda *_args, **_kwargs: {
-            "status": "unavailable",
-            "reason": "injected powered-cylinder refusal",
-        },
+        temporal_predictive_border, "predictive_source_transfer", unavailable
     )
-    chronological = owner._chronological_source_transfer_packet
+    chronological = owner.chronological_source_transfer_packet
     requested_trace_flags: list[bool] = []
 
     def record_trace_demand(
@@ -156,7 +153,7 @@ def test_bounded_fallback_summary_keeps_chronology_only_in_explicit_trace(
         )
 
     monkeypatch.setattr(
-        owner, "_chronological_source_transfer_packet", record_trace_demand
+        owner, "chronological_source_transfer_packet", record_trace_demand
     )
     with DoubleReverseTerm(196, generation, max_state_bits=16384) as term:
         packet = source_transfer_packet(term, steps=steps, pair_depth=1)
@@ -186,16 +183,16 @@ def test_endpoint_rebase_streams_exact_words_and_cleans_up_early_exits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with DoubleReverseTerm(196, 2, max_state_bits=16384) as term:
-        left = term._arena.word((1, 2, 3, 4))
-        early_mismatch = term._arena.word((9, 2, 3, 4))
-        late_mismatch = term._arena.word((1, 2, 3, 5))
+        left = term.source_arena.word((1, 2, 3, 4))
+        early_mismatch = term.source_arena.word((9, 2, 3, 4))
+        late_mismatch = term.source_arena.word((1, 2, 3, 5))
 
-        assert _same_word(term, left, left)
-        assert not _same_word(term, left, early_mismatch)
+        assert same_word(term, left, left)
+        assert not same_word(term, left, early_mismatch)
         comparison_digits = term.metrics()[
             _double_reverse_keys.DOUBLE_REVERSE_STATE_COMPARISON_DIGITS
         ]
-        assert not _same_word(term, left, late_mismatch)
+        assert not same_word(term, left, late_mismatch)
         assert (
             term.metrics()[_double_reverse_keys.DOUBLE_REVERSE_STATE_COMPARISON_DIGITS]
             - comparison_digits
@@ -206,7 +203,7 @@ def test_endpoint_rebase_streams_exact_words_and_cleans_up_early_exits(
             scratch = next(
                 account
                 for account in term.resource_ledger.inventory()
-                if account.owner == term._scratch_owner
+                if account.owner == term.scratch_owner
             )
             return scratch.entries, scratch.nodes
 
@@ -230,7 +227,7 @@ def test_endpoint_rebase_streams_exact_words_and_cleans_up_early_exits(
 
         monkeypatch.setattr(ResourceLedger, "bump", fail_during_stream)
         with pytest.raises(RuntimeError, match="injected endpoint comparison failure"):
-            _same_word(term, left, late_mismatch)
+            same_word(term, left, late_mismatch)
         assert scratch_usage() == (0, 0)
 
 
@@ -241,7 +238,7 @@ def test_double_reverse_transfer_rejects_oversized_horizon_before_source_work(
         raise AssertionError("invalid horizon reached pointed-source preparation")
 
     monkeypatch.setattr(
-        DoubleReverseTerm, "_prepare_bank_source", forbid_source_preparation
+        DoubleReverseTerm, "prepare_bank_source", forbid_source_preparation
     )
     with (
         DoubleReverseTerm(196, 2, max_state_bits=16384) as term,
@@ -286,13 +283,13 @@ def _assert_powered_projection_does_not_advance_future_roots(
     with DoubleReverseTerm(
         196, generation, max_steps=8192, max_state_bits=16384
     ) as term:
-        root = term._root()
+        root = term.endpoint_root()
 
         def forbid_chronological_action(*_args: object, **_kwargs: object) -> None:
             raise AssertionError("powered projection replayed future F actions")
 
         monkeypatch.setattr(
-            type(term._adapter.temporal_hashlife),
+            type(term.temporal_engine),
             "advance_action",
             forbid_chronological_action,
         )
@@ -361,7 +358,7 @@ def test_double_reverse_transfer_rejects_unsupported_depth_before_source_work(
         raise AssertionError("invalid depth reached pointed-source preparation")
 
     monkeypatch.setattr(
-        DoubleReverseTerm, "_prepare_bank_source", forbid_source_preparation
+        DoubleReverseTerm, "prepare_bank_source", forbid_source_preparation
     )
     with (
         DoubleReverseTerm(196, 2, max_state_bits=16384) as term,

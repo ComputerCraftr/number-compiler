@@ -12,7 +12,10 @@ from pathlib import Path
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
-from devtools.report_values import object_list, string_keyed_mapping
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_list,
+    string_keyed_mapping,
+)
 
 _CONSTRAINTS = Path("devtools/typing/constraints-py314-macos.txt")
 _TARGET_PATTERN = re.compile(
@@ -59,7 +62,7 @@ def _declared_tool_pins(root: Path) -> tuple[dict[str, str], list[str]]:
 
     dependencies: list[object] = []
     runtime_dependencies = project.get("dependencies", [])
-    if not object_list(runtime_dependencies):
+    if not is_object_list(runtime_dependencies):
         errors.append("project.dependencies must be a list")
     else:
         dependencies.extend(runtime_dependencies)
@@ -68,12 +71,12 @@ def _declared_tool_pins(root: Path) -> tuple[dict[str, str], list[str]]:
         errors.append("project.optional-dependencies must be a table")
     else:
         for extra_name, raw_requirements in optional.items():
-            if not object_list(raw_requirements):
+            if not is_object_list(raw_requirements):
                 errors.append(f"optional dependency group {extra_name} must be a list")
                 continue
             dependencies.extend(raw_requirements)
     build_requirements = build_system.get("requires")
-    if not object_list(build_requirements):
+    if not is_object_list(build_requirements):
         errors.append("build-system.requires must be a list")
     else:
         dependencies.extend(build_requirements)

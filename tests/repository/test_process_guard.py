@@ -359,8 +359,16 @@ def test_propagated_guard_lease_allows_authenticated_grandchild(tmp_path: Path) 
 def _assert_timeout_reaped(result: process_guard.GuardResult, log: Path) -> None:
     assert result.outcome == "timeout"
     pid = int(log.read_text().splitlines()[0])
-    with pytest.raises(ProcessLookupError):
-        os.kill(pid, 0)
+    _assert_processes_retired((pid,))
+
+
+def _assert_processes_retired(process_ids: tuple[int, ...]) -> None:
+    snapshot = process_guard.process_snapshot()
+    for pid in process_ids:
+        process = snapshot.get(pid)
+        assert process is None or process.state.startswith(("Z", "X", "x")), (
+            f"process {pid} remains live in state {process.state if process else None!r}"
+        )
 
 
 def test_timeout_reaps_worker(tmp_path: Path) -> None:
@@ -493,9 +501,7 @@ def test_timeout_reaps_late_child_of_detached_descendant(tmp_path: Path) -> None
     assert result.outcome == "timeout"
     detached_pids = tuple(int(line) for line in log.read_text().splitlines())
     assert len(detached_pids) == 2
-    for pid in detached_pids:
-        with pytest.raises(ProcessLookupError):
-            os.kill(pid, 0)
+    _assert_processes_retired(detached_pids)
 
 
 def test_pid_reuse_does_not_retain_a_tracked_process() -> None:

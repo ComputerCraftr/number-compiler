@@ -63,13 +63,12 @@ class HigherPayloadRegistry:
             if type(root) is HigherContextArena
             and root.ledger is ledger
             and root.expressions in expressions.arenas
-            and actual.get(root.node_owner) is root._nodes
-            and actual.get(root.id_owner) is root._ids
+            and root.storage_is_registered(actual)
             and actual.get(root.binding_owner) is root.bindings
-            and actual.get(root.observations.owner) is root.observations._data
+            and actual.get(root.observations.owner) is root.observations.audit_container
         )
         self.records = {
-            id(record): arena for arena in self.arenas for record in arena._nodes
+            id(record): arena for arena in self.arenas for record in arena.node_view
         }
         self.invalid_response_objects: set[tuple[int, int]] = set()
         for arena in self.arenas:
@@ -92,8 +91,8 @@ class HigherPayloadRegistry:
                 or not self.action_valid(value)
             ):
                 return False
-            node = arena.actions._nodes[value.local_id]
-            source = arena.cells.source_geometry._construction.source
+            node = arena.actions.audit_snapshot().nodes[value.local_id]
+            source = arena.cells.source_geometry.construction.source
             return node.kind == "identity" or (node.base, node.blank) == (
                 source.base,
                 source.blank,
@@ -109,7 +108,7 @@ class HigherPayloadRegistry:
             if type(value) is not ExprID or value.owner is not arena.expressions.token:
                 return False
             node = self.expressions.expression(value)
-            source = arena.cells.source_geometry._construction.source
+            source = arena.cells.source_geometry.construction.source
             return node is not None and node.sort == SymbolSort(
                 source.base, source.blank
             )
@@ -120,7 +119,8 @@ class HigherPayloadRegistry:
             if type(cell) is not CellID:
                 return False
             root = arena.cells.resolve(cell)
-            pending, seen = [root], set()
+            pending = [root]
+            seen: set[int] = set()
             while pending:
                 node = pending.pop()
                 if id(node) in seen:
@@ -131,10 +131,10 @@ class HigherPayloadRegistry:
                 if node.kind == "join":
                     for child in (node.left, node.right):
                         if type(child) is not int or not 0 <= child < len(
-                            arena.cells._nodes
+                            arena.cells.audit_snapshot().nodes
                         ):
                             return False
-                        pending.append(arena.cells._nodes[child])
+                        pending.append(arena.cells.audit_snapshot().nodes[child])
                 elif node.kind != "source":
                     return False
             return True
@@ -219,8 +219,8 @@ class HigherPayloadRegistry:
         ):
             return False
         for arena in self.arenas:
-            if value.owner is arena.token and value.local_id < len(arena._nodes):
-                record = arena._nodes[value.local_id]
+            if value.owner is arena.token and value.local_id < len(arena.node_view):
+                record = arena.node_view[value.local_id]
                 return (value.kind == "diamond-higher-context") == (
                     type(record) is HigherContextRecord
                 ) and self._record(record)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from devtools.experiments.collatz.free_cylinder_consumers import _ConsumerAction
+from devtools.experiments.collatz.free_cylinder_consumers import ConsumerAction
 from devtools.experiments.collatz.free_cylinder_residual import (
     FreeCylinderResidualArena,
 )
@@ -189,7 +189,7 @@ def test_consumer_relative_moore_projection_removes_support_only_distinctions() 
 
     for source in range(1, 1 << 5):
         full = support.evaluate(source)
-        assert type(full) is _ConsumerAction
+        assert type(full) is ConsumerAction
         assert endpoint.evaluate(source) == full.output
         assert weighted.evaluate(source) == (
             full.output,
@@ -243,12 +243,13 @@ def test_moore_certificate_limits_and_failed_publication() -> None:
         projection.certificate(max_states=1)
     assert projection.dag_nodes == 29
     assert projection.certificate().classes == 32
-    retained = arena._moore_retained_nodes
+    retained = projection.dag_nodes
     arena.max_branches = retained
     with pytest.raises(BlockContextBudgetExceeded, match="retention budget"):
         arena.moore_projection(action, "endpoint-clock")
-    assert arena._moore_retained_nodes == retained
-    assert len(arena._moore_projections) == 1
+    assert arena.moore_projection(action, "endpoint") is projection
+    with pytest.raises(BlockContextBudgetExceeded, match="retention budget"):
+        arena.moore_projection(action, "endpoint-clock")
 
 
 def test_moore_derivative_respects_declared_coordinate_order() -> None:

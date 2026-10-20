@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
@@ -11,7 +12,7 @@ from devtools.verification.oracles.reverse_publisher import (
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken, ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
-from number_compiler.arithmetic.contracts.temporal_family import _issue_certificate
+from number_compiler.arithmetic.contracts.temporal_family import issue_certificate
 from number_compiler.arithmetic.polynomials.twisted_observer import (
     first_mirror_obstruction,
 )
@@ -58,7 +59,7 @@ def _reference_publisher(term: ReverseAddPoweredTerm) -> ReversePublisherProject
         ),
     )
     source_geometry.span(source, blank, term.maximum_width)
-    certificate = _issue_certificate(
+    certificate = issue_certificate(
         effect,
         "reverse-add",
         term.generation - 1,
@@ -82,6 +83,16 @@ def _literal(seed: int, generations: int) -> tuple[int, ...]:
     return tuple(map(int, reversed(str(value))))
 
 
+def _sealed_binding(publisher: ReversePublisherProjection) -> tuple[object, ...]:
+    """Read a sealed binding only for deliberate adversarial test forgery."""
+    return cast(tuple[object, ...], object.__getattribute__(publisher, "_binding"))
+
+
+def _source_ports(publisher: ReversePublisherProjection) -> tuple[object, ...]:
+    """Read immutable ports only to build a coordinated forged binding."""
+    return cast(tuple[object, ...], object.__getattribute__(publisher, "_source_ports"))
+
+
 @pytest.mark.parametrize("generation", range(1, 17))
 def test_source_bound_publisher_matches_literal_196(generation: int) -> None:
     term = ReverseAddPoweredTerm(196, generation)
@@ -100,8 +111,8 @@ def test_publisher_defers_reachable_image_until_first_output_demand() -> None:
     assert production_audit.resource_audit_complete == 1
     publisher = _reference_publisher(term)
     assert type(publisher) is ReversePublisherProjection
-    assert publisher._macro is None
-    assert publisher._image_binding is None
+    assert not publisher.audit_snapshot().image_built
+    assert not publisher.audit_snapshot().image_binding_valid
     assert (
         term.resource_ledger.counters.get("higher_concrete_operation_evaluations", 0)
         == 0
@@ -112,7 +123,7 @@ def test_publisher_defers_reachable_image_until_first_output_demand() -> None:
     before = term.resource_ledger.snapshot()
     report = term.behavior_metrics()
     assert term.resource_ledger.snapshot() == before
-    assert publisher._macro is None
+    assert not publisher.audit_snapshot().image_built
     # A runtime snapshot must not rewalk payloads after the independent oracle
     # is attached, and it must not trigger image construction.
     assert report.resource_audit_complete == 0
@@ -123,26 +134,27 @@ def test_publisher_defers_reachable_image_until_first_output_demand() -> None:
     assert report.resource_accounting_mismatch == 0
 
     publisher.validate_execution()
-    assert publisher._macro is None
+    assert not publisher.audit_snapshot().image_built
     assert publisher.point(0) == _literal(196, 32)[0]
-    assert publisher._macro is not None
-    assert publisher._image_binding == (
-        publisher._macro.interface,
-        publisher._macro.output,
-    )
+    assert publisher.audit_snapshot().image_built
+    assert publisher.audit_snapshot().image_binding_valid
 
 
 def _substitute_action_and_rebind(publisher: ReversePublisherProjection) -> None:
     """Forge a self-consistent binding while retaining the original issuer schema."""
     publisher.action = publisher.actions.identity
     assert publisher.output_encoding in ("digits", "pair")
-    publisher._binding = (
-        publisher.source,
-        publisher.action,
-        publisher.source_local_action,
-        publisher._source_ports,
-        publisher.program,
-        publisher.output_encoding,
+    object.__setattr__(
+        publisher,
+        "_binding",
+        (
+            publisher.source,
+            publisher.action,
+            publisher.source_local_action,
+            _source_ports(publisher),
+            publisher.program,
+            publisher.output_encoding,
+        ),
     )
 
 
@@ -156,7 +168,7 @@ def test_reference_publisher_rejects_coordinated_action_substitution_without_wor
     before = term.resource_ledger.snapshot()
     with pytest.raises(ValueError, match="canonical action was changed"):
         publisher.validate_execution()
-    assert publisher._macro is None
+    assert not publisher.audit_snapshot().image_built
     assert term.resource_ledger.snapshot() == before
 
 
@@ -168,33 +180,39 @@ def test_pending_publisher_rejects_changed_source_before_image_construction() ->
     try:
         with pytest.raises(ValueError, match="binding was changed"):
             publisher.point(0)
-        assert publisher._macro is None
-        assert publisher._image_binding is None
+        assert not publisher.audit_snapshot().image_built
+        assert not publisher.audit_snapshot().image_binding_valid
     finally:
         publisher.source = original
 
 
 def test_pending_publisher_rejects_coordinated_action_and_schema_mutation() -> None:
     publisher, foreign = _distinct_publishers()
-    original_action, original_binding = publisher.action, publisher._binding
-    original_schema = publisher._schema
+    original_action, original_binding = publisher.action, _sealed_binding(publisher)
+    original_schema: object = object.__getattribute__(publisher, "_schema")
     before = publisher.ledger.snapshot()
     try:
         _substitute_action_and_rebind(publisher)
         with pytest.raises(ValueError, match="canonical action was changed"):
             publisher.validate_execution()
-        assert publisher._macro is None
+        assert not publisher.audit_snapshot().image_built
         assert publisher.ledger.snapshot() == before
 
-        publisher.action, publisher._binding = original_action, original_binding
-        publisher._schema = foreign._schema
+        publisher.action = original_action
+        object.__setattr__(publisher, "_binding", original_binding)
+        object.__setattr__(
+            publisher,
+            "_schema",
+            cast(object, object.__getattribute__(foreign, "_schema")),
+        )
         with pytest.raises(ValueError, match="action schema was changed"):
             publisher.validate_execution()
-        assert publisher._macro is None
+        assert not publisher.audit_snapshot().image_built
         assert publisher.ledger.snapshot() == before
     finally:
-        publisher.action, publisher._binding = original_action, original_binding
-        publisher._schema = original_schema
+        publisher.action = original_action
+        object.__setattr__(publisher, "_binding", original_binding)
+        object.__setattr__(publisher, "_schema", original_schema)
 
 
 def test_failed_lazy_image_demand_is_terminal_and_auditable(
@@ -216,9 +234,10 @@ def test_failed_lazy_image_demand_is_terminal_and_auditable(
     monkeypatch.setattr(ReverseHigherInterfaceCompiler, "compile", fail)
     with pytest.raises(RuntimeError, match="injected image-construction failure"):
         publisher.point(0)
-    assert publisher._macro is None
-    assert publisher._image_binding is None
-    assert publisher._image_failure is not None
+    failure_state = publisher.audit_snapshot()
+    assert not failure_state.image_built
+    assert not failure_state.image_binding_valid
+    assert failure_state.image_failed
     assert not audit_higher_payloads(publisher.ledger).invalid
     before = publisher.ledger.snapshot()
     with pytest.raises(RuntimeError, match="previously failed"):
@@ -307,10 +326,10 @@ def test_direct_publisher_rejects_unissued_mismatched_and_foreign_certificates_b
         ExactSource(source, 10, "reverse-add", 19, 6, 19),
     )
     geometry.span(source, 19, 6)
-    certificate = _issue_certificate(
+    certificate = issue_certificate(
         effect, "reverse-add", 3, ledger=ledger, output_encoding="pair"
     )
-    foreign = _issue_certificate(
+    foreign = issue_certificate(
         foreign_effect, "reverse-add", 2, ledger=ledger, output_encoding="pair"
     )
     invalid = (
@@ -354,27 +373,30 @@ def test_pair_output_certificate_does_not_append_terminal_normalization() -> Non
     effect = compile_reverse_pair_power(compiler, 10, 3).root
     assert effect is not None
     source = (7, 18, 7)
+    certificate = issue_certificate(
+        effect,
+        "reverse-add",
+        3,
+        ledger=ledger,
+        output_encoding="pair",
+    )
     index = HashLifeBlockIndex(
         effect,
         source,
         logical_length=6,
-        certificate=_issue_certificate(
-            effect,
-            "reverse-add",
-            3,
-            ledger=ledger,
-            output_encoding="pair",
-        ),
+        certificate=certificate,
         ledger=ledger,
         compiler=compiler,
     )
-    certificate = index._certificate
-    if certificate is None:
-        raise AssertionError("missing pair certificate")
+    source_geometry = SourceGeometry(
+        ledger,
+        ExactSource(source, 10, "reverse-add", 19, 6, 19),
+    )
+    source_geometry.span(source, 19, 6)
     publisher = build_reverse_publisher_projection(
         source,
         logical_extent=6,
-        source_geometry=index._source_geometry,
+        source_geometry=source_geometry,
         ledger=ledger,
         effect=effect,
         compiler=compiler,

@@ -18,9 +18,9 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import (
     Task,
 )
 from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
-    _valid_argument,
     input_expression,
     observation_inputs,
+    valid_argument,
 )
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import (
@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 ORIGINAL_SYMBOL = PortVariable(0, 0, "diamond-original-symbol", 0)
 
 
-def _expression(result: Result) -> TransferSummaryID:
+def require_transfer_expression(result: Result) -> TransferSummaryID:
     if type(result) is not TransferSummaryID:
         raise AssertionError("expected a complete finite output function")
     return result
@@ -55,7 +55,7 @@ class DiamondOutputFunctions:
 
     def compile(self, task: OutputFunction) -> Generator[Task, Result, Result]:
         runtime, kernels = self.runtime, self.runtime.kernels
-        domain = runtime.cells.source_geometry._construction.source.blank + 1
+        domain = runtime.cells.source_geometry.construction.source.blank + 1
         variable = input_expression(kernels, domain, ORIGINAL_SYMBOL)
         node = runtime.actions.node(task.action)
         if node.kind == "identity":
@@ -77,7 +77,7 @@ class DiamondOutputFunctions:
             result, observation_inputs(domain, ORIGINAL_SYMBOL, 0)
         )
         return kernels.choose(
-            _valid_argument(kernels, variable),
+            valid_argument(kernels, variable),
             result,
             kernels.constant(domain, default),
         )
@@ -89,7 +89,7 @@ class DiamondOutputFunctions:
         self.ledger.bump(_interfaces_keys.PRIMITIVE_OUTPUT_CONSTANT_CHECKS)
         value = 0
         for position, bit in enumerate(expression.bits):
-            index = kernels.functions._resolve(bit)
+            index = kernels.functions.resolve_index(bit)
             self.ledger.bump(_interfaces_keys.PRIMITIVE_OUTPUT_CONSTANT_BIT_CHECKS)
             if index >= 2:
                 return None

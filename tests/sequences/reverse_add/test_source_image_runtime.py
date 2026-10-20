@@ -81,7 +81,7 @@ def test_metrics_are_snapshot_only_for_a_not_yet_constructed_reverse_image() -> 
     assert before == after
     assert report.resource_audit_complete == 1
     assert report.resource_accounting_mismatch == 0
-    assert term._workspace is None
+    assert term.published_workspace is None
 
     owner = term.resource_ledger.register("metrics-snapshot-invalidation", "query_memo")
     store: LedgerDict[str, int] = term.resource_ledger.make_dict(owner)
@@ -89,4 +89,4 @@ def test_metrics_are_snapshot_only_for_a_not_yet_constructed_reverse_image() -> 
     store["probe"] = 1
     changed = term.behavior_metrics()
     assert changed.resource_audit_complete == 0
-    assert term._workspace is None
+    assert term.published_workspace is None

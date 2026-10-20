@@ -8,12 +8,14 @@ import pytest
 from devtools.experiments.reverse_add import powered_f5f2_carrier as reference
 from devtools.experiments.reverse_add.powered_cocycle_regions import (
     TransitionGrammarAudit,
-    split_class95,
     square_class95_words,
 )
 from number_compiler.arithmetic.fields.f5_innovation import compose_f5_forcing
 from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
+)
+from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
+    decimal_q95_coordinates,
 )
 from number_compiler.arithmetic.polynomials.f5_transport import (
     F5AffineTransport,
@@ -95,9 +97,9 @@ def test_catalog_saturation_is_separate_from_cell_work() -> None:
 def test_rejects_bad_classes_and_wrong_extent_or_f2_domain() -> None:
     for value in (-1, 95, True):
         with pytest.raises(ValueError):
-            split_class95(value)
+            decimal_q95_coordinates(value)
     for value in range(95):
-        carrier, forcing = split_class95(value)
+        carrier, forcing = decimal_q95_coordinates(value)
         assert 5 * carrier + forcing == value
         assert 0 <= carrier <= 18
     orbit = reference.reverse_add_pair_orbit(196, 8)
@@ -130,7 +132,7 @@ def test_carry_is_recovered_from_95_word_not_stored_in_its_alphabet(
     assert word == tuple(row.reduced_cocycle_id for row in coordinates)
     prefix = CarryFn.ID
     for value, row in zip(word, coordinates, strict=True):
-        symbol, _forcing = split_class95(value)
+        symbol, _forcing = decimal_q95_coordinates(value)
         assert apply_carry_fn(prefix, 0) == row.carry_in
         prefix = compose_carry_fn(value_carry_fn(symbol, 10), prefix)
         assert apply_carry_fn(prefix, 0) == row.carry_out

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Never
+from collections.abc import MutableMapping
+from typing import Never, cast
 
 import pytest
 
@@ -12,9 +13,9 @@ from number_compiler.hashlife.execution.continuations.higher_macro_composer impo
 from number_compiler.hashlife.execution.field_images import SourceForestID
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.reverse_higher_runtime import (
-    _fixture,
-    _macro_composer,
     compiled_macro_fixture,
+    macro_composer,
+    reverse_higher_fixture,
 )
 
 
@@ -55,8 +56,8 @@ def test_reverse_macro_rejects_foreign_source_before_warm_binding_probe() -> Non
         compiler,
         sources,
         binding,
-    ) = _fixture((7, 18, 7, 19, 19, 19, 19, 19))
-    _unused_outputs_binding, composer = _macro_composer(
+    ) = reverse_higher_fixture((7, 18, 7, 19, 19, 19, 19, 19))
+    _unused_outputs_binding, composer = macro_composer(
         semantics, interfaces, sources, primitive, compiler
     )
     composer.compile(binding)
@@ -65,7 +66,11 @@ def test_reverse_macro_rejects_foreign_source_before_warm_binding_probe() -> Non
         def get(self, _key: object, _default: object = None) -> Never:
             raise AssertionError("invalid source reached the warm binding cache")
 
-    composer._bindings = PoisonedBindings(composer._bindings)
+    bindings = cast(
+        MutableMapping[MacroBindingKey, SourceBoundHigherMacro],
+        composer.audit_snapshot().binding_store,
+    )
+    object.__setattr__(composer, "_bindings", PoisonedBindings(bindings))
     foreign = SourceForestID(
         ArenaToken("foreign-source"), binding.kind, binding.local_id
     )
@@ -141,7 +146,8 @@ def test_spatial_declaration_seal_blocks_coordinated_key_and_composer_mutation(
     ) = compiled_macro_fixture((7, 18, 7, 19))
     with monkeypatch.context() as patch:
         patch.setattr(composer, "blank", 0)
-        object.__setattr__(composer._declaration, "blank", 0)
+        declaration = object.__getattribute__(composer, "_declaration")
+        object.__setattr__(declaration, "blank", 0)
         with pytest.raises(ValueError, match="declaration"):
             composer.compile(binding)
         with pytest.raises(ValueError, match="declaration"):
@@ -156,13 +162,14 @@ def test_spatial_declaration_seal_blocks_coordinated_key_and_composer_mutation(
 
 def test_spatial_binding_store_replacement_fails_before_warm_lookup() -> None:
     _actions, primitive, semantics, _runtime, interfaces, compiler, sources, binding = (
-        _fixture((7, 18, 7, 19))
+        reverse_higher_fixture((7, 18, 7, 19))
     )
-    _unused_outputs_binding, composer = _macro_composer(
+    _unused_outputs_binding, composer = macro_composer(
         semantics, interfaces, sources, primitive, compiler
     )
     composer.compile(binding)
-    composer._bindings = dict(composer._bindings)
+    bindings = composer.audit_snapshot().bindings
+    object.__setattr__(composer, "_bindings", dict(bindings))
     with pytest.raises(ValueError, match="authority"):
         composer.compile(binding)
 

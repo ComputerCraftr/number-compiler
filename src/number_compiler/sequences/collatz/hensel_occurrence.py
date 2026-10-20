@@ -342,6 +342,11 @@ class CollatzHenselOccurrenceCarrier:
         self.requests = 0
         self.hits = 0
 
+    @property
+    def occurrence_count(self) -> int:
+        """Return the number of exact occurrences currently interned."""
+        return len(self._occurrences)
+
     def intern(
         self,
         action: CollatzHenselAction,
@@ -400,7 +405,7 @@ class CollatzHenselOccurrenceCarrier:
         if a not in (1, 2):
             raise ValueError("affine germ multiplier is outside the Hensel a/h form")
         odd = germ.multiplier >> a
-        h = 0 if odd == 1 else CollatzAffineSuffixGerm._pow3_exponent(odd)
+        h = 0 if odd == 1 else CollatzAffineSuffixGerm.pow3_exponent(odd)
         return self.intern(
             CollatzHenselAction(a, h, germ.offset), germ.suffix, germ.logical_steps
         )

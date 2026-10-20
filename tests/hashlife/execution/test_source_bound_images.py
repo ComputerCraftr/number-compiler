@@ -3,12 +3,15 @@ from __future__ import annotations
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
+from typing import cast
 
 import pytest
 
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundSchedulerCore,
     SourceImageApplyKey,
+    SourceImageRecord,
+    SourceImageRelativeApplication,
     SourceImageRelativeKey,
 )
 from number_compiler.hashlife.execution.source_image_inventory import (
@@ -418,7 +421,7 @@ def test_primitive_adapter_records_roll_back_when_scheduler_publication_fails(
     def reject_publication(*_args: object, **_kwargs: object) -> SourceImageID:
         raise RuntimeError("injected scheduler publication failure")
 
-    monkeypatch.setattr(core, "_publish_application_result", reject_publication)
+    monkeypatch.setattr(core, "publish_application_result", reject_publication)
     with pytest.raises(RuntimeError, match="injected scheduler publication failure"):
         core.apply(adapter, 0, DecimalImageAction((8,)))
 
@@ -451,7 +454,7 @@ def test_relative_adapter_records_roll_back_when_scheduler_publication_fails(
             raise RuntimeError("injected relative publication failure")
         raise AssertionError("unexpected source in the injected publication test")
 
-    monkeypatch.setattr(core, "_publish_application_result", reject_second_source)
+    monkeypatch.setattr(core, "publish_application_result", reject_second_source)
     with pytest.raises(RuntimeError, match="injected relative publication failure"):
         core.apply(adapter, 9, DecimalImageAction((8,)))
 
@@ -526,23 +529,29 @@ def test_payload_audit_rejects_redirected_or_orphaned_memo_publications(
     snapshot = core.audit_snapshot()
     if damage == "origin":
         first, second = tuple(snapshot.origins.items())
-        store = ledger.registered_container(snapshot.origin_owner)
-        assert isinstance(store, LedgerDict)
-        store[first[0]] = second[1]
+        origin_store = cast(
+            LedgerDict[tuple[tuple[str, str], TypedPayloadKey], SourceImageID],
+            snapshot.origin_store,
+        )
+        origin_store[first[0]] = second[1]
     elif damage == "application":
         first_application, second_application = tuple(snapshot.applications.items())[:2]
-        store = ledger.registered_container(snapshot.application_owner)
-        assert isinstance(store, LedgerDict)
-        store[first_application[0]] = second_application[1]
+        application_store = cast(
+            LedgerDict[SourceImageApplyKey, SourceImageID], snapshot.application_store
+        )
+        application_store[first_application[0]] = second_application[1]
     elif damage == "relative":
         first_relative, second_relative = tuple(snapshot.relative.items())[:2]
-        store = ledger.registered_container(snapshot.relative_owner)
-        assert isinstance(store, LedgerDict)
-        store[first_relative[0]] = second_relative[1]
+        relative_store = cast(
+            LedgerDict[SourceImageRelativeKey, SourceImageRelativeApplication],
+            snapshot.relative_store,
+        )
+        relative_store[first_relative[0]] = second_relative[1]
     else:
-        store = ledger.registered_container(snapshot.application_owner)
-        assert isinstance(store, LedgerDict)
-        store.pop(next(iter(snapshot.applications)))
+        orphaned_application_store = cast(
+            LedgerDict[SourceImageApplyKey, SourceImageID], snapshot.application_store
+        )
+        orphaned_application_store.pop(next(iter(snapshot.applications)))
     assert source_audit(ledger, core).invalid
 
 
@@ -569,8 +578,7 @@ def test_payload_audit_rejects_forged_seal_and_stale_image() -> None:
         record.publication_provenance,
     )
     snapshot = core.audit_snapshot()
-    store = ledger.registered_container(snapshot.node_owner)
-    assert isinstance(store, LedgerList)
+    store = cast(LedgerList[SourceImageRecord], snapshot.node_store)
     store[image.local_id] = replace(record, publication_snapshot=forged)
     assert source_audit(ledger, core).invalid
     core.clear()
@@ -588,8 +596,7 @@ def test_payload_audit_passes_failure_prefix_to_family_binding_auditor() -> None
         record.publication_provenance,
     )
     snapshot = core.audit_snapshot()
-    store = ledger.registered_container(snapshot.node_owner)
-    assert isinstance(store, LedgerList)
+    store = cast(LedgerList[SourceImageRecord], snapshot.node_store)
     store[image.local_id] = replace(
         record,
         failure_prefix=failure_prefix,

@@ -36,26 +36,26 @@ def test_generic_multiply_divide_monoid_formulas() -> None:
     for base in (2, 3, 5, 10, 16):
         spec = DigitSpec(base)
         for n in range(24):
-            A = FormulaArena()
-            r = digit_root_from_int(n, A, spec)
-            out, _ = multiply_add_formula(A, r, spec, 3, 1)
-            assert root_to_int(A, out, spec) == 3 * n + 1
-            A = FormulaArena()
-            r = digit_root_from_int(6 * n, A, spec)
-            out, _ = divide_formula(A, r, spec, 6)
-            assert root_to_int(A, out, spec) == n
+            arena = FormulaArena()
+            r = digit_root_from_int(n, arena, spec)
+            out, _ = multiply_add_formula(arena, r, spec, 3, 1)
+            assert root_to_int(arena, out, spec) == 3 * n + 1
+            arena = FormulaArena()
+            r = digit_root_from_int(6 * n, arena, spec)
+            out, _ = divide_formula(arena, r, spec, 6)
+            assert root_to_int(arena, out, spec) == n
 
 
 def test_reverse_add_exact_digits_all_bases() -> None:
     for base in (2, 3, 5, 10, 16):
         for seed in (1, 7, 22, 196):
-            A, digits, _pairs = reverse_add_orbit_formulas(seed, 8, base=base)
+            arena, digits, _pairs = reverse_add_orbit_formulas(seed, 8, base=base)
             spec = DigitSpec(base)
             n = seed
-            assert root_to_int(A, digits[0], spec) == n
+            assert root_to_int(arena, digits[0], spec) == n
             for root in digits[1:]:
                 n += _reverse_base(n, base)
-                assert root_to_int(A, root, spec) == n
+                assert root_to_int(arena, root, spec) == n
 
 
 def test_collatz_exact_formula_orbits() -> None:
@@ -74,11 +74,11 @@ def test_collatz_monoids_and_residue_instrumentation() -> None:
     assert metrics["divide_2"]["states"] == 2
     assert metrics["divide_2"]["transition_monoid"] == 3
 
-    A = FormulaArena()
+    arena = FormulaArena()
     spec = DigitSpec(2)
-    root = digit_root_from_int(27, A, spec)
+    root = digit_root_from_int(27, arena, spec)
     for m in (3, 4, 5, 7, 8, 9, 11, 16, 25, 27):
-        assert formula_radix_residue(A, root, spec, 2, m) == 27 % m
+        assert formula_radix_residue(arena, root, spec, 2, m) == 27 % m
 
 
 def test_smb_formula_view_is_derived_not_duplicate_state() -> None:
@@ -86,14 +86,14 @@ def test_smb_formula_view_is_derived_not_duplicate_state() -> None:
     from number_compiler.arithmetic.formula.smb_formula import smb_formula_view
     from number_compiler.sequences.reverse_add.digits import pair_root_from_integer
 
-    A = FormulaArena()
+    arena = FormulaArena()
     spec = RadixSpec(10)
-    pair = pair_root_from_integer(196, A, spec)
-    view = smb_formula_view(A, pair, spec)
+    pair = pair_root_from_integer(196, arena, spec)
+    view = smb_formula_view(arena, pair, spec)
     # pair(196) = (7,18,7); M = (<9, >9, <9) -> (0,2,0)
-    assert tuple(closed_digit_at(A, view.domain, i) for i in range(3)) == (0, 2, 0)
+    assert tuple(closed_digit_at(arena, view.domain, i) for i in range(3)) == (0, 2, 0)
     # Direct carry sequence 0 -> 1 -> 0 gives B=(0,1,1).
-    assert tuple(closed_digit_at(A, view.border, i) for i in range(3)) == (0, 1, 1)
+    assert tuple(closed_digit_at(arena, view.border, i) for i in range(3)) == (0, 1, 1)
 
 
 def test_transducer_state_renaming_canonicalizes_before_monoid_cache() -> None:
@@ -142,15 +142,15 @@ def test_smb_and_digit_compilation_cache_by_canonical_roots() -> None:
     from number_compiler.arithmetic.formula.types import RadixSpec
     from number_compiler.sequences.reverse_add.digits import pair_root_from_integer
 
-    A = FormulaArena()
-    pair = pair_root_from_integer(196, A, RadixSpec(10))
-    v1 = smb_formula_view(A, pair, RadixSpec(10))
-    v2 = smb_formula_view(A, pair, RadixSpec(10))
+    arena = FormulaArena()
+    pair = pair_root_from_integer(196, arena, RadixSpec(10))
+    v1 = smb_formula_view(arena, pair, RadixSpec(10))
+    v2 = smb_formula_view(arena, pair, RadixSpec(10))
     assert v1 is v2
-    d = digit_root_from_int(27, A, DigitSpec(2))
+    d = digit_root_from_int(27, arena, DigitSpec(2))
     t = synthesize_multiply_add(2, 3, 1)
-    c1 = compile_digit_transducer(A, d, DigitSpec(2), t)
-    c2 = compile_digit_transducer(A, d, DigitSpec(2), t)
+    c1 = compile_digit_transducer(arena, d, DigitSpec(2), t)
+    c2 = compile_digit_transducer(arena, d, DigitSpec(2), t)
     assert c1 is c2
 
 

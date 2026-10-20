@@ -59,7 +59,7 @@ def test_checked_spatial_repetition_has_constant_work_after_fixed_carry(
             assert result.repeated_count == 10**12 - len(result.transient)
             assert result.repeated_block is not None
             carry = incoming
-            literal = []
+            literal: list[int] = []
             for _ in range(result.checked_steps + 2):
                 literal.append((multiplier * value + carry) % 64)
                 carry = (multiplier * value + carry) // 64

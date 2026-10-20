@@ -48,7 +48,7 @@ def test_geometry_fills_the_harmonic_gap_without_a_new_residual() -> None:
     assert actions[0].rows == actions[1].rows
     e = ThresholdExpressions()
     g = ThresholdGeometry(e)
-    carry_one = []
+    carry_one: list[int] = []
     for row in rows:
         root = g.from_domains(tuple(e.constant(3, d) for d in row))
         carry_one.append(e.evaluate((g.carry_at(root, 1, e.constant(2, 0)),), ())[0])
@@ -73,7 +73,7 @@ def test_counted_geometry_queries_do_not_expand_uniform_regions(
     for i in (1, 10**50, 10**100):
         assert g.carry_at(huge, i, incoming) == e.constant(2, 1)
     assert g.carry_at(huge, 0, incoming) == incoming
-    assert len(g._carry_actions) == 1
+    assert g.summary_cache_entries == 1
     assert len(e.nodes) < 10
 
 
@@ -106,7 +106,7 @@ def test_geometry_summary_lifetime_and_budget_are_explicit() -> None:
         e.constant(5, 0)
     del root
     gc.collect()
-    assert e.auxiliary_nodes == 0 and not g._carry_actions
+    assert e.auxiliary_nodes == 0 and g.summary_cache_entries == 0
     root = g.from_domains((domain,))
     g.prefix_action(root, 1)
     assert e.auxiliary_nodes == 1

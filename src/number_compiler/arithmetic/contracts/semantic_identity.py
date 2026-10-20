@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+    is_object_tuple,
+)
+
 
 class SemanticIdentityDomain(StrEnum):
     """Named construction domains for the shared semantic identity carrier.
@@ -54,7 +59,7 @@ class SemanticIdentity:
         self.__post_init__()
 
     @classmethod
-    def _from_validator(
+    def from_validator(
         cls,
         digest: str | SemanticIdentityDomain,
         behavior: tuple[object, ...],
@@ -81,7 +86,7 @@ class SemanticIdentity:
         identity = object.__new__(cls)
         object.__setattr__(identity, "digest", normalized_digest)
         object.__setattr__(identity, "behavior", behavior)
-        canonical = validator._walk(identity, verify_root=False)
+        canonical = validator.derive_root_digest(identity)
         object.__setattr__(identity, "digest", canonical)
         validator.validate(identity)
         return identity
@@ -98,7 +103,7 @@ class SemanticIdentity:
 
     def _canonical_digest(self) -> str:
         validator = SemanticIdentityValidator()
-        result = validator._walk(self, verify_root=False)
+        result = validator.derive_root_digest(self)
         validator.finish()
         return result
 
@@ -127,7 +132,7 @@ class SemanticIdentity:
                 if left.digest != right.digest:
                     return False
                 pending.append((left.behavior, right.behavior))
-            elif isinstance(left, tuple) and isinstance(right, tuple):
+            elif is_object_tuple(left) and is_object_tuple(right):
                 if len(left) != len(right):
                     return False
                 pending.extend(zip(left, right, strict=True))
@@ -153,6 +158,10 @@ class SemanticIdentityValidator:
             int, tuple[SemanticIdentity, str, tuple[object, ...]]
         ] = {}
         self._failed = False
+
+    def derive_root_digest(self, identity: SemanticIdentity) -> str:
+        """Derive a newly constructed root while validating its nested identities."""
+        return self._walk(identity, verify_root=False)
 
     def validate(self, identity: SemanticIdentity) -> None:
         if self._failed:
@@ -185,7 +194,7 @@ class SemanticIdentityValidator:
                 self._failed = True
                 raise ValueError("semantic identity changed during audit")
 
-    def _discard(self) -> None:
+    def discard(self) -> None:
         """Drop all candidate snapshots when their enclosing construction fails."""
         self._tuples.clear()
         self._digests.clear()
@@ -206,10 +215,10 @@ class SemanticIdentityValidator:
             identity = id(value)
             if leaving:
                 active.remove(identity)
-                if type(value) is tuple:
+                if is_exact_object_tuple(value):
                     if additions is not None:
                         additions.append((True, identity))
-                    self._digests[identity] = _tuple_digest(value, self._digests)
+                    self._digests[identity] = tuple_digest(value, self._digests)
                     self._tuples[identity] = value
                 elif type(value) is SemanticIdentity:
                     if value is not root or verify_root:
@@ -242,16 +251,16 @@ class SemanticIdentityValidator:
                 active.add(identity)
                 pending.append((value, True))
                 pending.append((value.behavior, False))
-            elif type(value) is tuple:
+            elif is_exact_object_tuple(value):
                 if identity in self._tuples:
                     continue
                 active.add(identity)
                 pending.append((value, True))
                 for item in value:
                     kind = type(item)
-                    if kind is tuple or kind is SemanticIdentity:
+                    if is_exact_object_tuple(item) or type(item) is SemanticIdentity:
                         pending.append((item, False))
-                    elif kind is int:
+                    elif type(item) is int:
                         if item.bit_length() > 64:
                             raise ValueError(
                                 "semantic identities cannot hide unbounded integer payloads"
@@ -269,7 +278,7 @@ class SemanticIdentityValidator:
         return self._digests[id(root.behavior)].hex()
 
 
-def _tuple_digest(value: tuple[object, ...], children: dict[int, bytes]) -> bytes:
+def tuple_digest(value: tuple[object, ...], children: dict[int, bytes]) -> bytes:
     """Versioned structural digest; sharing does not change semantic identity.
 
     Scalars have bounded integer width and have already been type-checked.
@@ -284,7 +293,7 @@ def _tuple_digest(value: tuple[object, ...], children: dict[int, bytes]) -> byte
     else:
         digest.update(b"parent\0")
         for item in value:
-            if type(item) is tuple:
+            if is_exact_object_tuple(item):
                 digest.update(b"t" + children[id(item)])
             elif type(item) is SemanticIdentity:
                 digest.update(b"i" + sha256(item.digest.encode("utf-8")).digest())

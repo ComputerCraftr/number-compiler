@@ -13,7 +13,7 @@ MAX_FERMAT_FOLD_WIDTH = 65_536
 MAX_FERMAT_FOLD_INPUT_BITS = 262_144
 
 
-def _validate(width: int, value: int | None = None) -> None:
+def validate(width: int, value: int | None = None) -> None:
     if type(width) is not int or not 1 <= width <= MAX_FERMAT_FOLD_WIDTH:
         raise ValueError(("fermat-fold-width-budget", width, MAX_FERMAT_FOLD_WIDTH))
     if value is not None and (
@@ -32,7 +32,7 @@ class FermatSignedFoldStep:
     signed_output: int
 
     def verify(self, width: int) -> None:
-        _validate(width, self.signed_input)
+        validate(width, self.signed_input)
         if any(
             type(value) is not int
             for value in (self.low, self.high, self.signed_output)
@@ -61,7 +61,7 @@ class FermatSignedFoldResult:
     input_value: int
 
     def verify(self) -> None:
-        _validate(self.width, self.input_value)
+        validate(self.width, self.input_value)
         if type(self.steps) is not tuple or any(
             type(step) is not FermatSignedFoldStep for step in self.steps
         ):
@@ -84,7 +84,7 @@ class FermatSignedFoldResult:
 def _fold(
     value: int, width: int, *, prove: bool
 ) -> tuple[int, tuple[FermatSignedFoldStep, ...]]:
-    _validate(width, value)
+    validate(width, value)
     block = 1 << width
     mask = block - 1
     signed = value

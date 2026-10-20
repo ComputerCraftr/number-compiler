@@ -25,7 +25,7 @@ class DemandPayloadRegistry:
             if type(root) is PrimitiveDemandOracle
             and root.ledger is ledger
             and root.kernels in kernels
-            and actual.get(root.owner) is root.memo._data
+            and actual.get(root.owner) is root.memo.audit_container
         )
         self.accepted: set[int] = set()
         self.rejected: set[int] = set()
@@ -50,7 +50,9 @@ class DemandPayloadRegistry:
             or key.kernel.kind != "diamond-kernel"
             or key.kernel.owner is not oracle.kernels.owner
             or type(key.kernel.local_id) is not int
-            or not 0 <= key.kernel.local_id < len(oracle.kernels._kernels)
+            or not 0
+            <= key.kernel.local_id
+            < len(oracle.kernels.audit_snapshot().kernels)
             or type(key.operation) is not str
             or key.operation not in ("advance", "emit")
             or type(key.side) is not int
@@ -60,7 +62,7 @@ class DemandPayloadRegistry:
             or type(key.values) is not tuple
         ):
             return False
-        primitive = oracle.kernels._kernels[key.kernel.local_id]
+        primitive = oracle.kernels.audit_snapshot().kernels[key.kernel.local_id]
         count = primitive.left_count if key.side == 0 else primitive.right_count
         sizes = (
             (count, primitive.blank + 1)

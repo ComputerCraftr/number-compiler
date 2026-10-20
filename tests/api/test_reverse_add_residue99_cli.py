@@ -18,7 +18,7 @@ def test_reverse_add_temporal_residue99_cli_is_predictive(
         raise AssertionError("no whole-number publisher is permitted")
 
     monkeypatch.setattr(cli_render, "render_value", forbidden)
-    monkeypatch.setattr(ReverseAddPoweredTerm, "_source_workspace", forbidden)
+    monkeypatch.setattr(ReverseAddPoweredTerm, "source_workspace", forbidden)
     assert (
         cli.main(
             [

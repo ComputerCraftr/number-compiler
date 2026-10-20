@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Hashable
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Never, TypeVar
+from typing import Never, cast
 
 import pytest
 
@@ -21,11 +21,11 @@ from number_compiler.arithmetic.functions.semantic_functions import (
 )
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.tile_application import TileApplication
 from number_compiler.hashlife.execution.tile_execution_adapter import (
     FamilyTileHooks,
 )
 from number_compiler.hashlife.execution.tile_scheduler import (
-    TileApplication,
     TileScheduler,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import (
@@ -55,6 +55,7 @@ from number_compiler.hashlife.tiles.tiles import (
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
 from tests.support.assertions import assert_rejected_atomically
+from tests.support.private_attributes import private_test_attribute
 from tests.support.tile_kernel import join_four
 
 
@@ -62,8 +63,8 @@ class _Actions:
     def __init__(self, ledger: ResourceLedger) -> None:
         self.ledger = ledger
         self.owner = ArenaToken("tile-test-actions")
-        self._signature: PortSignatureID | None = None
-        self._signatures: dict[int, PortSignatureID] = {}
+        self.signature: PortSignatureID | None = None
+        self.signatures: dict[int, PortSignatureID] = {}
         self._nodes: LedgerDict[int, tuple[int, int] | None] = ledger.make_dict(
             ledger.register("tile-test-actions", "field_action"),
         )
@@ -95,11 +96,11 @@ class _Actions:
 
     def signature_for(self, action: FieldCellActionID) -> PortSignatureID:
         self.validate_action(action)
-        if action.local_id in self._signatures:
-            return self._signatures[action.local_id]
-        if self._signature is None:
+        if action.local_id in self.signatures:
+            return self.signatures[action.local_id]
+        if self.signature is None:
             raise ValueError("test action signature is not bound")
-        return self._signature
+        return self.signature
 
     def children(
         self,
@@ -313,7 +314,7 @@ class _Adapter:
 
 
 @dataclass
-class _Runtime:
+class TileSchedulerRuntime:
     ledger: ResourceLedger
     tiles: TileArena
     actions: _Actions
@@ -326,7 +327,7 @@ class _Runtime:
         self.root.close()
 
 
-def _runtime() -> _Runtime:
+def tile_scheduler_runtime() -> TileSchedulerRuntime:
     ledger = ResourceLedger()
     functions = SemanticFunctionArena(ledger)
     interfaces = DiamondQuotientArena(functions)
@@ -368,7 +369,7 @@ def _runtime() -> _Runtime:
     for lease in (*leaves, left, right):
         lease.close()
     actions = _Actions(ledger)
-    actions._signature = interface
+    actions.signature = interface
     results = CompletedResultArena(
         tiles,
         interfaces,
@@ -385,7 +386,7 @@ def _runtime() -> _Runtime:
         leaf_records,
     )
     scheduler = TileScheduler(tiles, results, adapter)
-    return _Runtime(
+    return TileSchedulerRuntime(
         ledger,
         tiles,
         actions,
@@ -396,16 +397,16 @@ def _runtime() -> _Runtime:
     )
 
 
-def _application_fixture() -> tuple[_Runtime, TileApplication, int]:
-    runtime = _runtime()
+def _application_fixture() -> tuple[TileSchedulerRuntime, TileApplication, int]:
+    runtime = tile_scheduler_runtime()
     application = runtime.scheduler.application(
         runtime.actions.action(2), runtime.root.tile, (0,), runtime.wiring
     )
-    return runtime, application, len(runtime.tiles._leases)
+    return runtime, application, len(runtime.tiles.audit_snapshot().leases)
 
 
-def _assert_pin_rollback(runtime: _Runtime, leases_before: int) -> None:
-    assert len(runtime.tiles._leases) == leases_before
+def _assert_pin_rollback(runtime: TileSchedulerRuntime, leases_before: int) -> None:
+    assert len(runtime.tiles.audit_snapshot().leases) == leases_before
     pin_owner = runtime.scheduler.audit_snapshot().pin_owner
     assert pin_owner is not None
     account = runtime.ledger.inventory()[pin_owner]
@@ -413,7 +414,7 @@ def _assert_pin_rollback(runtime: _Runtime, leases_before: int) -> None:
 
 
 def test_physical_constructor_installs_deferred_scheduler_dependencies() -> None:
-    runtime = _runtime()
+    runtime = tile_scheduler_runtime()
     try:
         assert type(runtime.scheduler.tiles) is TileArena
         assert type(runtime.scheduler.results) is CompletedResultArena
@@ -423,13 +424,13 @@ def test_physical_constructor_installs_deferred_scheduler_dependencies() -> None
         runtime.close()
 
 
-def _symbols(runtime: _Runtime, tile: TileID) -> tuple[int, ...]:
+def _symbols(runtime: TileSchedulerRuntime, tile: TileID) -> tuple[int, ...]:
     width = runtime.tiles.resolve(tile).width
     return tuple(runtime.tiles.point(tile, coordinate) for coordinate in range(width))
 
 
 def test_composed_actions_are_noncommuting_and_output_complete() -> None:
-    runtime = _runtime()
+    runtime = tile_scheduler_runtime()
     try:
         first = runtime.scheduler.complete(
             runtime.actions.action(2),
@@ -455,7 +456,7 @@ def test_composed_actions_are_noncommuting_and_output_complete() -> None:
 
 
 def test_tile_identity_does_not_swallow_distinct_result_semantics() -> None:
-    runtime = _runtime()
+    runtime = tile_scheduler_runtime()
     alphabet = runtime.tiles.resolve(runtime.root.tile).alphabet
     blank = runtime.tiles.leaf(alphabet, 3)
     try:
@@ -484,7 +485,7 @@ def test_tile_identity_does_not_swallow_distinct_result_semantics() -> None:
 
 
 def test_cold_point_descends_only_one_branch_and_never_builds_a_parent() -> None:
-    runtime = _runtime()
+    runtime = tile_scheduler_runtime()
     try:
         before = runtime.ledger.counters.copy()
         assert (
@@ -515,7 +516,7 @@ def test_cold_point_descends_only_one_branch_and_never_builds_a_parent() -> None
 
 
 def test_cold_width_uses_bounded_activity_and_one_leaf() -> None:
-    runtime = _runtime()
+    runtime = tile_scheduler_runtime()
     try:
         assert (
             runtime.scheduler.width(
@@ -536,8 +537,8 @@ def test_cold_width_uses_bounded_activity_and_one_leaf() -> None:
 
 
 def test_cached_midpoint_and_fused_routes_publish_the_same_result() -> None:
-    fused = _runtime()
-    cached = _runtime()
+    fused = tile_scheduler_runtime()
+    cached = tile_scheduler_runtime()
     try:
         fused_result = fused.scheduler.complete(
             fused.actions.action(2),
@@ -580,7 +581,7 @@ def test_cached_midpoint_and_fused_routes_publish_the_same_result() -> None:
 def test_application_root_lease_makes_warm_observations_executable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime = _runtime()
+    runtime = tile_scheduler_runtime()
     application = runtime.scheduler.application(
         runtime.actions.action(2),
         runtime.root.tile,
@@ -611,7 +612,7 @@ def test_application_root_lease_makes_warm_observations_executable(
 
 
 def test_incomplete_application_pins_and_reuses_demanded_leaf_result() -> None:
-    runtime = _runtime()
+    runtime = tile_scheduler_runtime()
     application = runtime.scheduler.application(
         runtime.actions.action(2),
         runtime.root.tile,
@@ -632,7 +633,7 @@ def test_incomplete_application_pins_and_reuses_demanded_leaf_result() -> None:
 
 
 def test_application_identity_fields_are_immutable() -> None:
-    runtime = _runtime()
+    runtime = tile_scheduler_runtime()
     application = runtime.scheduler.application(
         runtime.actions.action(2),
         runtime.root.tile,
@@ -653,7 +654,7 @@ def test_application_identity_fields_are_immutable() -> None:
 
 @pytest.mark.parametrize("symbol", (1, 3), ids=("active", "blank"))
 def test_compiled_power_leaf_work_is_constant_through_n1024(symbol: int) -> None:
-    runtime = _runtime()
+    runtime = tile_scheduler_runtime()
     alphabet = runtime.tiles.resolve(runtime.root.tile).alphabet
     source = runtime.tiles.leaf(alphabet, symbol)
     try:
@@ -721,7 +722,7 @@ def test_cached_midpoint_uses_certified_distinct_child_wirings() -> None:
     alphabet = tiles.intern_alphabet(TileAlphabet(4, 3, 4, 2, "test", "v1"))
     source = tiles.leaf(alphabet, 1)
     actions = _Actions(ledger)
-    actions._signatures.update({index: declarations[index] for index in range(4)})
+    actions.signatures.update({index: declarations[index] for index in range(4)})
     results = CompletedResultArena(
         tiles,
         interfaces,
@@ -778,7 +779,7 @@ def test_cached_midpoint_uses_certified_distinct_child_wirings() -> None:
 
 
 def test_clipped_width_does_not_invent_activity_in_a_padding_gap() -> None:
-    runtime = _runtime()
+    runtime = tile_scheduler_runtime()
     alphabet = runtime.tiles.resolve(runtime.root.tile).alphabet
     leaves = [runtime.tiles.leaf(alphabet, symbol) for symbol in (0, 3, 3, 0)]
     left, right, source = join_four(runtime.tiles, leaves)
@@ -802,7 +803,7 @@ def test_clipped_width_does_not_invent_activity_in_a_padding_gap() -> None:
 
 
 def test_direct_observations_reject_foreign_action_before_accounting() -> None:
-    runtime = _runtime()
+    runtime = tile_scheduler_runtime()
     foreign = FieldCellActionID(
         ArenaToken("foreign-tile-actions"),
         "field-cell-action",
@@ -837,7 +838,7 @@ def test_result_semantics_preserves_exact_outgoing_boundary_operands() -> None:
     )
     from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 
-    runtime = _runtime()
+    runtime = tile_scheduler_runtime()
     try:
         lease = runtime.scheduler.complete(
             runtime.actions.action(2),
@@ -919,10 +920,13 @@ def test_partial_demanded_pin_publication_rolls_back(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runtime, application, leases_before = _application_fixture()
-    write = LedgerDict.__setitem__
+    write = cast(
+        Callable[[LedgerDict[object, object], object, object], None],
+        private_test_attribute(LedgerDict, "__setitem__"),
+    )
 
     def fail_after_write(
-        store: LedgerDict[KeyT, ValueT], key: KeyT, value: ValueT
+        store: LedgerDict[object, object], key: object, value: object
     ) -> None:
         write(store, key, value)
         if store is runtime.scheduler.audit_snapshot().pin_store:
@@ -937,7 +941,3 @@ def test_partial_demanded_pin_publication_rolls_back(
     finally:
         application.close()
         runtime.close()
-
-
-KeyT = TypeVar("KeyT", bound=Hashable)
-ValueT = TypeVar("ValueT")

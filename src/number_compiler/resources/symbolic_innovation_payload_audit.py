@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, cast
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.physical_support_payload_audit import (
     PhysicalSupportPayloadAudit,
@@ -12,6 +16,9 @@ from number_compiler.resources.physical_support_payload_audit import (
 if TYPE_CHECKING:
     from number_compiler.arithmetic.fields.symbolic_innovation import (
         SymbolicInnovationArena,
+    )
+    from number_compiler.resources.field_image_audit_contracts import (
+        SymbolicInnovationAuditSnapshot,
     )
 
 
@@ -28,7 +35,6 @@ def audit_symbolic_innovation_payloads(
     from number_compiler.arithmetic.fields.symbolic_innovation import (
         SymbolicInnovationArena,
     )
-    from number_compiler.resources.ledger import OwnedMemo
     from number_compiler.resources.stores import LedgerDict, LedgerList
 
     containers = dict(ledger.iter_containers())
@@ -39,25 +45,41 @@ def audit_symbolic_innovation_payloads(
         if type(root) is not SymbolicInnovationArena:
             continue
         try:
-            owners = root._node_owner, root._key_owner, root._projection.owner
+            snapshot = root.audit_snapshot()
+            projection = snapshot.projection
+            projection_snapshot = projection.audit_snapshot()
+            nodes_object: object = snapshot.nodes
+            keys_object: object = snapshot.keys
+            projection_store_object: object = projection_snapshot.container
+            owners = snapshot.node_owner, snapshot.key_owner, projection.owner
         except AttributeError:
             invalid.add((-1, id(root)))
             continue
         if any(type(owner) is not int for owner in owners):
             invalid.add((-1, id(root)))
             continue
+        if (
+            type(nodes_object) is not LedgerList
+            or type(keys_object) is not LedgerDict
+            or type(projection_store_object) is not LedgerDict
+        ):
+            invalid.update((owner, id(root)) for owner in owners)
+            continue
+        nodes = cast(LedgerList[object], nodes_object)
+        keys = cast(LedgerDict[object, object], keys_object)
+        projection_store = cast(LedgerDict[object, object], projection_store_object)
         node_owner, key_owner, projection_owner = owners
         node_row = inventory.get(node_owner)
         key_row = inventory.get(key_owner)
         projection_row = inventory.get(projection_owner)
         root_approved = {
-            id(root._nodes),
-            id(root._keys),
-            id(root._projection._data),
+            id(nodes),
+            id(keys),
+            id(projection_store),
         }
         valid = (
             root.ledger is ledger
-            and type(root._closed) is bool
+            and type(snapshot.closed) is bool
             and set(vars(root))
             == {
                 "ledger",
@@ -72,27 +94,20 @@ def audit_symbolic_innovation_payloads(
                 "_keys",
                 "zero",
             }
-            and type(root._nodes) is LedgerList
-            and type(root._keys) is LedgerDict
-            and type(root._projection) is OwnedMemo
-            and type(root._projection._data) is LedgerDict
             and len(set(owners)) == 3
-            and root._nodes.ledger
-            is root._keys.ledger
-            is root._projection.ledger
-            is ledger
-            and root._nodes.owner == node_owner
-            and root._keys.owner == key_owner
-            and root._projection.owner == projection_owner
-            and root._nodes.nodes_per_entry == 1
-            and root._keys.nodes_per_entry == root._projection.nodes_per_entry == 0
-            and root._nodes.append_only
-            and ledger.is_factory_container(root._nodes)
-            and ledger.is_factory_container(root._keys)
-            and ledger.is_factory_container(root._projection._data)
-            and containers.get(node_owner) is root._nodes
-            and containers.get(key_owner) is root._keys
-            and containers.get(projection_owner) is root._projection._data
+            and nodes.ledger is keys.ledger is projection.ledger is ledger
+            and nodes.owner == node_owner
+            and keys.owner == key_owner
+            and projection.owner == projection_owner
+            and nodes.nodes_per_entry == 1
+            and keys.nodes_per_entry == projection.nodes_per_entry == 0
+            and nodes.append_only
+            and ledger.is_factory_container(nodes)
+            and ledger.is_factory_container(keys)
+            and ledger.is_factory_container(projection_store)
+            and containers.get(node_owner) is nodes
+            and containers.get(key_owner) is keys
+            and containers.get(projection_owner) is projection_store
             and node_row is not None
             and key_row is not None
             and projection_row is not None
@@ -102,21 +117,21 @@ def audit_symbolic_innovation_payloads(
             and node_row.accounting_delta == key_row.accounting_delta == 0
             and projection_row.accounting_delta == 0
             and projection_row.entries == projection_row.nodes == 0
-            and len(root._projection._data) == 0
+            and len(projection_store) == 0
         )
-        memo_valid, memo_approved = _valid_f5_memo(root, ledger)
+        memo_valid, memo_approved = _valid_f5_memo(root, ledger, snapshot)
         valid &= memo_valid
         root_approved.update(memo_approved)
-        if root._closed:
+        if snapshot.closed:
             valid &= (
                 node_row is not None
                 and key_row is not None
                 and projection_row is not None
-                and root._projection._disposed
+                and projection.audit_snapshot().disposed
                 and node_row.disposed
                 and key_row.disposed
                 and projection_row.disposed
-                and len(root._nodes) == len(root._keys) == 0
+                and len(nodes) == len(keys) == 0
                 and node_row.entries == node_row.nodes == 0
                 and key_row.entries == key_row.nodes == 0
             )
@@ -125,24 +140,24 @@ def audit_symbolic_innovation_payloads(
                 node_row is not None
                 and key_row is not None
                 and projection_row is not None
-                and not root._projection._disposed
+                and not projection.audit_snapshot().disposed
                 and not node_row.disposed
                 and not key_row.disposed
                 and not projection_row.disposed
-                and node_row.entries == len(root._nodes)
+                and node_row.entries == len(nodes)
                 and node_row.nodes
-                == sum(_innovation_node_units(node) for node in root._nodes)
-                and key_row.entries == len(root._keys)
+                == sum(_innovation_node_units(node) for node in nodes)
+                and key_row.entries == len(keys)
                 and key_row.nodes == 0
-                and len(root._nodes) == len(root._keys)
-                and len(root._nodes) > 0
+                and len(nodes) == len(keys)
+                and len(nodes) > 0
                 and _valid_handle(root.zero, root, expected=0)
             )
             try:
-                node_ids = {id(node): index for index, node in enumerate(root._nodes)}
+                node_ids = {id(node): index for index, node in enumerate(nodes)}
                 keyed_nodes: set[int] = set()
                 keyed_indexes: set[int] = set()
-                for node, reference in root._keys.items():
+                for node, reference in keys.items():
                     index = node_ids.get(id(node))
                     bound = (
                         index is not None
@@ -155,11 +170,11 @@ def audit_symbolic_innovation_payloads(
                         keyed_nodes.add(id(node))
                         keyed_indexes.add(index)
                         root_approved.add(id(reference))
-                valid &= len(keyed_nodes) == len(root._nodes) and keyed_indexes == set(
-                    range(len(root._nodes))
+                valid &= len(keyed_nodes) == len(nodes) and keyed_indexes == set(
+                    range(len(nodes))
                 )
-                for index, node in enumerate(root._nodes):
-                    node_valid, metadata = _valid_node(node, root, index)
+                for index, node in enumerate(nodes):
+                    node_valid, metadata = _valid_node(node, root, index, nodes)
                     valid &= node_valid and id(node) in keyed_nodes
                     if node_valid:
                         root_approved.add(id(node))
@@ -174,33 +189,36 @@ def audit_symbolic_innovation_payloads(
 
 
 def _valid_f5_memo(
-    root: SymbolicInnovationArena, ledger: ResourceLedger
+    root: SymbolicInnovationArena,
+    ledger: ResourceLedger,
+    snapshot: SymbolicInnovationAuditSnapshot,
 ) -> tuple[bool, set[int]]:
     """Validate arithmetic handles and charged key metadata without evaluation."""
     from number_compiler.resources.ledger import OwnedMemo
     from number_compiler.resources.stores import LedgerDict
 
-    try:
-        memo = root._f5_compositions
-    except AttributeError:
-        return False, set()
+    memo = snapshot.f5_compositions
     if memo is None:
-        return root._f5_composition_owner is None, set()
+        return snapshot.f5_composition_owner is None, set()
+    memo_snapshot = memo.audit_snapshot()
+    memo_store_object: object = memo_snapshot.container
+    if type(memo_store_object) is not LedgerDict:
+        return False, set()
+    memo_store = cast(LedgerDict[object, object], memo_store_object)
     if (
-        root._closed
-        or type(root._f5_composition_owner) is not int
-        or root._f5_composition_owner != memo.owner
+        snapshot.closed
+        or type(snapshot.f5_composition_owner) is not int
+        or snapshot.f5_composition_owner != memo.owner
         or type(memo) is not OwnedMemo
         or memo.ledger is not ledger
         or type(memo.owner) is not int
         or type(memo.nodes_per_entry) is not int
         or memo.nodes_per_entry < 1
-        or memo._disposed
-        or type(memo._data) is not LedgerDict
-        or memo._data.ledger is not ledger
-        or memo._data.owner != memo.owner
-        or memo._data.nodes_per_entry != memo.nodes_per_entry
-        or not ledger.is_factory_container(memo._data)
+        or memo_snapshot.disposed
+        or memo_store.ledger is not ledger
+        or memo_store.owner != memo.owner
+        or memo_store.nodes_per_entry != memo.nodes_per_entry
+        or not ledger.is_factory_container(memo_store)
     ):
         return False, set()
     row = next((row for row in ledger.inventory() if row.owner == memo.owner), None)
@@ -211,19 +229,19 @@ def _valid_f5_memo(
         or row.name != f"innovation-F5-{id(root.owner):x}-{memo.owner}"
         or not row.evictable
         or row.accounting_delta != 0
-        or dict(ledger.iter_containers()).get(memo.owner) is not memo._data
-        or row.entries != len(memo._data)
+        or dict(ledger.iter_containers()).get(memo.owner) is not memo_store
+        or row.entries != len(memo_store)
         or row.nodes != row.entries * memo.nodes_per_entry
     ):
         return False, set()
-    approved = {id(memo._data)}
-    for key, result in memo._data.items():
+    approved = {id(memo_store)}
+    for key, result in memo_store.items():
         if (
-            type(key) is not tuple
+            not is_exact_object_tuple(key)
             or len(key) != 4
-            or not _valid_child(key[0], root, len(root._nodes))
-            or not _valid_child(key[1], root, len(root._nodes))
-            or not _valid_child(result, root, len(root._nodes))
+            or not _valid_child(key[0], root, len(snapshot.nodes))
+            or not _valid_child(key[1], root, len(snapshot.nodes))
+            or not _valid_child(result, root, len(snapshot.nodes))
             or type(key[2]) is not int
             or key[2] < 0
             or type(key[3]) is not int
@@ -248,7 +266,7 @@ def _valid_handle(
         and root.owner.label == "symbolic-innovation"
         and type(reference) is InnovationID
         and reference.owner is root.owner
-        and reference.kind == root._KIND == "symbolic-innovation"
+        and reference.kind == "symbolic-innovation"
         and type(reference.local_id) is int
         and reference.local_id == expected
         and type(reference.seal) is str
@@ -266,7 +284,10 @@ def _valid_child(reference: object, root: SymbolicInnovationArena, parent: int) 
 
 
 def _valid_node(
-    node: object, root: SymbolicInnovationArena, index: int
+    node: object,
+    root: SymbolicInnovationArena,
+    index: int,
+    nodes: Sequence[object],
 ) -> tuple[bool, set[int]]:
     from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
     from number_compiler.arithmetic.fields.radial_innovation import (
@@ -299,7 +320,7 @@ def _valid_node(
             and multiplier.growth >= 0
             and not multiplier.is_identity
             and _valid_child(node.child, root, index)
-            and type(root._nodes[child]) not in (InnovationZero, InnovationRadial)
+            and type(nodes[child]) not in (InnovationZero, InnovationRadial)
         )
         return bool(valid), {id(multiplier), id(node.child)}
     if type(node) is InnovationCharted:
@@ -315,7 +336,7 @@ def _valid_node(
             and chart.extent_scale == chart.growth_scale == 0
             and (chart.slope, chart.offset) != (1, 0)
             and _valid_child(node.child, root, index)
-            and type(root._nodes[child])
+            and type(nodes[child])
             not in (InnovationZero, InnovationRadial, InnovationCharted)
         )
         return valid, {id(chart), id(node.child)}
@@ -325,7 +346,7 @@ def _valid_node(
             type(node.coefficient) is int
             and node.coefficient not in (0, 1)
             and _valid_child(node.child, root, index)
-            and type(root._nodes[child]) not in (InnovationZero, InnovationScale)
+            and type(nodes[child]) not in (InnovationZero, InnovationScale)
         )
         return valid, {id(node.child)}
     if isinstance(node, InnovationAdd):
@@ -335,8 +356,8 @@ def _valid_node(
             _valid_child(node.left, root, index)
             and _valid_child(node.right, root, index)
             and node.left.local_id < node.right.local_id
-            and type(root._nodes[node.left.local_id]) is not InnovationZero
-            and type(root._nodes[node.right.local_id]) is not InnovationZero
+            and type(nodes[node.left.local_id]) is not InnovationZero
+            and type(nodes[node.right.local_id]) is not InnovationZero
         )
         return valid, {id(node.left), id(node.right)}
     return False, metadata
@@ -435,7 +456,7 @@ def _semantic_metadata(value: object) -> tuple[bool, set[int]]:
         if identity in seen:
             continue
         seen.add(identity)
-        if type(item) is tuple:
+        if is_exact_object_tuple(item):
             approved.add(identity)
             pending.extend((child, depth + 1) for child in item)
         elif type(item) is SemanticIdentity:

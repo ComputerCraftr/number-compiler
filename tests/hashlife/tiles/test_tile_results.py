@@ -25,16 +25,27 @@ from number_compiler.hashlife.tiles.tile_results import (
     ResultLease,
 )
 from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.resources.stores import LedgerDict
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.tile_results import (
-    _setup,
     assert_retention_and_peaks_unchanged,
     published_setup,
+    setup_tile_results,
 )
 
 
+def _reverse_store(results: CompletedResultArena) -> LedgerDict[object, object]:
+    """Return the registered reverse index for deliberate corruption tests."""
+    store: object = object.__getattribute__(results, "_reverse")
+    if type(store) is not LedgerDict:
+        raise TypeError("completed result reverse index is not ledgered")
+    return cast(LedgerDict[object, object], store)
+
+
 def test_completed_result_warm_lookup_pins_output_and_retires_with_input() -> None:
-    ledger, _, tiles, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, tiles, results, input_lease, output_lease, key, result = (
+        setup_tile_results()
+    )
     published = results.publish(key, result)
     assert type(published) is ResultLease
     assert published.result == result
@@ -55,7 +66,7 @@ def test_completed_result_warm_lookup_pins_output_and_retires_with_input() -> No
 
 
 def test_observed_input_ports_validate_before_result_publication() -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, _, results, input_lease, output_lease, key, result = setup_tile_results()
     observed = replace(result, observed_input_ports=(1,))
     held = results.publish(key, observed)
     assert held.result.observed_input_ports == (1,)
@@ -137,20 +148,22 @@ def test_result_lease_inspection_is_counter_neutral_but_still_validates() -> Non
 
 
 def test_same_input_output_has_one_reverse_membership() -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, _, results, input_lease, output_lease, key, result = setup_tile_results()
     output_lease.close()
     same = replace(result, output=input_lease.tile)
     lease = results.publish(key, same)
     inventory = {item.owner: item for item in ledger.inventory()}
-    assert inventory[results._reverse_owner].entries == 2  # head + one membership
+    assert (
+        inventory[results.audit_snapshot().reverse_owner].entries == 2
+    )  # head + one membership
     lease.close()
     input_lease.close()
     assert results.retained_results == 0
-    assert len(results._reverse) == 0
+    assert len(results.audit_snapshot().reverse) == 0
 
 
 def test_input_retirement_removes_result_but_result_lease_keeps_output() -> None:
-    _, _, tiles, results, input_lease, output_lease, key, result = _setup()
+    _, _, tiles, results, input_lease, output_lease, key, result = setup_tile_results()
     lease = results.publish(key, result)
     output_lease.close()
     input_lease.close()
@@ -160,28 +173,29 @@ def test_input_retirement_removes_result_but_result_lease_keeps_output() -> None
 
 
 def test_result_close_rejects_swapped_tile_and_foreign_issuer_before_release() -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, _, results, input_lease, output_lease, key, result = setup_tile_results()
     lease = results.publish(key, result)
-    original_tile = lease._tile
-    original_issuer = lease._issuer
+    original = lease.audit_snapshot()
+    original_tile = original.tile
+    original_issuer = original.issuer
     try:
-        lease._tile = input_lease
+        object.__setattr__(lease, "_tile", input_lease)
         before = ledger.entries, ledger.nodes, ledger.inventory()
         with pytest.raises(ValueError, match="pins another output"):
             lease.close()
         assert (ledger.entries, ledger.nodes, ledger.inventory()) == before
-        assert lease._closed is False
-        lease._tile = original_tile
+        assert lease.audit_snapshot().closed is False
+        object.__setattr__(lease, "_tile", original_tile)
 
-        lease._issuer = cast(CompletedResultArena, object())
+        object.__setattr__(lease, "_issuer", cast(CompletedResultArena, object()))
         before = ledger.entries, ledger.nodes, ledger.inventory()
         with pytest.raises(ValueError, match="issuer"):
             lease.close()
         assert (ledger.entries, ledger.nodes, ledger.inventory()) == before
-        assert lease._closed is False
+        assert lease.audit_snapshot().closed is False
     finally:
-        lease._tile = original_tile
-        lease._issuer = original_issuer
+        object.__setattr__(lease, "_tile", original_tile)
+        object.__setattr__(lease, "_issuer", original_issuer)
         lease.close()
         output_lease.close()
         input_lease.close()
@@ -189,7 +203,7 @@ def test_result_close_rejects_swapped_tile_and_foreign_issuer_before_release() -
 
 @pytest.mark.parametrize("bad_port", (True, 1.0, -1, 3))
 def test_invalid_ports_reject_before_warm_lookup_or_mutation(bad_port: object) -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, _, results, input_lease, output_lease, key, result = setup_tile_results()
     lease = results.publish(key, result)
     before = ledger.snapshot()
     bad = replace(key, ports=(cast("int", bad_port),))
@@ -241,7 +255,7 @@ def test_foreign_action_and_signature_reject_before_lookup() -> None:
 
 
 def test_exhausted_budget_rejects_publication_without_retained_mutation() -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, _, results, input_lease, output_lease, key, result = setup_tile_results()
     ledger.tighten_limits(None, ledger.entries)
     before = ledger.snapshot()
     with pytest.raises(Exception, match="cache budget exceeded"):
@@ -261,13 +275,15 @@ def test_exhausted_budget_rejects_publication_without_retained_mutation() -> Non
         before.inventory,
     )
     assert results.retained_results == 0
-    assert not results._reverse
+    assert not results.audit_snapshot().reverse
     output_lease.close()
     input_lease.close()
 
 
 def test_constructor_rejects_unowned_action_callbacks() -> None:
-    ledger, actions, tiles, results, input_lease, output_lease, _, _ = _setup()
+    ledger, actions, tiles, results, input_lease, output_lease, _, _ = (
+        setup_tile_results()
+    )
     assert_rejected_atomically(
         ledger,
         lambda: CompletedResultArena(
@@ -294,8 +310,14 @@ def test_constructor_rejects_unowned_action_callbacks() -> None:
     ),
 )
 def test_constructor_rejects_unbound_optional_action_authority_hooks(name: str) -> None:
-    ledger, actions, tiles, results, input_lease, output_lease, _, _ = _setup()
-    setattr(actions, name, lambda *_args: None)
+    ledger, actions, tiles, results, input_lease, output_lease, _, _ = (
+        setup_tile_results()
+    )
+
+    def optional_hook(*_args: object) -> None:
+        return None
+
+    setattr(actions, name, optional_hook)
     assert_rejected_atomically(
         ledger,
         lambda: CompletedResultArena(
@@ -317,17 +339,20 @@ def test_reverse_index_fault_rolls_back_current_state_and_old_links(
     monkeypatch: pytest.MonkeyPatch,
     fail_at: int,
 ) -> None:
-    ledger, _, tiles, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, tiles, results, input_lease, output_lease, key, result = (
+        setup_tile_results()
+    )
     first = results.publish(key, result)
     second_key = replace(key, ports=(2,))
     before_entries, before_nodes = ledger.entries, ledger.nodes
     before_peak = ledger.peak_entries
-    before_memo = dict(results._memo)
-    before_reverse = dict(results._reverse)
-    before_refs = dict(tiles._refs)
-    before_leases = dict(tiles._leases)
+    before_memo = dict(results.audit_snapshot().memo)
+    before_reverse = dict(results.audit_snapshot().reverse)
+    before_tile_audit = tiles.audit_snapshot()
+    before_refs = dict(before_tile_audit.refs)
+    before_leases = dict(before_tile_audit.leases)
     calls = 0
-    original = type(results)._write_reverse
+    original = type(results).write_reverse
 
     def fail_boundary(
         self: CompletedResultArena, reverse_key: _ReverseKey, value: _ReverseValue
@@ -338,14 +363,16 @@ def test_reverse_index_fault_rolls_back_current_state_and_old_links(
             raise RuntimeError("injected reverse publication failure")
         original(self, reverse_key, value)
 
-    monkeypatch.setattr(type(results), "_write_reverse", fail_boundary)
+    monkeypatch.setattr(type(results), "write_reverse", fail_boundary)
     with pytest.raises(RuntimeError, match="injected"):
         results.publish(second_key, result)
     assert (ledger.entries, ledger.nodes) == (before_entries, before_nodes)
-    assert dict(results._memo) == before_memo
-    assert dict(results._reverse) == before_reverse
-    assert dict(tiles._refs) == before_refs
-    assert dict(tiles._leases) == before_leases
+    after_result_audit = results.audit_snapshot()
+    after_tile_audit = tiles.audit_snapshot()
+    assert dict(after_result_audit.memo) == before_memo
+    assert dict(after_result_audit.reverse) == before_reverse
+    assert dict(after_tile_audit.refs) == before_refs
+    assert dict(after_tile_audit.leases) == before_leases
     assert ledger.peak_entries >= max(before_peak, before_entries + 4)
     first.close()
     output_lease.close()
@@ -353,7 +380,7 @@ def test_reverse_index_fault_rolls_back_current_state_and_old_links(
 
 
 def test_result_extent_must_equal_exact_output_tile_extent() -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, _, results, input_lease, output_lease, key, result = setup_tile_results()
     before = ledger.snapshot()
     with pytest.raises(ValueError, match="disagrees"):
         results.publish(key, replace(result, relative_extent=0))
@@ -363,17 +390,17 @@ def test_result_extent_must_equal_exact_output_tile_extent() -> None:
 
 
 def test_result_lease_rejects_copy_serialization_close_and_corruption() -> None:
-    _, _, _, results, input_lease, output_lease, key, result = _setup()
+    _, _, _, results, input_lease, output_lease, key, result = setup_tile_results()
     lease = results.publish(key, result)
     with pytest.raises(TypeError, match="issued"):
-        ResultLease(results, key, result, lease._tile, object())
+        ResultLease(results, key, result, lease.audit_snapshot().tile, object())
     with pytest.raises(TypeError, match="cannot be copied"):
         copy(lease)
     with pytest.raises(TypeError, match="cannot be copied"):
         deepcopy(lease)
     with pytest.raises(TypeError, match="cannot be serialized"):
         pickle.dumps(lease)
-    original_key = lease._key
+    original_key = lease.audit_snapshot().key
     object.__setattr__(
         lease,
         "_key",
@@ -392,12 +419,12 @@ def test_result_lease_rejects_copy_serialization_close_and_corruption() -> None:
 
 
 def test_ledger_query_eviction_clears_result_and_reverse_indexes() -> None:
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, _, results, input_lease, output_lease, key, result = setup_tile_results()
     lease = results.publish(key, result)
     evicted = ledger.evict_query_memos()
-    assert results._memo_owner in evicted
+    assert results.audit_snapshot().memo_owner in evicted
     assert results.retained_results == 0
-    assert not results._reverse
+    assert not results.audit_snapshot().reverse
     assert lease.result == result
     lease.close()
     output_lease.close()
@@ -407,7 +434,7 @@ def test_ledger_query_eviction_clears_result_and_reverse_indexes() -> None:
 def test_independent_result_inventory_detects_reverse_link_corruption() -> None:
     from number_compiler.resources.tile_result_inventory import audit_tile_results
 
-    ledger, _, _, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, _, results, input_lease, output_lease, key, result = setup_tile_results()
     lease = results.publish(key, result)
     containers = dict(ledger.iter_containers())
     approved, invalid = audit_tile_results(results, containers)
@@ -415,14 +442,15 @@ def test_independent_result_inventory_detects_reverse_link_corruption() -> None:
     assert id(results) in approved
     member = next(
         reverse_key
-        for reverse_key in results._reverse
+        for reverse_key in results.audit_snapshot().reverse
         if type(reverse_key).__name__ == "ResultDependencyMember"
     )
-    original = results._reverse[member]
-    results._reverse[member] = cast(_ReverseValue, None)
+    reverse = _reverse_store(results)
+    original = reverse[member]
+    reverse[member] = cast(_ReverseValue, None)
     _, damaged = audit_tile_results(results, containers)
     assert damaged
-    results._reverse[member] = original
+    reverse[member] = original
     lease.close()
     output_lease.close()
     input_lease.close()
@@ -433,7 +461,7 @@ def test_public_result_inventory_separates_semantic_bindings_and_complete_result
 ):
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
-    ledger, _, tiles, results, source, output, key, result = _setup()
+    ledger, _, tiles, results, source, output, key, result = setup_tile_results()
     interface_key = PoweredInterfaceKey(key.action, key.input, key.wiring)
     results.publish_interface(interface_key, result.outgoing)
     with results.publish(key, result) as held:
@@ -444,9 +472,12 @@ def test_public_result_inventory_separates_semantic_bindings_and_complete_result
         assert (
             metrics.completed_result_entries == metrics.powered_interface_entries == 1
         )
-        assert metrics.completed_result_reverse_index_entries == len(results._reverse)
-        assert metrics.canonical_tile_nodes == len(tiles._nodes)
-        assert metrics.tile_root_leases == len(tiles._leases)
+        assert metrics.completed_result_reverse_index_entries == len(
+            results.audit_snapshot().reverse
+        )
+        tile_audit = tiles.audit_snapshot()
+        assert metrics.canonical_tile_nodes == len(tile_audit.nodes)
+        assert metrics.tile_root_leases == len(tile_audit.leases)
         assert (
             metrics.resource_audit_complete
             == metrics.representation_boundary_complete
@@ -473,7 +504,7 @@ def test_public_result_inventory_separates_semantic_bindings_and_complete_result
 def test_causal_region_result_uses_shared_memo_and_exact_output_content() -> None:
     from number_compiler.resources.tile_result_inventory import audit_tile_results
 
-    ledger, _, tiles, results, source, output, key, result = _setup()
+    ledger, _, tiles, results, source, output, key, result = setup_tile_results()
     parent = tiles.join(source.tile, output.tile)
     root_key = replace(key, input=parent.tile)
     left_key, right_key = (replace(root_key, region=(offset, 0)) for offset in (0, 1))
@@ -498,7 +529,7 @@ def test_causal_region_result_uses_shared_memo_and_exact_output_content() -> Non
 
 
 def test_whole_causal_region_normalizes_to_existing_complete_result() -> None:
-    _, _, _, results, source, output, key, result = _setup()
+    _, _, _, results, source, output, key, result = setup_tile_results()
     whole = replace(key, region=(0, 0))
     with results.publish(key, result):
         found = results.lookup(whole)
@@ -507,7 +538,7 @@ def test_whole_causal_region_normalizes_to_existing_complete_result() -> None:
             assert found.result == result
         with results.publish(whole, result):
             assert results.retained_results == 1
-        assert next(iter(results._memo)) == key
+        assert next(iter(results.audit_snapshot().memo)) == key
     output.close()
     source.close()
 
@@ -518,7 +549,7 @@ def test_whole_causal_region_normalizes_to_existing_complete_result() -> None:
 def test_causal_region_rejects_before_lookup_or_ledger_mutation(
     region: tuple[bool, int] | tuple[int, float] | tuple[int, int],
 ) -> None:
-    ledger, _, tiles, results, source, output, key, _result = _setup()
+    ledger, _, tiles, results, source, output, key, _result = setup_tile_results()
     parent = tiles.join(source.tile, output.tile)
     request = replace(key, input=parent.tile, region=cast("tuple[int, int]", region))
     assert_rejected_atomically(
@@ -530,20 +561,26 @@ def test_causal_region_rejects_before_lookup_or_ledger_mutation(
 
 
 def test_causal_region_cannot_publish_an_incomplete_parent_as_a_leaf() -> None:
-    ledger, _, tiles, results, source, output, key, result = _setup()
+    ledger, _, tiles, results, source, output, key, result = setup_tile_results()
     parent = tiles.join(source.tile, output.tile)
     request = replace(key, input=parent.tile, region=(0, 0))
     wrong = replace(
         result, output=parent.tile, relative_extent=tiles.resolve(parent.tile).extent
     )
-    before = ledger.entries, ledger.nodes, dict(results._memo), dict(results._reverse)
+    result_audit = results.audit_snapshot()
+    before = (
+        ledger.entries,
+        ledger.nodes,
+        dict(result_audit.memo),
+        dict(result_audit.reverse),
+    )
     with pytest.raises(ValueError, match="output level"):
         results.publish(request, wrong)
     assert (
         ledger.entries,
         ledger.nodes,
-        dict(results._memo),
-        dict(results._reverse),
+        dict(results.audit_snapshot().memo),
+        dict(results.audit_snapshot().reverse),
     ) == before
     parent.close()
     output.close()

@@ -9,7 +9,8 @@ Complete endpoints and expanded histories are not cache payloads.
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from threading import RLock
 from typing import Final, Self, TypeVar, cast
@@ -17,6 +18,7 @@ from typing import Final, Self, TypeVar, cast
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger, ResourceScope
 
 DEFAULT_PROCESS_CACHE_ENTRIES: Final = 131_072
@@ -80,7 +82,7 @@ def _validate_immutable(
     deepest: dict[int, int] = {}
     while pending:
         current, depth = pending.pop()
-        if type(current) is tuple:
+        if is_exact_object_tuple(current):
             if depth >= _MAX_IMMUTABLE_DEPTH:
                 raise ValueError(f"{name} exceeds the immutable nesting limit")
             # Immutable tuples form a DAG. Revisit a shared tuple only when a
@@ -117,7 +119,7 @@ def _deep_size(value: object) -> int:
             continue
         seen.add(identity)
         total += sys.getsizeof(current)
-        if type(current) is tuple:
+        if is_exact_object_tuple(current):
             pending.extend(current)
     return total
 
@@ -150,7 +152,7 @@ class CacheLease:
     def _check_live(self) -> None:
         if self._closed:
             raise RuntimeError("process-cache lease is closed")
-        self._cache._validate_lease(
+        self._cache.validate_lease(
             id(self), self._token, self._partition, self._generation
         )
 
@@ -160,7 +162,7 @@ class CacheLease:
         default: object = MISSING,
     ) -> ImmutableValue | object:
         self._check_live()
-        return self._cache._get(
+        return self._cache.get_for_lease(
             self._partition,
             key,
             default,
@@ -183,7 +185,7 @@ class CacheLease:
         self._check_live()
         if type(issuer) is not object:
             raise TypeError("cache record issuer must be an exact object capability")
-        return self._cache._get(
+        return self._cache.get_for_lease(
             self._partition,
             key,
             default,
@@ -201,7 +203,7 @@ class CacheLease:
         accounted_bytes: int | None = None,
     ) -> bool:
         self._check_live()
-        return self._cache._put(
+        return self._cache.put_for_lease(
             self._partition,
             key,
             payload,
@@ -226,7 +228,7 @@ class CacheLease:
         self._check_live()
         if type(issuer) is not object:
             raise TypeError("cache record issuer must be an exact object capability")
-        return self._cache._put(
+        return self._cache.put_for_lease(
             self._partition,
             key,
             payload,
@@ -257,7 +259,7 @@ class CacheLease:
             raise TypeError("cache record issuer must be an exact object capability")
         if not callable(update):
             raise TypeError("issued cache updater must be callable")
-        return self._cache._update_issued(
+        return self._cache.update_issued_for_lease(
             self._partition,
             key,
             issuer,
@@ -272,10 +274,10 @@ class CacheLease:
         return self._cache.stats()
 
     def close(self) -> None:
-        with self._cache._lock:
+        with self._cache.lease_transaction():
             if self._closed:
                 return
-            self._cache._release_lease(
+            self._cache.release_lease(
                 id(self), self._token, self._partition, self._generation
             )
             self._closed = True
@@ -432,7 +434,13 @@ class ProcessCache:
             self._active_leases += 1
             return provisional
 
-    def _validate_lease(
+    @contextmanager
+    def lease_transaction(self) -> Generator[None]:
+        """Serialize a lease lifecycle transition with cache reset and release."""
+        with self._lock:
+            yield
+
+    def validate_lease(
         self,
         lease_identity: int,
         token: int,
@@ -487,7 +495,7 @@ class ProcessCache:
             and id(authority[4]) == lease_identity
         )
 
-    def _release_lease(
+    def release_lease(
         self,
         lease_identity: int,
         token: int,
@@ -532,7 +540,7 @@ class ProcessCache:
             raise TypeError("cache key must be a tuple")
         return partition, local
 
-    def _get(
+    def get_for_lease(
         self,
         partition: PartitionKey,
         key: tuple[ImmutableValue, ...],
@@ -545,7 +553,7 @@ class ProcessCache:
     ) -> ImmutableValue | object:
         full_key = self._qualified_key(partition, key)
         with self._lock:
-            self._validate_lease(lease_identity, token, partition, generation)
+            self.validate_lease(lease_identity, token, partition, generation)
             if not self.enabled:
                 self._bypasses += 1
                 return default
@@ -565,7 +573,7 @@ class ProcessCache:
             self._hits += 1
             return record[1]
 
-    def _put(
+    def put_for_lease(
         self,
         partition: PartitionKey,
         key: tuple[ImmutableValue, ...],
@@ -580,7 +588,7 @@ class ProcessCache:
         full_key = self._qualified_key(partition, key)
         admitted_payload = _validate_immutable(payload, "cache payload")
         with self._lock:
-            self._validate_lease(lease_identity, token, partition, generation)
+            self.validate_lease(lease_identity, token, partition, generation)
             old = self._entries.get(full_key)
             if old is not None and old[4] is not issuer:
                 raise CacheRecordIssuerMismatch(
@@ -634,7 +642,7 @@ class ProcessCache:
             self._puts += 1
             return True
 
-    def _update_issued(
+    def update_issued_for_lease(
         self,
         partition: PartitionKey,
         key: tuple[ImmutableValue, ...],
@@ -648,7 +656,7 @@ class ProcessCache:
         """Run one bounded issued-record read/modify/write under the cache lock."""
         full_key = self._qualified_key(partition, key)
         with self._lock:
-            self._validate_lease(lease_identity, token, partition, generation)
+            self.validate_lease(lease_identity, token, partition, generation)
             if not self.enabled:
                 self._bypasses += 1
                 return False, None
@@ -667,7 +675,7 @@ class ProcessCache:
             # RLock permits an updater to call reset(), close its lease, or
             # publish recursively. Revalidate even on the no-op path so a
             # stale authority cannot be reported as a successful lookup.
-            self._validate_lease(lease_identity, token, partition, generation)
+            self.validate_lease(lease_identity, token, partition, generation)
             current_after = self._entries.get(full_key)
             if current_after is not current:
                 # A nested same-key write is already authoritative. Preserve
@@ -676,7 +684,7 @@ class ProcessCache:
             if replacement is MISSING:
                 return None, metadata
             admitted_replacement = cast(ImmutableValue, replacement)
-            stored = self._put(
+            stored = self.put_for_lease(
                 partition,
                 key,
                 admitted_replacement,
@@ -762,27 +770,43 @@ class ProcessCache:
             )
 
 
-_PROCESS_CACHE: ProcessCache | None = None
+_process_cache: ProcessCache | None = None
 _PROCESS_CACHE_LOCK = RLock()
+
+
+@contextmanager
+def temporary_process_cache(
+    cache: ProcessCache | None,
+) -> Generator[ProcessCache | None]:
+    """Temporarily install one cache and restore the previous process cache."""
+    global _process_cache
+    with _PROCESS_CACHE_LOCK:
+        prior = _process_cache
+        _process_cache = cache
+    try:
+        yield cache
+    finally:
+        with _PROCESS_CACHE_LOCK:
+            _process_cache = prior
 
 
 def get_process_cache() -> ProcessCache:
     """Return the lazily constructed bounded process cache."""
-    global _PROCESS_CACHE
+    global _process_cache
     with _PROCESS_CACHE_LOCK:
-        if _PROCESS_CACHE is None:
-            _PROCESS_CACHE = ProcessCache()
-        return _PROCESS_CACHE
+        if _process_cache is None:
+            _process_cache = ProcessCache()
+        return _process_cache
 
 
 def process_cache_stats() -> CacheStats | None:
     """Read aggregate retention without creating a cache or acquiring a lease."""
     with _PROCESS_CACHE_LOCK:
-        return None if _PROCESS_CACHE is None else _PROCESS_CACHE.stats()
+        return None if _process_cache is None else _process_cache.stats()
 
 
 def clear_process_cache() -> None:
     """Clear the global cache if it has been used, without constructing it."""
     with _PROCESS_CACHE_LOCK:
-        if _PROCESS_CACHE is not None:
-            _PROCESS_CACHE.reset()
+        if _process_cache is not None:
+            _process_cache.reset()

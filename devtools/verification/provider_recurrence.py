@@ -41,18 +41,16 @@ def _frame_composed_state(
     )
 
 
-def _run_provider_tasks(
+def run_provider_tasks(
     self: SpacetimeRuntimeMixin, root: tuple[object, ...]
 ) -> BoundaryState:
-    from devtools.verification.block_spacetime_runtime import _is_composed_runtime
+    from devtools.verification.block_spacetime_runtime import is_composed_runtime
 
     """Evaluate symbolic provider leaves through one nonrecursive task stack."""
     sentinel = object()
-    cached_root = self._provider_task_cache.get(root, sentinel)
+    cached_root = self.provider_task_lookup(root, sentinel)
     if cached_root is not sentinel:
-        self._provider_task_hits += 1
         return cached_root
-    self._provider_task_misses += 1
     tasks: list[tuple[object, ...]] = [root]
     results: list[BoundaryState] = []
     while tasks:
@@ -63,7 +61,7 @@ def _run_provider_tasks(
             side = cast(BoundarySide, frame[2])
             state = frame[3]
             _effect, tile, layers = _frame_effect_tile_layers(frame)
-            if _is_composed_runtime(effect) and effect._recursive_enabled[int(side)]:
+            if is_composed_runtime(effect) and effect.recursive_side_enabled(side):
                 if not isinstance(state, _RecursiveBoundaryState):
                     raise AssertionError(type(state))
                 tasks.append(("ADV_COMPOSED", effect, side, state, tile, layers))
@@ -100,22 +98,22 @@ def _run_provider_tasks(
             effect, side, state = _frame_composed_state(frame)
             tile = cast(DyadicTile, frame[4])
             layers = cast(tuple[_ProviderLayer, ...], frame[5])
-            residual = effect._intern_recursive_residual(
+            residual = effect.intern_recursive_residual(
                 side,
                 state.residual,
                 tile,
                 anchor,
                 layers=layers,
             )
-            results.append(effect._intern_recursive_state(side, anchor, residual))
+            results.append(effect.intern_recursive_state(side, anchor, residual))
             continue
         if tag == "EMIT":
             effect = cast(BlockEffect, frame[1])
             left, right = frame[2], frame[3]
             _effect, tile, layers = _frame_effect_tile_layers(frame)
-            if _is_composed_runtime(effect):
-                left_anchor = effect._state_anchor(BoundarySide.LEFT, left)
-                right_anchor = effect._state_anchor(BoundarySide.RIGHT, right)
+            if is_composed_runtime(effect):
+                left_anchor = effect.state_anchor(BoundarySide.LEFT, left)
+                right_anchor = effect.state_anchor(BoundarySide.RIGHT, right)
                 tasks.append(
                     (
                         "EMIT_COMPOSED",
@@ -229,25 +227,23 @@ def _run_provider_tasks(
             effect = cast("ComposedBlockEffect", frame[1])
             side = cast(BoundarySide, frame[2])
             state = frame[3]
-            argument = effect._canonical_child_state(
+            argument = effect.canonical_child_state(
                 effect.first,
                 BoundarySide.RIGHT if side is BoundarySide.LEFT else BoundarySide.LEFT,
                 frame[4],
             )
             if not isinstance(state, _RecursiveBoundaryState):
                 results.append(
-                    effect._residual_value_for_argument(side, state, argument)
+                    effect.residual_value_for_argument(side, state, argument)
                 )
                 continue
             key = (state.residual, _cache_state_key(argument))
-            cached = effect._recursive_value_cache.get(key)
+            cached = effect.recursive_value_lookup(key)
             if cached is not None:
-                effect._recursive_value_cache_hits += 1
                 results.append(cached)
             elif state.previous is None:
                 value = effect.second.initial(side)
-                effect._memo_store(effect._recursive_value_cache, key, value)
-                effect._recursive_value_cache_misses += 1
+                effect.publish_recursive_value(key, value)
                 results.append(value)
             else:
                 if state.tile is None:
@@ -270,7 +266,7 @@ def _run_provider_tasks(
                         )
                     )
                 else:
-                    argument_before = effect._advance_effect_tile_macro(
+                    argument_before = effect.advance_effect_tile_macro(
                         effect.first,
                         opposite,
                         argument,
@@ -312,9 +308,8 @@ def _run_provider_tasks(
             value = results[-1]
             effect = cast("ComposedBlockEffect", frame[1])
             store_key = cast(tuple[object, object], frame[2])
-            if store_key not in effect._recursive_value_cache:
-                effect._memo_store(effect._recursive_value_cache, store_key, value)
-                effect._recursive_value_cache_misses += 1
+            if not effect.has_recursive_value(store_key):
+                effect.publish_recursive_value(store_key, value)
             continue
         if tag == "SECOND":
             effect, side, _state = _frame_composed_state(frame)
@@ -339,14 +334,14 @@ def _run_provider_tasks(
             left, right = (
                 (tile.right, tile.left) if reverse else (tile.left, tile.right)
             )
-            middle_anchor = effect._advance_effect_tile_macro(
+            middle_anchor = effect.advance_effect_tile_macro(
                 effect.first,
                 side,
                 anchor,
                 left,
                 reverse=reverse,
             )
-            middle_argument = effect._advance_effect_tile_macro(
+            middle_argument = effect.advance_effect_tile_macro(
                 effect.first,
                 opposite,
                 argument,
@@ -398,5 +393,5 @@ def _run_provider_tasks(
     if len(results) != 1:
         raise AssertionError((root[0], len(results)))
     result = results[0]
-    self._memo_store(self._provider_task_cache, root, result)
+    self.publish_provider_task(root, result)
     return result

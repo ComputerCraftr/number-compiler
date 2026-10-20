@@ -7,7 +7,7 @@ family that supplies or observes the tape.
 
 from __future__ import annotations
 
-from collections.abc import Callable, MutableMapping, MutableSequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TypeVar, cast
 
@@ -15,6 +15,7 @@ from number_compiler.arithmetic.contracts.block_effect import BlockContextBudget
 from number_compiler.arithmetic.fields.morphism_core import canonical_uniform_power
 from number_compiler.arithmetic.functions.word_concatenation import concatenate_words
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import LedgerDict, LedgerList
 
 T = TypeVar("T")
 
@@ -82,6 +83,21 @@ class OrderedBooleanSupport:
         return values[self.node_id]
 
 
+@dataclass(frozen=True, slots=True)
+class OrderedBooleanSupportAuditSnapshot:
+    storage_ledger: ResourceLedger
+    node_owner: int
+    join_owner: int
+    concat_owner: int
+    node_store_identity: int
+    join_store_identity: int
+    concat_store_identity: int
+    nodes: Sequence[OrderedBooleanSupport]
+    joins: Mapping[tuple[int, int], OrderedBooleanSupport]
+    concats: Mapping[tuple[int, int], OrderedBooleanSupport]
+    node_type: type[OrderedBooleanSupport]
+
+
 class OrderedBooleanSupportArena:
     """Hash-consed, budgeted constructors for ordered Boolean words."""
 
@@ -103,13 +119,13 @@ class OrderedBooleanSupportArena:
         self._concat_owner = self._store_ledger.register(
             prefix + "-normalization", "ordered_boolean_support_composition"
         )
-        self._nodes: MutableSequence[OrderedBooleanSupport] = (
-            self._store_ledger.make_list(self._node_owner)
+        self._nodes: LedgerList[OrderedBooleanSupport] = self._store_ledger.make_list(
+            self._node_owner
         )
-        self._joins: MutableMapping[tuple[int, int], OrderedBooleanSupport] = (
+        self._joins: LedgerDict[tuple[int, int], OrderedBooleanSupport] = (
             self._store_ledger.make_dict(self._join_owner)
         )
-        self._concats: MutableMapping[tuple[int, int], OrderedBooleanSupport] = (
+        self._concats: LedgerDict[tuple[int, int], OrderedBooleanSupport] = (
             self._store_ledger.make_dict(self._concat_owner)
         )
         self._store_ledger.register_execution_root(self)
@@ -118,6 +134,22 @@ class OrderedBooleanSupportArena:
         self.true = self._new(1, 1, True)
         self.compositions = 0
         self.intern_hits = 0
+
+    def audit_snapshot(self) -> OrderedBooleanSupportAuditSnapshot:
+        """Expose immutable retained stores to independent support auditors."""
+        return OrderedBooleanSupportAuditSnapshot(
+            self._store_ledger,
+            self._node_owner,
+            self._join_owner,
+            self._concat_owner,
+            id(self._nodes),
+            id(self._joins),
+            id(self._concats),
+            self._nodes.audit_view(),
+            self._joins.audit_view(),
+            self._concats.audit_view(),
+            self._support_node_type,
+        )
 
     def _new(
         self,

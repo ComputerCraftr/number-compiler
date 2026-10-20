@@ -33,7 +33,7 @@ def free_collatz_variables(
 def carry_seed_rows(
     pair: tuple[int, ...], count: int, base: int = 10
 ) -> tuple[tuple[int, ...], list[tuple[int, ...]]]:
-    rows = []
+    rows: list[tuple[int, ...]] = []
     for _ in range(count):
         rows.append(carry_field(pair, base=base))
         pair, _ = pair_step(pair, base)

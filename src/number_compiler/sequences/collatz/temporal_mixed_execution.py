@@ -331,7 +331,7 @@ def consume_initial_mixed_route(
         zero_symbols=0,
         run_actions=0,
     )
-    return (None if progress is None else progress.executor_state()), table
+    return progress.executor_state(), table
 
 
 def _consume_cached_root_dyadic_action(

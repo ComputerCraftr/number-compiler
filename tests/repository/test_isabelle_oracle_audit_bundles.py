@@ -1,6 +1,7 @@
 """Delegated proof audits must execute exact theorem collections downstream."""
 
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -67,10 +68,10 @@ def test_executed_bundle_is_expanded_and_delegated_owner_is_reported(
     theory_rows = result["theories"]
     assert isinstance(theory_rows, list)
     theories: dict[str, dict[str, object]] = {}
-    for item in theory_rows:
+    for item in cast(list[object], theory_rows):
         assert isinstance(item, dict)
         row: dict[str, object] = {}
-        for key, value in item.items():
+        for key, value in cast(dict[object, object], item).items():
             assert isinstance(key, str)
             row[key] = value
         theory_name = row["theory"]

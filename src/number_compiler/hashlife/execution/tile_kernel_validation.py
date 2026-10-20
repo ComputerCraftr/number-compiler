@@ -168,7 +168,7 @@ def admitted_action_record(
     if type(admission) is not CausalActionAdmission:
         raise TypeError("causal metadata read requires its admitted-run lease")
     expected = admission.admitted_snapshot_for(self, action)
-    record = _checked_action_record(self, action)
+    record = self.checked_action_record(action)
     if not action_admission_matches(
         expected, action_admission_snapshot(action, record)
     ):
@@ -176,27 +176,11 @@ def admitted_action_record(
     return record
 
 
-def _checked_action_record(
-    self: PrimitiveTileKernelAdapter, action: FieldCellActionID
-) -> PrimitiveTileAction:
-    """Resolve one structurally valid published action row."""
-    if type(action) is not FieldCellActionID:
-        raise TypeError("primitive tile execution requires a field action ID")
-    action.validate(self.owner, "field-cell-action", size=self._next_action)
-    try:
-        record = self._actions[action.local_id]
-    except KeyError:
-        raise ValueError("stale or unpublished primitive tile action") from None
-    if type(record) is not PrimitiveTileAction:
-        raise TypeError("primitive action store contains another record sort")
-    return record
-
-
 def validate_action_record(
     self: PrimitiveTileKernelAdapter, action: FieldCellActionID
 ) -> tuple[PrimitiveTileAction, PrimitiveKernel]:
     """Authenticate retained action structure without rebuilding deep semantics."""
-    record = _checked_action_record(self, action)
+    record = self.checked_action_record(action)
     kernel = self.kernels.kernel(record.kernel)
     self.quotients.interface(record.signature)
     if type(record.repetitions) is not int or record.repetitions < 1:
@@ -239,8 +223,8 @@ def validate_action_record(
         if (
             record.repetitions != 1
             or not record.homogeneous
-            or self._action_keys.get(semantic_key) != action.local_id
-            or record.spatial_events_add != self._spatial_events_add(kernel.effect)
+            or not self.action_key_matches(semantic_key, action.local_id)
+            or record.spatial_events_add != self.spatial_events_add(kernel.effect)
             or blank_metadata
             != (
                 kernel.effect.blank_left_tail,
@@ -260,13 +244,13 @@ def validate_action_record(
     for child in (before, after):
         if type(child) is not FieldCellActionID:
             raise TypeError("tile action child has another scoped sort")
-        child.validate(self.owner, "field-cell-action", size=self._next_action)
+        child.validate(self.owner, "field-cell-action", size=self.next_action_identity)
         if child.local_id >= action.local_id:
             raise ValueError("tile action children must precede their parent")
-        if child.local_id not in self._actions:
+        if not self.action_is_published(child.local_id):
             raise ValueError("tile action contains a stale child")
-    first = self._actions[before.local_id]
-    second = self._actions[after.local_id]
+    first = self.checked_action_record(before)
+    second = self.checked_action_record(after)
     homogeneous = (
         first.homogeneous
         and second.homogeneous

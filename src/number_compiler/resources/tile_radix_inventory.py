@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
-from number_compiler.hashlife.execution.tile_scheduler import (
-    TileApplication,
-    TileScheduler,
+from number_compiler.arithmetic.radix_division import (
+    certified_binary_division_radix,
 )
+from number_compiler.hashlife.actions.tile_action_algebra import PrimitiveTileAction
+from number_compiler.hashlife.execution.tile_application import TileApplication
+from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
+from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.tiles.tiles import TileLease
@@ -16,16 +18,36 @@ from number_compiler.projection.tile_radix import (
     MAX_TILE_RADIX,
     TileRadixObservation,
     TileRadixProjection,
-    _valid_division_effect,
 )
 
 
+def _valid_binary_division(
+    adapter: PrimitiveTileKernelAdapter,
+    record: PrimitiveTileAction,
+    radix: object,
+) -> bool:
+    effect = adapter.kernels.kernel(record.kernel).effect
+    return (
+        type(radix) is int
+        and certified_binary_division_radix(effect) == radix
+        and record.cocycle == TemporalCocycle()
+        and record.spatial_events_add is False
+    )
+
+
 def _valid_lease(lease: object, projection: TileRadixProjection) -> bool:
-    if type(lease) is not TileLease or lease._arena is not projection.scheduler.tiles:
+    if type(lease) is not TileLease:
         return False
-    if type(lease._closed) is not bool or lease._closed is not projection._closed:
+    lease_snapshot = lease.audit_snapshot()
+    projection_snapshot = projection.audit_snapshot()
+    if lease_snapshot.arena is not projection.scheduler.tiles:
         return False
-    if projection._closed:
+    if (
+        type(lease_snapshot.closed) is not bool
+        or lease_snapshot.closed is not projection_snapshot.closed
+    ):
+        return False
+    if projection_snapshot.closed:
         return True
     try:
         projection.scheduler.tiles.resolve(lease.tile)
@@ -46,6 +68,7 @@ def audit_tile_radix_runtime(
     invalid: set[tuple[int, int]] = set()
     for root in roots:
         if type(root) is TileRadixObservation:
+            snapshot = root.audit_snapshot()
             valid = (
                 type(root.projection) is LazyProjection
                 and root.projection.scheduler is root.scheduler
@@ -54,21 +77,21 @@ def audit_tile_radix_runtime(
                 and type(root.adapter) is PrimitiveTileKernelAdapter
                 and root.scheduler.adapter is root.adapter
                 and 2 <= root.radix <= MAX_TILE_RADIX
-                and containers.get(root._owner) is root._apps
-                and type(root._closed) is bool
-                and (not root._closed or not root._apps)
+                and (container := containers.get(snapshot.owner)) is not None
+                and id(container) == snapshot.app_store_identity
+                and type(snapshot.closed) is bool
+                and (not snapshot.closed or not snapshot.apps)
             )
             try:
-                effect = root.adapter.kernels.kernel(
-                    root.adapter._action(root.division).kernel,
-                ).effect
-                division_record = root.adapter._action(root.division)
-                valid &= _valid_division_effect(effect, root.radix)
-                valid &= (
-                    division_record.cocycle == TemporalCocycle()
-                    and division_record.spatial_events_add is False
+                division_record = root.adapter.action_record(root.division)
+                valid &= _valid_binary_division(
+                    root.adapter, division_record, root.radix
                 )
-                source = None if root._closed else root.projection._open().source
+                source = (
+                    None
+                    if snapshot.closed
+                    else root.projection.validated_application().source
+                )
                 valid &= all(
                     type(index) is int
                     and index >= 0
@@ -76,38 +99,43 @@ def audit_tile_radix_runtime(
                     and application in applications
                     and application.scheduler is root.scheduler
                     and application.source == source
-                    and application._closed is False
-                    for index, application in root._apps.items()
+                    and application.audit_snapshot().closed is False
+                    for index, application in snapshot.apps.items()
                 )
             except (TypeError, ValueError, KeyError, AttributeError, IndexError):
                 valid = False
             if valid:
-                approved.update((id(root), id(root._apps)))
+                approved.update((id(root), snapshot.app_store_identity))
             else:
-                invalid.add((root._owner, id(root)))
+                invalid.add((snapshot.owner, id(root)))
         if type(root) is TileRadixProjection:
+            projection_snapshot = root.audit_snapshot()
             valid = (
                 root.ledger is ledger
                 and root.scheduler in schedulers
                 and type(root.adapter) is PrimitiveTileKernelAdapter
                 and root.scheduler.adapter is root.adapter
                 and 2 <= root.radix <= MAX_TILE_RADIX
-                and containers.get(root._stage_owner) is root._stages
-                and type(root._closed) is bool
-                and _valid_lease(root._source, root)
+                and (container := containers.get(projection_snapshot.stage_owner))
+                is not None
+                and id(container) == projection_snapshot.stage_store_identity
+                and type(projection_snapshot.closed) is bool
+                and _valid_lease(projection_snapshot.source, root)
             )
             try:
-                primitive = root.adapter._action(root.action)
-                effect = root.adapter.kernels.kernel(primitive.kernel).effect
-                valid &= _valid_division_effect(effect, root.radix)
-                valid &= (
-                    primitive.cocycle == TemporalCocycle()
-                    and primitive.spatial_events_add is False
+                primitive = root.adapter.action_record(root.action)
+                valid &= _valid_binary_division(root.adapter, primitive, root.radix)
+                expected_source = (
+                    None
+                    if projection_snapshot.closed
+                    else projection_snapshot.source.tile
                 )
-                expected_source = None if root._closed else root._source.tile
-                valid &= not root._closed or not root._stages
-                for exponent, stage in root._stages.items():
-                    record = root.adapter._action(stage.action)
+                valid &= (
+                    not projection_snapshot.closed or not projection_snapshot.stages
+                )
+                for exponent, stage in projection_snapshot.stages.items():
+                    record = root.adapter.action_record(stage.action)
+                    stage_snapshot = stage.audit_snapshot()
                     direct = (
                         stage.source == expected_source
                         and record.repetitions == exponent
@@ -117,17 +145,17 @@ def audit_tile_radix_runtime(
                         and exponent >= 1
                         and type(stage) is TileApplication
                         and stage.scheduler is root.scheduler
-                        and stage._root is not None
-                        and stage._closed is False
+                        and stage_snapshot.root_lease is not None
+                        and stage_snapshot.closed is False
                         and record.kernel == primitive.kernel
                         and direct
                     )
             except (TypeError, ValueError, KeyError, AttributeError, IndexError):
                 valid = False
             if valid:
-                approved.update((id(root), id(root._stages)))
+                approved.update((id(root), projection_snapshot.stage_store_identity))
             else:
-                invalid.add((root._stage_owner, id(root)))
+                invalid.add((projection_snapshot.stage_owner, id(root)))
     return approved, invalid
 
 

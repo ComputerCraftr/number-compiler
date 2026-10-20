@@ -47,9 +47,9 @@ def merge_five_source_bands(
     *band_sets: tuple[FiveBand, ...],
 ) -> tuple[FiveBand, ...]:
     """Union authenticated base-6 bands while preserving all intervals."""
-    from number_compiler.sequences.collatz.guarded_radix6_bridge import _merge_bands
+    from number_compiler.sequences.collatz.guarded_radix6_bridge import merge_bands
 
-    return _merge_bands(tuple(band for bands in band_sets for band in bands))
+    return merge_bands(tuple(band for bands in band_sets for band in bands))
 
 
 __all__ = [

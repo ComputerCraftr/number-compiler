@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
+from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
+from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.source_cylinder_cache import (
-        _CanonicalGain,
+        CanonicalGain,
     )
 
 
-def _canonical_gain(odd_symbols: int) -> int:
+def canonical_gain(odd_symbols: int) -> int:
     """Return the exact gain for one admitted odd-symbol count."""
     if type(odd_symbols) is not int or odd_symbols < 0:
         raise ValueError("Collatz odd-symbol count must be a natural integer")
@@ -25,13 +29,68 @@ def _low_residue(value: int, width: int) -> int:
     return value & ((1 << width) - 1)
 
 
-def _admit_source_key(source: int, width: int) -> tuple[int, int]:
+def admit_source_key(source: int, width: int) -> tuple[int, int]:
     """Validate one source germ and return its residue and actual key size."""
     if type(source) is not int or source <= 0:
         raise ValueError("Collatz macro source must be positive")
     if type(width) is not int or width < 8 or width & (width - 1):
         raise ValueError("Collatz macro width must be dyadic and at least eight")
     return _low_residue(source, width), source.bit_length() + width.bit_length()
+
+
+def validate_width_summary(
+    summary: CollatzTapeWidthSummary, source: int, width: int
+) -> None:
+    """Validate a width summary against its exact Collatz source cylinder."""
+    if type(summary) is not CollatzTapeWidthSummary:
+        raise ValueError("Collatz exact width spine is malformed or detached")
+    if type(summary.blank) is not BlankLedger:
+        raise ValueError("Collatz exact width spine has a foreign blank ledger")
+    # Frozen dataclasses can still be tampered with through object.__setattr__.
+    # Re-run canonical validation before trusting any cached field.
+    summary.blank.__post_init__()
+    summary.__post_init__()
+    if (
+        summary.source_width != source.bit_length()
+        or summary.normalized_symbols != width
+        or summary.physical_ticks != width + summary.odd_steps
+        or summary.odd_steps > width
+        or summary.target_width <= 0
+        or summary.blank.delta != summary.target_width - summary.source_width
+    ):
+        raise ValueError("Collatz exact width spine is malformed or detached")
+
+
+def decode_width_summary(
+    payload: object, source: int, width: int
+) -> tuple[CollatzTapeWidthSummary, int]:
+    """Decode, validate, and measure one shared width-spine payload."""
+    if not is_exact_object_tuple(payload):
+        raise ValueError("Collatz shared width spine payload is invalid")
+    values = payload
+    if len(values) != 8 or any(type(value) is not int for value in values):
+        raise ValueError("Collatz shared width spine payload is invalid")
+    integer_values = cast(tuple[int, int, int, int, int, int, int, int], values)
+    (
+        source_width,
+        target_width,
+        physical,
+        normalized,
+        odd,
+        delta,
+        minimum,
+        maximum,
+    ) = integer_values
+    summary = CollatzTapeWidthSummary(
+        source_width,
+        target_width,
+        physical,
+        normalized,
+        odd,
+        BlankLedger(delta, minimum, maximum),
+    )
+    validate_width_summary(summary, source, width)
+    return summary, sum(value.bit_length() for value in integer_values)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,10 +102,10 @@ class CollatzDyadicOccurrence:
     multiplier: int
 
     def __post_init__(self) -> None:
-        self._validate(None)
-        self._validate(_canonical_gain(self.odd_symbols))
+        self.validate(None)
+        self.validate(canonical_gain(self.odd_symbols))
 
-    def _validate(self, canonical_gain: int | None) -> None:
+    def validate(self, canonical_gain: int | None) -> None:
         if any(
             type(value) is not int
             for value in (
@@ -71,17 +130,21 @@ class CollatzDyadicOccurrence:
         if canonical_gain is not None and self.multiplier != canonical_gain:
             raise ValueError("Collatz occurrence centered coefficients are invalid")
 
+    def validate_canonical_gain(self, canonical_gain: int | None = None) -> None:
+        """Recheck the admitted occurrence fields against an optional gain."""
+        self.validate(canonical_gain)
+
     @classmethod
-    def _from_gain(
+    def from_canonical_gain(
         cls,
         width: int,
         residue: int,
         odd_symbols: int,
         target_origin: int,
-        gain: _CanonicalGain,
+        gain: CanonicalGain,
     ) -> CollatzDyadicOccurrence:
         from number_compiler.sequences.collatz.source_cylinder_cache import (
-            _CanonicalGain as CanonicalGain,
+            CanonicalGain as CanonicalGain,
         )
 
         if (
@@ -98,7 +161,7 @@ class CollatzDyadicOccurrence:
         object.__setattr__(occurrence, "odd_symbols", odd_symbols)
         object.__setattr__(occurrence, "target_origin", target_origin)
         object.__setattr__(occurrence, "multiplier", gain.multiplier)
-        occurrence._validate(gain.multiplier)
+        occurrence.validate(gain.multiplier)
         return occurrence
 
     def apply(self, source: int) -> int:
@@ -109,4 +172,10 @@ class CollatzDyadicOccurrence:
         return self.target_origin + self.multiplier * (source >> self.width)
 
 
-__all__ = ["CollatzDyadicOccurrence"]
+__all__ = [
+    "CollatzDyadicOccurrence",
+    "admit_source_key",
+    "canonical_gain",
+    "decode_width_summary",
+    "validate_width_summary",
+]

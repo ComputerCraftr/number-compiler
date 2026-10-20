@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import cast
+
 import pytest
 
 from number_compiler.sequences.power_numbers.certificate import (
@@ -127,7 +130,7 @@ def test_production_certificate_keeps_missing_terminal_extractor_unresolved() ->
 def test_classical_ceiling_uses_shared_native_square_action(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from devtools.verification.oracles.classical_ceiling import (
+    from devtools.verification.oracles.special_classical_ceiling import (
         fermat_classical_ceiling,
         mersenne_classical_ceiling,
     )
@@ -162,24 +165,25 @@ def test_sqrt_decision_thresholds_really_put_every_passing_divisor_above_sqrt_ca
 ):
     for n in range(2, 10):
         spec = fermat_terminal_threshold_spec(n)
-        N = (1 << (1 << n)) + 1
+        candidate = (1 << (1 << n)) + 1
         lower = 1 + (1 << spec.prime_decision_required_local_v2)
-        assert lower * lower > N
+        assert lower * lower > candidate
 
-    from number_compiler.sequences.power_numbers.terminal_threshold import (
-        _mersenne_branch_lower_bound,
+    from number_compiler.sequences.power_numbers import terminal_threshold as threshold
+
+    lower_bound = cast(
+        Callable[[int, int], int],
+        object.__getattribute__(threshold, "_mersenne_branch_lower_bound"),
     )
 
     for p in (3, 5, 7, 11, 13, 17, 19, 31, 61, 127):
         spec = mersenne_terminal_threshold_spec(p)
-        N = (1 << p) - 1
-        lower = _mersenne_branch_lower_bound(p, spec.prime_decision_required_local_v2)
-        assert lower * lower > N
+        candidate = (1 << p) - 1
+        lower = lower_bound(p, spec.prime_decision_required_local_v2)
+        assert lower * lower > candidate
         if spec.prime_decision_level > 0:
-            previous = _mersenne_branch_lower_bound(
-                p, spec.prime_decision_required_local_v2 - 1
-            )
-            assert previous * previous <= N
+            previous = lower_bound(p, spec.prime_decision_required_local_v2 - 1)
+            assert previous * previous <= candidate
 
 
 def test_mersenne_threshold_does_not_construct_full_candidate(
@@ -188,8 +192,11 @@ def test_mersenne_threshold_does_not_construct_full_candidate(
     # Regression guard: threshold search compares against 2**p symbolically.
     import number_compiler.sequences.power_numbers.terminal_threshold as threshold
 
-    original = threshold._mersenne_branch_lower_bound
-    calls = []
+    original = cast(
+        Callable[[int, int], int],
+        object.__getattribute__(threshold, "_mersenne_branch_lower_bound"),
+    )
+    calls: list[tuple[int, int]] = []
 
     def tracked(p: int, v: int) -> int:
         calls.append((p, v))

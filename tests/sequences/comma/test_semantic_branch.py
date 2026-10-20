@@ -396,24 +396,28 @@ def test_comma_term_rejects_child_cid_mismatch_before_boundary_return(
         charge_work,
     )
     with CommaTerm(1) as term:
-        template = term.arena._boundary_template(source.state)
+        template = term.arena.boundary_template(source.state)
         prefix_steps = template.weight.evaluate(
             source.exponent,
             charge_bits=term.arena.charge_bits,
         )
-        term.index = term._current_index + prefix_steps + 1
-        term._boundary_occurrence = source
-        term._boundary_occurrence_owner = cast(CommaOccurrenceID, term._source)
-        monkeypatch.setattr(term, "_require_global_future_provider", lambda: provider)
+        term.index = term.index + prefix_steps + 1
+        source_occurrence = cast(
+            CommaOccurrenceID,
+            object.__getattribute__(term, "_source"),
+        )
+        object.__setattr__(term, "_boundary_occurrence", source)
+        object.__setattr__(term, "_boundary_occurrence_owner", source_occurrence)
+        monkeypatch.setattr(term, "require_global_future_provider", lambda: provider)
 
         def reject_boundary_publication(*_args: object, **_kwargs: object) -> None:
             pytest.fail("mismatched child CIDs reached the boundary-return publisher")
 
         monkeypatch.setattr(
-            term.arena, "_global_boundary_return", reject_boundary_publication
+            term.arena, "global_boundary_return", reject_boundary_publication
         )
         with pytest.raises(ValueError, match="child slots differ"):
-            term._resolve()
+            term.resolve_index()
 
 
 def test_semantic_branch_rejects_total_fake_selection_sentinel(

@@ -83,7 +83,7 @@ def test_low_residue_match_is_not_exact_cycle_membership(
 def test_reached_cycle_does_not_discover_a_million_branches() -> None:
     term = PoweredCollatzTerm(27, 1000000)
     assert term.materialize(max_bits=3) == 4
-    workspace = term._workspace
+    workspace = term.audit_snapshot().workspace
     assert workspace is not None
     assert (
         sum(node.width for node in workspace.support if node.branch_word is not None)

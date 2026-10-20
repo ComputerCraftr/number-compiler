@@ -12,10 +12,40 @@ from number_compiler.sequences.antihydra.mahler_joint_future import (
 
 if TYPE_CHECKING:
     from number_compiler.sequences.antihydra.mahler_center_depth_matrix import (
+        MahlerCenterBooleanMatrix,
         MahlerCertifiedCenterDepthTransfer,
+    )
+    from number_compiler.sequences.antihydra.mahler_low_border_carry import (
+        MahlerLowBorderCarryCertificate,
+    )
+    from number_compiler.sequences.antihydra.mahler_port_puncture import (
+        MahlerCenterPortPuncture,
     )
 
 MAX_CENTER_TICKS = 32
+
+
+@dataclass(frozen=True, slots=True)
+class MahlerComposedCenterTransferFields:
+    """Validated field values for a joined source-certified transfer."""
+
+    matrix: MahlerCenterBooleanMatrix
+    safety_matrix: MahlerCenterBooleanMatrix
+    steps: int
+    pointed_sources: tuple[int, ...]
+    pointed_centers: tuple[int, ...]
+    center_positions: tuple[int, ...]
+    radix99: tuple[int, ...]
+    radix198: tuple[int, ...]
+    rejected_source_paths: int
+    width_births: tuple[int, ...]
+    conditional_composition: MahlerCenterBooleanMatrix
+    initial_ledger: int | None
+    low_border_carries: tuple[MahlerLowBorderCarryCertificate | None, ...]
+    source_port_punctures: tuple[tuple[MahlerCenterPortPuncture, ...], ...]
+    source_fiber_edges: tuple[MahlerCenterFiberEdge, ...]
+    composition_joins: int
+    equal_span_joins: int
 
 
 def allocate_transfer_fields(
@@ -102,19 +132,20 @@ class MahlerCenterFiberEdge:
 def compose_transfers(
     first: MahlerCertifiedCenterDepthTransfer,
     second: MahlerCertifiedCenterDepthTransfer,
-) -> MahlerCertifiedCenterDepthTransfer:
+) -> MahlerComposedCenterTransferFields:
     """Compose cached full-source actions; never reissue spatial cones."""
     from number_compiler.sequences.antihydra.mahler_center_depth_matrix import (
         MahlerCenterBooleanMatrix,
-    )
-    from number_compiler.sequences.antihydra.mahler_center_depth_matrix import (
-        MahlerCertifiedCenterDepthTransfer as Transfer,
+        MahlerCertifiedCenterDepthTransfer,
     )
 
-    if type(first) is not Transfer or type(second) is not Transfer:
+    if (
+        type(first) is not MahlerCertifiedCenterDepthTransfer
+        or type(second) is not MahlerCertifiedCenterDepthTransfer
+    ):
         raise TypeError("center trace needs another source-certified relation")
-    first._require_issued()
-    second._require_issued()
+    first.require_issued()
+    second.require_issued()
     if first.pointed_sources[-1] != second.pointed_sources[0]:
         raise ValueError("Mahler center traces have nonadjacent full source roots")
     if first.center_positions[-1] != second.center_positions[0]:
@@ -166,7 +197,7 @@ def compose_transfers(
     if not ((arithmetic[first_center] >> last_center) & 1):
         raise ArithmeticError("power lost actual pointed integer-source trajectory")
 
-    return Transfer._issue(
+    return MahlerComposedCenterTransferFields(
         matrix=MahlerCenterBooleanMatrix(tuple(arithmetic)),
         safety_matrix=MahlerCenterBooleanMatrix(tuple(safety)),
         steps=first.steps + second.steps,
@@ -270,7 +301,7 @@ def powered_from_source(
             leaf_futures = []
             leaf_balance = current_balance
     while len(layers) > 1:
-        next_layer = []
+        next_layer: list[MahlerCertifiedCenterDepthTransfer] = []
         for index in range(0, len(layers), 2):
             if index + 1 == len(layers):
                 next_layer.append(layers[index])
@@ -287,6 +318,7 @@ def powered_from_source(
 
 __all__ = [
     "MahlerCenterFiberEdge",
+    "MahlerComposedCenterTransferFields",
     "allocate_transfer_fields",
     "compose_transfers",
     "powered_from_source",

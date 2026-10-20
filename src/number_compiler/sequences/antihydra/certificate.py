@@ -10,9 +10,13 @@ from __future__ import annotations
 import json
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
-from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_dictionary,
+    is_object_list_instance,
+    require_integer,
+)
 from number_compiler.sequences.antihydra.machine import MACHINE_SHA256
 
 Row = tuple[Fraction, Fraction, Fraction]
@@ -39,14 +43,14 @@ def rational(value: object) -> Fraction:
 
 
 def row(value: object) -> Row:
-    if not isinstance(value, list) or len(value) != 3:
+    if not is_object_list_instance(value) or len(value) != 3:
         raise ValueError("chart inequality must have three coefficients")
     return rational(value[0]), rational(value[1]), rational(value[2])
 
 
 def check_implication(premises: list[Row], target: Row, weights: object) -> None:
     """Farkas sufficient witness: target is a nonnegative combination."""
-    if not isinstance(weights, list) or len(weights) != len(premises):
+    if not is_object_list_instance(weights) or len(weights) != len(premises):
         raise ValueError("missing inequality implication witness")
     factors = [rational(w) for w in weights]
     if any(w < 0 for w in factors):
@@ -60,26 +64,31 @@ def check_implication(premises: list[Row], target: Row, weights: object) -> None
 
 
 def verify(data: object) -> dict[str, object]:
-    if not isinstance(data, dict) or data.get("schema") != CERTIFICATE_SCHEMA:
+    certificate = data
+    if (
+        not is_object_dictionary(certificate)
+        or certificate.get("schema") != CERTIFICATE_SCHEMA
+    ):
         raise ValueError("unsupported non-halting certificate schema")
-    if data.get("machine_sha256") != MACHINE_SHA256 or data.get("source") != "blank":
+    if (
+        certificate.get("machine_sha256") != MACHINE_SHA256
+        or certificate.get("source") != "blank"
+    ):
         raise ValueError("certificate is not bound to the pinned blank-tape machine")
-    bits = require_integer(data.get("bits"), "chart precision", 1, 16)
-    charts = data.get("charts")
-    if not isinstance(charts, list) or not 1 <= len(charts) <= 256:
+    bits = require_integer(certificate.get("bits"), "chart precision", 1, 16)
+    charts = certificate.get("charts")
+    if not is_object_list_instance(charts) or not 1 <= len(charts) <= 256:
         raise ValueError("certificate requires 1..256 charts")
     modulus = 1 << bits
     constraints: list[list[Row]] = []
     residues: list[int] = []
-    for chart in charts:
-        match chart:
-            case dict():
-                pass
-            case _:
-                raise ValueError("invalid chart")
+    for chart_value in charts:
+        chart = chart_value
+        if not is_object_dictionary(chart):
+            raise ValueError("invalid chart")
         residue = require_integer(chart.get("residue"), "chart residue", 0, modulus - 1)
         inequalities = chart.get("inequalities")
-        if not isinstance(inequalities, list) or len(inequalities) > 16:
+        if not is_object_list_instance(inequalities) or len(inequalities) > 16:
             raise ValueError("at most sixteen affine inequalities per chart")
         residues.append(residue)
         constraints.append(
@@ -91,7 +100,9 @@ def verify(data: object) -> dict[str, object]:
             ]
             + [row(v) for v in inequalities]
         )
-    initial = require_integer(data.get("initial"), "initial chart", 0, len(charts) - 1)
+    initial = require_integer(
+        certificate.get("initial"), "initial chart", 0, len(charts) - 1
+    )
     if 8 % modulus != residues[initial]:
         raise ValueError("initial chart has the wrong source residue")
     if any(
@@ -99,16 +110,17 @@ def verify(data: object) -> dict[str, object]:
     ):
         raise ValueError("initial source is outside the proposed invariant")
     checks = 0
-    for index, chart in enumerate(charts):
+    for index, chart_value in enumerate(charts):
+        chart = chart_value
+        if not is_object_dictionary(chart):
+            raise ValueError("invalid chart")
         branches = chart.get("branches")
-        if not isinstance(branches, list) or len(branches) != 2:
+        if not is_object_list_instance(branches) or len(branches) != 2:
             raise ValueError("both next source-bit branches must be covered")
-        for bit, branch in enumerate(branches):
-            match branch:
-                case dict():
-                    pass
-                case _:
-                    raise ValueError("invalid successor branch")
+        for bit, branch_value in enumerate(branches):
+            branch = branch_value
+            if not is_object_dictionary(branch):
+                raise ValueError("invalid successor branch")
             destination = require_integer(
                 branch.get("target"), "target chart", 0, len(charts) - 1
             )
@@ -126,7 +138,7 @@ def verify(data: object) -> dict[str, object]:
                 for x, a, c in constraints[destination]
             ]
             witnesses = branch.get("witnesses")
-            if not isinstance(witnesses, list) or len(witnesses) != len(targets):
+            if not is_object_list_instance(witnesses) or len(witnesses) != len(targets):
                 raise ValueError("missing successor inequality witnesses")
             for target, witness in zip(targets, witnesses, strict=True):
                 check_implication(premises, target, witness)
@@ -142,8 +154,8 @@ def verify(data: object) -> dict[str, object]:
     }
 
 
-def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    out: dict[str, Any] = {}
+def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    out: dict[str, object] = {}
     for key, value in pairs:
         if key in out:
             raise ValueError("duplicate certificate JSON key")
@@ -160,7 +172,7 @@ def verify_file(path: str) -> dict[str, object]:
     if len(raw) > 1_048_576:
         raise ValueError("certificate exceeds one MiB input budget")
     try:
-        data = json.loads(raw, object_pairs_hook=_unique_object)
+        data: object = json.loads(raw, object_pairs_hook=_unique_object)
     except (ValueError, UnicodeError, RecursionError) as exc:
         raise ValueError("invalid certificate JSON") from exc
     return verify(data)

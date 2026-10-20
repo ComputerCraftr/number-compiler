@@ -6,6 +6,7 @@ import json
 from typing import NotRequired, TypedDict, cast
 
 from devtools.benchmarks.json_support import jsonable
+from devtools.benchmarks.report_schema import record, records
 from devtools.paths import report_directory, report_output, repository_root
 from devtools.verification import exact_oracle
 from devtools.verification.sequence_diagnostics import with_carry_diagnostics
@@ -174,13 +175,20 @@ def _run_worker(name: str) -> WorkerReport:
         text=True,
     )
     decoded: object = json.loads(output)
-    if (
-        not isinstance(decoded, dict)
-        or not isinstance(decoded.get("rows"), list)
-        or type(decoded.get("cache_entries")) is not int
-    ):
+    if not isinstance(decoded, dict):
         raise ValueError("invalid sequence worker report")
-    return cast("WorkerReport", decoded)
+    parsed = record(cast(object, decoded))
+    cache_entries = parsed.get("cache_entries")
+    if type(cache_entries) is not int:
+        raise ValueError("invalid sequence worker cache count")
+    report: WorkerReport = {
+        "rows": list(records(parsed.get("rows"))),
+        "cache_entries": cache_entries,
+    }
+    raw_rows = parsed.get("raw_rows")
+    if raw_rows is not None:
+        report["raw_rows"] = list(records(raw_rows))
+    return report
 
 
 def _number(row: dict[str, object], field: str) -> int | float:

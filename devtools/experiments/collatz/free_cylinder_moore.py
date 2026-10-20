@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from devtools.experiments.collatz.free_cylinder_consumers import _ConsumerAction
+from devtools.experiments.collatz.free_cylinder_consumers import ConsumerAction
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.functions.decision import (
     DecisionStructureMetrics,
@@ -33,7 +33,7 @@ CollatzMooreObservation = Literal["endpoint", "endpoint-clock", "support"]
 def _observation_label(value: object, observation: CollatzMooreObservation) -> object:
     if value is None:
         return None
-    if type(value) is not _ConsumerAction:
+    if type(value) is not ConsumerAction:
         raise TypeError("Collatz Moore projection requires consumer-action terminals")
     if observation == "endpoint":
         return value.output
@@ -68,7 +68,7 @@ class CollatzSpatialMooreProjection:
     def __post_init__(self) -> None:
         if any(domain != 2 for domain in self.arena.domains):
             raise ValueError("Collatz Moore derivatives require binary coordinates")
-        if type(self.root) is not int or not 0 <= self.root < len(self.arena._nodes):
+        if type(self.root) is not int or not 0 <= self.root < self.arena.node_count:
             raise ValueError("Moore projection requires an existing exact root")
 
     @property
@@ -103,7 +103,7 @@ class CollatzSpatialMooreProjection:
                 rows.append((None, None))
                 outputs.append(("terminal", self.arena.terminal_value(root)))
                 continue
-            successors = []
+            successors: list[int] = []
             for bit in (0, 1):
                 child_root = self.arena.cofactor(root, {self.arena.order[depth]: bit})
                 child = (depth + 1, child_root)

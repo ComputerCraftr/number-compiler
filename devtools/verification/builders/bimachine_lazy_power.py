@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 # Reuse exact one-step construction/helpers from the verified experiment.
 from devtools.verification.builders.bimachine_power import (
-    _FragmentMachine,
+    FragmentMachine,
     build_step,
     compose_contexts,
     decode,
@@ -67,6 +67,10 @@ class LazyBimachine:
     right: ScanAutomaton
     resolver: Callable[[int, int, int], Word | None | EmissionSteps]
     _cache: dict[tuple[int, int, int], tuple[int, ...] | None]
+
+    @property
+    def cache_entries(self) -> int:
+        return len(self._cache)
 
     def emit(self, left_state: int, a: int, r: int) -> tuple[int, ...] | None:
         root = EmissionRequest(self, left_state, a, r)
@@ -156,7 +160,7 @@ def fragment_steps(
     B: LazyBimachine, left_state: int, word: Sequence[int], r_after: int
 ) -> EmissionSteps:
     w = tuple(word)
-    states = fragment_states(cast(_FragmentMachine, B), left_state, w, r_after)
+    states = fragment_states(cast(FragmentMachine, B), left_state, w, r_after)
     if states is None:
         return None
     ls, rs = states
@@ -276,26 +280,26 @@ def main() -> None:
         len(B.left.states),
         len(B.right.states),
         "cache",
-        len(B._cache),
+        B.cache_entries,
         flush=True,
     )
-    P = B
+    powered = B
     power = 1
     for _ in range(3):
-        P = compose(P, P)
+        powered = compose(powered, powered)
         power *= 2
         print(
-            "P",
+            "powered",
             power,
             "L/R",
-            len(P.left.states),
-            len(P.right.states),
+            len(powered.left.states),
+            len(powered.right.states),
             "cache",
-            len(P._cache),
+            powered.cache_entries,
             flush=True,
         )
-        check_power(P, power, 100)
-        print(" after check cache", len(P._cache), flush=True)
+        check_power(powered, power, 100)
+        print(" after check cache", powered.cache_entries, flush=True)
 
 
 if __name__ == "__main__":

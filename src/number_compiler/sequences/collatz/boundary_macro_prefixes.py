@@ -103,7 +103,7 @@ def _quartet_slice(offset: int, length: int) -> tuple[DyadicTerminalFieldAction,
     return action, ones
 
 
-def _slice_action(
+def slice_action(
     macro: CollatzBoundaryMacro | BorderReturnMacro, start: int, length: int
 ) -> tuple[DyadicTerminalFieldAction, int]:
     """Build one exact substring action from the admitted family grammar."""
@@ -182,7 +182,7 @@ def _highest_power_of_two(value: int) -> int:
     return 1 << (value.bit_length() - 1)
 
 
-def _root_prefix_widths(maximum_width: int, anchor_bits: int) -> tuple[int, ...]:
+def root_prefix_widths(maximum_width: int, anchor_bits: int) -> tuple[int, ...]:
     """Return root powers bounded by both macro extent and source support."""
     if type(maximum_width) is not int or type(anchor_bits) is not int:
         raise TypeError("boundary checkpoint extents require exact integers")
@@ -208,7 +208,7 @@ def _preflight_slice(
     scratch.require_bits(64 * (macro.source.bit_length() + 8 * width + 64))
 
 
-def _publish_boundary_macro_prefixes(
+def publish_boundary_macro_prefixes(
     macro: CollatzBoundaryMacro | BorderReturnMacro,
     macros: CollatzDyadicMacros,
     scratch: RunArithmeticWorkspace,
@@ -266,10 +266,10 @@ def _publish_boundary_macro_prefixes(
     cache_open = True
 
     if normalized_offset == 0 and macro.source == anchor:
-        for width in _root_prefix_widths(macro.normalized_symbols, anchor.bit_length()):
+        for width in root_prefix_widths(macro.normalized_symbols, anchor.bit_length()):
             try:
                 _preflight_slice(macro, width, scratch)
-                action, ones = _slice_action(macro, 0, width)
+                action, ones = slice_action(macro, 0, width)
                 endpoint = action.endpoint(macro.source)
                 ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_PREFIX_ROOT_CANDIDATES)
                 ledger.bump(
@@ -306,7 +306,7 @@ def _publish_boundary_macro_prefixes(
             prefix_width = checkpoint - normalized_offset
             try:
                 _preflight_slice(macro, prefix_width, scratch)
-                action, prefix_ones = _slice_action(macro, 0, prefix_width)
+                action, prefix_ones = slice_action(macro, 0, prefix_width)
                 endpoint = action.endpoint(macro.source)
                 total_ones = odd_offset + prefix_ones
                 if not 0 <= total_ones <= checkpoint:
@@ -356,7 +356,7 @@ def _publish_boundary_macro_prefixes(
             ):
                 _, action, ones, endpoint = largest_root_prefix
             else:
-                action, ones = _slice_action(macro, local_offset, width)
+                action, ones = slice_action(macro, local_offset, width)
                 endpoint = action.endpoint(source)
             ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_PREFIX_SLICE_CANDIDATES)
             ledger.bump(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from typing import cast
 
 import pytest
 
@@ -223,7 +224,12 @@ def test_spatial_failed_write_rollback_distinguishes_missing_slot_from_none() ->
 
         # A rollback is allowed to observe the reserved, already-restored None
         # slot, but a missing dictionary entry must not masquerade as None.
-        workspace._refs._data.pop(key)
+        reference_store = workspace.audit_snapshot().reference_store
+        backing = cast(
+            dict[tuple[int, int], CausalSpatialValue | None],
+            object.__getattribute__(reference_store, "_data"),
+        )
+        backing.pop(key)
         with pytest.raises(RuntimeError, match="found no store value"):
             workspace.restore_reference_after_failed_write(key, 17)
     finally:

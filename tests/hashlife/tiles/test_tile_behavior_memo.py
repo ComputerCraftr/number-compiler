@@ -18,6 +18,7 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     BehaviorBindingKey,
     CompletedBehaviorClassification,
 )
+from tests.support.assertions import assert_publication_state_unchanged
 from tests.support.tile_kernel import (
     make_tile_from_symbols,
     make_tile_runtime,
@@ -34,7 +35,7 @@ if TYPE_CHECKING:
     from number_compiler.resources.ledger import ResourceLedger
 
 
-def _binding() -> tuple[
+def behavior_binding_fixture() -> tuple[
     ResourceLedger,
     PrimitiveTileKernelAdapter,
     CompletedResultArena,
@@ -47,14 +48,14 @@ def _binding() -> tuple[
     engine = CausalTileEngine(scheduler)
     blank = adapter.primitive_law(primitive).blank
     source = make_tile_from_symbols(tiles, adapter, primitive, (blank,) * 4)
-    key = engine._composite_key(
+    key = engine.composite_key(
         action,
         source.tile,
-        engine._initial(action, 0),
-        engine._initial(action, 1),
+        engine.initial_state(action, 0),
+        engine.initial_state(action, 1),
     )
     assert key is not None
-    quotient = adapter.kernels.behavioral_quotient(adapter._action(action).kernel)
+    quotient = adapter.kernels.behavioral_quotient(adapter.action_record(action).kernel)
     profile, behavior = adapter.quotients.admit_quiescent_blank(quotient)
     return (
         ledger,
@@ -69,7 +70,7 @@ def _binding() -> tuple[
 def test_behavior_binding_warm_hit_is_read_only_and_skips_proof(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, adapter, results, source, key, behavior = _binding()
+    ledger, adapter, results, source, key, behavior = behavior_binding_fixture()
     try:
         published = publish_behavior_classification(results, key, behavior)
         before = ledger.snapshot()
@@ -95,10 +96,10 @@ def test_behavior_binding_warm_hit_is_read_only_and_skips_proof(
 
 
 def test_behavior_binding_seal_rejects_mutated_class() -> None:
-    _ledger, _adapter, results, source, key, behavior = _binding()
+    _ledger, _adapter, results, source, key, behavior = behavior_binding_fixture()
     try:
         publish_behavior_classification(results, key, behavior)
-        record = results._memo[key]
+        record = results.audit_snapshot().memo[key]
         assert type(record) is CompletedBehaviorClassification
         object.__setattr__(record, "_publication_snapshot", ())
         with pytest.raises(ValueError, match="publication metadata was modified"):
@@ -108,18 +109,18 @@ def test_behavior_binding_seal_rejects_mutated_class() -> None:
 
 
 def test_behavior_binding_retires_with_exact_input() -> None:
-    _ledger, _adapter, results, source, key, behavior = _binding()
+    _ledger, _adapter, results, source, key, behavior = behavior_binding_fixture()
     publish_behavior_classification(results, key, behavior)
-    assert key in results._memo
+    assert key in results.audit_snapshot().memo
     source.close()
-    assert key not in results._memo
-    assert not results._reverse
+    assert key not in results.audit_snapshot().memo
+    assert not results.audit_snapshot().reverse
 
 
 def test_behavior_binding_detaches_caller_key_before_publication() -> None:
-    _ledger, _adapter, results, source, key, behavior = _binding()
+    _ledger, _adapter, results, source, key, behavior = behavior_binding_fixture()
     publish_behavior_classification(results, key, behavior)
-    stored = next(iter(results._memo))
+    stored = next(iter(results.audit_snapshot().memo))
     assert stored is not key
     assert type(stored) is BehaviorBindingKey and stored.request is not key.request
     object.__setattr__(
@@ -128,33 +129,38 @@ def test_behavior_binding_detaches_caller_key_before_publication() -> None:
         (key.request.ports[0] + 1, *key.request.ports[1:]),
     )
     source.close()
-    assert not results._memo
-    assert not results._reverse
+    assert not results.audit_snapshot().memo
+    assert not results.audit_snapshot().reverse
 
 
 def test_behavior_binding_publication_is_atomic_at_exhausted_budget() -> None:
-    ledger, _adapter, results, source, key, behavior = _binding()
+    ledger, _adapter, results, source, key, behavior = behavior_binding_fixture()
     try:
         ledger.max_cache_entries = ledger.entries
-        memo_before = dict(results._memo)
-        reverse_before = dict(results._reverse)
+        memo_before = dict(results.audit_snapshot().memo)
+        reverse_before = dict(results.audit_snapshot().reverse)
         accounting = ledger.entries, ledger.nodes
         with pytest.raises(BlockContextBudgetExceeded):
             publish_behavior_classification(results, key, behavior)
-        assert dict(results._memo) == memo_before
-        assert dict(results._reverse) == reverse_before
-        assert (ledger.entries, ledger.nodes) == accounting
+        assert_publication_state_unchanged(
+            memo_before,
+            reverse_before,
+            accounting,
+            memo_after=results.audit_snapshot().memo,
+            reverse_after=results.audit_snapshot().reverse,
+            accounting_after=(ledger.entries, ledger.nodes),
+        )
     finally:
         source.close()
 
 
 def test_behavior_binding_rejects_foreign_profile_before_mutation() -> None:
-    ledger, _adapter, results, source, key, _behavior = _binding()
+    ledger, _adapter, results, source, key, _behavior = behavior_binding_fixture()
     _ledger2, _tiles2, adapter2, primitive2, _scheduler2 = make_tile_runtime(
         BaseBlockEffect(3)
     )
     quotient2 = adapter2.kernels.behavioral_quotient(
-        adapter2._action(primitive2).kernel,
+        adapter2.action_record(primitive2).kernel,
     )
     foreign_profile, _foreign_behavior = adapter2.quotients.admit_quiescent_blank(
         quotient2,
@@ -192,7 +198,7 @@ def test_public_warm_behavior_point_and_width_skip_construction(
         ) as application,
     ):
         assert application.point(0) == blank
-        nodes = len(tiles._nodes)
+        nodes = len(tiles.audit_snapshot().nodes)
         scheduler.ledger.max_cache_entries = scheduler.ledger.entries + 64
 
         def forbidden(*_args: object, **_kwargs: object) -> Never:
@@ -205,7 +211,7 @@ def test_public_warm_behavior_point_and_width_skip_construction(
         monkeypatch.setattr(PrimitiveKernel, "emit", forbidden)
         assert application.point(7) == blank
         assert application.width() == 0
-        assert len(tiles._nodes) == nodes
+        assert len(tiles.audit_snapshot().nodes) == nodes
 
 
 def test_new_behavior_admission_fails_before_semantic_publication_at_zero_budget() -> (
@@ -223,9 +229,9 @@ def test_new_behavior_admission_fails_before_semantic_publication_at_zero_budget
             adapter.wiring(action),
         ) as application,
     ):
-        assert not adapter.quotients._future_profiles
+        assert not adapter.quotients.future_behavior_store_counts()[0]
         ledger.max_cache_entries = ledger.entries
         with pytest.raises(BlockContextBudgetExceeded):
             application.point(0)
-        assert not adapter.quotients._future_profiles
-        assert not adapter.quotients._future_classes
+        assert not adapter.quotients.future_behavior_store_counts()[0]
+        assert not adapter.quotients.future_behavior_store_counts()[2]

@@ -90,26 +90,28 @@ def test_reverse_q19_completed_occurrence_reuses_public_projection() -> None:
     metrics = term.metrics()
     assert metrics.higher_concrete_operation_evaluations == 0
     assert metrics.sequential_generation_advances == 0
-    q19_owner = workspace.adapter._q19_owner
+    q19_owner = workspace.adapter.audit_snapshot().q19_owner
     assert q19_owner is not None
     q19_owner.validate(occurrence)
-    issued = q19_owner.ledger.inventory_owner(q19_owner._issued.owner)
+    q19_snapshot = q19_owner.audit_snapshot()
+    issued = q19_owner.ledger.inventory_owner(q19_snapshot.issued_owner)
     grammar = q19_owner.ledger.inventory_owner(q19_owner.arena.owners[0])
-    assert q19_owner._issued[(occurrence.root, occurrence.temporal_steps)] is occurrence
+    assert (
+        q19_snapshot.issued.payload_view[(occurrence.root, occurrence.temporal_steps)]
+        is occurrence
+    )
     assert issued.entries > 0
     assert grammar.entries == len(q19_owner.arena.nodes)
     assert grammar.nodes == len(q19_owner.arena.nodes)
-    assert (
-        q19_owner._summaries[occurrence.root].symbols
-        == (occurrence.pair_width + 1) // 2
-    )
+    summary = q19_owner.published_word_summary(occurrence.root)
+    assert summary.symbols == (occurrence.pair_width + 1) // 2
     assert (
         metrics.hashlife_boundary_cache_entries <= 4 * term.maximum_width.bit_length()
     )
     assert metrics.hashlife_section_cache_entries == 0
     assert metrics.hashlife_leaf_cache_entries == 0
     assert metrics.spacetime_carry_direction == "lsd-to-msd"
-    assert workspace is term._workspace
+    assert workspace is term.published_workspace
 
 
 def test_shared_reverse_add_carry_symmetry_is_exact_and_mirror_canonical() -> None:

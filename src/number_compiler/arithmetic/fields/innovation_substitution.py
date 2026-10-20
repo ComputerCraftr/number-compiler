@@ -32,7 +32,7 @@ def substitute_innovations(
     parity: bool = False,
 ) -> tuple[InnovationID, ...]:
     """Run simultaneous substitution using only the caller's arithmetic owner."""
-    arena._check_open()
+    arena.check_open()
     arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_PULLBACK_ATTEMPTS)
     for root in roots:
         arena.ledger.bump(_fields_keys.SYMBOLIC_INNOVATION_PULLBACK_ROOT_CHECKS)
@@ -108,7 +108,7 @@ def substitute_innovations(
                     result = (
                         memo[node.child]
                         if parity
-                        else arena._scale(memo[node.child], node.coefficient)
+                        else arena.scale(memo[node.child], node.coefficient)
                     )
                 elif isinstance(node, InnovationAdd):
                     left, right = memo[node.left], memo[node.right]

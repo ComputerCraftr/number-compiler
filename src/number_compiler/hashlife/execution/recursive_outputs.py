@@ -168,7 +168,7 @@ class RecursiveCoordinateMorphismArena:
         self.interfaces = interfaces
         self.ledger: ResourceLedger = interfaces.ledger
         self._evaluate = evaluate
-        self._validate_action = validate_action
+        self.action_validator = validate_action
         self._compose_actions = compose_actions
         self._validate_temporal_interface = (
             interfaces.resolve
@@ -252,18 +252,18 @@ class RecursiveCoordinateMorphismArena:
     def kind(self) -> str:
         return self._KIND
 
-    def _handle(self, local_id: int) -> CoordinateOutputMorphismID:
+    def scoped_handle(self, local_id: int) -> CoordinateOutputMorphismID:
         return CoordinateOutputMorphismID(self.owner, self._KIND, local_id)
 
     def handle_for_local_id(self, local_id: int) -> CoordinateOutputMorphismID:
         """Create a scoped handle only for an already allocated output node."""
         if type(local_id) is not int or not 0 <= local_id < self._next_id:
             raise IndexError("recursive output index is outside the arena")
-        return self._handle(local_id)
+        return self.scoped_handle(local_id)
 
     def validate_output_action(self, action: FieldCellActionID) -> None:
         """Validate an action using the configured output-action authority."""
-        validate = self._validate_action
+        validate = self.action_validator
         if validate is None:
             raise ValueError("recursive output action validation is not configured")
         validate(action)
@@ -290,6 +290,9 @@ class RecursiveCoordinateMorphismArena:
             key_owner=self._key_owner,
             keys=MappingProxyType(self._keys),
             key_store=self._keys,
+            stream_owner=self._stream_owner,
+            stream_frame_count=len(self._stream_frames),
+            stream_frame_ids=tuple(self._stream_frames),
         )
 
     def resolve(
@@ -312,7 +315,9 @@ class RecursiveCoordinateMorphismArena:
             return record.spatial_complete
         return True
 
-    def _intern(self, record: RecursiveOutputRecord) -> CoordinateOutputMorphismID:
+    def intern_record(
+        self, record: RecursiveOutputRecord
+    ) -> CoordinateOutputMorphismID:
         if type(record) not in (
             RecursiveOutputSource,
             RecursiveOutputBindingSource,
@@ -344,35 +349,35 @@ class RecursiveCoordinateMorphismArena:
         else:
             self.resolve(record.provider)
             self._validate_temporal_interface(record.interface)
-            if self._validate_action is None:
+            if self.action_validator is None:
                 raise RuntimeError("temporal output support was not configured")
-            self._validate_action(record.action)
+            self.action_validator(record.action)
         found = self._keys.get(record)
         if found is not None:
             self.ledger.bump(_execution_keys.RECURSIVE_OUTPUT_ALIAS_HITS)
-            return self._handle(found)
+            return self.scoped_handle(found)
         local_id, self._next_id = reserve_indexed_id(
             self.ledger, self._node_owner, self._key_owner, self._next_id
         )
         record_indexed_node(self._nodes, self._keys, local_id, record)
         self.ledger.bump(_execution_keys.OUTPUT_MORPHISM_PUBLICATIONS)
-        return self._handle(local_id)
+        return self.scoped_handle(local_id)
 
     def leaf(self, interface: LocalInterfaceID) -> CoordinateOutputMorphismID:
-        return self._intern(RecursiveOutputLeaf(interface))
+        return self.intern_record(RecursiveOutputLeaf(interface))
 
     def source(self, source: SourceCellID) -> CoordinateOutputMorphismID:
         """Intern one original-source leaf without copying its exact symbol."""
         if type(source) is not SourceCellID:
             raise TypeError("source output requires a scoped source-cell ID")
-        return self._intern(RecursiveOutputSource(source))
+        return self.intern_record(RecursiveOutputSource(source))
 
     def source_binding(
         self,
         source: SourceBindingID,
     ) -> CoordinateOutputMorphismID:
         """Intern a complete immutable original-source forest by scoped ID."""
-        return self._intern(RecursiveOutputBindingSource(source))
+        return self.intern_record(RecursiveOutputBindingSource(source))
 
     def source_image(
         self,
@@ -399,7 +404,7 @@ class RecursiveCoordinateMorphismArena:
         spatial_complete = self._spatially_complete(
             self.resolve(left)
         ) and self._spatially_complete(self.resolve(right))
-        return self._intern(
+        return self.intern_record(
             RecursiveOutputBranch(
                 left,
                 right,
@@ -422,22 +427,22 @@ class RecursiveCoordinateMorphismArena:
         particular, this prevents persistent ``Image(B, Image(A, X))`` chains:
         the published node is ``Image(compose(A, B), X)``.
         """
-        if self._validate_action is None or self._compose_actions is None:
+        if self.action_validator is None or self._compose_actions is None:
             raise RuntimeError("temporal output support was not configured")
-        self._validate_action(action)
+        self.action_validator(action)
         self._validate_temporal_interface(interface)
         original = self.resolve(provider)
         if isinstance(original, RecursiveOutputTemporal):
             action = self._compose_actions(original.action, action)
-            self._validate_action(action)
+            self.action_validator(action)
             provider = original.provider
             self.ledger.bump(_execution_keys.RECURSIVE_OUTPUT_TEMPORAL_NORMALIZATIONS)
         else:
             if self._complete_temporal_action is None:
                 raise RuntimeError("temporal action completion was not configured")
             action = self._complete_temporal_action(provider, action)
-            self._validate_action(action)
-        return self._intern(RecursiveOutputTemporal(provider, action, interface))
+            self.action_validator(action)
+        return self.intern_record(RecursiveOutputTemporal(provider, action, interface))
 
     def _component(
         self,

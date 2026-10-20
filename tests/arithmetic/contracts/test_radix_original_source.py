@@ -19,6 +19,7 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.assertions import assert_rejected_atomically
+from tests.support.radix_projection import radix_projection
 
 
 @pytest.mark.parametrize("radix", (3, 6, 12, 1 << 63))
@@ -78,7 +79,7 @@ def test_odd_ternary_normal_form_is_universal_and_never_forms_future_word(
             index += 1
         with pytest.raises(IndexError):
             collatz_radix_digit(term, 3, index)
-        arena = term._radix_projections[3]._native_source
+        arena = radix_projection(term, 3).native_source_arena
         assert arena is not None
         for encoding in arena.sources.values():
             assert (
@@ -116,9 +117,9 @@ def test_affine_summary_budget_failure_publishes_no_partial_nodes() -> None:
     with pytest.raises(BlockContextBudgetExceeded):
         arena.affine_shifted_point(source, 1, 0, 2)
     assert (ledger.entries, ledger.nodes) == before
-    assert not arena._shift_nodes
-    assert not arena._carry_nodes
-    assert not arena._affine_summaries
+    assert not arena.audit_snapshot().shift_nodes
+    assert not arena.audit_snapshot().carry_nodes
+    assert not arena.audit_snapshot().affine_summaries
 
 
 def test_affine_summary_numeric_aliases_reject_before_publication() -> None:
@@ -131,7 +132,7 @@ def test_affine_summary_numeric_aliases_reject_before_publication() -> None:
     with pytest.raises(ValueError):
         arena.affine_shifted_point(source, 1, 0, False)
     assert arena.ledger.snapshot() == before
-    assert not arena._affine_summaries
+    assert not arena.audit_snapshot().affine_summaries
 
 
 @pytest.mark.parametrize("radix", (3, 6, 10, 12, 1 << 63))
@@ -188,14 +189,14 @@ def test_fixed_physical_kernel_source_views_all_phases(
             index += 1
         with pytest.raises(IndexError):
             collatz_radix_digit(term, radix, index)
-        projection = term._radix_projections[radix]
+        projection = radix_projection(term, radix)
         assert not any(
             hasattr(projection, item) for item in ("_programs", "_ranges", "_transfers")
         )
-        assert projection._fused is None
+        assert projection.fused_arena is None
         assert term.resource_ledger.counters.get("maximum_arithmetic_bits", 0) <= 64
-        if projection._native_source is not None:
-            for encoding in projection._native_source.sources.values():
+        if projection.native_source_arena is not None:
+            for encoding in projection.native_source_arena.sources.values():
                 assert encoding.binary_start == 0
                 assert (
                     sum(
@@ -212,7 +213,7 @@ def test_suffix_source_audit_rejects_geometry_alias() -> None:
 
     term = PoweredCollatzTerm(404987, 2)
     assert collatz_radix_digit(term, 3, 3) == ((3 * 404987 + 1) // 2) // 27 % 3
-    arena = term._radix_projections[3]._native_source
+    arena = radix_projection(term, 3).native_source_arena
     assert arena is not None
     assert collect_ledger_metrics(term.resource_ledger).forbidden_future_payloads == 0
     key, encoding = next(iter(arena.sources.items()))
@@ -244,7 +245,7 @@ def test_fixed_two_step_radix_uses_only_original_source_and_finite_carry(
             index += 1
         with pytest.raises(IndexError):
             collatz_radix_digit(term, radix, index)
-        projection = term._radix_projections[radix]
+        projection = radix_projection(term, radix)
         assert not any(
             hasattr(projection, item) for item in ("_programs", "_ranges", "_transfers")
         )
@@ -272,7 +273,7 @@ def test_affine_source_digits_reuse_hierarchical_three_carry_summaries(
     if radix == 2:
         binary_arena = OriginalRadixArena(term.resource_ledger)
         arena = binary_arena
-        encoding = binary_arena.encode(term._source_construction, radix)
+        encoding = binary_arena.encode(term.original_source_construction, radix)
 
         def read_digit(coordinate: int) -> int:
             return binary_arena.affine_shifted_point(encoding, 1, coordinate, 2)
@@ -293,12 +294,12 @@ def test_affine_source_digits_reuse_hierarchical_three_carry_summaries(
     with pytest.raises(IndexError):
         read_digit(coordinate)
     if radix != 2:
-        projection = term._radix_projections[radix]
-        native = projection._native_source
+        projection = radix_projection(term, radix)
+        native = projection.native_source_arena
         assert native is not None
         arena = native
-    assert arena is not None and len(arena._affine_summaries) == 1
-    summary = next(iter(arena._affine_summaries.values()))
+    assert arena is not None and len(arena.audit_snapshot().affine_summaries) == 1
+    summary = next(iter(arena.audit_snapshot().affine_summaries.values()))
     assert len(summary.shift_tree) == len(summary.carry_tree) == 2 * summary.size
     assert not hasattr(summary, "digits") and not hasattr(summary, "carries")
     encoding = next(iter(arena.sources.values()))
@@ -344,7 +345,7 @@ def test_fixed_limb_division_cell_never_forms_the_wide_product(
     arena = OriginalRadixArena(ledger)
     for carry in (0, 1, (1 << shift) - 1):
         for digit in (0, 1, radix - 1):
-            quotient, remainder = arena._divide_cell(carry, radix, digit, shift)
+            quotient, remainder = arena.divide_cell(carry, radix, digit, shift)
             # Wide Python arithmetic is used only by this independent oracle.
             assert (quotient, remainder) == divmod(carry * radix + digit, 1 << shift)
     assert ledger.counters["maximum_arithmetic_bits"] <= 64
@@ -388,7 +389,7 @@ def test_all_shifted_queries_retain_only_the_complete_original_number() -> None:
             assert collatz_radix_digit(term, radix, index) == expected % radix
             index += 1
             expected //= radix
-        arena = term._radix_projections[radix]._native_source
+        arena = radix_projection(term, radix).native_source_arena
         assert arena is not None
         assert len(arena.sources) == 1
         for key, encoding in arena.sources.items():

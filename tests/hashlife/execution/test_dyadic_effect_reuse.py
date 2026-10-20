@@ -69,7 +69,7 @@ def test_source_only_macro_squares_without_endpoint_access(
     def forbidden(*args: object) -> int:
         raise AssertionError("macro construction requested an exact endpoint")
 
-    monkeypatch.setattr(DyadicReturnImageWorkspace, "_source_value", forbidden)
+    monkeypatch.setattr(DyadicReturnImageWorkspace, "source_value", forbidden)
     monkeypatch.setattr(DyadicReturnImageWorkspace, "endpoint", forbidden)
     workspace = DyadicReturnImageWorkspace(ResourceLedger(), 0, width, law)
     for residue in range(min(1 << width, 256)):
@@ -276,6 +276,9 @@ def test_unmatched_sources_keep_exact_branches_and_ledger(
 def test_collatz_cycle_shortcut_cannot_leak_to_a_different_high_fiber() -> None:
     # The low precision residue 1 can mean the cycle state 1 or a very large
     # source. Only the exact singleton may use the absorbing cycle descriptor.
+    from number_compiler.hashlife.execution.dyadic_return_actions import (
+        append_source,
+    )
     from number_compiler.hashlife.execution.dyadic_return_records import (
         DyadicReturnSourceRecord,
     )
@@ -284,10 +287,10 @@ def test_collatz_cycle_shortcut_cannot_leak_to_a_different_high_fiber() -> None:
     )
 
     workspace = DyadicReturnImageWorkspace(ResourceLedger(), 1, 4, COLLATZ_PHYSICAL_LAW)
-    core = workspace.scheduler._source_image_core()
+    core = workspace.scheduler.source_image_core()
     small = core.view(core.origin(workspace, workspace.root_source))
-    large_id = workspace._append_source(
-        DyadicReturnSourceRecord(1, 4, 100, None, None, None, 0, True)
+    large_id = append_source(
+        workspace, DyadicReturnSourceRecord(1, 4, 100, None, None, None, 0, True)
     )
     large = core.view(core.origin(workspace, large_id))
     assert admitted_input_key(
@@ -306,7 +309,7 @@ def test_reuse_rejects_foreign_and_stale_sources() -> None:
     )
     with pytest.raises(ValueError):
         a.admitted_input_key(a.root_action, foreign)
-    own_core = a.scheduler._source_image_core()
+    own_core = a.scheduler.source_image_core()
     own = own_core.view(own_core.origin(a, a.root_source))
     action = a.root_action
     a.dispose()
@@ -339,7 +342,11 @@ def test_reuse_rejects_a_forged_source_view_even_with_valid_local_handles() -> N
     workspace, _unused_core_binding, original = _origin_fixture(
         8, 4, ANTIHYDRA_ARITHMETIC_LAW
     )
-    another = workspace._append_source(workspace.source_node(workspace.root_source))
+    from number_compiler.hashlife.execution.dyadic_return_actions import (
+        append_source,
+    )
+
+    another = append_source(workspace, workspace.source_node(workspace.root_source))
     forged = replace(original, binding=replace(original.binding, source=another))
     with pytest.raises(ValueError, match="differs from its publication"):
         workspace.admitted_input_key(workspace.root_action, forged)
@@ -395,6 +402,6 @@ def _origin_fixture(
     source: int, steps: int, law: DyadicReturnLaw
 ) -> tuple[DyadicReturnImageWorkspace, SourceBoundSchedulerCore, SourceImageView]:
     workspace = DyadicReturnImageWorkspace(ResourceLedger(), source, steps, law)
-    core = workspace.scheduler._source_image_core()
+    core = workspace.scheduler.source_image_core()
     view = core.view(core.origin(workspace, workspace.root_source))
     return workspace, core, view

@@ -17,7 +17,7 @@ def center_transfer_packet(
     trace: bool = False,
 ) -> dict[str, object]:
     """Render one checked source-fiber relation without reissuing its cones."""
-    transfer._require_issued()
+    transfer.require_issued()
     actual_edge = next(
         (
             edge
@@ -87,7 +87,7 @@ def center_transfer_packet(
             "punctured_port_constraints_active": any(
                 bool(frame) for frame in transfer.source_port_punctures
             ),
-            "first_separating_port_punctures": transfer._first_separating_port_punctures(),
+            "first_separating_port_punctures": transfer.first_separating_port_punctures(),
             "punctured_source_frame_counts": tuple(
                 len(frame) for frame in transfer.source_port_punctures
             ),

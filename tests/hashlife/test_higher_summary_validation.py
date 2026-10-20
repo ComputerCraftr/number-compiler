@@ -14,8 +14,8 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
 )
 from tests.support.reverse_higher_interface import direct_step
 from tests.support.reverse_higher_runtime import (
-    _fixture,
-    _single_cell_fixture,
+    reverse_higher_fixture,
+    single_cell_fixture,
     single_cell_summary_fixture,
 )
 
@@ -31,7 +31,7 @@ def test_higher_unary_summary_matches_primitive_spatial_transfer() -> None:
         sources,
         binding,
         forest,
-    ) = _single_cell_fixture()
+    ) = single_cell_fixture()
     summary = runtime.summaries.unary(primitive, forest.cells[0], 0)
     initial = runtime.initial(primitive, 0)
     observed = semantics.evaluate(runtime.summaries.apply_unary(summary, initial))
@@ -51,9 +51,9 @@ def test_runtime_summary_ids_reject_foreign_aliases_before_publication() -> None
         _compiler,
         sources,
         binding,
-    ) = _fixture()
+    ) = reverse_higher_fixture()
     _foreign_actions, foreign_primitive, _foreign_semantics, foreign_runtime, *_ = (
-        _fixture((8,))
+        reverse_higher_fixture((8,))
     )
     foreign_sources = foreign_runtime.sources.resolve_forest(
         foreign_runtime.sources.forest(0, 1)
@@ -63,10 +63,10 @@ def test_runtime_summary_ids_reject_foreign_aliases_before_publication() -> None
         source=foreign_sources.cells[0],
         side=0,
     )
-    before = len(semantics.runtime_values._records)
+    before = len(semantics.runtime_values.audit_snapshot().records)
     with pytest.raises(ValueError, match="different arena"):
         semantics.runtime_values.transferred_state(foreign, 0)
-    assert len(semantics.runtime_values._records) == before
+    assert len(semantics.runtime_values.audit_snapshot().records) == before
     assert sources.binding_extent(binding) == 8
 
 
@@ -81,7 +81,7 @@ def test_higher_context_summary_composes_emitted_word_transfer() -> None:
         sources,
         binding,
         forest,
-    ) = _single_cell_fixture()
+    ) = single_cell_fixture()
     summary = runtime.summaries.context(primitive, primitive, forest.cells[0])
     initial_left = runtime.initial(primitive, 0)
     initial_right = runtime.initial(primitive, 1)
@@ -112,7 +112,7 @@ def test_higher_summary_semantics_survive_source_binding_eviction() -> None:
         _unused_sources_binding,
         _unused_binding_binding,
         forest,
-    ) = _single_cell_fixture()
+    ) = single_cell_fixture()
     action = actions.power(primitive, 4)
     first = runtime.summaries.unary(action, forest.cells[0], 0)
     record = runtime.summaries.resolve(first)
@@ -133,7 +133,7 @@ def test_higher_summary_rejects_foreign_and_integer_alias_handles() -> None:
         _unused_sources_binding,
         _unused_binding_binding,
         forest,
-    ) = _single_cell_fixture()
+    ) = single_cell_fixture()
     valid = runtime.summaries.unary(primitive, forest.cells[0], 0)
     before = runtime.ledger.snapshot()
     aliases = (
@@ -167,7 +167,7 @@ def test_higher_summary_payload_audit_covers_nodes_bindings_and_eviction() -> No
         _compiler,
         sources,
         binding,
-    ) = _fixture()
+    ) = reverse_higher_fixture()
     cell = sources.resolve_forest(binding).cells[0]
     action = actions.power(primitive, 4)
     runtime.summaries.unary(action, cell, 0)
@@ -207,7 +207,8 @@ def test_higher_summary_payload_audit_rejects_mutated_semantic_reference() -> No
     )
     storage_attribute = "_data"
     nodes = cast(
-        dict[int, object], getattr(runtime.summaries._nodes, storage_attribute)
+        dict[int, object],
+        getattr(runtime.summaries.audit_snapshot().node_store, storage_attribute),
     )
     nodes[summary.local_id] = replace(
         record,
@@ -234,12 +235,14 @@ def test_higher_summary_payload_audit_rejects_incompatible_binding_result() -> N
     ) = single_cell_summary_fixture()
     right = runtime.summaries.unary(primitive, cell, 1)
     key = next(
-        key for key, result in runtime.summaries._bindings.items() if result == left
+        key
+        for key, result in runtime.summaries.audit_snapshot().bindings.items()
+        if result == left
     )
     storage_attribute = "_data"
     bindings = cast(
         dict[object, HigherSummaryID],
-        getattr(runtime.summaries._bindings, storage_attribute),
+        getattr(runtime.summaries.audit_snapshot().binding_store, storage_attribute),
     )
     bindings[key] = right
     damaged = audit_registered_payloads(runtime.ledger)

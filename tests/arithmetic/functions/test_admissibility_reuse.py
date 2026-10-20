@@ -59,7 +59,7 @@ def test_admission_eviction_rebuilds_and_keeps_canonical_function_identity() -> 
     signature = FunctionSignature((port,), BOOL)
     first = bits.constant(signature, 1)
     before = ledger.counters["semantic_bit_admissibility_evaluations"]
-    bits.functions._evict()
+    ledger.evict_query_memos()
     assert bits.constant(signature, 1) == first
     assert ledger.counters["semantic_bit_admissibility_evaluations"] == before + 1
     assert all(row.accounting_delta == 0 for row in ledger.inventory())

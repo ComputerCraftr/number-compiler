@@ -34,13 +34,13 @@ from number_compiler.resources.stores import LedgerList
 
 
 @dataclass(frozen=True, slots=True)
-class _Context:
+class EventContext:
     reference: InnovationID
     chart: CylinderChart = field(default_factory=CylinderChart)
     radial: RadialMultiplier = field(default_factory=RadialMultiplier)
 
 
-def _context_units(context: _Context) -> int:
+def event_context_units(context: EventContext) -> int:
     bits = sum(
         max(1, abs(v).bit_length())
         for v in (context.chart.offset, context.radial.no_growth, context.radial.growth)
@@ -48,24 +48,24 @@ def _context_units(context: _Context) -> int:
     return (bits + 63) // 64
 
 
-class _EventWork:
+class EventWork:
     """One bounded arithmetic transaction; no source/action publication authority."""
 
     def __init__(self, arena: SymbolicInnovationArena) -> None:
         self.arena = arena
         self.ledger = arena.ledger
         prefix = f"event-normalization-{self.ledger.owner_count}"
-        self.graph = OwnedMemo[_Context, tuple[tuple[int, _Context], ...]](
+        self.graph = OwnedMemo[EventContext, tuple[tuple[int, EventContext], ...]](
             self.ledger,
             self.ledger.register(prefix + "-graph", "query_memo"),
             nodes_per_entry=1,
         )
-        self.weights = OwnedMemo[_Context, int](
+        self.weights = OwnedMemo[EventContext, int](
             self.ledger,
             self.ledger.register(prefix + "-weights", "query_memo"),
             nodes_per_entry=1,
         )
-        self.terms = OwnedMemo[_Context, int](
+        self.terms = OwnedMemo[EventContext, int](
             self.ledger,
             self.ledger.register(prefix + "-terms", "query_memo"),
             nodes_per_entry=1,
@@ -76,7 +76,7 @@ class _EventWork:
             nodes_per_entry=1,
         )
         self.stack_owner = self.ledger.register(prefix + "-stack", "query_memo")
-        self.stack: LedgerList[_Context] = self.ledger.make_list(
+        self.stack: LedgerList[EventContext] = self.ledger.make_list(
             self.stack_owner, append_only=False
         )
         self.scratch_owner = self.ledger.register(prefix + "-scratch", "query_memo")
@@ -86,10 +86,10 @@ class _EventWork:
         self.ledger.reserve(self.scratch_owner, nodes=units)
         self.scratch_units += units
 
-    def enqueue(self, context: _Context) -> None:
+    def enqueue(self, context: EventContext) -> None:
         if context in self.graph:
             return
-        self.reserve(_context_units(context))
+        self.reserve(event_context_units(context))
         self.graph[context] = ()
         self.ledger.reserve(self.stack_owner, entries=1, nodes=1)
         try:
@@ -98,9 +98,11 @@ class _EventWork:
             self.ledger.release(self.stack_owner, entries=1, nodes=1)
             raise
 
-    def add(self, table: OwnedMemo[_Context, int], key: _Context, value: int) -> None:
+    def add(
+        self, table: OwnedMemo[EventContext, int], key: EventContext, value: int
+    ) -> None:
         if key not in table:
-            self.reserve(_context_units(key))
+            self.reserve(event_context_units(key))
         before = table.get(key, 0)
         bits = max(abs(before).bit_length(), abs(value).bit_length()) + 1
         self.reserve((bits + 63) // 64)
@@ -120,29 +122,31 @@ class _EventWork:
         self.basis.dispose()
 
 
-def _children(
-    arena: SymbolicInnovationArena, state: _Context
-) -> tuple[tuple[int, _Context], ...]:
+def event_children(
+    arena: SymbolicInnovationArena, state: EventContext
+) -> tuple[tuple[int, EventContext], ...]:
     node = arena.resolve(state.reference)
     chart, radial = state.chart, state.radial
     if isinstance(node, InnovationAdd):
         return (
-            (1, _Context(node.left, chart, radial)),
-            (1, _Context(node.right, chart, radial)),
+            (1, EventContext(node.left, chart, radial)),
+            (1, EventContext(node.right, chart, radial)),
         )
     if isinstance(node, InnovationScale):
-        return ((node.coefficient, _Context(node.child, chart, radial)),)
+        return ((node.coefficient, EventContext(node.child, chart, radial)),)
     if isinstance(node, InnovationCharted):
-        return ((1, _Context(node.child, chart.then(node.chart), radial)),)
+        return ((1, EventContext(node.child, chart.then(node.chart), radial)),)
     if isinstance(node, InnovationRadial):
         # R_d (1+z)^r = (1+z)^r R_(d-r); translation commutes.
         if chart.slope == -1:
             chart = CylinderChart(-1, chart.offset - node.multiplier.growth)
-        return ((1, _Context(node.child, chart, radial.then(node.multiplier))),)
+        return ((1, EventContext(node.child, chart, radial.then(node.multiplier))),)
     return ()
 
 
-def _emit(work: _EventWork, state: _Context, weight: int, difference: bool) -> None:
+def emit_events(
+    work: EventWork, state: EventContext, weight: int, difference: bool
+) -> None:
     arena = work.arena
     node = arena.resolve(state.reference)
     if isinstance(node, InnovationZero):
@@ -154,18 +158,18 @@ def _emit(work: _EventWork, state: _Context, weight: int, difference: bool) -> N
             one = arena.interval(1)
             work.add(
                 work.terms,
-                _Context(one, CylinderChart(1, -start), state.radial),
+                EventContext(one, CylinderChart(1, -start), state.radial),
                 weight,
             )
             work.add(
                 work.terms,
-                _Context(one, CylinderChart(1, -start - length), state.radial),
+                EventContext(one, CylinderChart(1, -start - length), state.radial),
                 -weight,
             )
         else:
             work.add(
                 work.terms,
-                _Context(state.reference, CylinderChart(1, -start), state.radial),
+                EventContext(state.reference, CylinderChart(1, -start), state.radial),
                 weight,
             )
         return
@@ -176,26 +180,28 @@ def _emit(work: _EventWork, state: _Context, weight: int, difference: bool) -> N
         shifted = CylinderChart(
             state.chart.slope, state.chart.offset - state.chart.slope
         )
-        work.add(work.terms, _Context(state.reference, shifted, state.radial), -weight)
+        work.add(
+            work.terms, EventContext(state.reference, shifted, state.radial), -weight
+        )
 
 
-def _shift(state: _Context) -> int:
+def _shift(state: EventContext) -> int:
     return -state.chart.slope * state.chart.offset
 
 
-def _packet_group(state: _Context) -> tuple[int, int, int]:
+def _packet_group(state: EventContext) -> tuple[int, int, int]:
     # Fixed atom/orientation and 2-power are common formal factors. Their
     # values and source predicates are never queried to prove cancellation.
     return state.reference.local_id, state.chart.slope, state.radial.no_growth
 
 
-def _certificate_reserve(work: _EventWork, bits: int) -> None:
+def _certificate_reserve(work: EventWork, bits: int) -> None:
     work.reserve(max(1, (bits + 63) // 64))
     work.ledger.bump(_fields_keys.EVENT_RADIAL_CERTIFICATE_INTEGER_BITS, bits)
 
 
 def _zero_radial_block(
-    work: _EventWork, order: list[_Context], start: int, stop: int
+    work: EventWork, order: list[EventContext], start: int, stop: int
 ) -> bool:
     """Certify zero in t=1+z, expanding relative shifts, never radial powers.
 
@@ -244,13 +250,13 @@ def _zero_radial_block(
         work.basis.clear()
 
 
-def _cancel_radial_identities(work: _EventWork) -> None:
+def _cancel_radial_identities(work: EventWork) -> None:
     """Remove only exact zero blocks; this never equates arbitrary source atoms."""
     if len(work.terms) < 2:
         return
     work.reserve(2 * len(work.terms))
     for state in work.terms:
-        work.reserve(_context_units(state))
+        work.reserve(event_context_units(state))
     order = sorted(
         (state for state in work.terms if work.terms[state]),
         key=lambda state: (
@@ -284,18 +290,18 @@ def _normalize(
     arena: SymbolicInnovationArena, expression: InnovationID, *, difference: bool
 ) -> InnovationID:
     arena.resolve(expression)
-    work = _EventWork(arena)
-    root = _Context(expression)
+    work = EventWork(arena)
+    root = EventContext(expression)
     try:
         work.enqueue(root)
         while work.stack:
             state = work.stack.pop()
             work.ledger.release(work.stack_owner, entries=1, nodes=1)
-            edges = _children(arena, state)
+            edges = event_children(arena, state)
             work.graph[state] = edges
             work.ledger.bump(_fields_keys.EVENT_NORMALIZATION_CONTEXTS)
             for _, child in edges:
-                work.reserve(_context_units(child))
+                work.reserve(event_context_units(child))
                 work.enqueue(child)
         # Input nodes are topologically interned. Every parent contributes
         # before any child is processed, including shared subexpressions.
@@ -308,7 +314,7 @@ def _normalize(
                 continue
             edges = work.graph[state]
             if not edges:
-                _emit(work, state, weight, difference)
+                emit_events(work, state, weight, difference)
             for coefficient, child in edges:
                 bits = abs(coefficient).bit_length() + abs(weight).bit_length()
                 work.reserve(max(1, (bits + 63) // 64))

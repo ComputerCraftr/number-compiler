@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, MutableMapping
+from collections.abc import Callable, MutableMapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, NamedTuple, TypeVar
 
@@ -58,6 +58,18 @@ class Run:
     _term: AntihydraArithmeticTerm
     _source: object
 
+    def is_bound_to_engine(self, engine: CylinderEngine) -> bool:
+        return self._engine is engine
+
+    @property
+    def source_authority_is_valid(self) -> bool:
+        """Expose whether this run still carries its private source issuance."""
+        return type(self) is Run and getattr(self, "_source", None) is _SOURCE
+
+    @property
+    def source_engine(self) -> CylinderEngine:
+        return self._engine
+
     @property
     def physical_ticks(self) -> int:
         return self.left + self.right
@@ -112,7 +124,7 @@ class ArithmeticSegment:
 
 
 @dataclass(frozen=True, slots=True)
-class _PhysicalPublication:
+class PhysicalPublication:
     """Charged endpoint seal for one observer-admissible physical result."""
 
     run: Run
@@ -217,6 +229,8 @@ class ArithmeticTermAuditSnapshot(NamedTuple):
     result: ArithmeticResult | None
     segment_count: int
     segments_ready: bool
+    segments: Sequence[ArithmeticSegment]
+    segment_store: Sequence[ArithmeticSegment]
 
 
 class AntihydraArithmeticTerm:
@@ -291,7 +305,7 @@ class AntihydraArithmeticTerm:
         self.physical_owner = self.ledger.register(
             f"antihydra.physical-result.{term_serial}", "physical_result"
         )
-        self.physical_publications: LedgerList[_PhysicalPublication] = (
+        self.physical_publications: LedgerList[PhysicalPublication] = (
             self.ledger.make_list(
                 self.physical_owner, nodes_per_entry=2, append_only=False
             )
@@ -312,9 +326,21 @@ class AntihydraArithmeticTerm:
 
         register_antihydra_payload_contract(self)
 
+    @property
+    def mahler_prepared(self) -> bool:
+        return self._mahler_prepared
+
+    @property
+    def source_action_prepared(self) -> bool:
+        return self._source_action_prepared
+
     def audit_snapshot(self) -> ArithmeticTermAuditSnapshot:
         return ArithmeticTermAuditSnapshot(
-            self._result, len(self._segments), self._segments_ready
+            self._result,
+            len(self._segments),
+            self._segments_ready,
+            self._segments.audit_view(),
+            self._segments,
         )
 
     @property
@@ -323,7 +349,8 @@ class AntihydraArithmeticTerm:
         return self._result
 
     @property
-    def _physical(self) -> Run | None:
+    def published_physical_run(self) -> Run | None:
+        """Read the existing physical publication without materializing it."""
         if not self.physical_publications:
             return None
         if len(self.physical_publications) != 1:
@@ -332,7 +359,7 @@ class AntihydraArithmeticTerm:
 
     @property
     def physical_run_published(self) -> bool:
-        return self._physical is not None
+        return self.published_physical_run is not None
 
     @property
     def mahler_window_memo(self) -> object | None:
@@ -343,9 +370,9 @@ class AntihydraArithmeticTerm:
     @property
     def segments(self) -> LedgerList[ArithmeticSegment]:
         """Publish bounded chronological cylinders only for explicit consumers."""
-        return self._materialize_segments(self.result())
+        return self.materialize_segments(self.result())
 
-    def _materialize_segments(
+    def materialize_segments(
         self, result: Run | ArithmeticResult
     ) -> LedgerList[ArithmeticSegment]:
         if (
@@ -410,7 +437,7 @@ class AntihydraArithmeticTerm:
             if self.engine.shared_cache:
                 self._source_action_prepared = True
 
-    def _arithmetic_image(self) -> AntihydraArithmeticImageWorkspace:
+    def arithmetic_image(self) -> AntihydraArithmeticImageWorkspace:
         """One admitted source image shared by arithmetic and safety demands."""
         from number_compiler.sequences.antihydra.arithmetic_images import (
             ANTIHYDRA_ARITHMETIC_LAW,
@@ -452,7 +479,7 @@ class AntihydraArithmeticTerm:
             self._result.require_source()
             return self._result.h
         self.prepare_source_action()
-        value = self._arithmetic_image().endpoint()
+        value = self.arithmetic_image().endpoint()
         if value.bit_length() > self.max_state_bits:
             raise ValueError("Antihydra arithmetic state exceeds bit budget")
         return value
@@ -468,7 +495,7 @@ class AntihydraArithmeticTerm:
         if index < 0:
             raise IndexError(index)
         self.prepare_source_action()
-        symbol = binary_cell(self._arithmetic_image(), index)
+        symbol = binary_cell(self.arithmetic_image(), index)
         if symbol == 2:
             raise IndexError(index)
         return symbol
@@ -481,7 +508,7 @@ class AntihydraArithmeticTerm:
         if self._segments or self._segments_ready:
             raise ValueError("partial Antihydra arithmetic publication")
         try:
-            workspace = self._arithmetic_image()
+            workspace = self.arithmetic_image()
             summary = workspace.saturated_summary()
             h = workspace.endpoint()
             balance = summary.delta
@@ -680,14 +707,14 @@ class AntihydraArithmeticTerm:
 
     def physical_run(self) -> Run:
         result = self.result()
-        cached = self._physical
+        cached = self.published_physical_run
         if cached is not None:
             cached.require_source()
             self.engine.count("physical_run_hits")
             return cached
         h, balance, minimum, left, right, completed = 8, 0, 0, 5, 6, 0
         halted = False
-        for segment in self._materialize_segments(result):
+        for segment in self.materialize_segments(result):
             if segment.start != completed:
                 raise ValueError("retained Antihydra source block was changed")
             old_balance = balance
@@ -715,7 +742,7 @@ class AntihydraArithmeticTerm:
         }
         for name, value in values.items():
             object.__setattr__(run_result, name, value)
-        publication = _PhysicalPublication(
+        publication = PhysicalPublication(
             run_result,
             run_result.requested,
             run_result.returns,

@@ -75,7 +75,7 @@ def test_valuation_itinerary_is_run_length_collatz_parity_coordinate_for_seed27(
 def test_valuation_slab_matches_stepwise_accelerated_odd_collatz() -> None:
     for seed in (3, 7, 27, 97, 871):
         value = seed
-        vals = []
+        vals: list[int] = []
         for _ in range(12):
             if value == 1:
                 break

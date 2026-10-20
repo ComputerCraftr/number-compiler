@@ -175,7 +175,7 @@ class FieldTransferArena:
             evict=self.clear_bindings,
         )
 
-    def _handle(self, local_id: int) -> FieldTransferID:
+    def scoped_handle(self, local_id: int) -> FieldTransferID:
         return FieldTransferID(self.owner, self._KIND, local_id)
 
     @property
@@ -336,7 +336,7 @@ class FieldTransferArena:
             self.ledger.bump(_execution_keys.NEW_FIELD_TRANSFER_NODES)
         else:
             self.ledger.bump(_execution_keys.FIELD_TRANSFER_SEMANTIC_ALIAS_HITS)
-        result = self._handle(local_id)
+        result = self.scoped_handle(local_id)
         self._bindings[key] = result
         self._observation_bindings[(result, key.source)] = None
         self.ledger.bump(_execution_keys.FIELD_TRANSFER_BINDING_PUBLICATIONS)

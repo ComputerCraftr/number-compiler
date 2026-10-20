@@ -23,7 +23,7 @@ pytestmark = pytest.mark.validation
 def test_harmonic_kernel_collision_changes_threshold_geometry() -> None:
     left = (8,) * 9
     right = (9, 10, 10, 10, 10, 10, 10, 10, 9)
-    germs = []
+    germs: list[FixedRealCyclotomicGerm] = []
     for row in (left, right):
         views = {
             order: ReverseAddSymmetryProjection.from_coefficients(

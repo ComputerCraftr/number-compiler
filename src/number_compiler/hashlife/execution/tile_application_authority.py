@@ -15,8 +15,8 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
 
 if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_application import TileApplication
     from number_compiler.hashlife.execution.tile_scheduler import (
-        TileApplication,
         TileScheduler,
     )
     from number_compiler.hashlife.tiles.tile_results import ResultLease
@@ -84,7 +84,7 @@ class TileApplicationRegistry:
         self, application: TileApplication, admitted: PoweredResultKey
     ) -> None:
         """Publish one issued application without retaining the application."""
-        from number_compiler.hashlife.execution.tile_scheduler import TileApplication
+        from number_compiler.hashlife.execution.tile_application import TileApplication
 
         if type(application) is not TileApplication:
             raise TypeError("application registry requires an exact tile application")
@@ -133,7 +133,7 @@ class TileApplicationRegistry:
 
     def application(self, identity: int) -> TileApplication:
         """Return the one live issued application for an exact scoped ID."""
-        from number_compiler.hashlife.execution.tile_scheduler import TileApplication
+        from number_compiler.hashlife.execution.tile_application import TileApplication
 
         if type(identity) is not int or identity < 0:
             raise ValueError("tile application has an invalid scoped identity")
@@ -274,7 +274,7 @@ def audit_tile_application_registry(
     containers: Mapping[int, object],
 ) -> tuple[set[int], set[tuple[int, int]]]:
     """Independently reconcile weak application bindings and their account."""
-    from number_compiler.hashlife.execution.tile_scheduler import TileApplication
+    from number_compiler.hashlife.execution.tile_application import TileApplication
 
     approved: set[int] = set()
     invalid: set[tuple[int, int]] = set()

@@ -147,7 +147,7 @@ class HenselSlabArena:
             return self._keys[canonical]
         if len(self._nodes) >= self.max_atoms:
             raise BlockContextBudgetExceeded("Hensel slab interner budget exceeded")
-        roots = []
+        roots: list[tuple[int, int]] = []
         for label in sorted(groups):
             cover = tuple(c for effect, c in canonical if effect == label)
             root = self._graphs.get(cover)
@@ -155,7 +155,7 @@ class HenselSlabArena:
                 # Bound the constructor's coordinate/generator workspace and
                 # worst-case added DAG nodes before invoking the shared owner.
                 cost = sum(c.bits + 1 for c in cover)
-                if cost + len(self.decisions._nodes) > self.max_work:
+                if cost + self.decisions.node_count > self.max_work:
                     raise BlockContextBudgetExceeded(
                         "Hensel decision construction budget exceeded"
                     )
@@ -202,21 +202,19 @@ class HenselSlabArena:
     def metrics(self, slab: HenselSlabID) -> dict[str, int]:
         node = self.resolve(slab)
         pending = [root for _label, root in node.roots]
-        seen = set()
+        seen: set[int] = set()
         while pending:
             index = pending.pop()
             if index in seen:
                 continue
             seen.add(index)
-            record = self.decisions._nodes[index]
-            if record[0] == "N":
-                pending.extend(child for child, _mask in record[2])
+            pending.extend(self.decisions.children_of(index))
         return {
             "atoms": len(node.atoms),
             "dag_nodes": len(seen),
             "labels": len(node.roots),
             "live_precision": max((c.bits for _, c in node.atoms), default=0),
-            "retained_dag_nodes": len(self.decisions._nodes),
+            "retained_dag_nodes": self.decisions.node_count,
             "slab_ids": len(self._nodes),
         }
 

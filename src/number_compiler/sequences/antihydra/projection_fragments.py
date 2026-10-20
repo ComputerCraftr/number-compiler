@@ -150,7 +150,7 @@ class ProjectionFragmentCache:
         register_antihydra_payload_contract(self)
 
     @staticmethod
-    def _nodes(key: ProjectionFragmentKey) -> int:
+    def retained_nodes(key: ProjectionFragmentKey) -> int:
         return 12 * key.area + 1
 
     def get(self, key: ProjectionFragmentKey) -> ProjectionFragment | None:
@@ -198,7 +198,7 @@ class ProjectionFragmentCache:
             victim = next(iter(self.fragments))
             self._drop(victim)
             self.ledger.bump(_antihydra_keys.SPACETIME_PROJECTION_FRAGMENT_EVICTIONS)
-        nodes = self._nodes(key)
+        nodes = self.retained_nodes(key)
         if (
             self.ledger.max_nodes is not None
             and self.ledger.nodes + nodes + 2 > self.ledger.max_nodes
@@ -239,7 +239,7 @@ class ProjectionFragmentCache:
             raise ValueError("Antihydra projection fragment seal is missing")
         self.fragments.pop(key)
         self.seals.pop(key)
-        self.ledger.release(self.owner, entries=1, nodes=self._nodes(key))
+        self.ledger.release(self.owner, entries=1, nodes=self.retained_nodes(key))
         self.ledger.release(self.seal_owner, entries=1, nodes=2)
 
     def matches_seal(

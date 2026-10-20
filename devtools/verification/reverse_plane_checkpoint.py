@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from collections.abc import Mapping
+from typing import Protocol, cast
 
 from devtools.experiments.reverse_add.factored_carrier import (
     FactoredReverseCarrier,
@@ -14,6 +15,12 @@ from number_compiler.arithmetic.automata import program_word as words
 
 class _PlaneCarrier(Protocol):
     planes: PlaneAlgebra
+
+
+def _array(value: object, name: str) -> list[object]:
+    if type(value) is not list:
+        raise ValueError(f"invalid plane archive {name}")
+    return cast(list[object], value)
 
 
 def export_plane_roots(
@@ -61,23 +68,20 @@ def export_planes(
 
 def import_plane_roots(
     carrier: _PlaneCarrier,
-    archive: dict[str, Any],
+    archive: Mapping[str, object],
     *,
     kinds: tuple[str, ...] = ("domain", "f5", "bool"),
 ) -> tuple[PlaneID, ...]:
     """Restore aligned plane handles for a caller-owned cell type."""
-    nodes, roots = archive["nodes"], archive["roots"]
-    if (
-        type(nodes) is not list
-        or not 0 < len(nodes) <= 100000
-        or type(roots) is not list
-        or len(roots) != len(kinds)
-    ):
+    nodes = _array(archive.get("nodes"), "nodes")
+    roots = _array(archive.get("roots"), "roots")
+    if not 0 < len(nodes) <= 100000 or len(roots) != len(kinds):
         raise ValueError("invalid plane archive shape")
     built: list[words.CanonicalWord] = []
-    for record in nodes:
-        if type(record) is not list and type(record) is not tuple:
+    for raw_record in nodes:
+        if type(raw_record) is not list and type(raw_record) is not tuple:
             raise ValueError("invalid plane archive record")
+        record = cast(tuple[object, ...], raw_record)
         if len(record) != 3:
             raise ValueError("invalid plane archive record")
         kind, first, second = record
@@ -89,19 +93,22 @@ def import_plane_roots(
             built.append(words.concat(built[first], built[second]))
         else:
             raise ValueError("invalid plane archive node")
-    if any(type(i) is not int or not 0 <= i < len(built) for i in roots):
-        raise ValueError("invalid plane archive root")
+    root_indices: list[int] = []
+    for raw_index in roots:
+        if type(raw_index) is not int or not 0 <= raw_index < len(built):
+            raise ValueError("invalid plane archive root")
+        root_indices.append(raw_index)
     return tuple(
-        carrier.planes._issue(kind, built[i])
-        for kind, i in zip(kinds, roots, strict=True)
+        carrier.planes.issue_existing(kind, built[index])
+        for kind, index in zip(kinds, root_indices, strict=True)
     )
 
 
 def import_planes(
-    carrier: FactoredReverseCarrier, archive: dict[str, Any]
+    carrier: FactoredReverseCarrier, archive: Mapping[str, object]
 ) -> TemporalCell:
-    roots = archive.get("roots") if type(archive) is dict else None
-    if type(roots) is not list or len(roots) != 3:
+    roots = _array(archive.get("roots"), "roots")
+    if len(roots) != 3:
         raise ValueError("invalid plane archive roots")
     cell = TemporalCell(*import_plane_roots(carrier, archive))
     carrier.validate(cell)

@@ -135,7 +135,7 @@ _Computation = Generator[_Request, _Result, _Result]
 _Cursors = OrderedDict[tuple[int, int], tuple[int, int]]
 
 
-def _transport_weights(
+def transport_weights(
     r: int,
     q: int,
     bits: int,
@@ -349,7 +349,7 @@ class LazyReverseApplication:
         self.ledger.reserve(self._program_account, entries=1, nodes=1)
         self._programs.append(node)
 
-    def _coefficient(
+    def coefficient(
         self, generation: int, position: int, bits: int | None = None
     ) -> _Computation:
         """One modular coefficient as a scalar linear form in bounded carries."""
@@ -387,7 +387,7 @@ class LazyReverseApplication:
             step = self._programs[event + 1]
             old_width = self._programs[event].width
             for shift, weight in enumerate(
-                _transport_weights(r, q, bits, self.ledger, limit=position)
+                transport_weights(r, q, bits, self.ledger, limit=position)
             ):
                 coordinate = position - shift
                 if not 0 <= coordinate < step.width:
@@ -426,7 +426,7 @@ class LazyReverseApplication:
         q, r = program.q, program.r
         if q < bits:
             for shift, weight in enumerate(
-                _transport_weights(r, q, bits, self.ledger, limit=position)
+                transport_weights(r, q, bits, self.ledger, limit=position)
             ):
                 coordinate = position - shift
                 if 0 <= coordinate < len(self.source.digits):
@@ -468,7 +468,7 @@ class LazyReverseApplication:
             generation, mirror if reflected else stop, level
         ), reflected
 
-    def _range_action(
+    def range_action(
         self, generation: int, stop: int, level: int = 1
     ) -> TransferSummaryID | None:
         key, reflected = self._range_key(generation, stop, level)
@@ -485,6 +485,26 @@ class LazyReverseApplication:
             self.ledger.bump("reverse_summary_reflection_hits")
             return self.port_actions.reflect_interval(summary.action)
         return summary.action
+
+    def range_snapshot(
+        self,
+    ) -> tuple[tuple[ReverseRangeKey, CarryRangeSummary], ...]:
+        """Return the current immutable interval bindings for audit tooling."""
+        return tuple(self._ranges.items())
+
+    def program_width(self, generation: int) -> int | None:
+        """Return the width of a published generation, or None if absent."""
+        if type(generation) is not int or not 0 <= generation < len(self._programs):
+            return None
+        return self._programs[generation].width
+
+    def offsets_snapshot(self) -> tuple[OffsetProgram, ...]:
+        """Return the immutable affine offset program inventory."""
+        return tuple(self._offsets)
+
+    def programs_snapshot(self) -> tuple[ReverseProgram, ...]:
+        """Return the immutable reverse program inventory."""
+        return tuple(self._programs)
 
     def _store_range(
         self, generation: int, stop: int, level: int, action: TransferSummaryID
@@ -569,7 +589,7 @@ class LazyReverseApplication:
         found = (
             None
             if request.previous_lookup_missed
-            else self._range_action(generation, stop, level)
+            else self.range_action(generation, stop, level)
         )
         if found is not None:
             return found
@@ -609,7 +629,7 @@ class LazyReverseApplication:
         self._store_range(generation, key.stop, level, action)
         return self.port_actions.reflect_interval(action) if reflected else action
 
-    def _carry_code_from_summary(self, summary: TransferSummaryID) -> int:
+    def carry_code_from_summary(self, summary: TransferSummaryID) -> int:
         effect = self.port_actions.interval_effect(summary)
         return self.port_actions.carry_code(effect.forward, self.carry_port)
 
@@ -627,7 +647,7 @@ class LazyReverseApplication:
             if position % 2 == 0:
                 # A reset in the final leaf already answers this carry port.
                 # Parent descent is needed only across an identity suffix.
-                summary = self._range_action(generation, position)
+                summary = self.range_action(generation, position)
                 if summary is None:
                     summary = cast(
                         TransferSummaryID,
@@ -638,7 +658,7 @@ class LazyReverseApplication:
                         ),
                     )
             if summary is not None:
-                code = self._carry_code_from_summary(summary)
+                code = self.carry_code_from_summary(summary)
                 if code != 1:
                     return code // 2
                 # The identity suffix proves that its left sibling matters.
@@ -649,7 +669,7 @@ class LazyReverseApplication:
                         TransferSummaryID,
                         (yield ReverseRangeRequest(generation, position, level + 1)),
                     )
-                    code = self._carry_code_from_summary(parent)
+                    code = self.carry_code_from_summary(parent)
                     if code != 1:
                         return code // 2
                     level += 1
@@ -697,14 +717,14 @@ class LazyReverseApplication:
         return 0
 
     @overload
-    def _evaluate(self, request: _ScalarRequest, workspace: _Cursors) -> int: ...
+    def evaluate_range(self, request: _ScalarRequest, workspace: _Cursors) -> int: ...
 
     @overload
-    def _evaluate(
+    def evaluate_range(
         self, request: ReverseRangeRequest, workspace: _Cursors
     ) -> TransferSummaryID: ...
 
-    def _evaluate(self, request: _Request, workspace: _Cursors) -> _Result:
+    def evaluate_range(self, request: _Request, workspace: _Cursors) -> _Result:
         """One iterative trampoline for scalar observations and dyadic actions."""
         stack: list[tuple[_Request, _Computation]] = []
         pending: _Request | None = request
@@ -728,7 +748,7 @@ class LazyReverseApplication:
                     computation = (
                         self._carry(generation, position, workspace)
                         if kind == "carry"
-                        else self._coefficient(
+                        else self.coefficient(
                             generation,
                             position,
                             None if kind == "coefficient" else kind,
@@ -763,7 +783,7 @@ class LazyReverseApplication:
         if request[0] != "carry" or request[2] % 2 == 0:
             return
         summary = (
-            self._range_action(request[1], request[2] + 1)
+            self.range_action(request[1], request[2] + 1)
             if request[2] < self._programs[request[1]].width
             else None
         )
@@ -783,14 +803,14 @@ class LazyReverseApplication:
             )
             self.workspace_peak = len(workspace)
 
-    def _scan(self, generation: int, workspace: _Cursors) -> int:
+    def scan(self, generation: int, workspace: _Cursors) -> int:
         """Demand only the terminal carry cone; no full-width successor scan."""
         self.ledger.bump("reverse_growth_queries")
         position = self._programs[generation].width
         while position and position % 2 == 0:
             found = None
             for level in range((position & -position).bit_length() - 1, 0, -1):
-                found = self._range_action(generation, position, level)
+                found = self.range_action(generation, position, level)
                 if found is not None:
                     code = self.port_actions.carry_code(
                         self.port_actions.interval_effect(found).forward,
@@ -804,7 +824,7 @@ class LazyReverseApplication:
                 break
         if not position:
             return 0
-        return self._evaluate(("carry", generation, position), workspace)
+        return self.evaluate_range(("carry", generation, position), workspace)
 
     def _ensure_program(self) -> None:
         if self._built:
@@ -815,7 +835,7 @@ class LazyReverseApplication:
         while len(self._programs) <= self.steps:
             before = len(self._programs) - 1
             previous = self._programs[before]
-            growth = self._scan(before, workspace)
+            growth = self.scan(before, workspace)
             event = self._offset(OffsetProgram("event", left=before))
             transport = self._offset(
                 OffsetProgram("transport", left=previous.offset, q=1 - growth, r=growth)
@@ -834,14 +854,14 @@ class LazyReverseApplication:
             self._branches += 1
             self.ledger.bump("reverse_nonlinear_branch_evaluations")
         pair_width = self._programs[-1].width
-        terminal_carry = self._scan(self.steps, workspace)
+        terminal_carry = self.scan(self.steps, workspace)
         width = pair_width + terminal_carry
         if not terminal_carry:
             while width > 1:
-                coefficient = self._evaluate(
+                coefficient = self.evaluate_range(
                     ("coefficient", self.steps, width - 1), workspace
                 )
-                carry = self._evaluate(("carry", self.steps, width - 1), workspace)
+                carry = self.evaluate_range(("carry", self.steps, width - 1), workspace)
                 if (coefficient + carry) % self.base:
                     break
                 width -= 1
@@ -867,8 +887,10 @@ class LazyReverseApplication:
         if position == width:
             return 1
         workspace: _Cursors = OrderedDict()
-        coefficient = self._evaluate(("coefficient", self.steps, position), workspace)
-        carry = self._evaluate(("carry", self.steps, position), workspace)
+        coefficient = self.evaluate_range(
+            ("coefficient", self.steps, position), workspace
+        )
+        carry = self.evaluate_range(("carry", self.steps, position), workspace)
         return (coefficient + carry) % self.base
 
     @source_reads_only

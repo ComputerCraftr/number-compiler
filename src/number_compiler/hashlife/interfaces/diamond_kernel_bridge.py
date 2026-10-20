@@ -43,7 +43,7 @@ def input_expression(
     ):
         raise ValueError("invalid primitive input variable")
     width = (domain - 1).bit_length()
-    return kernels._intern_expression(
+    return kernels.intern_expression(
         FiniteExpression(
             domain,
             tuple(
@@ -57,7 +57,7 @@ def input_expression(
 def input_variable(
     boundaries: BoundaryActionArena, action: ActionProgramID, side: int
 ) -> tuple[PortVariable, TransferSummaryID]:
-    domain = boundaries._domain_size(action, side)
+    domain = boundaries.domain_size(action, side)
     if domain is None:
         raise ValueError("only primitive input domains have finite variables")
     port = PortVariable(0, side, "diamond-argument", 0)
@@ -107,9 +107,7 @@ def to_expression(
     signature = boundaries.action(function).signature
     if signature is None or signature.input_size is None:
         raise ValueError("conversion requires a complete primitive input domain")
-    output_size = boundaries._domain_size(
-        signature.output_action, signature.output_side
-    )
+    output_size = boundaries.domain_size(signature.output_action, signature.output_side)
     if output_size is None:
         raise ValueError("conversion requires a primitive codomain")
     width = (signature.input_size - 1).bit_length()
@@ -150,7 +148,7 @@ def to_expression(
     return values[function]
 
 
-def _valid_argument(
+def valid_argument(
     kernels: DiamondKernelArena, argument: TransferSummaryID
 ) -> TransferSummaryID:
     value = kernels.expression(argument)
@@ -179,15 +177,13 @@ def from_expression(
 ) -> BoundaryActionID:
     kernels = boundaries.kernels
     node = kernels.expression(expression)
-    expected = boundaries._signature(
+    expected = boundaries.action_signature(
         signature.input_action,
         signature.input_side,
         signature.output_action,
         signature.output_side,
     )
-    output_size = boundaries._domain_size(
-        signature.output_action, signature.output_side
-    )
+    output_size = boundaries.domain_size(signature.output_action, signature.output_side)
     if (
         expected != signature
         or signature.input_size is None
@@ -209,14 +205,14 @@ def from_expression(
         if bit in checked:
             continue
         checked.add(bit)
-        decision = kernels.functions._nodes[kernels.functions._resolve(bit)]
+        decision = kernels.functions.decision_record(bit)
         if decision.variable is not None:
             if decision.variable not in variables:
                 raise ValueError("expression contains a foreign finite input variable")
             pending.extend(
                 (
-                    kernels.functions._handle(decision.low),
-                    kernels.functions._handle(decision.high),
+                    kernels.functions.scoped_handle(decision.low),
+                    kernels.functions.scoped_handle(decision.high),
                 )
             )
     kernels.ledger.bump(
@@ -240,7 +236,7 @@ def from_expression(
     argument = input_expression(kernels, signature.input_size, port)
     default = kernels.evaluate(expression, variables)
     normalized = kernels.choose(
-        _valid_argument(kernels, argument),
+        valid_argument(kernels, argument),
         expression,
         kernels.constant(node.domain, default),
     )
@@ -256,9 +252,7 @@ def from_expression(
         if current in results:
             continue
         kernels.ledger.bump(_interfaces_keys.DIAMOND_FINITE_BRIDGE_VISITS)
-        decisions = [
-            kernels.functions._nodes[kernels.functions._resolve(bit)] for bit in current
-        ]
+        decisions = [kernels.functions.decision_record(bit) for bit in current]
         if all(decision.variable is None for decision in decisions):
             value = sum(bit.local_id << index for index, bit in enumerate(current))
             state = boundaries.literal(
@@ -278,13 +272,13 @@ def from_expression(
                 raise ValueError("expression contains a foreign finite input variable")
             logical_bit = width - 1 - (variable.bit - port.bit)
             low = tuple(
-                kernels.functions._handle(decision.low)
+                kernels.functions.scoped_handle(decision.low)
                 if decision.variable == variable
                 else bit
                 for decision, bit in zip(decisions, current, strict=True)
             )
             high = tuple(
-                kernels.functions._handle(decision.high)
+                kernels.functions.scoped_handle(decision.high)
                 if decision.variable == variable
                 else bit
                 for decision, bit in zip(decisions, current, strict=True)
@@ -331,14 +325,16 @@ def scan_primitive_support(
         if bit in checked:
             continue
         checked.add(bit)
-        node = functions._nodes[functions._resolve(bit)]
+        node = functions.decision_record(bit)
         if node.variable is not None:
             variable = node.variable
             if allowed is None:
                 ports.add((variable.time, variable.side, variable.role))
             elif variable not in allowed:
                 raise ValueError(error)
-            pending.extend((functions._handle(node.low), functions._handle(node.high)))
+            pending.extend(
+                (functions.scoped_handle(node.low), functions.scoped_handle(node.high))
+            )
     workspace_peak = max(
         workspace_peak, len(checked) + (len(ports) if allowed is None else len(allowed))
     )
@@ -366,7 +362,7 @@ def evaluate_primitive_bits(
     for offset, handle in enumerate(expression.bits):
         index = handle.local_id
         while index >= 2:
-            node = kernels.functions._nodes[index]
+            node = kernels.functions.decision_at(index)
             assert node.variable is not None
             bit = width - 1 - (node.variable.bit - port.bit)
             index = node.high if code & (1 << bit) else node.low

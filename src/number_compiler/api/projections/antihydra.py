@@ -21,7 +21,7 @@ def project(compiler: NumberCompiler, query: AntihydraTermQuery) -> ProjectedNum
     from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
 
     cache_capacity = (
-        8192 if compiler._max_cache_entries is None else compiler._max_cache_entries
+        8192 if compiler.max_cache_entries is None else compiler.max_cache_entries
     )
 
     def valid(owner: AntihydraArithmeticTerm) -> bool:
@@ -30,13 +30,13 @@ def project(compiler: NumberCompiler, query: AntihydraTermQuery) -> ProjectedNum
             == (query.index, query.max_steps, query.max_state_bits)
             and owner.max_cache_entries == cache_capacity
             and owner.engine.capacity == cache_capacity
-            and owner.engine.shared_cache is compiler._shared_cache
+            and owner.engine.shared_cache is compiler.shared_cache
             and owner.ledger is owner.engine.ledger
             and owner.ledger.max_nodes == cache_capacity + 32
             and owner.ledger.max_cache_entries == cache_capacity
         )
 
-    term = compiler._powered_term(
+    term = compiler.powered_term(
         query,
         AntihydraArithmeticTerm,
         lambda: AntihydraArithmeticTerm(
@@ -44,7 +44,7 @@ def project(compiler: NumberCompiler, query: AntihydraTermQuery) -> ProjectedNum
             max_steps=query.max_steps,
             max_state_bits=query.max_state_bits,
             max_cache_entries=cache_capacity,
-            shared_cache=compiler._shared_cache,
+            shared_cache=compiler.shared_cache,
         ),
         valid,
     )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Never, TypeVar
 
 import pytest
@@ -11,6 +11,32 @@ from number_compiler.resources.ledger import LedgerSnapshot, ResourceLedger
 from number_compiler.resources.metric_records import LedgerMetrics
 
 T = TypeVar("T")
+MemoKeyT = TypeVar("MemoKeyT")
+MemoValueT = TypeVar("MemoValueT")
+ReverseKeyT = TypeVar("ReverseKeyT")
+ReverseValueT = TypeVar("ReverseValueT")
+
+
+def assert_no_forbidden_dataclass_fields(
+    forbidden: set[str], *groups: Iterable[Mapping[str, object]]
+) -> None:
+    for records in groups:
+        for record_fields in records:
+            assert forbidden.isdisjoint(record_fields)
+
+
+def assert_publication_state_unchanged(
+    memo_before: Mapping[MemoKeyT, MemoValueT],
+    reverse_before: Mapping[ReverseKeyT, ReverseValueT],
+    accounting_before: tuple[int, int],
+    *,
+    memo_after: Mapping[MemoKeyT, MemoValueT],
+    reverse_after: Mapping[ReverseKeyT, ReverseValueT],
+    accounting_after: tuple[int, int],
+) -> None:
+    assert dict(memo_after) == memo_before
+    assert dict(reverse_after) == reverse_before
+    assert accounting_after == accounting_before
 
 
 def assert_associative(compose: Callable[[T, T], T], a: T, b: T, c: T) -> T:

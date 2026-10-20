@@ -16,7 +16,8 @@ from number_compiler.hashlife.execution.tile_causal_boundary_step import boundar
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.resources.causal_stacks import CausalFrameStack, CausalResults
 from number_compiler.resources.causal_types import CausalTaskValue
-from tests.arithmetic.contracts.test_tile_causal_private import _scan
+from tests.arithmetic.contracts.test_tile_causal_private import scan
+from tests.support.causal_frames import run_causal_frame
 from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 
@@ -39,7 +40,7 @@ def test_single_reverse_boundary_uses_original_exteriors_without_scans(
     ports = (1, 2) if noninitial else adapter.initial_ports(primitive)
     produced: tuple[int, ...] = symbols
     for index in range(exponent):
-        produced = _scan(
+        produced = scan(
             adapter.primitive_law(primitive),
             produced,
             ports if index == exponent - 1 else adapter.initial_ports(primitive),
@@ -65,21 +66,22 @@ def test_single_reverse_boundary_uses_original_exteriors_without_scans(
     monkeypatch.setattr(causal, "boundary_step", guarded)
     with make_tile_from_symbols(tiles, adapter, primitive, symbols) as source:
         engine = CausalTileEngine(scheduler)
-        engine._hold_workspace = True
+        object.__setattr__(engine, "_hold_workspace", True)
         try:
             arguments = (
                 action,
                 side,
                 BoundaryTileView(source.tile, 0, 4, side),
-                engine._initial(action, side, ports[side]),
-                engine._initial(action, 1 - side, ports[1 - side]),
+                engine.initial_state(action, side, ports[side]),
+                engine.initial_state(action, 1 - side, ports[1 - side]),
             )
             request = (
                 ReverseBoundaryFrame(arguments)
                 if operation == "reverse_boundary"
                 else OutputBoundaryFrame(arguments)
             )
-            actual = engine._run(
+            actual = run_causal_frame(
+                engine,
                 request,
                 tile_result=False,
             )
@@ -93,5 +95,5 @@ def test_single_reverse_boundary_uses_original_exteriors_without_scans(
                 )
                 assert ledger.counters["tile_causal_boundary_single_tile_outputs"] > 0
         finally:
-            engine._hold_workspace = False
-            engine._release_workspace()
+            object.__setattr__(engine, "_hold_workspace", False)
+            engine.release_workspace()

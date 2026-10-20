@@ -28,12 +28,13 @@ def capture_tile_dependency_state(
     include_counters: bool = False,
 ) -> TileDependencySnapshot:
     inventory = ledger.inventory()
+    tile_state = tiles.audit_snapshot()
     return TileDependencySnapshot(
         tuple(dependencies.records.items()),
         inventory[dependencies.owner].entries,
-        inventory[tiles._lease_owner].entries,
-        tuple(tiles._refs.items()) if include_tile_state else None,
-        tuple(tiles._leases.items()) if include_tile_state else None,
+        inventory[tile_state.lease_owner].entries,
+        tuple(tile_state.refs.items()) if include_tile_state else None,
+        tuple(tile_state.leases.items()) if include_tile_state else None,
         tuple(ledger.counters.items()) if include_counters else None,
     )
 

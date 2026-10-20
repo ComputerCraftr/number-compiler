@@ -3,31 +3,47 @@
 from __future__ import annotations
 
 from array import array
-from collections.abc import MutableMapping
+from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Self
 
 from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.radix_division import (
     SymbolicBinaryDivisionEffect,
-    certified_binary_division_radix,
 )
+from number_compiler.hashlife.execution.tile_application import TileApplication
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
-from number_compiler.hashlife.execution.tile_scheduler import (
-    TileApplication,
-    TileScheduler,
-)
+from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.hashlife.observation.tile_projection import LazyProjection
 from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
-from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.hashlife.tiles.tiles import TileID, TileLease
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import projection as _projection_keys
+from number_compiler.resources.stores import LedgerDict
 from number_compiler.resources.tile_alphabet_contract import (
     CANONICAL_TILE_ALPHABET_VERSION,
 )
 
 MAX_FINITE_TILE_RADIX = 256
 MAX_TILE_RADIX = 1 << 63
+
+
+@dataclass(frozen=True, slots=True)
+class TileRadixProjectionAuditSnapshot:
+    stage_owner: int
+    stage_store_identity: int
+    stages: Mapping[int, TileApplication]
+    source: TileLease
+    closed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TileRadixObservationAuditSnapshot:
+    owner: int
+    app_store_identity: int
+    apps: Mapping[int, TileApplication]
+    closed: bool
 
 
 def _division_tables(radix: int) -> tuple[tuple[int, ...], bytes]:
@@ -94,10 +110,6 @@ def _division_effect(
         stable_blank_output=True,
         blank=2,
     )
-
-
-def _valid_division_effect(effect: object, radix: int) -> bool:
-    return type(radix) is int and certified_binary_division_radix(effect) == radix
 
 
 class TileRadixProjection:
@@ -183,12 +195,21 @@ class TileRadixProjection:
             f"tile-radix-{len(self.ledger.inventory())}-stages",
             "tile_radix_stage_binding",
         )
-        self._stages: MutableMapping[int, TileApplication] = self.ledger.make_dict(
-            self._stage_owner,
-            nodes_per_entry=0,
+        self._stages: LedgerDict[int, TileApplication] = self.ledger.make_dict(
+            self._stage_owner, nodes_per_entry=0
         )
         self._closed = False
         self.ledger.register_execution_root(self)
+
+    def audit_snapshot(self) -> TileRadixProjectionAuditSnapshot:
+        """Expose read-only source and stage bindings to resource auditors."""
+        return TileRadixProjectionAuditSnapshot(
+            self._stage_owner,
+            id(self._stages),
+            self._stages.audit_view(),
+            self._source,
+            self._closed,
+        )
 
     def _open(self) -> None:
         if type(self._closed) is not bool or self._closed:
@@ -344,7 +365,7 @@ class TileRadixObservation:
     def __init__(self, projection: LazyProjection, radix: int) -> None:
         if type(projection) is not LazyProjection:
             raise TypeError("tile radix observation requires an issued tile projection")
-        application = projection._open()
+        application = projection.validated_application()
         scheduler = projection.scheduler
         adapter = scheduler.adapter
         if type(adapter) is not PrimitiveTileKernelAdapter:
@@ -366,8 +387,8 @@ class TileRadixObservation:
             f"tile-radix-{radix}-observations-{len(scheduler.ledger.inventory())}",
             "tile_radix_observation_binding",
         )
-        self._apps: MutableMapping[int, TileApplication] = scheduler.ledger.make_dict(
-            self._owner,
+        self._apps: LedgerDict[int, TileApplication] = scheduler.ledger.make_dict(
+            self._owner
         )
         scheduler.ledger.register_container(
             self._owner,
@@ -378,12 +399,21 @@ class TileRadixObservation:
         scheduler.ledger.register_execution_root(self)
         _ = application.source
 
+    def audit_snapshot(self) -> TileRadixObservationAuditSnapshot:
+        """Expose read-only application bindings to resource auditors."""
+        return TileRadixObservationAuditSnapshot(
+            self._owner,
+            id(self._apps),
+            self._apps.audit_view(),
+            self._closed,
+        )
+
     def _application(self, index: int) -> TileApplication:
         if type(self._closed) is not bool or self._closed:
             raise ValueError("closed tile radix observation")
         if type(self.projection) is not LazyProjection:
             raise TypeError("tile radix observation lost its issued projection")
-        source_application = self.projection._open()
+        source_application = self.projection.validated_application()
         if (
             self.projection.scheduler is not self.scheduler
             or self.scheduler.adapter is not self.adapter
@@ -442,6 +472,8 @@ class TileRadixObservation:
 __all__ = [
     "MAX_FINITE_TILE_RADIX",
     "MAX_TILE_RADIX",
+    "TileRadixObservationAuditSnapshot",
     "TileRadixObservation",
+    "TileRadixProjectionAuditSnapshot",
     "TileRadixProjection",
 ]

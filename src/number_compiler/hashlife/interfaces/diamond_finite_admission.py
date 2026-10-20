@@ -60,7 +60,7 @@ class FiniteFunctionAdmission:
             raise ValueError(
                 "finite admission requires a declared primitive input sort"
             )
-        self.arena._validate_sort(key.source)
+        self.arena.validate_sort(key.source)
         before = self.arena.primitive(key.source.action)
         if before is None:
             raise ValueError(
@@ -68,7 +68,7 @@ class FiniteFunctionAdmission:
             )
         domain = len(before.domain(BoundarySide(key.source.side)))
         if type(key.target) is StateSort:
-            self.arena._validate_sort(key.target)
+            self.arena.validate_sort(key.target)
             after = self.arena.primitive(key.target.action)
             if after is None or (before.base, before.blank) != (
                 after.base,
@@ -79,7 +79,7 @@ class FiniteFunctionAdmission:
                 )
             codomain = len(after.domain(BoundarySide(key.target.side)))
         elif type(key.target) is SymbolSort:
-            self.arena._validate_sort(key.target)
+            self.arena.validate_sort(key.target)
             if (key.target.base, key.target.blank) != (before.base, before.blank):
                 raise ValueError(
                     "finite admission symbol alphabet differs from the input primitive"
@@ -117,23 +117,22 @@ class FiniteFunctionAdmission:
             PortVariable(port.time, port.side, port.role, port.bit + bit)
             for bit in range(width)
         }
-        pending, seen = list(expression.bits), set()
+        pending: list[TransferSummaryID] = list(expression.bits)
+        seen: set[int] = set()
         visits, peak = 0, len(pending)
         functions = self.kernels.functions
         while pending:
             handle = pending.pop()
             visits += 1
-            index = functions._resolve(handle)
+            node = functions.node(handle)
+            index = handle.local_id
             if index in seen:
                 continue
             seen.add(index)
-            node = functions._nodes[index]
             if node.variable is not None:
                 if node.variable not in allowed:
                     raise ValueError("finite function contains another input interface")
-                pending.extend(
-                    (functions._handle(node.low), functions._handle(node.high))
-                )
+                pending.extend((node.low, node.high))
             peak = max(peak, len(pending) + len(seen))
         for value in range(certificate.input_size):
             output, decision_reads = evaluate_primitive_bits(

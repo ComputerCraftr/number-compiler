@@ -19,18 +19,22 @@ from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
 from number_compiler.arithmetic.polynomials.f5_transport import F5SpatialTransport
 
 
-def split_class95(value: int) -> tuple[int, int]:
-    return decimal_q95_coordinates(value)
+def _pair_counter() -> Counter[tuple[int, int]]:
+    return Counter()
+
+
+def _integer_counter() -> Counter[int]:
+    return Counter()
 
 
 @dataclass(slots=True)
 class TransitionGrammarAudit:
     """Leaf work and rule diversity are intentionally separate measurements."""
 
-    add_rules: Counter[tuple[int, int]] = field(default_factory=Counter)
-    scale_rules: Counter[tuple[int, int]] = field(default_factory=Counter)
-    attach_rules: Counter[tuple[int, int]] = field(default_factory=Counter)
-    shift_passes: Counter[int] = field(default_factory=Counter)
+    add_rules: Counter[tuple[int, int]] = field(default_factory=_pair_counter)
+    scale_rules: Counter[tuple[int, int]] = field(default_factory=_pair_counter)
+    attach_rules: Counter[tuple[int, int]] = field(default_factory=_pair_counter)
+    shift_passes: Counter[int] = field(default_factory=_integer_counter)
     shifted_cells: int = 0
     decoded_cells: int = 0
 
@@ -68,8 +72,8 @@ def square_class95_words(
         or right.target_width != right.source_width + right.growths
     ):
         raise ValueError("carrier words have mismatched input/output extents")
-    left = tuple(split_class95(value)[1] for value in left_classes)
-    right_parts = tuple(split_class95(value) for value in right_classes)
+    left = tuple(decimal_q95_coordinates(value)[1] for value in left_classes)
+    right_parts = tuple(decimal_q95_coordinates(value) for value in right_classes)
     if audit is None:
         audit = TransitionGrammarAudit()
     audit.decoded_cells += len(left) + len(right_parts)

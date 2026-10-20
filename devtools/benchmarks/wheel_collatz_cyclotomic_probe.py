@@ -37,7 +37,7 @@ def component_key(
 
 def main() -> int:
     compiler = CanonicalSequenceCompiler()
-    prime_rows = []
+    prime_rows: list[dict[str, object]] = []
     for length in (64, 256, 1024, 4096):
         got = compiler.compile_diagnostic(PrimeBlockSequenceSpec(9_999_993, length))
         auto = got.automaton
@@ -92,7 +92,7 @@ def main() -> int:
         even_steps += int(step.branch == "divide_2")
         odd_steps += int(step.branch == "multiply_3_add_1")
 
-    closure_rows = []
+    closure_rows: list[dict[str, object]] = []
     for orders in ((4,), (8,), (16,), (5, 7)):
         current = tuple(component_key(n, orders) for n in range(1, limit + 1))
         nxt = tuple(

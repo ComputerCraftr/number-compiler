@@ -21,8 +21,8 @@ from itertools import count
 from types import MappingProxyType
 from typing import Any, TypeVar
 
+from number_compiler.arithmetic.automata.program_word_metrics import word_metrics
 from number_compiler.arithmetic.contracts.iterative_queries import defer_dependencies
-from number_compiler.arithmetic.fields.radix import bit_width
 
 _CacheKey = TypeVar("_CacheKey")
 
@@ -182,7 +182,7 @@ def _split(n: int) -> int:
     return 1 << ((n - 1).bit_length() - 1)
 
 
-def _validate_word(word: CanonicalWord) -> None:
+def validate_word(word: CanonicalWord) -> None:
     if type(word) is not CanonicalWord:
         raise TypeError("expected an exact canonical word")
     word.__post_init__()
@@ -196,7 +196,7 @@ def _validate_word(word: CanonicalWord) -> None:
 
 
 _SUFFIX_SEAL = object()
-_SUFFIX_MEMO_LIMIT = 4096
+SUFFIX_MEMO_LIMIT = 4096
 
 
 @dataclass(frozen=True, slots=True, weakref_slot=True, eq=False)
@@ -230,6 +230,34 @@ class SourceWordSuffix:
         if self.length != self.source.length - self.start or self.run_count < 1:
             raise ValueError("invalid source suffix extent")
 
+    def _definition(self) -> tuple[object, ...]:
+        return (
+            self.node_id,
+            self.source.node_id,
+            self.start,
+            self.length,
+            self.run_count,
+            tuple(part.node_id for part in self.parts),
+            self._seal,
+        )
+
+    def register_definition(self) -> None:
+        """Remember a newly issued suffix once, without exposing its seal."""
+        if (
+            _SUFFIX_AUTHORITIES.get(self.node_id) is not self
+            or self in _SUFFIX_DEFINITIONS
+        ):
+            raise ValueError("source word suffix identity is foreign or stale")
+        _SUFFIX_DEFINITIONS[self] = self._definition()
+
+    def validate_definition(self) -> None:
+        """Reject mutation or replacement of an issued source suffix."""
+        if (
+            _SUFFIX_AUTHORITIES.get(self.node_id) is not self
+            or _SUFFIX_DEFINITIONS.get(self) != self._definition()
+        ):
+            raise ValueError("source word suffix identity is foreign or stale")
+
 
 SourceWord = CanonicalWord | SourceWordSuffix
 _SUFFIXES: weakref.WeakValueDictionary[tuple[int, int], SourceWordSuffix] = (
@@ -243,37 +271,22 @@ _SUFFIX_DEFINITIONS: weakref.WeakKeyDictionary[SourceWordSuffix, tuple[object, .
 )
 
 
-def _suffix_definition(word: SourceWordSuffix) -> tuple[object, ...]:
-    return (
-        word.node_id,
-        word.source.node_id,
-        word.start,
-        word.length,
-        word.run_count,
-        tuple(part.node_id for part in word.parts),
-        word._seal,
-    )
-
-
 def validate_source_word(
     word: SourceWord, *, metrics: RunTraversalMetrics | None = None
 ) -> None:
     """Check exact canonical authority or issued original-source suffix authority."""
     if type(word) is CanonicalWord:
         _record_source_visit(metrics)
-        _validate_word(word)
+        validate_word(word)
     elif isinstance(word, SourceWordSuffix):
         _record_source_visit(metrics)
         word.__post_init__()
         _record_source_visit(metrics)
-        _validate_word(word.source)
-        if _SUFFIX_AUTHORITIES.get(word.node_id) is not word or _SUFFIX_DEFINITIONS.get(
-            word
-        ) != _suffix_definition(word):
-            raise ValueError("source word suffix identity is foreign or stale")
+        validate_word(word.source)
+        word.validate_definition()
         for part in word.parts:
             _record_source_visit(metrics)
-            _validate_word(part)
+            validate_word(part)
     else:
         raise TypeError("expected an authenticated source word")
 
@@ -330,7 +343,7 @@ def drop_source_prefix(
             metrics.peak_frontier = max(metrics.peak_frontier, len(stack))
         node, offset = stack.pop()
         _record_source_visit(metrics)
-        _validate_word(node)
+        validate_word(node)
         if offset == 0:
             parts.append(node)
         elif node.symbol is not None:
@@ -360,11 +373,11 @@ def drop_source_prefix(
         tuple(parts),
         _SUFFIX_SEAL,
     )
-    if len(_SUFFIXES) >= _SUFFIX_MEMO_LIMIT:
+    if len(_SUFFIXES) >= SUFFIX_MEMO_LIMIT:
         _SUFFIXES.pop(next(iter(_SUFFIXES)), None)
     _SUFFIXES[key] = result
     _SUFFIX_AUTHORITIES[result.node_id] = result
-    _SUFFIX_DEFINITIONS[result] = _suffix_definition(result)
+    result.register_definition()
     return result
 
 
@@ -411,8 +424,8 @@ def last_run(w: CanonicalWord) -> CanonicalWord:
 
 def _raw_node(left: CanonicalWord, right: CanonicalWord) -> CanonicalWord:
     """Intern one already-balanced, non-mergeable internal node."""
-    _validate_word(left)
-    _validate_word(right)
+    validate_word(left)
+    validate_word(right)
     if not left.run_count:
         return right
     if not right.run_count:
@@ -544,21 +557,21 @@ def _word_tasks(initial: tuple[Any, ...]) -> CanonicalWord:
 
 
 def slice_runs(w: CanonicalWord, start: int, length: int) -> CanonicalWord:
-    _validate_word(w)
+    validate_word(w)
     if type(start) is not int or type(length) is not int:
         raise TypeError("word slices require exact integer coordinates")
     return _word_tasks(("SLICE", w, start, length))
 
 
 def concat_disjoint(left: CanonicalWord, right: CanonicalWord) -> CanonicalWord:
-    _validate_word(left)
-    _validate_word(right)
+    validate_word(left)
+    validate_word(right)
     return _word_tasks(("JOIN", left, right))
 
 
 def concat(left: CanonicalWord, right: CanonicalWord) -> CanonicalWord:
-    _validate_word(left)
-    _validate_word(right)
+    validate_word(left)
+    validate_word(right)
     if not left.run_count:
         return right
     if not right.run_count:
@@ -748,59 +761,13 @@ def iter_run_blocks_reverse(
                     frontier_delta(-1, -block_bits)
 
 
-def word_metrics(root: SourceWord) -> dict[str, int]:
-    """Charge the retained RLE/SLP word, including references and run parameters."""
-    if isinstance(root, SourceWordSuffix):
-        validate_source_word(root)
-        stack = [root.source, *root.parts]
-        cursor_nodes = 1
-        cursor_refs = 1 + len(root.parts)
-        cursor_bits = (
-            bit_width(root.start) + bit_width(root.length) + bit_width(root.run_count)
-        )
-    else:
-        _validate_word(root)
-        stack = [root]
-        cursor_nodes = cursor_refs = cursor_bits = 0
-    seen: dict[int, CanonicalWord] = {}
-    while stack:
-        node = stack.pop()
-        if node.node_id in seen:
-            continue
-        seen[node.node_id] = node
-        if node.left is not None:
-            stack.append(node.left)
-        if node.right is not None:
-            stack.append(node.right)
-    refs = cursor_refs + sum(
-        int(node.left is not None) + int(node.right is not None)
-        for node in seen.values()
-    )
-    param_bits = cursor_bits
-    for node in seen.values():
-        if node.run_count == 1:
-            param_bits += bit_width(int(node.symbol or 0)) + bit_width(node.run_length)
-        else:
-            param_bits += bit_width(node.length) + bit_width(node.run_count)
-    node_count = len(seen) + cursor_nodes
-    id_bits = bit_width(node_count)
-    return {
-        "length": root.length,
-        "runs": root.run_count,
-        "nodes": node_count,
-        "references": refs,
-        "parameter_bits": param_bits,
-        "description_bits": param_bits + node_count + refs * id_bits,
-    }
-
-
 _REVERSE: weakref.WeakValueDictionary[int, CanonicalWord] = (
     weakref.WeakValueDictionary()
 )
 
 
 def reverse(word: CanonicalWord) -> CanonicalWord:
-    _validate_word(word)
+    validate_word(word)
     got = _REVERSE.get(word.node_id)
     if got is not None:
         return got
@@ -867,7 +834,7 @@ def program_word_cache_snapshot() -> ProgramWordCacheSnapshot:
 
 def cap_symbol_runs(word: CanonicalWord, symbol: int, cap: int) -> CanonicalWord:
     """Canonical quotient under a proved synchronizing ``symbol**cap`` law."""
-    _validate_word(word)
+    validate_word(word)
     if type(symbol) is not int or type(cap) is not int:
         raise TypeError("run normalization requires exact integer parameters")
     if cap <= 0 or not word.run_count:

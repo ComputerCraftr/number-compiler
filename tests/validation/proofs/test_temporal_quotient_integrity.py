@@ -36,7 +36,7 @@ def test_recursive_runtime_uses_only_bounded_dyadic_alignment_phase() -> None:
     import devtools.verification.block_spacetime_runtime as runtime
 
     source = inspect.getsource(runtime)
-    assert "_recursive_residual_phase" in source
+    assert "recursive_residual_phase" in source
     assert "_recursive_residual_extent" not in source
-    phase_source = inspect.getsource(runtime._recursive_residual_phase)
+    phase_source = inspect.getsource(runtime.recursive_residual_phase)
     assert "% modulus" in phase_source

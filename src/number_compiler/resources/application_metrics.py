@@ -35,7 +35,8 @@ def tile_application_compatibility_values(
     """Forward actual canonical-tile execution from the same ledger snapshot."""
     from number_compiler.hashlife.observation.tile_projection import LazyProjection
 
-    application = index._lazy_application
+    index_snapshot = index.audit_snapshot()
+    application = index_snapshot.lazy_application
     if type(application) is not LazyProjection:
         raise TypeError("tile compatibility metrics require a tile application")
     work = ledger.resource_work_counters
@@ -46,7 +47,7 @@ def tile_application_compatibility_values(
     mirror_misses = ledger.tile_mirror_requests - ledger.tile_mirror_early_hits
     boundary_requests = work.get("tile_causal_boundary_output_requests", 0)
     boundary_hits = work.get("tile_causal_boundary_output_hits", 0)
-    tile_records = application.scheduler.tiles._nodes.values()
+    tile_records = application.scheduler.tiles.audit_snapshot().nodes.values()
     maximum_tile_level = max((record.level for record in tile_records), default=0)
     powered_interface_lookup_misses = (
         ledger.powered_interface_requests - ledger.powered_interface_early_hits
@@ -68,7 +69,7 @@ def tile_application_compatibility_values(
         "bounded_application_nonlinear_branch_evaluations": ledger.primitive_transition_evaluations,
         "bounded_application_exact_endpoint_entries": ledger.exact_endpoint_nodes,
         "bounded_application_query_requests": (
-            index._point_queries
+            index_snapshot.point_queries
             + work.get(_observation_keys.TILE_PROJECTION_WIDTH_OBSERVATIONS, 0)
         ),
         "bounded_application_quotient_builds": (
@@ -136,9 +137,11 @@ def tile_application_compatibility_values(
         "canonical_tile_roots": ledger.tile_root_leases,
         "peak_live_tile_roots": ledger.tile_root_lease_peak,
         "canonical_tile_arena_nodes": ledger.canonical_tile_nodes,
-        "canonical_tile_arena_nodes_index_build": index._canonical_tiles_at_build,
+        "canonical_tile_arena_nodes_index_build": (
+            index_snapshot.canonical_tiles_at_build
+        ),
         "canonical_tile_arena_nodes_query": ledger.canonical_tile_nodes
-        - index._canonical_tiles_at_build,
+        - index_snapshot.canonical_tiles_at_build,
         "canonical_tile_intern_hits": ledger.tile_intern_early_hits,
         "canonical_tile_intern_misses": tile_intern_misses,
         "canonical_tile_mirror_hits": ledger.tile_mirror_early_hits,

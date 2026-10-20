@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum
 from math import gcd
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     arithmetic_fields as _fields_keys,
 )
+from number_compiler.resources.payload_containers import audit_mapping_items
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 _MinPlusValue = TypeVar("_MinPlusValue")
@@ -461,6 +462,33 @@ class AssociatedActionRecord:
     zero_failure_absorbing: bool
 
 
+@dataclass(frozen=True, slots=True)
+class AssociatedActionArenaAuditSnapshot:
+    """Detached retained rows and store identities for forensic auditing."""
+
+    ledger: ResourceLedger
+    owner: ArenaToken
+    closed: bool
+    semantic_owner: int
+    semantic_store_identity: int
+    semantics: tuple[SaturatingAffineAction, ...]
+    semantic_key_owner: int
+    semantic_key_store_identity: int
+    semantic_key_rows: tuple[tuple[object, object], ...]
+    semantic_fingerprint_owner: int
+    semantic_fingerprint_store_identity: int
+    semantic_fingerprints: tuple[tuple[int, ...], ...]
+    action_owner: int
+    action_store_identity: int
+    actions: tuple[AssociatedActionRecord, ...]
+    action_key_owner: int
+    action_key_store_identity: int
+    action_key_rows: tuple[tuple[object, object], ...]
+    action_fingerprint_owner: int
+    action_fingerprint_store_identity: int
+    action_fingerprints: tuple[tuple[int, ...], ...]
+
+
 class AssociatedActionArena:
     """Ledger-owned action DAG with semantics interned apart from logical work."""
 
@@ -521,11 +549,41 @@ class AssociatedActionArena:
             self.close()
             raise
 
-    def _handle(self, local_id: int) -> AssociatedActionID:
+    def scoped_handle(self, local_id: int) -> AssociatedActionID:
         return AssociatedActionID(self.owner, self._KIND, local_id)
 
+    def audit_snapshot(self) -> AssociatedActionArenaAuditSnapshot:
+        """Capture exact registered-store identities and detached retained rows."""
+        return AssociatedActionArenaAuditSnapshot(
+            ledger=self.ledger,
+            owner=self.owner,
+            closed=self._closed,
+            semantic_owner=self._semantic_owner,
+            semantic_store_identity=id(self._semantics),
+            semantics=tuple(self._semantics.audit_view()),
+            semantic_key_owner=self._semantic_key_owner,
+            semantic_key_store_identity=id(self._semantic_keys),
+            semantic_key_rows=audit_mapping_items(
+                cast(Mapping[object, object], self._semantic_keys)
+            ),
+            semantic_fingerprint_owner=self._semantic_fingerprint_owner,
+            semantic_fingerprint_store_identity=id(self._semantic_fingerprints),
+            semantic_fingerprints=tuple(self._semantic_fingerprints.audit_view()),
+            action_owner=self._action_owner,
+            action_store_identity=id(self._actions),
+            actions=tuple(self._actions.audit_view()),
+            action_key_owner=self._action_key_owner,
+            action_key_store_identity=id(self._action_keys),
+            action_key_rows=audit_mapping_items(
+                cast(Mapping[object, object], self._action_keys)
+            ),
+            action_fingerprint_owner=self._action_fingerprint_owner,
+            action_fingerprint_store_identity=id(self._action_fingerprints),
+            action_fingerprints=tuple(self._action_fingerprints.audit_view()),
+        )
+
     @staticmethod
-    def _semantic_fingerprint(semantic: SaturatingAffineAction) -> tuple[int, ...]:
+    def semantic_fingerprint(semantic: SaturatingAffineAction) -> tuple[int, ...]:
         semantic.__post_init__()
         coefficients = (
             semantic.scale.numerator,
@@ -542,7 +600,7 @@ class AssociatedActionArena:
             semantic.cap.denominator,
         )
 
-    def _action_fingerprint(self, record: AssociatedActionRecord) -> tuple[int, ...]:
+    def action_fingerprint(self, record: AssociatedActionRecord) -> tuple[int, ...]:
         if (
             type(record.semantic_id) is not int
             or type(record.logical_extent) is not int
@@ -567,6 +625,21 @@ class AssociatedActionArena:
             int(record.zero_failure_absorbing),
         )
 
+    def semantic_key_index(self, semantic: SaturatingAffineAction) -> int | None:
+        """Resolve one semantic value through the arena's canonical interner."""
+        return self._semantic_keys.get(semantic)
+
+    def action_key_index(
+        self,
+        key: tuple[
+            int,
+            int,
+            tuple[AssociatedActionID, AssociatedActionID] | None,
+        ],
+    ) -> int | None:
+        """Resolve one composed-action key through the canonical interner."""
+        return self._action_keys.get(key)
+
     def record(self, action: AssociatedActionID) -> AssociatedActionRecord:
         if self._closed:
             raise ValueError("disposed associated action arena")
@@ -576,10 +649,10 @@ class AssociatedActionArena:
         record = self._actions[action.local_id]
         if (
             type(record) is not AssociatedActionRecord
-            or self._action_fingerprint(record)
+            or self.action_fingerprint(record)
             != self._action_fingerprints[action.local_id]
             or not 0 <= record.semantic_id < len(self._semantics)
-            or self._semantic_fingerprint(self._semantics[record.semantic_id])
+            or self.semantic_fingerprint(self._semantics[record.semantic_id])
             != self._semantic_fingerprints[record.semantic_id]
         ):
             raise ValueError("associated action publication was altered")
@@ -657,7 +730,7 @@ class AssociatedActionArena:
         found = self._action_keys.get(key)
         if found is not None:
             self.ledger.bump(_fields_keys.ASSOCIATED_ACTION_ADMISSION_HITS)
-            return self._handle(found)
+            return self.scoped_handle(found)
         reservations = [
             (self._action_owner, 1, 1),
             (self._action_key_owner, 1, 0),
@@ -679,7 +752,7 @@ class AssociatedActionArena:
         try:
             if new_semantic:
                 self._semantics.append(semantic)
-                self._semantic_fingerprints.append(self._semantic_fingerprint(semantic))
+                self._semantic_fingerprints.append(self.semantic_fingerprint(semantic))
                 self._semantic_keys[semantic] = semantic_id
             local_id = len(self._actions)
             absorbs = semantic.apply(ZERO)
@@ -694,7 +767,7 @@ class AssociatedActionArena:
                 ),
             )
             self._actions.append(record)
-            self._action_fingerprints.append(self._action_fingerprint(record))
+            self._action_fingerprints.append(self.action_fingerprint(record))
             self._action_keys[key] = local_id
         except BaseException:
             self._action_keys.pop(key, None)
@@ -710,7 +783,7 @@ class AssociatedActionArena:
                 self.ledger.release(owner, entries=entries, nodes=nodes)
             raise
         self.ledger.bump(_fields_keys.ASSOCIATED_ACTION_ADMISSIONS)
-        return self._handle(local_id)
+        return self.scoped_handle(local_id)
 
     def compose(
         self, before: AssociatedActionID, after: AssociatedActionID
@@ -729,7 +802,7 @@ class AssociatedActionArena:
             found = self._action_keys.get((semantic_id, extent, children))
             if found is not None:
                 self.ledger.bump(_fields_keys.ASSOCIATED_ACTION_COMPOSITION_HITS)
-                return self._handle(found)
+                return self.scoped_handle(found)
         return self._admit(
             semantic,
             extent,

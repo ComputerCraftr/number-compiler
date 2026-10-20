@@ -237,7 +237,7 @@ def seed_morphism_cli_packet(
     has a separate exact fixed-point shortcut. No missing certification is
     silently replaced by an empirical width/driver motif.
     """
-    term._check_open()
+    term.check_open()
     if type(prefix_horizon) is not int or not 1 <= prefix_horizon <= 512:
         raise ValueError("temporal prefix horizon outside the allowed range")
     if type(period_samples) is not int or not 0 <= period_samples <= 128:
@@ -263,19 +263,19 @@ def seed_morphism_cli_packet(
     morphism: CertifiedSeedOrbitMorphism | None = None
     reason: str | None = None
     if term.seed == 0:
-        root = term._source.root
+        root = term.source_root
         mode = "exact_fixed_zero"
     elif term.generation >= 2:
         try:
-            term._adapter.temporal_hashlife.admit_extended_prefix(
+            term.temporal_engine.admit_extended_prefix(
                 min(prefix_horizon, term.generation - 2)
             )
-            _entry, source = term._prepare_bank_source(
+            _entry, source = term.prepare_bank_source(
                 max_prefix=min(prefix_horizon, term.generation - 2)
             )
         except UncertifiedPointedStencilError as exc:
             reason = str(exc)
-            root = term._root()
+            root = term.endpoint_root()
             mode = "exact_scheduler_fallback"
         else:
             morphism = certified_seed_orbit_morphism(source, steps=source.f_steps)
@@ -283,12 +283,12 @@ def seed_morphism_cli_packet(
             root = morphism.last.root
             mode = "source_certified_hashlife_dyadic"
     else:
-        root = term._root()
+        root = term.endpoint_root()
         mode = "exact_short_prefix"
 
     if source is None:
         last = word_fiber_from_root(
-            term._arena, term.resource_ledger, term._scratch_owner, root
+            term.source_arena, term.resource_ledger, term.scratch_owner, root
         )
         power: dict[str, object] = {
             "mode": mode,

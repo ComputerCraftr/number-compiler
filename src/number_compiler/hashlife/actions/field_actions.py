@@ -114,7 +114,7 @@ class FieldGeometryArena:
             ledger, self._node_owner, self._key_owner
         )
 
-    def _handle(self, local_id: int) -> FieldGeometryID:
+    def scoped_handle(self, local_id: int) -> FieldGeometryID:
         return FieldGeometryID(self.owner, self._KIND, local_id)
 
     @property
@@ -147,7 +147,7 @@ class FieldGeometryArena:
         found = self._keys.get(geometry)
         if found is not None:
             self.ledger.bump(_actions_keys.FIELD_GEOMETRY_INTERNER_HITS)
-            return self._handle(found)
+            return self.scoped_handle(found)
         local_id = append_indexed_node(
             self.ledger,
             self._nodes,
@@ -158,7 +158,7 @@ class FieldGeometryArena:
             geometry,
         )
         self.ledger.bump(_actions_keys.FIELD_GEOMETRY_PUBLICATIONS)
-        return self._handle(local_id)
+        return self.scoped_handle(local_id)
 
     def child(self, parent: FieldGeometryID, side: int) -> FieldGeometryID:
         """Return normalized geometry for one spatial child without recursion."""

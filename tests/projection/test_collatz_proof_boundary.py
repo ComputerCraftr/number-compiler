@@ -15,6 +15,7 @@ from tests.support.production_ast import ProductionASTGraph
 PACKAGE = repository_root() / "src" / "number_compiler"
 
 
+@pytest.mark.validation
 def test_sequential_collatz_orbit_builders_have_one_explicit_output_owner(
     production_ast_graph: ProductionASTGraph,
 ) -> None:

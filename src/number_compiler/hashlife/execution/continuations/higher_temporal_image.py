@@ -82,6 +82,9 @@ class _BlankKey:
     width: int
 
 
+HigherTemporalMemoKey = _NodeKey | _BlankKey
+
+
 @dataclass(frozen=True, slots=True)
 class _Frame:
     output: CoordinateOutputMorphismID
@@ -237,14 +240,14 @@ class HigherTemporalImageArena:
                 "higher temporal image consumer binding was changed"
             ) from error
 
-    def _handle(self, local_id: int) -> HigherTemporalImageID:
+    def scoped_handle(self, local_id: int) -> HigherTemporalImageID:
         return HigherTemporalImageID(self.owner, self._KIND, local_id)
 
     def handle_for_local_id(self, local_id: int) -> HigherTemporalImageID:
         """Return a scoped handle only for an allocated temporal image."""
         if type(local_id) is not int or not 0 <= local_id < len(self._nodes):
             raise IndexError("higher temporal image index is outside the arena")
-        return self._handle(local_id)
+        return self.scoped_handle(local_id)
 
     def seal_matches(
         self,
@@ -276,6 +279,7 @@ class HigherTemporalImageArena:
             built_owner=self._built_owner,
             built_store=self._built,
             built_count=len(self._built),
+            built_keys=tuple(self._built),
             source_frame_owner=self._source_frame_owner,
             source_frame_store=self._source_frames,
             source_frame_count=len(self._source_frames),
@@ -291,7 +295,7 @@ class HigherTemporalImageArena:
             raise TypeError("expected a higher temporal image ID")
         image.validate(self.owner, self._KIND, size=len(self._nodes))
         record = self._nodes[image.local_id]
-        self._validate_record(record)
+        self.validate_record(record)
         if self._seal(record) != self._seals[image.local_id]:
             raise ValueError("higher temporal image publication seal is invalid")
         return record
@@ -320,7 +324,7 @@ class HigherTemporalImageArena:
             record.predecessor,
         )
 
-    def _validate_record(self, record: HigherTemporalImage) -> None:
+    def validate_record(self, record: HigherTemporalImage) -> None:
         if type(record) is not HigherTemporalImage:
             raise TypeError("temporal image arena contains another record sort")
         self.sources.binding_extent(record.source)
@@ -354,14 +358,14 @@ class HigherTemporalImageArena:
                 raise TypeError("temporal predecessor has another handle sort")
             record.predecessor.validate(self.owner, self._KIND, size=len(self._nodes))
 
-    def _intern(self, record: HigherTemporalImage) -> HigherTemporalImageID:
+    def intern_record(self, record: HigherTemporalImage) -> HigherTemporalImageID:
         self.validate_authority()
         found = self._keys.get(record)
         if found is not None:
-            result = self._handle(found)
+            result = self.scoped_handle(found)
             self.resolve(result)
             return result
-        self._validate_record(record)
+        self.validate_record(record)
         self.ledger.reserve_many(
             (
                 (self._node_owner, 1, 1),
@@ -383,7 +387,7 @@ class HigherTemporalImageArena:
             self.ledger.release(self._seal_owner, entries=1)
             raise
         self.ledger.bump(_execution_keys.HIGHER_TEMPORAL_IMAGE_PUBLICATIONS)
-        return self._handle(local_id)
+        return self.scoped_handle(local_id)
 
     def _ports(
         self, interface: LocalInterfaceID
@@ -465,7 +469,7 @@ class HigherTemporalImageArena:
             macro.width,
             extent_value,
         )
-        return self._intern(record)
+        return self.intern_record(record)
 
     def _source_push(self, source: SourceCellID, ready: bool) -> None:
         self.ledger.reserve(self._source_frame_owner, entries=1, nodes=1)
@@ -576,13 +580,25 @@ class HigherTemporalImageArena:
         self.ledger.release(self._frame_owner, entries=frames, nodes=frames)
         self.ledger.release(self._built_owner, entries=built)
 
+    def clear_workspace(self) -> None:
+        """Clear completed query-local memo entries and release their charges."""
+        if self._running:
+            raise RuntimeError("cannot clear a running temporal image workspace")
+        self._clear_workspace()
+
+    def validate_memo_key(self, key: HigherTemporalMemoKey) -> None:
+        """Validate that an audit-visible memo key belongs to this consumer."""
+        if type(key) not in (_NodeKey, _BlankKey):
+            raise TypeError("temporal memo key is not a canonical key")
+        if key.consumer != self._consumer:
+            raise ValueError("temporal memo has another consumer binding")
+
     def _remember_built(
         self,
         key: _NodeKey | _BlankKey,
         result: SourceBoundHigherMacro,
     ) -> SourceBoundHigherMacro:
-        if key.consumer != self._consumer:
-            raise ValueError("temporal memo has another consumer binding")
+        self.validate_memo_key(key)
         found = self._built.get(key)
         if found is not None:
             return found
@@ -594,7 +610,7 @@ class HigherTemporalImageArena:
             raise
         return result
 
-    def _blank_macro(self, width: int) -> SourceBoundHigherMacro:
+    def blank_macro(self, width: int) -> SourceBoundHigherMacro:
         """Build one parametric blank macro per spatial width.
 
         A blank macro still carries the consumer's exact two-port transfer, so
@@ -706,7 +722,7 @@ class HigherTemporalImageArena:
                     self.ledger.bump(
                         _execution_keys.HIGHER_TEMPORAL_IMAGE_BLANK_SUBTREE_HITS
                     )
-                    self._remember_built(key, self._blank_macro(frame.width))
+                    self._remember_built(key, self.blank_macro(frame.width))
                     continue
                 node = self.outputs.resolve(frame.output)
                 self.interfaces.resolve(frame.interface)
@@ -812,7 +828,7 @@ class HigherTemporalImageArena:
                 raise ValueError("temporal image violated its admitted growth bound")
             chronology = self._compose_actions(prior.chronology, consumer)
             self.semantics.schema.validate_action(chronology)
-            return self._intern(
+            return self.intern_record(
                 HigherTemporalImage(
                     prior.source,
                     chronology,
@@ -831,4 +847,9 @@ class HigherTemporalImageArena:
             self._running = False
 
 
-__all__ = ["HigherTemporalImage", "HigherTemporalImageArena", "HigherTemporalImageID"]
+__all__ = [
+    "HigherTemporalImage",
+    "HigherTemporalImageArena",
+    "HigherTemporalImageID",
+    "HigherTemporalMemoKey",
+]

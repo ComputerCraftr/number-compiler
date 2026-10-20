@@ -1,9 +1,16 @@
 """Per-list authority revisions include adversarial backing mutations."""
 
+from typing import cast
+
 import pytest
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerList
+
+
+def _backing(store: LedgerList[int]) -> list[int]:
+    """Expose the raw tracked list only for deliberate mutation tests."""
+    return cast(list[int], object.__getattribute__(store, "_data"))
 
 
 @pytest.mark.parametrize(
@@ -29,7 +36,7 @@ def test_backing_mutators_invalidate_local_and_global_revisions(mutation: str) -
     store.extend((1, 2, 3))
     identity, version = store.mutation_stamp
     global_version = ledger.mutation_version
-    backing = store._data
+    backing = _backing(store)
     if mutation == "append":
         backing.append(4)
     elif mutation == "extend":
@@ -67,13 +74,14 @@ def test_revision_is_read_only_and_unrelated_stores_do_not_invalidate_it() -> No
     read_only_attribute = "mutation_stamp"
     with pytest.raises(AttributeError, match="immutable"):
         setattr(store, read_only_attribute, (object(), 0))
+    backing = _backing(store)
     with pytest.raises(TypeError, match="in-place sorting"):
-        store._data.sort()
+        backing.sort()
     with pytest.raises(TypeError, match="in-place addition"):
-        store._data.__iadd__((1,))
+        backing.__iadd__((1,))
     with pytest.raises(TypeError, match="concatenated backing"):
-        store._data.__add__([1])
-    object.__setattr__(store, "_data", foreign._data)
+        backing.__add__([1])
+    object.__setattr__(store, "_data", _backing(foreign))
     assert store.mutation_stamp[0] is not stamp[0]
 
 

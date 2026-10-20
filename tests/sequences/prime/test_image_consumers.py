@@ -112,7 +112,7 @@ def test_endpoint_projection_rejects_changed_published_counts(warm: bool) -> Non
             scheduler.source_projection(adapter, image, demand)
         payload = cast(
             PrimeSuccessorImagePayload,
-            scheduler._source_image_core().view(image).payload,
+            scheduler.source_image_core().view(image).payload,
         )
         original = payload.surviving_values, payload.deleted_survivors
         try:
@@ -165,7 +165,7 @@ def test_image_binding_audit_is_read_only_and_rejects_failure_prefix() -> None:
             PrimeSuccessorSource(arena.descriptor_id, 0),
             arena.prefix(11),
         )
-        view = scheduler._source_image_core().view(image)
+        view = scheduler.source_image_core().view(image)
         counters = dict(dag.ledger.counters)
         adapter.audit_image_binding(view.binding, view.payload, None)
         with pytest.raises(ValueError, match="failure prefix"):

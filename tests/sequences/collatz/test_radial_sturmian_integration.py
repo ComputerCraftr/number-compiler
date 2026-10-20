@@ -8,6 +8,7 @@ from number_compiler.api.cylinder_observation import (
     observe_collatz,
     observe_physical_clock,
 )
+from number_compiler.arithmetic.contracts.input_validation import object_mapping
 from number_compiler.arithmetic.fields.homogeneous_growth import (
     GrowthArithmeticEvaluator,
     HomogeneousGrowthScale,
@@ -29,10 +30,11 @@ from number_compiler.sequences.collatz.unified_skew_clock import SkewQuadraticCl
 
 
 def _string_object_mapping(value: object) -> Mapping[str, object]:
-    if not isinstance(value, Mapping):
+    mapping = object_mapping(value)
+    if mapping is None:
         raise AssertionError("expected an object-valued radial packet")
     result: dict[str, object] = {}
-    for key, item in value.items():
+    for key, item in mapping.items():
         if type(key) is not str:
             raise AssertionError("radial packet keys must be strings")
         result[key] = item

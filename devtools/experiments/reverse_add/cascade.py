@@ -30,16 +30,6 @@ def _mask_values(mask: int) -> Iterator[int]:
         mask ^= bit
 
 
-def _selector_mask(values: Sequence[int]) -> int:
-    out = 0
-    for value in values:
-        value = int(value)
-        if value < 0:
-            raise ValueError(value)
-        out |= 1 << value
-    return out
-
-
 @dataclass(frozen=True, slots=True)
 class CascadeRelation:
     arity: int
@@ -73,10 +63,6 @@ def _selector_metrics_mask(mask: int) -> SelectorMetrics:
     # inclusive run endpoints.  Charge the cheapest representation.
     bits = min(len(vals) * width, vals[-1] + 1, 2 * runs * width)
     return SelectorMetrics(len(vals), runs, bits)
-
-
-def _selector_metrics(values: Sequence[int]) -> SelectorMetrics:
-    return _selector_metrics_mask(_selector_mask(values))
 
 
 def group_left_behavior(
@@ -114,7 +100,7 @@ class DependencyCascadeArena:
     normally prefer :class:`GroupedDependencyCascadeArena`.
     """
 
-    __slots__ = ("_edge_count", "_intern", "_nodes", "_relation_roots", "arity")
+    __slots__ = ("_edge_count", "intern_record", "_nodes", "_relation_roots", "arity")
     EMPTY = 0
     FULL = 1
 
@@ -123,7 +109,10 @@ class DependencyCascadeArena:
         if arity <= 0:
             raise ValueError(arity)
         self.arity = arity
-        self._intern: dict[tuple[object, ...], int] = {("EMPTY",): 0, ("FULL",): 1}
+        self.intern_record: dict[tuple[object, ...], int] = {
+            ("EMPTY",): 0,
+            ("FULL",): 1,
+        }
         self._nodes: list[tuple[int, tuple[tuple[int, int], ...]]] = [
             (-1, ()),
             (-2, ()),
@@ -138,11 +127,11 @@ class DependencyCascadeArena:
         if not ent:
             return self.EMPTY
         key = (int(level), ent)
-        old = self._intern.get(key)
+        old = self.intern_record.get(key)
         if old is not None:
             return old
         node = len(self._nodes)
-        self._intern[key] = node
+        self.intern_record[key] = node
         self._nodes.append(key)
         self._edge_count += len(ent)
         return node
@@ -257,7 +246,7 @@ class GroupedDependencyCascadeArena:
         "_card_cache",
         "_full",
         "_groups",
-        "_intern",
+        "intern_record",
         "_nodes",
         "_roots",
         "_selector_bits",
@@ -293,7 +282,10 @@ class GroupedDependencyCascadeArena:
         self._full = (
             None if domains is None else tuple((1 << domains[i]) - 1 for i in order)
         )
-        self._intern: dict[tuple[object, ...], int] = {("EMPTY",): 0, ("FULL",): 1}
+        self.intern_record: dict[tuple[object, ...], int] = {
+            ("EMPTY",): 0,
+            ("FULL",): 1,
+        }
         # nonterminal node: (level, ((child, selector_mask), ...))
         self._nodes: list[tuple[int, tuple[tuple[int, int], ...]]] = [
             (-1, ()),
@@ -325,11 +317,11 @@ class GroupedDependencyCascadeArena:
                 return child
         entries = tuple(sorted(merged.items()))
         key = (int(level), entries)
-        old = self._intern.get(key)
+        old = self.intern_record.get(key)
         if old is not None:
             return old
         node = len(self._nodes)
-        self._intern[key] = node
+        self.intern_record[key] = node
         self._nodes.append(key)
         self._groups += len(entries)
         self._selector_bits += sum(
@@ -472,7 +464,7 @@ class GroupedDependencyCascadeArena:
         rows = {tuple(map(int, row)) for row in tuples}
         if any(len(row) != self.arity for row in rows):
             raise ValueError("tuple arity mismatch")
-        boxes = []
+        boxes: list[tuple[int, ...]] = []
         for row in rows:
             box = [0] * self.arity
             for level, original in enumerate(self.order):

@@ -1,6 +1,8 @@
 """Full guarded-word identities for finite reverse/add border occurrences."""
 
+from collections.abc import Callable
 from dataclasses import replace
+from typing import cast
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.contracts.family_identity import FamilyId
@@ -10,18 +12,37 @@ from number_compiler.hashlife.interfaces.border_macros import (
     BorderMacroPhase,
     BorderSourceCursor,
 )
+from number_compiler.sequences.reverse_add import border_occurrences as occurrence_owner
 from number_compiler.sequences.reverse_add.border_carry_safety import (
     BilateralCyclePort,
     BorderTile,
     enumerate_one_digit_cycles,
 )
 from number_compiler.sequences.reverse_add.border_occurrences import (
+    ReverseAddBorderOccurrence,
     ReverseAddBorderPhaseOccurrence,
     ReverseAddPortSignature,
     ReverseAddWordSignature,
-    _canonical_edge_cycle,
-    _edge_signature,
-    _find_returns,
+)
+from tests.support.private_attributes import private_test_attribute
+
+edge_signature = cast(
+    Callable[[BilateralCyclePort], ReverseAddPortSignature],
+    private_test_attribute(occurrence_owner, "_edge_signature"),
+)
+canonical_edge_cycle = cast(
+    Callable[
+        [tuple[ReverseAddPortSignature, ...]],
+        tuple[tuple[ReverseAddPortSignature, ...], int],
+    ],
+    private_test_attribute(occurrence_owner, "_canonical_edge_cycle"),
+)
+find_returns = cast(
+    Callable[
+        [tuple[ReverseAddBorderPhaseOccurrence | None, ...]],
+        tuple[ReverseAddBorderOccurrence, ...],
+    ],
+    private_test_attribute(occurrence_owner, "_find_returns"),
 )
 
 
@@ -47,7 +68,7 @@ def _clocked_cycle(
             BorderMacroIdentity(
                 FamilyId.REVERSE_ADD,
                 BorderMacroKind.EDGE,
-                ReverseAddWordSignature(port.source.k, (_edge_signature(port),)),
+                ReverseAddWordSignature(port.source.k, (edge_signature(port),)),
             ),
             tick,
             source,
@@ -69,7 +90,7 @@ def test_cycle_identity_is_rotation_invariant_and_carries_entry_phase() -> None:
     ports = cycle.bilateral_ports()
     base = next(
         macro
-        for macro in _find_returns(_clocked_cycle(ports))
+        for macro in find_returns(_clocked_cycle(ports))
         if macro.start == 0 and macro.end == len(ports)
     )
 
@@ -77,7 +98,7 @@ def test_cycle_identity_is_rotation_invariant_and_carries_entry_phase() -> None:
         rotated = ports[offset:] + ports[:offset]
         macro = next(
             item
-            for item in _find_returns(_clocked_cycle(rotated))
+            for item in find_returns(_clocked_cycle(rotated))
             if item.start == 0 and item.end == len(ports)
         )
         assert macro.identity == base.identity
@@ -86,7 +107,7 @@ def test_cycle_identity_is_rotation_invariant_and_carries_entry_phase() -> None:
     guarded_change = (replace(ports[0], low_carry=1 - ports[0].low_carry),) + ports[1:]
     changed = next(
         macro
-        for macro in _find_returns(_clocked_cycle(guarded_change))
+        for macro in find_returns(_clocked_cycle(guarded_change))
         if macro.start == 0 and macro.end == len(ports)
     )
     assert changed.identity != base.identity
@@ -121,9 +142,9 @@ def test_canonical_guard_word_preserves_repeated_states_and_guard_distinctions()
         (CarryFn.ID,),
     )
     word = (first, second, third)
-    canonical, _offset = _canonical_edge_cycle(word)
+    canonical, _offset = canonical_edge_cycle(word)
     for offset in range(len(word)):
-        rotated, _rotation = _canonical_edge_cycle(word[offset:] + word[:offset])
+        rotated, _rotation = canonical_edge_cycle(word[offset:] + word[:offset])
         assert rotated == canonical
 
     changed_guard = (
@@ -137,5 +158,5 @@ def test_canonical_guard_word_preserves_repeated_states_and_guard_distinctions()
         ),
         third,
     )
-    changed, _changed_offset = _canonical_edge_cycle(changed_guard)
+    changed, _changed_offset = canonical_edge_cycle(changed_guard)
     assert changed != canonical

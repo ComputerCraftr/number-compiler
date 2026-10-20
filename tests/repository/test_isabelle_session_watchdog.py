@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -11,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from devtools.checks.isabelle_session_watchdog import IsabelleSessionWatchdog
-from devtools.checks.process_guard import DEADLINE_ENV, run_guarded
+from devtools.checks.process_guard import DEADLINE_ENV, process_snapshot, run_guarded
 
 
 def test_watchdog_buffers_split_and_unterminated_event_lines() -> None:
@@ -109,12 +108,12 @@ def test_live_session_timeout_reaps_the_worker_tree(tmp_path: Path) -> None:
     assert result.cleanup_confirmed
     pids = tuple(int(line) for line in output.read_text().splitlines()[1:])
     assert len(pids) == 2
+    snapshot = process_snapshot()
     for pid in pids:
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            continue
-        raise AssertionError(f"timed-out Isabelle process {pid} is still alive")
+        process = snapshot.get(pid)
+        assert process is None or process.state.startswith(("Z", "X", "x")), (
+            f"timed-out Isabelle process {pid} remains live in state {process.state!r}"
+        )
 
 
 def test_outer_deadline_wins_when_it_expires_before_session_limit(

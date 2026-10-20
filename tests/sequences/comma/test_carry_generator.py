@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import fields
+from typing import cast
 
 import pytest
 
@@ -25,6 +27,19 @@ from number_compiler.sequences.comma.cyclotomic_clock import CyclotomicClock
 from number_compiler.sequences.comma.decisive_endpoint import (
     DecisiveEndpoint,
     source_endpoint,
+)
+
+_cycle_displacement = cast(
+    Callable[[int, int, int, int], int],
+    object.__getattribute__(comma_arithmetic, "_cycle_displacement"),
+)
+_completed_bound_return = cast(
+    Callable[[int, C1Return, int], object],
+    object.__getattribute__(generator, "_completed_bound_return"),
+)
+_completed_return = cast(
+    Callable[[C1Phase, C1Phase, int, int], object],
+    object.__getattribute__(generator, "_completed_return"),
 )
 
 
@@ -182,7 +197,7 @@ def test_powered_return_builds_its_cycle_transfer_once(
     cycle_calls = 0
     displacement_calls = 0
     cycle_owner = comma_arithmetic.cycle_transfer
-    displacement_owner = comma_arithmetic._cycle_displacement
+    displacement_owner = _cycle_displacement
 
     def counted_cycle_transfer(
         leading: int, entering_digit: int
@@ -273,7 +288,7 @@ def test_forged_bound_prefix_and_inner_action_are_rejected() -> None:
 def test_completed_bound_factory_checks_high_prefix_cocycle() -> None:
     action = C1Return(C1Phase.from_suffix(5, 45), 4)
     with pytest.raises(ValueError, match="disagrees with its count"):
-        generator._completed_bound_return(
+        _completed_bound_return(
             10**20,
             action,
             10**20 + action.count + 1,
@@ -333,7 +348,7 @@ def test_powered_entry_stops_before_the_decade_clock_crossing() -> None:
 def test_completed_return_checks_target_without_recounting() -> None:
     phase = C1Phase.from_suffix(4, 62)
     with pytest.raises(ValueError, match="target disagrees"):
-        generator._completed_return(phase, phase.step(), 0, 0)
+        _completed_return(phase, phase.step(), 0, 0)
 
 
 def test_high_prefix_cylinders_are_exact_and_projective() -> None:

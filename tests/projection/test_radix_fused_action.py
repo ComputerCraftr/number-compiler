@@ -17,6 +17,7 @@ from number_compiler.projection.radix_fused_action import FusedRadixArena
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.assertions import assert_rejected_atomically
+from tests.support.radix_projection import radix_projection
 
 
 @pytest.mark.parametrize("physical", (False, True))
@@ -27,7 +28,7 @@ def test_complete_carries_coordinate_output_and_activity(physical: bool) -> None
     width = 1 << action.level
     for incoming, d0, d1 in product(range(3), repeat=3):
         carry = incoming
-        word = []
+        word: list[int] = []
         for position in range(width):
             symbol = source[position] if position < len(source) else 0
             if physical:
@@ -36,7 +37,7 @@ def test_complete_carries_coordinate_output_and_activity(physical: bool) -> None
                 carry = total >> 1
             else:
                 word.append(symbol)
-        exits = []
+        exits: list[int] = []
         active = False
         for initial in (d0, d1):
             active = any(word)
@@ -112,7 +113,7 @@ def test_supported_queries_without_binary_point_or_endpoint_lowering(
         else:
             with pytest.raises(IndexError):
                 collatz_radix_digit(term, radix, index)
-    projection = term._radix_projections[radix]
+    projection = radix_projection(term, radix)
     assert not any(hasattr(projection, item) for item in ("_ranges", "_transfers"))
 
 
@@ -123,8 +124,8 @@ def test_fixed_digit_three_budget_and_parent_warm_reuse(
     term = PoweredCollatzTerm(seed, 1, max_context_nodes=5000, max_cache_entries=10000)
     expected = (3 * seed + 1) // 27 % 3
     assert collatz_radix_digit(term, 3, 3) == expected
-    projection = term._radix_projections[3]
-    assert projection._native_source is not None
+    projection = radix_projection(term, 3)
+    assert projection.native_source_arena is not None
     before_reads = term.resource_ledger.counters.get(
         "original_radix_source_bit_reads", 0
     )
@@ -159,9 +160,9 @@ def test_fused_non_native_parent_warm_reuse(
 ) -> None:
     term = PoweredCollatzTerm(27, 1)
     assert collatz_radix_digit(term, radix, 1) == expected
-    projection = term._radix_projections[radix]
-    assert (projection._fused is not None) == fused
-    assert (projection._native_source is not None) != fused
+    projection = radix_projection(term, radix)
+    assert (projection.fused_arena is not None) == fused
+    assert (projection.native_source_arena is not None) != fused
     before_reads = term.resource_ledger.counters.get(
         "original_radix_source_bit_reads", 0
     )
@@ -184,7 +185,7 @@ def test_same_ledger_foreign_original_rejected_before_warm_lookup() -> None:
     width = source.width()
     projection = RadixProjection(3, width, source.resource_ledger)
     assert projection.digit(source, 1) == 0
-    foreign._ledger = source.resource_ledger
+    object.__setattr__(foreign, "_ledger", source.resource_ledger)
     before = source.resource_ledger.snapshot()
     for index in (-1, 1, width):
         with pytest.raises(ValueError, match="another binary source"):

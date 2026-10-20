@@ -98,8 +98,8 @@ class CoupledBooleanBankFrame:
         else:
             # Growth has a shifted reflected source at (i-1) and a genuine
             # reflected carry K_(s_i)(b). Do not use the unshifted EQ-XOR rule.
-            shifted_xor_bits = []
-            parity_bits = []
+            shifted_xor_bits: list[int] = []
+            parity_bits: list[int] = []
             for i, (a, b) in enumerate(frame.incoming):
                 s = source[i]
                 prior_symbol = source[(i - 1) % len(source)]
@@ -127,7 +127,7 @@ class CoupledBooleanBankFrame:
             eq = later["eq"]
         if pascal_parity != tuple(value % 2 for value in frame.target):
             raise AssertionError("Pascal parity port disagrees with target F2")
-        transfers = []
+        transfers: list[tuple[int, int]] = []
         future_ports = MixedPeriodicCore(frame.target).ingresses()
         for value, flag, (_left, eta) in zip(
             frame.target,

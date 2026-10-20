@@ -87,7 +87,7 @@ class DyadicReturnImageWorkspace(
         self.seed = seed
         self.steps = steps
         self.law = law
-        self._law_snapshot = law.descriptor
+        self.law_snapshot = law.descriptor
         self.family = law.family
         self.semantic_version = law.semantic_version
         if law.family.startswith("antihydra"):
@@ -292,21 +292,21 @@ class DyadicReturnImageWorkspace(
 
         return append_source(self, node)
 
-    def _append_support(self, node: DyadicReturnSupportRecord) -> DyadicReturnSupportID:
+    def append_support(self, node: DyadicReturnSupportRecord) -> DyadicReturnSupportID:
         from number_compiler.hashlife.execution.dyadic_return_actions import (
             append_support,
         )
 
         return append_support(self, node)
 
-    def _append_image(self, node: DyadicReturnImageRecord) -> DyadicReturnImageID:
+    def append_image(self, node: DyadicReturnImageRecord) -> DyadicReturnImageID:
         from number_compiler.hashlife.execution.dyadic_return_actions import (
             append_image,
         )
 
         return append_image(self, node)
 
-    def _rollback_new_publications(self, support_start: int, image_start: int) -> None:
+    def rollback_new_publications(self, support_start: int, image_start: int) -> None:
         from number_compiler.hashlife.execution.dyadic_return_actions import (
             rollback_new_publications,
         )
@@ -362,7 +362,7 @@ class DyadicReturnImageWorkspace(
 
         validate_payload(self, payload)
 
-    def _validate_law(self) -> None:
+    def validate_law(self) -> None:
         from number_compiler.hashlife.execution.dyadic_return_validation import (
             validate_law,
         )
@@ -398,14 +398,14 @@ class DyadicReturnImageWorkspace(
             self.action_node(before).width + self.action_node(after).width
         )
 
-    def _source_value(self, source: DyadicReturnSourceRecord) -> int:
+    def source_value(self, source: DyadicReturnSourceRecord) -> int:
         from number_compiler.hashlife.execution.dyadic_return_transport import (
             source_value,
         )
 
         return source_value(self, source)
 
-    def _transport_low(
+    def transport_low(
         self, transfer: SkewTransfer[int], source_residue: int, after_width: int
     ) -> int:
         from number_compiler.hashlife.execution.dyadic_return_transport import (
@@ -421,7 +421,7 @@ class DyadicReturnImageWorkspace(
         summary = DyadicImageSummary(
             0, node.residue, SkewTransfer(1, 0, 1), 0, 0, 0, None
         )
-        payload = self._append_image(
+        payload = self.append_image(
             DyadicReturnImageRecord(source, self.identity, summary)
         )
         return SourceImageCandidate(
@@ -516,7 +516,7 @@ class DyadicReturnImageWorkspace(
             ),
         )
         transfer = SkewTransfer(0, terminal, 1)
-        support = self._append_support(
+        support = self.append_support(
             DyadicReturnSupportRecord(
                 action_node.width,
                 source_node.residue,
@@ -539,9 +539,7 @@ class DyadicReturnImageWorkspace(
             support,
             cycle_summary,
         )
-        payload = self._append_image(
-            DyadicReturnImageRecord(source_id, action, summary)
-        )
+        payload = self.append_image(DyadicReturnImageRecord(source_id, action, summary))
         self.bump_metric("cycle_compressions")
         return SourceImageCandidate(
             payload,
@@ -576,7 +574,7 @@ class DyadicReturnImageWorkspace(
             yield
         except BaseException:
             if len(self.support) > support_start or len(self.images) > image_start:
-                self._rollback_new_publications(support_start, image_start)
+                self.rollback_new_publications(support_start, image_start)
                 self.bump_metric("composite_cutover_rollbacks")
             raise
 
@@ -630,7 +628,7 @@ class DyadicReturnImageWorkspace(
             odd_steps,
             support,
         )
-        payload = self._append_image(
+        payload = self.append_image(
             DyadicReturnImageRecord(source.binding.source, action, summary)
         )
         self.bump_metric("leaf_steps", node.width)
@@ -676,7 +674,7 @@ class DyadicReturnImageWorkspace(
         ):
             raise ValueError("dyadic return parent has another precision split")
         exact = parent.exact and self.law.cycle is not None
-        parent_value = self._source_value(parent) if exact else 0
+        parent_value = self.source_value(parent) if exact else 0
         lift = parent_value >> before_width if exact else 0
         return self._append_source(
             DyadicReturnSourceRecord(
@@ -726,11 +724,11 @@ class DyadicReturnImageWorkspace(
             raise ValueError("dyadic return before image lost parent authority")
         if parent.precision != before.width + after_width:
             raise ValueError("dyadic return second child has another precision")
-        residue = self._transport_low(before.transfer, parent.residue, after_width)
+        residue = self.transport_low(before.transfer, parent.residue, after_width)
         exact = False
         lift = 0
         if before_source.exact and self.law.cycle is not None:
-            before_value = self._source_value(before_source)
+            before_value = self.source_value(before_source)
             numerator = before.transfer.upper * before_value + before.transfer.offset
             if numerator % before.transfer.lower:
                 raise ArithmeticError("dyadic return exact transport was not integral")
@@ -802,7 +800,7 @@ class DyadicReturnImageWorkspace(
             != action
         ):
             raise ValueError("dyadic return child contexts lost parent authority")
-        transported = self._transport_low(left.transfer, parent.residue, right.width)
+        transported = self.transport_low(left.transfer, parent.residue, right.width)
         if transported != after_source.residue:
             raise ArithmeticError("dyadic return transported source was changed")
         transfer = left.transfer.then(right.transfer, multiply=mul, add=add)
@@ -825,7 +823,7 @@ class DyadicReturnImageWorkspace(
         safety_delta, safety_minimum = compose_prefix_safety_values(
             left.delta, left.minimum, right.delta, right.minimum
         )
-        support = self._append_support(
+        support = self.append_support(
             DyadicReturnSupportRecord(
                 left.width + right.width,
                 parent.residue,
@@ -848,7 +846,7 @@ class DyadicReturnImageWorkspace(
             support,
             cycle,
         )
-        payload = self._append_image(
+        payload = self.append_image(
             DyadicReturnImageRecord(source.binding.source, action, summary)
         )
         self.bump_metric(

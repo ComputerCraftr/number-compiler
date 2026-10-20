@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable
 from math import gcd
+from typing import Protocol
 
 import pytest
 
@@ -21,12 +22,41 @@ from number_compiler.sequences.comma.arithmetic import (
 )
 
 
+class _PuncturedDigitPortFactory(Protocol):
+    def __call__(
+        self,
+        leading: int,
+        digit: int,
+        *,
+        charge_work: Callable[[int], None] | None = None,
+        charge_bits: Callable[[int], None] | None = None,
+    ) -> arithmetic.PuncturedDigitPort: ...
+
+
+def _observing_port_factory(
+    original: _PuncturedDigitPortFactory, calls: list[tuple[int, int]]
+) -> _PuncturedDigitPortFactory:
+    def observed(
+        leading: int,
+        digit: int,
+        *,
+        charge_work: Callable[[int], None] | None = None,
+        charge_bits: Callable[[int], None] | None = None,
+    ) -> arithmetic.PuncturedDigitPort:
+        calls.append((leading, digit))
+        return original(
+            leading, digit, charge_work=charge_work, charge_bits=charge_bits
+        )
+
+    return observed
+
+
 @pytest.mark.parametrize("leading", range(1, 10))
 def test_factored_pair_reconstructs_zero_inclusive_ports_and_f5_step(
     leading: int,
 ) -> None:
     """Audit the proposed local algebra, without assuming a future quotient."""
-    seen = set()
+    seen: set[tuple[tuple[CarryFn, int, int], int]] = set()
     for digit in range(10):
         previous = arithmetic.comma_port_previous(leading, digit)
         pair_sum = digit + previous
@@ -138,7 +168,7 @@ def test_punctured_weighted_cycles_recover_the_17_period_moduli() -> None:
     lengths: Counter[int] = Counter()
     for leading in range(1, 10):
         unseen = set(range(1, 10))
-        weights = []
+        weights: list[int] = []
         while unseen:
             start = min(unseen)
             digit = start
@@ -164,20 +194,11 @@ def test_classifier_preserves_source_phase_without_constructing_a_seed(
 ) -> None:
     original = arithmetic.punctured_digit_port
     calls: list[tuple[int, int]] = []
-
-    def observed(
-        leading: int,
-        digit: int,
-        *,
-        charge_work: Callable[[int], None] | None = None,
-        charge_bits: Callable[[int], None] | None = None,
-    ) -> arithmetic.PuncturedDigitPort:
-        calls.append((leading, digit))
-        return original(
-            leading, digit, charge_work=charge_work, charge_bits=charge_bits
-        )
-
-    monkeypatch.setattr(arithmetic, "punctured_digit_port", observed)
+    monkeypatch.setattr(
+        arithmetic,
+        "punctured_digit_port",
+        _observing_port_factory(original, calls),
+    )
     for leading in range(1, 10):
         for digit in range(10):
             calls.clear()
@@ -248,7 +269,7 @@ def test_huge_near_prefix_is_bounded_and_charged_without_scalar_replay(
         pytest.fail("weighted port classifier called a scalar endpoint oracle")
 
     monkeypatch.setattr(arithmetic, "_decimal_scale", forbidden)
-    monkeypatch.setattr(arithmetic, "_sector_child_increments", forbidden)
+    monkeypatch.setattr(arithmetic, "sector_child_increments", forbidden)
     for headroom in (10**1000 + 123, 10**1000 + 124):
         work: list[int] = []
         bits: list[int] = []
@@ -304,10 +325,10 @@ def test_nine_weighted_cycle_signatures_remain_distinct() -> None:
         8: ((4, 24), (5, 29)),
         9: ((9, 54),),
     }
-    signatures = []
+    signatures: list[tuple[tuple[int, int], ...]] = []
     for leading in range(1, 10):
         unseen = set(range(1, 10))
-        cycles = []
+        cycles: list[tuple[int, int]] = []
         while unseen:
             digit = start = min(unseen)
             length = weight = 0
@@ -370,7 +391,7 @@ def test_all_450_weighted_rows_keep_both_interval_bounds_and_source_headroom() -
         for orbit in range(divisor):
             seed = 10 - leading + orbit
             digit = seed
-            states = []
+            states: list[tuple[arithmetic.PuncturedDigitPort, int, int]] = []
             prefix = 0
             for _ in range(length - int(orbit == 0)):
                 port = punctured_digit_port(leading, digit)
@@ -434,21 +455,12 @@ def test_runtime_constructs_only_the_selected_port(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     original = arithmetic.punctured_digit_port
-    calls = []
-
-    def observed(
-        leading: int,
-        digit: int,
-        *,
-        charge_work: Callable[[int], None] | None = None,
-        charge_bits: Callable[[int], None] | None = None,
-    ) -> arithmetic.PuncturedDigitPort:
-        calls.append((leading, digit))
-        return original(
-            leading, digit, charge_work=charge_work, charge_bits=charge_bits
-        )
-
-    monkeypatch.setattr(arithmetic, "punctured_digit_port", observed)
+    calls: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        arithmetic,
+        "punctured_digit_port",
+        _observing_port_factory(original, calls),
+    )
     for leading in range(1, 10):
         for headroom in range(1 + int(leading < 9), 541):
             calls.clear()

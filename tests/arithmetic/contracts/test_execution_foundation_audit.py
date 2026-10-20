@@ -71,11 +71,10 @@ def test_primitive_semantics_are_deeply_cacheless_and_cannot_be_warmed_or_mutate
 def test_forced_digest_collision_does_not_alias_finite_or_composed_actions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        semantic_identity,
-        "_tuple_digest",
-        lambda _value, _children: b"same digest for every tuple",
-    )
+    def digest(_value: object, _children: object) -> bytes:
+        return b"same digest for every tuple"
+
+    monkeypatch.setattr(semantic_identity, "tuple_digest", digest)
     one, two, equal = _finite(), _finite(flip=True), _finite()
     one_identity = one.canonical_key[1]
     two_identity = two.canonical_key[1]

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 
-from devtools.checks.source_discovery import authored_files
+from devtools.checks import source_discovery
 
 MAX_SOURCE_LINES = 1000
 # Isabelle theories are authored source and share the physical line cap.  The
@@ -87,12 +87,9 @@ def _module_name(root: Path, path: Path) -> str:
 
 
 def _iter_python_files(root: Path) -> tuple[Path, ...]:
-    return tuple(path for path in _iter_authored_files(root) if path.suffix == ".py")
-
-
-def _iter_authored_files(root: Path) -> tuple[Path, ...]:
-    """Use the shared Git-authored source inventory."""
-    return authored_files(root)
+    return tuple(
+        path for path in source_discovery.authored_files(root) if path.suffix == ".py"
+    )
 
 
 def _parsed_python_sources(root: Path) -> dict[Path, ast.Module]:
@@ -112,7 +109,7 @@ class _PolicySnapshot:
 
 def _policy_snapshot(root: Path) -> _PolicySnapshot:
     """Read and parse one authored-source snapshot for aggregate policy checks."""
-    files = _iter_authored_files(root)
+    files = source_discovery.authored_files(root)
     counts: dict[Path, int] = {}
     parsed: dict[Path, ast.Module] = {}
     for path in files:
@@ -146,7 +143,9 @@ def source_line_violations(
     root = Path(root).resolve()
     violations: list[tuple[str, int]] = []
     for path in (
-        _iter_authored_files(root) if authored_files is None else authored_files
+        source_discovery.authored_files(root)
+        if authored_files is None
+        else authored_files
     ):
         rel = path.relative_to(root)
         if path.suffix not in SOURCE_SUFFIXES and path.name not in SOURCE_FILENAMES:
@@ -600,12 +599,31 @@ def recursion_cycles(
     ] = {}
     scope_aliases: dict[tuple[str, str], dict[str, list[ast.expr]]] = {}
     scope_bound: dict[tuple[str, str], set[str]] = {}
+    functions_by_scope = {
+        (info.module, info.qualname): key for key, info in functions.items()
+    }
+    active_scopes: set[str] = set()
     for key, info in functions.items():
+        if not calls[key]:
+            continue
+        active_scopes.add(key)
+        parent = info.parent_qualname
+        while parent:
+            parent_key = functions_by_scope.get((info.module, parent))
+            if parent_key is not None:
+                active_scopes.add(parent_key)
+            parent = parent.rpartition(".")[0]
+
+    for key in active_scopes:
+        info = functions[key]
         analysis = _call_aliases(info)
         analyses[key] = analysis
         scope_aliases[(info.module, info.qualname)] = analysis[0]
         scope_bound[(info.module, info.qualname)] = analysis[1]
-    for key, info in functions.items():
+    for key in active_scopes:
+        if not calls[key]:
+            continue
+        info = functions[key]
         aliases, bound, comprehension_bindings = analyses[key]
         for call in calls[key]:
             call_bound = bound | comprehension_bindings.get(call, frozenset())

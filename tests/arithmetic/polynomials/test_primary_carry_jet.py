@@ -174,7 +174,7 @@ def test_tile_key_matches_independent_fold_and_carry(family: str, width: int) ->
         output_value = sum(a << i for i, a in enumerate(out))
         seam = spec.boundary_sign * ((value - output_value) // n)
         carry = seam
-        carries = []
+        carries: list[int] = []
         for a, r in zip(field, out, strict=True):
             assert (a + carry - r) % 2 == 0
             carry = (a + carry - r) // 2

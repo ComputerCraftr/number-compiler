@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from itertools import pairwise
+from typing import cast
 
 import pytest
 
@@ -13,43 +15,17 @@ from number_compiler.arithmetic.contracts.block_effect import (
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
-
-
-def _digits(value: int, base: int) -> tuple[int, ...]:
-    result: list[int] = []
-    while True:
-        result.append(value % base)
-        value //= base
-        if not value:
-            return tuple(result)
-
-
-def _source(value: int, base: int) -> ExactSource:
-    return ExactSource(_digits(value, base), base, orbit="reverse-add")
-
-
-def _pairs(digits: tuple[int, ...]) -> tuple[int, ...]:
-    return tuple(digits[i] + digits[-1 - i] for i in range(len(digits)))
-
-
-def _carries(pairs: tuple[int, ...], base: int) -> tuple[int, ...]:
-    carry = 0
-    result = [0]
-    for pair in pairs:
-        carry = int(pair + carry >= base)
-        result.append(carry)
-    return tuple(result)
-
-
-def _step_digits(digits: tuple[int, ...], base: int) -> tuple[int, ...]:
-    pairs = _pairs(digits)
-    carries = _carries(pairs, base)
-    result = tuple((pair + carries[i]) % base for i, pair in enumerate(pairs))
-    return result + ((1,) if carries[-1] else ())
+from tests.support.private_attributes import private_test_attribute
+from tests.support.reverse_source_ports import (
+    carry_scan,
+    pair_sums,
+    source_from_value,
+    successor_digits,
+)
 
 
 def test_neutral_source_ports_do_not_make_the_successor_a_temporal_identity() -> None:
-    ports = SourceCarryPorts(_source(18, 10), ResourceLedger())
+    ports = SourceCarryPorts(source_from_value(18, 10), ResourceLedger())
     assert ports.range_transfer(1, 0, 2) is CarryFn.ID
     # 18 -> 99: the original neutral pair coefficients (9,9) become (18,18).
     assert ports.range_transfer(2, 0, 2) is CarryFn.CONST1
@@ -64,12 +40,12 @@ def test_neutral_source_ports_do_not_make_the_successor_a_temporal_identity() ->
 def test_first_and_second_ports_match_literal_carry_scans(
     value: int, base: int
 ) -> None:
-    source = _source(value, base)
-    first_pairs = _pairs(source.digits)
-    first_carries = _carries(first_pairs, base)
-    first_output = _step_digits(source.digits, base)
-    second_pairs = _pairs(first_output)
-    second_carries = _carries(second_pairs, base)
+    source = source_from_value(value, base)
+    first_pairs = pair_sums(source.digits)
+    first_carries = carry_scan(first_pairs, base)
+    first_output = successor_digits(source.digits, base)
+    second_pairs = pair_sums(first_output)
+    second_carries = carry_scan(second_pairs, base)
     ports = SourceCarryPorts(source, ResourceLedger())
     assert tuple(ports.pair(i) for i in range(ports.width)) == first_pairs
     assert tuple(ports.carry(i) for i in range(ports.width + 1)) == first_carries
@@ -79,12 +55,12 @@ def test_first_and_second_ports_match_literal_carry_scans(
         tuple(ports.second_carry(i) for i in range(len(second_pairs) + 1))
         == second_carries
     )
-    assert ports.second_width() == len(_step_digits(first_output, base))
+    assert ports.second_width() == len(successor_digits(first_output, base))
 
 
 def test_interval_cache_is_lazy_and_retains_only_carry_actions() -> None:
     ledger = ResourceLedger()
-    ports = SourceCarryPorts(_source(196, 10), ledger)
+    ports = SourceCarryPorts(source_from_value(196, 10), ledger)
     account = next(
         item
         for item in ledger.inventory()
@@ -98,7 +74,10 @@ def test_interval_cache_is_lazy_and_retains_only_carry_actions() -> None:
         if item.role == "reverse_source_carry_interval"
     )
     assert account.entries == account.nodes > 0
-    assert all(type(value).__name__ == "CarryFn" for value in ports._cache.values())
+    assert all(
+        type(value).__name__ == "CarryFn"
+        for value in ports.audit_snapshot().cache.payload_view.values()
+    )
 
 
 @pytest.mark.parametrize(
@@ -129,13 +108,13 @@ def test_ports_never_normalize_or_emit_output_digits(
     monkeypatch.setattr(
         images.ReverseSourceImageAdapter, "iter_primitive_digits", forbidden
     )
-    ports = SourceCarryPorts(_source(196, 10), ResourceLedger())
+    ports = SourceCarryPorts(source_from_value(196, 10), ResourceLedger())
     assert ports.terminal == 0
     assert ports.second_width() == 4
 
 
 def test_all_point_prefix_queries_have_bounded_spatial_cache() -> None:
-    source = _source(int("4" * 128 + "5" * 128), 10)
+    source = source_from_value(int("4" * 128 + "5" * 128), 10)
     ledger = ResourceLedger()
     ports = SourceCarryPorts(source, ledger)
     for boundary in range(ports.width + 1):
@@ -156,12 +135,12 @@ def test_all_point_prefix_queries_have_bounded_spatial_cache() -> None:
 
 
 def test_source_binding_is_exact_and_disposal_releases_cache() -> None:
-    source = _source(196, 10)
+    source = source_from_value(196, 10)
     ledger = ResourceLedger()
     ports = SourceCarryPorts(source, ledger)
     ports.check_source(source)
     with pytest.raises(ValueError, match="foreign"):
-        ports.check_source(_source(196, 10))
+        ports.check_source(source_from_value(196, 10))
     ports.second_width()
     ports.dispose()
     assert ledger.entries == ledger.nodes == 0
@@ -170,10 +149,10 @@ def test_source_binding_is_exact_and_disposal_releases_cache() -> None:
 
 
 def test_same_ledger_cache_substitution_is_rejected() -> None:
-    source = _source(196, 10)
+    source = source_from_value(196, 10)
     ledger = ResourceLedger()
     ports = SourceCarryPorts(source, ledger)
-    original = ports._cache
+    original = ports.audit_snapshot().cache_identity
     owner = ledger.register("foreign-source-port-cache", "test_foreign_cache")
     foreign: OwnedMemo[tuple[int, int, int], object] = OwnedMemo(ledger, owner)
     object.__setattr__(ports, "_cache", foreign)
@@ -186,7 +165,7 @@ def test_same_ledger_cache_substitution_is_rejected() -> None:
 
 def test_failed_interval_publication_rolls_back_query_entries() -> None:
     ledger = ResourceLedger(max_nodes=2)
-    ports = SourceCarryPorts(_source(12345678, 10), ledger)
+    ports = SourceCarryPorts(source_from_value(12345678, 10), ledger)
     with pytest.raises(BlockContextBudgetExceeded):
         _ = ports.terminal
     assert ledger.entries == ledger.nodes == 0
@@ -199,9 +178,9 @@ def test_decimal_thresholds_use_output_crt_without_next_pair_reconstruction(
     def forbidden(*_args: object, **_kwargs: object) -> int:
         raise AssertionError("threshold consumer reconstructed the next pair")
 
-    source = _source(seed, 10)
-    first = _step_digits(source.digits, 10)
-    expected = _carries(_pairs(first), 10)
+    source = source_from_value(seed, 10)
+    first = successor_digits(source.digits, 10)
+    expected = carry_scan(pair_sums(first), 10)
     ports = SourceCarryPorts(source, ResourceLedger())
     monkeypatch.setattr(SourceCarryPorts, "_raw_second_pair", forbidden)
     assert tuple(ports.second_carry(i) for i in range(len(first) + 1)) == expected
@@ -219,8 +198,8 @@ def test_regional_carry_stream_matches_forward_scan_in_both_coordinate_orders(
     base: int,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = _source(value, base)
-    expected = _carries(_pairs(source.digits), base)
+    source = source_from_value(value, base)
+    expected = carry_scan(pair_sums(source.digits), base)
     ports = SourceCarryPorts(source, ResourceLedger())
 
     def forbidden(*_args: object) -> int:
@@ -235,7 +214,7 @@ def test_regional_carry_stream_matches_forward_scan_in_both_coordinate_orders(
 
 def test_regional_carry_stream_releases_partial_traversal_stack() -> None:
     ledger = ResourceLedger()
-    ports = SourceCarryPorts(_source(int("45" * 64), 10), ledger)
+    ports = SourceCarryPorts(source_from_value(int("45" * 64), 10), ledger)
     stream = ports.iter_first_ports(reflected=True)
     next(stream)
     stream.close()
@@ -254,9 +233,12 @@ def test_second_pair_stream_uses_one_growth_prefix_only(
     value: int,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = _source(value, 10)
+    source = source_from_value(value, 10)
     ports = SourceCarryPorts(source, ResourceLedger())
-    original = SourceCarryPorts._first_prefix
+    original = cast(
+        Callable[[SourceCarryPorts, int], int],
+        private_test_attribute(SourceCarryPorts, "_first_prefix"),
+    )
     calls = 0
 
     def single_growth(self: SourceCarryPorts, boundary: int) -> int:
@@ -266,7 +248,9 @@ def test_second_pair_stream_uses_one_growth_prefix_only(
         return original(self, boundary)
 
     monkeypatch.setattr(SourceCarryPorts, "_first_prefix", single_growth)
-    assert tuple(ports.iter_second_pairs()) == _pairs(_step_digits(source.digits, 10))
+    assert tuple(ports.iter_second_pairs()) == pair_sums(
+        successor_digits(source.digits, 10)
+    )
     assert calls == 1
     ports.dispose()
 
@@ -292,7 +276,7 @@ def test_neutral_region_stream_propagates_identity_without_ancestor_search() -> 
 
 def test_regional_stream_budget_failure_releases_stack() -> None:
     ledger = ResourceLedger(max_nodes=1)
-    ports = SourceCarryPorts(_source(1593, 10), ledger)
+    ports = SourceCarryPorts(source_from_value(1593, 10), ledger)
     stream = ports.iter_first_ports()
     with pytest.raises(BlockContextBudgetExceeded):
         next(stream)

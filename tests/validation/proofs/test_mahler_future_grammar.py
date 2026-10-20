@@ -25,7 +25,7 @@ def _grammar(width: int = 128) -> ReachableFutureGrammar:
 
 
 def _literal(source: int, width: int) -> tuple[int, tuple[int, ...]]:
-    parities = []
+    parities: list[int] = []
     for _ in range(width):
         parities.append(source % 2)
         source = (3 * source + 1) // 2
@@ -455,12 +455,13 @@ def test_normalized_safe_kernel_sharing_retains_occurrence_authority(
     width: int, expected_occurrences: int, expected_kernels: int
 ) -> None:
     grammar = _grammar(max(8, width))
-    rows = []
+    rows: list[tuple[object, object]] = []
     for residue in range(1 << width):
         handle = grammar.workspace.cylinder(width, residue)
         if grammar.workspace.view(handle).guard.empty:
             continue
-        rows.append(grammar.normalized_safe_effect(handle))
+        kernel, chart = grammar.normalized_safe_effect(handle)
+        rows.append((kernel, chart))
     assert len(rows) == expected_occurrences
     assert len({kernel for kernel, _ in rows}) == expected_kernels
     assert len({chart for _, chart in rows}) == expected_occurrences

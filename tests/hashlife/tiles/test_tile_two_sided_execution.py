@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
 from itertools import product
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
-from number_compiler.arithmetic.contracts.block_effect import BlockEffect, BoundarySide
+from number_compiler.arithmetic.contracts.block_effect import (
+    BlockEffect,
+    BoundarySide,
+    BoundaryState,
+)
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
@@ -17,10 +21,7 @@ from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.execution.tile_causal_tasks import bound_states
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
-from number_compiler.hashlife.execution.tile_scheduler import (
-    ChildContext,
-    TileScheduler,
-)
+from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
 from number_compiler.hashlife.tiles.tile_boundaries import (
@@ -30,6 +31,7 @@ from number_compiler.hashlife.tiles.tile_boundaries import (
 from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
     causal_interface_key,
 )
+from number_compiler.hashlife.tiles.tile_context import ChildContext
 from number_compiler.hashlife.tiles.tile_ports import BoundPorts, FusedBoundaryContract
 from number_compiler.hashlife.tiles.tile_result_records import FusedInterfaceKey
 from number_compiler.hashlife.tiles.tile_results import (
@@ -97,7 +99,11 @@ def _warm_fused_input(
     fixture = _square_input(runtime)
     scheduler, source, square, wiring = fixture[3], fixture[7], fixture[8], fixture[9]
     scheduler.point(square, source, (0, 0), wiring, 0)
-    key = next(key for key in scheduler.results._memo if type(key) is FusedInterfaceKey)
+    key = next(
+        key
+        for key in scheduler.results.audit_snapshot().memo
+        if type(key) is FusedInterfaceKey
+    )
     return (*fixture, key)
 
 
@@ -145,11 +151,11 @@ def scan(
     right_domain = effect.boundary_universe(BoundarySide.RIGHT)
     assert left_domain is not None and right_domain is not None
     left, right = left_domain[ports[0]], right_domain[ports[1]]
-    before = []
+    before: list[BoundaryState] = []
     for symbol in symbols:
         before.append(left)
         left = effect.advance(BoundarySide.LEFT, left, symbol)
-    after = []
+    after: list[BoundaryState] = []
     for symbol in reversed(symbols):
         after.append(right)
         right = effect.advance(BoundarySide.RIGHT, right, symbol)
@@ -242,7 +248,7 @@ def test_cached_midpoint_uses_explicit_consumer_incoming_ports(
         source,
         contract,
     )
-    result_key = fused_engine._composite_key(
+    result_key = fused_engine.composite_key(
         square,
         source,
         fused_left,
@@ -255,7 +261,11 @@ def test_cached_midpoint_uses_explicit_consumer_incoming_ports(
         fused_left,
         fused_right,
     )
-    scheduler.results._remove_key(causal_interface_key(result_key))
+    remove_key = cast(
+        Callable[[object], None],
+        object.__getattribute__(scheduler.results, "_remove_key"),
+    )
+    remove_key(causal_interface_key(result_key))
 
     with scheduler.complete(primitive, source, producer, wiring):
         import number_compiler.hashlife.execution.tile_causal as causal
@@ -427,7 +437,7 @@ def test_spatial_midpoint_disagreement_rejects_before_parent_publication(
     source = tile((0, 0, 0, 1))
     wiring = adapter.wiring(primitive)
     original = adapter.child_context
-    leases = len(tiles._leases)
+    leases = len(tiles.audit_snapshot().leases)
 
     def inconsistent(
         action: FieldCellActionID,
@@ -454,7 +464,7 @@ def test_spatial_midpoint_disagreement_rejects_before_parent_publication(
     monkeypatch.setattr(adapter, "child_context", inconsistent)
     with pytest.raises(ValueError, match="midpoint transfer"):
         scheduler.complete(primitive, source, adapter.initial_ports(primitive), wiring)
-    assert len(tiles._leases) == leases
+    assert len(tiles.audit_snapshot().leases) == leases
 
 
 @pytest.mark.parametrize(
@@ -547,7 +557,11 @@ def test_fused_requests_retain_the_explicit_temporal_edge(runtime: TileRuntime) 
         _unused_wiring_binding,
         _key,
     ) = _warm_fused_input(runtime)
-    keys = [key for key in scheduler.results._memo if type(key) is FusedInterfaceKey]
+    keys = [
+        key
+        for key in scheduler.results.audit_snapshot().memo
+        if type(key) is FusedInterfaceKey
+    ]
     assert keys
     assert all((key.before, key.after) == (primitive, primitive) for key in keys)
     key = keys[0]
@@ -581,13 +595,13 @@ def test_fused_children_use_combined_admission_without_retired_callbacks(
     ) = _warm_fused_input(runtime)
     context = BoundPorts((0, 0), wiring)
     fusion = FusedBoundaryContract(context, context)
-    monkeypatch.setattr(scheduler.results, "_validate_action", forbidden)
-    monkeypatch.setattr(scheduler.results, "_signature_for", forbidden)
+    monkeypatch.setattr(scheduler.results, "action_validator", forbidden)
+    monkeypatch.setattr(scheduler.results, "signature_provider", forbidden)
     validate_fused_edge(scheduler.results, key)
     validate_fusion_contexts(scheduler.results, square, fusion, context, source)
 
     # The combined path still checks the live child record on every request.
-    record = adapter._action(primitive)
+    record = adapter.action_record(primitive)
     object.__setattr__(record, "repetitions", 0)
     try:
         assert_rejected_atomically(
@@ -807,9 +821,9 @@ def test_causal_concat_failure_releases_every_temporary_tile_lease(
     before = (
         ledger.entries,
         ledger.nodes,
-        dict(tiles._nodes),
-        dict(tiles._leases),
-        dict(tiles._refs),
+        dict(tiles.audit_snapshot().nodes),
+        dict(tiles.audit_snapshot().leases),
+        dict(tiles.audit_snapshot().refs),
     )
     join = tiles.join
     calls = 0
@@ -828,9 +842,9 @@ def test_causal_concat_failure_releases_every_temporary_tile_lease(
     assert (
         ledger.entries,
         ledger.nodes,
-        dict(tiles._nodes),
-        dict(tiles._leases),
-        dict(tiles._refs),
+        dict(tiles.audit_snapshot().nodes),
+        dict(tiles.audit_snapshot().leases),
+        dict(tiles.audit_snapshot().refs),
     ) == before
 
 

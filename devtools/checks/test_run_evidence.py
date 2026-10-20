@@ -11,7 +11,10 @@ from pathlib import Path
 
 from devtools.git_source import git_source
 from devtools.paths import repository_root
-from devtools.report_values import object_list, string_keyed_mapping
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_list,
+    string_keyed_mapping,
+)
 
 GIT_COMMIT_BEFORE = "number_compiler_git_commit_before"
 GIT_COMMIT_AFTER = "number_compiler_git_commit_after"
@@ -29,7 +32,7 @@ EXECUTION_MODE = "number_compiler_execution_mode"
 
 
 def _string_list(value: object) -> tuple[str, ...] | None:
-    if not object_list(value):
+    if not is_object_list(value):
         return None
     result: list[str] = []
     for item in value:
@@ -40,7 +43,7 @@ def _string_list(value: object) -> tuple[str, ...] | None:
 
 
 def _json_object_list(value: object) -> tuple[Mapping[str, object], ...] | None:
-    if not object_list(value):
+    if not is_object_list(value):
         return None
     result: list[Mapping[str, object]] = []
     for item in value:

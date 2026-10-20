@@ -92,7 +92,7 @@ def quiescent_boundary(
         if type(token) is not CausalActionAdmission:
             raise TypeError("behavior requires a causal admission lease")
         _signature, kernel_id, record = (
-            engine.scheduler._causal_tasks.admitted_action_metadata(
+            engine.scheduler.causal_tasks.admitted_action_metadata(
                 token, engine.adapter, action
             )
         )
@@ -109,11 +109,11 @@ def quiescent_boundary(
             action,
             view.tile,
             PrimitiveCausalPorts(left, right),
-            engine._wiring(action),
+            engine.result_wiring(action),
             action_admission=engine.action_admission,
         )
     else:
-        key = engine._composite_key(action, view.tile, left, right)
+        key = engine.composite_key(action, view.tile, left, right)
         if key is None:
             engine.ledger.bump(_execution_keys.EXACT_CAUSAL_FALLBACK_REQUESTS)
             return None

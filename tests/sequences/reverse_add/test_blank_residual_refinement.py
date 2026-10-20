@@ -19,8 +19,8 @@ from number_compiler.arithmetic.carry.reverse_port_functions import (
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
-    _BaseLeftState,
-    _BaseRightState,
+    BaseLeftState,
+    BaseRightState,
 )
 from number_compiler.hashlife.execution.field_images import (
     SourceCellArena,
@@ -30,7 +30,7 @@ from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.sequences.reverse_add.higher_schema import (
     ReverseHigherActionSchema,
 )
-from tests.support.reverse_higher_runtime import _fixture, _macro_composer
+from tests.support.reverse_higher_runtime import macro_composer, reverse_higher_fixture
 
 
 def test_decimal_blank_pair_residual_is_left_idempotent_and_right_identity() -> None:
@@ -52,15 +52,15 @@ def test_decimal_blank_pair_residual_is_left_idempotent_and_right_identity() -> 
     assert left_transfer.then(left_transfer) == left_transfer
 
     for state in left_states:
-        once = cast(_BaseLeftState, kernel.advance(BoundarySide.LEFT, state, blank))
-        twice = cast(_BaseLeftState, kernel.advance(BoundarySide.LEFT, once, blank))
+        once = cast(BaseLeftState, kernel.advance(BoundarySide.LEFT, state, blank))
+        twice = cast(BaseLeftState, kernel.advance(BoundarySide.LEFT, once, blank))
         assert left_transfer.apply(state) == once
         assert left_transfer.apply(once) == twice == once
         assert codec.decode_left(codec.encode_left(once)) == once
 
     for right_state in right_states:
         advanced = cast(
-            _BaseRightState,
+            BaseRightState,
             kernel.advance(BoundarySide.RIGHT, right_state, blank),
         )
         assert advanced == right_state
@@ -163,7 +163,7 @@ def test_blank_macro_preserves_first_output_and_stream_without_runtime_replay(
         compiler,
         sources,
         binding,
-    ) = _fixture(source)
+    ) = reverse_higher_fixture(source)
     assert type(sources) is SourceCellArena
     schema = cast(ReverseHigherActionSchema, semantics.schema)
     action = schema.terminal if terminal else primitive
@@ -189,7 +189,7 @@ def test_blank_macro_preserves_first_output_and_stream_without_runtime_replay(
     for name in ("step", "emit", "boundary"):
         monkeypatch.setattr(runtime, name, forbidden)
 
-    outputs, composer = _macro_composer(
+    outputs, composer = macro_composer(
         semantics,
         interfaces,
         sources,
@@ -230,18 +230,18 @@ def test_blank_macro_preserves_first_output_and_stream_without_runtime_replay(
     stream = outputs.iter_observe_range(macro.output, 0, macro.width, left, right)
     assert next(stream) == expected[0]
     stream.close()
-    assert not outputs._stream_frames
+    assert outputs.audit_snapshot().stream_frame_count == 0
     assert (
         tuple(outputs.iter_observe_range(macro.output, 0, macro.width, left, right))
         == expected
     )
-    assert not outputs._stream_frames
+    assert outputs.audit_snapshot().stream_frame_count == 0
     assert all(item.accounting_delta == 0 for item in semantics.ledger.inventory())
 
 
 def test_blank_hook_rejects_composite_and_foreign_action_authorities() -> None:
-    actions, primitive, semantics, _runtime, _interfaces, _compiler, *_rest = _fixture(
-        (19,)
+    actions, primitive, semantics, _runtime, _interfaces, _compiler, *_rest = (
+        reverse_higher_fixture((19,))
     )
     schema = cast(ReverseHigherActionSchema, semantics.schema)
     composite = actions.compose(primitive, primitive)
@@ -252,6 +252,6 @@ def test_blank_hook_rejects_composite_and_foreign_action_authorities() -> None:
     with pytest.raises(ValueError, match="temporal composites"):
         ReverseHigherActionSchema(actions, primitive, composite)
 
-    _foreign_actions, foreign_primitive, *_ = _fixture((1,))
+    _foreign_actions, foreign_primitive, *_ = reverse_higher_fixture((1,))
     with pytest.raises(ValueError, match="different arena"):
         schema.primitive_blank_run(foreign_primitive)

@@ -62,12 +62,12 @@ def test_public_probe_reports_current_family_work(
         from devtools.benchmarks import reverse_temporal_power_probe as reverse
 
         monkeypatch.setattr(reverse, "PROJECTION_INDICES", (16,))
-        rows = reverse._production_projection_rows()
+        rows = reverse.production_projection_rows()
     else:
         from devtools.benchmarks import collatz_temporal_power_probe as collatz
 
         monkeypatch.setattr(collatz, "PROJECTION_STEPS", (16,))
-        rows = collatz._projection_rows()
+        rows = collatz.projection_rows()
     row = rows[0]
     if family == "reverse":
         # The production reverse consumer is now the authenticated source-image

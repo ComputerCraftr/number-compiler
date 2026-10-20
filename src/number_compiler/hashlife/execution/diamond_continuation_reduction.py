@@ -124,7 +124,7 @@ class PrimitiveContinuationReducer:
             raise ValueError(
                 "finite continuation requires an already admitted primitive domain"
             )
-        handle = self.kernels._kernel_ids[_effect_key(primitive.effect)]
+        handle = self.kernels.kernel_bindings[_effect_key(primitive.effect)]
         return node.sort, handle
 
     def _support(
@@ -370,7 +370,7 @@ class PrimitiveContinuationReducer:
             return self.kernels.constant(node.sort.blank + 1, node.value)
         if node.kind in ("finite_apply", "finite_map"):
             assert node.function is not None
-            argument = arena._handle(node.children[0])
+            argument = arena.scoped_handle(node.children[0])
             input_sort = arena.node(argument).sort
             assert isinstance(input_sort, StateSort)
             primitive = arena.primitive(input_sort.action)
@@ -397,7 +397,7 @@ class PrimitiveContinuationReducer:
                 _function(
                     (
                         yield CompilePrimitiveFunction(
-                            task.variable, arena._handle(child)
+                            task.variable, arena.scoped_handle(child)
                         )
                     )
                 )
@@ -414,14 +414,14 @@ class PrimitiveContinuationReducer:
                 ),
             ),
         )
-        target = self.kernels._kernel_ids.get(
+        target = self.kernels.kernel_bindings.get(
             _effect_key(self.runtime.actions.primitive(node.action))
         )
         if target is None:
             raise ValueError("primitive continuation operation was not admitted")
         functions = self.kernels.functions
         constants = all(
-            functions._resolve(bit) < 2
+            functions.resolve_index(bit) < 2
             for argument in arguments
             for bit in self.kernels.expression(argument).bits
         )

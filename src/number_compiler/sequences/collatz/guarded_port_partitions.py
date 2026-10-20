@@ -111,7 +111,9 @@ def future_tails(
         output.append(
             (
                 tail,
-                GuardedPortJoin(root, revised, bridge, parity_tape=joined._tape()),
+                GuardedPortJoin(
+                    root, revised, bridge, parity_tape=joined.parity_tape_for_action()
+                ),
             )
         )
     if sum(part.source.count for _, part in output) != joined.source.count:

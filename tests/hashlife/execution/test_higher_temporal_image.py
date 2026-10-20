@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
-from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.actions.field_actions import (
+    CoordinateOutputMorphismID,
+    FieldCellActionID,
+)
 from number_compiler.hashlife.execution.continuations.higher_bimachine import (
     HigherBimachineRuntime,
 )
@@ -29,7 +33,10 @@ from number_compiler.hashlife.execution.continuations.higher_temporal_provider i
 from number_compiler.hashlife.execution.continuations.higher_types import (
     HigherExpressionID,
 )
-from number_compiler.hashlife.execution.field_images import SourceForestID
+from number_compiler.hashlife.execution.field_images import (
+    SourceBindingID,
+    SourceForestID,
+)
 from number_compiler.hashlife.execution.recursive_outputs import (
     RecursiveCoordinateMorphismArena,
     RecursiveOutputTemporal,
@@ -37,7 +44,8 @@ from number_compiler.hashlife.execution.recursive_outputs import (
 from number_compiler.resources.higher_payload_audit import audit_higher_payloads
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.reverse_add.field_action import ReverseFieldActionArena
-from tests.support.reverse_higher_runtime import _fixture, _macro_composer
+from tests.support.private_attributes import private_test_attribute
+from tests.support.reverse_higher_runtime import macro_composer, reverse_higher_fixture
 
 
 def _bound_step(
@@ -47,12 +55,12 @@ def _bound_step(
     base: int = 10,
 ) -> tuple[int, ...]:
     effect, left_domain, right_domain = _bound_domains(base)
-    left_states = []
+    left_states: list[object] = []
     state = left_domain[left_index]
     for symbol in word:
         left_states.append(state)
         state = effect.advance(BoundarySide.LEFT, state, symbol)
-    right_states = [right_domain[right_index]] * len(word)
+    right_states: list[object] = [right_domain[right_index]] * len(word)
     state = right_domain[right_index]
     for index in range(len(word) - 1, -1, -1):
         right_states[index] = state
@@ -76,7 +84,7 @@ def _bound_exits(
     return left_domain.index(left), right_domain.index(right)
 
 
-def _construction(
+def temporal_construction_fixture(
     source: tuple[int, ...],
 ) -> tuple[
     ReverseFieldActionArena,
@@ -89,12 +97,12 @@ def _construction(
     SourceForestID,
 ]:
     actions, primitive, semantics, runtime, interfaces, compiler, sources, binding = (
-        _fixture(source)
+        reverse_higher_fixture(source)
     )
-    outputs, producer = _macro_composer(
+    outputs, producer = macro_composer(
         semantics, interfaces, sources, primitive, compiler
     )
-    outputs, consumer = _macro_composer(
+    outputs, consumer = macro_composer(
         semantics, interfaces, sources, primitive, compiler, outputs
     )
 
@@ -128,7 +136,7 @@ def _construction_ports(
     HigherExpressionID,
     HigherExpressionID,
 ]:
-    fixture = _construction(source)
+    fixture = temporal_construction_fixture(source)
     runtime, primitive = fixture[3], fixture[1]
     return (*fixture, runtime.initial(primitive, 0), runtime.initial(primitive, 1))
 
@@ -236,7 +244,7 @@ def test_temporal_memo_rejects_changed_consumer_before_a_warm_hit(
     field: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     actions, _primitive, semantics, _runtime, _outputs, _producer, images, _binding = (
-        _construction((7, 19, 19, 19))
+        temporal_construction_fixture((7, 19, 19, 19))
     )
     changes = {
         "action": actions.identity,
@@ -250,44 +258,42 @@ def test_temporal_memo_rejects_changed_consumer_before_a_warm_hit(
         "morphism_sort": None,
     }
     try:
-        first = images._blank_macro(4)
+        first = images.blank_macro(4)
         before = dict(semantics.ledger.counters)
         with monkeypatch.context() as patch:
             patch.setattr(images.spatial, field, changes[field])
             with pytest.raises(ValueError, match="consumer binding"):
-                images._blank_macro(4)
+                images.blank_macro(4)
             assert dict(semantics.ledger.counters) == before
-        assert images._blank_macro(4) is first
+        assert images.blank_macro(4) is first
     finally:
-        images._clear_workspace()
+        images.clear_workspace()
     _assert_temporal_workspace_empty(images)
 
 
 def test_temporal_memo_keys_bind_consumer_and_reject_foreign_publication() -> None:
     actions, _primitive, _semantics, _runtime, _outputs, _producer, images, _binding = (
-        _construction((7, 19, 19, 19))
+        temporal_construction_fixture((7, 19, 19, 19))
     )
     try:
-        macro = images._blank_macro(4)
+        images.blank_macro(4)
         image_snapshot = images.audit_snapshot()
-        built_store = images.ledger.registered_container(image_snapshot.built_owner)
-        assert type(built_store) is LedgerDict
-        key = next(key for key in built_store if key.width == 4)
+        key = next(key for key in image_snapshot.built_keys if key.width == 4)
         foreign = replace(key, consumer=replace(key.consumer, action=actions.identity))
         assert key != foreign
         before = images.ledger.inventory()[image_snapshot.built_owner].entries
         with pytest.raises(ValueError, match="another consumer"):
-            images._remember_built(foreign, macro)
+            images.validate_memo_key(foreign)
         assert images.ledger.inventory()[image_snapshot.built_owner].entries == before
-        assert foreign not in built_store
+        assert foreign not in image_snapshot.built_keys
     finally:
-        images._clear_workspace()
+        images.clear_workspace()
 
 
 def test_temporal_step_work_and_results_are_not_reused_from_an_earlier_call() -> None:
     source = (7, 18, 7, *(19 for _ in range(29)))
     _actions, primitive, semantics, runtime, outputs, producer, images, binding = (
-        _construction(source)
+        temporal_construction_fixture(source)
     )
     left, right = runtime.initial(primitive, 0), runtime.initial(primitive, 1)
     image = images.bind_initial(
@@ -328,10 +334,16 @@ def test_temporal_arena_rejects_replaced_composition_authority(
         _producer,
         images,
         _binding,
-    ) = _construction((7, 19, 19, 19))
-    monkeypatch.setattr(images, "_compose_actions", lambda before, _after: before)
+    ) = temporal_construction_fixture((7, 19, 19, 19))
+
+    def retain_before(
+        before: FieldCellActionID, _after: FieldCellActionID
+    ) -> FieldCellActionID:
+        return before
+
+    object.__setattr__(images, "_compose_actions", retain_before)
     with pytest.raises(ValueError, match="issued authority"):
-        images._blank_macro(4)
+        images.blank_macro(4)
     assert images.audit_snapshot().built_count == 0
 
 
@@ -339,7 +351,7 @@ def test_empty_temporal_arena_audit_rejects_changed_consumer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     actions, _primitive, _semantics, _runtime, _outputs, _producer, images, _binding = (
-        _construction((7, 19, 19, 19))
+        temporal_construction_fixture((7, 19, 19, 19))
     )
     assert not audit_higher_payloads(images.ledger).invalid
     monkeypatch.setattr(images.spatial, "action", actions.identity)
@@ -361,14 +373,14 @@ def test_temporal_consumer_rejects_equal_but_differently_typed_fields(
         _producer,
         images,
         _binding,
-    ) = _construction((7, 19, 19, 19))
+    ) = temporal_construction_fixture((7, 19, 19, 19))
     try:
-        images._blank_macro(4)
+        images.blank_macro(4)
         monkeypatch.setattr(images.spatial, field, value)
         with pytest.raises(ValueError, match="consumer binding"):
-            images._blank_macro(4)
+            images.blank_macro(4)
     finally:
-        images._clear_workspace()
+        images.clear_workspace()
 
 
 def test_temporal_consumer_seal_is_independent_of_the_memo_key(
@@ -383,15 +395,15 @@ def test_temporal_consumer_seal_is_independent_of_the_memo_key(
         _producer,
         images,
         _binding,
-    ) = _construction((7, 19, 19, 19))
+    ) = temporal_construction_fixture((7, 19, 19, 19))
     try:
-        images._blank_macro(4)
+        images.blank_macro(4)
         object.__setattr__(images.spatial.declaration(), "blank", 0)
         monkeypatch.setattr(images.spatial, "blank", 0)
         with pytest.raises(ValueError, match="consumer binding"):
-            images._blank_macro(4)
+            images.blank_macro(4)
     finally:
-        images._clear_workspace()
+        images.clear_workspace()
 
 
 def test_temporal_image_preserves_noninitial_two_sided_ports() -> None:
@@ -405,7 +417,7 @@ def test_temporal_image_preserves_noninitial_two_sided_ports() -> None:
         producer,
         images,
         binding,
-    ) = _construction(source)
+    ) = temporal_construction_fixture(source)
     provider_left = semantics.literal(primitive, 0, 1)
     provider_right = semantics.literal(primitive, 1, 1)
     consumer_left = semantics.literal(primitive, 0, 2)
@@ -580,7 +592,10 @@ def test_temporal_image_workspace_rolls_back_failed_memo_insertion(
         right,
         initial,
     ) = _initial_construction(source)
-    original = LedgerDict.__setitem__
+    original = cast(
+        Callable[[LedgerDict[object, object], object, object], None],
+        private_test_attribute(LedgerDict, "__setitem__"),
+    )
 
     def fail_built(
         store: LedgerDict[object, object], key: object, value: object
@@ -629,7 +644,7 @@ def test_temporal_image_rejects_replaced_arena_and_source_authority() -> None:
         producer,
         images,
         binding,
-    ) = _construction(source)
+    ) = temporal_construction_fixture(source)
     image = images.bind_initial(
         producer,
         binding,
@@ -662,7 +677,7 @@ def test_symbolic_macro_constructor_does_not_grant_source_binding() -> None:
         producer,
         images,
         binding,
-    ) = _construction(source)
+    ) = temporal_construction_fixture(source)
     issued = producer.compile(binding)
     fabricated = SourceBoundHigherMacro(
         issued.interface,
@@ -760,7 +775,7 @@ def test_temporal_image_publishes_complete_split_interface_channels(
 
 def test_provider_rejects_foreign_binding_before_warm_alias() -> None:
     actions, primitive, semantics, runtime, outputs, producer, _images, binding = (
-        _construction((7, 18, 7, 19, 19, 19, 19, 19))
+        temporal_construction_fixture((7, 18, 7, 19, 19, 19, 19, 19))
     )
     macro = producer.compile(binding)
     provider = HigherTemporalProviderEvaluator(
@@ -792,13 +807,13 @@ def test_provider_rejects_foreign_binding_before_warm_alias() -> None:
 
 
 @pytest.mark.parametrize(
-    "field", ("_validate_output", "_validate_binding", "_compose_actions", "runtime")
+    "field", ("output_validator", "_validate_binding", "_compose_actions", "runtime")
 )
 def test_provider_rejects_replaced_authority_before_a_warm_lookup(
     field: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     actions, primitive, semantics, runtime, outputs, producer, _images, binding = (
-        _construction((7, 18, 7, 19))
+        temporal_construction_fixture((7, 18, 7, 19))
     )
     macro = producer.compile(binding)
     provider = HigherTemporalProviderEvaluator(
@@ -814,7 +829,7 @@ def test_provider_rejects_replaced_authority_before_a_warm_lookup(
 
     replacement: object = replacement_callback
     if field == "runtime":
-        replacement = _construction((7, 18, 7, 19))[3]
+        replacement = temporal_construction_fixture((7, 18, 7, 19))[3]
     before = dict(semantics.ledger.counters)
     with monkeypatch.context() as patch:
         patch.setattr(provider, field, replacement)
@@ -832,7 +847,7 @@ def test_provider_rejects_replaced_authority_before_a_warm_lookup(
 
 def test_provider_rejects_another_compiled_sources_output() -> None:
     actions, primitive, _semantics, runtime, outputs, producer, _images, binding = (
-        _construction((7, 18, 7, 19, 19, 19, 19, 19))
+        temporal_construction_fixture((7, 18, 7, 19, 19, 19, 19, 19))
     )
     original = producer.compile(binding)
     foreign = producer.sources.forest(1, 4)
@@ -857,7 +872,7 @@ def test_empty_provider_and_composer_audits_check_authority(
     target: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     actions, _primitive, semantics, runtime, outputs, producer, _images, _binding = (
-        _construction((7, 18, 7, 19))
+        temporal_construction_fixture((7, 18, 7, 19))
     )
     provider = HigherTemporalProviderEvaluator(
         runtime,
@@ -867,7 +882,15 @@ def test_empty_provider_and_composer_audits_check_authority(
     )
     assert not audit_higher_payloads(semantics.ledger).invalid
     if target == "provider":
-        monkeypatch.setattr(provider, "_validate_binding", lambda *args: None)
+
+        def skip_binding_validation(
+            _provider: CoordinateOutputMorphismID,
+            _source: SourceBindingID,
+            _action: FieldCellActionID,
+        ) -> None:
+            return None
+
+        object.__setattr__(provider, "_validate_binding", skip_binding_validation)
         provider_snapshot = provider.audit_snapshot()
         expected = provider_snapshot.binding_owner, id(provider_snapshot.binding_store)
     else:

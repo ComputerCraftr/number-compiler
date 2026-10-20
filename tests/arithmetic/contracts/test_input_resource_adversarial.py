@@ -16,6 +16,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger, ResourceScope
+from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.collatz.block_power import (
     CollatzPhysicalBlockEffect,
     PoweredCollatzTerm,
@@ -116,11 +117,11 @@ def test_factory_append_only_flag_requires_an_actual_boolean(value: object) -> N
     value = cast(bool, value)
     ledger = ResourceLedger()
     owner = ledger.register("canonical", "canonical_action")
-    assert_rejected_atomically(
-        ledger,
-        lambda: ledger.make_list(owner, append_only=value),
-        (TypeError, ValueError),
-    )
+
+    def make_list() -> LedgerList[object]:
+        return ledger.make_list(owner, append_only=value)
+
+    assert_rejected_atomically(ledger, make_list, (TypeError, ValueError))
 
 
 @pytest.mark.parametrize("field", ("name", "role", "scope"))
@@ -273,7 +274,7 @@ def test_public_digit_aliases_reject_before_zero_or_warm_lookup(
         term.digit(0)
     monkeypatch.setattr(
         constructor,
-        "_source_workspace" if family == "reverse" else "_source_image",
+        "source_workspace" if family == "reverse" else "source_image",
         forbidden,
     )
     for value in BAD:

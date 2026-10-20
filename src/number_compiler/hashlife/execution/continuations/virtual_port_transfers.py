@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, cast
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+)
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 
 if TYPE_CHECKING:
@@ -19,7 +22,7 @@ def validate_virtual_transfer(
     side: int,
     transfer: object,
 ) -> None:
-    if type(transfer) is tuple:
+    if is_exact_object_tuple(transfer):
         count = cast(
             Callable[[FieldCellActionID, int], int],
             cast("ConcretePortAdapter", adapter).primitive_state_count,
@@ -82,9 +85,13 @@ def compose_virtual_transfers(
         if result is not None:
             validate_virtual_transfer(adapter, action, side, result)
             return result
-    if type(first) is not tuple or type(second) is not tuple:
+    if not is_exact_object_tuple(first) or not is_exact_object_tuple(second):
         raise TypeError("adapter cannot compose symbolic virtual transfers")
-    result = tuple(second[first[state]] for state in range(len(first)))
+    validate_virtual_transfer(adapter, action, side, first)
+    validate_virtual_transfer(adapter, action, side, second)
+    first_map = cast(tuple[int, ...], first)
+    second_map = cast(tuple[int, ...], second)
+    result = tuple(second_map[first_map[state]] for state in range(len(first_map)))
     validate_virtual_transfer(adapter, action, side, result)
     return result
 
@@ -106,9 +113,11 @@ def apply_virtual_transfer(
             if type(result) is not int:
                 raise TypeError("symbolic virtual transfer returned a noninteger state")
             return result
-    if type(transfer) is not tuple:
+    if not is_exact_object_tuple(transfer):
         raise TypeError("adapter cannot apply a symbolic virtual transfer")
-    return cast(int, transfer[state])
+    validate_virtual_transfer(adapter, action, side, transfer)
+    finite_transfer = cast(tuple[int, ...], transfer)
+    return finite_transfer[state]
 
 
 __all__ = [

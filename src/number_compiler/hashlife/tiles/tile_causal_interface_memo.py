@@ -61,7 +61,7 @@ def _validate_key(arena: CompletedResultArena, key: CausalInterfaceKey) -> None:
     arena.validate_base(key.action, key.input, key.wiring)
     arena.validate_ports(key.wiring.signature, key.ports)
     if key.fusion is None:
-        arena._validate_boundaries(key.boundaries, key.input)
+        arena.validate_boundaries(key.boundaries, key.input)
     else:
         arena.validate_fusion(
             key.action,
@@ -101,20 +101,7 @@ def _seal_record(
     key: CausalInterfaceKey,
     value: CompletedInterfaceResult,
 ) -> CompletedInterfaceResult:
-    return CompletedInterfaceResult(
-        value.interface,
-        value.observed_input_ports,
-        value.outgoing_ports,
-        value.level,
-        value.active,
-        value.physical_ticks,
-        value.event_weight,
-        value.frame_shift,
-        arena._interface_publication_seal,
-        causal_interface_snapshot(key, value),
-        physical_support=value.physical_support,
-        bound_reverse_output=value.bound_reverse_output,
-    )
+    return arena.seal_result(value, causal_interface_snapshot(key, value))
 
 
 def _payload(
@@ -122,8 +109,8 @@ def _payload(
     key: CausalInterfaceKey,
 ) -> CausalInterfacePayload:
     from number_compiler.hashlife.execution.tile_causal_interfaces import (
-        _attach_bound_reverse_output,
-        _bind_bound_reverse_output_request,
+        attach_bound_reverse_output,
+        bind_bound_reverse_output_request,
     )
 
     value.__post_init__()
@@ -142,26 +129,26 @@ def _payload(
     )
     if value.bound_reverse_output is None:
         return payload
-    return _bind_bound_reverse_output_request(
-        _attach_bound_reverse_output(payload, value.bound_reverse_output),
+    return bind_bound_reverse_output_request(
+        attach_bound_reverse_output(payload, value.bound_reverse_output),
         execution_request_snapshot(key),
     )
 
 
-def _bind_reverse_output_request(
+def bind_reverse_output_request(
     key: CausalInterfaceKey,
     payload: CausalInterfacePayload,
 ) -> CausalInterfacePayload:
     """Give one internally derived active summary its complete request proof."""
     from number_compiler.hashlife.execution.tile_causal_interfaces import (
-        _bind_bound_reverse_output_request,
+        bind_bound_reverse_output_request,
     )
 
     if type(key) is not CausalInterfaceKey:
         raise TypeError("active output proof requires a causal interface key")
     if type(payload) is not CausalInterfacePayload:
         raise TypeError("active output proof requires a causal interface payload")
-    return _bind_bound_reverse_output_request(
+    return bind_bound_reverse_output_request(
         payload,
         execution_request_snapshot(key),
     )
@@ -251,9 +238,9 @@ def validate_published_causal_interface_value(
     """Validate a warm record without executing its semantic functions."""
     _validate_observation_payload(arena, key, value)
     _validate_reverse_output_profile(arena, key, value)
-    if value._publication_owner is not arena._interface_publication_seal:
+    if not arena.issued_result(value):
         raise ValueError("causal interface result was not issued by this arena")
-    if value._publication_snapshot != causal_interface_snapshot(key, value):
+    if not value.publication_matches(causal_interface_snapshot(key, value)):
         raise ValueError("causal interface publication metadata was modified")
     if arena.interfaces.resolve(value.interface).signature != key.wiring.signature:
         raise ValueError("causal interface result has another signature")
@@ -271,14 +258,14 @@ def lookup_causal_interface(
 ) -> CausalInterfacePayload | None:
     """Return a complete bounded parent before any descendant task executes."""
     _validate_key(arena, key)
-    found = arena._memo.get(key)
+    found = arena.memo_view.get(key)
     arena.ledger.bump(_tiles_keys.CAUSAL_INTERFACE_RESULT_REQUESTS)
     level = arena.tiles.resolve(key.input).level
     span = temporal_span(arena.action_authority, key.action)
     if found is None:
         record_unattributed_post_eviction_miss(arena.ledger, ResultCacheKind.INTERFACE)
         record_cache_event(
-            arena.tiles._cache_metrics,
+            arena.tiles.cache_metrics,
             "interface",
             "miss",
             spatial_level=level,
@@ -290,7 +277,7 @@ def lookup_causal_interface(
     validate_published_causal_interface_value(arena, key, found)
     arena.ledger.bump(_tiles_keys.CAUSAL_INTERFACE_RESULT_EARLY_HITS)
     record_cache_event(
-        arena.tiles._cache_metrics,
+        arena.tiles.cache_metrics,
         "interface",
         "early_hit",
         spatial_level=level,
@@ -308,20 +295,20 @@ def publish_causal_interface(
     """Publish one complete interface binding under atomic ledger reservation."""
     _validate_key(arena, key)
     if payload.bound_reverse_output is not None and (
-        payload._bound_output_request_snapshot != execution_request_snapshot(key)
+        not payload.bound_request_matches(execution_request_snapshot(key))
     ):
         raise ValueError("causal active behavior belongs to another request")
     value = _record(payload)
     _validate_value(arena, key, value)
     value = _seal_record(arena, key, value)
     arena.ledger.bump(_tiles_keys.CAUSAL_INTERFACE_RESULT_PUBLICATION_REQUESTS)
-    found = arena._memo.get(key)
+    found = arena.memo_view.get(key)
     if found is not None:
         if type(found) is not CompletedInterfaceResult or found != value:
             raise ValueError("causal interface already has another complete value")
         arena.ledger.bump(_tiles_keys.CAUSAL_INTERFACE_RESULT_LATE_DUPLICATES)
         record_cache_event(
-            arena.tiles._cache_metrics,
+            arena.tiles.cache_metrics,
             "interface",
             "late_duplicate",
             spatial_level=arena.tiles.resolve(key.input).level,
@@ -341,14 +328,14 @@ def publish_causal_interface(
     arena.ledger.bump(_shared_keys.CAUSAL_INTERFACE_RESULT_PUBLICATIONS)
     level = arena.tiles.resolve(key.input).level
     span = temporal_span(arena.action_authority, key.action)
-    arena.tiles._cache_metrics.prepare(
+    arena.tiles.cache_metrics.prepare(
         "interface",
         "early_hit",
         spatial_level=level,
         temporal_span=span,
     )
     record_cache_event(
-        arena.tiles._cache_metrics,
+        arena.tiles.cache_metrics,
         "interface",
         "publication",
         spatial_level=level,

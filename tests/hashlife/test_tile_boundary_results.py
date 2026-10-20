@@ -16,6 +16,9 @@ from number_compiler.hashlife.tiles.tile_ports import (
     BoundPorts,
     FusedBoundaryContract,
 )
+from number_compiler.hashlife.tiles.tile_result_lease_inventory import (
+    BoundaryOperandLeaseInventory,
+)
 from number_compiler.hashlife.tiles.tile_result_records import (
     FusedInterfaceKey,
     PoweredInterfaceKey,
@@ -30,11 +33,11 @@ from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileID
 from tests.support.tile_results import (
     ChangingAlphabetAuthority,
-    _setup,
     assert_result_stores_unchanged,
     assert_valid_tile_payloads,
     incoming_setup,
     published_setup,
+    setup_tile_results,
 )
 
 
@@ -60,7 +63,7 @@ def test_boundary_operands_are_indexed_and_outgoing_tiles_are_leased() -> None:
         ),
     )
     held = results.publish(boundary_key, boundary_result)
-    assert len(held._boundary_tiles) == 1
+    assert len(held.audit_snapshot().boundary_tiles) == 1
     assert held.result.outgoing_boundaries.right is not None
     assert_valid_tile_payloads(ledger, results, boundary_key)
     ledger.bump("tile_boundary_transfer_requests", 2)
@@ -99,7 +102,7 @@ def test_result_lease_reports_boundary_operands_after_memo_retirement() -> None:
     from number_compiler.resources.metric_collection import collect_ledger_metrics
     from number_compiler.resources.tile_result_inventory import audit_tile_results
 
-    ledger, _, tiles, results, source, output, key, result = _setup()
+    ledger, _, tiles, results, source, output, key, result = setup_tile_results()
     boundary = tiles.leaf(tiles.resolve(result.output).alphabet, 2)
     view = BoundaryTileView(boundary.tile, 3, 1)
     retained = replace(
@@ -112,7 +115,11 @@ def test_result_lease_reports_boundary_operands_after_memo_retirement() -> None:
     boundary.close()
     source.close()
     assert results.retained_results == 0
-    assert results._leased_boundary_operands.records[view] == 2
+    operands = cast(
+        BoundaryOperandLeaseInventory,
+        object.__getattribute__(results, "_leased_boundary_operands"),
+    )
+    assert results.audit_snapshot().operand_records[view] == 2
     before = ledger.snapshot()
     metrics = collect_ledger_metrics(ledger)
     assert ledger.snapshot() == before
@@ -123,15 +130,15 @@ def test_result_lease_reports_boundary_operands_after_memo_retirement() -> None:
     assert metrics.boundary_tile_unique_live == 1
     assert metrics.boundary_tile_operand_extent_total == 1
     approved, invalid = audit_tile_results(results, dict(ledger.iter_containers()))
-    assert not invalid and id(results._leased_boundary_operands.records) in approved
-    results._leased_boundary_operands.records[view] = True
+    assert not invalid and results.audit_snapshot().operand_store_identity in approved
+    operands.records[view] = True
     _, invalid = audit_tile_results(results, dict(ledger.iter_containers()))
-    assert (results._leased_boundary_operands.owner, id(view)) in invalid
-    results._leased_boundary_operands.records[view] = 2
+    assert (results.audit_snapshot().operand_owner, id(view)) in invalid
+    operands.records[view] = 2
     first.close()
-    assert results._leased_boundary_operands.records[view] == 1
+    assert operands.records[view] == 1
     second.close()
-    assert not results._leased_boundary_operands.records
+    assert not results.audit_snapshot().operand_records
     output.close()
 
 
@@ -166,7 +173,9 @@ def test_boundary_operands_reject_wrong_scope_and_shape_before_warm_lookup() -> 
 
 
 def test_boundary_tile_views_validate_and_identify_exact_source_slices() -> None:
-    ledger, _, tiles, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, tiles, results, input_lease, output_lease, key, result = (
+        setup_tile_results()
+    )
     parent = tiles.join(key.input, key.input)
     first = BoundaryTileView(parent.tile, 7, 1, 0, 0)
     second = BoundaryTileView(parent.tile, 7, 1, 0, 1)
@@ -189,7 +198,7 @@ def test_boundary_tile_views_validate_and_identify_exact_source_slices() -> None
     assert first_key != second_key and results.retained_results == 2
     warm_first.close()
     warm_second.close()
-    before = ledger.entries, ledger.nodes, dict(results._memo)
+    before = ledger.entries, ledger.nodes, dict(results.audit_snapshot().memo)
     for offset in (True, 1.5, -1):
         with pytest.raises((TypeError, ValueError)):
             BoundaryTileView(parent.tile, source_offset=cast(int, offset))
@@ -215,7 +224,7 @@ def test_boundary_tile_views_validate_and_identify_exact_source_slices() -> None
                 ),
             )
         )
-    assert (ledger.entries, ledger.nodes, dict(results._memo)) == before
+    assert (ledger.entries, ledger.nodes, dict(results.audit_snapshot().memo)) == before
     parent.close()
     assert results.retained_results == 0
     first_lease.close()
@@ -230,7 +239,9 @@ def test_interface_boundary_tiles_are_reverse_indexed_and_retire_cleanly(
 ) -> None:
     from number_compiler.resources.tile_result_inventory import audit_tile_results
 
-    ledger, _, tiles, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, tiles, results, input_lease, output_lease, key, result = (
+        setup_tile_results()
+    )
     boundary = tiles.leaf(tiles.resolve(key.input).alphabet, 2)
     operands = BoundaryTileOperands(BoundaryTileView(boundary.tile, -1, 1), None)
     request = (
@@ -255,13 +266,17 @@ def test_interface_boundary_tiles_are_reverse_indexed_and_retire_cleanly(
     assert results.retained_entries == 1
     boundary.close()
     assert results.retained_entries == 0
-    assert not results._reverse and not results._variants
+    assert (
+        not results.audit_snapshot().reverse and not results.audit_snapshot().variants
+    )
     output_lease.close()
     input_lease.close()
 
 
 def test_boundary_tiles_require_the_exact_input_and_output_alphabet() -> None:
-    ledger, _, tiles, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, tiles, results, input_lease, output_lease, key, result = (
+        setup_tile_results()
+    )
     other = tiles.intern_alphabet(
         TileAlphabet(
             3,
@@ -300,16 +315,21 @@ def test_boundary_tiles_require_the_exact_input_and_output_alphabet() -> None:
 
 
 def test_outgoing_boundary_aliases_share_one_exact_tile_lease() -> None:
-    ledger, _, tiles, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, tiles, results, input_lease, output_lease, key, result = (
+        setup_tile_results()
+    )
     view = BoundaryTileView(result.output, 0, 1)
     aliased = replace(
         result,
         outgoing_boundaries=BoundaryTileOperands(view, view),
     )
     held = results.publish(key, aliased)
-    assert held._boundary_tiles == ()
-    assert results._boundary_lease_count == 0
-    assert sum(tile == result.output for tile in tiles._leases.values()) == 2
+    assert held.audit_snapshot().boundary_tiles == ()
+    assert results.audit_snapshot().boundary_lease_count == 0
+    assert (
+        sum(tile == result.output for tile in tiles.audit_snapshot().leases.values())
+        == 2
+    )
     output_lease.close()
     assert held.output == result.output
     held.close()
@@ -323,7 +343,9 @@ def test_outgoing_boundary_aliases_share_one_exact_tile_lease() -> None:
 def test_fused_boundary_reverse_publication_failure_rolls_back_every_tile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, _, tiles, results, input_lease, output_lease, key, result = _setup()
+    ledger, _, tiles, results, input_lease, output_lease, key, result = (
+        setup_tile_results()
+    )
     boundary = tiles.leaf(tiles.resolve(key.input).alphabet, 2)
     fused = FusedInterfaceKey(
         key.action,
@@ -338,12 +360,12 @@ def test_fused_boundary_reverse_publication_failure_rolls_back_every_tile(
     before = (
         ledger.entries,
         ledger.nodes,
-        dict(results._memo),
-        dict(results._reverse),
-        dict(results._variants),
+        dict(results.audit_snapshot().memo),
+        dict(results.audit_snapshot().reverse),
+        dict(results.audit_snapshot().variants),
     )
     calls = 0
-    original = type(results)._write_reverse
+    original = type(results).write_reverse
 
     def fail_boundary(
         self: CompletedResultArena, reverse_key: _ReverseKey, value: _ReverseValue
@@ -354,11 +376,11 @@ def test_fused_boundary_reverse_publication_failure_rolls_back_every_tile(
             raise RuntimeError("injected boundary-index failure")
         original(self, reverse_key, value)
 
-    monkeypatch.setattr(type(results), "_write_reverse", fail_boundary)
+    monkeypatch.setattr(type(results), "write_reverse", fail_boundary)
     with pytest.raises(RuntimeError, match="boundary-index"):
         results.publish_fused_interface(fused, result.outgoing)
     assert_result_stores_unchanged(ledger, results, before[:4])
-    assert dict(results._variants) == before[4]
+    assert dict(results.audit_snapshot().variants) == before[4]
     boundary.close()
     output_lease.close()
     input_lease.close()
@@ -367,7 +389,7 @@ def test_fused_boundary_reverse_publication_failure_rolls_back_every_tile(
 def test_fused_consumer_boundary_has_independent_identity_and_retirement() -> None:
     from number_compiler.resources.tile_result_inventory import audit_tile_results
 
-    ledger, _, tiles, results, source, output, key, result = _setup()
+    ledger, _, tiles, results, source, output, key, result = setup_tile_results()
     alphabet = tiles.resolve(source.tile).alphabet
     # A parent ensures that this consumer operand is distinct from both roots.
     boundary = tiles.join(source.tile, output.tile)
@@ -396,7 +418,7 @@ def test_fused_consumer_boundary_has_independent_identity_and_retirement() -> No
 def test_fused_consumer_boundary_failure_rolls_back_both_reverse_indexes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, _, tiles, results, source, output, key, result = _setup()
+    ledger, _, tiles, results, source, output, key, result = setup_tile_results()
     boundary = tiles.join(source.tile, output.tile)
     consumer = FusedInterfaceKey(
         key.action,
@@ -410,11 +432,11 @@ def test_fused_consumer_boundary_failure_rolls_back_both_reverse_indexes(
     before = (
         ledger.entries,
         ledger.nodes,
-        dict(results._memo),
-        dict(results._reverse),
-        dict(results._variants),
+        dict(results.audit_snapshot().memo),
+        dict(results.audit_snapshot().reverse),
+        dict(results.audit_snapshot().variants),
     )
-    original = type(results)._write_reverse
+    original = type(results).write_reverse
     calls = 0
 
     def fail_after_input(
@@ -427,15 +449,15 @@ def test_fused_consumer_boundary_failure_rolls_back_both_reverse_indexes(
         original(self, reverse_key, value)
 
     with monkeypatch.context() as poison:
-        poison.setattr(type(results), "_write_reverse", fail_after_input)
+        poison.setattr(type(results), "write_reverse", fail_after_input)
         with pytest.raises(RuntimeError, match="consumer reverse-index"):
             results.publish_fused_interface(consumer, result.outgoing)
     assert (
         ledger.entries,
         ledger.nodes,
-        dict(results._memo),
-        dict(results._reverse),
-        dict(results._variants),
+        dict(results.audit_snapshot().memo),
+        dict(results.audit_snapshot().reverse),
+        dict(results.audit_snapshot().variants),
     ) == before
     boundary.close()
     output.close()
@@ -445,8 +467,10 @@ def test_fused_consumer_boundary_failure_rolls_back_both_reverse_indexes(
 def test_fusion_validates_each_child_input_and_output_alphabet() -> None:
     from number_compiler.resources.tile_result_inventory import audit_tile_results
 
-    ledger, actions, tiles, results, source, old_output, old_key, old_result = _setup(
-        authority_type=ChangingAlphabetAuthority,
+    ledger, actions, tiles, results, source, old_output, old_key, old_result = (
+        setup_tile_results(
+            authority_type=ChangingAlphabetAuthority,
+        )
     )
     source_alphabet = tiles.resolve(source.tile).alphabet
     mid_alphabet = tiles.intern_alphabet(TileAlphabet(4, 3, 3, 2, "middle", "v1"))

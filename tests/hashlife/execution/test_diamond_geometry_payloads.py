@@ -1,11 +1,15 @@
 """Formal kernel constants and causal geometry never acquire future-tape authority."""
 
+from collections.abc import MutableMapping
 from dataclasses import replace
 from typing import cast
 
 import pytest
 
-from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
+from number_compiler.arithmetic.contracts.scoped_handles import (
+    ActionProgramID,
+    ArenaToken,
+)
 from number_compiler.hashlife.actions.diamond_actions import (
     CellID,
     FormalSymbolID,
@@ -74,13 +78,15 @@ def test_halo_memo_is_owned_geometry_with_measured_warm_lookup() -> None:
     report = collect_ledger_metrics(engine.ledger)
     assert engine.ledger.snapshot() == before
     assert report.representation_boundary_complete == 1
-    assert report.causal_geometry_nodes == len(engine.halos._radii) > 0
+    radii_snapshot = engine.halos.audit_snapshot()
+    radii = cast(MutableMapping[ActionProgramID, RightHalo], radii_snapshot.container)
+    assert report.causal_geometry_nodes == len(radii) > 0
     assert report.causal_geometry_nodes <= report.other_retained_nodes
     registry = DiamondPayloadRegistry(engine.ledger)
-    actual = engine.halos._radii[action]
+    actual = radii[action]
     assert registry.valid(actual)
     assert not registry.valid(replace(actual))
-    engine.halos._radii[action] = RightHalo(action, 1 << 1000)
+    radii[action] = RightHalo(action, 1 << 1000)
     report = collect_ledger_metrics(engine.ledger)
     assert report.representation_boundary_complete == 0
     assert report.forbidden_future_payloads > 0
@@ -169,7 +175,7 @@ def test_bridge_admission_work_is_measured_only_after_successful_validation() ->
     engine, action = runtime()
     arena = engine.boundaries
     port, expression = input_variable(arena, action, 0)
-    signature = arena._signature(action, 0, action, 0)
+    signature = arena.action_signature(action, 0, action, 0)
     from_expression(arena, expression, signature, port)
     assert engine.ledger.counters["diamond_finite_bridge_admission_visits"] > 0
     assert engine.ledger.counters["diamond_finite_bridge_admission_stack_peak"] > 0

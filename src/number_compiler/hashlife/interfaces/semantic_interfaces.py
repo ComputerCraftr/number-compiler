@@ -338,6 +338,11 @@ class SemanticLocalInterfaceCompiler:
         ) = None
         self.ledger.register_execution_root(self)
 
+    def cached_source_interface(
+        self, kernel: ActionProgramID, source: SourceCellID
+    ) -> LocalInterfaceID:
+        return self._source_interfaces[kernel, source]
+
     def signature(self, kernel: ActionProgramID, level: int) -> PortSignatureID:
         laws = self.primitives.compile(kernel)
         self._validate_level(level)
@@ -450,7 +455,7 @@ class SemanticLocalInterfaceCompiler:
             kernel = self._interface_kernels.get(interface)
             if kernel is None:
                 raise ValueError("coordinate geometry has no kernel binding")
-            result = self._observe_geometry(
+            result = self.observe_geometry(
                 source,
                 kernel,
                 channel,
@@ -460,11 +465,11 @@ class SemanticLocalInterfaceCompiler:
             )
             self._geometry_last = (key, result)
             return result
-        evaluated = self._finite_observe(interface, channel, left, right)
+        evaluated = self.finite_observe(interface, channel, left, right)
         self.ledger.bump(_interfaces_keys.LOCAL_INTERFACE_OBSERVATIONS)
         return evaluated
 
-    def _finite_observe(
+    def finite_observe(
         self, interface: LocalInterfaceID, channel: str, left: int, right: int
     ) -> int:
         """Evaluate a finite boundary channel without a coordinate port."""
@@ -486,7 +491,7 @@ class SemanticLocalInterfaceCompiler:
             raise ValueError("semantic observation is inadmissible")
         return result
 
-    def _source_extent(
+    def source_extent(
         self, source: SourceCellID, laws: PrimitiveSemantics, kernel: ActionProgramID
     ) -> int:
         root_key = (kernel, source)
@@ -523,7 +528,7 @@ class SemanticLocalInterfaceCompiler:
             )
         return self._source_extent_cache[root_key]
 
-    def _output_source_independent(self, kernel: ActionProgramID) -> bool:
+    def output_source_independent(self, kernel: ActionProgramID) -> bool:
         """Check the finite primitive law before allowing output aliasing."""
         primitive = self.kernels.kernel(kernel)
         for left in range(primitive.left_count):
@@ -536,7 +541,7 @@ class SemanticLocalInterfaceCompiler:
                     return False
         return True
 
-    def _observe_geometry(
+    def observe_geometry(
         self,
         source: SourceCellID,
         kernel: ActionProgramID,
@@ -546,10 +551,10 @@ class SemanticLocalInterfaceCompiler:
         coordinate: int,
     ) -> int:
         from number_compiler.hashlife.observation.interface_geometry import (
-            _observe_geometry,
+            observe_geometry,
         )
 
-        return _observe_geometry(self, source, kernel, channel, left, right, coordinate)
+        return observe_geometry(self, source, kernel, channel, left, right, coordinate)
 
     def _validate_source(
         self, kernel: ActionProgramID, level: int, signature: PortSignatureID
@@ -743,7 +748,7 @@ class PrimitiveSemanticTransferAdapter:
         self.boundaries = boundaries
         self.outputs = compiler.outputs
         self.ledger = compiler.ledger
-        self._validate_action = validate_action
+        self.action_validator = validate_action
         self._kernel_for_action = kernel_for_action
         self.transfers: FieldTransferArena | None = None
 
@@ -760,7 +765,7 @@ class PrimitiveSemanticTransferAdapter:
         self.transfers = transfers
 
     def validate_action(self, action: FieldCellActionID) -> None:
-        self._validate_action(action)
+        self.action_validator(action)
         self.compiler.kernels.kernel(self._kernel_for_action(action))
 
     def validate_port(self, incoming: ArenaHandle) -> None:
@@ -783,7 +788,7 @@ class PrimitiveSemanticTransferAdapter:
         output = self.outputs.intern(
             interface,
             source,
-            source_independent=self.compiler._output_source_independent(
+            source_independent=self.compiler.output_source_independent(
                 self._kernel_for_action(action),
             ),
         )

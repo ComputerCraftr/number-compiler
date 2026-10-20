@@ -49,13 +49,25 @@ from number_compiler.sequences.reverse_add.field_action import (
 from number_compiler.sequences.reverse_add.powered_local_codec import (
     ReversePoweredLocalCodec,
 )
+from number_compiler.sequences.reverse_add.semantic_identity_cache import (
+    SemanticIdentityMemoRecord,
+)
 from tests.support.assertions import assert_associative
 from tests.support.reverse_field_action import (
-    _concatenate,
+    concatenate,
     reverse_action_arena,
     reverse_action_atom,
     source_cells,
 )
+
+
+def _identity_records(
+    arena: ReverseFieldActionArena,
+) -> LedgerDict[FieldCellActionID, SemanticIdentityMemoRecord]:
+    return cast(
+        LedgerDict[FieldCellActionID, SemanticIdentityMemoRecord],
+        arena.payload_audit_snapshot().semantic_identity_backing,
+    )
 
 
 def test_reverse_actions_use_shared_runtime_handle_sorts() -> None:
@@ -79,8 +91,8 @@ def test_coordinate_program_actions_reject_uncertified_port_automorphisms() -> N
         order=8,
         residual_identity="identity",
         output_identity="identity",
-        residual_compose=_concatenate,
-        output_compose=_concatenate,
+        residual_compose=concatenate,
+        output_compose=concatenate,
         automorphisms=ReverseActionAutomorphisms.trivial(),
         ledger=ledger,
         coordinate_programs=programs,
@@ -134,9 +146,9 @@ def test_reverse_field_composition_is_associative_and_chronological() -> None:
         compose_carry_fn(CarryFn.CONST1, CarryFn.ID),
     )
     expected = (
-        arena._block(arena.resolve(a))
-        .then(arena._block(arena.resolve(b)))
-        .then(arena._block(arena.resolve(c)))
+        arena.innovation_block(arena.resolve(a))
+        .then(arena.innovation_block(arena.resolve(b)))
+        .then(arena.innovation_block(arena.resolve(c)))
     )
     assert (record.radial.canonical_key, record.innovation) == (
         expected.radial.canonical_key,
@@ -206,7 +218,7 @@ def test_reverse_identity_audit_never_publishes_or_counts_execution_hits(
     if warm:
         arena.semantic_identity(reference)
     before = arena.ledger.snapshot()
-    identities = dict(arena._semantic_identities)
+    identities = dict(arena.payload_audit_snapshot().semantic_identities)
 
     def forbidden(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("audit entered execution identity construction")
@@ -217,7 +229,7 @@ def test_reverse_identity_audit_never_publishes_or_counts_execution_hits(
     after = arena.ledger.snapshot()
     assert before.entries == after.entries
     assert before.nodes == after.nodes
-    assert dict(arena._semantic_identities) == identities
+    assert dict(arena.payload_audit_snapshot().semantic_identities) == identities
     changes = {
         key
         for key in before.counters.keys() | after.counters.keys()
@@ -308,13 +320,18 @@ def test_reverse_semantic_identity_cache_rejects_foreign_stale_and_swapped_handl
     foreign = reverse_action_arena()
     with pytest.raises(ValueError):
         arena.semantic_identity(foreign.identity)
-    stale = FieldCellActionID(arena.owner, arena._ACTION_KIND, len(arena._actions))
+    stale = FieldCellActionID(
+        arena.owner, arena.action_kind, arena.metrics().action_count
+    )
     with pytest.raises(ValueError):
         arena.semantic_identity(stale)
 
-    records = arena._semantic_identities
+    records = _identity_records(arena)
     assert isinstance(records, LedgerDict)
-    records._data[first] = records[second]
+    cast(
+        dict[FieldCellActionID, SemanticIdentityMemoRecord],
+        object.__getattribute__(records, "_data"),
+    )[first] = records[second]
     with pytest.raises(
         ValueError, match="cached reverse semantic identity lost its seal"
     ):
@@ -333,7 +350,10 @@ def test_reverse_semantic_identity_cache_rejects_foreign_stale_and_swapped_handl
         forged_identity.digest,
         forged_identity.behavior,
     )
-    records._data[second] = forged_record
+    cast(
+        dict[FieldCellActionID, SemanticIdentityMemoRecord],
+        object.__getattribute__(records, "_data"),
+    )[second] = forged_record
     with pytest.raises(
         ValueError, match="cached reverse semantic identity lost its seal"
     ):
@@ -357,7 +377,12 @@ def test_reverse_semantic_identity_publication_rolls_back_both_stores(
     )
     before = arena.ledger.snapshot()
     inject_write_once_failure(
-        monkeypatch, arena._semantic_identity_issued, after_insert=after_insert
+        monkeypatch,
+        cast(
+            LedgerDict[FieldCellActionID, SemanticIdentityMemoRecord],
+            arena.payload_audit_snapshot().semantic_identity_issued_backing,
+        ),
+        after_insert=after_insert,
     )
 
     with pytest.raises(RuntimeError, match="issued-store publication failure"):
@@ -365,8 +390,8 @@ def test_reverse_semantic_identity_publication_rolls_back_both_stores(
 
     after = arena.ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
-    assert not arena._semantic_identities
-    assert not arena._semantic_identity_issued
+    assert not _identity_records(arena)
+    assert not arena.payload_audit_snapshot().semantic_identity_issued
 
 
 def test_reverse_semantic_identity_memo_bypasses_when_optional_storage_is_full() -> (
@@ -381,7 +406,7 @@ def test_reverse_semantic_identity_memo_bypasses_when_optional_storage_is_full()
 
     after = ledger.snapshot()
     assert identity == arena.semantic_identity(arena.identity)
-    assert not arena._semantic_identities
+    assert not _identity_records(arena)
     assert after.counters["reverse_field_action_semantic_identity_cache_bypasses"] == 1
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
 
@@ -622,8 +647,8 @@ def test_residual_and_semantic_records_are_bounded() -> None:
         order=8,
         residual_identity="identity",
         output_identity="identity",
-        residual_compose=_concatenate,
-        output_compose=_concatenate,
+        residual_compose=concatenate,
+        output_compose=concatenate,
         automorphisms=ReverseActionAutomorphisms.trivial(),
         max_residual_classes=2,
     )

@@ -1,7 +1,8 @@
 """Contextual successor congruence, with physical carry derivation."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from itertools import product
+from typing import cast
 
 import pytest
 
@@ -19,7 +20,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
 from number_compiler.hashlife.tiles.tiles import TileArena
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.resources.reverse_residual_inventory import audit_reverse_residuals
@@ -103,7 +104,7 @@ def test_growth_refines_only_observable_contextual_distinctions() -> None:
     assert arena.residual(after, ports[1], 7) != arena.residual(after, ports[1], 8)
     with pytest.raises(ResidualSuccessorConflict):
         arena.certify(before, after, ports[1])
-    assert not arena._successors
+    assert not arena.successor_audit_snapshot().payload_view
     refined = arena.refine(before, after, ports[1])
     assert arena.residual(refined, ports[1], 5) == arena.residual(refined, ports[1], 7)
     assert arena.residual(refined, ports[1], 7) != arena.residual(refined, ports[1], 8)
@@ -226,12 +227,19 @@ def test_transport_budget_and_foreign_profiles_fail_closed_and_payloads_are_owne
 ):
     arena, ports, (s, _t) = _runtime()
     profile = arena.domain(s)
-    arena._rows(profile, profile, ports[0])
+    rows = cast(
+        Callable[
+            [FactoredFunctionID, FactoredFunctionID, FinitePort],
+            tuple[tuple[FactoredFunctionID, ...], tuple[FactoredFunctionID, ...]],
+        ],
+        object.__getattribute__(arena, "_rows"),
+    )
+    rows(profile, profile, ports[0])
     before = arena.ledger.snapshot()
     arena.ledger.max_cache_entries = arena.ledger.entries
     with pytest.raises(BlockContextBudgetExceeded):
         arena.certify(profile, profile, ports[0])
-    assert not arena._successors
+    assert not arena.successor_audit_snapshot().payload_view
     assert (arena.ledger.entries, arena.ledger.nodes) == (before.entries, before.nodes)
     arena.ledger.max_cache_entries = None
     assert arena.certify(profile, profile, ports[0]) == 3
@@ -254,17 +262,21 @@ def test_transport_budget_and_foreign_profiles_fail_closed_and_payloads_are_owne
     assert (audited.entries, audited.nodes) == (snapshot.entries, snapshot.nodes)
     assert audited.counters.get(audit_counter, 0) - snapshot.counters.get(
         audit_counter, 0
-    ) == 2 * len(arena._successors)
+    ) == 2 * len(arena.successor_audit_snapshot().payload_view)
     assert {
         key: value for key, value in audited.counters.items() if key != audit_counter
     } == {
         key: value for key, value in snapshot.counters.items() if key != audit_counter
     }
-    key = next(iter(arena._successors))
-    original = arena._successors[key]
-    arena._successors[key] = arena.residual(profile, ports[0], 18)
+    key = next(iter(arena.successor_audit_snapshot().payload_view))
+    successors = cast(
+        OwnedMemo[object, FactoredFunctionID],
+        object.__getattribute__(arena, "_successors"),
+    )
+    original = successors[key]
+    successors[key] = arena.residual(profile, ports[0], 18)
     assert audit_registered_payloads(arena.ledger).forbidden_future_payloads > 0
-    arena._successors[key] = original
+    successors[key] = original
     assert not audit_reverse_residuals(
         arena.ledger, tuple(arena.ledger.iter_execution_roots())
     )

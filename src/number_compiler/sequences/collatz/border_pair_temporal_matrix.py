@@ -101,7 +101,7 @@ class BooleanPairMatrix:
             raise ValueError("odd half-step upper inlet must be a parity bit")
         if type(inlet) is not int or inlet not in (0, 1, 2):
             raise ValueError("decimal low-block carry inlet is outside 0..2")
-        rows = []
+        rows: list[int] = []
         for pair in range(100):
             numerator = 3 * pair + inlet
             if numerator & 1:
@@ -399,7 +399,7 @@ class GuardedDecimalPairTransfer:
     def __post_init__(self) -> None:
         if type(self.port) is not SourceClosedPortAction:
             raise TypeError("pair transfer requires a certified guarded action")
-        self.port._verify_issued()
+        self.port.verify_issued()
 
     def entry(
         self,

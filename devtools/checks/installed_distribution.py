@@ -13,9 +13,9 @@ from pathlib import Path
 from time import perf_counter
 
 from devtools.checks.package_contracts import DEVELOPER_ROOTS
-from devtools.report_values import string_keyed_mapping
 from number_compiler.api.family_registry import family_spec
 from number_compiler.arithmetic.contracts.family_identity import family_id
+from number_compiler.arithmetic.contracts.input_validation import string_keyed_mapping
 
 
 def _report_stage(stage: str) -> None:

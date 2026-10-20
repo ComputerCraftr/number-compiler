@@ -139,7 +139,7 @@ def _poison_tiles(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(TileArena, "leaf", forbidden)
     monkeypatch.setattr(TileArena, "join", forbidden)
     monkeypatch.setattr(TileScheduler, "complete", forbidden)
-    monkeypatch.setattr(TileScheduler, "_complete_direct", forbidden)
+    monkeypatch.setattr(TileScheduler, "complete_direct", forbidden)
 
 
 def test_complete_local_law_and_output_control_reconstruction() -> None:

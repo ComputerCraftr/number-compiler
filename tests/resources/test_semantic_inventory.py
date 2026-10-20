@@ -8,6 +8,7 @@ import pytest
 from number_compiler.arithmetic.automata.primitive_semantics import (
     PrimitiveSemanticsAdapter,
 )
+from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     AtomSort,
@@ -115,7 +116,8 @@ def test_forged_finite_effect_identity_is_rejected_without_repair() -> None:
 
     ledger = ResourceLedger()
     effect = neighbor_xor()
-    identity = effect._semantic_identity
+    identity = effect.canonical_key[1]
+    assert type(identity) is SemanticIdentity
     object.__setattr__(identity, "digest", "forged")
     owner = ledger.register("forged-finite-effect", "compiled_action_program")
     records: LedgerList[object] = ledger.make_list(owner)

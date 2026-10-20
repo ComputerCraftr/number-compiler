@@ -13,16 +13,12 @@ from number_compiler.sequences.reverse_add.source_chamber import (
 from number_compiler.sequences.reverse_add.source_images import (
     ReverseSourceImageWorkspace,
 )
-from tests.support.reference_arithmetic import reverse_add_digit_step as _step
-
-
-def _digits(value: int, base: int) -> tuple[int, ...]:
-    result = []
-    while True:
-        value, digit = divmod(value, base)
-        result.append(digit)
-        if value == 0:
-            return tuple(result)
+from tests.support.reference_arithmetic import (
+    radix_digits_lsd,
+)
+from tests.support.reference_arithmetic import (
+    reverse_add_digit_step as _step,
+)
 
 
 @pytest.mark.parametrize("base", [2, 3, 10, 16])
@@ -38,9 +34,9 @@ def test_chamber_acceptance_matches_independent_full_trajectories(
         if exhaustive
         else (0, 1, base - 1, base, base + 1, base**2 - 1, 196, 255)
     )
-    outcomes = set()
+    outcomes: set[bool] = set()
     for seed in seeds:
-        digits = _digits(seed, base)
+        digits = radix_digits_lsd(seed, base)
         endpoint = digits
         initial = _step(digits, base)[1]
         admitted = initial[-1] == 0
@@ -75,7 +71,7 @@ def test_196_orbit_no_growth_pairs_preserve_generic_two_step_path(
     seed: int, expected: int
 ) -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), seed, 2)
-    assert tuple(workspace.iter_digits()) == _digits(expected, 10)
+    assert tuple(workspace.iter_digits()) == radix_digits_lsd(expected, 10)
     assert workspace.ledger.counters.get("source_image_primitive_applications", 0) == 0
     workspace.dispose()
 

@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from typing import Protocol, cast
 
 import pytest
 
+import devtools.verification.comma_b1_terminal_audit as terminal_audit
 from devtools.verification.comma_b1_terminal_audit import (
     EXPECTED_FORK_COUNTS,
     EXPECTED_LANDMINE_COUNT,
     EXPECTED_LANDMINE_HEADROOMS,
     FULL_B1_COUNT,
+    StopD,
     TerminalControl,
-    _assert_stop_matches_source,
     decode_stop_d,
     eventual_stop,
     full_audit_command,
@@ -25,6 +27,24 @@ from number_compiler.sequences.comma.boundary_chart import (
 )
 from number_compiler.sequences.comma.cyclotomic_clock import CyclotomicClock
 from number_compiler.sequences.comma.decisive_endpoint import DecisiveEndpoint
+
+
+class _StopSourceAssertion(Protocol):
+    def __call__(
+        self,
+        stop: StopD,
+        actual_kind: str,
+        actual_fork_a: int | None,
+        *,
+        actual_complete_decades: int,
+        actual_within_decade: int,
+    ) -> None: ...
+
+
+_assert_stop_matches_source = cast(
+    _StopSourceAssertion,
+    object.__getattribute__(terminal_audit, "_assert_stop_matches_source"),
+)
 
 
 @pytest.mark.parametrize("fork_a", range(2, 10))

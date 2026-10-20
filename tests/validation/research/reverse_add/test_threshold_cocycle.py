@@ -9,6 +9,8 @@ import pytest
 
 from devtools.experiments.reverse_add.cocycle_temporal import (
     CocycleAction,
+    CocycleCompositionEntry,
+    CocycleCompositionKey,
     CocycleTemporalArena,
 )
 from devtools.experiments.reverse_add.threshold_cocycle import (
@@ -162,17 +164,25 @@ def test_temporal_composition_cache_is_complete_and_event_sensitive() -> None:
         == initial_validations + 5
     )
 
-    cache_key = next(iter(t._composition_cache))
-    cache_data = cast(MutableMapping[object, object], t._composition_cache._data)
+    cache_snapshot = t.audit_snapshot().composition_cache
+    cache_data = cast(
+        MutableMapping[CocycleCompositionKey, CocycleCompositionEntry],
+        cache_snapshot.container,
+    )
+    cache_key = next(iter(cache_data))
     original_entry = cache_data[cache_key]
-    cache_data[cache_key] = object()
+    forensic_cache_data = cast(
+        MutableMapping[CocycleCompositionKey, object],
+        cache_snapshot.container,
+    )
+    forensic_cache_data[cache_key] = object()
     try:
         with pytest.raises(ValueError, match="cache payload"):
             t.compose(action, action)
     finally:
-        cache_data[cache_key] = original_entry
+        forensic_cache_data[cache_key] = original_entry
 
-    cached_entry = next(iter(t._composition_cache.values()))
+    cached_entry = next(iter(cache_data.values()))
     original_entry_id = cached_entry.entry_id
     object.__setattr__(cached_entry, "entry_id", False)
     try:
@@ -208,7 +218,7 @@ def test_temporal_composition_cache_is_complete_and_event_sensitive() -> None:
     assert t.temporal_composition_cache_hits == 1
     assert t.temporal_compositions == 2
 
-    cached_entry = next(iter(t._composition_cache.values()))
+    cached_entry = next(iter(cache_data.values()))
     original_events = cached_entry.result.events
     object.__setattr__(cached_entry.result, "events", original_events + 1)
     try:

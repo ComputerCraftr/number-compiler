@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import fields, is_dataclass
 from sys import getsizeof
-from typing import TYPE_CHECKING, Protocol, TypeGuard, TypeVar
+from typing import TYPE_CHECKING, Protocol, TypeGuard, TypeVar, cast
 
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
@@ -120,7 +120,7 @@ def valid_frame_value(
                 return False
             continue
         if type(current) is SpatialReferenceBuffer:
-            if not causal_owners.spatial.owns_buffer(current):
+            if not causal_owners.spatial.owns_buffer(cast(object, current)):
                 return False
             continue
         if type(current) is CausalActionAdmission:

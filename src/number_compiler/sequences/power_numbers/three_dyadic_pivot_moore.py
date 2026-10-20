@@ -38,16 +38,6 @@ def _precision(value: int) -> int:
     return require_integer(value, "dyadic pivot precision", 1, MAX_PIVOT_PRECISION)
 
 
-def _unit_residue(level: int, precision: int) -> int:
-    """Exact, non-iterative 2-adic unit via truncated binomial powers.
-
-    This replaces chronological recurrence pumping with the bounded
-    coefficient quotient.  In particular a huge level needs no level-sized
-    modular-square sequence to answer a small requested window.
-    """
-    return two_adic_unit_binomial(level, precision)
-
-
 def _next_unit_residue(level: int, unit: int, precision: int) -> int:
     if level + 1 >= precision:
         return unit
@@ -161,7 +151,7 @@ def fixed_unit_innovation_window(level: int, width: int) -> UnitInnovationWindow
     """Observe fixed low unit bits with cost independent of a huge level."""
     selected_level = _level(level)
     selected_width = _precision(width)
-    current = _unit_residue(selected_level, selected_width)
+    current = two_adic_unit_binomial(selected_level, selected_width)
     following = _next_unit_residue(selected_level, current, selected_width)
     mask = current ^ following
     return UnitInnovationWindow(
@@ -184,7 +174,7 @@ def moving_unit_innovation_window(level: int, width: int) -> UnitInnovationWindo
         raise ValueError(
             ("moving-pivot-precision-budget", precision, MAX_PIVOT_PRECISION)
         )
-    current_unit = _unit_residue(selected_level, precision)
+    current_unit = two_adic_unit_binomial(selected_level, precision)
     next_unit = _next_unit_residue(selected_level, current_unit, precision)
     offset = selected_level + 1
     mask = (1 << selected_width) - 1
@@ -294,7 +284,7 @@ class DyadicPivotMoore:
     def observe(self) -> PivotMooreObservation:
         """Project source-local carry/borrow fields without building ``3**2**t``."""
         precision = self.offsets[-1] + 1
-        current_unit = _unit_residue(self.level, precision)
+        current_unit = two_adic_unit_binomial(self.level, precision)
         next_unit = _next_unit_residue(self.level, current_unit, precision)
         later_unit = _next_unit_residue(self.level + 1, next_unit, precision)
         aligned_xor = current_unit ^ next_unit

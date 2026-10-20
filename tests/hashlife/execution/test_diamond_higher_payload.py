@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
@@ -52,16 +52,16 @@ def test_higher_program_metadata_and_bindings_are_independently_counted() -> Non
     assert report.representation_boundary_complete == 1
     carrier = runtime.higher
     assert report.boundary_expression_program_nodes == len(carrier.expressions.nodes)
-    context_count = sum(type(node) is HigherContextRecord for node in carrier._nodes)
-    unary_count = sum(type(node) is HigherUnaryRecord for node in carrier._nodes)
+    context_count = sum(type(node) is HigherContextRecord for node in carrier.node_view)
+    unary_count = sum(type(node) is HigherUnaryRecord for node in carrier.node_view)
     assert context_count > 0 and unary_count > 0
     assert sum(len(node.free_ports) for node in carrier.expressions.nodes) > 0
     assert max(len(node.free_ports) for node in carrier.expressions.nodes) > 0
     assert report.spatial_action_program_nodes == len(carrier.expressions.nodes) + len(
-        carrier._nodes
+        carrier.node_view
     ) + len(carrier.expressions.closures.nodes)
     assert report.macro_transfer_action_nodes == (
-        len(carrier._nodes) + len(carrier.expressions.closures.nodes)
+        len(carrier.node_view) + len(carrier.expressions.closures.nodes)
     )
     assert (
         sum(
@@ -84,7 +84,7 @@ def test_higher_program_metadata_and_bindings_are_independently_counted() -> Non
     )
     assert report.spatial_occurrence_bindings >= len(carrier.bindings)
     registry = DiamondPayloadRegistry(runtime.ledger)
-    assert all(registry.valid(record) for record in carrier._nodes)
+    assert all(registry.valid(record) for record in carrier.node_view)
 
 
 def test_higher_program_cannot_add_an_unclaimed_free_port() -> None:
@@ -93,7 +93,7 @@ def test_higher_program_cannot_add_an_unclaimed_free_port() -> None:
     unknown = expressions.variable(StateSort(action, 0), "unclaimed-carry-field")
     existing = next(
         record
-        for record in carrier._nodes
+        for record in carrier.node_view
         if type(record) is HigherUnaryRecord
         and record.action == action
         and record.side == 0
@@ -107,7 +107,11 @@ def test_higher_program_cannot_add_an_unclaimed_free_port() -> None:
     )
     malformed = HigherUnaryRecord(action, 0, bad)
     runtime.ledger.reserve(carrier.node_owner, entries=1, nodes=1)
-    carrier._nodes.append(malformed)
+    node_store = cast(
+        LedgerList[HigherContextRecord | HigherUnaryRecord],
+        object.__getattribute__(carrier, "_nodes"),
+    )
+    node_store.append(malformed)
     assert collect_ledger_metrics(runtime.ledger).forbidden_future_payloads > 0
 
 
@@ -221,7 +225,7 @@ def test_inventory_does_not_call_instrumented_higher_admission(
         raise AssertionError("inventory invoked production task admission")
 
     monkeypatch.setattr(type(runtime.higher), "validate", poison)
-    monkeypatch.setattr(type(runtime.higher), "_validate", poison)
+    monkeypatch.setattr(type(runtime.higher), "validate", poison)
     report = collect_ledger_metrics(runtime.ledger)
     assert report.representation_boundary_complete == 1
     assert report.resource_accounting_mismatch == 0

@@ -131,9 +131,23 @@ class DirectedTransferRequest:
                 "directed transfer request cardinality changed after validation",
             )
 
+    def validate_authority(self, results: CompletedResultArena) -> None:
+        if self._arena is not results:
+            raise ValueError(
+                "directed transfer request belongs to another result arena"
+            )
+        if self._action_admission is not None:
+            from number_compiler.resources.causal_workspace import (
+                admitted_action_metadata,
+            )
+
+            admitted_action_metadata(
+                self._action_admission, _authority(results), self.key.action
+            )
+
 
 @dataclass(frozen=True, slots=True)
-class _DirectedTransferAdmission:
+class DirectedTransferAdmission:
     """Transient primitive metadata validated once for one directed scan."""
 
     action: FieldCellActionID
@@ -213,7 +227,7 @@ def _admission_snapshot(
     )
 
 
-def _prepare_admission(
+def prepare_directed_admission(
     results: CompletedResultArena,
     action: FieldCellActionID,
     wiring: ResultWiring,
@@ -221,7 +235,7 @@ def _prepare_admission(
     *,
     action_validation: object | None = None,
     action_admission: object | None = None,
-) -> _DirectedTransferAdmission:
+) -> DirectedTransferAdmission:
     """Audit immutable action metadata once for one non-reentrant scan."""
     if type(side) is not int:
         raise TypeError("directed transfer side requires an exact integer")
@@ -229,8 +243,8 @@ def _prepare_admission(
         raise ValueError("directed transfer side lies outside its two directions")
     authority = _authority(results)
     if action_validation is not _ACTION_VALIDATED_SEAL:
-        results._validate_action(action)
-    record = authority._actions[action.local_id]
+        results.action_validator(action)
+    record = authority.checked_action_record(action)
     if record.children is not None:
         raise ValueError("directed transfer binding requires a primitive action")
     if type(wiring) is not ResultWiring:
@@ -256,7 +270,7 @@ def _prepare_admission(
         CANONICAL_TILE_ALPHABET_VERSION,
     )
     domain = declaration.inputs[side]
-    return _DirectedTransferAdmission(
+    return DirectedTransferAdmission(
         action,
         wiring,
         side,
@@ -276,25 +290,25 @@ def _prepare_admission(
     )
 
 
-def _prepare_canonical_admission(
+def prepare_canonical_admission(
     results: CompletedResultArena,
     action: FieldCellActionID,
     side: int,
     *,
     action_admission: object | None = None,
-) -> _DirectedTransferAdmission:
+) -> DirectedTransferAdmission:
     """Validate an action once and derive its canonical primitive wiring."""
     authority = _authority(results)
     if action_admission is None:
-        results._validate_action(action)
+        results.action_validator(action)
     else:
         from number_compiler.resources.causal_workspace import (
             admitted_action_metadata,
         )
 
         admitted_action_metadata(action_admission, authority, action)
-    record = authority._actions[action.local_id]
-    return _prepare_admission(
+    record = authority.checked_action_record(action)
+    return prepare_directed_admission(
         results,
         action,
         ResultWiring(record.signature),
@@ -306,9 +320,9 @@ def _prepare_canonical_admission(
 
 def _validate_admission(
     results: CompletedResultArena,
-    admission: _DirectedTransferAdmission,
+    admission: DirectedTransferAdmission,
 ) -> None:
-    if type(admission) is not _DirectedTransferAdmission:
+    if type(admission) is not DirectedTransferAdmission:
         raise TypeError("directed transfer has another admission sort")
     admission.__post_init__()
     if admission.arena is not results:
@@ -318,7 +332,7 @@ def _validate_admission(
 def _validate_key(
     results: CompletedResultArena,
     key: DirectedTransferKey,
-    admission: _DirectedTransferAdmission | None = None,
+    admission: DirectedTransferAdmission | None = None,
 ) -> int:
     if type(key) is not DirectedTransferKey:
         raise TypeError("directed transfer has another key sort")
@@ -329,7 +343,7 @@ def _validate_key(
     if type(key.incoming_state) is not int:
         raise TypeError("directed transfer state requires an exact integer")
     checked = (
-        _prepare_admission(results, key.action, key.wiring, key.side)
+        prepare_directed_admission(results, key.action, key.wiring, key.side)
         if admission is None
         else admission
     )
@@ -407,10 +421,10 @@ def prepare_directed_transfer(
     )
 
 
-def _prepare_directed_transfer_with_admission(
+def prepare_directed_transfer_with_admission(
     results: CompletedResultArena,
     key: DirectedTransferKey,
-    admission: _DirectedTransferAdmission,
+    admission: DirectedTransferAdmission,
 ) -> DirectedTransferRequest:
     cardinality = _validate_key(results, key, admission)
     return DirectedTransferRequest(
@@ -433,18 +447,7 @@ def _validate_request(
     if type(request) is not DirectedTransferRequest:
         raise TypeError("directed transfer has another request sort")
     request.__post_init__()
-    if request._arena is not results:
-        raise ValueError("directed transfer request belongs to another result arena")
-    if request._action_admission is not None:
-        from number_compiler.resources.causal_workspace import (
-            admitted_action_metadata,
-        )
-
-        admitted_action_metadata(
-            request._action_admission,
-            _authority(results),
-            request.key.action,
-        )
+    request.validate_authority(results)
     # Prepared requests are transient validation capabilities.  Tile identities
     # can retire while a caller holds one, so liveness remains a use-time check.
     results.tiles.resolve(request.key.input)
@@ -466,7 +469,7 @@ def lookup_prepared_directed_transfer(
 ) -> int | None:
     """Probe a validated request without repeating primitive admission."""
     _validate_request(results, request)
-    found = results._memo.get(request.key)
+    found = results.memo_view.get(request.key)
     results.ledger.bump(_tiles_keys.TILE_DIRECTED_TRANSFER_REQUESTS)
     if found is None:
         record_unattributed_post_eviction_miss(
@@ -498,11 +501,11 @@ def publish_prepared_directed_transfer(
 ) -> int:
     """Revalidate action authority, then publish one exact finite exit."""
     _validate_request(results, request)
-    results._validate_action(request.key.action)
+    results.action_validator(request.key.action)
     _validate_exit(request, outgoing)
     key = request.key
     results.ledger.bump(_tiles_keys.TILE_DIRECTED_TRANSFER_PUBLICATION_REQUESTS)
-    found = results._memo.get(key)
+    found = results.memo_view.get(key)
     if found is not None:
         if type(found) is not int:
             raise TypeError("directed transfer memo contains another value sort")

@@ -105,8 +105,8 @@ class RightResetCertificates:
                     radius = None if a is None or b is None else a + b
                 else:
                     radius = self._primitive_radius(current)
-                self.certificates._data[current] = RightResetCertificate(
-                    current, radius
+                self.certificates.publish_reserved(
+                    current, RightResetCertificate(current, radius)
                 )
             except BaseException:
                 self.ledger.release(owner, entries=1, nodes=1)
@@ -145,9 +145,9 @@ class RightResetCertificates:
     ) -> bool:
         if type(side) is not int or side not in (0, 1):
             raise ValueError("invalid reset direction")
-        self.runtime._validate_provider(provider)
+        self.runtime.validate_provider(provider)
         node = self.runtime.actions.resolve(action)
-        source = self.runtime.cells.source_geometry._construction.source
+        source = self.runtime.cells.source_geometry.construction.source
         if node.kind != "identity" and (node.base, node.blank) != (
             source.base,
             source.blank,

@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     )
     from number_compiler.hashlife.execution.continuations.higher_temporal_image import (
         HigherTemporalImage,
+        HigherTemporalMemoKey,
     )
     from number_compiler.hashlife.execution.continuations.higher_types import (
         HigherExpressionID,
@@ -79,6 +80,9 @@ class RecursiveOutputAuditSnapshot:
     key_owner: int
     keys: Mapping[RecursiveOutputRecord, int]
     key_store: object
+    stream_owner: int
+    stream_frame_count: int
+    stream_frame_ids: tuple[int, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +114,7 @@ class HigherTemporalImageAuditSnapshot:
     built_owner: int
     built_store: object
     built_count: int
+    built_keys: tuple[HigherTemporalMemoKey, ...]
     source_frame_owner: int
     source_frame_store: object
     source_frame_count: int

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from itertools import islice
+from typing import Never
 
 import pytest
 
@@ -19,7 +20,7 @@ def test_large_fixed_cycle_publishes_one_constant_tile_result(seed: int) -> None
     expected = cycle[steps % 3]
     term = PoweredCollatzTerm(seed, steps)
     assert sum(term.digit(i) << i for i in range(term.width())) == expected
-    workspace = term._source_image()
+    workspace = term.source_image()
     summary = workspace.summary()
     assert summary.width == steps
     assert summary.odd_steps == (steps + {1: 2, 2: 1, 4: 0}[seed]) // 3
@@ -42,8 +43,8 @@ def test_large_fixed_cycle_publishes_one_constant_tile_result(seed: int) -> None
 
 def test_noninitial_cycle_contract_rejects_the_certified_shortcut() -> None:
     term = PoweredCollatzTerm(1, 8)
-    workspace = term._source_image()
-    foreign = PoweredCollatzTerm(2, 8)._source_image()
+    workspace = term.source_image()
+    foreign = PoweredCollatzTerm(2, 8).source_image()
     assert_rejected_atomically(
         term.resource_ledger,
         lambda: workspace.validate_source(foreign.root_source),
@@ -55,17 +56,21 @@ def test_completed_cycle_interface_bypasses_causal_evaluation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     term = PoweredCollatzTerm(1, 10**12)
-    workspace = term._source_image()
+    workspace = term.source_image()
     completed = workspace.summary()
+
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("completed cycle attempted a physical evaluation")
+
     monkeypatch.setattr(
         CausalTileEngine,
         "interface",
-        lambda *_args: pytest.fail("cycle replayed causal evaluation"),
+        forbidden,
     )
     monkeypatch.setattr(
         type(workspace),
         "apply_primitive",
-        lambda *_args: pytest.fail("completed image rediscovered leaves"),
+        forbidden,
     )
     assert workspace.summary() is completed
     assert term.s_arithmetic_clock().events == completed.odd_steps
@@ -81,7 +86,7 @@ def test_power_of_two_enters_cycle_with_bounded_residual_work(
     steps = exponent + cycle_ticks
     expected = (1, 4, 2)[cycle_ticks % 3]
     term = PoweredCollatzTerm(1 << exponent, steps)
-    summary = term._source_image().summary()
+    summary = term.source_image().summary()
     assert summary.width == steps
     assert summary.odd_steps == (cycle_ticks + 2) // 3
     assert term.materialize(max_bits=4) == expected
@@ -109,7 +114,7 @@ def test_wide_power_of_two_cycle_entry_is_independent_of_temporal_extent() -> No
 def test_power_of_two_short_prefix_does_not_claim_cycle_entry() -> None:
     term = PoweredCollatzTerm(1 << 8, 4)
     assert term.materialize(max_bits=16) == 1 << 4
-    assert term._source_image().summary().cycle is None
+    assert term.source_image().summary().cycle is None
     assert (
         term.resource_ledger.counters.get("collatz_physical_cycle_compressions", 0) == 0
     )
@@ -118,7 +123,7 @@ def test_power_of_two_short_prefix_does_not_claim_cycle_entry() -> None:
 def test_multi_one_source_does_not_claim_power_of_two_cycle_entry() -> None:
     term = PoweredCollatzTerm((1 << 8) | 1, 4)
     assert term.materialize(max_bits=16) == 580
-    assert term._source_image().summary().cycle is None
+    assert term.source_image().summary().cycle is None
     assert (
         term.resource_ledger.counters.get("collatz_physical_cycle_compressions", 0) == 0
     )

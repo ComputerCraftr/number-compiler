@@ -160,7 +160,9 @@ def test_different_symbol_histories_alias_as_complete_transfer_ids() -> None:
     assert a == b  # both symbols reset carry while preserving blank/sink handling
     aa = arena.advance_expression(kernel, BoundarySide.LEFT, a, zero)
     assert aa == a
-    assert all(type(node) is FiniteExpression for node in arena._expressions)
+    assert all(
+        type(node) is FiniteExpression for node in arena.audit_snapshot().expressions
+    )
 
 
 def test_simultaneous_substitution_preserves_parametric_function_identity() -> None:
@@ -300,7 +302,7 @@ def test_universal_primitive_templates_are_substituted_without_reenumeration() -
     first = variables(0)
     arena.advance_expression(kernel, BoundarySide.LEFT, first[0], first[1])
     arena.emit_expression(kernel, *first)
-    assert len(arena._templates) == 2
+    assert len(arena.template_audit_snapshot().container) == 2
     before = arena.ledger.snapshot()
     second = variables(1)
     transition = arena.advance_expression(
@@ -363,16 +365,16 @@ def test_shannon_templates_keep_reduced_branches_and_bounded_primitive_workspace
     assert counters["diamond_kernel_invalid_subtrees"] > 0
     # Row-by-row truth accumulation retained over 90,000 partial Boolean
     # functions. Shannon construction retains only reduced subtree functions.
-    assert len(arena.functions._nodes) < 2_000
+    assert arena.functions.node_count < 2_000
     for left, symbol, right in product(*(range(domain) for domain in domains)):
-        inputs = {}
+        inputs: dict[PortVariable, bool] = {}
         for port, value, domain in zip(
             ports, (left, symbol, right), domains, strict=True
         ):
             inputs.update(assignment(port, value, domain))
         assert arena.evaluate(output, inputs) == kernel.emit(left, symbol, right)
     # Unused input codes have the same explicit zero extension at every leaf.
-    invalid = {}
+    invalid: dict[PortVariable, bool] = {}
     for port, domain in zip(ports, domains, strict=True):
         invalid.update(assignment(port, (1 << (domain - 1).bit_length()) - 1, domain))
     assert arena.evaluate(output, invalid) == 0
@@ -394,7 +396,11 @@ def test_fixed_primitive_symbol_specializes_before_truth_construction() -> None:
         arena.ledger.counters["diamond_kernel_shannon_leaf_evaluations"]
         == kernel.left_count * kernel.right_count
     )
-    assert next(iter(arena._templates)).constants == (None, 7, None)
+    assert next(iter(arena.template_audit_snapshot().container)).constants == (
+        None,
+        7,
+        None,
+    )
     for lstate, rstate in product(range(kernel.left_count), range(kernel.right_count)):
         inputs = assignment(left_port, lstate, kernel.left_count) | assignment(
             right_port, rstate, kernel.right_count

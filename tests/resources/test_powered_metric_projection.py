@@ -4,12 +4,12 @@ from dataclasses import fields
 
 import pytest
 
+from number_compiler.resources.collatz_power_metrics import CollatzPhysicalBlockMetrics
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_unindexed_metrics
 from number_compiler.resources.metric_replace import replace_metric
 from number_compiler.resources.powered_metrics import project_powered_metrics
-from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockMetrics
-from number_compiler.sequences.reverse_add.power import ReverseAddPowerMetrics
+from number_compiler.resources.reverse_power_metrics import ReverseAddPowerMetrics
 
 
 @pytest.mark.parametrize("kind", (ReverseAddPowerMetrics, CollatzPhysicalBlockMetrics))

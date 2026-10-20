@@ -1,5 +1,7 @@
 """HashLife behavior and metric observations shared across families."""
 
+from typing import cast
+
 import pytest
 
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
@@ -55,7 +57,7 @@ def test_action_metrics_report_image_publication_and_warm_response_reuse() -> No
             assert publications > 0
             assert public.temporal_parent_requests == 0
             assert public.temporal_parent_compositions == 0
-            assert term._power is None
+            assert cast(object | None, object.__getattribute__(term, "_power")) is None
             hits = counters.get("microblock_hits", 0)
             term.digit(0)
             repeated = term.metrics()

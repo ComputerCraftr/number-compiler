@@ -25,6 +25,7 @@ from typing import (
     cast,
 )
 
+from number_compiler.arithmetic.contracts.input_validation import is_object_tuple
 from number_compiler.arithmetic.contracts.iterative_queries import (
     defer_dependencies,
     defer_indexed_dependencies,
@@ -65,7 +66,7 @@ class _BuildFrame:
 def _output_word(value: object) -> tuple[int, ...] | None:
     if value is None:
         return None
-    if not isinstance(value, tuple) or any(not isinstance(x, int) for x in value):
+    if not is_object_tuple(value) or any(not isinstance(x, int) for x in value):
         raise TypeError("output terminal must be an integer word or None")
     return cast(tuple[int, ...], value)
 
@@ -114,7 +115,7 @@ class MultiTerminalDecisionArena:
         "_full",
         "_generator_boxes",
         "_groups",
-        "_intern",
+        "intern_record",
         "_length_shape_cache",
         "_length_shape_intern",
         "_minlen_cache",
@@ -145,7 +146,7 @@ class MultiTerminalDecisionArena:
         self._full = tuple((1 << domains[i]) - 1 for i in order)
         # node = ('T', terminal_value) or ('N', ordered_level, ((child,mask),...))
         self._nodes: list[_DecisionNode] = []
-        self._intern: dict[tuple[object, ...], int] = {}
+        self.intern_record: dict[tuple[object, ...], int] = {}
         self._term: dict[object, int] = {}
         self._groups = 0
         self._selector_bits = 0
@@ -157,6 +158,26 @@ class MultiTerminalDecisionArena:
         self._length_shape_cache: dict[int, int] = {}
         self._length_shape_intern: dict[tuple[object, ...], int] = {}
 
+    @property
+    def node_count(self) -> int:
+        """Return the number of retained DAG nodes without exposing the store."""
+        return len(self._nodes)
+
+    def decision_record(self, node: int) -> _DecisionNode:
+        """Read one immutable terminal or internal row after checking its identity."""
+        if type(node) is not int or not 0 <= node < len(self._nodes):
+            raise ValueError("decision node index is outside this arena")
+        return self._nodes[node]
+
+    def children_of(self, node: int) -> tuple[int, ...]:
+        """Return immutable child IDs for one retained internal node."""
+        if type(node) is not int or not 0 <= node < len(self._nodes):
+            raise ValueError("decision node index is outside this arena")
+        record = self._nodes[node]
+        if record[0] == "T":
+            return ()
+        return tuple(child for child, _mask in record[2])
+
     def terminal(self, value: object) -> int:
         # output words are tuples/None and therefore hashable
         old = self._term.get(value)
@@ -165,7 +186,7 @@ class MultiTerminalDecisionArena:
         key: _DecisionNode = ("T", value)
         q = len(self._nodes)
         self._nodes.append(key)
-        self._intern[key] = q
+        self.intern_record[key] = q
         self._term[value] = q
         return q
 
@@ -189,12 +210,12 @@ class MultiTerminalDecisionArena:
             return next(iter(merged))
         entries = tuple(sorted(merged.items()))
         key: _DecisionNode = ("N", int(level), entries)
-        old = self._intern.get(key)
+        old = self.intern_record.get(key)
         if old is not None:
             return old
         q = len(self._nodes)
         self._nodes.append(key)
-        self._intern[key] = q
+        self.intern_record[key] = q
         self._groups += len(entries)
         self._selector_bits += sum(_selector_bits(mask) for _, mask in entries)
         return q

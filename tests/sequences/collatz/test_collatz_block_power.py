@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
@@ -38,8 +38,7 @@ def test_collatz_powered_point_uses_admitted_source_image_without_replay() -> No
     assert metrics.direct_powered_point_queries == 1
     assert metrics.operator_nodes == 0
     assert metrics.compose_operations == 0
-    assert term._power is None
-    assert len(term._compiler.nodes) == 1
+    assert term.operator_nodes == 0
     # The exact digit is owned by the source image; no compatibility
     # BlockPower descriptor or scheduler child traversal is constructed.
     pairs = 256 // 2
@@ -52,14 +51,14 @@ def test_collatz_powered_point_uses_admitted_source_image_without_replay() -> No
     assert counters["source_image_postorder_frames"] > 0
     assert counters.get("source_image_primitive_applications", 0) == 0
     assert counters.get("source_image_demanded_composite_applications", 0) == 1
-    workspace = term._workspace
+    workspace = term.audit_snapshot().workspace
     assert workspace is not None
     assert len(workspace.support) == 1
     assert workspace.support[0].saturated
-    from devtools.benchmarks.collatz_temporal_power_probe import _source_image_work
+    from devtools.benchmarks.collatz_temporal_power_probe import source_image_work
     from number_compiler.resources.metric_collection import collect_ledger_metrics
 
-    source_work, operand_bits, seal_bytes = _source_image_work(metrics)
+    source_work, operand_bits, seal_bytes = source_image_work(metrics)
     assert source_work < 25_000
     assert operand_bits > 0
     assert seal_bytes > 0
@@ -151,7 +150,7 @@ def test_collatz_huge_cycle_width_uses_constant_image_without_huge_denominator(
     assert (
         term.resource_ledger.counters.get("collatz_physical_aggregate_demands", 0) == 0
     )
-    workspace = term._workspace
+    workspace = term.audit_snapshot().workspace
     assert workspace is not None
     image = workspace.image_node(workspace.root_payload)
     assert image.summary.transfer.upper == 0
@@ -168,7 +167,7 @@ def test_collatz_requested_clock_width_uses_sealed_tape_summary(
 
     term = PoweredCollatzTerm(seed, steps)
     clock = term.s_arithmetic_clock()
-    workspace = term._workspace
+    workspace = term.audit_snapshot().workspace
     assert workspace is not None
     summary = workspace.tape_width_summary
     assert summary is not None
@@ -207,7 +206,7 @@ def test_collatz_requested_clock_width_uses_sealed_tape_summary(
 def test_collatz_requested_clock_width_rejects_changed_action_binding() -> None:
     term = PoweredCollatzTerm(27, 16)
     term.s_arithmetic_clock()
-    workspace = term._workspace
+    workspace = term.audit_snapshot().workspace
     assert workspace is not None
     assert workspace.tape_width_summary is not None
 
@@ -243,9 +242,8 @@ def test_high_entropy_collatz_point_uses_balanced_source_cylinder() -> None:
     )
     assert counters["collatz_physical_transient_leaf_operand_bits"] > 0
     assert counters["collatz_physical_balanced_stack_frames"] > 0
-    assert term._power is None
-    assert len(term._compiler.nodes) == 1
-    workspace = term._workspace
+    assert term.operator_nodes == 0
+    workspace = term.audit_snapshot().workspace
     assert workspace is not None
     assert len(workspace.support) == 1
     assert workspace.support[0].saturated
@@ -295,7 +293,7 @@ def test_collatz_temporal_release_probe_reports_measured_source_image_execution(
     )
     projection = result["projection"]
     assert isinstance(projection, list)
-    for row in projection:
+    for row in cast(list[object], projection):
         record = object_record(row)
         for name in (
             "collatz_physical_temporal_run_actions",
@@ -328,4 +326,4 @@ def test_collatz_probe_rejects_missing_source_image_work(
     monkeypatch.setattr(probe, "PROJECTION_STEPS", (16,))
     monkeypatch.setattr(PoweredCollatzTerm, "metrics", missing_work)
     with pytest.raises(AssertionError, match="source-image-work-measurement-missing"):
-        probe._projection_rows()
+        probe.projection_rows()

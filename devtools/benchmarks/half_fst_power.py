@@ -26,9 +26,8 @@ from devtools.verification.reverse_pair_reference import reference_pair_half
 from devtools.verification.transducer_graph import (
     DenseInterner,
     append_reachable_edge,
-    compose_arc_table,
+    compose_product_graph,
     compose_suffix_outputs,
-    product_states,
     quotient_graph,
     trim_ids,
 )
@@ -70,7 +69,7 @@ class FST:
     def apply(self, word: Sequence[int]) -> tuple[int, ...]:
         cur: set[tuple[int, tuple[int, ...]]] = {(q, ()) for q in self.initials}
         for x in word:
-            nxt = set()
+            nxt: set[tuple[int, tuple[int, ...]]] = set()
             for q, o in cur:
                 for a in self.arcs.get(q, ()):
                     if a.inp == x:
@@ -100,9 +99,9 @@ def build(base: int = 10) -> FST:
     # ("B", p, g=R0, L_i, R_i, prev_s, L_before_prev, count_nonempty)
     S = sid(("S",))
     arcs: defaultdict[int, list[Arc]] = defaultdict(list)
-    finals = {}
+    finals: dict[int, tuple[int, ...]] = {}
     dq = deque([S])
-    seen = set()
+    seen: set[int] = set()
     while dq:
         qi = dq.popleft()
         if qi in seen:
@@ -197,11 +196,10 @@ def bisim(t: FST) -> FST:
 
 
 def compose(a: FST, b: FST) -> FST:
-    pairs, ini, sid = product_states(a.initials, b.initials)
-    idx, arcs = compose_arc_table(
-        ini, pairs, a.arcs, b.arcs, sid, lambda edge: Arc(*edge)
+    pairs, ini, idx, arcs = compose_product_graph(
+        a.initials, b.initials, a.arcs, b.arcs, lambda edge: Arc(*edge)
     )
-    fin = {}
+    fin: dict[int, tuple[int, ...]] = {}
     for qi, (p, q) in enumerate(pairs):
         if p in a.finals:
             outs = compose_suffix_outputs(q, a.finals[p], idx, b.finals)
@@ -223,19 +221,28 @@ def selftest() -> None:
         got = T.apply((P(p, 10),) + tuple(h))
         dec = (got[0] - (2 * 10 - 1), got[1:])
         assert dec == exp, (p, h, dec, exp)
-    Q = T
+    powered = T
     for e in range(1, 5):
         st = time.perf_counter()
-        Q = compose(Q, Q)
+        powered = compose(powered, powered)
         dt = time.perf_counter() - st
-        print("pow", 2**e, Q.states, Q.arc_count, len(Q.finals), "sec", dt, flush=True)
+        print(
+            "pow",
+            2**e,
+            powered.states,
+            powered.arc_count,
+            len(powered.finals),
+            "sec",
+            dt,
+            flush=True,
+        )
         for _ in range(50):
             p = rng.randrange(2)
             h = random_half(rng, 4)
             pp, hh = p, tuple(h)
             for __ in range(2**e):
                 pp, hh = reference_half(pp, hh)
-            got = Q.apply((P(p, 10),) + tuple(h))
+            got = powered.apply((P(p, 10),) + tuple(h))
             dec = (got[0] - (2 * 10 - 1), got[1:])
             assert dec == (pp, hh)
 

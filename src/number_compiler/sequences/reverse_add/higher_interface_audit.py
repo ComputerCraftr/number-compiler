@@ -21,10 +21,11 @@ def register_reverse_higher_interface_contract(
 ) -> None:
     from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
 
+    state = root.audit_snapshot()
     root.ledger.register_payload_audit_contract(
         root,
         "reverse_add",
-        (PayloadAuditStoreBinding(root._cache_owner, "_cache", "query_memo"),),
+        (PayloadAuditStoreBinding(state.cache_owner, "_cache", "query_memo"),),
         audit_reverse_higher_interface_owner,
     )
 
@@ -68,7 +69,8 @@ def audit_reverse_higher_interface_owner(
         raise TypeError("higher interface auditor received a foreign root")
     ledger = ledger_value
     root = root_value
-    cache_account = ledger._account(root._cache_owner)
+    state = root.audit_snapshot()
+    cache_account = ledger.inventory_owner(state.cache_owner)
     valid_root = (
         root.ledger is ledger
         and type(root.actions) is ReverseFieldActionArena
@@ -81,11 +83,11 @@ def audit_reverse_higher_interface_owner(
         and root.semantics.schema is root.schema
         and root.runtime.semantics is root.semantics
         and root.interfaces.semantics is root.semantics
-        and cache_account.container is root._cache
+        and ledger.registered_container(state.cache_owner) is state.cache
         and cache_account.role == "query_memo"
-        and cache_account.entries == len(root._cache)
+        and cache_account.entries == len(state.cache)
         and cache_account.nodes == 0
-        and cache_account.payloads is not None
+        and cache_account.payloads_registered
         and not cache_account.disposed
     )
     if not valid_root:
@@ -93,7 +95,7 @@ def audit_reverse_higher_interface_owner(
 
     approved: list[PayloadAuditEntry] = []
     invalid: list[PayloadAuditEntry] = []
-    for action, compilation in root._cache.items():
+    for action, compilation in state.cache.items():
         valid = (
             type(action) is FieldCellActionID
             and type(compilation) is ReverseHigherInterfaceCompilation
@@ -157,8 +159,8 @@ def audit_reverse_higher_interface_owner(
         target = approved if valid else invalid
         target.extend(
             (
-                PayloadAuditEntry(root._cache_owner, action),
-                PayloadAuditEntry(root._cache_owner, compilation),
+                PayloadAuditEntry(state.cache_owner, action),
+                PayloadAuditEntry(state.cache_owner, compilation),
             )
         )
     return PayloadAuditContribution(tuple(approved), tuple(invalid))

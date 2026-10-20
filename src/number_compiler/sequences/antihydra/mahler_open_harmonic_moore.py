@@ -12,6 +12,7 @@ from collections import deque
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.fields.integer_congruence import exact_modular_power
 from number_compiler.arithmetic.functions.finite_observer import (
     class_members,
     minimize_finite_observer,
@@ -51,7 +52,7 @@ class MahlerOpenEmission:
         return tuple(out)
 
 
-def _entry(
+def open_bank_entry(
     ring: MahlerFixedOddHarmonicRing,
     state: MahlerOpenBankState,
     inlet: int,
@@ -73,14 +74,25 @@ def _entry(
     if numerator % ring.q:
         return None
     next_binary = (numerator // ring.q) % source_mod
-    next_five = (ring.p * state.five + ring.j) * pow(ring.q, -1, five_mod) % five_mod
+    next_five = (
+        (ring.p * state.five + ring.j)
+        * exact_modular_power(ring.q, -1, five_mod)
+        % five_mod
+    )
     two_mod = 1 << places
     old_dec = (state.binary % two_mod) + two_mod * (
-        ((state.five - (state.binary % two_mod)) * pow(two_mod, -1, five_mod))
+        (
+            (state.five - (state.binary % two_mod))
+            * exact_modular_power(two_mod, -1, five_mod)
+        )
         % five_mod
     )
     new_dec = (next_binary % two_mod) + two_mod * (
-        ((next_five - (next_binary % two_mod)) * pow(two_mod, -1, five_mod)) % five_mod
+        (
+            (next_five - (next_binary % two_mod))
+            * exact_modular_power(two_mod, -1, five_mod)
+        )
+        % five_mod
     )
     unit = 10**position
     decimal_digit = new_dec // unit % 10
@@ -168,7 +180,7 @@ class MahlerConditionalOpenMoore:
             dest_row: list[int | None] = []
             obs_row: list[MahlerOpenEmission | None] = []
             for letter in alphabet:
-                result = _entry(
+                result = open_bank_entry(
                     ring,
                     state,
                     letter,

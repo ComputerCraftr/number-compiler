@@ -51,18 +51,18 @@ def _unavailable(reason: str, *, steps: int, pair_depth: int) -> dict[str, objec
 
 
 def _root_pair(term: DoubleReverseTerm, root: int, pair_depth: int) -> tuple[int, int]:
-    width = term._arena.nodes[root].length
+    width = term.source_arena.nodes[root].length
     if width <= 2 * pair_depth:
         raise UncertifiedPointedStencilError(
             "source endpoint is too narrow for the requested pair depth"
         )
     return (
-        symbol_at(term._arena, root, pair_depth),
-        symbol_at(term._arena, root, width - 1 - pair_depth),
+        symbol_at(term.source_arena, root, pair_depth),
+        symbol_at(term.source_arena, root, width - 1 - pair_depth),
     )
 
 
-def _same_word(term: DoubleReverseTerm, left: int, right: int) -> bool:
+def same_word(term: DoubleReverseTerm, left: int, right: int) -> bool:
     """Compare complete bounded SLP words without requiring canonical roots.
 
     The physical source adapter and the powered temporal owner can factor the
@@ -74,8 +74,8 @@ def _same_word(term: DoubleReverseTerm, left: int, right: int) -> bool:
     """
     if left == right:
         return True
-    left_width = term._arena.nodes[left].length
-    if left_width != term._arena.nodes[right].length:
+    left_width = term.source_arena.nodes[left].length
+    if left_width != term.source_arena.nodes[right].length:
         return False
 
     def record_visit(is_node: bool) -> None:
@@ -85,33 +85,33 @@ def _same_word(term: DoubleReverseTerm, left: int, right: int) -> bool:
             )
 
     def reserve_task() -> None:
-        term.resource_ledger.reserve(term._scratch_owner, entries=1, nodes=1)
+        term.resource_ledger.reserve(term.scratch_owner, entries=1, nodes=1)
 
     def release_tasks(count: int) -> None:
-        term.resource_ledger.release(term._scratch_owner, entries=count, nodes=count)
+        term.resource_ledger.release(term.scratch_owner, entries=count, nodes=count)
 
     with ExitStack() as streams:
         left_symbols = streams.enter_context(
             closing_output_stream(
                 iter_symbols(
-                    term._arena,
+                    term.source_arena,
                     left,
                     on_task=record_visit,
                     reserve_task=reserve_task,
                     release_tasks=release_tasks,
-                    check_open=term._check_open,
+                    check_open=term.check_open,
                 )
             )
         )
         right_symbols = streams.enter_context(
             closing_output_stream(
                 iter_symbols(
-                    term._arena,
+                    term.source_arena,
                     right,
                     on_task=record_visit,
                     reserve_task=reserve_task,
                     release_tasks=release_tasks,
-                    check_open=term._check_open,
+                    check_open=term.check_open,
                 )
             )
         )
@@ -124,7 +124,7 @@ def _same_word(term: DoubleReverseTerm, left: int, right: int) -> bool:
     return True
 
 
-def _chronological_source_transfer_packet(
+def chronological_source_transfer_packet(
     term: DoubleReverseTerm,
     *,
     steps: int,
@@ -144,7 +144,7 @@ def _chronological_source_transfer_packet(
         raise ValueError(f"physical ticks must be even and in 2..{MAX_PHYSICAL_STEPS}")
     if type(pair_depth) is not int or not 1 <= pair_depth <= MAX_PAIR_DEPTH:
         raise ValueError(f"pair depth must be in 1..{MAX_PAIR_DEPTH}")
-    term._check_open()
+    term.check_open()
     if term.generation + steps > term.max_steps:
         return _unavailable(
             "requested future interval exceeds the term's physical-step budget",
@@ -159,7 +159,7 @@ def _chronological_source_transfer_packet(
         )
 
     try:
-        entry, prepared = term._prepare_bank_source(
+        entry, prepared = term.prepare_bank_source(
             max_prefix=min(32, term.generation - 2)
         )
         if (
@@ -168,7 +168,7 @@ def _chronological_source_transfer_packet(
         ):
             raise TypeError("term returned an invalid pointed source cursor")
         prepared.validate(require_issued_cursor=True)
-        endpoint_root = term._root()
+        endpoint_root = term.endpoint_root()
         engine = prepared.engine
         endpoint_action = engine.advance_action(
             prepared.root, prepared.f_steps, prepared.phase
@@ -176,9 +176,9 @@ def _chronological_source_transfer_packet(
         engine.validate_action(endpoint_action)
         action_root = engine.root_of(endpoint_action.target)
         if (
-            not _same_word(term, action_root, endpoint_root)
+            not same_word(term, action_root, endpoint_root)
             or prepared.physical_prefix + 2 * prepared.f_steps != term.generation
-            or prepared.width_out != term._arena.nodes[endpoint_root].length
+            or prepared.width_out != term.source_arena.nodes[endpoint_root].length
         ):
             raise ValueError("prepared source cursor does not equal the term endpoint")
         # Continue from the authenticated action root. The independently
@@ -532,7 +532,7 @@ def source_transfer_packet(
             raise ValueError(
                 f"chronological trace is limited to {MAX_PHYSICAL_STEPS} physical ticks"
             )
-        packet = _chronological_source_transfer_packet(
+        packet = chronological_source_transfer_packet(
             term, steps=steps, pair_depth=pair_depth, include_trace=True
         )
         if packet.get("status") != "available":
@@ -551,7 +551,7 @@ def source_transfer_packet(
     if steps <= MAX_PHYSICAL_STEPS:
         # Preserve the prior exact source path when the powered cylinder does
         # not apply, while making its extra work visible in the packet.
-        fallback = _chronological_source_transfer_packet(
+        fallback = chronological_source_transfer_packet(
             term, steps=steps, pair_depth=pair_depth, include_trace=False
         )
         if fallback.get("status") == "available":

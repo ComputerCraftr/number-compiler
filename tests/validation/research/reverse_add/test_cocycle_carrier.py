@@ -3,16 +3,20 @@
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
 from devtools.experiments.reverse_add import cocycle_carrier as module
 from devtools.experiments.reverse_add.cocycle_carrier import (
+    CocycleCell,
     CocycleReverseCarrier,
 )
 from devtools.experiments.reverse_add.factored_planes import PlaneGate, PlaneID
-from devtools.experiments.reverse_add.factored_power import FactoredTemporalPower
+from devtools.experiments.reverse_add.factored_power import (
+    FactoredPowerBlock,
+    FactoredTemporalPower,
+)
 from devtools.verification import exact_oracle
 from number_compiler.arithmetic.automata import program_word as words
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
@@ -45,7 +49,7 @@ def test_cocycle_endpoint_demand_is_separate_from_complete_f5_action(
             endpoint = power.advance(source, 8)
         assert carrier.decode(endpoint) == expected
         assert power.compositions == 0
-        assert not power._memo
+        assert not power.cache_snapshot().complete_entries
         assert carrier.primitive_successors == 8
         complete = power.block(source, 8)
         assert complete.output == endpoint
@@ -94,11 +98,37 @@ def test_source_only_d4_squares_use_returned_cocycle_grammar(
         right = power.block(left.output, 4)
         squared = power.block(source, 8)
         assert squared.output == right.output
-        assert squared.action == power._compose(source, left, right).action
+        assert (
+            squared.action
+            == cast(
+                Callable[
+                    [
+                        CocycleCell,
+                        FactoredPowerBlock[CocycleCell],
+                        FactoredPowerBlock[CocycleCell],
+                    ],
+                    FactoredPowerBlock[CocycleCell],
+                ],
+                object.__getattribute__(power, "_compose"),
+            )(source, left, right).action
+        )
         fourth = power.block(squared.output, 8)
         sixteen = power.block(source, 16)
         assert sixteen.output == fourth.output
-        assert sixteen.action == power._compose(source, squared, fourth).action
+        assert (
+            sixteen.action
+            == cast(
+                Callable[
+                    [
+                        CocycleCell,
+                        FactoredPowerBlock[CocycleCell],
+                        FactoredPowerBlock[CocycleCell],
+                    ],
+                    FactoredPowerBlock[CocycleCell],
+                ],
+                object.__getattribute__(power, "_compose"),
+            )(source, squared, fourth).action
+        )
         work = carrier.planes.total_work
         primitives = carrier.primitive_successors
         assert power.block(source, 16) is sixteen
@@ -114,7 +144,10 @@ def test_source_only_d4_squares_use_returned_cocycle_grammar(
         # internal temporal composition that already has its returned grammar.
         assert (
             block.action.apply(
-                power._pad(source.f5, len(expected[count])),
+                cast(
+                    Callable[[PlaneID, int], PlaneID],
+                    object.__getattribute__(power, "_pad"),
+                )(source.f5, len(expected[count])),
                 shift=carrier.planes.shift,
                 add=carrier.add_planes,
                 scale=carrier.scale_plane,
@@ -169,8 +202,8 @@ def test_cocycle_planes_agree_with_independent_successors(seed: int) -> None:
                 actions.f5.apply(
                     source_f5,
                     shift=carrier.planes.shift,
-                    add=carrier._factored.add_planes,
-                    scale=carrier._factored.scale_plane,
+                    add=carrier.factored.add_planes,
+                    scale=carrier.factored.scale_plane,
                 )
                 == cell.f5
             )
@@ -178,7 +211,10 @@ def test_cocycle_planes_agree_with_independent_successors(seed: int) -> None:
                 actions.epsilon.apply(
                     source_epsilon,
                     shift=carrier.planes.shift,
-                    add=carrier._bool_add,
+                    add=cast(
+                        Callable[[PlaneID, PlaneID], PlaneID],
+                        object.__getattribute__(carrier, "_bool_add"),
+                    ),
                 )
                 == cell.epsilon
             )

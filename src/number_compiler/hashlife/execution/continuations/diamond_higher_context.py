@@ -8,7 +8,7 @@ semantic records, whose only payloads are action and expression references.
 
 from __future__ import annotations
 
-from collections.abc import Generator, MutableMapping, MutableSequence
+from collections.abc import Generator, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -50,6 +50,7 @@ from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
+from number_compiler.resources.stores import LedgerList
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -158,9 +159,7 @@ class HigherContextArena:
         self.id_owner = self.ledger.register(
             prefix + "-ids", "macro_transfer_program_interner"
         )
-        self._nodes: MutableSequence[HigherRecord] = self.ledger.make_list(
-            self.node_owner
-        )
+        self._nodes: LedgerList[HigherRecord] = self.ledger.make_list(self.node_owner)
         self._ids: MutableMapping[HigherRecord, TransferSummaryID] = (
             self.ledger.make_dict(self.id_owner)
         )
@@ -184,6 +183,16 @@ class HigherContextArena:
             evictable=True,
         )
 
+    def storage_is_registered(self, actual: Mapping[int, object]) -> bool:
+        return (
+            actual.get(self.node_owner) is self._nodes
+            and actual.get(self.id_owner) is self._ids
+        )
+
+    @property
+    def node_view(self) -> Sequence[HigherRecord]:
+        return self._nodes.audit_view()
+
     def _evict_bindings(self) -> None:
         count = len(self.bindings)
         self.bindings.clear()
@@ -191,7 +200,7 @@ class HigherContextArena:
 
     def _action(self, action: ActionProgramID) -> None:
         node = self.actions.resolve(action)
-        source = self.cells.source_geometry._construction.source
+        source = self.cells.source_geometry.construction.source
         if node.kind != "identity" and (node.base, node.blank) != (
             source.base,
             source.blank,

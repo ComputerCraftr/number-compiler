@@ -228,7 +228,7 @@ def fold_source_pair_cochain(
 
     node_count = len(owner.arena.nodes) + 1
     with owner.ledger.reservation(
-        owner._scratch_owner, entries=3 * node_count, nodes=9 * node_count
+        owner.scratch_owner, entries=3 * node_count, nodes=9 * node_count
     ):
         summaries = fold_slp_dag(
             owner.arena,
@@ -242,7 +242,7 @@ def fold_source_pair_cochain(
             ),
         )
         half = summaries[source.root]
-        parity = owner._symbol_at(source.root, 0) - 19
+        parity = owner.symbol_at(source.root, 0) - 19
         if parity not in (0, 1):
             raise ValueError("invalid Q19 parity tag")
         result = half.forward.then(
@@ -307,7 +307,7 @@ def source_walsh64_mod5(
                 ^ stencil.carry_at(owner, source.pair_width - 1 - index)
             )
         else:
-            pair = owner._pair_value_at(source, index)
+            pair = owner.pair_value_at(source, index)
             bit = decimal_pair_band(pair) is DecimalPairBand(channel)
         mask |= int(bit) << lane
     return walsh64_mod5(mask)

@@ -23,9 +23,9 @@ from .boundary_chart import PERIOD
 from .boundary_quotient import (
     BoundaryState,
     MacroTemplate,
-    _affine_weight_signature,
-    _macro_template_component_seal,
+    affine_weight_signature,
     boundary_state_signature,
+    macro_template_component_seal,
 )
 from .carry_generator import (
     BitsCharge,
@@ -99,7 +99,7 @@ class BoundaryOccurrence:
             ),
         )
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
         # Construction checked congruence before publishing this scalar snapshot.
         if (
             type(self.state) is not BoundaryState
@@ -128,7 +128,7 @@ class BoundaryOccurrence:
         charge_bits: BitsCharge | None = None,
     ) -> int:
         """Derive the exact literal value from the authenticated occurrence."""
-        self._validate()
+        self.validate()
         _charge(charge_work, charge_bits, 1, self.exponent)
         return self.state.value(self.exponent, charge_bits=charge_bits)
 
@@ -138,7 +138,7 @@ class BoundaryOccurrence:
         charge_work: WorkCharge | None = None,
         charge_bits: BitsCharge | None = None,
     ) -> C1Phase:
-        self._validate()
+        self.validate()
         _charge(charge_work, charge_bits, 1, self.state.a, self.exponent)
         sector = self.state.a - int(self.state.kind == "N")
         suffix = 99 if self.state.kind == "N" else 0
@@ -150,7 +150,7 @@ class BoundaryOccurrence:
         charge_work: WorkCharge | None = None,
         charge_bits: BitsCharge | None = None,
     ) -> int:
-        self._validate()
+        self.validate()
         scale_exponent = self.exponent - 2
         _charge(
             charge_work,
@@ -169,7 +169,7 @@ class BoundaryOccurrence:
         charge_work: WorkCharge | None = None,
         charge_bits: BitsCharge | None = None,
     ) -> int:
-        self._validate()
+        self.validate()
         _charge(charge_work, charge_bits, 1, self.state.a)
         return 99 if self.state.kind == "N" else 0
 
@@ -378,7 +378,7 @@ def _prefix_signature(
     width_delta: int,
     terminal_leading: int,
 ) -> tuple[object, ...]:
-    source._validate()
+    source.validate()
     return (
         _template_signature(template),
         source.state.kind,
@@ -397,7 +397,7 @@ def _template_signature(template: MacroTemplate) -> tuple[object, ...]:
     """Snapshot only the shallow macro fields consumed after publication."""
     if type(template) is not MacroTemplate:
         raise ValueError("macro template changed after construction")
-    component_seal = _macro_template_component_seal(template)
+    component_seal = macro_template_component_seal(template)
     source = boundary_state_signature(template.source)
     if (
         type(template.outcome) is not str
@@ -431,8 +431,8 @@ def _template_signature(template: MacroTemplate) -> tuple[object, ...]:
         template.exponent_delta,
         template.destination_a,
         tuple(children),
-        _affine_weight_signature(template.weight),
-        _affine_weight_signature(template.endpoint),
+        affine_weight_signature(template.weight),
+        affine_weight_signature(template.endpoint),
     )
 
 
@@ -512,7 +512,7 @@ class OccurrencePrefixReturn:
         )
         object.__setattr__(self, "_seal", _PREFIX_RETURN_SEAL)
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
         if getattr(self, "_seal", None) is not _PREFIX_RETURN_SEAL:
             raise ValueError("invalid or uninitialized occurrence prefix return")
         if (
@@ -543,57 +543,62 @@ class OccurrencePrefixReturn:
 
     @property
     def source(self) -> BoundaryOccurrence:
-        self._validate()
+        self.validate()
         return self._source
 
     @property
     def template(self) -> MacroTemplate:
-        self._validate()
+        self.validate()
         return self._template
+
+    def binding_snapshot(self) -> tuple[BoundaryOccurrence, MacroTemplate, int]:
+        """Return the source-bound macro fields after one integrity check."""
+        self.validate()
+        return self._source, self._template, self._width_delta
 
     @property
     def terminal_value(self) -> int:
-        self._validate()
+        self.validate()
         return self._terminal_value
 
     @property
     def terminal_high_prefix(self) -> int:
-        self._validate()
+        self.validate()
         return self._terminal_value // 100
 
     @property
     def terminal_low_suffix(self) -> int:
-        self._validate()
+        self.validate()
         return self._terminal_value % 100
 
     @property
     def terminal_c1_phase(self) -> C1Phase:
-        self._validate()
+        self.validate()
         return C1Phase.from_suffix(self._terminal_leading, self._terminal_value % 100)
 
     @property
     def terminal_exponent(self) -> int:
-        self._validate()
+        self.validate()
         return self._source.exponent + self._width_delta
 
     @property
     def transition_count(self) -> int:
-        self._validate()
+        self.validate()
         return self._transition_count
 
     @property
     def c1_count(self) -> int:
-        self._validate()
+        self.validate()
         return self._c1_count
 
     @property
     def width_delta(self) -> int:
-        self._validate()
+        self.validate()
         return self._width_delta
 
     @property
     def outcome(self) -> Literal["fork", "landmine"]:
-        self._validate()
+        self.validate()
         return self._template.outcome
 
     def ordered_children(
@@ -615,7 +620,7 @@ class OccurrencePrefixReturn:
         charge_bits: BitsCharge | None = None,
     ) -> OrderedMacroChildren:
         """Validate literal N/Z values once and retain their boundary bindings."""
-        self._validate()
+        self.validate()
         _charge(
             charge_work,
             charge_bits,
@@ -696,7 +701,7 @@ class MacroChildOccurrence:
         self._bind(prefix, target, _seal=_MACRO_CHILD_OCCURRENCE_SEAL)
 
     @classmethod
-    def _from_ordered_children(
+    def from_ordered_children(
         cls,
         prefix: OccurrencePrefixReturn,
         target: BoundaryOccurrence,
@@ -722,15 +727,15 @@ class MacroChildOccurrence:
             raise TypeError("macro child requires a validated occurrence prefix")
         if type(target) is not BoundaryOccurrence:
             raise TypeError("macro child requires an exact target occurrence")
-        prefix._validate()
-        target._validate()
+        source, template, width_delta = prefix.binding_snapshot()
+        target.validate()
         kind = target.state.kind
         index = 0 if kind == "N" else 1
         if (
-            prefix._template.outcome != "fork"
-            or len(prefix._template.ordered_children) != 2
-            or prefix._template.ordered_children[index] != target.state
-            or target.exponent != prefix._source.exponent + prefix._width_delta
+            template.outcome != "fork"
+            or len(template.ordered_children) != 2
+            or template.ordered_children[index] != target.state
+            or target.exponent != source.exponent + width_delta
         ):
             raise ValueError("macro child differs from its validated prefix")
         object.__setattr__(self, "_prefix", prefix)
@@ -742,8 +747,8 @@ class MacroChildOccurrence:
             (id(prefix), target.state, target.exponent, target.state.kind),
         )
 
-    def _validate(self) -> None:
-        self._prefix._validate()
+    def validate(self) -> None:
+        source, template, width_delta = self._prefix.binding_snapshot()
         if (
             type(self._target) is not BoundaryOccurrence
             or type(self._kind) is not str
@@ -758,20 +763,19 @@ class MacroChildOccurrence:
             )
         ):
             raise ValueError("macro child selection disagrees with its prefix snapshot")
-        self._target._validate()
+        self._target.validate()
         index = 0 if self._kind == "N" else 1
         if (
-            self._prefix._template.outcome != "fork"
-            or len(self._prefix._template.ordered_children) != 2
-            or self._prefix._template.ordered_children[index] != self._target.state
-            or self._target.exponent
-            != self._prefix._source.exponent + self._prefix._width_delta
+            template.outcome != "fork"
+            or len(template.ordered_children) != 2
+            or template.ordered_children[index] != self._target.state
+            or self._target.exponent != source.exponent + width_delta
         ):
             raise ValueError("macro child target differs from its prefix snapshot")
 
     @property
     def prefix(self) -> OccurrencePrefixReturn:
-        self._validate()
+        self.validate()
         return self._prefix
 
     @property
@@ -780,7 +784,7 @@ class MacroChildOccurrence:
 
     @property
     def target(self) -> BoundaryOccurrence:
-        self._validate()
+        self.validate()
         return self._target
 
     @property
@@ -901,22 +905,21 @@ class OrderedMacroChildren:
             raise TypeError("ordered macro children need exact boundary occurrences")
         if any(type(value) is not int for value in literal_values):
             raise TypeError("ordered macro child values must be integers")
-        prefix._validate()
+        source, template, width_delta = prefix.binding_snapshot()
         for child in children:
-            child._validate()
-        if prefix._template.outcome == "fork":
+            child.validate()
+        if template.outcome == "fork":
             if (
                 len(children) != 2
                 or tuple(child.state.kind for child in children) != ("N", "Z")
-                or tuple(child.state for child in children)
-                != prefix._template.ordered_children
+                or tuple(child.state for child in children) != template.ordered_children
                 or any(
-                    child.exponent != prefix._source.exponent + prefix._width_delta
+                    child.exponent != source.exponent + width_delta
                     for child in children
                 )
             ):
                 raise ValueError("ordered macro children differ from their prefix")
-        elif prefix._template.outcome == "landmine":
+        elif template.outcome == "landmine":
             if children or literal_values:
                 raise ValueError("landmine prefix cannot carry literal children")
         else:
@@ -935,12 +938,12 @@ class OrderedMacroChildren:
         )
         object.__setattr__(self, "_seal", _seal)
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
         if getattr(self, "_seal", None) is not _ORDERED_MACRO_CHILDREN_SEAL:
             raise ValueError("invalid ordered macro children")
-        self._prefix._validate()
+        self._prefix.validate()
         for child in self._children:
-            child._validate()
+            child.validate()
         if getattr(self, "_witness", None) != (
             id(self._prefix),
             tuple((child.state, child.exponent) for child in self._children),
@@ -950,31 +953,31 @@ class OrderedMacroChildren:
 
     @property
     def prefix(self) -> OccurrencePrefixReturn:
-        self._validate()
+        self.validate()
         return self._prefix
 
     @property
     def children(self) -> tuple[BoundaryOccurrence, ...]:
-        self._validate()
+        self.validate()
         return self._children
 
     @property
     def literal_values(self) -> tuple[int, ...]:
-        self._validate()
+        self.validate()
         return self._literal_values
 
     def validated_parts(
         self,
     ) -> tuple[tuple[BoundaryOccurrence, ...], tuple[int, ...]]:
         """Return both checked projections after one integrity validation."""
-        self._validate()
+        self.validate()
         return self._children, self._literal_values
 
     def bind_slot(self, slot: int) -> MacroChildOccurrence:
-        self._validate()
+        self.validate()
         if type(slot) is not int or slot not in (0, 1) or len(self._children) != 2:
             raise ValueError("macro child slot is outside its ordered fork")
-        return MacroChildOccurrence._from_ordered_children(
+        return MacroChildOccurrence.from_ordered_children(
             self._prefix,
             self._children[slot],
             _seal=_ORDERED_MACRO_CHILDREN_SEAL,

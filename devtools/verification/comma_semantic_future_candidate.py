@@ -15,20 +15,22 @@ occurrence data needed to reconstruct them.
 
 from __future__ import annotations
 
-import argparse
 import base64
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TypeVar
+from typing import Literal, TypeVar, cast
 
 import devtools.verification.comma_semantic_future_artifact as future_artifact
 from devtools.verification.comma_c1_audit import (
     C1OccurrencePayload,
     C1SeamObservation,
-    _c1_payloads,
-    _CompletedMacroReturn,
+    CompletedMacroReturnAudit,
+    c1_payloads,
+)
+from number_compiler.arithmetic.contracts.input_validation import (
+    string_keyed_mapping,
 )
 from number_compiler.arithmetic.functions.finite_observer import (
     canonical_partition,
@@ -44,7 +46,7 @@ from number_compiler.sequences.comma.boundary_quotient import (
     construct_completed_return,
 )
 from number_compiler.sequences.comma.boundary_return import (
-    _completed_macro_return_component_seal,
+    validate_completed_macro_return,
 )
 
 Control = tuple[Literal["fork", "landmine"], int | None]
@@ -154,7 +156,7 @@ class SemanticFutureCandidate:
 
     def isabelle_candidate_data(self) -> str:
         """Render the HOL tables from this candidate's exact class values."""
-        return _render_candidate_data_theory(
+        return render_candidate_data_theory(
             self.class_ids,
             self.class_controls,
             self.class_children,
@@ -191,7 +193,7 @@ def _candidate_universe_size() -> int:
     return len(("N", "Z")) * len(range(2, 10)) * PERIOD
 
 
-def _decode_unsigned_varints(
+def decode_unsigned_varints(
     payload: bytes, *, max_values: int, max_value: int
 ) -> tuple[int, ...]:
     """Decode and canonicalize the compact CID binding stream."""
@@ -261,7 +263,7 @@ def _as_class_row(row: tuple[int | None, ...]) -> ClassRow:
     return row[0], row[1]
 
 
-def _validate_class_rows(
+def validate_class_rows(
     controls: tuple[object, ...], children: tuple[object, ...]
 ) -> tuple[tuple[Control, ...], tuple[ClassRow, ...]]:
     if not controls or len(controls) != len(children):
@@ -269,17 +271,27 @@ def _validate_class_rows(
     class_count = len(controls)
     normalized_controls: list[Control] = []
     normalized_children: list[ClassRow] = []
-    for control, row in zip(controls, children, strict=True):
-        if not isinstance(control, (tuple, list)) or len(control) != 2:
+    for control_value, row_value in zip(controls, children, strict=True):
+        if not isinstance(control_value, (tuple, list)):
             raise ValueError("candidate control is malformed")
-        if control[0] == "fork":
-            if type(control[1]) is not int or not 2 <= control[1] <= 9:
+        control: Sequence[object] = cast(Sequence[object], control_value)
+        if len(control) != 2:
+            raise ValueError("candidate control is malformed")
+        kind_value, coefficient_value = control
+        if kind_value == "fork":
+            if type(coefficient_value) is not int or not 2 <= coefficient_value <= 9:
                 raise ValueError("candidate fork lost its exact coefficient")
-        elif control[0] == "landmine" and control[1] is None:
-            pass
+            kind: Literal["fork", "landmine"] = "fork"
+            coefficient: int | None = coefficient_value
+        elif kind_value == "landmine" and coefficient_value is None:
+            kind = "landmine"
+            coefficient = None
         else:
             raise ValueError("candidate control is neither Fork a nor Landmine")
-        if not isinstance(row, (tuple, list)) or len(row) != 2:
+        if not isinstance(row_value, (tuple, list)):
+            raise ValueError("candidate did not retain both ordered edge slots")
+        row: Sequence[object] = cast(Sequence[object], row_value)
+        if len(row) != 2:
             raise ValueError("candidate did not retain both ordered edge slots")
         mapped: list[int | None] = []
         for target in row:
@@ -289,16 +301,16 @@ def _validate_class_rows(
                 mapped.append(target)
             else:
                 raise ValueError("candidate child class leaves its quotient")
-        if control[0] == "landmine" and mapped != [None, None]:
+        if kind == "landmine" and mapped != [None, None]:
             raise ValueError("landmine candidate row has children")
-        if control[0] == "fork" and any(target is None for target in mapped):
+        if kind == "fork" and any(target is None for target in mapped):
             raise ValueError("fork candidate lost an ordered child")
-        normalized_controls.append((control[0], control[1]))
+        normalized_controls.append((kind, coefficient))
         normalized_children.append((mapped[0], mapped[1]))
     return tuple(normalized_controls), tuple(normalized_children)
 
 
-def _write_new(path: Path, content: str) -> None:
+def write_new(path: Path, content: str) -> None:
     """Write new evidence or generated theory data without replacing prior work."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8", newline="\n") as target:
@@ -337,11 +349,13 @@ def _control(macro: CompletedMacroReturn) -> Control:
     return ("fork", macro.destination_a)
 
 
-def _completed_macro_return(macro: CompletedMacroReturn) -> _CompletedMacroReturn:
+def _completed_macro_return(
+    macro: CompletedMacroReturn,
+) -> CompletedMacroReturnAudit:
     """Validate one sealed producer return and project its exact C1 header."""
-    _completed_macro_return_component_seal(macro)
+    validate_completed_macro_return(macro)
     control = _control(macro)
-    return _CompletedMacroReturn(
+    return CompletedMacroReturnAudit(
         macro.source,
         macro.exponent_delta,
         macro.weight,
@@ -352,7 +366,7 @@ def _completed_macro_return(macro: CompletedMacroReturn) -> _CompletedMacroRetur
 
 
 def _rows(
-    macros: tuple[_CompletedMacroReturn, ...],
+    macros: tuple[CompletedMacroReturnAudit, ...],
     indices: dict[BoundaryState, int],
 ) -> tuple[RawRow, ...]:
     result: list[RawRow] = []
@@ -376,7 +390,7 @@ def _rows(
     return tuple(result)
 
 
-def _refine_with_witnesses(
+def refine_with_witnesses(
     rows: tuple[RawRow, ...],
     controls: tuple[Control, ...],
     states: tuple[BoundaryState, ...],
@@ -445,11 +459,11 @@ def _quotient_rows(
     return tuple(outputs), tuple(child_rows)
 
 
-def _class_rank_candidate(
+def class_rank_candidate(
     controls: tuple[Control, ...], children: tuple[ClassRow, ...]
 ) -> tuple[int | None, ...]:
     """Derive and locally check least finite losing ranks on candidate CIDs."""
-    controls, children = _validate_class_rows(controls, children)
+    controls, children = validate_class_rows(controls, children)
     if len(controls) != len(children):
         raise AssertionError("candidate controls and child rows have different sizes")
     ranks: list[int | None] = [0 if row == (None, None) else None for row in children]
@@ -493,7 +507,7 @@ def _class_rank_candidate(
     return tuple(ranks)
 
 
-def _reencode_candidate(
+def reencode_candidate(
     input_path: Path,
     candidate_path: Path,
     occurrence_path: Path,
@@ -502,13 +516,10 @@ def _reencode_candidate(
 ) -> dict[str, object]:
     """Validate dimensions and compact a prior raw candidate without rebuilding it."""
     raw_source: object = json.loads(input_path.read_text(encoding="utf-8"))
-    if not isinstance(raw_source, dict):
+    source_mapping = string_keyed_mapping(raw_source)
+    if source_mapping is None:
         raise TypeError("candidate JSON root must be an object")
-    source: dict[str, object] = {}
-    for key, value in raw_source.items():
-        if not isinstance(key, str):
-            raise TypeError("candidate JSON object keys must be strings")
-        source[key] = value
+    source: dict[str, object] = dict(source_mapping)
     if source.get("format") != "comma-semantic-future-candidate-v1":
         raise ValueError("input is not a v1 semantic future candidate")
 
@@ -516,7 +527,7 @@ def _reencode_candidate(
         value = source.get(name)
         if not isinstance(value, list):
             raise TypeError(f"candidate field {name!r} must be a list")
-        return value
+        return cast(list[object], value)
 
     states = list_field("states")
     class_ids = list_field("class_of_state")
@@ -546,16 +557,16 @@ def _reencode_candidate(
     max_cid = _candidate_universe_size() - 1
     packed_ids = future_artifact.encode_unsigned_varints(dense_ids, max_value=max_cid)
     if (
-        _decode_unsigned_varints(
+        decode_unsigned_varints(
             packed_ids, max_values=_candidate_universe_size(), max_value=max_cid
         )
         != dense_ids
     ):
         raise AssertionError("candidate CID binding failed its codec round trip")
-    normalized_controls, normalized_children = _validate_class_rows(
+    normalized_controls, normalized_children = validate_class_rows(
         tuple(controls), tuple(children)
     )
-    rank_candidate = _class_rank_candidate(normalized_controls, normalized_children)
+    rank_candidate = class_rank_candidate(normalized_controls, normalized_children)
     paths = [candidate_path.resolve(), occurrence_path.resolve()]
     if isabelle_data_path is not None:
         paths.append(isabelle_data_path.resolve())
@@ -598,18 +609,18 @@ def _reencode_candidate(
         "state_universe": compact["state_universe"],
         "occurrence_payloads": payloads,
     }
-    _write_new(
+    write_new(
         candidate_path,
         future_artifact.canonical_candidate_bytes(compact).decode("ascii"),
     )
-    _write_new(
+    write_new(
         occurrence_path,
         json.dumps(occurrence, sort_keys=True, separators=(",", ":")) + "\n",
     )
     if isabelle_data_path is not None:
-        _write_new(
+        write_new(
             isabelle_data_path,
-            _render_candidate_data_theory(
+            render_candidate_data_theory(
                 dense_ids,
                 tuple(normalized_controls),
                 tuple(normalized_children),
@@ -669,7 +680,7 @@ def _hol_list_definition(
     return "\n".join(lines)
 
 
-def _render_candidate_data_theory(
+def render_candidate_data_theory(
     class_ids: tuple[int, ...],
     controls: tuple[Control, ...],
     children: tuple[ClassRow, ...],
@@ -750,10 +761,10 @@ def verify_runtime_candidate_hol_data_binding(
     def discard_validation_charge(_amount: int) -> None:
         return None
 
-    bounded_record = future_provider._preflight_future_candidate(
+    bounded_record = future_provider.preflight_future_candidate(
         record, charge_work=discard_validation_charge
     )
-    source_classes, parsed_classes = future_provider._validate_record(
+    source_classes, parsed_classes = future_provider.validate_record(
         bounded_record, charge_work=discard_validation_charge
     )
     control_records: list[Control] = []
@@ -768,10 +779,10 @@ def verify_runtime_candidate_hol_data_binding(
     controls = tuple(control_records)
     children = tuple(row.ordered_children for row in parsed_classes)
     ranks = tuple(row.rank for row in parsed_classes)
-    generated_text = _render_candidate_data_theory(
+    generated_text = render_candidate_data_theory(
         source_classes, controls, children, ranks
     )
-    return future_artifact._runtime_candidate_sha256_after_hol_match(
+    return future_artifact.runtime_candidate_sha256_after_hol_match(
         bounded_record, generated_text, checked_data_path
     )
 
@@ -817,10 +828,10 @@ def build_semantic_future_candidate() -> SemanticFutureCandidate:
     )
     controls = tuple(macro.control for macro in macros)
     rows = _rows(macros, indices)
-    payloads = _c1_payloads(states, macros, indices)
-    class_ids, witnesses, rounds = _refine_with_witnesses(rows, controls, states)
+    payloads = c1_payloads(states, macros, indices)
+    class_ids, witnesses, rounds = refine_with_witnesses(rows, controls, states)
     class_controls, class_children = _quotient_rows(rows, controls, class_ids)
-    class_ranks = _class_rank_candidate(class_controls, class_children)
+    class_ranks = class_rank_candidate(class_controls, class_children)
     return SemanticFutureCandidate(
         states,
         controls,
@@ -846,143 +857,12 @@ __all__ = [
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Generate an untrusted source-derived semantic FutureCID candidate"
+    """Run the semantic FutureCID candidate command line."""
+    from devtools.verification.comma_semantic_future_candidate_cli import (
+        main as run_cli,
     )
-    parser.add_argument(
-        "--output", type=Path, required=True, help="fresh candidate output path"
-    )
-    parser.add_argument(
-        "--from-isabelle-data", type=Path, help="export authored tables"
-    )
-    parser.add_argument("--occurrence-output", type=Path, help="C1/weight audit output")
-    parser.add_argument("--runtime-output", type=Path, help="canonical v2 output")
-    parser.add_argument("--reencode-input", type=Path, help="existing v1 candidate")
-    parser.add_argument("--isabelle-data-output", type=Path, help="generated HOL data")
-    parser.add_argument("--checked-isabelle-data", type=Path, help="authored HOL data")
-    args = parser.parse_args()
-    if args.from_isabelle_data is not None:
-        if any(
-            (
-                args.occurrence_output,
-                args.runtime_output,
-                args.reencode_input,
-                args.isabelle_data_output,
-                args.checked_isabelle_data,
-            )
-        ):
-            raise ValueError("HOL data export cannot be combined with other modes")
-        result = future_artifact.write_runtime_candidate_from_isabelle_data(
-            args.from_isabelle_data, args.output
-        )
-        print(json.dumps(result, sort_keys=True))
-        return
-    if args.reencode_input is not None:
-        if args.runtime_output is not None:
-            raise ValueError("re-encoding already writes the v2 runtime candidate")
-        occurrence_output = args.occurrence_output or args.output.with_name(
-            args.output.stem + ".occurrence.json"
-        )
-        print(
-            json.dumps(
-                _reencode_candidate(
-                    args.reencode_input,
-                    args.output,
-                    occurrence_output,
-                    args.isabelle_data_output,
-                    args.checked_isabelle_data,
-                ),
-                sort_keys=True,
-            )
-        )
-        return
-    candidate = build_semantic_future_candidate()
-    occurrence_output = args.occurrence_output or args.output.with_name(
-        args.output.stem + ".occurrence.json"
-    )
-    future_artifact.validate_output_paths(
-        args.output, occurrence_output, args.runtime_output, args.isabelle_data_output
-    )
-    output_paths = {
-        path.resolve()
-        for path in (
-            args.output,
-            occurrence_output,
-            args.runtime_output,
-            args.isabelle_data_output,
-        )
-        if path is not None
-    }
-    if (
-        args.checked_isabelle_data is not None
-        and args.checked_isabelle_data.resolve() in output_paths
-    ):
-        raise ValueError("checked Isabelle data must be distinct from outputs")
-    checked_runtime_sha256 = (
-        None
-        if args.checked_isabelle_data is None
-        else verify_runtime_candidate_hol_data_binding(
-            candidate.runtime_candidate_record(), args.checked_isabelle_data
-        )
-    )
-    _write_new(
-        args.output,
-        future_artifact.canonical_candidate_bytes(
-            candidate.certificate_record()
-        ).decode("ascii"),
-    )
-    _write_new(
-        occurrence_output,
-        json.dumps(
-            candidate.occurrence_payload_record(),
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        + "\n",
-    )
-    if args.runtime_output is not None:
-        _write_new(
-            args.runtime_output,
-            candidate.runtime_candidate_bytes().decode("ascii"),
-        )
-    if args.isabelle_data_output is not None:
-        _write_new(args.isabelle_data_output, candidate.isabelle_candidate_data())
-    print(
-        json.dumps(
-            {
-                "output": str(args.output),
-                "states": len(candidate.states),
-                "classes": len(candidate.class_controls),
-                "ranked_classes": sum(
-                    rank is not None for rank in candidate.class_ranks
-                ),
-                "refinement_rounds": candidate.refinement_rounds,
-                "collision_witnesses": len(candidate.refinement_collisions),
-                "seam_projected_from_cid": candidate.seam_is_projected_from_cid,
-                "occurrence_output": str(occurrence_output),
-                "runtime_output": (
-                    None if args.runtime_output is None else str(args.runtime_output)
-                ),
-                "runtime_sha256": (
-                    None
-                    if args.runtime_output is None
-                    else candidate.runtime_candidate_sha256()
-                ),
-                "isabelle_data_output": (
-                    None
-                    if args.isabelle_data_output is None
-                    else str(args.isabelle_data_output)
-                ),
-                "checked_isabelle_data": (
-                    None
-                    if args.checked_isabelle_data is None
-                    else str(args.checked_isabelle_data)
-                ),
-                "checked_runtime_sha256": checked_runtime_sha256,
-            },
-            sort_keys=True,
-        )
-    )
+
+    run_cli()
 
 
 if __name__ == "__main__":

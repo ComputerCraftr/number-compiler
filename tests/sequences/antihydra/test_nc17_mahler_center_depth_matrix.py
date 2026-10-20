@@ -120,7 +120,9 @@ def test_powered_source_reuses_admitted_pointed_successor_actions(
         MahlerJointFutureAction,
     )
 
-    def forbidden_prefix_discovery(*_args: object, **_kwargs: object) -> object:
+    def forbidden_prefix_discovery(
+        _cls: type[MahlerJointFutureAction], /, *_args: object, **_kwargs: object
+    ) -> object:
         raise AssertionError("pointed powered leaves must reuse selected actions")
 
     monkeypatch.setattr(
@@ -186,7 +188,7 @@ def test_source_authority_cannot_be_forged_through_public_dataclass_fields() -> 
         bool_tampered.packet()
     mutated_matrix = T.from_source(100007, 2)
     object.__setattr__(
-        mutated_matrix.matrix._relation,
+        object.__getattribute__(mutated_matrix.matrix, "_relation"),
         "rows",
         tuple(bool(row) for row in mutated_matrix.matrix.rows),
     )

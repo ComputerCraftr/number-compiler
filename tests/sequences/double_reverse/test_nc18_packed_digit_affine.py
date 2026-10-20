@@ -17,21 +17,21 @@ from number_compiler.sequences.double_reverse.temporal_hashlife import (
 )
 from number_compiler.sequences.double_reverse.temporal_packed_ring import (
     RingWindowRequest,
-    _certified_periodic_motif,
-    _digits_to_masks,
-    _mask_digit,
-    _periodic_evolve,
-    _two_step_row,
-    _window_geometry,
+    certified_periodic_motif,
+    digits_to_masks,
+    mask_digit,
+    periodic_evolve,
     pointed_ring_windows,
+    two_step_row,
+    window_geometry,
 )
 
 
 def test_all_decimal_stencil_triples_match_packed_t2() -> None:
     for left, center, right in product(range(10), repeat=3):
-        masks = _digits_to_masks(bytearray((left, center, right)))
-        output, _, _ = _two_step_row(masks, 3)
-        assert _mask_digit(output, 0) == stencil_cell(left, center, right)
+        masks = digits_to_masks(bytearray((left, center, right)))
+        output, _, _ = two_step_row(masks, 3)
+        assert mask_digit(output, 0) == stencil_cell(left, center, right)
 
 
 def test_affine_composition_tracks_action_relative_phases() -> None:
@@ -54,15 +54,11 @@ def test_packed_paired_windows_match_exact_pointed_windows(
             # Seed 139 has no admitted prefix in the historical 32-tick
             # window. Its independently certified entry is generation 34;
             # admit exactly that source before testing its remaining 16 F steps.
-            term._adapter.temporal_hashlife.admit_extended_prefix(34)
-            entry = term._certified_prefix_entry(
-                max_prefix=34, require_even_remainder=True
-            )
+            term.temporal_engine.admit_extended_prefix(34)
+            entry, source = term.prepare_bank_source(max_prefix=34)
             assert entry.physical_steps == 34
-            root, phase, steps, width = term._pointed_shape(entry)
-            source = term._pointed_bank_source(entry, root, phase, steps, width)
         else:
-            _, source = term._prepare_bank_source(max_prefix=32)
+            _, source = term.prepare_bank_source(max_prefix=32)
         engine = source.engine
         phase = source.phase
         root = source.root
@@ -91,7 +87,7 @@ def test_packed_paired_windows_match_exact_pointed_windows(
 
 def test_packed_merge_accepts_odd_and_even_causal_spans() -> None:
     with DoubleReverseTerm(196, 32, max_state_bits=16384) as term:
-        _, source = term._prepare_bank_source(max_prefix=32)
+        _, source = term.prepare_bank_source(max_prefix=32)
         engine = source.engine
         root = source.root
         phase = source.phase
@@ -110,7 +106,7 @@ def test_far_disjoint_windows_read_only_their_source_intervals_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with DoubleReverseTerm(196, 32, max_state_bits=16384) as term:
-        _, source = term._prepare_bank_source(max_prefix=32)
+        _, source = term.prepare_bank_source(max_prefix=32)
         engine = source.engine
         # Use a later admitted endpoint: the bank-entry source itself is too
         # narrow for two independent causal windows near opposite borders.
@@ -130,7 +126,7 @@ def test_far_disjoint_windows_read_only_their_source_intervals_once(
             for request in requests
         )
         geometries = tuple(
-            _window_geometry(steps, phase, request) for request in requests
+            window_geometry(steps, phase, request) for request in requests
         )
         ordered = tuple(sorted(geometries))
         assert ordered[0][1] < ordered[1][0]
@@ -143,7 +139,7 @@ def test_far_disjoint_windows_read_only_their_source_intervals_once(
 
         window_cones: list[tuple[int, int]] = []
         source_slices: list[tuple[int, int]] = []
-        original_window = DoubleReverseTemporalHashlife._pointed_source_window
+        original_window = DoubleReverseTemporalHashlife.pointed_source_window
         original_part = DoubleReverseTemporalHashlife.part
 
         def capture_window(
@@ -166,7 +162,7 @@ def test_far_disjoint_windows_read_only_their_source_intervals_once(
             return original_part(receiver, source_root, begin, end)
 
         monkeypatch.setattr(
-            DoubleReverseTemporalHashlife, "_pointed_source_window", capture_window
+            DoubleReverseTemporalHashlife, "pointed_source_window", capture_window
         )
         monkeypatch.setattr(DoubleReverseTemporalHashlife, "part", capture_part)
         actual = pointed_ring_windows(engine, root, steps, phase, requests)
@@ -178,14 +174,14 @@ def test_far_disjoint_windows_read_only_their_source_intervals_once(
 
 def test_periodic_shortcut_requires_the_complete_causal_slp() -> None:
     with DoubleReverseTerm(196, 32, max_state_bits=16384) as term:
-        engine = term._adapter.temporal_hashlife
+        engine = term.temporal_engine
         motif = (1, 2, 3)
         repeated = engine.arena.repeat(engine.arena.word(motif), 40)
 
         for max_states in (0, 1):
             scratch_before = engine.ledger.inventory_owner(engine.scratch_owner)
             assert (
-                _certified_periodic_motif(engine, repeated, max_states=max_states)
+                certified_periodic_motif(engine, repeated, max_states=max_states)
                 is None
             )
             scratch_after = engine.ledger.inventory_owner(engine.scratch_owner)
@@ -194,7 +190,7 @@ def test_periodic_shortcut_requires_the_complete_causal_slp() -> None:
                 scratch_before.nodes,
             )
 
-        assert _certified_periodic_motif(engine, repeated) == motif
+        assert certified_periodic_motif(engine, repeated) == motif
 
         edited = engine.arena.concat(
             engine.arena.concat(
@@ -203,15 +199,15 @@ def test_periodic_shortcut_requires_the_complete_causal_slp() -> None:
             ),
             engine.arena.repeat(engine.arena.word(motif), 20),
         )
-        assert _certified_periodic_motif(engine, edited) is None
+        assert certified_periodic_motif(engine, edited) is None
 
 
 def test_certified_periodic_evolution_matches_literal_ring_steps() -> None:
     with DoubleReverseTerm(196, 32, max_state_bits=16384) as term:
-        engine = term._adapter.temporal_hashlife
+        engine = term.temporal_engine
         for motif in ((1,), (1, 4), (1, 2, 3), (1, 4, 7, 2)):
             for steps in (1, 2, 7, 64):
-                evolved = _periodic_evolve(engine, motif, steps, (0,))
+                evolved = periodic_evolve(engine, motif, steps, (0,))
                 assert evolved is not None
                 result, actions = evolved
                 row: tuple[int, ...] = motif

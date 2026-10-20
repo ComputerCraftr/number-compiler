@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from number_compiler.resources.hashlife_behavior_metrics import (
+    HashLifeBehaviorMetrics,
+)
 from number_compiler.resources.metric_collection import (
     collect_ledger_metrics,
     ledger_fields_from,
 )
-from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
 from number_compiler.resources.metric_replace import replace_metric
 
 if TYPE_CHECKING:

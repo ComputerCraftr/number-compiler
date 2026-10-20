@@ -25,9 +25,11 @@ arbitrary width or border trace by merely finding it consistent.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, TypeGuard
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.arithmetic.fields.radix import digit_threshold_mask
 
 _FULL = (1 << 10) - 1
@@ -45,12 +47,16 @@ def _members(mask: int) -> tuple[int, ...]:
     return tuple(d for d in range(10) if mask & (1 << d))
 
 
+def _is_digit_collection(value: object) -> TypeGuard[Iterable[object]]:
+    return isinstance(value, (tuple, list, set, frozenset))
+
+
 def _mask(values: object) -> int:
     if type(values) is int:
         if not 0 <= values <= 9:
             raise ValueError("digit constraint must be between 0 and 9")
         return 1 << values
-    if not isinstance(values, (tuple, list, set, frozenset)):
+    if not _is_digit_collection(values):
         raise TypeError("digit constraint must be a digit or a collection of digits")
     result = 0
     for digit in values:
@@ -133,7 +139,11 @@ class InwardCarryConstraints:
         self._shrink(time, index, _mask(digits))
 
     def constrain_prefix(self, time: int, word: str) -> None:
-        if not isinstance(word, str) or not word.isascii() or not word.isdigit():
+        if (
+            not is_runtime_instance(word, str)
+            or not word.isascii()
+            or not word.isdigit()
+        ):
             raise ValueError("prefix must be decimal digits")
         if len(word) > self.widths[time]:
             raise ValueError("prefix extends beyond source width")
@@ -141,7 +151,11 @@ class InwardCarryConstraints:
             self.constrain(time, i, int(char))
 
     def constrain_suffix(self, time: int, word: str) -> None:
-        if not isinstance(word, str) or not word.isascii() or not word.isdigit():
+        if (
+            not is_runtime_instance(word, str)
+            or not word.isascii()
+            or not word.isdigit()
+        ):
             raise ValueError("suffix must be decimal digits")
         if len(word) > self.widths[time]:
             raise ValueError("suffix extends beyond source width")
@@ -464,7 +478,7 @@ class InwardCarryConstraints:
         )
         pairs: list[tuple[tuple[str, ...], ...]] = []
         for t, row in enumerate(self._domains):
-            word = []
+            word: list[tuple[str, ...]] = []
             for i in range((len(row) + 1) // 2):
                 j = len(row) - 1 - i
                 key = t, i

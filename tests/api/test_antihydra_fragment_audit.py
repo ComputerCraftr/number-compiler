@@ -60,7 +60,7 @@ def _install_forged_binding(
     fragment: ProjectionFragment,
 ) -> None:
     """Install a fully resealed malformed candidate at the injection boundary."""
-    nodes = cache._nodes(key)
+    nodes = cache.retained_nodes(key)
     cache.ledger.reserve_many(((cache.owner, 1, nodes), (cache.seal_owner, 1, 2)))
     cache.fragments[key] = fragment
     cache.seals[key] = (
@@ -123,7 +123,7 @@ def test_fragment_audit_scans_one_source_prefix_for_mixed_demands() -> None:
     second.evaluate()
     third.evaluate()
 
-    cache = result._engine.projection_fragments
+    cache = result.source_engine.projection_fragments
     fragments = tuple(cache.fragments.items())
     seals = {key: cache.seals[key] for key, _ in fragments}
     cache.fragments.clear()
@@ -135,8 +135,8 @@ def test_fragment_audit_scans_one_source_prefix_for_mixed_demands() -> None:
     for key in cache.fragments:
         starts_by_source.setdefault(key.source_owner, []).append(key.start)
     assert starts_by_source == {
-        result._term.segment_owner: [128, 64, 0, 128, 64, 0],
-        shorter._term.segment_owner: [64, 0],
+        result.source_term.segment_owner: [128, 64, 0, 128, 64, 0],
+        shorter.source_term.segment_owner: [64, 0],
     }
     assert len({key.modulus for key in cache.fragments}) == 3
     before = result.ledger.counters.get(
@@ -185,7 +185,7 @@ def test_fragment_audit_rejects_resealed_forged_source_binding(
         modulus=5,
     )
     projection.evaluate()
-    cache = result._engine.projection_fragments
+    cache = result.source_engine.projection_fragments
     original_key = next(iter(cache.fragments))
     original_fragment = cache.fragments[original_key]
     forged_key = _forge_key(original_key, field, value)
@@ -216,7 +216,7 @@ def test_fragment_audit_rejects_resealed_foreign_term_authority() -> None:
     original_fragment = cache.fragments[original_key]
     forged_key = replace(
         original_key,
-        source_owner=foreign._term.segment_owner,
+        source_owner=foreign.source_term.segment_owner,
     )
     forged_fragment = replace(original_fragment, key=forged_key)
     cache.clear()
@@ -236,7 +236,7 @@ def test_fragment_audit_does_not_approve_changed_seal_content() -> None:
         modulus=3,
     )
     projection.evaluate()
-    cache = result._engine.projection_fragments
+    cache = result.source_engine.projection_fragments
     key = next(iter(cache.fragments))
     original = cache.seals[key]
     cache.seals[key] = (original[0], original[1], original[2] + 1)

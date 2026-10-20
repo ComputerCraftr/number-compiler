@@ -241,7 +241,7 @@ def test_foreign_boundary_concat_rejects_before_lookup_or_mutation() -> None:
             foreign_tiles, foreign_adapter, foreign_primitive, (1,)
         ) as foreign,
     ):
-        before_memo = tuple(scheduler.results._memo.items())
+        before_memo = tuple(scheduler.results.audit_snapshot().memo.items())
         before_counters = dict(ledger.counters)
         with pytest.raises(ValueError, match="different arena"):
             concat_cached_boundary_views(
@@ -250,7 +250,7 @@ def test_foreign_boundary_concat_rejects_before_lookup_or_mutation() -> None:
                 BoundaryTileView(local.tile, 0, 1),
                 BoundaryTileView(foreign.tile, 0, 1),
             )
-        assert tuple(scheduler.results._memo.items()) == before_memo
+        assert tuple(scheduler.results.audit_snapshot().memo.items()) == before_memo
         assert dict(ledger.counters) == before_counters
 
 
@@ -264,8 +264,8 @@ def test_boundary_concat_budget_failure_rolls_back_memo_and_reverse_index() -> N
         alphabet = adapter.alphabet(primitive)
         first = BoundaryTileView(left.tile, 0, 1)
         second = BoundaryTileView(right.tile, 0, 1)
-        memo_before = tuple(scheduler.results._memo.items())
-        reverse_before = tuple(scheduler.results._reverse.items())
+        memo_before = tuple(scheduler.results.audit_snapshot().memo.items())
+        reverse_before = tuple(scheduler.results.audit_snapshot().reverse.items())
         ledger.max_cache_entries = ledger.entries
         with pytest.raises(BlockContextBudgetExceeded):
             concat_cached_boundary_views(
@@ -274,8 +274,10 @@ def test_boundary_concat_budget_failure_rolls_back_memo_and_reverse_index() -> N
                 first,
                 second,
             )
-        assert tuple(scheduler.results._memo.items()) == memo_before
-        assert tuple(scheduler.results._reverse.items()) == reverse_before
+        assert tuple(scheduler.results.audit_snapshot().memo.items()) == memo_before
+        assert (
+            tuple(scheduler.results.audit_snapshot().reverse.items()) == reverse_before
+        )
 
 
 def test_application_pins_clipped_normalization_across_observations(
@@ -303,7 +305,7 @@ def test_application_pins_clipped_normalization_across_observations(
             first, lease = normalize_cached_region(
                 scheduler.results,
                 raw,
-                dependencies=scheduler._causal_dependencies,
+                dependencies=scheduler.dependency_leases,
                 application=application.identity,
             )
             first_tile = first.tile
@@ -318,7 +320,7 @@ def test_application_pins_clipped_normalization_across_observations(
             second, second_lease = normalize_cached_region(
                 scheduler.results,
                 raw,
-                dependencies=scheduler._causal_dependencies,
+                dependencies=scheduler.dependency_leases,
                 application=application.identity,
             )
             try:
@@ -354,8 +356,12 @@ def test_different_backings_share_content_but_keep_occurrence_bindings() -> None
         try:
             assert left.tile == right.tile
             assert NormalizedRegionKey(first_raw) != NormalizedRegionKey(second_raw)
-            first_record = scheduler.results._memo[NormalizedRegionKey(first_raw)]
-            second_record = scheduler.results._memo[NormalizedRegionKey(second_raw)]
+            first_record = scheduler.results.audit_snapshot().memo[
+                NormalizedRegionKey(first_raw)
+            ]
+            second_record = scheduler.results.audit_snapshot().memo[
+                NormalizedRegionKey(second_raw)
+            ]
             assert isinstance(first_record, NormalizedRegionResult)
             assert isinstance(second_record, NormalizedRegionResult)
             assert first_record.view == left
@@ -383,15 +389,15 @@ def test_foreign_region_rejects_before_memo_lookup_or_mutation() -> None:
         foreign_primitive,
         (0, 1),
     ) as foreign:
-        before = tuple(scheduler.results._memo.items())
-        records_before = tuple(tiles._nodes.items())
+        before = tuple(scheduler.results.audit_snapshot().memo.items())
+        records_before = tuple(tiles.audit_snapshot().nodes.items())
         with pytest.raises(ValueError, match="different arena"):
             normalize_cached_region(
                 scheduler.results,
                 BoundaryTileView(foreign.tile, 0, 1),
             )
-        assert tuple(scheduler.results._memo.items()) == before
-        assert tuple(tiles._nodes.items()) == records_before
+        assert tuple(scheduler.results.audit_snapshot().memo.items()) == before
+        assert tuple(tiles.audit_snapshot().nodes.items()) == records_before
 
 
 def test_region_publication_failure_rolls_back_index_and_application_pins(
@@ -409,24 +415,27 @@ def test_region_publication_failure_rolls_back_index_and_application_pins(
             adapter.initial_ports(action),
             adapter.wiring(action),
         ) as application:
-            memo_before = tuple(scheduler.results._memo.items())
-            reverse_before = tuple(scheduler.results._reverse.items())
-            dependencies_before = tuple(scheduler._causal_dependencies.records.items())
+            memo_before = tuple(scheduler.results.audit_snapshot().memo.items())
+            reverse_before = tuple(scheduler.results.audit_snapshot().reverse.items())
+            dependencies_before = tuple(scheduler.dependency_leases.records.items())
 
             def fail_reverse(*_args: object, **_kwargs: object) -> Never:
                 raise RuntimeError("injected region reverse-index failure")
 
-            monkeypatch.setattr(scheduler.results, "_write_reverse", fail_reverse)
+            monkeypatch.setattr(scheduler.results, "write_reverse", fail_reverse)
             with pytest.raises(RuntimeError, match="injected region"):
                 normalize_cached_region(
                     scheduler.results,
                     raw,
-                    dependencies=scheduler._causal_dependencies,
+                    dependencies=scheduler.dependency_leases,
                     application=application.identity,
                 )
-            assert tuple(scheduler.results._memo.items()) == memo_before
-            assert tuple(scheduler.results._reverse.items()) == reverse_before
-            assert tuple(scheduler._causal_dependencies.records.items()) == (
+            assert tuple(scheduler.results.audit_snapshot().memo.items()) == memo_before
+            assert (
+                tuple(scheduler.results.audit_snapshot().reverse.items())
+                == reverse_before
+            )
+            assert tuple(scheduler.dependency_leases.records.items()) == (
                 dependencies_before
             )
 
@@ -450,7 +459,7 @@ def test_warm_region_detach_failure_rolls_back_new_dependency_pins(
                 adapter.initial_ports(action),
                 adapter.wiring(action),
             ) as application:
-                dependencies = scheduler._causal_dependencies
+                dependencies = scheduler.dependency_leases
                 snapshot = capture_tile_dependency_state(
                     ledger,
                     tiles,
@@ -484,7 +493,9 @@ def test_cold_region_seal_failure_closes_normalized_lease(
         tiles, adapter, primitive, (4, 0, 1, 2, 3, 4, 4, 4)
     ) as source:
         raw = BoundaryTileView(source.tile, -11, 3, 0, 1)
-        lease_entries_before = ledger.inventory()[tiles._lease_owner].entries
+        lease_entries_before = ledger.inventory()[
+            tiles.audit_snapshot().lease_owner
+        ].entries
 
         def fail_seal(*_args: object) -> Never:
             raise MemoryError("injected normalized region seal failure")
@@ -493,8 +504,11 @@ def test_cold_region_seal_failure_closes_normalized_lease(
         with pytest.raises(MemoryError, match="region seal"):
             normalize_cached_region(scheduler.results, raw)
 
-        assert not scheduler.results._memo
-        assert ledger.inventory()[tiles._lease_owner].entries == lease_entries_before
+        assert not scheduler.results.audit_snapshot().memo
+        assert (
+            ledger.inventory()[tiles.audit_snapshot().lease_owner].entries
+            == lease_entries_before
+        )
 
 
 def test_stale_application_rejects_before_region_lookup() -> None:
@@ -513,7 +527,7 @@ def test_stale_application_rejects_before_region_lookup() -> None:
             normalize_cached_region(
                 scheduler.results,
                 BoundaryTileView(source.tile, 0, 2, 0, 1),
-                dependencies=scheduler._causal_dependencies,
+                dependencies=scheduler.dependency_leases,
                 application=stale,
             )
         after = dict(ledger.counters)
@@ -539,11 +553,11 @@ def test_forged_region_scalars_reject_before_memo_or_counter_mutation(
     with make_tile_from_symbols(tiles, adapter, primitive, (0, 1)) as source:
         view = BoundaryTileView(source.tile, 0, 1)
         object.__setattr__(view, field, invalid)
-        before_memo = tuple(scheduler.results._memo.items())
+        before_memo = tuple(scheduler.results.audit_snapshot().memo.items())
         before_counters = dict(ledger.counters)
         with pytest.raises((TypeError, ValueError), match=message):
             normalize_cached_region(scheduler.results, view)
-        assert tuple(scheduler.results._memo.items()) == before_memo
+        assert tuple(scheduler.results.audit_snapshot().memo.items()) == before_memo
         assert dict(ledger.counters) == before_counters
 
 
@@ -567,13 +581,13 @@ def test_region_hit_metrics_forward_from_one_read_only_snapshot() -> None:
         _, first = normalize_cached_region(
             scheduler.results,
             raw,
-            dependencies=scheduler._causal_dependencies,
+            dependencies=scheduler.dependency_leases,
             application=application.identity,
         )
         _, second = normalize_cached_region(
             scheduler.results,
             raw,
-            dependencies=scheduler._causal_dependencies,
+            dependencies=scheduler.dependency_leases,
             application=application.identity,
         )
         try:
@@ -608,7 +622,7 @@ def test_forged_boolean_tile_id_rejects_before_region_lookup() -> None:
         before = dict(ledger.counters)
         with pytest.raises((TypeError, ValueError), match="malformed scoped handle"):
             normalize_cached_region(scheduler.results, view)
-        assert not scheduler.results._memo
+        assert not scheduler.results.audit_snapshot().memo
         assert dict(ledger.counters) == before
 
 

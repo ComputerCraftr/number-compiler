@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from number_compiler.arithmetic.contracts.block_kernel import (
-    _BaseLeftState,
-    _BaseRightState,
+    BaseLeftState,
+    BaseRightState,
 )
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
@@ -23,20 +23,20 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
     ThresholdDemand,
 )
 from number_compiler.arithmetic.functions.finite_port_action import (
+    ChoiceIndexKey,
     ChoiceKey,
+    DecisionIndexKey,
     DecisionKey,
+    FinitePortDecisionRecord,
     FoldedPortCut,
     PortComponent,
     PortCompositionKey,
     PortVariable,
-    _ChoiceIndexKey,
-    _Decision,
-    _DecisionIndexKey,
 )
 from number_compiler.arithmetic.functions.finite_port_substitution import (
+    PortIndexComponent,
+    SubstitutionIndexKey,
     SubstitutionKey,
-    _PortIndexComponent,
-    _SubstitutionIndexKey,
 )
 from number_compiler.hashlife.actions.lazy_compiler import CompilerCompositionKey
 from number_compiler.hashlife.execution.associated_action_images import (
@@ -47,34 +47,34 @@ from number_compiler.hashlife.tiles.tile_result_records import (
     BehaviorBindingKey,
     CompletedBehaviorClassification,
 )
-from number_compiler.projection.digit_terminal import _DigitLeftState
+from number_compiler.projection.digit_terminal import DigitLeftState
 from number_compiler.projection.microblock_cache import MicroblockKey
 from number_compiler.projection.point_response import PointResponse
 
 
 def geometry_field_policy() -> dict[type[object], frozenset[str]]:
-    result = {
+    result: dict[type[object], frozenset[str]] = {
         ArenaHandle: frozenset(("local_id",)),
         ActionProgramID: frozenset(("local_id",)),
         TransferSummaryID: frozenset(("local_id",)),
         ArenaToken: frozenset(),
         FrameTransform: frozenset(("shift",)),
         LoweringCapability: frozenset(),
-        _BaseLeftState: frozenset(),
-        _BaseRightState: frozenset(),
-        _DigitLeftState: frozenset(),
+        BaseLeftState: frozenset(),
+        BaseRightState: frozenset(),
+        DigitLeftState: frozenset(),
         PortVariable: frozenset(("time", "side", "bit")),
-        _Decision: frozenset(("low", "high")),
-        _DecisionIndexKey: frozenset(("low", "high")),
-        _ChoiceIndexKey: frozenset(("condition", "yes", "no")),
+        FinitePortDecisionRecord: frozenset(("low", "high")),
+        DecisionIndexKey: frozenset(("low", "high")),
+        ChoiceIndexKey: frozenset(("condition", "yes", "no")),
         PortComponent: frozenset(),
         FoldedPortCut: frozenset(),
         DecisionKey: frozenset(),
         ChoiceKey: frozenset(),
         PortCompositionKey: frozenset(),
         SubstitutionKey: frozenset(),
-        _PortIndexComponent: frozenset(("function",)),
-        _SubstitutionIndexKey: frozenset(("function",)),
+        PortIndexComponent: frozenset(("function",)),
+        SubstitutionIndexKey: frozenset(("function",)),
         CompilerCompositionKey: frozenset(),
         PointResponse: frozenset(("position",)),
         MicroblockKey: frozenset(("radix", "stage", "block")),

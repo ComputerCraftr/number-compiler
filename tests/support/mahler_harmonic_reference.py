@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from typing import cast
 
 from number_compiler.sequences.antihydra.mahler_border_identity import (
     MahlerOddMotifSignature,
 )
 from number_compiler.sequences.antihydra.mahler_odd_macro import MahlerOddToOddAction
+from tests.support.exact_integer_power import exact_integer_power
 
 
 def source_for_motif(word: tuple[int, ...], copies: int, *, extra_bits: int = 8) -> int:
@@ -53,7 +55,7 @@ def mapping(value: object) -> Mapping[object, object]:
     """Narrow a JSON-like test payload without casting away its runtime shape."""
     if not isinstance(value, Mapping):
         raise TypeError("expected a mapping payload")
-    return value
+    return cast(Mapping[object, object], value)
 
 
 def literal_q_harmonic_counts(
@@ -65,13 +67,14 @@ def literal_q_harmonic_counts(
     independently advanced source. The explicit modular recurrence is kept
     here once for both fixed and mixed source-word regressions.
     """
-    counts = [[[0] * 6 for _ in range(places)] for _ in range(3)]
-    for event_index, (before, after, clock, exponent) in enumerate(events):
+    counts: list[list[list[int]]] = [[[0] * 6 for _ in range(places)] for _ in range(3)]
+    for event_index, event in enumerate(events):
+        before, after, clock, exponent = event
         for place in range(1, places + 1):
-            modulus = radix**place
-            product = pow(3, exponent, modulus) * (before % modulus) % modulus
-            summand = pow(2, clock + exponent, modulus)
-            next_residue = (product + summand) % modulus
+            modulus = exact_integer_power(radix, place)
+            product: int = pow(3, exponent, modulus) * (before % modulus) % modulus
+            summand: int = pow(2, clock + exponent, modulus)
+            next_residue: int = (product + summand) % modulus
             if next_residue != after % modulus:
                 raise AssertionError("literal odd-event q recurrence is inconsistent")
             carry = int(product + summand >= modulus)

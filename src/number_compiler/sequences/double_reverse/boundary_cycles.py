@@ -10,9 +10,22 @@ Shrinking paths require a deeper trailing-digit halo and are NEVER dropped.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypeAlias
+from typing import TypeAlias, TypeGuard
+
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+)
 
 Edge: TypeAlias = tuple[int, int, int, int]  # first 2, last 2, MSDF
+
+
+def is_edge_tuple(value: object) -> TypeGuard[Edge]:
+    """Accept only an exact four-int decimal boundary tuple."""
+    return (
+        is_exact_object_tuple(value)
+        and len(value) == 4
+        and all(type(digit) is int and 0 <= digit <= 9 for digit in value)
+    )
 
 
 @dataclass(frozen=True, slots=True)

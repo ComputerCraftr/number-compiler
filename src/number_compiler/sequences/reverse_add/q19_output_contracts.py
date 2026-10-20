@@ -59,7 +59,7 @@ class ReversePairQ19OutputAuditSnapshot:
     projector: BimachineSLPProjector
     machine: FrozenPairStepLaw
     issuance_registry: Q19IssuanceRegistry
-    initial: ReversePairOutputOccurrence
+    initial: ReversePairOutputOccurrence | None
     summary_owner: int
     summaries: OwnedMemoAuditSnapshot[int, WordSummary]
     issued_owner: int

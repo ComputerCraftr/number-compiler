@@ -48,14 +48,14 @@ def emit_step(
 ) -> None:
     """Execute one primitive emission or one completed temporal join."""
     action, left, symbol, right = frame.args
-    children = engine._children(action)
+    children = engine.child_actions(action)
     if children is None:
         if type(left) is not int or type(right) is not int:
             raise TypeError("primitive emission requires finite boundary ports")
         alphabet = engine.adapter.alphabet(action)
         source = engine.tiles.leaf(alphabet, symbol)
-        engine._leases.append(source)
-        wiring = engine._wiring(action)
+        engine.lease_workspace.tiles.append(source)
+        wiring = engine.result_wiring(action)
         key, completed = probe_causal_result(
             engine.scheduler.results,
             action,
@@ -69,9 +69,9 @@ def emit_step(
             engine.ledger.bump(_execution_keys.TILE_CAUSAL_RESULT_HITS)
             values.append(payload)
             return
-        output_symbol = engine._law(action).emit(left, symbol, right)
+        output_symbol = engine.kernel_law(action).emit(left, symbol, right)
         output = engine.tiles.leaf(alphabet, output_symbol)
-        engine._leases.append(output)
+        engine.lease_workspace.tiles.append(output)
         interface = engine.adapter.leaf_interface(action, source.tile, wiring)
         occurrence = engine.adapter.leaf_observation(
             action,

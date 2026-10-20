@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from typing import cast
 
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_integer_tuple,
+    is_exact_object_tuple,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaToken,
@@ -12,6 +17,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.field_action import ProgramRole
 from number_compiler.sequences.collatz.runtime_action import (
@@ -21,6 +27,29 @@ from number_compiler.sequences.collatz.runtime_programs import (
     CollatzRuntimeProgram,
     CollatzRuntimeProgramArena,
 )
+
+IdentityKey = tuple[ProgramRole, int]
+IdentityRecord = tuple[SemanticIdentity, str, tuple[object, ...], int]
+
+
+def _identity_store(
+    arena: CollatzRuntimeProgramArena, attribute: str = "_semantic_identities"
+) -> LedgerDict[IdentityKey, IdentityRecord]:
+    """Read a cache wrapper for explicit adversarial-store test instrumentation."""
+    return cast(
+        LedgerDict[IdentityKey, IdentityRecord],
+        object.__getattribute__(arena, attribute),
+    )
+
+
+def _identity_rows(
+    arena: CollatzRuntimeProgramArena,
+) -> MutableMapping[IdentityKey, IdentityRecord]:
+    store = _identity_store(arena)
+    return cast(
+        MutableMapping[IdentityKey, IdentityRecord],
+        object.__getattribute__(store, "_data"),
+    )
 
 
 @pytest.mark.parametrize("steps", (True, 1.0))
@@ -131,20 +160,20 @@ def test_runtime_program_identity_encodes_and_memoizes_huge_exact_exponents() ->
     arena = CollatzRuntimeProgramArena(ResourceLedger())
     exponent = 10**5000
 
-    first = arena._semantic_identity_for("output", exponent)
+    first = arena.semantic_identity_for_exponent("output", exponent)
     hits_before = arena.ledger.counters.get("collatz_runtime_identity_cache_hits", 0)
-    second = arena._semantic_identity_for("output", exponent)
-    next_power = arena._semantic_identity_for("output", exponent + 1)
+    second = arena.semantic_identity_for_exponent("output", exponent)
+    next_power = arena.semantic_identity_for_exponent("output", exponent + 1)
 
     assert first is second
     assert first != next_power
     descriptor = first.behavior[2]
-    assert type(descriptor) is tuple
+    assert is_exact_object_tuple(descriptor)
     assert descriptor[0] == "exact-exponent-u64-v1"
     assert descriptor[1] == exponent.bit_length()
     limbs = descriptor[2]
-    assert type(limbs) is tuple
-    assert all(type(limb) is int and limb.bit_length() <= 64 for limb in limbs)
+    assert is_exact_integer_tuple(limbs)
+    assert all(limb.bit_length() <= 64 for limb in limbs)
     assert sum(limb << (64 * offset) for offset, limb in enumerate(limbs)) == exponent
     assert (
         arena.ledger.counters["collatz_runtime_identity_cache_hits"] == hits_before + 1
@@ -168,28 +197,28 @@ def test_runtime_program_identity_cache_hit_checks_seal_without_redigest(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     arena = CollatzRuntimeProgramArena(ResourceLedger())
-    identity = arena._semantic_identity_for("output", 13)
+    identity = arena.semantic_identity_for_exponent("output", 13)
 
     def forbidden(*_args: object, **_kwargs: object) -> str:
         pytest.fail("trusted semantic identity cache hit rehashed its behavior")
 
     monkeypatch.setattr(SemanticIdentity, "_canonical_digest", forbidden)
-    assert arena._semantic_identity_for("output", 13) is identity
+    assert arena.semantic_identity_for_exponent("output", 13) is identity
 
     object.__setattr__(identity, "digest", "0" * 64)
     with pytest.raises(ValueError, match="lost its seal"):
-        arena._semantic_identity_for("output", 13)
+        arena.semantic_identity_for_exponent("output", 13)
 
 
 def test_runtime_program_identity_cache_rejects_cross_exponent_record_reuse() -> None:
     arena = CollatzRuntimeProgramArena(ResourceLedger())
-    arena._semantic_identity_for("output", 13)
-    arena._semantic_identity_for("output", 14)
-    records = arena._semantic_identities
-    records._data["output", 14] = records["output", 13]
+    arena.semantic_identity_for_exponent("output", 13)
+    arena.semantic_identity_for_exponent("output", 14)
+    records = _identity_store(arena)
+    _identity_rows(arena)["output", 14] = records["output", 13]
 
     with pytest.raises(ValueError, match="malformed cached Collatz semantic identity"):
-        arena._semantic_identity_for("output", 14)
+        arena.semantic_identity_for_exponent("output", 14)
 
 
 def test_collatz_identity_cache_rejects_coherent_forged_same_width_limbs() -> None:
@@ -207,7 +236,7 @@ def test_collatz_identity_cache_rejects_coherent_forged_same_width_limbs() -> No
         ("exact-exponent-u64-v1", 4, (14,)),
     )
     forged = SemanticIdentity("", forged_behavior)
-    arena._semantic_identities._data["output", 13] = (
+    _identity_rows(arena)["output", 13] = (
         forged,
         forged.digest,
         forged.behavior,
@@ -230,18 +259,17 @@ def test_collatz_identity_publication_rolls_back_both_stores(
     before = ledger.snapshot()
     inject_write_once_failure(
         monkeypatch,
-        arena._semantic_identity_authority,
+        _identity_store(arena, "_semantic_identity_authority"),
         after_insert=after_insert,
     )
 
     with pytest.raises(RuntimeError, match="issued-store publication failure"):
-        arena._semantic_identity_for("output", 13)
+        arena.semantic_identity_for_exponent("output", 13)
 
     after = ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
-    assert not arena._semantic_identities
-    assert not arena._semantic_identity_authority
-    assert arena._identity_storage_nodes == 0
+    assert not _identity_store(arena)
+    assert not _identity_store(arena, "_semantic_identity_authority")
 
 
 def test_runtime_program_identity_budget_refusal_precedes_limb_allocation() -> None:
@@ -250,11 +278,11 @@ def test_runtime_program_identity_budget_refusal_precedes_limb_allocation() -> N
     before = ledger.snapshot()
 
     with pytest.raises(BlockContextBudgetExceeded):
-        arena._semantic_identity_for("output", 1 << 128)
+        arena.semantic_identity_for_exponent("output", 1 << 128)
 
     after = ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
-    assert len(arena._semantic_identities) == 0
+    assert len(_identity_store(arena)) == 0
     assert "collatz_runtime_identity_transient_byte_work" not in after.counters
 
 

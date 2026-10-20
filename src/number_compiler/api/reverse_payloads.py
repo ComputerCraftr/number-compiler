@@ -12,11 +12,11 @@ from number_compiler.arithmetic.fields.symbolic_extent import Extent
 from number_compiler.sequences.reverse_add.extent import ReverseAddBitExtent
 
 if TYPE_CHECKING:
-    from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
-    from number_compiler.sequences.reverse_add.power import (
-        ReverseAddPoweredTerm,
+    from number_compiler.resources.reverse_power_metrics import (
         ReverseAddPowerMetrics,
     )
+    from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
+    from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
 @dataclass(frozen=True, slots=True)

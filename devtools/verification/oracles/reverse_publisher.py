@@ -97,6 +97,17 @@ class _FoldFrame:
     ready: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ReversePublisherAuditSnapshot:
+    """Detached image and lifecycle facts for one issued publisher."""
+
+    closed: bool
+    image_building: bool
+    image_built: bool
+    image_failed: bool
+    image_binding_valid: bool
+
+
 class ReversePublisherProjection:
     """Sealed lazy request for one authenticated source-bound image.
 
@@ -328,6 +339,21 @@ class ReversePublisherProjection:
         self._open()
         return self._ensure_image()
 
+    def audit_snapshot(self) -> ReversePublisherAuditSnapshot:
+        """Inspect lazy publication state without exposing its sealed bindings."""
+        macro = self._macro
+        return ReversePublisherAuditSnapshot(
+            closed=self._closed,
+            image_building=self._image_building,
+            image_built=macro is not None,
+            image_failed=self._image_failure,
+            image_binding_valid=(
+                macro is not None
+                and self._image_binding is not None
+                and self._image_binding == (macro.interface, macro.output)
+            ),
+        )
+
     def _ensure_image(self) -> SourceBoundHigherMacro:
         """Build the current recursive provider without hiding cutover work.
 
@@ -466,8 +492,7 @@ class ReversePublisherProjection:
             raise ValueError("reverse publisher primitive initial states changed")
 
     def _open(self) -> ReversePublisherProjection:
-        issued = self.ledger._execution_roots.get(id(self))
-        if issued is None or issued() is not self:
+        if not self.ledger.owns_execution_root(self):
             raise ValueError("reverse publisher was not issued by its ledger")
         if type(self._closed) is not bool or self._closed:
             raise ValueError("closed reverse publisher")

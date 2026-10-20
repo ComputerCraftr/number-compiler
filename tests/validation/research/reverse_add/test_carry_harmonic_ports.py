@@ -1,6 +1,7 @@
 """Port-conditioned harmonic laws and limits of their spatial quotient."""
 
 from itertools import product
+from typing import cast
 
 import pytest
 
@@ -53,7 +54,7 @@ def test_complete_finite_generator_closure_and_fixed_length_counts() -> None:
         16: (473, 21),
         18: (501, 21),
     }
-    for row in counts:
+    for row in cast(list[dict[str, int]], counts):
         assert row["punctured_border"] == row["border"] - 1
         if row["width"] >= 6:
             assert row["punctured_border"] == 20

@@ -32,11 +32,11 @@ def pair_value_at(
     owner.validate(occurrence)
     if type(index) is not int or not 0 <= index < occurrence.pair_width:
         raise IndexError(index)
-    parity_tag_value = owner._symbol_at(occurrence.root, 0)
+    parity_tag_value = owner.symbol_at(occurrence.root, 0)
     parity = parity_tag_value - (2 * owner.base - 1)
     half_width = (occurrence.pair_width + parity) // 2
     half_index = index if index < half_width else occurrence.pair_width - 1 - index
-    return owner._symbol_at(occurrence.root, half_index + 1)
+    return owner.symbol_at(occurrence.root, half_index + 1)
 
 
 def range_summary(
@@ -56,11 +56,11 @@ def range_summary(
         begin,
         end,
         identity=Q19Summary.identity(),
-        length=lambda node_id: owner._summaries[node_id].symbols,
+        length=lambda node_id: owner.published_word_summary(node_id).symbols,
         full_value=lambda node_id, backwards: (
-            owner._summaries[node_id].reverse
+            owner.published_word_summary(node_id).reverse
             if backwards
-            else owner._summaries[node_id].forward
+            else owner.published_word_summary(node_id).forward
         ),
         compose=lambda left, right: left.then(right),
         repeat=lambda summary, count: summary.repeat(count),
@@ -85,21 +85,21 @@ def digit(
     if position == occurrence.pair_width:
         return 1
     root = occurrence.root
-    half = owner._summaries[root].symbols
+    half = owner.published_word_summary(root).symbols
     with owner.ledger.reservation(
-        owner._scratch_owner, nodes=16 * (len(owner.arena.nodes) + 1)
+        owner.scratch_owner, nodes=16 * (len(owner.arena.nodes) + 1)
     ):
-        prefix = owner._range_summary(root, 0, min(position, half))
+        prefix = owner.range_summary(root, 0, min(position, half))
         if position > half:
             prefix = prefix.then(
-                owner._range_summary(
+                owner.range_summary(
                     root,
                     occurrence.pair_width - position,
                     occurrence.pair_width - half,
                     reverse=True,
                 )
             )
-        value = owner._pair_value_at(occurrence, position)
+        value = owner.pair_value_at(occurrence, position)
         return (value + int(prefix.domain == Q19_UPPER)) % owner.base
 
 
@@ -126,14 +126,14 @@ def digits_at(
         len(unique_positions),
     )
     root = occurrence.root
-    half = owner._summaries[root].symbols
+    half = owner.published_word_summary(root).symbols
     width = occurrence.pair_width
     prefix = Q19Summary.identity()
     cursor = 0
     result: dict[int, int] = {}
     try:
         with owner.ledger.reservation(
-            owner._scratch_owner, nodes=16 * (len(owner.arena.nodes) + 1)
+            owner.scratch_owner, nodes=16 * (len(owner.arena.nodes) + 1)
         ):
             for position in unique_positions:
                 if position == width:
@@ -142,7 +142,7 @@ def digits_at(
                     continue
                 boundary = min(position, half)
                 if cursor < boundary:
-                    prefix = prefix.then(owner._range_summary(root, cursor, boundary))
+                    prefix = prefix.then(owner.range_summary(root, cursor, boundary))
                     owner.ledger.bump(
                         _reverse_add_keys.REVERSE_Q19_BATCHED_PREFIX_REGION_FOLDS
                     )
@@ -150,14 +150,14 @@ def digits_at(
                     lower = max(cursor, half)
                     if lower < position:
                         prefix = prefix.then(
-                            owner._range_summary(
+                            owner.range_summary(
                                 root, width - position, width - lower, reverse=True
                             )
                         )
                         owner.ledger.bump(
                             _reverse_add_keys.REVERSE_Q19_BATCHED_PREFIX_REGION_FOLDS
                         )
-                value = owner._pair_value_at(occurrence, position)
+                value = owner.pair_value_at(occurrence, position)
                 result[position] = (
                     value + int(prefix.domain == Q19_UPPER)
                 ) % owner.base

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from dataclasses import replace
 from random import Random
+from typing import Protocol
 
 import pytest
 
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.reverse_add import q19_border_control
 from number_compiler.sequences.reverse_add.border_carry_safety import (
     BorderTile,
     ConditionalBorderCycle,
@@ -22,7 +24,27 @@ from number_compiler.sequences.reverse_add.border_carry_safety import (
 from number_compiler.sequences.reverse_add.q19_border_control import (
     BoundaryControlNotAuthorized,
 )
+from number_compiler.sequences.reverse_add.q19_occurrence import (
+    ReversePairOutputOccurrence,
+)
 from number_compiler.sequences.reverse_add.q19_output import ReversePairQ19OutputOwner
+
+
+class _SourceInnerCarry(Protocol):
+    def __call__(
+        self,
+        owner: ReversePairQ19OutputOwner,
+        source: ReversePairOutputOccurrence,
+        *,
+        width: int,
+        k: int,
+        max_states: int,
+    ) -> tuple[int, int]: ...
+
+
+source_inner_carry: _SourceInnerCarry = object.__getattribute__(
+    q19_border_control, "_source_inner_carry"
+)
 
 
 def _reverse(x: int) -> int:
@@ -243,7 +265,7 @@ def test_certified_border_return_issues_a_punctured_conditional_f5_action() -> N
 
 def test_same_k2_outer_return_may_exit_when_first_non9_port_changes() -> None:
     x = 12302
-    seen = []
+    seen: list[BorderTile] = []
     for _ in range(5):
         seen.append(_tile(x, 2))
         x += _reverse(x)
@@ -273,15 +295,11 @@ def test_later_source_first_non9_is_not_folded_from_previous_pair_root() -> None
         ledger = ResourceLedger()
         owner = ReversePairQ19OutputOwner(ledger, digits_lsd(x, 10), base=10)
         try:
-            from number_compiler.sequences.reverse_add.q19_border_control import (
-                _source_inner_carry,
-            )
-
             issued = owner.apply_pair_step(owner.initial)
             successor = x + _reverse(x)
             emitted = successor + _reverse(successor)
             digits = digits_lsd(emitted, 10)
-            incoming, inspections = _source_inner_carry(
+            incoming, inspections = source_inner_carry(
                 owner, issued, width=len(digits), k=3, max_states=300
             )
             assert inspections >= 1

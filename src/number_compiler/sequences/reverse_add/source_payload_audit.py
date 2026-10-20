@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from typing import cast
 
 from number_compiler.resources.ledger import ResourceInventory, ResourceLedger
 from number_compiler.resources.payload_contracts import (
@@ -200,13 +201,14 @@ def audit_reverse_source_owner(
         owner, attribute = binding.owner, binding.attribute
         store = getattr(root, attribute)
         if isinstance(store, Mapping):
+            mapping = cast(Mapping[object, object], store)
             values: Iterable[object] = (
-                value for pair in store.items() for value in pair
+                value for pair in mapping.items() for value in pair
             )
         elif isinstance(store, Sequence) and not isinstance(
             store, (str, bytes, bytearray)
         ):
-            values = store
+            values = cast(Sequence[object], store)
         else:
             values = ()
         for value in values:

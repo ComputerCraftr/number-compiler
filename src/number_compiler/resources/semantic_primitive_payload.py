@@ -62,14 +62,15 @@ class PrimitiveMacroPayloadRegistry:
             and root.structures is root.quotients.structures
             and root.bits is root.structures.bits
             and root.primitives in semantic.primitives
-            and type(root.bindings._data) is LedgerDict
-            and actual.get(root.bindings.owner) is root.bindings._data
-            and ledger.is_factory_container(root.bindings._data)
+            and type(root.bindings.audit_snapshot().container) is LedgerDict
+            and actual.get(root.bindings.owner)
+            is root.bindings.audit_snapshot().container
+            and ledger.is_factory_container(root.bindings.audit_snapshot().container)
         )
 
     def audit(self) -> None:
         for arena in self.arenas:
-            for key, value in audit_mapping_items(arena.bindings._data):
+            for key, value in audit_mapping_items(arena.bindings.audit_container):
                 try:
                     accepted = self._binding(arena, key, value)
                 except (ValueError, TypeError, AttributeError, IndexError, KeyError):
@@ -101,7 +102,7 @@ class PrimitiveMacroPayloadRegistry:
             return any(
                 behavior[1] == _effect_key(kernel.effect)
                 for arena in self.arenas
-                for kernel in arena.kernels._kernels
+                for kernel in arena.kernels.audit_snapshot().kernels
             )
         except (ValueError, TypeError, AttributeError):
             return False
@@ -122,18 +123,18 @@ class PrimitiveMacroPayloadRegistry:
             or value.quotient.owner is not arena.quotients.owner
         ):
             return False
-        kernel = arena.kernels._kernels[key.kernel.local_id]
-        source = arena.cells.source_geometry._construction.source
+        kernel = arena.kernels.audit_snapshot().kernels[key.kernel.local_id]
+        source = arena.cells.source_geometry.construction.source
         if (kernel.base, kernel.blank) != (source.base, source.blank):
             return False
-        node = arena.cells._nodes[key.source.local_id]
+        node = arena.cells.audit_snapshot().nodes[key.source.local_id]
         if (
             not 0 <= node.level < 63
-            or _source_extent(arena, key.source.local_id) != value.original_extent
+            or source_extent(arena, key.source.local_id) != value.original_extent
         ):
             return False
         quotient = arena.quotients.resolve(value.quotient)
-        if not self.semantic._quotient_record(quotient):
+        if not self.semantic.quotient_record(quotient):
             return False
         interface = arena.quotients.interface(quotient.signature)
         behavior = (CONTRACT, _effect_key(kernel.effect), node.width)
@@ -181,9 +182,9 @@ class PrimitiveMacroPayloadRegistry:
         )
 
 
-def _source_extent(arena: PrimitiveMacroArena, root: int) -> int | None:
+def source_extent(arena: PrimitiveMacroArena, root: int) -> int | None:
     """Original source/join DAG only; never call a source or future observer."""
-    nodes = arena.cells._nodes
+    nodes = arena.cells.audit_snapshot().nodes
     source_tiles = {
         tile.node_id: tile
         for _, tile in audit_mapping_items(arena.cells.source_geometry.nodes)
@@ -206,7 +207,7 @@ def _source_extent(arena: PrimitiveMacroArena, root: int) -> int | None:
             if type(tile) is not DyadicTile or tile.level != node.level:
                 return None
             extent = _tile_extent(
-                tile, arena.cells.source_geometry._construction.source.blank, tiles
+                tile, arena.cells.source_geometry.construction.source.blank, tiles
             )
             if extent is None:
                 return None

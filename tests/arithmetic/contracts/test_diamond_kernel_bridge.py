@@ -43,8 +43,8 @@ def test_primitive_function_roundtrip_is_same_canonical_action(
 ) -> None:
     runtime, action = fixture()
     arena, kernels = runtime.boundaries, runtime.kernels
-    input_size = arena._domain_size(action, input_side)
-    output_size = arena._domain_size(action, 1 - input_side)
+    input_size = arena.domain_size(action, input_side)
+    output_size = arena.domain_size(action, 1 - input_side)
     assert input_size is not None and output_size is not None
     values = [
         arena.literal(

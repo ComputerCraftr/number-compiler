@@ -97,7 +97,7 @@ def test_proved_pass_metadata_does_not_materialize_the_image_filtration(
 def test_no_classical_policy_returns_unknown_without_entering_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import devtools.verification.oracles.classical_ceiling as ceiling
+    import devtools.verification.oracles.special_classical_ceiling as ceiling
     from number_compiler.api.sequence_compiler import CanonicalSequenceCompiler
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:

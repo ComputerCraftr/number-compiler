@@ -10,8 +10,8 @@ from number_compiler.hashlife.execution.dyadic_return_transport import (
     cycle_phase_summaries,
 )
 from number_compiler.resources.dyadic_return_balanced_audit import (
-    _balanced_saturated_audit,
     audit_collatz_d8_payloads,
+    balanced_saturated_audit,
 )
 from number_compiler.resources.dyadic_return_record_audit import (
     audit_action_records,
@@ -229,15 +229,18 @@ def audit_dyadic_return_payloads(
                 and type(root.steps) is int
                 and root.steps >= 0
                 and type(root.law) is DyadicReturnLaw
-                and root._law_snapshot == root.law.descriptor
+                and root.law_snapshot == root.law.descriptor
                 and root.family == root.law.family
                 and root.semantic_version == root.law.semantic_version
-                and type(root._closed) is bool
-                and not root._closed
+                and type(root.closed) is bool
+                and not root.closed
                 and type(root.scheduler) is TileScheduler
                 and scheduler_valid
                 and core is not None
-                and core._adapters.get((root.family, root.semantic_version)) is root
+                and core.audit_snapshot().adapters.get(
+                    (root.family, root.semantic_version)
+                )
+                is root
                 and len(set(owners)) == len(owners)
                 and all(type(store_owner) is int for store_owner in owners)
                 and not root.construction_stack
@@ -649,7 +652,7 @@ def audit_dyadic_return_payloads(
                                             _resources_keys.DYADIC_PAYLOAD_AUDIT_RECONSTRUCTION_HITS
                                         )
                                     else:
-                                        expected = _balanced_saturated_audit(
+                                        expected = balanced_saturated_audit(
                                             workspace.law,
                                             image_source.residue,
                                             retained.width,
@@ -670,7 +673,7 @@ def audit_dyadic_return_payloads(
                                         and metadata.entry_steps <= retained.width
                                     )
                                     if bound and law_cycle is not None:
-                                        prefix = _balanced_saturated_audit(
+                                        prefix = balanced_saturated_audit(
                                             workspace.law,
                                             image_source.residue,
                                             metadata.entry_steps,
@@ -863,7 +866,7 @@ def audit_dyadic_return_payloads(
                     (
                         id(root),
                         id(root.law),
-                        id(root._law_snapshot),
+                        id(root.law_snapshot),
                         id(root.scheduler),
                         id(root.owner),
                         id(root.identity),

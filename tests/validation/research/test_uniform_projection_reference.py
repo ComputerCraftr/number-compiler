@@ -12,18 +12,9 @@ from devtools.experiments.reverse_add.uniform_projection_reference import (
     uniform_source_admitted,
     uniform_successor,
 )
-
-
-def _literal_pair_successor(source: tuple[int, ...]) -> tuple[tuple[int, ...], int]:
-    """Normalize literal digits, then reflect; no grammar branch equations."""
-    carry, digits = 0, []
-    for pair in source:
-        carry, digit = divmod(pair + carry, 10)
-        digits.append(digit)
-    if carry:
-        digits.append(carry)
-    target = tuple(a + b for a, b in zip(digits, reversed(digits), strict=True))
-    return target, carry
+from tests.support.reference_arithmetic import (
+    literal_pair_sum_successor as _literal_pair_successor,
+)
 
 
 def test_uniform_primitive_clauses_match_literal_pair_equations() -> None:

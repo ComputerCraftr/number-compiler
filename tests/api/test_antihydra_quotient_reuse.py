@@ -3,6 +3,7 @@
 import pytest
 
 from number_compiler.arithmetic.fields.skew_transfer import integer_dyadic_fiber_action
+from number_compiler.hashlife.execution.dyadic_return_actions import append_source
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnImageID,
     DyadicReturnSourceRecord,
@@ -28,7 +29,7 @@ def test_mahler_serialization_demands_one_aggregate_and_no_segments() -> None:
         result.ledger.counters["antihydra_arithmetic_aggregate_demands"] - before == 2
     )
     assert result.ledger.counters["mahler_source_composed_image_reads"] == 1
-    assert not term._segments_ready
+    assert not term.audit_snapshot().segments_ready
     assert not term.physical_publications
 
 
@@ -59,7 +60,7 @@ def test_balanced_arithmetic_and_mahler_do_not_assemble_an_intermediate_source(
     def forbidden(*_args: object, **_kwargs: object) -> int:
         raise AssertionError("balanced source constructor assembled an exact value")
 
-    monkeypatch.setattr(AntihydraArithmeticImageWorkspace, "_source_value", forbidden)
+    monkeypatch.setattr(AntihydraArithmeticImageWorkspace, "source_value", forbidden)
     term = AntihydraArithmeticTerm(128)
     result = term.result()
     expected = 8
@@ -68,7 +69,7 @@ def test_balanced_arithmetic_and_mahler_do_not_assemble_an_intermediate_source(
     assert result.h == expected
     assert associated_action(result)["extent"] == 128
     assert term.ledger.counters["antihydra_arithmetic_temporal_balanced_routes"] == 1
-    assert not term._segments_ready
+    assert not term.audit_snapshot().segments_ready
     assert not term.physical_publications
 
 
@@ -84,17 +85,18 @@ def test_homogeneous_run_admission_matches_independent_centered_recurrence(
     term.result()
     workspace = term.arithmetic_workspace
     assert workspace is not None
-    source = workspace._append_source(
-        DyadicReturnSourceRecord(residue, width, lift, None, None, None, 0, True)
+    source = append_source(
+        workspace,
+        DyadicReturnSourceRecord(residue, width, lift, None, None, None, 0, True),
     )
     image = workspace.scheduler.source_image(workspace, source, workspace.identity)
-    view = workspace.scheduler._source_image_core().view(image)
+    view = workspace.scheduler.source_image_core().view(image)
 
     def forbidden(*_args: object, **_kwargs: object) -> int:
         raise AssertionError("run admission assembled the cylinder value")
 
-    monkeypatch.setattr(workspace, "_source_value", forbidden)
-    admitted = workspace._whole_initial_run(view, width)
+    monkeypatch.setattr(workspace, "source_value", forbidden)
+    admitted = workspace.whole_initial_run(view, width)
 
     d = residue + (lift << width) - 1
     expected = d > 0
@@ -113,15 +115,16 @@ def test_even_cylinder_reuses_transport_across_authenticated_high_fibers() -> No
     assert workspace is not None
     ledger = term.ledger
     before = ledger.counters.get("source_image_relative_transfer_hits", 0)
-    images = []
+    images: list[object] = []
     for lift in (1, 2, 3, 7):
-        source = workspace._append_source(
-            DyadicReturnSourceRecord(0, width, lift, None, None, None, 0, True)
+        source = append_source(
+            workspace,
+            DyadicReturnSourceRecord(0, width, lift, None, None, None, 0, True),
         )
         image = workspace.scheduler.source_image(
             workspace, source, workspace.root_action
         )
-        view = workspace.scheduler._source_image_core().view(image)
+        view = workspace.scheduler.source_image_core().view(image)
         assert view.binding.source == source
         assert type(view.payload) is DyadicReturnImageID
         summary = workspace.image_node(view.payload).summary

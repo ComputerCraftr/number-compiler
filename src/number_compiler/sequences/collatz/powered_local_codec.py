@@ -9,8 +9,9 @@ successor implementation.
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping, MutableSequence
+from collections.abc import Mapping, MutableMapping, MutableSequence
 from dataclasses import dataclass
+from types import MappingProxyType
 
 from number_compiler.arithmetic.automata.symmetry_powering import (
     ActionTransform,
@@ -19,6 +20,7 @@ from number_compiler.arithmetic.automata.symmetry_powering import (
 from number_compiler.arithmetic.carry.carry_symmetry import collatz_mul3_carry_kernel
 from number_compiler.arithmetic.contracts.iterative_queries import defer_binary_children
 from number_compiler.arithmetic.contracts.local_action_codec import (
+    LocalCodec,
     compile_source_cell,
     initialize_local_stores,
     local_cache_hit,
@@ -88,7 +90,21 @@ class CollatzPoweredLocalCodecMetrics:
     mirror_alias_hits: int
 
 
-class CollatzPoweredLocalCodec:
+@dataclass(frozen=True, slots=True)
+class CollatzPoweredLocalCodecAuditSnapshot:
+    """Detached maps for auditing exact source/action cache identities."""
+
+    nodes: tuple[CollatzLocalAction, ...]
+    keys: Mapping[CollatzLocalAction, int]
+    compositions: Mapping[
+        tuple[CollatzLocalActionID, CollatzLocalActionID], CollatzLocalActionID
+    ]
+    leaves: Mapping[int, CollatzLocalActionID]
+    source_actions: Mapping[SourceCellID | SourceForestID, CollatzLocalActionID]
+    binary_source_actions: Mapping[SourceCellID | SourceForestID, CollatzLocalActionID]
+
+
+class CollatzPoweredLocalCodec(LocalCodec[CollatzLocalAction, CollatzLocalActionID]):
     """Index-owned finite spatial codec for the verified Mul3 carry law."""
 
     _KIND = "collatz-powered-local-action"
@@ -187,7 +203,7 @@ class CollatzPoweredLocalCodec:
 
         self.register_payload_audit()
 
-    def _handle(
+    def scoped_handle(
         self,
         local_id: int,
         transform: ActionTransform = ActionTransform.IDENTITY,
@@ -210,7 +226,7 @@ class CollatzPoweredLocalCodec:
             else action
         )
 
-    def _intern(
+    def intern_record(
         self,
         action: CollatzLocalAction,
         reservations: tuple[tuple[int, int, int], ...] = (),
@@ -243,7 +259,7 @@ class CollatzPoweredLocalCodec:
             self.kernel.transition(1, symbol),
             self.kernel.transition(2, symbol),
         )
-        result = self._intern(
+        result = self.intern_record(
             CollatzLocalAction(mapping, mapping),
             ((self._leaf_owner, 1, 0), *reservations),
         )
@@ -278,7 +294,7 @@ class CollatzPoweredLocalCodec:
         )
         if found is not None:
             return found
-        result = self._intern(
+        result = self.intern_record(
             CollatzLocalAction(
                 self._then(a.forward, b.forward),
                 self._then(b.reverse, a.reverse),
@@ -305,7 +321,7 @@ class CollatzPoweredLocalCodec:
             raise ValueError(
                 "Collatz local codec has only the proved mirror automorphism"
             )
-        return self._handle(action.local_id, action.transform ^ transform)
+        return self.scoped_handle(action.local_id, action.transform ^ transform)
 
     def apply(
         self,
@@ -458,6 +474,61 @@ class CollatzPoweredLocalCodec:
             self.mirror_alias_hits,
         )
 
+    def audit_snapshot(self) -> CollatzPoweredLocalCodecAuditSnapshot:
+        """Copy canonical cache state into detached read-only views."""
+
+        def action_id(reference: CollatzLocalActionID) -> CollatzLocalActionID:
+            return CollatzLocalActionID(
+                reference.owner,
+                reference.kind,
+                reference.local_id,
+                reference.transform,
+            )
+
+        def source_id(
+            source: SourceCellID | SourceForestID,
+        ) -> SourceCellID | SourceForestID:
+            if type(source) is SourceCellID:
+                return SourceCellID(source.owner, source.kind, source.local_id)
+            return SourceForestID(source.owner, source.kind, source.local_id)
+
+        return CollatzPoweredLocalCodecAuditSnapshot(
+            tuple(
+                CollatzLocalAction(action.forward, action.reverse)
+                for action in self._nodes
+            ),
+            MappingProxyType(
+                {
+                    CollatzLocalAction(action.forward, action.reverse): index
+                    for action, index in self._keys.items()
+                }
+            ),
+            MappingProxyType(
+                {
+                    (action_id(left), action_id(right)): action_id(result)
+                    for (left, right), result in self._compose.items()
+                }
+            ),
+            MappingProxyType(
+                {
+                    symbol: action_id(result)
+                    for symbol, result in self._leaf_actions.items()
+                }
+            ),
+            MappingProxyType(
+                {
+                    source_id(source): action_id(result)
+                    for source, result in self._source_actions.items()
+                }
+            ),
+            MappingProxyType(
+                {
+                    source_id(source): action_id(result)
+                    for source, result in self._binary_source_actions.items()
+                }
+            ),
+        )
+
     def register_payload_audit(self) -> None:
         root = self
 
@@ -607,6 +678,7 @@ __all__ = [
     "CollatzLocalAction",
     "CollatzLocalActionID",
     "CollatzPoweredLocalCodec",
+    "CollatzPoweredLocalCodecAuditSnapshot",
     "CollatzPoweredLocalCodecMetrics",
 ]
 

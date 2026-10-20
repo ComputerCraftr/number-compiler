@@ -252,15 +252,17 @@ def capture_primitive_behavior(
     """Freeze one kernel's complete local transition/output behavior."""
     validator = SemanticIdentityValidator()
     try:
-        table = _capture_primitive_behavior(kernel, identity, validator=validator)
+        table = capture_primitive_behavior_with_validator(
+            kernel, identity, validator=validator
+        )
         validator.finish()
         return table
     except BaseException:
-        validator._discard()
+        validator.discard()
         raise
 
 
-def _capture_primitive_behavior(
+def capture_primitive_behavior_with_validator(
     kernel: PrimitiveBehaviorKernel,
     identity: SemanticIdentity,
     *,
@@ -350,7 +352,7 @@ def _capture_primitive_behavior(
         PRIMITIVE_OCCURRENCE_SCHEMA,
         observations,
     )
-    table_identity = SemanticIdentity._from_validator(
+    table_identity = SemanticIdentity.from_validator(
         SemanticIdentityDomain.PRIMITIVE_BEHAVIOR_TABLE,
         key,
         validator,
@@ -376,7 +378,7 @@ def minimize_primitive_behavior(
     """Return the coarsest exact two-sided output congruence."""
     validator = SemanticIdentityValidator()
     try:
-        quotient = _minimize_primitive_behavior(
+        quotient = minimize_primitive_behavior_with_validator(
             table,
             work=work,
             validator=validator,
@@ -384,11 +386,11 @@ def minimize_primitive_behavior(
         validator.finish()
         return quotient
     except BaseException:
-        validator._discard()
+        validator.discard()
         raise
 
 
-def _minimize_primitive_behavior(
+def minimize_primitive_behavior_with_validator(
     table: PrimitiveBehaviorTable,
     *,
     work: PrimitiveBehaviorWork | None,
@@ -508,7 +510,7 @@ def _minimize_primitive_behavior(
         projected_channels,
         projected_observations,
     )
-    semantic_identity = SemanticIdentity._from_validator(
+    semantic_identity = SemanticIdentity.from_validator(
         SemanticIdentityDomain.PRIMITIVE_BEHAVIOR_QUOTIENT,
         semantic_key,
         validator,

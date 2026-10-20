@@ -95,7 +95,7 @@ class JetPortCylinder:
             or any(type(v) is not int or not 0 <= v < self.modulus for v in shift)
         ):
             raise ValueError("jet cylinder shift belongs to another algebra")
-        rows = []
+        rows: list[JetPortRow] = []
         for first in self.rows:
             second = after.rows[first.outgoing]
             rows.append(

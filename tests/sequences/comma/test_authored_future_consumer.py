@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from types import MappingProxyType
+from types import MappingProxyType, ModuleType
 
 import pytest
 
@@ -42,6 +42,7 @@ from number_compiler.sequences.comma.semantic_branch import (
     SemanticMacroChild,
     select_global_semantic_macro_child,
 )
+from tests.support.comma_future_provider_fixture import canonical_bytes
 
 
 def _no_work(_amount: int) -> None:
@@ -260,8 +261,12 @@ def test_authored_candidate_drives_public_cli_after_the_source20_edge(
     artifact_directory = tmp_path / "kernels"
     artifact_directory.mkdir()
     artifact = artifact_directory / future_provider.FUTURE_PROVIDER_ASSET
-    artifact.write_bytes(future_provider._canonical_json_bytes(record))
-    monkeypatch.setattr(comma_power, "files", lambda _package: tmp_path)
+    artifact.write_bytes(canonical_bytes(record))
+
+    def local_package_files(_package: str | ModuleType) -> Path:
+        return tmp_path
+
+    monkeypatch.setattr(comma_power, "files", local_package_files)
 
     selected_sources: list[BoundaryState] = []
     select = future_provider.SemanticFutureProvider.select_unique_unranked_child

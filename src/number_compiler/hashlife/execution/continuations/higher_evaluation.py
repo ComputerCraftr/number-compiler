@@ -96,7 +96,7 @@ def evaluate_higher(
             ):
                 raise AssertionError("invalid higher expression task")
             cache_key = cast(tuple[int, int] | None, raw_cache_key)
-            node = arena._expressions[local_id]
+            node = arena.expression_at(local_id)
             if mode == "cache":
                 if cache_key is None:
                     raise AssertionError("higher evaluation lost its cache key")
@@ -139,7 +139,7 @@ def evaluate_higher(
             if mode == "eval":
                 env = values_arena.project_environment(
                     env,
-                    arena._expression_free_ids[local_id],
+                    arena.free_variable_ids_at(local_id),
                     projection=local_id,
                 )
                 key = local_id, env
@@ -305,8 +305,7 @@ def evaluate_higher(
         arena.ledger.bump(_execution_keys.HIGHER_SEMANTIC_TASK_FRAMES, frames)
     if len(stack) != 1:
         raise AssertionError("higher evaluator did not produce one result")
-    arena._evaluations += 1
-    arena._evaluation_workspace_peak = max(arena._evaluation_workspace_peak, peak)
+    arena.record_evaluation(peak)
     arena.ledger.bump(_execution_keys.HIGHER_SEMANTIC_EVALUATIONS)
     return stack[0]
 

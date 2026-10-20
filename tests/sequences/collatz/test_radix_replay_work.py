@@ -8,6 +8,7 @@ from number_compiler.projection.lazy_radix import RadixProjection, collatz_radix
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.performance_assertions import performance_bound
+from tests.support.radix_projection import microblock_cache, radix_projection
 
 
 def test_recursive_radix_replay_backend_is_absent() -> None:
@@ -50,13 +51,15 @@ def test_former_134m_request_fixture_is_bounded_block_work() -> None:
     assert counters.get("source_image_publications", 0) > 0
     assert counters.get("concrete_virtual_interface_evaluations", 0) == 0
     assert counters.get("higher_runtime_summary_publications", 0) == 0
-    observation = term._radix_projections[3]._tile_observation
+    projection = radix_projection(term, 3)
+    observation = object.__getattribute__(projection, "_tile_observation")
     assert observation is None
-    assert term._power is None
-    assert len(term._compiler.nodes) == 1
+    assert term.operator_nodes == 0
     assert counters.get("source_image_primitive_applications", 0) > 0
     assert counters.get("microblock_entry_high_water", 0) <= 64
-    assert term._microblocks.payload_bytes <= term._microblocks.MAX_PAYLOAD_BYTES
+    cache_owner = microblock_cache(term)
+    cache = cache_owner.audit_snapshot()
+    assert cache.payload_bytes <= cache_owner.MAX_PAYLOAD_BYTES
     assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
 
 

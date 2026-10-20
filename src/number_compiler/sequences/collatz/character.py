@@ -27,6 +27,7 @@ from number_compiler.arithmetic.automata.program_word import (
     first_run,
     iter_runs,
 )
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.arithmetic.fields.radix import bit_width
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.sequences.collatz.raw_field import (
@@ -74,7 +75,7 @@ class CollatzGrowthCharacter:
         base: int = 4,
     ) -> CollatzGrowthCharacter:
         power4_radix_bits(base)
-        if not isinstance(word, CanonicalWord) or not word.length:
+        if not is_runtime_instance(word, CanonicalWord) or not word.length:
             raise ValueError("positive odd source word required")
         low = first_run(word)
         if low.symbol is None:
@@ -203,7 +204,7 @@ def collatz_radial_character_word(
     if type(order) is not int:
         raise TypeError("Collatz radial projection requires an exact order")
     bits = power4_radix_bits(base)
-    if order <= 0 or not isinstance(word, CanonicalWord) or not word.length:
+    if order <= 0 or not is_runtime_instance(word, CanonicalWord) or not word.length:
         raise ValueError((order, word))
     sentinel = collatz_sentinel_digit(base)
     shift = 0

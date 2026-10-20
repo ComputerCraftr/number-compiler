@@ -74,7 +74,7 @@ def _scalar_digit(generation: int, position: int) -> int:
     return int((value // (10**position)) % 10)
 
 
-def _production_projection_rows() -> list[dict[str, object]]:
+def production_projection_rows() -> list[dict[str, object]]:
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
     rows: list[dict[str, object]] = []
@@ -250,7 +250,7 @@ def run_probe() -> dict[str, object]:
     rejection: UnsupportedInterfaceError | None = None
     projection: list[dict[str, object]]
     try:
-        projection = _production_projection_rows()
+        projection = production_projection_rows()
     except UnsupportedInterfaceError as error:
         projection = []
         rejection = error

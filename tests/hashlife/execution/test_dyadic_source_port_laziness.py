@@ -30,7 +30,7 @@ def test_balanced_large_source_does_not_assemble_tracking_value(
     assert isinstance(law, DyadicReturnLaw)
     seed, steps = (1 << 4096) + 27, 129
     monkeypatch.setattr(
-        DyadicReturnImageWorkspace, "_source_value", _forbid_source_assembly
+        DyadicReturnImageWorkspace, "source_value", _forbid_source_assembly
     )
     workspace = (
         CollatzPhysicalImageWorkspace(ResourceLedger(), seed, steps)
@@ -49,7 +49,7 @@ def test_balanced_large_source_does_not_assemble_tracking_value(
 
 def test_cycle_membership_uses_source_ports(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        DyadicReturnImageWorkspace, "_source_value", _forbid_source_assembly
+        DyadicReturnImageWorkspace, "source_value", _forbid_source_assembly
     )
     workspace = DyadicReturnImageWorkspace(
         ResourceLedger(), 1, 10**12, COLLATZ_PHYSICAL_LAW
@@ -65,14 +65,14 @@ def test_cycleless_first_child_never_constructs_parent_integer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        DyadicReturnImageWorkspace, "_source_value", _forbid_source_assembly
+        DyadicReturnImageWorkspace, "source_value", _forbid_source_assembly
     )
     workspace = DyadicReturnImageWorkspace(
         ResourceLedger(), (1 << 4096) + 27, 129, ANTIHYDRA_ARITHMETIC_LAW
     )
     children = workspace.action_node(workspace.root_action).children
     assert children is not None
-    core = workspace.scheduler._source_image_core()
+    core = workspace.scheduler.source_image_core()
     parent = core.view(core.origin(workspace, workspace.root_source))
     child = workspace.first_child_source(workspace.root_action, parent, *children)
     node = workspace.source_node(child)
@@ -91,7 +91,7 @@ def test_public_mixed_collatz_skips_unused_exact_source_assembly(
     for _ in range(129):
         expected = 3 * expected + 1 if expected & 1 else expected // 2
     monkeypatch.setattr(
-        DyadicReturnImageWorkspace, "_source_value", _forbid_source_assembly
+        DyadicReturnImageWorkspace, "source_value", _forbid_source_assembly
     )
     term = PoweredCollatzTerm(seed, 129)
     assert term.materialize(max_bits=8192) == expected
@@ -113,7 +113,15 @@ def test_public_power_of_two_skips_mixed_and_d8_discovery(
     monkeypatch.setattr(
         temporal_run_executor, "select_and_consume_mixed_run", forbidden
     )
-    monkeypatch.setattr(D8TemporalTable, "for_ledger", classmethod(forbidden))
+
+    def forbidden_for_ledger(
+        _cls: type[D8TemporalTable], _ledger: ResourceLedger
+    ) -> D8TemporalTable:
+        raise AssertionError("known homogeneous source entered D8 discovery")
+
+    monkeypatch.setattr(
+        D8TemporalTable, "for_ledger", classmethod(forbidden_for_ledger)
+    )
 
     term = PoweredCollatzTerm(1 << 4096, 1024)
     assert term.materialize(max_bits=4096) == 1 << 3072

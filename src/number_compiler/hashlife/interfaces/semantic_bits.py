@@ -8,7 +8,6 @@ bounded comparator/subtractor circuit, never a table with one row per radix.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from number_compiler.resources.metric_keys import (
@@ -29,58 +28,39 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
     SemanticFunctionID,
     SemanticRequest,
-    SemanticTerminal,
-    _ports,
-    _signature,
-    _union_inputs,
+    union_inputs,
+    validate_function_signature,
+    validate_ports,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
-from number_compiler.arithmetic.functions.semantic_function_transactions import (
-    _Transaction,
-)
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
-from number_compiler.hashlife.interfaces.boolean_composition import (
-    _CompositionKey,
+from number_compiler.hashlife.interfaces.boolean_circuit import (
+    BooleanCircuit as BooleanCircuit,
 )
 from number_compiler.hashlife.interfaces.boolean_substitution import (
     substitute_boolean,
 )
+from number_compiler.hashlife.interfaces.semantic_bit_records import (
+    BinaryDivision as BinaryDivision,
+)
+from number_compiler.hashlife.interfaces.semantic_bit_records import (
+    BitSubstitutionKey as BitSubstitutionKey,
+)
+from number_compiler.hashlife.interfaces.semantic_bit_records import (
+    FactoredFunction as FactoredFunction,
+)
+from number_compiler.hashlife.interfaces.semantic_bit_records import (
+    FactoredFunctionID as FactoredFunctionID,
+)
+from number_compiler.hashlife.interfaces.semantic_bit_records import (
+    PendingFunction as PendingFunction,
+)
 from number_compiler.hashlife.interfaces.semantic_publication import prepare_functions
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 from number_compiler.resources.stores import LedgerDict, LedgerList
-
-
-@dataclass(frozen=True, slots=True)
-class FactoredFunctionID(ArenaHandle):
-    """Canonical fixed-bit finite output in one semantic arena."""
-
-
-@dataclass(frozen=True, slots=True)
-class FactoredFunction:
-    signature: FunctionSignature
-    bits: tuple[SemanticFunctionID, ...]
-    valid: SemanticFunctionID
-
-
-@dataclass(frozen=True, slots=True)
-class BinaryDivision:
-    remainder: FactoredFunctionID
-    quotient: FactoredFunctionID
-
-
-@dataclass(frozen=True, slots=True)
-class BitSubstitutionKey:
-    function: FactoredFunctionID
-    replacements: tuple[tuple[PortVariable, FactoredFunctionID], ...]
-
-
-@dataclass(frozen=True, slots=True)
-class _PendingFunction:
-    signature: FunctionSignature
-    bits: tuple[int, ...]
-    valid: int
 
 
 class BitFunctionArena:
@@ -118,7 +98,26 @@ class BitFunctionArena:
             )
         )
 
-    def _handle(self, identity: int) -> FactoredFunctionID:
+    def composition_audit_snapshot(
+        self,
+    ) -> OwnedMemoAuditSnapshot[BitSubstitutionKey, FactoredFunctionID]:
+        """Return read-only accounting and store identity for the composition audit."""
+        return self._compositions.audit_snapshot()
+
+    def scalar_source_audit_snapshot(
+        self,
+    ) -> OwnedMemoAuditSnapshot[SemanticFunctionID, FactoredFunctionID]:
+        """Return read-only accounting and store identity for scalar-source audits."""
+        return self._scalar_sources.audit_snapshot()
+
+    def lookup_composition(self, key: BitSubstitutionKey) -> FactoredFunctionID | None:
+        """Return a validated cached substitution result, if one is retained."""
+        result = self._compositions.get(key)
+        if result is not None:
+            self.resolve(result)
+        return result
+
+    def scoped_handle(self, identity: int) -> FactoredFunctionID:
         return FactoredFunctionID(self.token, "semantic-bit-function", identity)
 
     def candidate_handle(
@@ -132,7 +131,7 @@ class BitFunctionArena:
             raise RuntimeError("factored publication base is stale")
         if identity >= base + candidate_count:
             raise ValueError("factored candidate ID is outside its publication window")
-        return self._handle(identity)
+        return self.scoped_handle(identity)
 
     def resolve(self, function: FactoredFunctionID) -> FactoredFunction:
         if type(function) is not FactoredFunctionID:
@@ -145,7 +144,7 @@ class BitFunctionArena:
     def from_scalar(self, function: SemanticFunctionID) -> FactoredFunctionID:
         """Reuse the complete scalar-to-bit conversion before touching its DAG."""
         node = self.functions.resolve(function)
-        _signature(node.signature)
+        validate_function_signature(node.signature)
         if type(node.signature.output) is not AtomSort:
             raise ValueError("factored conversion requires a scalar semantic output")
         self.ledger.bump(_interfaces_keys.SEMANTIC_BIT_FROM_SCALAR_REQUESTS)
@@ -167,7 +166,7 @@ class BitFunctionArena:
             raise BlockContextBudgetExceeded(
                 "scalar conversion cache budget exhausted before construction"
             )
-        circuit = _Circuit(self.functions, node.signature.inputs)
+        circuit = BooleanCircuit(self.functions, node.signature.inputs)
         tx = circuit.tx
         width = (node.signature.output.cardinality - 1).bit_length()
         pending = [(function.local_id, False)]
@@ -213,8 +212,8 @@ class BitFunctionArena:
         port: FinitePort,
         output: AtomSort | None = None,
     ) -> FactoredFunctionID:
-        _ports(inputs)
-        _ports((port,))
+        validate_ports(inputs)
+        validate_ports((port,))
         if port not in inputs:
             raise ValueError("factored variable is not a declared port")
         target = (
@@ -223,7 +222,7 @@ class BitFunctionArena:
         signature = FunctionSignature(inputs, target)
         if type(target) is not AtomSort or target.cardinality != port.cardinality:
             raise ValueError("factored input/output domains disagree")
-        circuit = _Circuit(self.functions, inputs)
+        circuit = BooleanCircuit(self.functions, inputs)
         bits = tuple(
             circuit.tx.bit(
                 inputs,
@@ -237,7 +236,7 @@ class BitFunctionArena:
         return self.publish_circuit(circuit, (value,))[0]
 
     def constant(self, signature: FunctionSignature, value: int) -> FactoredFunctionID:
-        _signature(signature)
+        validate_function_signature(signature)
         target = signature.output
         if (
             type(target) is not AtomSort
@@ -245,7 +244,7 @@ class BitFunctionArena:
             or not 0 <= value < target.cardinality
         ):
             raise ValueError("factored constant must fit a bounded atom sort")
-        circuit = _Circuit(self.functions, signature.inputs)
+        circuit = BooleanCircuit(self.functions, signature.inputs)
         bits = tuple(
             circuit.one if (value >> bit) & 1 else circuit.zero
             for bit in range((target.cardinality - 1).bit_length())
@@ -265,18 +264,18 @@ class BitFunctionArena:
         a, b = self.resolve(first), self.resolve(second)
         if type(wrap) is not bool:
             raise TypeError("addition wrapping must be a boolean")
-        inputs = _union_inputs(a.signature.inputs, b.signature.inputs)
+        inputs = union_inputs(a.signature.inputs, b.signature.inputs)
         signature = FunctionSignature(inputs, output)
         if type(output) is not AtomSort:
             raise ValueError("numeric addition needs an atom output")
         width = (output.cardinality - 1).bit_length()
         if wrap and output.cardinality != 1 << width:
             raise ValueError("wrapping addition requires a power-of-two output sort")
-        circuit = _Circuit(self.functions, inputs)
+        circuit = BooleanCircuit(self.functions, inputs)
         aa, av = circuit.imported(a)
         bb, bv = circuit.imported(b)
         carry = circuit.zero
-        bits = []
+        bits: list[int] = []
         for bit in range(width):
             left = aa[bit] if bit < len(aa) else circuit.zero
             right = bb[bit] if bit < len(bb) else circuit.zero
@@ -310,10 +309,10 @@ class BitFunctionArena:
             raise ValueError(
                 "factored select requires a bit and identical result sorts"
             )
-        inputs = _union_inputs(
+        inputs = union_inputs(
             c.signature.inputs, a.signature.inputs, b.signature.inputs
         )
-        circuit = _Circuit(self.functions, inputs)
+        circuit = BooleanCircuit(self.functions, inputs)
         cc, cv = circuit.imported(c)
         aa, av = circuit.imported(a)
         bb, bv = circuit.imported(b)
@@ -329,9 +328,9 @@ class BitFunctionArena:
 
     def imported_circuit(
         self, source: FactoredFunction
-    ) -> tuple[_Circuit, tuple[int, ...], int]:
+    ) -> tuple[BooleanCircuit, tuple[int, ...], int]:
         """Import one numeric function while preserving its admitted domain."""
-        circuit = _Circuit(self.functions, source.signature.inputs)
+        circuit = BooleanCircuit(self.functions, source.signature.inputs)
         roots, valid = circuit.imported(source)
         return circuit, roots, valid
 
@@ -388,8 +387,8 @@ class BitFunctionArena:
         value, guard = self.resolve(function), self.resolve(predicate)
         if guard.signature.output != BOOL:
             raise ValueError("function restriction requires a Boolean predicate")
-        inputs = _union_inputs(value.signature.inputs, guard.signature.inputs)
-        circuit = _Circuit(self.functions, inputs)
+        inputs = union_inputs(value.signature.inputs, guard.signature.inputs)
+        circuit = BooleanCircuit(self.functions, inputs)
         bits, valid = circuit.imported(value)
         condition, admitted = circuit.imported(guard)
         valid = circuit.conjunction(valid, circuit.conjunction(admitted, condition[0]))
@@ -408,12 +407,12 @@ class BitFunctionArena:
         width = sum(len(n.bits) for n in nodes)
         if width > 64:
             raise ValueError("finite observation record exceeds one bounded word")
-        inputs = _union_inputs(*(n.signature.inputs for n in nodes))
+        inputs = union_inputs(*(n.signature.inputs for n in nodes))
         layout = tuple(node.signature.output for node in nodes)
         signature = FunctionSignature(
             inputs, AtomSort(f"{name}:{layout!r}", 1 << width)
         )
-        circuit = _Circuit(self.functions, inputs)
+        circuit = BooleanCircuit(self.functions, inputs)
         bits: tuple[int, ...] = ()
         valid = circuit.one
         for node in nodes:
@@ -428,7 +427,7 @@ class BitFunctionArena:
         """Return definedness as a Boolean function on the declared port domain."""
         node = self.resolve(function)
         self.functions.resolve(node.valid)
-        circuit = _Circuit(self.functions, node.signature.inputs)
+        circuit = BooleanCircuit(self.functions, node.signature.inputs)
         # Definedness is already a complete canonical root. Importing the value
         # bits here makes every admission query pay for an unrequested output.
         valid = circuit.tx.resign(node.valid.local_id, circuit.signature)
@@ -456,7 +455,7 @@ class BitFunctionArena:
             self, original.signature.inputs, replacements
         )
         removed = {port.variable for port, _ in items}
-        inputs = _union_inputs(
+        inputs = union_inputs(
             tuple(
                 port
                 for port in original.signature.inputs
@@ -466,9 +465,8 @@ class BitFunctionArena:
         )
         key = BitSubstitutionKey(function, tuple(sorted(references)))
         self.ledger.bump(_interfaces_keys.SEMANTIC_BIT_COMPOSITION_REQUESTS)
-        cached = self._compositions.get(key)
+        cached = self.lookup_composition(key)
         if cached is not None:
-            self.resolve(cached)
             self.ledger.bump(_interfaces_keys.SEMANTIC_BIT_COMPOSITION_HITS)
             return cached
         if not items:
@@ -484,7 +482,7 @@ class BitFunctionArena:
             raise BlockContextBudgetExceeded(
                 "bit substitution cache budget exhausted before construction"
             )
-        circuit = _Circuit(self.functions, inputs)
+        circuit = BooleanCircuit(self.functions, inputs)
         mapping, validity, transform = substitution_environment(circuit, items, joint)
         result_bits = tuple(
             transform(circuit, bit.local_id, mapping) for bit in original.bits
@@ -578,19 +576,19 @@ class BitFunctionArena:
         """Complete q=(2c+b)//r, c'=(2c+b)%r for c<r and b<2."""
         if type(radix) is not int or not 1 <= radix <= 1 << 63:
             raise ValueError("division radix must be an integer in 1..2**63")
-        _ports((carry,))
-        _ports((symbol,))
+        validate_ports((carry,))
+        validate_ports((symbol,))
         if (
             carry.variable == symbol.variable
             or carry.cardinality != radix
             or symbol.cardinality != 2
         ):
             raise ValueError("division requires distinct carry:r and symbol:2 ports")
-        bundle = _union_inputs((carry,), (symbol,)) if inputs is None else inputs
-        _ports(bundle)
+        bundle = union_inputs((carry,), (symbol,)) if inputs is None else inputs
+        validate_ports(bundle)
         if carry not in bundle or symbol not in bundle:
             raise ValueError("division ports must be declared")
-        circuit = _Circuit(self.functions, bundle)
+        circuit = BooleanCircuit(self.functions, bundle)
         symbol_bit = circuit.tx.bit(bundle, symbol.variable)
         carry_bits = tuple(
             circuit.tx.bit(
@@ -640,8 +638,8 @@ class BitFunctionArena:
 
     def publish_circuit(
         self,
-        circuit: _Circuit,
-        results: tuple[_PendingFunction, ...],
+        circuit: BooleanCircuit,
+        results: tuple[PendingFunction, ...],
         *,
         scalar_source: SemanticFunctionID | None = None,
         substitution: BitSubstitutionKey | None = None,
@@ -668,16 +666,17 @@ class BitFunctionArena:
             # Promote only an already reachable root; no discarded expression
             # is kept alive just to populate this optional construction memo.
             admitted_request = SemanticRequest("bit-admissibility", (), circuit.inputs)
+            admitted_root = circuit.admitted_root
             if (
                 self.functions.cache_construction_reductions
-                and circuit._admitted is not None
-                and circuit._admitted in roots
+                and admitted_root is not None
+                and admitted_root in roots
                 and admitted_request not in self.functions.memo
                 and len(self.functions.memo) < 256
             ):
                 transaction.reserve_workspace(entries=2)
                 prepared.preparation_entries += 2
-                admitted = prepared.roots[roots.index(circuit._admitted)]
+                admitted = prepared.roots[roots.index(admitted_root)]
                 available = 256 - len(self.functions.memo)
                 prepared.reductions = (
                     (admitted_request, admitted),
@@ -700,7 +699,7 @@ class BitFunctionArena:
                 for result in results
             )
             fresh: dict[FactoredFunction, int] = {}
-            identities = []
+            identities: list[int] = []
             for record in records:
                 identity = self.keys.get(record)
                 if identity is None:
@@ -730,12 +729,18 @@ class BitFunctionArena:
                 self.nodes.append(record)
                 self.keys[record] = identity
             if scalar_source is not None:
-                self._scalar_sources._data[scalar_source] = self._handle(identities[0])
+                self._scalar_sources.publish_reserved(
+                    scalar_source, self.scoped_handle(identities[0])
+                )
             if substitution is not None:
-                self._compositions._data[substitution] = self._handle(identities[0])
+                self._compositions.publish_reserved(
+                    substitution, self.scoped_handle(identities[0])
+                )
             if substitutions:
                 for key, identity in zip(substitutions, identities, strict=True):
-                    self._compositions._data[key] = self._handle(identity)
+                    self._compositions.publish_reserved(
+                        key, self.scoped_handle(identity)
+                    )
             self.ledger.bump(
                 _interfaces_keys.SEMANTIC_BIT_BOOLEAN_NODES_PUBLISHED, count
             )
@@ -743,232 +748,12 @@ class BitFunctionArena:
                 _interfaces_keys.SEMANTIC_FACTORED_NODES_PUBLISHED,
                 len(fresh),
             )
-            return tuple(self._handle(identity) for identity in identities)
+            return tuple(self.scoped_handle(identity) for identity in identities)
         finally:
             if prepared is None:
                 transaction.close()
             else:
                 prepared.cancel()
 
-
-class _Circuit:
-    def __init__(
-        self,
-        functions: SemanticFunctionArena,
-        inputs: tuple[FinitePort, ...],
-        transaction: _Transaction | None = None,
-    ) -> None:
-        if transaction is not None and transaction.arena is not functions:
-            raise ValueError("circuit transaction belongs to another semantic arena")
-        self.tx = _Transaction(functions) if transaction is None else transaction
-        self.inputs = inputs
-        self.signature = FunctionSignature(inputs, BOOL)
-        self._admitted: int | None = None
-        self._substitutions: dict[
-            tuple[tuple[PortVariable, int], ...], dict[int, int]
-        ] = {}
-        self._substitution_entries = 0
-        self._fused_substitutions: dict[_CompositionKey, int] = {}
-        self._fused_retained_bindings = 0
-        self._fused_projections: dict[tuple[int, int], tuple[int, ...]] = {}
-        self._fused_projection_slots = 0
-        self._fused_splits: dict[
-            tuple[int, ...], tuple[PortVariable, tuple[int, ...], tuple[int, ...]]
-        ] = {}
-        self._cofactor_circuits: dict[tuple[FinitePort, ...], _Circuit] = {}
-        self.zero = self.tx.terminal(self.signature, SemanticTerminal("atom", 0))
-        self.one = self.tx.terminal(self.signature, SemanticTerminal("atom", 1))
-
-    def choose(self, condition: int, yes: int, no: int) -> int:
-        # Circuit predicates are total Boolean functions: invalid numeric
-        # inputs live in a separate validity bit, never an invalid terminal.
-        if condition == self.one:
-            self.tx.arena.ledger.bump(
-                _interfaces_keys.SEMANTIC_BIT_CONSTANT_CHOICE_REDUCTIONS
-            )
-            return yes
-        if condition == self.zero:
-            self.tx.arena.ledger.bump(
-                _interfaces_keys.SEMANTIC_BIT_CONSTANT_CHOICE_REDUCTIONS
-            )
-            return no
-        if yes == no:
-            self.tx.arena.ledger.bump(
-                _interfaces_keys.SEMANTIC_BIT_EQUAL_BRANCH_REDUCTIONS
-            )
-            return yes
-        # These identities apply to the circuit's total Boolean predicates.
-        # Apply them before the general Shannon scheduler, whose partial
-        # functions must retain their separate invalid-terminal semantics.
-        if (yes == self.one or yes == condition) and no == self.zero:
-            self.tx.arena.ledger.bump(
-                _interfaces_keys.SEMANTIC_BIT_BOOLEAN_IDENTITY_REDUCTIONS
-            )
-            return condition
-        if yes == self.one and no == condition:
-            self.tx.arena.ledger.bump(
-                _interfaces_keys.SEMANTIC_BIT_BOOLEAN_IDENTITY_REDUCTIONS
-            )
-            return condition
-        if yes == self.zero and no == condition:
-            self.tx.arena.ledger.bump(
-                _interfaces_keys.SEMANTIC_BIT_BOOLEAN_ABSORPTION_REDUCTIONS
-            )
-            return self.zero
-        if yes == condition and no == self.one:
-            self.tx.arena.ledger.bump(
-                _interfaces_keys.SEMANTIC_BIT_BOOLEAN_ABSORPTION_REDUCTIONS
-            )
-            return self.one
-        return self.tx.choose(condition, yes, no)
-
-    def join_branch(
-        self, values: list[tuple[int, ...]], variable: PortVariable
-    ) -> None:
-        """Replace two completed cofactors by their common decision node."""
-        high, low = values.pop(), values.pop()
-        values.append(self.branch(variable, low, high))
-
-    def branch(
-        self, variable: PortVariable, low: tuple[int, ...], high: tuple[int, ...]
-    ) -> tuple[int, ...]:
-        return tuple(
-            self.tx.decision(self.signature, variable, a, b)
-            for a, b in zip(low, high, strict=True)
-        )
-
-    def negate(self, value: int) -> int:
-        return self.choose(value, self.zero, self.one)
-
-    def conjunction(self, first: int, second: int) -> int:
-        return self.choose(first, second, self.zero)
-
-    def xor(self, first: int, second: int) -> int:
-        return self.choose(first, self.negate(second), second)
-
-    def subtract_constant(
-        self, bits: tuple[int, ...], value: int
-    ) -> tuple[tuple[int, ...], int]:
-        borrow = self.zero
-        result = []
-        for bit, item in enumerate(bits):
-            constant = (value >> bit) & 1
-            parity = self.xor(item, borrow)
-            result.append(self.negate(parity) if constant else parity)
-            inverse = self.negate(item)
-            borrow = (
-                self.choose(inverse, self.one, borrow)
-                if constant
-                else self.conjunction(inverse, borrow)
-            )
-        return tuple(result), borrow
-
-    def admitted(self) -> int:
-        if self._admitted is not None:
-            self.tx.arena.ledger.bump(
-                _interfaces_keys.SEMANTIC_BIT_ADMISSIBILITY_REUSES
-            )
-            return self._admitted
-        arena = self.tx.arena
-        request = SemanticRequest("bit-admissibility", (), self.inputs)
-        arena.ledger.bump(_interfaces_keys.SEMANTIC_BIT_ADMISSIBILITY_REQUESTS)
-        cached = arena.memo.get(request)
-        if cached is not None:
-            node = arena.resolve(cached)
-            if node.signature != self.signature:
-                raise ValueError("cached port admission has another signature")
-            self._admitted = cached.local_id
-            arena.ledger.bump(_interfaces_keys.SEMANTIC_BIT_ADMISSIBILITY_EARLY_HITS)
-            return self._admitted
-        arena.ledger.bump(_interfaces_keys.SEMANTIC_BIT_ADMISSIBILITY_EVALUATIONS)
-        valid = self.one
-        # Build the total padding predicate directly in variable order.  A
-        # numeric subtraction also constructs all difference bits, although
-        # admission needs only x < cardinality.  Reading the low bit reduces
-        # that inequality to ceil(cardinality / 2) or floor(cardinality / 2)
-        # on the remaining bits.  At each level there are at most two such
-        # residual thresholds, independent of the port's finite cardinality.
-        for port in reversed(self.inputs):
-            if port.cardinality == 1 << port.bits:
-                continue
-            valid = self._admitted_port(port, valid)
-        self._admitted = valid
-        return valid
-
-    def _admitted_port(self, port: FinitePort, success: int) -> int:
-        ledger = self.tx.arena.ledger
-        # At depth b only floor(C/2**b) and ceil(C/2**b) can occur.
-        # Build those two residuals bottom-up using four bounded references,
-        # instead of retaining a search stack and dictionary of thresholds.
-        self.tx.reserve_workspace(entries=4)
-        counter = "semantic_bit_admissibility_threshold_workspace_peak"
-        ledger.bump(counter, max(0, 4 - ledger.counters.get(counter, 0)))
-        lower, upper = self.zero, success
-        try:
-            for bit in range(port.bits - 1, -1, -1):
-                next_floor = port.cardinality >> (bit + 1)
-                floor = port.cardinality >> bit
-                ceiling = (port.cardinality + (1 << bit) - 1) >> bit
-                next_lower, next_upper = lower, upper
-                for role, limit in ((0, floor), (1, ceiling)):
-                    ledger.bump(
-                        _interfaces_keys.SEMANTIC_BIT_ADMISSIBILITY_THRESHOLD_FRAMES
-                    )
-                    if limit <= 0:
-                        value = self.zero
-                    elif limit >= 1 << (port.bits - bit):
-                        value = success
-                    elif role and floor == ceiling:
-                        value = next_lower
-                        ledger.bump(
-                            _interfaces_keys.SEMANTIC_BIT_ADMISSIBILITY_THRESHOLD_SHARED_HITS
-                        )
-                    else:
-                        variable = PortVariable(
-                            port.variable.time,
-                            port.variable.side,
-                            port.variable.role,
-                            bit,
-                        )
-                        ledger.bump(
-                            _interfaces_keys.SEMANTIC_BIT_ADMISSIBILITY_THRESHOLD_DECISIONS
-                        )
-                        value = self.tx.decision(
-                            self.signature,
-                            variable,
-                            lower if (limit + 1) // 2 == next_floor else upper,
-                            lower if limit // 2 == next_floor else upper,
-                        )
-                    if role:
-                        next_upper = value
-                    else:
-                        next_lower = value
-                lower, upper = next_lower, next_upper
-            return lower
-        finally:
-            if not self.tx._closed:
-                self.tx.release_workspace(entries=4)
-
-    def imported(self, function: FactoredFunction) -> tuple[tuple[int, ...], int]:
-        bits = tuple(
-            self.tx.resign(bit.local_id, self.signature) for bit in function.bits
-        )
-        valid = self.tx.resign(function.valid.local_id, self.signature)
-        return bits, valid
-
-    def normalized(
-        self, signature: FunctionSignature, bits: tuple[int, ...], valid: int
-    ) -> _PendingFunction:
-        if (
-            type(signature.output) is not AtomSort
-            or len(bits) != (signature.output.cardinality - 1).bit_length()
-        ):
-            raise ValueError("factored output width does not match its sort")
-        return _PendingFunction(
-            signature, tuple(self.conjunction(valid, bit) for bit in bits), valid
-        )
-
-
-BooleanCircuit = _Circuit
 
 __all__ = ["BooleanCircuit", "substitute_boolean"]

@@ -445,14 +445,14 @@ class ExpressionPayloadRegistry:
                     arena.nodes[parameter.local_id].sort for parameter in record.support
                 )
         elif node.kind == "finite_apply" and type(node.sort) is StateSort:
-            valid = sorts == (node.sort,) and self._finite_function(
+            valid = sorts == (node.sort,) and self.finite_function(
                 arena, node.sort, node.function
             )
         elif node.kind == "finite_map" and type(node.sort) is StateSort:
             valid = (
                 len(sorts) == 1
                 and type(sorts[0]) is StateSort
-                and self._finite_function(
+                and self.finite_function(
                     arena, node.sort, node.function, source=sorts[0], normalized=True
                 )
             )
@@ -568,7 +568,7 @@ class ExpressionPayloadRegistry:
         )
         return record.support == expected
 
-    def _finite_function(
+    def finite_function(
         self,
         arena: BoundaryExpressionArena,
         sort: StateSort | SymbolSort,

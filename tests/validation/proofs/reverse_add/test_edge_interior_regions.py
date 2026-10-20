@@ -51,7 +51,7 @@ def _literal_step(
     pair: list[int], base: int = 10
 ) -> tuple[list[int], list[int], list[int]]:
     carry = [0]
-    digits = []
+    digits: list[int] = []
     for coefficient in pair:
         total = coefficient + carry[-1]
         next_carry, digit = divmod(total, base)
@@ -124,7 +124,7 @@ def test_symbolic_construction_size_is_independent_of_extent(
         raise AssertionError("symbolic construction evaluated a future coefficient")
 
     monkeypatch.setattr(SymbolicInnovationArena, "project_cyclotomic", forbidden)
-    counts = []
+    counts: list[int] = []
     for extent in (3, 17, 10**6):
         arena = SymbolicInnovationArena(ResourceLedger())
         construct_edge_interior_d2(

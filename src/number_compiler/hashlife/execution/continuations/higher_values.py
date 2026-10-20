@@ -298,7 +298,7 @@ class RuntimeValueArena:
             projection_pattern_store=self._projection_patterns,
         )
 
-    def _validate_function(self, function: HigherFunctionID) -> None:
+    def validate_function(self, function: HigherFunctionID) -> None:
         from number_compiler.hashlife.execution.continuations.higher_types import (
             HigherFunctionID,
         )
@@ -319,7 +319,7 @@ class RuntimeValueArena:
             raise ValueError("runtime values already use another summary arena")
         self._summary_validate = validate
 
-    def _validate_summary(
+    def validate_summary(
         self,
         summary: HigherSummaryID,
         *,
@@ -342,7 +342,7 @@ class RuntimeValueArena:
             raise ValueError("runtime context requires a context summary")
         return record
 
-    def _validate_action_atom(
+    def validate_action_atom(
         self,
         action: FieldCellActionID,
         side: int,
@@ -386,7 +386,7 @@ class RuntimeValueArena:
             seen.add(reference)
             record = self.resolve(reference)
             if type(record) is RuntimeTransferredState:
-                summary = self._validate_summary(record.summary, kind="unary")
+                summary = self.validate_summary(record.summary, kind="unary")
                 if type(summary) is not RuntimeUnarySummary or (
                     summary.action,
                     summary.side,
@@ -394,7 +394,7 @@ class RuntimeValueArena:
                     raise ValueError("deferred transfer has another boundary sort")
                 continue
             if type(record) is RuntimeContextState:
-                summary = self._validate_summary(record.summary, kind="context")
+                summary = self.validate_summary(record.summary, kind="context")
                 if type(summary) is not RuntimeContextSummary or (
                     summary.consumer,
                     record.side,
@@ -414,8 +414,8 @@ class RuntimeValueArena:
                     raise ValueError("pair continuation has another boundary sort")
                 continue
             if type(function) is RuntimeSummaryFunction:
-                context = self._validate_summary(function.context, kind="context")
-                opposite = self._validate_summary(function.opposite, kind="unary")
+                context = self.validate_summary(function.context, kind="context")
+                opposite = self.validate_summary(function.opposite, kind="unary")
                 if (
                     type(context) is not RuntimeContextSummary
                     or type(opposite) is not RuntimeUnarySummary
@@ -442,7 +442,7 @@ class RuntimeValueArena:
             HigherFunction,
         )
 
-        self._validate_function(function)
+        self.validate_function(function)
         if self._function_validate is None:
             raise RuntimeError("runtime function validation is not configured")
         record = self._function_validate(function)
@@ -476,7 +476,7 @@ class RuntimeValueArena:
                 nodes=count if owns_nodes else 0,
             )
 
-    def _intern(self, record: RuntimeRecord) -> RuntimeValueID:
+    def intern_record(self, record: RuntimeRecord) -> RuntimeValueID:
         found = self._keys.get(record)
         if found is not None:
             return RuntimeValueID(self.owner, self._KIND, found)
@@ -498,10 +498,10 @@ class RuntimeValueArena:
             )
         if environment < -1:
             raise ValueError("runtime function has an invalid empty environment")
-        self._validate_function(function)
+        self.validate_function(function)
         if environment >= 0:
             self.environment(environment)
-        return self._intern(RuntimeFunction(function, environment))
+        return self.intern_record(RuntimeFunction(function, environment))
 
     def action_function(
         self,
@@ -551,9 +551,9 @@ class RuntimeValueArena:
             ):
                 raise ValueError("step continuation does not reference a function")
             expected = children[0]
-        self._validate_action_atom(expected, side, anchor)
+        self.validate_action_atom(expected, side, anchor)
         self.ledger.bump(_execution_keys.HIGHER_ACTION_CONTINUATION_REQUESTS)
-        return self._intern(
+        return self.intern_record(
             RuntimeActionFunction(
                 kind,
                 action,
@@ -601,16 +601,16 @@ class RuntimeValueArena:
             or any(not 0 <= value < codomain for value in outputs)
         ):
             raise ValueError("finite continuation has another bounded port domain")
-        return self._intern(RuntimeTableFunction(action, side, outputs))
+        return self.intern_record(RuntimeTableFunction(action, side, outputs))
 
     def transferred_state(
         self,
         summary: HigherSummaryID,
         incoming: RuntimeAtom,
     ) -> RuntimeValueID:
-        self._validate_summary(summary, kind="unary")
+        self.validate_summary(summary, kind="unary")
         self.validate_atom(incoming)
-        return self._intern(
+        return self.intern_record(
             RuntimeTransferredState(
                 summary,
                 self.canonical_atom(incoming),
@@ -625,12 +625,12 @@ class RuntimeValueArena:
         incoming: RuntimeAtom,
         side: int,
     ) -> RuntimeValueID:
-        self._validate_summary(summary, kind="context")
+        self.validate_summary(summary, kind="context")
         if type(side) is not int or side not in (0, 1):
             raise TypeError("context state requires a scoped U summary and direction")
         for value in (left, right, incoming):
             self.validate_atom(value)
-        return self._intern(
+        return self.intern_record(
             RuntimeContextState(
                 summary,
                 self.canonical_atom(left),
@@ -648,13 +648,13 @@ class RuntimeValueArena:
         anchor: RuntimeAtom,
         continuation: RuntimeValueID,
     ) -> RuntimeValueID:
-        self._validate_summary(context, kind="context")
-        self._validate_summary(opposite, kind="unary")
+        self.validate_summary(context, kind="context")
+        self.validate_summary(opposite, kind="unary")
         if type(side) is not int or side not in (0, 1):
             raise TypeError("summary continuation has invalid metadata")
         self.validate_atom(anchor)
         self.resolve(continuation)
-        return self._intern(
+        return self.intern_record(
             RuntimeSummaryFunction(
                 context,
                 opposite,
@@ -674,7 +674,9 @@ class RuntimeValueArena:
             RuntimeSummaryFunction,
         ):
             raise ValueError("runtime pair continuation is not a function")
-        return self._intern(RuntimePair(self.canonical_atom(anchor), continuation))
+        return self.intern_record(
+            RuntimePair(self.canonical_atom(anchor), continuation)
+        )
 
     def resolve(self, value: RuntimeValueID) -> RuntimeRecord:
         if type(value) is not RuntimeValueID:

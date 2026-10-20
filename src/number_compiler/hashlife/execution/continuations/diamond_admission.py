@@ -76,7 +76,7 @@ if TYPE_CHECKING:
     )
 
 
-def _validate(self: DiamondRuntime, task: Task) -> int:
+def validate_diamond_task(self: DiamondRuntime, task: Task) -> int:
     visits = 0
     source_admission: tuple[int, int, int, int] | None = None
     if type(task) is PrimitiveMacroKey:
@@ -118,15 +118,15 @@ def _validate(self: DiamondRuntime, task: Task) -> int:
             raise ValueError(
                 "parent summary requires two complete primitive interfaces"
             )
-        source_admission = self.pair_macros._require_source(task.cell)
-        source = self.cells.source_geometry._construction.source
+        source_admission = self.pair_macros.require_source(task.cell)
+        source = self.cells.source_geometry.construction.source
         node = self.actions.node(task.action)
         if (node.base, node.blank) != (source.base, source.blank):
             raise ValueError("parent summary and original source alphabets disagree")
     elif type(task) is SpatialSummary:
         source_admission = self.spatial.validate(task)
     elif type(task) is ContextObservation:
-        self.pair_macros.contexts._validate(task)
+        self.pair_macros.contexts.validate_observation(task)
     elif type(task) is Initial:
         self.actions.resolve(task.action)
         if type(task.side) is not int or task.side not in (0, 1):
@@ -134,38 +134,38 @@ def _validate(self: DiamondRuntime, task: Task) -> int:
     elif type(task) in (Transfer, ResetTransfer, Output) and isinstance(
         task, (Transfer, ResetTransfer, Output)
     ):
-        visits += self._validate_provider(task.provider)
+        visits += self.validate_provider(task.provider)
         action = self.actions.resolve(task.action)
-        source = self.cells.source_geometry._construction.source
+        source = self.cells.source_geometry.construction.source
         if action.kind != "identity" and (action.base, action.blank) != (
             source.base,
             source.blank,
         ):
             raise ValueError("consumer action and source alphabets disagree")
         if type(task) is Transfer:
-            self._validate_state(task.state, task.action, task.side)
+            self.validate_state(task.state, task.action, task.side)
         elif type(task) is ResetTransfer:
             if not self.resets.can_reset(task.provider, task.action, task.side):
                 raise ValueError("transfer has no complete synchronization certificate")
         else:
             assert isinstance(task, Output)
-            self._validate_state(task.left, task.action, 0)
-            self._validate_state(task.right, task.action, 1)
+            self.validate_state(task.left, task.action, 0)
+            self.validate_state(task.right, task.action, 1)
             if self.cells.input_level(task.provider.cell):
                 raise ValueError("scalar output requires an original leaf")
     elif type(task) is OutputFunction:
         formal = self.cells.formal_symbol(0)
-        visits += self._validate_provider(
+        visits += self.validate_provider(
             ImageBinding(task.provider, formal, task.provider_left, task.provider_right)
         )
-        self._validate_state(task.left, task.action, 0)
-        self._validate_state(task.right, task.action, 1)
+        self.validate_state(task.left, task.action, 0)
+        self.validate_state(task.right, task.action, 1)
         consumer = self.actions.node(task.action)
         if task.provider != self.actions.identity or consumer.kind == "compose":
             raise ValueError(
                 "finite output functions require a fixed primitive interface"
             )
-        source = self.cells.source_geometry._construction.source
+        source = self.cells.source_geometry.construction.source
         if consumer.kind != "identity" and (consumer.base, consumer.blank) != (
             source.base,
             source.blank,
@@ -189,12 +189,12 @@ def _validate(self: DiamondRuntime, task: Task) -> int:
         step = task.step
         if type(step) is not ContinuationStep:
             raise TypeError("expected a typed continuation step")
-        visits += self._validate_provider(step.provider)
+        visits += self.validate_provider(step.provider)
         self.actions.resolve(step.first)
         self.actions.resolve(step.second)
         previous = self.boundaries.action(step.previous)
-        self._validate_state(step.anchor, step.first, step.side)
-        self._validate_state(task.argument, step.first, 1 - step.side)
+        self.validate_state(step.anchor, step.first, step.side)
+        self.validate_state(task.argument, step.first, 1 - step.side)
         signature = previous.signature
         if (
             previous.kind == "invalid"
@@ -210,7 +210,7 @@ def _validate(self: DiamondRuntime, task: Task) -> int:
             raise ValueError(
                 "previous continuation does not match substituted interface"
             )
-        source = self.cells.source_geometry._construction.source
+        source = self.cells.source_geometry.construction.source
         for reference in (step.first, step.second):
             action = self.actions.resolve(reference)
             if action.kind != "identity" and (action.base, action.blank) != (
@@ -221,11 +221,11 @@ def _validate(self: DiamondRuntime, task: Task) -> int:
     else:
         raise TypeError("unknown diamond scheduler task")
     if source_admission is not None:
-        self.pair_macros._record_source_admission(source_admission)
+        self.pair_macros.record_source_admission(source_admission)
     return visits
 
 
-def _admit_head_binding(self: DiamondRuntime, expression: ExprID) -> bool:
+def admit_head_binding(self: DiamondRuntime, expression: ExprID) -> bool:
     allowed, visits, peak = function_program_admission(
         self.higher.expressions, expression
     )
@@ -235,7 +235,7 @@ def _admit_head_binding(self: DiamondRuntime, expression: ExprID) -> bool:
     return allowed
 
 
-def _probe_admitted(self: DiamondRuntime, task: Task) -> Result | None:
+def probe_admitted_task(self: DiamondRuntime, task: Task) -> Result | None:
     if isinstance(task, (PrimitiveMacroKey, PrimitiveMacroObservation)):
         if self.primitive_macros is None:
             self.ledger.bump(_shared_keys.PRIMITIVE_MACRO_REQUESTS)
@@ -279,7 +279,7 @@ def _probe_admitted(self: DiamondRuntime, task: Task) -> Result | None:
             return task.expression
         if type(expression.sort) is SymbolSort or not expression.free_ports:
             return None
-        if not self._admit_head_binding(task.expression):
+        if not self.admit_head_binding(task.expression):
             return None
         head = self.expression_heads.get(task)
         if head is not None:
@@ -321,7 +321,7 @@ def _probe_admitted(self: DiamondRuntime, task: Task) -> Result | None:
         else "spatial_parent"
     )
     self.ledger.bump(name + "_requests")
-    found = self._memo(task).get(task)
+    found = self.memo_view(task).get(task)
     if found is not None:
         self.ledger.bump(name + "_cache_hits")
     else:
@@ -336,8 +336,8 @@ def _probe_admitted(self: DiamondRuntime, task: Task) -> Result | None:
     return found
 
 
-def _canonical_task(self: DiamondRuntime, task: Task) -> Task:
-    visits = self._validate(task)
+def canonical_task(self: DiamondRuntime, task: Task) -> Task:
+    visits = self.validate_task(task)
     self.ledger.bump(_execution_keys.SCHEDULER_ADMISSION_REQUESTS)
     self.ledger.bump(_execution_keys.SCHEDULER_ADMISSION_SOURCE_VISITS, visits)
     if isinstance(task, HigherUnarySummary) and task.side == 1:
@@ -388,9 +388,7 @@ def _canonical_task(self: DiamondRuntime, task: Task) -> Task:
     return task
 
 
-def _fold_substitution(
-    self: DiamondRuntime, step: ContinuationStep
-) -> ContinuationStep:
+def fold_substitution(self: DiamondRuntime, step: ContinuationStep) -> ContinuationStep:
     """Normalize sibling spatial actions before continuation interning.
 
     The preceding continuation and this step are two adjacent pieces of
@@ -440,10 +438,10 @@ def _fold_substitution(
                 1,
             )
             compatible = (
-                self._cached_transfer(left_scan) == second.left
-                and self._cached_transfer(right_scan) == first.right
+                self.cached_transfer(left_scan) == second.left
+                and self.cached_transfer(right_scan) == first.right
             )
-        advanced = self._cached_transfer(
+        advanced = self.cached_transfer(
             Transfer(prior.provider, prior.first, prior.anchor, prior.side)
         )
         if not compatible or advanced != step.anchor:

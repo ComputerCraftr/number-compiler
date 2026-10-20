@@ -10,9 +10,9 @@ import pytest
 from devtools.experiments.antihydra.barrier_search import main
 from devtools.experiments.antihydra.future_grammar import ReachableFutureGrammar
 from devtools.experiments.antihydra.joint_future_quotient import (
-    _row,
     audit_collatz_sources,
     audit_joint_future,
+    joint_future_row,
 )
 from devtools.experiments.antihydra.source_safety import SourceSafetyWorkspace
 from number_compiler.arithmetic.fields.branch_quotients import (
@@ -100,7 +100,7 @@ def test_joint_rejects_forged_choice_and_foreign_source() -> None:
 
     domain = source_event_exponent_domain(workspace, parent)
     with pytest.raises(ValueError, match="source-admitted menu"):
-        _row(
+        joint_future_row(
             grammar,
             parent,
             child,

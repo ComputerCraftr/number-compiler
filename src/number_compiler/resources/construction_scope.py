@@ -11,7 +11,6 @@ from weakref import ReferenceType
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.metric_keys import resources as _resources_keys
-from number_compiler.resources.stores import LedgerDict, LedgerList
 
 _ACTIVE_CONSTRUCTIONS: ContextVar[tuple[RuntimeConstruction, ...]] = ContextVar(
     "active_runtime_constructions", default=()
@@ -25,10 +24,10 @@ def record_construction_owner(ledger: ResourceLedger, owner: int) -> None:
     )
     try:
         for scope in scopes:
-            scope._record_owner(owner)
+            scope.record_owner(owner)
     except BaseException:
         for scope in scopes:
-            scope._discard_owner(owner)
+            scope.discard_owner(owner)
         raise
 
 
@@ -36,7 +35,7 @@ def forget_construction_owner(ledger: ResourceLedger, owner: int) -> None:
     """Undo scope bookkeeping when the ledger registration itself fails."""
     for scope in _ACTIVE_CONSTRUCTIONS.get():
         if scope.ledger is ledger:
-            scope._discard_owner(owner)
+            scope.discard_owner(owner)
 
 
 def record_construction_root(
@@ -50,10 +49,10 @@ def record_construction_root(
     )
     try:
         for scope in scopes:
-            scope._record_root(identity, reference)
+            scope.record_root(identity, reference)
     except BaseException:
         for scope in scopes:
-            scope._discard_root(identity, reference)
+            scope.discard_root(identity, reference)
         raise
 
 
@@ -65,7 +64,7 @@ def forget_construction_root(
     """Undo root bookkeeping when weak-root registration itself fails."""
     for scope in _ACTIVE_CONSTRUCTIONS.get():
         if scope.ledger is ledger:
-            scope._discard_root(identity, reference)
+            scope.discard_root(identity, reference)
 
 
 class RuntimeConstruction:
@@ -92,19 +91,19 @@ class RuntimeConstruction:
         self._token = _ACTIVE_CONSTRUCTIONS.set((*_ACTIVE_CONSTRUCTIONS.get(), self))
         return self
 
-    def _record_owner(self, owner: int) -> None:
+    def record_owner(self, owner: int) -> None:
         self._owners.append(owner)
 
-    def _discard_owner(self, owner: int) -> None:
+    def discard_owner(self, owner: int) -> None:
         try:
             self._owners.remove(owner)
         except ValueError:
             pass
 
-    def _record_root(self, identity: int, reference: ReferenceType[object]) -> None:
+    def record_root(self, identity: int, reference: ReferenceType[object]) -> None:
         self._roots[identity] = reference
 
-    def _discard_root(self, identity: int, reference: ReferenceType[object]) -> None:
+    def discard_root(self, identity: int, reference: ReferenceType[object]) -> None:
         if self._roots.get(identity) is reference:
             del self._roots[identity]
 
@@ -135,39 +134,17 @@ class RuntimeConstruction:
             cleanup_all(
                 (
                     *(
-                        partial(self._retire_owner, owner)
+                        partial(ledger.retire_unpublished_owner, owner)
                         for owner in reversed(self._owners)
                     ),
                     *(
-                        partial(ledger._expire_execution_root, identity, reference)
+                        partial(ledger.expire_execution_root, identity, reference)
                         for identity, reference in self._roots.items()
                     ),
                 )
             )
         finally:
             ledger.note_store_mutation()
-
-    def _retire_owner(self, owner: int) -> None:
-        ledger = self.ledger
-        account = ledger._account(owner)
-        if account.disposed:
-            return
-        entries, nodes = account.entries, account.nodes
-        if isinstance(account.container, (LedgerDict, LedgerList)):
-            # These unpublished stores have no valid external handles. Owner
-            # IDs are never recycled, including after a partial rollback.
-            account.container._data.clear()
-        ledger.release(owner, entries, nodes)
-        ledger.bump(_resources_keys.RUNTIME_CONSTRUCTION_RELEASED_ENTRIES, entries)
-        ledger.bump(_resources_keys.RUNTIME_CONSTRUCTION_RELEASED_NODES, nodes)
-        if account.container is not None:
-            ledger._factory_containers.discard(id(account.container))
-        # Drop owning references and callbacks retained by failed factory frames.
-        account.container = None
-        account.node_count = account.payloads = account.root_resolver = None
-        account.evict = account.composition_count = None
-        account.roots.clear()
-        ledger.mark_disposed(owner)
 
 
 __all__ = ["RuntimeConstruction"]

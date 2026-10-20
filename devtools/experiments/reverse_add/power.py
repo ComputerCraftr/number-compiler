@@ -91,7 +91,7 @@ def _determinize(
     ), subsets
 
 
-def _fragment(
+def bimachine_fragment(
     machine: LazyBimachine, left: int, word: Sequence[int], right_after: int
 ) -> tuple[int, ...] | None:
     word = tuple(word)
@@ -183,7 +183,7 @@ def _build_primitive_left(
 
     nfa: dict[tuple[int, int], set[int]] = {}
     todo = deque(start)
-    seen = set()
+    seen: set[int] = set()
     while todo:
         check_limit(len(triples))
         q = todo.popleft()
@@ -248,7 +248,7 @@ def _build_primitive_right(
 
     nfa: dict[tuple[int, int], set[int]] = {}
     todo = deque(start)
-    seen = set()
+    seen: set[int] = set()
     while todo:
         check_limit(left_count + len(triples))
         q = todo.popleft()
@@ -319,7 +319,7 @@ def _primitive_output_relation(
                 middle = first.emit(left_before, symbol, right_after)
                 if middle is None:
                     continue
-                output = _fragment(
+                output = bimachine_fragment(
                     second, second_left_before, middle, second_right_after
                 )
                 if output is None:
@@ -544,10 +544,6 @@ def _deterministic_partition(
         part = new
 
 
-def _quotient_dfa_exact(dfa: DFA, part: dict[int, int]) -> tuple[DFA, dict[int, int]]:
-    return quotient_dfa(dfa, part)
-
-
 def _canonical_output_from_classes(
     alphabet: Sequence[int],
     left: DFA,
@@ -641,8 +637,8 @@ def compose_bimachines(
     )
     left_part, left_rounds = _deterministic_partition(raw_left, left_obs)
     right_part, right_rounds = _deterministic_partition(raw_right, right_obs)
-    left, left_rep = _quotient_dfa_exact(raw_left, left_part)
-    right, right_rep = _quotient_dfa_exact(raw_right, right_part)
+    left, left_rep = quotient_dfa(raw_left, left_part)
+    right, right_rep = quotient_dfa(raw_right, right_part)
     # Output construction needs only one raw semantic representative per final
     # Nerode class; no late minimizer or Cartesian output row is involved.
     left_subsets = tuple(raw_left_subsets[left_rep[q]] for q in left.states)

@@ -7,7 +7,7 @@ from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 @pytest.mark.validation  # Cold N=32/64 primitive-work doubling envelope.
 def test_reverse_primitive_work_does_not_follow_temporal_square_area() -> None:
-    counts = []
+    counts: list[int] = []
     for steps in (32, 64):
         term = ReverseAddPoweredTerm(196, steps)
         term.digit(0)

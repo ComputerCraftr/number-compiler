@@ -69,6 +69,24 @@ class BehaviorPublicationReservation:
         self._arena, self._tiles, self._reservations = arena, tiles, reservations
         self._open, self._seal = True, seal
 
+    def matches(
+        self,
+        arena: CompletedResultArena,
+        tiles: tuple[object, ...],
+        reservations: tuple[tuple[int, int, int], ...],
+    ) -> bool:
+        return (
+            self._open
+            and self._seal is _RESERVATION_SEAL
+            and self._arena is arena
+            and self._tiles == tiles
+            and self._reservations == reservations
+        )
+
+    def consume(self) -> None:
+        """Retire slots already published or released by the transaction journal."""
+        self._open = False
+
     def close(self) -> None:
         if self._open:
             for owner, entries, nodes in self._reservations:
@@ -83,7 +101,7 @@ def reserve_behavior_publication(
     if type(arena) is not CompletedResultArena or type(request) is not PoweredResultKey:
         raise TypeError("behavior reservation requires a powered result request")
     arena.validate_key(request)
-    tiles = arena._unique_tiles(
+    tiles = arena.unique_tiles(
         (
             request.input,
             *request.boundaries.tile_ids(),
@@ -98,8 +116,8 @@ def reserve_behavior_publication(
         )
     )
     reservations = (
-        (arena._memo_owner, 1, 0),
-        (arena._reverse_owner, arena.index_entries(tiles), 0),
+        (arena.memo_owner, 1, 0),
+        (arena.reverse_owner, arena.index_entries(tiles), 0),
     )
     arena.ledger.reserve_many(reservations)
     return BehaviorPublicationReservation(
@@ -217,9 +235,9 @@ def validate_published_behavior(
     value: CompletedBehaviorClassification,
 ) -> None:
     value.__post_init__()
-    if value._publication_owner is not arena._interface_publication_seal:
+    if not arena.issued_result(value):
         raise ValueError("behavior classification was not issued by this arena")
-    if value._publication_snapshot != _snapshot(key, value):
+    if not value.publication_matches(_snapshot(key, value)):
         raise ValueError("behavior publication metadata was modified")
     behavior = arena.interfaces.resolve_future_behavior(value.behavior)
     if behavior.profile != key.profile:
@@ -310,7 +328,7 @@ def lookup_behavior_classification(
     key: BehaviorBindingKey,
 ) -> CompletedBehaviorClassification | None:
     _validate_key(arena, key)
-    found = arena._memo.get(key)
+    found = arena.memo_view.get(key)
     arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_REQUESTS)
     arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_BINDING_REQUESTS)
     if found is None:
@@ -357,13 +375,9 @@ def publish_behavior_classification(
         arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_PUBLICATION_FAILURES)
         raise
     value = CompletedBehaviorClassification(behavior)
-    value = CompletedBehaviorClassification(
-        behavior,
-        arena._interface_publication_seal,
-        _snapshot(key, value),
-    )
+    value = arena.seal_result(value, _snapshot(key, value))
     validate_published_behavior(arena, key, value)
-    found = arena._memo.get(key)
+    found = arena.memo_view.get(key)
     if found is not None:
         if reservation is not None:
             reservation.close()
@@ -380,16 +394,12 @@ def publish_behavior_classification(
         )
         return found
     stored_key = _detached_key(key)
-    value = CompletedBehaviorClassification(
-        behavior,
-        arena._interface_publication_seal,
-        _snapshot(stored_key, value),
-    )
+    value = arena.seal_result(value, _snapshot(stored_key, value))
     referenced = arena.tiles_for(stored_key, value)
     reverse_entries = arena.index_entries(referenced)
     reservations = (
-        (arena._memo_owner, 1, 0),
-        (arena._reverse_owner, reverse_entries, 0),
+        (arena.memo_owner, 1, 0),
+        (arena.reverse_owner, reverse_entries, 0),
     )
     if reservation is None:
         try:
@@ -397,36 +407,33 @@ def publish_behavior_classification(
         except BaseException:
             arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_PUBLICATION_FAILURES)
             raise
-    elif (
-        type(reservation) is not BehaviorPublicationReservation
-        or not reservation._open
-        or reservation._seal is not _RESERVATION_SEAL
-        or reservation._arena is not arena
-        or reservation._tiles != tuple(referenced)
-        or reservation._reservations != reservations
+    elif type(
+        reservation
+    ) is not BehaviorPublicationReservation or not reservation.matches(
+        arena, tuple(referenced), reservations
     ):
         raise ValueError("behavior publication reservation does not match its request")
     reverse_snapshot = None
     try:
         reverse_snapshot = arena.reverse_snapshot(referenced, stored_key)
-        arena._memo[stored_key] = value
+        arena.write_memo_reserved(stored_key, value)
         for tile in referenced:
             arena.add_membership(tile, stored_key)
     except BaseException:
         if reverse_snapshot is not None:
-            arena._memo.pop(stored_key, None)
+            arena.discard_memo(stored_key)
             arena.restore_reverse(reverse_snapshot)
         for owner, entries, nodes in reservations:
             arena.ledger.release(owner, entries, nodes)
         if reservation is not None:
-            reservation._open = False
+            reservation.consume()
         arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_PUBLICATION_FAILURES)
         raise
     if reservation is not None:
-        reservation._open = False
+        reservation.consume()
     arena.ledger.bump(_tiles_keys.FUTURE_BEHAVIOR_BINDING_PUBLICATIONS)
     level = arena.tiles.resolve(key.input).level
-    arena.tiles._cache_metrics.prepare(
+    arena.tiles.cache_metrics.prepare(
         "behavior",
         "early_hit",
         spatial_level=level,

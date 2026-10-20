@@ -38,7 +38,9 @@ def compile_truth_function(
     if (
         primitive.ledger is not arena.ledger
         or type(side) is not BoundarySide
-        or not any(candidate is primitive for candidate in arena._kernels)
+        or not any(
+            candidate is primitive for candidate in arena.audit_snapshot().kernels
+        )
     ):
         raise ValueError("kernel truth compiler requires its admitted resource owner")
     if operation not in ("advance", "emit"):
@@ -59,7 +61,7 @@ def compile_truth_function(
     ordered = True
     for argument, node in enumerate(nodes):
         for bit, condition in enumerate(node.bits):
-            decision = arena.functions._nodes[arena.functions._resolve(condition)]
+            decision = arena.functions.decision_record(condition)
             if decision.variable is None:
                 values[argument] |= condition.local_id << bit
             else:
@@ -114,7 +116,7 @@ def compile_truth_function(
             if result != lower:
                 if ordered:
                     result = tuple(
-                        arena.functions._intern(variable, low, high)
+                        arena.functions.intern_record(variable, low, high)
                         for low, high in zip(lower, result, strict=True)
                     )
                     arena.ledger.bump(
@@ -122,19 +124,19 @@ def compile_truth_function(
                     )
                 else:
                     result = tuple(
-                        arena.functions._resolve(
+                        arena.functions.resolve_index(
                             arena.functions.choose(
                                 condition,
-                                arena.functions._handle(high),
-                                arena.functions._handle(low),
+                                arena.functions.scoped_handle(high),
+                                arena.functions.scoped_handle(low),
                             )
                         )
                         for low, high in zip(lower, result, strict=True)
                     )
         else:
-            return arena._intern_expression(
+            return arena.intern_expression(
                 FiniteExpression(
                     domain,
-                    tuple(arena.functions._handle(bit) for bit in result),
+                    tuple(arena.functions.scoped_handle(bit) for bit in result),
                 )
             )

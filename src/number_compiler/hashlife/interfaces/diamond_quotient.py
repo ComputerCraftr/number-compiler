@@ -36,14 +36,15 @@ from number_compiler.hashlife.behavior.future_behavior import (
     FutureBehaviorProfileID,
     QuiescentBlankCertificate,
 )
+from number_compiler.hashlife.behavior.quiescent_admission import (
+    FutureBehaviorAdmission,
+)
 from number_compiler.hashlife.interfaces.closed_interface_admission import (
     has_closed_components,
     validate_closed_components,
 )
-from number_compiler.hashlife.interfaces.primitive_behavior import (
-    PrimitiveBehaviorQuotient,
-)
 from number_compiler.hashlife.interfaces.quotient_publication import (
+    QuotientPublication,
     retained_record_nodes,
 )
 from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
@@ -84,7 +85,7 @@ from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.stores import LedgerList
 
 
-class DiamondQuotientArena:
+class DiamondQuotientArena(FutureBehaviorAdmission, QuotientPublication):
     """Intern complete effects and atomically bind them to parent requests.
 
     The semantic function arena is index-owned. A parent hit consults only
@@ -399,6 +400,15 @@ class DiamondQuotientArena:
             self._parents,
         )
 
+    def future_behavior_store_counts(self) -> tuple[int, int, int, int]:
+        """Count retained behavior profiles, classes, and their canonical keys."""
+        return (
+            len(self._future_profiles),
+            len(self._future_profile_keys),
+            len(self._future_classes),
+            len(self._future_class_keys),
+        )
+
     def validate_interface_record(self, interface: MacroInterface) -> None:
         """Validate an interface payload through the issuing quotient arena."""
         self._validate_interface(interface)
@@ -407,7 +417,7 @@ class DiamondQuotientArena:
         """Validate a complete quotient payload through its semantic owner."""
         if type(record) is not QuotientRecord:
             raise TypeError("expected a canonical quotient record")
-        self._validate_components(record.signature, record.components)
+        self.validate_components(record.signature, record.components)
 
     def validate_parent_key(self, key: DiamondKey) -> None:
         """Validate a source-bound parent request through its issuing arena."""
@@ -424,297 +434,7 @@ class DiamondQuotientArena:
         except KeyError:
             raise ValueError("stale or unpublished local interface") from None
 
-    def resolve_future_profile(
-        self,
-        reference: FutureBehaviorProfileID,
-    ) -> FutureBehaviorProfile:
-        """Resolve a live profile without evaluating its semantic functions."""
-        if type(reference) is not FutureBehaviorProfileID:
-            raise TypeError("expected a future behavior profile ID")
-        ArenaHandle.validate(
-            reference,
-            self.owner,
-            "future-behavior-profile",
-            size=self._next_future_profile,
-        )
-        found = self._future_profiles.get(reference.local_id)
-        if found is None:
-            raise ValueError("stale or unpublished future behavior profile")
-        snapshot = self._future_snapshots.get(("profile", reference.local_id))
-        if snapshot is None or not self._profile_matches(found, snapshot):
-            raise ValueError("future behavior profile changed after publication")
-        return found
-
-    def resolve_future_behavior(
-        self,
-        reference: FutureBehaviorClassID,
-    ) -> FutureBehaviorClass:
-        """Resolve a completed successor-closed behavior class."""
-        if type(reference) is not FutureBehaviorClassID:
-            raise TypeError("expected a future behavior class ID")
-        ArenaHandle.validate(
-            reference,
-            self.owner,
-            "future-behavior-class",
-            size=self._next_future_class,
-        )
-        found = self._future_classes.get(reference.local_id)
-        if found is None:
-            raise ValueError("stale or unpublished future behavior class")
-        snapshot = self._future_snapshots.get(("class", reference.local_id))
-        if snapshot is None or not self._class_matches(found, snapshot):
-            raise ValueError("future behavior class changed after publication")
-        profile = self.resolve_future_profile(found.profile)
-        if found.output_symbol != profile.blank:
-            raise ValueError("future blank class disagrees with its profile")
-        return found
-
-    def future_certificate(
-        self,
-        reference: FutureBehaviorProfileID,
-    ) -> QuiescentBlankCertificate:
-        """Return the frozen proof attached to a live admitted profile."""
-        self.resolve_future_profile(reference)
-        found = self._future_certificates.get(reference)
-        if found is None:
-            raise ValueError("future behavior profile has no published certificate")
-        snapshot = self._future_snapshots.get(("certificate", reference.local_id))
-        if snapshot is None or not self._certificate_matches(found, snapshot):
-            raise ValueError("future behavior certificate changed after publication")
-        return found
-
-    @staticmethod
-    def _profile_snapshot(profile: FutureBehaviorProfile) -> tuple[object, ...]:
-        return (
-            id(profile.kernel),
-            profile.kernel.digest,
-            id(profile.kernel.behavior),
-            id(profile.continuation),
-            profile.continuation.digest,
-            id(profile.continuation.behavior),
-            "int",
-            profile.alphabet_size,
-            "int",
-            profile.blank,
-            profile.observations,
-            profile.admissible_left_states,
-            profile.geometry_schema,
-            profile.cocycle_schema,
-            "int",
-            profile.version,
-            profile.certificate_digest,
-        )
-
-    @staticmethod
-    def _profile_matches(
-        profile: FutureBehaviorProfile,
-        snapshot: tuple[object, ...],
-    ) -> bool:
-        return (
-            len(snapshot) == 17
-            and type(profile.kernel) is SemanticIdentity
-            and type(profile.kernel.digest) is str
-            and type(profile.kernel.behavior) is tuple
-            and type(profile.continuation) is SemanticIdentity
-            and type(profile.continuation.digest) is str
-            and type(profile.continuation.behavior) is tuple
-            and id(profile.kernel) == snapshot[0]
-            and profile.kernel.digest == snapshot[1]
-            and id(profile.kernel.behavior) == snapshot[2]
-            and id(profile.continuation) == snapshot[3]
-            and profile.continuation.digest == snapshot[4]
-            and id(profile.continuation.behavior) == snapshot[5]
-            and type(profile.alphabet_size) is int
-            and snapshot[6] == "int"
-            and profile.alphabet_size == snapshot[7]
-            and type(profile.blank) is int
-            and snapshot[8] == "int"
-            and profile.blank == snapshot[9]
-            and profile.observations is snapshot[10]
-            and profile.admissible_left_states is snapshot[11]
-            and profile.geometry_schema == snapshot[12]
-            and profile.cocycle_schema == snapshot[13]
-            and type(profile.version) is int
-            and snapshot[14] == "int"
-            and profile.version == snapshot[15]
-            and profile.certificate_digest == snapshot[16]
-        )
-
-    @staticmethod
-    def _class_snapshot(behavior: FutureBehaviorClass) -> tuple[object, ...]:
-        return (
-            behavior.profile.owner,
-            behavior.profile.kind,
-            behavior.profile.local_id,
-            behavior.law,
-            "int",
-            behavior.output_symbol,
-            "bool",
-            behavior.active,
-            "bool",
-            behavior.termination,
-            "int",
-            behavior.normalization_symbol,
-        )
-
-    @staticmethod
-    def _class_matches(
-        behavior: FutureBehaviorClass,
-        snapshot: tuple[object, ...],
-    ) -> bool:
-        return (
-            type(behavior.profile) is FutureBehaviorProfileID
-            and type(behavior.output_symbol) is int
-            and type(behavior.active) is bool
-            and type(behavior.termination) is bool
-            and type(behavior.normalization_symbol) is int
-            and DiamondQuotientArena._class_snapshot(behavior) == snapshot
-        )
-
-    @staticmethod
-    def _certificate_snapshot(
-        certificate: QuiescentBlankCertificate,
-    ) -> tuple[object, ...]:
-        return (
-            id(certificate.kernel),
-            certificate.kernel.digest,
-            id(certificate.kernel.behavior),
-            id(certificate.continuation),
-            certificate.continuation.digest,
-            id(certificate.continuation.behavior),
-            "int",
-            certificate.alphabet_size,
-            "int",
-            certificate.blank,
-            certificate.safe_blank_left_states,
-            certificate.absorbing_blank_left_states,
-            certificate.left_blank_transition,
-            certificate.right_blank_transition,
-            "int",
-            certificate.refinement_rounds,
-            certificate.semantic_digest,
-        )
-
-    @staticmethod
-    def _certificate_matches(
-        certificate: QuiescentBlankCertificate,
-        snapshot: tuple[object, ...],
-    ) -> bool:
-        return (
-            len(snapshot) == 17
-            and type(certificate.kernel) is SemanticIdentity
-            and type(certificate.kernel.digest) is str
-            and type(certificate.kernel.behavior) is tuple
-            and type(certificate.continuation) is SemanticIdentity
-            and type(certificate.continuation.digest) is str
-            and type(certificate.continuation.behavior) is tuple
-            and id(certificate.kernel) == snapshot[0]
-            and certificate.kernel.digest == snapshot[1]
-            and id(certificate.kernel.behavior) == snapshot[2]
-            and id(certificate.continuation) == snapshot[3]
-            and certificate.continuation.digest == snapshot[4]
-            and id(certificate.continuation.behavior) == snapshot[5]
-            and type(certificate.alphabet_size) is int
-            and snapshot[6] == "int"
-            and certificate.alphabet_size == snapshot[7]
-            and type(certificate.blank) is int
-            and snapshot[8] == "int"
-            and certificate.blank == snapshot[9]
-            and certificate.safe_blank_left_states is snapshot[10]
-            and certificate.absorbing_blank_left_states is snapshot[11]
-            and certificate.left_blank_transition is snapshot[12]
-            and certificate.right_blank_transition is snapshot[13]
-            and type(certificate.refinement_rounds) is int
-            and snapshot[14] == "int"
-            and certificate.refinement_rounds == snapshot[15]
-            and certificate.semantic_digest == snapshot[16]
-        )
-
-    @staticmethod
-    def _quotient_snapshot(quotient: PrimitiveBehaviorQuotient) -> tuple[object, ...]:
-        return (
-            id(quotient.source_identity),
-            quotient.source_identity.digest,
-            id(quotient.source_identity.behavior),
-            id(quotient.semantic_identity),
-            quotient.semantic_identity.digest,
-            id(quotient.semantic_identity.behavior),
-            "int",
-            quotient.alphabet_size,
-            "int",
-            quotient.blank,
-            quotient.left_classes,
-            quotient.right_classes,
-            quotient.left_representatives,
-            quotient.right_representatives,
-            quotient.left_transitions,
-            quotient.right_transitions,
-            quotient.outputs,
-            quotient.channels,
-            quotient.observations,
-            "int",
-            quotient.refinement_rounds,
-        )
-
-    @staticmethod
-    def _quotient_matches(
-        quotient: PrimitiveBehaviorQuotient,
-        snapshot: tuple[object, ...],
-    ) -> bool:
-        if (
-            type(quotient.source_identity) is not SemanticIdentity
-            or type(quotient.source_identity.digest) is not str
-            or type(quotient.source_identity.behavior) is not tuple
-            or type(quotient.semantic_identity) is not SemanticIdentity
-            or type(quotient.semantic_identity.digest) is not str
-            or type(quotient.semantic_identity.behavior) is not tuple
-            or type(quotient.alphabet_size) is not int
-            or type(quotient.blank) is not int
-            or type(quotient.refinement_rounds) is not int
-        ):
-            return False
-        current = DiamondQuotientArena._quotient_snapshot(quotient)
-        if len(current) != len(snapshot):
-            return False
-        reference_slots = frozenset((10, 11, 12, 13, 14, 15, 16, 17, 18))
-        return all(
-            left is right if index in reference_slots else left == right
-            for index, (left, right) in enumerate(zip(current, snapshot, strict=True))
-        )
-
-    def admit_quiescent_blank(
-        self,
-        quotient: PrimitiveBehaviorQuotient,
-    ) -> tuple[FutureBehaviorProfileID, FutureBehaviorClassID]:
-        from number_compiler.hashlife.behavior.quiescent_admission import (
-            admit_quiescent_blank,
-        )
-
-        return admit_quiescent_blank(self, quotient)
-
-    def lookup_quiescent_blank(
-        self,
-        quotient: PrimitiveBehaviorQuotient,
-    ) -> tuple[FutureBehaviorProfileID, FutureBehaviorClassID] | None:
-        from number_compiler.hashlife.behavior.quiescent_admission import (
-            lookup_quiescent_blank,
-        )
-
-        return lookup_quiescent_blank(self, quotient)
-
-    def rollback_quiescent_blank_admission(
-        self,
-        quotient: PrimitiveBehaviorQuotient,
-        profile: FutureBehaviorProfileID,
-        behavior: FutureBehaviorClassID,
-    ) -> None:
-        from number_compiler.hashlife.behavior.quiescent_admission import (
-            rollback_quiescent_blank_admission,
-        )
-
-        return rollback_quiescent_blank_admission(self, quotient, profile, behavior)
-
-    def _validate_components(
+    def validate_components(
         self, signature: PortSignatureID, components: MacroComponents
     ) -> MacroInterface:
         interface = self.interface(signature)
@@ -743,7 +463,7 @@ class DiamondQuotientArena:
         Every supplied component is already a canonical semantic function.
         This operation does not accept expression or closure recipes.
         """
-        interface = self._validate_components(signature, components)
+        interface = self.validate_components(signature, components)
         from number_compiler.hashlife.interfaces.atomic_quotient_normalization import (
             atomic_product_is_masked,
         )
@@ -768,7 +488,7 @@ class DiamondQuotientArena:
     def _prepare_normalization(
         self, signature: PortSignatureID, components: MacroComponents
     ) -> PreparedStructures:
-        interface = self._validate_components(signature, components)
+        interface = self.validate_components(signature, components)
         if has_closed_components(components):
             raise ValueError("closed arithmetic cannot enter Boolean normalization")
         require_total_components(
@@ -807,7 +527,7 @@ class DiamondQuotientArena:
     def intern(
         self, signature: PortSignatureID, components: MacroComponents
     ) -> DiamondQuotientID:
-        interface = self._validate_components(signature, components)
+        interface = self.validate_components(signature, components)
         request = QuotientRecord(signature, components)
         # Exact canonical records and previously normalized aliases are the
         # only legal pre-reduction hits.  The semantic interner itself is
@@ -887,7 +607,7 @@ class DiamondQuotientArena:
     ) -> DiamondQuotientID:
         self._validate_key(key)
         # Check every component before a hit, including forged numeric IDs.
-        self._validate_components(key.signature, components)
+        self.validate_components(key.signature, components)
         found = self._parents.get(key)
         if found is not None:
             raise ValueError("compile only after probing an unresolved diamond")

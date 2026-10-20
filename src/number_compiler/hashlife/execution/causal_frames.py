@@ -251,6 +251,11 @@ class OutputBoundaryFrame(
 
     args: CausalOutputBoundaryArgs
 
+    @property
+    def boundary_view(self) -> BoundaryTileView:
+        """Return the boundary view carried by this task."""
+        return self.args[2]
+
 
 @dataclass(slots=True)
 class OutputChunkListFrame(_CausalFrame[CausalOutputChunkListArgs, CausalEmptySaved]):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 from subprocess import CompletedProcess
 from typing import NotRequired, TypedDict
 
@@ -46,6 +47,10 @@ def _worker_row(family: str, horizon: int, scale: int) -> WorkerFixture:
     }
 
 
+def _fixed_git_source(_root: Path) -> GitSource:
+    return GitSource("commit", "tree", "sha1", False)
+
+
 def test_release_probe_covers_the_full_series_under_shared_command_policy() -> None:
     assert probe.HORIZONS == (16, 32, 64, 128, 256, 512, 1024)
     assert probe.INVOCATION_LIMIT_SECONDS == 60
@@ -57,9 +62,7 @@ def test_failed_workers_remain_in_complete_collection(
     evidence_mode: str,
 ) -> None:
     monkeypatch.setenv("NUMBER_COMPILER_EVIDENCE_MODE", evidence_mode)
-    monkeypatch.setattr(
-        probe, "git_source", lambda _root: GitSource("commit", "tree", "sha1", False)
-    )
+    monkeypatch.setattr(probe, "git_source", _fixed_git_source)
     calls = 0
 
     def fake_run(
@@ -95,7 +98,7 @@ def test_failed_workers_remain_in_complete_collection(
 
 def test_family_envelopes_reject_quadratic_work_without_hiding_other_units() -> None:
     horizons = (16, 32, 64, 128)
-    rows = []
+    rows: list[dict[str, object]] = []
     for index, horizon in enumerate(horizons):
         metrics = _metrics(1 << index)
         metrics["total_internal_action_work"] = 4**index
@@ -106,7 +109,7 @@ def test_family_envelopes_reject_quadratic_work_without_hiding_other_units() -> 
                 "metrics": metrics,
             }
         )
-    report = probe._family_report("reverse", rows, horizons)
+    report = probe.family_report("reverse", rows, horizons)
     envelopes = report["measured_doubling_envelopes"]
     assert envelopes["total_internal_action_work"] is False
     assert envelopes["resource_ledger_nodes"] is True
@@ -122,13 +125,17 @@ def test_invalid_worker_json_is_retained_as_failed_sample(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(probe, "HORIZONS", (16,))
-    monkeypatch.setattr(
-        probe, "git_source", lambda _root: GitSource("commit", "tree", "sha1", False)
-    )
+    monkeypatch.setattr(probe, "git_source", _fixed_git_source)
+
+    def invalid_json_run(
+        command: list[str], **_kwargs: object
+    ) -> CompletedProcess[str]:
+        return CompletedProcess(command, 0, "not-json", "trace")
+
     monkeypatch.setattr(
         subprocess,
         "run",
-        lambda command, **_kwargs: CompletedProcess(command, 0, "not-json", "trace"),
+        invalid_json_run,
     )
     result = probe.run_probe()
     _assert_failed_samples(result, "invalid worker JSON")
@@ -138,9 +145,7 @@ def test_parent_source_consistency_is_reported_separately_from_worker_claims(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(probe, "HORIZONS", (16, 32))
-    monkeypatch.setattr(
-        probe, "git_source", lambda _root: GitSource("commit", "tree", "sha1", False)
-    )
+    monkeypatch.setattr(probe, "git_source", _fixed_git_source)
 
     def fake_run(
         command: list[str], **_kwargs: object
@@ -164,9 +169,7 @@ def test_malformed_metrics_are_retained_as_failure_instead_of_aborting(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(probe, "HORIZONS", (16,))
-    monkeypatch.setattr(
-        probe, "git_source", lambda _root: GitSource("commit", "tree", "sha1", False)
-    )
+    monkeypatch.setattr(probe, "git_source", _fixed_git_source)
 
     def fake_run(
         command: list[str], **_kwargs: object
@@ -183,7 +186,7 @@ def test_malformed_metrics_are_retained_as_failure_instead_of_aborting(
 
 def test_forbidden_execution_work_blocks_otherwise_linear_measurements() -> None:
     horizons = (16, 32)
-    rows = []
+    rows: list[dict[str, object]] = []
     for horizon in horizons:
         metrics = _metrics(horizon)
         metrics["higher_action_continuation_requests"] = 1
@@ -194,7 +197,7 @@ def test_forbidden_execution_work_blocks_otherwise_linear_measurements() -> None
                 "metrics": metrics,
             }
         )
-    report = probe._family_report("collatz", rows, horizons)
+    report = probe.family_report("collatz", rows, horizons)
     assert report["measured_doubling_envelopes"]["total_internal_action_work"] is True
     assert "higher_action_continuation_requests_observed" in report["release_blockers"]
     assert report["status"] == "RED"
@@ -202,12 +205,12 @@ def test_forbidden_execution_work_blocks_otherwise_linear_measurements() -> None
 
 def test_timeout_does_not_report_unobserved_cache_growth() -> None:
     horizons = (16, 32, 64, 128)
-    rows = [
+    rows: list[dict[str, object]] = [
         {**_worker_row("reverse", horizon, horizon), "status": "passed"}
         for horizon in horizons[:-1]
     ]
     rows.append({"family": "reverse", "horizon": 128, "status": "timed_out"})
-    report = probe._family_report("reverse", rows, horizons)
+    report = probe.family_report("reverse", rows, horizons)
     assert report["status"] == "RED"
     assert report["release_blockers"] == ["measurement_series_incomplete"]
     assert report["observed_prefix_horizons"] == [16, 32, 64]
@@ -218,7 +221,7 @@ def test_timeout_does_not_report_unobserved_cache_growth() -> None:
 
 
 def test_single_sample_cannot_establish_or_refute_doubling() -> None:
-    report = probe._family_report(
+    report = probe.family_report(
         "reverse",
         [{**_worker_row("reverse", 16, 1), "status": "passed"}],
         (16,),
@@ -231,13 +234,13 @@ def test_single_sample_cannot_establish_or_refute_doubling() -> None:
 
 
 def test_compiler_growth_and_source_tiles_do_not_prove_absorption() -> None:
-    rows = []
+    rows: list[WorkerFixture] = []
     for horizon in (16, 32):
         row = _worker_row("reverse", horizon, horizon)
         row["status"] = "passed"
         row["metrics"].update({field: 0 for field in probe.ABSORPTION_FIELDS})
         rows.append(row)
-    report = probe._family_report("reverse", rows, (16, 32))
+    report = probe.family_report("reverse", rows, (16, 32))
     assert all(report["measured_doubling_envelopes"].values())
     assert report["release_blockers"] == ["powered_tile_execution_not_demonstrated"]
 
@@ -245,25 +248,25 @@ def test_compiler_growth_and_source_tiles_do_not_prove_absorption() -> None:
 def test_demanded_execution_does_not_require_a_completed_root() -> None:
     row = _worker_row("reverse", 32, 8)
     row["metrics"]["completed_result_entries"] = 0
-    assert probe._runtime_executed(row)
+    assert probe.runtime_executed(row)
 
 
 def test_missing_absorption_measurements_are_not_observed_zeros() -> None:
     metrics = _metrics(8)
     del metrics["powered_absorption_max_span"]
-    assert not probe._valid_worker_metrics(metrics)
+    assert not probe.valid_worker_metrics(metrics)
 
 
 def test_primitive_pair_absorption_cannot_claim_a_powered_public_cutover() -> None:
     row = _worker_row("reverse", 32, 8)
     row["metrics"]["powered_absorption_max_span"] = 2
-    assert not probe._runtime_executed(row)
+    assert not probe.runtime_executed(row)
     row["metrics"]["powered_absorption_max_span"] = 31
-    assert probe._runtime_executed(row)
+    assert probe.runtime_executed(row)
     row["family"] = "collatz"
-    assert not probe._runtime_executed(row)
+    assert not probe.runtime_executed(row)
     row["metrics"]["powered_absorption_max_span"] = 32
-    assert probe._runtime_executed(row)
+    assert probe.runtime_executed(row)
 
 
 class WorkerFixture(TypedDict):

@@ -106,7 +106,7 @@ def test_joint_bank_walsh_is_invertible_and_tracks_both_rays() -> None:
         assert joint.protected.represented_steps == 64
         assert joint.protected.moore_classes is not None
         frames = _assert_joint_walsh_matches_frames(joint)
-        assert term._image is None
+        assert term.published_image is None
         assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
         assert joint.source.next_mod10 == _step(seed) % 10**8
 
@@ -223,7 +223,7 @@ def test_exact_pair_consumes_certified_bank_and_refuses_to_reopen_cones(
         digits = str(value)
         assert pair.digits == (int(digits[150]), int(digits[-151]))
         assert term.metrics()["double_reverse_periodic_bank_pointed_reuse"] == 1
-        assert term._image is None
+        assert term.published_image is None
 
 
 def test_exact_pair_falls_back_when_periodic_bank_refuses(

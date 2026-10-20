@@ -173,7 +173,7 @@ class CollatzRadix4RangeArena:
         reference.validate(self.owner, self._KIND, size=len(self._nodes))
         return self._nodes[reference.local_id]
 
-    def _intern(self, value: CollatzRadix4Range) -> CollatzRadix4RangeID:
+    def intern_record(self, value: CollatzRadix4Range) -> CollatzRadix4RangeID:
         found = self._keys.get(value)
         if found is not None:
             self.ledger.bump(_collatz_keys.COLLATZ_RANGE_SEMANTIC_ALIAS_HITS)
@@ -213,16 +213,16 @@ class CollatzRadix4RangeArena:
             if node.level == 0:
                 low_symbol = self.sources.symbol(current)
                 symbol = 0 if low_symbol == blank else low_symbol
-                result = self._intern(CollatzRadix4Range.atom(symbol))
+                result = self.intern_record(CollatzRadix4Range.atom(symbol))
             elif node.level == 1:
                 low_cell, high_cell = self.sources.children(current)
                 lo = self.sources.symbol(low_cell)
                 hi = self.sources.symbol(high_cell)
                 symbol = (0 if lo == blank else lo) + 2 * (0 if hi == blank else hi)
-                result = self._intern(CollatzRadix4Range.atom(symbol))
+                result = self.intern_record(CollatzRadix4Range.atom(symbol))
             else:
                 left, right = self.sources.children(current)
-                result = self._intern(
+                result = self.intern_record(
                     self.resolve(built[left.local_id]).then(
                         self.resolve(built[right.local_id])
                     )
@@ -244,7 +244,7 @@ class CollatzRadix4RangeArena:
         cells = self.sources.resolve_forest(source).cells
         result = self.summarize(cells[0])
         for cell in cells[1:]:
-            result = self._intern(
+            result = self.intern_record(
                 self.resolve(result).then(self.resolve(self.summarize(cell))),
             )
             self.ledger.bump(_collatz_keys.COLLATZ_RANGE_FOREST_COMPOSITIONS)

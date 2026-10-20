@@ -30,7 +30,7 @@ def ignored_initial(
         return None
     # Preparation builds only the logarithmic temporal DAG's initial ports.
     # Never invoke the scheduler from inside its own dependency loop.
-    return scheduler._memo.get(("INIT", action, side))
+    return scheduler.cached_result(("INIT", action, side))
 
 
 def normalize_binding(
@@ -45,7 +45,7 @@ def normalize_binding(
     if initial is None:
         return binding
     left = binding.anchor if binding.side == 0 else binding.argument
-    scheduler._validate_action_state(before, 0, left)
+    scheduler.validate_action_state(before, 0, left)
     if left == initial:
         return binding
     scheduler.ledger.bump(_execution_keys.CONCRETE_IRRELEVANT_PORT_ELISIONS)
@@ -65,7 +65,7 @@ def normalize_request(
         action = cast(FieldCellActionID, frame[1])
         initial = ignored_initial(scheduler, action, 0)
         if initial is not None:
-            scheduler._validate_action_state(action, 0, cast(PortAtom, frame[2]))
+            scheduler.validate_action_state(action, 0, cast(PortAtom, frame[2]))
             return (*frame[:2], initial, *frame[3:])
     elif tag in ("RES", "SECOND"):
         action = cast(FieldCellActionID, frame[1])
@@ -74,7 +74,7 @@ def normalize_request(
             initial = ignored_initial(scheduler, children[0], 0)
             if initial is not None:
                 slot = 4 if tag == "RES" else (6 if frame[2] == 0 else 7)
-                scheduler._validate_action_state(
+                scheduler.validate_action_state(
                     children[0],
                     0,
                     cast(PortAtom, frame[slot]),

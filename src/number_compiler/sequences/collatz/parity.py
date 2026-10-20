@@ -28,9 +28,11 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.input_validation import (
+    is_runtime_instance,
     normalized_integer_pair,
 )
 from number_compiler.arithmetic.fields.adic_morphism import PadicAffineMorphism
+from number_compiler.arithmetic.fields.integer_congruence import exact_modular_power
 from number_compiler.arithmetic.fields.morphism_core import DyadicAffineCocycle
 from number_compiler.arithmetic.fields.two_adic import inverse_dyadic_parity_word
 from number_compiler.arithmetic.polynomials.binomial_pow2 import (
@@ -438,7 +440,7 @@ class CollatzParityPrefixIndex:
         word, width, block_bits = int(self.word), int(self.width), int(self.block_bits)
         if width < 0 or word < 0 or word >= (1 << width) or block_bits <= 0:
             raise ValueError((word, width, block_bits))
-        blocks = []
+        blocks: list[ParityDurationSummary] = []
         physical = [0]
         for start in range(0, width, block_bits):
             length = min(block_bits, width - start)
@@ -627,7 +629,7 @@ class CollatzValuationCursor:
     physical_offset: int = 0
 
     def __post_init__(self) -> None:
-        if not isinstance(self.schedule, CollatzValuationSchedule):
+        if not is_runtime_instance(self.schedule, CollatzValuationSchedule):
             raise TypeError(type(self.schedule))
         if not 0 <= int(self.physical_offset) <= self.schedule.physical_steps:
             raise ValueError(self.physical_offset)
@@ -798,13 +800,6 @@ class CollatzParityTimeOperator:
         return advance_collatz_valuations(cursor, self.steps)
 
 
-def _prefix_duration(word: int, symbols: int) -> int:
-    """Reference scalar duration helper retained for bounded differential tests."""
-    if symbols <= 0:
-        return 0
-    return symbols + (word & ((1 << symbols) - 1)).bit_count()
-
-
 def advance_collatz_parity(
     cursor: CollatzParityCursor, physical_steps: int
 ) -> CollatzParityAdvance:
@@ -921,15 +916,17 @@ def collatz_slab_padic3(
     """Exact normalized Collatz slab modulo ``3**precision``."""
     if type(precision) is not int:
         raise TypeError("p-adic precision must be an exact integer")
-    modulus = 3**precision
+    modulus: int = 3**precision
     width = int(slab.width)
     ones = int(slab.ones)
     offset = int(slab.offset)
-    inverse = pow(pow(2, width, modulus), -1, modulus)
+    two_power = exact_modular_power(2, width, modulus)
+    inverse = exact_modular_power(two_power, -1, modulus)
+    three_power = exact_modular_power(3, ones, modulus)
     return PadicAffineMorphism(
         3,
         precision,
-        (pow(3, ones, modulus) * inverse) % modulus,
+        (three_power * inverse) % modulus,
         (offset * inverse) % modulus,
         width,
         0,

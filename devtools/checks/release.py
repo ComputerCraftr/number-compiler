@@ -112,7 +112,7 @@ def _git_stable_for_mode(
     )
 
 
-def _phase_summary(path: Path) -> dict[str, object]:
+def phase_summary(path: Path) -> dict[str, object]:
     """Summarize timing records, retaining incomplete evidence after a kill."""
     phases: dict[str, list[float]] = {}
     per_node: dict[str, float] = {}
@@ -211,7 +211,7 @@ def _acceptance_environment(root: Path, environment: dict[str, str]) -> None:
     environment[PROVENANCE_MODE_ENV] = "acceptance"
 
 
-def _parse_session_inventory(
+def parse_session_inventory(
     text: str, required_sessions: tuple[str, ...]
 ) -> tuple[str, ...]:
     """Parse Isabelle's authoritative topological `sessions -b` output."""
@@ -263,7 +263,7 @@ def _profile_log_path(run: EvidenceRun) -> tuple[str | None, bool]:
     raise FileExistsError("could not reserve a fresh Isabelle profile log")
 
 
-def _session_build_summary(
+def session_build_summary(
     text: str, inventory: tuple[str, ...], *, succeeded: bool
 ) -> dict[str, object]:
     """Separate rebuilt, reused and unclassified heaps from native build logs."""
@@ -409,7 +409,7 @@ def execute(
         record["active_test_at_termination"] = None
     instrumentation_ok = True
     if pytest_run:
-        timing = _phase_summary(timing_path)
+        timing = phase_summary(timing_path)
         record["pytest_timing"] = timing
         record["pytest_timing_path"] = str(timing_path)
         instrumentation_ok = timing["complete"] is True
@@ -485,9 +485,11 @@ def quality(run: EvidenceRun, *, acceptance: bool = False) -> bool:
     return execute(run, "package", package, acceptance=acceptance) and passed
 
 
-def _pytest_selection(
-    suite: str, selectors: tuple[str, ...]
+def pytest_selection(
+    suite: str, selectors: tuple[str, ...], *, unit_only: bool = False
 ) -> tuple[tuple[str, ...], str]:
+    if unit_only and suite != "unit":
+        raise ValueError("--unit-only requires --suite unit")
     if selectors:
         if suite == "all":
             raise ValueError("--select cannot narrow the full --suite all run")
@@ -497,13 +499,13 @@ def _pytest_selection(
                 raise ValueError(
                     "P0 selections must remain within the canonical P0 files"
                 )
-        return minimal_selectors(selectors), ""
+        return minimal_selectors(selectors), "not validation" if unit_only else ""
     if suite == "p0":
         return P0, ""
     return ("tests",), "not validation" if suite == "unit" else ""
 
 
-def _pytest_command(
+def pytest_command(
     output_directory: Path,
     suite: str,
     selectors: tuple[str, ...],
@@ -555,16 +557,17 @@ def pytest_suite(
     *,
     acceptance: bool = False,
     profile: bool = False,
+    unit_only: bool = False,
 ) -> bool:
     try:
-        selected, mark = _pytest_selection(suite, selectors)
+        selected, mark = pytest_selection(suite, selectors, unit_only=unit_only)
     except ValueError as error:
         run.record(
             {"name": f"{suite}-selection", "outcome": "rejected", "detail": str(error)}
         )
         return False
     policy = PYTHON_TEST if len(selected) == 1 and "::" in selected[0] else PYTHON_SUITE
-    command = _pytest_command(run.path, suite, selected, mark, profile=profile)
+    command = pytest_command(run.path, suite, selected, mark, profile=profile)
     if not execute(
         run,
         suite,
@@ -694,7 +697,7 @@ def proofs(
     inventory_log = run.path / "proof-session-inventory.log"
     try:
         inventory_roots = requested or tuple(session.name for session in declared)
-        inventory = _parse_session_inventory(
+        inventory = parse_session_inventory(
             inventory_log.read_text(encoding="utf-8"), inventory_roots
         )
     except (OSError, ValueError) as error:
@@ -759,7 +762,7 @@ def proofs(
         return False
     build_log = run.path / "proofs.log"
     try:
-        summary = _session_build_summary(
+        summary = session_build_summary(
             build_log.read_text(encoding="utf-8"), inventory, succeeded=completed
         )
         summary["local_dependency_session_count"] = len(closure)
@@ -847,6 +850,7 @@ def _run(
                     tuple(options.select),
                     acceptance=acceptance,
                     profile=getattr(options, "profile", False),
+                    unit_only=getattr(options, "unit_only", False),
                 )
                 and passed
             )
@@ -877,6 +881,11 @@ def main() -> int:
     )
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--select", action="append", default=[])
+    parser.add_argument(
+        "--unit-only",
+        action="store_true",
+        help="Exclude validation-marked cases from selected unit runs",
+    )
     parser.add_argument("--acceptance", action="store_true")
     parser.add_argument(
         "--profile",
@@ -892,6 +901,8 @@ def main() -> int:
     )
     parser.add_argument("--session", action="append", default=[])
     options = parser.parse_args()
+    if options.unit_only and options.suite != "unit":
+        parser.error("--unit-only requires --suite unit")
     if options.profile and (options.acceptance or options.suite not in ("unit", "p0")):
         parser.error("--profile is for development Python selections only")
     if options.suite in ("unit", "p0", "all"):

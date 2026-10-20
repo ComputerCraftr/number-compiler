@@ -1,6 +1,8 @@
 """Atomic causal probes validate authority before touching result storage."""
 
+from collections.abc import MutableMapping
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
@@ -27,14 +29,14 @@ def test_atomic_probe_rejects_malformed_key_before_memo_access(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
-    tasks = scheduler._causal_tasks
+    tasks = scheduler.causal_tasks
     run = tasks.begin_run()
     token = admit_run_actions(adapter, tasks, scheduler.ledger, action)
     source = make_tile_from_symbols(tiles, adapter, action, (0,))
-    original_getitem = LedgerDict.__getitem__
+    original_getitem = LedgerDict[object, object].__getitem__
 
     def forbidden_getitem(self: LedgerDict[object, object], key: object) -> object:
-        if self is scheduler.results._memo:
+        if id(self) == scheduler.results.audit_snapshot().memo_store_identity:
             raise AssertionError(f"malformed causal key reached result memo: {key!r}")
         return original_getitem(self, key)
 
@@ -60,23 +62,25 @@ def test_atomic_probe_rejects_changed_admitted_action_before_memo_access(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
-    tasks = scheduler._causal_tasks
+    tasks = scheduler.causal_tasks
     run = tasks.begin_run()
     token = admit_run_actions(adapter, tasks, scheduler.ledger, action)
     source = make_tile_from_symbols(tiles, adapter, action, (0,))
-    record = adapter._actions[action.local_id]
+    record = adapter.action_record(action)
     ports = adapter.initial_ports(action)
     wiring = adapter.wiring(action)
-    original_getitem = LedgerDict.__getitem__
+    original_getitem = LedgerDict[object, object].__getitem__
 
     def forbidden_getitem(self: LedgerDict[object, object], key: object) -> object:
-        if self is scheduler.results._memo:
+        if id(self) == scheduler.results.audit_snapshot().memo_store_identity:
             raise AssertionError(f"changed action reached result memo: {key!r}")
         return original_getitem(self, key)
 
     try:
         monkeypatch.setattr(LedgerDict, "__getitem__", forbidden_getitem)
-        adapter._actions[action.local_id] = replace(
+        cast(
+            MutableMapping[object, object], object.__getattribute__(adapter, "_actions")
+        )[action.local_id] = replace(
             record,
             repetitions=record.repetitions + 1,
         )
@@ -90,7 +94,9 @@ def test_atomic_probe_rejects_changed_admitted_action_before_memo_access(
                 action_admission=token,
             )
     finally:
-        adapter._actions[action.local_id] = record
+        cast(
+            MutableMapping[object, object], object.__getattribute__(adapter, "_actions")
+        )[action.local_id] = record
         source.close()
         tasks.clear_action_admission(token)
         tasks.end_run(run)
@@ -132,16 +138,16 @@ def test_probe_counter_failure_precedes_lookup_and_acquires_no_lease(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
-    tasks = scheduler._causal_tasks
+    tasks = scheduler.causal_tasks
     run = tasks.begin_run()
     token = admit_run_actions(adapter, tasks, ledger, action)
     source = make_tile_from_symbols(tiles, adapter, action, (0,))
     ports = adapter.initial_ports(action)
     wiring = adapter.wiring(action)
     original_bump = ResourceLedger.bump
-    original_getitem = LedgerDict.__getitem__
+    original_getitem = LedgerDict[object, object].__getitem__
     memo_accessed = False
-    leases_before = len(tiles._leases)
+    leases_before = len(tiles.audit_snapshot().leases)
 
     def fail_probe_counter(
         owner: ResourceLedger,
@@ -154,7 +160,7 @@ def test_probe_counter_failure_precedes_lookup_and_acquires_no_lease(
 
     def observe_getitem(self: LedgerDict[object, object], key: object) -> object:
         nonlocal memo_accessed
-        if self is scheduler.results._memo:
+        if id(self) == scheduler.results.audit_snapshot().memo_store_identity:
             memo_accessed = True
         return original_getitem(self, key)
 
@@ -171,7 +177,7 @@ def test_probe_counter_failure_precedes_lookup_and_acquires_no_lease(
                 action_admission=token,
             )
         assert not memo_accessed
-        assert len(tiles._leases) == leases_before
+        assert len(tiles.audit_snapshot().leases) == leases_before
     finally:
         source.close()
         tasks.clear_action_admission(token)

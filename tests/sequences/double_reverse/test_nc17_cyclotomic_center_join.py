@@ -13,12 +13,13 @@ from number_compiler.sequences.double_reverse.source_bound_bank import (
 )
 from number_compiler.sequences.double_reverse.temporal_center_cyclotomic import (
     CertifiedCyclotomicCenter,
-    _spatial_bank_residue,
+    CertifiedCyclotomicCenterProgram,
     certified_cyclotomic_center,
     certified_cyclotomic_center_driver,
     certified_cyclotomic_center_four_return,
     certified_cyclotomic_center_program,
     cyclotomic_four_block_order,
+    spatial_bank_residue,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife import growth_ports
 from tests.support.reverse_add_source_data import double_reverse_orbit
@@ -92,7 +93,7 @@ def test_compressed_spatial_bank_joins_exact_edge_windows_without_expansion() ->
                     )
                     % modulus
                 )
-                assert _spatial_bank_residue(bank, modulus) == direct
+                assert spatial_bank_residue(bank, modulus) == direct
             center = term.temporal_cyclotomic_center_join((first, bank, last))
             assert center.witnessed_spans == ((0, 20), (20, 40), (60, pair_count - 60))
             assert center.forced_center == middle(expected)
@@ -117,7 +118,7 @@ def test_refuses_missing_overlap_time_mismatch_and_foreign_source() -> None:
             term.temporal_cyclotomic_center_join((left, foreign))
         with pytest.raises(ValueError, match="authority"):
             term.temporal_cyclotomic_center_join((replace(left, phase_in=2), right))
-        _entry, source = term._prepare_bank_source(max_prefix=0)
+        _entry, source = term.prepare_bank_source(max_prefix=0)
         with pytest.raises(ValueError, match="source/time"):
             certified_cyclotomic_center(
                 replace(source, f_steps=1, width_out=source.width_in + 1),
@@ -155,7 +156,7 @@ def test_pointed_driver_matches_literal_intermediate_centers_and_global_ring(
 def test_four_step_join_selects_source_driver_among_all_40_letters() -> None:
     seed = int("17" + "48" * 12 + "88")
     with DoubleReverseTerm(seed, 8) as term:
-        _, late = term._prepare_bank_source(max_prefix=4)
+        _, late = term.prepare_bank_source(max_prefix=4)
         early = replace(
             late,
             f_steps=late.f_steps - 2,
@@ -195,7 +196,7 @@ def test_certified_joint_program_composes_but_never_assumes_repeated_drivers() -
     seed = int("17" + "48" * 12 + "88")
     rows = literal(seed, 12)
     with DoubleReverseTerm(seed, 12) as term:
-        _, source = term._prepare_bank_source(max_prefix=8)
+        _, source = term.prepare_bank_source(max_prefix=8)
         assert source.phase == 0
 
         def at(steps: int) -> CertifiedCyclotomicCenter:
@@ -271,17 +272,17 @@ def test_real_seed_196_source_prefix_and_center_cyclotomic_join(n: int) -> None:
 
 def test_real_196_four_step_blocks_compose_without_guessing_future_1000() -> None:
     with DoubleReverseTerm(196, 32) as term:
-        _, source = term._prepare_bank_source(max_prefix=28)
+        _, source = term.prepare_bank_source(max_prefix=28)
         assert source.physical_prefix == 16
         assert source.phase == 0
         assert source.f_steps == 8
-        centers = []
+        centers: list[CertifiedCyclotomicCenter] = []
         for steps in (2, 4, 6, 8):
             width = source.width_in + sum(growth_ports(source.phase, steps))
             pointed = replace(source, f_steps=steps, width_out=width)
             bank = exact_temporal_bank_window(pointed, 0, (width - 2) // 2)
             centers.append(certified_cyclotomic_center(pointed, (bank,)))
-        words = []
+        words: list[CertifiedCyclotomicCenterProgram] = []
         for i, start_steps in enumerate((2, 4, 6)):
             witness = certified_cyclotomic_center_driver(
                 source, start_f_steps=start_steps

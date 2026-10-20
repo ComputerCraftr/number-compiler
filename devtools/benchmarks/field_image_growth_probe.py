@@ -8,8 +8,9 @@ import json
 from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass
 from time import perf_counter
-from typing import Any
+from typing import Any, cast
 
+from devtools.benchmarks.report_schema import record
 from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
 
 
@@ -157,7 +158,7 @@ def cold_measurement(
         row.new_canonical_field_images_published > 0 and row.field_image_nodes > 0
         for row in rows
     )
-    blockers = []
+    blockers: list[str] = []
     if not forbidden_work_zero:
         blockers.append("forbidden_execution_work_observed")
     if not temporal_composition_gate:
@@ -208,20 +209,15 @@ def run_probe(
                 order=current,
             ),
         }
-    complete = all(
-        bool(family["measurements_complete"])
-        for order_result in results.values()
-        if isinstance(order_result, dict)
-        for family in order_result.values()
-        if isinstance(family, dict)
-    )
-    green = complete and all(
-        family["status"] == "GREEN"
-        for order_result in results.values()
-        if isinstance(order_result, dict)
-        for family in order_result.values()
-        if isinstance(family, dict)
-    )
+    reports: list[dict[str, object]] = []
+    for order_result in results.values():
+        if not isinstance(order_result, dict):
+            continue
+        for report_value in record(cast(object, order_result)).values():
+            if isinstance(report_value, dict):
+                reports.append(record(cast(object, report_value)))
+    complete = all(bool(report.get("measurements_complete")) for report in reports)
+    green = complete and all(report.get("status") == "GREEN" for report in reports)
     return {
         "metrics_schema_version": METRICS_SCHEMA_VERSION,
         "cold_index_scope": "fresh-per-row",

@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.fields.consumer_pullback import (
     ExactRational,
     SaturatingAffineAction,
@@ -36,7 +37,7 @@ _ASSOCIATED_ACTION_PUBLISHER = object()
 _ASSOCIATED_ACTION_CACHE_VERSION: Final[str] = "complete-action-v2-exact-inputs"
 
 
-def _build_action(
+def build_action(
     returns: int, source_residue: int, upper: int, intercept: int, lower: int
 ) -> SaturatingAffineAction:
     """The existing exact constructor over the admitted saturated transfer."""
@@ -76,30 +77,40 @@ def _encode(action: SaturatingAffineAction) -> tuple[ImmutableValue, ...]:
 
 
 def _decode(value: object) -> SaturatingAffineAction:
-    if type(value) is not tuple or len(value) != 5:
+    if not is_exact_object_tuple(value) or len(value) != 5:
         raise ValueError("Mahler cache contains another action sort")
     first, second, third, fourth, cap = value
-    if any(type(part) is not int for part in (first, second, third, fourth)):
+    if (
+        type(first) is not int
+        or type(second) is not int
+        or type(third) is not int
+        or type(fourth) is not int
+    ):
         raise TypeError("Mahler cached action requires exact integers")
     if second <= 0 or fourth <= 0:
         raise ValueError("Mahler cached action has invalid denominators")
     if first <= 0:
         raise ValueError("Mahler cached action requires positive scale")
-    if cap is not None and (
-        type(cap) is not tuple
-        or len(cap) != 2
-        or any(type(part) is not int for part in cap)
-        or cap[1] <= 0
-    ):
-        raise ValueError("Mahler cached cap has another sort")
+    cap_value: tuple[int, int] | None = None
+    if cap is not None:
+        if not is_exact_object_tuple(cap) or len(cap) != 2:
+            raise ValueError("Mahler cached cap has another sort")
+        cap_numerator, cap_denominator = cap
+        if (
+            type(cap_numerator) is not int
+            or type(cap_denominator) is not int
+            or cap_denominator <= 0
+        ):
+            raise ValueError("Mahler cached cap has another sort")
+        cap_value = (cap_numerator, cap_denominator)
     # Only extents >=1024 enter this memo. The admitted centered 11 prefix
     # has already failed at return two; a decoded action must preserve it.
-    if cap is None or cap[0] >= 0:
+    if cap_value is None or cap_value[0] >= 0:
         raise ArithmeticError("cached Mahler cap lost its two-bit failure")
     return SaturatingAffineAction(
         ExactRational(first, second),
         ExactRational(third, fourth),
-        None if cap is None else ExactRational(*cap),
+        ExactRational(*cap_value),
     )
 
 
@@ -206,11 +217,11 @@ def cached_associated_action(
     if not workspace.shared_cache or workspace.returns < 1024:
         reason = "disabled" if not workspace.shared_cache else "policy"
         ledger.bump(f"mahler_hashlife_action_{reason}_bypasses")
-        return _build_action(*args)
+        return build_action(*args)
     cache = get_process_cache()
     if not cache.enabled:
         ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_DISABLED_BYPASSES)
-        return _build_action(*args)
+        return build_action(*args)
     qualification = cast(
         tuple[ImmutableValue, ...],
         (
@@ -240,7 +251,7 @@ def cached_associated_action(
         )
     except BlockContextBudgetExceeded:
         ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_BYPASSES)
-        return _build_action(*args)
+        return build_action(*args)
     with lease:
         ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_LOOKUPS)
         try:
@@ -269,7 +280,7 @@ def cached_associated_action(
             ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_EXACT_HITS)
             return action
         ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_MISSES)
-        action = _build_action(*args)
+        action = build_action(*args)
         if lease.put_issued((), _encode(action), _ASSOCIATED_ACTION_PUBLISHER):
             ledger.bump(_antihydra_keys.MAHLER_HASHLIFE_ACTION_PUBLICATIONS)
         else:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 from dataclasses import replace
 from types import MappingProxyType
 from typing import cast
@@ -18,7 +18,9 @@ from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.functions.finite_function_types import (
     AtomSort,
     FunctionSignature,
+    SemanticFunctionID,
 )
+from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
@@ -43,7 +45,6 @@ from number_compiler.sequences.comma.return_scopes import (
     B1ReturnPartitionRecord,
     ReturnColumnKey,
     ReturnMDDPartition,
-    _MDDKey,
     continuation_return_partition,
     scope_column_key,
 )
@@ -53,8 +54,29 @@ from number_compiler.sequences.comma.semantic_continuation import (
     SemanticContinuation,
 )
 from number_compiler.sequences.comma.symbolic_return import (
+    SymbolicReturnView,
     build_symbolic_returns,
 )
+
+
+def _scope_column(
+    symbolic: SymbolicReturnView, scopes: tuple[tuple[int, int], ...]
+) -> SemanticFunctionID:
+    build = cast(
+        Callable[[tuple[tuple[int, int], ...]], SemanticFunctionID],
+        object.__getattribute__(symbolic, "_scope_column"),
+    )
+    return build(scopes)
+
+
+def _clock_values(
+    symbolic: SymbolicReturnView, function: SemanticFunctionID, phase: int
+) -> dict[PortVariable, int]:
+    values = cast(
+        Callable[[SemanticFunctionID, int], dict[PortVariable, int]],
+        object.__getattribute__(symbolic, "_clock_values"),
+    )
+    return values(function, phase)
 
 
 @pytest.fixture(scope="module")
@@ -148,14 +170,14 @@ def test_symbolic_shift_preserves_invalid_clock_padding_and_composes(
     source_view: SemanticContinuation,
 ) -> None:
     symbolic = build_symbolic_returns(source_view)
-    even_clock = symbolic._scope_column(((2, 0),))
-    odd_clock = symbolic._scope_column(((2, 1),))
+    even_clock = _scope_column(symbolic, ((2, 0),))
+    odd_clock = _scope_column(symbolic, ((2, 1),))
     for phase in range(4):
         even = symbolic.arena.evaluate(
-            even_clock, symbolic._clock_values(even_clock, phase)
+            even_clock, _clock_values(symbolic, even_clock, phase)
         )
         odd = symbolic.arena.evaluate(
-            odd_clock, symbolic._clock_values(odd_clock, phase)
+            odd_clock, _clock_values(symbolic, odd_clock, phase)
         )
         assert (even.kind, even.value) == ("atom", int(phase % 2 == 0))
         assert (odd.kind, odd.value) == ("atom", int(phase % 2 == 1))
@@ -701,7 +723,11 @@ def test_mdd_keys_hash_equal_structural_dags_and_remain_collision_safe(
     assert {first: "same"}[equal] == "same"
 
     distinct = scope_column_key(((2, 1),))
-    monkeypatch.setattr(_MDDKey, "__hash__", lambda _key: 0)
+
+    def constant_hash(_key: ReturnColumnKey) -> int:
+        return 0
+
+    monkeypatch.setattr(ReturnColumnKey, "__hash__", constant_hash)
     collision_map = {first: "even", distinct: "odd"}
     assert first != distinct
     assert collision_map[first] == "even"
@@ -712,7 +738,7 @@ def test_mdd_keys_hash_equal_structural_dags_and_remain_collision_safe(
 def test_partition_cardinality_memo_reuses_equal_column_subgraphs() -> None:
     first = scope_column_key(((2, 0),))
     equal = scope_column_key(((4, 0), (4, 2)))
-    memo: dict[tuple[int, _MDDKey], int] = {}
+    memo: dict[tuple[int, ReturnColumnKey], int] = {}
     charged: list[tuple[str, int]] = []
     count_first = _mdd_cardinality(
         first, lambda name, amount: charged.append((name, amount)), memo

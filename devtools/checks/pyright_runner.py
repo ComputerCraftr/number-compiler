@@ -20,7 +20,10 @@ from devtools.checks.pyright_policy import (
     validate_pyright_output,
 )
 from devtools.checks.validation_policy import PYTHON_COMMAND, ExecutionPolicy
-from devtools.report_values import object_list, string_keyed_mapping
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_list,
+    string_keyed_mapping,
+)
 
 if TYPE_CHECKING:
     from devtools.runs import EvidenceRun
@@ -205,7 +208,7 @@ def run_pyright_quality(
             if diagnostic_data is not None
             else None
         )
-        has_findings = object_list(raw_diagnostics) and bool(raw_diagnostics)
+        has_findings = is_object_list(raw_diagnostics) and bool(raw_diagnostics)
         clean = diagnostics_complete and diagnostics_are_clean(payload)
         if not diagnostics_complete:
             batch_outcome = "incomplete"

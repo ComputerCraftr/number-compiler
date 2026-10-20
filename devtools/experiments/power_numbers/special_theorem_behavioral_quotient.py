@@ -115,13 +115,9 @@ def theorem_map_spec(family: str, parameter: int) -> SpecialTheoremMapSpec:
 
 
 def _canonicalize(values: tuple[object, ...] | list[object]) -> tuple[int, ...]:
-    ids: dict[object, int] = {}
-    out: list[int] = []
-    for value in values:
-        if value not in ids:
-            ids[value] = len(ids)
-        out.append(ids[value])
-    return tuple(out)
+    first_occurrence = tuple(dict.fromkeys(values))
+    labels = {value: index for index, value in enumerate(first_occurrence)}
+    return tuple(labels[value] for value in values)
 
 
 def _partitions_equivalent(left: tuple[int, ...], right: tuple[int, ...]) -> bool:
@@ -173,10 +169,6 @@ def seed_decision_trace(spec: SpecialTheoremMapSpec) -> tuple[int, ...]:
     return tuple(out)
 
 
-def _rank_fraction(matrix: list[list[int]]) -> int:
-    return fraction_matrix_rank(matrix)
-
-
 def delta_hankel_rank_differential(distance: int) -> int:
     """Materialize the minimal anti-diagonal Hankel control for delta_distance."""
     distance = int(distance)
@@ -184,7 +176,7 @@ def delta_hankel_rank_differential(distance: int) -> int:
         raise ValueError(distance)
     size = distance + 1
     hankel = [[int(i + j == distance) for j in range(size)] for i in range(size)]
-    return _rank_fraction(hankel)
+    return fraction_matrix_rank(hankel)
 
 
 @dataclass(frozen=True, slots=True)

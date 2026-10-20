@@ -152,7 +152,18 @@ def test_all_96_reverse_add_cycles_have_independent_f5_powers() -> None:
         assert action.homogeneous_mode_mod5(4) == 0
 
 
+@pytest.mark.validation
 def test_generation_79_certified_ring_has_two_sided_phase_harmonics() -> None:
+    _assert_generation_79_certified_ring(tuple(range(8)), exhaustive_orbits=True)
+
+
+def test_generation_79_certified_ring_representative_orbit() -> None:
+    _assert_generation_79_certified_ring((0,), exhaustive_orbits=False)
+
+
+def _assert_generation_79_certified_ring(
+    positions: tuple[int, ...], *, exhaustive_orbits: bool
+) -> None:
     x = gen196(79)
     ledger, owner = owner_for(x)
     try:
@@ -160,7 +171,7 @@ def test_generation_79_certified_ring_has_two_sided_phase_harmonics() -> None:
             owner.initial,
             steps=9,
             window_digits=3,
-            positions=tuple(range(8)),
+            positions=positions,
             source_pair_prefix=8,
         )
         # A module issuer token alone is not enough: even a byte-for-byte
@@ -203,7 +214,7 @@ def test_generation_79_certified_ring_has_two_sided_phase_harmonics() -> None:
                 ring.harmonic(0, DecimalPairBand.LT_HIGH)
         finally:
             object.__setattr__(DecimalPairBand.LT_HIGH, "_value_", original_band_value)
-        assert len(ring.phase_pair_domains) == 8
+        assert len(ring.phase_pair_domains) == len(positions)
         assert all(
             len(domain) >= 1 for row in ring.phase_pair_domains for domain in row
         )
@@ -213,13 +224,13 @@ def test_generation_79_certified_ring_has_two_sided_phase_harmonics() -> None:
         values = [x]
         for _ in range(9):
             values.append(successor(values[-1]))
-        for position in range(8):
+        for position in positions:
             orbit = ring.orbit(position)
             harmonics = {
                 channel: ring.harmonic(position, channel)
                 for channel in DECIMAL_PAIR_BANDS
             }
-            for t in range(9):
+            for t in range(9 if exhaustive_orbits else 1):
                 coeff = pair(values[t], position)
                 assert coeff % 5 in orbit.pair_f5[t]
                 assert (
@@ -519,16 +530,32 @@ def test_spatial_walsh64_reuses_forced_gt_bank_and_refuses_unknown_lanes() -> No
         assert ld.entries == ld.nodes == 0
 
 
-def test_source_certified_temporal_bank_forces_ring_f5_orbit_without_replay() -> None:
+def test_source_certified_temporal_bank_forces_representative_ring_f5_orbit() -> None:
+    _assert_source_certified_temporal_bank_forces_ring_f5_orbit(duration=2)
+
+
+@pytest.mark.validation
+def test_source_certified_temporal_bank_forces_full_ring_f5_orbit_without_replay() -> (
+    None
+):
+    _assert_source_certified_temporal_bank_forces_ring_f5_orbit(duration=8)
+
+
+def _assert_source_certified_temporal_bank_forces_ring_f5_orbit(
+    *, duration: int
+) -> None:
     """The reverse/add GT-bank supplies an *input* to the inward ring, not an observer."""
     from tests.support.reverse_add_banks import source_guarded_periodic_temporal_bank
 
-    with source_guarded_periodic_temporal_bank() as (_ledger, owner, cert, bank):
+    coordinate = 20 if duration == 2 else 200
+    with source_guarded_periodic_temporal_bank(
+        steps=duration, coordinate=coordinate
+    ) as (_ledger, owner, cert, bank):
         pos = bank.coordinate
-        unconstrained = cert.temporal_ring_bank(positions=(pos,))
+        unconstrained = cert.temporal_ring_bank(duration=duration, positions=(pos,))
         assert len(unconstrained.target_pair_domain(pos)) > 1
-        ring = bank.temporal_ring_bank(positions=(pos,))
-        expected = tuple(bank.at(t) for t in range(bank.steps + 1))
+        ring = bank.temporal_ring_bank(duration=duration, positions=(pos,))
+        expected = tuple(bank.at(t) for t in range(duration + 1))
         assert ring.phase_pair_domains[0] == tuple((s,) for s in expected)
         assert ring.target_pair_domain(pos) == (expected[-1],)
         assert ring.harmonic(pos, ReverseTemporalRingChannel.F5).lanes == tuple(
@@ -544,10 +571,10 @@ def test_source_certified_temporal_bank_forces_ring_f5_orbit_without_replay() ->
         assert forced > unconstrained_forced
         # Verify the bank's real physical source (and its growth shifts)
         # against an entirely separate scalar decimal recurrence.
-        x = int("".join(str(d) for d in owner._digits[::-1]))
+        x = int("".join(str(d) for d in owner.initial_digits[::-1]))
         for t, coeff in enumerate(expected):
             assert pair(x, pos) == coeff
-            if t < bank.steps:
+            if t < duration:
                 x = successor(x)
         assert ring.complete_integer_certified is False
         assert ring.temporal_repeat_certified is False

@@ -106,7 +106,10 @@ def test_incorrect_jet_bound_cannot_certify_zero(
 ) -> None:
     import devtools.experiments.reverse_add.radial_event_clock as clock
 
-    monkeypatch.setattr(clock, "_bound", lambda packets: packets[0].shift)
+    def incorrect_bound(packets: list[clock.RadialEventPacket]) -> int:
+        return packets[0].shift
+
+    monkeypatch.setattr(clock, "_bound", incorrect_bound)
     with pytest.raises(ArithmeticError, match="zero certificate"):
         extract_radial_clock(
             (RadialEventPacket(1, 0, 2), RadialEventPacket(-1, 0, 1)),

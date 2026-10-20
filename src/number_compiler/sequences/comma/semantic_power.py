@@ -8,7 +8,7 @@ from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from math import lcm
 from threading import Lock
-from typing import Self, cast
+from typing import TYPE_CHECKING, Self, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.resources.fused_traversal_workspace import (
@@ -43,6 +43,11 @@ from number_compiler.sequences.comma.semantic_continuation import (
     TerminalWeight,
     normalize_source,
 )
+
+if TYPE_CHECKING:
+    from number_compiler.resources.tile_runtime_audit_contracts import (
+        FusedTraversalWorkspaceAuditSnapshot,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,7 +181,7 @@ class SymbolicDecadePowers:
         self._completed_level = -1
 
     def __enter__(self) -> Self:
-        self._check_open()
+        self.check_open()
         return self
 
     def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
@@ -201,7 +206,7 @@ class SymbolicDecadePowers:
             self._closed = True
             self._closing = False
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         if self._closed or self._closing:
             raise RuntimeError("symbolic decade powers are closing or closed")
 
@@ -347,7 +352,7 @@ class SymbolicDecadePowers:
 
     def construct(self, level: int) -> None:
         """Publish B(2**level) from the previous completed symbolic action."""
-        self._check_open()
+        self.check_open()
         if type(level) is not int or level < 0:
             raise ValueError("symbolic decade level must be nonnegative")
         if level <= self._completed_level:
@@ -419,6 +424,25 @@ class _BlockResult:
     next_delta: int | None
 
 
+@dataclass(frozen=True, slots=True)
+class PoweredDecadeApplicationAuditSnapshot:
+    """Detached lifecycle and resource summary for one powered application."""
+
+    binding: ArenaToken
+    active: bool
+    closing: bool
+    closed: bool
+    resolver_retained: bool
+    requests: int
+    hits: int
+    misses: int
+    memo_owner: int
+    memo_entries: int
+    root_binding_owner: int
+    root_binding_entries: int
+    workspace: FusedTraversalWorkspaceAuditSnapshot
+
+
 class PoweredDecadeApplication:
     """Memoized parent-first dyadic B1 application for one root binding.
 
@@ -472,9 +496,29 @@ class PoweredDecadeApplication:
         self._closed = False
         self._closing = False
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         if self._closed or self._closing:
             raise RuntimeError("comma powered application is closing or closed")
+
+    def audit_snapshot(self) -> PoweredDecadeApplicationAuditSnapshot:
+        """Return lifecycle counters without exposing mutable memo stores."""
+        memo = self._memo.audit_snapshot()
+        root_bindings = self._root_bindings.audit_snapshot()
+        return PoweredDecadeApplicationAuditSnapshot(
+            binding=self.binding,
+            active=self._active,
+            closing=self._closing,
+            closed=self._closed,
+            resolver_retained=self._source_for_live_root is not None,
+            requests=self.requests,
+            hits=self.hits,
+            misses=self.misses,
+            memo_owner=memo.owner,
+            memo_entries=len(memo.container),
+            root_binding_owner=root_bindings.owner,
+            root_binding_entries=len(root_bindings.container),
+            workspace=self._workspace.audit_snapshot(),
+        )
 
     def _begin_operation(self, *, active: bool = True) -> None:
         if not self._operation_lock.acquire(blocking=False):
@@ -489,7 +533,7 @@ class PoweredDecadeApplication:
         self._operation_lock.release()
 
     def __enter__(self) -> Self:
-        self._check_open()
+        self.check_open()
         return self
 
     def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
@@ -627,7 +671,7 @@ class PoweredDecadeApplication:
         limit; this worklist preserves parent-after-children composition while
         keeping the owned memo as the only retained result store.
         """
-        self._check_open()
+        self.check_open()
         if type(level) is not int or level < 0:
             raise ValueError("comma dyadic level must be nonnegative")
         initial = self._key(source, phase, delta, level)
@@ -773,7 +817,7 @@ class PoweredDecadeApplication:
         finally:
             self._end_operation()
 
-    def _apply_rebound(
+    def apply_rebound(
         self,
         source: SourceState,
         phase: int,
@@ -816,7 +860,7 @@ class PoweredDecadeApplication:
         *,
         delta: int = 0,
     ) -> DecadeSummary:
-        self._check_open()
+        self.check_open()
         if type(count) is not int or count < 0:
             raise ValueError("comma decade count must be a nonnegative integer")
         normalized, source_delta = normalize_source(source)

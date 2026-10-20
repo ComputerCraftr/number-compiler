@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from typing import cast
 
@@ -7,10 +8,14 @@ import pytest
 
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.double_reverse.temporal_hashlife_slp import (
-    _existing_part,
+    existing_part,
+)
+from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
+    DoubleReversePortAction,
 )
 
 
@@ -62,7 +67,9 @@ def test_uncertified_two_step_uses_direct_carry_quotient_without_scalar_replay(
         def forbid_scalar_step(_adapter: object, _root: int) -> int:
             raise AssertionError("T² production route replayed a primitive step")
 
-        monkeypatch.setattr(type(term._adapter), "_apply_word", forbid_scalar_step)
+        monkeypatch.setattr(
+            type(term.source_adapter), "_apply_word", forbid_scalar_step
+        )
         assert term.materialize(max_bits=8) == _literal(12, 2)
         metrics = term.metrics()
         assert metrics["double_reverse_temporal_square_applications"] == 1
@@ -92,15 +99,19 @@ def test_same_width_corrupt_temporal_memo_value_fails_payload_audit(
 ) -> None:
     with DoubleReverseTerm(173488, 8) as term:
         term.prepare_endpoint()
-        engine = term._adapter.temporal_hashlife
-        memo = getattr(engine, memo_name)
+        engine = term.temporal_engine
+        memo = cast(
+            OwnedMemo[tuple[int, ...], int], object.__getattribute__(engine, memo_name)
+        )
         key, original = next(iter(memo.items()))
-        width = term._arena.nodes[original].length
-        digits = [symbol_at(term._arena, original, index) for index in range(width)]
+        width = term.source_arena.nodes[original].length
+        digits = [
+            symbol_at(term.source_arena, original, index) for index in range(width)
+        ]
         digits[0] = (digits[0] + 1) % 10
-        replacement = term._arena.word(digits)
+        replacement = term.source_arena.word(digits)
         assert replacement != original
-        assert term._arena.nodes[replacement].length == width
+        assert term.source_arena.nodes[replacement].length == width
         memo[key] = replacement
         metrics = collect_ledger_metrics(term.resource_ledger)
         assert metrics.resource_audit_complete == 1
@@ -110,13 +121,13 @@ def test_same_width_corrupt_temporal_memo_value_fails_payload_audit(
 
 def test_temporal_slice_audit_rejects_cyclic_grammar_in_bounded_work() -> None:
     with DoubleReverseTerm(173488, 2) as term:
-        arena = term._arena
+        arena = term.source_arena
         left = arena.terminal(3)
         right = arena.terminal(4)
         cyclic = arena.concat(left, right)
         node = arena.nodes[cyclic]
         object.__setattr__(node, "left", cyclic)
-        assert _existing_part(arena, cyclic, 0, 1) is None
+        assert existing_part(arena, cyclic, 0, 1) is None
 
 
 @pytest.mark.parametrize("seed", (196, 4721))
@@ -160,8 +171,10 @@ def test_certified_scheduler_route_does_not_replay_scalar_steps(
         def forbid_scalar(_adapter: object, _root: int) -> int:
             raise AssertionError("certified temporal route replayed a scalar step")
 
-        monkeypatch.setattr(type(term._adapter), "_apply_word", forbid_scalar)
-        monkeypatch.setattr(type(term._adapter), "_general_two_step", forbid_scalar)
+        monkeypatch.setattr(type(term.source_adapter), "_apply_word", forbid_scalar)
+        monkeypatch.setattr(
+            type(term.source_adapter), "_general_two_step", forbid_scalar
+        )
         assert term.materialize(max_bits=4096) == _literal(173488, 32)
         metrics = term.metrics()
         assert metrics["double_reverse_hashlife_cones"] > 0
@@ -172,8 +185,8 @@ def test_warm_parent_action_hit_skips_cone_discovery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with DoubleReverseTerm(173488, 16) as term:
-        engine = term._adapter.temporal_hashlife
-        source = term._source.root
+        engine = term.temporal_engine
+        source = term.source_root
         phase = engine.certify(source)
         assert phase is not None
         first = engine.advance_action(source, 8, phase)
@@ -192,19 +205,21 @@ def test_warm_parent_action_hit_skips_cone_discovery(
 
 def test_same_border_forged_and_mutated_target_are_rejected_by_issuer_binding() -> None:
     with DoubleReverseTerm(173488, 4) as term:
-        engine = term._adapter.temporal_hashlife
-        source = term._source.root
+        engine = term.temporal_engine
+        source = term.source_root
         phase = engine.certify(source)
         assert phase is not None
         action = engine.advance_action(source, 2, phase)
         target = engine.root_of(action.target)
-        width = term._arena.nodes[target].length
-        altered = [symbol_at(term._arena, target, index) for index in range(width)]
+        width = term.source_arena.nodes[target].length
+        altered = [
+            symbol_at(term.source_arena, target, index) for index in range(width)
+        ]
         altered[2] = (altered[2] + 1) % 10
-        forged_root = term._arena.word(altered)
-        assert term._arena.nodes[forged_root].length == width
+        forged_root = term.source_arena.word(altered)
+        assert term.source_arena.nodes[forged_root].length == width
         assert engine.certify(forged_root) == action.phase_out
-        forged = replace(action, target=engine._handle(forged_root))
+        forged = replace(action, target=engine.scoped_handle(forged_root))
         with pytest.raises(ValueError, match="not published by this owner"):
             engine.validate_action(forged)
         original_local_id = action.target.local_id
@@ -221,11 +236,11 @@ def test_same_border_forged_and_mutated_target_are_rejected_by_issuer_binding() 
 def test_temporal_action_rejects_foreign_issuer_and_stale_memo() -> None:
     first = DoubleReverseTerm(173488, 4)
     second = DoubleReverseTerm(173488, 4)
-    first_engine = first._adapter.temporal_hashlife
-    second_engine = second._adapter.temporal_hashlife
-    phase = first_engine.certify(first._source.root)
+    first_engine = first.temporal_engine
+    second_engine = second.temporal_engine
+    phase = first_engine.certify(first.source_root)
     assert phase is not None
-    action = first_engine.advance_action(first._source.root, 2, phase)
+    action = first_engine.advance_action(first.source_root, 2, phase)
     with pytest.raises(ValueError, match="different arena"):
         second_engine.validate_action(action)
     first.dispose()
@@ -258,7 +273,7 @@ def test_state_bit_cap_uses_exact_value_when_decimal_bound_is_inconclusive() -> 
         assert term.materialize(max_bits=6) == 12
         term.prepare_endpoint()
         assert term.metrics()["double_reverse_threshold_conversion_bytes"] > 0
-        assert len(term._threshold_memo) == 1
+        assert len(term.threshold_audit_snapshot().container) == 1
 
     with (
         DoubleReverseTerm(9, 1, max_state_bits=4) as term,
@@ -325,7 +340,7 @@ def test_cancelled_walk_defers_and_retries_scratch_retirement(
         for item in term.resource_ledger.inventory()
         if item.name.endswith("-scratch")
     )
-    assert not term._cleanup_complete
+    assert not term.cleanup_complete
     assert not scratch.disposed
     assert scratch.entries > 0
 
@@ -345,13 +360,13 @@ def test_cancelled_walk_defers_and_retries_scratch_retirement(
         item for item in term.resource_ledger.inventory() if item.owner == scratch.owner
     )
     assert failed_once
-    assert not term._cleanup_complete
+    assert not term.cleanup_complete
     assert not after_close.disposed
     assert after_close.entries == after_close.nodes == 0
 
     monkeypatch.setattr(term.resource_ledger, "mark_disposed", original_mark_disposed)
     term.dispose()
-    assert term._cleanup_complete
+    assert term.cleanup_complete
     accounts = term.resource_ledger.inventory()
     assert term.resource_ledger.entries == term.resource_ledger.nodes == 0
     assert all(item.entries == item.nodes == 0 for item in accounts)
@@ -375,9 +390,9 @@ def test_closed_term_rejects_endpoint_and_context_access() -> None:
 
 def test_successful_construction_keeps_scheduler_and_memos_live() -> None:
     with DoubleReverseTerm(10, 1) as term:
-        assert not term._arena._closed
-        assert not term._adapter._closed
-        assert not term._threshold_memo._disposed
+        assert not term.source_arena.audit_snapshot().closed
+        assert not term.source_adapter.closed
+        assert not term.threshold_audit_snapshot().disposed
         assert term.materialize(max_bits=4) == 2
 
 
@@ -388,8 +403,8 @@ def test_temporal_phase_rejects_numeric_alias_before_lookup(
     phase: object, warm: bool, method: str
 ) -> None:
     with DoubleReverseTerm(173488, 0) as term:
-        engine = term._adapter.temporal_hashlife
-        root = term._arena.word((1, 7, 3, 4, 4, 2))
+        engine = term.temporal_engine
+        root = term.source_arena.word((1, 7, 3, 4, 4, 2))
         assert engine.certify(root) == 1
         if warm:
             engine.advance_action(root, 1, 1)
@@ -399,7 +414,10 @@ def test_temporal_phase_rejects_numeric_alias_before_lookup(
         action = (
             engine.advance_action
             if method == "advance_action"
-            else engine._power_action
+            else cast(
+                Callable[[int, int, int], DoubleReversePortAction],
+                object.__getattribute__(engine, "_power_action"),
+            )
         )
         with pytest.raises(ValueError):
             action(root, 1, cast(int, phase))

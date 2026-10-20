@@ -12,7 +12,7 @@ from devtools.verification.lazy_reverse import (
     LazyReverseApplication,
     OffsetProgram,
     ReverseProgram,
-    _transport_weights,
+    transport_weights,
 )
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -27,7 +27,7 @@ from number_compiler.resources.payload_audit import audit_registered_payloads
 
 def _digits(pair: tuple[int, ...] | tuple[int, int, int], base: int) -> list[int]:
     carry = 0
-    output = []
+    output: list[int] = []
     for symbol in pair:
         output.append((symbol + carry) % base)
         carry = (symbol + carry) // base
@@ -56,17 +56,17 @@ def test_lazy_reverse_points_match_independent_pair_recurrence(base: int) -> Non
 def test_carry_code_preserves_k1_distinct_from_identity() -> None:
     application = LazyReverseApplication(10, -1, 0, (9, 10, 10, 9))
     identity = application.port_actions.interval_identity(application.carry_port)
-    assert application._carry_code_from_summary(identity) == 1
-    assert application._scan(0, OrderedDict()) == 1
-    summary = next(iter(application._ranges.values())).action
-    assert application._carry_code_from_summary(summary) == 2
+    assert application.carry_code_from_summary(identity) == 1
+    assert application.scan(0, OrderedDict()) == 1
+    summary = next(iter((value for _, value in application.range_snapshot()))).action
+    assert application.carry_code_from_summary(summary) == 2
 
 
 def test_carry_range_miss_is_not_looked_up_twice(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     application = LazyReverseApplication(10, 0, 1, (7, 18, 7))
-    original = application._range_action
+    original = application.range_action
     parent_lookups: list[tuple[int, int, int]] = []
 
     def track_range_action(
@@ -76,8 +76,8 @@ def test_carry_range_miss_is_not_looked_up_twice(
             parent_lookups.append((generation, stop, level))
         return original(generation, stop, level)
 
-    monkeypatch.setattr(application, "_range_action", track_range_action)
-    application._evaluate(("carry", 0, 2), OrderedDict())
+    monkeypatch.setattr(application, "range_action", track_range_action)
+    application.evaluate_range(("carry", 0, 2), OrderedDict())
     assert parent_lookups == [(0, 2, 1)]
 
 
@@ -110,9 +110,9 @@ def test_lazy_reverse_256_keeps_programs_and_range_functions_only() -> None:
     )
     for payload in (
         application.source,
-        *application._offsets,
-        *application._programs,
-        *application._ranges.values(),
+        *application.offsets_snapshot(),
+        *application.programs_snapshot(),
+        *(value for _, value in application.range_snapshot()),
     ):
         assert isinstance(payload, allowed)
         if not isinstance(payload, ExactSource):
@@ -145,6 +145,6 @@ def test_lazy_reverse_zero_budget_rejects_before_retaining_source() -> None:
 def test_reverse_transport_coefficients_use_bounded_modular_limbs() -> None:
     # The true central coefficient has almost a thousand bits; the production
     # evaluator only ever emits a five-bit arithmetic port.
-    weights = tuple(_transport_weights(1000, 0, 5))
+    weights = tuple(transport_weights(1000, 0, 5))
     assert max(weights).bit_length() <= 5
     assert weights == tuple(comb(1000, i) % 32 for i in range(1001))

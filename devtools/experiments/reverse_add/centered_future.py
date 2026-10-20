@@ -93,12 +93,12 @@ def slp_polynomial(
         or result.ledger is not arena.ledger
     ):
         raise TypeError("SLP polynomial conversion requires one owned carry result")
-    result._check_open()
+    outgoing_root = result.outgoing_root
     grammar = result.arena
     if type(root) is not int or not 0 <= root < len(grammar.nodes):
         raise ValueError("SLP polynomial root is foreign or out of range")
     if root not in (
-        result.outgoing_root,
+        outgoing_root,
         result.jump_root,
         result.closed_jump_root,
     ):
@@ -334,7 +334,7 @@ class CenteredFutureGrammar:
             self._closed = True
             raise
 
-    def _check_open(self) -> None:
+    def require_open(self) -> None:
         if self._closed:
             raise ValueError("disposed centered future grammar")
         authority = self._source_authority
@@ -374,7 +374,7 @@ class CenteredFutureGrammar:
         return CenteredFutureStateID(self._owner, self._KIND, state.steps)
 
     def state(self, state: CenteredFutureStateID) -> CenteredFutureState:
-        self._check_open()
+        self.require_open()
         assert self._states is not None
         if type(state) is not CenteredFutureStateID:
             raise TypeError("centered future grammar requires a scoped state ID")
@@ -424,19 +424,19 @@ class CenteredFutureGrammar:
 
     @property
     def retained_states(self) -> int:
-        self._check_open()
+        self.require_open()
         assert self._states is not None
         return len(self._states)
 
     @property
     def retained_innovation_nodes(self) -> int:
-        self._check_open()
+        self.require_open()
         return self.arena.node_count
 
     @property
     def observed_residue_runs(self) -> int:
         """Total represented intervals inspected by finite carry demands."""
-        self._check_open()
+        self.require_open()
         return self.ledger.counters.get("carry_event_domain_actions", 0)
 
     def advance(self, state: CenteredFutureStateID) -> CenteredFutureStateID:
@@ -479,7 +479,7 @@ class CenteredFutureGrammar:
         """Construct a finite prefix exactly; this is not a pumping operation."""
         if type(steps) is not int or steps < 0:
             raise ValueError("centered future steps must be nonnegative")
-        self._check_open()
+        self.require_open()
         assert self._states is not None
         state = CenteredFutureStateID(self._owner, self._KIND, len(self._states) - 1)
         while state.local_id < steps:

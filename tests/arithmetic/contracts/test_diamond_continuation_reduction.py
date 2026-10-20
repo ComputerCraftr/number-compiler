@@ -12,6 +12,7 @@ from number_compiler.hashlife.execution.diamond_continuation_reduction import (
     CompilePrimitiveFunction,
     NormalizePrimitiveLambda,
 )
+from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
 from number_compiler.sequences.collatz.physical_kernel import (
     PhysicalCollatzFourBlockEffect,
 )
@@ -31,7 +32,7 @@ def test_physical_four_zero_words_have_the_same_complete_function(side: int) -> 
     arena = runtime.higher.expressions
     variable = arena.variable(arena.state_sort(action, side), "arbitrary-incoming")
     symbol = arena.symbol(action, 0)
-    functions = []
+    functions: list[ExprID] = []
     for length in (4, 8):
         body = variable
         for _ in range(length):

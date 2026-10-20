@@ -17,9 +17,9 @@ possible parity domains of a source-independent ``T**N`` have disappeared.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, MutableMapping, MutableSequence
+from collections.abc import Iterable, MutableMapping, MutableSequence
 from dataclasses import dataclass
-from typing import Literal, TypeVar, cast
+from typing import Literal, cast
 
 from number_compiler.arithmetic.contracts.input_validation import (
     normalized_integer_pair,
@@ -198,19 +198,6 @@ def compose_collatz_branches(
     )
 
 
-_NodeT = TypeVar("_NodeT")
-
-
-def _balanced_accumulate(
-    nodes: Iterable[_NodeT],
-    *,
-    identity: _NodeT,
-    concat: Callable[[_NodeT, _NodeT], _NodeT],
-) -> _NodeT:
-    """Binary-counter accumulation with logarithmic temporary stack depth."""
-    return balanced_fold(nodes, identity=identity, compose=concat)
-
-
 CollatzPowerNode = InternedEffectNode[CollatzAffineBranch]
 
 
@@ -240,13 +227,13 @@ class CollatzPowerArena:
         self.composition_operations = 0
         self.intern_hits = 0
         self.intern_misses = 0
-        self._identity = self._intern(CollatzAffineBranch.identity())
+        self._identity = self.intern_record(CollatzAffineBranch.identity())
         self._atoms = {
-            "E": self._intern(CollatzAffineBranch.atom("E")),
-            "O": self._intern(CollatzAffineBranch.atom("O")),
+            "E": self.intern_record(CollatzAffineBranch.atom("E")),
+            "O": self.intern_record(CollatzAffineBranch.atom("O")),
         }
 
-    def _intern(self, effect: CollatzAffineBranch) -> CollatzPowerNode:
+    def intern_record(self, effect: CollatzAffineBranch) -> CollatzPowerNode:
         key = effect.semantic_key()
         old = self._by_key.get(key)
         if old is not None:
@@ -272,13 +259,13 @@ class CollatzPowerArena:
         self, first: CollatzPowerNode, second: CollatzPowerNode
     ) -> CollatzPowerNode:
         self.composition_operations += 1
-        return self._intern(compose_collatz_branches(first.effect, second.effect))
+        return self.intern_record(compose_collatz_branches(first.effect, second.effect))
 
     def from_branches(self, branches: Iterable[Branch]) -> CollatzPowerNode:
-        return _balanced_accumulate(
+        return balanced_fold(
             (self.atom(branch) for branch in branches),
             identity=self.identity,
-            concat=self.concat,
+            compose=self.concat,
         )
 
     def power(self, node: CollatzPowerNode, exponent: int) -> CollatzPowerNode:
@@ -446,15 +433,17 @@ class CollatzEventArena:
             self._uniform_owner
         )
         self._cocycle_cache: LazyLoweringCache[int, DyadicAffineCocycle] = (
-            LazyLoweringCache()
-        )
-        self._cocycle_cache._values = cast(
-            dict[int, DyadicAffineCocycle], OwnedMemo(ledger, self._cocycle_owner)
+            LazyLoweringCache(
+                store=cast(
+                    MutableMapping[int, DyadicAffineCocycle],
+                    OwnedMemo(ledger, self._cocycle_owner),
+                )
+            )
         )
         self.composition_operations = 0
         self.intern_hits = 0
         self.intern_misses = 0
-        self._identity = self._intern(
+        self._identity = self.intern_record(
             ("identity",),
             CollatzEventTransport.identity(),
             "identity",
@@ -465,7 +454,7 @@ class CollatzEventArena:
     def resource_ledger(self) -> ResourceLedger:
         return self._ledger
 
-    def _intern(
+    def intern_record(
         self,
         key: tuple[object, ...],
         effect: CollatzEventTransport,
@@ -480,8 +469,7 @@ class CollatzEventArena:
         if old is not None:
             self.intern_hits += 1
             return old
-        if self._ledger is not None and not reserved:
-            assert self._node_owner is not None and self._key_owner is not None
+        if not reserved:
             self._ledger.reserve_many(
                 ((self._node_owner, 1, 1), (self._key_owner, 1, 0))
             )
@@ -544,24 +532,16 @@ class CollatzEventArena:
         if old is not None:
             self.intern_hits += 1
             return old
-        reserved = self._ledger is not None
-        if reserved:
-            assert self._ledger is not None
-            assert None not in (
-                self._node_owner,
-                self._key_owner,
-                self._event_owner,
-                self._uniform_owner,
+        reserved = True
+        self._ledger.reserve_many(
+            (
+                (self._node_owner, 1, 1),
+                (self._key_owner, 1, 0),
+                (self._event_owner, 1, 0),
+                (self._uniform_owner, 1, 0),
             )
-            self._ledger.reserve_many(
-                (
-                    (self._node_owner, 1, 1),
-                    (self._key_owner, 1, 0),
-                    (self._event_owner, 1, 0),
-                    (self._uniform_owner, 1, 0),
-                )
-            )
-        node = self._intern(
+        )
+        node = self.intern_record(
             ("event", k),
             CollatzEventTransport.valuation_atom(k),
             "event",
@@ -577,10 +557,8 @@ class CollatzEventArena:
     ) -> CollatzEventNode:
         self.composition_operations += 1
         key = ("concat", first.node_id, second.node_id)
-        reserved = self._ledger is not None and key not in self._by_key
+        reserved = key not in self._by_key
         if reserved:
-            assert self._ledger is not None
-            assert None not in (self._node_owner, self._key_owner, self._uniform_owner)
             self._ledger.reserve_many(
                 (
                     (self._node_owner, 1, 1),
@@ -588,7 +566,7 @@ class CollatzEventArena:
                     (self._uniform_owner, 1, 0),
                 )
             )
-        node = self._intern(
+        node = self.intern_record(
             key,
             first.effect.then(second.effect),
             "concat",
@@ -623,10 +601,8 @@ class CollatzEventArena:
 
         def reserve() -> None:
             nonlocal reservations
-            if self._ledger is not None:
-                assert self._concat_owner is not None
-                self._ledger.reserve(self._concat_owner, entries=1)
-                reservations += 1
+            self._ledger.reserve(self._concat_owner, entries=1)
+            reservations += 1
 
         try:
             return concatenate_words(
@@ -646,15 +622,14 @@ class CollatzEventArena:
             )
         finally:
             excess = reservations - (len(self._concat_cache) - previous)
-            if self._ledger is not None and excess:
-                assert self._ledger is not None and self._concat_owner is not None
+            if excess:
                 self._ledger.release(self._concat_owner, entries=excess)
 
     def from_valuations(self, valuations: Iterable[int]) -> CollatzEventNode:
-        return _balanced_accumulate(
+        return balanced_fold(
             (self.event(k) for k in valuations),
             identity=self.identity,
-            concat=self.concat,
+            compose=self.concat,
         )
 
     def power(self, node: CollatzEventNode, exponent: int) -> CollatzEventNode:

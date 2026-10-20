@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, fields, is_dataclass, replace
+from typing import cast
 
 import pytest
 
@@ -66,10 +67,12 @@ def test_image_domain_audit_rejects_missing_authority_metadata() -> None:
     ledger, _, _, _, _, images, _, _ = recursive_field_image_setup()
     domain_key, domain = next(
         (key, value)
-        for key, value in images._domains.items()
+        for key, value in images.audit_snapshot().domains.items()
         if type(value) is FieldImageDomain
     )
-    images._domains[domain_key] = replace(domain, action_authority=None)
+    cast(MutableMapping[object, object], object.__getattribute__(images, "_domains"))[
+        domain_key
+    ] = replace(domain, action_authority=None)
 
     audit = audit_registered_payloads(ledger, fresh=True)
     assert audit.forbidden_future_payloads > 0
@@ -130,7 +133,7 @@ def test_image_domains_are_charged_and_shared_output_authority_is_reused() -> No
     ledger, source, signature, geometry, _, images, adapter, _ = (
         recursive_field_image_setup((0,))
     )
-    initial_entries = len(images._domains)
+    initial_entries = len(images.audit_snapshot().domains)
     output_owner = ArenaToken("shared-output-arena")
     first_action_owner = ArenaToken("shared-output-first-actions")
     first = SecondDomainArena(
@@ -156,7 +159,7 @@ def test_image_domains_are_charged_and_shared_output_authority_is_reused() -> No
         output_authority=first,
         signature_authority=first,
     )
-    assert len(images._domains) == initial_entries + 2
+    assert len(images.audit_snapshot().domains) == initial_entries + 2
     assert ledger.entries == before_entries + 2
 
     second_action_owner = ArenaToken("shared-output-second-actions")
@@ -185,7 +188,7 @@ def test_image_domains_are_charged_and_shared_output_authority_is_reused() -> No
         output_authority=first,
         signature_authority=second,
     )
-    assert len(images._domains) == initial_entries + 3
+    assert len(images.audit_snapshot().domains) == initial_entries + 3
     assert ledger.entries == before_entries + 1
     record = FieldImageRecord(
         0,
@@ -360,13 +363,17 @@ def test_geometry_payload_audit_rejects_semantic_key_poisoning() -> None:
     ledger = ResourceLedger()
     arena = FieldGeometryArena(ledger)
     arena.intern(FieldGeometry(2))
-    original, local_id = next(iter(arena._keys.items()))
+    original, local_id = next(iter(arena.audit_snapshot().keys.items()))
     poisoned = FieldGeometry(2, phase=1, phase_count=2)
-    del arena._keys[original]
-    arena._keys[poisoned] = local_id
-    assert (arena._key_owner, id(poisoned)) in audit_field_image_payloads(
-        ledger
-    ).invalid
+    raw_keys = cast(
+        MutableMapping[object, object], object.__getattribute__(arena, "_keys")
+    )
+    del raw_keys[original]
+    raw_keys[poisoned] = local_id
+    assert (
+        arena.audit_snapshot().key_owner,
+        id(poisoned),
+    ) in audit_field_image_payloads(ledger).invalid
 
 
 def test_signature_subclass_cannot_alias_the_configured_handle_sort() -> None:
@@ -412,9 +419,13 @@ def test_non_source_image_graph_owns_no_exact_digit_geometry() -> None:
         seen.add(id(value))
         assert not isinstance(value, (DyadicSpan, DyadicTile))
         if isinstance(value, Mapping):
-            pending.extend((owner, item) for pair in value.items() for item in pair)
+            pending.extend(
+                (owner, item)
+                for pair in cast(Mapping[object, object], value).items()
+                for item in pair
+            )
         elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-            pending.extend((owner, item) for item in value)
+            pending.extend((owner, item) for item in cast(Sequence[object], value))
         elif is_dataclass(value) and not isinstance(value, type):
             pending.extend(
                 (owner, getattr(value, field.name)) for field in fields(value)

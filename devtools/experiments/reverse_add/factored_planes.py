@@ -230,6 +230,10 @@ class PlaneAlgebra:
         )
         self._gates: dict[_GateKey, words.CanonicalWord] = {}
 
+    @property
+    def cofactor_table_cells(self) -> int:
+        return sum(len(gate.table) for gate in self._cofactors.values())
+
     def audit_snapshot(self) -> PlaneAlgebraAuditSnapshot:
         """Return cache populations without exposing owner-managed dictionaries."""
         return PlaneAlgebraAuditSnapshot(
@@ -262,6 +266,13 @@ class PlaneAlgebra:
             found = PlaneID(self.owner, kind, root.node_id, root)
             self._issued[key] = found
         return found
+
+    def issue_existing(self, kind: str, root: words.CanonicalWord) -> PlaneID:
+        """Bind an already validated canonical root to this plane owner."""
+        if type(kind) is not str or kind not in KINDS:
+            raise ValueError("unknown factored plane kind")
+        words.validate_source_word(root)
+        return self._issue(kind, root)
 
     def resolve(self, plane: PlaneID, kind: str | None = None) -> words.CanonicalWord:
         if (
@@ -300,7 +311,7 @@ class PlaneAlgebra:
         return self._issue(kind, words.from_values(values))
 
     @staticmethod
-    def _view(root: words.CanonicalWord, start: int, width: int) -> _View:
+    def aligned_view(root: words.CanonicalWord, start: int, width: int) -> _View:
         while root.symbol is None:
             left, right = root.left, root.right
             if left is None or right is None:
@@ -321,7 +332,9 @@ class PlaneAlgebra:
         results: list[words.CanonicalWord] = []
         while pending:
             operation, current, length, ready = pending.pop()
-            current = tuple(self._view(root, start, length) for root, start in current)
+            current = tuple(
+                self.aligned_view(root, start, length) for root, start in current
+            )
             if not ready:
                 operation, current = self._cofactor(operation, current)
             key = (
@@ -591,7 +604,7 @@ class PlaneAlgebra:
         root = self.resolve(plane)
         if type(position) is not int or not 0 <= position < root.length:
             raise IndexError(position)
-        root, _ = self._view(root, position, 1)
+        root, _ = self.aligned_view(root, position, 1)
         if root.symbol is None:
             raise AssertionError("single-cell plane observation did not reach an atom")
         return root.symbol

@@ -50,7 +50,7 @@ def construction_metrics(native: bool) -> ConstructionMetrics:
     spec = RadixSpec(10)
     arena = FormulaArena()
     source = root_from_values((7, 18, 7), arena, spec)
-    before_meta = len(arena._metadata)
+    before_meta = arena.metadata_entries
     before_nodes = arena.unique_nodes
     before_closed = arena.cached_closed_bits
     if native:
@@ -61,8 +61,8 @@ def construction_metrics(native: bool) -> ConstructionMetrics:
         "values": list(materialize_values(out)),
         "formula": formula_metrics(out),
         "arena_nodes_added": arena.unique_nodes - before_nodes,
-        "metadata_entries_added": len(arena._metadata) - before_meta,
-        "derived_cache_entries": len(arena._derived),
+        "metadata_entries_added": arena.metadata_entries - before_meta,
+        "derived_cache_entries": arena.derived_cache_entries,
         "closed_bits_total": arena.cached_closed_bits,
         "closed_bits_before": before_closed,
     }
@@ -72,7 +72,7 @@ def four_step_construction_metrics(native: bool) -> ConstructionMetrics:
     spec = RadixSpec(10)
     arena = FormulaArena()
     source = root_from_values((7, 18, 7), arena, spec)
-    before_meta = len(arena._metadata)
+    before_meta = arena.metadata_entries
     before_nodes = arena.unique_nodes
     if native:
         out = native_four_step(arena, source, spec)
@@ -82,8 +82,8 @@ def four_step_construction_metrics(native: bool) -> ConstructionMetrics:
         "values": list(materialize_values(out)),
         "formula": formula_metrics(out),
         "arena_nodes_added": arena.unique_nodes - before_nodes,
-        "metadata_entries_added": len(arena._metadata) - before_meta,
-        "derived_cache_entries": len(arena._derived),
+        "metadata_entries_added": arena.metadata_entries - before_meta,
+        "derived_cache_entries": arena.derived_cache_entries,
         "closed_bits_total": arena.cached_closed_bits,
     }
 

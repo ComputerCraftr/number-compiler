@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
+from number_compiler.hashlife.execution.source_bound_images import (
+    SourceImageProjectionRecord,
+)
 from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageDemand,
+    SourceImageID,
 )
+from number_compiler.hashlife.execution.source_image_seals import PublicationSeal
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.reverse_add.source_images import (
     ReverseSourceImageAdapter,
     ReverseSourceImageWorkspace,
@@ -133,14 +141,14 @@ def test_maximum_width_tightens_only_after_the_completed_width_projection() -> N
     term = ReverseAddPoweredTerm(196, 3)
     conservative = len(_digits(196, 10)) + 3
     assert term.maximum_width == conservative == 6
-    assert term._workspace is None
+    assert term.published_workspace is None
 
     assert term.width() == 4
-    workspace = term._workspace
+    workspace = term.published_workspace
     assert workspace is not None
-    image = workspace._image
+    image = workspace.audit_snapshot().image
     assert image is not None
-    assert workspace.adapter._q19_owner is not None
+    assert workspace.adapter.audit_snapshot().q19_owner is not None
     assert (
         term.resource_ledger.counters.get("recursive_output_stream_emitted_digits", 0)
         == 0
@@ -152,8 +160,8 @@ def test_maximum_width_tightens_only_after_the_completed_width_projection() -> N
         term.resource_ledger.counters.get("source_image_projection_misses", 0) == misses
     )
     assert term.digits() == (6, 3, 4, 7)
-    assert workspace._image is not None
-    assert workspace.adapter._q19_owner is not None
+    assert workspace.audit_snapshot().image is not None
+    assert workspace.adapter.audit_snapshot().q19_owner is not None
     assert (
         term.resource_ledger.counters.get(
             "reverse_successor_tape_width_compilations", 0
@@ -167,15 +175,15 @@ def test_maximum_width_drops_to_conservative_after_its_image_owner_is_cleared() 
 
     term = ReverseAddPoweredTerm(196, 3)
     assert term.width() == 4
-    workspace = term._workspace
+    workspace = term.published_workspace
     assert workspace is not None
-    owner = workspace.adapter._q19_owner
+    owner = workspace.adapter.audit_snapshot().q19_owner
     assert owner is not None
     workspace.scheduler.clear_source_images()
 
     assert term.maximum_width == 6
-    assert workspace.adapter._q19_owner is None
-    assert owner._disposed
+    assert workspace.adapter.audit_snapshot().q19_owner is None
+    assert owner.is_disposed
 
 
 def test_maximum_width_rejects_a_mutated_source_action_binding() -> None:
@@ -197,17 +205,24 @@ def test_maximum_width_does_not_trust_a_replaced_cached_projection() -> None:
 
     term = ReverseAddPoweredTerm(196, 3)
     assert term.width() == 4
-    workspace = term._workspace
+    workspace = term.published_workspace
     assert workspace is not None
     from dataclasses import replace
 
-    core = workspace.scheduler._source_image_core()
-    image = workspace._image
+    core = workspace.scheduler.source_image_core()
+    snapshot = core.audit_snapshot()
+    image = workspace.audit_snapshot().image
     assert image is not None
     key = image, SourceImageDemand("width")
-    assert key in core._projections
-    core._projections[key] = replace(
-        core._projections[key], projection=SourceImageProjection(99)
+    projections = cast(
+        LedgerDict[
+            tuple[SourceImageID, SourceImageDemand], SourceImageProjectionRecord
+        ],
+        snapshot.projection_store,
+    )
+    assert key in snapshot.projections
+    projections[key] = replace(
+        snapshot.projections[key], projection=SourceImageProjection(99)
     )
 
     with pytest.raises(ValueError, match="projection record was altered"):
@@ -222,17 +237,33 @@ def test_maximum_width_falls_back_when_the_retained_projection_is_missing() -> N
 
     term = ReverseAddPoweredTerm(196, 3)
     assert term.width() == 4
-    workspace = term._workspace
+    workspace = term.published_workspace
     assert workspace is not None
-    image = workspace._image
+    image = workspace.audit_snapshot().image
     assert image is not None
-    core = workspace.scheduler._source_image_core()
+    core = workspace.scheduler.source_image_core()
+    snapshot = core.audit_snapshot()
     demand = SourceImageDemand("width")
     key = image, demand
-    record = core._projections.pop(key)
+    projection_store = cast(
+        LedgerDict[
+            tuple[SourceImageID, SourceImageDemand], SourceImageProjectionRecord
+        ],
+        snapshot.projection_store,
+    )
+    record = projection_store.pop(key)
     assert record.projection.value == 4
-    core._publication_seals.drop_projection(key)
-    core.ledger.release(core._projection_owner, entries=1, nodes=1)
+    seal = snapshot.projection_seals[key]
+    seal_store = cast(
+        LedgerDict[object, PublicationSeal], snapshot.projection_seal_store
+    )
+    seal_store.pop(key)
+    core.ledger.release(
+        snapshot.projection_seal_owner,
+        entries=1,
+        nodes=seal.retained_nodes,
+    )
+    core.ledger.release(snapshot.projection_owner, entries=1, nodes=1)
     misses = term.resource_ledger.counters.get("source_image_projection_misses", 0)
 
     # Neither a direct cache lookup nor maximum_width may rebuild this result.
@@ -352,7 +383,7 @@ def test_zero_point_demand_checks_workspace_authority() -> None:
         workspace.digit(0)
     workspace.steps = 20
     assert workspace.digit(0) == 0
-    assert workspace._image is None
+    assert workspace.audit_snapshot().image is None
     workspace.dispose()
     with pytest.raises(ValueError, match="disposed"):
         workspace.digit(0)

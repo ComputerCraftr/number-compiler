@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from random import Random
+from typing import cast
 
 import pytest
 
@@ -30,6 +32,7 @@ from number_compiler.sequences.double_reverse.protected_temporal_bank import (
     PeriodicBankFrame,
     bank_channel_name,
 )
+from number_compiler.sequences.double_reverse.source_bound_bank import PointedBankSource
 from number_compiler.sequences.double_reverse.temporal_hashlife import growth_ports
 
 
@@ -60,15 +63,18 @@ def test_open_ring_matches_both_boundaries_and_conditional_borrows(
     middle = "".join(str(random.randrange(10)) for _ in range(100))
     seed = int(upper + middle + lower)
     with DoubleReverseTerm(seed, 2 * (steps + 1)) as term:
-        phase = term._adapter.temporal_hashlife.certify(term._source.root)
+        phase = term.temporal_engine.certify(term.source_root)
         assert phase is not None
         births_left, births_right = growth_ports(phase, steps)
         coordinate = births_left + 20
-        engine = term._adapter.temporal_hashlife
-        cursor = engine._advance_source_prefix()
-        source = term._pointed_bank_source(
+        engine = term.temporal_engine
+        cursor = engine.advance_source_prefix()
+        source = cast(
+            Callable[..., PointedBankSource],
+            object.__getattribute__(term, "_pointed_bank_source"),
+        )(
             cursor,
-            term._source.root,
+            term.source_root,
             phase,
             steps,
             len(str(seed)) + births_left + births_right,
@@ -170,7 +176,7 @@ def test_direct_open_ring_guard_refusal_is_accounted_once() -> None:
     )
 
     with DoubleReverseTerm(196, 18) as term:
-        _entry, source = term._prepare_bank_source(max_prefix=16)
+        _entry, source = term.prepare_bank_source(max_prefix=16)
         before = (
             term.metrics().get(metric_keys.DOUBLE_REVERSE_OPEN_RING_GUARD_REFUSALS) or 0
         )
@@ -200,7 +206,7 @@ def test_mismatched_moore_output_is_not_counted_as_publication(
         called = True
         return (), 1, 0, 1
 
-    monkeypatch.setattr(open_temporal_ring, "_closed_driven_moore", mismatched_output)
+    monkeypatch.setattr(open_temporal_ring, "closed_driven_moore", mismatched_output)
     with DoubleReverseTerm(seed, 24) as term:
         before = (
             term.metrics().get(metric_keys.DOUBLE_REVERSE_OPEN_RING_MOORE_PUBLICATIONS)
@@ -300,7 +306,7 @@ def test_conditional_future_moore_checks_all_admitted_input_letters() -> None:
 
 def test_nonconstant_inlet_cycle_retains_input_phase() -> None:
     from number_compiler.sequences.double_reverse.open_temporal_ring import (
-        _closed_driven_moore,
+        closed_driven_moore,
     )
 
     state, a, b = _two_phase_ingress_fixture()
@@ -309,7 +315,7 @@ def test_nonconstant_inlet_cycle_retains_input_phase() -> None:
         for step in range(t):
             exact, _frames = exact.advance((a, b)[step % 2])
         expected, _next = exact.advance((a, b)[t % 2])
-        result = _closed_driven_moore(state, (a, b), t)
+        result = closed_driven_moore(state, (a, b), t)
         assert result is not None
         frames, _classes, _preperiod, cycle = result
         assert cycle % 2 == 0
@@ -356,7 +362,7 @@ def test_open_moore_only_turns_typed_budget_exhaustion_into_no_quotient(
     monkeypatch.setattr(
         conditional_open_moore, "minimize_conditional_open_ring", budget_refusal
     )
-    assert open_temporal_ring._closed_driven_moore(state, (a, b), 7) is None
+    assert open_temporal_ring.closed_driven_moore(state, (a, b), 7) is None
 
     def malformed_value_error(
         _initial: OpenRingState,
@@ -373,7 +379,7 @@ def test_open_moore_only_turns_typed_budget_exhaustion_into_no_quotient(
         malformed_value_error,
     )
     with pytest.raises(ValueError, match="state universe did not close"):
-        open_temporal_ring._closed_driven_moore(state, (a, b), 7)
+        open_temporal_ring.closed_driven_moore(state, (a, b), 7)
 
 
 @pytest.mark.parametrize(

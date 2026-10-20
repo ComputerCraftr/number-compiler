@@ -19,6 +19,7 @@ import argparse
 import json
 from pathlib import Path
 from time import perf_counter
+from typing import cast
 
 from devtools.experiments.reverse_add.cocycle_carrier import (
     CocycleCell,
@@ -79,11 +80,11 @@ def _load_checkpoint(
     seed: int,
     target: int,
 ) -> tuple[CocycleCell, int, int, int, float]:
-    archive = json.loads(archive_path.read_text())
-    if (
-        type(archive) is not dict
-        or archive.get("format") != "reverse-cocycle-endpoint-v1"
-    ):
+    raw_archive: object = json.loads(archive_path.read_text())
+    if type(raw_archive) is not dict:
+        raise ValueError("checkpoint has another format")
+    archive = cast(dict[str, object], raw_archive)
+    if archive.get("format") != "reverse-cocycle-endpoint-v1":
         raise ValueError("checkpoint has another format")
     if archive.get("seed") != seed:
         raise ValueError("checkpoint seed mismatch")
@@ -98,11 +99,14 @@ def _load_checkpoint(
         or primitive != start
         or type(nonlinear) is not int
         or nonlinear != 2 * start
-        or type(seconds) not in (int, float)
+        or (type(seconds) is not int and type(seconds) is not float)
         or seconds < 0
     ):
         raise ValueError("checkpoint counters are invalid")
-    roots = import_plane_roots(carrier, archive["planes"])
+    planes = archive["planes"]
+    if not isinstance(planes, dict):
+        raise ValueError("checkpoint planes must be a mapping")
+    roots = import_plane_roots(carrier, cast(dict[str, object], planes))
     cell = CocycleCell(*roots)
     carrier.validate(cell)
     return cell, start, primitive, nonlinear, float(seconds)

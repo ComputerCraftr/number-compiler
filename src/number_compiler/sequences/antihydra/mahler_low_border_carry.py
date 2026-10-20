@@ -118,7 +118,7 @@ class MahlerBorderCarryMap:
 
     @classmethod
     def from_spatial_motif(
-        cls, radix: int, motif: str, repetitions: int
+        cls, radix: int, motif: object, repetitions: int
     ) -> MahlerBorderCarryMap:
         if (
             type(radix) is not int
@@ -192,7 +192,7 @@ class MahlerLowBorderCarryCertificate:
             cls._tag(certificate.compressed_motif_blocks),
         )
 
-    def _require_issued(self) -> None:
+    def require_issued(self) -> None:
         if self._issuer is not _LOW_BORDER_ISSUER or self._issuance_snapshot != (
             id(self),
             self._capture(self),
@@ -206,12 +206,13 @@ class MahlerLowBorderCarryCertificate:
         )
 
         evidence = MahlerCenterExteriorEvidence.from_join(join)
-        return cls._from_verified_evidence(evidence)
+        return cls.from_verified_evidence(evidence)
 
     @classmethod
-    def _from_verified_evidence(
+    def from_verified_evidence(
         cls, evidence: object
     ) -> MahlerLowBorderCarryCertificate:
+        """Issue a low-border certificate from verified exterior evidence."""
         from number_compiler.sequences.antihydra.mahler_center_exterior_join import (
             MahlerCenterExteriorEvidence,
             MahlerCenterExteriorJoin,
@@ -277,12 +278,12 @@ class MahlerLowBorderCarryCertificate:
             "_issuance_snapshot",
             (id(result), cls._capture(result)),
         )
-        result._require_issued()
+        result.require_issued()
         return result
 
     def upper_transfer(self, center: int, upper_source: int) -> tuple[int, int, int]:
         """Return next center, outgoing carry, and exact next upper block."""
-        self._require_issued()
+        self.require_issued()
         if type(center) is not int or not 0 <= center < 100:
             raise ValueError("two-digit center required")
         if type(upper_source) is not int or upper_source < 0:
@@ -293,7 +294,7 @@ class MahlerLowBorderCarryCertificate:
         return next_center, high_carry, next_upper
 
     def packet(self) -> dict[str, object]:
-        self._require_issued()
+        self.require_issued()
         return {
             "low_decimal_digits": self.center_start,
             "lower_carry_ports": self.carry_map.responses,

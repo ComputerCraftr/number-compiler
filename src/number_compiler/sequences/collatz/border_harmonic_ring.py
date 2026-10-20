@@ -16,11 +16,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.fields.homogeneous_growth import (
     HomogeneousGrowthScale,
 )
+from number_compiler.arithmetic.fields.integer_congruence import exact_modular_power
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 
 if TYPE_CHECKING:
@@ -153,11 +154,13 @@ class ZeroTailFreeBorderRing:
             raise ValueError("prime-power modulus exceeds the 4096-bit budget")
         if not self.admits(repetitions):
             raise ValueError("prime request is outside the source cylinder")
-        modulus = prime**places
+        modulus: int = prime**places
+        four_power = exact_modular_power(4, repetitions, modulus)
+        inverse_power = exact_modular_power(four_power, -1, modulus)
         residue: int = (
-            pow(9, repetitions, modulus)
+            exact_modular_power(9, repetitions, modulus)
             * (self.source + 1)
-            * pow(pow(4, repetitions, modulus), -1, modulus)
+            * inverse_power
             - 1
         ) % modulus
         return residue
@@ -346,7 +349,7 @@ class ConstantTail6305Ring:
         if not self.admits(repetitions):
             raise ValueError("odd-prime request exceeds source cylinder")
         modulus = odd_base**places
-        inverse = pow(1 << self.steps, -1, modulus)
+        inverse: int = cast(int, pow(1 << self.steps, -1, modulus))
         step_gain = 9 * inverse % modulus
         step_offset = self.offset * inverse % modulus
         gain, offset = 1, 0
@@ -427,7 +430,7 @@ def _periodic_tail_coefficients(motif: tuple[int, ...]) -> tuple[int, int, int]:
     return zero_tail_word_coefficients(motif)
 
 
-def _periodic_return_capacity(defect: int, steps: int) -> int | None:
+def periodic_return_capacity(defect: int, steps: int) -> int | None:
     """Exact number of repeated motif returns; ``None`` means unbounded.
 
     A zero defect is a genuine fixed point of the affine return, not a very
@@ -478,7 +481,7 @@ class PeriodicTail6305Ring:
                 raise ValueError("periodic ring crosses an eight-border exit")
             upper = (9 * odd + 1) >> 2
         defect = ((1 << steps) - gain) * self.source - offset
-        capacity = _periodic_return_capacity(defect, steps)
+        capacity = periodic_return_capacity(defect, steps)
         if (
             (self.return_capacity is not None and type(self.return_capacity) is not int)
             or self.return_capacity != capacity
@@ -501,7 +504,7 @@ class PeriodicTail6305Ring:
                 raise ValueError("motif exits to 8 before its final return")
             upper = (9 * odd + 1) >> 2
         defect = ((1 << steps) - gain) * source - offset
-        capacity = _periodic_return_capacity(defect, steps)
+        capacity = periodic_return_capacity(defect, steps)
         if capacity is not None and capacity < 1:
             raise ValueError("first motif has no completed 3-border guard")
         return cls(source, motif, gain, offset, steps, capacity)
@@ -787,5 +790,6 @@ __all__ = [
     "ConstantTail6305Ring",
     "PeriodicTail6305Ring",
     "ZeroTailFreeBorderRing",
+    "periodic_return_capacity",
     "zero_tail_word_coefficients",
 ]

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
-from typing import Never
+from collections.abc import Callable, Generator
+from typing import Never, cast
 
 import pytest
 
@@ -13,7 +13,6 @@ from number_compiler.hashlife.execution.continuations.higher_types import (
     HigherExpressionID,
 )
 from number_compiler.hashlife.execution.recursive_outputs import (
-    _STREAM_FRAME_NODES,
     RecursiveCoordinateMorphismArena,
     RecursiveOutputBranch,
 )
@@ -21,11 +20,12 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     LocalInterfaceID,
 )
 from number_compiler.resources.higher_payload_audit import audit_higher_payloads
+from number_compiler.resources.stores import LedgerDict
 from tests.support.reverse_higher_interface import direct_step
 from tests.support.reverse_higher_runtime import (
-    _fixture,
-    _macro_composer,
+    macro_composer,
     observed_macro,
+    reverse_higher_fixture,
 )
 
 
@@ -34,8 +34,8 @@ def _spatial(
 ) -> tuple[
     RecursiveCoordinateMorphismArena, CoordinateOutputMorphismID, object, object
 ]:
-    _, primitive, semantics, runtime, interfaces, compiler, sources, binding = _fixture(
-        word
+    _, primitive, semantics, runtime, interfaces, compiler, sources, binding = (
+        reverse_higher_fixture(word)
     )
     outputs, _unused_composer_binding, macro, left, right = observed_macro(
         semantics, interfaces, sources, primitive, compiler, runtime, binding
@@ -55,7 +55,7 @@ def test_stream_crops_match_independent_primitive_fold(word: tuple[int, ...]) ->
                 tuple(outputs.iter_observe_range(root, lo, hi, left, right))
                 == expected[lo:hi]
             )
-    assert not outputs._stream_frames
+    assert outputs.audit_snapshot().stream_frame_count == 0
     assert all(item.accounting_delta == 0 for item in outputs.ledger.inventory())
 
 
@@ -83,9 +83,10 @@ def test_retained_branch_completion_is_independently_audited() -> None:
     assert id(branch) in audit_higher_payloads(outputs.ledger).approved
     object.__setattr__(branch, "spatial_complete", False)
     try:
-        assert (outputs._node_owner, id(branch)) in audit_higher_payloads(
-            outputs.ledger
-        ).invalid
+        assert (
+            outputs.audit_snapshot().node_owner,
+            id(branch),
+        ) in audit_higher_payloads(outputs.ledger).invalid
     finally:
         object.__setattr__(branch, "spatial_complete", True)
 
@@ -98,20 +99,25 @@ def test_partial_interleaved_streams_release_only_their_frames() -> None:
     assert next(first) == direct_step(word, 10)[0]
     assert next(second) == direct_step(word, 10)[1]
     first.close()
-    assert outputs._stream_frames
+    assert outputs.audit_snapshot().stream_frame_count > 0
     assert tuple(second) == direct_step(word, 10)[2:7]
-    assert not outputs._stream_frames
+    assert outputs.audit_snapshot().stream_frame_count == 0
     assert all(item.accounting_delta == 0 for item in outputs.ledger.inventory())
 
 
 def test_stream_failed_allocation_releases_pending_frames() -> None:
     outputs, root, left, right = _spatial((7, 18, 7, 19))
-    owner = outputs.ledger.inventory()[outputs._stream_owner]
+    snapshot = outputs.audit_snapshot()
+    owner = outputs.ledger.inventory()[snapshot.stream_owner]
     assert owner.entries == owner.nodes == 0
-    outputs.ledger.max_nodes = outputs.ledger.nodes + _STREAM_FRAME_NODES
+    stream_store = cast(
+        LedgerDict[int, object],
+        outputs.ledger.registered_container(snapshot.stream_owner),
+    )
+    outputs.ledger.max_nodes = outputs.ledger.nodes + stream_store.nodes_per_entry
     with pytest.raises(BlockContextBudgetExceeded):
         tuple(outputs.iter_observe_range(root, 0, 4, left, right))
-    assert not outputs._stream_frames
+    assert outputs.audit_snapshot().stream_frame_count == 0
     assert all(item.accounting_delta == 0 for item in outputs.ledger.inventory())
 
 
@@ -132,14 +138,14 @@ def _started_stream() -> tuple[
 
 def test_failed_second_stream_preserves_live_first_stream() -> None:
     word, outputs, root, left, right, first = _started_stream()
-    live_keys = set(outputs._stream_frames)
+    live_keys = set(outputs.audit_snapshot().stream_frame_ids)
     assert live_keys
     outputs.ledger.max_nodes = outputs.ledger.nodes
     with pytest.raises(BlockContextBudgetExceeded):
         next(outputs.iter_observe_range(root, 0, len(word), left, right))
-    assert set(outputs._stream_frames) == live_keys
+    assert set(outputs.audit_snapshot().stream_frame_ids) == live_keys
     first.close()
-    assert not outputs._stream_frames
+    assert outputs.audit_snapshot().stream_frame_count == 0
     assert all(item.accounting_delta == 0 for item in outputs.ledger.inventory())
 
 
@@ -156,20 +162,21 @@ def test_stream_callback_failure_after_yield_releases_frames() -> None:
     def failed_boundary(*_args: object) -> Never:
         raise LookupError("boundary evaluation failed")
 
-    outputs._evaluate = failed_boundary
+    object.__setattr__(outputs, "_evaluate", failed_boundary)
     with pytest.raises(LookupError, match="boundary evaluation failed"):
         tuple(stream)
-    assert not outputs._stream_frames
+    assert outputs.audit_snapshot().stream_frame_count == 0
     assert all(item.accounting_delta == 0 for item in outputs.ledger.inventory())
 
 
 @pytest.mark.parametrize("cancel", (False, True))
-def test_first_emission_does_not_evaluate_pending_right_branches(
-    monkeypatch: pytest.MonkeyPatch, cancel: bool
-) -> None:
+def test_first_emission_does_not_evaluate_pending_right_branches(cancel: bool) -> None:
     word = (7, 18, 7, 19) * 4
     outputs, root, left, right = _spatial(word)
-    component = outputs._component
+    component = cast(
+        Callable[[LocalInterfaceID, str], HigherExpressionID],
+        object.__getattribute__(outputs, "_component"),
+    )
 
     def demanded_component(
         interface: LocalInterfaceID, role: str
@@ -180,13 +187,15 @@ def test_first_emission_does_not_evaluate_pending_right_branches(
 
     stream = outputs.iter_observe_range(root, 0, len(word), left, right)
     try:
-        with monkeypatch.context() as patch:
-            patch.setattr(outputs, "_component", demanded_component)
+        object.__setattr__(outputs, "_component", demanded_component)
+        try:
             assert next(stream) == direct_step(word, 10)[0]
             assert (
                 outputs.ledger.counters["recursive_output_stream_boundary_evaluations"]
                 == len(word).bit_length() - 1
             )
+        finally:
+            object.__setattr__(outputs, "_component", component)
         if not cancel:
             assert tuple(stream) == direct_step(word, 10)[1:]
             assert outputs.ledger.counters[
@@ -194,7 +203,7 @@ def test_first_emission_does_not_evaluate_pending_right_branches(
             ] == 2 * (len(word) - 1)
     finally:
         stream.close()
-    assert not outputs._stream_frames
+    assert outputs.audit_snapshot().stream_frame_count == 0
     assert all(item.accounting_delta == 0 for item in outputs.ledger.inventory())
 
 
@@ -202,12 +211,14 @@ def test_stream_out_of_range_releases_frames() -> None:
     outputs, root, left, right = _spatial((7, 18, 7, 19))
     with pytest.raises(IndexError):
         tuple(outputs.iter_observe_range(root, 0, 5, left, right))
-    assert not outputs._stream_frames
+    assert outputs.audit_snapshot().stream_frame_count == 0
     assert all(item.accounting_delta == 0 for item in outputs.ledger.inventory())
 
 
 def test_stream_temporal_witness_is_never_observed() -> None:
-    actions, primitive, semantics, _, interfaces, compiler, *_ = _fixture((7,))
+    actions, primitive, semantics, _, interfaces, compiler, *_ = reverse_higher_fixture(
+        (7,)
+    )
 
     def forbidden(*_args: object) -> Never:
         pytest.fail("stream reopened a temporal witness")
@@ -224,12 +235,12 @@ def test_stream_temporal_witness_is_never_observed() -> None:
     temporal = outputs.temporal(outputs.leaf(interface), primitive, interface)
     with pytest.raises(TypeError, match="completed spatial"):
         tuple(outputs.iter_observe_range(temporal, 0, 1, 0, 0))
-    assert not outputs._stream_frames
+    assert outputs.audit_snapshot().stream_frame_count == 0
 
 
 def test_partial_stream_rejects_temporal_sibling_without_traversing_it() -> None:
     actions, primitive, semantics, runtime, interfaces, compiler, sources, binding = (
-        _fixture((7, 18))
+        reverse_higher_fixture((7, 18))
     )
 
     def forbidden(*_args: object) -> Never:
@@ -243,7 +254,7 @@ def test_partial_stream_rejects_temporal_sibling_without_traversing_it() -> None
         complete_temporal_action=lambda _provider, action: action,
         evaluate_temporal=forbidden,
     )
-    outputs, composer = _macro_composer(
+    outputs, composer = macro_composer(
         semantics, interfaces, sources, primitive, compiler, outputs
     )
     macro = composer.compile(binding)
@@ -261,7 +272,7 @@ def test_partial_stream_rejects_temporal_sibling_without_traversing_it() -> None
     with pytest.raises(TypeError, match="completed spatial"):
         tuple(outputs.iter_observe_range(nested, 0, 1, left, right))
     with pytest.raises(ValueError, match="completion disagrees"):
-        outputs._intern(
+        outputs.intern_record(
             RecursiveOutputBranch(
                 macro.output,
                 temporal,
@@ -271,7 +282,7 @@ def test_partial_stream_rejects_temporal_sibling_without_traversing_it() -> None
                 spatial_complete=True,
             )
         )
-    assert not outputs._stream_frames
+    assert outputs.audit_snapshot().stream_frame_count == 0
 
 
 def test_stream_rejects_foreign_handles_and_invalid_ranges() -> None:
@@ -282,4 +293,4 @@ def test_stream_rejects_foreign_handles_and_invalid_ranges() -> None:
     for lo, hi in ((-1, 1), (2, 1), (True, 1)):
         with pytest.raises(ValueError, match="output range"):
             tuple(outputs.iter_observe_range(root, lo, hi, left, right))
-    assert not outputs._stream_frames
+    assert outputs.audit_snapshot().stream_frame_count == 0

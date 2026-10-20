@@ -61,7 +61,7 @@ def test_shared_directional_f5_output_matches_centered_production_all_two_cells(
 
 
 def test_odd_event_transfer_keeps_antihydras_extra_multiplier_and_ledger() -> None:
-    gaps = set()
+    gaps: set[int] = set()
     for source in range(5, 4096, 2):
         numerator = 3 * source + 1
         gap = (numerator & -numerator).bit_length() - 1
@@ -144,7 +144,7 @@ def test_antihydra_centered_macro_uses_same_primary_birth_transport(
     for source in (5, 7, 27, 129, 931386509544713450):
         centered = source
         combined = PrimaryJetAffineMorphism.identity(5, modulus)
-        suffix = []
+        suffix: list[PrimaryJetAffineMorphism] = []
         for k in range(1, 17):
             birth = binary_carry_birth(centered, modulus=modulus, incoming=centered % 2)
             event = PrimaryJetAffineMorphism.binary_event(1, birth, modulus=modulus)
@@ -176,7 +176,7 @@ def test_dead_collatz_jet_does_not_erase_source_descent_consumer(modulus: int) -
         SourceFreeSaturatedCollatzProgram,
     )
 
-    keys = []
+    keys: list[tuple[object, ...]] = []
     for source in (1, 5):
         value = source
         action = PrimaryJetAffineMorphism.identity(5, modulus)

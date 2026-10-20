@@ -41,7 +41,7 @@ class BehaviorPayloadValidator:
             quotient.semantic_identity: quotient
             for root in ledger.iter_execution_roots()
             if type(root) is DiamondKernelArena and root.ledger is ledger
-            for quotient in root._behavioral_quotients.values()
+            for quotient in root.behavioral_quotients.values()
         }
 
     def recognizes(self, value: object) -> bool:

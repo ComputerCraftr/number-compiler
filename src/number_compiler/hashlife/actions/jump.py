@@ -9,7 +9,7 @@ therefore impossible to hide inside ``jump_bit``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Generic, Protocol, TypeVar, runtime_checkable
+from typing import Generic, Protocol, TypeVar, cast, runtime_checkable
 
 from number_compiler.arithmetic.automata.guard import (
     JumpAudit,
@@ -41,10 +41,10 @@ class IndexedRoot(Generic[RootT]):
 class StrictBinaryRootBuilder(Generic[RootT]):
     __slots__ = ("jump_backend",)
 
-    def __init__(self, jump_backend: ExactJumpBackend[RootT]) -> None:
+    def __init__(self, jump_backend: object) -> None:
         if not isinstance(jump_backend, ExactJumpBackend):
             raise TypeError("jump backend does not implement ExactJumpBackend")
-        self.jump_backend = jump_backend
+        self.jump_backend = cast(ExactJumpBackend[RootT], jump_backend)
 
     def root_at(self, n: int) -> IndexedRoot[RootT]:
         n = int(n)

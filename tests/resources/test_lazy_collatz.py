@@ -30,33 +30,39 @@ def physical(value: int, steps: int) -> tuple[int, int]:
     return value, odds
 
 
-@pytest.mark.parametrize("seed", [1, 2, 3, 5, 27, 64, 255, (1 << 255) - 1])
+@pytest.mark.parametrize(
+    "full_matrix",
+    (False, pytest.param(True, marks=pytest.mark.validation)),
+)
 def test_point_and_width_are_exact_without_any_endpoint_lowering(
-    seed: int, monkeypatch: pytest.MonkeyPatch
+    full_matrix: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("point query requested an exact endpoint")
 
     monkeypatch.setattr(LazyCollatzApplication, "materialize_bits", forbidden)
     monkeypatch.setattr(LazyCollatzApplication, "source_span", forbidden)
-    for steps in (0, 1, 2, 3, 4, 16, 64, 256):
-        expected, odds = physical(seed, steps)
-        app = LazyCollatzApplication(2, steps, bits(seed))
-        assert app.active_width() == expected.bit_length()
-        for position in {0, expected.bit_length() // 2, expected.bit_length() - 1}:
-            assert app.point(position) == (expected >> position) & 1
-        assert app.point(-1) == app.point(expected.bit_length()) == 2
-        assert app.advance_physical(steps).odd_ticks == odds
-        assert app.maximum_carry <= 2
-        audit = audit_registered_payloads(app.ledger)
-        assert audit.forbidden_future_payloads == 0
-        assert audit.unbounded_future_integers == 0
-        assert audit.unknown_payloads == 0
-        inventory = collect_ledger_metrics(app.ledger)
-        assert inventory.resource_audit_complete == 1
-        assert inventory.resource_accounting_mismatch == 0
-        assert inventory.resource_ledger_entries == app.retained_entries()
-        assert not app.retained_spans()
+    seeds = (1, 2, 3, 5, 27, 64, 255, (1 << 255) - 1) if full_matrix else (1, 2, 27)
+    step_counts = (0, 1, 2, 3, 4, 16, 64, 256) if full_matrix else (0, 1, 16, 256)
+    for seed in seeds:
+        for steps in step_counts:
+            expected, odds = physical(seed, steps)
+            app = LazyCollatzApplication(2, steps, bits(seed))
+            assert app.active_width() == expected.bit_length()
+            for position in {0, expected.bit_length() // 2, expected.bit_length() - 1}:
+                assert app.point(position) == (expected >> position) & 1
+            assert app.point(-1) == app.point(expected.bit_length()) == 2
+            assert app.advance_physical(steps).odd_ticks == odds
+            assert app.maximum_carry <= 2
+            audit = audit_registered_payloads(app.ledger)
+            assert audit.forbidden_future_payloads == 0
+            assert audit.unbounded_future_integers == 0
+            assert audit.unknown_payloads == 0
+            inventory = collect_ledger_metrics(app.ledger)
+            assert inventory.resource_audit_complete == 1
+            assert inventory.resource_accounting_mismatch == 0
+            assert inventory.resource_ledger_entries == app.retained_entries()
+            assert not app.retained_spans()
 
 
 def test_random_accelerated_endpoints_and_cocycles() -> None:
@@ -138,11 +144,13 @@ def test_view_and_lowering_ownership_are_checked_before_cached_resolution() -> N
 
 
 def test_fixed_physical_cycle_and_even_prefix_do_not_expand_with_ticks() -> None:
+    fixed_cycle: tuple[int, int, int] = (1, 4, 2)
     for phase in range(3):
         steps = 10**30 + phase
         app = LazyCollatzApplication(2, steps, bits(8))
         result = app.advance_physical(steps)
-        expected = (1, 4, 2)[(steps - 3) % 3]
+        cycle_index: int = (steps - 3) % len(fixed_cycle)
+        expected: int = fixed_cycle[cycle_index]
         assert result.view.width == expected.bit_length()
         assert app.materialize_bits(result.view, LoweringCapability(app.token)) == bits(
             expected

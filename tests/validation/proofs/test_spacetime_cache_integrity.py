@@ -50,7 +50,7 @@ def test_recursive_carrier_bulk_and_leaf_traversal_share_one_state_identity() ->
     # Exercise both aligned and non-aligned action-stream offsets.
     prefix = effect.advance(BoundarySide.LEFT, start, 5)
     for incoming in (start, prefix):
-        bulk = effect._advance_effect_tile_macro(
+        bulk = effect.advance_effect_tile_macro(
             effect, BoundarySide.LEFT, incoming, tile
         )
         scalar = incoming
@@ -68,10 +68,10 @@ def test_lazy_range_hit_is_not_counted_on_computed_miss() -> None:
 
     effect = BaseBlockEffect(10)
     index = HashLifeBlockIndex(effect, (7, 18, 7), logical_length=16)
-    projection = index._lazy_application
+    projection = index.audit_snapshot().lazy_application
     assert type(projection) is LazyProjection
     runtime = projection.scheduler
-    application = projection._application
+    application = projection.validated_application()
     request = (application.action, application.source, application.wiring)
     assert isinstance(runtime.adapter, PrimitiveTileKernelAdapter)
     first = runtime.adapter.compile_interface(*request)

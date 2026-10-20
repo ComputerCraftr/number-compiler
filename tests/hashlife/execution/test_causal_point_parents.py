@@ -16,6 +16,12 @@ from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_results import ResultLease
 from number_compiler.resources.causal_stacks import CausalFrameStack, CausalResults
 from number_compiler.resources.causal_types import CausalTaskValue
+from tests.support.causal_frames import (
+    hold_causal_workspace,
+    initial_causal_state,
+    release_causal_workspace,
+    run_causal_frame,
+)
 from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 
@@ -34,20 +40,24 @@ def test_point_reuses_completed_interior_parent(
         ) as application,
     ):
         engine = CausalTileEngine(scheduler)
-        engine._application = application.identity
-        engine._hold_workspace = True
-        left, right = engine._initial(fourth, 0), engine._initial(fourth, 1)
+        engine.application_identity = application.identity
+        hold_causal_workspace(engine, True)
+        left, right = (
+            initial_causal_state(engine, fourth, 0),
+            initial_causal_state(engine, fourth, 1),
+        )
         contexts = engine.child_states(fourth, source.tile, left, right)
         child = tiles.resolve(source.tile).left
         assert child is not None
-        completed = engine._run(
+        completed = run_causal_frame(
+            engine,
             OutputFrame((fourth, child, *contexts[0])),
             tile_result=True,
             return_result=True,
         )
         assert isinstance(completed, ResultLease)
-        engine._hold_workspace = False
-        engine._release_workspace()
+        hold_causal_workspace(engine, False)
+        release_causal_workspace(engine)
         with completed:
             expected = tiles.point(completed.output, 0)
 
@@ -79,14 +89,18 @@ def test_selected_child_context_matches_full_parent_context(
     action = adapter.power(primitive, 4)
     with make_tile_from_symbols(tiles, adapter, primitive, (0, 0, 0, 1)) as source:
         engine = CausalTileEngine(scheduler)
-        engine._hold_workspace = True
+        hold_causal_workspace(engine, True)
         try:
-            left, right = engine._initial(action, 0), engine._initial(action, 1)
+            left, right = (
+                initial_causal_state(engine, action, 0),
+                initial_causal_state(engine, action, 1),
+            )
             contexts = engine.child_states(action, source.tile, left, right)
             parent = tiles.resolve(source.tile)
             child = parent.right if side else parent.left
             assert child is not None
-            completed = engine._run(
+            completed = run_causal_frame(
+                engine,
                 OutputFrame((action, child, *contexts[side])),
                 tile_result=True,
                 return_result=True,
@@ -105,8 +119,8 @@ def test_selected_child_context_matches_full_parent_context(
                 monkeypatch.setattr(adapter, "leaf_interface_symbol", forbidden)
                 assert engine.point(action, source.tile, coordinate) == expected
         finally:
-            engine._hold_workspace = False
-            engine._release_workspace()
+            hold_causal_workspace(engine, False)
+            release_causal_workspace(engine)
 
 
 @pytest.mark.parametrize("side", (0, 1))

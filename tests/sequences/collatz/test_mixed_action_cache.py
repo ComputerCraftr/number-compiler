@@ -6,9 +6,12 @@ from typing import cast
 
 import pytest
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+)
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.resources.process_cache import ProcessCache
+from number_compiler.resources.process_cache import CacheLease, ProcessCache
 from number_compiler.sequences.collatz import (
     mixed_action_cache,
     mixed_clock_macros,
@@ -25,11 +28,9 @@ from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
 from number_compiler.sequences.collatz.mixed_action_cache import (
-    _ISSUER,
-    _MAX_RECORDS_PER_PREFIX,
-    _VERSION,
-    _merge_mixed_action_records,
+    MAX_RECORDS_PER_PREFIX,
     lookup_mixed_action,
+    merge_mixed_action_records,
     remember_mixed_action,
 )
 from number_compiler.sequences.collatz.source_cylinder_cache import (
@@ -270,9 +271,9 @@ def test_full_bucket_reports_smaller_candidate_as_pruned() -> None:
         return tuple(values)
 
     records = tuple(record(1000 - 10 * index, index + 1) for index in range(8))
-    assert len(records) == _MAX_RECORDS_PER_PREFIX
+    assert len(records) == MAX_RECORDS_PER_PREFIX
 
-    retained, disposition = _merge_mixed_action_records(records, record(1, 99))
+    retained, disposition = merge_mixed_action_records(records, record(1, 99))
 
     assert retained is records
     assert disposition == "pruned"
@@ -283,25 +284,30 @@ def test_unissued_mixed_payload_still_checks_exact_gain(
 ) -> None:
     cache = _cold_production_d68(monkeypatch)
     source_prefix = (_D68_SOURCE & ((1 << 16) - 1),)
-    with cache.acquire("collatz-mixed-action-index", _VERSION, source_prefix) as lease:
-        bucket = lease.get_issued(("macro",), _ISSUER)
-    assert type(bucket) is tuple and bucket
+    with cache.acquire(
+        "collatz-mixed-action-index",
+        mixed_clock_macros.MIXED_ACTION_CACHE_VERSION,
+        source_prefix,
+    ) as lease:
+        bucket = mixed_clock_macros.read_mixed_action_cache_bucket(lease)
+    assert is_exact_object_tuple(bucket) and bucket
     first = bucket[0]
-    assert type(first) is tuple and len(first) == 17
+    assert is_exact_object_tuple(first) and len(first) == 17
     assert all(type(value) is int for value in first)
-    changed = list(cast(tuple[int, ...], first))
+    first_record = cast(tuple[int, ...], first)
+    changed = list(first_record)
     changed[2] += 1 << changed[0]
 
     with pytest.raises(ValueError, match="differs from its action"):
-        mixed_clock_macros._restore_mixed_cache_payload(
+        mixed_clock_macros.restore_mixed_cache_payload(
             _D68_SOURCE, tuple(changed), include_width=False
         )
-    with pytest.raises(ValueError, match="foreign cache issuer"):
-        mixed_clock_macros._restore_mixed_cache_payload(
+    with pytest.raises(ValueError, match="foreign cache lease"):
+        mixed_clock_macros.restore_mixed_cache_payload(
             _D68_SOURCE,
-            first,
+            first_record,
             include_width=False,
-            issued_by=object(),
+            cache_lease=cast(CacheLease, object()),
         )
 
     cache.reset()
@@ -331,7 +337,7 @@ def test_optional_publication_preflights_and_uses_the_issued_source_residue(
             )
             no_cache.setattr(
                 mixed_action_cache,
-                "_validate_mixed_cache_publication",
+                "validate_mixed_cache_publication",
                 forbidden,
             )
             with CollatzDyadicMacros(ledger, shared_cache=True) as owner:

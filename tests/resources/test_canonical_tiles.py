@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Hashable
+from collections.abc import Callable
 from dataclasses import replace
-from typing import TYPE_CHECKING, Never, TypeVar, cast
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
@@ -15,7 +15,7 @@ from number_compiler.hashlife.tiles.tiles import (
     TileAlphabet,
     TileArena,
     TileID,
-    _TileKey,
+    TileRecord,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
@@ -42,6 +42,15 @@ def _reconciled(ledger: ResourceLedger) -> None:
     )
 
 
+def _private_test_attribute(owner: object, name: str) -> object:
+    """Access one private field only when a corruption test needs to poison it."""
+    return object.__getattribute__(owner, name)
+
+
+def _mirror_is_cached(arena: TileArena, tile: TileID) -> bool:
+    return arena.mirror_key(tile.local_id) in arena.audit_snapshot().keys
+
+
 def test_sources_and_future_content_share_live_tiles_and_derived_summaries() -> None:
     ledger, arena, alphabet = _arena()
     with (
@@ -60,7 +69,8 @@ def test_sources_and_future_content_share_live_tiles_and_derived_summaries() -> 
         ) == (1, 0, 1, 2)
         assert [arena.point(future.tile, i) for i in (0, 1)] == [0, 1]
         assert ledger.counters["tile_intern_early_hits"] == 1
-    assert not arena._nodes and not arena._keys and not arena._edges
+    snapshot = arena.audit_snapshot()
+    assert not snapshot.nodes and not snapshot.keys and not snapshot.edges
     _reconciled(ledger)
 
 
@@ -106,10 +116,11 @@ def test_deep_shared_tree_retires_iteratively() -> None:
         parent = arena.join(current.tile, current.tile)
         current.close()
         current = parent
-    assert len(arena._nodes) == 1201
+    assert len(arena.audit_snapshot().nodes) == 1201
     assert arena.point(current.tile, (1 << 1199) + 1) == 1
     current.close()
-    assert not arena._nodes and not arena._refs and not arena._edges
+    snapshot = arena.audit_snapshot()
+    assert not snapshot.nodes and not snapshot.refs and not snapshot.edges
     _reconciled(ledger)
 
 
@@ -145,8 +156,10 @@ def test_foreign_ids_forged_summaries_and_child_levels_reject_before_mutation() 
         operations: tuple[Callable[[], object], ...] = (
             lambda: arena.join(invalid, leaf.tile),
             lambda: arena.join(leaf.tile, parent.tile),
-            lambda: arena._intern(replace(arena.resolve(parent.tile), last_active=0)),
-            lambda: arena._intern(replace(arena.resolve(parent.tile), level=0)),
+            lambda: arena.intern_record(
+                replace(arena.resolve(parent.tile), last_active=0)
+            ),
+            lambda: arena.intern_record(replace(arena.resolve(parent.tile), level=0)),
         )
         for operation in operations:
             with pytest.raises((ValueError, TypeError)):
@@ -159,11 +172,11 @@ def test_budget_failure_reserves_no_child_references_or_result_entries() -> None
     with arena.leaf(alphabet, 1) as leaf:
         ledger.max_cache_entries = ledger.entries + 5
         before = ledger.snapshot()
-        refs = dict(arena._refs)
+        refs = dict(arena.audit_snapshot().refs)
         with pytest.raises(BlockContextBudgetExceeded):
             arena.join(leaf.tile, leaf.tile)
         assert (ledger.entries, ledger.nodes) == (before.entries, before.nodes)
-        assert dict(arena._refs) == refs
+        assert dict(arena.audit_snapshot().refs) == refs
         _reconciled(ledger)
 
 
@@ -173,15 +186,17 @@ def test_failed_publication_rolls_back_child_retains_and_all_reservations(
     ledger, arena, alphabet = _arena()
     with arena.leaf(alphabet, 1) as leaf:
         before = ledger.snapshot()
-        old_refs = dict(arena._refs)
-        original = LedgerDict.__setitem__
+        old_refs = dict(arena.audit_snapshot().refs)
+        original: Callable[[LedgerDict[object, object], object, object], None] = (
+            LedgerDict[object, object].__setitem__
+        )
         writes = 0
 
         def fail_second_edge(
-            store: LedgerDict[KeyT, ValueT], key: KeyT, value: ValueT
+            store: LedgerDict[object, object], key: object, value: object
         ) -> None:
             nonlocal writes
-            if store is arena._edges:
+            if id(store) == arena.audit_snapshot().edge_store_identity:
                 writes += 1
                 if writes == 2:
                     raise RuntimeError("injected second-child failure")
@@ -191,9 +206,10 @@ def test_failed_publication_rolls_back_child_retains_and_all_reservations(
         with pytest.raises(RuntimeError, match="second-child"):
             arena.join(leaf.tile, leaf.tile)
         assert (ledger.entries, ledger.nodes) == (before.entries, before.nodes)
-        assert dict(arena._refs) == old_refs
-        assert not arena._edges
-        assert len(arena._nodes) == len(arena._keys) == len(arena._leases) == 1
+        snapshot = arena.audit_snapshot()
+        assert dict(snapshot.refs) == old_refs
+        assert not snapshot.edges
+        assert len(snapshot.nodes) == len(snapshot.keys) == len(snapshot.leases) == 1
         _reconciled(ledger)
 
 
@@ -203,7 +219,8 @@ def test_zero_budget_rejects_first_required_allocation() -> None:
     with pytest.raises(BlockContextBudgetExceeded):
         arena.intern_alphabet(TileAlphabet(3, 2, 2, 2, "binary", "1"))
     assert ledger.entries == ledger.nodes == 0
-    assert not arena._alphabets and not arena._alphabet_keys
+    snapshot = arena.audit_snapshot()
+    assert not snapshot.alphabets and not snapshot.alphabet_keys
 
 
 @pytest.mark.parametrize("alias", (True, 1.0, -1, 100))
@@ -212,7 +229,10 @@ def test_corrupt_alphabet_interner_rejects_before_warm_return(
 ) -> None:
     ledger, arena, alphabet = _arena()
     definition = arena.alphabet(alphabet)
-    arena._alphabet_keys[definition] = cast("int", alias)
+    alphabet_keys = cast(
+        LedgerDict[TileAlphabet, int], _private_test_attribute(arena, "_alphabet_keys")
+    )
+    alphabet_keys[definition] = cast("int", alias)
     assert_rejected_atomically(
         ledger, lambda: arena.intern_alphabet(definition), (ValueError, TypeError)
     )
@@ -262,21 +282,34 @@ def test_independent_tile_audit_detects_corrupted_content_and_ownership(
     leaf = arena.leaf(alphabet, 1)
     parent = arena.join(leaf.tile, leaf.tile)
     if corruption == "summary":
-        arena._nodes[parent.tile.local_id] = replace(
-            arena.resolve(parent.tile), last_active=0
+        nodes = cast(
+            LedgerDict[int, TileRecord], _private_test_attribute(arena, "_nodes")
         )
+        nodes[parent.tile.local_id] = replace(arena.resolve(parent.tile), last_active=0)
     elif corruption == "references":
-        arena._refs[leaf.tile.local_id] += 1
+        refs = cast(LedgerDict[int, int], _private_test_attribute(arena, "_refs"))
+        refs[leaf.tile.local_id] += 1
     elif corruption == "edges":
-        del arena._edges[leaf.tile.local_id, parent.tile.local_id, 0]
+        edges = cast(
+            LedgerDict[tuple[int, int, int], None],
+            _private_test_attribute(arena, "_edges"),
+        )
+        del edges[leaf.tile.local_id, parent.tile.local_id, 0]
     elif corruption == "lease":
-        arena._leases[leaf._id] = replace(leaf.tile, local_id=1000)
+        leases = cast(
+            LedgerDict[int, TileID], _private_test_attribute(arena, "_leases")
+        )
+        leases[leaf.audit_snapshot().identity] = replace(leaf.tile, local_id=1000)
     elif corruption == "mirror":
         with arena.mirror(parent.tile):
             pass
-        arena._keys[arena.mirror_key(parent.tile.local_id)] = leaf.tile.local_id
+        keys = cast(
+            LedgerDict[tuple[int, int, int, int, int], int],
+            _private_test_attribute(arena, "_keys"),
+        )
+        keys[arena.mirror_key(parent.tile.local_id)] = leaf.tile.local_id
     else:
-        arena._next_tile = True
+        object.__setattr__(arena, "_next_tile", True)
     _, invalid = audit_tiles(arena, dict(ledger.iter_containers()))
     assert invalid
 
@@ -308,16 +341,18 @@ def test_tile_retirement_cannot_install_an_arbitrary_callback_owner() -> None:
     from types import SimpleNamespace
 
     ledger, arena, _ = _arena()
-    callback = SimpleNamespace(
-        tiles=arena, ledger=ledger, retire_tile=lambda _tile: None
-    )
+
+    def retire_tile(_tile: TileID) -> None:
+        return None
+
+    callback = SimpleNamespace(tiles=arena, ledger=ledger, retire_tile=retire_tile)
     assert_rejected_atomically(
         ledger,
         lambda: arena.bind_results(cast("CompletedResultArena", callback)),
         TypeError,
         match="canonical result memo owner",
     )
-    assert arena._results is None
+    assert arena.audit_snapshot().results is None
 
 
 def test_exact_tile_mirror_is_iterative_involutive_and_warm(
@@ -352,7 +387,8 @@ def test_exact_tile_mirror_is_iterative_involutive_and_warm(
         assert metrics.tile_mirror_relation_entries > 0
         assert ledger.entries == before.entries
         mirrored.close()
-    assert not arena._nodes and not arena._keys
+    snapshot = arena.audit_snapshot()
+    assert not snapshot.nodes and not snapshot.keys
     _reconciled(ledger)
 
 
@@ -374,7 +410,7 @@ def test_tile_mirror_relation_publication_failure_is_atomic(
             before.nodes,
             before.inventory,
         )
-        assert arena._mirror_target(leaf.tile) is None
+        assert not _mirror_is_cached(arena, leaf.tile)
 
 
 def test_two_way_mirror_index_rolls_back_if_second_write_fails(
@@ -391,9 +427,14 @@ def test_two_way_mirror_index_rolls_back_if_second_write_fails(
     ):
         before = ledger.snapshot()
         writes = 0
-        original = TileArena._write_mirror
+        original = cast(
+            "Callable[[TileArena, tuple[int, int, int, int, int], int], None]",
+            object.__getattribute__(TileArena, "_write_mirror"),
+        )
 
-        def fail_second(self: TileArena, key: _TileKey, local_id: int) -> None:
+        def fail_second(
+            self: TileArena, key: tuple[int, int, int, int, int], local_id: int
+        ) -> None:
             nonlocal writes
             writes += 1
             if writes == 2:
@@ -402,14 +443,18 @@ def test_two_way_mirror_index_rolls_back_if_second_write_fails(
 
         monkeypatch.setattr(TileArena, "_write_mirror", fail_second)
         with pytest.raises(RuntimeError, match="reverse-index"):
-            arena._publish_mirror(source.tile, reflected.tile)
+            publish_mirror = cast(
+                "Callable[[TileID, TileID], None]",
+                object.__getattribute__(arena, "_publish_mirror"),
+            )
+            publish_mirror(source.tile, reflected.tile)
         assert (ledger.entries, ledger.nodes, ledger.inventory()) == (
             before.entries,
             before.nodes,
             before.inventory,
         )
-        assert arena._mirror_target(source.tile) is None
-        assert arena._mirror_target(reflected.tile) is None
+        assert not _mirror_is_cached(arena, source.tile)
+        assert not _mirror_is_cached(arena, reflected.tile)
 
 
 def test_tile_mirror_budget_failure_precedes_relation_mutation() -> None:
@@ -424,11 +469,7 @@ def test_tile_mirror_budget_failure_precedes_relation_mutation() -> None:
             before.nodes,
             before.inventory,
         )
-        assert arena._mirror_target(leaf.tile) is None
-
-
-KeyT = TypeVar("KeyT", bound=Hashable)
-ValueT = TypeVar("ValueT")
+        assert not _mirror_is_cached(arena, leaf.tile)
 
 
 def _observed(value: int | None) -> int:

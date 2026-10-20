@@ -41,7 +41,7 @@ def test_generic_tile_point_retains_response_and_preserves_replay() -> None:
         identity, DigitNormalizeBlockEffect(2), budget=BlockContextBudget()
     )
     index = HashLifeBlockIndex(effect, (1, 2), logical_length=4)
-    projection = index._lazy_application
+    projection = index.audit_snapshot().lazy_application
     assert type(projection) is LazyProjection
     assert index.direct_powered_point(0) == 1
     cold = index.metrics()

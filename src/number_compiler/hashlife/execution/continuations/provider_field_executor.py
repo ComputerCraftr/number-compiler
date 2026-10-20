@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.actions.field_actions import (
     FieldCellActionID,
@@ -348,12 +349,13 @@ class ProviderFieldImageExecutor:
             _execution_keys.PROVIDER_FIELD_CHILD_CONTEXT_DERIVATION_ATTEMPTS
         )
         try:
-            result = derive(complete, provider, geometry)
-            if type(result) is not tuple or len(result) != 2:
+            result: object = derive(complete, provider, geometry)
+            if not is_exact_object_tuple(result) or len(result) != 2:
                 raise TypeError(
                     "provider adapter must return an exact child context pair"
                 )
-            for context in result:
+            contexts = result
+            for context in contexts:
                 if context is not None:
                     require_immutable_key(context, "provider child image context")
         except BaseException:
@@ -364,7 +366,7 @@ class ProviderFieldImageExecutor:
         self.ledger.bump(
             _execution_keys.PROVIDER_FIELD_CHILD_CONTEXT_DERIVATION_EVALUATIONS
         )
-        return result
+        return contexts
 
 
 __all__ = ["ProviderFieldImageAdapter", "ProviderFieldImageExecutor"]

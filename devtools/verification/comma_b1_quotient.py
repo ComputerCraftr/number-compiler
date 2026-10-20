@@ -217,7 +217,7 @@ def audit_b1_quotient(*, expanded_moore_baseline: bool = False) -> dict[str, obj
         _observe_chart(state, representatives[state.fiber]) for state in states
     )
     source_index = moduli.index(460)
-    candidates = []
+    candidates: list[CandidateAudit] = []
     for name, selected in (
         ("source_local", ()),
         ("source_core_460", (source_index,)),
@@ -228,7 +228,7 @@ def audit_b1_quotient(*, expanded_moore_baseline: bool = False) -> dict[str, obj
             _candidate_audit(name, states, observations, keys, moduli, residues)
         )
     selected = (source_index,)
-    refinement = []
+    refinement: list[dict[str, object]] = []
     while True:
         keys = _key_rows(local, states, residues, selected)
         candidate = _candidate_audit(

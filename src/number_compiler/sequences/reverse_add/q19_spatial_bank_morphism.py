@@ -27,7 +27,7 @@ from number_compiler.arithmetic.fields.walsh import walsh64_mod5
 from ._q19_issuance import issue_q19_record
 from .q19_bank_boolean import CoupledBooleanBankFrame
 from .q19_controlled_gt_bank import SourceGuardedGTBankAction
-from .q19_periodic_cone import _periodic_guard
+from .q19_periodic_cone import periodic_guard
 from .q19_uniform_cone import UniformConeNotAuthorized
 
 if TYPE_CHECKING:
@@ -156,7 +156,7 @@ class ReverseAddSpatialBankMorphism:
             raise ValueError("spatial morphism must be issued by its Q19 owner")
         if self._binding != self._snapshot():
             raise ValueError("source-bound spatial morphism was altered")
-        self.action.owner._issuance_registry.validate_spatial_bank_window(self)
+        self.action.owner.issuance_registry.validate_spatial_bank_window(self)
 
     def _snapshot(self) -> tuple[object, ...]:
         return (
@@ -189,7 +189,7 @@ class ReverseAddSpatialBankMorphism:
             or self.halo != self.action.halo
         ):
             raise ValueError("source-bound spatial morphism was changed")
-        self.action.owner._issuance_registry.validate_spatial_bank_window(self)
+        self.action.owner.issuance_registry.validate_spatial_bank_window(self)
 
     @property
     def control_certified(self) -> bool:
@@ -292,7 +292,7 @@ class ReverseAddSpatialBankMorphism:
         """Project several channels from one authenticated temporal frame."""
         d = self.action.steps if depth is None else depth
         periods = self._periods(d, channels)
-        words = {}
+        words: dict[str, SpatialBankProgram] = {}
         for channel, period in periods.items():
             offset = self.start % len(period)
             words[channel] = SpatialBankProgram(
@@ -346,12 +346,12 @@ def _issue_spatial_bank_window(
         raise UniformConeNotAuthorized(
             "morphism reaches an unproved growth, exterior or center seam"
         )
-    if not _periodic_guard(owner, source, lo, hi, action.period):
+    if not periodic_guard(owner, source, lo, hi, action.period):
         raise UniformConeNotAuthorized(
             "spatial morphism source differs from authenticated Q19 period"
         )
 
-    registry = owner._issuance_registry
+    registry = owner.issuance_registry
     key = registry.allocate_spatial_bank_window_key()
     record = object.__new__(ReverseAddSpatialBankMorphism)
     values = {
@@ -404,7 +404,7 @@ def authorize_spatial_bank_morphism(
     try:
         return _issue_spatial_bank_window(action, start=start, count=count)
     except BaseException:
-        owner._issuance_registry.discard_bank(action._registry_key, action)
+        owner.issuance_registry.discard_bank(action.registry_key, action)
         raise
 
 

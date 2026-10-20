@@ -22,7 +22,6 @@ from number_compiler.arithmetic.contracts.block_definition import (
     ComposedBlockDefinition,
 )
 from number_compiler.arithmetic.contracts.block_effect import (
-    _OPERATOR_IDS,
     BlockContextBudget,
     BlockEffect,
     BlockEffectAdmissionAdapter,
@@ -30,6 +29,7 @@ from number_compiler.arithmetic.contracts.block_effect import (
     BoundaryState,
     _effect_key,
     _state_key,
+    next_operator_id,
 )
 from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
@@ -67,6 +67,15 @@ class ComposedRuntimeSnapshot:
     mixed_finite_carrier_layers: int
     tile_output_levels: tuple[int, ...]
     counters: Mapping[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class PartitionStateIdentity:
+    """Read-only identity facts for canonical partition cache entries."""
+
+    object_id: int
+    node_id: int
+    canonical: bool
 
 
 class ComposedBlockEffect(
@@ -186,7 +195,7 @@ class ComposedBlockEffect(
             raise ValueError("runtime children do not match the immutable composition")
         self._definition = definition
         self._first_context, self._second_context = first, second
-        self._node_id = next(_OPERATOR_IDS)
+        self._node_id = next_operator_id()
         self.budget = budget
         self._ledger = _ledger
         self._owned_store_serial = 0
@@ -361,7 +370,7 @@ class ComposedBlockEffect(
                     side_1,
                     None,
                     None,
-                    self._canonical_child_state(first, side_1, first.initial(side_1)),
+                    self.canonical_child_state(first, side_1, first.initial(side_1)),
                 )
                 self.budget.consume_node()
                 self._states[int(side_1)] += 1
@@ -417,9 +426,7 @@ class ComposedBlockEffect(
                 if constant is None:
                     raise AssertionError("missing recursive residual constant")
                 initial.append(
-                    self._intern_recursive_state(
-                        side_2, first.initial(side_2), constant
-                    )
+                    self.intern_recursive_state(side_2, first.initial(side_2), constant)
                 )
         self._initial = (initial[0], initial[1])
         self._transition_entries = [0, 0]
@@ -467,7 +474,7 @@ class ComposedBlockEffect(
         )
         return ledger, owner
 
-    def _owned_dict(
+    def owned_dict(
         self,
         role: str,
         values: Mapping[_K, _V] | None = None,
@@ -500,9 +507,7 @@ class ComposedBlockEffect(
         self._functional_domain_index = cast(
             tuple[dict[object, int] | None, dict[object, int] | None],
             tuple(
-                None
-                if item is None
-                else self._owned_dict("block_function_domain", item)
+                None if item is None else self.owned_dict("block_function_domain", item)
                 for item in self._functional_domain_index
             ),
         )
@@ -516,7 +521,7 @@ class ComposedBlockEffect(
             tuple(
                 None
                 if item is None
-                else self._owned_dict("block_function_interner", item)
+                else self.owned_dict("block_function_interner", item)
                 for item in self._functional_intern
             ),
         )
@@ -525,7 +530,7 @@ class ComposedBlockEffect(
             tuple(
                 None
                 if item is None
-                else self._owned_dict("block_partition_domain", item)
+                else self.owned_dict("block_partition_domain", item)
                 for item in self._partition_domain_index
             ),
         )
@@ -545,7 +550,7 @@ class ComposedBlockEffect(
             tuple(
                 None
                 if item is None
-                else self._owned_dict("block_partition_interner", item)
+                else self.owned_dict("block_partition_interner", item)
                 for item in self._partition_intern
             ),
         )
@@ -564,7 +569,7 @@ class ComposedBlockEffect(
                 tuple(
                     None
                     if item is None
-                    else self._owned_dict("block_" + name_1[1:], item)
+                    else self.owned_dict("block_" + name_1[1:], item)
                     for item in pair
                 ),
             )
@@ -577,7 +582,7 @@ class ComposedBlockEffect(
             setattr(
                 self,
                 name_2,
-                self._owned_dict("block_" + name_2[1:], getattr(self, name_2)),
+                self.owned_dict("block_" + name_2[1:], getattr(self, name_2)),
             )
         for name_3 in (
             "_boundary_anchor_masks",
@@ -643,6 +648,17 @@ class ComposedBlockEffect(
     @property
     def canonical_key(self) -> tuple[object, ...]:
         return self.definition.canonical_key
+
+    def partition_identity_snapshot(self) -> tuple[PartitionStateIdentity, ...]:
+        """Capture stable identity and canonicality facts for interned states."""
+        return tuple(
+            PartitionStateIdentity(
+                id(state), state.node_id, state.canonical_cache_state() is state
+            )
+            for pool in self._partition_intern
+            if pool is not None
+            for state in pool.values()
+        )
 
     def runtime_snapshot(self) -> ComposedRuntimeSnapshot:
         """Return detached read-only metadata for the demanded statistics pass."""
@@ -833,8 +849,8 @@ class ComposedBlockEffect(
         image: tuple[BoundaryState, ...],
     ) -> _FunctionalBoundaryState:
         pools = self._functional_intern
-        anchor = self._canonical_child_state(self.first, side, anchor)
-        image = tuple(self._canonical_child_state(self.second, side, q) for q in image)
+        anchor = self.canonical_child_state(self.first, side, anchor)
+        image = tuple(self.canonical_child_state(self.second, side, q) for q in image)
         key = (_state_key(anchor), tuple(_state_key(q) for q in image))
         pool = pools[int(side)]
         if pool is None:

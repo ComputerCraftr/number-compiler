@@ -32,7 +32,7 @@ from number_compiler.hashlife.interfaces.tile_reverse_functions import (
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.primitive_output_morphism import PORTS
 from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
-from tests.sequences.reverse_add.test_source_ports import _source
+from tests.support.reverse_source_ports import source_from_value
 
 
 def _pairs(value: int) -> tuple[int, ...]:
@@ -57,11 +57,11 @@ def _emit_between(
     left: BoundaryState,
     right: BoundaryState,
 ) -> tuple[int, ...]:
-    suffixes = [right]
+    suffixes: list[BoundaryState] = [right]
     for symbol in reversed(word):
         suffixes.append(kernel.advance(BoundarySide.RIGHT, suffixes[-1], symbol))
     suffixes.reverse()
-    output = []
+    output: list[int] = []
     for index, symbol in enumerate(word):
         output.append(kernel.emit(left, symbol, suffixes[index + 1]))
         left = kernel.advance(BoundarySide.LEFT, left, symbol)
@@ -104,7 +104,7 @@ def test_1593_omitting_reflected_domain_context_changes_next_growth() -> None:
     emitted = _emit_between(kernel, word, left, right)
     assert 1593 + 3951 == 5544
     assert emitted == (*_pairs(5544), 19) == (9, 9, 9, 9, 19)
-    untransported = []
+    untransported: list[int] = []
     for symbol in word:
         untransported.append(kernel.emit(left, symbol, right))
         left = kernel.advance(BoundarySide.LEFT, left, symbol)
@@ -115,7 +115,7 @@ def test_1593_omitting_reflected_domain_context_changes_next_growth() -> None:
     assert apply_carry_fn(_fold(tuple(untransported)), 0) == 1
     assert 5544 + 4455 == 9999
     # The live source-port consumer already has the correct two-step boundary.
-    ports = SourceCarryPorts(_source(1593, 10), ResourceLedger())
+    ports = SourceCarryPorts(source_from_value(1593, 10), ResourceLedger())
     assert ports.second_width() == 4
     assert ports.range_transfer(2, 0, 4) is CarryFn.ID
 
@@ -148,18 +148,18 @@ def test_temporal_hiding_cannot_reuse_unchanged_primitive_port_binding() -> None
     assert right_ports[0] == right_ports[1] == codec.decode_right(1)
     # Full original primitive port binding and all thirteen local channels agree.
     channels = reverse_leaf_components(PORTS, 10, 2, ledger).functions()
-    values = []
+    values: list[tuple[int, ...]] = []
     for right_port in right_ports:
         assert right_port == codec.decode_right(1)
         binding = (0, 1)
-        row = []
+        row: list[int] = []
         for channel in channels:
             assert type(channel) is ReversePortFunction
             row.append(channel.evaluate(binding, ledger))
         values.append(tuple(row))
     assert values[0] == values[1]
     expected_values = ((1041, 2442, 4884), (1051, 2552, 5104))
-    results = []
+    results: list[CarryFn] = []
     for word, (seed, first, second) in zip(words, expected_values, strict=True):
         assert seed + int(str(seed)[::-1]) == first
         assert first + int(str(first)[::-1]) == second

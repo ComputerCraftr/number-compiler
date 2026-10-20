@@ -12,7 +12,10 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 from devtools.checks.source_discovery import authored_files
-from devtools.report_values import object_list, string_keyed_mapping
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_list,
+    string_keyed_mapping,
+)
 
 MAX_PYRIGHT_BATCH_FILES = 25
 PYRIGHT_OUTPUT_LIMIT_BYTES = 32 * 1024**2
@@ -250,7 +253,7 @@ def validate_pyright_output(
     else:
         return None, "Pyright summary timeInSec must be a nonnegative number"
     diagnostics = result.get("generalDiagnostics")
-    if not object_list(diagnostics):
+    if not is_object_list(diagnostics):
         return None, "Pyright generalDiagnostics must be a JSON array"
     observed = dict.fromkeys(count_fields, 0)
     for diagnostic in diagnostics:

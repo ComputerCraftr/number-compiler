@@ -620,7 +620,7 @@ def _one_return_relation(
                 ),
             ),
         )
-    branches = []
+    branches: list[ConditionalPoweredBranch] = []
     for j, part in cylinder.conditional_next_tails(max_tail=max_tail):
         if j is None:
             branches.append(

@@ -119,7 +119,7 @@ class SourceRecordAuthority:
         return self._arena_strong if self._arena_ref is None else self._arena_ref()
 
 
-def _snapshot_value(value: object) -> object:
+def snapshot_value(value: object) -> object:
     """Freeze packet graphs to a flat, typed, cycle-free representation."""
     scalar_types = (bool, int, str, bytes, type(None))
     # Container children are node references, so snapshot comparison remains
@@ -218,7 +218,7 @@ def _public_snapshot(record: SourceAuthorizedRecord) -> tuple[object, ...]:
     if not is_dataclass(record):
         raise TypeError("source authority requires a dataclass record")
     return tuple(
-        (field.name, _snapshot_value(getattr(record, field.name)))
+        (field.name, snapshot_value(getattr(record, field.name)))
         for field in fields(record)
     )
 

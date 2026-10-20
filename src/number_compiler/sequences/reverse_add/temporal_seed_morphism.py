@@ -191,7 +191,7 @@ def _fiber(
 ) -> Q19WordFiber:
     owner.validate_issued_occurrence(occurrence)
     key = (occurrence.root, occurrence.temporal_steps, seed)
-    memo = owner._word_fibers
+    memo = owner.word_fiber_cache
     if key in memo:
         cached = memo[key]
         if (
@@ -234,13 +234,13 @@ def _compute_fiber(
     odd = pair_width & 1
     half = (pair_width + odd) // 2
     # Authenticated Q19 publication constructed this summary and all children.
-    summary = owner._word_summary(root)
+    summary = owner.word_summary(root)
     if summary.symbols != half:
         raise AssertionError("Q19 semantic pair-half extent changed")
     z = _CarryModAction.identity()
     neutral = _BothDirections(z, z)
     with owner.ledger.reservation(
-        owner._scratch_owner,
+        owner.scratch_owner,
         entries=4 * (len(arena.nodes) + 1),
         nodes=8 * (len(arena.nodes) + 1),
     ):
@@ -269,7 +269,7 @@ def _compute_fiber(
                 begin,
                 end,
                 identity=z,
-                length=lambda node: owner._summaries[node].symbols,
+                length=lambda node: owner.published_word_summary(node).symbols,
                 full_value=lambda node, rev: (
                     folds[node].backward if rev else folds[node].forward
                 ),
@@ -350,17 +350,17 @@ def _compute_fiber(
         first_non9 = None
         if (
             border_pairs < half
-            and owner._range_summary(root, border_pairs, half).domain != 0
+            and owner.range_summary(root, border_pairs, half).domain != 0
         ):
             lo, hi = border_pairs, half
             while lo + 1 < hi:
                 mid = (lo + hi) // 2
-                if owner._range_summary(root, border_pairs, mid).domain != 0:
+                if owner.range_summary(root, border_pairs, mid).domain != 0:
                     hi = mid
                 else:
                     lo = mid
-            first_non9 = lo if owner._pair_value_at(occurrence, lo) != 9 else hi - 1
-            if owner._pair_value_at(occurrence, first_non9) == 9:
+            first_non9 = lo if owner.pair_value_at(occurrence, lo) != 9 else hi - 1
+            if owner.pair_value_at(occurrence, first_non9) == 9:
                 raise AssertionError("non-9 reset position was not Q19-supported")
         if carry_out != grow or full.carry[0] != (0 if grow else carry_out):
             raise AssertionError("Q19 normalized leading carry disagrees with SLP")
@@ -397,7 +397,7 @@ def _compute_fiber(
         c_out,
         carry_out,
         grow,
-        owner._pair_value_at(occurrence, 0),
+        owner.pair_value_at(occurrence, 0),
         border_pairs,
         low_border_carry,
         mid_map,
@@ -456,7 +456,7 @@ class CertifiedReverseAddSeedMorphism:
         default=None, repr=False, compare=False, init=False
     )
 
-    def _snapshot(self) -> tuple[object, ...]:
+    def publication_snapshot(self) -> tuple[object, ...]:
         # Flat scalar snapshot: even object.__setattr__ mutation of a nested
         # frozen fiber invalidates the outer issued record, rather than just
         # mutating the same referenced object on both sides of the comparison.
@@ -493,7 +493,7 @@ class CertifiedReverseAddSeedMorphism:
             raise ValueError("reverse/add temporal packet was not issued by this owner")
         if (
             self._seal is not _ISSUER
-            or self._binding != self._snapshot()
+            or self._binding != self.publication_snapshot()
             or self.physical_repeat_certified
             or self.logarithmic_q19_power_certified
             or type(self.q19_block_applications) is not int
@@ -628,7 +628,7 @@ def _issue(
         terminal_occurrence_reused=terminal_occurrence_reused,
     )
     object.__setattr__(record, "_seal", _ISSUER)
-    object.__setattr__(record, "_binding", record._snapshot())
+    object.__setattr__(record, "_binding", record.publication_snapshot())
     object.__setattr__(record, "_issued_self", ref(record))
     record.validate()
     return record
@@ -641,7 +641,8 @@ def certified_reverse_add_seed_morphism(
     start: int = 1,
 ) -> CertifiedReverseAddSeedMorphism:
     """Issue finite pointed Q19 action from the original source workspace."""
-    if (term.seed, term.generation, term.base) != term._binding or term.base != 10:
+    term.validate_source_binding()
+    if term.base != 10:
         raise ValueError(
             "reverse/add pointed temporal power needs a valid decimal term"
         )
@@ -653,14 +654,14 @@ def certified_reverse_add_seed_morphism(
         or start + steps > term.generation
     ):
         raise ValueError("reverse/add temporal interval outside source horizon")
-    workspace = term._source_workspace()
-    owner = workspace.adapter._q19_output_owner(
+    workspace = term.source_workspace()
+    owner = workspace.adapter.q19_output_owner(
         workspace.actions.source(workspace.source)
     )
     # An owner can be initialized before any scheduler image publication.
     # Refresh the workspace's source-payload contract so the new Q19 owner
     # remains an explicit authenticated dependency through the public API.
-    workspace._register_source_payload_audit_contract()
+    workspace.register_source_payload_audit_contract()
     first_occurrence = _advance(owner, owner.initial, start - 1)
     first = _fiber(owner, term.seed, first_occurrence)
     final_occurrence = _advance(owner, first_occurrence, steps)
@@ -680,11 +681,12 @@ def certified_completed_reverse_add_seed_morphism(
     the measured number of new Q19 temporal blocks this demand caused; a warm
     endpoint therefore reports zero and marks the published occurrence reuse.
     """
-    if (term.seed, term.generation, term.base) != term._binding or term.base != 10:
+    term.validate_source_binding()
+    if term.base != 10:
         raise ValueError("reverse/add endpoint observation needs a valid decimal term")
     if term.generation < 2:
         raise ValueError("reverse/add endpoint observation needs at least two terms")
-    workspace = term._source_workspace()
+    workspace = term.source_workspace()
     owner, last_occurrence, reused, applications = workspace.completed_q19_occurrence()
     first_occurrence = owner.initial
     owner.validate_issued_occurrence(first_occurrence)

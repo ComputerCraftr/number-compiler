@@ -407,8 +407,8 @@ def _assert_failed_admission(arena: DiamondKernelArena, before: LedgerSnapshot) 
     after_rejection = arena.ledger.inventory()
     assert len(after_rejection) == len(before.inventory) + 2
     assert all(item.entries == item.nodes == 0 for item in after_rejection[-2:])
-    assert arena._kernels == []
-    assert arena._kernel_ids == {}
+    assert not arena.audit_snapshot().kernels
+    assert not arena.kernel_bindings
     assert (arena.ledger.entries, arena.ledger.nodes) == (before.entries, before.nodes)
     return len(after_rejection)
 
@@ -430,7 +430,7 @@ def test_intern_rejects_identity_mutation_during_capture_and_allows_retry(
 
     arena = DiamondKernelArena(ResourceLedger())
     effect = BaseBlockEffect(2)
-    capture_helper_name = "_capture_primitive_behavior"
+    capture_helper_name = "capture_primitive_behavior_with_validator"
     original_capture = cast(
         Callable[..., PrimitiveBehaviorTable],
         getattr(kernel_module, capture_helper_name),
@@ -453,9 +453,7 @@ def test_intern_rejects_identity_mutation_during_capture_and_allows_retry(
 
     before = arena.ledger.snapshot()
     with monkeypatch.context() as patch:
-        patch.setattr(
-            kernel_module, "_capture_primitive_behavior", mutate_after_capture
-        )
+        patch.setattr(kernel_module, capture_helper_name, mutate_after_capture)
         with pytest.raises(ValueError, match="changed during audit"):
             arena.intern(effect)
 
@@ -486,7 +484,7 @@ def test_poisoned_scoped_identity_constructor_rolls_back_and_allows_retry(
     with monkeypatch.context() as patch:
         patch.setattr(
             SemanticIdentity,
-            "_from_validator",
+            "from_validator",
             classmethod(poisoned_constructor),
         )
         with pytest.raises(RuntimeError, match="poisoned scoped identity"):
@@ -647,7 +645,7 @@ def test_quotient_audit_deduplicates_references_only_within_one_snapshot(
     handle = arena.intern(BaseBlockEffect(2))
     quotient = arena.behavioral_quotient(handle)
     validate = behavior.validate_primitive_behavior_quotient
-    calls = []
+    calls: list[PrimitiveBehaviorQuotient] = []
 
     def counted(
         record: PrimitiveBehaviorQuotient,

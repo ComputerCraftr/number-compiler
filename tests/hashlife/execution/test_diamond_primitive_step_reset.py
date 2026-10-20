@@ -14,6 +14,7 @@ from number_compiler.hashlife.execution.continuations.diamond_expression_eval im
 )
 from number_compiler.hashlife.execution.continuations.diamond_higher_tasks import (
     HigherEmit,
+    HigherResult,
     HigherStep,
 )
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
@@ -33,7 +34,7 @@ def test_certified_step_matches_every_primitive_incoming_state_and_symbol() -> N
     kernel = runtime.kernel(action)
     assert runtime.resets.radius(action) == 1
     for symbol in range(kernel.blank + 1):
-        results = set()
+        results: set[HigherResult] = set()
         for value in range(kernel.right_count):
             state = arena.literal(runtime.boundaries.literal(action, 1, value))
             result = runtime.execute(

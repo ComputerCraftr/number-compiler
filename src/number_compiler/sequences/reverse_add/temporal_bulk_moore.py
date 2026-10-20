@@ -149,7 +149,7 @@ class UniformBulkMooreCertificate:
 
 def _part(signatures: tuple[object, ...]) -> tuple[int, ...]:
     seen: dict[object, int] = {}
-    ids = []
+    ids: list[int] = []
     for sig in signatures:
         if sig not in seen:
             seen[sig] = len(seen)
@@ -168,7 +168,7 @@ def uniform_bulk_moore_certificate() -> UniformBulkMooreCertificate:
     """
     sources = source_uniform_cells()
     images = future_uniform_cells()
-    ids = {q: i for i, q in enumerate(images)}
+    ids: dict[UniformCarryCell, int] = {q: i for i, q in enumerate(images)}
     classes = _part(
         tuple(
             (
@@ -204,7 +204,7 @@ def uniform_bulk_moore_certificate() -> UniformBulkMooreCertificate:
                 ):
                     raise AssertionError("merged distinct future output/transition")
     transition = tuple(ids[s.successor()] for s in images)
-    cycle_lengths = []
+    cycle_lengths: list[int] = []
     for q in images:
         seen: dict[UniformCarryCell, int] = {}
         x = q
@@ -341,7 +341,7 @@ class AlternatingCore:
         """
         future = self.quiet_step()
         next_k = (int(future.even_position > 9), int(future.odd_position > 9))
-        out = []
+        out: list[int] = []
         for i, d in enumerate(digits):
             rho = next_k[i]
             eta = next_k[1 - i]
@@ -393,7 +393,7 @@ def alternating_moore_certificate() -> AlternatingMooreCertificate:
     image_set = set(images)
     if any(s.quiet_step() not in image_set for s in images):
         raise AssertionError("period-two quiet quotient not successor-closed")
-    cycle_lengths = set()
+    cycle_lengths: set[int] = set()
     exits = eq = 0
     for s in images:
         seen: dict[AlternatingCore, int] = {}

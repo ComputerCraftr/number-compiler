@@ -18,6 +18,7 @@ from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.actions.tile_action_algebra import PrimitiveTileAction
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
@@ -28,6 +29,7 @@ from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
 from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
 from tests.support.tile_kernel import literal_tile_output as _step
@@ -524,7 +526,7 @@ def test_temporal_context_failure_releases_completed_prefix(
         action,
         source,
     ) = _square_source()
-    leases_before = len(tiles._leases)
+    leases_before = len(tiles.audit_snapshot().leases)
 
     def fail_context(*_args: object, **_kwargs: object) -> Never:
         raise RuntimeError("injected temporal context failure")
@@ -546,7 +548,7 @@ def test_temporal_context_failure_releases_completed_prefix(
                     adapter.wiring(action),
                 ),
             )
-        assert len(tiles._leases) == leases_before
+        assert len(tiles.audit_snapshot().leases) == leases_before
     finally:
         source.close()
 
@@ -564,7 +566,7 @@ def test_temporal_parent_publication_failure_releases_all_children(
         action,
         source,
     ) = _square_source()
-    leases_before = len(tiles._leases)
+    leases_before = len(tiles.audit_snapshot().leases)
     publish = scheduler.results.publish
 
     def fail_parent(key: object, result: object) -> object:
@@ -585,7 +587,7 @@ def test_temporal_parent_publication_failure_releases_all_children(
                 adapter.initial_ports(primitive),
                 adapter.wiring(action),
             )
-        assert len(tiles._leases) == leases_before
+        assert len(tiles.audit_snapshot().leases) == leases_before
     finally:
         source.close()
 
@@ -599,26 +601,27 @@ def test_temporal_power_identity_is_association_independent() -> None:
     right = adapter.compose(primitive, cube)
     assert left == right == adapter.power(primitive, 4)
     assert adapter.compose(primitive, cube) == right
-    assert adapter._action(left).repetitions == 4
+    assert adapter.action_record(left).repetitions == 4
 
 
 def test_failed_temporal_action_publication_is_atomic() -> None:
     ledger, _tiles, adapter, _scheduler = _runtime(3)
     primitive = adapter.admit(BaseBlockEffect(3))
     before = ledger.snapshot()
-    next_action = adapter._next_action
+    next_action = adapter.audit_snapshot().next_action
     ledger.max_cache_entries = ledger.entries + 2
     with pytest.raises(BlockContextBudgetExceeded, match="cache budget exceeded"):
         adapter.compose(primitive, primitive)
     assert ledger.snapshot() == before
-    assert adapter._next_action == next_action
-    assert (primitive, primitive) not in adapter._compositions
+    after_snapshot = adapter.audit_snapshot()
+    assert after_snapshot.next_action == next_action
+    assert (primitive, primitive) not in after_snapshot.compositions
     assert (
         "power",
-        adapter._action(primitive).kernel,
+        adapter.action_record(primitive).kernel,
         2,
         TemporalCocycle(2),
-    ) not in adapter._action_keys
+    ) not in after_snapshot.action_keys
 
 
 def test_temporal_action_forward_reference_rejects_before_warm_lookup() -> None:
@@ -633,10 +636,18 @@ def test_temporal_action_forward_reference_rejects_before_warm_lookup() -> None:
     source = _tile(tiles, adapter, primitive, (1, 2, 1, 5))
     ports, wiring = adapter.initial_ports(twice), adapter.wiring(twice)
     with scheduler.complete(twice, source.tile, ports, wiring):
-        original = adapter._actions[twice.local_id]
-        adapter._actions[twice.local_id] = replace(
-            original, children=(fourth, primitive)
+        action_snapshot = adapter.audit_snapshot()
+        action_store_value: object = action_snapshot.ledger.registered_container(
+            action_snapshot.action_owner
         )
+        if (
+            id(action_store_value) != action_snapshot.action_store_identity
+            or type(action_store_value) is not LedgerDict
+        ):
+            raise AssertionError("primitive action audit lost its registered store")
+        action_store = cast(LedgerDict[int, PrimitiveTileAction], action_store_value)
+        original = action_store[twice.local_id]
+        action_store[twice.local_id] = replace(original, children=(fourth, primitive))
         before = ledger.snapshot()
         try:
             with pytest.raises(ValueError, match="precede their parent"):
@@ -648,5 +659,5 @@ def test_temporal_action_forward_reference_rejects_before_warm_lookup() -> None:
                 adapter.validate_input(twice, source.tile)
             assert ledger.snapshot() == before
         finally:
-            adapter._actions[twice.local_id] = original
+            action_store[twice.local_id] = original
     source.close()

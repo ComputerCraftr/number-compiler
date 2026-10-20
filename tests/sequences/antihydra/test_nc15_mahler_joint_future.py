@@ -337,7 +337,7 @@ def test_window_contract_failure_restores_authority_and_allows_retry(
         associated_action(result)
     workspace = term.mahler_workspace
     if upgrade_existing:
-        assert workspace is not None and workspace._window_memo is None
+        assert workspace is not None and workspace.window_memo_container is None
     else:
         assert workspace is None
     active_before = frozenset(
@@ -363,9 +363,9 @@ def test_window_contract_failure_restores_authority_and_allows_retry(
 
     assert term.mahler_workspace is workspace
     if workspace is not None:
-        assert workspace._window_memo is None
-        assert workspace._window_owner is None
-        assert not workspace._window_contract_registered
+        assert workspace.window_memo_container is None
+        assert workspace.window_memo_owner is None
+        assert not workspace.window_contract_registered
     assert (
         frozenset(item.owner for item in term.ledger.inventory() if not item.disposed)
         == active_before
@@ -378,14 +378,15 @@ def test_window_contract_failure_restores_authority_and_allows_retry(
         )
         == query_before
     )
-    binding = term.ledger._payload_audit_contracts[(id(term), "antihydra")]
-    assert binding.root_reference() is term
+    assert term.ledger.audit_payload_contracts().owns_root(
+        "antihydra", term, ledger=term.ledger
+    )
     assert term.ledger.audit_payload_contracts().owns_root(
         "antihydra", term, ledger=term.ledger
     )
     associated_action(result, include_radix_ports=True)
     assert term.mahler_workspace is not None
-    assert term.mahler_workspace._window_memo is not None
+    assert term.mahler_workspace.window_memo_container is not None
     if workspace is not None:
         assert term.mahler_workspace is workspace
     assert term.ledger.audit_payload_contracts().invalid == frozenset()
@@ -457,9 +458,9 @@ def test_production_precision_memo_audits_its_window_payload() -> None:
     associated_action(result, include_radix_ports=True)
     workspace = term.mahler_workspace
     assert workspace is not None
-    memo = workspace._window_memo
-    assert memo is not None and len(memo) == 1
-    window = next(iter(memo.values()))
+    entries = workspace.window_memo_entries()
+    assert len(entries) == 1
+    window = entries[0][1]
     object.__setattr__(window, "next_binary", window.next_binary ^ 1)
     with pytest.raises(ValueError, match="publication seal"):
         workspace.validate(result)

@@ -405,7 +405,7 @@ class CollatzFieldActionArena:
         if tuple(item.order for item in character.radial) != self.radial_orders:
             raise ValueError("field action has another radial port signature")
 
-    def _validate_action(self, action: CollatzFieldAction) -> None:
+    def action_validator(self, action: CollatzFieldAction) -> None:
         if type(action) is not CollatzFieldAction:
             raise TypeError("expected a complete Collatz field action")
         self._validate_character(action.character)
@@ -431,12 +431,12 @@ class CollatzFieldActionArena:
             raise TypeError("field action requires normalized Collatz geometry")
         action.geometry.__post_init__()
 
-    def _intern(
+    def intern_record(
         self,
         action: CollatzFieldAction,
         reservations: tuple[tuple[int, int, int], ...] = (),
     ) -> CollatzFieldActionID:
-        self._validate_action(action)
+        self.action_validator(action)
         identity = self._action_identity(action)
         found = self._keys.get(identity)
         if found is not None:
@@ -460,7 +460,7 @@ class CollatzFieldActionArena:
         return result
 
     def intern(self, action: CollatzFieldAction) -> CollatzFieldActionID:
-        return self._intern(action)
+        return self.intern_record(action)
 
     def resolve(self, reference: CollatzFieldActionID) -> CollatzFieldAction:
         if type(reference) is not CollatzFieldActionID:
@@ -478,7 +478,7 @@ class CollatzFieldActionArena:
         program_identities: tuple[SemanticIdentity, ...] | None = None,
     ) -> SemanticIdentity:
         """Build the complete semantic key for a validated action record."""
-        self._validate_action(action)
+        self.action_validator(action)
         if program_identities is None:
             program_identity = self.programs.semantic_identity
             if not callable(program_identity):
@@ -687,7 +687,7 @@ class CollatzFieldActionArena:
         reservations = [(self._composition_owner, 1, 0)]
         if reserve_witness:
             reservations.append((self._witness_owner, 1, 0))
-        canonical = self._intern(result, tuple(reservations))
+        canonical = self.intern_record(result, tuple(reservations))
         if existing is not None:
             self.ledger.bump(
                 _collatz_keys.COLLATZ_FIELD_ACTION_LATE_DUPLICATE_REDUCTIONS
@@ -820,7 +820,7 @@ class CollatzFieldActionArena:
         for index, action in enumerate(arena._nodes):
             try:
                 valid = type(action) is CollatzFieldAction
-                arena._validate_action(action)
+                arena.action_validator(action)
                 reference = CollatzFieldActionID(arena.owner, arena.action_kind, index)
                 valid &= arena.resolve(reference) is action
             except (TypeError, ValueError, IndexError, AttributeError):
@@ -851,7 +851,7 @@ class CollatzFieldActionArena:
                 action = arena.resolve(reference)
                 if type(action) is not CollatzFieldAction:
                     raise TypeError("Collatz field-action store contains another node")
-                arena._validate_action(action)
+                arena.action_validator(action)
                 program_identities = (
                     audit_program_identity("root", action.root_action),
                     audit_program_identity("affine", action.affine_action),

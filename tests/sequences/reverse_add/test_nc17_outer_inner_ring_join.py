@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from typing import cast
 from unittest.mock import patch
 
 import pytest
 
+from number_compiler.arithmetic.fields.boolean_transfer import BooleanMatrix
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.q19_output import ReversePairQ19OutputOwner
@@ -115,7 +117,8 @@ def test_source_issued_ring_joins_cyclotomic_and_middle_carry() -> None:
         assert not hasattr(matrix.affine_action, "power")
         affine_rows = packet["affine_transition_rows"]
         assert isinstance(affine_rows, list)
-        assert len(affine_rows) == 100
+        typed_affine_rows = cast(list[object], affine_rows)
+        assert len(typed_affine_rows) == 100
         affine_semantics = packet["affine_relation_semantics"]
         assert isinstance(affine_semantics, str)
         assert "offsets correlated by pair state" in affine_semantics
@@ -143,9 +146,13 @@ def test_source_issued_ring_joins_cyclotomic_and_middle_carry() -> None:
             for pair, offsets in sorted(path_offsets.items())
         )
         assert matrix.affine_action.endpoints(first_pair) == expected_affine_endpoints
-        original_action_rows = matrix.action._relation.rows
+        relation = cast(
+            BooleanMatrix[tuple[int, int]],
+            object.__getattribute__(matrix.action, "_relation"),
+        )
+        original_action_rows = relation.rows
         object.__setattr__(
-            matrix.action._relation,
+            relation,
             "rows",
             (True, *original_action_rows[1:]),
         )
@@ -153,7 +160,7 @@ def test_source_issued_ring_joins_cyclotomic_and_middle_carry() -> None:
             with pytest.raises(ValueError, match="contents changed"):
                 matrix.to_packet()
         finally:
-            object.__setattr__(matrix.action._relation, "rows", original_action_rows)
+            object.__setattr__(relation, "rows", original_action_rows)
         for tick in range(4):
             source_digits = digits_lsd(values[tick], 10)
             target_digits = digits_lsd(values[tick + 1], 10)

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import math
-from typing import Literal, cast
+from collections.abc import Callable
+from typing import Literal, Protocol, cast
 
 import pytest
 
 from number_compiler.arithmetic.fields.consumer_pullback import ZERO as ZERO_Q
+from number_compiler.arithmetic.fields.consumer_pullback import ExactRational
 from number_compiler.sequences.comma import boundary_quotient, boundary_return
 from number_compiler.sequences.comma.arithmetic import (
     comma_children,
@@ -19,11 +21,59 @@ from number_compiler.sequences.comma.arithmetic import (
 from number_compiler.sequences.comma.boundary_quotient import (
     AffineWeight,
     BoundaryState,
+    MacroTemplate,
     SectorFragment,
     construct_macro,
 )
 from tests.support.comma_oracles import literal_children as _literal_children
 from tests.support.comma_oracles import literal_phase_jump as _literal_phase_jump
+
+
+class _AffineValue(Protocol):
+    def plus(self, other: _AffineValue) -> _AffineValue: ...
+
+    def times(self, value: int) -> _AffineValue: ...
+
+    def weight(self) -> AffineWeight: ...
+
+
+_zero_affine = cast(
+    _AffineValue, object.__getattribute__(boundary_return, "_ZERO_AFFINE")
+)
+_constant = cast(
+    Callable[[int], _AffineValue],
+    object.__getattribute__(boundary_return, "_constant"),
+)
+_from_weight = cast(
+    Callable[[AffineWeight], _AffineValue],
+    object.__getattribute__(boundary_return, "_from_weight"),
+)
+_affine_constructor = cast(
+    Callable[[ExactRational, ExactRational], _AffineValue],
+    object.__getattribute__(boundary_return, "_Affine"),
+)
+_integer_rational = cast(
+    Callable[[int], ExactRational],
+    object.__getattribute__(boundary_return, "_integer_rational"),
+)
+_indexed_macro = cast(
+    Callable[
+        [
+            BoundaryState,
+            Literal["fork", "landmine"],
+            int,
+            int | None,
+            _AffineValue,
+            _AffineValue,
+            tuple[BoundaryState, ...],
+            list[SectorFragment],
+            Callable[[int], None] | None,
+            Callable[[int], None] | None,
+        ],
+        MacroTemplate,
+    ],
+    object.__getattribute__(boundary_return, "_indexed_macro"),
+)
 
 
 def test_independent_phase_oracle_does_not_jump_over_a_fork() -> None:
@@ -110,23 +160,23 @@ def test_affine_weight_refuses_nonintegral_or_forged_components() -> None:
 
 
 def test_affine_zero_and_identity_fastpaths_preserve_shared_ownership() -> None:
-    zero = boundary_return._ZERO_AFFINE
-    assert boundary_return._constant(0) is zero
-    assert boundary_return._from_weight(AffineWeight(0, 0, 1)) is zero
-    assert zero.weight() is boundary_quotient._ZERO_WEIGHT
+    zero = _zero_affine
+    assert _constant(0) is zero
+    assert _from_weight(AffineWeight(0, 0, 1)) is zero
+    assert zero.weight() is boundary_quotient.ZERO_AFFINE_WEIGHT
 
-    affine = boundary_return._from_weight(AffineWeight(1, 2, 3))
+    affine = _from_weight(AffineWeight(1, 2, 3))
     assert zero.plus(affine) is affine
     assert affine.plus(zero) is affine
     assert affine.times(1) is affine
     assert affine.times(0) is zero
     assert affine.times(3).weight() == AffineWeight(1, 2, 1)
-    assert affine.plus(boundary_return._constant(1)).weight() == AffineWeight(1, 5, 3)
+    assert affine.plus(_constant(1)).weight() == AffineWeight(1, 5, 3)
 
     # The former ExactRational construction rejected bool despite bool being
     # an int subclass; fastpaths must keep that strict input behavior.
     with pytest.raises(TypeError, match="components must be integers"):
-        boundary_return._constant(False)
+        _constant(False)
     with pytest.raises(TypeError, match="components must be integers"):
         affine.times(False)
 
@@ -143,17 +193,17 @@ def test_indexed_macro_zero_period_preserves_nonzero_cycle_displacement() -> Non
         literal_steps=0,
         literal_increment=0,
     )
-    source_value = boundary_return._Affine(
-        boundary_return._integer_rational(source.a),
+    source_value = _affine_constructor(
+        _integer_rational(source.a),
         ZERO_Q,
     )
-    template = boundary_return._indexed_macro(
+    template = _indexed_macro(
         source,
         "landmine",
         0,
         None,
-        boundary_return._ZERO_AFFINE,
-        source_value.plus(boundary_return._constant(5)),
+        _zero_affine,
+        source_value.plus(_constant(5)),
         (),
         [fragment],
         None,
@@ -240,7 +290,7 @@ def test_tropical_sector_rule_agrees_with_literal_nine_child_search() -> None:
                 assert comma_children(value) == _literal_children(value)
 
 
-def test_large_sector_children_do_not_search_candidate_leading_digits(
+def testlarge_sector_children_do_not_search_candidate_leading_digits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from number_compiler.sequences.comma import arithmetic
@@ -333,8 +383,8 @@ def test_partial_selection_never_reclassifies_literal_children(
         raise AssertionError("partial selector reopened literal child classification")
 
     monkeypatch.setattr(arithmetic, "decimal_sector", forbidden)
-    monkeypatch.setattr(arithmetic, "_large_sector_children", forbidden)
-    monkeypatch.setattr(arithmetic, "_sector_child_increments", forbidden)
+    monkeypatch.setattr(arithmetic, "large_sector_children", forbidden)
+    monkeypatch.setattr(arithmetic, "sector_child_increments", forbidden)
     monkeypatch.setattr(arithmetic, "comma_children", forbidden)
     for index, expected in queries.items():
         assert macro.point(10, index) == expected
@@ -402,9 +452,8 @@ def test_macro_constructor_never_materializes_a_representative_scale(
 
     monkeypatch.setattr(boundary_return, "pow", modular_only, raising=False)
     monkeypatch.setattr(arithmetic, "pow", modular_only, raising=False)
-    monkeypatch.setattr(
-        boundary_return._Affine, "at_scale", forbidden_value, raising=False
-    )
+    affine_type = object.__getattribute__(boundary_return, "_Affine")
+    monkeypatch.setattr(affine_type, "at_scale", forbidden_value, raising=False)
     monkeypatch.setattr(BoundaryState, "value", forbidden_value)
     for state in (BoundaryState("N", 3, 5), BoundaryState("N", 2, 0)):
         macro = construct_macro(state)
@@ -447,7 +496,7 @@ def test_point_rejects_forged_seal_scalars_without_calling_custom_equality() -> 
 
     exponent = 934
     macro = construct_macro(BoundaryState("N", 2, exponent % 924))
-    seal = macro._component_seal
+    seal = object.__getattribute__(macro, "_component_seal")
     assert seal is not None
     selected = next(
         (

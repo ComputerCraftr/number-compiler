@@ -119,8 +119,8 @@ def test_power_two_radial_quotient_reconstructs_exact_cyclotomic_multiplier() ->
 
 def test_reverse_add_innovation_composition_discards_multiplier_provenance() -> None:
     pair: tuple[int, ...] = (2, 9, 18, 9, 2)
-    events = []
-    growths = []
+    events: list[tuple[int, ...]] = []
+    growths: list[int] = []
     for _ in range(8):
         target, growth = pair_step(pair, 10)
         events.append(forcing_event(pair, target, growth))
@@ -203,8 +203,8 @@ def test_live_padic_radial_quotient_roundtrips_source_unit_and_innovation() -> N
 def test_joint_fixed_ring_innovation_uses_one_common_source_death_horizon() -> None:
     """Regression: Phi_2/Phi_4/Phi_8 may not stop at different suffixes."""
     from devtools.experiments.algebra.radial_innovation_quotients import (
-        _live_reverse_symmetry_innovations_aligned,
-        _symmetry_innovation_atom,
+        live_reverse_symmetry_innovations_aligned,
+        symmetry_innovation_atom,
     )
     from number_compiler.arithmetic.formula.symmetry_frame import (
         FixedRealCyclotomicGerm,
@@ -212,11 +212,11 @@ def test_joint_fixed_ring_innovation_uses_one_common_source_death_horizon() -> N
     )
 
     value = 1
-    events = []
-    growths = []
-    widths = []
+    events: list[tuple[int, ...]] = []
+    growths: list[int] = []
+    widths: list[int] = []
     for _ in range(9):
-        digits = []
+        digits: list[int] = []
         x = value
         while x:
             digits.append(x % 10)
@@ -231,7 +231,7 @@ def test_joint_fixed_ring_innovation_uses_one_common_source_death_horizon() -> N
         value += int(str(value)[::-1])
 
     end = 7
-    independent_horizons = []
+    independent_horizons: list[int] = []
     for order in (2, 4, 8):
         suffix = ReverseAddSymmetryInnovationBlock.identity(
             start_parity=widths[end] & 1,
@@ -239,7 +239,7 @@ def test_joint_fixed_ring_innovation_uses_one_common_source_death_horizon() -> N
             bits=5,
         )
         for start in range(end - 1, -1, -1):
-            atom = _symmetry_innovation_atom(
+            atom = symmetry_innovation_atom(
                 tuple(events[start]),
                 growths[start],
                 widths[start],
@@ -252,7 +252,7 @@ def test_joint_fixed_ring_innovation_uses_one_common_source_death_horizon() -> N
                 break
 
     assert independent_horizons == [2, 6, 7]
-    aligned = _live_reverse_symmetry_innovations_aligned(
+    aligned = live_reverse_symmetry_innovations_aligned(
         tuple(events),
         tuple(growths),
         tuple(widths),

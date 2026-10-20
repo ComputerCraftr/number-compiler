@@ -252,10 +252,14 @@ def test_grouped_macro_rejects_a_consistent_but_unsafe_prefix(
 
     # H82 at f1 is a fork; its lower child has H1. A forged grouped move
     # can match the phase displacement exactly while silently skipping it.
+
+    def forged_initial_chart(_kind: Literal["N", "Z"], _a: int) -> BoundaryChart:
+        return BoundaryChart("near", 1, 0, 153)
+
     monkeypatch.setattr(
         boundary_chart,
         "initial_chart",
-        lambda _kind, _a: BoundaryChart("near", 1, 0, 153),
+        forged_initial_chart,
     )
     monkeypatch.setattr(boundary_chart, "classify_near_port", forged)
     with pytest.raises(AssertionError, match="phase semantics"):

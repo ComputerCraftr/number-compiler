@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import Protocol, cast
 
 import pytest
 
@@ -24,10 +25,42 @@ from number_compiler.arithmetic.fields.symbolic_innovation import (
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.sequences.reverse_add.cylinder_innovation import (
+    PrimitiveCarryAtomBinding,
     primitive_successor_clause,
 )
 from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
 from tests.support.arithmetic_fixtures import forge_growth
+from tests.support.private_attributes import private_test_attribute
+
+
+class _PrimitiveNodePlanner(Protocol):
+    def __call__(
+        self,
+        arena: SymbolicInnovationArena,
+        semantic: SemanticIdentity,
+        *,
+        base: int,
+        reflection: int,
+    ) -> tuple[int, int]: ...
+
+
+class _ClauseAuthorityBuilder(Protocol):
+    def __call__(
+        self,
+        arena: SymbolicInnovationArena,
+        binding: PrimitiveCarryAtomBinding,
+        *,
+        extent: int,
+        growth: int,
+        output_extent: int,
+        base: int,
+        correction: object,
+        beta: object,
+        action: SymbolicRadialInnovation,
+        binding_owner: int,
+        seal_owner: int,
+        workspace_owner: int,
+    ) -> SemanticIdentity: ...
 
 
 def _digits(value: int, base: int) -> tuple[int, ...]:
@@ -61,9 +94,10 @@ def test_primitive_arithmetic_preflight_accounts_for_wide_chart_metadata() -> No
     arena = SymbolicInnovationArena(ledger)
     semantic = SemanticIdentity("test", ("primitive-Q",))
     reflection = 1 << 130
-    count, units = cylinder._planned_primitive_nodes(
-        arena, semantic, base=10, reflection=reflection
+    planned_nodes: _PrimitiveNodePlanner = object.__getattribute__(
+        cylinder, "_planned_primitive_nodes"
     )
+    count, units = planned_nodes(arena, semantic, base=10, reflection=reflection)
     before = ledger.nodes
     q = arena.atom(semantic)
     correction = carry_coboundary(arena, q, base=10)
@@ -71,9 +105,7 @@ def test_primitive_arithmetic_preflight_accounts_for_wide_chart_metadata() -> No
     assert count == 6
     assert units == 8
     assert ledger.nodes - before == units
-    assert cylinder._planned_primitive_nodes(
-        arena, semantic, base=10, reflection=reflection
-    ) == (0, 0)
+    assert planned_nodes(arena, semantic, base=10, reflection=reflection) == (0, 0)
 
 
 @pytest.mark.parametrize(
@@ -184,7 +216,7 @@ def test_consumption_reauthenticates_ports_and_disposable_binding() -> None:
     arena = SymbolicInnovationArena(ledger)
     ports = SourceCarryPorts(_source(196, 10), ledger)
     clause = primitive_successor_clause(arena, ports)
-    original = ports._cache
+    original = ports.audit_snapshot().cache_identity
     owner = ledger.register("foreign-cylinder-cache", "test_foreign_cache")
     foreign: OwnedMemo[tuple[int, int, int], object] = OwnedMemo(ledger, owner)
     object.__setattr__(ports, "_cache", foreign)
@@ -272,14 +304,17 @@ def test_coordinated_record_and_store_reforge_cannot_replace_publication_seal(
     foreign = clause.carry_atom.atom
     forged_action = SymbolicRadialInnovation(clause.action.multiplier, foreign)
     forged = replace(
-        clause._record,
+        clause.audit_snapshot().record,
         correction=foreign,
         beta=foreign,
         action=forged_action,
     )
     forged = replace(
         forged,
-        authority=cylinder._clause_authority(
+        authority=cast(
+            _ClauseAuthorityBuilder,
+            private_test_attribute(cylinder, "_clause_authority"),
+        )(
             arena,
             clause.carry_atom,
             extent=forged.extent,
@@ -298,7 +333,11 @@ def test_coordinated_record_and_store_reforge_cannot_replace_publication_seal(
     object.__setattr__(clause, "_correction", foreign)
     object.__setattr__(clause, "_beta", foreign)
     object.__setattr__(clause, "action", forged_action)
-    clause._binding_store._data[0] = forged
+    binding_store = cast(
+        list[object],
+        object.__getattribute__(clause.audit_snapshot().binding_store, "_data"),
+    )
+    binding_store[0] = forged
 
     def forbidden(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("forged publication reached source consumption")

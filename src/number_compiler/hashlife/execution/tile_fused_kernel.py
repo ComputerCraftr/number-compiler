@@ -69,7 +69,7 @@ class LeafProductKey:
 _FusedTraversalFrame = tuple[TileID, tuple[int, ...], bool]
 
 
-class _Host(Protocol):
+class FusedKernelAlgorithms(Protocol):
     tiles: TileArena
     kernels: DiamondKernelArena
     quotients: DiamondQuotientArena
@@ -126,143 +126,287 @@ class _Host(Protocol):
         side: int,
     ) -> ChildContext: ...
 
+    def publish_leaf_product(
+        self,
+        action: FieldCellActionID,
+        symbol: int,
+        wiring: ResultWiring,
+    ) -> LocalInterfaceID:
+        """Probe the semantic leaf before compiling any boundary/output functions.
+
+        The adapter's existing leaf store owns both the semantic binding and the
+        reverse apply-leaf admission. No source tile or producer context enters the
+        key. Symbols are bounded kernel literals, not coordinate observations.
+        """
+        record = self.action_record(action)
+        if record.children is not None:
+            raise ValueError("leaf products require a primitive kernel")
+        if type(wiring) is not ResultWiring:
+            raise TypeError("leaf products require normalized wiring")
+        wiring.__post_init__()
+        if wiring.signature != record.signature or wiring.orientation or wiring.phase:
+            raise ValueError("leaf product has another kernel interface")
+        kernel = self.kernels.kernel(record.kernel)
+        if type(symbol) is not int:
+            raise TypeError("leaf product requires an exact kernel symbol")
+        if not 0 <= symbol <= kernel.blank:
+            raise ValueError("leaf product symbol lies outside the kernel alphabet")
+        key = LeafProductKey(record.kernel, wiring.signature, symbol)
+        found = self._leaf_records.get(key)
+        if found is not None:
+            if type(found) is not LocalInterfaceID:
+                raise TypeError("leaf product contains another result sort")
+            if self.quotients.resolve(found).signature != wiring.signature:
+                raise ValueError("leaf product has another signature")
+            blank = self._leaf_records.get(found)
+            if type(blank) is not int or blank != kernel.blank:
+                raise ValueError("leaf product lost its reverse admission")
+            self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_REQUESTS)
+            self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_EARLY_HITS)
+            return found
+        self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_REQUESTS)
+        # Reserve both bindings before semantic construction. A zero/exhausted
+        # cache budget must not execute the kernel and reject publication later.
+        self.ledger.reserve(self._leaf_owner, entries=2)
+        self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_EVALUATIONS)
+        interface: LocalInterfaceID | None = None
+        added_reverse = False
+        added_key = False
+        try:
+            if type(kernel.effect) is BaseBlockEffect and (
+                MIN_CLOSED_REVERSE_BASE <= kernel.base <= MAX_CLOSED_REVERSE_BASE
+            ):
+                from number_compiler.hashlife.interfaces.tile_interface_compilation import (
+                    input_ports_for_kernel,
+                )
+                from number_compiler.hashlife.interfaces.tile_reverse_functions import (
+                    reverse_leaf_components,
+                )
+                from number_compiler.hashlife.interfaces.tile_reverse_sector_functions import (
+                    attach_leaf_sectors,
+                )
+
+                with self.quotients.closed_workspace.scope("leaf"):
+                    macro = attach_leaf_sectors(
+                        reverse_leaf_components(
+                            input_ports_for_kernel(kernel),
+                            kernel.base,
+                            symbol,
+                            self.ledger,
+                        ),
+                        base=kernel.base,
+                        symbol=symbol,
+                    )
+                    interface = self.quotients.intern(wiring.signature, macro)
+                    self.ledger.bump(_execution_keys.REVERSE_PORT_LEAF_INTERFACES)
+            elif (
+                division_radix := certified_binary_division_radix(kernel.effect)
+            ) is not None:
+                from number_compiler.hashlife.interfaces.tile_interface_compilation import (
+                    input_ports_for_kernel,
+                )
+                from number_compiler.hashlife.interfaces.tile_radix_functions import (
+                    division_leaf_components,
+                )
+
+                macro = division_leaf_components(
+                    input_ports_for_kernel(kernel), division_radix, symbol
+                )
+                if type(kernel.effect) is SymbolicBinaryDivisionEffect:
+                    self.ledger.bump(
+                        _execution_keys.SYMBOLIC_TILE_DIVISION_LEAF_COMPILATIONS
+                    )
+            elif type(kernel.effect) is DigitNormalizeBlockEffect and kernel.base == 10:
+                from number_compiler.hashlife.interfaces.tile_reverse_sector_functions import (
+                    attach_leaf_sectors,
+                )
+
+                components = self.leaf_components(kernel, symbol)
+                with self.quotients.closed_workspace.scope("leaf"):
+                    macro = attach_leaf_sectors(
+                        MacroComponents(
+                            *(self.structures.atom(item) for item in components)
+                        ),
+                        base=kernel.base,
+                        symbol=symbol,
+                    )
+                    interface = self.quotients.intern(wiring.signature, macro)
+            else:
+                components = self.leaf_components(kernel, symbol)
+                macro = MacroComponents(
+                    *(self.structures.atom(item) for item in components)
+                )
+            if interface is None:
+                interface = self.quotients.intern(
+                    wiring.signature,
+                    macro,
+                )
+            previous = self._leaf_records.get(interface)
+            if previous is None:
+                self._leaf_records[interface] = kernel.blank
+                added_reverse = True
+            elif type(previous) is not int or previous != kernel.blank:
+                raise ValueError("leaf quotient alias changed alphabet semantics")
+            self._leaf_records[key] = interface
+            added_key = True
+        except BaseException:
+            if added_key:
+                self._leaf_records.pop(key, None)
+            if added_reverse and interface is not None:
+                self._leaf_records.pop(interface, None)
+            self.ledger.release(self._leaf_owner, entries=2)
+            raise
+        if not added_reverse:
+            self.ledger.release(self._leaf_owner, entries=1)
+            self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_LATE_ALIASES)
+        self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_PUBLICATIONS)
+        return interface
+
+    def compile_fused_interface(
+        self,
+        action: FieldCellActionID,
+        source: TileID,
+        producer_ports: tuple[int, ...],
+        wiring: ResultWiring,
+        *,
+        producer_wiring: ResultWiring | None = None,
+    ) -> LocalInterfaceID:
+        """Compile B over A(source) while retaining no exact A output tile."""
+        pair = fused_primitive_pair(self, action)
+        if pair is None:
+            raise ValueError("fused tile demand supports one primitive pair")
+        before, after = pair
+        producer_wiring = wiring if producer_wiring is None else producer_wiring
+        self.validate_fused_wiring(action, producer_wiring, wiring)
+        results = self.require_results()
+        root_key = FusedInterfaceKey(
+            action,
+            source,
+            producer_ports,
+            wiring,
+            producer_wiring,
+            before=before,
+            after=after,
+        )
+        found = results.lookup_fused_interface(root_key)
+        if found is not None:
+            return found
+        root_level = self.tiles.resolve(source).level
+        workspace = self._fused_workspace
+        with workspace.scope(root_level, len(producer_ports)):
+            workspace.append_frame((source, producer_ports, False))
+            root_item = source, producer_ports
+            while workspace.frames:
+                self.ledger.bump(_execution_keys.TILE_FUSED_FRAMES)
+                frame = workspace.pop_frame()
+                if (
+                    type(frame) is not tuple
+                    or len(cast(tuple[object, ...], frame)) != 3
+                ):
+                    raise TypeError("fused traversal contains another frame sort")
+                current, ports, ready = cast(_FusedTraversalFrame, frame)
+                if type(current) is not TileID or type(ports) is not tuple:
+                    raise TypeError("fused traversal contains another frame sort")
+                if (
+                    any(type(port) is not int for port in ports)
+                    or type(ready) is not bool
+                ):
+                    raise TypeError("fused traversal contains malformed frame fields")
+                item = current, ports
+                key = FusedInterfaceKey(
+                    action,
+                    current,
+                    ports,
+                    wiring,
+                    producer_wiring,
+                    before=before,
+                    after=after,
+                )
+                cached = (
+                    None
+                    if ready or item == root_item
+                    else results.lookup_fused_interface(key)
+                )
+                if cached is not None:
+                    workspace.append_value(cached)
+                    continue
+                node = self.tiles.resolve(current)
+                if not node.level:
+                    if node.symbol is None:
+                        raise ValueError("malformed fused source leaf")
+                    first = self.compile_interface(before, current, producer_wiring)
+                    symbol = self.observe(first, "output", ports)
+                    interface = leaf_product(self, after, symbol, wiring)
+                elif not ready:
+                    if node.left is None or node.right is None:
+                        raise ValueError("malformed fused source parent")
+                    left = self.child_context(
+                        before,
+                        current,
+                        node.left,
+                        node.right,
+                        ports,
+                        producer_wiring,
+                        0,
+                    )
+                    right = self.child_context(
+                        before,
+                        current,
+                        node.left,
+                        node.right,
+                        ports,
+                        producer_wiring,
+                        1,
+                    )
+                    workspace.append_frame((current, ports, True))
+                    workspace.append_frame((node.right, right.ports, False))
+                    workspace.append_frame((node.left, left.ports, False))
+                    continue
+                else:
+                    if (
+                        node.left is None
+                        or node.right is None
+                        or len(workspace.values) < 2
+                    ):
+                        raise ValueError("fused traversal lost completed children")
+                    from number_compiler.hashlife.execution.tile_causal_interfaces import (
+                        combine_local_interfaces,
+                    )
+
+                    right_interface = workspace.pop_value()
+                    left_interface = workspace.pop_value()
+                    if (
+                        type(left_interface) is not LocalInterfaceID
+                        or type(right_interface) is not LocalInterfaceID
+                    ):
+                        raise TypeError("fused traversal contains another result sort")
+                    interface = combine_local_interfaces(
+                        results,
+                        after,
+                        left_interface,
+                        right_interface,
+                        wiring,
+                    )
+                workspace.append_value(results.publish_fused_interface(key, interface))
+            if len(workspace.values) != 1:
+                raise ValueError("fused traversal produced an incomplete result stack")
+            result = workspace.pop_value()
+            if type(result) is not LocalInterfaceID:
+                raise TypeError("fused traversal contains another result sort")
+            return result
+
 
 def leaf_product(
-    self: _Host,
+    self: FusedKernelAlgorithms,
     action: FieldCellActionID,
     symbol: int,
     wiring: ResultWiring,
 ) -> LocalInterfaceID:
-    """Probe the semantic leaf before compiling any boundary/output functions.
-
-    The adapter's existing leaf store owns both the semantic binding and the
-    reverse apply-leaf admission. No source tile or producer context enters the
-    key. Symbols are bounded kernel literals, not coordinate observations.
-    """
-    record = self.action_record(action)
-    if record.children is not None:
-        raise ValueError("leaf products require a primitive kernel")
-    if type(wiring) is not ResultWiring:
-        raise TypeError("leaf products require normalized wiring")
-    wiring.__post_init__()
-    if wiring.signature != record.signature or wiring.orientation or wiring.phase:
-        raise ValueError("leaf product has another kernel interface")
-    kernel = self.kernels.kernel(record.kernel)
-    if type(symbol) is not int:
-        raise TypeError("leaf product requires an exact kernel symbol")
-    if not 0 <= symbol <= kernel.blank:
-        raise ValueError("leaf product symbol lies outside the kernel alphabet")
-    key = LeafProductKey(record.kernel, wiring.signature, symbol)
-    found = self._leaf_records.get(key)
-    if found is not None:
-        if type(found) is not LocalInterfaceID:
-            raise TypeError("leaf product contains another result sort")
-        if self.quotients.resolve(found).signature != wiring.signature:
-            raise ValueError("leaf product has another signature")
-        blank = self._leaf_records.get(found)
-        if type(blank) is not int or blank != kernel.blank:
-            raise ValueError("leaf product lost its reverse admission")
-        self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_REQUESTS)
-        self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_EARLY_HITS)
-        return found
-    self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_REQUESTS)
-    # Reserve both bindings before semantic construction. A zero/exhausted
-    # cache budget must not execute the kernel and reject publication later.
-    self.ledger.reserve(self._leaf_owner, entries=2)
-    self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_EVALUATIONS)
-    interface: LocalInterfaceID | None = None
-    added_reverse = False
-    added_key = False
-    try:
-        if type(kernel.effect) is BaseBlockEffect and (
-            MIN_CLOSED_REVERSE_BASE <= kernel.base <= MAX_CLOSED_REVERSE_BASE
-        ):
-            from number_compiler.hashlife.interfaces.tile_interface_compilation import (
-                input_ports_for_kernel,
-            )
-            from number_compiler.hashlife.interfaces.tile_reverse_functions import (
-                reverse_leaf_components,
-            )
-            from number_compiler.hashlife.interfaces.tile_reverse_sector_functions import (
-                attach_leaf_sectors,
-            )
-
-            with self.quotients.closed_workspace.scope("leaf"):
-                macro = attach_leaf_sectors(
-                    reverse_leaf_components(
-                        input_ports_for_kernel(kernel), kernel.base, symbol, self.ledger
-                    ),
-                    base=kernel.base,
-                    symbol=symbol,
-                )
-                interface = self.quotients.intern(wiring.signature, macro)
-                self.ledger.bump(_execution_keys.REVERSE_PORT_LEAF_INTERFACES)
-        elif (
-            division_radix := certified_binary_division_radix(kernel.effect)
-        ) is not None:
-            from number_compiler.hashlife.interfaces.tile_interface_compilation import (
-                input_ports_for_kernel,
-            )
-            from number_compiler.hashlife.interfaces.tile_radix_functions import (
-                division_leaf_components,
-            )
-
-            macro = division_leaf_components(
-                input_ports_for_kernel(kernel), division_radix, symbol
-            )
-            if type(kernel.effect) is SymbolicBinaryDivisionEffect:
-                self.ledger.bump(
-                    _execution_keys.SYMBOLIC_TILE_DIVISION_LEAF_COMPILATIONS
-                )
-        elif type(kernel.effect) is DigitNormalizeBlockEffect and kernel.base == 10:
-            from number_compiler.hashlife.interfaces.tile_reverse_sector_functions import (
-                attach_leaf_sectors,
-            )
-
-            components = self.leaf_components(kernel, symbol)
-            with self.quotients.closed_workspace.scope("leaf"):
-                macro = attach_leaf_sectors(
-                    MacroComponents(
-                        *(self.structures.atom(item) for item in components)
-                    ),
-                    base=kernel.base,
-                    symbol=symbol,
-                )
-                interface = self.quotients.intern(wiring.signature, macro)
-        else:
-            components = self.leaf_components(kernel, symbol)
-            macro = MacroComponents(
-                *(self.structures.atom(item) for item in components)
-            )
-        if interface is None:
-            interface = self.quotients.intern(
-                wiring.signature,
-                macro,
-            )
-        previous = self._leaf_records.get(interface)
-        if previous is None:
-            self._leaf_records[interface] = kernel.blank
-            added_reverse = True
-        elif type(previous) is not int or previous != kernel.blank:
-            raise ValueError("leaf quotient alias changed alphabet semantics")
-        self._leaf_records[key] = interface
-        added_key = True
-    except BaseException:
-        if added_key:
-            self._leaf_records.pop(key, None)
-        if added_reverse and interface is not None:
-            self._leaf_records.pop(interface, None)
-        self.ledger.release(self._leaf_owner, entries=2)
-        raise
-    if not added_reverse:
-        self.ledger.release(self._leaf_owner, entries=1)
-        self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_LATE_ALIASES)
-    self.ledger.bump(_execution_keys.TILE_LEAF_PRODUCT_PUBLICATIONS)
-    return interface
+    return self.publish_leaf_product(action, symbol, wiring)
 
 
 def fused_primitive_pair(
-    self: _Host,
+    self: FusedKernelAlgorithms,
     action: FieldCellActionID,
 ) -> tuple[FieldCellActionID, FieldCellActionID] | None:
     """Return only the fixed-port primitive pair implemented by this fuser."""
@@ -283,7 +427,7 @@ def fused_primitive_pair(
 
 
 def fused_interface(
-    self: _Host,
+    self: FusedKernelAlgorithms,
     action: FieldCellActionID,
     source: TileID,
     producer_ports: tuple[int, ...],
@@ -291,123 +435,13 @@ def fused_interface(
     *,
     producer_wiring: ResultWiring | None = None,
 ) -> LocalInterfaceID:
-    """Compile B over A(source) while retaining no exact A output tile."""
-    pair = fused_primitive_pair(self, action)
-    if pair is None:
-        raise ValueError("fused tile demand supports one primitive pair")
-    before, after = pair
-    producer_wiring = wiring if producer_wiring is None else producer_wiring
-    self.validate_fused_wiring(action, producer_wiring, wiring)
-    results = self.require_results()
-    root_key = FusedInterfaceKey(
-        action,
-        source,
-        producer_ports,
-        wiring,
-        producer_wiring,
-        before=before,
-        after=after,
+    return self.compile_fused_interface(
+        action, source, producer_ports, wiring, producer_wiring=producer_wiring
     )
-    found = results.lookup_fused_interface(root_key)
-    if found is not None:
-        return found
-    root_level = self.tiles.resolve(source).level
-    workspace = self._fused_workspace
-    with workspace.scope(root_level, len(producer_ports)):
-        workspace.append_frame((source, producer_ports, False))
-        root_item = source, producer_ports
-        while workspace.frames:
-            self.ledger.bump(_execution_keys.TILE_FUSED_FRAMES)
-            frame = workspace.pop_frame()
-            if type(frame) is not tuple or len(frame) != 3:
-                raise TypeError("fused traversal contains another frame sort")
-            current, ports, ready = cast(_FusedTraversalFrame, frame)
-            if type(current) is not TileID or type(ports) is not tuple:
-                raise TypeError("fused traversal contains another frame sort")
-            if any(type(port) is not int for port in ports) or type(ready) is not bool:
-                raise TypeError("fused traversal contains malformed frame fields")
-            item = current, ports
-            key = FusedInterfaceKey(
-                action,
-                current,
-                ports,
-                wiring,
-                producer_wiring,
-                before=before,
-                after=after,
-            )
-            cached = (
-                None
-                if ready or item == root_item
-                else results.lookup_fused_interface(key)
-            )
-            if cached is not None:
-                workspace.append_value(cached)
-                continue
-            node = self.tiles.resolve(current)
-            if not node.level:
-                if node.symbol is None:
-                    raise ValueError("malformed fused source leaf")
-                first = self.compile_interface(before, current, producer_wiring)
-                symbol = self.observe(first, "output", ports)
-                interface = leaf_product(self, after, symbol, wiring)
-            elif not ready:
-                if node.left is None or node.right is None:
-                    raise ValueError("malformed fused source parent")
-                left = self.child_context(
-                    before,
-                    current,
-                    node.left,
-                    node.right,
-                    ports,
-                    producer_wiring,
-                    0,
-                )
-                right = self.child_context(
-                    before,
-                    current,
-                    node.left,
-                    node.right,
-                    ports,
-                    producer_wiring,
-                    1,
-                )
-                workspace.append_frame((current, ports, True))
-                workspace.append_frame((node.right, right.ports, False))
-                workspace.append_frame((node.left, left.ports, False))
-                continue
-            else:
-                if node.left is None or node.right is None or len(workspace.values) < 2:
-                    raise ValueError("fused traversal lost completed children")
-                from number_compiler.hashlife.execution.tile_causal_interfaces import (
-                    combine_local_interfaces,
-                )
-
-                right_interface = workspace.pop_value()
-                left_interface = workspace.pop_value()
-                if (
-                    type(left_interface) is not LocalInterfaceID
-                    or type(right_interface) is not LocalInterfaceID
-                ):
-                    raise TypeError("fused traversal contains another result sort")
-                interface = combine_local_interfaces(
-                    results,
-                    after,
-                    left_interface,
-                    right_interface,
-                    wiring,
-                )
-            workspace.append_value(results.publish_fused_interface(key, interface))
-        if len(workspace.values) != 1:
-            raise ValueError("fused traversal produced an incomplete result stack")
-        result = workspace.pop_value()
-        if type(result) is not LocalInterfaceID:
-            raise TypeError("fused traversal contains another result sort")
-        return result
 
 
 def fused_child_contexts(
-    self: _Host,
+    self: FusedKernelAlgorithms,
     action: FieldCellActionID,
     parent: TileID,
     producer_ports: tuple[int, ...],
@@ -465,7 +499,7 @@ def fused_child_contexts(
 
 
 def fused_leaf_result(
-    self: _Host,
+    self: FusedKernelAlgorithms,
     action: FieldCellActionID,
     source: TileID,
     producer_ports: tuple[int, ...],
@@ -499,7 +533,7 @@ def fused_leaf_result(
 
 
 def fused_output_active(
-    self: _Host,
+    self: FusedKernelAlgorithms,
     action: FieldCellActionID,
     source: TileID,
     producer_ports: tuple[int, ...],

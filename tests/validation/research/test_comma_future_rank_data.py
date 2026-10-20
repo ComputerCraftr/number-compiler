@@ -4,14 +4,22 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Literal, cast
 
 import pytest
 
 from devtools.experiments.comma import generate_rank_candidate as generator
 from devtools.paths import isabelle_root
+from tests.support.private_attributes import private_test_attribute
 
 pytestmark = pytest.mark.validation
+
+_render_rank_side = cast(
+    Callable[[Literal["N", "Z"], list[int]], str],
+    private_test_attribute(generator, "_render_rank_side"),
+)
 
 
 def _side_values(text: str) -> list[int]:
@@ -28,8 +36,8 @@ def test_rank_default_output_has_concrete_check_owner() -> None:
 
 def test_rank_side_split_preserves_every_catalog_index() -> None:
     codes = list(range(generator.PADDED_COUNT))
-    near = _side_values(generator._render_rank_side("N", codes))
-    zero = _side_values(generator._render_rank_side("Z", codes))
+    near = _side_values(_render_rank_side("N", codes))
+    zero = _side_values(_render_rank_side("Z", codes))
     side_count = generator.STATE_COUNT // 2
     assert near[:side_count] == codes[:side_count]
     assert zero[:side_count] == codes[side_count : 2 * side_count]

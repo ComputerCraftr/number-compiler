@@ -360,7 +360,7 @@ class ReverseFieldActionArena(ReverseFieldActionAudit):
             raise TypeError("reverse action audit requires an exact action record")
         return self._action_key(
             action.base,
-            self._block(action),
+            self.innovation_block(action),
             action.carry_forward,
             action.carry_backward,
             action.residual,
@@ -584,7 +584,9 @@ class ReverseFieldActionArena(ReverseFieldActionAudit):
         )
 
     @staticmethod
-    def _block(action: ReverseFieldAction) -> ReverseAddCyclotomicInnovationBlock:
+    def innovation_block(
+        action: ReverseFieldAction,
+    ) -> ReverseAddCyclotomicInnovationBlock:
         radial = action.radial
         return ReverseAddCyclotomicInnovationBlock(
             radial.classes * 2,
@@ -713,7 +715,7 @@ class ReverseFieldActionArena(ReverseFieldActionAudit):
             return found
         if first.base != second.base:
             raise ValueError("cannot compose reverse actions for different radices")
-        block = self._block(first).then(self._block(second))
+        block = self.innovation_block(first).then(self.innovation_block(second))
         residual_key = self._residual_compose(
             self._residual_key(first.residual),
             self._residual_key(second.residual),
@@ -814,7 +816,7 @@ class ReverseFieldActionArena(ReverseFieldActionAudit):
         ReverseGeometry,
     ]:
         """Compute transform semantics without interning or changing arena state."""
-        block = self._block(action)
+        block = self.innovation_block(action)
         residual_key = self._residual_key(action.residual)
         output_key = self._output_key(action.output)
         forward, backward = action.carry_forward, action.carry_backward

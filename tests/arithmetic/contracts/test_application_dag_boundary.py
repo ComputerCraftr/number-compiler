@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Never, TypedDict
+from typing import TYPE_CHECKING, Never, TypedDict, cast
 
 import pytest
 
@@ -13,6 +13,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaToken,
 )
+from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.arithmetic.fields.dyadic_tile import DyadicTile
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.actions.lazy_compiler import (
@@ -72,13 +73,13 @@ def test_warm_reverse_point_bypasses_projection_and_retains_one_response(
 ) -> None:
     term = ReverseAddPoweredTerm(196, 2)
     expected = term.digit(0)
-    workspace = term._source_workspace()
-    core = workspace.scheduler._source_image_core()
-    assert len(core._projections) == 1
-    image = workspace._image
+    workspace = term.source_workspace()
+    core = workspace.scheduler.source_image_core()
+    assert len(core.audit_snapshot().projections) == 1
+    image = workspace.audit_snapshot().image
     assert image is not None
-    image_seal = core._publication_seals.images[image.local_id]
-    projection_seal = next(iter(core._publication_seals.projections.values()))
+    image_seal = core.audit_snapshot().image_seals[image.local_id]
+    projection_seal = next(iter(core.audit_snapshot().projection_seals.values()))
     seal_visits = 3 * (1 + len(image_seal.guards)) + 1 + len(projection_seal.guards)
     before = dict(term.resource_ledger.counters)
 
@@ -100,7 +101,7 @@ def test_warm_reverse_point_bypasses_projection_and_retains_one_response(
         "source_image_projection_hits": 1,
         "temporal_point_requests": 1,
     }
-    assert len(core._projections) == 1
+    assert len(core.audit_snapshot().projections) == 1
 
 
 def test_warm_collatz_point_bypasses_projection_and_retains_one_response(
@@ -108,8 +109,15 @@ def test_warm_collatz_point_bypasses_projection_and_retains_one_response(
 ) -> None:
     term = PoweredCollatzTerm(27, 32)
     expected = term.digit(0)
-    workspace = term._source_image()
-    assert len(term._microblocks.blocks) == 1
+    workspace = term.source_image()
+    assert (
+        sum(
+            item.entries
+            for item in term.resource_ledger.inventory()
+            if item.role == "exact_microblock"
+        )
+        == 1
+    )
     before = dict(term.resource_ledger.counters)
 
     def forbidden(*args: object, **kwargs: object) -> Never:
@@ -128,8 +136,15 @@ def test_warm_collatz_point_bypasses_projection_and_retains_one_response(
         "microblock_hits": 1,
         "temporal_point_requests": 1,
     }
-    assert len(term._microblocks.blocks) == 1
-    view = workspace.scheduler._source_image_core().view(workspace.root_image)
+    assert (
+        sum(
+            item.entries
+            for item in term.resource_ledger.inventory()
+            if item.role == "exact_microblock"
+        )
+        == 1
+    )
+    view = workspace.scheduler.source_image_core().view(workspace.root_image)
     assert view.payload == workspace.root_payload
 
 
@@ -142,13 +157,13 @@ def test_response_register_never_becomes_an_output_tape_and_eviction_releases_ch
     handle = compiler.reference(effect)
     for position in range(257):
         assert register.query(handle, position, lambda p: p % 10) == position % 10
-        assert len(register._value) == 1
+        assert len(register.audit_snapshot().responses) == 1
     owner = next(
         item for item in compiler.ledger.inventory() if item.owner == register.owner
     )
     assert owner.entries == owner.nodes == 1
     compiler.ledger.evict_query_memos()
-    assert not register._value
+    assert not register.audit_snapshot().responses
     owner = next(
         item for item in compiler.ledger.inventory() if item.owner == register.owner
     )
@@ -190,7 +205,7 @@ def test_response_budget_rejects_before_evaluation_and_failed_evaluation_release
     with pytest.raises(AssertionError):
         register.query(handle, 0, forbidden)
     assert ledger.entries == entries and ledger.nodes == nodes
-    assert not register._value
+    assert not register.audit_snapshot().responses
 
 
 def test_explicit_projection_uses_its_registered_source_geometry(
@@ -201,14 +216,15 @@ def test_explicit_projection_uses_its_registered_source_geometry(
         (2, 4, 2),
         logical_length=8,
     )
-    reads = []
-    original = index._source_geometry.tile_at
+    reads: list[tuple[int, int]] = []
+    geometry = cast(SourceGeometry, object.__getattribute__(index, "_source_geometry"))
+    original = geometry.tile_at
 
     def counted(position: int, level: int) -> DyadicTile | None:
         reads.append((position, level))
         return original(position, level)
 
-    monkeypatch.setattr(index._source_geometry, "tile_at", counted)
+    monkeypatch.setattr(geometry, "tile_at", counted)
     index.direct_powered_point(0)
     assert not reads
     assert index.resource_ledger.counters.get("source_tile_lookup_requests", 0) >= len(
@@ -219,17 +235,17 @@ def test_explicit_projection_uses_its_registered_source_geometry(
 def test_source_image_families_use_their_registered_source_authority() -> None:
     reverse = ReverseAddPoweredTerm(196, 2)
     assert reverse.digit(0) == 5
-    reverse_workspace = reverse._source_workspace()
-    reverse_image = reverse_workspace._image
+    reverse_workspace = reverse.source_workspace()
+    reverse_image = reverse_workspace.audit_snapshot().image
     assert reverse_image is not None
-    reverse_view = reverse_workspace.scheduler._source_image_core().view(reverse_image)
+    reverse_view = reverse_workspace.scheduler.source_image_core().view(reverse_image)
     assert reverse_view.binding.source == reverse_workspace.source
     assert reverse_view.binding.action == reverse_workspace.root_action
 
     collatz = PoweredCollatzTerm(27, 8)
     assert collatz.digit(0) == 0
-    collatz_workspace = collatz._source_image()
-    collatz_view = collatz_workspace.scheduler._source_image_core().view(
+    collatz_workspace = collatz.source_image()
+    collatz_view = collatz_workspace.scheduler.source_image_core().view(
         collatz_workspace.root_image
     )
     assert collatz_view.binding.source == collatz_workspace.root_source
@@ -260,10 +276,10 @@ def test_generic_equal_source_parent_uses_tile_identity_before_cell_walk(
         DigitNormalizeBlockEffect(10), (2,) * 32, logical_length=32
     )
     assert index.direct_powered_point(15) == 2
-    projection = index._lazy_application
+    projection = index.audit_snapshot().lazy_application
     assert type(projection) is LazyProjection
     engine = projection.scheduler
-    parent = engine.tiles.resolve(projection._application.source)
+    parent = engine.tiles.resolve(projection.validated_application().source)
     assert parent.left == parent.right
 
     def guarded(*_args: object, **_kwargs: object) -> Never:
@@ -278,7 +294,7 @@ def test_generic_equal_source_parent_uses_tile_identity_before_cell_walk(
 
 
 def test_certificate_issuer_checks_actual_kernel_language() -> None:
-    from number_compiler.arithmetic.contracts.temporal_family import _issue_certificate
+    from number_compiler.arithmetic.contracts.temporal_family import issue_certificate
     from tests.arithmetic.contracts.test_lazy_generic import finite
 
     compiler = LazyCompiler(ResourceLedger())
@@ -286,20 +302,22 @@ def test_certificate_issuer_checks_actual_kernel_language() -> None:
     terminal = compiler.atom(DigitNormalizeBlockEffect(10))
     impostor = compiler.compose(identity, terminal)
     with pytest.raises(ValueError, match="certified arithmetic"):
-        _issue_certificate(impostor, "reverse-add", 1)
+        issue_certificate(impostor, "reverse-add", 1)
     reversed_order = compiler.compose(terminal, BaseBlockEffect(10))
     with pytest.raises(ValueError, match="normalization must follow"):
-        _issue_certificate(reversed_order, "reverse-add", 1)
+        issue_certificate(reversed_order, "reverse-add", 1)
     doubled_terminal = compiler.compose(terminal, terminal)
     with pytest.raises(ValueError, match="declared semantics"):
-        _issue_certificate(doubled_terminal, "reverse-add", 0)
+        issue_certificate(doubled_terminal, "reverse-add", 0)
 
 
 def test_source_geometry_rejects_another_input_before_application_retention() -> None:
     index = HashLifeBlockIndex(DigitNormalizeBlockEffect(10), (2, 2), logical_length=8)
     assert_rejected_atomically(
         index.resource_ledger,
-        lambda: index._source_geometry.require_source((4, 4), index.effect.blank),
+        lambda: cast(
+            SourceGeometry, object.__getattribute__(index, "_source_geometry")
+        ).require_source((4, 4), index.effect.blank),
         ValueError,
         match="original input",
     )
@@ -324,12 +342,12 @@ def test_import_admits_entire_dag_before_publishing_siblings() -> None:
 
 
 def test_certificate_rejects_mixed_alphabets() -> None:
-    from number_compiler.arithmetic.contracts.temporal_family import _issue_certificate
+    from number_compiler.arithmetic.contracts.temporal_family import issue_certificate
 
     handle = ActionProgramID(ArenaToken(), "action-program", 0)
     bad = ProgramComposition(BaseBlockEffect(10), DigitNormalizeBlockEffect(2), handle)
     with pytest.raises(ValueError, match="mixed alphabets"):
-        _issue_certificate(bad, "reverse-add", 1)
+        issue_certificate(bad, "reverse-add", 1)
 
 
 @pytest.mark.parametrize("limit", ({"max_cache_entries": 0}, {"max_tile_nodes": 0}))

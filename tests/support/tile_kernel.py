@@ -10,15 +10,15 @@ from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.tile_application import TileApplication
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import (
-    ChildContext,
-    TileApplication,
     TileScheduler,
 )
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
 from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
 from number_compiler.hashlife.observation.tile_projection import LazyProjection
+from number_compiler.hashlife.tiles.tile_context import ChildContext
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import (
@@ -108,12 +108,12 @@ def literal_tile_output(
     symbols: tuple[int, ...],
 ) -> tuple[int, ...]:
     left = effect.initial(BoundarySide.LEFT)
-    left_states = []
+    left_states: list[object] = []
     for symbol in symbols:
         left_states.append(left)
         left = effect.advance(BoundarySide.LEFT, left, symbol)
     right = effect.initial(BoundarySide.RIGHT)
-    right_states = [right] * len(symbols)
+    right_states: list[object] = [right] * len(symbols)
     for index in range(len(symbols) - 1, -1, -1):
         right_states[index] = right
         right = effect.advance(BoundarySide.RIGHT, right, symbols[index])
@@ -272,7 +272,7 @@ def powered_application(
     projection: LazyProjection,
     steps: int = 4,
 ) -> tuple[PrimitiveTileKernelAdapter, FieldCellActionID, TileApplication]:
-    primitive = projection._application
+    primitive = projection.validated_application()
     adapter = primitive.scheduler.adapter
     assert type(adapter) is PrimitiveTileKernelAdapter
     action = adapter.power(primitive.action, steps)

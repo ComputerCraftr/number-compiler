@@ -106,6 +106,10 @@ class BorderReturnMacro:
         """Return the finite program cap, not a future convergence bound."""
         return _MAX_RETURNS_PER_ACTION
 
+    def matches_binding(self, expected: tuple[object, ...]) -> bool:
+        """Check the issuer-held structural binding without exposing its seal."""
+        return self._binding == expected
+
     def demanded_position_harmonics(
         self,
         radix: int,
@@ -188,6 +192,15 @@ class BorderReturnMacro:
         }
 
 
+def _append_parity_run(runs: list[tuple[int, int]], bit: int, count: int) -> None:
+    """Coalesce a bounded provenance run while preserving its exact tick count."""
+    if runs and runs[-1][0] == bit:
+        previous_bit, previous_count = runs[-1]
+        runs[-1] = previous_bit, previous_count + count
+    else:
+        runs.append((bit, count))
+
+
 def validate_border_return_macro(macro: BorderReturnMacro) -> None:
     """Reject foreign and changed macro payloads, including border provenance."""
     if (
@@ -210,7 +223,7 @@ def validate_border_return_macro(macro: BorderReturnMacro) -> None:
         macro.exit_port,
     )
     if (
-        macro._binding != binding
+        not macro.matches_binding(binding)
         or type(macro.identity) is not GuardedBorderPath
         or macro.identity.kind is not BoundaryPathKind.THREE_BORDER_RETURN
         or macro.identity.entry_digit != macro.entry_port.value
@@ -370,11 +383,7 @@ def select_border_return_macro(
         ticks = count * (2 if bit else 1)
         if budget < ticks:
             raise AssertionError("border admission exceeded its physical clock")
-        if runs and runs[-1][0] == bit:
-            old, length = runs[-1]
-            runs[-1] = (old, length + count)
-        else:
-            runs.append((bit, count))
+        _append_parity_run(runs, bit, count)
         action_fragments.append((bit, count))
         before_width = current.bit_length()
         after_width = target.bit_length()
@@ -449,11 +458,7 @@ def select_border_return_macro(
         for _ in range(copies):
             for bit, length in ((1, 1), (0, j), (1, 1)):
                 if length:
-                    if runs and runs[-1][0] == bit:
-                        old_bit, old_length = runs[-1]
-                        runs[-1] = old_bit, old_length + length
-                    else:
-                        runs.append((bit, length))
+                    _append_parity_run(runs, bit, length)
         tails.extend((j,) * copies)
         action_fragments.append(action)
         state = state.after_action(action, target, 2 * copies)
@@ -536,11 +541,7 @@ def select_border_return_macro(
                 for bit, count in ((1, 1), (0, j), (1, 1)):
                     if not count:
                         continue
-                    if runs and runs[-1][0] == bit:
-                        old_bit, old_count = runs[-1]
-                        runs[-1] = old_bit, old_count + count
-                    else:
-                        runs.append((bit, count))
+                    _append_parity_run(runs, bit, count)
         tails.extend(motif * groups)
         action_fragments.append(powered)
         state = state.after_action(powered, target, 2 * extent)

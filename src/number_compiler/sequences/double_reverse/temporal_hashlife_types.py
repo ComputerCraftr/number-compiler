@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 
 
@@ -159,9 +160,9 @@ def source_prefix_node_cost(key: object, value: object) -> int:
 
 def temporal_action_node_cost(key: object, action: object) -> int:
     """Charge exact integer limbs for the retained action and its scoped key."""
-    if type(key) is not tuple or len(key) != 3:
+    if not is_exact_object_tuple(key) or len(key) != 3:
         raise ValueError("malformed temporal action memo entry")
-    coordinates = cast(tuple[object, ...], key)
+    coordinates = key
     if any(type(value) is not int or value < 0 for value in coordinates):
         raise ValueError("malformed temporal action memo key")
     exact_coordinates = cast(tuple[int, int, int], coordinates)

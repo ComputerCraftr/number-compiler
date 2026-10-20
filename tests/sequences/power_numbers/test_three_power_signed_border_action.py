@@ -1,29 +1,45 @@
 """Regression gates for the NC16 source-bound signed-3X border repair."""
 
+from collections.abc import Callable
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
 from number_compiler.arithmetic.carry.tripling_transfer import compose_transfer
 from number_compiler.arithmetic.fields.three_power_radix import decimal_tripling_order
+from number_compiler.sequences.power_numbers import (
+    three_power_signed_border_action as signed_owner,
+)
 from number_compiler.sequences.power_numbers.numbers import FermatNumberSpec
 from number_compiler.sequences.power_numbers.three_power_signed_border_action import (
     CyclotomicTriplingClock,
-    _known_block,
-    _signed_position_factor,
-    _unknown_block,
+    WeightedBinaryCarryBlock,
     exact_physical_carry_periods,
+)
+
+known_block = cast(
+    Callable[[int, int, int], WeightedBinaryCarryBlock],
+    object.__getattribute__(signed_owner, "_known_block"),
+)
+signed_position_factor = cast(
+    Callable[[int, int], int],
+    object.__getattribute__(signed_owner, "_signed_position_factor"),
+)
+unknown_block = cast(
+    Callable[[int, int], WeightedBinaryCarryBlock],
+    object.__getattribute__(signed_owner, "_unknown_block"),
 )
 
 
 def test_signed_position_uses_finite_clock_for_absolute_coordinates() -> None:
     for width in (1, 2, 7, 16):
         for position in range(4 * width + 1):
-            assert _signed_position_factor(position, width) == pow(
+            assert signed_position_factor(position, width) == pow(
                 2, position, (1 << width) + 1
             )
     huge = (1 << 65_535) + 23
-    assert _signed_position_factor(huge, 16) == _signed_position_factor(huge % 32, 16)
+    assert signed_position_factor(huge, 16) == signed_position_factor(huge % 32, 16)
 
 
 def test_unknown_middle_relation_reuses_exact_orbit(
@@ -91,10 +107,10 @@ def test_all_source_physical_carry_harmonics_have_closed_cycles() -> None:
 def test_weighted_actions_compose_without_collapsing_signed_word() -> None:
     for width in range(2, 12):
         for value in (0, 1, 3, (1 << width) // 3, (1 << width) - 1):
-            whole = _known_block(0, width, value)
+            whole = known_block(0, width, value)
             for split in range(1, width):
-                a = _known_block(0, split, value % (1 << split))
-                b = _known_block(split, width - split, value >> split)
+                a = known_block(0, split, value % (1 << split))
+                b = known_block(split, width - split, value >> split)
                 assert whole.transfers[0] == compose_transfer(
                     a.transfers[0], b.transfers[0]
                 )
@@ -119,12 +135,12 @@ def test_weighted_actions_compose_without_collapsing_signed_word() -> None:
 
 
 def test_h5_and_carry_collision_cannot_merge_distinct_signed_sources() -> None:
-    a, b = _known_block(0, 10, 7), _known_block(0, 10, 56)
+    a, b = known_block(0, 10, 7), known_block(0, 10, 56)
     assert a.transfers == b.transfers == ((0, 0, 0),)
     assert a.emission_h5(0, 0) == b.emission_h5(0, 0)
     assert a.signed_source(8) != b.signed_source(8)
     assert a.signed_output(0, 0, 8) != b.signed_output(0, 0, 8)
-    unknown = _unknown_block(1000, 10**9)
+    unknown = unknown_block(1000, 10**9)
     assert unknown.emitted_value(0, 0) is None
     assert unknown.emission_h5(0, 0) is None
     with pytest.raises(ValueError, match="refused"):
@@ -217,7 +233,7 @@ def test_issuer_rejects_tampered_weighted_action() -> None:
 
 
 def test_weighted_block_rejects_false_carry_and_unbounded_fold() -> None:
-    block = _known_block(0, 10, 7)
+    block = known_block(0, 10, 7)
     with pytest.raises(ValueError, match="disagrees"):
         replace(block, transfers=((2, 2, 2),))
     with pytest.raises(ValueError, match="budget"):
@@ -225,7 +241,7 @@ def test_weighted_block_rejects_false_carry_and_unbounded_fold() -> None:
     with pytest.raises(ValueError, match="ingress"):
         block.emitted_value(True, 0)
     with pytest.raises(ValueError, match="source word"):
-        _known_block(0, 10**30, 7)
+        known_block(0, 10**30, 7)
 
 
 def test_invalid_windows_refuse_before_radial_construction(

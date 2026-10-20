@@ -239,7 +239,7 @@ class MixedOutputArena:
         if self._frozen or type(self.nodes) is not list or type(self.ids) is not dict:
             raise RuntimeError("published mixed output arena cannot be extended")
 
-    def _intern(self, key: tuple[object, ...], node: _TemporalNode) -> int:
+    def intern_record(self, key: tuple[object, ...], node: _TemporalNode) -> int:
         self._check_mutable()
         found = self.ids.get(key)
         if found is not None:
@@ -250,7 +250,7 @@ class MixedOutputArena:
         return idx
 
     def emit(self, frame: MixedFrame) -> int:
-        return self._intern(("emit", frame), _TemporalNode("emit", 1, frame))
+        return self.intern_record(("emit", frame), _TemporalNode("emit", 1, frame))
 
     def concat(self, a: int, b: int) -> int:
         return concatenate_temporal_slp(
@@ -259,7 +259,7 @@ class MixedOutputArena:
             nodes=self.nodes,
             repeat=self.repeat,
             copies=lambda node: node.copies,
-            intern=self._intern,
+            intern=self.intern_record,
             make_concat=lambda left, right, x, y: _TemporalNode(
                 "concat", x.steps + y.steps, left=left, right=right
             ),
@@ -276,7 +276,7 @@ class MixedOutputArena:
             copies *= x.copies
             a = x.left
             x = self.nodes[a]
-        return self._intern(
+        return self.intern_record(
             ("repeat", a, copies),
             _TemporalNode("repeat", x.steps * copies, left=a, copies=copies),
         )
@@ -330,7 +330,7 @@ class MixedTemporalAction:
 
 
 @contextmanager
-def _controlled_bank_workspace(
+def controlled_bank_workspace(
     ledger: ResourceLedger, owner: int
 ) -> Generator[Callable[[int, int], None], None, None]:
     """Track incremental construction capacity until output publication."""

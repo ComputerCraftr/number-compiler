@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.automata.slp import SLPArena
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 
 from .boundary_cycles import (
     CANDIDATE_COMPONENTS,
@@ -76,7 +77,7 @@ class LiftedBorder:
 
 def lift_from_digits(digits: str) -> LiftedBorder:
     if (
-        not isinstance(digits, str)
+        not is_runtime_instance(digits, str)
         or len(digits) < 5
         or digits[0] == "0"
         or not (digits.isascii() and digits.isdigit())
@@ -194,7 +195,7 @@ def _states_in_component(component: int) -> frozenset[LiftedBorder]:
     )
 
 
-def _component_layers(component: int) -> tuple[frozenset[LiftedBorder], ...]:
+def component_layers(component: int) -> tuple[frozenset[LiftedBorder], ...]:
     """Exact greatest-path survival sets under both possible fourth carries.
 
     This is a finite-state proof, not sampled trajectory work. Every real
@@ -221,8 +222,8 @@ def _component_layers(component: int) -> tuple[frozenset[LiftedBorder], ...]:
 
 
 def component_safety_proof(component: int) -> ComponentSafetyProof:
-    layers = _component_layers(component)
-    return _component_safety_from_layers(component, layers)
+    layers = component_layers(component)
+    return component_safety_from_layers(component, layers)
 
 
 def source_carry_safety(
@@ -235,11 +236,11 @@ def source_carry_safety(
     actual seed will choose any specific fourth-digit carry.
     """
     comp = candidate_component(border.edge)
-    layers = None if comp is None else _component_layers(comp)
-    return _source_carry_safety_from_layers(border, layers)
+    layers = None if comp is None else component_layers(comp)
+    return source_carry_safety_from_layers(border, layers)
 
 
-def _source_carry_safety_from_layers(
+def source_carry_safety_from_layers(
     border: LiftedBorder,
     layers: tuple[frozenset[LiftedBorder], ...] | None,
 ) -> SourceCarrySafety:
@@ -250,7 +251,7 @@ def _source_carry_safety_from_layers(
     if layers is not None and (comp is None or layers[0] != _states_in_component(comp)):
         raise ValueError("carry-safety layers do not belong to the source component")
     proof = (
-        _component_safety_from_layers(comp, layers)
+        component_safety_from_layers(comp, layers)
         if comp is not None and layers is not None
         else None
     )
@@ -281,7 +282,7 @@ def _source_carry_safety_from_layers(
     )
 
 
-def _component_safety_from_layers(
+def component_safety_from_layers(
     component: int, layers: tuple[frozenset[LiftedBorder], ...]
 ) -> ComponentSafetyProof:
     states = layers[0]

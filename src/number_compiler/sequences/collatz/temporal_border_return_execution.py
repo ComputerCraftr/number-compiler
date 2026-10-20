@@ -17,7 +17,7 @@ from number_compiler.sequences.collatz.border_return_grammar import (
     select_border_return_macro,
 )
 from number_compiler.sequences.collatz.boundary_macro_prefixes import (
-    _publish_boundary_macro_prefixes,
+    publish_boundary_macro_prefixes,
 )
 from number_compiler.sequences.collatz.boundary_macros import (
     AdmittedBoundaryMacroPlan,
@@ -227,7 +227,7 @@ def consume_border_return(
     )
     if macros is not None:
         try:
-            _publish_boundary_macro_prefixes(
+            publish_boundary_macro_prefixes(
                 border,
                 macros,
                 scratch,
@@ -285,8 +285,7 @@ def consume_named_boundary(
     )
     boundary = select_admitted_boundary_macro(plan, templates=templates)
     if (
-        boundary is None
-        or boundary.identity != plan.identity
+        boundary.identity != plan.identity
         or boundary.repetitions != plan.repetitions
         or boundary.normalized_symbols != plan.normalized_symbols
     ):
@@ -358,7 +357,7 @@ def consume_named_boundary(
     lookup_enabled = prior_lookup_enabled
     if macros is not None:
         try:
-            _publish_boundary_macro_prefixes(
+            publish_boundary_macro_prefixes(
                 boundary,
                 macros,
                 scratch,

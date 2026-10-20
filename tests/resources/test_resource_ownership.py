@@ -20,6 +20,7 @@ from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from number_compiler.sequences.reverse_add.source_images import (
     ReverseSourceImageAdapter,
 )
+from tests.support.private_attributes import set_private_test_attribute
 from tests.support.production_ast import ProductionASTGraph
 
 
@@ -99,9 +100,15 @@ def test_cached_callable_and_class_level_store_are_not_ownership_exceptions() ->
         method: object
         function: object
 
-    Owner.method = lru_cache()(lambda self, value: value)
+    def cached_method(self: Owner, value: object) -> object:
+        return value
+
+    def cached_function(value: object) -> object:
+        return value
+
+    Owner.method = lru_cache()(cached_method)
     root = Owner()
-    root.function = lru_cache()(lambda value: value)
+    root.function = lru_cache()(cached_function)
     ledger = ResourceLedger()
     ledger.register_execution_root(root)
     assert audit_execution_ownership(ledger).unregistered_containers == 3
@@ -121,7 +128,7 @@ def test_collatz_source_image_graph_is_collectable_after_term_lifetime() -> None
     term = PoweredCollatzTerm(27, 4)
     term.digit(0)
     ledger = term.resource_ledger
-    workspace = term._source_image()
+    workspace = term.source_image()
     scheduler = workspace.scheduler
     saved = tuple(
         weakref.ref(item)
@@ -156,9 +163,9 @@ def test_actual_public_graph_is_factory_owned_before_and_after_compilation(
     assert not after.violations
     # This store is deliberately absent from all ledger payload callbacks.
     workspace = (
-        term._source_workspace()
+        term.source_workspace()
         if isinstance(term, ReverseAddPoweredTerm)
-        else term._source_image()
+        else term.source_image()
     )
     workspace.__setattr__("hidden_late_cache", {"unaccounted": 1})
     assert audit_execution_ownership(term.resource_ledger).unregistered_containers == 1
@@ -169,7 +176,7 @@ def test_reverse_source_workspace_cleans_later_owners_after_failed_dispose(
 ) -> None:
     term = ReverseAddPoweredTerm(196, 2)
     term.digit(0)
-    workspace = term._source_workspace()
+    workspace = term.source_workspace()
     adapter_type = type(workspace.adapter)
     original = adapter_type.dispose
 
@@ -212,7 +219,7 @@ def _name(expression: ast.expr) -> str:
 def _persistent_store_violations_in_classes(
     classes: Iterator[ast.ClassDef],
 ) -> list[int]:
-    violations = []
+    violations: list[int] = []
     for cls in classes:
         for method in cls.body:
             if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -285,6 +292,7 @@ def test_structural_gate_distinguishes_retained_stores_from_transient_locals() -
     assert _persistent_store_violations(cached_method_tree, {"Owner"})
 
 
+@pytest.mark.validation
 def test_execution_owners_allocate_persistent_stores_only_through_factories(
     production_ast_graph: ProductionASTGraph,
 ) -> None:
@@ -399,7 +407,7 @@ def test_suspended_generator_and_weak_helper_do_not_hide_mutable_stores() -> Non
 def test_private_data_name_is_not_a_general_ownership_exemption() -> None:
     ledger = ResourceLedger()
     root = SimpleOwner()
-    root._data = {}
+    set_private_test_attribute(root, "_data", {})
     ledger.register_execution_root(root)
     report = audit_execution_ownership(ledger)
     assert report.unregistered_containers == 1

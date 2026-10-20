@@ -13,8 +13,8 @@ from number_compiler.sequences.collatz.border_identity import (
     BoundaryActionIdentity,
 )
 from number_compiler.sequences.collatz.boundary_macro_prefixes import (
-    _publish_boundary_macro_prefixes,
-    _slice_action,
+    publish_boundary_macro_prefixes,
+    slice_action,
 )
 from number_compiler.sequences.collatz.boundary_macros import (
     admit_routed_boundary_macro_plan,
@@ -189,7 +189,7 @@ def test_large_rotated_guard_fibers_publish_exact_prefix_grammars() -> None:
         scratch = RunArithmeticWorkspace.for_ledger(ledger, "collatz_physical")
         with CollatzDyadicMacros(ledger, shared_cache=False) as cache:
             with scratch.scope():
-                count = _publish_boundary_macro_prefixes(
+                count = publish_boundary_macro_prefixes(
                     macro,
                     cache,
                     scratch,
@@ -226,7 +226,7 @@ def test_every_rotated_grammar_slice_matches_the_literal_normalized_trace() -> N
         trace = _normalized_trace(source, macro.normalized_symbols)
         for start in range(len(trace)):
             for stop in range(start, len(trace)):
-                action, ones = _slice_action(macro, start, stop - start)
+                action, ones = slice_action(macro, start, stop - start)
                 assert action.endpoint(trace[start]) == trace[stop]
                 assert ones == sum(value & 1 for value in trace[start:stop])
 
@@ -278,7 +278,7 @@ def test_prefix_cache_publishes_powered_edge_grammars() -> None:
         scratch = RunArithmeticWorkspace.for_ledger(ledger, "collatz_physical")
         with CollatzDyadicMacros(ledger, shared_cache=False) as cache:
             with scratch.scope():
-                count = _publish_boundary_macro_prefixes(
+                count = publish_boundary_macro_prefixes(
                     macro,
                     cache,
                     scratch,

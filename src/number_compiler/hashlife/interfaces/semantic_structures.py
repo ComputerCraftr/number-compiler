@@ -26,9 +26,9 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     ProductSort,
     SemanticFunctionID,
     SemanticSort,
-    _ports,
-    _sort,
-    _union_inputs,
+    union_inputs,
+    validate_ports,
+    validate_sort,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.semantic_function_transactions import (
@@ -41,13 +41,14 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     BooleanCircuit,
     FactoredFunction,
     FactoredFunctionID,
-    _PendingFunction,
+    PendingFunction,
     substitute_boolean,
 )
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import (
     hashlife_interfaces as _interfaces_keys,
 )
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
 
@@ -148,7 +149,7 @@ class StructureDeclarationKey:
     def __post_init__(self) -> None:
         if type(self.value) is not StructureID:
             raise TypeError("declaration requires a canonical structured function")
-        _ports(self.inputs)
+        validate_ports(self.inputs)
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,7 +191,13 @@ class StructureArena:
             self.ledger, declaration_owner, evictable=True
         )
 
-    def _handle(self, identity: int) -> StructureID:
+    def declaration_audit_snapshot(
+        self,
+    ) -> OwnedMemoAuditSnapshot[StructureDeclarationKey, StructureID]:
+        """Return read-only accounting and store identity for declaration audits."""
+        return self._declarations.audit_snapshot()
+
+    def scoped_handle(self, identity: int) -> StructureID:
         return StructureID(self.token, "semantic-structure", identity)
 
     def candidate_handle(
@@ -206,7 +213,7 @@ class StructureArena:
             raise ValueError(
                 "structured candidate ID is outside its publication window"
             )
-        return self._handle(identity)
+        return self.scoped_handle(identity)
 
     def resolve(self, reference: StructureID) -> StructuredNode:
         if type(reference) is not StructureID:
@@ -225,7 +232,7 @@ class StructureArena:
         source, generation, or observed scalar in its key or result.
         """
         node = self.resolve(value)
-        _ports(inputs)
+        validate_ports(inputs)
         if any(port not in inputs for port in node.signature.inputs):
             raise ValueError("declaration must preserve every existing finite input")
         self.ledger.bump(_interfaces_keys.SEMANTIC_STRUCTURE_DECLARATION_REQUESTS)
@@ -268,7 +275,7 @@ class StructureArena:
             prepared.reserve_with(((self._declarations.owner, 1, 0),))
             prepared.publish_reserved()
             result = prepared.roots[0]
-            self._declarations._data[key] = result
+            self._declarations.publish_reserved(key, result)
             self.ledger.bump(
                 _interfaces_keys.SEMANTIC_STRUCTURE_DECLARATION_EVALUATIONS
             )
@@ -293,7 +300,7 @@ class StructureArena:
                 "structured product requires immutable nonempty components"
             )
         nodes = tuple(self.resolve(item) for item in components)
-        inputs = _union_inputs(*(node.signature.inputs for node in nodes))
+        inputs = union_inputs(*(node.signature.inputs for node in nodes))
         builder = StructureBuilder(self)
         circuit = builder.circuit(inputs)
         valid = circuit.admitted()
@@ -312,8 +319,8 @@ class StructureArena:
             StructuredNode(
                 signature,
                 "product",
-                self.functions._handle(valid),
-                components=tuple(self._handle(item) for item in children),
+                self.functions.scoped_handle(valid),
+                components=tuple(self.scoped_handle(item) for item in children),
             )
         )
         return builder.finish(root)
@@ -322,13 +329,13 @@ class StructureArena:
         self, body: StructureID, bound_ports: tuple[FinitePort, ...]
     ) -> StructureID:
         node = self.resolve(body)
-        _ports(bound_ports)
+        validate_ports(bound_ports)
         if any(port not in node.signature.inputs for port in bound_ports):
             raise ValueError("lambda declarations are not free inputs of its body")
         outer = tuple(port for port in node.signature.inputs if port not in bound_ports)
-        aliases = _aliases(outer, bound_ports, node.signature.output)
+        aliases = allocate_bound_aliases(outer, bound_ports, node.signature.output)
         builder = StructureBuilder(self)
-        joint = _union_inputs(outer, aliases)
+        joint = union_inputs(outer, aliases)
         replacements = tuple(
             (old, builder.variable(joint, new))
             for old, new in zip(bound_ports, aliases, strict=True)
@@ -344,8 +351,8 @@ class StructureArena:
             StructuredNode(
                 signature,
                 "function",
-                self.functions._handle(valid),
-                body=self._handle(rewritten),
+                self.functions.scoped_handle(valid),
+                body=self.scoped_handle(rewritten),
                 bound=aliases,
             )
         )
@@ -357,7 +364,7 @@ class StructureArena:
         arguments: Mapping[PortVariable, FactoredFunctionID],
     ) -> tuple[tuple[FinitePort, int], ...]:
         available = {port.variable: port for port in declared}
-        result = []
+        result: list[tuple[FinitePort, int]] = []
         for variable, reference in arguments.items():
             if type(variable) is not PortVariable:
                 raise ValueError("arguments require typed port names")
@@ -438,7 +445,7 @@ def _binding_height(output: SemanticSort) -> int:
     or observation. Sibling product components may reuse a band because each
     has its own lexical scope. Nested functions require disjoint bands.
     """
-    _sort(output)
+    validate_sort(output)
     heights: dict[int, int] = {}
     pending = [(output, False)]
     while pending:
@@ -465,13 +472,13 @@ def _binding_height(output: SemanticSort) -> int:
     return heights[id(output)]
 
 
-def _aliases(
+def allocate_bound_aliases(
     outer: tuple[FinitePort, ...],
     declared: tuple[FinitePort, ...],
     output: SemanticSort | None = None,
 ) -> tuple[FinitePort, ...]:
     occupied = {port.variable for port in outer}
-    aliases = []
+    aliases: list[FinitePort] = []
     cursor = 0
     # Count available slots, not raw indices: externally bound names can leave
     # holes in the canonical band. Descendant selectors still precede every
@@ -499,12 +506,32 @@ class StructureBuilder:
         self.tx = _Transaction(arena.functions)
         self.bit_base = len(arena.bits.nodes)
         self.base = len(arena.nodes)
-        self.bits: list[_PendingFunction] = []
-        self.bit_keys: dict[_PendingFunction, int] = {}
+        self.bits: list[PendingFunction] = []
+        self.bit_keys: dict[PendingFunction, int] = {}
         self.nodes: list[StructuredNode] = []
         self.keys: dict[StructuredNode, int] = {}
         self.rewrites: dict[StructureRewrite, int] = {}
         self._circuits: dict[tuple[FinitePort, ...], BooleanCircuit] = {}
+
+    def structure_reference(self, identity: int) -> StructureID:
+        """Issue a scoped reference within this builder's publication window."""
+        return self.arena.candidate_handle(
+            identity, base=self.base, candidate_count=len(self.nodes)
+        )
+
+    def bit_reference(self, identity: int) -> FactoredFunctionID:
+        """Issue a factored reference within this builder's publication window."""
+        return self.arena.bits.candidate_handle(
+            identity, base=self.bit_base, candidate_count=len(self.bits)
+        )
+
+    def function_reference(self, identity: int) -> SemanticFunctionID:
+        """Issue a Boolean-function reference within the shared transaction."""
+        return self.arena.functions.candidate_handle(
+            identity,
+            base=self.tx.base,
+            candidate_count=len(self.tx.staged),
+        )
 
     def circuit(self, inputs: tuple[FinitePort, ...]) -> BooleanCircuit:
         self.arena.ledger.bump(_interfaces_keys.SEMANTIC_STRUCTURE_CIRCUIT_REQUESTS)
@@ -536,21 +563,21 @@ class StructureBuilder:
             else self.nodes[identity - self.base]
         )
 
-    def bit(self, identity: int) -> _PendingFunction:
+    def bit(self, identity: int) -> PendingFunction:
         if identity >= self.bit_base:
             return self.bits[identity - self.bit_base]
         node = self.arena.bits.nodes[identity]
-        return _PendingFunction(
+        return PendingFunction(
             node.signature,
             tuple(item.local_id for item in node.bits),
             node.valid.local_id,
         )
 
-    def intern_bit(self, value: _PendingFunction) -> int:
+    def intern_bit(self, value: PendingFunction) -> int:
         record = FactoredFunction(
             value.signature,
-            tuple(self.arena.functions._handle(item) for item in value.bits),
-            self.arena.functions._handle(value.valid),
+            tuple(self.function_reference(item) for item in value.bits),
+            self.function_reference(value.valid),
         )
         found = self.arena.bits.keys.get(record)
         if found is None:
@@ -584,8 +611,8 @@ class StructureBuilder:
             StructuredNode(
                 signature,
                 "function",
-                self.arena.functions._handle(valid),
-                body=self.arena._handle(body),
+                self.function_reference(valid),
+                body=self.structure_reference(body),
                 bound=aliases,
             )
         )
@@ -594,13 +621,13 @@ class StructureBuilder:
         self, signature: FunctionSignature, roots: tuple[int, ...], valid: int
     ) -> int:
         """Intern a numeric structure and its shared Boolean payload together."""
-        bit = self.intern_bit(_PendingFunction(signature, roots, valid))
+        bit = self.intern_bit(PendingFunction(signature, roots, valid))
         return self.intern(
             StructuredNode(
                 signature,
                 "atom",
-                self.arena.functions._handle(valid),
-                atom=self.arena.bits._handle(bit),
+                self.function_reference(valid),
+                atom=self.bit_reference(bit),
             )
         )
 
@@ -641,7 +668,7 @@ class StructureBuilder:
     ) -> tuple[BooleanCircuit, dict[PortVariable, int], int]:
         node = self.node(task.root)
         removed = {port.variable for port, _ in task.replacements}
-        inputs = _union_inputs(
+        inputs = union_inputs(
             tuple(
                 port for port in node.signature.inputs if port.variable not in removed
             ),
@@ -693,17 +720,18 @@ class StructureBuilder:
                     result = StructuredNode(
                         signature,
                         "product",
-                        self.arena.functions._handle(valid),
+                        self.function_reference(valid),
                         components=tuple(
-                            self.arena._handle(self.rewrites[item]) for item in children
+                            self.structure_reference(self.rewrites[item])
+                            for item in children
                         ),
                     )
                 else:
                     result = StructuredNode(
                         signature,
                         "function",
-                        self.arena.functions._handle(valid),
-                        body=self.arena._handle(self.rewrites[children[0]]),
+                        self.function_reference(valid),
+                        body=self.structure_reference(self.rewrites[children[0]]),
                         bound=aliases,
                     )
                 self.rewrites[task] = self.intern(result)
@@ -722,8 +750,8 @@ class StructureBuilder:
                     StructuredNode(
                         signature,
                         "atom",
-                        self.arena.functions._handle(valid),
-                        atom=self.arena.bits._handle(identity),
+                        self.function_reference(valid),
+                        atom=self.bit_reference(identity),
                     )
                 )
                 continue
@@ -736,12 +764,12 @@ class StructureBuilder:
             else:
                 if node.body is None or type(node.signature.output) is not FunctionSort:
                     raise AssertionError("canonical function is missing its typed body")
-                aliases = _aliases(
+                aliases = allocate_bound_aliases(
                     circuit.inputs,
                     node.signature.output.inputs,
                     node.signature.output.output,
                 )
-                joint = _union_inputs(circuit.inputs, aliases)
+                joint = union_inputs(circuit.inputs, aliases)
                 renaming = tuple(
                     (old, self.variable(joint, new))
                     for old, new in zip(node.bound, aliases, strict=True)

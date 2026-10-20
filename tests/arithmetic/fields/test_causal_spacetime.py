@@ -33,8 +33,8 @@ def _accelerated(value: int) -> tuple[int, int]:
 def test_domain_extent_is_geometry_not_a_length_bearing_cell_identity() -> None:
     huge = (1 << 40) + 12345
     frame = prefix_domain_span(huge - 7, huge)
-    leaf_symbols = set()
-    seen = set()
+    leaf_symbols: set[int] = set()
+    seen: set[int] = set()
     stack = [chunk.tile for chunk in frame.chunks]
     while stack:
         tile = stack.pop()
@@ -106,13 +106,10 @@ def test_collatz_spacetime_one_event_is_canonical_field_arithmetic_without_scala
 ) -> None:
     # value() is an explicit materialization boundary.  One causal event must not
     # use it internally.
-    monkeypatch.setattr(
-        CollatzRadixField,
-        "value",
-        lambda self: (_ for _ in ()).throw(
-            AssertionError("materialized scalar inside causal event")
-        ),
-    )
+    def forbidden_value(_self: CollatzRadixField) -> int:
+        raise AssertionError("materialized scalar inside causal event")
+
+    monkeypatch.setattr(CollatzRadixField, "value", forbidden_value)
     for value in (3, 5, 7, 9, 27, 31, 127, 255, 341, 999, 65535):
         engine = CollatzCausalSpacetimeEngine()
         field = CollatzRadixField.from_value(value)
@@ -132,12 +129,11 @@ def test_collatz_event_dag_is_built_from_canonical_field_steps_not_whole_germs(
 ) -> None:
     import number_compiler.sequences.collatz.germ_cache as old_germs
 
+    def forbidden_advance(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("whole-germ advance used")
+
     monkeypatch.setattr(
-        old_germs.CollatzGermTransitionCache,
-        "advance",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("whole-germ advance used")
-        ),
+        old_germs.CollatzGermTransitionCache, "advance", forbidden_advance
     )
     engine = CollatzCausalSpacetimeEngine()
     field = CollatzRadixField.from_value(27)

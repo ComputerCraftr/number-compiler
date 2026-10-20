@@ -35,8 +35,13 @@ from hashlib import sha256
 from pathlib import Path
 from threading import RLock
 from types import MappingProxyType
-from typing import Final, Literal, Self, TypeVar
+from typing import Final, Literal, Self, TypeVar, cast
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_mapping_instance,
+    is_object_list_instance,
+    is_runtime_instance,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.resources.bounded_json import (
     NodeReserver,
@@ -62,10 +67,14 @@ from number_compiler.sequences.comma.future_authority import (
     FutureClass,
     FutureControl,
     KernelInstanceAdmission,
-    _valid_artifact_digest,
     class_row_signature,
     global_release_admission_matches,
     registered_admission_matches,
+    valid_artifact_digest,
+)
+from number_compiler.sequences.comma.future_provider_codec import (
+    decode_class_map,
+    decode_class_rows,
 )
 from number_compiler.sequences.comma.future_provider_memory import (
     candidate_workspace_cost,
@@ -95,7 +104,9 @@ _RECORD_FIELDS = frozenset(
 )
 # Deliberately empty until the FutureCID instance has passed the Isabelle
 # kernel gate and its exact artifact/theorem binding is reviewed for release.
-_ADMITTED_KERNEL_INSTANCES: Mapping[str, KernelInstanceAdmission] = MappingProxyType({})
+_ADMITTED_KERNEL_INSTANCES: Mapping[str, KernelInstanceAdmission] = MappingProxyType(
+    dict[str, KernelInstanceAdmission]()
+)
 
 
 registered_global_release_artifact_sha256 = partial(
@@ -217,7 +228,7 @@ class SemanticFutureProvider:
         _reserve_decoded_shape: _ReserveDecodedShape | None = None,
     ) -> SemanticFutureProvider:
         """Load only an artifact already registered to an accepted kernel theorem."""
-        snapshot = _preflight_future_candidate(
+        snapshot = preflight_future_candidate(
             record,
             charge_work=charge_work,
             reserve_nodes=_reserve_nodes,
@@ -258,7 +269,7 @@ class SemanticFutureProvider:
         _reserve_decoded_shape: _ReserveDecodedShape | None = None,
     ) -> SemanticFutureProvider:
         """Load a bounded canonical artifact and require registry admission."""
-        if not isinstance(path, Path):
+        if not is_runtime_instance(path, Path):
             raise TypeError("future candidate path must be a pathlib Path")
         size = path.stat().st_size
         if size > MAX_CANDIDATE_BYTES:
@@ -274,7 +285,7 @@ class SemanticFutureProvider:
             raise ValueError("future candidate exceeds the bounded input size")
         try:
             text = payload.decode("utf-8")
-            raw = json.loads(text, object_pairs_hook=_reject_duplicate_keys)
+            raw: object = json.loads(text, object_pairs_hook=_reject_duplicate_keys)
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError("future candidate is not valid UTF-8 JSON") from exc
         except RecursionError as exc:
@@ -283,15 +294,16 @@ class SemanticFutureProvider:
             ) from exc
         if type(raw) is not dict:
             raise ValueError("future candidate JSON root must be an object")
-        snapshot = _preflight_future_candidate(
-            raw,
+        raw_record = cast(dict[str, object], raw)
+        snapshot = preflight_future_candidate(
+            raw_record,
             charge_work=charge_work,
             reserve_nodes=_reserve_nodes,
         )
         if payload != _canonical_json_bytes(snapshot):
             raise ValueError("future candidate JSON is not in canonical form")
         if _before_parse is not None:
-            _before_parse(raw)
+            _before_parse(raw_record)
         if _reserve_decoded_shape is not None:
             _reserve_decoded_shape(snapshot)
         parsed = _parse_preflighted_future_candidate(
@@ -308,7 +320,7 @@ class SemanticFutureProvider:
     @property
     def runtime_admitted(self) -> bool:
         if (
-            not _valid_artifact_digest(self._digest)
+            not valid_artifact_digest(self._digest)
             or type(self._admission) is not KernelInstanceAdmission
         ):
             return False
@@ -331,6 +343,12 @@ class SemanticFutureProvider:
     def class_count(self) -> int:
         self._require_table_bindings()
         return len(self._classes)
+
+    @property
+    def source_class_count(self) -> int:
+        """Return the validated number of retained source-class rows."""
+        self._require_table_bindings()
+        return len(self._source_classes)
 
     def _tables_bound(self) -> bool:
         return (
@@ -455,7 +473,7 @@ class SemanticFutureProviderStore:
         self._lock = RLock()
         ledger.register_execution_root(self)
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         if self._closed:
             raise RuntimeError("future provider store has been closed")
 
@@ -464,7 +482,7 @@ class SemanticFutureProviderStore:
         provider: SemanticFutureProvider,
         reservation: LedgerReservation,
     ) -> SemanticFutureProviderLease:
-        self._check_open()
+        self.check_open()
         provider.require_runtime_admission()
         digest = provider.artifact_sha256
         retained = self._providers.get(digest)
@@ -489,7 +507,7 @@ class SemanticFutureProviderStore:
         charge_work: WorkCharger,
     ) -> SemanticFutureProviderLease:
         with self._lock:
-            self._check_open()
+            self.check_open()
             self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_LOAD_REQUESTS)
             self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_VALIDATION_REQUESTS)
             try:
@@ -530,9 +548,9 @@ class SemanticFutureProviderStore:
     def get(self, artifact_sha256: str) -> SemanticFutureProviderLease:
         """Retrieve an already verified registry admission without reading input."""
         with self._lock:
-            self._check_open()
+            self.check_open()
             self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_LOOKUPS)
-            if not _valid_artifact_digest(artifact_sha256):
+            if not valid_artifact_digest(artifact_sha256):
                 self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_LOOKUP_REFUSALS)
                 raise ValueError("future artifact lookup needs a lowercase SHA-256")
             provider = self._providers.get(artifact_sha256)
@@ -608,21 +626,22 @@ class SemanticFutureProviderStore:
             if (
                 closed
                 or type(digest) is not str
-                or not _valid_artifact_digest(digest)
+                or not valid_artifact_digest(digest)
                 or type(token) is not ArenaToken
                 or token is not current_token
             ):
                 if record_metrics:
                     ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_STALE_LEASE_REFUSALS)
                 raise RuntimeError("future provider lease is stale")
-            memo = getattr(self, "_providers", None)
+            memo_value = getattr(self, "_providers", None)
             owner = getattr(self, "owner", None)
             if (
-                type(memo) is not OwnedMemo
-                or memo.ledger is not ledger
-                or memo.owner != owner
+                type(memo_value) is not OwnedMemo
+                or memo_value.ledger is not ledger
+                or memo_value.owner != owner
             ):
                 raise RuntimeError("future provider store has a foreign retained table")
+            memo = cast(OwnedMemo[str, SemanticFutureProvider], memo_value)
             provider = memo.get(digest)
             if provider is None:
                 if record_metrics:
@@ -638,7 +657,7 @@ class SemanticFutureProviderStore:
     def reset(self) -> None:
         """Release retained candidates and revoke leases without closing owner."""
         with self._lock:
-            self._check_open()
+            self.check_open()
             self._providers.clear()
             self._token = ArenaToken("comma-semantic-future-provider")
             self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_RESETS)
@@ -655,7 +674,7 @@ class SemanticFutureProviderStore:
 
     def __enter__(self) -> Self:
         with self._lock:
-            self._check_open()
+            self.check_open()
             return self
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
@@ -673,7 +692,7 @@ class SemanticFutureProviderLease:
     def __post_init__(self) -> None:
         if type(self._store) is not SemanticFutureProviderStore:
             raise TypeError("future provider lease needs its exact provider store")
-        if not _valid_artifact_digest(self._digest):
+        if not valid_artifact_digest(self._digest):
             raise ValueError("future provider lease needs a lowercase SHA-256")
         if type(self._token) is not ArenaToken:
             raise TypeError("future provider lease needs an exact store token")
@@ -687,7 +706,7 @@ class SemanticFutureProviderLease:
         if (
             type(store) is not SemanticFutureProviderStore
             or type(digest) is not str
-            or not _valid_artifact_digest(digest)
+            or not valid_artifact_digest(digest)
             or type(token) is not ArenaToken
         ):
             raise TypeError("malformed future provider lease binding")
@@ -733,7 +752,7 @@ class SemanticFutureProviderLease:
         provider = self.status_provider()
         return (
             type(ledger) is ResourceLedger
-            and _valid_artifact_digest(artifact_sha256)
+            and valid_artifact_digest(artifact_sha256)
             and provider is not None
             and provider.global_release_admitted
             and self._store.ledger is ledger
@@ -768,7 +787,7 @@ def parse_future_candidate(
     record: Mapping[str, object], *, charge_work: WorkCharger
 ) -> ParsedFutureCandidate:
     """Check bounded JSON structure without granting provider authority."""
-    snapshot = _preflight_future_candidate(record, charge_work=charge_work)
+    snapshot = preflight_future_candidate(record, charge_work=charge_work)
     return _parse_preflighted_future_candidate(snapshot, charge_work=charge_work)
 
 
@@ -779,9 +798,9 @@ def _parse_preflighted_future_candidate(
     artifact_sha256: str | None = None,
 ) -> ParsedFutureCandidate:
     """Decode a record after its JSON shape and serialized size were bounded."""
-    source_classes, classes = _validate_record(record, charge_work=charge_work)
+    source_classes, classes = validate_record(record, charge_work=charge_work)
     digest = (
-        _future_candidate_sha256(record) if artifact_sha256 is None else artifact_sha256
+        future_candidate_sha256(record) if artifact_sha256 is None else artifact_sha256
     )
     return ParsedFutureCandidate(
         source_classes,
@@ -790,7 +809,7 @@ def _parse_preflighted_future_candidate(
     )
 
 
-def _preflight_future_candidate(
+def preflight_future_candidate(
     record: Mapping[str, object],
     *,
     charge_work: WorkCharger,
@@ -807,13 +826,17 @@ def _preflight_future_candidate(
     )
 
 
-def _future_candidate_sha256(record: Mapping[str, object]) -> str:
+def future_candidate_sha256(record: Mapping[str, object]) -> str:
     """Hash a record after its caller has charged bounded structural parsing."""
     if type(record) not in (dict, MappingProxyType) or any(
         type(key) is not str for key in record
     ):
         raise TypeError("future candidate must be a string-keyed mapping")
-    canonical_record = dict(record) if type(record) is MappingProxyType else record
+    canonical_record = (
+        dict(cast(Mapping[str, object], record))
+        if type(record) is MappingProxyType
+        else record
+    )
     return sha256(_canonical_json_bytes(canonical_record)).hexdigest()
 
 
@@ -854,14 +877,14 @@ def _admission_matches(
     return registered_admission_matches(admission, parsed.artifact_sha256)
 
 
-def _validate_record(
+def validate_record(
     record: Mapping[str, object],
     *,
     charge_work: WorkCharger,
 ) -> tuple[tuple[int, ...], tuple[FutureClass, ...]]:
-    if not isinstance(record, Mapping) or any(type(key) is not str for key in record):
+    if not is_mapping_instance(record) or any(type(key) is not str for key in record):
         raise TypeError("future candidate must be a string-keyed object")
-    if set(record) != _RECORD_FIELDS:
+    if frozenset(record) != _RECORD_FIELDS:
         raise ValueError("future candidate fields differ from the supported schema")
     if record.get("format") != FUTURE_CANDIDATE_FORMAT:
         raise ValueError("unsupported semantic future candidate version")
@@ -886,9 +909,11 @@ def _validate_record(
     raw_controls = record.get("controls")
     raw_children = record.get("ordered_children")
     raw_ranks = record.get("class_rank_candidate")
-    if not isinstance(raw_controls, list) or not isinstance(raw_children, list):
+    if not is_object_list_instance(raw_controls) or not is_object_list_instance(
+        raw_children
+    ):
         raise TypeError("future controls and ordered children must be arrays")
-    if not isinstance(raw_ranks, list):
+    if not is_object_list_instance(raw_ranks):
         raise TypeError("future candidate ranks must be an array")
     class_count = len(raw_controls)
     if not 0 < class_count <= SOURCE_COUNT:
@@ -896,91 +921,17 @@ def _validate_record(
     if len(raw_children) != class_count or len(raw_ranks) != class_count:
         raise ValueError("future class controls, children, and ranks differ in size")
     _charge_work(charge_work, SOURCE_COUNT + 3 * class_count)
-    class_ids = _decode_class_map(decoded, class_count)
-    classes = _decode_class_rows(raw_controls, raw_children, raw_ranks, class_count)
+    class_ids = decode_class_map(
+        decoded,
+        class_count,
+        source_count=SOURCE_COUNT,
+        max_varint_bytes=MAX_CID_VARINT_BYTES,
+    )
+    classes = decode_class_rows(raw_controls, raw_children, raw_ranks, class_count)
     if set(class_ids) != set(range(class_count)):
         raise ValueError("future source map has missing or unused class identifiers")
 
     return class_ids, classes
-
-
-def _decode_class_map(payload: bytes, class_count: int) -> tuple[int, ...]:
-    if type(payload) is not bytes or len(payload) > SOURCE_COUNT * MAX_CID_VARINT_BYTES:
-        raise ValueError("future source map exceeds its bounded varint payload")
-    values: list[int] = []
-    current = 0
-    shift = 0
-    width = 0
-    for byte in payload:
-        width += 1
-        if width > MAX_CID_VARINT_BYTES:
-            raise ValueError("future source map contains an oversized CID varint")
-        current |= (byte & 0x7F) << shift
-        if byte & 0x80:
-            shift += 7
-            continue
-        if current >= class_count:
-            raise ValueError("future source map contains an out-of-range CID")
-        if width > 1 and current < (1 << (7 * (width - 1))):
-            raise ValueError("future source map contains a noncanonical CID varint")
-        values.append(current)
-        if len(values) > SOURCE_COUNT:
-            raise ValueError("future source map has too many source entries")
-        current = 0
-        shift = 0
-        width = 0
-    if width:
-        raise ValueError("future source map ends with a truncated CID varint")
-    if len(values) != SOURCE_COUNT:
-        raise ValueError("future source map is truncated or has extra source entries")
-    return tuple(values)
-
-
-def _decode_class_rows(
-    raw_controls: list[object],
-    raw_children: list[object],
-    raw_ranks: list[object],
-    class_count: int,
-) -> tuple[FutureClass, ...]:
-    result: list[FutureClass] = []
-    for raw_control, raw_row, raw_rank in zip(
-        raw_controls, raw_children, raw_ranks, strict=True
-    ):
-        if not isinstance(raw_control, list) or len(raw_control) != 2:
-            raise ValueError("future class control is malformed")
-        kind, coefficient = raw_control
-        if kind == "fork":
-            if type(coefficient) is not int or not 2 <= coefficient <= 9:
-                raise ValueError("future Fork control needs its exact coefficient")
-            control = FutureControl("fork", coefficient)
-        elif kind == "landmine":
-            if coefficient is not None:
-                raise ValueError("future Landmine control cannot carry a coefficient")
-            control = FutureControl("landmine", coefficient)
-        else:
-            raise ValueError("future class control is neither Fork nor Landmine")
-        if not isinstance(raw_row, list) or len(raw_row) != 2:
-            raise ValueError("future class row must preserve two ordered slots")
-        children: list[int | None] = []
-        for target in raw_row:
-            if target is None:
-                children.append(None)
-            elif type(target) is int and 0 <= target < class_count:
-                children.append(target)
-            else:
-                raise ValueError("future ordered child leaves the class table")
-        if control.kind == "landmine" and children != [None, None]:
-            raise ValueError("future Landmine row carries child edges")
-        if control.kind == "fork" and any(child is None for child in children):
-            raise ValueError("future Fork row lost an ordered child")
-        if raw_rank is None:
-            rank = None
-        elif type(raw_rank) is int and raw_rank >= 0:
-            rank = raw_rank
-        else:
-            raise ValueError("future rank must be a nonnegative integer or null")
-        result.append(FutureClass(control, (children[0], children[1]), rank))
-    return tuple(result)
 
 
 __all__ = [
@@ -993,5 +944,8 @@ __all__ = [
     "SemanticFutureProviderLease",
     "SemanticFutureProviderStore",
     "UnrankedChildSelection",
+    "future_candidate_sha256",
+    "preflight_future_candidate",
     "parse_future_candidate",
+    "validate_record",
 ]

@@ -7,9 +7,10 @@ stream evaluator deliberately does not memoize emitted intermediate bits.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, MutableMapping, MutableSequence, Sequence
+from collections.abc import Iterator, Mapping, MutableMapping, MutableSequence, Sequence
 from dataclasses import dataclass
 from enum import IntEnum
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from devtools.verification.collatz_carry_ranges import (
@@ -18,6 +19,7 @@ from devtools.verification.collatz_carry_ranges import (
 from devtools.verification.collatz_carry_ranges import (
     CarryRangeTransfer as _CarryRangeTransfer,
 )
+from devtools.verification.lazy_collatz_metrics import collect_lazy_collatz_metrics
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
@@ -44,6 +46,7 @@ from number_compiler.resources.proof_payload_admission import (
 )
 
 if TYPE_CHECKING:
+    from devtools.verification.lazy_collatz_range import CollatzRangeEvaluator
     from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 
 
@@ -60,6 +63,9 @@ class _Program:
             for value in (self.left, self.right, self.shift)
         ):
             raise ValueError("invalid symbolic Collatz program")
+
+
+Program = _Program
 
 
 class Mul3Carry(IntEnum):
@@ -91,6 +97,9 @@ class _Mul3Port:
         return total & 1
 
 
+Mul3Port = _Mul3Port
+
+
 @dataclass(slots=True)
 class _ShiftPort:
     program: ActionProgramID
@@ -106,10 +115,16 @@ class _ShiftPort:
             raise ValueError("shift ports require a symbolic program and coordinate")
 
 
+ShiftPort = _ShiftPort
+
+
 @dataclass(frozen=True, slots=True)
 class _SummaryKey:
     program: ActionProgramID
     width: int
+
+
+SummaryKey = _SummaryKey
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,10 +132,16 @@ class _SourceRangeKey:
     width: int
 
 
+SourceRangeKey = _SourceRangeKey
+
+
 @dataclass(frozen=True, slots=True)
 class _ResultKey:
     kind: str
     steps: int
+
+
+ResultKey = _ResultKey
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +169,26 @@ class CollatzLazyView:
     program: ActionProgramID
     width: int
     exact_width: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class LazyCollatzPayloadAuditSnapshot:
+    """Read-only view of stores and values needed by the independent payload audit."""
+
+    token: ArenaToken
+    source_ref: ArenaHandle
+    initial: CollatzLazyView
+    programs: tuple[Program, ...]
+    program_owner: int
+    program_store: object
+    program_key_owner: int
+    program_key_store: object
+    summary_owner: int
+    summary_store: object
+    summary_payloads: Mapping[SummaryKey, _CarryRangeSummary]
+    mul3_owner: int
+    mul3_store: object
+    mul3_payloads: Mapping[SummaryKey, object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -316,7 +357,7 @@ class LazyCollatzApplication:
             payloads=lambda: self._source_ranges.items(),
             evict=self._evict_source_ranges,
         )
-        identity = self._intern(_Program("identity"))
+        identity = self.intern_record(_Program("identity"))
         width = max(i for i, bit in enumerate(digits) if bit) + 1
         self.initial = CollatzLazyView(self._source_ref, identity, width)
         self._set_exact_program_width(identity.local_id, width)
@@ -337,6 +378,26 @@ class LazyCollatzApplication:
             self._validate_microblock_program,
         )
         self._range_evaluator = CollatzRangeEvaluator(self)
+
+    def payload_audit_snapshot(self) -> LazyCollatzPayloadAuditSnapshot:
+        """Return immutable program metadata and exact stores for forensic audits."""
+        memo = self._mul3_summaries.audit_snapshot()
+        return LazyCollatzPayloadAuditSnapshot(
+            token=self.token,
+            source_ref=self._source_ref,
+            initial=self.initial,
+            programs=tuple(self._programs),
+            program_owner=self._program_owner,
+            program_store=self._programs,
+            program_key_owner=self._program_key_owner,
+            program_key_store=self._program_ids,
+            summary_owner=self._summary_owner,
+            summary_store=self._summaries,
+            summary_payloads=MappingProxyType(dict(self._summaries)),
+            mul3_owner=memo.owner,
+            mul3_store=memo.container,
+            mul3_payloads=memo.payload_view,
+        )
 
     def _validate_microblock_program(self, program: ActionProgramID) -> _Program:
         if type(program) is not ActionProgramID:
@@ -397,7 +458,62 @@ class LazyCollatzApplication:
 
         return project_program_bit(self, program, position)
 
-    def _finish_program_scan(self, program: ActionProgramID, width: int) -> None:
+    def program_record(self, program: ActionProgramID) -> Program:
+        """Resolve one authenticated immutable program node for an evaluator."""
+        if type(program) is not ActionProgramID:
+            raise TypeError("Collatz program lookup requires an action-program ID")
+        program.validate(self.token, "program", size=len(self._programs))
+        return self._programs[program.local_id]
+
+    @property
+    def program_count(self) -> int:
+        return len(self._programs)
+
+    @property
+    def source_width(self) -> int:
+        return len(self._source)
+
+    def source_cell(self, position: int) -> int:
+        geometry = self.source_geometry
+        return self._source[position] if geometry is None else geometry.read(position)
+
+    def source_block(self, block: int) -> int:
+        """Read a bounded aligned block from the original source."""
+        return self._source_block(block)
+
+    def known_program_width(self, program: ActionProgramID) -> int | None:
+        """Return an exact source width when the program has one."""
+        return self._known_program_width(program)
+
+    @property
+    def range_evaluator(self) -> CollatzRangeEvaluator:
+        """Expose the scoped finite range evaluator to sibling projections."""
+        return self._range_evaluator
+
+    def append_program(
+        self,
+        view: CollatzLazyView,
+        operation: Program,
+        width: int,
+        *,
+        exact_width: bool | None = None,
+    ) -> CollatzLazyView:
+        """Append one admitted symbolic operation to an existing lazy view."""
+        return self._append(view, operation, width, exact_width=exact_width)
+
+    def cached_microblock(
+        self, program: ActionProgramID, block: int
+    ) -> ExactMicroblock | None:
+        """Read one retained microblock through its canonical program key."""
+        return self._microblocks.get(self._microblock_key(program, block))
+
+    def publish_microblock(
+        self, program: ActionProgramID, block: int, value: ExactMicroblock
+    ) -> None:
+        """Publish one computed microblock through its bounded cache."""
+        self._microblocks.put(self._microblock_key(program, block), value)
+
+    def finish_program_scan(self, program: ActionProgramID, width: int) -> None:
         """Keep one complete capped stage plus its bounded right halo.
 
         Physical branch discovery consumes a program from left to right before
@@ -445,7 +561,7 @@ class LazyCollatzApplication:
     def _source(self) -> tuple[int, ...]:
         return self.original.digits
 
-    def _intern(self, node: _Program) -> ActionProgramID:
+    def intern_record(self, node: _Program) -> ActionProgramID:
         found = self._program_ids.get(node)
         if found is not None:
             if node.kind == "compose":
@@ -497,12 +613,12 @@ class LazyCollatzApplication:
             if exact:
                 self._set_exact_program_width(result.program.local_id, width)
             return result
-        atom = self._intern(operation)
+        atom = self.intern_record(operation)
         if view.program.local_id == 0:
             program = atom
         else:
             self.ledger.bump("composition_requests")
-            program = self._intern(
+            program = self.intern_record(
                 _Program("compose", view.program.local_id, atom.local_id)
             )
             self.program_compositions += 1
@@ -560,8 +676,9 @@ class LazyCollatzApplication:
                 out.append(ActionProgramID(self.token, "program", node_id))
         return out
 
-    def _stream(self, view: CollatzLazyView) -> Iterator[int]:
+    def stream(self, view: CollatzLazyView) -> Iterator[int]:
         """An iterative stream; each stage has one finite carry/shift counter."""
+        self._validate(view)
         ports: list[_Mul3Port | _ShiftPort] = []
         for reference in self._operations(view):
             node = self._programs[reference.local_id]
@@ -828,7 +945,7 @@ class LazyCollatzApplication:
         ):
             raise ValueError("foreign endpoint lowering capability")
         self.ledger.bump("endpoint_lowering_requests")
-        stream = self._stream(view)
+        stream = self.stream(view)
         output = tuple(next(stream) for _ in range(view.width))
         self.ledger.bump("explicitly_lowered_digits", len(output))
         self.ledger.bump("explicitly_materialized_endpoints")
@@ -853,30 +970,15 @@ class LazyCollatzApplication:
         return self.ledger.entries
 
     def metrics(self) -> dict[str, int]:
-        return {
-            "macro_actions": len(self._programs),
-            "macro_compositions": self.program_compositions,
-            "macro_applications": self.applications,
-            "nonlinear_branch_evaluations": self.branch_evaluations,
-            "exact_endpoint_entries": 0,
-            "summary_entries": len(self._summaries)
-            + len(self._source_ranges)
-            + len(self._mul3_summaries),
-            "carry_cell_evaluations": self.carry_cell_evaluations,
-            "maximum_carry": self.maximum_carry,
-            "point_queries": self.point_queries,
-            "fixed_cycle_skips": self.fixed_cycle_skips,
-            "retained_entries": self.retained_entries(),
-            "source_entries": 1,
-            "summary_queries": self.summary_queries,
-            "source_transfer_compositions": self.source_transfer_compositions,
-            "symbolic_port_queries": self.ledger.counters.get(
-                "symbolic_port_queries", 0
+        return collect_lazy_collatz_metrics(
+            self,
+            program_entries=len(self._programs),
+            summary_entries=(
+                len(self._summaries)
+                + len(self._source_ranges)
+                + len(self._mul3_summaries)
             ),
-            "symbolic_maximum_port_bits": self.ledger.counters.get(
-                "symbolic_maximum_port_bits", 0
-            ),
-        }
+        )
 
 
 register_proof_geometry_fields(

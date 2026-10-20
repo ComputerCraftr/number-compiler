@@ -61,12 +61,10 @@ def attach_projector_memos(
 ) -> None:
     if len(memos) != 5:
         raise ValueError("bimachine projector requires five owned memos")
-    projector._fwd = cast(MutableMapping[tuple[int, int], int | None], memos[0])
-    projector._rev = cast(MutableMapping[tuple[int, int], int | None], memos[1])
-    projector._block = cast(MutableMapping[tuple[int, int, int], int], memos[2])
-    projector._fwd_power = cast(
-        MutableMapping[tuple[int, int, int], int | None], memos[3]
-    )
-    projector._rev_power = cast(
-        MutableMapping[tuple[int, int, int], int | None], memos[4]
+    projector.bind_cache_stores(
+        forward=cast(MutableMapping[tuple[int, int], int | None], memos[0]),
+        reverse=cast(MutableMapping[tuple[int, int], int | None], memos[1]),
+        block=cast(MutableMapping[tuple[int, int, int], int], memos[2]),
+        forward_power=cast(MutableMapping[tuple[int, int, int], int | None], memos[3]),
+        reverse_power=cast(MutableMapping[tuple[int, int, int], int | None], memos[4]),
     )

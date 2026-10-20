@@ -17,7 +17,7 @@ from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 
 
 def digits(value: int, radix: int) -> tuple[int, ...]:
-    result = []
+    result: list[int] = []
     while value:
         value, digit = divmod(value, radix)
         result.append(digit)
@@ -33,11 +33,11 @@ def test_correctly_encoded_original_suffix_is_forbidden_retained_payload(
     # digit is mathematically correct; provenance alone does not admit a tail.
     term = PoweredCollatzTerm(54, 1)
     arena = OriginalRadixArena(term.resource_ledger)
-    original = arena.encode(term._source_construction, radix)
+    original = arena.encode(term.original_source_construction, radix)
     assert original.binary_start == 0
-    key = OriginalRadixKey(term._source_construction, radix, shift)
+    key = OriginalRadixKey(term.original_source_construction, radix, shift)
     record = OriginalRadixSource(
-        term._source_construction, radix, digits(54 >> shift, radix), shift
+        term.original_source_construction, radix, digits(54 >> shift, radix), shift
     )
     term.resource_ledger.reserve(arena.owner, entries=1, nodes=len(record.digits) + 1)
     arena.sources[key] = record
@@ -54,7 +54,7 @@ def test_source_start_boolean_cannot_alias_full_original_coordinate(
 ) -> None:
     term = PoweredCollatzTerm(54, 1)
     arena = OriginalRadixArena(term.resource_ledger)
-    record = arena.encode(term._source_construction, 3)
+    record = arena.encode(term.original_source_construction, 3)
     key = next(iter(arena.sources))
     del arena.sources[key]
     malformed_key = replace(key, binary_start=False) if target == "key" else key
@@ -84,7 +84,9 @@ def test_radix_parameter_map_cannot_alias_a_different_execution_context() -> Non
 
     term = PoweredCollatzTerm(54, 1)
     collatz_radix_digit(term, 3, 0)
-    store = term._radix_projections
+    snapshot = term.radix_projection_audit_source(term.resource_ledger)
+    assert snapshot is not None
+    store = snapshot.projections
     assert isinstance(store, LedgerDict)
     term.resource_ledger.reserve(store.owner, entries=1)
     store[6] = store[3]

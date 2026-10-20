@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     import number_compiler.hashlife.execution.continuations.diamond_tasks
 
 from array import array
+from collections.abc import Callable
 from itertools import product
 from typing import TYPE_CHECKING, Never
 
@@ -104,7 +105,10 @@ def setup(
     geometry.span(source, effect.blank, len(source))
     runtime = DiamondRuntime(LazyCompiler(ledger), geometry)
     kernel = runtime.kernels.intern(effect)
-    arena = runtime._primitive_macro_arena()
+    arena = cast(
+        "Callable[[], PrimitiveMacroArena]",
+        object.__getattribute__(runtime, "_primitive_macro_arena"),
+    )()
     return runtime, arena, kernel
 
 
@@ -226,7 +230,7 @@ def test_blank_termination_negative_growth_and_identity_channels() -> None:
     effect = primitive()
     runtime, arena, kernel = setup(effect, (3, 0))
     quotient = arena.compile(kernel, runtime.cells.source(0, 1))
-    changes = set()
+    changes: set[int] = set()
     for a, b in product(range(2), repeat=2):
         growth = observe(arena, quotient, a, b, 0)["growth"]
         assert growth is not None
@@ -476,7 +480,7 @@ def test_wrong_or_foreign_quotient_publication_is_rejected_before_mutation() -> 
     before = runtime.ledger.snapshot()
     for result in (0, kernel, foreign):
         with pytest.raises(ValueError):
-            runtime._publish(
+            runtime.publish_task(
                 PrimitiveMacroKey(kernel, cell), cast(LocalInterfaceID, result)
             )
     assert runtime.ledger.snapshot() == before

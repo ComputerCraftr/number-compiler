@@ -6,13 +6,7 @@ import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
-from number_compiler.hashlife.execution.causal_frames import (
-    ReverseInterfaceFrame,
-)
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
-from number_compiler.hashlife.execution.tile_causal_interfaces import (
-    CausalInterfacePayload,
-)
 from number_compiler.hashlife.tiles.tiles import TileAlphabetID, TileLease
 from tests.support.reference_arithmetic import carry_summary as _sectors
 from tests.support.reverse_interface import reverse_interface_payload
@@ -64,14 +58,16 @@ def test_cold_cancellation_merges_bounded_consumer_without_exact_output(
             forbidden()
 
         monkeypatch.setattr(scheduler, "complete", forbidden)
-        monkeypatch.setattr(scheduler, "_complete_direct", forbidden)
+        monkeypatch.setattr(scheduler, "complete_direct", forbidden)
         monkeypatch.setattr(tiles, "leaf", source_padding_only)
         before = ledger.counters.get("completed_result_publications", 0)
-        observed = []
+        observed: list[ReverseBoundOutput] = []
         for source in (a, b):
             engine = CausalTileEngine(scheduler)
             payload = reverse_interface_payload(engine, action, source.tile)
-            observed.append(payload.bound_reverse_output)
+            output = payload.bound_reverse_output
+            assert type(output) is ReverseBoundOutput
+            observed.append(output)
         assert observed[0] == observed[1]
         assert ledger.counters.get("completed_result_publications", 0) == before
         assert ledger.counters.get("tile_causal_boundary_output_completions", 0) == 0
@@ -98,18 +94,15 @@ def test_equal_sector_and_current_carry_projections_do_not_merge_next_carry(
             raise AssertionError("negative control constructed an exact successor")
 
         monkeypatch.setattr(scheduler, "complete", forbidden)
-        monkeypatch.setattr(scheduler, "_complete_direct", forbidden)
+        monkeypatch.setattr(scheduler, "complete_direct", forbidden)
         monkeypatch.setattr(tiles, "leaf", forbidden)
-        outputs = []
+        outputs: list[ReverseBoundOutput] = []
         for source in (a, b):
-            payload = CausalTileEngine(scheduler)._run(
-                ReverseInterfaceFrame(
-                    (primitive, source.tile, *adapter.initial_ports(primitive)),
-                ),
-                tile_result=False,
+            payload = reverse_interface_payload(
+                CausalTileEngine(scheduler), primitive, source.tile
             )
-            assert type(payload) is CausalInterfacePayload
-            assert type(payload.bound_reverse_output) is ReverseBoundOutput
-            outputs.append(payload.bound_reverse_output)
+            output = payload.bound_reverse_output
+            assert type(output) is ReverseBoundOutput
+            outputs.append(output)
         assert outputs[0] != outputs[1]
         assert outputs[0].apply(0, 0) != outputs[1].apply(0, 0)

@@ -134,7 +134,7 @@ def report() -> dict[str, object]:
         for shift in range(6)
     )
     free_rows = {_context_row(rows, digit) for digit in range(64)}
-    witnesses = []
+    witnesses: list[dict[str, object]] = []
     for old_class, shift, source_a, source_b, digit_a, digit_b in _WITNESSES:
         action_a = tuple(rows[shift][carry][digit_a] for carry in range(3))
         action_b = tuple(rows[shift][carry][digit_b] for carry in range(3))

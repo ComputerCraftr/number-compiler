@@ -2,78 +2,102 @@
 
 from __future__ import annotations
 
-import builtins
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable
+from typing import cast
 
 import pytest
 
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
-from number_compiler.resources.process_cache import get_process_cache
+from number_compiler.resources.process_cache import ProcessCache, get_process_cache
 from number_compiler.sequences.comma import certificates
 from number_compiler.sequences.comma.future_authority import (
     SOURCE20_FIRST_FORK_INDEX,
     SOURCE20_FIRST_FORK_VALUE,
 )
+from tests.support.comma_certificate_cache import forbid_certificate_asset_access
 
 
-@pytest.mark.parametrize("shared_cache", [False, True])
+def _admission_marker(generation: int) -> tuple[tuple[str, str], str]:
+    marker = cast(
+        Callable[[int], tuple[tuple[str, str], str]],
+        object.__getattribute__(certificates, "_admission_marker"),
+    )
+    return marker(generation)
+
+
+def _seed_verified_admission(cache: ProcessCache) -> None:
+    with cache.acquire(
+        "comma-prefix-certificate",
+        certificates.CERTIFICATE_ID,
+        (20, 10, certificates.CERTIFICATE_SHA256),
+    ) as lease:
+        generation = lease.stats().generation
+        _local_key, tag = _admission_marker(generation)
+        assert lease.put(
+            (
+                certificates.CERTIFIED_MAX_INDEX,
+                SOURCE20_FIRST_FORK_INDEX,
+                SOURCE20_FIRST_FORK_VALUE,
+            ),
+            (certificates.CERTIFICATE_SHA256, tag),
+        )
+
+
+@pytest.mark.parametrize(
+    "full_asset",
+    (
+        pytest.param(True, marks=pytest.mark.validation),
+        pytest.param(False, id="warm-authorized-process-cache"),
+    ),
+)
 def test_verified_admission_does_not_reopen_or_hash_asset(
-    monkeypatch: pytest.MonkeyPatch, shared_cache: bool
+    monkeypatch: pytest.MonkeyPatch,
+    full_asset: bool,
 ) -> None:
+    # The full-asset case owns a real cold packaged-forest traversal. The unit
+    # case seeds the same verified payload with an issuer-generated admission
+    # marker so it can exercise shared and local warm hits without repeating
+    # the multi-megabyte verifier.
     cache = get_process_cache()
     cache.reset()
     ledger = ResourceLedger()
     memo = certificates.new_certificate_memo(ledger)
     try:
+        if full_asset:
+            certificates.require_certified_index(
+                1, ledger, 1_000_000, shared_cache=True, memo=memo
+            )
+        else:
+            _seed_verified_admission(cache)
+            certificates.require_certified_index(
+                1, ledger, 1_000_000, shared_cache=True, memo=memo
+            )
+        read_bytes = ledger.counters.get("comma_certificate_read_bytes", 0)
+        assert (read_bytes > 0) is full_asset
+
+        forbid_certificate_asset_access(monkeypatch)
         certificates.require_certified_index(
-            1, ledger, 1_000_000, shared_cache=shared_cache, memo=memo
+            20, ledger, 1_000_000, shared_cache=True, memo=memo
         )
-        read_bytes = ledger.counters["comma_certificate_read_bytes"]
-
-        def forbidden(*args: object, **kwargs: object) -> None:
-            raise AssertionError("cached admission attempted package I/O or hashing")
-
-        original_import = builtins.__import__
-
-        def no_forest_import(
-            name: str,
-            globals: Mapping[str, object] | None = None,
-            locals: Mapping[str, object] | None = None,
-            fromlist: Sequence[str] | None = None,
-            level: int = 0,
-        ) -> object:
-            if name == "number_compiler.sequences.comma.forest_verifier":
-                raise AssertionError("cached admission imported the forest verifier")
-            return original_import(name, globals, locals, fromlist, level)
-
-        monkeypatch.setattr(certificates, "files", forbidden)
-        monkeypatch.setattr(certificates, "sha256", forbidden)
-        monkeypatch.setattr(builtins, "__import__", no_forest_import)
-        certificates.require_certified_index(
-            20, ledger, 1_000_000, shared_cache=shared_cache, memo=memo
-        )
-        assert ledger.counters["comma_certificate_read_bytes"] == read_bytes
+        assert ledger.counters.get("comma_certificate_read_bytes", 0) == read_bytes
         assert ledger.counters["comma_certificate_local_hits"] == 1
-        if shared_cache:
-            other = ResourceLedger()
-            certificates.require_certified_index(100, other, 1_000_000)
-            assert other.counters["comma_certificate_cache_hits"] == 1
-            assert "comma_certificate_read_bytes" not in other.counters
-            original_get = memo.get
+        other = ResourceLedger()
+        certificates.require_certified_index(100, other, 1_000_000)
+        assert other.counters["comma_certificate_cache_hits"] == 1
+        assert "comma_certificate_read_bytes" not in other.counters
+        original_get = memo.get
 
-            def reset_during_lookup(key: tuple[str, str]) -> str | None:
-                previous = original_get(key)
-                cache.reset()
-                return previous
+        def reset_during_lookup(key: tuple[str, str]) -> str | None:
+            previous = original_get(key)
+            cache.reset()
+            return previous
 
-            with monkeypatch.context() as race:
-                race.setattr(memo, "get", reset_during_lookup)
-                with pytest.raises(RuntimeError, match="stale|invalidated"):
-                    certificates.require_certified_index(
-                        1, ledger, 1_000_000, memo=memo
-                    )
-            with pytest.raises(AssertionError, match="package I/O"):
+        with monkeypatch.context() as race:
+            race.setattr(memo, "get", reset_during_lookup)
+            with pytest.raises(RuntimeError, match="stale|invalidated"):
                 certificates.require_certified_index(1, ledger, 1_000_000, memo=memo)
+        with pytest.raises(AssertionError, match="package I/O"):
+            certificates.require_certified_index(1, ledger, 1_000_000, memo=memo)
     finally:
         cache.reset()
 
@@ -87,24 +111,13 @@ def test_reset_during_admission_publication_removes_failed_local_entry(
         # Seed the already-verified shared payload directly. This test targets
         # invalidation during local publication, not the cold package verifier;
         # the cold read/hash path has independent coverage above.
-        with cache.acquire(
-            "comma-prefix-certificate",
-            certificates.CERTIFICATE_ID,
-            (20, 10, certificates.CERTIFICATE_SHA256),
-        ) as lease:
-            generation = lease.stats().generation
-            _local_key, tag = certificates._admission_marker(generation)
-            assert lease.put(
-                (
-                    certificates.CERTIFIED_MAX_INDEX,
-                    SOURCE20_FIRST_FORK_INDEX,
-                    SOURCE20_FIRST_FORK_VALUE,
-                ),
-                (certificates.CERTIFICATE_SHA256, tag),
-            )
+        _seed_verified_admission(cache)
         ledger = ResourceLedger()
         memo = certificates.new_certificate_memo(ledger)
-        original_set = OwnedMemo.__setitem__
+        original_set = cast(
+            Callable[[OwnedMemo[tuple[str, str], str], tuple[str, str], str], None],
+            object.__getattribute__(OwnedMemo, "__setitem__"),
+        )
 
         def reset_after_set(
             store: certificates.CertificateMemo, key: tuple[str, str], value: str
@@ -145,9 +158,9 @@ def test_admission_marker_binds_first_fork_metadata(
     monkeypatch: pytest.MonkeyPatch, field: str, replacement: int
 ) -> None:
     """A local memo cannot survive a changed fork witness."""
-    original = certificates._admission_marker(0)
+    original = _admission_marker(0)
     monkeypatch.setattr(certificates, field, replacement)
-    changed = certificates._admission_marker(0)
+    changed = _admission_marker(0)
     assert changed[0] == original[0]
     assert changed[1] != original[1]
 

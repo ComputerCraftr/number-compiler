@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
@@ -23,13 +23,16 @@ from number_compiler.hashlife.interfaces.semantic_state_codec import StateCodecA
 from number_compiler.hashlife.interfaces.semantic_structures import StructureArena
 from number_compiler.projection.lazy_radix import collatz_radix_digit
 from number_compiler.projection.radix_fused_action import (
+    FusedDivisionAction,
     FusedRadixArena,
     FusedRadixBindingKey,
 )
 from number_compiler.projection.radix_original_source import OriginalRadixArena
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
+from number_compiler.resources.owned_memo import OwnedMemo
 from number_compiler.resources.semantic_payload import SemanticPayloadRegistry
+from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.assertions import (
     assert_mutation_rejected,
@@ -47,7 +50,7 @@ def registry(
     ledger: ResourceLedger,
 ) -> SemanticPayloadRegistry:
     diamond = DiamondPayloadRegistry(ledger)
-    return SemanticPayloadRegistry(ledger, lambda value: False, diamond._handle)
+    return SemanticPayloadRegistry(ledger, lambda value: False, diamond.valid_handle)
 
 
 def codec() -> tuple[StateCodecArena, StateCodec]:
@@ -212,11 +215,23 @@ def test_public_radix_inventory_matches_actual_native_or_complete_action_route(
 def test_actual_fused_binding_must_match_stage_and_source_mode() -> None:
     term = PoweredCollatzTerm(27, 1)
     collatz_radix_digit(term, 10, 0)
-    projection = term._radix_projections[10]
+    projection = term.radix_application(10, term.maximum_width)
     key = FusedRadixBindingKey(1)
-    value = next(iter(projection._fused_actions.values()))
-    term.resource_ledger.reserve(projection._fused_actions.owner, entries=1)
-    projection._fused_actions._data[key] = value
+    fused_snapshot = projection.fused_action_audit_snapshot()
+    value = cast(
+        FusedDivisionAction,
+        next(iter(fused_snapshot.payload_view.values())),
+    )
+    memo = cast(
+        OwnedMemo[FusedRadixBindingKey, FusedDivisionAction],
+        object.__getattribute__(projection, "_fused_actions"),
+    )
+    store = cast(
+        LedgerDict[FusedRadixBindingKey, FusedDivisionAction],
+        object.__getattribute__(memo, "_data"),
+    )
+    term.resource_ledger.reserve(fused_snapshot.owner, entries=1)
+    store[key] = value
     report = collect_ledger_metrics(term.resource_ledger)
     assert report.forbidden_future_payloads > 0
     assert report.representation_boundary_complete == 0
@@ -235,7 +250,7 @@ def test_original_reencoding_is_valid_under_point_scope_without_exact_tree_calls
 
     monkeypatch.setattr(dyadic_tile, "leaf", forbidden)
     monkeypatch.setattr(dyadic_tile, "join", forbidden)
-    record = source_reads_only(arena.encode)(term._source_construction, 3)
+    record = source_reads_only(arena.encode)(term.original_source_construction, 3)
     assert record.digits == (0, 0, 0, 1)
     before = term.resource_ledger.snapshot()
     assert registry(term.resource_ledger).valid(record)
@@ -246,7 +261,7 @@ def test_original_reencoding_is_valid_under_point_scope_without_exact_tree_calls
 def test_exact_source_role_cannot_launder_a_future_radix_encoding() -> None:
     term = PoweredCollatzTerm(27, 1)
     arena = OriginalRadixArena(term.resource_ledger)
-    record = arena.encode(term._source_construction, 3)
+    record = arena.encode(term.original_source_construction, 3)
     original = record.digits
     object.__setattr__(record, "digits", (1, 0, 0, 1))  # 28, not the original 27.
     try:
@@ -263,9 +278,9 @@ def test_same_ledger_distinct_original_cannot_reuse_warm_radix_action() -> None:
     first = PoweredCollatzTerm(27, 1)
     second = PoweredCollatzTerm(29, 1)
     ledger = first.resource_ledger
-    second._ledger = ledger
+    object.__setattr__(second, "_ledger", ledger)
     collatz_radix_digit(first, 6, 0)
-    projection = first._radix_projections[6]
+    projection = first.radix_application(6, first.maximum_width)
     assert_rejected_atomically(
         ledger,
         lambda: projection.digit(second, 0),

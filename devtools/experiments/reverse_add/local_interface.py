@@ -99,8 +99,12 @@ class ReverseLocalInterfaceArena:
         self.output_evaluations = 0
         self.ledger.register_execution_root(self)
         self.identity = (
-            self._intern(BoundarySide.LEFT, self.kernel.initial(BoundarySide.LEFT)),
-            self._intern(BoundarySide.RIGHT, self.kernel.initial(BoundarySide.RIGHT)),
+            self.intern_record(
+                BoundarySide.LEFT, self.kernel.initial(BoundarySide.LEFT)
+            ),
+            self.intern_record(
+                BoundarySide.RIGHT, self.kernel.initial(BoundarySide.RIGHT)
+            ),
         )
 
     @staticmethod
@@ -109,7 +113,9 @@ class ReverseLocalInterfaceArena:
             raise TypeError("reverse port direction must be a BoundarySide")
         return int(side)
 
-    def _intern(self, side: BoundarySide, state: BoundaryState) -> ReversePortStateID:
+    def intern_record(
+        self, side: BoundarySide, state: BoundaryState
+    ) -> ReversePortStateID:
         index = self._side(side)
         found = self._state_keys[index].get(state)
         if found is not None:
@@ -168,7 +174,7 @@ class ReverseLocalInterfaceArena:
         if found is not None:
             self.transition_hits += 1
             return found
-        result = self._intern(side, self.kernel.advance(side, current, symbol))
+        result = self.intern_record(side, self.kernel.advance(side, current, symbol))
         self.ledger.reserve(self._transition_owner, entries=1, nodes=0)
         self._transitions[key] = result
         self.transition_evaluations += 1

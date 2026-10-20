@@ -9,10 +9,12 @@ from typing import TYPE_CHECKING
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
 from number_compiler.arithmetic.contracts.input_validation import require_integer
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.hashlife.execution.source_image_inventory import SourceImageID
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import (
     double_reverse as _double_reverse_keys,
 )
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 from number_compiler.sequences.double_reverse._temporal_bank_authority import (
     issue_source_record,
 )
@@ -28,8 +30,8 @@ from number_compiler.sequences.double_reverse.protected_temporal_bank import (
     protected_periodic_bank,
 )
 from number_compiler.sequences.double_reverse.source_adapter import (
-    _DoubleReverseSource,
-    _DoubleReverseSourceAdapter,
+    DoubleReverseSource,
+    DoubleReverseSourceAdapter,
 )
 from number_compiler.sequences.double_reverse.temporal_bank_output_morphism import (
     CertifiedSpatialBankMorphism,
@@ -42,6 +44,9 @@ from number_compiler.sequences.double_reverse.temporal_birth_ring import (
     MAX_BIRTH_LAYER_HORIZON,
     CertifiedBirthRing,
     certified_birth_ring,
+)
+from number_compiler.sequences.double_reverse.temporal_carry_safety_audit import (
+    CarrySafetyAuditBase,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife import (
     DoubleReverseTemporalHashlife,
@@ -97,7 +102,7 @@ class PointedBankSource:
             or self.engine.ledger is not self.ledger
             or self.engine.scratch_owner != self.scratch_owner
             or self.max_steps != self.engine.max_steps
-            or self.width_bits is not _DoubleReverseSourceAdapter._width_bits
+            or self.width_bits is not DoubleReverseSourceAdapter.width_bits
             or type(self.root) is not int
             or not 0 <= self.root < len(self.arena.nodes)
             or type(self.phase) is not int
@@ -149,7 +154,7 @@ class PointedBankSource:
             raise ValueError("pointed source lineage does not reach this cursor")
 
 
-def _source_suffix(source: PointedBankSource, f_steps: int) -> PointedBankSource:
+def source_suffix(source: PointedBankSource, f_steps: int) -> PointedBankSource:
     """Return the owner-issued suffix of a certified pointed source cursor."""
     source.validate(require_issued_cursor=True)
     f_steps = require_integer(f_steps, "source suffix F-steps", 0)
@@ -451,13 +456,49 @@ def _coordinate(value: int, label: str, *, minimum: int = 0) -> int:
     return value
 
 
-class DoubleReverseBankMixin:
+class DoubleReverseBankMixin(CarrySafetyAuditBase):
     """Source-bound bank producers shared by the public term owner.
 
     The mixin keeps temporal port and source-coordinate policy beside the
     SLP-backed bank owner while its host supplies the already-issued prefix
     and Hashlife shape operations.
     """
+
+    _image: SourceImageID | None
+    _cleanup_complete: bool
+    _threshold_memo: OwnedMemo[int, bytes]
+
+    @property
+    def source_adapter(self) -> DoubleReverseSourceAdapter:
+        return self._adapter
+
+    @property
+    def published_image(self) -> SourceImageID | None:
+        """Return the current endpoint image without starting execution."""
+        return self._image
+
+    @property
+    def cleanup_complete(self) -> bool:
+        return self._cleanup_complete
+
+    def threshold_audit_snapshot(self) -> OwnedMemoAuditSnapshot[int, bytes]:
+        return self._threshold_memo.audit_snapshot()
+
+    @property
+    def source_arena(self) -> LedgerSLPArena:
+        return self._arena
+
+    @property
+    def source_root(self) -> int:
+        return self._source.root
+
+    @property
+    def scratch_owner(self) -> int:
+        return self._scratch_owner
+
+    @property
+    def temporal_engine(self) -> DoubleReverseTemporalHashlife:
+        return self._adapter.temporal_hashlife
 
     @property
     def resource_ledger(self) -> ResourceLedger:
@@ -466,16 +507,16 @@ class DoubleReverseBankMixin:
 
     __slots__ = ()
 
-    _adapter: _DoubleReverseSourceAdapter
+    _adapter: DoubleReverseSourceAdapter
     _arena: LedgerSLPArena
     _ledger: ResourceLedger
     _scratch_owner: int
-    _source: _DoubleReverseSource
+    _source: DoubleReverseSource
     generation: int
     max_steps: int
     max_state_bits: int
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         raise NotImplementedError
 
     def _certified_prefix_entry(
@@ -508,11 +549,11 @@ class DoubleReverseBankMixin:
             width_out,
             self.max_steps,
             self.max_state_bits,
-            self._adapter._width_bits,
+            self._adapter.width_bits,
             entry,
         )
 
-    def _prepare_bank_source(
+    def prepare_bank_source(
         self, *, max_prefix: int
     ) -> tuple[DoubleReverseSourcePrefix, PointedBankSource]:
         entry = self._certified_prefix_entry(
@@ -524,13 +565,13 @@ class DoubleReverseBankMixin:
 
     def exact_temporal_pair(self, pair_position: int) -> ExactTemporalPairPort:
         """Read an exact final pair, preferring its authenticated source bank."""
-        self._check_open()
+        self.check_open()
         pair_position = require_integer(pair_position, "pair position", 0)
         if self.generation < 2:
             raise UncertifiedPointedStencilError(
                 "pointed pair requires at least two physical generations"
             )
-        entry, source = self._prepare_bank_source(
+        entry, source = self.prepare_bank_source(
             max_prefix=min(32, self.generation - 2)
         )
         width = source.width_out
@@ -556,7 +597,7 @@ class DoubleReverseBankMixin:
         self, final_pair_start: int, pair_count: int
     ) -> ExactPointedBankWindow:
         """Emit a bounded exact nonperiodic bank window from powered cones."""
-        self._check_open()
+        self.check_open()
         final_pair_start = require_integer(final_pair_start, "final pair start", 0)
         pair_count = require_integer(pair_count, "pair count", 1)
         if pair_count > 64:
@@ -567,7 +608,7 @@ class DoubleReverseBankMixin:
             raise UncertifiedPointedStencilError(
                 "pointed bank window requires a two-step temporal suffix"
             )
-        _entry, source = self._prepare_bank_source(
+        _entry, source = self.prepare_bank_source(
             max_prefix=min(32, self.generation - 2)
         )
         try:
@@ -589,7 +630,7 @@ class DoubleReverseBankMixin:
         closed Moore class is published only for a proved *finite* input
         motif; it cannot authorize indefinite harmonic continuation.
         """
-        self._check_open()
+        self.check_open()
         final_pair_start = require_integer(final_pair_start, "final pair start", 0)
         pair_count = require_integer(pair_count, "pair count", 1)
         lookback_f_steps = require_integer(lookback_f_steps, "open-ring lookback", 1)
@@ -599,7 +640,7 @@ class DoubleReverseBankMixin:
             raise UncertifiedPointedStencilError(
                 "open temporal ring needs an admitted two-step suffix"
             )
-        _entry, source = self._prepare_bank_source(
+        _entry, source = self.prepare_bank_source(
             max_prefix=min(32, self.generation - 2)
         )
         # Produce a late authenticated source cursor with an ordinary,
@@ -609,7 +650,7 @@ class DoubleReverseBankMixin:
         # source-conditioned port window is closed here.
         if source.f_steps > lookback_f_steps:
             target_width = source.width_out
-            source = _source_suffix(source, lookback_f_steps)
+            source = source_suffix(source, lookback_f_steps)
             if source.width_out != target_width:
                 raise AssertionError("late open-ring source has mismatched width")
         try:
@@ -634,7 +675,7 @@ class DoubleReverseBankMixin:
         source-causal-cone letters witnessed in this horizon. A conditional
         model never grants indefinite authority for the actual seed.
         """
-        self._check_open()
+        self.check_open()
         for counter in (
             _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_SOURCE_PORT_READS,
             _double_reverse_keys.DOUBLE_REVERSE_BIRTH_LAYER_STRIP_STEPS,
@@ -663,7 +704,7 @@ class DoubleReverseBankMixin:
                 raise UncertifiedPointedStencilError(
                     "birth-layer periods need an admitted two-step suffix"
                 )
-            _entry, source = self._prepare_bank_source(
+            _entry, source = self.prepare_bank_source(
                 max_prefix=min(32, self.generation - 2)
             )
             horizon = min(lookback_f_steps, source.f_steps)
@@ -671,7 +712,7 @@ class DoubleReverseBankMixin:
                 raise UncertifiedPointedStencilError(
                     "birth-layer source has no certified F-step horizon"
                 )
-            source = _source_suffix(source, horizon)
+            source = source_suffix(source, horizon)
             return certified_birth_ring(
                 source, pairs=pairs, max_model_states=max_states
             )
@@ -683,7 +724,7 @@ class DoubleReverseBankMixin:
         self, final_pair_start: int, pair_count: int, *, period: int = 2
     ) -> CertifiedSpatialBankMorphism:
         """Emit source-certified spatial output at the requested final time."""
-        self._check_open()
+        self.check_open()
         final_pair_start = require_integer(final_pair_start, "final pair start", 0)
         pair_count = require_integer(pair_count, "pair count", 1)
         period = require_integer(period, "bank period", 1, MAX_PROTECTED_PERIOD)
@@ -691,7 +732,7 @@ class DoubleReverseBankMixin:
             raise UncertifiedPointedStencilError(
                 "spatial bank morphism requires a two-step temporal suffix"
             )
-        _entry, source = self._prepare_bank_source(
+        _entry, source = self.prepare_bank_source(
             max_prefix=min(32, self.generation - 2)
         )
         try:
@@ -709,12 +750,12 @@ class DoubleReverseBankMixin:
         """
         from .temporal_center_cyclotomic import certified_cyclotomic_center_driver
 
-        self._check_open()
+        self.check_open()
         if self.generation < 4:
             raise UncertifiedPointedStencilError(
                 "center monodromy needs four certified physical steps"
             )
-        _entry, source = self._prepare_bank_source(
+        _entry, source = self.prepare_bank_source(
             max_prefix=min(32, self.generation - 4)
         )
         return certified_cyclotomic_center_driver(source)
@@ -731,12 +772,12 @@ class DoubleReverseBankMixin:
         """
         from .temporal_center_cyclotomic import certified_cyclotomic_center
 
-        self._check_open()
+        self.check_open()
         if self.generation < 2:
             raise UncertifiedPointedStencilError(
                 "center join requires a certified two-step source suffix"
             )
-        _entry, source = self._prepare_bank_source(
+        _entry, source = self.prepare_bank_source(
             max_prefix=min(32, self.generation - 2)
         )
         return certified_cyclotomic_center(source, witnesses)
@@ -751,12 +792,12 @@ class DoubleReverseBankMixin:
         """
         from .temporal_seed_morphism import certified_seed_orbit_morphism
 
-        self._check_open()
+        self.check_open()
         if self.generation < 2:
             raise UncertifiedPointedStencilError(
                 "seed temporal morphism needs an authenticated T² suffix"
             )
-        _entry, source = self._prepare_bank_source(
+        _entry, source = self.prepare_bank_source(
             max_prefix=min(32, self.generation - 2)
         )
         return certified_seed_orbit_morphism(
@@ -769,10 +810,10 @@ class DoubleReverseBankMixin:
         """Square from the actual intermediate SLP source root."""
         from .temporal_seed_morphism import square_seed_orbit_morphism
 
-        self._check_open()
+        self.check_open()
         if self.generation < 2:
             raise UncertifiedPointedStencilError("no certified temporal square")
-        _entry, source = self._prepare_bank_source(
+        _entry, source = self.prepare_bank_source(
             max_prefix=min(32, self.generation - 2)
         )
         return square_seed_orbit_morphism(source, earlier)
@@ -786,11 +827,11 @@ class DoubleReverseBankMixin:
             square_seed_orbit_morphism,
         )
 
-        self._check_open()
+        self.check_open()
         exponent = require_integer(exponent, "temporal power exponent", 0)
         if self.generation < 2:
             raise UncertifiedPointedStencilError("no certified temporal power")
-        _entry, source = self._prepare_bank_source(
+        _entry, source = self.prepare_bank_source(
             max_prefix=min(32, self.generation - 2)
         )
         result = certified_seed_orbit_morphism(source, steps=1)
@@ -802,7 +843,7 @@ class DoubleReverseBankMixin:
         self,
     ) -> tuple[int, CertifiedResidueTemporalAction]:
         """Predict source-bound residues modulo 99 and 198."""
-        self._check_open()
+        self.check_open()
         return source_residue_quotient(
             self._arena,
             self._adapter.temporal_hashlife,

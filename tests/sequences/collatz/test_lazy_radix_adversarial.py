@@ -10,6 +10,10 @@ from typing import Never, cast
 
 import pytest
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_list_instance,
+    is_object_tuple,
+)
 from number_compiler.projection.lazy_radix import RadixProjection, collatz_radix_digit
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 
@@ -24,10 +28,20 @@ def _prefix_trace(
         if caller is None or caller.f_code.co_filename != filename:
             return
         for value in tuple(caller.f_locals.values()):
-            if not isinstance(value, (list, tuple)) or len(value) < 32:
+            digits: list[object] | tuple[object, ...]
+            if is_object_list_instance(value):
+                digits = value
+            elif is_object_tuple(value):
+                digits = value
+            else:
                 continue
-            if all(type(digit) is int and 0 <= digit < 3 for digit in value):
-                decoded = sum(digit * 3**index for index, digit in enumerate(value))
+            if len(digits) < 32:
+                continue
+            if all(type(digit) is int and 0 <= digit < 3 for digit in digits):
+                integer_digits = cast(list[int] | tuple[int, ...], digits)
+                decoded = sum(
+                    digit * 3**index for index, digit in enumerate(integer_digits)
+                )
                 assert decoded != prefix, (
                     "radix carry workspace contains an exact future prefix"
                 )

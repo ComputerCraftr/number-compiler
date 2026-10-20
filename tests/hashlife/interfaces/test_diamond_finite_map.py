@@ -1,9 +1,15 @@
 """Cross-side primitive continuations preserve complete finite semantics."""
 
+from collections.abc import Callable
+from typing import cast
+
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
+from number_compiler.arithmetic.contracts.scoped_handles import (
+    ActionProgramID,
+    TransferSummaryID,
+)
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.execution.continuations.diamond_context_program import (
     LEFT_A,
@@ -19,6 +25,20 @@ from number_compiler.hashlife.interfaces.diamond_kernel_bridge import input_expr
 from tests.support.diamond_boundary_expr import context
 
 
+def _finite_function(
+    arena: BoundaryExpressionArena,
+    domain: int,
+    codomain: int,
+    port: PortVariable,
+    evaluate: Callable[[int], int],
+) -> TransferSummaryID:
+    reduce = cast(
+        Callable[[int, int, PortVariable, Callable[[int], int]], TransferSummaryID],
+        object.__getattribute__(arena.unary, "_reduce"),
+    )
+    return reduce(domain, codomain, port, evaluate)
+
+
 def _check_cross_side_map(offset: int, *, metrics: bool) -> None:
     ledger, _, boundaries, arena, action, _ = context()
     primitive = arena.primitive(action)
@@ -26,21 +46,24 @@ def _check_cross_side_map(offset: int, *, metrics: bool) -> None:
     left, right = StateSort(action, 0), StateSort(action, 1)
     port = arena.variable(left, "incoming")
     assert primitive is not None
-    forward = arena.unary._reduce(
+    forward = _finite_function(
+        arena,
         primitive.left_count,
         primitive.right_count,
         LEFT_A,
         lambda value: value % primitive.right_count,
     )
     assert primitive is not None
-    backward = arena.unary._reduce(
+    backward = _finite_function(
+        arena,
         primitive.right_count,
         primitive.left_count,
         RIGHT_A,
         lambda value: 2 * value + offset,
     )
     assert primitive is not None
-    expected = arena.unary._reduce(
+    expected = _finite_function(
+        arena,
         primitive.left_count,
         primitive.left_count,
         LEFT_A,
@@ -110,11 +133,11 @@ def test_foreign_map_argument_and_port_reject_before_warm_lookup_or_mutation() -
         primitive.right_count,
         primitive.left_count,
     )
-    function = arena.unary._reduce(domain, codomain, RIGHT_A, lambda code: code + 1)
+    function = _finite_function(arena, domain, codomain, RIGHT_A, lambda code: code + 1)
     arena.finite_map(source, target, function, x)
     other_x = foreign.variable(StateSort(foreign_action, 1), "x")
-    wrong_port = arena.unary._reduce(
-        domain, codomain, PortVariable(0, 0, "foreign", 0), lambda code: code + 1
+    wrong_port = _finite_function(
+        arena, domain, codomain, PortVariable(0, 0, "foreign", 0), lambda code: code + 1
     )
     foreign_function = foreign_boundary.kernels.constant(codomain, 0)
     before = ledger.snapshot()
@@ -133,7 +156,8 @@ def test_foreign_map_argument_and_port_reject_before_warm_lookup_or_mutation() -
 def test_finite_map_node_and_identity_reservation_are_atomic() -> None:
     ledger, _, _, arena, action, _ = context()
     source, target, variable, primitive = _map_argument(arena, action)
-    function = arena.unary._reduce(
+    function = _finite_function(
+        arena,
         primitive.right_count,
         primitive.left_count,
         RIGHT_A,

@@ -103,10 +103,10 @@ def test_twenty_row_cut_stays_factored_and_never_enumerates_joint_states() -> No
 def test_query_eviction_preserves_canonical_handles_and_live_inventory() -> None:
     arena, _unused_xvar_binding, _unused_yvar_binding, x, y = binary_carry_ports()
     first = arena.choose(x, y, arena.constant(False))
-    assert len(arena._ite) > 0
+    assert len(arena.audit_snapshot().choice_rows) > 0
     count = arena.node_count
     arena.ledger.evict_query_memos()
-    assert len(arena._ite) == 0
+    assert len(arena.audit_snapshot().choice_rows) == 0
     assert arena.node_count == count
     assert arena.choose(y, x, arena.constant(False)) == first
     assert collect_ledger_metrics(arena.ledger).resource_accounting_mismatch == 0
@@ -204,7 +204,8 @@ def test_decision_interner_metrics_separate_existing_keys_identity_and_publicati
     before = arena.ledger.snapshot()
     assert arena.variable(port) == identity
     assert (
-        arena._intern(port, identity.local_id, identity.local_id) == identity.local_id
+        arena.intern_record(port, identity.local_id, identity.local_id)
+        == identity.local_id
     )
     after = arena.ledger.snapshot()
     assert (
@@ -229,7 +230,7 @@ def test_decision_interner_metrics_separate_existing_keys_identity_and_publicati
     )
     assert_rejected_atomically(
         arena.ledger,
-        lambda: arena._intern(PortVariable(0, 0, "carry", 1), -1, 0),
+        lambda: arena.intern_record(PortVariable(0, 0, "carry", 1), -1, 0),
         ValueError,
     )
 
@@ -245,11 +246,11 @@ def test_private_node_interner_probes_integer_ids_without_handle_allocation(
     def forbidden(*_args: object) -> Never:
         raise AssertionError("private canonical lookup allocated a scoped handle")
 
-    monkeypatch.setattr(arena, "_handle", forbidden)
-    assert arena._intern(port, 0, 1) == identity.local_id
+    monkeypatch.setattr(arena, "scoped_handle", forbidden)
+    assert arena.intern_record(port, 0, 1) == identity.local_id
     for invalid in (False, 0.0):
         with pytest.raises(ValueError):
-            arena._intern(port, cast("int", invalid), 1)
+            arena.intern_record(port, cast("int", invalid), 1)
     after = arena.ledger.snapshot()
     assert (after.nodes, after.entries) == (before.nodes, before.entries)
 
@@ -265,19 +266,19 @@ def test_private_node_interner_revalidates_forged_port_coordinates(
     port = PortVariable(0, 0, "validated-port", 0)
     object.__setattr__(port, field, value)
     assert_rejected_atomically(
-        arena.ledger, lambda: arena._intern(port, 0, 1), ValueError
+        arena.ledger, lambda: arena.intern_record(port, 0, 1), ValueError
     )
 
 
 def test_choice_subproblems_use_only_private_integer_identities(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from number_compiler.arithmetic.functions.finite_port_action import _ChoiceIndexKey
+    from number_compiler.arithmetic.functions.finite_port_action import ChoiceIndexKey
 
     arena = FinitePortActionArena()
     ports = tuple(PortVariable(0, 0, "choice-private", bit) for bit in range(3))
     first, second, third = (arena.variable(port) for port in ports)
-    original = arena._handle
+    original = arena.scoped_handle
     calls = 0
 
     def counted(
@@ -287,22 +288,14 @@ def test_choice_subproblems_use_only_private_integer_identities(
         calls += 1
         return original(index)
 
-    monkeypatch.setattr(arena, "_handle", counted)
+    monkeypatch.setattr(arena, "scoped_handle", counted)
     arena.choose(first, arena.choose(second, third, first), third)
     assert calls == 2  # one public handle for each choose result, never subproblems
-    assert all(
-        type(key) is _ChoiceIndexKey
-        and all(
-            type(index) is int
-            for index in (
-                key.condition,
-                key.yes,
-                key.no,
-                result,
-            )
+    for key, result in arena.audit_snapshot().choice_rows:
+        assert type(key) is ChoiceIndexKey
+        assert all(
+            type(index) is int for index in (key.condition, key.yes, key.no, result)
         )
-        for key, result in arena._ite.items()
-    )
 
 
 def test_private_choice_cache_numeric_alias_corruption_is_audited() -> None:
@@ -310,8 +303,12 @@ def test_private_choice_cache_numeric_alias_corruption_is_audited() -> None:
     port = PortVariable(0, 0, "choice-corruption", 0)
     value = arena.variable(port)
     arena.choose(value, arena.constant(False), arena.constant(True))
-    key = next(iter(arena._ite))
-    arena._ite._data[key] = True
+    key = arena.audit_snapshot().choice_rows[0][0]
+    storage = cast(
+        "dict[object, object]",
+        object.__getattribute__(object.__getattribute__(arena, "_ite"), "_data"),
+    )
+    storage[key] = True
     arena.ledger.note_store_mutation()
     assert collect_ledger_metrics(arena.ledger).forbidden_future_payloads > 0
 
@@ -324,11 +321,14 @@ def test_private_integer_interner_is_independently_linked_to_semantic_nodes(
     first = arena.variable(PortVariable(0, 0, "carry", 0))
     second = arena.variable(PortVariable(0, 0, "carry", 1))
     assert collect_ledger_metrics(arena.ledger).forbidden_future_payloads == 0
-    key = next(key for key, index in arena._keys.items() if index == first.local_id)
+    key = next(
+        key for key, index in arena.audit_snapshot().key_rows if index == first.local_id
+    )
     if corruption == "mutated-key":
         object.__setattr__(key, "low", 1)
     else:
-        arena._keys[key] = second.local_id if corruption == "wrong-node" else True
+        storage = cast("dict[object, object]", object.__getattribute__(arena, "_keys"))
+        storage[key] = second.local_id if corruption == "wrong-node" else True
     arena.ledger.note_store_mutation()
     assert collect_ledger_metrics(arena.ledger).forbidden_future_payloads > 0
 
@@ -341,10 +341,14 @@ def test_integer_interner_audit_checks_reduction_order_and_terminals(
     first = arena.variable(PortVariable(0, 0, "carry", 0))
     second = arena.variable(PortVariable(1, 0, "carry", 0))
     assert collect_ledger_metrics(arena.ledger).forbidden_future_payloads == 0
-    key = next(key for key, index in arena._keys.items() if index == second.local_id)
-    node = arena._nodes[second.local_id]
+    key = next(
+        key
+        for key, index in arena.audit_snapshot().key_rows
+        if index == second.local_id
+    )
+    node = arena.audit_snapshot().nodes[second.local_id]
     if corruption == "terminal-payload":
-        object.__setattr__(arena._nodes[0], "low", 1 << 255)
+        object.__setattr__(arena.audit_snapshot().nodes[0], "low", 1 << 255)
     else:
         low = 1 if corruption == "redundant" else first.local_id
         object.__setattr__(key, "low", low)

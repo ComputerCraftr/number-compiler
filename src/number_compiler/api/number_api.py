@@ -36,11 +36,11 @@ if TYPE_CHECKING:
     from number_compiler.arithmetic.functions.state_reduction import (
         ReverseAddGrowthState,
     )
-    from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm, Run
-    from number_compiler.sequences.collatz.block_power import (
+    from number_compiler.resources.collatz_power_metrics import (
         CollatzPhysicalBlockMetrics,
-        PoweredCollatzTerm,
     )
+    from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm, Run
+    from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
     from number_compiler.sequences.collatz.character import (
         CollatzGrowthCharacter,
         CollatzRadialCharacter,
@@ -422,6 +422,21 @@ class NumberCompiler:
         self._powered_terms: OrderedDict[Hashable, object] = OrderedDict()
         self._powered_hits = self._powered_misses = self._powered_evictions = 0
 
+    @property
+    def shared_cache(self) -> bool:
+        """Process-cache policy supplied to family projection adapters."""
+        return self._shared_cache
+
+    @property
+    def max_context_nodes(self) -> int | None:
+        """Context budget supplied to family projection adapters."""
+        return self._max_context_nodes
+
+    @property
+    def max_cache_entries(self) -> int | None:
+        """Memo budget supplied to family projection adapters."""
+        return self._max_cache_entries
+
     def powered_cache_info(self) -> dict[str, int]:
         """Report API-owner reuse separately from each term's runtime ledger."""
         return {
@@ -443,7 +458,7 @@ class NumberCompiler:
 
         clear_process_cache()
 
-    def _powered_term(
+    def powered_term(
         self,
         key: Hashable,
         expected_type: type[_PoweredOwner],

@@ -10,6 +10,7 @@ import pytest
 from number_compiler.api.cli_context import QueryContext
 from number_compiler.api.cli_requests import parse_request
 from number_compiler.api.number_api import AntihydraTermPayload, NumberCompiler
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.process_cache import (
     CacheRecordIssuerMismatch,
@@ -26,6 +27,7 @@ from number_compiler.sequences.antihydra.arithmetic_images import (
 )
 from number_compiler.sequences.antihydra.mahler_action import associated_action
 from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+from tests.support.forensic_cache import process_cache_records
 from tests.support.reference_arithmetic import (
     literal_mahler_step,
     rational_action_components,
@@ -38,6 +40,14 @@ def source_cache(monkeypatch: pytest.MonkeyPatch) -> ProcessCache:
     monkeypatch.setattr(mahler_source_actions, "get_process_cache", lambda: cache)
     monkeypatch.setattr(mahler_cache, "get_process_cache", lambda: cache)
     return cache
+
+
+def _source_action_publisher() -> object:
+    """Borrow the private issuer only for deliberate forged-cache tests."""
+    publisher: object = object.__getattribute__(
+        mahler_source_actions, "_SOURCE_ACTION_PUBLISHER"
+    )
+    return publisher
 
 
 def _prepared(extent: int, *, shared_cache: bool = True) -> AntihydraArithmeticTerm:
@@ -97,7 +107,7 @@ def test_late_demand_consumes_existing_arithmetic_image(
     term.prepare_mahler()
     assert term.arithmetic_workspace is workspace
     assert associated_action(result) == expected
-    assert not term._mahler_prepared
+    assert not term.mahler_prepared
 
 
 def test_retained_binding_rejects_changed_exact_cap_and_disposes() -> None:
@@ -199,10 +209,8 @@ def test_poisoned_occurrence_is_rejected_before_candidate_publication(
     ) as consumer:
         lease = consumer.lease
         assert lease is not None
-        wire = lease.get_issued(
-            (1024, 8), mahler_source_actions._SOURCE_ACTION_PUBLISHER
-        )
-        assert type(wire) is tuple
+        wire = lease.get_issued((1024, 8), _source_action_publisher())
+        assert is_exact_object_tuple(wire)
         altered = list(wire)
         gain, offset, lower, cap = (wire[index] for index in (2, 3, 4, 10))
         assert type(gain) is int and type(offset) is int
@@ -215,7 +223,7 @@ def test_poisoned_occurrence_is_rejected_before_candidate_publication(
         assert lease.put_issued(
             (1024, 8),
             cast(tuple[ImmutableValue, ...], tuple(altered)),
-            mahler_source_actions._SOURCE_ACTION_PUBLISHER,
+            _source_action_publisher(),
         )
     rejected = _prepared(1024)
     with pytest.raises(ValueError, match="source/action domain|centered-11 safety cap"):
@@ -241,15 +249,13 @@ def test_public_process_lease_cannot_forge_mahler_source_action(
     ) as consumer:
         lease = consumer.lease
         assert lease is not None
-        wire = lease.get_issued(
-            (1024, 8), mahler_source_actions._SOURCE_ACTION_PUBLISHER
-        )
-        assert type(wire) is tuple
+        wire = lease.get_issued((1024, 8), _source_action_publisher())
+        assert is_exact_object_tuple(wire)
         full_key = lease.source_qualification, (1024, 8)
-        retained_record = source_cache._entries[full_key]
+        retained_record = process_cache_records(source_cache)[full_key]
         with pytest.raises(CacheRecordIssuerMismatch, match="publisher capability"):
-            lease.put((1024, 8), wire)
-        assert source_cache._entries[full_key] is retained_record
+            lease.put((1024, 8), cast(tuple[ImmutableValue, ...], wire))
+        assert process_cache_records(source_cache)[full_key] is retained_record
 
     monkeypatch.setattr(
         AntihydraArithmeticImageWorkspace, "complete_composite_candidate", _unexpected

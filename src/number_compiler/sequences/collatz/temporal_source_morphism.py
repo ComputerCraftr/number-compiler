@@ -101,7 +101,7 @@ class PointedCollatzSource:
             self.horizon,
         )
 
-    def _verify_issued(self) -> None:
+    def verify_issued(self) -> None:
         certificate = self._issuer
         if (
             type(certificate) is not _SourceCertificate
@@ -166,7 +166,7 @@ def _resolve_true_root(
     """Authenticate one temporal boundary and return its exact integer root."""
     if type(owner) is not PointedCollatzSource:
         raise TypeError("Collatz root publisher requires a checked pointed owner")
-    owner._verify_issued()
+    owner.verify_issued()
     if type(start_tick) is not int or start_tick < 0:
         raise ValueError("physical root start must be a natural tick")
     if known_previous is None:
@@ -184,7 +184,7 @@ def _resolve_true_root(
 
 def _physical_f5(action: SourceClosedPortAction) -> CollatzF5AffineAction:
     """Reduce an issued normalized affine map at its *physical* endpoint."""
-    action._verify_issued()
+    action.verify_issued()
     return _physical_f5_fields(action.action)
 
 
@@ -198,7 +198,7 @@ def _physical_f5_fields(action: DyadicTerminalFieldAction) -> CollatzF5AffineAct
     )
 
 
-def _root_from_admitted_joint_action(
+def root_from_admitted_joint_action(
     owner: PointedCollatzSource,
     joint: CollatzJointRunAction,
     *,
@@ -222,8 +222,6 @@ def _root_from_admitted_joint_action(
         raise ValueError("admitted joint action belongs to another pointed source")
     port_action = None
     if joint.phase == 0:
-        if joint.fields.source_residue is None or joint.fields.source_modulus is None:
-            raise ValueError("joint field action lost its source parity cylinder")
         port_action = SourceClosedPortAction(
             joint.fields,
             SourceCongruence(
@@ -344,7 +342,7 @@ class CertifiedCollatzRootMorphism:
             or certificate.port_action is not self.port_action
         ):
             raise ValueError("pointed Collatz morphism lost issued authority")
-        self.owner._verify_issued()
+        self.owner.verify_issued()
         if (
             any(
                 type(v) is not int
@@ -371,7 +369,7 @@ class CertifiedCollatzRootMorphism:
                 "pointed physical Collatz action violates exact clocks or ports"
             )
         if self.port_action is not None:
-            self.port_action._verify_issued()
+            self.port_action.verify_issued()
             if (
                 self.port_action.action.steps != self.division_ticks
                 or self.port_action.odd_events != self.odd_ticks
@@ -861,7 +859,7 @@ def certified_collatz_root_from_port(
     """Lift a previously producer-issued complete parity word, with its guard."""
     if type(action) is not SourceClosedPortAction:
         raise TypeError("root action requires an issued source-closed parity word")
-    action._verify_issued()
+    action.verify_issued()
     start_tick = (
         0
         if known_previous is None
@@ -981,7 +979,7 @@ def _compile_true_root_morphism(
     joint_action = result.joint_action
     if joint_action is None:
         raise ValueError("source compiler did not publish a joint run action")
-    return _root_from_admitted_joint_action(
+    return root_from_admitted_joint_action(
         owner,
         joint_action,
         start_tick=start_tick,

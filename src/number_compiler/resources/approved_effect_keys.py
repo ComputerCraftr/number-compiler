@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from functools import partial
 
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
+
 _MAX_EFFECT_KEY_NODES = 65_536
 
 
@@ -12,7 +14,7 @@ def _walk_effect_key(
     value: object,
     authorized_identity_ids: set[int] | None,
 ) -> tuple[tuple[tuple[object, ...], ...], set[int]] | None:
-    if type(value) is not tuple:
+    if not is_exact_object_tuple(value):
         return None
     pending: list[tuple[object, bool]] = [(value, False)]
     tokens: list[tuple[object, ...]] = []
@@ -25,12 +27,13 @@ def _walk_effect_key(
             return None
         if closing:
             tokens.append(("tuple-end",))
-        elif type(part) is tuple:
-            if visited + len(pending) + len(part) + 1 > _MAX_EFFECT_KEY_NODES:
+        elif is_exact_object_tuple(part):
+            children = part
+            if visited + len(pending) + len(children) + 1 > _MAX_EFFECT_KEY_NODES:
                 return None
-            tokens.append(("tuple-start", len(part)))
-            pending.append((part, True))
-            pending.extend((child, False) for child in reversed(part))
+            tokens.append(("tuple-start", len(children)))
+            pending.append((children, True))
+            pending.extend((child, False) for child in reversed(children))
         elif type(part) in (type(None), bool, int, float, str, bytes):
             tokens.append(("scalar", id(type(part)), part))
         elif authorized_identity_ids is None:
@@ -70,10 +73,11 @@ def approved_effect_key(
     """Check retained effect-key metadata against one completed audit inventory."""
     if id(value) in approved_metadata:
         return True
-    if type(value) is not tuple:
+    if not is_exact_object_tuple(value):
         return False
     fingerprint = effect_key_fingerprint(
-        value, authorized_identity_ids=authorized_identity_ids
+        value,
+        authorized_identity_ids=authorized_identity_ids,
     )
     return fingerprint is not None and fingerprint in approved_fingerprints
 

@@ -1,4 +1,4 @@
-from devtools.verification.oracles.classical_ceiling import (
+from devtools.verification.oracles.special_classical_ceiling import (
     fermat_classical_ceiling,
     mersenne_classical_ceiling,
 )

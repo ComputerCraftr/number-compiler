@@ -19,10 +19,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypeGuard
 
+from devtools.checks.clone_shapes import (
+    CloneCandidate as _Candidate,
+)
+from devtools.checks.clone_shapes import (
+    CloneSite,
+    structural_shape_hashes,
+)
+
 MIN_CLONE_NODES = 24
 MIN_CLONE_STATEMENTS = 3
 MIN_SINGLE_STATEMENT_OPERATIONS = 3
-_OPERATIONS = (
+OPERATIONS = (
     ast.BinOp,
     ast.UnaryOp,
     ast.BoolOp,
@@ -30,7 +38,7 @@ _OPERATIONS = (
     ast.IfExp,
     ast.comprehension,
 )
-_FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
+FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)
 _COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 _IGNORED_FIELDS = frozenset({"annotation", "returns", "type_comment", "type_params"})
 _STATEMENT_SUITE_FIELDS = frozenset({"body", "orelse", "finalbody"})
@@ -63,7 +71,7 @@ class _IdentifierValue:
 
 
 @dataclass(frozen=True, slots=True)
-class _IdentifierToken:
+class IdentifierToken:
     prefix: str
     identifier: _IdentifierValue
     suffix: str
@@ -75,15 +83,15 @@ class _IdentifierLiteral:
     identifier: _IdentifierValue
 
 
-_TokenBinding = tuple[_Scope | None, str]
+TokenBinding = tuple[_Scope | None, str]
 
 
 @dataclass(frozen=True, slots=True)
-class _IdentifierReservation:
-    binding: _TokenBinding
+class IdentifierReservation:
+    binding: TokenBinding
 
 
-_TokenEvent = str | _IdentifierToken | _IdentifierReservation
+_TokenEvent = str | IdentifierToken | IdentifierReservation
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,7 +122,7 @@ def _children(node: ast.AST) -> list[ast.AST]:
     return children
 
 
-def _module_ast_inventory(
+def module_ast_inventory(
     root: ast.Module,
 ) -> tuple[
     list[ast.AST],
@@ -153,7 +161,7 @@ def _module_ast_inventory(
                 serialized_children = children
                 if (
                     name == "body"
-                    and isinstance(node, (*_FUNCTIONS, ast.ClassDef))
+                    and isinstance(node, (*FUNCTIONS, ast.ClassDef))
                     and serialized_children
                 ):
                     first = serialized_children[0]
@@ -204,7 +212,7 @@ def _module_ast_inventory(
     )
 
 
-class _Bindings:
+class Bindings:
     """Lexical owners and bindings for one source file and its nested scopes."""
 
     def __init__(
@@ -225,7 +233,7 @@ class _Bindings:
                 _children(node) if lexical_children is None else lexical_children[node]
             )
             children = [(child, scope) for child in node_children]
-            if isinstance(node, (*_FUNCTIONS, ast.ClassDef, *_COMPREHENSIONS)):
+            if isinstance(node, (*FUNCTIONS, ast.ClassDef, *_COMPREHENSIONS)):
                 kind = (
                     "class"
                     if isinstance(node, ast.ClassDef)
@@ -244,7 +252,7 @@ class _Bindings:
                         (child, inner if child in body else scope)
                         for child, _ in children
                     ]
-                if isinstance(node, _FUNCTIONS):
+                if isinstance(node, FUNCTIONS):
                     children = [
                         (child, inner if child is node.args else owner)
                         for child, owner in children
@@ -318,7 +326,7 @@ class _Bindings:
             pending.extend(reversed(children))
         self.parameters: dict[tuple[_Scope | None, str], int] = {}
         for function in self.inner:
-            if not isinstance(function, _FUNCTIONS):
+            if not isinstance(function, FUNCTIONS):
                 continue
             args = function.args
             parameters = [*args.posonlyargs, *args.args]
@@ -398,7 +406,7 @@ def _without_docstring(body: Sequence[ast.stmt]) -> list[ast.stmt]:
 def _identifier_value(
     node: ast.AST,
     name: str,
-    bindings: _Bindings,
+    bindings: Bindings,
     scope: _Scope,
     captures: Mapping[_Scope, int],
 ) -> _IdentifierValue:
@@ -419,17 +427,17 @@ def _identifier_value(
     return _IdentifierValue(f"free:{name!r}", None)
 
 
-def _tokens(
+def function_tokens(
     body: Sequence[ast.stmt],
-    bindings: _Bindings,
+    bindings: Bindings,
     function: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
 ) -> tuple[tuple[str, ...], int, int, int]:
     fragment = _token_fragment(
         body, _TokenContext(bindings, function), include_body_list=True
     )
-    names: dict[_TokenBinding, int] = {}
+    names: dict[TokenBinding, int] = {}
     tokens: list[str] = []
-    _consume_token_events(fragment.events, names, tokens)
+    consume_token_events(fragment.events, names, tokens)
     return tuple(tokens), fragment.nodes, fragment.statements, fragment.operations
 
 
@@ -438,7 +446,7 @@ class _TokenContext:
 
     def __init__(
         self,
-        bindings: _Bindings,
+        bindings: Bindings,
         function: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
     ) -> None:
         self.bindings = bindings
@@ -458,11 +466,11 @@ class _TokenContext:
 
 def _scalar_identifier_token(
     type_name: str, identifier: _IdentifierValue
-) -> str | _IdentifierToken:
+) -> str | IdentifierToken:
     if identifier.binding is not None:
         # Generated local IDs contain only ASCII letters, colon and digits, so
         # repr always uses the same single-quote delimiters as the reference.
-        return _IdentifierToken(f"{type_name}:'", identifier, "'")
+        return IdentifierToken(f"{type_name}:'", identifier, "'")
     if identifier.text is None:
         raise AssertionError("fixed identifier has no token text")
     return f"{type_name}:{identifier.text!r}"
@@ -491,7 +499,7 @@ def _token_fragment(
         if isinstance(value, ast.Name):
             nodes += 1
             events.append(
-                _IdentifierToken(
+                IdentifierToken(
                     "Name:",
                     context.identifier(value, value.id),
                     f":{type(value.ctx).__name__}",
@@ -508,13 +516,13 @@ def _token_fragment(
             events.append(_scalar_identifier_token(value.type_name, value.identifier))
         elif isinstance(value, ast.AST):
             nodes += isinstance(value, (ast.stmt, ast.expr))
-            operations += isinstance(value, _OPERATIONS)
+            operations += isinstance(value, OPERATIONS)
             statements += isinstance(value, ast.stmt) and not isinstance(
                 value, ast.Pass
             )
             events.append(type(value).__name__)
             fields: list[object] = []
-            reservations: list[_IdentifierReservation] = []
+            reservations: list[IdentifierReservation] = []
             binding_field = _BINDING_FIELDS.get(type(value))
             for name, item in ast.iter_fields(value):
                 if name in _IGNORED_FIELDS:
@@ -524,7 +532,7 @@ def _token_fragment(
                 if name == binding_field and isinstance(item, str):
                     identifier = context.identifier(value, item)
                     if identifier.binding is not None:
-                        reservations.append(_IdentifierReservation(identifier.binding))
+                        reservations.append(IdentifierReservation(identifier.binding))
                     item = _IdentifierLiteral(type(item).__name__, identifier)
                 if isinstance(value, ast.Nonlocal) and name == "names":
                     identifiers = [
@@ -532,7 +540,7 @@ def _token_fragment(
                         for identifier in value.names
                     ]
                     reservations.extend(
-                        _IdentifierReservation(identifier.binding)
+                        IdentifierReservation(identifier.binding)
                         for identifier in identifiers
                         if identifier.binding is not None
                     )
@@ -561,9 +569,7 @@ def _token_fragment(
     return _TokenFragment(tuple(events), nodes, statements, operations)
 
 
-def _render_token_event(
-    event: _IdentifierToken, names: dict[_TokenBinding, int]
-) -> str:
+def _render_token_event(event: IdentifierToken, names: dict[TokenBinding, int]) -> str:
     identifier = event.identifier
     if identifier.binding is not None:
         text = f"local:{names.setdefault(identifier.binding, len(names))}"
@@ -574,27 +580,27 @@ def _render_token_event(
     return event.prefix + text + event.suffix
 
 
-def _consume_token_events(
+def consume_token_events(
     events: Sequence[_TokenEvent],
-    names: dict[_TokenBinding, int],
+    names: dict[TokenBinding, int],
     tokens: list[str],
 ) -> None:
     """Consume a fragment in one loop, avoiding a call for every raw token."""
     for event in events:
         if isinstance(event, str):
             tokens.append(event)
-        elif isinstance(event, _IdentifierReservation):
+        elif isinstance(event, IdentifierReservation):
             names.setdefault(event.binding, len(names))
         else:
             tokens.append(_render_token_event(event, names))
 
 
-class _FunctionTokenProjection:
+class FunctionTokenProjection:
     """Cache raw statement events and alpha-renumber them per candidate body."""
 
     def __init__(
         self,
-        bindings: _Bindings,
+        bindings: Bindings,
         function: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
         statement_children: Mapping[ast.stmt, Sequence[ast.stmt]] | None = None,
     ) -> None:
@@ -631,36 +637,16 @@ class _FunctionTokenProjection:
     def tokenize(
         self, body: Sequence[ast.stmt]
     ) -> tuple[tuple[str, ...], int, int, int]:
-        names: dict[_TokenBinding, int] = {}
+        names: dict[TokenBinding, int] = {}
         tokens = [f"list:{len(body)}"]
         nodes = statements = operations = 0
         for statement in body:
             fragment = self._fragment(statement)
-            _consume_token_events(fragment.events, names, tokens)
+            consume_token_events(fragment.events, names, tokens)
             nodes += fragment.nodes
             statements += fragment.statements
             operations += fragment.operations
         return tuple(tokens), nodes, statements, operations
-
-
-@dataclass(frozen=True, order=True)
-class CloneSite:
-    path: str
-    line: int
-    end_line: int
-    function: str
-    column: int = 0
-    end_column: int = 0
-
-
-@dataclass
-class _Candidate:
-    site: CloneSite
-    canonical: bytes | None
-    size: int
-    body: Sequence[ast.stmt] = ()
-    function: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda | None = None
-    tree: ast.Module | None = None
 
 
 def _window_bodies(body: Sequence[ast.stmt]) -> Iterator[list[ast.stmt]]:
@@ -673,7 +659,7 @@ def _may_contain_substantial_window(
     subtree_sizes: Mapping[ast.AST, tuple[int, int, int]],
 ) -> bool:
     # These subtree counts are upper bounds on the serialized token counts
-    # (they include fields/docstrings ignored by _tokens). If even the complete
+    # (they include fields/docstrings ignored by tokens). If even the complete
     # suite is too small, none of its windows can meet the same lower bounds.
     return (
         sum(subtree_sizes[node][0] for node in body) >= MIN_CLONE_NODES
@@ -724,7 +710,7 @@ def _bodies(
         pending.extend(reversed(node_children))
 
 
-def _substantial_bodies(
+def substantial_bodies(
     function: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda,
     subtree_sizes: Mapping[ast.AST, tuple[int, int, int]],
     *,
@@ -764,23 +750,23 @@ def _substantial_bodies(
             yield body
 
 
-def _canonical_tokens(tokens: Sequence[str]) -> bytes:
+def canonical_tokens(tokens: Sequence[str]) -> bytes:
     return json.dumps(tokens, ensure_ascii=True, separators=(",", ":")).encode("ascii")
 
 
 def _canonical_candidate(
-    candidate: _Candidate, collision_bindings: dict[ast.Module, _Bindings]
+    candidate: _Candidate, collision_bindings: dict[ast.Module, Bindings]
 ) -> bytes:
     if candidate.function is None or candidate.tree is None:
         raise AssertionError("singleton candidate lost its AST locator")
     bindings = collision_bindings.get(candidate.tree)
     if bindings is None:
-        bindings = _Bindings(candidate.tree)
+        bindings = Bindings(candidate.tree)
         collision_bindings[candidate.tree] = bindings
-    tokens, _nodes, _statements, _operations = _tokens(
+    tokens, _nodes, _statements, _operations = function_tokens(
         candidate.body, bindings, candidate.function
     )
-    return _canonical_tokens(tokens)
+    return canonical_tokens(tokens)
 
 
 def duplicate_bodies(
@@ -794,8 +780,9 @@ def duplicate_bodies(
     Digest matches are checked against full token equality. Nested reports already
     covered by a larger duplicate are suppressed, never the larger violation.
     """
+    shape_groups: dict[tuple[int, ...], list[_Candidate]] = {}
     groups: dict[bytes, list[_Candidate]] = {}
-    collision_bindings: dict[ast.Module, _Bindings] = {}
+    collision_bindings: dict[ast.Module, Bindings] = {}
     profile_counts = (
         {
             "modules": 0,
@@ -812,15 +799,14 @@ def duplicate_bodies(
     for module_number, (path, tree) in enumerate(
         sorted(parsed_sources.items()), start=1
     ):
-        bindings: _Bindings | None = None
         relative_path = path.relative_to(root).as_posix()
         (
             nodes,
             all_children,
             lexical_children,
             statement_suites,
-            statement_children,
-        ) = _module_ast_inventory(tree)
+            _statement_children,
+        ) = module_ast_inventory(tree)
         if profile_counts is not None:
             profile_counts["modules"] = module_number
             profile_counts["ast_nodes"] += len(nodes)
@@ -832,18 +818,18 @@ def duplicate_bodies(
                 + sum(size for size, _, _ in children),
                 int(isinstance(node, ast.stmt))
                 + sum(count for _, count, _ in children),
-                int(isinstance(node, _OPERATIONS))
+                int(isinstance(node, OPERATIONS))
                 + sum(count for _, _, count in children),
             )
         del all_children
+        node_shapes: dict[ast.AST, int] | None = None
         for function in nodes:
-            if not isinstance(function, _FUNCTIONS):
+            if not isinstance(function, FUNCTIONS):
                 continue
             if profile_counts is not None:
                 profile_counts["functions"] += 1
             seen: set[tuple[int, int, int, int]] = set()
-            projection: _FunctionTokenProjection | None = None
-            for body in _substantial_bodies(
+            for body in substantial_bodies(
                 function,
                 subtree_sizes,
                 lexical_children=lexical_children,
@@ -851,12 +837,6 @@ def duplicate_bodies(
             ):
                 if profile_counts is not None:
                     profile_counts["candidate_bodies"] += 1
-                if bindings is None:
-                    bindings = _Bindings(tree, lexical_children=lexical_children)
-                if projection is None:
-                    projection = _FunctionTokenProjection(
-                        bindings, function, statement_children
-                    )
                 site = CloneSite(
                     relative_path,
                     body[0].lineno,
@@ -873,49 +853,93 @@ def duplicate_bodies(
                 if span in seen:
                     continue
                 seen.add(span)
-                tokens, node_count, statements, operations = projection.tokenize(body)
-                if profile_counts is not None:
-                    profile_counts["tokenized_bodies"] += 1
-                if node_count < MIN_CLONE_NODES or (
-                    statements < MIN_CLONE_STATEMENTS
-                    and not (
-                        len(body) == 1 and operations >= MIN_SINGLE_STATEMENT_OPERATIONS
+                if node_shapes is None:
+                    node_shapes = structural_shape_hashes(
+                        nodes,
+                        ignored_fields=_IGNORED_FIELDS,
+                        binding_fields=_BINDING_FIELDS,
                     )
-                ):
-                    continue
-                if profile_counts is not None:
-                    profile_counts["eligible_bodies"] += 1
-                canonical = _canonical_tokens(tokens)
-                digest = hashlib.sha256(canonical).digest()
-                candidates = groups.get(digest)
-                if candidates is None:
-                    groups[digest] = [
-                        _Candidate(site, None, node_count, body, function, tree)
-                    ]
-                    del canonical
-                else:
-                    if profile_counts is not None:
-                        profile_counts["digest_matches"] += 1
-                    # Reuse the already-built map for the active module, but
-                    # keep it alive only once that module has a true digest
-                    # collision.
-                    collision_bindings.setdefault(tree, bindings)
-                    if len(candidates) == 1 and candidates[0].canonical is None:
-                        first = candidates[0]
-                        first.canonical = _canonical_candidate(
-                            first, collision_bindings
-                        )
-                        first.body = ()
-                        first.function = None
-                        first.tree = None
-                    candidates.append(_Candidate(site, canonical, node_count))
-                del tokens
+                shape = (
+                    (hash(("Return", "value", ("child", node_shapes[function.body]))),)
+                    if isinstance(function, ast.Lambda)
+                    else tuple(node_shapes[node] for node in body)
+                )
+                shape_groups.setdefault(shape, []).append(
+                    _Candidate(site, None, 0, body, function, tree)
+                )
         if (
             profile_callback is not None
             and profile_counts is not None
             and module_number % 50 == 0
         ):
             profile_callback(dict(profile_counts))
+    shared_shapes: dict[ast.Module, list[_Candidate]] = {}
+    for candidates in shape_groups.values():
+        if len(candidates) > 1:
+            for candidate in candidates:
+                assert candidate.tree is not None
+                shared_shapes.setdefault(candidate.tree, []).append(candidate)
+    del shape_groups
+    if profile_counts is not None and profile_callback is not None:
+        profile_counts["shared_shape_modules"] = len(shared_shapes)
+        profile_counts["shared_shape_candidates"] = sum(
+            len(candidates) for candidates in shared_shapes.values()
+        )
+        profile_callback(dict(profile_counts))
+    for tree, candidates in shared_shapes.items():
+        (
+            _nodes,
+            _all_children,
+            lexical_children,
+            _statement_suites,
+            statement_children,
+        ) = module_ast_inventory(tree)
+        bindings = Bindings(tree, lexical_children=lexical_children)
+        projections: dict[ast.AST, FunctionTokenProjection] = {}
+        for candidate in candidates:
+            candidate_function = candidate.function
+            if candidate_function is None:
+                raise AssertionError("coarse clone candidate lost its function")
+            projection = projections.get(candidate_function)
+            if projection is None:
+                projection = FunctionTokenProjection(
+                    bindings, candidate_function, statement_children
+                )
+                projections[candidate_function] = projection
+            tokens, node_count, statements, operations = projection.tokenize(
+                candidate.body
+            )
+            if profile_counts is not None:
+                profile_counts["tokenized_bodies"] += 1
+            if node_count < MIN_CLONE_NODES or (
+                statements < MIN_CLONE_STATEMENTS
+                and not (
+                    len(candidate.body) == 1
+                    and operations >= MIN_SINGLE_STATEMENT_OPERATIONS
+                )
+            ):
+                continue
+            if profile_counts is not None:
+                profile_counts["eligible_bodies"] += 1
+            candidate.size = node_count
+            canonical = canonical_tokens(tokens)
+            digest = hashlib.sha256(canonical).digest()
+            exact_candidates = groups.get(digest)
+            if exact_candidates is None:
+                groups[digest] = [candidate]
+            else:
+                if profile_counts is not None:
+                    profile_counts["digest_matches"] += 1
+                collision_bindings.setdefault(tree, bindings)
+                if len(exact_candidates) == 1 and exact_candidates[0].canonical is None:
+                    first = exact_candidates[0]
+                    first.canonical = _canonical_candidate(first, collision_bindings)
+                    first.body = ()
+                    first.function = None
+                    first.tree = None
+                candidate.canonical = canonical
+                exact_candidates.append(candidate)
+            del tokens
     reports: list[tuple[CloneSite, ...]] = []
     covered: dict[str, list[tuple[tuple[int, int], tuple[int, int]]]] = {}
     # Keep compact, unambiguously serialized tokens for exact collision checks.

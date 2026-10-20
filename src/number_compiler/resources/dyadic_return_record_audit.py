@@ -105,7 +105,7 @@ def audit_source_records(
                             parent.exact and workspace.law.cycle is not None
                         )
                         expected_lift = (
-                            workspace._source_value(parent)
+                            workspace.source_value(parent)
                             >> DyadicReturnImageWorkspace.action_node(
                                 workspace, before_action
                             ).width
@@ -172,7 +172,7 @@ def audit_source_records(
                                 exact_source = DyadicReturnImageWorkspace.source_node(
                                     workspace, previous_image.source
                                 )
-                                exact_value = workspace._source_value(exact_source)
+                                exact_value = workspace.source_value(exact_source)
                                 exact_numerator = (
                                     previous.transfer.upper * exact_value
                                     + previous.transfer.offset

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 _ARCHIVE = Path(__file__).with_name("data") / "reverse_growth_g161.json"
 _MAX_ARCHIVE_BYTES = 1_000_000
@@ -37,30 +38,40 @@ def _exact_int(value: object, name: str) -> int:
     return value
 
 
+def _object_list(value: object, name: str) -> list[object]:
+    if type(value) is not list:
+        raise ValueError(f"reverse-growth archive field {name} is not an array")
+    return cast(list[object], value)
+
+
 def _int_vector(value: object, name: str, size: int) -> tuple[int, ...]:
-    if type(value) is not list or len(value) != size:
+    items = _object_list(value, name)
+    if len(items) != size:
         raise ValueError(f"reverse-growth archive field {name} has the wrong shape")
     return tuple(
-        _exact_int(item, f"{name}[{index}]") for index, item in enumerate(value)
+        _exact_int(item, f"{name}[{index}]") for index, item in enumerate(items)
     )
 
 
 def _int_matrix(
     value: object, name: str, rows: int, columns: int
 ) -> tuple[tuple[int, ...], ...]:
-    if type(value) is not list or len(value) != rows:
+    items = _object_list(value, name)
+    if len(items) != rows:
         raise ValueError(f"reverse-growth archive field {name} has the wrong row count")
     return tuple(
-        _int_vector(row, f"{name}[{index}]", columns) for index, row in enumerate(value)
+        _int_vector(row, f"{name}[{index}]", columns) for index, row in enumerate(items)
     )
 
 
 def _int_pairs(value: object, name: str, size: int) -> tuple[tuple[int, int], ...]:
-    if type(value) is not list or len(value) != size:
+    items = _object_list(value, name)
+    if len(items) != size:
         raise ValueError(f"reverse-growth archive field {name} has the wrong shape")
     pairs: list[tuple[int, int]] = []
-    for index, row in enumerate(value):
-        if type(row) is not list or len(row) != 2:
+    for index, raw_row in enumerate(items):
+        row = _object_list(raw_row, f"{name}[{index}]")
+        if len(row) != 2:
             raise ValueError(
                 f"reverse-growth archive field {name}[{index}] is not a pair"
             )
@@ -75,14 +86,14 @@ def _int_pairs(value: object, name: str, size: int) -> tuple[tuple[int, int], ..
 
 def load_growth_tables(path: Path = _ARCHIVE) -> _GrowthTables:
     """Load and validate the immutable finite table fixture."""
-    if not isinstance(path, Path):
-        raise TypeError("reverse-growth archive path must be a Path")
     try:
         with path.open("rb") as stream:
             raw = stream.read(_MAX_ARCHIVE_BYTES + 1)
         if len(raw) > _MAX_ARCHIVE_BYTES:
             raise ValueError("reverse-growth archive exceeds its byte budget")
-        payload = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_object)
+        payload: object = json.loads(
+            raw.decode("utf-8"), object_pairs_hook=_unique_object
+        )
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("reverse-growth archive is malformed") from exc
     expected_fields = {
@@ -96,7 +107,10 @@ def load_growth_tables(path: Path = _ARCHIVE) -> _GrowthTables:
         "D5_MACRO_PAIRS",
         "D5_FIELD_TO_MACRO",
     }
-    if type(payload) is not dict or set(payload) != expected_fields:
+    if type(payload) is not dict:
+        raise ValueError("reverse-growth archive has an invalid field set")
+    payload = cast(dict[str, object], payload)
+    if set(payload) != expected_fields:
         raise ValueError("reverse-growth archive has an invalid field set")
     if payload["format"] != "reverse-growth-g161-t191-v1":
         raise ValueError("reverse-growth archive has another format")

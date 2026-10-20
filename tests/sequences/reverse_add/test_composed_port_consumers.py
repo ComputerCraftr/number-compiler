@@ -15,7 +15,7 @@ from number_compiler.sequences.reverse_add.source_images import (
 
 def _step(digits: tuple[int, ...]) -> tuple[int, ...]:
     carry = 0
-    result = []
+    result: list[int] = []
     for left, right in zip(digits, reversed(digits), strict=True):
         carry, digit = divmod(left + right + carry, 10)
         result.append(digit)
@@ -115,8 +115,9 @@ def test_projection_rejects_payload_from_different_action() -> None:
 
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 2)
     workspace.width()
-    assert workspace._image is not None
-    view = workspace.scheduler._source_image_core().view(workspace._image)
+    image = workspace.audit_snapshot().image
+    assert image is not None
+    view = workspace.scheduler.source_image_core().view(image)
     forged = replace(
         view,
         binding=replace(view.binding, action=workspace.actions.primitive),

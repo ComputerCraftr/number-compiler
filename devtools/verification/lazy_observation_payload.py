@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from functools import partial
+from typing import cast
 
 from devtools.verification.collatz_carry_ranges import (
     CarryRangeSummary,
@@ -17,10 +18,15 @@ from devtools.verification.collatz_carry_ranges import (
 )
 from devtools.verification.lazy_collatz import (
     LazyCollatzApplication,
-    _Program,
-    _SummaryKey,
+    LazyCollatzPayloadAuditSnapshot,
+    Program,
+    SummaryKey,
 )
-from devtools.verification.lazy_collatz_range import CollatzRangeEvaluator, _RangeKey
+from devtools.verification.lazy_collatz_range import (
+    CollatzRangeEvaluator,
+    CollatzRangePayloadAuditSnapshot,
+    RangeKey,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     TransferSummaryID,
@@ -33,22 +39,25 @@ from number_compiler.resources.proof_payload_admission import (
 
 
 def _program(
-    application: LazyCollatzApplication, handle: object, *, source: bool
+    application: LazyCollatzPayloadAuditSnapshot,
+    handle: object,
+    *,
+    source: bool,
 ) -> bool:
     if (
         type(handle) is not ActionProgramID
         or handle.owner is not application.token
         or handle.kind != "program"
         or type(handle.local_id) is not int
-        or not 0 <= handle.local_id < len(application._programs)
+        or not 0 <= handle.local_id < len(application.programs)
     ):
         return False
     if source:
         return (
             handle.local_id == 0
-            and application._programs[0] == _Program("identity")
+            and application.programs[0] == Program("identity")
             and application.initial.program == handle
-            and application.initial.source == application._source_ref
+            and application.initial.source == application.source_ref
         )
     return True
 
@@ -69,10 +78,14 @@ def _summary(value: object, length: int) -> bool:
 
 
 def _prefix(
-    application: LazyCollatzApplication, key: object, value: object, *, mul3: bool
+    application: LazyCollatzPayloadAuditSnapshot,
+    key: object,
+    value: object,
+    *,
+    mul3: bool,
 ) -> bool:
     if (
-        type(key) is not _SummaryKey
+        type(key) is not SummaryKey
         or type(key.width) is not int
         or key.width < 0
         or not _program(application, key.program, source=True)
@@ -93,10 +106,14 @@ def _prefix(
 
 
 def _cell(
-    evaluator: CollatzRangeEvaluator, key: object, value: object, *, event: bool
+    evaluator: CollatzRangePayloadAuditSnapshot,
+    key: object,
+    value: object,
+    *,
+    event: bool,
 ) -> bool:
     if (
-        type(key) is not _RangeKey
+        type(key) is not RangeKey
         or type(key.start) is not int
         or type(key.length) is not int
         or key.start < 0
@@ -114,16 +131,16 @@ def _cell(
         or value.owner is not evaluator.action_owner
         or value.kind != "collatz-range-effect"
         or type(value.local_id) is not int
-        or not 0 <= value.local_id < len(evaluator._effects)
+        or not 0 <= value.local_id < len(evaluator.effects)
     ):
         return False
-    effect = evaluator._effects[value.local_id]
-    return effect.length == key.length and evaluator._ids.get(effect) == value
+    effect = evaluator.effects[value.local_id]
+    return effect.length == key.length and evaluator.ids.get(effect) == value
 
 
 def audit_lazy_observation_bindings(ledger: ResourceLedger) -> set[tuple[int, int]]:
     """Return owner/object identities of forbidden actual retained bindings."""
-    containers = dict(ledger.iter_containers())
+    containers: dict[int, object] = dict(ledger.iter_containers())
     roots = tuple(ledger.iter_execution_roots())
     validators: dict[int, Callable[[object, object], bool]] = {}
 
@@ -135,32 +152,41 @@ def audit_lazy_observation_bindings(ledger: ResourceLedger) -> set[tuple[int, in
 
     for root in roots:
         if type(root) is LazyCollatzApplication and root.ledger is ledger:
+            snapshot = root.payload_audit_snapshot()
             if (
-                containers.get(root._program_owner) is not root._programs
-                or containers.get(root._program_key_owner) is not root._program_ids
+                containers.get(snapshot.program_owner) is not snapshot.program_store
+                or containers.get(snapshot.program_key_owner)
+                is not snapshot.program_key_store
             ):
                 continue
             register(
-                root._summary_owner, root._summaries, partial(_prefix, root, mul3=False)
+                snapshot.summary_owner,
+                snapshot.summary_store,
+                partial(_prefix, snapshot, mul3=False),
             )
             register(
-                root._mul3_summaries.owner,
-                root._mul3_summaries._data,
-                partial(_prefix, root, mul3=True),
+                snapshot.mul3_owner,
+                snapshot.mul3_store,
+                partial(_prefix, snapshot, mul3=True),
             )
         elif type(root) is CollatzRangeEvaluator and root.ledger is ledger:
+            range_snapshot = root.payload_audit_snapshot()
             if (
-                containers.get(root._effect_owner) is not root._effects
-                or containers.get(root._interner_owner) is not root._ids
+                containers.get(range_snapshot.effect_owner)
+                is not range_snapshot.effect_store
+                or containers.get(range_snapshot.interner_owner)
+                is not range_snapshot.interner_store
             ):
                 continue
             register(
-                root._ranges.owner,
-                root._ranges._data,
-                partial(_cell, root, event=False),
+                range_snapshot.ranges_owner,
+                range_snapshot.ranges_store,
+                partial(_cell, range_snapshot, event=False),
             )
             register(
-                root._events.owner, root._events._data, partial(_cell, root, event=True)
+                range_snapshot.events_owner,
+                range_snapshot.events_store,
+                partial(_cell, range_snapshot, event=True),
             )
 
     forbidden: set[tuple[int, int]] = set()
@@ -175,17 +201,19 @@ def audit_lazy_observation_bindings(ledger: ResourceLedger) -> set[tuple[int, in
                 continue
             seen.add(id(current))
             if isinstance(current, Mapping):
-                pending.extend(audit_mapping_items(current))
+                mapping = cast(Mapping[object, object], current)
+                pending.extend(audit_mapping_items(mapping))
             elif isinstance(current, Sequence) and not isinstance(
                 current, (str, bytes)
             ):
-                if len(current) == 2 and type(current[0]) in (_SummaryKey, _RangeKey):
-                    key, value = current
+                sequence = cast(Sequence[object], current)
+                if len(sequence) == 2 and type(sequence[0]) in (SummaryKey, RangeKey):
+                    key, value = sequence
                     check = validators.get(owner)
                     if check is None or not check(key, value):
                         forbidden.update(((owner, id(key)), (owner, id(value))))
                 else:
-                    pending.extend(current)
+                    pending.extend(sequence)
     return forbidden
 
 

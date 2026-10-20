@@ -33,11 +33,6 @@ from number_compiler.sequences.power_numbers.terminal_threshold import (
 )
 
 
-def _factor_multiplicities_truth(value: int) -> tuple[tuple[int, int], ...]:
-    """Complete bounded factorization for research labels only."""
-    return factor_multiplicities_truth(value)
-
-
 def _mul_pow2_exceeds(multiplier: int, exponent_log2: int, bound: int) -> bool:
     """Return multiplier*2^exponent_log2 > bound without huge shifts."""
     multiplier = int(multiplier)
@@ -303,12 +298,12 @@ def terminal_divisor_norm_truth_audit(
     spec = terminal_threshold_spec(family, parameter)
     if family == "fermat":
         modulus = fermat_number(parameter)
-        factors = _factor_multiplicities_truth(modulus)
+        factors = factor_multiplicities_truth(modulus)
         rows = tuple(_fermat_local_row(parameter, q, e, modulus) for q, e in factors)
         degree_log2 = spec.terminal_level
     elif family == "mersenne":
         modulus = mersenne_number(parameter)
-        factors = _factor_multiplicities_truth(modulus)
+        factors = factor_multiplicities_truth(modulus)
         rows = tuple(
             _mersenne_real_cyclotomic_local_row(parameter, q, e, modulus)
             for q, e in factors
@@ -394,7 +389,7 @@ def fermat_full_power_residue_phase_truth_audit(
     if n < 2:
         raise ValueError(n)
     modulus = fermat_number(n)
-    factors = _factor_multiplicities_truth(modulus)
+    factors = factor_multiplicities_truth(modulus)
     m = 1 << (n + 1)
     local: list[int] = []
     for q, e in factors:
@@ -553,7 +548,7 @@ def quadratic_subresultant_blind_audit(index: int) -> QuadraticSubresultantBlind
     disc_gcd = __import__("math").gcd(disc, N)
     # Res(X^2-r1, 2X) = -4*r1, so its nonunit content is identical.
     res_gcd = __import__("math").gcd((-4 * r1) % N, N)
-    factors = _factor_multiplicities_truth(N)
+    factors = factor_multiplicities_truth(N)
     split = all(pow(r1 % q, (q - 1) // 2, q) == 1 for q, _e in factors)
     return QuadraticSubresultantBlindAudit(
         "fermat",

@@ -141,7 +141,9 @@ class ReverseFieldActionAudit(Protocol):
         self, block: ReverseAddCyclotomicInnovationBlock
     ) -> ReverseAddCyclotomicInnovationBlock: ...
     @staticmethod
-    def _block(action: ReverseFieldAction) -> ReverseAddCyclotomicInnovationBlock: ...
+    def innovation_block(
+        action: ReverseFieldAction,
+    ) -> ReverseAddCyclotomicInnovationBlock: ...
     def _action_key(
         self,
         base: int,
@@ -337,7 +339,7 @@ class ReverseFieldActionAudit(Protocol):
             return False
         try:
             action.geometry.__post_init__()
-            block = self._block(action)
+            block = self.innovation_block(action)
             expected_id = FieldCellActionID(self.owner, self._ACTION_KIND, index)
             valid = (
                 action.base == self._base
@@ -379,7 +381,9 @@ class ReverseFieldActionAudit(Protocol):
                 self.resolve(after),
                 self.resolve(result),
             )
-            block = self._canonical_block(self._block(first).then(self._block(second)))
+            block = self._canonical_block(
+                self.innovation_block(first).then(self.innovation_block(second))
+            )
             valid = (
                 actual.base == first.base == second.base
                 and actual.radial == block.radial

@@ -55,7 +55,7 @@ def test_schema_storage_is_charged_and_constant_consumers_need_no_schema() -> No
 def test_audit_separates_shared_programs_from_growing_bindings() -> None:
     context = ReverseGeometryContext(9)
     action = context.primitive()
-    rows = []
+    rows: list[dict[str, object]] = []
     for _ in range(3):
         action = context.compose(action, action)
         rows.append(audit(context, action))

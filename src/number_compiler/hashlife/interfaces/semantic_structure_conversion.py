@@ -14,13 +14,13 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSort,
     ProductSort,
     SemanticFunctionID,
-    _union_inputs,
+    union_inputs,
 )
 from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureBuilder,
     StructuredNode,
     StructureRewrite,
-    _aliases,
+    allocate_bound_aliases,
 )
 from number_compiler.resources.metric_keys import (
     hashlife_interfaces as _interfaces_keys,
@@ -35,7 +35,7 @@ class StructureConversion:
         self.invalid: dict[FunctionSignature, int] = {}
 
     def _undefined(self, signature: FunctionSignature) -> int:
-        builder, arena = self.builder, self.builder.arena
+        builder = self.builder
         pending = [(signature, False)]
         dependencies: dict[FunctionSignature, tuple[FunctionSignature, ...]] = {}
         while pending:
@@ -56,8 +56,8 @@ class StructureConversion:
                     StructuredNode(
                         current,
                         "atom",
-                        arena.functions._handle(circuit.zero),
-                        atom=arena.bits._handle(atom),
+                        builder.function_reference(circuit.zero),
+                        atom=builder.bit_reference(atom),
                     )
                 )
             elif ready:
@@ -66,9 +66,10 @@ class StructureConversion:
                     node = StructuredNode(
                         current,
                         "product",
-                        arena.functions._handle(circuit.zero),
+                        builder.function_reference(circuit.zero),
                         components=tuple(
-                            arena._handle(self.invalid[item]) for item in children
+                            builder.structure_reference(self.invalid[item])
+                            for item in children
                         ),
                     )
                 else:
@@ -76,9 +77,11 @@ class StructureConversion:
                     node = StructuredNode(
                         current,
                         "function",
-                        arena.functions._handle(circuit.zero),
-                        body=arena._handle(self.invalid[children[0]]),
-                        bound=_aliases(current.inputs, output.inputs, output.output),
+                        builder.function_reference(circuit.zero),
+                        body=builder.structure_reference(self.invalid[children[0]]),
+                        bound=allocate_bound_aliases(
+                            current.inputs, output.inputs, output.output
+                        ),
                     )
                 self.invalid[current] = builder.intern(node)
             else:
@@ -90,9 +93,11 @@ class StructureConversion:
                     assert isinstance(output, FunctionSort)
                     children = (
                         FunctionSignature(
-                            _union_inputs(
+                            union_inputs(
                                 current.inputs,
-                                _aliases(current.inputs, output.inputs, output.output),
+                                allocate_bound_aliases(
+                                    current.inputs, output.inputs, output.output
+                                ),
                             ),
                             output.output,
                         ),
@@ -136,8 +141,8 @@ class StructureConversion:
                     StructuredNode(
                         a.signature,
                         "atom",
-                        arena.functions._handle(valid),
-                        atom=arena.bits._handle(atom),
+                        builder.function_reference(valid),
+                        atom=builder.bit_reference(atom),
                     )
                 )
             elif ready:
@@ -146,17 +151,18 @@ class StructureConversion:
                     node = StructuredNode(
                         a.signature,
                         "product",
-                        arena.functions._handle(valid),
+                        builder.function_reference(valid),
                         components=tuple(
-                            arena._handle(self.choices[item]) for item in children
+                            builder.structure_reference(self.choices[item])
+                            for item in children
                         ),
                     )
                 else:
                     node = StructuredNode(
                         a.signature,
                         "function",
-                        arena.functions._handle(valid),
-                        body=arena._handle(self.choices[children[0]]),
+                        builder.function_reference(valid),
+                        body=builder.structure_reference(self.choices[children[0]]),
                         bound=a.bound,
                     )
                 self.choices[key] = builder.intern(node)
@@ -214,8 +220,8 @@ class StructureConversion:
                     StructuredNode(
                         node.signature,
                         "atom",
-                        arena.functions._handle(valid),
-                        atom=arena.bits._handle(atom),
+                        builder.function_reference(valid),
+                        atom=builder.bit_reference(atom),
                     )
                 )
             elif leaf.kind == "product":
@@ -227,15 +233,19 @@ class StructureConversion:
                     StructuredNode(
                         node.signature,
                         "product",
-                        arena.functions._handle(valid),
-                        components=tuple(arena._handle(child) for child in children),
+                        builder.function_reference(valid),
+                        components=tuple(
+                            builder.structure_reference(child) for child in children
+                        ),
                     )
                 )
             else:
                 output = node.signature.output
                 assert isinstance(output, FunctionSort)
-                aliases = _aliases(node.signature.inputs, output.inputs, output.output)
-                joint = _union_inputs(node.signature.inputs, aliases)
+                aliases = allocate_bound_aliases(
+                    node.signature.inputs, output.inputs, output.output
+                )
+                joint = union_inputs(node.signature.inputs, aliases)
                 replacements = tuple(
                     (old, builder.variable(joint, new))
                     for old, new in zip(output.inputs, aliases, strict=True)
@@ -249,8 +259,8 @@ class StructureConversion:
                     StructuredNode(
                         node.signature,
                         "function",
-                        arena.functions._handle(valid),
-                        body=arena._handle(body),
+                        builder.function_reference(valid),
+                        body=builder.structure_reference(body),
                         bound=aliases,
                     )
                 )

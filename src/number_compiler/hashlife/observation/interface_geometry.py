@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     )
 
 
-def _observe_geometry(
+def observe_geometry(
     self: SemanticLocalInterfaceCompiler,
     source: SourceCellID,
     kernel: ActionProgramID,
@@ -82,12 +82,12 @@ def _observe_geometry(
             continue
         child_left, child_right = self.sources.children(current)
         half = self.sources.resolve(child_left).width
-        left_interface = self._source_interfaces[(kernel, child_left)]
-        right_interface = self._source_interfaces[(kernel, child_right)]
-        left_mid = self._finite_observe(
+        left_interface = self.cached_source_interface(kernel, child_left)
+        right_interface = self.cached_source_interface(kernel, child_right)
+        left_mid = self.finite_observe(
             left_interface, "boundary_left", current_left, current_right
         )
-        right_mid = self._finite_observe(
+        right_mid = self.finite_observe(
             right_interface, "boundary_right", current_left, current_right
         )
         if not finishing:
@@ -278,7 +278,7 @@ def _observe_geometry(
             values[key] = (
                 width
                 + extent
-                - self._source_extent(
+                - self.source_extent(
                     source,
                     laws,
                     kernel,

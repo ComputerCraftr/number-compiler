@@ -44,4 +44,4 @@ def complete_clock_kernel(
     if result is not None:
         return result
     scheduler.ledger.bump(_execution_keys.TILE_SCHEDULER_DIRECT_REQUESTS)
-    return scheduler._complete_direct(key, checked_miss=True)
+    return scheduler.complete_direct(key, checked_miss=True)

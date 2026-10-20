@@ -42,9 +42,10 @@ class OwnedMemoAuditPayloadView(Mapping[_K, object], Generic[_K]):
             return stored
         if type(stored) is not DynamicMemoValue:
             raise TypeError("dynamic memo entry has invalid cost metadata")
-        if type(stored.nodes) is not int or stored.nodes < 1:
+        dynamic = cast(DynamicMemoValue[object], stored)
+        if type(dynamic.nodes) is not int or dynamic.nodes < 1:
             raise TypeError("dynamic memo entry has invalid cost metadata")
-        return stored.value
+        return dynamic.value
 
     def __iter__(self) -> Iterator[_K]:
         return iter(self._container)
@@ -82,10 +83,10 @@ class LedgerReservation:
         if type(ledger) is not ResourceLedger:
             raise TypeError("reservation needs its exact ResourceLedger")
         self._ledger = ledger
-        ledger._register_reservation(self, owner)
+        ledger.register_reservation(self, owner)
 
     def _check_open(self) -> None:
-        self._ledger._reservation_state(self)
+        self._ledger.validate_reservation(self)
 
     def belongs_to(self, ledger: ResourceLedger) -> bool:
         """Check ledger identity without exposing the reservation binding."""
@@ -98,20 +99,20 @@ class LedgerReservation:
 
     def reserve(self, *, entries: int = 0, nodes: int = 0) -> None:
         self._check_open()
-        self._ledger._reserve_for_reservation(self, entries=entries, nodes=nodes)
+        self._ledger.reserve_for_reservation(self, entries=entries, nodes=nodes)
 
     def transfer_to(self, owner: int, *, entries: int = 0, nodes: int = 0) -> None:
         self._check_open()
-        self._ledger._transfer_reservation_to(self, owner, entries=entries, nodes=nodes)
+        self._ledger.transfer_reservation_to(self, owner, entries=entries, nodes=nodes)
 
     def transfer_from(self, owner: int, *, entries: int = 0, nodes: int = 0) -> None:
         self._check_open()
-        self._ledger._transfer_reservation_from(
+        self._ledger.transfer_reservation_from(
             self, owner, entries=entries, nodes=nodes
         )
 
     def close(self) -> None:
-        self._ledger._close_reservation(self)
+        self._ledger.close_reservation(self)
 
     def __enter__(self) -> Self:
         self._check_open()
@@ -228,7 +229,7 @@ class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
             return self._dynamic_nodes
         return len(self._data) * self.nodes_per_entry
 
-    def _entry_nodes(self, key: _K, value: _V) -> int:
+    def entry_nodes(self, key: _K, value: _V) -> int:
         if self.node_cost is None:
             return self.nodes_per_entry
         payload_nodes = require_integer(
@@ -249,7 +250,8 @@ class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
             return value
         if not isinstance(value, DynamicMemoValue):
             raise TypeError("dynamic memo entry has invalid cost metadata")
-        return value.value
+        dynamic = cast(DynamicMemoValue[object], value)
+        return dynamic.value
 
     def __getitem__(self, key: _K) -> _V:
         self._check_open()
@@ -257,7 +259,8 @@ class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
         if self.node_cost is not None:
             if not isinstance(value, DynamicMemoValue):
                 raise TypeError("dynamic memo entry has invalid cost metadata")
-            return cast(_V, value.value)
+            dynamic = cast(DynamicMemoValue[_V], value)
+            return dynamic.value
         return cast(_V, value)
 
     def __setitem__(self, key: _K, value: _V) -> None:
@@ -270,7 +273,7 @@ class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
             if not isinstance(previous, DynamicMemoValue):
                 raise TypeError("dynamic memo entry has invalid cost metadata")
             old_cost = previous.nodes
-            new_cost = self._entry_nodes(key, value)
+            new_cost = self.entry_nodes(key, value)
             difference = new_cost - old_cost
             if difference > 0:
                 self.ledger.reserve(self.owner, nodes=difference)
@@ -285,7 +288,7 @@ class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
             if difference < 0:
                 self.ledger.release(self.owner, nodes=-difference)
             return
-        nodes = self._entry_nodes(key, value)
+        nodes = self.entry_nodes(key, value)
         self.ledger.reserve(self.owner, entries=1, nodes=nodes)
         try:
             if self.node_cost is not None:
@@ -300,6 +303,30 @@ class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
             raise
         if self.node_cost is not None:
             self._dynamic_nodes += nodes
+
+    def publish_reserved(self, key: _K, value: _V) -> None:
+        """Publish a fixed-cost entry charged by an earlier ledger reservation.
+
+        The retained mapping rechecks the reservation at its write boundary.
+        This method deliberately adds no charge; its caller owns rollback of a
+        reservation if publication fails.
+        """
+        self._check_open()
+        if self.node_cost is not None:
+            raise TypeError("reserved direct publication requires fixed memo cost")
+        raw_data: object = self._data
+        if type(raw_data) is not LedgerDict:
+            raise RuntimeError("memo lost its ledger-owned mapping")
+        data = cast(LedgerDict[_K, _V | DynamicMemoValue[_V]], raw_data)
+        if (
+            data.ledger is not self.ledger
+            or data.owner != self.owner
+            or not self.ledger.is_factory_container(data)
+        ):
+            raise RuntimeError("memo lost its ledger-owned mapping")
+        if key in data:
+            raise KeyError("reserved memo publication requires a new key")
+        data[key] = value
 
     def adopt_reserved(
         self,
@@ -321,16 +348,18 @@ class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
             raise ValueError("memo and reservation belong to different ledgers")
         if key in self._data:
             raise KeyError("reserved memo publication requires a new key")
-        data = self._data
+        raw_data: object = self._data
+        if type(raw_data) is not LedgerDict:
+            raise RuntimeError("dynamic memo lost its ledger-owned mapping")
+        data = cast(LedgerDict[_K, _V | DynamicMemoValue[_V]], raw_data)
         if (
-            type(data) is not LedgerDict
-            or data.ledger is not self.ledger
+            data.ledger is not self.ledger
             or data.owner != self.owner
             or not self.ledger.is_factory_container(data)
         ):
             raise RuntimeError("dynamic memo lost its ledger-owned mapping")
 
-        nodes = self._entry_nodes(key, value)
+        nodes = self.entry_nodes(key, value)
         previous_dynamic_nodes = self._dynamic_nodes
         next_dynamic_nodes = previous_dynamic_nodes + nodes
         # Allocate the wrapper before transferring ownership; even an

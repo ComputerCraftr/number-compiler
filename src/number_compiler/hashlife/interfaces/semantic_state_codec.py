@@ -28,7 +28,7 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
     FunctionSort,
     ProductSort,
-    _union_inputs,
+    union_inputs,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.semantic_bits import (
@@ -40,7 +40,7 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureBuilder,
     StructuredNode,
     StructureID,
-    _aliases,
+    allocate_bound_aliases,
 )
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import (
@@ -162,7 +162,7 @@ class StateCodecArena:
                 for index in range(admitted.opposite_count)
             )
         )
-        ports = _union_inputs((anchor,), entries)
+        ports = union_inputs((anchor,), entries)
         argument = (
             None
             if admitted.second is None
@@ -182,8 +182,8 @@ class StateCodecArena:
         anchor_node = builder.atom(anchor_signature, anchor_roots, valid)
         root = anchor_node
         if argument is not None:
-            aliases = _aliases(ports, (argument,))
-            joint = _union_inputs(ports, aliases)
+            aliases = allocate_bound_aliases(ports, (argument,))
+            joint = union_inputs(ports, aliases)
             circuit = builder.circuit(joint)
             selector = aliases[0]
             target = AtomSort(
@@ -216,10 +216,10 @@ class StateCodecArena:
                 StructuredNode(
                     signature,
                     "product",
-                    self.structures.functions._handle(valid),
+                    builder.function_reference(valid),
                     components=(
-                        self.structures._handle(anchor_node),
-                        self.structures._handle(function),
+                        builder.structure_reference(anchor_node),
+                        builder.structure_reference(function),
                     ),
                 )
             )
@@ -245,7 +245,7 @@ class StateCodecArena:
             )
             prepared.reserve_with(((self.records.owner, 1, 1),))
             prepared.publish_reserved()
-            self.records._data[request] = result
+            self.records.publish_reserved(request, result)
             self.ledger.bump(_interfaces_keys.SEMANTIC_STATE_CODEC_COMPILATIONS)
             self.ledger.bump(
                 _interfaces_keys.SEMANTIC_STATE_CODEC_PRIMITIVE_COMPONENT_PORTS,
@@ -258,7 +258,7 @@ class StateCodecArena:
             else:
                 prepared.cancel()
 
-    def _validate(self, codec: StateCodec) -> None:
+    def validate_codec(self, codec: StateCodec) -> None:
         if type(codec) is not StateCodec or codec.owner is not self.token:
             raise ValueError("foreign state codec")
         self._admit(codec.request)
@@ -267,7 +267,7 @@ class StateCodecArena:
         self.structures.resolve(codec.structure)
 
     def anchor(self, codec: StateCodec) -> StructureID:
-        self._validate(codec)
+        self.validate_codec(codec)
         return (
             codec.structure
             if codec.continuation_action is None
@@ -277,7 +277,7 @@ class StateCodecArena:
     def evaluate_continuation(
         self, codec: StateCodec, argument: FactoredFunctionID
     ) -> StructureID:
-        self._validate(codec)
+        self.validate_codec(codec)
         self.structures.bits.resolve(argument)
         if codec.argument_port is None:
             raise ValueError("primitive state has no continuation")

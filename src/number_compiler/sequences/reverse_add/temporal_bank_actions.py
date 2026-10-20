@@ -236,7 +236,7 @@ class _TemporalArena:
         ]
         self.keys: dict[tuple[object, ...], int] = {}
 
-    def _intern(self, key: tuple[object, ...], node: _Node) -> int:
+    def intern_record(self, key: tuple[object, ...], node: _Node) -> int:
         found = self.keys.get(key)
         if found is not None:
             return found
@@ -247,7 +247,7 @@ class _TemporalArena:
 
     def emit(self, frame: TemporalPortFrame) -> int:
         counts = tuple(sum(frame.bits(name)) for name in CHANNELS)
-        return self._intern(
+        return self.intern_record(
             ("emit", frame),
             _Node("emit", 1, frame, -1, -1, 1, counts, frame.reflected_digits, (0, 0)),
         )
@@ -269,7 +269,7 @@ class _TemporalArena:
             copies * q.digit_weighted_sums[1]
             + q.length * q.digit_sums[1] * copies * (copies - 1) // 2,
         )
-        return self._intern(
+        return self.intern_record(
             ("repeat", child, copies),
             _Node(
                 "repeat",
@@ -291,7 +291,7 @@ class _TemporalArena:
             nodes=self.nodes,
             repeat=self.repeat,
             copies=lambda node: node.repeat,
-            intern=self._intern,
+            intern=self.intern_record,
             make_concat=lambda left, right, x, y: _Node(
                 "concat",
                 x.length + y.length,

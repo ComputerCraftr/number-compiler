@@ -10,9 +10,9 @@ import tempfile
 from contextlib import ExitStack
 from pathlib import Path
 from statistics import median
-from typing import TypedDict
+from typing import TypedDict, cast
 
-from devtools.benchmarks.cli_startup import CASES, _install
+from devtools.benchmarks.cli_startup import CASES, install_wheel
 
 
 class PrimeSample(TypedDict):
@@ -59,6 +59,33 @@ if not interactive:
 """
 
 
+def _prime_sample(value: object) -> PrimeSample:
+    if type(value) is not dict:
+        raise ValueError("prime benchmark response is not an object")
+    packet = cast(dict[str, object], value)
+    if set(packet) != {"seconds", "value", "metrics"}:
+        raise ValueError("prime benchmark response has unexpected fields")
+    seconds = packet["seconds"]
+    if type(seconds) is int:
+        seconds_value = float(seconds)
+    elif type(seconds) is float:
+        seconds_value = seconds
+    else:
+        raise ValueError("prime benchmark duration is not numeric")
+    return {
+        "seconds": seconds_value,
+        "value": packet["value"],
+        "metrics": packet["metrics"],
+    }
+
+
+def _prime_samples_json(text: str) -> list[PrimeSample]:
+    value: object = json.loads(text)
+    if type(value) is not list:
+        raise ValueError("prime benchmark response is not an array")
+    return [_prime_sample(item) for item in cast(list[object], value)]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("baseline", type=Path)
@@ -77,7 +104,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="number-compiler-prime-warm-") as temporary:
         work = Path(temporary)
         interpreters = {
-            label: _install(wheel.resolve(strict=True), work / label, environment)
+            label: install_wheel(wheel.resolve(strict=True), work / label, environment)
             for label, wheel in (
                 ("baseline", args.baseline),
                 ("candidate", args.candidate),
@@ -86,7 +113,7 @@ def main() -> None:
         for name in ("prime", "prime-start"):
             arguments = [*CASES[name], "--info", "metrics"]
             with ExitStack() as stack:
-                children = {}
+                children: dict[str, subprocess.Popen[str]] = {}
                 for label, python in interpreters.items():
                     children[label] = stack.enter_context(
                         subprocess.Popen(
@@ -121,7 +148,8 @@ def main() -> None:
                         response = child.stdout.readline()
                         if not response:
                             raise RuntimeError(f"paired prime probe failed: {label}")
-                        reports[label][name].append(json.loads(response))
+                        decoded: object = json.loads(response)
+                        reports[label][name].append(_prime_sample(decoded))
                 for child in children.values():
                     if child.wait(timeout=5):
                         raise RuntimeError("paired prime interpreter failed")
@@ -141,7 +169,7 @@ def main() -> None:
                 capture_output=True,
                 text=True,
             )
-            reports["candidate"][name + "-bypass"] = json.loads(run.stdout)
+            reports["candidate"][name + "-bypass"] = _prime_samples_json(run.stdout)
     for name in ("prime", "prime-start"):
         values = [row["value"] for cases in reports.values() for row in cases[name]]
         if len(set(values)) != 1:

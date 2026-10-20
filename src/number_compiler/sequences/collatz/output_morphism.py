@@ -353,11 +353,11 @@ class CollatzOutputMorphism:
         self._domain(digit, DIGIT)
         self._domain(incoming, CARRY)
         self._domain(shift, RESIDUAL_SHIFT)
-        left_by_carry = []
-        right_by_carry = []
+        left_by_carry: list[FactoredFunctionID] = []
+        right_by_carry: list[FactoredFunctionID] = []
         for carry in range(3):
-            left_by_shift = []
-            right_by_shift = []
+            left_by_shift: list[FactoredFunctionID] = []
+            right_by_shift: list[FactoredFunctionID] = []
             for phase in range(6):
                 actions = radix64_free_directional_row(phase, carry)
                 left_by_shift.append(

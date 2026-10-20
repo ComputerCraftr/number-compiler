@@ -44,10 +44,10 @@ from number_compiler.sequences.double_reverse.radix25_temporal_bank import (
     radix25_shift_port,
 )
 from number_compiler.sequences.double_reverse.source_adapter import (
-    _DoubleReverseAction,
-    _DoubleReverseMachine,
-    _DoubleReverseSource,
-    _DoubleReverseSourceAdapter,
+    DoubleReverseAction,
+    DoubleReverseMachine,
+    DoubleReverseSource,
+    DoubleReverseSourceAdapter,
 )
 from number_compiler.sequences.double_reverse.source_bound_bank import (
     DoubleReverseBankMixin,
@@ -55,7 +55,7 @@ from number_compiler.sequences.double_reverse.source_bound_bank import (
 from number_compiler.sequences.double_reverse.temporal_border_bank import (
     OBSERVERS,
     TemporalBorderEnvelope,
-    _power_temporal_border_with_prefix,
+    power_temporal_border_with_prefix,
 )
 from number_compiler.sequences.double_reverse.temporal_carry_safety import (
     ComponentSafetyProof,
@@ -165,7 +165,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
             self.source_digits = source_lsd
             source_msd = tuple(reversed(source_lsd))
             source_root = self._arena.word(source_msd)
-            self._source = _DoubleReverseSource(self._issuer, self.seed, source_root)
+            self._source = DoubleReverseSource(self._issuer, self.seed, source_root)
             (
                 self._adapter,
                 self._projector,
@@ -187,7 +187,9 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
                 node_cost=carry_safety_result_node_cost,
             )
             rollback.enter_context(cleanup_on_error(self._carry_safety_cache.dispose))
-            self._audit_carry_safety = self._carry_safety_cache._data
+            self._audit_carry_safety = (
+                self._carry_safety_cache.audit_snapshot().container
+            )
             self._authority = (
                 self.seed,
                 self.generation,
@@ -300,7 +302,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
     def _create_execution(
         self, rollback: ExitStack
     ) -> tuple[
-        _DoubleReverseSourceAdapter,
+        DoubleReverseSourceAdapter,
         BimachineSLPProjector,
         TileScheduler,
         OwnedMemo[int, int],
@@ -309,7 +311,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
     ]:
         ledger = self._ledger
         prefix = f"double-reverse-{ledger.owner_count}"
-        machine = _DoubleReverseMachine()
+        machine = DoubleReverseMachine()
         projector = BimachineSLPProjector(machine, self._arena)
         square_projector = BimachineSLPProjector(
             DoubleReverseTwoStepMachine(), self._arena
@@ -347,7 +349,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
             )
             memo_rows.append(memo)
             rollback.enter_context(cleanup_on_error(memo.dispose))
-        memos = cast(tuple[OwnedMemo[object, object], ...], tuple(memo_rows))
+        memos = tuple(memo_rows)
         attach_projector_memos(projector, memos[:5])
         attach_projector_memos(square_projector, memos[5:10])
         reverse_memo: OwnedMemo[int, int] = OwnedMemo(
@@ -384,9 +386,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
                 )
             temporal_rows.append(temporal_memo)
             rollback.enter_context(cleanup_on_error(temporal_memo.dispose))
-        temporal_memos = cast(
-            tuple[OwnedMemo[object, object], ...], tuple(temporal_rows)
-        )
+        temporal_memos = tuple(temporal_rows)
         temporal_hashlife = DoubleReverseTemporalHashlife(
             self._arena,
             ledger,
@@ -408,7 +408,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         rollback.enter_context(
             cleanup_on_error(temporal_hashlife.dispose_audit_contract)
         )
-        adapter = _DoubleReverseSourceAdapter(
+        adapter = DoubleReverseSourceAdapter(
             ledger,
             self._arena,
             projector,
@@ -462,12 +462,12 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
             raise ValueError("double-reverse term binding changed")
         if self._image is None:
             self._image = self._scheduler.source_image(
-                self._adapter, self._source, _DoubleReverseAction(self.generation)
+                self._adapter, self._source, DoubleReverseAction(self.generation)
             )
         image = self._image
         assert image is not None
-        view = self._scheduler._source_image_core().view(image)
-        self._adapter._view_payload(view)
+        view = self._scheduler.source_image_core().view(image)
+        self._adapter.view_payload(view)
         if any(len(memo) for memo in self._adapter.projector_memos) or len(
             self._reverse_memo
         ):
@@ -479,7 +479,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
 
     def _validate_source_binding(self) -> None:
         """Check the exact source/root snapshot without constructing an endpoint."""
-        self._check_open()
+        self.check_open()
         source = self._source
         if (
             self._authority[:4]
@@ -511,30 +511,30 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         self._reverse_memo.clear()
         return released
 
-    def _root(self) -> int:
+    def endpoint_root(self) -> int:
         self.prepare_endpoint()
         image = self._image
         assert image is not None
-        view = self._scheduler._source_image_core().view(image)
-        return self._adapter._view_payload(view).root
+        view = self._scheduler.source_image_core().view(image)
+        return self._adapter.view_payload(view).root
 
     @property
     def maximum_width(self) -> int:
-        self._check_open()
+        self.check_open()
         return max(1, len(self.source_digits) + self.generation)
 
     @property
     def estimated_bit_length(self) -> int:
-        return _DoubleReverseSourceAdapter._width_bits(self.maximum_width)
+        return DoubleReverseSourceAdapter.width_bits(self.maximum_width)
 
     @property
     def source_lsd_digits(self) -> tuple[int, ...]:
         return self.source_digits
 
     def width(self) -> int:
-        self._check_open()
+        self.check_open()
         if self._image is not None:
-            root = self._root()
+            root = self.endpoint_root()
             return self._arena.nodes[root].length
         try:
             entry = self._certified_prefix_entry(
@@ -542,7 +542,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
                 require_even_remainder=True,
             )
         except UncertifiedPointedStencilError:
-            root = self._root()
+            root = self.endpoint_root()
             return self._arena.nodes[root].length
         return self._pointed_shape(entry)[3]
 
@@ -557,7 +557,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         steps = (self.generation - entry.physical_steps) // 2
         left, right = growth_ports(phase, steps)
         width = self._arena.nodes[root].length + left + right
-        if self._adapter._width_bits(width) > self.max_state_bits:
+        if self._adapter.width_bits(width) > self.max_state_bits:
             self._ledger.bump(
                 _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_BIT_BUDGET_REFUSALS
             )
@@ -570,7 +570,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         self, *, max_prefix: int, require_even_remainder: bool
     ) -> DoubleReverseSourcePrefix:
         """Reuse one exact owner-issued chronological source-prefix cursor."""
-        self._check_open()
+        self.check_open()
         if type(require_even_remainder) is not bool:
             raise TypeError("prefix parity selector must be Boolean")
         engine = self._adapter.temporal_hashlife
@@ -585,7 +585,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
             self._ledger.bump(
                 _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_ATTEMPTS
             )
-            cursor = self._adapter._advance_temporal_prefix()
+            cursor = self._adapter.advance_temporal_prefix()
         else:
             self._ledger.bump(
                 _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_CACHE_HITS
@@ -612,7 +612,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
                     _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_ATTEMPTS
                 )
                 explored += 1
-                cursor = self._adapter._advance_temporal_prefix()
+                cursor = self._adapter.advance_temporal_prefix()
                 self._ledger.bump(
                     _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_STEPS
                 )
@@ -626,7 +626,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
 
     def pointed_stencil(self, position: int) -> PointedDigitStencil:
         """Resolve one LSD-first digit from its certified local temporal cone."""
-        self._check_open()
+        self.check_open()
         position = require_integer(position, "digit coordinate")
         if self.generation < 2:
             raise UncertifiedPointedStencilError(
@@ -648,7 +648,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         self,
     ) -> tuple[int, tuple[TemporalBorderEnvelope, ...]]:
         """Bound temporal border ports after one exact certified prefix scan."""
-        self._check_open()
+        self.check_open()
         entry = self._certified_prefix_entry(
             max_prefix=min(32, self.generation),
             require_even_remainder=False,
@@ -668,7 +668,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
             raise AssertionError("three-cell safety ports disagree with the source")
         forced_prefix = forced_carry_prefix(lifted)
         envelopes = tuple(
-            _power_temporal_border_with_prefix(
+            power_temporal_border_with_prefix(
                 edge,
                 horizon,
                 observer,
@@ -705,7 +705,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         halos for the requested two-step horizon. A failed or incomplete
         protected grammar is never promoted from the edge relation alone.
         """
-        self._check_open()
+        self.check_open()
         pair_position = require_integer(pair_position, "pair position", 0)
         period = require_integer(period, "bank period", 1, MAX_PROTECTED_PERIOD)
         if self.generation < 2:
@@ -733,7 +733,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
 
     def source_radix25_shift(self, *, places: int = 8) -> Radix25ShiftPort:
         """Project the initial decimal source through the radix-2/5 shift law."""
-        self._check_open()
+        self.check_open()
         result = radix25_shift_port(
             self._arena,
             self._source.root,
@@ -756,7 +756,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         walsh_start: int = 0,
     ) -> JointRadix25TemporalBank:
         """Join source CRT and 64 Walsh lanes under one protected source root."""
-        self._check_open()
+        self.check_open()
         pair_position = require_integer(pair_position, "pair position", 0)
         period = require_integer(period, "bank period", 1, MAX_PROTECTED_PERIOD)
         walsh_start = require_integer(walsh_start, "Walsh64 start tick", 0)
@@ -791,20 +791,20 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
 
     def digit(self, position: int) -> int:
         position = require_integer(position, "digit coordinate")
-        self._check_open()
+        self.check_open()
         if position < 0:
             raise IndexError(position)
         if self._image is not None:
-            return self._digit_at_root(self._root(), position)
+            return self._digit_at_root(self.endpoint_root(), position)
         if self.generation >= 2:
             try:
                 return self.pointed_stencil(position).digit
             except UncertifiedPointedStencilError:
                 pass
-        root = self._root()
+        root = self.endpoint_root()
         return self._digit_at_root(root, position)
 
-    def _symbol_at(self, root: int, position: int) -> int:
+    def symbol_at(self, root: int, position: int) -> int:
         return symbol_at(self._arena, root, position)
 
     def _digit_at_root(self, root: int, position: int) -> int:
@@ -812,7 +812,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         width = self._arena.nodes[root].length
         if not 0 <= position < width:
             raise IndexError(position)
-        return self._symbol_at(root, width - position - 1)
+        return self.symbol_at(root, width - position - 1)
 
     def _iter_symbols(self, root: int, *, reverse: bool) -> Generator[int, None, None]:
         def record_visit(is_node: bool) -> None:
@@ -833,7 +833,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
                     release_tasks=lambda count: self._ledger.release(
                         self._scratch_owner, entries=count, nodes=count
                     ),
-                    check_open=self._check_open,
+                    check_open=self.check_open,
                 )
             finally:
                 self._active_symbol_walks -= 1
@@ -846,8 +846,8 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
 
     def iter_digits(self) -> Generator[int, None, None]:
         def source() -> Iterator[int]:
-            self._check_open()
-            root = self._root()
+            self.check_open()
+            root = self.endpoint_root()
             yield from self._iter_symbols(root, reverse=True)
 
         return measured_output_stream(
@@ -858,9 +858,9 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         return tuple(self.iter_digits())
 
     def materialize(self, *, max_bits: int) -> int:
-        self._check_open()
+        self.check_open()
         max_bits = require_integer(max_bits, "output bit cap", 0)
-        root = self._root()
+        root = self.endpoint_root()
         value = 0
         with closing_output_stream(self._iter_symbols(root, reverse=False)) as digits:
             for digit in digits:
@@ -883,10 +883,10 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         max_bits: int = 4096,
     ) -> DecimalCarryPort:
         """Lazily project the initial or admitted endpoint carry word."""
-        self._check_open()
+        self.check_open()
         if type(initial) is not bool:
             raise TypeError("initial selector must be Boolean")
-        root = self._source.root if initial else self._root()
+        root = self._source.root if initial else self.endpoint_root()
         result = decimal_carry_port(
             self._arena,
             root,
@@ -910,7 +910,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         suffix shift is relative to the authenticated *entry source*, and its
         linear gain does not claim to cover the uncertified prefix.
         """
-        self._check_open()
+        self.check_open()
         entry_root: int | None = None
         prefix_steps: int | None = None
         source_phase = self._adapter.temporal_hashlife.certify(self._source.root)
@@ -925,7 +925,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
             else:
                 entry_root = self._adapter.temporal_hashlife.root_of(entry.target)
                 prefix_steps = entry.physical_steps
-        endpoint = self._root()
+        endpoint = self.endpoint_root()
         result = closed_form_from_roots(
             self._arena,
             self._source.root,
@@ -975,7 +975,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
     def _mark_scratch_disposed(self) -> None:
         self._ledger.mark_disposed(self._scratch_owner)
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         if self._closed:
             raise ValueError("disposed double-reverse term")
 
@@ -983,8 +983,13 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
     def resource_ledger(self) -> ResourceLedger:
         return self._ledger
 
+    @property
+    def is_usable(self) -> bool:
+        """Whether this term admits observations and still owns its resources."""
+        return not self._closed and not self._cleanup_complete
+
     def __enter__(self) -> Self:
-        self._check_open()
+        self.check_open()
         return self
 
     def __exit__(self, *_exc: object) -> None:

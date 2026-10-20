@@ -1,3 +1,5 @@
+from typing import cast
+
 import pytest
 
 from devtools.experiments.antihydra.barrier_search import grammar_refinement
@@ -104,9 +106,14 @@ def test_research_search_prunes_before_constructing_empty_children(
     monkeypatch.setattr(ReachableFutureGrammar, "edge", guarded_edge)
     result = grammar_refinement(4, 4, 100_000)
     assert result["status"] == "FINITE_REACHABLE_GRAMMAR"
-    records = result["records"]
-    assert isinstance(records, list)
-    assert [row["reachable_families"] for row in records] == [4, 12, 24, 48]
+    raw_records = result["records"]
+    assert isinstance(raw_records, list)
+    records: list[object] = cast(list[object], raw_records)
+    observed: list[object] = []
+    for row in records:
+        assert isinstance(row, dict)
+        observed.append(cast(object, row["reachable_families"]))
+    assert observed == [4, 12, 24, 48]
     work = result["work"]
     assert isinstance(work, dict)
     assert work["grammar_event_branches_pruned"] > 0

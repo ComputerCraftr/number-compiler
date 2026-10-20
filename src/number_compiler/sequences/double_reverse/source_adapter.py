@@ -37,14 +37,14 @@ DOUBLE_REVERSE_SOURCE_IMAGE_VERSION: Final[str] = "decimal-2rev-source-image-v1"
 
 
 @dataclass(frozen=True, slots=True, eq=False)
-class _DoubleReverseSource:
+class DoubleReverseSource:
     issuer: ArenaToken
     seed: int
     root: int
 
 
 @dataclass(frozen=True, slots=True)
-class _DoubleReverseAction:
+class DoubleReverseAction:
     steps: int
 
     def __post_init__(self) -> None:
@@ -55,8 +55,8 @@ class _DoubleReverseAction:
 @dataclass(frozen=True, slots=True)
 class _DoubleReverseImage:
     issuer: ArenaToken
-    source: _DoubleReverseSource
-    action: _DoubleReverseAction
+    source: DoubleReverseSource
+    action: DoubleReverseAction
     root: int
 
 
@@ -80,7 +80,7 @@ class _SuffixNonzeroDFA:
         return int(bool(state or symbol))
 
 
-class _DoubleReverseMachine:
+class DoubleReverseMachine:
     """Two-sided word law: forward carry and a trailing-zero suffix flag."""
 
     __slots__ = ("left", "right")
@@ -106,9 +106,14 @@ class _DoubleReverseMachine:
         return ((2 * symbol + carry) % 10,)
 
 
-class _DoubleReverseSourceAdapter:
+class DoubleReverseSourceAdapter:
     family = "double-reverse"
     semantic_version = DOUBLE_REVERSE_SOURCE_IMAGE_VERSION
+
+    @property
+    def closed(self) -> bool:
+        """Whether this adapter has retired its execution context."""
+        return self._closed
 
     def __init__(
         self,
@@ -116,7 +121,7 @@ class _DoubleReverseSourceAdapter:
         arena: LedgerSLPArena,
         projector: BimachineSLPProjector,
         two_step_projector: BimachineSLPProjector,
-        source: _DoubleReverseSource,
+        source: DoubleReverseSource,
         issuer: ArenaToken,
         max_steps: int,
         max_state_bits: int,
@@ -143,10 +148,10 @@ class _DoubleReverseSourceAdapter:
         self.temporal_memos = temporal_memos
         self._closed = False
         self._cleanup_complete = False
-        self.temporal_hashlife._bind_source_advancer(self._apply_word)
+        self.temporal_hashlife.bind_source_advancer(self._apply_word)
 
     def validate_source(self, source: object) -> None:
-        if type(source) is not _DoubleReverseSource:
+        if type(source) is not DoubleReverseSource:
             raise ValueError("double-reverse source is foreign or malformed")
         exact = source
         if (
@@ -160,7 +165,7 @@ class _DoubleReverseSourceAdapter:
             raise ValueError("double-reverse source is foreign or malformed")
 
     def validate_action(self, action: object) -> None:
-        if type(action) is not _DoubleReverseAction:
+        if type(action) is not DoubleReverseAction:
             raise TypeError("double-reverse action has the wrong type")
         exact = action
         if exact.steps > self.max_steps:
@@ -180,35 +185,35 @@ class _DoubleReverseSourceAdapter:
         ):
             raise ValueError("double-reverse image root or horizon is invalid")
 
-    def identity_action(self, source: object) -> _DoubleReverseAction:
+    def identity_action(self, source: object) -> DoubleReverseAction:
         self.validate_source(source)
-        return _DoubleReverseAction(0)
+        return DoubleReverseAction(0)
 
     def action_children(
         self, action: object
-    ) -> tuple[_DoubleReverseAction, _DoubleReverseAction] | None:
+    ) -> tuple[DoubleReverseAction, DoubleReverseAction] | None:
         self.validate_action(action)
-        steps = cast(_DoubleReverseAction, action).steps
+        steps = cast(DoubleReverseAction, action).steps
         if steps < 2:
             return None
         before = steps // 2
-        return _DoubleReverseAction(before), _DoubleReverseAction(steps - before)
+        return DoubleReverseAction(before), DoubleReverseAction(steps - before)
 
-    def compose_actions(self, before: object, after: object) -> _DoubleReverseAction:
+    def compose_actions(self, before: object, after: object) -> DoubleReverseAction:
         self.validate_action(before)
         self.validate_action(after)
         total = (
-            cast(_DoubleReverseAction, before).steps
-            + cast(_DoubleReverseAction, after).steps
+            cast(DoubleReverseAction, before).steps
+            + cast(DoubleReverseAction, after).steps
         )
-        self.validate_action(_DoubleReverseAction(total))
-        return _DoubleReverseAction(total)
+        self.validate_action(DoubleReverseAction(total))
+        return DoubleReverseAction(total)
 
     def admit_source(self, source: object) -> SourceImageCandidate:
         self.validate_source(source)
-        exact = cast(_DoubleReverseSource, source)
+        exact = cast(DoubleReverseSource, source)
         payload = _DoubleReverseImage(
-            self.issuer, exact, _DoubleReverseAction(0), exact.root
+            self.issuer, exact, DoubleReverseAction(0), exact.root
         )
         width = self.arena.nodes[exact.root].length
         return SourceImageCandidate(payload, 0, radix=10, precision=width)
@@ -225,7 +230,7 @@ class _DoubleReverseSourceAdapter:
                 self.scratch_owner, entries=width, nodes=width
             ):
                 for index in range(width):
-                    digit = self._symbol_at(root, index)
+                    digit = self.symbol_at(root, index)
                     if not 0 <= digit <= 9:
                         raise ValueError("2rev10 source contains a nondecimal symbol")
                     reverse_value += digit * weight
@@ -269,14 +274,14 @@ class _DoubleReverseSourceAdapter:
         )
         return result
 
-    def _advance_temporal_prefix(self) -> DoubleReverseSourcePrefix:
+    def advance_temporal_prefix(self) -> DoubleReverseSourcePrefix:
         """Advance the owner cursor through this adapter's exact one-T map."""
-        return self.temporal_hashlife._advance_source_prefix()
+        return self.temporal_hashlife.advance_source_prefix()
 
     def _record_square_guard_visit(self) -> None:
         self.ledger.bump(_double_reverse_keys.DOUBLE_REVERSE_SQUARE_GUARD_REGION_VISITS)
 
-    def _symbol_at(self, root: int, position: int) -> int:
+    def symbol_at(self, root: int, position: int) -> int:
         return symbol_at(
             self.arena,
             root,
@@ -284,7 +289,7 @@ class _DoubleReverseSourceAdapter:
             on_visit=self._record_square_guard_visit,
         )
 
-    def _trailing_zero_count(self, root: int) -> int:
+    def trailing_zero_count(self, root: int) -> int:
         """Count a compressed decimal suffix without visiting its cells."""
         nodes = self.arena.nodes
         bound = max(16, 4 * len(nodes))
@@ -358,12 +363,12 @@ class _DoubleReverseSourceAdapter:
         if width < 1:
             return None
         self.ledger.bump(_double_reverse_keys.DOUBLE_REVERSE_SQUARE_WIDTH_GUARDS)
-        if self._symbol_at(root, width - 1) != 0:
+        if self.symbol_at(root, width - 1) != 0:
             trailing_zeros = 0
-        elif width > 1 and self._symbol_at(root, width - 2) != 0:
+        elif width > 1 and self.symbol_at(root, width - 2) != 0:
             trailing_zeros = 1
         else:
-            trailing_zeros = self._trailing_zero_count(root)
+            trailing_zeros = self.trailing_zero_count(root)
         if trailing_zeros == width:
             self.ledger.bump(
                 _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_SQUARE_APPLICATIONS
@@ -377,11 +382,11 @@ class _DoubleReverseSourceAdapter:
         trimmed = (
             self.temporal_hashlife.part(root, 0, new_width) if trailing_zeros else root
         )
-        leading = self._symbol_at(trimmed, 0)
-        trailing = self._symbol_at(trimmed, new_width - 1)
+        leading = self.symbol_at(trimmed, 0)
+        trailing = self.symbol_at(trimmed, new_width - 1)
         right_birth = int(trailing >= 5)
         left_birth = int((2 * leading) % 10 >= 5)
-        adjacent = self._symbol_at(trimmed, 1) if new_width > 1 else 0
+        adjacent = self.symbol_at(trimmed, 1) if new_width > 1 else 0
         first_cell = (
             4 * leading + int((2 * adjacent + int(leading >= 5)) % 10 >= 5)
         ) % 10
@@ -391,8 +396,8 @@ class _DoubleReverseSourceAdapter:
         if final_width < 1:
             raise AssertionError("positive double-reverse square has zero width")
         if (
-            self._width_bits(intermediate_width) > self.max_state_bits
-            or self._width_bits(final_width) > self.max_state_bits
+            self.width_bits(intermediate_width) > self.max_state_bits
+            or self.width_bits(final_width) > self.max_state_bits
         ):
             self.ledger.bump(_double_reverse_keys.DOUBLE_REVERSE_SQUARE_GUARD_REFUSALS)
             self.ledger.bump(
@@ -412,14 +417,14 @@ class _DoubleReverseSourceAdapter:
                 )
             )
             if leading_trim:
-                if self._symbol_at(result, 0) != 0:
+                if self.symbol_at(result, 0) != 0:
                     raise AssertionError("2rev10 normalized leading digit was not zero")
                 result = self.temporal_hashlife.part(
                     result, 1, self.arena.nodes[result].length
                 )
         if self.arena.nodes[result].length != final_width:
             raise AssertionError("2rev10 normalized square changed its certified width")
-        if self._symbol_at(result, 0) == 0:
+        if self.symbol_at(result, 0) == 0:
             raise AssertionError("2rev10 square produced a noncanonical leading zero")
         if final_width > width:
             self.ledger.bump(
@@ -525,8 +530,8 @@ class _DoubleReverseSourceAdapter:
         self, action: object, source: SourceImageView
     ) -> SourceImageCandidate:
         self.validate_action(action)
-        prior = self._view_payload(source)
-        exact_action = cast(_DoubleReverseAction, action)
+        prior = self.view_payload(source)
+        exact_action = cast(DoubleReverseAction, action)
         if exact_action.steps == 0:
             return SourceImageCandidate(
                 prior,
@@ -553,9 +558,9 @@ class _DoubleReverseSourceAdapter:
         demand: SourceImageDemand | None,
     ) -> SourceImageCandidate | None:
         self.validate_action(action)
-        prior = self._view_payload(source)
+        prior = self.view_payload(source)
         del demand
-        exact_action = cast(_DoubleReverseAction, action)
+        exact_action = cast(DoubleReverseAction, action)
         result: int | None = None
         powered_action: DoubleReversePortAction | None = None
         if exact_action.steps >= 2 and exact_action.steps % 2 == 0:
@@ -566,7 +571,7 @@ class _DoubleReverseSourceAdapter:
                 final_width = (
                     self.arena.nodes[prior.root].length + left_births + right_births
                 )
-                if self._width_bits(final_width) > self.max_state_bits:
+                if self.width_bits(final_width) > self.max_state_bits:
                     self.ledger.bump(
                         _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_BIT_BUDGET_REFUSALS
                     )
@@ -612,9 +617,9 @@ class _DoubleReverseSourceAdapter:
         after: SourceImageView,
     ) -> SourceImageCandidate:
         self.validate_action(action)
-        original = self._view_payload(source)
-        middle = self._view_payload(before)
-        final = self._view_payload(after)
+        original = self.view_payload(source)
+        middle = self.view_payload(before)
+        final = self.view_payload(after)
         children = self.action_children(action)
         if (
             children is None
@@ -633,7 +638,7 @@ class _DoubleReverseSourceAdapter:
 
     def admitted_input_key(self, action: object, source: SourceImageView) -> None:
         self.validate_action(action)
-        self._view_payload(source)
+        self.view_payload(source)
 
     def transport_reuse(
         self,
@@ -648,13 +653,13 @@ class _DoubleReverseSourceAdapter:
     def project(
         self, image: SourceImageView, demand: SourceImageDemand
     ) -> SourceImageProjection:
-        payload = self._view_payload(image)
+        payload = self.view_payload(image)
         if demand.name != "width" or demand.parameters:
             raise ValueError("double-reverse supports only the width projection")
         return SourceImageProjection(self.arena.nodes[payload.root].length)
 
     def first_failure(self, image: SourceImageView) -> None:
-        self._view_payload(image)
+        self.view_payload(image)
 
     def audit_image_binding(
         self,
@@ -685,7 +690,7 @@ class _DoubleReverseSourceAdapter:
         # separate semantic approval they do not need.
         return ()
 
-    def _view_payload(self, view: SourceImageView) -> _DoubleReverseImage:
+    def view_payload(self, view: SourceImageView) -> _DoubleReverseImage:
         if type(view) is not SourceImageView:
             raise TypeError("double-reverse operation needs a scheduler image view")
         self.validate_source(view.binding.source)
@@ -706,7 +711,7 @@ class _DoubleReverseSourceAdapter:
         return payload
 
     @staticmethod
-    def _width_bits(width: int) -> int:
+    def width_bits(width: int) -> int:
         # 3.322 bits per decimal digit is a strict upper bound for log2(10).
         return max(1, (3322 * width + 999) // 1000)
 

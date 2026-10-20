@@ -21,7 +21,7 @@ def _carry_out(pair_value: int, carry_in: int, base: int) -> int:
     return (pair_value + carry_in) // base
 
 
-def _normalized_digit(pair_value: int, carry_in: int, base: int) -> int:
+def normalized_digit(pair_value: int, carry_in: int, base: int) -> int:
     carry = _carry_out(pair_value, carry_in, base)
     return pair_value + carry_in - base * carry
 
@@ -227,6 +227,11 @@ class BlockEffectAdmissionAdapter(Protocol):
 
 _OPERATOR_IDS = count(1)
 _CONTEXT_IDS = count(1)
+
+
+def next_context_id() -> int:
+    """Allocate a context identity while retaining ownership of the counter."""
+    return next(_CONTEXT_IDS)
 
 
 def next_operator_id() -> int:

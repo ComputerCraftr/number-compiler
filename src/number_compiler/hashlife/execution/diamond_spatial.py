@@ -26,7 +26,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
     observation_inputs,
     scan_primitive_support,
 )
-from number_compiler.hashlife.interfaces.diamond_output import _expression
+from number_compiler.hashlife.interfaces.diamond_output import (
+    require_transfer_expression,
+)
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
@@ -60,16 +62,16 @@ class PrimitiveSpatialTransfers:
         ):
             raise ValueError("invalid primitive spatial interface")
         node = runtime.actions.resolve(task.action)
-        source = runtime.cells.source_geometry._construction.source
+        source = runtime.cells.source_geometry.construction.source
         if node.kind != "atom" or (node.base, node.blank) != (
             source.base,
             source.blank,
         ):
             raise ValueError("spatial summary requires a matching primitive action")
-        return runtime.pair_macros._require_source(task.cell)
+        return runtime.pair_macros.require_source(task.cell)
 
     def compile(self, task: SpatialSummary) -> Generator[Task, Result, Result]:
-        self.runtime.pair_macros._record_source_admission(self.validate(task))
+        self.runtime.pair_macros.record_source_admission(self.validate(task))
         runtime, kernels = self.runtime, self.runtime.kernels
         primitive = runtime.kernel(task.action)
         kernel = runtime.primitive_ids[task.action]
@@ -88,8 +90,12 @@ class PrimitiveSpatialTransfers:
             return result
         left, right = runtime.cells.split(task.cell)
         before, after = (left, right) if task.side == 0 else (right, left)
-        first = _expression((yield SpatialSummary(task.action, before, task.side)))
-        second = _expression((yield SpatialSummary(task.action, after, task.side)))
+        first = require_transfer_expression(
+            (yield SpatialSummary(task.action, before, task.side))
+        )
+        second = require_transfer_expression(
+            (yield SpatialSummary(task.action, after, task.side))
+        )
         result = runtime.pair_macros.unary.compose(
             kernel, task.side, first, second, port
         )
@@ -104,9 +110,9 @@ class PrimitiveSpatialTransfers:
         state: BoundaryStateID,
     ) -> BoundaryStateID:
         runtime = self.runtime
-        runtime._validate_state(state, action, side)
+        runtime.validate_state(state, action, side)
         node = runtime.actions.resolve(action)
-        source = runtime.cells.source_geometry._construction.source
+        source = runtime.cells.source_geometry.construction.source
         if node.kind != "atom" or (node.base, node.blank) != (
             source.base,
             source.blank,
@@ -116,7 +122,7 @@ class PrimitiveSpatialTransfers:
         # A valid literal state already has an admitted primitive interface.
         # Reading that existing kernel must not populate runtime.kernel's memo
         # before every supplied function and its free variables are validated.
-        handle = runtime.kernels._kernel_ids.get(
+        handle = runtime.kernels.kernel_bindings.get(
             _effect_key(runtime.actions.primitive(action))
         )
         if handle is None:

@@ -9,6 +9,7 @@ import sys
 from collections.abc import Mapping
 from itertools import pairwise
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -43,7 +44,11 @@ def test_python_tool_versions_do_not_probe_foreign_path_installations(
     monkeypatch.setattr(shutil, "which", locate)
     monkeypatch.setattr(subprocess, "run", no_subprocess)
     monkeypatch.delenv("NUMBER_COMPILER_NODE", raising=False)
-    monkeypatch.setattr(runs, "version", lambda _name: "pinned-version")
+
+    def version(_name: str) -> str:
+        return "pinned-version"
+
+    monkeypatch.setattr(runs, "version", version)
     tools = runs.tool_versions()
     assert tools["ruff"] == "pinned-version"
     assert "isabelle" not in tools
@@ -71,7 +76,10 @@ def manifest_steps_named(run: EvidenceRun, name: str) -> list[dict[str, object]]
     steps = run.manifest.get("steps")
     assert isinstance(steps, list)
     return [
-        step for step in steps if isinstance(step, dict) and step.get("name") == name
+        cast(dict[str, object], step)
+        for step in cast(list[object], steps)
+        if isinstance(step, dict)
+        and cast(dict[object, object], step).get("name") == name
     ]
 
 
@@ -344,9 +352,8 @@ def test_release_proof_selection_preserves_aggregate_and_limits(
                 "Finished Base (0:00:01 elapsed time)\n"
                 f"Finished Prefix_Effect_Core ({elapsed} elapsed time)\n"
             )
-            if progress_watchdog is not None:
-                for line in proof_log.read_bytes().splitlines(keepends=True):
-                    progress_watchdog.observe_output(line, 1.0)
+            for line in proof_log.read_bytes().splitlines(keepends=True):
+                progress_watchdog.observe_output(line, 1.0)
         return True
 
     monkeypatch.setattr(release, "execute", execute)
@@ -594,11 +601,14 @@ def test_all_suite_enforces_validator_time_gate(
         (run.path / "all-collect.log").write_text(
             "tests/test_example.py::test_example\n"
         )
-        monkeypatch.setattr(release, "execute", lambda *args, **kwargs: True)
-        monkeypatch.setattr(
-            release,
-            "validate_serial_release",
-            lambda *args, **kwargs: {"serial_time_gate_passed": False},
-        )
+
+        def execute(*args: object, **kwargs: object) -> bool:
+            return True
+
+        def validate(*args: object, **kwargs: object) -> dict[str, bool]:
+            return {"serial_time_gate_passed": False}
+
+        monkeypatch.setattr(release, "execute", execute)
+        monkeypatch.setattr(release, "validate_serial_release", validate)
         assert not release.pytest_suite(run, "all")
     assert "300-second" in str(run.manifest["steps"])

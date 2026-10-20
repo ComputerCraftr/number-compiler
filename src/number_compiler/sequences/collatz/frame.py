@@ -36,14 +36,18 @@ from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.automata.program_word import (
     EMPTY,
+    CanonicalWord,
     SourceWord,
+    SourceWordSuffix,
     drop_source_prefix,
     iter_runs,
     source_word_key,
     validate_source_word,
     word_metrics,
 )
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.arithmetic.fields.adic_morphism import PadicRadialQuotient
+from number_compiler.arithmetic.fields.integer_congruence import exact_modular_power
 from number_compiler.arithmetic.fields.morphism_core import AffineCocycle
 from number_compiler.arithmetic.fields.radix import bit_width, digits_lsd
 from number_compiler.arithmetic.fields.two_adic import v2_positive
@@ -72,8 +76,8 @@ def _sentinel_prefix_mod3(quarters: int, precision: int) -> int:
     q = quarters
     if q < 0 or not 0 < precision <= 40:
         raise ValueError((q, precision))
-    modulus = 3**precision
-    lifted = pow(4, q, 3 * modulus)
+    modulus: int = 3**precision
+    lifted = exact_modular_power(4, q, 3 * modulus)
     if (lifted - 1) % 3:
         raise AssertionError((q, precision, lifted))
     return int(((lifted - 1) // 3) % modulus)
@@ -227,7 +231,7 @@ class CollatzAffineSuffixGerm:
         return cls(1, 0, word, 0)
 
     @staticmethod
-    def _pow3_exponent(value: int) -> int:
+    def pow3_exponent(value: int) -> int:
         if type(value) is not int:
             raise TypeError("power-of-three recognition requires an exact integer")
         if value <= 0:
@@ -272,7 +276,7 @@ class CollatzAffineSuffixGerm:
 
         base_shift = alpha_v2
         odd_denominator = alpha >> base_shift
-        h = self._pow3_exponent(odd_denominator)
+        h = self.pow3_exponent(odd_denominator)
         root = RationalPadicRootGerm(h, beta >> base_shift)
         mismatch, suffix = root.first_mismatch_word(self.suffix)
         angular = PadicAngularBoundaryGerm.from_mismatch(root, mismatch)
@@ -359,7 +363,7 @@ def collatz_affine_suffix_valuations_word(
     germ = CollatzAffineSuffixGerm.from_word(word)
     if transition_cache is None:
         transition_cache = CollatzGermTransitionCache()
-    if not isinstance(transition_cache, CollatzGermTransitionCache):
+    if not is_runtime_instance(transition_cache, CollatzGermTransitionCache):
         raise TypeError(type(transition_cache))
     out: list[int] = []
     for _ in range(steps):
@@ -454,7 +458,10 @@ class CollatzFutureValuationRoot:
         return self.rational_root.valuation_from_digits(digits) - self.local_shift
 
     def next_valuation_from_word(self, word: SourceWord) -> int:
-        if not isinstance(word, SourceWord):
+        if not (
+            is_runtime_instance(word, CanonicalWord)
+            or is_runtime_instance(word, SourceWordSuffix)
+        ):
             raise TypeError(type(word))
         return self.rational_root.valuation_from_word(word) - self.local_shift
 
@@ -614,11 +621,14 @@ class CollatzFixedPointPadicFrame:
             raise TypeError("Collatz frame construction requires exact integers")
         if not 0 < precision <= 40 or valuation <= 0:
             raise ValueError((precision, valuation))
-        modulus = 3**precision
+        modulus: int = 3**precision
+        q: int
+        local: int
         q, local = divmod(valuation, 2)
         sentinel = _sentinel_prefix_mod3(q, precision)
-        scale = pow(4, q, modulus)
-        tail = (source_residue - sentinel) * pow(scale, -1, modulus)
+        scale = exact_modular_power(4, q, modulus)
+        inverse = exact_modular_power(scale, -1, modulus)
+        tail: int = (source_residue - sentinel) * inverse
         return cls(precision, tail % modulus, local)
 
     @classmethod

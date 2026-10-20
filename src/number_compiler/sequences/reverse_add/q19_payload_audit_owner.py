@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from typing import cast
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
@@ -122,12 +123,13 @@ def audit_reverse_pair_output_owner(
         store = state.audit_bindings[index]
         if index < 4:
             if index == 0 and type(store) is LedgerList:
-                members: tuple[object, ...] = tuple(store)
+                members: tuple[object, ...] = tuple(cast(Iterable[object], store))
             elif isinstance(store, Mapping):
+                mapping = cast(Mapping[object, object], store)
                 raw_members: list[object] = []
-                for raw_key in store:
+                for raw_key in mapping:
                     key: object = raw_key
-                    raw_value: object = store[raw_key]
+                    raw_value: object = mapping[raw_key]
                     raw_members.extend((key, raw_value))
                 members = tuple(raw_members)
             else:
@@ -148,11 +150,12 @@ def audit_reverse_pair_output_owner(
         if type(memo_snapshot) is not OwnedMemoAuditSnapshot:
             invalid.append(PayloadAuditEntry(owner, root))
             continue
-        if memo_snapshot.container is not store:
+        typed_snapshot = cast(OwnedMemoAuditSnapshot[object, object], memo_snapshot)
+        if typed_snapshot.container is not store:
             invalid.append(PayloadAuditEntry(owner, root))
             continue
         values = tuple(
-            item for pair in memo_payload_objects(memo_snapshot) for item in pair
+            item for pair in memo_payload_objects(typed_snapshot) for item in pair
         )
         approved.extend(
             PayloadAuditEntry(owner, value)

@@ -13,9 +13,9 @@ from number_compiler.resources.payload_contracts import (
     PayloadAuditEntry,
 )
 from number_compiler.sequences.antihydra.payload_audit import (
-    _approve,
-    _owned_row_matches,
-    _reject,
+    approve_payload,
+    owned_row_matches,
+    reject_payload,
 )
 
 if TYPE_CHECKING:
@@ -64,14 +64,16 @@ def _fragment_source_bindings(
         ):
             continue
         term = terms.get(key.source_owner)
+        if type(term) is not AntihydraArithmeticTerm:
+            continue
+        term_snapshot = term.audit_snapshot()
         if (
-            type(term) is not AntihydraArithmeticTerm
-            or term.ledger is not ledger
+            term.ledger is not ledger
             or term.engine.projection_fragments is not cache
             or key.requested != term.requested
             or not 0 <= key.start < term.requested
-            or term._physical is None
-            or term._physical.halted
+            or term.published_physical_run is None
+            or term.published_physical_run.halted
             or not 1 <= key.spatial_width <= 64
             or not 1 <= key.temporal_width <= 64
             or key.spatial_sign not in (-1, 1)
@@ -87,11 +89,12 @@ def _fragment_source_bindings(
     bound: set[int] = set()
     for owner, starts in demanded.items():
         term = terms[owner]
+        term_snapshot = term.audit_snapshot()
         last = max(starts)
         h, balance, head, time, start = 8, 0, 1, 11, 0
-        if not term._segments_ready:
+        if not term_snapshot.segments_ready:
             continue
-        for segment in term._segments:
+        for segment in term_snapshot.segments:
             if (
                 type(segment) is not ArithmeticSegment
                 or type(segment.start) is not int
@@ -175,14 +178,14 @@ def audit_antihydra_fragment_cache(
     structurally_valid = (
         set(vars(cache)) == {"ledger", "owner", "seal_owner", "fragments", "seals"}
         and cache.ledger is ledger
-        and _owned_row_matches(
+        and owned_row_matches(
             ledger,
             cache.owner,
             cache.fragments,
             "demanded_projection",
             entries=len(cache.fragments),
         )
-        and _owned_row_matches(
+        and owned_row_matches(
             ledger,
             cache.seal_owner,
             cache.seals,
@@ -192,7 +195,7 @@ def audit_antihydra_fragment_cache(
         and len(cache.fragments) == len(cache.seals) <= 32
     )
     if not structurally_valid:
-        _reject(invalid, cache.owner, cache)
+        reject_payload(invalid, cache.owner, cache)
         return PayloadAuditContribution((), tuple(invalid))
 
     seal_entries = {key: (key, seal) for key, seal in cache.seals.items()}
@@ -214,25 +217,24 @@ def audit_antihydra_fragment_cache(
             except (TypeError, ValueError, AttributeError):
                 valid = False
         if valid:
-            _approve(approved, cache.owner, key)
-            _approve(approved, cache.owner, fragment)
-            _approve(approved, cache.seal_owner, seal_key)
-            _approve(approved, cache.seal_owner, seal)
+            approve_payload(approved, cache.owner, key)
+            approve_payload(approved, cache.owner, fragment)
+            approve_payload(approved, cache.seal_owner, seal_key)
+            approve_payload(approved, cache.seal_owner, seal)
         else:
             structurally_valid = False
-            _reject(invalid, cache.owner, key)
-            _reject(invalid, cache.owner, fragment)
+            reject_payload(invalid, cache.owner, key)
+            reject_payload(invalid, cache.owner, fragment)
             if seal is not None:
-                _reject(invalid, cache.seal_owner, key)
-                _reject(invalid, cache.seal_owner, seal)
+                reject_payload(invalid, cache.seal_owner, key)
+                reject_payload(invalid, cache.seal_owner, seal)
     if not structurally_valid:
-        _reject(invalid, cache.owner, cache)
+        reject_payload(invalid, cache.owner, cache)
     return PayloadAuditContribution(tuple(approved), tuple(invalid))
 
 
 def audit_antihydra_cursor(ledger: object, root: object) -> PayloadAuditContribution:
     """Require the reusable occurrence cursor to be idle and empty."""
-    from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
     from number_compiler.sequences.antihydra.projection_occurrences import (
         ProjectionOccurrenceCursor,
     )
@@ -244,12 +246,8 @@ def audit_antihydra_cursor(ledger: object, root: object) -> PayloadAuditContribu
         raise TypeError("Antihydra cursor audit requires its exact cursor root")
     cursor = root
     invalid: list[PayloadAuditEntry] = []
-    stores = (
-        (cursor._state_owner, cursor._states, "workspace"),
-        (cursor._state_seal_owner, cursor._state_seals, "projection_binding"),
-        (cursor._occurrence_owner, cursor._occurrences, "demanded_projection"),
-        (cursor._occurrence_seal_owner, cursor._occurrence_seals, "projection_binding"),
-    )
+    cursor_snapshot = cursor.audit_snapshot()
+    stores = cursor_snapshot.stores
     valid = (
         set(vars(cursor))
         == {
@@ -266,16 +264,16 @@ def audit_antihydra_cursor(ledger: object, root: object) -> PayloadAuditContribu
             "_active",
         }
         and cursor.ledger is ledger
-        and cursor._active is False
-        and type(cursor._token) is ArenaToken
+        and cursor_snapshot.active is False
+        and cursor_snapshot.token_is_valid
         and all(
             not store
-            and _owned_row_matches(ledger, owner, store, role, entries=0, nodes=0)
-            for owner, store, role in stores
+            and owned_row_matches(ledger, owner, store, role, entries=0, nodes=0)
+            for owner, _attribute, role, store in stores
         )
     )
     if not valid:
-        _reject(invalid, cursor._state_owner, cursor)
+        reject_payload(invalid, cursor_snapshot.stores[0].owner, cursor)
     return PayloadAuditContribution((), tuple(invalid))
 
 
@@ -283,15 +281,11 @@ def audit_antihydra_fragment_adapter(
     ledger: object, root: object
 ) -> PayloadAuditContribution:
     """Require the reusable source-image adapter to have released query state."""
-    from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
     from number_compiler.sequences.antihydra.projection_core import (
-        _AntihydraFragmentAdapter,
+        AntihydraFragmentAdapter,
     )
 
-    if (
-        type(ledger) is not ResourceLedger
-        or type(root) is not _AntihydraFragmentAdapter
-    ):
+    if type(ledger) is not ResourceLedger or type(root) is not AntihydraFragmentAdapter:
         raise TypeError("Antihydra adapter audit requires its exact adapter root")
     adapter = root
     invalid: list[PayloadAuditEntry] = []
@@ -319,45 +313,17 @@ def audit_antihydra_fragment_adapter(
             "_source_seals",
         }
         and adapter.ledger is ledger
-        and type(adapter._token) is ArenaToken
-        and adapter.projection is None
-        and adapter.key is None
-        and adapter.block is None
-        and adapter._cursor is None
-        and adapter._occurrence is None
-        and adapter._section_capacity == 0
-        and adapter._source_h == adapter._source_balance == 0
-        and adapter._source_token is None
-        and not adapter._records
-        and not adapter._seals
-        and not adapter._source_seals
-        and _owned_row_matches(
-            ledger,
-            adapter._owner,
-            adapter._records,
-            "demanded_projection",
-            entries=0,
-            nodes=0,
-        )
-        and _owned_row_matches(
-            ledger,
-            adapter._seal_owner,
-            adapter._seals,
-            "projection_binding",
-            entries=0,
-            nodes=0,
-        )
-        and _owned_row_matches(
-            ledger,
-            adapter._source_seal_owner,
-            adapter._source_seals,
-            "projection_binding",
-            entries=0,
-            nodes=0,
+        and adapter.audit_snapshot().token_is_valid
+        and adapter.audit_snapshot().idle
+        and all(
+            owned_row_matches(
+                ledger, row.owner, row.store, row.role, entries=0, nodes=0
+            )
+            for row in adapter.audit_snapshot().stores
         )
     )
     if not valid:
-        _reject(invalid, adapter._owner, adapter)
+        reject_payload(invalid, adapter.audit_snapshot().stores[0].owner, adapter)
     return PayloadAuditContribution((), tuple(invalid))
 
 
@@ -379,7 +345,7 @@ def audit_antihydra_section_workspace(
         and not workspace.active
         and not workspace.images
         and workspace.area == 0
-        and _owned_row_matches(
+        and owned_row_matches(
             ledger,
             workspace.owner,
             workspace.images,
@@ -389,5 +355,5 @@ def audit_antihydra_section_workspace(
         )
     )
     if not valid:
-        _reject(invalid, workspace.owner, workspace)
+        reject_payload(invalid, workspace.owner, workspace)
     return PayloadAuditContribution((), tuple(invalid))

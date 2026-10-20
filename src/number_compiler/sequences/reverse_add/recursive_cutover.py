@@ -79,8 +79,8 @@ from number_compiler.sequences.reverse_add.higher_schema import (
     ReverseHigherActionSchema,
 )
 from number_compiler.sequences.reverse_add.recursive_adapters import (
+    ReverseProviderAdapter,
     ReverseRecursiveFieldAdapter,
-    _ReverseProviderAdapter,
 )
 
 
@@ -136,6 +136,7 @@ class ReverseRecursiveTemporalCutoverAuditSnapshot:
     blank: int
     disposed: bool
     pair_actions: OwnedMemoAuditSnapshot[int, FieldCellActionID]
+    pair_widths: OwnedMemoAuditSnapshot[tuple[FieldImageID, FieldCellActionID], int]
     occurrence_authority: object
 
 
@@ -190,10 +191,10 @@ class ReverseRecursiveTemporalCutover:
                 )
         else:
             from number_compiler.sequences.reverse_add.power import (
-                _pair_field_from_digits,
+                pair_field_from_digits,
             )
 
-            pair = _pair_field_from_digits(source_digits)
+            pair = pair_field_from_digits(source_digits)
             required = max(1, len(pair) + maximum_steps)
             extent = 1 << ((required - 1).bit_length())
             exact = ExactSource(pair, base, "reverse-add-pair", blank, extent, 2 * base)
@@ -305,7 +306,7 @@ class ReverseRecursiveTemporalCutover:
             validate_image_occurrence=images.validate_occurrence,
         )
         inputs = ProviderImageInputArena(providers, images)
-        provider_adapter = _ReverseProviderAdapter(adapter, providers)
+        provider_adapter = ReverseProviderAdapter(adapter, providers)
         provider_executor = ProviderFieldImageExecutor(
             providers, inputs, images, provider_adapter
         )
@@ -379,6 +380,7 @@ class ReverseRecursiveTemporalCutover:
             blank=self.blank,
             disposed=self._disposed,
             pair_actions=self._pair_actions.audit_snapshot(),
+            pair_widths=self._pair_widths.audit_snapshot(),
             occurrence_authority=self._occurrence_authority,
         )
 
@@ -435,7 +437,7 @@ class ReverseRecursiveTemporalCutover:
             raise TypeError("reverse operation requires an issued pair occurrence")
         occurrence.__post_init__()
         if (
-            occurrence._authority is not self._occurrence_authority
+            occurrence.authority is not self._occurrence_authority
             or occurrence.source != self.source
             or occurrence.temporal_steps > self.maximum_steps
             or occurrence.active_extent not in (None, self.extent)
@@ -589,13 +591,13 @@ class ReverseRecursiveTemporalCutover:
         self._boundary_cache[action] = result
         return result
 
-    def _pair_stream(
+    def iter_pair_values(
         self,
         occurrence: ReverseRecursiveOccurrence,
         width: int,
         stop: int | None = None,
     ) -> Iterator[int]:
-        """Stream active pair values for terminal digit normalization."""
+        """Stream authenticated pair-field values before digit normalization."""
         occurrence.__post_init__()
         self.validate_occurrence(occurrence)
         if type(width) is not int or not 0 <= width <= self.extent:
@@ -626,7 +628,9 @@ class ReverseRecursiveTemporalCutover:
         The all-neutral field preserves incoming zero. No temporal closure or
         constant bound on the neutral prefix is implied by this shortcut.
         """
-        with closing_output_stream(self._pair_stream(occurrence, pair_width)) as pairs:
+        with closing_output_stream(
+            self.iter_pair_values(occurrence, pair_width)
+        ) as pairs:
             for pair in pairs:
                 if not 0 <= pair < self.blank:
                     raise AssertionError(
@@ -663,7 +667,7 @@ class ReverseRecursiveTemporalCutover:
             raise IndexError(coordinate)
         carry = 0
         with closing_output_stream(
-            self._pair_stream(occurrence, pair_width, coordinate + 1)
+            self.iter_pair_values(occurrence, pair_width, coordinate + 1)
         ) as pairs:
             for position, pair in enumerate(pairs):
                 outgoing, digit = self._normalize_pair(pair, carry)
@@ -690,7 +694,9 @@ class ReverseRecursiveTemporalCutover:
         pair_width = self.pair_width(occurrence)
         carry = 0
         emitted = 0
-        with closing_output_stream(self._pair_stream(occurrence, pair_width)) as pairs:
+        with closing_output_stream(
+            self.iter_pair_values(occurrence, pair_width)
+        ) as pairs:
             for pair in pairs:
                 outgoing, digit = self._normalize_pair(pair, carry)
                 carry = outgoing

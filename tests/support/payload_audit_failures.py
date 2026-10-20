@@ -17,7 +17,7 @@ def assert_payload_publication_released(
     ledger: ResourceLedger, root: object, family: str
 ) -> None:
     """Check that failed publication retains neither its contract nor storage."""
-    assert (id(root), family) not in ledger._payload_audit_contracts
+    assert not ledger.audit_payload_contracts().owns_root(family, root, ledger=ledger)
     assert ledger.audit_payload_contracts().invalid == frozenset()
     assert ledger.entries == ledger.nodes == 0
 

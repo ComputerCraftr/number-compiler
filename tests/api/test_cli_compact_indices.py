@@ -57,13 +57,38 @@ def test_compact_selector_is_an_exact_family_integer(
 
 @pytest.mark.parametrize("family", CAPABILITIES)
 def test_compact_value_and_info_match_explicit_index(
-    family: FamilyId, capsys: pytest.CaptureFixture[str]
+    family: FamilyId,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     common = [*family_options(family), "--info", "metrics", "--format", "json"]
-    assert cli.main([family.value, "--nth", "1", *common]) == 0
-    ordinary = json.loads(capsys.readouterr().out)
-    assert cli.main([family.value, "--nth-power10", "0", *common]) == 0
-    compact = json.loads(capsys.readouterr().out)
+    if family == FamilyId.A367620:
+        from number_compiler.resources.process_cache import (
+            ProcessCache,
+            temporary_process_cache,
+        )
+        from tests.support.comma_certificate_cache import (
+            count_forest_certificate_verifications,
+            forbid_certificate_asset_access,
+        )
+
+        with temporary_process_cache(ProcessCache()):
+            verification_calls = count_forest_certificate_verifications(monkeypatch)
+            # The cold path still hashes the shipped asset and accepts the
+            # verifier's result; the standalone cache test exercises the full
+            # forest walk. The warm path must avoid all package access.
+            assert cli.main([family.value, "--nth", "1", *common]) == 0
+            ordinary = json.loads(capsys.readouterr().out)
+            assert len(verification_calls) == 1
+            forbid_certificate_asset_access(monkeypatch)
+            assert cli.main([family.value, "--nth-power10", "0", *common]) == 0
+            compact = json.loads(capsys.readouterr().out)
+            assert len(verification_calls) == 1
+    else:
+        assert cli.main([family.value, "--nth", "1", *common]) == 0
+        ordinary = json.loads(capsys.readouterr().out)
+        assert cli.main([family.value, "--nth-power10", "0", *common]) == 0
+        compact = json.loads(capsys.readouterr().out)
     encoded = {"encoding": "power10", "exponent": 0}
     assert compact["index"] == compact["info"]["metrics"]["index"] == encoded
     assert ordinary["index"] == ordinary["info"]["metrics"]["index"] == 1

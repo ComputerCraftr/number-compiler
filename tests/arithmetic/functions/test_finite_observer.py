@@ -93,9 +93,9 @@ def test_fixed_point_matches_all_distinguishing_words_on_small_closed_graphs() -
     for targets in product((None, 0, 1, 2), repeat=3):
         rows = tuple((targets[i], (i + 1) % 3) for i in range(3))
         for outputs in product((0, 1), repeat=3):
-            signatures = []
+            signatures: list[tuple[tuple[object, ...], ...]] = []
             for source in range(3):
-                traces = []
+                traces: list[tuple[object, ...]] = []
                 for word in product((0, 1), repeat=3):
                     state = source
                     trace: list[object] = [outputs[state]]
@@ -158,10 +158,10 @@ def test_closed_orbit_moore_matches_complete_futures_on_small_graphs() -> None:
     for successors in product(range(3), repeat=3):
         for outputs in product((0, 1), repeat=3):
             result = minimize_finite_orbit(successors, outputs)
-            traces = []
+            traces: list[tuple[int, ...]] = []
             for source in range(3):
                 state = source
-                trace = []
+                trace: list[int] = []
                 for _ in range(9):
                     trace.append(outputs[state])
                     state = successors[state]

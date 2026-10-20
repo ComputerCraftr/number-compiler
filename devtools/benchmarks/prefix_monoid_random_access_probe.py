@@ -22,7 +22,7 @@ ROOT = repository_root()
 
 def reverse_add_metrics() -> dict[str, object]:
     arena, digit_roots, pair_roots = reverse_add_orbit_formulas(196, 18, base=10)
-    rows = []
+    rows: list[dict[str, object]] = []
     for step in (0, 5, 10, 17):
         index = ReverseAddSpatialIndex.build(arena, pair_roots[step], RadixSpec(10))
         target_digits = materialize_values(digit_roots[step + 1])
@@ -72,7 +72,8 @@ def collatz_metrics() -> dict[str, object]:
                 hi = mid - 1
         return scanned
 
-    rows = []
+    rows: list[dict[str, object]] = []
+    leaf_bits_examined: list[int] = []
     from number_compiler.sequences.collatz.parity import advance_collatz_parity
 
     for ticks in (1, 257, 2048, 4096):
@@ -88,6 +89,7 @@ def collatz_metrics() -> dict[str, object]:
                 ),
             }
         )
+        leaf_bits_examined.append(result.rank_bits_scanned)
         assert result.rank_bits_scanned <= 64
 
     return {
@@ -96,7 +98,7 @@ def collatz_metrics() -> dict[str, object]:
         "block_count": index.block_count,
         "index_build_input_blocks": index.block_count,
         "queries": rows,
-        "max_leaf_bits_examined": max(r["leaf_bits_examined"] for r in rows),
+        "max_leaf_bits_examined": max(leaf_bits_examined),
     }
 
 

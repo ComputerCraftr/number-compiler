@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from number_compiler.arithmetic.polynomials.twisted_observer import (
     TwistedCylinderProjection,
 )
-from number_compiler.hashlife.execution.tile_scheduler import TileApplication
+from number_compiler.hashlife.execution.tile_application import TileApplication
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import (

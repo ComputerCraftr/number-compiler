@@ -8,6 +8,7 @@ from number_compiler.projection.lazy_radix import collatz_radix_digit
 from number_compiler.projection.microblock_cache import MicroblockKey
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+from tests.support.radix_projection import microblock_cache, radix_projection
 from tests.support.reference_arithmetic import collatz_literal as _collatz
 
 
@@ -16,13 +17,15 @@ def test_single_radix_query_has_no_range_or_prefix_replay_store() -> None:
     term = PoweredCollatzTerm(seed, 11)
     expected = _collatz(seed, 11)
     assert collatz_radix_digit(term, 3, 1) == (expected // 3) % 3
-    projection = term._radix_projections[3]
+    projection = radix_projection(term, 3)
     assert not any(
         hasattr(projection, name)
         for name in ("_ranges", "_transfers", "_point", "_range", "_evaluate")
     )
-    assert term._microblocks.payload_bytes <= term._microblocks.MAX_PAYLOAD_BYTES
-    assert all(type(key) is MicroblockKey for key in term._microblocks.blocks)
+    assert (
+        microblock_cache(term).payload_bytes <= microblock_cache(term).MAX_PAYLOAD_BYTES
+    )
+    assert all(type(key) is MicroblockKey for key in microblock_cache(term).blocks)
 
 
 @pytest.mark.validation  # Wide source through four public radix applications.
@@ -32,12 +35,15 @@ def test_collective_radices_share_one_accounted_exact_cache() -> None:
     expected = _collatz(seed, 11)
     for radix in (3, 5, 6, 12):
         assert collatz_radix_digit(term, radix, 1) == (expected // radix) % radix
-    projections = tuple(term._radix_projections.values())
+    source = term.radix_projection_audit_source(term.resource_ledger)
+    assert source is not None
+    projections = tuple(source.projections.values())
     assert projections
     assert all(
-        projection._microblocks is term._microblocks for projection in projections
+        object.__getattribute__(projection, "_microblocks") is microblock_cache(term)
+        for projection in projections
     )
-    cache = term._microblocks
+    cache = microblock_cache(term)
     assert len(cache) <= cache.MAX_ENTRIES
     assert cache.payload_bytes <= cache.MAX_PAYLOAD_BYTES
     assert {key.radix for key in cache.blocks} <= {2, 3, 5, 6, 12}
@@ -138,7 +144,7 @@ def test_radix_points_remain_exact_with_all_explicit_lowering_poisoned(
             index += 1
         with pytest.raises(IndexError):
             collatz_radix_digit(term, radix, index)
-        projection = term._radix_projections[radix]
+        projection = radix_projection(term, radix)
         assert not any(
             hasattr(projection, name) for name in ("_programs", "_ranges", "_transfers")
         )

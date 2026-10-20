@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
+from number_compiler.arithmetic.contracts.input_validation import is_object_tuple
 from number_compiler.arithmetic.fields.dyadic_tile import (
     DyadicSpan,
     DyadicTile,
@@ -421,7 +422,7 @@ def reverse_history_codec(base: int, horizon: int) -> DomainCellCodec:
         if not cell.active:
             return cell
         payload = cell.payload
-        if not isinstance(payload, tuple) or len(payload) != 2:
+        if not is_object_tuple(payload) or len(payload) != 2:
             raise TypeError(payload)
         carry_bits, active_bits = payload
         if type(carry_bits) is not int or type(active_bits) is not int:

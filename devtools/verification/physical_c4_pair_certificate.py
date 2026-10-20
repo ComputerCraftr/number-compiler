@@ -13,6 +13,7 @@ from dataclasses import replace
 from hashlib import sha256
 from importlib.resources import files
 from pathlib import Path
+from typing import cast
 
 from devtools.verification import require_exact_oracle
 from number_compiler.sequences.collatz.physical_kernel import (
@@ -33,6 +34,25 @@ _METADATA = (2, 2, 3, 50, 90, 0, 0, 4, 8, 7)
 ARTIFACT_PATH = (
     Path(str(files("number_compiler"))) / "kernels" / "physical_collatz_eight_left.zlib"
 )
+
+
+def _json_array(value: object, name: str) -> list[object]:
+    if type(value) is not list:
+        raise ValueError(f"malformed certificate {name}")
+    return cast(list[object], value)
+
+
+def _json_integer(value: object, name: str) -> int:
+    if type(value) is not int:
+        raise ValueError(f"malformed certificate {name}")
+    return value
+
+
+def _json_integer_tuple(value: object, name: str) -> tuple[int, ...]:
+    return tuple(
+        _json_integer(item, f"{name}[{index}]")
+        for index, item in enumerate(_json_array(value, name))
+    )
 
 
 def _payload(certificate: C4PairLeftCertificate) -> bytes:
@@ -183,7 +203,7 @@ def generate_certificate() -> C4PairLeftCertificate:
     while cursor < len(states):
         state = states[cursor]
         image = functions[state.continuation]
-        successors = []
+        successors: list[int] = []
         for symbol in range(3):
             advanced = tuple(
                 kernel.left_transitions[
@@ -249,18 +269,47 @@ def load_certificate(path: Path = ARTIFACT_PATH) -> C4PairLeftCertificate:
             or decoder.unconsumed_tail
         ):
             raise ValueError("oversized, truncated, or trailing certificate data")
-        data = json.loads(raw)
-        if type(data) is not list or len(data) != 8 or data[2] != list(_METADATA):
+        decoded: object = json.loads(raw)
+        if type(decoded) is not list:
+            raise ValueError("invalid certificate envelope")
+        data = cast(list[object], decoded)
+        if len(data) != 8 or data[2] != list(_METADATA):
             raise ValueError("invalid certificate envelope")
         # Preserve numeric types: no int() coercions may hide bool/float aliases.
+        functions = tuple(
+            _json_integer_tuple(row, f"functions[{index}]")
+            for index, row in enumerate(_json_array(data[4], "functions"))
+        )
+        states: list[ReachableLeftState] = []
+        for index, raw_state in enumerate(_json_array(data[5], "states")):
+            state = _json_array(raw_state, f"states[{index}]")
+            if len(state) != 2:
+                raise ValueError("malformed reachable state")
+            states.append(
+                ReachableLeftState(
+                    _json_integer(state[0], f"states[{index}].anchor"),
+                    _json_integer(state[1], f"states[{index}].continuation"),
+                )
+            )
+        transitions = tuple(
+            _json_integer_tuple(row, f"transitions[{index}]")
+            for index, row in enumerate(_json_array(data[6], "transitions"))
+        )
+        predecessors = tuple(
+            _json_integer_tuple(row, f"predecessors[{index}]")
+            for index, row in enumerate(_json_array(data[7], "predecessors"))
+        )
+        kernel_digest = data[1]
+        if type(kernel_digest) is not str:
+            raise ValueError("malformed certificate kernel digest")
         certificate = C4PairLeftCertificate(
-            data[0],
-            data[1],
-            data[3],
-            tuple(tuple(row) for row in data[4]),
-            tuple(ReachableLeftState(*row) for row in data[5]),
-            tuple(tuple(row) for row in data[6]),
-            tuple(tuple(row) for row in data[7]),
+            _json_integer(data[0], "version"),
+            kernel_digest,
+            _json_integer(data[3], "initial ordinal"),
+            functions,
+            tuple(states),
+            cast(tuple[tuple[int, int, int], ...], transitions),
+            cast(tuple[tuple[int, int], ...], predecessors),
             sha256(raw).hexdigest(),
         )
         validate_certificate(certificate)

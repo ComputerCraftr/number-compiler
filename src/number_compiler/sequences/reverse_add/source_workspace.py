@@ -148,7 +148,7 @@ class ReverseSourceImageWorkspace:
             self.base = base
             self._request_binding = (seed, steps, base)
             self._image: SourceImageID | None = None
-            self._image_cache_owner: ArenaToken = scheduler._source_image_core().owner
+            self._image_cache_owner: ArenaToken = scheduler.source_image_core().owner
             self._disposed = False
             self._cleanup_complete = False
             self._authority = (
@@ -165,17 +165,21 @@ class ReverseSourceImageWorkspace:
                 pointed_gt_banks,
             )
             ledger.register_execution_root(self)
-            self._audit_action_nodes = actions._nodes._data
-            self._audit_action_normal = actions._normal._data
-            self._audit_sources = actions._sources._data
-            self._audit_action_workspace = actions._workspace
-            self._audit_recursive_occurrences = adapter._recursive_occurrences._data
-            self._audit_pointed_gt_banks = pointed_gt_banks._data
+            action_audit = actions.audit_snapshot()
+            adapter_audit = adapter.audit_snapshot()
+            self._audit_action_nodes = action_audit.nodes.container
+            self._audit_action_normal = action_audit.normal.container
+            self._audit_sources = action_audit.sources.container
+            self._audit_action_workspace = action_audit.workspace
+            self._audit_recursive_occurrences = (
+                adapter_audit.recursive_occurrences.container
+            )
+            self._audit_pointed_gt_banks = pointed_gt_banks.audit_container
             self._audit_source_contract_key: (
                 tuple[tuple[tuple[int, str, str], ...], tuple[int, ...]] | None
             ) = None
             rollback.callback(self._remove_source_payload_audit_contract)
-            self._register_source_payload_audit_contract()
+            self.register_source_payload_audit_contract()
             rollback.pop_all()
 
     def audit_snapshot(self) -> ReverseSourceImageWorkspaceAuditSnapshot:
@@ -214,7 +218,7 @@ class ReverseSourceImageWorkspace:
         self.ledger.remove_payload_audit_contract(self, "reverse_add")
         self._audit_source_contract_key = None
 
-    def _register_source_payload_audit_contract(self) -> None:
+    def register_source_payload_audit_contract(self) -> None:
         from number_compiler.resources.payload_contracts import (
             PayloadAuditStoreBinding,
         )
@@ -225,29 +229,31 @@ class ReverseSourceImageWorkspace:
             audit_reverse_source_owner,
         )
 
+        action_audit = self.actions.audit_snapshot()
+        adapter_audit = self.adapter.audit_snapshot()
         bindings = (
             PayloadAuditStoreBinding(
-                self.actions._nodes.owner,
+                action_audit.nodes.owner,
                 "_audit_action_nodes",
                 "reverse_source_action",
             ),
             PayloadAuditStoreBinding(
-                self.actions._normal.owner,
+                action_audit.normal.owner,
                 "_audit_action_normal",
                 "reverse_source_action_normal_form",
             ),
             PayloadAuditStoreBinding(
-                self.actions._sources.owner,
+                action_audit.sources.owner,
                 "_audit_sources",
                 "reverse_original_source",
             ),
             PayloadAuditStoreBinding(
-                self.actions._workspace_owner,
+                action_audit.workspace_owner,
                 "_audit_action_workspace",
                 "reverse_source_action_workspace",
             ),
             PayloadAuditStoreBinding(
-                self.adapter._recursive_occurrences.owner,
+                adapter_audit.recursive_occurrences.owner,
                 "_audit_recursive_occurrences",
                 "reverse_recursive_occurrence_binding",
             ),
@@ -261,7 +267,7 @@ class ReverseSourceImageWorkspace:
         binding_key = tuple(
             (binding.owner, binding.attribute, binding.role) for binding in bindings
         )
-        q19_owner = self.adapter._q19_owner
+        q19_owner = adapter_audit.q19_owner
         dependencies = () if q19_owner is None else (q19_owner,)
         dependency_key = tuple(id(dependency) for dependency in dependencies)
         contract_key = (binding_key, dependency_key)
@@ -278,7 +284,7 @@ class ReverseSourceImageWorkspace:
         )
         self._audit_source_contract_key = contract_key
 
-    def _check_open(self, *, check_image: bool = True) -> None:
+    def check_open(self, *, check_image: bool = True) -> None:
         if self._disposed:
             raise ValueError("disposed reverse source workspace")
         (
@@ -308,7 +314,8 @@ class ReverseSourceImageWorkspace:
             or request_binding[1:] != (steps, base)
             or (
                 source_construction is not None
-                and adapter._recursive_construction is not source_construction
+                and adapter.audit_snapshot().recursive_construction
+                is not source_construction
             )
             or adapter.actions is not actions
             or adapter.ledger is not ledger
@@ -319,16 +326,16 @@ class ReverseSourceImageWorkspace:
         actions.node(root_action)
         if actions.node(root_action).steps != steps:
             raise ValueError("reverse source workspace action was altered")
-        cache_owner = scheduler._source_image_core().owner
+        cache_owner = scheduler.source_image_core().owner
         if cache_owner is not self._image_cache_owner:
             self._image = None
             pointed_gt_banks.clear()
             adapter.clear_query_output()
             self._image_cache_owner = cache_owner
-            self._register_source_payload_audit_contract()
+            self.register_source_payload_audit_contract()
         image = self._image
         if image is not None and check_image:
-            view = scheduler._source_image_core().view(image)
+            view = scheduler.source_image_core().view(image)
             if view.binding.source != source or view.binding.action != root_action:
                 raise ValueError("reverse source workspace image binding was altered")
 
@@ -337,23 +344,23 @@ class ReverseSourceImageWorkspace:
         require_integer(seed, "seed", 0)
         require_integer(steps, "reverse/add steps", 0)
         require_integer(base, "base", 2)
-        self._check_open()
+        self.check_open()
         if (seed, steps, base) != self._request_binding:
             raise ValueError("reverse source workspace belongs to another request")
 
     def boundary_source_ports(self) -> SourceCarryPorts:
         """Share admitted source carries without constructing a target image."""
-        self._check_open()
+        self.check_open()
         if self.base != 10:
             raise ValueError("boundary source ports require a decimal source")
         source = self.actions.source(self.source)
         ports = self.adapter.ports(source)
-        self._register_source_payload_audit_contract()
+        self.register_source_payload_audit_contract()
         return ports
 
     def completed_width_if_cached(self) -> int | None:
         """Return only a still-owned width projection; never demand one here."""
-        self._check_open()
+        self.check_open()
         image = self._image
         if image is not None:
             retained = self.scheduler.cached_source_projection(
@@ -368,14 +375,14 @@ class ReverseSourceImageWorkspace:
         return None
 
     def _demanded_image(self, demand: SourceImageDemand) -> SourceImageID:
-        self._check_open()
+        self.check_open()
         found = self._image
         if found is None:
             found = self.scheduler.source_image_demanded(
                 self.adapter, self.source, self.root_action, demand
             )
             self._image = found
-        self._register_source_payload_audit_contract()
+        self.register_source_payload_audit_contract()
         return found
 
     def completed_q19_occurrence(
@@ -388,20 +395,21 @@ class ReverseSourceImageWorkspace:
         a warm call reads its already-published Q19 occurrence without
         applying another temporal block.
         """
-        self._check_open()
+        self.check_open()
         if self.base != 10 or self.steps < 1:
             raise ValueError("completed Q19 endpoint requires a positive decimal run")
         had_image = self._image is not None
         before = self.ledger.snapshot().counters
         image = self._demanded_image(SourceImageDemand("width"))
-        view = self.scheduler._source_image_core().view(image)
-        payload = self.adapter._validate_view(view)
-        owner = self.adapter._q19_owner
+        view = self.scheduler.source_image_core().view(image)
+        adapter_audit = self.adapter.audit_snapshot()
+        payload = self.adapter.validate_view(view)
+        owner = adapter_audit.q19_owner
         source = self.actions.source(self.source)
         occurrence = payload.pair_output
         if (
             owner is None
-            or self.adapter._q19_source is not source
+            or adapter_audit.q19_source is not source
             or occurrence is None
             or occurrence.temporal_steps != self.steps
             or view.binding.source != self.source
@@ -441,7 +449,7 @@ class ReverseSourceImageWorkspace:
         whole-root output action.  The explicit observer cannot replay a
         future border phase that its first source cannot certify.
         """
-        self._check_open()
+        self.check_open()
         if self.base != 10:
             raise ValueError("finite decimal ring requires 1..128 steps")
         if (
@@ -464,8 +472,8 @@ class ReverseSourceImageWorkspace:
             raise ReverseTemporalRingRefused(
                 "ring crosses the active source pair center"
             )
-        owner = self.adapter._q19_output_owner(source)
-        self._register_source_payload_audit_contract()
+        owner = self.adapter.q19_output_owner(source)
+        self.register_source_payload_audit_contract()
         return owner.authorize_temporal_ring_bank(
             owner.initial,
             steps=self.steps,
@@ -482,7 +490,7 @@ class ReverseSourceImageWorkspace:
         self, start: int, count: int, *, period: int = 2
     ) -> ReverseAddSpatialBankMorphism:
         """Publish a finite protected spatial output from the live source root."""
-        self._check_open()
+        self.check_open()
         if self.base != 10 or not 1 <= self.steps <= 128:
             raise ValueError("only finite source-certified decimal bank horizons")
         if (
@@ -503,8 +511,8 @@ class ReverseSourceImageWorkspace:
             raise UniformConeNotAuthorized(
                 "unprotected source border/center in spatial bank window"
             )
-        owner = self.adapter._q19_output_owner(source)
-        self._register_source_payload_audit_contract()
+        owner = self.adapter.q19_output_owner(source)
+        self.register_source_payload_audit_contract()
         cert = owner.certify_border_growth(
             owner.initial, steps=self.steps, window_digits=6, max_states=2048
         )
@@ -555,8 +563,8 @@ class ReverseSourceImageWorkspace:
             UniformConeNotAuthorized,
         )
 
-        owner = self.adapter._q19_output_owner(source)
-        self._register_source_payload_audit_contract()
+        owner = self.adapter.q19_output_owner(source)
+        self.register_source_payload_audit_contract()
         cache_key = (self.source, depth, position)
         cached = self._pointed_gt_banks.get(cache_key)
         if cached is not None:
@@ -625,7 +633,7 @@ class ReverseSourceImageWorkspace:
 
     def digit(self, position: int) -> int:
         position = require_integer(position, "digit coordinate")
-        self._check_open()
+        self.check_open()
         if position < 0:
             raise IndexError(position)
         self.ledger.bump(_shared_keys.TEMPORAL_POINT_REQUESTS)
@@ -667,8 +675,8 @@ class ReverseSourceImageWorkspace:
             BoundaryControlNotAuthorized,
         )
 
-        owner = self.adapter._q19_output_owner(source)
-        self._register_source_payload_audit_contract()
+        owner = self.adapter.q19_output_owner(source)
+        self.register_source_payload_audit_contract()
         for window in (6, 8, 10, 12):
             if len(source.digits) < 2 * window + 1:
                 continue
@@ -688,13 +696,13 @@ class ReverseSourceImageWorkspace:
 
     def width(self) -> int:
         self.ledger.bump(_shared_keys.TEMPORAL_LENGTH_REQUESTS)
-        self._check_open()
+        self.check_open()
         if self._image is None:
             certified_width = self._certified_border_width()
             if certified_width is not None:
                 return certified_width
         if self.base == 10 and self.steps >= 3:
-            self._check_open()
+            self.check_open()
             if self.actions.source(self.source).digits == (0,):
                 return 1
         demand = SourceImageDemand("width")
@@ -709,7 +717,7 @@ class ReverseSourceImageWorkspace:
             ReverseImagePayload,
         )
 
-        self._check_open()
+        self.check_open()
         if (
             self.base == 10
             and self.steps >= 3
@@ -718,10 +726,10 @@ class ReverseSourceImageWorkspace:
             yield 0
             return
         image = self._demanded_image(SourceImageDemand("width"))
-        view = self.scheduler._source_image_core().view(image)
+        view = self.scheduler.source_image_core().view(image)
         payload = cast(ReverseImagePayload, view.payload)
         if payload.pair_output is not None:
-            owner = self.adapter._q19_owner
+            owner = self.adapter.audit_snapshot().q19_owner
             if owner is None:
                 raise ValueError("decimal pair output owner was disposed")
             yield from owner.iter_digits(payload.pair_output)
@@ -733,7 +741,7 @@ class ReverseSourceImageWorkspace:
             yield from self.adapter.iter_second_digits(self.actions.source(self.source))
             return
         if self.steps >= 3:
-            recursive = self.adapter._recursive_for_steps(self.steps)
+            recursive = self.adapter.recursive_for_steps(self.steps)
             if recursive is not None:
                 cutover, occurrence = recursive
                 yield from cutover.iter_digits(occurrence)

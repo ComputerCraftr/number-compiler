@@ -6,7 +6,7 @@ primitive input tuples nor construct or publish replacement semantic functions.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.functions.finite_function_types import (
     AtomSort,
@@ -23,6 +23,9 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.payload_store_validation import (
+    audit_ledger_dict_registration,
+)
 from number_compiler.resources.semantic_declaration_payload import cofactor_cube
 from number_compiler.resources.stores import LedgerDict
 
@@ -39,16 +42,20 @@ class SemanticCompositionPayloadRegistry:
         self.invalid_bindings: set[tuple[int, int]] = set()
         actual = dict(ledger.iter_containers())
         for arena in semantic.bits:
-            store = arena._compositions._data
-            owner = arena._compositions.owner
-            if (
-                actual.get(owner) is not store
-                or type(store) is not LedgerDict
-                or not ledger.is_factory_container(store)
+            snapshot = arena.composition_audit_snapshot()
+            container = snapshot.container
+            owner = snapshot.owner
+            if not audit_ledger_dict_registration(
+                actual, owner, container, self.invalid_bindings
             ):
-                self.invalid_bindings.add((owner, id(store)))
                 continue
-            for key, result in store._data.items():
+            composition_store = cast(
+                LedgerDict[BitSubstitutionKey, FactoredFunctionID], container
+            )
+            if not ledger.is_factory_container(composition_store):
+                self.invalid_bindings.add((owner, id(snapshot.container)))
+                continue
+            for key, result in composition_store.items():
                 try:
                     accepted = self._binding(arena, key, result)
                 except (TypeError, ValueError, AttributeError, KeyError, IndexError):
@@ -66,7 +73,7 @@ class SemanticCompositionPayloadRegistry:
         if (
             type(handle) is not FactoredFunctionID
             or handle.owner is not arena.token
-            or not self.semantic._bit_handle(handle)
+            or not self.semantic.validate_bit_handle(handle)
         ):
             return None
         record = arena.resolve(handle)
@@ -130,10 +137,10 @@ class SemanticCompositionPayloadRegistry:
         )
         if target.signature != expected:
             return False
-        return _agreement(arena.functions, original, replacements, target)
+        return agreement(arena.functions, original, replacements, target)
 
 
-def _agreement(
+def agreement(
     arena: SemanticFunctionArena,
     original: FactoredFunction,
     replacements: dict[PortVariable, FactoredFunction],
@@ -156,12 +163,28 @@ def _agreement(
     )
     positions = {port.variable: index for index, port in enumerate(restricted)}
     cube = tuple((0, (1 << port.bits) - 1) for port in restricted)
-    pending = [(roots, environment, actual, required, cube)]
-    seen = set()
+    pending: list[
+        tuple[
+            tuple[int, ...],
+            tuple[tuple[PortVariable, int], ...],
+            tuple[int, ...],
+            tuple[int, ...],
+            tuple[tuple[int, int], ...],
+        ]
+    ] = [(roots, environment, actual, required, cube)]
+    seen: set[
+        tuple[
+            tuple[int, ...],
+            tuple[tuple[PortVariable, int], ...],
+            tuple[int, ...],
+            tuple[int, ...],
+            tuple[tuple[int, int], ...],
+        ]
+    ] = set()
     while pending:
         source, bindings, result, validities, bounds = pending.pop()
         mapping = dict(bindings)
-        normalized = []
+        normalized: list[int] = []
         for identity in source:
             node = arena.nodes[identity]
             while node.variable is not None and node.variable in mapping:
@@ -172,7 +195,9 @@ def _agreement(
                 node = arena.nodes[identity]
             normalized.append(identity)
         source = tuple(normalized)
-        support = {var for identity in source for var in arena.nodes[identity].support}
+        support: set[PortVariable] = {
+            var for identity in source for var in arena.nodes[identity].support
+        }
         bindings = tuple(
             (var, identity) for var, identity in bindings if var in support
         )
@@ -181,7 +206,7 @@ def _agreement(
         if state in seen:
             continue
         seen.add(state)
-        variables = set()
+        variables: set[PortVariable] = set()
         for identity in source:
             variable = arena.nodes[identity].variable
             if variable is not None:
@@ -244,7 +269,7 @@ def _agreement(
                     else identity
                 )
 
-            new_source = tuple(
+            new_source: tuple[int, ...] = tuple(
                 split(identity)
                 if arena.nodes[identity].variable not in mapping
                 else identity

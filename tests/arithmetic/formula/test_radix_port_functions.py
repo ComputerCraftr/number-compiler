@@ -53,7 +53,7 @@ def test_all_interval_channels_match_independent_division(radix: int) -> None:
         parent = division_parent_components(left, right, ledger)
         for incoming in (0, 1, 2, radix, 2 * radix - 2, 2 * radix - 1):
             state = incoming
-            emitted = []
+            emitted: list[int] = []
             for symbol in reversed(word):
                 emitted.append(law.emit(0, symbol, state))
                 state = law.advance(BoundarySide.RIGHT, state, symbol)

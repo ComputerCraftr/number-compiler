@@ -48,14 +48,14 @@ def advance_operation(
 ) -> RuntimeAtom | RuntimeFunctionRequest:
     """Advance until completion or a syntax continuation must be evaluated."""
     from number_compiler.hashlife.execution.continuations.higher_operations import (
-        _MAX_EXTENSIONAL_TABLE_DOMAIN,
+        MAX_EXTENSIONAL_TABLE_DOMAIN,
         RuntimeFunctionRequest,
-        _children,
-        _constant_anchor,
-        _has_primitive_children,
-        _is_constant_function,
-        _singleton_state,
         canonical_operation_task,
+        constant_anchor,
+        has_primitive_children,
+        is_constant_function,
+        operation_children,
+        singleton_state,
     )
 
     values = arena.runtime_values
@@ -90,7 +90,7 @@ def advance_operation(
             continue
         if tag == "initial-run":
             current, current_side = cast(FieldCellActionID, task[1]), cast(int, task[2])
-            children = _children(arena, machine, current)
+            children = operation_children(arena, machine, current)
             if children is None:
                 results.append(arena.schema.initial(current, current_side))
                 continue
@@ -106,7 +106,7 @@ def advance_operation(
         if tag == "initial-done":
             current, current_side = cast(FieldCellActionID, task[1]), cast(int, task[2])
             after_value, before_value = results.pop(), results.pop()
-            primitive_children = _has_primitive_children(
+            primitive_children = has_primitive_children(
                 arena,
                 machine,
                 current,
@@ -118,7 +118,7 @@ def advance_operation(
             )
             if (
                 primitive_children is not None
-                and domain <= _MAX_EXTENSIONAL_TABLE_DOMAIN
+                and domain <= MAX_EXTENSIONAL_TABLE_DOMAIN
                 and type(after_value) is int
             ):
                 continuation = values.table_function(
@@ -154,7 +154,7 @@ def advance_operation(
                     )
                 )
                 continue
-            children = _children(arena, machine, current)
+            children = operation_children(arena, machine, current)
             if children is None:
                 if type(state) is not int:
                     raise ValueError("primitive higher action state is structured")
@@ -176,7 +176,7 @@ def advance_operation(
             # generic higher task machine used to rebuild the two primitive
             # halves for every source context, which made the lowest rung
             # dominate otherwise binary-powered observations.
-            primitive_children = _has_primitive_children(arena, machine, current)
+            primitive_children = has_primitive_children(arena, machine, current)
             prior = values.resolve(pair.continuation)
             if (
                 primitive_children is not None
@@ -249,10 +249,10 @@ def advance_operation(
             current, current_side = cast(FieldCellActionID, task[1]), cast(int, task[2])
             pair, symbol = cast(RuntimePair, task[3]), cast(int, task[4])
             same = results.pop()
-            children = _children(arena, machine, current)
+            children = operation_children(arena, machine, current)
             if children is None:
                 raise AssertionError("composed step lost its child actions")
-            if _singleton_state(arena, machine, children[1], current_side):
+            if singleton_state(arena, machine, children[1], current_side):
                 tasks.extend(
                     (
                         ("step-singleton-done", current, current_side, same),
@@ -315,7 +315,7 @@ def advance_operation(
                     )
                 )
                 continue
-            children = _children(arena, machine, current)
+            children = operation_children(arena, machine, current)
             if children is None:
                 if not all(type(item) is int for item in (left, right)):
                     raise ValueError("primitive higher action boundary is structured")
@@ -334,7 +334,7 @@ def advance_operation(
                 or type(right_pair) is not RuntimePair
             ):
                 raise ValueError("composed higher emission requires pair boundaries")
-            primitive_children = _has_primitive_children(arena, machine, current)
+            primitive_children = has_primitive_children(arena, machine, current)
             left_continuation = values.resolve(left_pair.continuation)
             right_continuation = values.resolve(right_pair.continuation)
             if (
@@ -428,13 +428,13 @@ def advance_operation(
                 cast(int, task[5]),
             )
             middle = results.pop()
-            left_constant = _constant_anchor(arena, machine, left_pair.continuation)
-            right_constant = _constant_anchor(arena, machine, right_pair.continuation)
+            left_constant = constant_anchor(arena, machine, left_pair.continuation)
+            right_constant = constant_anchor(arena, machine, right_pair.continuation)
             left_tasks = (
                 (("push", left_constant),)
                 if left_constant is not None
                 else (("apply", left_pair.continuation, right_pair.anchor),)
-                if _is_constant_function(arena, left_pair.continuation)
+                if is_constant_function(arena, left_pair.continuation)
                 else (
                     ("apply-after-step", left_pair.continuation),
                     ("step", before, 1, right_pair.anchor, symbol),
@@ -444,7 +444,7 @@ def advance_operation(
                 (("push", right_constant),)
                 if right_constant is not None
                 else (("apply", right_pair.continuation, left_pair.anchor),)
-                if _is_constant_function(arena, right_pair.continuation)
+                if is_constant_function(arena, right_pair.continuation)
                 else (
                     ("apply-after-step", right_pair.continuation),
                     ("step", before, 0, left_pair.anchor, symbol),
@@ -454,11 +454,11 @@ def advance_operation(
                 _execution_keys.HIGHER_CONSTANT_ARGUMENT_ELISIONS,
                 int(
                     left_constant is not None
-                    or _is_constant_function(arena, left_pair.continuation)
+                    or is_constant_function(arena, left_pair.continuation)
                 )
                 + int(
                     right_constant is not None
-                    or _is_constant_function(arena, right_pair.continuation)
+                    or is_constant_function(arena, right_pair.continuation)
                 ),
             )
             tasks.extend((("emit-final", after, middle), *right_tasks, *left_tasks))
@@ -493,7 +493,7 @@ def advance_operation(
                 summaries = arena.summary_runtime
                 if summaries is None:
                     raise ValueError("summary continuation has no bound runtime")
-                constant_input = _constant_anchor(arena, machine, function.continuation)
+                constant_input = constant_anchor(arena, machine, function.continuation)
                 left, right = (
                     (function.anchor, argument)
                     if function.side == 0
@@ -525,11 +525,11 @@ def advance_operation(
                 continue
             if function.continuation is None:
                 raise AssertionError("step continuation lost its prior function")
-            children = _children(arena, machine, function.action)
+            children = operation_children(arena, machine, function.action)
             if children is None:
                 raise AssertionError("step continuation action is primitive")
             before, after = children
-            incoming_constant = _constant_anchor(arena, machine, function.continuation)
+            incoming_constant = constant_anchor(arena, machine, function.continuation)
             if incoming_constant is not None:
                 left, right = (
                     (function.anchor, argument)
@@ -545,7 +545,7 @@ def advance_operation(
                 )
                 arena.ledger.bump(_execution_keys.HIGHER_CONSTANT_ARGUMENT_ELISIONS)
                 continue
-            if _is_constant_function(arena, function.continuation):
+            if is_constant_function(arena, function.continuation):
                 left, right = (
                     (function.anchor, argument)
                     if function.side == 0
@@ -801,7 +801,7 @@ def advance_operation(
                 pair.continuation,
             )
             action = cast(FieldCellActionID, task[3])
-            primitive_children = _has_primitive_children(arena, machine, action)
+            primitive_children = has_primitive_children(arena, machine, action)
             domain = (
                 arena.schema.state_count(primitive_children[0], 1 - current_side)
                 if primitive_children is not None
@@ -809,7 +809,7 @@ def advance_operation(
             )
             if (
                 primitive_children is not None
-                and domain <= _MAX_EXTENSIONAL_TABLE_DOMAIN
+                and domain <= MAX_EXTENSIONAL_TABLE_DOMAIN
             ):
                 tasks.append(("force-temporal-table", action, current_side, domain))
                 tasks.extend(
@@ -855,7 +855,10 @@ def advance_operation(
                     ("apply-after-input", after, function.side),
                     (
                         "emit",
-                        (_children(arena, machine, function.action) or (None,))[0],
+                        (
+                            operation_children(arena, machine, function.action)
+                            or (None,)
+                        )[0],
                         -1,
                         left,
                         function.symbol,

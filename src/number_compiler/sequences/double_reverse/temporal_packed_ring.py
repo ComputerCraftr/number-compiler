@@ -60,7 +60,7 @@ class _RingSource(Protocol):
 
     def certify(self, root: int) -> int | None: ...
 
-    def _pointed_source_window(self, root: int, origin: int, radius: int) -> int: ...
+    def pointed_source_window(self, root: int, origin: int, radius: int) -> int: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,7 +88,7 @@ class RingWindowResult:
     actions: tuple[RingDigitAction, ...]
 
 
-def _digits_to_masks(digits: bytearray) -> tuple[int, ...]:
+def digits_to_masks(digits: bytearray) -> tuple[int, ...]:
     plane_bytes = (len(digits) + 7) // 8
     planes = [bytearray(plane_bytes) for _ in range(10)]
     for position, digit in enumerate(digits):
@@ -98,7 +98,7 @@ def _digits_to_masks(digits: bytearray) -> tuple[int, ...]:
     return tuple(int.from_bytes(plane, "little") for plane in planes)
 
 
-def _slp_symbol_at(engine: _RingSource, root: int, position: int) -> int:
+def _slpsymbol_at(engine: _RingSource, root: int, position: int) -> int:
     """Read one source symbol and count each actually visited grammar node."""
     visits = 0
 
@@ -117,7 +117,7 @@ def _slp_symbol_at(engine: _RingSource, root: int, position: int) -> int:
     return result
 
 
-def _certified_periodic_motif(
+def certified_periodic_motif(
     engine: _RingSource, root: int, *, max_period: int = 8, max_states: int = 256
 ) -> tuple[int, ...] | None:
     """Certify the complete finite causal SLP as a short spatial period.
@@ -128,13 +128,13 @@ def _certified_periodic_motif(
     width = engine.arena.nodes[root].length
     if width < 32:
         return None
-    initial = tuple(_slp_symbol_at(engine, root, i) for i in range(2 * max_period))
+    initial = tuple(_slpsymbol_at(engine, root, i) for i in range(2 * max_period))
     for period in range(1, min(max_period, width // 2) + 1):
         if any(initial[i] != initial[i % period] for i in range(period, len(initial))):
             continue
         motif = initial[:period]
         if any(
-            _slp_symbol_at(engine, root, at) != motif[at % period]
+            _slpsymbol_at(engine, root, at) != motif[at % period]
             for at in (width // 2, width // 2 + 1, width - 2, width - 1)
         ):
             continue
@@ -228,7 +228,7 @@ def _certified_periodic_motif(
     return None
 
 
-def _periodic_evolve(
+def periodic_evolve(
     engine: _RingSource,
     motif: tuple[int, ...],
     steps: int,
@@ -375,7 +375,7 @@ def _periodic_lineage_action(
     return action
 
 
-def _mask_digit(masks: tuple[int, ...], position: int) -> int:
+def mask_digit(masks: tuple[int, ...], position: int) -> int:
     found: int | None = None
     for digit, plane in enumerate(masks):
         if (plane >> position) & 1:
@@ -387,7 +387,7 @@ def _mask_digit(masks: tuple[int, ...], position: int) -> int:
     raise ArithmeticError("packed decimal planes do not contain exactly one digit")
 
 
-def _two_step_row(
+def two_step_row(
     masks: tuple[int, ...], length: int
 ) -> tuple[tuple[int, ...], int, int]:
     """Apply the exact radius-one T² digit law to ten bitplanes."""
@@ -412,7 +412,7 @@ def _two_step_row(
     return tuple(plane & cap for plane in output), high, gate
 
 
-def _window_geometry(
+def window_geometry(
     steps: int, phase: int, request: RingWindowRequest
 ) -> tuple[int, int]:
     left_births, _ = growth_ports(phase, steps)
@@ -500,18 +500,18 @@ def _evaluate_causal_window(
                 )
         if len(digits) != source_cells:
             raise ArithmeticError("packed source traversal returned a short window")
-        masks = _digits_to_masks(digits)
+        masks = digits_to_masks(digits)
         action_positions = tuple(sorted({position for position, _ in selected}))
         actions = {
             position: DigitCarryAffine.identity() for position in action_positions
         }
         starts = {
-            position: _mask_digit(masks, position + steps)
+            position: mask_digit(masks, position + steps)
             for position in action_positions
         }
         length = source_cells
         for elapsed in range(steps):
-            next_masks, high, gate = _two_step_row(masks, length)
+            next_masks, high, gate = two_step_row(masks, length)
             engine.ledger.bump(keys.DOUBLE_REVERSE_POINTED_RING_PACKED_STEPS)
             engine.ledger.bump(
                 keys.DOUBLE_REVERSE_POINTED_RING_STENCIL_CELLS, length - 2
@@ -524,11 +524,11 @@ def _evaluate_causal_window(
             for result_position in action_positions:
                 cell = result_position + steps - elapsed
                 output_position = cell - 1
-                left = _mask_digit(masks, output_position)
-                center = _mask_digit(masks, cell)
-                right = _mask_digit(masks, cell + 1)
+                left = mask_digit(masks, output_position)
+                center = mask_digit(masks, cell)
+                right = mask_digit(masks, cell + 1)
                 expected = stencil_cell(left, center, right)
-                actual = _mask_digit(next_masks, output_position)
+                actual = mask_digit(next_masks, output_position)
                 if actual != expected:
                     raise ArithmeticError(
                         "packed row disagrees with exact digit stencil"
@@ -543,7 +543,7 @@ def _evaluate_causal_window(
             length -= 2
         if length != required_cells:
             raise ArithmeticError("packed evolution lost its finite endpoint width")
-        values = tuple(_mask_digit(masks, index) for index in range(required_cells))
+        values = tuple(mask_digit(masks, index) for index in range(required_cells))
         result: dict[int, RingDigitAction] = {}
         for result_position, action_position in selected:
             action = actions[result_position]
@@ -596,7 +596,7 @@ def pointed_ring_windows(
         _validate_request(engine, root, steps, phase, request)
     if engine.certify(root) != phase:
         raise ValueError("packed ring source does not have the requested border phase")
-    geometries = tuple(_window_geometry(steps, phase, request) for request in requests)
+    geometries = tuple(window_geometry(steps, phase, request) for request in requests)
     order = sorted(range(len(requests)), key=lambda index: geometries[index][0])
     groups: list[list[int]] = []
     group_end = -1
@@ -618,7 +618,7 @@ def pointed_ring_windows(
         center = begin + radius
         engine.ledger.bump(keys.DOUBLE_REVERSE_POINTED_RING_WINDOW_ATTEMPTS)
         try:
-            causal = engine._pointed_source_window(root, center, radius)
+            causal = engine.pointed_source_window(root, center, radius)
             if engine.arena.nodes[causal].length not in (span, span + 1):
                 raise AssertionError("merged causal cone has an unexpected right halo")
             selected: list[tuple[int, int, int]] = []
@@ -649,9 +649,9 @@ def pointed_ring_windows(
             periodic: tuple[tuple[int, ...], dict[int, RingDigitAction]] | None = None
             if steps >= 16 and selected_actions:
                 engine.ledger.bump(keys.DOUBLE_REVERSE_POINTED_RING_PERIODIC_ATTEMPTS)
-                motif = _certified_periodic_motif(engine, causal)
+                motif = certified_periodic_motif(engine, causal)
                 if motif is not None:
-                    periodic = _periodic_evolve(
+                    periodic = periodic_evolve(
                         engine,
                         motif,
                         steps,
@@ -696,7 +696,7 @@ def pointed_ring_windows(
                 window_digits = tuple(
                     values[output_start + offset] for offset in range(request.count)
                 )
-                requested_actions = []
+                requested_actions: list[RingDigitAction] = []
                 for position in request.positions:
                     action = actions[action_ids[(index, position)]]
                     requested_actions.append(

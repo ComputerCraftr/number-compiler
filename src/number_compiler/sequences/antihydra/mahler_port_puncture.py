@@ -58,13 +58,13 @@ class MahlerCenterPortPuncture:
         cls, join: object, candidate_center: int
     ) -> MahlerCenterPortPuncture:
         evidence = MahlerCenterExteriorEvidence.from_join(join)
-        return cls._from_verified_evidence(evidence, candidate_center)
+        return cls.from_verified_evidence(evidence, candidate_center)
 
     @classmethod
-    def _from_verified_evidence(
+    def from_verified_evidence(
         cls, evidence: MahlerCenterExteriorEvidence, candidate_center: int
     ) -> MahlerCenterPortPuncture:
-        """Build from a join already checked once by the enclosing producer."""
+        """Build from verified evidence checked by the enclosing producer."""
         if type(evidence) is not MahlerCenterExteriorEvidence:
             raise TypeError("port punctures require verified Mahler exterior evidence")
         issued = evidence.join

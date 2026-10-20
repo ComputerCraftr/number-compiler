@@ -6,8 +6,9 @@ cutover tests; this module exercises the distinct recursive field-image owner.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
@@ -19,7 +20,10 @@ from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageDemand,
     SourceImageView,
 )
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.sequences.reverse_add.recursive_cutover import (
+    ReverseRecursiveOccurrence,
+)
 from number_compiler.sequences.reverse_add.source_images import (
     ReverseImagePayload,
     ReverseSourceImageAdapter,
@@ -36,7 +40,7 @@ def _view(workspace: ReverseSourceImageWorkspace, steps: int) -> SourceImageView
     image = workspace.scheduler.source_image(
         workspace.adapter, workspace.source, workspace.actions.action(steps)
     )
-    return workspace.scheduler._source_image_core().view(image)
+    return workspace.scheduler.source_image_core().view(image)
 
 
 def _expected(steps: int) -> tuple[int, ...]:
@@ -50,7 +54,7 @@ def test_scheduler_extends_completed_return_without_source_reconstruction(
     first = _view(workspace, 4)
     assert isinstance(first.payload, ReverseImagePayload)
     assert first.payload.occurrence is not None
-    cutover = workspace.adapter._recursive
+    cutover = workspace.adapter.audit_snapshot().recursive
     assert cutover is not None
     monkeypatch.setattr(cutover, "pair_image", _forbid_reconstruction)
     for steps in (8, 16, 20):
@@ -103,7 +107,7 @@ def test_complete_parent_hit_does_not_descend_again(
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 1, 16, base=3)
     before = _view(workspace, 4)
     after = _view(workspace, 8)
-    cutover = workspace.adapter._recursive
+    cutover = workspace.adapter.audit_snapshot().recursive
     assert cutover is not None
     if evict:
         workspace.ledger.evict_query_memos()
@@ -144,7 +148,10 @@ def test_cached_occurrence_validates_source_before_returning() -> None:
     _view(workspace, 4)
     other = ReverseSourceImageWorkspace(ResourceLedger(), 2, 16, base=3)
     with pytest.raises(ValueError, match="source changed"):
-        workspace.adapter._recursive_occurrence(other.actions.source(other.source), 4)
+        cast(
+            Callable[[ExactSource, int], ReverseRecursiveOccurrence],
+            object.__getattribute__(workspace.adapter, "_recursive_occurrence"),
+        )(other.actions.source(other.source), 4)
 
 
 @pytest.mark.parametrize("cached_steps", (4, 8))
@@ -152,17 +159,25 @@ def test_occurrence_memo_rejects_duration_alias(cached_steps: int) -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 1, 16, base=3)
     _view(workspace, 4)
     adapter = workspace.adapter
-    occurrence = adapter._recursive_occurrences[4]
-    adapter._recursive_occurrences[cached_steps] = replace(occurrence, temporal_steps=2)
+    occurrence = adapter.audit_snapshot().recursive_occurrences.payload_view[4]
+    assert type(occurrence) is ReverseRecursiveOccurrence
+    memo = cast(
+        OwnedMemo[int, ReverseRecursiveOccurrence],
+        object.__getattribute__(adapter, "_recursive_occurrences"),
+    )
+    memo[cached_steps] = replace(occurrence, temporal_steps=2)
     source = workspace.actions.source(workspace.source)
     with pytest.raises(ValueError, match="duration"):
-        adapter._recursive_occurrence(source, 8)
+        cast(
+            Callable[[ExactSource, int], ReverseRecursiveOccurrence],
+            object.__getattribute__(adapter, "_recursive_occurrence"),
+        )(source, 8)
 
 
 def test_prepared_authority_cannot_change_before_first_construction() -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 1, 16, base=3)
     other = ReverseSourceImageWorkspace(ResourceLedger(), 2, 16, base=3)
-    assert workspace.adapter._recursive is None
+    assert workspace.adapter.audit_snapshot().recursive is None
     with pytest.raises(ValueError, match="source or horizon changed"):
         workspace.adapter.prepare_recursive_authority(
             other.actions.source(other.source), 16

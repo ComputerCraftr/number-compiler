@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from functools import partial
 from itertools import product
+from sys import getrecursionlimit
 from typing import Literal, cast
 
 import pytest
@@ -173,11 +174,11 @@ def test_warm_operations_skip_child_rewrites_and_eviction_preserves_ids(
     arena, _x, _y, vx, vy = fixture()
     cached = arena.product((vx, vy))
     nodes = len(arena.nodes)
-    monkeypatch.setattr(
-        _Transaction,
-        "zip_product",
-        lambda *args: pytest.fail("warm operation replayed"),
-    )
+
+    def forbidden(*args: object) -> object:
+        pytest.fail("warm operation replayed")
+
+    monkeypatch.setattr(_Transaction, "zip_product", forbidden)
     assert arena.product((vx, vy)) == cached
     assert len(arena.nodes) == nodes
     monkeypatch.undo()
@@ -339,13 +340,22 @@ def test_forged_cyclic_sort_rejects_before_hashing_or_retention() -> None:
     assert arena.resolve(arena.invalid(signature)).signature == signature
 
 
-def test_deep_independent_sort_dags_hash_and_compare_without_recursion() -> None:
+@pytest.mark.parametrize(
+    "depth",
+    (
+        getrecursionlimit() + 1,
+        pytest.param(1500, marks=pytest.mark.validation),
+    ),
+)
+def test_deep_independent_sort_dags_hash_and_compare_without_recursion(
+    depth: int,
+) -> None:
     arena = SemanticFunctionArena(ResourceLedger())
     first: SemanticSort = AtomSort("deep-leaf", 2)
     equal: SemanticSort = AtomSort("deep-leaf", 2)
     different: SemanticSort = AtomSort("different-leaf", 2)
-    for depth in range(1500):
-        if depth % 2:
+    for level in range(depth):
+        if level % 2:
             first = FunctionSort((), first)
             equal = FunctionSort((), equal)
             different = FunctionSort((), different)
@@ -371,13 +381,13 @@ def test_shared_sort_hash_validates_once_and_rejects_a_forged_cycle(
     shared = FunctionSort((port,), BOOL)
     root = ProductSort((shared, shared))
     calls: list[tuple[FinitePort, ...]] = []
-    original_ports = semantic._ports
+    original_ports = semantic.validate_ports
 
     def counted_ports(ports: tuple[FinitePort, ...]) -> None:
         calls.append(ports)
         original_ports(ports)
 
-    monkeypatch.setattr(semantic, "_ports", counted_ports)
+    monkeypatch.setattr(semantic, "validate_ports", counted_ports)
     atom_hash = hash(("atom", BOOL.name, BOOL.cardinality))
     function_hash = hash(("function", (port,), atom_hash))
     root_hash = hash(("product", (function_hash, function_hash)))
@@ -404,9 +414,13 @@ def test_sort_hash_collision_still_compares_exact_deep_structure(
 ) -> None:
     first = ProductSort((FunctionSort((), AtomSort("first", 2)),))
     other = ProductSort((FunctionSort((), AtomSort("other", 2)),))
+
+    def collision(_value: object) -> int:
+        return 7
+
     monkeypatch.setattr(
         "number_compiler.arithmetic.functions.finite_function_types._sort_hash",
-        lambda value: 7,
+        collision,
     )
     assert hash(first) == hash(other)
     assert first != other

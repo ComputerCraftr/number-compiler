@@ -157,7 +157,7 @@ def _balanced_residue_build(
     keep_memo: bool = False,
 ) -> tuple[DyadicReturnSupportRecord, DyadicReturnSupportID | None]:
     """Construct one balanced effect using a charged postorder work stack."""
-    workspace._validate_law()
+    workspace.validate_law()
     if (
         type(width) is not int
         or width <= 0
@@ -347,7 +347,7 @@ def _balanced_residue_build(
                     not retain,
                 )
                 if retain:
-                    node_id = workspace._append_support(node)
+                    node_id = workspace.append_support(node)
                     suffix = "balanced_macro"
                 else:
                     node_id = None
@@ -424,7 +424,7 @@ def _build_residue_effect(
     chronological compositions, and the construction-local memo admits only
     these finite effects. It never consumes a source endpoint or occurrence.
     """
-    workspace._validate_law()
+    workspace.validate_law()
     if (
         type(width) is not int
         or not 0 < width <= workspace.MAX_LEAF_STEPS
@@ -498,7 +498,7 @@ def _build_residue_effect(
         )
 
     def key(span: int, source: int) -> tuple[object, ...]:
-        return (workspace.owner, workspace._law_snapshot, span, source)
+        return (workspace.owner, workspace.law_snapshot, span, source)
 
     def lookup(span: int, source: int) -> DyadicReturnSupportRecord | None:
         if span > 8:
@@ -721,7 +721,7 @@ def residue_macro(
     result = _build_residue_effect(
         workspace, width, residue, macro=True, keep_memo=retain_cache
     )
-    return workspace._append_support(result)
+    return workspace.append_support(result)
 
 
 def _first_half_residue(span: int, source: int) -> tuple[int, int]:

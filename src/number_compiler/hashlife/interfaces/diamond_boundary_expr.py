@@ -33,7 +33,9 @@ from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
     input_expression,
 )
 from number_compiler.hashlife.interfaces.diamond_unary import PrimitiveUnaryFunctions
-from number_compiler.hashlife.interfaces.expression_transactions import _Transaction
+from number_compiler.hashlife.interfaces.expression_transactions import (
+    ExpressionTransaction,
+)
 from number_compiler.resources.metric_keys import (
     hashlife_interfaces as _interfaces_keys,
 )
@@ -145,7 +147,7 @@ _Mode: TypeAlias = Literal["normal", "free", "abstract", "beta", "shift"]
 
 
 @dataclass(frozen=True, slots=True)
-class _Rewrite:
+class ExpressionRewrite:
     mode: _Mode
     root: int
     depth: int = 0
@@ -205,10 +207,16 @@ class BoundaryExpressionArena:
         self.memo.clear()
         self.ledger.release(self.memo_owner, entries=count)
 
-    def _handle(self, index: int) -> ExprID:
+    def scoped_handle(self, index: int) -> ExprID:
         return ExprID(self.token, "diamond-boundary-expression", index)
 
-    def _resolve(self, expression: ExprID) -> int:
+    def reference(self, identity: int) -> ExprID:
+        """Return a scoped reference to one retained expression node."""
+        if type(identity) is not int or not 0 <= identity < len(self.nodes):
+            raise ValueError("boundary expression identity is outside the arena")
+        return self.scoped_handle(identity)
+
+    def resolve_index(self, expression: ExprID) -> int:
         if type(expression) is not ExprID:
             raise ValueError("expected a typed boundary expression")
         expression.validate(
@@ -219,9 +227,9 @@ class BoundaryExpressionArena:
         return expression.local_id
 
     def node(self, expression: ExprID) -> BoundaryExprNode:
-        return self.nodes[self._resolve(expression)]
+        return self.nodes[self.resolve_index(expression)]
 
-    def _validate_sort(self, sort: ExpressionSort) -> None:
+    def validate_sort(self, sort: ExpressionSort) -> None:
         if type(sort) is StateSort:
             self.actions.resolve(sort.action)
             if type(sort.side) is not int or sort.side not in (0, 1):
@@ -261,18 +269,18 @@ class BoundaryExpressionArena:
 
     def state_sort(self, action: ActionProgramID, side: int) -> StateSort:
         sort = StateSort(action, side)
-        self._validate_sort(sort)
+        self.validate_sort(sort)
         return sort
 
     def function_sort(self, domain: StateSort, codomain: StateSort) -> FunctionSort:
         sort = FunctionSort(domain, codomain)
-        self._validate_sort(sort)
+        self.validate_sort(sort)
         return sort
 
     def symbol_sort(self, action: ActionProgramID) -> SymbolSort:
         node = self.actions.resolve(action)
         if node.kind == "identity":
-            original = self.boundaries.cells.source_geometry._construction.source
+            original = self.boundaries.cells.source_geometry.construction.source
             return SymbolSort(original.base, original.blank)
         return SymbolSort(node.base, node.blank)
 
@@ -280,19 +288,19 @@ class BoundaryExpressionArena:
         """Read an already admitted immutable kernel; never allocate one."""
         if self.actions.resolve(action).kind != "atom":
             return None
-        handle = self.boundaries.kernels._kernel_ids.get(
+        handle = self.boundaries.kernels.kernel_bindings.get(
             _effect_key(self.actions.primitive(action))
         )
         return None if handle is None else self.boundaries.kernels.kernel(handle)
 
     def _finish(self, node: BoundaryExprNode) -> ExprID:
-        transaction = _Transaction(self)
+        transaction = ExpressionTransaction(self)
         reduced = transaction.reduce(node)
         root = reduced if isinstance(reduced, int) else transaction.rewrite(reduced)
         return transaction.publish(root)
 
     def variable(self, sort: ExpressionSort, role: str) -> ExprID:
-        self._validate_sort(sort)
+        self.validate_sort(sort)
         if type(role) is not str or not role:
             raise ValueError("formal ports require a stable nonempty role")
         return self._finish(BoundaryExprNode("port", sort, role=role))
@@ -306,10 +314,10 @@ class BoundaryExpressionArena:
         abstraction removes it into a de Bruijn index before function interning.
         All expressions contributing free ports to the new body belong in avoid.
         """
-        self._validate_sort(sort)
+        self.validate_sort(sort)
         if type(role) is not str or not role:
             raise ValueError("formal ports require a stable nonempty role")
-        roots = [self._resolve(expression) for expression in avoid]
+        roots = [self.resolve_index(expression) for expression in avoid]
         used = {
             port.role
             for root in roots
@@ -370,8 +378,8 @@ class BoundaryExpressionArena:
         if node.kind != "compose":
             raise ValueError("pair ports require a composed action")
         first, second = (
-            self.actions._handle(node.left),
-            self.actions._handle(node.right),
+            self.actions.scoped_handle(node.left),
+            self.actions.scoped_handle(node.right),
         )
         return StateSort(first, side), FunctionSort(
             StateSort(first, 1 - side), StateSort(second, side)
@@ -380,7 +388,7 @@ class BoundaryExpressionArena:
     def pair(
         self, action: ActionProgramID, side: int, anchor: ExprID, continuation: ExprID
     ) -> ExprID:
-        left, right = self._resolve(anchor), self._resolve(continuation)
+        left, right = self.resolve_index(anchor), self.resolve_index(continuation)
         anchor_sort, function_sort = self._pair_sorts(action, side)
         if (
             self.nodes[left].sort != anchor_sort
@@ -392,7 +400,7 @@ class BoundaryExpressionArena:
         )
 
     def anchor(self, expression: ExprID) -> ExprID:
-        root = self._resolve(expression)
+        root = self.resolve_index(expression)
         sort = self.nodes[root].sort
         if type(sort) is not StateSort:
             raise ValueError("anchor requires a structured state")
@@ -400,7 +408,7 @@ class BoundaryExpressionArena:
         return self._finish(BoundaryExprNode("anchor", anchor_sort, (root,)))
 
     def continuation(self, expression: ExprID) -> ExprID:
-        root = self._resolve(expression)
+        root = self.resolve_index(expression)
         sort = self.nodes[root].sort
         if type(sort) is not StateSort:
             raise ValueError("continuation requires a structured state")
@@ -408,7 +416,7 @@ class BoundaryExpressionArena:
         return self._finish(BoundaryExprNode("continuation", function_sort, (root,)))
 
     def lambda_(self, variable: ExprID, body: ExprID) -> ExprID:
-        argument, root = self._resolve(variable), self._resolve(body)
+        argument, root = self.resolve_index(variable), self.resolve_index(body)
         domain, codomain = self.nodes[argument].sort, self.nodes[root].sort
         if (
             self.nodes[argument].kind != "port"
@@ -417,14 +425,16 @@ class BoundaryExpressionArena:
         ):
             raise ValueError("lambda requires a state port and a state body")
         sort = self.function_sort(domain, codomain)
-        transaction = _Transaction(self)
-        abstracted = transaction.rewrite(_Rewrite("abstract", root, parameter=argument))
+        transaction = ExpressionTransaction(self)
+        abstracted = transaction.rewrite(
+            ExpressionRewrite("abstract", root, parameter=argument)
+        )
         reduced = transaction.reduce(BoundaryExprNode("lambda", sort, (abstracted,)))
         result = reduced if isinstance(reduced, int) else transaction.rewrite(reduced)
         return transaction.publish(result)
 
     def apply(self, function: ExprID, argument: ExprID) -> ExprID:
-        first, second = self._resolve(function), self._resolve(argument)
+        first, second = self.resolve_index(function), self.resolve_index(argument)
         sort = self.nodes[first].sort
         if type(sort) is not FunctionSort or self.nodes[second].sort != sort.domain:
             raise ValueError("continuation application has an incompatible input")
@@ -436,18 +446,18 @@ class BoundaryExpressionArena:
         A closed lambda body has no reference to its argument, including below
         nested binders. This is a read-only syntactic proof, not a sample.
         """
-        root = self._resolve(function)
+        root = self.resolve_index(function)
         node = self.nodes[root]
         if type(node.sort) is not FunctionSort:
             raise ValueError("constant-function probe requires a function")
         if node.kind == "lambda" and self.nodes[node.children[0]].scope == 0:
-            return self._handle(node.children[0])
+            return self.scoped_handle(node.children[0])
         return None
 
     def call(self, program: ClosureProgramID, arguments: Sequence[ExprID]) -> ExprID:
         effective = self.closures.effective_arguments(program, arguments)
         sort = self.closures.result_sort(program)
-        children = tuple(self._resolve(argument) for argument in effective)
+        children = tuple(self.resolve_index(argument) for argument in effective)
         return self._finish(BoundaryExprNode("call", sort, children, closure=program))
 
     def expand_call(self, expression: ExprID) -> ExprID:
@@ -455,7 +465,7 @@ class BoundaryExpressionArena:
         if node.kind != "call" or node.closure is None:
             raise ValueError("explicit expansion requires a closure call")
         return self.closures.expand(
-            node.closure, tuple(self._handle(child) for child in node.children)
+            node.closure, tuple(self.scoped_handle(child) for child in node.children)
         )
 
     def finite_apply(
@@ -466,7 +476,7 @@ class BoundaryExpressionArena:
         argument: ExprID,
     ) -> ExprID:
         """Apply a complete one-primitive-port function to a symbolic state."""
-        root = self._resolve(argument)
+        root = self.resolve_index(argument)
         sort = self.state_sort(action, side)
         expression = self.boundaries.kernels.expression(summary)
         primitive = self.primitive(action)
@@ -493,14 +503,17 @@ class BoundaryExpressionArena:
             if bit in checked:
                 continue
             checked.add(bit)
-            decision = functions._nodes[functions._resolve(bit)]
+            decision = functions.decision_record(bit)
             if decision.variable is not None:
                 if decision.variable not in allowed:
                     raise ValueError(
                         "finite function contains another primitive input port"
                     )
                 pending.extend(
-                    (functions._handle(decision.low), functions._handle(decision.high))
+                    (
+                        functions.scoped_handle(decision.low),
+                        functions.scoped_handle(decision.high),
+                    )
                 )
         # Validate the codomain on every original primitive input, not a higher
         # Cartesian domain. This read-only check cannot publish a malformed map.
@@ -542,7 +555,7 @@ class BoundaryExpressionArena:
             return self._finish(BoundaryExprNode("literal", sort, value=constant_value))
         if noncanonical:
             identity_function = input_expression(self.boundaries.kernels, domain, port)
-            handle = self.boundaries.kernels._kernel_ids[
+            handle = self.boundaries.kernels.kernel_bindings[
                 _effect_key(self.actions.primitive(action))
             ]
             summary = self.unary.compose(handle, side, summary, identity_function, port)
@@ -556,7 +569,7 @@ class BoundaryExpressionArena:
     def primitive_advance(
         self, action: ActionProgramID, side: int, state: ExprID, symbol: ExprID
     ) -> ExprID:
-        state_id, symbol_id = self._resolve(state), self._resolve(symbol)
+        state_id, symbol_id = self.resolve_index(state), self.resolve_index(symbol)
         sort = self.state_sort(action, side)
         if self.actions.resolve(action).kind != "atom":
             raise ValueError("primitive advance requires an atomic action")
@@ -580,9 +593,9 @@ class BoundaryExpressionArena:
         """Apply a complete fixed-domain map, including cross-side continuations."""
         from number_compiler.hashlife.interfaces.diamond_finite_map import admit_map
 
-        root = self._resolve(argument)
-        self._validate_sort(source)
-        self._validate_sort(target)
+        root = self.resolve_index(argument)
+        self.validate_sort(source)
+        self.validate_sort(target)
         if self.nodes[root].sort != source:
             raise ValueError("finite map argument has another primitive port sort")
         function, constant, identity = admit_map(self, source, target, summary)
@@ -604,9 +617,9 @@ class BoundaryExpressionArena:
         self, action: ActionProgramID, left: ExprID, symbol: ExprID, right: ExprID
     ) -> ExprID:
         left_id, symbol_id, right_id = (
-            self._resolve(left),
-            self._resolve(symbol),
-            self._resolve(right),
+            self.resolve_index(left),
+            self.resolve_index(symbol),
+            self.resolve_index(right),
         )
         if self.actions.resolve(action).kind != "atom":
             raise ValueError("primitive emit requires an atomic action")
@@ -626,10 +639,10 @@ class BoundaryExpressionArena:
     def substitute(
         self, expression: ExprID, substitutions: Mapping[ExprID, ExprID]
     ) -> ExprID:
-        root = self._resolve(expression)
+        root = self.resolve_index(expression)
         admitted: dict[int, int] = {}
         for variable, value in substitutions.items():
-            port, replacement = self._resolve(variable), self._resolve(value)
+            port, replacement = self.resolve_index(variable), self.resolve_index(value)
             if (
                 self.nodes[port].kind != "port"
                 or self.nodes[port].sort != self.nodes[replacement].sort
@@ -657,7 +670,7 @@ class BoundaryExpressionArena:
             )
             return expression
         bindings = tuple(
-            ExprBinding(self._handle(port), self._handle(admitted[port]))
+            ExprBinding(self.scoped_handle(port), self.scoped_handle(admitted[port]))
             for port in sorted(effective)
         )
         key = ExprSubstitutionKey(expression, bindings)
@@ -668,11 +681,11 @@ class BoundaryExpressionArena:
             )
             return found
         self.ledger.bump(_interfaces_keys.BOUNDARY_EXPRESSION_SUBSTITUTION_EVALUATIONS)
-        transaction = _Transaction(self)
+        transaction = ExpressionTransaction(self)
         transaction.substitutions = {port: admitted[port] for port in effective}
         transaction.substitution_ports = frozenset(
             FormalPort(self.nodes[port].sort, self.nodes[port].role)
             for port in effective
         )
-        result = transaction.rewrite(_Rewrite("free", root))
+        result = transaction.rewrite(ExpressionRewrite("free", root))
         return transaction.publish(result, key)

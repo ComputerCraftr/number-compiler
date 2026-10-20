@@ -56,6 +56,10 @@ class ThresholdGeometry:
             expressions,
         )
 
+    @property
+    def summary_cache_entries(self) -> int:
+        return len(self._carry_actions)
+
     def _remember_carry(self, root: words.CanonicalWord, action: Expr) -> None:
         self.expressions.retain_auxiliary()
         index = root.node_id
@@ -89,7 +93,7 @@ class ThresholdGeometry:
             or geometry.owner is not self.owner
         ):
             raise ValueError("foreign threshold geometry")
-        words._validate_word(geometry.word)
+        words.validate_word(geometry.word)
 
     def _carry_summary(self, root: words.CanonicalWord) -> Expr:
         """Memoized projection of the immutable geometry DAG, not state."""
@@ -193,8 +197,8 @@ class ThresholdGeometry:
         e = self.expressions
         while pending:
             a, i, b, j, width, ready = pending.pop()
-            a, i = PlaneAlgebra._view(a, i, width)
-            b, j = PlaneAlgebra._view(b, j, width)
+            a, i = PlaneAlgebra.aligned_view(a, i, width)
+            b, j = PlaneAlgebra.aligned_view(b, j, width)
             key = a.node_id, i, b.node_id, j, width
             if key in memo:
                 results.append(memo[key])

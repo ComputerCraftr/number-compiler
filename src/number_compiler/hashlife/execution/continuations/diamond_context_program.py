@@ -8,7 +8,7 @@ canonical IDs. No context program contains an emitted word or cell provenance.
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping, MutableSequence
+from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -30,6 +30,7 @@ from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
+from number_compiler.resources.stores import LedgerList
 
 LEFT_A = PortVariable(0, 0, "diamond-pair-left-a", 0)
 RIGHT_A = PortVariable(0, 1, "diamond-pair-right-a", 0)
@@ -72,9 +73,7 @@ class ContextProgramArena:
         self.id_owner = self.ledger.register(
             prefix + "-ids", "context_program_interner"
         )
-        self._nodes: MutableSequence[ContextNode] = self.ledger.make_list(
-            self.node_owner
-        )
+        self._nodes: LedgerList[ContextNode] = self.ledger.make_list(self.node_owner)
         self._ids: MutableMapping[ContextNode, ContextProgramID] = (
             self.ledger.make_dict(self.id_owner)
         )
@@ -91,6 +90,13 @@ class ContextProgramArena:
                 prefix + "-kernel-interfaces", "finite_kernel_interface"
             ),
         )
+
+    def storage_is_registered(self, actual: Mapping[int, object]) -> bool:
+        return actual.get(self.node_owner) is self._nodes
+
+    @property
+    def node_view(self) -> Sequence[ContextNode]:
+        return self._nodes.audit_view()
 
     def resolve(self, handle: ContextProgramID) -> ContextNode:
         if type(handle) is not ContextProgramID:
@@ -112,7 +118,7 @@ class ContextProgramArena:
             raise ValueError("context program requires two primitive interfaces")
         return children
 
-    def _intern(self, node: ContextNode) -> ContextProgramID:
+    def intern_record(self, node: ContextNode) -> ContextProgramID:
         found = self._ids.get(node)
         if found is not None:
             self.ledger.bump(_execution_keys.CONTEXT_PROGRAM_INTERNER_REQUESTS)
@@ -142,7 +148,7 @@ class ContextProgramArena:
                 self.kernels.intern(self.actions.primitive(first)),
                 self.kernels.intern(self.actions.primitive(second)),
             )
-        return self._intern(ContextNode("leaf", action, symbol))
+        return self.intern_record(ContextNode("leaf", action, symbol))
 
     def join(
         self,
@@ -165,7 +171,7 @@ class ContextProgramArena:
             a.right_count,
         ):
             raise ValueError("spatial midpoint domains disagree")
-        return self._intern(
+        return self.intern_record(
             ContextNode(
                 "join",
                 action,
@@ -176,7 +182,7 @@ class ContextProgramArena:
             )
         )
 
-    def _validate(
+    def validate_observation(
         self, request: ContextObservation
     ) -> tuple[ActionProgramID, ActionProgramID]:
         node = self.resolve(request.program)
@@ -198,7 +204,7 @@ class ContextProgramArena:
             raise ValueError("context observation has incompatible finite ports")
         return aid, bid
 
-    def _substitute(
+    def substitute_context(
         self, function: TransferSummaryID, port: PortVariable, value: TransferSummaryID
     ) -> TransferSummaryID:
         return self.kernels.substitute(
@@ -208,7 +214,7 @@ class ContextProgramArena:
             ),
         )
 
-    def _input_port(
+    def input_port(
         self, arguments: tuple[TransferSummaryID, ...]
     ) -> tuple[int, PortVariable] | None:
         pending = [
@@ -234,7 +240,7 @@ class ContextProgramArena:
         side: int,
     ) -> TransferSummaryID:
         root = ContextObservation(program, left, right, incoming, side)
-        self._validate(root)
+        self.validate_observation(root)
         # Each frame is one dependency on a canonical function program. Stacks
         # follow spatial joins and never contain temporal-stage carry arrays.
         pending: list[tuple[ContextObservation, int, ContextObservation | None]] = [
@@ -249,7 +255,7 @@ class ContextProgramArena:
                 max(0, len(pending) - peak),
             )
             request, phase, previous = pending.pop()
-            aid, bid = self._validate(request)
+            aid, bid = self.validate_observation(request)
             if phase == 0:
                 self.ledger.bump(_execution_keys.CONTEXT_OBSERVATION_REQUESTS)
                 if request in self.observations:
@@ -260,7 +266,7 @@ class ContextProgramArena:
                 symbol = self.kernels.constant(
                     self.kernels.kernel(aid).blank + 1, node.symbol
                 )
-                port = self._input_port((request.left, request.right, request.incoming))
+                port = self.input_port((request.left, request.right, request.incoming))
                 if port is None:
                     emitted = self.kernels.emit_expression(
                         aid, request.left, symbol, request.right
@@ -291,8 +297,10 @@ class ContextProgramArena:
             else:
                 assert node.left is not None and node.right is not None
                 assert node.middle_left is not None and node.middle_right is not None
-                middle_left = self._substitute(node.middle_left, LEFT_A, request.left)
-                middle_right = self._substitute(
+                middle_left = self.substitute_context(
+                    node.middle_left, LEFT_A, request.left
+                )
+                middle_right = self.substitute_context(
                     node.middle_right, RIGHT_A, request.right
                 )
                 if phase == 0:

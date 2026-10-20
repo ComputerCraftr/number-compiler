@@ -20,6 +20,7 @@ from number_compiler.sequences.antihydra.arithmetic_images import (
 )
 from number_compiler.sequences.antihydra.mahler_action import associated_action
 from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+from tests.support.forensic_cache import process_cache_records
 
 
 @pytest.fixture
@@ -47,7 +48,7 @@ def test_late_observer_warm_query_skips_exact_constructor_and_metrics_stay_read_
     cold, expected = _query()
     assert cold.ledger.counters["mahler_hashlife_action_misses"] == 1
     assert cold.ledger.counters["mahler_hashlife_action_publications"] == 1
-    monkeypatch.setattr(mahler_cache, "_build_action", _forbidden)
+    monkeypatch.setattr(mahler_cache, "build_action", _forbidden)
     warm, actual = _query()
     assert actual == expected
     assert warm.ledger.counters["mahler_hashlife_action_process_hits"] == 1
@@ -70,7 +71,7 @@ def test_cache_cannot_authorize_disabled_reset_or_foreign_query(
     _query()
     if mode == "reset":
         cache.reset()
-    monkeypatch.setattr(mahler_cache, "_build_action", _forbidden)
+    monkeypatch.setattr(mahler_cache, "build_action", _forbidden)
     with pytest.raises(AssertionError, match="unexpected exact Mahler construction"):
         _query(
             1025 if mode == "foreign_extent" else 1024, shared_cache=mode != "disabled"
@@ -108,7 +109,7 @@ def test_changed_public_source_rejected_before_warm_cache_use(
 def test_rejected_constructor_publishes_no_shared_action(
     cache: ProcessCache, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(mahler_cache, "_build_action", _forbidden)
+    monkeypatch.setattr(mahler_cache, "build_action", _forbidden)
     with pytest.raises(AssertionError, match="unexpected exact Mahler construction"):
         _query()
     stats = cache.stats()
@@ -163,9 +164,9 @@ def test_forged_same_key_action_rejected_at_decode_boundary(
     corruption: str, cache: ProcessCache
 ) -> None:
     term, _ = _query()
-    full_key = next(iter(cache._entries))
+    full_key = next(iter(process_cache_records(cache)))
     partition, local_key = full_key
-    wire = cache._entries[full_key][1]
+    wire = process_cache_records(cache)[full_key][1]
     assert isinstance(wire, tuple)
     poisoned: list[ImmutableValue] = list(wire)
     if corruption.endswith("cap"):
@@ -178,7 +179,7 @@ def test_forged_same_key_action_rejected_at_decode_boundary(
         assert lease.put_issued(
             local_key,
             tuple(poisoned),
-            mahler_cache._ASSOCIATED_ACTION_PUBLISHER,
+            object.__getattribute__(mahler_cache, "_ASSOCIATED_ACTION_PUBLISHER"),
         )
     workspace = term.arithmetic_workspace
     assert workspace is not None
@@ -200,9 +201,9 @@ def test_issued_valid_shaped_action_must_match_admitted_transfer(
     term, _ = _query()
     workspace = term.arithmetic_workspace
     assert workspace is not None
-    full_key = next(iter(cache._entries))
+    full_key = next(iter(process_cache_records(cache)))
     partition, local_key = full_key
-    wire = cache._entries[full_key][1]
+    wire = process_cache_records(cache)[full_key][1]
     assert type(wire) is tuple and len(wire) == 5
     poisoned = list(wire)
     if corruption == "scale":
@@ -222,9 +223,9 @@ def test_issued_valid_shaped_action_must_match_admitted_transfer(
         assert lease.put_issued(
             local_key,
             cast(ImmutableValue, tuple(poisoned)),
-            mahler_cache._ASSOCIATED_ACTION_PUBLISHER,
+            object.__getattribute__(mahler_cache, "_ASSOCIATED_ACTION_PUBLISHER"),
         )
-    monkeypatch.setattr(mahler_cache, "_build_action", _forbidden)
+    monkeypatch.setattr(mahler_cache, "build_action", _forbidden)
     with pytest.raises(ValueError, match="differs from the admitted transfer"):
         mahler_cache.cached_associated_action(workspace)
     counters = term.ledger.counters
@@ -238,18 +239,18 @@ def test_public_process_lease_cannot_forge_outer_mahler_action(
     cache: ProcessCache, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _, expected = _query()
-    full_key = next(iter(cache._entries))
+    full_key = next(iter(process_cache_records(cache)))
     partition, local_key = full_key
-    valid_wire = cache._entries[full_key][1]
-    retained_record = cache._entries[full_key]
+    valid_wire = process_cache_records(cache)[full_key][1]
+    retained_record = process_cache_records(cache)[full_key]
     with (
         cache.acquire(*partition) as lease,
         pytest.raises(CacheRecordIssuerMismatch, match="publisher capability"),
     ):
         lease.put(local_key, valid_wire)
 
-    assert cache._entries[full_key] is retained_record
-    monkeypatch.setattr(mahler_cache, "_build_action", _forbidden)
+    assert process_cache_records(cache)[full_key] is retained_record
+    monkeypatch.setattr(mahler_cache, "build_action", _forbidden)
     warm, actual = _query()
     assert actual == expected
     counters = warm.ledger.counters
@@ -335,7 +336,7 @@ def test_pure_action_cache_reuses_equal_transfer_across_source_metadata(
         precision=19,
         lift=29,
     )
-    monkeypatch.setattr(mahler_cache, "_build_action", _forbidden)
+    monkeypatch.setattr(mahler_cache, "build_action", _forbidden)
     actual = mahler_cache.cached_associated_action(
         cast(AntihydraArithmeticImageWorkspace, second)
     )
@@ -367,7 +368,7 @@ def test_pure_action_key_rejects_finite_alias_with_different_exact_transfer(
     actual = mahler_cache.cached_associated_action(
         cast(AntihydraArithmeticImageWorkspace, second)
     )
-    assert actual == mahler_cache._build_action(1024, 12, 3**1024 + 1, 0, 2**1024)
+    assert actual == mahler_cache.build_action(1024, 12, 3**1024 + 1, 0, 2**1024)
     assert actual != expected
     assert second.ledger.counters["mahler_hashlife_action_misses"] == 1
     assert second.ledger.counters["mahler_hashlife_action_exact_hits"] == 0

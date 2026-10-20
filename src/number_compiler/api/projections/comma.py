@@ -20,13 +20,13 @@ def project(compiler: NumberCompiler, query: CommaTermQuery) -> ProjectedNumberT
 
     context_nodes = (
         query.max_comma_states
-        if compiler._max_context_nodes is None
-        else min(query.max_comma_states, compiler._max_context_nodes)
+        if compiler.max_context_nodes is None
+        else min(query.max_comma_states, compiler.max_context_nodes)
     )
     cache_entries = (
         query.max_comma_states
-        if compiler._max_cache_entries is None
-        else min(query.max_comma_states, compiler._max_cache_entries)
+        if compiler.max_cache_entries is None
+        else min(query.max_comma_states, compiler.max_cache_entries)
     )
 
     def valid(owner: CommaTerm) -> bool:
@@ -35,12 +35,12 @@ def project(compiler: NumberCompiler, query: CommaTermQuery) -> ProjectedNumberT
             and owner.max_states == query.max_comma_states
             and owner.max_work == query.max_comma_work
             and owner.certificate_version == CERTIFICATE_ID
-            and owner.shared_cache is compiler._shared_cache
+            and owner.shared_cache is compiler.shared_cache
             and owner.ledger.max_nodes == context_nodes
             and owner.ledger.max_cache_entries == cache_entries
         )
 
-    term = compiler._powered_term(
+    term = compiler.powered_term(
         (query, CERTIFICATE_ID),
         CommaTerm,
         lambda: CommaTerm(
@@ -48,9 +48,9 @@ def project(compiler: NumberCompiler, query: CommaTermQuery) -> ProjectedNumberT
             max_states=query.max_comma_states,
             max_work=query.max_comma_work,
             certificate_version=CERTIFICATE_ID,
-            shared_cache=compiler._shared_cache,
-            max_context_nodes=compiler._max_context_nodes,
-            max_cache_entries=compiler._max_cache_entries,
+            shared_cache=compiler.shared_cache,
+            max_context_nodes=compiler.max_context_nodes,
+            max_cache_entries=compiler.max_cache_entries,
         ),
         valid,
     )

@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Event
-from types import MappingProxyType, SimpleNamespace
+from types import MappingProxyType, ModuleType, SimpleNamespace
 from typing import Literal, Self
 
 import pytest
 
 from number_compiler.api.comma_term import CommaTermPayload
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
-from number_compiler.sequences.comma import certificates, future_provider, power
+from number_compiler.sequences.comma import (
+    certificates,
+    future_authority,
+    future_provider,
+    power,
+)
 from number_compiler.sequences.comma.future_authority import (
     registered_global_release_artifact_sha256,
 )
@@ -179,9 +185,10 @@ def test_empty_kernel_registry_does_not_resolve_future_package_resource(
     def forbidden_resource_lookup(*_args: object, **_kwargs: object) -> object:
         pytest.fail("empty FutureCID registry attempted package resource I/O")
 
-    monkeypatch.setattr(
-        future_provider, "_ADMITTED_KERNEL_INSTANCES", MappingProxyType({})
+    empty_registry: Mapping[str, future_authority.KernelInstanceAdmission] = (
+        MappingProxyType({})
     )
+    monkeypatch.setattr(future_provider, "_ADMITTED_KERNEL_INSTANCES", empty_registry)
     monkeypatch.setattr(power, "files", forbidden_resource_lookup)
     monkeypatch.setattr(certificates, "_verify", verify)
 
@@ -251,11 +258,11 @@ def test_registered_missing_or_corrupt_artifact_fails_closed(
         "registered_global_release_artifact_sha256",
         lambda: "a" * 64,
     )
-    monkeypatch.setattr(
-        power,
-        "files",
-        lambda _package: tmp_path,
-    )
+
+    def local_package_files(_package: str | ModuleType) -> Path:
+        return tmp_path
+
+    monkeypatch.setattr(power, "files", local_package_files)
 
     def forbidden_forest_fallback(*_args: object, **_kwargs: object) -> None:
         pytest.fail("registered artifact failure fell back to forest admission")

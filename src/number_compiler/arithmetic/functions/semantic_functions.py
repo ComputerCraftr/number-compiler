@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 
-from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_runtime_instance,
+    require_integer,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
@@ -18,11 +21,11 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     SemanticNode,
     SemanticRequest,
     SemanticTerminal,
-    _base,
-    _ports,
-    _signature,
-    _sort,
-    _union_inputs,
+    base_port_variable,
+    union_inputs,
+    validate_function_signature,
+    validate_ports,
+    validate_sort,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.semantic_function_transactions import (
@@ -112,7 +115,7 @@ class SemanticFunctionArena:
             if current in seen:
                 continue
             seen.add(current)
-            yield self._handle(current)
+            yield self.scoped_handle(current)
             node = self.nodes[current]
             pending.extend(
                 (node.low, node.high)
@@ -120,7 +123,7 @@ class SemanticFunctionArena:
                 else node.terminal.references
             )
 
-    def _handle(self, identity: int) -> SemanticFunctionID:
+    def scoped_handle(self, identity: int) -> SemanticFunctionID:
         return SemanticFunctionID(self.token, "semantic-function", identity)
 
     def candidate_handle(
@@ -138,7 +141,7 @@ class SemanticFunctionArena:
             raise RuntimeError("semantic publication base is stale")
         if identity >= base + candidate_count:
             raise ValueError("semantic candidate ID is outside its publication window")
-        return self._handle(identity)
+        return self.scoped_handle(identity)
 
     def resolve(self, function: SemanticFunctionID) -> SemanticNode:
         if type(function) is not SemanticFunctionID:
@@ -149,7 +152,7 @@ class SemanticFunctionArena:
         return self.nodes[function.local_id]
 
     def atom(self, signature: FunctionSignature, value: int) -> SemanticFunctionID:
-        _signature(signature)
+        validate_function_signature(signature)
         if (
             type(signature.output) is not AtomSort
             or type(value) is not int
@@ -161,7 +164,7 @@ class SemanticFunctionArena:
         return transaction.finish(transaction.admissible(root))
 
     def invalid(self, signature: FunctionSignature) -> SemanticFunctionID:
-        _signature(signature)
+        validate_function_signature(signature)
         transaction = _Transaction(self)
         return transaction.finish(
             transaction.terminal(signature, SemanticTerminal("invalid"))
@@ -173,14 +176,14 @@ class SemanticFunctionArena:
         port: FinitePort,
         output: AtomSort | None = None,
     ) -> SemanticFunctionID:
-        _ports(inputs)
-        _ports((port,))
+        validate_ports(inputs)
+        validate_ports((port,))
         if port not in inputs:
             raise ValueError("input port is not declared")
         target = (
             AtomSort(port.variable.role, port.cardinality) if output is None else output
         )
-        _sort(target)
+        validate_sort(target)
         if type(target) is not AtomSort or target.cardinality != port.cardinality:
             raise ValueError("variable output has another finite cardinality")
         if port.cardinality > MAX_PRIMITIVE_ATOMS:
@@ -232,7 +235,7 @@ class SemanticFunctionArena:
             raise ValueError(
                 "conditional requires boolean condition and matching outputs"
             )
-        inputs = _union_inputs(
+        inputs = union_inputs(
             c.signature.inputs, a.signature.inputs, b.signature.inputs
         )
         request = SemanticRequest("ite", (condition, yes, no))
@@ -255,7 +258,7 @@ class SemanticFunctionArena:
         if type(functions) is not tuple or not functions:
             raise ValueError("product requires an immutable nonempty function tuple")
         nodes = tuple(self.resolve(item) for item in functions)
-        inputs = _union_inputs(*(node.signature.inputs for node in nodes))
+        inputs = union_inputs(*(node.signature.inputs for node in nodes))
         signature = FunctionSignature(
             inputs, ProductSort(tuple(node.signature.output for node in nodes))
         )
@@ -277,7 +280,7 @@ class SemanticFunctionArena:
         self, function: SemanticFunctionID, bound_ports: tuple[FinitePort, ...]
     ) -> SemanticFunctionID:
         node = self.resolve(function)
-        _ports(bound_ports)
+        validate_ports(bound_ports)
         if any(port not in node.signature.inputs for port in bound_ports):
             raise ValueError("curried ports are not inputs of this function")
         outer = tuple(port for port in node.signature.inputs if port not in bound_ports)
@@ -299,7 +302,9 @@ class SemanticFunctionArena:
             if current in results:
                 continue
             variables = [
-                v for v in transaction.node(current).support if _base(v) in outer_names
+                v
+                for v in transaction.node(current).support
+                if base_port_variable(v) in outer_names
             ]
             if not variables:
                 inner = transaction.resign(current, inner_signature)
@@ -328,7 +333,7 @@ class SemanticFunctionArena:
         items = self._replacements(node.signature.inputs, replacements)
         request = SemanticRequest(
             "substitute",
-            (function,) + tuple(self._handle(item) for _, item in items),
+            (function,) + tuple(self.scoped_handle(item) for _, item in items),
             tuple(port for port, _ in items),
         )
         found = self._cached(request)
@@ -370,7 +375,9 @@ class SemanticFunctionArena:
             def transform(terminal: SemanticTerminal) -> int:
                 if terminal.kind == "invalid":
                     return transaction.terminal(signature, terminal)
-                if terminal.kind != "atom" or terminal.value is None:
+                if terminal.kind != "atom" or is_runtime_instance(
+                    terminal.value, type(None)
+                ):
                     raise ValueError("atom mapping encountered a non-atom terminal")
                 return transaction.terminal(
                     signature, SemanticTerminal("atom", mapping[terminal.value])
@@ -385,7 +392,7 @@ class SemanticFunctionArena:
         replacements: Mapping[PortVariable, SemanticFunctionID],
     ) -> tuple[tuple[FinitePort, int], ...]:
         admitted = {port.variable: port for port in inputs}
-        items = []
+        items: list[tuple[FinitePort, int]] = []
         for variable, replacement in replacements.items():
             if type(variable) is not PortVariable:
                 raise ValueError("replacement needs a typed finite port")
@@ -416,14 +423,15 @@ class SemanticFunctionArena:
             raise ValueError("application must bind every function input")
         request = SemanticRequest(
             "apply",
-            (function_value,) + tuple(self._handle(item) for _, item in replacements),
+            (function_value,)
+            + tuple(self.scoped_handle(item) for _, item in replacements),
             tuple(port for port, _ in replacements),
         )
         found = self._cached(request)
         if found is not None:
             return found
         transaction = _Transaction(self, request)
-        inputs = _union_inputs(
+        inputs = union_inputs(
             node.signature.inputs,
             *(transaction.node(item).signature.inputs for _, item in replacements),
         )
@@ -463,7 +471,7 @@ class SemanticFunctionArena:
         self.ledger.bump(_functions_keys.SEMANTIC_FUNCTION_EVALUATIONS)
         while node.variable is not None:
             variable = node.variable
-            bit = (values[_base(variable)] >> variable.bit) & 1
+            bit = (values[base_port_variable(variable)] >> variable.bit) & 1
             node = self.nodes[node.high if bit else node.low]
             self.ledger.bump(_functions_keys.SEMANTIC_FUNCTION_DECISION_VISITS)
         if node.terminal is None:
@@ -474,7 +482,7 @@ class SemanticFunctionArena:
         self, function: SemanticFunctionID, values: Mapping[PortVariable, int]
     ) -> tuple[SemanticFunctionID, ...]:
         terminal = self.evaluate(function, values)
-        return tuple(self._handle(item) for item in terminal.references)
+        return tuple(self.scoped_handle(item) for item in terminal.references)
 
     def require_total(
         self, function: SemanticFunctionID, admissible: SemanticFunctionID

@@ -37,7 +37,7 @@ class CacheEventMetrics:
         )
 
     @staticmethod
-    def _keys(
+    def keys_for(
         kind: str,
         outcome: str,
         spatial_level: int,
@@ -64,7 +64,7 @@ class CacheEventMetrics:
         temporal_span: int | None,
         allow_new: bool = True,
     ) -> None:
-        keys = self._keys(kind, outcome, spatial_level, temporal_span)
+        keys = self.keys_for(kind, outcome, spatial_level, temporal_span)
         old = {key: self.buckets.get(key) for key in keys}
         missing = sum(key not in self.buckets for key in keys)
         if missing and not allow_new:
@@ -101,7 +101,7 @@ class CacheEventMetrics:
         temporal_span: int | None,
     ) -> None:
         """Reserve a zero-valued warm bucket during the cold publication path."""
-        keys = self._keys(kind, outcome, spatial_level, temporal_span)
+        keys = self.keys_for(kind, outcome, spatial_level, temporal_span)
         missing = tuple(key for key in keys if key not in self.buckets)
         if len(self.buckets) + len(missing) > MAX_CACHE_EVENT_BUCKETS:
             self.ledger.bump(_resources_keys.CACHE_EVENT_HISTOGRAM_DROPPED)
@@ -252,7 +252,7 @@ def cache_event_owner_audit(
     invalid: set[tuple[int, int]] = set()
     containers = dict(ledger.iter_containers())
     for root in roots:
-        metrics = getattr(root, "_cache_metrics", None)
+        metrics = getattr(root, "cache_metrics", None)
         if type(metrics) is not CacheEventMetrics or metrics.ledger is not ledger:
             continue
         owner, buckets = metrics.owner, metrics.buckets
@@ -262,7 +262,7 @@ def cache_event_owner_audit(
         for key, count in buckets.items():
             try:
                 axis, kind, outcome, value = key
-                CacheEventMetrics._keys(
+                CacheEventMetrics.keys_for(
                     kind,
                     outcome,
                     value if axis == "level" else 0,
@@ -296,7 +296,7 @@ def _execution_metadata(
     """Validate the shared live tile geometry for accounting and reservation."""
     tiles = getattr(arena, "tiles", None)
     authority = getattr(arena, "action_authority", None)
-    metrics = getattr(tiles, "_cache_metrics", None)
+    metrics = getattr(tiles, "cache_metrics", None)
     resolve = getattr(tiles, "resolve", None)
     if type(metrics) is not CacheEventMetrics or not callable(resolve):
         raise TypeError("execution cache accounting requires the canonical tile arena")

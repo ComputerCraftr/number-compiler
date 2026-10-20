@@ -89,6 +89,28 @@ class BoundaryRelationStore:
     def worklist(self) -> LedgerList[tuple[_RelationKey, bool]]:
         return self._worklist
 
+    @property
+    def workspace_owner(self) -> int:
+        return self._workspace_owner
+
+    @property
+    def state_owner(self) -> int:
+        return self._state_owner
+
+    def state_tiles_snapshot(self) -> tuple[WindowTile, ...]:
+        return tuple(self._state_tiles)
+
+    @property
+    def state_tiles_binding(self) -> object:
+        """Expose the exact registered container as an opaque audit identity."""
+        return self._state_tiles
+
+    def stores_registered(self) -> bool:
+        return (
+            self.ledger.registered_container(self._workspace_owner) is self._worklist
+            and self.ledger.registered_container(self._state_owner) is self._state_tiles
+        )
+
     @contextmanager
     def charged_frontier(self) -> Generator[_LedgerFrontier, None, None]:
         """Expose the single-owner, ledger-accounted temporal worklist."""
@@ -148,19 +170,20 @@ class _LedgerFrontier:
         self._store = store
 
     def __bool__(self) -> bool:
-        return bool(self._store._worklist)
+        return bool(self._store.worklist)
 
     def push(self, frame: tuple[_RelationKey, bool]) -> None:
         ledger = self._store.ledger
-        owner = self._store._workspace_owner
-        prior_size = len(self._store._worklist)
+        owner = self._store.workspace_owner
+        worklist = self._store.worklist
+        prior_size = len(worklist)
         ledger.reserve(owner, entries=1, nodes=1)
         try:
-            self._store._worklist.append(frame)
+            worklist.append(frame)
         except BaseException:
             try:
-                if len(self._store._worklist) > prior_size:
-                    self._store._worklist.rollback_unpublished(prior_size)
+                if len(worklist) > prior_size:
+                    worklist.rollback_unpublished(prior_size)
             finally:
                 ledger.release(owner, entries=1, nodes=1)
             raise
@@ -170,17 +193,18 @@ class _LedgerFrontier:
             self.push(frame)
 
     def pop(self) -> tuple[_RelationKey, bool]:
-        frame = self._store._worklist.pop()
-        self._store.ledger.release(self._store._workspace_owner, entries=1, nodes=1)
+        frame = self._store.worklist.pop()
+        self._store.ledger.release(self._store.workspace_owner, entries=1, nodes=1)
         return frame
 
     def clear(self) -> None:
-        pending = len(self._store._worklist)
+        worklist = self._store.worklist
+        pending = len(worklist)
         if not pending:
             return
-        self._store._worklist.clear()
+        worklist.clear()
         self._store.ledger.release(
-            self._store._workspace_owner, entries=pending, nodes=pending
+            self._store.workspace_owner, entries=pending, nodes=pending
         )
 
 
@@ -200,14 +224,14 @@ class _TransientBoundaryStates:
     def __exit__(self, *_: object) -> None:
         if self._reserved:
             self._store.ledger.release(
-                self._store._workspace_owner, nodes=self._reserved
+                self._store.workspace_owner, nodes=self._reserved
             )
             self._reserved = 0
 
     def add(self, tile: WindowTile) -> None:
         if tile in self._values:
             return
-        owner = self._store._workspace_owner
+        owner = self._store.workspace_owner
         self._store.ledger.reserve(owner, nodes=1)
         try:
             self._values.add(tile)
@@ -234,7 +258,7 @@ def audit_reverse_boundary_window_owner(
         BoundaryObservationCacheRecord,
         ReverseBoundaryWindowObservation,
         ReverseBoundaryWindowObserver,
-        _observation_fields,
+        observation_fields,
     )
 
     if (
@@ -242,18 +266,21 @@ def audit_reverse_boundary_window_owner(
         or type(root) is not ReverseBoundaryWindowObserver
     ):
         return PayloadAuditContribution()
-    memo = root._relations.memo
+    relation_store = root.relations
+    observation_snapshot = root.observation_audit_snapshot()
+    observation_memo = observation_snapshot.container
+    memo = relation_store.memo
     owner = memo.owner
     try:
-        root._validate_authority()
+        root.validate_authority()
         inventory = ledger.inventory_owner(owner)
-        workspace = ledger.inventory_owner(root._relations._workspace_owner)
-        state_owner = root._relations._state_owner
+        workspace = ledger.inventory_owner(relation_store.workspace_owner)
+        state_owner = relation_store.state_owner
         state_inventory = ledger.inventory_owner(state_owner)
-        observation_memo = root._observation_memo
-        observation_owner = observation_memo.owner
+        observation_owner = observation_snapshot.owner
         observation_inventory = ledger.inventory_owner(observation_owner)
-        worklist = root._relations.worklist
+        worklist = relation_store.worklist
+        state_tiles = relation_store.state_tiles_snapshot()
         if (
             inventory.role != "reverse_boundary_window_relation"
             or inventory.entries != len(memo)
@@ -262,18 +289,17 @@ def audit_reverse_boundary_window_owner(
             or workspace.entries != len(worklist)
             or workspace.nodes != len(worklist)
             or state_inventory.role != "reverse_boundary_window_states"
-            or state_inventory.entries != root._relations.retained_states
-            or state_inventory.nodes != root._relations.retained_states
-            or len(root._relations._state_tiles) != root._relations.retained_states
-            or ledger.registered_container(root._relations._workspace_owner)
-            is not worklist
+            or state_inventory.entries != relation_store.retained_states
+            or state_inventory.nodes != relation_store.retained_states
+            or len(state_tiles) != relation_store.retained_states
+            or not relation_store.stores_registered()
             or worklist
             or observation_inventory.role != "reverse_boundary_window_observation"
             or observation_inventory.entries != len(observation_memo)
             or observation_inventory.nodes != len(observation_memo) * 16
             or len(observation_memo) > 1
             or ledger.registered_container(observation_owner)
-            is not root._observation_data
+            is not observation_snapshot.container
         ):
             raise ValueError("boundary relation inventory is not exact")
         retained_states = 0
@@ -312,33 +338,30 @@ def audit_reverse_boundary_window_owner(
             retained_states += len(record.outcomes)
             expected_state_tiles.update(record.outcomes)
             approved.extend(PayloadAuditEntry(owner, item) for item in (key, record))
-        actual_state_tiles = Counter(root._relations._state_tiles)
+        actual_state_tiles = Counter(state_tiles)
         if (
-            retained_states != root._relations.retained_states
+            retained_states != relation_store.retained_states
             or retained_states > root.max_relation_states
             or expected_nodes != inventory.nodes
             or len(memo) > root.max_relation_entries
             or actual_state_tiles != expected_state_tiles
         ):
             raise ValueError("boundary relation state accounting mismatch")
-        approved.extend(
-            PayloadAuditEntry(state_owner, tile)
-            for tile in root._relations._state_tiles
-        )
-        cached = root._cached_record()
+        approved.extend(PayloadAuditEntry(state_owner, tile) for tile in state_tiles)
+        cached = root.cached_record()
         if cached is not None:
             if (
                 type(cached) is not BoundaryObservationCacheRecord
                 or type(cached.observation) is not ReverseBoundaryWindowObservation
                 or type(cached.fields) is not tuple
-                or _observation_fields(cached.observation) != cached.fields
+                or observation_fields(cached.observation) != cached.fields
             ):
                 raise ValueError("boundary observation cache is stale")
             cached.observation.__post_init__()
         approved.extend(
             PayloadAuditEntry(observation_owner, item)
-            for key, value in observation_memo.items()
-            for item in (key, value)
+            for key in observation_memo
+            for item in (key, observation_snapshot.payload_view[key])
         )
         return PayloadAuditContribution(tuple(approved), ())
     except (AttributeError, IndexError, KeyError, TypeError, ValueError):

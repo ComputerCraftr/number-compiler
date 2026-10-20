@@ -72,7 +72,7 @@ def test_typed_boolean_matrices_require_the_same_state_space_owner() -> None:
     assert first_space is not same_shape_space
     assert first_space != same_shape_space
     assert first.then(after).rows == (0b10, 0b01)
-    assert first.power(0) == BooleanMatrix.identity(first_space)
+    assert first.power(0) == BooleanMatrix[tuple[int, int]].identity(first_space)
     assert first.image(0b01) == 0b10
     with pytest.raises(ValueError, match="state-space identities"):
         first.then(foreign)

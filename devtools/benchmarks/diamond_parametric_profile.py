@@ -19,8 +19,9 @@ from collections.abc import Callable
 from dataclasses import asdict, fields
 from pathlib import Path
 from time import perf_counter, process_time
-from typing import Any
+from typing import Any, cast
 
+from devtools.benchmarks.report_schema import record
 from devtools.checks.validation_policy import (
     PYTHON_COMMAND_SECONDS,
     PYTHON_MEMORY_BYTES,
@@ -321,11 +322,9 @@ def fresh_case(family: str, steps: int, width: int | None) -> dict[str, Any]:
             "stderr": completed.stderr[-4000:],
         }
     decoded: object = json.loads(completed.stdout)
-    if not isinstance(decoded, dict) or any(
-        not isinstance(key, str) for key in decoded
-    ):
+    if not isinstance(decoded, dict):
         raise ValueError("worker report must be a JSON object with string keys")
-    return decoded
+    return record(cast(object, decoded))
 
 
 def main() -> None:
@@ -344,7 +343,7 @@ def main() -> None:
             parser.error("worker requires one family")
         print(json.dumps(worker(args.family, args.steps, args.width), sort_keys=True))
         return
-    rows = []
+    rows: list[dict[str, object]] = []
     for family in ("reverse", "collatz") if args.family == "all" else (args.family,):
         cases: list[tuple[int, int | None]] = []
         if args.series in ("temporal", "all"):

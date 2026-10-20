@@ -19,4 +19,6 @@ def assert_context_inventory(
     assert inventory[contexts.observations.owner].observed_entries == len(
         contexts.observations
     )
-    assert inventory[contexts.unary.owner].observed_entries == len(contexts.unary._memo)
+    assert inventory[contexts.unary.owner].observed_entries == len(
+        contexts.unary.audit_snapshot().container
+    )

@@ -64,9 +64,20 @@ def _small_source_window_options() -> _SourceWindowOptions:
     }
 
 
-def test_true_endpoint_root_temporal_square_f5() -> None:
+@pytest.mark.parametrize(
+    "small_window",
+    (True, pytest.param(False, marks=pytest.mark.validation)),
+    ids=("unit-window", "full-window"),
+)
+def test_true_endpoint_root_temporal_square_f5(small_window: bool) -> None:
     spec = FermatNumberSpec(5)
-    first = spec.demand_three_power_temporal_source_morphism(27)
+    first = (
+        spec.demand_three_power_temporal_source_morphism(
+            27, **_small_source_window_options()
+        )
+        if small_window
+        else spec.demand_three_power_temporal_source_morphism(27)
+    )
     assert first.producer_verified
     squared = first.square(spec)
     again = squared.square(spec)

@@ -33,4 +33,6 @@ def test_action_power_composes_noncommuting_functions_in_chronological_order() -
     after = arena.metrics()
     assert after.power_hits == before.power_hits + 1
     assert after.composition_requests == before.composition_requests
-    assert all(type(value) is int for key in arena._compositions for value in key)
+    assert all(
+        type(value) is int for key in arena.composition_keys_snapshot() for value in key
+    )

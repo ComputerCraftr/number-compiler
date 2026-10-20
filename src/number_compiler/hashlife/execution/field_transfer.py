@@ -28,6 +28,8 @@ from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
 
+_TRANSFER_APPLICATION_SEAL = object()
+
 
 def _invalid_source_binding() -> Never:
     raise TypeError("field transfer requires a scoped source binding")
@@ -167,10 +169,6 @@ class FieldTransferExecutor:
         signature: PortSignatureID,
         incoming: ArenaHandle,
     ) -> FieldTransferApplication:
-        from number_compiler.hashlife.execution.field_executor import (
-            _TRANSFER_APPLICATION_SEAL,
-        )
-
         self.transfers.validate_request(
             FieldTransferRequestKey(action, source, geometry, signature)
         )
@@ -213,10 +211,6 @@ class FieldTransferApplication:
         incoming: ArenaHandle,
         seal: object,
     ) -> None:
-        from number_compiler.hashlife.execution.field_executor import (
-            _TRANSFER_APPLICATION_SEAL,
-        )
-
         if seal is not _TRANSFER_APPLICATION_SEAL:
             raise TypeError("field-transfer applications are issued by their executor")
         self.executor = executor
@@ -232,6 +226,10 @@ class FieldTransferApplication:
         )
 
         register_field_application(self.ledger, self)
+
+    def has_valid_issuance(self) -> bool:
+        """Check the issuing executor's private capability token."""
+        return self._seal is _TRANSFER_APPLICATION_SEAL
 
     def _transfer(self) -> FieldTransferID:
         return self.executor.transfer(

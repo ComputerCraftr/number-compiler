@@ -8,9 +8,7 @@ from typing import TYPE_CHECKING, Self
 from number_compiler.hashlife.execution.source_bound_mixin import (
     SourceBoundImageMixin,
 )
-from number_compiler.hashlife.execution.tile_application import (
-    TileApplication,
-)
+from number_compiler.hashlife.execution.tile_result_pinning import ResultPinning
 from number_compiler.hashlife.execution.tile_scheduler_frames import (
     _APPLICATION_SEAL,
     _DirectFrame,
@@ -27,6 +25,7 @@ from number_compiler.resources.metric_keys import shared as _shared_keys
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+    from number_compiler.hashlife.execution.tile_application import TileApplication
     from number_compiler.hashlife.execution.tile_execution_adapter import (
         TileExecutionAdapter,
     )
@@ -35,9 +34,7 @@ if TYPE_CHECKING:
     )
     from number_compiler.hashlife.tiles.tile_context import (
         ChildContext,
-        PrimitiveTileResult,
         ResultSemantics,
-        TemporalCocycle,
     )
     from number_compiler.hashlife.tiles.tile_ports import (
         FusedBoundaryContract,
@@ -61,6 +58,7 @@ if TYPE_CHECKING:
         CausalTaskWorkspace,
     )
     from number_compiler.resources.stores import LedgerDict
+    from number_compiler.resources.tile_dependency_leases import TileDependencyLeases
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,7 +84,7 @@ class CausalSchedulerAuditOwners:
     pins: LedgerDict[tuple[int, PoweredResultKey], ResultLease]
 
 
-class TileScheduler(SourceBoundImageMixin):
+class TileScheduler(SourceBoundImageMixin, ResultPinning):
     """One iterative complete-result and demand-observation executor."""
 
     _causal_workspace: CausalSpatialWorkspace[CausalSpatialValue]
@@ -98,12 +96,25 @@ class TileScheduler(SourceBoundImageMixin):
         results: CompletedResultArena,
         adapter: TileExecutionAdapter,
     ) -> None:
-        import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
+        from number_compiler.hashlife.execution.tile_application_authority import (
+            TileApplicationRegistry,
+        )
+        from number_compiler.hashlife.tiles.tile_results import (
+            CompletedResultArena as CompletedResultArenaType,
+        )
+        from number_compiler.hashlife.tiles.tiles import TileArena as TileArenaType
+        from number_compiler.resources.causal_workspace import (
+            CausalSpatialWorkspace,
+            CausalTaskWorkspace,
+        )
+        from number_compiler.resources.tile_dependency_leases import (
+            TileDependencyLeases,
+        )
 
         self._source_only = False
         if (
-            type(tiles) is not impl.TileArena
-            or type(results) is not impl.CompletedResultArena
+            type(tiles) is not TileArenaType
+            or type(results) is not CompletedResultArenaType
         ):
             raise TypeError("tile scheduling requires canonical tile and result arenas")
         if results.tiles is not tiles or results.ledger is not tiles.ledger:
@@ -128,16 +139,16 @@ class TileScheduler(SourceBoundImageMixin):
             payloads=self._pins.items,
             node_count=lambda: 0,
         )
-        self._applications = impl.TileApplicationRegistry(self, prefix)
+        self._applications = TileApplicationRegistry(self, prefix)
         self._source_images = None
-        self._causal_dependencies = impl.TileDependencyLeases(
+        self._causal_dependencies = TileDependencyLeases(
             self.ledger,
             self.tiles,
             prefix,
             self._applications,
         )
-        self._causal_workspace = impl.CausalSpatialWorkspace(self.ledger, prefix)
-        self._causal_tasks = impl.CausalTaskWorkspace(self.ledger, prefix)
+        self._causal_workspace = CausalSpatialWorkspace(self.ledger, prefix)
+        self._causal_tasks = CausalTaskWorkspace(self.ledger, prefix)
         self._physical_supports: OrderedBooleanSupportArena | None = None
         self.results.attach_causal_tasks(self._causal_tasks)
         if not self.ledger.counters.get(_execution_keys.TILE_CAUSAL_ACCOUNTING_VERSION):
@@ -264,8 +275,23 @@ class TileScheduler(SourceBoundImageMixin):
         )
 
     @property
+    def causal_tasks(self) -> CausalTaskWorkspace:
+        """Return the scheduler's charged task workspace to causal operations."""
+        return self._causal_tasks
+
+    @property
+    def causal_workspace(self) -> CausalSpatialWorkspace[CausalSpatialValue]:
+        return self._causal_workspace
+
+    @property
+    def dependency_leases(self) -> TileDependencyLeases:
+        return self._causal_dependencies
+
+    @property
     def physical_supports(self) -> OrderedBooleanSupportArena:
-        import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
+        from number_compiler.hashlife.tiles.ordered_boolean_support import (
+            OrderedBooleanSupportArena as OrderedBooleanSupportArenaType,
+        )
 
         self._require_physical_scheduler()
         found = self._physical_supports
@@ -273,7 +299,7 @@ class TileScheduler(SourceBoundImageMixin):
             max_nodes = max(4096, self.ledger.max_nodes or 0)
             hooks = self.adapter.family_hooks
             found = (
-                impl.OrderedBooleanSupportArena(
+                OrderedBooleanSupportArenaType(
                     max_nodes=max_nodes,
                     ledger=self.ledger,
                 )
@@ -284,7 +310,7 @@ class TileScheduler(SourceBoundImageMixin):
             self._physical_supports = found
         return found
 
-    def _workspace_peak(self, size: int) -> None:
+    def record_workspace_peak(self, size: int) -> None:
         previous = self.ledger.counters.get(
             _execution_keys.TILE_SCHEDULER_WORKSPACE_PEAK, 0
         )
@@ -294,7 +320,7 @@ class TileScheduler(SourceBoundImageMixin):
                 size - previous,
             )
 
-    def _child_context(
+    def child_context(
         self,
         action: FieldCellActionID,
         parent: TileID,
@@ -305,11 +331,15 @@ class TileScheduler(SourceBoundImageMixin):
         side: int,
         boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES,
     ) -> ChildContext:
-        import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
-
-        bound = impl.bind_context(
-            self, action, impl.BoundPorts(ports, wiring, boundaries)
+        from number_compiler.hashlife.tiles.tile_context import (
+            ChildContext as ChildContextType,
         )
+        from number_compiler.hashlife.tiles.tile_context import (
+            bind_context,
+        )
+        from number_compiler.hashlife.tiles.tile_ports import BoundPorts
+
+        bound = bind_context(self, action, BoundPorts(ports, wiring, boundaries))
         self.ledger.bump(_execution_keys.TILE_SCHEDULER_SIBLING_TRANSFER_REQUESTS)
         context = self.adapter.child_context(
             action,
@@ -320,46 +350,49 @@ class TileScheduler(SourceBoundImageMixin):
             bound.wiring,
             side,
         )
-        if type(context) is not impl.ChildContext:
+        if type(context) is not ChildContextType:
             raise TypeError("bounded child transfer returned another record")
         self.ledger.bump(_execution_keys.TILE_SCHEDULER_SIBLING_TRANSFER_EVALUATIONS)
         return context
 
-    def _pin(
+    def validate_pin_application(self, application: int) -> None:
+        from number_compiler.hashlife.execution.tile_application_authority import (
+            application_by_id,
+        )
+
+        application_by_id(self, application)
+
+    def pin_causal(
         self,
         application: int,
         key: PoweredResultKey,
         lease: ResultLease,
     ) -> None:
-        from number_compiler.hashlife.execution.tile_result_pinning import pin_result
-
-        pin_result(self, application, key, lease)
-
-    def _pin_causal(
-        self,
-        application: int,
-        key: PoweredResultKey,
-        lease: ResultLease,
-    ) -> None:
-        import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
+        from number_compiler.hashlife.execution.tile_application_authority import (
+            application_by_id,
+        )
+        from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
+        from number_compiler.hashlife.tiles.tile_result_validation import (
+            normalize_output_region,
+        )
+        from number_compiler.hashlife.tiles.tile_results import (
+            ResultLease as ResultLeaseType,
+        )
 
         if (
             type(application) is not int
             or not 0 <= application < self._next_application
         ):
             raise ValueError("causal pin has an invalid application identity")
-        if (
-            type(key) is not impl.PoweredResultKey
-            or type(lease) is not impl.ResultLease
-        ):
+        if type(key) is not PoweredResultKey or type(lease) is not ResultLeaseType:
             raise TypeError("causal pins require an exact result binding")
         self.results.validate_key(key)
-        key = impl.normalize_output_region(self.tiles, key)
+        key = normalize_output_region(self.tiles, key)
         lease_binding = lease.audit_snapshot()
         if lease_binding.issuer is not self.results or lease_binding.key != key:
             raise ValueError("causal pin result belongs to another request")
         _ = lease.result
-        application_source = impl.application_by_id(self, application).source
+        application_source = application_by_id(self, application).source
         boundaries = [key.boundaries]
         if key.fusion is not None:
             boundaries.extend(
@@ -383,7 +416,7 @@ class TileScheduler(SourceBoundImageMixin):
         found = self._pins.get(binding)
         if found is not None:
             if (
-                type(found) is not impl.ResultLease
+                type(found) is not ResultLeaseType
                 or found.audit_snapshot().issuer is not self.results
             ):
                 raise ValueError("causal result pin contains a foreign lease")
@@ -417,15 +450,11 @@ class TileScheduler(SourceBoundImageMixin):
         self.ledger.bump(_execution_keys.TILE_SCHEDULER_DEMANDED_RESULT_PINS)
 
     def release_application_pins(self, application: int) -> None:
-        from number_compiler.hashlife.execution.tile_result_pinning import (
-            release_result_pins,
-        )
-
-        release_result_pins(self, application)
+        self.release_result_pins(application)
         self._causal_dependencies.release_application(application)
 
     @staticmethod
-    def _key(
+    def request_key(
         action: FieldCellActionID,
         source: TileID,
         ports: tuple[int, ...],
@@ -433,11 +462,11 @@ class TileScheduler(SourceBoundImageMixin):
         boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES,
         fusion: FusedBoundaryContract | None = None,
     ) -> PoweredResultKey:
-        import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
+        from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 
-        return impl.PoweredResultKey(action, source, ports, wiring, boundaries, fusion)
+        return PoweredResultKey(action, source, ports, wiring, boundaries, fusion)
 
-    def _children(
+    def child_actions(
         self,
         action: FieldCellActionID,
     ) -> tuple[FieldCellActionID, FieldCellActionID] | None:
@@ -488,8 +517,17 @@ class TileScheduler(SourceBoundImageMixin):
                 raise ValueError("leaf result extent exceeds one tile cell")
             return self.results.publish(key, result)
 
-    def _complete_leaf(self, root: PoweredResultKey) -> ResultLease:
-        import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
+    def complete_leaf(self, root: PoweredResultKey) -> ResultLease:
+        from number_compiler.hashlife.interfaces.semantic_structures import (
+            LocalInterfaceID,
+        )
+        from number_compiler.hashlife.tiles.tile_context import (
+            PrimitiveTileResult,
+            ResultSemantics,
+            TemporalCocycle,
+            bind_context,
+        )
+        from number_compiler.hashlife.tiles.tile_ports import BoundPorts
 
         self.results.validate_key(root)
         source = self.tiles.resolve(root.input)
@@ -501,23 +539,23 @@ class TileScheduler(SourceBoundImageMixin):
             root.input,
             root.wiring,
         )
-        if type(interface) is not impl.LocalInterfaceID:
+        if type(interface) is not LocalInterfaceID:
             raise TypeError("leaf compiler returned a noncanonical interface")
         record = self.results.interfaces.resolve(interface)
         if record.signature != root.wiring.signature:
             raise ValueError("leaf function has another port signature")
-        bound = impl.bind_context(
+        bound = bind_context(
             self,
             root.action,
-            impl.BoundPorts(root.ports, root.wiring, root.boundaries),
+            BoundPorts(root.ports, root.wiring, root.boundaries),
         )
         value = self.adapter.apply_leaf(interface, bound.ports)
-        if type(value) is not impl.PrimitiveTileResult:
+        if type(value) is not PrimitiveTileResult:
             raise TypeError("leaf function returned an incomplete result")
         if value.semantics.outgoing != interface:
             raise ValueError("leaf result discarded its compiled interface")
         cocycle = self.adapter.action_cocycle(root.action)
-        if type(cocycle) is not impl.TemporalCocycle:
+        if type(cocycle) is not TemporalCocycle:
             raise TypeError("field action returned a noncanonical cocycle")
         observed = self.adapter.leaf_observation(
             root.action,
@@ -525,9 +563,9 @@ class TileScheduler(SourceBoundImageMixin):
             interface,
             bound.ports,
         )
-        if type(observed) is not impl.TemporalCocycle or observed.physical_ticks:
+        if type(observed) is not TemporalCocycle or observed.physical_ticks:
             raise TypeError("leaf observation returned an invalid cocycle delta")
-        semantics = impl.ResultSemantics(
+        semantics = ResultSemantics(
             value.semantics.outgoing,
             value.semantics.outgoing_ports,
             cocycle.physical_ticks,
@@ -544,7 +582,7 @@ class TileScheduler(SourceBoundImageMixin):
 
         support = primitive_physical_support(self, root.action, root.input, bound.ports)
         if support is not None:
-            semantics = impl.ResultSemantics(
+            semantics = ResultSemantics(
                 semantics.outgoing,
                 semantics.outgoing_ports,
                 semantics.physical_ticks,
@@ -560,16 +598,21 @@ class TileScheduler(SourceBoundImageMixin):
         self.ledger.bump(_execution_keys.TILE_SCHEDULER_LEAF_FUNCTION_APPLICATIONS)
         return self._publish_leaf(root, value.symbol, semantics)
 
-    def _complete_direct(
+    def complete_direct(
         self, root: PoweredResultKey, *, checked_miss: bool = False
     ) -> ResultLease:
-        import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
+        from number_compiler.hashlife.tiles.tile_context import (
+            ResultSemantics,
+            bind_context,
+            validate_midpoint_exits,
+        )
+        from number_compiler.hashlife.tiles.tile_ports import BoundPorts
 
         frames: list[_DirectFrame] = [_DirectFrame(root, checked_miss=checked_miss)]
         values: list[ResultLease] = []
         try:
             while frames:
-                self._workspace_peak(len(frames) + len(values))
+                self.record_workspace_peak(len(frames) + len(values))
                 self.ledger.bump(_execution_keys.TILE_SCHEDULER_FRAMES)
                 frame = frames.pop()
                 key = frame.key
@@ -584,12 +627,12 @@ class TileScheduler(SourceBoundImageMixin):
                         continue
                     node = self.tiles.resolve(key.input)
                     if not node.level:
-                        values.append(self._complete_leaf(key))
+                        values.append(self.complete_leaf(key))
                         continue
                     self.ledger.bump(_execution_keys.COMPLETED_RESULT_EVALUATIONS)
                     if node.left is None or node.right is None:
                         raise ValueError("malformed canonical parent")
-                    left_context = self._child_context(
+                    left_context = self.child_context(
                         key.action,
                         key.input,
                         node.left,
@@ -599,7 +642,7 @@ class TileScheduler(SourceBoundImageMixin):
                         0,
                         key.boundaries,
                     )
-                    right_context = self._child_context(
+                    right_context = self.child_context(
                         key.action,
                         key.input,
                         node.left,
@@ -617,7 +660,7 @@ class TileScheduler(SourceBoundImageMixin):
                     frames.append(frame)
                     frames.append(
                         _DirectFrame(
-                            self._key(
+                            self.request_key(
                                 key.action,
                                 node.right,
                                 right_context.ports,
@@ -628,7 +671,7 @@ class TileScheduler(SourceBoundImageMixin):
                     )
                     frames.append(
                         _DirectFrame(
-                            self._key(
+                            self.request_key(
                                 key.action,
                                 node.left,
                                 left_context.ports,
@@ -646,16 +689,16 @@ class TileScheduler(SourceBoundImageMixin):
                             raise ValueError(
                                 "spatial frame lost its midpoint contracts"
                             )
-                        impl.validate_midpoint_exits(
+                        validate_midpoint_exits(
                             frame.left_context,
                             frame.right_context,
                             left_result,
                             right_result,
                         )
-                    bound = impl.bind_context(
+                    bound = bind_context(
                         self,
                         key.action,
-                        impl.BoundPorts(key.ports, key.wiring, key.boundaries),
+                        BoundPorts(key.ports, key.wiring, key.boundaries),
                     )
                     semantics = self.adapter.join_semantics(
                         key.action,
@@ -665,7 +708,7 @@ class TileScheduler(SourceBoundImageMixin):
                         left_result,
                         right_result,
                     )
-                    if type(semantics) is not impl.ResultSemantics:
+                    if type(semantics) is not ResultSemantics:
                         raise TypeError("spatial join returned incomplete semantics")
                     with self.tiles.join(left.output, right.output) as output:
                         values.append(
@@ -698,18 +741,25 @@ class TileScheduler(SourceBoundImageMixin):
         boundaries: BoundaryTileOperands = EMPTY_BOUNDARY_TILES,
         fusion: FusedBoundaryContract | None = None,
     ) -> ResultLease:
-        import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
+        from number_compiler.hashlife.execution.tile_clock_dispatch import (
+            complete_clock,
+        )
+        from number_compiler.hashlife.tiles.tile_context import (
+            after_context,
+            before_context,
+            temporal_result,
+        )
 
         self._require_physical_scheduler()
         validator = getattr(self.adapter, "validate_wiring", None)
         if validator is not None:
             validator(action, wiring)
-        key = self._key(action, source, ports, wiring, boundaries, fusion)
+        key = self.request_key(action, source, ports, wiring, boundaries, fusion)
         found = self.lookup_execution_key(key)
         if found is not None:
             self.ledger.bump(_execution_keys.TILE_SCHEDULER_PARENT_EARLY_HITS)
             return found
-        clock = impl.complete_clock(self, key)
+        clock = complete_clock(self, key)
         if clock is not None:
             return clock
         from number_compiler.hashlife.execution.tile_causal_entry import causal_complete
@@ -717,7 +767,7 @@ class TileScheduler(SourceBoundImageMixin):
         causal = causal_complete(self, key)
         if causal is not None:
             return causal
-        children = self._children(action)
+        children = self.child_actions(action)
         if (
             children is not None
             and getattr(
@@ -734,8 +784,8 @@ class TileScheduler(SourceBoundImageMixin):
 
             return complete_temporal(self, key)
         if children is not None:
-            producer = impl.before_context(self, key, children[0])
-            before_key = self._key(
+            producer = before_context(self, key, children[0])
+            before_key = self.request_key(
                 children[0],
                 source,
                 producer.ports,
@@ -745,11 +795,9 @@ class TileScheduler(SourceBoundImageMixin):
             midpoint = self.lookup_execution_key(before_key)
             if midpoint is not None:
                 try:
-                    context = impl.after_context(
-                        self, key, children[1], midpoint.result
-                    )
-                    after = self._complete_direct(
-                        self._key(
+                    context = after_context(self, key, children[1], midpoint.result)
+                    after = self.complete_direct(
+                        self.request_key(
                             children[1],
                             midpoint.output,
                             context.ports,
@@ -761,9 +809,7 @@ class TileScheduler(SourceBoundImageMixin):
                         self.ledger.bump(_execution_keys.COMPLETED_RESULT_EVALUATIONS)
                         result = self.results.publish(
                             key,
-                            impl.temporal_result(
-                                self, key, midpoint.result, after.result
-                            ),
+                            temporal_result(self, key, midpoint.result, after.result),
                         )
                         self.ledger.bump(_shared_keys.TILE_SCHEDULER_MIDPOINT_HITS)
                         return result
@@ -776,7 +822,7 @@ class TileScheduler(SourceBoundImageMixin):
             if children is None
             else "tile_scheduler_fused_requests"
         )
-        return self._complete_direct(key, checked_miss=True)
+        return self.complete_direct(key, checked_miss=True)
 
     def point(
         self,
@@ -832,18 +878,19 @@ class TileScheduler(SourceBoundImageMixin):
             fusion=fusion,
         )
 
-    def _active_context(
+    def active_context(
         self,
         action: FieldCellActionID,
         tile: TileID,
         context: ChildContext,
     ) -> bool:
-        import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
+        from number_compiler.hashlife.tiles.tile_context import bind_context
+        from number_compiler.hashlife.tiles.tile_ports import BoundPorts
 
-        bound = impl.bind_context(
+        bound = bind_context(
             self,
             action,
-            impl.BoundPorts(context.ports, context.wiring, context.boundaries),
+            BoundPorts(context.ports, context.wiring, context.boundaries),
         )
         return self.adapter.output_active(action, tile, bound.ports, bound.wiring)
 
@@ -867,10 +914,11 @@ class TileScheduler(SourceBoundImageMixin):
         ports: tuple[int, ...],
         wiring: ResultWiring,
     ) -> TileApplication:
-        import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
+        from number_compiler.hashlife.execution.tile_application import TileApplication
+        from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 
         self._require_physical_scheduler()
-        key = impl.PoweredResultKey(action, source, ports, wiring)
+        key = PoweredResultKey(action, source, ports, wiring)
         found = self.lookup_execution_key(key)
         identity = self._next_application
         self._next_application += 1
@@ -891,34 +939,8 @@ class TileScheduler(SourceBoundImageMixin):
             raise
 
 
-_LAZY_PHYSICAL_EXPORTS = (
-    "ChildContext",
-    "CompletedResult",
-    "PrimitiveTileResult",
-    "ResultSemantics",
-    "TemporalCocycle",
-    "TileExecutionAdapter",
-)
-
-
-def __getattr__(name: str) -> object:
-    if name not in _LAZY_PHYSICAL_EXPORTS:
-        raise AttributeError(name)
-    import number_compiler.hashlife.execution.tile_scheduler_physical_imports as impl
-
-    return getattr(impl, name)
-
-
-def __dir__() -> list[str]:
-    return sorted(set(globals()) | set(_LAZY_PHYSICAL_EXPORTS))
-
-
 __all__ = [
-    "ChildContext",
-    "PrimitiveTileResult",
-    "ResultSemantics",
-    "TemporalCocycle",
-    "TileApplication",
-    "TileExecutionAdapter",
+    "CausalSchedulerAuditOwners",
     "TileScheduler",
+    "TileSchedulerAuditSnapshot",
 ]

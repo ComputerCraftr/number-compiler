@@ -102,12 +102,12 @@ def _target(family: str, value: int, modulus: int) -> bool:
     return value == (modulus - 1 if family == "fermat" else 0)
 
 
-def _class_ids(values: tuple[object, ...]) -> tuple[int, ...]:
+def class_ids(values: tuple[object, ...]) -> tuple[int, ...]:
     classes: dict[object, int] = {}
     return tuple(classes.setdefault(value, len(classes)) for value in values)
 
 
-def _terminal_deck_key(family: str, value: int, modulus: int) -> tuple[object, ...]:
+def terminal_deck_key(family: str, value: int, modulus: int) -> tuple[object, ...]:
     """Deck geometry with exactly the current terminal distinction demanded."""
     if family == "fermat":
         if value == modulus - 1:
@@ -132,8 +132,8 @@ def _square_consumer_setup(
 
 def _terminal_deck_audit(family: str, parameter: int) -> TerminalDeckCongruenceAudit:
     spec, modulus, transition, _width = _square_consumer_setup(family, parameter)
-    keys = tuple(_terminal_deck_key(family, value, modulus) for value in range(modulus))
-    ids = _class_ids(keys)
+    keys = tuple(terminal_deck_key(family, value, modulus) for value in range(modulus))
+    ids = class_ids(keys)
     terminal = tuple(_target(family, value, modulus) for value in range(modulus))
     analysis = analyze_observer(
         keys,
@@ -244,7 +244,7 @@ def _audit(family: str, parameter: int) -> SquareConsumerCongruenceAudit:
         )
 
     observations = tuple(responses)
-    initial = _class_ids(observations)
+    initial = class_ids(observations)
     initial_analysis = analyze_observer(
         initial, tuple(initial[target] for target in transitions)
     )

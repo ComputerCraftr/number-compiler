@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Final, Literal
+from typing import Final, Literal, cast
 
 from number_compiler.resources.immutable_signature import (
     ScalarSignature,
@@ -71,7 +71,7 @@ class KernelInstanceAdmission:
     scope: str
 
 
-def _valid_artifact_digest(digest: str) -> bool:
+def valid_artifact_digest(digest: str) -> bool:
     return (
         type(digest) is str
         and len(digest) == 64
@@ -84,7 +84,7 @@ def registered_admission_matches(
 ) -> bool:
     if (
         type(admission) is not KernelInstanceAdmission
-        or not _valid_artifact_digest(digest)
+        or not valid_artifact_digest(digest)
         or type(admission.artifact_sha256) is not str
         or admission.artifact_sha256 != digest
         or type(admission.instance_id) is not str
@@ -111,7 +111,7 @@ def global_release_admission_matches(
 ) -> bool:
     return (
         type(admission) is KernelInstanceAdmission
-        and _valid_artifact_digest(digest)
+        and valid_artifact_digest(digest)
         and type(admission.artifact_sha256) is str
         and admission.artifact_sha256 == digest
         and type(admission.instance_id) is str
@@ -135,7 +135,8 @@ def registered_global_release_artifact_sha256(
     if type(registry) is not MappingProxyType:
         raise PermissionError("semantic future admission registry is not immutable")
     global_digests: list[str] = []
-    for digest, admission in registry.items():
+    admitted_items = cast(Mapping[str, KernelInstanceAdmission], registry).items()
+    for digest, admission in admitted_items:
         if type(admission) is not KernelInstanceAdmission:
             raise PermissionError("semantic future registry contains a foreign entry")
         if admission.scope != KERNEL_RELEASE_SCOPE:

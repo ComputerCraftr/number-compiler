@@ -97,19 +97,21 @@ class NormalizedParityProgram:
 
 def _issue_program(builder: ParityProgramBuilder) -> NormalizedParityProgram:
     """Issue only from a builder whose exact action seams were checked."""
+    if type(builder) is not ParityProgramBuilder:
+        raise ValueError("parity program issuer requires a completed exact builder")
+    snapshot = builder.issuance_snapshot()
     if (
-        type(builder) is not ParityProgramBuilder
-        or builder._closed
-        or builder._program is not None
-        or builder._d8_frame is not None
-        or builder._source_is_local
+        snapshot.closed
+        or snapshot.program is not None
+        or snapshot.has_d8_frame
+        or snapshot.source_is_local
     ):
         raise ValueError("parity program issuer requires a completed exact builder")
-    source = builder._start
-    endpoint = builder._source
-    steps = builder._steps
-    one_symbols = builder._one_symbols
-    factors = tuple(builder._factors)
+    source = snapshot.start
+    endpoint = snapshot.source
+    steps = snapshot.steps
+    one_symbols = snapshot.one_symbols
+    factors = snapshot.factors
     program = object.__new__(NormalizedParityProgram)
     for name, value in (
         ("source", source),
@@ -153,7 +155,7 @@ def _issue_program(builder: ParityProgramBuilder) -> NormalizedParityProgram:
 
 
 @dataclass(frozen=True, slots=True, init=False)
-class _D8ParityTransition:
+class D8ParityTransition:
     """A D8 word and action issued together by the exact residue-table owner."""
 
     source_local: int
@@ -169,7 +171,7 @@ class _D8ParityTransition:
         raise TypeError("D8 parity transitions are issued by the D8 table")
 
     @classmethod
-    def _issue(
+    def issue_from_d8_table(
         cls,
         source_local: int,
         endpoint_local: int,
@@ -177,7 +179,7 @@ class _D8ParityTransition:
         action: DyadicTerminalFieldAction,
         source_frame: object,
         advanced_frame: object,
-    ) -> _D8ParityTransition:
+    ) -> D8ParityTransition:
         from number_compiler.sequences.collatz.temporal_dyadic import D8CylinderFrame
 
         transition = object.__new__(cls)
@@ -295,6 +297,21 @@ class _D8ParityTransition:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ParityBuilderIssuanceSnapshot:
+    """Immutable issuance facts exposed by a parity builder to its issuer."""
+
+    closed: bool
+    program: NormalizedParityProgram | None
+    has_d8_frame: bool
+    source_is_local: bool
+    start: int
+    source: int
+    steps: int
+    one_symbols: int
+    factors: tuple[ParityFactor, ...]
+
+
 class ParityProgramBuilder:
     """Collect producer-selected compact factors with exact action seams."""
 
@@ -359,6 +376,20 @@ class ParityProgramBuilder:
     @property
     def source(self) -> int:
         return self._source
+
+    def issuance_snapshot(self) -> ParityBuilderIssuanceSnapshot:
+        """Return the immutable state needed to validate program issuance."""
+        return ParityBuilderIssuanceSnapshot(
+            closed=self._closed,
+            program=self._program,
+            has_d8_frame=self._d8_frame is not None,
+            source_is_local=self._source_is_local,
+            start=self._start,
+            source=self._source,
+            steps=self._steps,
+            one_symbols=self._one_symbols,
+            factors=tuple(self._factors),
+        )
 
     def __enter__(self) -> Self:
         if self._closed:
@@ -660,9 +691,9 @@ class ParityProgramBuilder:
             odd_symbols=macro.odd_symbols,
         )
 
-    def append_d8_transition(self, transition: _D8ParityTransition) -> None:
+    def append_d8_transition(self, transition: D8ParityTransition) -> None:
         if (
-            type(transition) is not _D8ParityTransition
+            type(transition) is not D8ParityTransition
             or not transition.producer_issued
             or self._d8_frame is not transition.source_frame
         ):

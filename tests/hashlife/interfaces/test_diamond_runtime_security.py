@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
@@ -19,6 +20,7 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import (
     Evaluate,
     Initial,
     Output,
+    Result,
     Substitute,
     Task,
     Transfer,
@@ -71,7 +73,10 @@ def assert_rejected(
         runtime.ledger, lambda: runtime.execute(request), (TypeError, ValueError)
     )
     with pytest.raises((TypeError, ValueError)):
-        runtime._probe(request)
+        cast(
+            "Callable[[Task], Result | None]",
+            object.__getattribute__(runtime, "_probe"),
+        )(request)
     assert runtime.ledger.snapshot() == before
 
 
@@ -167,7 +172,7 @@ def test_warm_spatial_transfer_returns_without_dispatch_or_scalar_response_cache
     def forbidden(*args: object) -> Never:
         raise AssertionError("warm parent descended into its execution program")
 
-    monkeypatch.setattr(runtime, "_program", forbidden)
+    monkeypatch.setattr(runtime, "task_program", forbidden)
     assert runtime.execute(task) == expected
     after = runtime.ledger.snapshot()
     assert (

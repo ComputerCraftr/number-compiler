@@ -75,6 +75,10 @@ def _minimized_carrier(
     return minimized, machine, minimized.class_ids[proof.source_carrier]
 
 
+SpecialCarrierProof = _SpecialCarrierProof
+minimized_carrier = _minimized_carrier
+
+
 @dataclass(frozen=True, slots=True)
 class SpecialBinaryJumpProgram:
     family: str
@@ -425,13 +429,21 @@ def build_fermat_binary_jump(
     )
 
 
+fermat_carrier_proof = _fermat_carrier_proof
+mersenne_carrier_proof = _mersenne_carrier_proof
+
+
 __all__ = [
+    "SpecialCarrierProof",
     "SpecialBinaryJumpApplication",
     "SpecialBinaryJumpProgram",
     "build_fermat_binary_jump",
     "build_fermat_carrier_proof_uncached",
     "build_mersenne_binary_jump",
     "build_mersenne_carrier_proof_uncached",
+    "fermat_carrier_proof",
     "fermat_radix_orbit_representative",
+    "mersenne_carrier_proof",
     "mersenne_sign_representative",
+    "minimized_carrier",
 ]

@@ -28,7 +28,7 @@ def inject_write_once_failure(
     """Fail one selected write-once map before or after its insertion."""
     original = cast(
         Callable[[LedgerDict[object, object], object, object], None],
-        LedgerDict.__setitem__,
+        object.__getattribute__(LedgerDict, "__setitem__"),
     )
 
     def fail_selected_store(

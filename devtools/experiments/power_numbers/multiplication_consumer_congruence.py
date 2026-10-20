@@ -14,9 +14,9 @@ from functools import lru_cache
 from typing import Protocol
 
 from devtools.verification.oracles.special_binary_jump import (
-    _fermat_carrier_proof,
-    _mersenne_carrier_proof,
+    fermat_carrier_proof,
     fermat_radix_orbit_representative,
+    mersenne_carrier_proof,
     mersenne_sign_representative,
 )
 from number_compiler.arithmetic.functions.finite_observer import (
@@ -106,9 +106,9 @@ class _CarrierProof(Protocol):
 def _carrier(family: str, parameter: int) -> tuple[_CarrierProof, int, tuple[int, ...]]:
     family, parameter = str(family), int(parameter)
     proof = (
-        _fermat_carrier_proof(parameter)
+        fermat_carrier_proof(parameter)
         if family == "fermat"
-        else _mersenne_carrier_proof(parameter)
+        else mersenne_carrier_proof(parameter)
     )
     width = (1 << parameter) if family == "fermat" else parameter
     modulus = (1 << width) - (-1 if family == "fermat" else 1)
@@ -264,7 +264,7 @@ def _consumer_keys(
     )
     lo = min(interval[0] for interval in intervals)
     hi = max(interval[1] for interval in intervals)
-    keys = []
+    keys: list[tuple[object, ...]] = []
     for value in representatives:
         step, harmonic = ArithmeticTile.from_value(
             spec, value
@@ -344,9 +344,9 @@ def _quotient_table(
     members = tuple(
         tuple(i for i, value in enumerate(ids) if value == c) for c in range(classes)
     )
-    out = []
+    out: list[tuple[int, ...]] = []
     for left in members:
-        row = []
+        row: list[int] = []
         for right in members:
             targets = {ids[table[x][y]] for x in left for y in right}
             if len(targets) != 1:

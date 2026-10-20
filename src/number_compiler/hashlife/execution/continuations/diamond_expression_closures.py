@@ -119,7 +119,7 @@ class ExpressionClosures:
             visited.add(index)
             node = arena.nodes[index]
             if node.kind == "port":
-                reference = arena._handle(index)
+                reference = arena.scoped_handle(index)
                 if reference not in parameters:
                     raise ValueError("closure body contains an undeclared free port")
                 support.add(reference)
@@ -181,6 +181,7 @@ class ExpressionClosures:
         """
         from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
             ExprID,
+            FormalPort,
             StateSort,
         )
 
@@ -193,7 +194,7 @@ class ExpressionClosures:
             raise ValueError(
                 "canonical closure requires one to three distinct scoped ports"
             )
-        parameter_ports = []
+        parameter_ports: list[FormalPort] = []
         for parameter in parameters:
             node = self.expressions.node(parameter)
             if node.kind != "port" or type(node.sort) is not StateSort:
@@ -281,7 +282,7 @@ class ExpressionClosures:
             return arguments[record.support.index(record.body)]
         node = self.expressions.node(record.body)
         if node.kind in ("anchor", "continuation", "finite_apply"):
-            child = self.expressions._handle(node.children[0])
+            child = self.expressions.scoped_handle(node.children[0])
             if child in record.support:
                 argument = arguments[record.support.index(child)]
                 self.ledger.bump(

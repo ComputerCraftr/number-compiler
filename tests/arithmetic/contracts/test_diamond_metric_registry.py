@@ -1,5 +1,8 @@
 """Node categories are observed independently of reservations and cache slots."""
 
+from collections.abc import Sequence
+from typing import cast
+
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
@@ -113,7 +116,8 @@ def test_original_source_record_is_charged_before_any_geometry_node() -> None:
     report = collect_ledger_metrics(ledger)
     assert report.exact_source_occurrences == 1
     assert report.source_payload_nodes == report.cache_slots == 1
-    assert geometry._sources[0] is geometry._construction.source is source
+    records = cast(Sequence[ExactSource], object.__getattribute__(geometry, "_sources"))
+    assert records[0] is geometry.construction.source is source
     assert not geometry.nodes
 
 
@@ -142,7 +146,13 @@ def test_equal_but_distinct_original_source_records_are_not_identity_deduplicate
     ledger = ResourceLedger()
     first = SourceGeometry(ledger, ExactSource((1,), 2))
     second = SourceGeometry(ledger, ExactSource((1,), 2))
-    assert first._sources[0] == second._sources[0]
-    assert first._sources[0] is not second._sources[0]
+    first_records = cast(
+        Sequence[ExactSource], object.__getattribute__(first, "_sources")
+    )
+    second_records = cast(
+        Sequence[ExactSource], object.__getattribute__(second, "_sources")
+    )
+    assert first_records[0] == second_records[0]
+    assert first_records[0] is not second_records[0]
     report = collect_ledger_metrics(ledger)
     assert report.exact_source_occurrences == report.source_payload_nodes == 2

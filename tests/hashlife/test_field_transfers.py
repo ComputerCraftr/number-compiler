@@ -179,7 +179,12 @@ def test_field_transfer_observation_rechecks_handle_before_transfer_lookup(
         signature,
         FieldTransferPortID(adapter.port_owner, "test-boundary", 0),
     )
-    transfer = application._transfer()
+    transfer = executor.transfer(
+        application.action,
+        application.source,
+        application.geometry,
+        application.signature,
+    )
     malformed = FieldTransferPortID(adapter.port_owner, "test-boundary", 0)
     object.__setattr__(malformed, "local_id", False)
 

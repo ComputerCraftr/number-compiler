@@ -57,5 +57,8 @@ def forge_growth(clause: PrimitiveSuccessorClause, growth: int) -> None:
     object.__setattr__(
         clause,
         "action",
-        SymbolicRadialInnovation(RadialMultiplier(1 - growth, growth), clause._beta),
+        SymbolicRadialInnovation(
+            RadialMultiplier(1 - growth, growth),
+            object.__getattribute__(clause, "_beta"),
+        ),
     )

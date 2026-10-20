@@ -8,7 +8,7 @@ diamond scheduler.
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping, MutableSequence
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Literal, TypeAlias
 
@@ -19,6 +19,9 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     ArenaToken,
 )
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
+from number_compiler.hashlife.actions.diamond_storage_snapshot import (
+    DiamondNodeStorageSnapshot,
+)
 from number_compiler.hashlife.actions.lazy_compiler import (
     LazyCompiler,
     ProgramComposition,
@@ -27,7 +30,7 @@ from number_compiler.resources.metric_keys import (
     hashlife_actions as _actions_keys,
 )
 from number_compiler.resources.metric_keys import shared as _shared_keys
-from number_compiler.resources.stores import append_indexed_node
+from number_compiler.resources.stores import LedgerDict, LedgerList, append_indexed_node
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
@@ -271,15 +274,39 @@ class TemporalActionArena:
         self._index_owner = self.ledger.register(
             prefix + "-interner", "action_interner"
         )
-        self._nodes: MutableSequence[TemporalActionNode] = self.ledger.make_list(
+        self._nodes: LedgerList[TemporalActionNode] = self.ledger.make_list(
             self._node_owner
         )
-        self._ids: MutableMapping[TemporalActionNode, int] = self.ledger.make_dict(
+        self._ids: LedgerDict[TemporalActionNode, int] = self.ledger.make_dict(
             self._index_owner
         )
-        self.identity = self._intern(TemporalActionNode("identity"))
+        self.identity = self.intern_record(TemporalActionNode("identity"))
 
-    def _handle(self, index: int) -> ActionProgramID:
+    def storage_is_registered(self, actual: Mapping[int, object]) -> bool:
+        """Check exact backing identities before independent payload inspection."""
+        return actual.get(self._node_owner) is self._nodes
+
+    def audit_snapshot(
+        self,
+    ) -> DiamondNodeStorageSnapshot[TemporalActionNode, TemporalActionNode]:
+        return DiamondNodeStorageSnapshot(
+            self._node_owner,
+            self._index_owner,
+            id(self._nodes),
+            id(self._ids),
+            self._nodes.audit_view(),
+            self._ids.audit_view(),
+        )
+
+    def publication_reservations(self) -> tuple[tuple[int, int, int], ...]:
+        return ((self._node_owner, 1, 1), (self._index_owner, 1, 0))
+
+    def publish_reserved(self, node: TemporalActionNode, identity: int) -> None:
+        """Publish the node after the caller reserves the joint transaction."""
+        self._ids[node] = identity
+        self._nodes.append(node)
+
+    def scoped_handle(self, index: int) -> ActionProgramID:
         return ActionProgramID(self.token, "diamond-action", index)
 
     def resolve(self, action: ActionProgramID) -> TemporalActionNode:
@@ -310,7 +337,7 @@ class TemporalActionArena:
         return self.from_compiler(self.compiler.reference(effect))
 
     def reference(self, index: int) -> ActionProgramID:
-        handle = self._handle(index)
+        handle = self.scoped_handle(index)
         self.resolve(handle)
         return handle
 
@@ -329,10 +356,10 @@ class TemporalActionArena:
         )
         return handle, self.compiler.resolve(handle)
 
-    def _intern(self, node: TemporalActionNode) -> ActionProgramID:
+    def intern_record(self, node: TemporalActionNode) -> ActionProgramID:
         found = self._ids.get(node)
         if found is not None:
-            return self._handle(found)
+            return self.scoped_handle(found)
         index = append_indexed_node(
             self.ledger,
             self._nodes,
@@ -342,7 +369,7 @@ class TemporalActionArena:
             node,
             node,
         )
-        return self._handle(index)
+        return self.scoped_handle(index)
 
     def from_compiler(self, reference: ActionProgramID) -> ActionProgramID:
         root = self.compiler.resolve(reference)
@@ -357,9 +384,7 @@ class TemporalActionArena:
             compiler_id = self.compiler.reference(effect).local_id
             if compiler_id in resolved:
                 continue
-            if type(effect) is ProgramComposition and isinstance(
-                effect, ProgramComposition
-            ):
+            if type(effect) is ProgramComposition:
                 if not ready:
                     pending.extend(
                         ((effect, True), (effect.second, False), (effect.first, False))
@@ -397,7 +422,7 @@ class TemporalActionArena:
             self._ids[node] = len(self._nodes)
             self._nodes.append(node)
         self.ledger.bump(_actions_keys.DIAMOND_TEMPORAL_IMPORT_VISITS, visits)
-        return self._handle(resolved[reference.local_id])
+        return self.scoped_handle(resolved[reference.local_id])
 
     def primitive(self, action: ActionProgramID) -> BlockEffect:
         return self._primitive_binding(action)[1]
@@ -405,9 +430,9 @@ class TemporalActionArena:
     def compose(
         self, before: ActionProgramID, after: ActionProgramID
     ) -> ActionProgramID:
-        result, node = self._plan_compose(before, after)
+        result, node = self.plan_compose(before, after)
         if node is not None:
-            result = self._intern(node)
+            result = self.intern_record(node)
         self.ledger.bump(_shared_keys.DIAMOND_TEMPORAL_COMPOSITION_REQUESTS)
         self.ledger.bump(
             _shared_keys.DIAMOND_TEMPORAL_COMPOSITION_HITS
@@ -416,7 +441,7 @@ class TemporalActionArena:
         )
         return result
 
-    def _plan_compose(
+    def plan_compose(
         self, before: ActionProgramID, after: ActionProgramID
     ) -> tuple[ActionProgramID, TemporalActionNode | None]:
         """Resolve a canonical composition without publishing or reserving it."""
@@ -435,9 +460,9 @@ class TemporalActionArena:
         )
         found = self._ids.get(node)
         return (
-            (self._handle(len(self._nodes)), node)
+            (self.scoped_handle(len(self._nodes)), node)
             if found is None
-            else (self._handle(found), None)
+            else (self.scoped_handle(found), None)
         )
 
     def power(self, action: ActionProgramID, exponent: int) -> ActionProgramID:
@@ -521,7 +546,7 @@ class CellNode:
 
 
 @dataclass(frozen=True, slots=True)
-class _CellKey:
+class CellIndexKey:
     kind: str
     level: int
     left: int
@@ -547,12 +572,37 @@ class ImageCellArena:
         prefix = f"diamond-cells-{len(self.ledger.inventory())}"
         self._node_owner = self.ledger.register(prefix + "-nodes", "diamond_cell")
         self._index_owner = self.ledger.register(prefix + "-interner", "image_interner")
-        self._nodes: MutableSequence[CellNode] = self.ledger.make_list(self._node_owner)
-        self._ids: MutableMapping[_CellKey, int] = self.ledger.make_dict(
+        self._nodes: LedgerList[CellNode] = self.ledger.make_list(self._node_owner)
+        self._ids: LedgerDict[CellIndexKey, int] = self.ledger.make_dict(
             self._index_owner
         )
 
-    def _handle(self, index: int) -> CellID:
+    def storage_is_registered(self, actual: Mapping[int, object]) -> bool:
+        """Check exact backing identities before independent payload inspection."""
+        return actual.get(self._node_owner) is self._nodes
+
+    def audit_snapshot(self) -> DiamondNodeStorageSnapshot[CellNode, CellIndexKey]:
+        return DiamondNodeStorageSnapshot(
+            self._node_owner,
+            self._index_owner,
+            id(self._nodes),
+            id(self._ids),
+            self._nodes.audit_view(),
+            self._ids.audit_view(),
+        )
+
+    def publication_reservations(self) -> tuple[tuple[int, int, int], ...]:
+        return ((self._node_owner, 1, 1), (self._index_owner, 1, 0))
+
+    def find_node(self, key: CellIndexKey) -> int | None:
+        return self._ids.get(key)
+
+    def publish_reserved(self, node: CellNode, key: CellIndexKey) -> None:
+        """Publish one pre-reserved canonical cell and its index entry."""
+        self._ids[key] = len(self._nodes)
+        self._nodes.append(node)
+
+    def scoped_handle(self, index: int) -> CellID:
         return CellID(self.token, "diamond-cell", index)
 
     def resolve(self, cell: CellID) -> CellNode:
@@ -585,7 +635,7 @@ class ImageCellArena:
 
     def validate_input(self, cell: InputCellID) -> InputCellID:
         if type(cell) is FormalSymbolID:
-            blank = self.source_geometry._construction.source.blank
+            blank = self.source_geometry.construction.source.blank
             cell.validate(self.formal_token, "diamond-formal-symbol", size=blank + 1)
         elif type(cell) is CellID:
             self.resolve(cell)
@@ -611,16 +661,16 @@ class ImageCellArena:
             raise ValueError("only original-source leaves contain symbols")
         return self.source_geometry.read(node.source_start)
 
-    def _intern(self, node: CellNode) -> CellID:
+    def intern_record(self, node: CellNode) -> CellID:
         original = node.kind == "source"
         if node.kind == "join":
             original = (
-                self.resolve(self._handle(node.left)).original_forward
-                and self.resolve(self._handle(node.right)).original_forward
+                self.resolve(self.scoped_handle(node.left)).original_forward
+                and self.resolve(self.scoped_handle(node.right)).original_forward
             )
         # Metadata is derived from allocated children, never caller authority.
         node = replace(node, original_forward=original)
-        key = self._key(node)
+        key = self.cell_index_key(node)
         found = self._ids.get(key)
         if found is not None:
             self.ledger.bump(_actions_keys.DIAMOND_CELL_INTERNER_HITS)
@@ -628,7 +678,7 @@ class ImageCellArena:
                 _actions_keys.DIAMOND_SOURCE_ORIGIN_METADATA_READS,
                 2 if node.kind == "join" else 0,
             )
-            return self._handle(found)
+            return self.scoped_handle(found)
         index = append_indexed_node(
             self.ledger,
             self._nodes,
@@ -643,11 +693,11 @@ class ImageCellArena:
             _actions_keys.DIAMOND_SOURCE_ORIGIN_METADATA_READS,
             2 if node.kind == "join" else 0,
         )
-        return self._handle(index)
+        return self.scoped_handle(index)
 
     @staticmethod
-    def _key(node: CellNode) -> _CellKey:
-        return _CellKey(
+    def cell_index_key(node: CellNode) -> CellIndexKey:
+        return CellIndexKey(
             node.kind,
             node.level,
             node.left,
@@ -663,7 +713,7 @@ class ImageCellArena:
             raise ValueError(
                 "requested cell is not an existing original-source subtree"
             )
-        return self._intern(
+        return self.intern_record(
             CellNode("source", level, source_tile=tile.node_id, source_start=start)
         )
 
@@ -671,7 +721,7 @@ class ImageCellArena:
         """Existing original-source forest for a padded logical interval."""
         if type(start) is not int or type(length) is not int or start < 0 or length < 0:
             raise ValueError("invalid original-source interval")
-        root = self.source_geometry._read_root
+        root = self.source_geometry.source_root
         if root is None or start < root.start or start + length > root.end:
             raise ValueError(
                 "interval lies outside initialized original-source geometry"
@@ -696,13 +746,13 @@ class ImageCellArena:
         return tuple(result)
 
     def source_forest(self) -> tuple[CellID, ...]:
-        root = self.source_geometry._read_root
+        root = self.source_geometry.source_root
         if root is None:
             raise ValueError("original-source geometry is not initialized")
         return tuple(cell for _, cell in self.source_span(root.start, root.length))
 
     def reference(self, index: int) -> CellID:
-        handle = self._handle(index)
+        handle = self.scoped_handle(index)
         self.resolve(handle)
         return handle
 
@@ -710,7 +760,7 @@ class ImageCellArena:
         temporal, node = self.actions.resolve(action), self.resolve(cell)
         if temporal.kind == "identity":
             return cell
-        original = self.source_geometry._construction.source
+        original = self.source_geometry.construction.source
         if temporal.base != original.base or temporal.blank != original.blank:
             raise ValueError(
                 "image action and source geometry have incompatible alphabets"
@@ -720,10 +770,10 @@ class ImageCellArena:
         nested = node.kind == "image"
         staged: TemporalActionNode | None = None
         if nested:
-            action, staged = self.actions._plan_compose(
-                self.actions._handle(node.action), action
+            action, staged = self.actions.plan_compose(
+                self.actions.scoped_handle(node.action), action
             )
-            cell = self._handle(node.left)
+            cell = self.scoped_handle(node.left)
             node = self.resolve(cell)
             if node.kind == "image":
                 raise AssertionError(
@@ -732,27 +782,21 @@ class ImageCellArena:
         image_node = CellNode(
             "image", node.level, left=cell.local_id, action=action.local_id
         )
-        key = self._key(image_node)
+        key = self.cell_index_key(image_node)
         found = self._ids.get(key)
         if found is not None:
             if staged is not None:
                 raise AssertionError("image references an unpublished temporal action")
-            result = self._handle(found)
+            result = self.scoped_handle(found)
             self.ledger.bump(_actions_keys.DIAMOND_CELL_INTERNER_HITS)
         else:
             reservations = [(self._node_owner, 1, 1), (self._index_owner, 1, 0)]
             if staged is not None:
-                reservations.extend(
-                    (
-                        (self.actions._node_owner, 1, 1),
-                        (self.actions._index_owner, 1, 0),
-                    )
-                )
+                reservations.extend(self.actions.publication_reservations())
             self.ledger.reserve_many(tuple(reservations))
             if staged is not None:
-                self.actions._ids[staged] = len(self.actions._nodes)
-                self.actions._nodes.append(staged)
-            result = self._handle(len(self._nodes))
+                self.actions.publish_reserved(staged, action.local_id)
+            result = self.scoped_handle(len(self._nodes))
             self._ids[key] = result.local_id
             self._nodes.append(image_node)
             self.ledger.bump(_actions_keys.DIAMOND_CELL_INTERNER_EVALUATIONS)
@@ -792,17 +836,17 @@ class ImageCellArena:
                 # commute a nonlinear action through an image program.
                 offset = (1 << node.level) - offset - width
                 reflected = not reflected
-                cell = self._handle(node.left)
+                cell = self.scoped_handle(node.left)
             elif node.kind == "slice":
                 offset += node.offset
-                cell = self._handle(node.left)
+                cell = self.scoped_handle(node.left)
             else:
                 middle = 1 << (node.level - 1)
                 if offset >= middle:
                     offset -= middle
-                    cell = self._handle(node.right)
+                    cell = self.scoped_handle(node.right)
                 else:
-                    cell = self._handle(node.left)
+                    cell = self.scoped_handle(node.left)
             node = self.resolve(cell)
             if node.level == level:
                 self.ledger.bump(_actions_keys.DIAMOND_SLICE_REQUESTS)
@@ -813,7 +857,7 @@ class ImageCellArena:
         if node.kind == "source":
             result = self.source(node.source_start + offset, level)
         else:
-            result = self._intern(
+            result = self.intern_record(
                 CellNode("slice", level, left=cell.local_id, offset=offset)
             )
         self.ledger.bump(_actions_keys.DIAMOND_SLICE_REQUESTS)
@@ -834,7 +878,10 @@ class ImageCellArena:
             raise ValueError("spatial siblings require equal levels")
         reflected = first.kind == second.kind == "mirror"
         if reflected:
-            left, right = self._handle(second.left), self._handle(first.left)
+            left, right = (
+                self.scoped_handle(second.left),
+                self.scoped_handle(first.left),
+            )
             first, second = self.resolve(left), self.resolve(right)
         if (
             first.kind == second.kind == "slice"
@@ -842,7 +889,7 @@ class ImageCellArena:
             and first.offset % (2 << first.level) == 0
             and second.offset == first.offset + (1 << first.level)
         ):
-            parent = self._handle(first.left)
+            parent = self.scoped_handle(first.left)
             result = self.slice(parent, first.offset, first.level + 1)
         else:
             candidate = (
@@ -854,7 +901,7 @@ class ImageCellArena:
             )
             if candidate is not None:
                 start, tile = candidate
-                result = self._intern(
+                result = self.intern_record(
                     CellNode(
                         "source",
                         tile.level,
@@ -863,7 +910,7 @@ class ImageCellArena:
                     )
                 )
             else:
-                result = self._intern(
+                result = self.intern_record(
                     CellNode(
                         "join",
                         first.level + 1,
@@ -876,7 +923,7 @@ class ImageCellArena:
     def mirror(self, cell: CellID) -> CellID:
         node = self.resolve(cell)
         if node.kind == "mirror":
-            return self._handle(node.left)
+            return self.scoped_handle(node.left)
         if not node.level:
             return cell
-        return self._intern(CellNode("mirror", node.level, left=cell.local_id))
+        return self.intern_record(CellNode("mirror", node.level, left=cell.local_id))

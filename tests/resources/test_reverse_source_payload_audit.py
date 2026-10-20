@@ -4,14 +4,23 @@ from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.fields.radix import digits_lsd
+from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
+from number_compiler.resources.owned_memo import OwnedMemo
 from number_compiler.resources.reverse_source_payload_audit import (
     ReverseSourcePayloadAudit,
     audit_reverse_source_payloads,
 )
+from number_compiler.sequences.reverse_add.q19_occurrence import (
+    ReversePairOutputOccurrence,
+)
 from number_compiler.sequences.reverse_add.q19_output import (
     ReversePairQ19OutputOwner,
+)
+from number_compiler.sequences.reverse_add.recursive_cutover import (
+    ReverseRecursiveOccurrence,
 )
 from number_compiler.sequences.reverse_add.source_images import (
     MAX_COMPLETED_CHILD_FALLBACK_STEPS,
@@ -32,9 +41,13 @@ def test_recursive_occurrence_audit_checks_exact_same_arena_action_binding() -> 
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 3, base=3)
     tuple(workspace.iter_digits())
     adapter = workspace.adapter
-    cutover = adapter._recursive
+    adapter_snapshot = adapter.audit_snapshot()
+    cutover = adapter_snapshot.recursive
     assert cutover is not None
-    original = adapter._recursive_occurrences[3]
+    original_value = adapter_snapshot.recursive_occurrences.payload_view[3]
+    if type(original_value) is not ReverseRecursiveOccurrence:
+        raise TypeError("recursive occurrence has another record type")
+    original = original_value
     assert id(workspace) in _audit(workspace).approved
 
     # This is a genuine completed occurrence in the same action and image
@@ -43,10 +56,17 @@ def test_recursive_occurrence_audit_checks_exact_same_arena_action_binding() -> 
     foreign_steps = cutover.pair_image(2)
     assert foreign_steps.action != original.action
     assert foreign_steps.image.owner is original.image.owner
-    adapter._recursive_occurrences[3] = foreign_steps
+    occurrences = cast(
+        OwnedMemo[int, ReverseRecursiveOccurrence],
+        object.__getattribute__(adapter, "_recursive_occurrences"),
+    )
+    occurrences[3] = foreign_steps
 
     audit = _audit(workspace)
-    assert (adapter._recursive_occurrences.owner, id(foreign_steps)) in audit.invalid
+    assert (
+        adapter_snapshot.recursive_occurrences.owner,
+        id(foreign_steps),
+    ) in audit.invalid
     assert id(workspace) not in audit.approved
 
 
@@ -54,7 +74,7 @@ def test_disposal_keeps_canonical_arena_accounting_explicit() -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 3, base=3)
     tuple(workspace.iter_digits())
     ledger = workspace.ledger
-    cutover = workspace.adapter._recursive
+    cutover = workspace.adapter.audit_snapshot().recursive
     assert cutover is not None
     workspace.dispose()
 
@@ -126,16 +146,16 @@ def test_explicit_metrics_audit_rechecks_nested_issued_border_certificate() -> N
 def test_completed_width_image_cannot_be_rebound_to_foreign_owner() -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 16)
     assert workspace.width() == 9
-    image = workspace._image
+    image = workspace.audit_snapshot().image
     assert image is not None
     assert id(workspace) in _audit(workspace).approved
     foreign = ReverseSourceImageWorkspace(ResourceLedger(), 196, 16)
     assert foreign.width() == 9
-    foreign_image = foreign._image
+    foreign_image = foreign.audit_snapshot().image
     assert foreign_image is not None
-    workspace._image = foreign_image
+    object.__setattr__(workspace, "_image", foreign_image)
     assert id(workspace) not in _audit(workspace).approved
-    workspace._image = image
+    object.__setattr__(workspace, "_image", image)
     assert id(workspace) in _audit(workspace).approved
     foreign.dispose()
     workspace.dispose()
@@ -146,11 +166,16 @@ def test_signature_memo_rejects_wrong_action_and_unregistered_level() -> None:
     tuple(workspace.iter_digits())
     assert id(workspace) in _audit(workspace).approved
 
-    cutover = workspace.adapter._recursive
+    cutover = workspace.adapter.audit_snapshot().recursive
     assert cutover is not None
     adapter = cutover.adapter
-    signatures = adapter._signatures
-    level_zero_keys = [key for key in signatures if key[1] == 0]
+    adapter_state = adapter.audit_snapshot()
+    signatures = cast(
+        OwnedMemo[tuple[FieldCellActionID, int], PortSignatureID],
+        object.__getattribute__(adapter, "_signatures"),
+    )
+    signature_view = adapter_state.signatures.payload_view
+    level_zero_keys = [key for key in signature_view if key[1] == 0]
     key = level_zero_keys[0]
     foreign_key = next(
         candidate for candidate in level_zero_keys if candidate[0] != key[0]
@@ -165,7 +190,9 @@ def test_signature_memo_rejects_wrong_action_and_unregistered_level() -> None:
     signatures[key] = original_signature
     assert id(workspace) in _audit(workspace).approved
 
-    max_level = max(geometry.spatial_level for geometry in adapter._geometries._nodes)
+    geometry_snapshot = adapter_state.geometries
+    assert geometry_snapshot is not None
+    max_level = max(geometry.spatial_level for geometry in geometry_snapshot.nodes)
     signature = signatures[key]
     del signatures[key]
     invalid_key = (key[0], max_level + 1)
@@ -180,7 +207,8 @@ def test_recursive_construction_audit_rejects_wrong_geometry_and_horizon() -> No
     for mutation in ("extent", "alphabet", "horizon"):
         workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 3, base=3)
         adapter = workspace.adapter
-        construction = adapter._recursive_construction
+        adapter_state = adapter.audit_snapshot()
+        construction = adapter_state.recursive_construction
         assert construction is not None
         source = construction.validate_source()
 
@@ -212,7 +240,11 @@ def test_recursive_construction_audit_rejects_wrong_geometry_and_horizon() -> No
                 ),
             )
         else:
-            adapter._recursive_maximum_steps = MAX_COMPLETED_CHILD_FALLBACK_STEPS + 1
+            object.__setattr__(
+                adapter,
+                "_recursive_maximum_steps",
+                MAX_COMPLETED_CHILD_FALLBACK_STEPS + 1,
+            )
 
         audit = _audit(workspace)
         assert id(workspace) not in audit.approved
@@ -224,8 +256,8 @@ def test_q19_audit_rejects_foreign_occurrence_and_source_rebinding() -> None:
     foreign = ReverseSourceImageWorkspace(ledger, 196, 3)
     tuple(workspace.iter_digits())
     tuple(foreign.iter_digits())
-    owner = workspace.adapter._q19_owner
-    foreign_owner = foreign.adapter._q19_owner
+    owner = workspace.adapter.audit_snapshot().q19_owner
+    foreign_owner = foreign.adapter.audit_snapshot().q19_owner
     assert owner is not None and foreign_owner is not None
     occurrence = owner.initial
     foreign_occurrence = foreign_owner.initial
@@ -237,21 +269,26 @@ def test_q19_audit_rejects_foreign_occurrence_and_source_rebinding() -> None:
     assert clean.valid(occurrence)
 
     key = (occurrence.root, occurrence.temporal_steps)
-    owner._issued[key] = foreign_occurrence
+    issued = cast(
+        OwnedMemo[tuple[int, int], ReversePairOutputOccurrence],
+        object.__getattribute__(owner, "_issued"),
+    )
+    issued[key] = foreign_occurrence
     forged = _audit(workspace)
     assert not forged.valid(workspace)
     assert not forged.valid(owner)
     assert any(root_id == id(owner) for _, root_id in forged.invalid)
 
-    owner._issued[key] = occurrence
-    original_digits = owner._digits
-    owner._digits = tuple(digit for digit in original_digits)
-    assert owner._digits == original_digits and owner._digits is not original_digits
+    issued[key] = occurrence
+    original_digits = owner.audit_snapshot().digits
+    rebound_digits = tuple(digit for digit in original_digits)
+    object.__setattr__(owner, "_digits", rebound_digits)
+    assert rebound_digits == original_digits and rebound_digits is not original_digits
     rebound = _audit(workspace)
     assert not rebound.valid(workspace)
     assert not rebound.valid(owner)
 
-    owner._digits = original_digits
+    object.__setattr__(owner, "_digits", original_digits)
     assert _audit(workspace).valid(workspace)
     workspace.dispose()
     foreign.dispose()
@@ -261,23 +298,20 @@ def test_q19_audit_rejects_foreign_occurrence_and_source_rebinding() -> None:
 def test_source_image_rejects_same_owner_q19_occurrence_with_wrong_duration() -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 3)
     tuple(workspace.iter_digits())
-    owner = workspace.adapter._q19_owner
-    image = workspace._image
+    owner = workspace.adapter.audit_snapshot().q19_owner
+    image = workspace.audit_snapshot().image
     assert owner is not None and image is not None
     from number_compiler.sequences.reverse_add.source_images import (
         ReverseImagePayload,
     )
 
-    core = workspace.scheduler._source_image_core()
+    core = workspace.scheduler.source_image_core()
     payload = cast(ReverseImagePayload, core.view(image).payload)
     assert type(payload) is ReverseImagePayload
     original = payload.pair_output
     assert original is not None and original.temporal_steps == workspace.steps
-    wrong_duration = next(
-        occurrence
-        for occurrence in owner._issued.values()
-        if occurrence.temporal_steps != workspace.steps
-    )
+    wrong_duration = owner.initial
+    assert wrong_duration.temporal_steps != workspace.steps
     assert wrong_duration.owner is original.owner
 
     object.__setattr__(payload, "pair_output", wrong_duration)
@@ -298,7 +332,7 @@ def test_q19_disposal_releases_the_audited_output_grammar() -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 3)
     tuple(workspace.iter_digits())
     ledger = workspace.ledger
-    owner = workspace.adapter._q19_owner
+    owner = workspace.adapter.audit_snapshot().q19_owner
     assert owner is not None
     assert _audit(workspace).valid(workspace)
     before = tuple(

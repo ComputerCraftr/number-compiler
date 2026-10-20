@@ -37,7 +37,7 @@ def test_weighted_transfer_preserves_all_paths_and_adds_ordered_weights() -> Non
         ((2, 4, 6),),
         (),
     )
-    assert WeightedTransfer.identity(states, law).then(first) == first
+    assert WeightedTransfer[int].identity(states, law).then(first) == first
 
 
 def test_weighted_transfer_rejects_equal_dimension_foreign_owners() -> None:

@@ -128,7 +128,7 @@ def test_prime_possibility_buckets_reproduce_the_research_partition() -> None:
         for u in range(p):
             # Exponents 1..p-1 cover every nonzero phase; direct arithmetic
             # verifies representative independence without invoking refinement.
-            targets = set()
+            targets: set[tuple[int, bool, bool]] = set()
             for q in range(1, p):
                 v = (pow(3, q, p) * pow(pow(2, q, p), -1, p) * u - 1) % p
                 targets.add((labels[v], u != 0 and v == 0, u == 0 and v != 0))

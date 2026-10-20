@@ -55,7 +55,7 @@ _ROOT_DIGITS_MOD64 = tuple(
 )
 
 
-def _root_digit_mod64(phase: int) -> int:
+def root_digit_mod64(phase: int) -> int:
     return _ROOT_DIGITS_MOD64[phase & 15]
 
 
@@ -146,6 +146,4 @@ class InverseThreeClock:
         """
         if type(phase_digit) is not int or not 0 <= phase_digit < 64:
             raise ValueError("temporal radix-64 phase digit is outside 0..63")
-        return (
-            self.lift_coefficient * _root_digit_mod64(self.phase) * phase_digit
-        ) & 63
+        return (self.lift_coefficient * root_digit_mod64(self.phase) * phase_digit) & 63

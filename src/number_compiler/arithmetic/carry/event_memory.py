@@ -84,7 +84,7 @@ def _forward_carry_field(
     return tuple(carry)
 
 
-def _pair_step_with_carry(
+def pair_step_with_carry(
     source: Sequence[int],
     base: int,
     *,
@@ -133,7 +133,7 @@ def _pair_step_with_carry(
 
 def pair_step(source: Sequence[int], base: int) -> tuple[tuple[int, ...], int]:
     """Canonical exact pair-field transition used by theorem/bootstrap compilers."""
-    out, growth, _carry = _pair_step_with_carry(source, base)
+    out, growth, _carry = pair_step_with_carry(source, base)
     return out, growth
 
 

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.functions.finite_function_types import (
     FinitePort,
     SemanticFunctionID,
@@ -17,10 +18,13 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
 from number_compiler.hashlife.interfaces.semantic_expression_compiler import (
     ExpressionAdmissionKey,
     ExpressionDomainProof,
+    FiniteLiftKey,
     SemanticExpressionCompiler,
-    _FiniteLiftKey,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.payload_store_validation import (
+    audit_ledger_dict_registration,
+)
 from number_compiler.resources.stores import LedgerDict
 
 if TYPE_CHECKING:
@@ -31,7 +35,7 @@ if TYPE_CHECKING:
 
 
 class SemanticAdmissionPayloadRegistry:
-    record_types = (ExpressionAdmissionKey, ExpressionDomainProof, _FiniteLiftKey)
+    record_types = (ExpressionAdmissionKey, ExpressionDomainProof, FiniteLiftKey)
 
     def __init__(
         self,
@@ -61,15 +65,19 @@ class SemanticAdmissionPayloadRegistry:
 
             check = DiamondPayloadRegistry(ledger).valid
         for compiler in compilers:
-            store, owner = compiler.admissions._data, compiler.admissions.owner
-            if (
-                actual.get(owner) is not store
-                or type(store) is not LedgerDict
-                or not ledger.is_factory_container(store)
+            snapshot = compiler.admissions.audit_snapshot()
+            container, owner = snapshot.container, snapshot.owner
+            if not audit_ledger_dict_registration(
+                actual, owner, container, self.invalid_bindings
             ):
-                self.invalid_bindings.add((owner, id(store)))
                 continue
-            for key, proof in store._data.items():
+            admission_store = cast(
+                LedgerDict[ExpressionAdmissionKey, ExpressionDomainProof], container
+            )
+            if not ledger.is_factory_container(admission_store):
+                self.invalid_bindings.add((owner, id(snapshot.container)))
+                continue
+            for key, proof in admission_store.items():
                 try:
                     admitted = (
                         type(key) is ExpressionAdmissionKey
@@ -102,29 +110,34 @@ class SemanticAdmissionPayloadRegistry:
                     self.valid_objects.update((id(key), id(proof), id(proof.key)))
                 else:
                     self.invalid_bindings.update(((owner, id(key)), (owner, id(proof))))
-            finite_store = compiler._finite_lifts._data
-            finite_owner = compiler._finite_lifts.owner
-            if (
-                actual.get(finite_owner) is not finite_store
-                or type(finite_store) is not LedgerDict
-                or not ledger.is_factory_container(finite_store)
+            finite_snapshot = compiler.finite_lift_audit_snapshot()
+            finite_container = finite_snapshot.container
+            finite_owner = finite_snapshot.owner
+            if not audit_ledger_dict_registration(
+                actual, finite_owner, finite_container, self.invalid_bindings
             ):
-                self.invalid_bindings.add((finite_owner, id(finite_store)))
                 continue
-            for key, value in finite_store._data.items():
+            lift_store = cast(
+                LedgerDict[FiniteLiftKey, tuple[SemanticFunctionID, FinitePort]],
+                finite_container,
+            )
+            if not ledger.is_factory_container(lift_store):
+                self.invalid_bindings.add((finite_owner, id(finite_snapshot.container)))
+                continue
+            for lift_key, value in lift_store.items():
                 accepted = False
                 function: object = None
                 port: object = None
                 try:
                     if (
-                        type(key) is not _FiniteLiftKey
-                        or type(value) is not tuple
+                        type(lift_key) is not FiniteLiftKey
+                        or not is_exact_object_tuple(value)
                         or len(value) != 2
                     ):
                         raise TypeError("finite lift has another record shape")
                     function, port = value
-                    compiler.runtime.kernels.expression(key.function)
-                    domain = compiler._atom_sort(key.source).cardinality
+                    compiler.runtime.kernels.expression(lift_key.function)
+                    domain = compiler.atom_sort(lift_key.source).cardinality
                     expected_port = FinitePort(
                         PortVariable(
                             0,
@@ -134,7 +147,7 @@ class SemanticAdmissionPayloadRegistry:
                         ),
                         domain,
                     )
-                    expected = compiler._atom_sort(key.target)
+                    expected = compiler.atom_sort(lift_key.target)
                     accepted = (
                         type(function) is SemanticFunctionID
                         and semantic.handle(function)
@@ -147,11 +160,11 @@ class SemanticAdmissionPayloadRegistry:
                     accepted = False
                 if accepted:
                     self.valid_objects.update(
-                        (id(key), id(value), id(function), id(port))
+                        (id(lift_key), id(value), id(function), id(port))
                     )
                 else:
                     self.invalid_bindings.update(
-                        ((finite_owner, id(key)), (finite_owner, id(value)))
+                        ((finite_owner, id(lift_key)), (finite_owner, id(value)))
                     )
 
 

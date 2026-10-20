@@ -13,13 +13,14 @@ import os
 import statistics
 import subprocess
 import sys
+from collections.abc import Mapping, Sequence
 from contextlib import ExitStack
 from pathlib import Path
 from time import perf_counter
 from typing import cast
 from unittest.mock import patch
 
-from devtools.benchmarks.causal_tile_growth_probe import WORK_FIELDS, _runtime
+from devtools.benchmarks.causal_tile_growth_probe import WORK_FIELDS, runtime
 from devtools.git_source import git_source
 from devtools.paths import repository_root
 
@@ -79,7 +80,7 @@ if set(_WORK_COUNTER_SOURCES) != set(WORK_FIELDS):
     raise AssertionError("behavior probe work mapping drifted from causal accounting")
 
 
-def _work_vector(counters: dict[str, int]) -> dict[str, int | None]:
+def work_vector(counters: dict[str, int]) -> dict[str, int | None]:
     return {
         name: counters.get(source) for name, source in _WORK_COUNTER_SOURCES.items()
     }
@@ -105,7 +106,7 @@ def worker(steps: int, width: int, enabled: bool) -> dict[str, object]:
         raise ValueError("behavior probe requires a dyadic width of at least two")
     git_provenance = git_source(ROOT).as_dict()
     start = perf_counter()
-    ledger, tiles, adapter, primitive, scheduler = _runtime(10)
+    ledger, tiles, adapter, primitive, scheduler = runtime(10)
     alphabet = adapter.alphabet(primitive)
     blank = tiles.alphabet(alphabet).blank
     source = tiles.leaf(alphabet, blank)
@@ -143,8 +144,8 @@ def worker(steps: int, width: int, enabled: bool) -> dict[str, object]:
             assert application.width() == 0
             warm_end = perf_counter()
             after = ledger.snapshot()
-            cold_work = _work_vector(cold.counters)
-            after_work = _work_vector(after.counters)
+            cold_work = work_vector(cold.counters)
+            after_work = work_vector(after.counters)
             row: dict[str, object] = {
                 "profile": "homogeneous-reverse-blank-output-v1",
                 "scope": "private tile runtime, uniform blank original source",
@@ -235,8 +236,8 @@ def fresh_series(output: Path, width: int) -> None:
                 )
 
 
-def summarize(records: list[dict[str, object]]) -> list[dict[str, object]]:
-    rows = []
+def summarize(records: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
     for enabled in (True, False):
         previous: dict[str, float] = {}
         for steps in HORIZONS:

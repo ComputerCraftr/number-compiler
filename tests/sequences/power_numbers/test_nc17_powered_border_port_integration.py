@@ -17,6 +17,7 @@ from number_compiler.sequences.power_numbers.numbers import (
     FermatNumberSpec,
     MersenneNumberSpec,
 )
+from tests.support.exact_integer_power import exact_integer_power
 
 
 @pytest.mark.parametrize("index", (0, 1, 2, 3, 5, 6, 16))
@@ -44,14 +45,16 @@ def _assert_fermat_clocked_ports(index: int, base: int, position: int) -> None:
     matrix = FermatNumberSpec(index).demand_fermat_powered_port_matrix(
         level, 47, base=base, position=position
     )
-    modulus = base ** (position + 1)
+    modulus = exact_integer_power(base, position + 1)
     start: int = pow(3, 1 << level, modulus)
     assert matrix.producer_verified
     assert matrix.source_residue == start
     assert matrix.endpoint_residue == start * pow(3, 47, modulus) % modulus
-    low: int = start % (base**position)
+    low: int = start % (exact_integer_power(base, position))
     assert matrix.conditional_endpoints == tuple(
-        (low + digit * base**position) * pow(3, 47, modulus) % modulus
+        (low + digit * exact_integer_power(base, position))
+        * pow(3, 47, modulus)
+        % modulus
         for digit in range(base)
     )
     assert matrix.punctures[0].tick == 0
@@ -59,7 +62,9 @@ def _assert_fermat_clocked_ports(index: int, base: int, position: int) -> None:
     for port in matrix.punctures:
         actual: int = start * pow(3, port.tick, modulus) % modulus
         assert port.source_residue == actual
-        assert port.carry_in == (3 * (actual % (base**position))) // (base**position)
+        assert port.carry_in == (
+            3 * (actual % (exact_integer_power(base, position)))
+        ) // (exact_integer_power(base, position))
         assert port.carry_out == (3 * actual) // modulus
         for clock in matrix.macro.clocks:
             assert dict(port.clock_residues)[clock.identity] == (
@@ -73,18 +78,23 @@ def _assert_fermat_clocked_ports(index: int, base: int, position: int) -> None:
             )
 
 
-def test_fermat_squaring_and_false_join_rejection() -> None:
+@pytest.mark.parametrize(
+    "power",
+    (5, pytest.param(12, marks=pytest.mark.validation)),
+)
+def test_fermat_squaring_and_false_join_rejection(power: int) -> None:
     spec = FermatNumberSpec(5)
     level = 31
     one = spec.demand_fermat_powered_port_matrix(level, 1, base=10, position=8)
-    doubled = one.power_of_two(12)
-    direct = spec.demand_fermat_powered_port_matrix(level, 4096, base=10, position=8)
+    steps = 1 << power
+    doubled = one.power_of_two(power)
+    direct = spec.demand_fermat_powered_port_matrix(level, steps, base=10, position=8)
     assert (doubled.source_residue, doubled.endpoint_residue) == (
         direct.source_residue,
         direct.endpoint_residue,
     )
     assert doubled.conditional_endpoints == direct.conditional_endpoints
-    assert doubled.physical_steps == 4096
+    assert doubled.physical_steps == steps
     assert direct.packet()["causal_rows_constructed"] is False
     assert len(direct.punctures) <= 16
     with pytest.raises(ValueError, match="not chronologically adjacent"):
@@ -210,11 +220,11 @@ def test_mersenne_trace_exact_vs_direct_and_modular_clocks(
 ) -> None:
     spec = MersenneNumberSpec(31)
     matrix = spec.demand_mersenne_trace_matrix(steps, base=base, position=position)
-    modulus = base ** (position + 1)
+    modulus = exact_integer_power(base, position + 1)
     source: int = (2 * (pow(2, spec.exponent, modulus) - 1)) % modulus
-    low: int = source % (base**position)
+    low: int = source % (exact_integer_power(base, position))
     for initial in range(base):
-        value: int = low + initial * base**position
+        value: int = low + initial * exact_integer_power(base, position)
         for _ in range(min(steps, 37)):
             value = (value * value - 2) % modulus
         if steps <= 37:
@@ -449,7 +459,7 @@ def test_mersenne_source_period_check_is_included_in_work_counts(
     for _ in range(level + 1):
         expected_trace = (expected_trace * expected_trace - 2) % observed.work.modulus
     reconstructed = sum(
-        digit * base**position
+        digit * exact_integer_power(base, position)
         for position, digit in zip(positions, observed.digits, strict=True)
     )
     assert reconstructed == expected_trace

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
-from typing import TYPE_CHECKING, Never
+from collections.abc import Callable, Generator
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
@@ -61,7 +61,10 @@ def test_constant_substitution_skips_the_opposite_transfer_before_any_execution(
     previous = runtime.boundaries.constant(target, first, 1 - side)
     step = ContinuationStep(first, second, side, previous, provider, anchor)
     discarded = Transfer(provider, first, argument, 1 - side)
-    original = runtime._transfer
+    original = cast(
+        Callable[[Transfer], Generator[Task, Result, Result]],
+        object.__getattribute__(runtime, "_transfer"),
+    )
 
     def transfer(task: Transfer) -> Generator[Task, Result, Result]:
         if task == discarded:
@@ -138,7 +141,10 @@ def test_complete_primitive_constant_skips_all_source_and_provider_outputs(
         )
 
     monkeypatch.setattr(runtime.cells, "input_symbol", forbidden)
-    original = runtime._raw_output
+    original = cast(
+        Callable[[Output], Generator[Task, Result, Result]],
+        object.__getattribute__(runtime, "_raw_output"),
+    )
 
     def raw(task: Output) -> Generator[Task, Result, Result]:
         if task.action == composed:

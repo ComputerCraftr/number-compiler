@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import fields, replace
 from typing import cast
 
+from number_compiler.arithmetic.contracts.input_validation import object_mapping
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.resources.cache_gc_metrics import cache_event_histograms
 from number_compiler.resources.ledger import ResourceLedger
@@ -46,13 +47,21 @@ from number_compiler.resources.metric_replace import replace_metric
 from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.resources.payload_containers import audit_mapping_items
-from number_compiler.resources.payload_policy import _role
+from number_compiler.resources.payload_policy import normalize_payload_role
 from number_compiler.resources.semantic_metric_registry import (
     SEMANTIC_OUTCOME_COUNTERS,
 )
 from number_compiler.resources.temporal_diagnostics import (
     collect_temporal_diagnostics,
 )
+
+
+def _container_payload_values(container: object) -> Iterator[object]:
+    mapping = object_mapping(container)
+    if mapping is not None:
+        yield from (item for _, item in audit_mapping_items(mapping))
+    elif isinstance(container, Sequence):
+        yield from cast(Sequence[object], container)
 
 
 def collect_ledger_metrics(
@@ -73,10 +82,10 @@ def collect_ledger_metrics(
     from number_compiler.hashlife.actions.tile_action_algebra import (
         retained_action_nodes,
     )
+    from number_compiler.hashlife.execution.tile_application import TileApplication
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
     )
-    from number_compiler.hashlife.execution.tile_scheduler import TileApplication
     from number_compiler.hashlife.interfaces.diamond_kernel import (
         DiamondKernelArena,
         FiniteExpression,
@@ -108,6 +117,17 @@ def collect_ledger_metrics(
     from number_compiler.projection.point_response import PointResponse
     from number_compiler.resources.ownership import OwnershipAudit
     from number_compiler.resources.payload_policy import PayloadAudit
+
+    def has_live_completed_root(root: object) -> bool:
+        if type(root) is not TileApplication:
+            return False
+        application_snapshot = root.audit_snapshot()
+        lease = application_snapshot.root_lease
+        return (
+            application_snapshot.closed is False
+            and type(lease) is ResultLease
+            and lease.audit_snapshot().closed is False
+        )
 
     source_version = ledger.mutation_version
     snapshot = ledger.snapshot()
@@ -172,7 +192,7 @@ def collect_ledger_metrics(
     snapshot = replace(snapshot, counters=dict(ledger.counters))
     execution_roots = tuple(ledger.iter_execution_roots())
     cache_histograms = tuple(
-        cache_event_histograms(root._cache_metrics)
+        cache_event_histograms(root.cache_metrics)
         for root in execution_roots
         if type(root) is TileArena and root.ledger is ledger
     )
@@ -220,28 +240,20 @@ def collect_ledger_metrics(
         for cache_key, cache_value in spans.items():
             cache_spans[cache_key] = cache_spans.get(cache_key, 0) + cache_value
     node_owners = {item.owner for item in inventory if item.observed_nodes}
-    actual_records = [
-        value
-        for owner, container in ledger.iter_containers()
-        if owner in node_owners and isinstance(container, (Mapping, Sequence))
-        for value in (
-            (item for _, item in audit_mapping_items(container))
-            if isinstance(container, Mapping)
-            else container
-        )
-    ]
+    actual_records: list[object] = []
+    for owner, container in ledger.iter_containers():
+        if owner in node_owners:
+            actual_records.extend(_container_payload_values(container))
     response_owners = {
-        item.owner for item in inventory if _role(item.role) == "observation_memo"
+        item.owner
+        for item in inventory
+        if normalize_payload_role(item.role) == "observation_memo"
     }
     response_scalars = sum(
         type(value) is PointResponse
         for owner, container in ledger.iter_containers()
-        if owner in response_owners and isinstance(container, (Mapping, Sequence))
-        for value in (
-            (item for _, item in audit_mapping_items(container))
-            if isinstance(container, Mapping)
-            else container
-        )
+        if owner in response_owners
+        for value in _container_payload_values(container)
     )
 
     reverse_components: list[ReversePortFunction] = []
@@ -249,7 +261,8 @@ def collect_ledger_metrics(
     for root in execution_roots:
         if type(root) is not DiamondQuotientArena or root.ledger is not ledger:
             continue
-        for record in root._nodes.values():
+        quotient_snapshot = root.audit_snapshot()
+        for record in quotient_snapshot.nodes.values():
             seen: set[int] = set()
             for component in record.components.functions():
                 if type(component) is ReversePortFunction and id(component) not in seen:
@@ -302,18 +315,20 @@ def collect_ledger_metrics(
         for root in execution_roots
         if type(root) is DiamondQuotientArena and root.ledger is ledger
     )
-    quotient_records = sum(len(root._nodes) for root in quotient_arenas)
+    quotient_records = sum(len(root.audit_snapshot().nodes) for root in quotient_arenas)
 
     def nodes_for(*roles: str) -> int:
         return sum(
-            item.observed_nodes or 0 for item in inventory if _role(item.role) in roles
+            item.observed_nodes or 0
+            for item in inventory
+            if normalize_payload_role(item.role) in roles
         )
 
     def entries_for(*roles: str) -> int:
         return sum(
             item.observed_entries or 0
             for item in inventory
-            if _role(item.role) in roles
+            if normalize_payload_role(item.role) in roles
         )
 
     partition = observed_node_partition(inventory, dict(ledger.iter_containers()))
@@ -329,7 +344,9 @@ def collect_ledger_metrics(
     ) + nodes_for("higher_local_interface")
     observed_entries = sum(item.observed_entries or 0 for item in inventory)
     source_owners = {
-        item.owner for item in inventory if _role(item.role) == "exact_source"
+        item.owner
+        for item in inventory
+        if normalize_payload_role(item.role) == "exact_source"
     }
     source_objects: set[int] = set()
     source_seen: set[int] = set()
@@ -345,10 +362,10 @@ def collect_ledger_metrics(
         source_seen.add(id(value))
         if type(value) is ExactSource:
             source_objects.add(id(value))
-        elif isinstance(value, Mapping):
-            pending_sources.extend(item for _, item in audit_mapping_items(value))
+        elif (mapping := object_mapping(value)) is not None:
+            pending_sources.extend(item for _, item in audit_mapping_items(mapping))
         elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
-            pending_sources.extend(value)
+            pending_sources.extend(cast(Sequence[object], value))
     from number_compiler.hashlife.interfaces.semantic_primitive_macro import (
         PrimitiveMacroArena,
     )
@@ -361,10 +378,12 @@ def collect_ledger_metrics(
     tile_memo_items: list[tuple[object, object]] = []
     for item in inventory:
         tile_store = actual_stores.get(item.owner)
-        if _role(item.role) == "completed_result_memo" and isinstance(
-            tile_store, Mapping
+        tile_mapping = object_mapping(tile_store)
+        if (
+            normalize_payload_role(item.role) == "completed_result_memo"
+            and tile_mapping is not None
         ):
-            tile_memo_items.extend(audit_mapping_items(tile_store))
+            tile_memo_items.extend(audit_mapping_items(tile_mapping))
     boundary_tile_references: list[TileID] = []
     boundary_tile_views: list[BoundaryTileView] = []
 
@@ -414,25 +433,26 @@ def collect_ledger_metrics(
     for root in execution_roots:
         if type(root) is not CompletedResultArena or root.ledger is not ledger:
             continue
-        for view, count in root._leased_boundary_operands.records.items():
+        result_snapshot = root.audit_snapshot()
+        for view, count in result_snapshot.operand_records.items():
             if type(view) is BoundaryTileView and type(count) is int and count > 0:
                 leased_boundary_views.extend((view,) * count)
     retained_boundary_views = set(boundary_tile_views)
     retained_boundary_views.update(leased_boundary_views)
-    primitive_entries = sum(
-        len(root.bindings)
-        for root in execution_roots
-        if type(root) is PrimitiveMacroArena
-        and root.ledger is ledger
-        and actual_stores.get(root.bindings.owner) is root.bindings._data
-    )
-    declaration_entries = sum(
-        len(root._declarations)
-        for root in execution_roots
-        if type(root) is StructureArena
-        and root.ledger is ledger
-        and actual_stores.get(root._declarations.owner) is root._declarations._data
-    )
+    primitive_entries = 0
+    declaration_entries = 0
+    for root in execution_roots:
+        if type(root) is PrimitiveMacroArena and root.ledger is ledger:
+            binding_snapshot = root.bindings.audit_snapshot()
+            if actual_stores.get(binding_snapshot.owner) is binding_snapshot.container:
+                primitive_entries += len(binding_snapshot.container)
+        elif type(root) is StructureArena and root.ledger is ledger:
+            declaration_snapshot = root.declaration_audit_snapshot()
+            if (
+                actual_stores.get(declaration_snapshot.owner)
+                is declaration_snapshot.container
+            ):
+                declaration_entries += len(declaration_snapshot.container)
     report = LedgerMetrics(
         **profile_storage_metrics(ledger),
         primitive_macro_cache_entries=primitive_entries,
@@ -446,7 +466,7 @@ def collect_ledger_metrics(
         spatial_occurrence_bindings=sum(
             item.observed_entries or 0
             for item in inventory
-            if _role(item.role)
+            if normalize_payload_role(item.role)
             in (
                 "spatial_binding",
                 "lazy_field",
@@ -530,7 +550,7 @@ def collect_ledger_metrics(
         lowering_cache_entries=sum(
             item.entries
             for item in inventory
-            if _role(item.role) in ("explicit_lowering", "lowering")
+            if normalize_payload_role(item.role) in ("explicit_lowering", "lowering")
         ),
         forbidden_future_payloads=audit.forbidden_future_payloads,
         retained_unbounded_future_integers=audit.unbounded_future_integers,
@@ -660,7 +680,7 @@ def collect_ledger_metrics(
                 quotient.left_count + quotient.right_count
                 for root in execution_roots
                 if type(root) is DiamondKernelArena and root.ledger is ledger
-                for quotient in root._behavioral_quotients.values()
+                for quotient in root.behavioral_quotients.values()
             ),
             "completed_result_entries": sum(
                 type(value) is CompletedResult for _, value in tile_memo_items
@@ -702,11 +722,7 @@ def collect_ledger_metrics(
                 if type(root) is TileArena and root.ledger is ledger
             ),
             "pinned_completed_roots": sum(
-                type(root) is TileApplication
-                and root._closed is False
-                and type(root._root) is ResultLease
-                and root._root._closed is False
-                for root in execution_roots
+                has_live_completed_root(root) for root in execution_roots
             ),
             "powered_interface_entries": sum(
                 type(key) is PoweredInterfaceKey and type(value) is LocalInterfaceID
@@ -724,7 +740,7 @@ def collect_ledger_metrics(
                 name: sum(
                     item.observed_entries or 0
                     for item in inventory
-                    if _role(item.role) == role
+                    if normalize_payload_role(item.role) == role
                 )
                 for name, role in DIAMOND_MEMO_ROLES
             },
@@ -735,13 +751,13 @@ def collect_ledger_metrics(
                 record.left is not None and record.right is not None
                 for root in execution_roots
                 if type(root) is TileArena and root.ledger is ledger
-                for record in root._nodes.values()
+                for record in root.audit_snapshot().nodes.values()
             ),
             "reverse_frobenius_retained_component_nodes": sum(
                 retained_action_nodes(record.reverse_frobenius) - 1
                 for root in execution_roots
                 if type(root) is PrimitiveTileKernelAdapter and root.ledger is ledger
-                for record in root._actions.values()
+                for record in root.audit_snapshot().actions.values()
                 if record.reverse_frobenius is not None
             ),
             "reverse_port_retained_coefficient_slots": reverse_coefficient_slots,
@@ -757,7 +773,7 @@ def collect_ledger_metrics(
             "exact_microblock_entries": sum(
                 item.observed_entries or 0
                 for item in inventory
-                if _role(item.role) == "exact_microblock"
+                if normalize_payload_role(item.role) == "exact_microblock"
             ),
         },
     )
@@ -797,7 +813,7 @@ def collect_unindexed_metrics(ledger: ResourceLedger) -> HashLifeProjectionMetri
         compiler_retained_cache_entries=sum(
             item.entries
             for item in report.resource_inventory
-            if _role(item.role)
+            if normalize_payload_role(item.role)
             in ("compiled_action_program", "compiled_action_interner")
         ),
         retained_cache_entries=report.resource_ledger_entries,

@@ -223,10 +223,12 @@ class UnaryPowerArena:
         self.composition_operations = 0
         self.intern_hits = 0
         self.intern_misses = 0
-        self._identity = self._intern(UnaryTransitionEffect.identity(effect.classes))
-        self._atom = self._intern(effect)
+        self._identity = self.intern_record(
+            UnaryTransitionEffect.identity(effect.classes)
+        )
+        self._atom = self.intern_record(effect)
 
-    def _intern(self, effect: UnaryTransitionEffect) -> UnaryPowerNode:
+    def intern_record(self, effect: UnaryTransitionEffect) -> UnaryPowerNode:
         old = self._by_key.get(effect.semantic_key)
         if old is not None:
             self.intern_hits += 1
@@ -251,7 +253,7 @@ class UnaryPowerArena:
 
     def compose(self, first: UnaryPowerNode, second: UnaryPowerNode) -> UnaryPowerNode:
         self.composition_operations += 1
-        return self._intern(first.effect.then(second.effect))
+        return self.intern_record(first.effect.then(second.effect))
 
     def power(self, exponent: int) -> UnaryPowerNode:
         exponent = require_integer(exponent, "unary power exponent", 0)

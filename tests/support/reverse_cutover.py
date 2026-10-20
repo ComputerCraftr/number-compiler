@@ -26,15 +26,16 @@ def assert_q19_output_authority(
     """Authenticate the issued decimal output independently of legacy owners."""
     from number_compiler.sequences.reverse_add.source_images import ReverseImagePayload
 
-    workspace = term._workspace
+    workspace = term.published_workspace
     assert workspace is not None
-    image = workspace._image
+    workspace_state = workspace.audit_snapshot()
+    image = workspace_state.image
     assert image is not None
-    payload = workspace.scheduler._source_image_core().view(image).payload
+    payload = workspace.scheduler.source_image_core().view(image).payload
     assert isinstance(payload, ReverseImagePayload)
     occurrence = payload.pair_output
     assert occurrence is not None
-    owner = workspace.adapter._q19_owner
+    owner = workspace_state.adapter.audit_snapshot().q19_owner
     assert owner is not None
     owner.validate(occurrence)
     assert occurrence.temporal_steps == term.generation
@@ -98,9 +99,9 @@ def assert_q19_application_counts_unchanged(
 
 def assert_mirror_scratch_released(term: ReverseAddPoweredTerm) -> None:
     """Both mirror consumers return their shared buffer and reservation."""
-    scratch = term._mirror_output_scratch
-    assert scratch is not None and not scratch
     account = next(
-        item for item in term.resource_ledger.inventory() if item.owner == scratch.owner
+        item
+        for item in term.resource_ledger.inventory()
+        if item.name == "reverse-output-mirror-scratch"
     )
     assert account.entries == account.nodes == account.accounting_delta == 0

@@ -33,7 +33,7 @@ def test_exact_carry_and_shifted_mirror_theorem_across_radices() -> None:
 
 
 def test_outer_safety_tube_does_not_read_interior() -> None:
-    seen = []
+    seen: list[int] = []
 
     def digit(i: int) -> int:
         seen.append(i)

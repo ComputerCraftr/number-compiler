@@ -399,7 +399,7 @@ def provider_absorption_setup() -> tuple[
         validate_bound_output=validate_output,
         validate_interface=images.interfaces.resolve,
         validate_bound_interface=images.interfaces.resolve,
-        validate_action=images._action_validate,
+        validate_action=images.validate_action,
         validate_boundary=validate_boundary,
         observe=observe,
     )
@@ -594,16 +594,25 @@ def completed_provider_setup(
     fixture = recursive_field_image_setup(digits)
     ledger, source, signature, geometry, action, images, adapter, executor = fixture
     image = executor.image(action, source, geometry, signature)
+
+    def observe_zero(
+        _output: CoordinateOutputMorphismID,
+        _coordinate: int,
+        _left: object,
+        _right: object,
+    ) -> int:
+        return 0
+
     providers = ProviderAbsorptionArena(
         ledger,
         images.sources,
-        validate_output=images._output_validate,
-        validate_bound_output=images._output_validate,
+        validate_output=images.validate_output,
+        validate_bound_output=images.validate_output,
         validate_interface=images.interfaces.resolve,
         validate_bound_interface=images.interfaces.resolve,
-        validate_action=images._action_validate,
+        validate_action=images.validate_action,
         validate_boundary=lambda _value: None,
-        observe=lambda *_args: 0,
+        observe=observe_zero,
         validate_image=images.resolve,
         validate_image_occurrence=images.validate_occurrence,
         validate_image_context_occurrence=images.validate_occurrence,

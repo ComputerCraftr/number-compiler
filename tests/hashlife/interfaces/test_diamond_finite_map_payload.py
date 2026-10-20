@@ -41,7 +41,7 @@ def mapped() -> tuple[
     argument = input_expression(kernels, primitive.right_count, RIGHT_A)
     bits = kernels.expression(argument).bits
     width = (primitive.left_count - 1).bit_length()
-    function = kernels._intern_expression(
+    function = kernels.intern_expression(
         FiniteExpression(
             primitive.left_count,
             bits + (kernels.functions.constant(False),) * (width - len(bits)),

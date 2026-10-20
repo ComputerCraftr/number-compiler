@@ -31,7 +31,7 @@ def ring_next_pair(state: BirthRingState, pairs: int) -> tuple[int, int]:
     return state.left[pairs], state.right[-1 - pairs]
 
 
-def _advance_halo_without_frames(state: BirthRingState) -> BirthRingState:
+def advance_halo_without_frames(state: BirthRingState) -> BirthRingState:
     """Advance a finite halo with zero padding beyond its proven causal cone."""
     size = state.pairs
     born_left, born_right = growth_ports(state.phase, 1)
@@ -95,7 +95,7 @@ class CertifiedHalo:
         """Apply the exact graded transition H_L -> H_(L-1)."""
         if self.certified_pairs < 2:
             raise ValueError("cannot step without a certified inward carry port")
-        evolved = _advance_halo_without_frames(self.state)
+        evolved = advance_halo_without_frames(self.state)
         retained = ring_outer(evolved, self.certified_pairs - 1)
         return CertifiedHalo(retained, self.certified_pairs - 1, self.f_offset + 1)
 

@@ -6,6 +6,9 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Protocol, TypeAlias, TypeGuard, runtime_checkable
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+)
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
@@ -199,4 +202,4 @@ def require_child_states(value: object) -> CausalChildStates:
 
 def _is_object_pair(value: object) -> TypeGuard[tuple[object, object]]:
     """Recognize an exact binary tuple at a heterogeneous result boundary."""
-    return type(value) is tuple and len(value) == 2
+    return is_exact_object_tuple(value) and len(value) == 2

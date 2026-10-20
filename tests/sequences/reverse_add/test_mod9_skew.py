@@ -5,13 +5,13 @@ from itertools import product
 import pytest
 
 from devtools.verification.reverse_geometry_context import ReverseGeometryContext
-from devtools.verification.skew_residue_laws import (
-    skew_normalized_digit,
-    skew_pair_value,
-)
 from devtools.verification.threshold_expressions import ThresholdExpressions
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums
+from number_compiler.arithmetic.formula.skew_residue_laws import (
+    skew_normalized_digit,
+    skew_pair_value,
+)
 
 pytestmark = pytest.mark.validation
 

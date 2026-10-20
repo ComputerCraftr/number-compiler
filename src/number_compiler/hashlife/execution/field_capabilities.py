@@ -26,13 +26,12 @@ def validate_field_image_application(
 ) -> bool:
     """Verify the runtime-issued capability and every owning arena identity."""
     from number_compiler.hashlife.execution.field_executor import (
-        _APPLICATION_SEAL,
         FieldImageApplication,
     )
 
     if type(application) is not FieldImageApplication:
         return False
-    if not _application_owner_matches(application, ledger, _APPLICATION_SEAL):
+    if not _application_owner_matches(application, ledger):
         return False
     executor = application.executor
     if executor.images.sources is not executor.sources:
@@ -62,16 +61,13 @@ def validate_field_transfer_application(
     ledger: object,
 ) -> bool:
     """Verify a runtime-issued transfer capability and all scoped bindings."""
-    from number_compiler.hashlife.execution.field_executor import (
-        _TRANSFER_APPLICATION_SEAL,
-    )
     from number_compiler.hashlife.execution.field_transfer import (
         FieldTransferApplication,
     )
 
     if type(application) is not FieldTransferApplication:
         return False
-    if not _application_owner_matches(application, ledger, _TRANSFER_APPLICATION_SEAL):
+    if not _application_owner_matches(application, ledger):
         return False
     executor = application.executor
     try:
@@ -110,10 +106,9 @@ def register_field_application(ledger: ResourceLedger, application: object) -> N
 def _application_owner_matches(
     application: FieldImageApplication | FieldTransferApplication,
     ledger: object,
-    seal: object,
 ) -> bool:
     return (
-        application._seal is seal
+        application.has_valid_issuance()
         and application.ledger is ledger
         and application.executor.ledger is ledger
     )

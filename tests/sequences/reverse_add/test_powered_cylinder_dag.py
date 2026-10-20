@@ -2,26 +2,32 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from typing import Never
+from collections.abc import Callable, Iterator
+from typing import Never, cast
 
 import pytest
 
+import number_compiler.hashlife.observation.tile_cylinder as tile_cylinder
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.polynomials.twisted_observer import (
     TwistedCylinderProjection,
     first_mirror_obstruction,
 )
-from number_compiler.hashlife.observation.tile_cylinder import _sheet
-from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileArena
+from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileArena, TileID
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.reverse_add import power as powered_module
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.private_attributes import private_test_attribute
 from tests.support.reverse_cutover import (
     assert_mirror_scratch_released,
     assert_q19_output_authority,
+)
+
+_sheet = cast(
+    Callable[[TileArena, TileID, int, int, int], TwistedCylinderProjection],
+    private_test_attribute(tile_cylinder, "_sheet"),
 )
 
 
@@ -122,7 +128,10 @@ def test_powered_mirror_budget_refusal_leaves_scratch_empty() -> None:
     with pytest.raises(BlockContextBudgetExceeded):
         term.mirror_obstruction()
 
-    scratch = term._mirror_output_scratch
+    scratch = cast(
+        LedgerList[int] | None,
+        object.__getattribute__(term, "_mirror_output_scratch"),
+    )
     assert scratch is not None and not scratch
     scratch_account = next(
         item for item in ledger.inventory() if item.owner == scratch.owner
@@ -136,9 +145,9 @@ def test_powered_mirror_budget_refusal_leaves_scratch_empty() -> None:
 
 def test_plain_output_does_not_allocate_mirror_scratch() -> None:
     term = ReverseAddPoweredTerm(196, 0)
-    assert term._mirror_output_scratch is None
+    assert object.__getattribute__(term, "_mirror_output_scratch") is None
     assert tuple(term.iter_digits()) == (6, 9, 1)
-    assert term._mirror_output_scratch is None
+    assert object.__getattribute__(term, "_mirror_output_scratch") is None
 
 
 def test_powered_mirror_validates_sheet_before_width_discovery(
@@ -152,7 +161,7 @@ def test_powered_mirror_validates_sheet_before_width_discovery(
     monkeypatch.setattr(ReverseAddPoweredTerm, "width", forbidden)
     with pytest.raises(ValueError, match="first sheet width"):
         term.mirror_obstruction(first_width=0)
-    assert term._workspace is None
+    assert term.published_workspace is None
 
 
 @pytest.mark.parametrize("width,sign", ((1, 1), (2, -1), (3, -1), (4, 1)))

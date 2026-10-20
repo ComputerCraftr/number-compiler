@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from number_compiler.hashlife.execution.continuations.diamond_tasks import (
     Initial,
     ResetTransfer,
+    Result,
+    Task,
     Transfer,
 )
 from number_compiler.hashlife.interfaces.diamond_boundary import (
@@ -56,7 +59,7 @@ def test_foreign_incoming_state_cannot_disappear_into_warm_reset_key() -> None:
         if warm:
             valid = Transfer(provider, action, incoming, 1)
             expected = runtime.execute(valid)
-            canonical = runtime._canonical_task(valid)
+            canonical = runtime.canonical_task(valid)
             assert isinstance(canonical, ResetTransfer)
             assert runtime.transfers[canonical] == expected
         absent = BoundaryStateID(
@@ -67,10 +70,13 @@ def test_foreign_incoming_state_cannot_disappear_into_warm_reset_key() -> None:
         for invalid in (foreign, wrong_side, malformed, absent):
             task = Transfer(provider, action, invalid, 1)
             for method in (
-                runtime._canonical_task,
-                runtime._probe,
+                runtime.canonical_task,
+                cast(
+                    "Callable[[Task], Result | None]",
+                    object.__getattribute__(runtime, "_probe"),
+                ),
                 runtime.execute,
-                runtime._cached_transfer,
+                runtime.cached_transfer,
             ):
                 assert_rejected_atomically(
                     runtime.ledger, partial(method, task), ValueError
@@ -88,7 +94,7 @@ def test_distinct_source_suffixes_share_only_the_certified_reset_prefix() -> Non
         Transfer(identity_provider(runtime, cell), action, incoming, 1)
         for cell in (first, second)
     )
-    canonical = tuple(runtime._canonical_task(request) for request in requests)
+    canonical = tuple(runtime.canonical_task(request) for request in requests)
     assert all(isinstance(task, ResetTransfer) for task in canonical)
     assert canonical[0] == canonical[1]
     assert isinstance(canonical[0], ResetTransfer)
@@ -108,8 +114,8 @@ def test_short_cell_and_wrong_scan_side_cannot_claim_reset_transfer() -> None:
     assert runtime.resets.radius(action) == 2
     short_request = Transfer(short, action, right, 1)
     left_request = Transfer(enough, action, left, 0)
-    assert runtime._canonical_task(short_request) == short_request
-    assert runtime._canonical_task(left_request) == left_request
+    assert runtime.canonical_task(short_request) == short_request
+    assert runtime.canonical_task(left_request) == left_request
     for invalid in (ResetTransfer(short, action, 1), ResetTransfer(enough, action, 0)):
         retained = len(runtime.transfers)
         with pytest.raises(ValueError, match="synchronization certificate"):

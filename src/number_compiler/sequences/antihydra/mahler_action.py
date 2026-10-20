@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.fields.affine_high_digits import (
     affine_high_digit_transport,
 )
@@ -434,6 +435,29 @@ class MahlerWorkspace:
         memo = self._window_memo
         return None if memo is None else memo.audit_snapshot().container
 
+    @property
+    def window_memo_owner(self) -> int | None:
+        """Registered owner for the optional precision memo."""
+        return self._window_owner
+
+    @property
+    def window_contract_registered(self) -> bool:
+        """Whether the live memo is bound into the source payload contract."""
+        return self._window_contract_registered
+
+    def mark_window_contract_registered(self) -> None:
+        """Record that the exact current memo has a refreshed source contract."""
+        if self._window_memo is None:
+            raise ValueError("cannot register a Mahler contract without its memo")
+        self._window_contract_registered = True
+
+    def window_memo_entries(
+        self,
+    ) -> tuple[tuple[tuple[object, ...], MahlerJointInteriorWindow], ...]:
+        """Return the bounded entries needed by the read-only payload auditor."""
+        memo = self._window_memo
+        return () if memo is None else tuple(memo.items())
+
     def _validate_binding(self, result: ArithmeticResult) -> None:
         if (
             result is not self.result
@@ -461,7 +485,8 @@ class MahlerWorkspace:
             or memo.ledger is not result.ledger
             or memo.owner != owner
             or memo.nodes_per_entry != 64
-            or result.ledger.registered_container(owner) is not memo._data
+            or result.ledger.registered_container(owner)
+            is not memo.audit_snapshot().container
         ):
             raise ValueError("Mahler precision memo is detached from its owner")
         if memo is not None:
@@ -528,7 +553,7 @@ class MahlerWorkspace:
                 raise ValueError("Mahler precision memo contains another payload")
             window.verify_issued()
             if (
-                type(key[0]) is not tuple
+                not is_exact_object_tuple(key[0])
                 or not typed_payload_equal(key[0], semantic_id)
                 or key[1] != 7
                 or key[2] != window.bits
@@ -546,6 +571,10 @@ class MahlerWorkspace:
     def _demand_window_memo(
         self, result: ArithmeticResult
     ) -> OwnedMemo[tuple[object, ...], MahlerJointInteriorWindow]:
+        from number_compiler.sequences.antihydra.mahler_joint_future import (
+            MahlerJointInteriorWindow,
+        )
+
         if (
             result is not self.result
             or self.source_workspace is not result.source_term.arithmetic_workspace
@@ -558,7 +587,7 @@ class MahlerWorkspace:
                 f"mahler-joint-window-{len(result.ledger.inventory())}",
                 "query_memo",
             )
-            memo = OwnedMemo(
+            memo = OwnedMemo[tuple[object, ...], MahlerJointInteriorWindow](
                 result.ledger,
                 owner,
                 nodes_per_entry=64,
@@ -570,7 +599,8 @@ class MahlerWorkspace:
             self._window_owner != memo.owner
             or type(memo.owner) is not int
             or memo.ledger is not result.ledger
-            or result.ledger.registered_container(memo.owner) is not memo._data
+            or result.ledger.registered_container(memo.owner)
+            is not memo.audit_snapshot().container
         ):
             raise ValueError("Mahler precision memo has another source owner")
         return memo
@@ -591,13 +621,13 @@ class MahlerWorkspace:
         include_source_cylinder: bool = False,
     ) -> dict[str, object]:
         result.require_source()
-        return self._packet_authenticated(
+        return self.packet_after_source_validation(
             result,
             include_radix_ports=include_radix_ports,
             include_source_cylinder=include_source_cylinder,
         )
 
-    def _packet_authenticated(
+    def packet_after_source_validation(
         self,
         result: ArithmeticResult,
         *,
@@ -673,9 +703,9 @@ def associated_action(
     created_workspace = workspace is None
     if workspace is None:
         workspace = MahlerWorkspace(arithmetic)
-    memo_before = workspace._window_memo
+    memo_before = workspace.window_memo_container
     try:
-        packet = workspace._packet_authenticated(
+        packet = workspace.packet_after_source_validation(
             arithmetic,
             include_radix_ports=include_radix_ports,
             include_source_cylinder=include_source_cylinder,
@@ -683,20 +713,20 @@ def associated_action(
         if created_workspace:
             arithmetic.source_term.mahler_workspace = workspace
         if (
-            workspace._window_memo is not None
-            and not workspace._window_contract_registered
+            workspace.window_memo_container is not None
+            and not workspace.window_contract_registered
         ):
             from number_compiler.sequences.antihydra.payload_audit import (
                 refresh_antihydra_payload_contract,
             )
 
             refresh_antihydra_payload_contract(arithmetic.source_term)
-            workspace._window_contract_registered = True
+            workspace.mark_window_contract_registered()
     except BaseException:
         # A failed first memo publication must not leave an existing source
         # workspace holding a store that the restored pre-memo contract does
         # not own.  Preserve an older memo if this was a repeat demand.
-        if memo_before is None and workspace._window_memo is not None:
+        if memo_before is None and workspace.window_memo_container is not None:
             workspace.dispose()
         if created_workspace:
             arithmetic.source_term.mahler_workspace = None

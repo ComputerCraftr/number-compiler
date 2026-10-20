@@ -11,12 +11,12 @@ from collections.abc import Callable
 from typing import Protocol, cast
 
 from number_compiler.arithmetic.contracts.block_effect import (
-    _CONTEXT_IDS,
     BlockContextBudget,
     BlockEffect,
     BoundarySide,
     BoundaryState,
     _state_key,
+    next_context_id,
 )
 from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 
@@ -61,7 +61,7 @@ class _PartitionBoundaryState:
         anchor: BoundaryState,
         partition: tuple[tuple[BoundaryState, int], ...],
     ) -> None:
-        self.node_id = next(_CONTEXT_IDS)
+        self.node_id = next_context_id()
         self.side = side
         self.anchor = anchor
         self.partition = partition
@@ -142,7 +142,7 @@ class PartitionCompositionMixin:
     ]
 
     @staticmethod
-    def _canonical_child_state(
+    def canonical_child_state(
         effect: object,
         side: BoundarySide,
         state: BoundaryState,
@@ -194,9 +194,9 @@ class PartitionCompositionMixin:
             raise AssertionError(
                 "partition residual interner is not enabled for this side"
             )
-        anchor = self._canonical_child_state(self.first, side, anchor)
+        anchor = self.canonical_child_state(self.first, side, anchor)
         partition = [
-            (self._canonical_child_state(self.second, side, result), mask)
+            (self.canonical_child_state(self.second, side, result), mask)
             for result, mask in partition
         ]
         normalized = self._normalize_partition(
@@ -353,7 +353,7 @@ class PartitionCompositionMixin:
         self, side: BoundarySide, state: _PartitionBoundaryState, symbol: int
     ) -> _PartitionBoundaryState:
         index = int(side)
-        next_anchor = self._canonical_child_state(
+        next_anchor = self.canonical_child_state(
             self.first, side, self.first.advance(side, state.anchor, symbol)
         )
         selectors = self._partition_output_masks(side, state.anchor, symbol)
@@ -380,7 +380,7 @@ class PartitionCompositionMixin:
                     )
                 else:
                     result = self.second.advance(side, old_value, first_symbol)
-                result = self._canonical_child_state(self.second, side, result)
+                result = self.canonical_child_state(self.second, side, result)
                 merge_state_mask(merged, result, mask)
         out = self._intern_partition_state(side, next_anchor, list(merged.values()))
         if out is state and symbol == self.blank:

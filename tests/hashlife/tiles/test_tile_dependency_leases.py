@@ -6,15 +6,15 @@ import gc
 import subprocess
 import sys
 import weakref
-from collections.abc import Hashable
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Never, TypeVar
+from typing import TYPE_CHECKING, Never
 
 import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.execution.tile_application_authority import (
-    audit_tile_application_registry,
+    TileApplicationRegistry,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
@@ -40,8 +40,8 @@ from tests.support.tile_kernel import (
 )
 
 if TYPE_CHECKING:
+    from number_compiler.hashlife.execution.tile_application import TileApplication
     from number_compiler.hashlife.execution.tile_scheduler import (
-        TileApplication,
         TileScheduler,
     )
     from number_compiler.hashlife.tiles.tile_results import ResultLease
@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from number_compiler.resources.ledger import ResourceLedger
 
 
-def _request() -> tuple[
+def tile_dependency_request() -> tuple[
     ResourceLedger,
     TileArena,
     TileScheduler,
@@ -103,6 +103,13 @@ def _request() -> tuple[
     )
 
 
+def _application_registry(scheduler: TileScheduler) -> TileApplicationRegistry:
+    registry: object = object.__getattribute__(scheduler, "_applications")
+    if type(registry) is not TileApplicationRegistry:
+        raise TypeError("tile scheduler omitted its application registry")
+    return registry
+
+
 def test_causal_pin_retains_inputs_and_boundaries_until_application_close() -> None:
     (
         ledger,
@@ -114,29 +121,29 @@ def test_causal_pin_retains_inputs_and_boundaries_until_application_close() -> N
         application,
         key,
         result,
-    ) = _request()
-    scheduler._pin_causal(application.identity, key, result)
+    ) = tile_dependency_request()
+    scheduler.pin_causal(application.identity, key, result)
     dependency_id, boundary_id = dependency.tile, boundary.tile
     dependency.close()
     boundary.close()
     assert tiles.resolve(dependency_id).width == 2
     assert tiles.resolve(boundary_id).width == 2
-    assert set(scheduler._causal_dependencies.records) == {
+    assert set(scheduler.dependency_leases.records) == {
         (application.identity, dependency_id),
         (application.identity, boundary_id),
     }
     approved, invalid = audit_tile_dependency_leases(
-        scheduler._causal_dependencies,
+        scheduler.dependency_leases,
         dict(ledger.iter_containers()),
     )
-    assert not invalid and id(scheduler._causal_dependencies.records) in approved
+    assert not invalid and id(scheduler.dependency_leases.records) in approved
     payloads = audit_registered_payloads(ledger)
     assert not payloads.unknown_payloads and not payloads.forbidden_future_payloads
     warm = scheduler.results.lookup(key)
     assert warm is not None
     warm.close()
     application.close()
-    assert not scheduler._causal_dependencies.records
+    assert not scheduler.dependency_leases.records
     with pytest.raises(ValueError, match="stale or unpublished"):
         tiles.resolve(dependency_id)
     source.close()
@@ -155,30 +162,30 @@ def test_causal_pin_deduplicates_application_source_and_rolls_back(
         application,
         key,
         result,
-    ) = _request()
-    from number_compiler.resources.stores import LedgerDict
-
-    original = LedgerDict.__setitem__
+    ) = tile_dependency_request()
+    original: Callable[[LedgerDict[object, object], object, object], None] = LedgerDict[
+        object, object
+    ].__setitem__
+    dependencies = scheduler.dependency_leases
 
     def fail_dependency(
-        store: LedgerDict[KeyT, ValueT], binding: KeyT, value: ValueT
+        store: LedgerDict[object, object], binding: object, value: object
     ) -> None:
         original(store, binding, value)
-        if store is scheduler._causal_dependencies.records:
+        if store is dependencies.records:
             raise RuntimeError("injected causal dependency publication failure")
 
     with monkeypatch.context() as poison:
         poison.setattr(LedgerDict, "__setitem__", fail_dependency)
         with pytest.raises(RuntimeError, match="causal dependency"):
-            scheduler._pin_causal(application.identity, key, result)
+            scheduler.pin_causal(application.identity, key, result)
     assert (
-        not scheduler.audit_snapshot().pins
-        and not scheduler._causal_dependencies.records
+        not scheduler.audit_snapshot().pins and not scheduler.dependency_leases.records
     )
     assert result.audit_snapshot().closed is True
     pin_owner = scheduler.audit_snapshot().pin_owner
     assert type(pin_owner) is int
-    for owner in (pin_owner, scheduler._causal_dependencies.owner):
+    for owner in (pin_owner, scheduler.dependency_leases.owner):
         account = ledger.inventory()[owner]
         assert (account.entries, account.nodes, account.accounting_delta) == (0, 0, 0)
 
@@ -191,8 +198,8 @@ def test_causal_pin_deduplicates_application_source_and_rolls_back(
         key.wiring,
     )
     root_key = PoweredResultKey(key.action, application.source, key.ports, key.wiring)
-    scheduler._pin_causal(application.identity, root_key, root)
-    assert not scheduler._causal_dependencies.records
+    scheduler.pin_causal(application.identity, root_key, root)
+    assert not scheduler.dependency_leases.records
     application.close()
     boundary.close()
     dependency.close()
@@ -210,18 +217,18 @@ def test_dependency_inventory_rejects_integer_alias() -> None:
         application,
         key,
         result,
-    ) = _request()
-    scheduler._pin_causal(application.identity, key, result)
-    binding = next(iter(scheduler._causal_dependencies.records))
-    lease = scheduler._causal_dependencies.records.pop(binding)
-    scheduler._causal_dependencies.records[(True, binding[1])] = lease
+    ) = tile_dependency_request()
+    scheduler.pin_causal(application.identity, key, result)
+    binding = next(iter(scheduler.dependency_leases.records))
+    lease = scheduler.dependency_leases.records.pop(binding)
+    scheduler.dependency_leases.records[(True, binding[1])] = lease
     _, invalid = audit_tile_dependency_leases(
-        scheduler._causal_dependencies,
+        scheduler.dependency_leases,
         dict(ledger.iter_containers()),
     )
     assert invalid
-    scheduler._causal_dependencies.records.pop((True, binding[1]))
-    scheduler._causal_dependencies.records[binding] = lease
+    scheduler.dependency_leases.records.pop((True, binding[1]))
+    scheduler.dependency_leases.records[binding] = lease
     application.close()
     boundary.close()
     dependency.close()
@@ -241,7 +248,7 @@ def test_causal_pin_reservation_failure_closes_unpublished_result(
         application,
         key,
         result,
-    ) = _request()
+    ) = tile_dependency_request()
     original = ledger.reserve
 
     def reject_pin(owner: int, *, entries: int = 0, nodes: int = 0) -> None:
@@ -251,11 +258,10 @@ def test_causal_pin_reservation_failure_closes_unpublished_result(
 
     monkeypatch.setattr(ledger, "reserve", reject_pin)
     with pytest.raises(RuntimeError, match="causal pin reservation"):
-        scheduler._pin_causal(application.identity, key, result)
+        scheduler.pin_causal(application.identity, key, result)
     assert result.audit_snapshot().closed is True
     assert (
-        not scheduler.audit_snapshot().pins
-        and not scheduler._causal_dependencies.records
+        not scheduler.audit_snapshot().pins and not scheduler.dependency_leases.records
     )
     application.close()
     boundary.close()
@@ -274,8 +280,8 @@ def test_dependency_rollback_preflights_all_bindings_before_mutation() -> None:
         application,
         _key,
         result,
-    ) = _request()
-    dependencies = scheduler._causal_dependencies
+    ) = tile_dependency_request()
+    dependencies = scheduler.dependency_leases
     batch = dependencies.acquire(
         application.identity,
         (dependency.tile, boundary.tile),
@@ -313,13 +319,13 @@ def test_dependency_rollback_rejects_batch_from_another_owner() -> None:
         application,
         _key,
         result,
-    ) = _request()
-    local = scheduler._causal_dependencies
+    ) = tile_dependency_request()
+    local = scheduler.dependency_leases
     foreign = TileDependencyLeases(
         scheduler.ledger,
         tiles,
         "foreign-causal-inputs",
-        scheduler._applications,
+        _application_registry(scheduler),
     )
     local_batch = local.acquire(application.identity, (dependency.tile,))
     foreign_batch = foreign.acquire(application.identity, (dependency.tile,))
@@ -348,8 +354,8 @@ def test_stale_dependency_batch_cannot_close_reacquired_binding() -> None:
         application,
         _key,
         result,
-    ) = _request()
-    dependencies = scheduler._causal_dependencies
+    ) = tile_dependency_request()
+    dependencies = scheduler.dependency_leases
     first = dependencies.acquire(application.identity, (dependency.tile,))
     dependencies.rollback(first)
     replacement = dependencies.acquire(application.identity, (dependency.tile,))
@@ -383,8 +389,8 @@ def test_batch_allocation_failure_rolls_back_acquired_leases(
         application,
         _key,
         result,
-    ) = _request()
-    dependencies = scheduler._causal_dependencies
+    ) = tile_dependency_request()
+    dependencies = scheduler.dependency_leases
     snapshot = capture_tile_dependency_state(ledger, tiles, dependencies)
 
     def fail_batch(*_args: object) -> Never:
@@ -417,8 +423,8 @@ def test_tile_lease_allocation_failure_publishes_no_lease(
         application,
         _key,
         result,
-    ) = _request()
-    dependencies = scheduler._causal_dependencies
+    ) = tile_dependency_request()
+    dependencies = scheduler.dependency_leases
     snapshot = capture_tile_dependency_state(
         ledger,
         tiles,
@@ -478,24 +484,24 @@ def test_application_registry_avoids_execution_root_scans_for_causal_pins(
         application,
         key,
         result,
-    ) = _request()
+    ) = tile_dependency_request()
 
     def forbidden() -> Never:
         raise AssertionError("causal pin scanned every execution root")
 
     monkeypatch.setattr(scheduler.ledger, "iter_execution_roots", forbidden)
-    scheduler._pin_causal(application.identity, key, result)
+    scheduler.pin_causal(application.identity, key, result)
     assert (
         application.identity,
         dependency.tile,
-    ) in scheduler._causal_dependencies.records
+    ) in scheduler.dependency_leases.records
     alphabet = scheduler.tiles.resolve(dependency.tile).alphabet
     _view, concat_lease = concat_cached_boundary_views(
         scheduler.results,
         alphabet,
         BoundaryTileView(dependency.tile, 0, 2),
         BoundaryTileView(boundary.tile, 0, 2),
-        dependencies=scheduler._causal_dependencies,
+        dependencies=scheduler.dependency_leases,
         application=application.identity,
     )
     concat_lease.close()
@@ -516,7 +522,7 @@ def test_application_registry_rejects_numeric_aliases_without_lookup() -> None:
         application,
         _key,
         result,
-    ) = _request()
+    ) = tile_dependency_request()
     result.close()
     for alias in (True, False, 0.0, -1):
         with pytest.raises(ValueError, match="invalid scoped identity"):
@@ -542,7 +548,7 @@ def test_application_registry_weak_binding_expires_and_reconciles() -> None:
         assert root is not None
         identity = application.identity
         saved = weakref.ref(application)
-        assert identity in scheduler._applications.records
+        assert identity in _application_registry(scheduler).records
         del application
         gc.collect()
         assert saved() is None
@@ -563,8 +569,8 @@ def test_abandoned_application_releases_causal_pins_and_dependencies() -> None:
         application,
         key,
         result,
-    ) = _request()
-    scheduler._pin_causal(application.identity, key, result)
+    ) = tile_dependency_request()
+    scheduler.pin_causal(application.identity, key, result)
     identity = application.identity
     saved = weakref.ref(application)
     del application
@@ -572,7 +578,7 @@ def test_abandoned_application_releases_causal_pins_and_dependencies() -> None:
     assert saved() is None
     assert result.audit_snapshot().closed is True
     assert not scheduler.audit_snapshot().pins
-    assert not scheduler._causal_dependencies.records
+    assert not scheduler.dependency_leases.records
     _assert_application_retired(ledger, scheduler, identity)
     boundary.close()
     dependency.close()
@@ -595,13 +601,16 @@ def test_application_registry_failed_publication_rolls_back(
             for item in ledger.inventory()
         }
         entries_before = ledger.entries
-        original = LedgerDict.__setitem__
+        original: Callable[[LedgerDict[object, object], object, object], None] = (
+            LedgerDict[object, object].__setitem__
+        )
+        registry = _application_registry(scheduler)
 
         def fail_registry(
-            store: LedgerDict[KeyT, ValueT], binding: KeyT, value: ValueT
+            store: LedgerDict[object, object], binding: object, value: object
         ) -> None:
             original(store, binding, value)
-            if store is scheduler._applications.records:
+            if store is registry.records:
                 raise RuntimeError("injected application registry failure")
 
         monkeypatch.setattr(LedgerDict, "__setitem__", fail_registry)
@@ -612,8 +621,8 @@ def test_application_registry_failed_publication_rolls_back(
                 ports,
                 wiring,
             )
-        assert not scheduler._applications.records
-        account = ledger.inventory()[scheduler._applications.owner]
+        assert not _application_registry(scheduler).records
+        account = ledger.inventory()[_application_registry(scheduler).owner]
         assert (account.entries, account.nodes) == (0, 0)
         _assert_application_observation_empty(ledger, scheduler)
         inventory_after = {
@@ -639,21 +648,20 @@ def test_application_registry_inventory_rejects_alias_and_stale_reference() -> N
             adapter.wiring(action),
         ) as application,
     ):
-        approved, invalid = audit_tile_application_registry(
-            scheduler._applications,
-            dict(ledger.iter_containers()),
+        registry = _application_registry(scheduler)
+        approved, invalid = scheduler.audit_application_registry(
+            dict(ledger.iter_containers())
         )
         assert not invalid
-        assert id(scheduler._applications.records) in approved
-        reference = scheduler._applications.records.pop(application.identity)
-        scheduler._applications.records[True] = reference
-        _, invalid = audit_tile_application_registry(
-            scheduler._applications,
-            dict(ledger.iter_containers()),
+        assert id(registry.records) in approved
+        reference = registry.records.pop(application.identity)
+        registry.records[True] = reference
+        _, invalid = scheduler.audit_application_registry(
+            dict(ledger.iter_containers())
         )
         assert invalid
-        scheduler._applications.records.pop(True)
-        scheduler._applications.records[application.identity] = reference
+        registry.records.pop(True)
+        registry.records[application.identity] = reference
 
 
 def test_application_cleanup_delete_failure_is_retryable(
@@ -668,13 +676,16 @@ def test_application_cleanup_delete_failure_is_retryable(
             adapter.wiring(action),
         )
         identity = application.identity
-        original = LedgerDict.__delitem__
+        original: Callable[[LedgerDict[object, object], object], None] = LedgerDict[
+            object, object
+        ].__delitem__
+        registry = _application_registry(scheduler)
         failed = False
 
-        def fail_once(store: LedgerDict[KeyT, ValueT], key: KeyT) -> None:
+        def fail_once(store: LedgerDict[object, object], key: object) -> None:
             nonlocal failed
             original(store, key)
-            if store is scheduler._applications.records and not failed:
+            if store is registry.records and not failed:
                 failed = True
                 raise RuntimeError("injected cleanup deletion failure")
 
@@ -683,7 +694,7 @@ def test_application_cleanup_delete_failure_is_retryable(
             with pytest.raises(RuntimeError, match="cleanup deletion"):
                 application.close()
         assert application.audit_snapshot().closed is False
-        assert identity in scheduler._applications.records
+        assert identity in _application_registry(scheduler).records
         assert application.source == source.tile
         application.close()
         _assert_application_retired(ledger, scheduler, identity)
@@ -702,13 +713,15 @@ def test_application_pin_delete_failure_restores_binding_for_retry(
         application,
         key,
         result,
-    ) = _request()
-    scheduler._pin_causal(application.identity, key, result)
+    ) = tile_dependency_request()
+    scheduler.pin_causal(application.identity, key, result)
     binding = next(iter(scheduler.audit_snapshot().pins))
-    original = LedgerDict.__delitem__
+    original: Callable[[LedgerDict[object, object], object], None] = LedgerDict[
+        object, object
+    ].__delitem__
     failed = False
 
-    def fail_once(store: LedgerDict[KeyT, ValueT], key_value: KeyT) -> None:
+    def fail_once(store: LedgerDict[object, object], key_value: object) -> None:
         nonlocal failed
         original(store, key_value)
         if store is scheduler.audit_snapshot().pin_store and not failed:
@@ -724,8 +737,7 @@ def test_application_pin_delete_failure_restores_binding_for_retry(
     assert application.source == source.tile
     application.close()
     assert (
-        not scheduler.audit_snapshot().pins
-        and not scheduler._causal_dependencies.records
+        not scheduler.audit_snapshot().pins and not scheduler.dependency_leases.records
     )
     boundary.close()
     dependency.close()
@@ -758,26 +770,22 @@ application = scheduler.application(
     assert "ImportError" not in observed.stderr
 
 
-KeyT = TypeVar("KeyT", bound=Hashable)
-ValueT = TypeVar("ValueT")
-
-
 def _assert_application_account_empty(
     ledger: ResourceLedger, scheduler: TileScheduler
 ) -> None:
-    account = ledger.inventory()[scheduler._applications.owner]
+    account = ledger.inventory()[_application_registry(scheduler).owner]
     assert (account.entries, account.nodes) == (0, 0)
 
 
 def _assert_application_retired(
     ledger: ResourceLedger, scheduler: TileScheduler, identity: object
 ) -> None:
-    assert identity not in scheduler._applications.records
+    assert identity not in _application_registry(scheduler).records
     _assert_application_account_empty(ledger, scheduler)
 
 
 def _assert_application_observation_empty(
     ledger: ResourceLedger, scheduler: TileScheduler
 ) -> None:
-    account = ledger.inventory()[scheduler._applications.owner]
+    account = ledger.inventory()[_application_registry(scheduler).owner]
     assert (account.observed_entries, account.observed_nodes) == (0, 0)

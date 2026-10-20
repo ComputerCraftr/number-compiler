@@ -13,35 +13,35 @@ from number_compiler.resources.metric_keys import (
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.higher_summaries import (
+        ContextBinding,
         HigherSummaryArena,
         HigherSummaryID,
-        _ContextBinding,
-        _UnaryBinding,
+        UnaryBinding,
     )
 
 
-def _runtime_dependencies(
+def runtime_dependencies(
     self: HigherSummaryArena,
-    key: _UnaryBinding | _ContextBinding,
-) -> tuple[_UnaryBinding | _ContextBinding, ...]:
+    key: UnaryBinding | ContextBinding,
+) -> tuple[UnaryBinding | ContextBinding, ...]:
     from number_compiler.hashlife.execution.continuations.higher_summaries import (
-        _UnaryBinding,
+        UnaryBinding,
     )
 
-    if isinstance(key, _UnaryBinding):
-        node = self._input_geometry(key.source)
+    if isinstance(key, UnaryBinding):
+        node = self.input_geometry(key.source)
         _base, blank = self.schema.alphabet(key.action)
-        if node.uniform_symbol == blank and self._blank_is_identity(
+        if node.uniform_symbol == blank and self.blank_is_identity(
             key.action, key.side
         ):
             return ()
-    return self._dependencies(key)
+    return self.summary_dependencies(key)
 
 
-def _build_runtime(
+def build_runtime(
     self: HigherSummaryArena,
-    key: _UnaryBinding | _ContextBinding,
-    dependencies: tuple[_UnaryBinding | _ContextBinding, ...],
+    key: UnaryBinding | ContextBinding,
+    dependencies: tuple[UnaryBinding | ContextBinding, ...],
 ) -> HigherSummaryID:
     from number_compiler.hashlife.execution.continuations.higher_summaries import (
         ContextLeaf,
@@ -49,19 +49,19 @@ def _build_runtime(
         RuntimeContextSummary,
         RuntimeUnarySummary,
         UnaryAffine,
+        UnaryBinding,
         UnaryFinite,
         UnaryIdentity,
         UnaryLeaf,
         UnaryRecipe,
         UnaryTemporal,
-        _UnaryBinding,
     )
 
-    node = self._input_geometry(key.source)
-    resolved = tuple(self._runtime_bindings[item] for item in dependencies)
-    if isinstance(key, _UnaryBinding):
+    node = self.input_geometry(key.source)
+    resolved = tuple(self.runtime_bindings[item] for item in dependencies)
+    if isinstance(key, UnaryBinding):
         if self.schema.kind(key.action) == "identity":
-            return self._intern(
+            return self.intern_summary(
                 RuntimeUnarySummary(
                     key.action,
                     key.side,
@@ -69,10 +69,10 @@ def _build_runtime(
                 )
             )
         _base, blank = self.schema.alphabet(key.action)
-        if node.uniform_symbol == blank and self._blank_is_identity(
+        if node.uniform_symbol == blank and self.blank_is_identity(
             key.action, key.side
         ):
-            return self._intern(
+            return self.intern_summary(
                 RuntimeUnarySummary(
                     key.action,
                     key.side,
@@ -80,7 +80,7 @@ def _build_runtime(
                 )
             )
         if self.schema.children(key.action) is not None:
-            return self._intern(
+            return self.intern_summary(
                 RuntimeUnarySummary(
                     key.action,
                     key.side,
@@ -95,7 +95,7 @@ def _build_runtime(
             cast(
                 Callable[[FieldCellActionID, int, int], RadixRemainderTransfer | None],
                 leaf_hook,
-            )(key.action, key.side, self._input_symbol(key.source))
+            )(key.action, key.side, self.input_symbol(key.source))
             if leaf_hook is not None
             else None
         )
@@ -106,11 +106,11 @@ def _build_runtime(
             ):
                 raise ValueError("symbolic primitive transfer has another port sort")
             affine.__post_init__()
-            return self._intern(
+            return self.intern_summary(
                 RuntimeUnarySummary(key.action, key.side, UnaryAffine(affine))
             )
         if cardinality <= 64:
-            symbol = self._input_symbol(key.source)
+            symbol = self.input_symbol(key.source)
             outputs = tuple(
                 self.semantics.primitive_tables.step(
                     key.action,
@@ -130,86 +130,81 @@ def _build_runtime(
                 if outputs == tuple(range(cardinality))
                 else UnaryFinite(outputs)
             )
-            return self._intern(RuntimeUnarySummary(key.action, key.side, recipe))
-        return self._intern(
+            return self.intern_summary(
+                RuntimeUnarySummary(key.action, key.side, recipe)
+            )
+        return self.intern_summary(
             RuntimeUnarySummary(
                 key.action,
                 key.side,
-                UnaryLeaf(self._input_symbol(key.source)),
+                UnaryLeaf(self.input_symbol(key.source)),
             )
         )
     if node.level:
-        return self._intern(
+        return self.intern_summary(
             RuntimeContextSummary(
                 key.provider,
                 key.consumer,
                 ContextSpatial(resolved[0], resolved[1], resolved[2], resolved[3]),
             )
         )
-    return self._intern(
+    return self.intern_summary(
         RuntimeContextSummary(
             key.provider,
             key.consumer,
-            ContextLeaf(self._input_symbol(key.source)),
+            ContextLeaf(self.input_symbol(key.source)),
         )
     )
 
 
-def _ensure_runtime(
+def ensure_runtime(
     self: HigherSummaryArena,
-    root: _UnaryBinding | _ContextBinding,
+    root: UnaryBinding | ContextBinding,
 ) -> HigherSummaryID:
 
-    found = self._runtime_bindings.get(root)
+    found = self.runtime_bindings.get(root)
     if found is not None:
         self.ledger.bump(_execution_keys.HIGHER_RUNTIME_SUMMARY_BINDING_HITS)
         return found
-    stack: list[tuple[_UnaryBinding | _ContextBinding, bool]] = [(root, False)]
-    active: set[_UnaryBinding | _ContextBinding] = set()
+    stack: list[tuple[UnaryBinding | ContextBinding, bool]] = [(root, False)]
+    active: set[UnaryBinding | ContextBinding] = set()
     while stack:
         key, ready = stack.pop()
-        if key in self._runtime_bindings:
+        if key in self.runtime_bindings:
             active.discard(key)
             continue
-        dependencies = self._runtime_dependencies(key)
+        dependencies = self.runtime_dependencies(key)
         if not ready:
             if key in active:
                 raise AssertionError("cyclic runtime summary dependency")
             active.add(key)
             stack.append((key, True))
             for dependency in reversed(dependencies):
-                if dependency not in self._runtime_bindings:
+                if dependency not in self.runtime_bindings:
                     stack.append((dependency, False))
             continue
-        missing = [item for item in dependencies if item not in self._runtime_bindings]
+        missing = [item for item in dependencies if item not in self.runtime_bindings]
         if missing:
             stack.append((key, True))
             stack.extend((item, False) for item in reversed(missing))
             continue
-        self.ledger.reserve(self._runtime_binding_owner, entries=1)
-        try:
-            result = self._build_runtime(key, dependencies)
-            self._runtime_bindings[key] = result
-        except BaseException:
-            self.ledger.release(self._runtime_binding_owner, entries=1)
-            raise
-        self.ledger.bump(_execution_keys.HIGHER_RUNTIME_SUMMARY_PUBLICATIONS)
+        self.build_and_bind_runtime(key, dependencies)
         active.discard(key)
-    return self._runtime_bindings[root]
+    return self.runtime_bindings[root]
 
 
-def _blank_is_identity(
+def blank_is_identity(
     self: HigherSummaryArena, action: FieldCellActionID, side: int
 ) -> bool:
     root = action, side
-    cached = self._blank_identity.get(root)
+    cached = self.blank_identities.get(root)
     if cached is not None:
         return cached
     stack: list[tuple[FieldCellActionID, bool]] = [(action, False)]
     while stack:
         current, ready = stack.pop()
         key = current, side
-        if key in self._blank_identity:
+        if key in self.blank_identities:
             continue
         children = self.schema.children(current)
         if children is not None:
@@ -217,9 +212,8 @@ def _blank_is_identity(
                 stack.append((current, True))
                 stack.extend((child, False) for child in children)
                 continue
-            result = all(self._blank_identity[child, side] for child in children)
-            self.ledger.reserve(self._blank_identity_owner, entries=1)
-            self._blank_identity[key] = result
+            result = all(self.blank_identities[child, side] for child in children)
+            self.publish_blank_identity(key, result)
             continue
         blank_hook = getattr(self.schema, "runtime_blank_identity", None)
         certified = (
@@ -232,8 +226,7 @@ def _blank_is_identity(
         if certified is not None:
             if type(certified) is not bool:
                 raise TypeError("blank identity certificate must be Boolean")
-            self.ledger.reserve(self._blank_identity_owner, entries=1)
-            self._blank_identity[key] = certified
+            self.publish_blank_identity(key, certified)
             continue
         _base, blank = self.schema.alphabet(current)
         state_count = self.schema.state_count(current, side)
@@ -247,6 +240,5 @@ def _blank_is_identity(
             for left in range(state_count if side == 0 else opposite_count)
             for right in range(opposite_count if side == 0 else state_count)
         )
-        self.ledger.reserve(self._blank_identity_owner, entries=1)
-        self._blank_identity[key] = step_identity and emits_blank
-    return self._blank_identity[root]
+        self.publish_blank_identity(key, step_identity and emits_blank)
+    return self.blank_identities[root]

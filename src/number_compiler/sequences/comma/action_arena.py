@@ -6,11 +6,14 @@ scheduler consumer. Boundary macros carry exact arithmetic but no branch authori
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from math import gcd
 from typing import cast
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.arithmetic.fields.consumer_pullback import PrefixSafety
 from number_compiler.resources.ledger import ResourceLedger
@@ -29,10 +32,10 @@ from number_compiler.sequences.comma.boundary_quotient import (
     construct_macro,
 )
 from number_compiler.sequences.comma.boundary_quotient import (
-    _macro_template_component_seal as _template_seal,
+    macro_template_component_seal as _template_seal,
 )
 from number_compiler.sequences.comma.boundary_quotient import (
-    _macro_template_header as _template_header,
+    macro_template_header as _template_header,
 )
 from number_compiler.sequences.comma.cycle_actions import CycleActionReuse
 from number_compiler.sequences.comma.occurrence import BoundaryOccurrence
@@ -44,7 +47,7 @@ class CommaActionID(ArenaHandle):
 
 
 @dataclass(frozen=True, slots=True)
-class _Action:
+class CommaActionRecord:
     kind: str
     steps: int
     leading: int = 0
@@ -61,7 +64,30 @@ class _Action:
     after: CommaActionID | None = None
 
 
-def _action_snapshot(node: _Action) -> tuple[object, ...]:
+@dataclass(frozen=True, slots=True)
+class CommaActionArenaAuditSnapshot:
+    """Read-only stores and ledger identities for comma payload verification."""
+
+    ledger: ResourceLedger
+    token: ArenaToken
+    kind: str
+    owner: int
+    key_owner: int
+    snapshot_owner: int
+    boundary_owner: int
+    boundary_seal_owner: int
+    boundary_seal_node_owner: int
+    boundary_node_owner: int
+    nodes: Sequence[CommaActionRecord]
+    snapshots: Sequence[tuple[object, ...]]
+    keys: Mapping[tuple[object, ...], CommaActionID]
+    boundary_templates: Mapping[BoundaryState, MacroTemplate]
+    boundary_seals: Mapping[BoundaryState, tuple[object, ...]]
+    boundary_seal_nodes: Sequence[object]
+    boundary_nodes: Sequence[object]
+
+
+def action_snapshot(node: CommaActionRecord) -> tuple[object, ...]:
     """Keep primitive fields separate from mutable private record identities."""
 
     def handle(value: CommaActionID | None) -> tuple[object, str, int] | None:
@@ -105,7 +131,7 @@ def _seal_integer_bits(value: object) -> int:
             continue
         if type(item) is int:
             bits += max(1, item.bit_length())
-        elif type(item) is tuple:
+        elif is_exact_object_tuple(item):
             if len(stack) >= 8:
                 raise ValueError("comma boundary seal nesting exceeds schema")
             stack.append(iter(item))
@@ -124,7 +150,7 @@ class CommaActionArena:
         self.kind = "comma-action"
         self._owner = ledger.register("comma-actions", "temporal_action")
         self._key_owner = ledger.register("comma-action-keys", "action_interning")
-        self._nodes: LedgerList[_Action] = ledger.make_list(
+        self._nodes: LedgerList[CommaActionRecord] = ledger.make_list(
             self._owner, append_only=False
         )
         self._snapshot_owner = ledger.register(
@@ -163,7 +189,9 @@ class CommaActionArena:
         self.ledger.bump(_comma_keys.COMMA_TRANSFER_PHASE_TERMS, 0)
         self.ledger.bump(_comma_keys.COMMA_CYCLE_RULE_EVALUATIONS, 0)
         self.ledger.bump(_comma_keys.COMMA_EVALUATED_TRANSITIONS, 0)
-        self.identity = self._intern(("identity",), _Action("identity", 0))
+        self.identity = self.intern_record(
+            ("identity",), CommaActionRecord("identity", 0)
+        )
         self.cycle_reuse = CycleActionReuse(
             ledger, self.charge, self.charge_bits, shared=shared_cache
         )
@@ -180,13 +208,15 @@ class CommaActionArena:
     def charge_bits(self, bits: int) -> None:
         self.ledger.bump(_comma_keys.COMMA_OPERAND_BIT_WORK, bits)
 
-    def _intern(self, key: tuple[object, ...], node: _Action) -> CommaActionID:
+    def intern_record(
+        self, key: tuple[object, ...], node: CommaActionRecord
+    ) -> CommaActionID:
         self.ledger.bump(_comma_keys.COMMA_ACTION_REQUESTS)
         old = self._keys.get(key)
         if old is not None:
             existing = self.node(old)
-            requested_snapshot = _action_snapshot(node)
-            existing_snapshot = _action_snapshot(existing)
+            requested_snapshot = action_snapshot(node)
+            existing_snapshot = action_snapshot(existing)
             # Complete cycles may arrive through either direct construction or
             # chronological squaring. Their decomposition children are a
             # construction route, not part of the normalized extensional
@@ -217,7 +247,7 @@ class CommaActionArena:
         try:
             identifier = CommaActionID(self.token, self.kind, len(self._nodes))
             self._nodes.append(node)
-            self._snapshots.append(_action_snapshot(node))
+            self._snapshots.append(action_snapshot(node))
             self._keys[key] = identifier
         except BaseException:
             self._keys.pop(key, None)
@@ -234,22 +264,80 @@ class CommaActionArena:
         self.ledger.bump(_comma_keys.COMMA_ACTION_PUBLICATIONS)
         return identifier
 
-    def node(self, identifier: CommaActionID) -> _Action:
+    def node(self, identifier: CommaActionID) -> CommaActionRecord:
         if type(identifier) is not CommaActionID:
             raise TypeError("expected a scoped comma action")
         identifier.validate(self.token, self.kind, size=len(self._nodes))
         if len(self._snapshots) != len(self._nodes):
             raise ValueError("comma action publication lost its seal")
         node = self._nodes[identifier.local_id]
-        if _action_snapshot(node) != self._snapshots[identifier.local_id]:
+        if action_snapshot(node) != self._snapshots[identifier.local_id]:
             raise ValueError("comma action publication was altered")
         return node
+
+    def audit_snapshot(self) -> CommaActionArenaAuditSnapshot:
+        """Expose retained action stores through immutable read-only views."""
+        return CommaActionArenaAuditSnapshot(
+            ledger=self.ledger,
+            token=self.token,
+            kind=self.kind,
+            owner=self._owner,
+            key_owner=self._key_owner,
+            snapshot_owner=self._snapshot_owner,
+            boundary_owner=self._boundary_owner,
+            boundary_seal_owner=self._boundary_seal_owner,
+            boundary_seal_node_owner=self._boundary_seal_node_owner,
+            boundary_node_owner=self._boundary_node_owner,
+            nodes=self._nodes.audit_view(),
+            snapshots=self._snapshots.audit_view(),
+            keys=self._keys.audit_view(),
+            boundary_templates=self._boundary_templates.audit_view(),
+            boundary_seals=self._boundary_seals.audit_view(),
+            boundary_seal_nodes=self._boundary_seal_nodes.audit_view(),
+            boundary_nodes=self._boundary_nodes.audit_view(),
+        )
+
+    def bind_payload_audit_root(self, root: object) -> None:
+        """Bind exact owned stores to the corresponding term audit root."""
+        from number_compiler.sequences.comma.power import CommaTerm
+
+        if type(root) is not CommaTerm or root.arena is not self:
+            raise TypeError("comma audit stores require their exact owning term")
+        for attribute, store in (
+            ("_audit_action_nodes", self._nodes),
+            ("_audit_action_keys", self._keys),
+            ("_audit_action_snapshots", self._snapshots),
+            ("_audit_boundary_templates", self._boundary_templates),
+            ("_audit_boundary_seals", self._boundary_seals),
+            ("_audit_boundary_seal_nodes", self._boundary_seal_nodes),
+            ("_audit_boundary_nodes", self._boundary_nodes),
+        ):
+            setattr(root, attribute, store)
+
+    def payload_audit_root_is_bound(self, root: object) -> bool:
+        """Check exact root-to-store aliases without exporting writable stores."""
+        from number_compiler.sequences.comma.power import CommaTerm
+
+        if type(root) is not CommaTerm or root.arena is not self:
+            return False
+        return all(
+            getattr(root, attribute, None) is store
+            for attribute, store in (
+                ("_audit_action_nodes", self._nodes),
+                ("_audit_action_keys", self._keys),
+                ("_audit_action_snapshots", self._snapshots),
+                ("_audit_boundary_templates", self._boundary_templates),
+                ("_audit_boundary_seals", self._boundary_seals),
+                ("_audit_boundary_seal_nodes", self._boundary_seal_nodes),
+                ("_audit_boundary_nodes", self._boundary_nodes),
+            )
+        )
 
     def step(self, child_digit: int) -> CommaActionID:
         if type(child_digit) is not int or not 1 <= child_digit <= 9:
             raise ValueError("comma child digit must be 1 through 9")
-        return self._intern(
-            ("step", child_digit), _Action("step", 1, child_digit=child_digit)
+        return self.intern_record(
+            ("step", child_digit), CommaActionRecord("step", 1, child_digit=child_digit)
         )
 
     def transfer(self, leading: int, digit: int) -> CycleTransfer:
@@ -278,9 +366,9 @@ class CommaActionArena:
         self.charge(steps + 2)
         self.charge_bits(32 * steps)
         displacement = phase_prefix_displacement(leading, digit, steps)
-        return self._intern(
+        return self.intern_record(
             ("phase-prefix", leading, digit, steps),
-            _Action(
+            CommaActionRecord(
                 "phase-prefix",
                 steps,
                 leading=leading,
@@ -343,9 +431,9 @@ class CommaActionArena:
             safety = PrefixSafety(-left.displacement, -left.maximum_guard).then(
                 PrefixSafety(-right.displacement, -right.maximum_guard)
             )
-            return self._intern(
+            return self.intern_record(
                 ("cycle", left.leading, left.entering_digit, cycles),
-                _Action(
+                CommaActionRecord(
                     "cycle",
                     left.steps + right.steps,
                     left.leading,
@@ -359,9 +447,9 @@ class CommaActionArena:
             )
         # Mixed effects retain chronological children. Equal durations alone
         # do not imply equal future output or admission at a seam.
-        return self._intern(
+        return self.intern_record(
             ("sequence", before, after),
-            _Action(
+            CommaActionRecord(
                 "sequence",
                 left.steps + right.steps,
                 before=before,
@@ -400,12 +488,14 @@ class CommaActionArena:
             reuse.count("exact_hits")
             return old, True
         (steps, displacement, guard), hit = reuse.resolve(leading, digit, count)
-        return self._intern(
+        return self.intern_record(
             key,
-            _Action("cycle", steps, leading, phase, count, displacement, guard),
+            CommaActionRecord(
+                "cycle", steps, leading, phase, count, displacement, guard
+            ),
         ), hit
 
-    def _boundary_template(self, state: BoundaryState) -> MacroTemplate:
+    def boundary_template(self, state: BoundaryState) -> MacroTemplate:
         """Retain one complete constructor result per exact quotient state.
 
         This private arithmetic path is not an infinite-branch admission.
@@ -424,7 +514,7 @@ class CommaActionArena:
                 _seal_integer_bits(header)
                 + (0 if seal is None else _seal_integer_bits(seal[0]))
             )
-            if seal is None or found._component_seal is not seal or header != seal[0]:
+            if seal is None or not found.owns_component_seal(seal) or header != seal[0]:
                 raise ValueError(
                     "comma boundary template publication was altered "
                     "(snapshot mismatch)"
@@ -518,7 +608,7 @@ class CommaActionArena:
         )
         return template
 
-    def _boundary_read_guard(
+    def boundary_read_guard(
         self, state: BoundaryState, template: MacroTemplate
     ) -> Callable[[str, int], None]:
         self.charge()
@@ -529,7 +619,7 @@ class CommaActionArena:
             _seal_integer_bits(header)
             + (0 if seal is None else _seal_integer_bits(seal[0]))
         )
-        if seal is None or template._component_seal is not seal or header != seal[0]:
+        if seal is None or not template.owns_component_seal(seal) or header != seal[0]:
             raise ValueError(
                 "comma boundary template publication was altered (snapshot mismatch)"
             )
@@ -568,14 +658,14 @@ class CommaActionArena:
             raise ValueError("comma boundary lifting is not yet admitted")
         if type(transitions) is not int or transitions < 0:
             raise ValueError("comma boundary prefix length must be nonnegative")
-        template = self._boundary_template(state)
+        template = self.boundary_template(state)
         if transitions > template.weight.evaluate(
             exponent, charge_bits=self.charge_bits
         ):
             raise ValueError("comma boundary prefix crosses its next branch")
-        return self._intern(
+        return self.intern_record(
             ("boundary-prefix", state, exponent, transitions),
-            _Action(
+            CommaActionRecord(
                 "boundary-prefix",
                 transitions,
                 boundary_source=state,
@@ -583,7 +673,7 @@ class CommaActionArena:
             ),
         )
 
-    def _boundary_prefix_occurrence(
+    def boundary_prefix_occurrence(
         self, source: BoundaryOccurrence, transitions: int
     ) -> CommaActionID:
         """Build a receiver-bound prefix action with no exponent in its ID.
@@ -596,10 +686,10 @@ class CommaActionArena:
         """
         if type(source) is not BoundaryOccurrence:
             raise TypeError("comma boundary prefix needs an exact occurrence")
-        source._validate()
+        source.validate()
         if type(transitions) is not int or transitions < 0:
             raise ValueError("comma boundary prefix length must be nonnegative")
-        template = self._boundary_template(source.state)
+        template = self.boundary_template(source.state)
         total = template.weight.evaluate(source.exponent, charge_bits=self.charge_bits)
         if transitions > total:
             raise ValueError("comma boundary prefix crosses its next branch")
@@ -619,16 +709,16 @@ class CommaActionArena:
         boundary_state_signature(state)
         if type(transitions) is not int or transitions < 0:
             raise ValueError("comma boundary prefix length must be nonnegative")
-        return self._intern(
+        return self.intern_record(
             ("boundary-prefix-occurrence", state, transitions),
-            _Action(
+            CommaActionRecord(
                 "boundary-prefix-occurrence",
                 transitions,
                 boundary_source=state,
             ),
         )
 
-    def _global_boundary_return(
+    def global_boundary_return(
         self,
         source: BoundaryState,
         target: BoundaryState,
@@ -645,12 +735,12 @@ class CommaActionArena:
         boundary_state_signature(source)
         boundary_state_signature(target)
         from number_compiler.sequences.comma.future_authority import (
-            _valid_artifact_digest,
+            valid_artifact_digest,
         )
 
-        if not _valid_artifact_digest(artifact_sha256):
+        if not valid_artifact_digest(artifact_sha256):
             raise ValueError("comma future return needs an admitted artifact digest")
-        template = self._boundary_template(source)
+        template = self.boundary_template(source)
         if (
             template.outcome != "fork"
             or target not in template.ordered_children
@@ -660,9 +750,9 @@ class CommaActionArena:
         ):
             raise ValueError("comma future return target is not an exact macro child")
         key = ("global-boundary-return", source, target, artifact_sha256)
-        return self._intern(
+        return self.intern_record(
             key,
-            _Action(
+            CommaActionRecord(
                 "global-boundary-return",
                 0,
                 boundary_source=source,
@@ -671,15 +761,15 @@ class CommaActionArena:
             ),
         )
 
-    def _source20_first_child(self, artifact_sha256: str) -> CommaActionID:
+    def source20_first_child(self, artifact_sha256: str) -> CommaActionID:
         """Intern the exact root-20 first edge under the global theorem."""
         from number_compiler.sequences.comma.future_authority import (
-            _valid_artifact_digest,
+            valid_artifact_digest,
         )
 
-        if not _valid_artifact_digest(artifact_sha256):
+        if not valid_artifact_digest(artifact_sha256):
             raise ValueError("comma source-20 action needs an admitted artifact digest")
-        return self._intern(
+        return self.intern_record(
             ("source20-first-child", artifact_sha256),
-            _Action("source20-first-child", 1, future_digest=artifact_sha256),
+            CommaActionRecord("source20-first-child", 1, future_digest=artifact_sha256),
         )

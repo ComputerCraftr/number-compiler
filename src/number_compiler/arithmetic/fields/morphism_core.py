@@ -16,7 +16,7 @@ orbit or claims that a branch observer is closed.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Hashable, Iterable
+from collections.abc import Callable, Hashable, Iterable, MutableMapping
 from dataclasses import dataclass
 from typing import Generic, TypeVar
 
@@ -80,8 +80,8 @@ class LazyLoweringCache(Generic[K, V]):
 
     __slots__ = ("_values", "hits", "misses")
 
-    def __init__(self) -> None:
-        self._values: dict[K, V] = {}
+    def __init__(self, *, store: MutableMapping[K, V] | None = None) -> None:
+        self._values: MutableMapping[K, V] = {} if store is None else store
         self.hits = 0
         self.misses = 0
 

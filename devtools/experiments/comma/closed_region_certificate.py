@@ -17,17 +17,17 @@ from dataclasses import asdict, dataclass
 from hashlib import sha256
 from math import gcd
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, cast
 
 from devtools.experiments.comma.forest_certificate import (
     FIRST_FORK_CHILDREN,
     FIRST_FORK_VALUE,
     ROOTS,
-    _boundary_children,
-    _interior_cycles,
-    _lead_and_scale,
-    _literal_children,
+    boundary_children,
     check_first_fork,
+    interior_cycles,
+    lead_and_scale,
+    literal_children,
 )
 from number_compiler.resources.ledger import ResourceLedger
 
@@ -98,12 +98,12 @@ def generate_closed_region(
             seen.add((source, entry))
             entries += 1
             max_digits = max(max_digits, len(str(entry)))
-            f, scale = _lead_and_scale(entry)
+            f, scale = lead_and_scale(entry)
             boundary = (f + 1) * scale if f < 9 else 10 * scale
             k = entry
             full_cycles = 0
             if k >= 100:
-                steps, gain = _interior_cycles(k, f, boundary)
+                steps, gain = interior_cycles(k, f, boundary)
                 full_cycles = steps // (10 // gcd(f, 10))
                 cycles += full_cycles
                 k += gain
@@ -111,7 +111,7 @@ def generate_closed_region(
             local_steps = 0
             while True:
                 children = (
-                    _literal_children(k) if k < 100 else _boundary_children(k, f, scale)
+                    literal_children(k) if k < 100 else boundary_children(k, f, scale)
                 )
                 local_steps += 1
                 boundary_steps += 1
@@ -165,12 +165,19 @@ def _no_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict[str, object
 def _read_record(line: str) -> dict[str, object]:
     if len(line.encode("ascii")) > MAX_RECORD_BYTES:
         raise ValueError("certificate record exceeds 8192 bytes")
-    value = json.loads(line, object_pairs_hook=_no_duplicate_json_keys)
-    if not isinstance(value, dict):
+    decoded: object = json.loads(line, object_pairs_hook=_no_duplicate_json_keys)
+    if type(decoded) is not dict:
         raise TypeError("certificate record must be an object")
+    value = cast(dict[str, object], decoded)
     if json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n" != line:
         raise ValueError("certificate record is not canonical JSONL")
     return value
+
+
+def _array(value: object, name: str) -> list[object]:
+    if type(value) is not list:
+        raise TypeError(f"certificate {name} must be an array")
+    return cast(list[object], value)
 
 
 def _decimal(value: object) -> int:
@@ -206,19 +213,20 @@ def _exact_period(f: int, d: int) -> tuple[int, int]:
 
 
 def _verify_prefix(raw_prefix: object) -> None:
-    if not isinstance(raw_prefix, dict) or set(raw_prefix) != {
+    if type(raw_prefix) is not dict:
+        raise ValueError("missing first-fork prefix witness")
+    prefix = cast(dict[str, object], raw_prefix)
+    if set(prefix) != {
         "index",
         "value",
         "children",
     }:
         raise ValueError("missing first-fork prefix witness")
-    index = raw_prefix["index"]
+    index = prefix["index"]
     if type(index) is not int or index <= 0:
         raise ValueError("invalid first-fork index")
-    value = _decimal(raw_prefix["value"])
-    children = raw_prefix["children"]
-    if not isinstance(children, list):
-        raise TypeError("invalid first-fork children")
+    value = _decimal(prefix["value"])
+    children = _array(prefix["children"], "first-fork children")
     expected_children = tuple(_decimal(child) for child in children)
     k = 20
     actual_index = 1
@@ -267,12 +275,14 @@ def verify_closed_region(
         ):
             raise ValueError("wrong certificate schema")
         _verify_prefix(parsed_header["prefix"])
-        raw_sources = parsed_header["sources"]
-        if not isinstance(raw_sources, list) or not raw_sources:
+        raw_sources = _array(parsed_header["sources"], "sources")
+        if not raw_sources:
             raise ValueError("missing certificate sources")
-        sources = [source for source in raw_sources if type(source) is int]
-        if len(sources) != len(raw_sources) or any(source <= 0 for source in sources):
-            raise ValueError("invalid certificate source")
+        sources: list[int] = []
+        for source in raw_sources:
+            if type(source) is not int or source <= 0:
+                raise ValueError("invalid certificate source")
+            sources.append(source)
         if len(set(sources)) != len(sources):
             raise ValueError("duplicate certificate source")
         frontier = deque((source, source) for source in sources)
@@ -343,9 +353,7 @@ def verify_closed_region(
                 k = same
             if counted_steps != local_steps:
                 raise ValueError("wrong boundary-step count")
-            raw_exits = record["exits"]
-            if not isinstance(raw_exits, list):
-                raise TypeError("missing outgoing entries")
+            raw_exits = _array(record["exits"], "outgoing entries")
             parsed_exits = [_decimal(value) for value in raw_exits]
             if parsed_exits != exits:
                 raise ValueError("incomplete or forged outgoing entries")

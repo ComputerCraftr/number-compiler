@@ -196,6 +196,7 @@ def test_macro_catalog_is_exact_closed_and_minimal_for_its_observers() -> None:
 def test_length_phase_cannot_be_dropped_from_macro_admission() -> None:
     from number_compiler.arithmetic.carry.collatz_f5_quotient import (
         RADIX64_F5_SPATIAL_LEAVES,
+        CollatzF5SpatialAction,
         spatial_action_alphabet,
     )
 
@@ -205,7 +206,9 @@ def test_length_phase_cannot_be_dropped_from_macro_admission() -> None:
     assert boundary.repeat(2).phase == 2
     assert boundary.repeat(5).phase == 0
     assert boundary.repeat(2) not in spatial_action_alphabet(5)
-    all_lengths = frozenset().union(*(spatial_action_alphabet(n) for n in range(2, 7)))
+    all_lengths: frozenset[CollatzF5SpatialAction] = frozenset(
+        action for length in range(2, 7) for action in spatial_action_alphabet(length)
+    )
     assert len(all_lengths) == 21
     assert {a.then(b) for a in all_lengths for b in all_lengths} == all_lengths
 
@@ -260,7 +263,9 @@ def test_corrected_generator_birth_emission_census() -> None:
         by_rule[rule].add(
             tuple(binary_carry_birth(digit, incoming=c) for c in range(3))
         )
-    responses = set.union(*by_rule.values())
+    responses = {
+        response for rule_responses in by_rule.values() for response in rule_responses
+    }
     assert len(by_rule) == 15
     assert len(responses) == 33
     assert len({jet for row in responses for jet in row}) == 55

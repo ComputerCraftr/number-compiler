@@ -47,8 +47,8 @@ def test_warm_parent_domain_proof_skips_descendants_and_domain_evaluators(
         pytest.fail("warm admission replayed a descendant or lambda domain")
 
     monkeypatch.setattr(compiler, "_validate_domains", forbidden)
-    monkeypatch.setattr(compiler, "_input_ports", forbidden)
-    monkeypatch.setattr(compiler, "_atom_sort", forbidden)
+    monkeypatch.setattr(compiler, "input_ports", forbidden)
+    monkeypatch.setattr(compiler, "atom_sort", forbidden)
     for _ in range(5):
         assert compiler.probe_task(task) is None
     assert runtime.ledger.counters["semantic_expression_admission_frames"] == before

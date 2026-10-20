@@ -36,7 +36,7 @@ def test_compact_return_matches_indexed_header(
         assert getattr(compact, field) == getattr(indexed, field)
     assert not hasattr(compact, "sector_fragments")
     assert not hasattr(compact, "prefix_weights")
-    boundary_return._completed_macro_return_component_seal(compact)
+    boundary_return.validate_completed_macro_return(compact)
 
 
 def test_compact_return_does_not_build_an_index(
@@ -53,9 +53,13 @@ def test_compact_return_does_not_build_an_index(
 def test_compact_return_rejects_changed_header_and_foreign_seal() -> None:
     original = construct_completed_return(BoundaryState("N", 2, 10))
     changed = replace(original, exponent_delta=original.exponent_delta + 1)
-    object.__setattr__(changed, "_component_seal", original._component_seal)
+    object.__setattr__(
+        changed,
+        "_component_seal",
+        object.__getattribute__(original, "_component_seal"),
+    )
     with pytest.raises(ValueError, match="mismatch"):
-        boundary_return._completed_macro_return_component_seal(changed)
+        boundary_return.validate_completed_macro_return(changed)
     object.__setattr__(original, "destination_a", None)
     with pytest.raises(ValueError, match="ordered children"):
-        boundary_return._completed_macro_return_component_seal(original)
+        boundary_return.validate_completed_macro_return(original)

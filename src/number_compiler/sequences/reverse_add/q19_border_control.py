@@ -23,6 +23,7 @@ from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 
 from ._q19_issuance import issue_q19_record
@@ -77,7 +78,7 @@ def _border_width_scratch(
         nonlocal entries, nodes
         if entry_delta >= 0 and node_delta >= 0:
             owner.ledger.reserve(
-                owner._scratch_owner, entries=entry_delta, nodes=node_delta
+                owner.scratch_owner, entries=entry_delta, nodes=node_delta
             )
             entries += entry_delta
             nodes += node_delta
@@ -88,7 +89,7 @@ def _border_width_scratch(
         if release_entries > entries or release_nodes > nodes:
             raise RuntimeError("width scratch release exceeds its reservation")
         owner.ledger.release(
-            owner._scratch_owner,
+            owner.scratch_owner,
             entries=release_entries,
             nodes=release_nodes,
         )
@@ -99,7 +100,7 @@ def _border_width_scratch(
         yield adjust
     finally:
         if entries or nodes:
-            owner.ledger.release(owner._scratch_owner, entries=entries, nodes=nodes)
+            owner.ledger.release(owner.scratch_owner, entries=entries, nodes=nodes)
 
 
 def _typed_scalar_snapshot(value: object) -> tuple[object, object]:
@@ -110,17 +111,17 @@ def _typed_scalar_snapshot(value: object) -> tuple[object, object]:
 
 
 def _tuple_snapshot(value: object) -> tuple[object, ...]:
-    if type(value) is not tuple:
+    if not is_exact_object_tuple(value):
         return type(value), id(value)
     return tuple, tuple(_typed_scalar_snapshot(item) for item in value)
 
 
 def _outer_pairs_snapshot(value: object) -> tuple[object, ...]:
-    if type(value) is not tuple:
+    if not is_exact_object_tuple(value):
         return type(value), id(value)
     pairs: list[object] = []
     for pair in value:
-        if type(pair) is tuple:
+        if is_exact_object_tuple(pair):
             pairs.append((tuple, tuple(_typed_scalar_snapshot(item) for item in pair)))
         else:
             pairs.append(_typed_scalar_snapshot(pair))
@@ -139,7 +140,7 @@ def _window_tile_snapshot(value: object) -> tuple[object, ...]:
 
 
 def _window_tiles_snapshot(value: object) -> tuple[object, ...]:
-    if type(value) is not tuple:
+    if not is_exact_object_tuple(value):
         return type(value), id(value)
     return tuple, tuple(_window_tile_snapshot(tile) for tile in value)
 
@@ -221,7 +222,7 @@ class CertifiedBorderGrowth:
             raise ValueError(
                 "border growth certificate must be issued by a live Q19 owner"
             )
-        self.owner._issuance_registry.validate_border(self)
+        self.owner.issuance_registry.validate_border(self)
 
     @property
     def final_width(self) -> int:
@@ -236,7 +237,7 @@ class CertifiedBorderGrowth:
             raise ValueError("border growth certificate belongs to a different source")
         if self._seal is not _ISSUER or self._binding != self._snapshot():
             raise ValueError("border growth certificate was changed")
-        owner._issuance_registry.validate_border(self)
+        owner.issuance_registry.validate_border(self)
         owner.validate_issued_occurrence(source)
 
     def forced_leading_carry_ports(self) -> tuple[tuple[int, ...] | None, ...]:
@@ -319,7 +320,7 @@ class CertifiedBorderGrowth:
         result: list[BilateralCyclePort | None] = []
         # A one-digit outer pair has a different physical middle interval from
         # this certificate's K-digit window; derive the exact K=1 transfer.
-        initial_middle = self._initial_middle_transfer(window_digits=1)
+        initial_middle = self.initial_middle_transfer(window_digits=1)
         for index, (old, new, growth) in enumerate(
             zip(
                 self.outer_pairs[:-1],
@@ -354,7 +355,7 @@ class CertifiedBorderGrowth:
         self.validate(self.owner, self.source)
         if not self.window_tiles:
             return (None,) * len(self.growth_word)
-        initial_middle = self._initial_middle_transfer()
+        initial_middle = self.initial_middle_transfer()
         result: list[BilateralCyclePort | None] = []
         for index, (old, new, growth) in enumerate(
             zip(
@@ -510,7 +511,7 @@ class CertifiedBorderGrowth:
         def source_digits() -> tuple[int, ...]:
             if later:
                 return tuple(self.owner.digit(self.source, i) for i in range(w))
-            return self.owner._digits
+            return self.owner.initial_digits
 
         digits = None
         if include_source_digits or w <= max_modular_digits:
@@ -531,7 +532,7 @@ class CertifiedBorderGrowth:
                 pair = (
                     stencil.cell_at(self.owner, i).coefficient
                     if stencil
-                    else self.owner._pair_value_at(self.source, i)
+                    else self.owner.pair_value_at(self.source, i)
                 )
                 system.constrain_pair(0, i, pair)
         if self.window_tiles:
@@ -659,10 +660,10 @@ class CertifiedBorderGrowth:
             return None
         width = self.source.pair_width
         k = self.window_digits
-        transfer = self._initial_middle_transfer()
+        transfer = self.initial_middle_transfer()
         if transfer is None:
             return None
-        digits = self.owner._digits
+        digits = self.owner.initial_digits
         high = sum(digits[width - 1 - i] * 10 ** (k - 1 - i) for i in range(k))
         low = sum(digits[i] * 10**i for i in range(k))
         result = border_bilateral_port(BorderTile(k, high, low)).for_middle(transfer)
@@ -670,7 +671,7 @@ class CertifiedBorderGrowth:
             raise AssertionError("source border growth contradicts its middle transfer")
         return result
 
-    def _initial_middle_transfer(
+    def initial_middle_transfer(
         self, *, window_digits: int | None = None
     ) -> CarryFn | None:
         """Return the compressed source-owned middle function, when available."""
@@ -714,7 +715,7 @@ def certify_border_growth(
         raise ValueError("edge windows must have width 1..12")
     if type(max_states) is not int or not 1 <= max_states <= 1000000:
         raise ValueError("invalid bounded boundary-state budget")
-    cached = owner._issuance_registry.lookup_border(source, steps, window_digits)
+    cached = owner.issuance_registry.lookup_border(source, steps, window_digits)
     if cached is not None:
         cached.validate(owner, source)
         if max(cached.max_visited_states, cached.source_pair_inspections) > max_states:
@@ -734,14 +735,16 @@ def certify_border_growth(
     # output word, and the source scan before allocating any of them.  This is
     # temporary scratch: all sets and the word builder die before the scope
     # releases their charge, including on an undecidable/refused edge.
-    width = len(owner._digits) if source is owner.initial else source.output_width
+    width = (
+        len(owner.initial_digits) if source is owner.initial else source.output_width
+    )
     owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_BORDER_CONTROL_ATTEMPTS)
     # Live edge/frontier memory depends on the state budget and the actual
     # inspected reset suffix, not the potentially gigantic virtual SLP width.
     scratch_nodes = (
         2 * max_states + 3 * steps + 6 * window_digits + min(width, max_states)
     )
-    with owner.ledger.reservation(owner._scratch_owner, nodes=scratch_nodes):
+    with owner.ledger.reservation(owner.scratch_owner, nodes=scratch_nodes):
         return _certify_reserved(
             owner,
             source,
@@ -759,7 +762,7 @@ def _certify_reserved(
     window_digits: int,
     max_states: int,
 ) -> CertifiedBorderGrowth:
-    digits = owner._digits if source is owner.initial else None
+    digits = owner.initial_digits if source is owner.initial else None
     # A later issued pair root S_n emits the digits of X_(n+1), not X_n.
     # Its first growth is already the *terminal carry* of S_n, which is
     # authenticated by the Q19 source metadata. Certify the remaining
@@ -775,13 +778,14 @@ def _certify_reserved(
         raise BoundaryControlNotAuthorized(
             "source too narrow for independent edge tiles"
         )
+
     # Original digits and later Q19-issued digits are both LSD-first.
     # Random-access Q19 digits do not materialize an enormous source word.
-    digit_at = (
-        (lambda i: digits[i])
-        if digits is not None
-        else (lambda i: owner.digit(source, i))
-    )
+    def digit_at(index: int) -> int:
+        if digits is not None:
+            return digits[index]
+        return owner.digit(source, index)
+
     prefix = 0
     base = 10**k
     for i in range(width - 1, width - k - 1, -1):
@@ -871,17 +875,17 @@ def _initial_pair_interval(
 ) -> Q19Summary:
     """Fold an exact pair interval in source order without lowering the SLP."""
     width = source.pair_width
-    half = owner._summaries[source.root].symbols
+    half = owner.published_word_summary(source.root).symbols
     if not 0 <= start <= end <= width:
         raise IndexError((start, end))
     if end <= half:
-        return owner._range_summary(source.root, start, end)
+        return owner.range_summary(source.root, start, end)
     if start >= half:
-        return owner._range_summary(
+        return owner.range_summary(
             source.root, width - end, width - start, reverse=True
         )
-    return owner._range_summary(source.root, start, half).then(
-        owner._range_summary(source.root, width - end, width - half, reverse=True)
+    return owner.range_summary(source.root, start, half).then(
+        owner.range_summary(source.root, width - end, width - half, reverse=True)
     )
 
 
@@ -972,11 +976,11 @@ def _issue_border(
         "full_integer_certified": False,
     }
     issue_q19_record(record, attrs, _ISSUER)
-    retained = owner._issuance_registry.retain_border(record)
+    retained = owner.issuance_registry.retain_border(record)
     try:
         retained.__post_init__()
     except BaseException:
-        owner._issuance_registry.discard_border(record)
+        owner.issuance_registry.discard_border(record)
         raise
     owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_BORDER_CONTROL_CERTIFICATES)
     return retained

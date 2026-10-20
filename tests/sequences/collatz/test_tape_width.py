@@ -120,10 +120,10 @@ def test_clock_request_after_an_ordinary_image_does_not_rebuild_width_spine() ->
 
     term = PoweredCollatzTerm(27, 64)
     assert term.materialize(max_bits=100) > 0
-    workspace = term._workspace
+    workspace = term.audit_snapshot().workspace
     assert workspace is not None
     term.s_arithmetic_clock()
-    assert term._workspace is workspace
+    assert term.audit_snapshot().workspace is workspace
     assert workspace.tape_width_summary is None
 
 
@@ -181,7 +181,7 @@ def test_width_port_requires_exact_endpoint_and_local_source_binding() -> None:
     workspace = CollatzPhysicalImageWorkspace(
         ResourceLedger(), 1, 1, include_width_spine=True
     )
-    core = workspace.scheduler._source_image_core()
+    core = workspace.scheduler.source_image_core()
     view = core.view(workspace.root_image)
     ordinary = tuple(
         port

@@ -127,10 +127,9 @@ def substitute(
         variable.local_id,
         replacement.local_id,
     )
-    found = self._rewrites.get(key)
+    found = self.begin_rewrite(key)
     if found is not None:
         return found
-    self.ledger.reserve(self._rewrite_owner, entries=1, nodes=0)
     try:
         pending = [(expression.local_id, False)]
         built: dict[int, int] = {}
@@ -177,7 +176,7 @@ def substitute(
                 function_record = self.function_record(node.function)
                 rewritten_body = self.expression_id(built[function_body])
                 if rewritten_body != function_record.body:
-                    rewritten_function = self._intern_function(
+                    rewritten_function = self.intern_function(
                         HigherFunction(
                             function_record.signature,
                             function_record.parameter,
@@ -262,8 +261,7 @@ def substitute(
                 built[local_id] = rebuilt_id.local_id
         result = self.expression_id(built[expression.local_id])
     except BaseException:
-        self.ledger.release(self._rewrite_owner, entries=1)
+        self.cancel_rewrite()
         raise
-    self._rewrites[key] = result
-    self._substitutions += 1
+    self.publish_rewrite(key, result)
     return result

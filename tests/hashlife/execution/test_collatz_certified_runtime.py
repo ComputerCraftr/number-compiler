@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
@@ -259,7 +259,7 @@ def test_noncycle_point_does_not_eagerly_observe_width_channels() -> None:
     term = PoweredCollatzTerm(27, 4)
     assert term.digit(0) == 0
     assert term.resource_ledger.counters.get("direct_powered_point_queries", 0) == 1
-    assert term._active_width is None
+    assert cast(object | None, object.__getattribute__(term, "_active_width")) is None
 
 
 @pytest.mark.validation  # N=64 end-to-end temporal execution poison gate.
@@ -321,8 +321,9 @@ def test_temporal_prefix_uses_admitted_image_without_observer_reentry(
     assert term.digit(0) == (_physical(27, 64) & 1)
     assert cell_calls == 1
     assert peak == 0
-    assert term._workspace is not None
-    assert term._workspace.ledger is term.resource_ledger
+    workspace = term.audit_snapshot().workspace
+    assert workspace is not None
+    assert workspace.ledger is term.resource_ledger
     assert (
         term.resource_ledger.counters.get("collatz_physical_point_germ_demands", 0) == 1
     )

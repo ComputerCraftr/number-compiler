@@ -29,7 +29,7 @@ from number_compiler.sequences.collatz.border_return_grammar import (
     BorderReturnMacro,
     validate_border_return_macro,
 )
-from number_compiler.sequences.collatz.boundary_macro_prefixes import _slice_action
+from number_compiler.sequences.collatz.boundary_macro_prefixes import slice_action
 from number_compiler.sequences.collatz.boundary_macros import (
     CollatzBoundaryMacro,
     validate_boundary_macro,
@@ -219,7 +219,7 @@ class NamedBorderCarryMatrix:
             time, request, pointed_source=pointed_source, max_rows=max_rows
         )
         if time < self.units.steps:
-            prefix, _ = _slice_action(self.macro, 0, time)
+            prefix, _ = slice_action(self.macro, 0, time)
             prefix5 = self._prefix_units(time)
             target5, _ = prefix5.apply(self.macro.source % 5)
             if cut.rows and any(row.input_pair % 5 != target5 for row in cut.rows):
@@ -247,7 +247,7 @@ class NamedBorderCarryMatrix:
         """Demand a single small port from the compressed parity grammar."""
         if not 0 <= time <= self.units.steps:
             raise ValueError("requested interior time outside named action")
-        tape = self.joined._tape()
+        tape = self.joined.parity_tape_for_action()
         if tape is None:
             raise ValueError("named matrix lost its retained source parity grammar")
         return tape.prefix_units(time)
@@ -273,8 +273,8 @@ class NamedBorderCarryMatrix:
             physical_ticks = self.macro.physical_ticks
         else:
             raise TypeError("trace requires a producer-issued Collatz macro")
-        self.joined.port._verify_issued()
-        tape = self.joined._tape()
+        self.joined.port.verify_issued()
+        tape = self.joined.parity_tape_for_action()
         if tape is None:
             raise ValueError("named matrix has no retained authenticated parity tape")
         parity = tape.prefix_letters(normalized_steps)
@@ -413,7 +413,7 @@ def certify_named_border_carry_matrix(
         macro=macro,
         source_cylinder=source,
     )
-    tape = joined._tape()
+    tape = joined.parity_tape_for_action()
     if tape is None:
         raise ArithmeticError("named source join did not retain its parity grammar")
     joined = replace(joined, parity_tape=tape)
@@ -453,11 +453,7 @@ def _admit_next_macro(
     if plan is None:
         return None
     macro = select_admitted_boundary_macro(plan)
-    if (
-        macro is None
-        or macro.source != endpoint
-        or macro.physical_ticks != physical_steps
-    ):
+    if macro.source != endpoint or macro.physical_ticks != physical_steps:
         return None
     result = certify_named_border_carry_matrix(macro)
     result.joined.require_pointed(endpoint)
@@ -580,7 +576,7 @@ def certify_composed_border_carry_matrix(
         factor_grammar=factors,
         factor_repetitions=repetitions,
     )
-    tape = joined._tape()
+    tape = joined.parity_tape_for_action()
     if tape is None:
         raise ArithmeticError("composed source join did not retain its factor grammar")
     joined = replace(joined, parity_tape=tape)

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, TypedDict, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
@@ -31,12 +31,10 @@ from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
     ReachableCodec,
     ReachableCodecKey,
     ReachableDecodeKey,
+    ReachableDefinition,
     SemanticProfileArena,
     SemanticProfileID,
     SemanticReachableProfile,
-)
-from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
-    _ReachableDefinition as ReachableDefinition,
 )
 from number_compiler.hashlife.interfaces.semantic_state_codec import CodecRequest
 from number_compiler.hashlife.interfaces.semantic_structures import (
@@ -88,23 +86,25 @@ class SemanticProfilePayloadRegistry:
             if isinstance(profile_type, type) and profile_type not in self.record_types:
                 self.record_types = (*self.record_types, profile_type)
         for arena in self.arenas:
+            record_snapshot = arena.records.audit_snapshot()
+            decode_snapshot = arena.decodes.audit_snapshot()
             stores = (
                 (arena.node_owner, arena.nodes, LedgerList),
                 (arena.key_owner, arena.keys, LedgerDict),
-                (arena.records.owner, arena.records._data, LedgerDict),
-                (arena.decodes.owner, arena.decodes._data, LedgerDict),
+                (record_snapshot.owner, record_snapshot.container, LedgerDict),
+                (decode_snapshot.owner, decode_snapshot.container, LedgerDict),
             )
             if any(
                 actual.get(owner) is not store
                 or type(store) is not kind
-                or not ledger.is_factory_container(store)
+                or not ledger.is_factory_container(cast(object, store))
                 for owner, store, kind in stores
             ):
                 self.invalid_bindings.update(
                     (owner, id(store)) for owner, store, _ in stores
                 )
                 continue
-            checks = []
+            checks: list[bool] = []
             for record in arena.nodes:
                 try:
                     valid = self._profile(arena, record)
@@ -331,7 +331,7 @@ class SemanticProfilePayloadRegistry:
             structures is None
             or type(value) is not StructureID
             or value.owner is not structures.token
-            or not self.semantic._structure_handle(value)
+            or not self.semantic.validate_structure_handle(value)
         ):
             return False
         node = structures.resolve(value)
@@ -680,9 +680,11 @@ def profile_storage_metrics(ledger: ResourceLedger) -> ProfileStorageMetrics:
                     and type(record.definition) is expected_type
                 ):
                     definitions[id(record.definition)] = record.definition
-        if actual.get(arena.records.owner) is arena.records._data:
+        records = arena.records.audit_snapshot().container
+        if actual.get(arena.records.owner) is records:
             codecs += len(arena.records)
-        if actual.get(arena.decodes.owner) is arena.decodes._data:
+        decodes_store = arena.decodes.audit_snapshot().container
+        if actual.get(arena.decodes.owner) is decodes_store:
             decodes += len(arena.decodes)
     slots = 0
     for definition in definitions.values():

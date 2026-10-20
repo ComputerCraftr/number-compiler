@@ -33,8 +33,8 @@ class ContinuationPayloadRegistry:
             if type(root) is PrimitiveContinuationReducer
             and root.ledger is ledger
             and root.expressions in expressions.arenas
-            and actual.get(root.maps.owner) is root.maps._data
-            and actual.get(root.normalized.owner) is root.normalized._data
+            and actual.get(root.maps.owner) is root.maps.audit_container
+            and actual.get(root.normalized.owner) is root.normalized.audit_container
         )
         self.valid_records: set[int] = set()
         self.invalid_response_objects: set[tuple[int, int]] = set()
@@ -82,7 +82,7 @@ class ContinuationPayloadRegistry:
             or not self.expressions.universal_program(key.expression)
         ):
             return False
-        return self.expressions._finite_function(
+        return self.expressions.finite_function(
             reducer.expressions, expression.sort, result, source=variable.sort
         )
 

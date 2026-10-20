@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
@@ -72,15 +73,19 @@ def test_width_rejects_foreign_second_action_before_importing_first() -> None:
     app = _application(2)
     foreign = _application(1)
     higher = generic_higher_runtime(app.runtime)
-    before = app.ledger.snapshot(), len(higher.schema._nodes), len(higher.schema._keys)
+    before = (
+        app.ledger.snapshot(),
+        len(higher.schema.audit_snapshot().nodes),
+        len(higher.schema.audit_snapshot().keys),
+    )
 
     with pytest.raises(ValueError):
         higher.width(app.root, foreign.root, 8)
 
     assert (
         app.ledger.snapshot(),
-        len(higher.schema._nodes),
-        len(higher.schema._keys),
+        len(higher.schema.audit_snapshot().nodes),
+        len(higher.schema.audit_snapshot().keys),
     ) == before
 
 
@@ -110,8 +115,10 @@ def test_generic_action_audit_rejects_boolean_interner_index() -> None:
     higher.schema.import_action(app.root)
     assert collect_ledger_metrics(app.ledger).forbidden_future_payloads == 0
 
-    original = next(iter(higher.schema._keys))
-    higher.schema._keys[original] = True
+    original = next(iter(higher.schema.audit_snapshot().keys))
+    cast(
+        MutableMapping[ActionProgramID, int], higher.schema.audit_snapshot().key_store
+    )[original] = True
 
     assert collect_ledger_metrics(app.ledger).forbidden_future_payloads > 0
 
@@ -120,7 +127,7 @@ def test_generic_action_audit_rejects_equal_forged_child_handle() -> None:
     app = _application(3)
     higher = generic_higher_runtime(app.runtime)
     parent = higher.schema.import_action(app.root)
-    record = higher.schema._resolve(parent)
+    record = higher.schema.resolve_index(parent)
     assert record.children is not None
     child = record.children[0]
     forged = object.__new__(FieldCellActionID)
@@ -129,7 +136,7 @@ def test_generic_action_audit_rejects_equal_forged_child_handle() -> None:
     object.__setattr__(forged, "local_id", True)
     assert forged == child
 
-    nodes = object.__getattribute__(higher.schema._nodes, "_data")
+    nodes = object.__getattribute__(higher.schema.audit_snapshot().node_store, "_data")
     nodes[parent.local_id] = replace(record, children=(forged, record.children[1]))
 
     assert collect_ledger_metrics(app.ledger).forbidden_future_payloads > 0
@@ -139,13 +146,13 @@ def test_generic_action_audit_rejects_forged_original_handle() -> None:
     app = _application(1)
     higher = generic_higher_runtime(app.runtime)
     action = higher.schema.import_action(app.root)
-    record = higher.schema._resolve(action)
+    record = higher.schema.resolve_index(action)
     forged = object.__new__(ActionProgramID)
     object.__setattr__(forged, "owner", record.original.owner)
     object.__setattr__(forged, "kind", record.original.kind)
     object.__setattr__(forged, "local_id", float(record.original.local_id))
 
-    nodes = object.__getattribute__(higher.schema._nodes, "_data")
+    nodes = object.__getattribute__(higher.schema.audit_snapshot().node_store, "_data")
     nodes[action.local_id] = replace(record, original=forged)
 
     assert collect_ledger_metrics(app.ledger).forbidden_future_payloads > 0

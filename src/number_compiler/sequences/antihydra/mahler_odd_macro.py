@@ -26,10 +26,12 @@ from typing import Final
 from weakref import ReferenceType, ref
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.input_validation import is_object_dictionary
 from number_compiler.arithmetic.fields.consumer_pullback import (
     ExactRational,
     HalfOpenInterval,
 )
+from number_compiler.arithmetic.fields.integer_congruence import exact_modular_power
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.arithmetic.fields.three_power_radix import (
     ThreePowerRadixOrbit,
@@ -165,14 +167,16 @@ class MahlerOddSeamStep:
         """
         _validate_q_port_demand(places, walsh, prime_radices)
         canonical = _canonical_odd_seam(self)
-        return canonical._demanded_q_ports_after_validation(
+        return canonical.demanded_q_ports_after_validation(
             places=places, walsh=walsh, prime_radices=prime_radices
         )
 
-    def _demanded_q_ports_after_validation(
+    def demanded_q_ports_after_validation(
         self, *, places: int, walsh: bool, prime_radices: bool = False
     ) -> dict[str, object]:
-        """Project q ports after the seam's public source check has succeeded."""
+        """Project q ports through the validated seam collaborator API."""
+        _validate_q_port_demand(places, walsh, prime_radices)
+        canonical = _canonical_odd_seam(self)
         rows: dict[int, dict[str, object]] = {}
         q_endpoints: dict[int, int] = {}
         bases = (
@@ -188,14 +192,20 @@ class MahlerOddSeamStep:
             q_initial = q_next = 0
             for j in range(1, cells + 1):
                 modulus = base**j
-                q_initial = pow(2, self.clock, modulus) * (self.x + 1) % modulus
+                q_initial = (
+                    exact_modular_power(2, canonical.clock, modulus)
+                    * (canonical.x + 1)
+                    % modulus
+                )
                 # Ordinary 3^a is the exact Collatz radix source at this seam.
-                triple = triple_residue("ordinary", self.exponent, base, j)
-                summand = pow(2, self.next_clock, modulus)
+                triple = triple_residue("ordinary", canonical.exponent, base, j)
+                summand = exact_modular_power(2, canonical.next_clock, modulus)
                 product = triple * q_initial % modulus
                 q_next = (product + summand) % modulus
                 expected = (
-                    pow(2, self.next_clock, modulus) * (self.next_x + 1) % modulus
+                    exact_modular_power(2, canonical.next_clock, modulus)
+                    * (canonical.next_x + 1)
+                    % modulus
                 )
                 if q_next != expected:
                     raise ArithmeticError("q recurrence departed from pointed source")
@@ -216,14 +226,14 @@ class MahlerOddSeamStep:
         m2, m5 = 1 << places, 5**places
         b2 = q_endpoints[2] % m2
         b5 = q_endpoints[5]
-        joined: int = b2 + m2 * ((b5 - b2) * pow(m2, -1, m5) % m5)
+        joined: int = b2 + m2 * ((b5 - b2) * exact_modular_power(m2, -1, m5) % m5)
         if joined != q_endpoints[10]:
             raise ArithmeticError("q primary orbits do not reconstruct decimal suffix")
         return {
-            "source_clock": self.clock,
-            "odd_index": self.index,
-            "q_valuation": self.q_valuation,
-            "barrier_exponent": self.required_valuation,
+            "source_clock": canonical.clock,
+            "odd_index": canonical.index,
+            "q_valuation": canonical.q_valuation,
+            "barrier_exponent": canonical.required_valuation,
             "base_10_crt": joined,
             "radix_ports": rows,
         }
@@ -240,11 +250,15 @@ def odd_seam_pointwise_packet(
     """
     _validate_q_port_demand(places, False, True)
     canonical = _canonical_odd_seam(seam)
-    q_ports = canonical._demanded_q_ports_after_validation(
+    q_ports = canonical.demanded_q_ports_after_validation(
         places=places, walsh=False, prime_radices=True
     )
     raw_ports = q_ports["radix_ports"]
-    if type(raw_ports) is not dict or set(raw_ports) != {2, 3, 5, 6, 10, 64}:
+    if (
+        not is_object_dictionary(raw_ports)
+        or type(raw_ports) is not dict
+        or set(raw_ports) != {2, 3, 5, 6, 10, 64}
+    ):
         raise ArithmeticError("pointwise q observer returned an incomplete radix set")
     return {
         "source": canonical.source,
@@ -311,7 +325,7 @@ class MahlerOddToOddAction:
             "_issuer",
             _OddActionProvenance(_ODD_ACTION_ISSUER, ref(result), result._snapshot()),
         )
-        result._verify_issued()
+        result.verify_issued()
         return result
 
     def _snapshot(self) -> tuple[object, ...]:
@@ -322,7 +336,7 @@ class MahlerOddToOddAction:
             (type(self.minimum), self.minimum),
         )
 
-    def _verify_issued(self) -> None:
+    def verify_issued(self) -> None:
         provenance = getattr(self, "_issuer", None)
         if (
             type(provenance) is not _OddActionProvenance
@@ -415,20 +429,20 @@ class MahlerOddToOddAction:
 
     @property
     def source_modulus(self) -> int:
-        self._verify_issued()
+        self.verify_issued()
         return 1 << (self.extent + 1)
 
     @property
     def source_residue(self) -> int:
         """Choose the unique next high bit making the terminal source odd."""
-        self._verify_issued()
+        self.verify_issued()
         incoming_high_bit = 1 ^ (self.joint.endpoint_residue & 1)
         return self.joint.residue + (incoming_high_bit << self.extent)
 
     @property
     def semantic_id(self) -> tuple[object, ...]:
         """Lossless exact guarded action; NOT claimed globally Moore-minimal."""
-        self._verify_issued()
+        self.verify_issued()
         return (
             _ODD_TO_ODD_ACTION_TAG,
             self.joint.semantic_id,
@@ -439,7 +453,7 @@ class MahlerOddToOddAction:
         )
 
     def integer_admits(self, source: int) -> bool:
-        self._verify_issued()
+        self.verify_issued()
         if type(source) is not int or source < 1:
             return False
         source_cell = source % self.source_modulus
@@ -466,18 +480,18 @@ class MahlerOddToOddAction:
 
     def apply(self, source: int, balance: int) -> tuple[int, int]:
         """Safety-authorized use of an already issued odd-to-odd action."""
-        self._verify_issued()
+        self.verify_issued()
         if type(balance) is not int or balance + self.minimum < 0:
             raise ValueError("odd macro violates Antihydra prefix ledger safety")
         return self.advance(source, balance)
 
     def then(self, after: MahlerOddToOddAction) -> MahlerOddToOddAction:
-        self._verify_issued()
+        self.verify_issued()
         if type(after) is not MahlerOddToOddAction:
             raise TypeError(
                 "chronological odd-return composition requires pointed actions"
             )
-        after._verify_issued()
+        after.verify_issued()
         joined = self.joint.then(after.joint)
         result = MahlerOddToOddAction._issue(
             joined,
@@ -503,7 +517,7 @@ class MahlerOddToOddAction:
         self, repetitions: int, *, max_extent: int = 4096
     ) -> MahlerOddToOddAction:
         """Logarithmic exact guard/ledger powering of a supplied run word."""
-        self._verify_issued()
+        self.verify_issued()
         if type(repetitions) is not int or repetitions < 0:
             raise ValueError("odd-run repetition count must be natural")
         if type(max_extent) is not int or max_extent < 1:
@@ -739,9 +753,7 @@ def odd_seam_packet(
         places=decimal_places,
         walsh=walsh,
     )
-    q_ports = seam._demanded_q_ports_after_validation(
-        places=decimal_places, walsh=walsh
-    )
+    q_ports = seam.demanded_q_ports_after_validation(places=decimal_places, walsh=walsh)
     # The repeated-word ring is a separate, source-cylinder consumer. It is
     # constructed only for this detailed packet; ordinary Mahler terms and
     # the one-event action do not build a future graph.
@@ -914,7 +926,7 @@ def odd_seam_packet(
 
 def _string_keyed_radix_ports(packet: dict[str, object]) -> dict[str, object]:
     raw_ports = packet.get("radix_ports")
-    if type(raw_ports) is not dict:
+    if not is_object_dictionary(raw_ports) or type(raw_ports) is not dict:
         raise ArithmeticError("radix port payload is not a mapping")
     wire_ports: dict[str, object] = {}
     for base, row in raw_ports.items():

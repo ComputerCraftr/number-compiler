@@ -15,7 +15,7 @@ def test_batched_center_window_matches_pointed_stencils(
     seed: int, generation: int
 ) -> None:
     with DoubleReverseTerm(seed, generation, max_state_bits=16384) as term:
-        _, source = term._prepare_bank_source(max_prefix=32)
+        _, source = term.prepare_bank_source(max_prefix=32)
         engine = source.engine
         for f in sorted({0, 1, 3, min(8, source.f_steps), min(15, source.f_steps)}):
             left, right = growth_ports(source.phase, f)
@@ -41,7 +41,7 @@ def test_batched_center_window_matches_pointed_stencils(
 
 def test_batched_window_checks_its_complete_interval() -> None:
     with DoubleReverseTerm(196, 32, max_state_bits=16384) as term:
-        _, source = term._prepare_bank_source(max_prefix=32)
+        _, source = term.prepare_bank_source(max_prefix=32)
         width = source.width_in + sum(growth_ports(source.phase, 0))
         with pytest.raises(IndexError):
             source.engine.pointed_window(source.root, 0, source.phase, width - 1, 2)

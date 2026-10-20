@@ -22,6 +22,14 @@ from number_compiler.resources.process_cache import (
 )
 
 
+def _lease_token_for_test(lease: CacheLease) -> int:
+    """Read the opaque capability only for malformed-lease test construction."""
+    token = object.__getattribute__(lease, "_token")
+    if type(token) is not int:
+        raise TypeError("cache lease test token is not an integer")
+    return token
+
+
 def test_source_qualified_lease_does_not_cross_partitions() -> None:
     cache = ProcessCache(max_entries=8, max_bytes=100_000)
     with cache.acquire("prime", "1", ("source-a",)) as first:
@@ -360,7 +368,7 @@ def test_disabled_cache_bypasses_payload_storage_but_accounts_lease_records() ->
 def test_disabled_cache_rejects_forged_reconstructed_and_mutated_leases() -> None:
     cache = ProcessCache(max_entries=8, max_bytes=100_000, enabled=False)
     real = cache.acquire("prime", "1", ("source",))
-    token = real._token
+    token = _lease_token_for_test(real)
     forged = CacheLease(
         cache,
         ("prime", "1", ("foreign",)),
@@ -379,10 +387,10 @@ def test_disabled_cache_rejects_forged_reconstructed_and_mutated_leases() -> Non
         reconstructed.put(("value",), 1)
 
     original_partition = real.source_qualification
-    real._partition = "prime", "1", ("mutated",)
+    object.__setattr__(real, "_partition", ("prime", "1", ("mutated",)))
     with pytest.raises(RuntimeError, match="foreign authority"):
         real.get(("value",))
-    real._partition = original_partition
+    object.__setattr__(real, "_partition", original_partition)
     real.close()
     assert cache.stats().active_leases == 0
 
@@ -427,11 +435,11 @@ def test_failed_close_keeps_lease_recoverable_and_releases_its_pin() -> None:
     cache = ProcessCache(max_entries=8, max_bytes=100_000)
     lease = cache.acquire("prime", "1", ("source",))
     original = lease.source_qualification
-    lease._partition = ("prime", "1", ("other",))
+    object.__setattr__(lease, "_partition", ("prime", "1", ("other",)))
     with pytest.raises(RuntimeError, match="foreign authority"):
         lease.close()
     assert cache.stats().active_leases == 1
-    lease._partition = original
+    object.__setattr__(lease, "_partition", original)
     lease.close()
     assert cache.stats().active_leases == 0
     assert cache.stats().lease_partitions == 0
@@ -474,7 +482,7 @@ def test_active_lease_cannot_close_as_a_forged_stale_generation_or_token() -> No
     for field, forged in (
         ("_generation", cache.generation + 1),
         ("_generation", cache.generation - 1),
-        ("_token", lease._token + 1),
+        ("_token", _lease_token_for_test(lease) + 1),
     ):
         original = getattr(lease, field)
         setattr(lease, field, forged)
@@ -531,7 +539,7 @@ def test_forged_and_foreign_lease_authority_is_rejected() -> None:
         cache,
         ("prime", "1", ("foreign-source",)),
         cache.generation,
-        _token=real._token,
+        _token=_lease_token_for_test(real),
     )
     with pytest.raises(RuntimeError, match="foreign authority"):
         forged.get(("value",))
@@ -539,7 +547,7 @@ def test_forged_and_foreign_lease_authority_is_rejected() -> None:
         cache,
         real.source_qualification,
         cache.generation,
-        _token=real._token,
+        _token=_lease_token_for_test(real),
     )
     with pytest.raises(RuntimeError, match="foreign authority"):
         reconstructed.get(("value",))
@@ -560,21 +568,23 @@ def test_cli_cache_snapshot_neither_constructs_nor_changes_cache(
     from number_compiler.api.cli_render import metrics_json
     from number_compiler.api.number_api import NumberCompiler
     from number_compiler.resources import process_cache
+    from number_compiler.resources.process_cache import temporary_process_cache
 
     term = NumberCompiler(shared_cache=False).project(FermatTermQuery(2))
-    monkeypatch.setattr(process_cache, "_PROCESS_CACHE", None)
 
     def forbidden() -> ProcessCache:
         raise AssertionError("metrics created a shared cache")
 
-    monkeypatch.setattr(process_cache, "get_process_cache", forbidden)
-    assert metrics_json(term)["process_cache"] is None
+    with temporary_process_cache(None), monkeypatch.context() as no_cache:
+        no_cache.setattr(process_cache, "get_process_cache", forbidden)
+        assert metrics_json(term)["process_cache"] is None
+
     cache = ProcessCache(max_entries=8, max_bytes=100_000)
     with cache.acquire("snapshot-test", "1", ("source",)) as lease:
         lease.put(("germ",), (1, 3))
-    monkeypatch.setattr(process_cache, "_PROCESS_CACHE", cache)
-    before = cache.stats()
-    payload = metrics_json(term)
+    with temporary_process_cache(cache):
+        before = cache.stats()
+        payload = metrics_json(term)
     assert payload["process_cache_scope"] == "process_aggregate_not_query_work"
     assert isinstance(payload["process_cache"], dict)
     assert payload["process_cache"]["entries"] == 1

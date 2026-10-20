@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 def action_node(
     workspace: DyadicReturnImageWorkspace, action: DyadicReturnActionID
 ) -> DyadicReturnActionRecord:
-    workspace._validate_law()
+    workspace.validate_law()
     action.validate(workspace.owner, workspace.ACTION_KIND, size=len(workspace.actions))
     node = workspace.actions[action.local_id]
     if workspace.action_snapshots.get(action.local_id) != (node.width, node.children):
@@ -37,7 +37,7 @@ def action_node(
 def source_node(
     workspace: DyadicReturnImageWorkspace, source: DyadicReturnSourceID
 ) -> DyadicReturnSourceRecord:
-    workspace._validate_law()
+    workspace.validate_law()
     source.validate(workspace.owner, workspace.SOURCE_KIND, size=len(workspace.sources))
     node = workspace.sources[source.local_id]
     expected = (
@@ -58,7 +58,7 @@ def source_node(
 def support_node(
     workspace: DyadicReturnImageWorkspace, support: DyadicReturnSupportID
 ) -> DyadicReturnSupportRecord:
-    workspace._validate_law()
+    workspace.validate_law()
     support.validate(
         workspace.owner, workspace.SUPPORT_KIND, size=len(workspace.support)
     )
@@ -84,7 +84,7 @@ def support_node(
 def image_node(
     workspace: DyadicReturnImageWorkspace, image: DyadicReturnImageID
 ) -> DyadicReturnImageRecord:
-    workspace._validate_law()
+    workspace.validate_law()
     image.validate(workspace.owner, workspace.IMAGE_KIND, size=len(workspace.images))
     node = workspace.images[image.local_id]
     summary = node.summary
@@ -107,7 +107,7 @@ def image_node(
 
 
 def validate_source(workspace: DyadicReturnImageWorkspace, source: Hashable) -> None:
-    workspace._validate_law()
+    workspace.validate_law()
     if workspace.closed:
         raise ValueError("disposed dyadic return image workspace")
     if type(source) is not DyadicReturnSourceID:
@@ -128,7 +128,7 @@ def validate_source(workspace: DyadicReturnImageWorkspace, source: Hashable) -> 
 
 
 def validate_action(workspace: DyadicReturnImageWorkspace, action: Hashable) -> None:
-    workspace._validate_law()
+    workspace.validate_law()
     if workspace.closed:
         raise ValueError("disposed dyadic return image workspace")
     if type(action) is not DyadicReturnActionID:
@@ -137,7 +137,7 @@ def validate_action(workspace: DyadicReturnImageWorkspace, action: Hashable) -> 
 
 
 def validate_payload(workspace: DyadicReturnImageWorkspace, payload: Hashable) -> None:
-    workspace._validate_law()
+    workspace.validate_law()
     if type(payload) is not DyadicReturnImageID:
         raise TypeError("dyadic return images require an image ID")
     image = workspace.image_node(payload)
@@ -196,7 +196,7 @@ def validate_payload(workspace: DyadicReturnImageWorkspace, payload: Hashable) -
 
 
 def validate_law(workspace: DyadicReturnImageWorkspace) -> None:
-    if workspace.law.descriptor != workspace._law_snapshot:
+    if workspace.law.descriptor != workspace.law_snapshot:
         raise ValueError("dyadic return law publication was altered")
 
 
@@ -204,7 +204,7 @@ def validate_workspace(workspace: DyadicReturnImageWorkspace) -> None:
     """Check retained authority and root bindings without endpoint replay."""
     if workspace.closed or workspace.construction_stack:
         raise ValueError("invalid dyadic return workspace lifetime")
-    workspace._validate_law()
+    workspace.validate_law()
     if workspace.by_width.get(0) != workspace.identity:
         raise ValueError("dyadic return identity was changed")
     for width, action_identity in workspace.by_width.items():
@@ -237,7 +237,7 @@ def validate_workspace(workspace: DyadicReturnImageWorkspace) -> None:
     workspace.validate_source(workspace.root_source)
     workspace.validate_action(workspace.root_action)
     workspace.validate_payload(workspace.root_payload)
-    root_view = workspace.scheduler._source_image_core().view(workspace.root_image)
+    root_view = workspace.scheduler.source_image_core().view(workspace.root_image)
     if (
         root_view.binding.source != workspace.root_source
         or root_view.binding.action != workspace.root_action
@@ -268,7 +268,7 @@ def validate_workspace(workspace: DyadicReturnImageWorkspace) -> None:
         if child.side == 1:
             expected_exact = parent.exact and workspace.law.cycle is not None
             expected_lift = (
-                workspace._source_value(parent) >> left_width if expected_exact else 0
+                workspace.source_value(parent) >> left_width if expected_exact else 0
             )
             if (
                 child.precision != left_width
@@ -284,12 +284,12 @@ def validate_workspace(workspace: DyadicReturnImageWorkspace) -> None:
             before_source = workspace.source_node(before_node.source)
             expected_exact = False
             expected_lift = 0
-            expected_residue = workspace._transport_low(
+            expected_residue = workspace.transport_low(
                 before_node.summary.transfer, parent.residue, right_width
             )
             if before_source.exact and workspace.law.cycle is not None:
                 before_summary = before_node.summary
-                before_value = workspace._source_value(before_source)
+                before_value = workspace.source_value(before_source)
                 numerator = (
                     before_summary.transfer.upper * before_value
                     + before_summary.transfer.offset

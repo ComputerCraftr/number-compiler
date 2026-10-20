@@ -4,23 +4,20 @@ from __future__ import annotations
 
 import gzip
 import json
+from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import pytest
 
+import devtools.experiments.comma.forest_certificate as forest_certificate
 from devtools.experiments.comma.closed_region_certificate import (
     generate_closed_region,
     verify_closed_region,
 )
-from devtools.experiments.comma.forest_certificate import (
-    ROOTS,
-    _boundary_children,
-    _literal_children,
-    _parent_if_any,
-    _phase_period,
-    evidence_summary,
-)
+from devtools.experiments.comma.forest_certificate import ROOTS, evidence_summary
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.comma.arithmetic import phase_period
 from number_compiler.sequences.comma.certificates import (
     CERTIFIED_MAX_INDEX,
     UnresolvedCommaTerm,
@@ -28,6 +25,19 @@ from number_compiler.sequences.comma.certificates import (
     require_certified_index,
 )
 from tests.support.comma_oracles import assert_phase_period
+
+_boundary_children = cast(
+    Callable[[int, int, int], tuple[int, ...]],
+    object.__getattribute__(forest_certificate, "_boundary_children"),
+)
+_literal_children = cast(
+    Callable[[int], tuple[int, ...]],
+    object.__getattribute__(forest_certificate, "_literal_children"),
+)
+_parent_if_any = cast(
+    Callable[[int], int | None],
+    object.__getattribute__(forest_certificate, "_parent_if_any"),
+)
 
 
 @pytest.mark.validation
@@ -64,7 +74,7 @@ def test_boundary_formula_matches_independent_nine_candidate_rule() -> None:
 
 
 def test_phase_period_matches_independent_literal_word() -> None:
-    assert_phase_period(_phase_period)
+    assert_phase_period(phase_period)
 
 
 def test_small_root_partition_has_every_child_once() -> None:

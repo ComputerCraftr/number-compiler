@@ -60,7 +60,7 @@ def test_effective_mapping_canonical_before_warm_lookup(
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("warm substitution descended into Shannon construction")
 
-    monkeypatch.setattr(arena, "_intern", forbidden)
+    monkeypatch.setattr(arena, "intern_record", forbidden)
     monkeypatch.setattr(arena, "choose", forbidden)
     assert arena.substitute(function, {pz: x, py: y, px: z}) == result
     after = arena.ledger.snapshot()
@@ -110,8 +110,8 @@ def test_atomic_final_graph_publication_and_exhausted_fast_rejection() -> None:
         failed.peak_nodes,
         failed.inventory,
     ) == (old.entries, old.nodes, old.peak_entries, old.peak_nodes, old.inventory)
-    assert not arena._substitution.memo
-    assert not arena._substitution.supports
+    assert not arena.audit_snapshot().substitution_rows
+    assert not arena.audit_snapshot().support_rows
     arena.ledger.max_cache_entries = old.entries
     tasks = failed.counters["finite_port_substitution_cofactor_tasks"]
     with pytest.raises(BlockContextBudgetExceeded):
@@ -121,7 +121,7 @@ def test_atomic_final_graph_publication_and_exhausted_fast_rejection() -> None:
     output = arena.substitute(function, {px: z})
     node_count = arena.node_count
     arena.ledger.evict_query_memos()
-    assert not arena._substitution.memo
-    assert not arena._substitution.supports
+    assert not arena.audit_snapshot().substitution_rows
+    assert not arena.audit_snapshot().support_rows
     assert arena.substitute(function, {px: z}) == output
     assert arena.node_count == node_count

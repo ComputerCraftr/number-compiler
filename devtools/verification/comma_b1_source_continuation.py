@@ -32,6 +32,7 @@ from number_compiler.sequences.comma.semantic_continuation import (
     SemanticContinuationArena,
 )
 from number_compiler.sequences.comma.symbolic_return import (
+    CanonicalShiftResult,
     build_symbolic_returns,
     least_cyclic_rotation,
 )
@@ -386,7 +387,7 @@ def audit_symbolic_clock_quotient(
     phase_reads = 0
     comparisons = 0
     peak_shift_cache_entries = 0
-    canonical_results = []
+    canonical_results: list[CanonicalShiftResult] = []
 
     def observe_candidate(_shift: int) -> None:
         nonlocal candidate_scans

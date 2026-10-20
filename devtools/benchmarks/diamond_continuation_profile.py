@@ -153,7 +153,7 @@ def profile(
     root = compile_physical_diamond(compiler, runtime.actions, steps)
     application = DiamondApplication(runtime, root) if width else None
     calls: Counter[Shape] = Counter()
-    original = runtime._program
+    original = runtime.task_program
 
     def program(
         task: Task,
@@ -199,7 +199,7 @@ def profile(
         calls[shape(runtime, task)] += 1
         return original(task)
 
-    object.__setattr__(runtime, "_program", program)
+    object.__setattr__(runtime, "task_program", program)
     start = perf_counter()
     digit: int | None = None
     active_width: int | None = None
@@ -267,7 +267,7 @@ def profile(
         )
     elapsed = perf_counter() - start
     # Profiling closures are diagnostic workspace, not retained execution state.
-    del runtime._program
+    del runtime.task_program
     report = collect_ledger_metrics(ledger)
     state_shapes: Counter[tuple[int, str]] = Counter()
     for node in runtime.boundaries.states:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import operator
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 from random import Random
 from typing import cast
 
@@ -59,7 +59,10 @@ def _copied_border_with_word(
     ):
         object.__setattr__(clone, attribute, getattr(record, attribute))
     object.__setattr__(clone, "growth_word", word)
-    object.__setattr__(clone, "_binding", clone._snapshot())
+    snapshot = cast(
+        Callable[[], tuple[object, ...]], object.__getattribute__(clone, "_snapshot")
+    )
+    object.__setattr__(clone, "_binding", snapshot())
     return clone
 
 
@@ -150,11 +153,19 @@ def test_later_root_uses_authenticated_border_and_powered_boolean_bank(
             cert = owner.certify_border_growth(source, steps=duration, window_digits=6)
         assert cert.growth_word == tuple(growth)
         assert cert.final_width == len(str(current))
-        assert owner._issuance_registry.lookup_border(source, duration, 6) is cert
+        assert (
+            owner.audit_snapshot().issuance_registry.lookup_border(source, duration, 6)
+            is cert
+        )
 
         duplicate = owner.apply_pair_step(owner.initial)
         assert duplicate is source
-        assert owner._issuance_registry.lookup_border(duplicate, duration, 6) is cert
+        assert (
+            owner.audit_snapshot().issuance_registry.lookup_border(
+                duplicate, duration, 6
+            )
+            is cert
+        )
 
         conflicting = type(source)(
             source.owner,
@@ -167,9 +178,13 @@ def test_later_root_uses_authenticated_border_and_powered_boolean_bank(
             (source.q19_f9 + 1) % 9,
         )
         with pytest.raises(ValueError, match="different metadata"):
-            owner._publish(conflicting)
-        assert owner._issued.get((source.root, source.temporal_steps)) is source
-        assert owner._issuance_registry.lookup_border(source, duration, 6) is cert
+            owner.publish(conflicting)
+        snapshot = owner.audit_snapshot()
+        assert (
+            snapshot.issued.payload_view.get((source.root, source.temporal_steps))
+            is source
+        )
+        assert snapshot.issuance_registry.lookup_border(source, duration, 6) is cert
 
         monkeypatch.setattr(owner, "apply_pair_step", forbidden_pair_step)
         forged_word = (1 - cert.growth_word[0],) + cert.growth_word[1:]
@@ -214,7 +229,7 @@ def test_width_published_from_border_without_physical_pair_steps(
 
         monkeypatch.setattr(workspace.adapter, "apply_composite", forbidden)
         assert workspace.width() == len(str(final))
-        assert workspace._image is None
+        assert workspace.audit_snapshot().image is None
         assert ledger.counters["reverse_q19_border_width_publications"] == 1
         assert ledger.counters.get("reverse_q19_punctured_t4_applications", 0) == 0
     finally:

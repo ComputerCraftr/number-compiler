@@ -12,6 +12,7 @@ from devtools.verification.carry_harmonic_ports import (
     CarryHarmonicPortAction as Action,
 )
 from devtools.verification.carry_harmonic_ports import (
+    PortRow,
     PortRows,
     PuncturedCarryHarmonic,
     compose_rows,
@@ -33,7 +34,7 @@ LEAVES = tuple(Action.leaf(domain) for domain in DOMAINS)
 
 def direct_rows(word: tuple[int, ...], *, border: bool = False) -> PortRows:
     """Independent existing carry-scan owner, observed only in the proof oracle."""
-    rows = []
+    rows: list[PortRow] = []
     for incoming in (0, 1):
         carry = scan_carry_automaton(word, incoming=incoming).boundaries
         values = tuple(b - a for a, b in pairwise(carry)) if border else carry[:-1]
@@ -44,7 +45,7 @@ def direct_rows(word: tuple[int, ...], *, border: bool = False) -> PortRows:
 def finite() -> dict[str, object]:
     reached = {Action.empty().rows}
     period_start: set[PortRows] | None = None
-    rows = []
+    rows: list[dict[str, int]] = []
     for width in range(1, 31):
         reached = {
             compose_rows(left, leaf.rows, (width - 1) % 2)

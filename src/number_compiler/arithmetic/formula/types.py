@@ -4,10 +4,10 @@ from dataclasses import dataclass
 
 from number_compiler.arithmetic.fields.radix import bit_width
 
-_bits = bit_width
+bits = bit_width
 
 
-def _mask(width: int) -> int:
+def width_mask(width: int) -> int:
     return (1 << int(width)) - 1 if width > 0 else 0
 
 

@@ -146,9 +146,6 @@ class FieldImageAdapter(FieldImageConstructionAdapter, Protocol):
     ) -> int: ...
 
 
-_TRANSFER_APPLICATION_SEAL = object()
-
-
 AdapterT_co = TypeVar(
     "AdapterT_co", bound=FieldImageConstructionAdapter, covariant=True
 )
@@ -635,6 +632,10 @@ class FieldImageApplication:
         )
 
         register_field_application(self.ledger, self)
+
+    def has_valid_issuance(self) -> bool:
+        """Check the issuing executor's private capability token."""
+        return self._seal is _APPLICATION_SEAL
 
     def _image(self) -> FieldImageID:
         self.executor.adapter.validate_port(self.incoming)

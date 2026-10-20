@@ -4,6 +4,7 @@ import pytest
 
 from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
 from number_compiler.sequences.prime.successor_action import PrimeSuccessorActionArena
+from tests.support.prime_actions import corrupt_prime_factor, prime_factor_store
 
 
 def test_action_accesses_do_not_copy_or_rescan_an_unchanged_prefix(
@@ -30,7 +31,7 @@ def test_action_accesses_do_not_copy_or_rescan_an_unchanged_prefix(
         for _ in range(20):
             assert arena.rank_before(action, 0, 96) == expected
         assert dag.ledger.counters["prime_successor_prefix_validation_factors"] == 4
-        dag._primes._data[1] = 11
+        corrupt_prime_factor(dag, 1, 11)
         with pytest.raises(RuntimeError, match="parent source binding"):
             arena.node(action)
         # An unissued mutation is rejected before any stale numerical memo can
@@ -45,9 +46,9 @@ def test_closed_or_replaced_factor_authority_cannot_reuse_prefix_validation() ->
     dag = CoprimeRankDAG((2, 3, 5, 7), max_work=100_000)
     arena = PrimeSuccessorActionArena(dag, 7, parent_depth=3)
     foreign = CoprimeRankDAG((2, 3, 5, 7), max_work=100_000)
-    original = dag._primes
+    original = prime_factor_store(dag)
     try:
-        object.__setattr__(dag, "_primes", foreign._primes)
+        object.__setattr__(dag, "_primes", prime_factor_store(foreign))
         with pytest.raises(ValueError, match="source authority"):
             arena.node(arena.base)
         object.__setattr__(dag, "_primes", original)
@@ -67,7 +68,7 @@ def test_new_arena_and_warm_counts_reject_mutated_issued_prefix() -> None:
         dag.validate_consecutive_prefix(4)
         dag.count(128)
         dag.count_progression(128, 11, 0)
-        dag._primes._data[2] = 4
+        corrupt_prime_factor(dag, 2, 4)
         with pytest.raises(RuntimeError, match="prime factor source changed"):
             PrimeSuccessorActionArena(dag, 4, parent_depth=2)
         with pytest.raises(RuntimeError, match="prime factor source changed"):

@@ -69,15 +69,15 @@ if TYPE_CHECKING:
         BlockContextBudgetExceeded,
     )
     from number_compiler.arithmetic.contracts.family_identity import FamilyId
-    from number_compiler.resources.ledger import ResourceLedger
-    from number_compiler.sequences.collatz.block_power import (
+    from number_compiler.resources.collatz_power_metrics import (
         CollatzPhysicalBlockMetrics,
-        PoweredCollatzTerm,
     )
-    from number_compiler.sequences.reverse_add.power import (
-        ReverseAddPoweredTerm,
+    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.resources.reverse_power_metrics import (
         ReverseAddPowerMetrics,
     )
+    from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+    from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 __all__ = [
     "AntihydraTermQuery",
@@ -197,10 +197,10 @@ _EXPORT_MODULES = {
     "BlockContextBudget": "number_compiler.arithmetic.contracts.block_effect",
     "BlockContextBudgetExceeded": "number_compiler.arithmetic.contracts.block_effect",
     "ResourceLedger": "number_compiler.resources.ledger",
-    "CollatzPhysicalBlockMetrics": "number_compiler.sequences.collatz.block_power",
+    "CollatzPhysicalBlockMetrics": "number_compiler.resources.collatz_power_metrics",
     "PoweredCollatzTerm": "number_compiler.sequences.collatz.block_power",
     "ReverseAddPoweredTerm": "number_compiler.sequences.reverse_add.power",
-    "ReverseAddPowerMetrics": "number_compiler.sequences.reverse_add.power",
+    "ReverseAddPowerMetrics": "number_compiler.resources.reverse_power_metrics",
 }
 
 

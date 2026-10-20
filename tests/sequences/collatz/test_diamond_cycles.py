@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Never, cast
+from typing import Never
 
 import pytest
 
@@ -110,7 +110,12 @@ def test_application_cycle_queries_skip_generic_execution_and_source_reproof(
     application = DiamondApplication(runtime, root)
     # The cycle is constructed once at application creation; later observations
     # only consume that issued projection.
-    proof = cast(PhysicalCycleProjection, application._cycles[0])
+    cycle_rows = application.audit_snapshot().cycles
+    assert len(cycle_rows) == 1
+    cycle_record = cycle_rows[0]
+    assert type(cycle_record) is PhysicalCycleProjection
+    assert application.owns_issued_cycle(cycle_record)
+    proof = cycle_record
     before = runtime.ledger.snapshot()
     for _ in range(2):
         assert [application.point(p) for p in range(8)] == [
@@ -177,7 +182,7 @@ def test_cycle_projection_is_not_retained_when_its_reservation_fails(
     application = DiamondApplication.__new__(DiamondApplication)
     with pytest.raises(BlockContextBudgetExceeded):
         type(application).__init__(application, runtime, root)
-    assert not application._cycles
+    assert not application.audit_snapshot().cycles
     assert all(row.accounting_delta == 0 for row in runtime.ledger.inventory())
 
 
@@ -217,7 +222,9 @@ def test_finite_cycle_certificate_requires_actual_source_and_complete_phase_proo
     engine = DiamondRuntime(compiler, geometry)
     action = engine.actions.power(engine.actions.intern(effect), 256)
     application = DiamondApplication(engine, action)
-    record = application._cycles[0]
+    cycle_rows = application.audit_snapshot().cycles
+    assert len(cycle_rows) == 1
+    record = cycle_rows[0]
     assert type(record) is PhysicalCycleProjection
     before = ledger.snapshot()
     registry = DiamondPayloadRegistry(ledger)

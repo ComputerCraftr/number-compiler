@@ -9,6 +9,7 @@ they never contain source coordinates, future symbols, or composed states.
 from __future__ import annotations
 
 from collections.abc import MutableMapping
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
@@ -21,6 +22,19 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.higher_types import (
         HigherActionSchema,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class HigherPrimitiveTablesAuditSnapshot:
+    """Owner metadata and exact store identities used by payload audits."""
+
+    ledger: ResourceLedger
+    interface_owner: int
+    interface_store_identity: int
+    step_owner: int
+    step_store_identity: int
+    emit_owner: int
+    emit_store_identity: int
 
 
 class HigherPrimitiveTables:
@@ -65,6 +79,18 @@ class HigherPrimitiveTables:
             self._emit_owner,
             self._outputs,
             payloads=self._outputs.items,
+        )
+
+    def audit_snapshot(self) -> HigherPrimitiveTablesAuditSnapshot:
+        """Expose stable owner/store bindings without mutable maps."""
+        return HigherPrimitiveTablesAuditSnapshot(
+            self.ledger,
+            self._interface_owner,
+            id(self._interfaces),
+            self._step_owner,
+            id(self._steps),
+            self._emit_owner,
+            id(self._outputs),
         )
 
     def _primitive_interface(
@@ -157,4 +183,4 @@ class HigherPrimitiveTables:
         return result
 
 
-__all__ = ["HigherPrimitiveTables"]
+__all__ = ["HigherPrimitiveTables", "HigherPrimitiveTablesAuditSnapshot"]

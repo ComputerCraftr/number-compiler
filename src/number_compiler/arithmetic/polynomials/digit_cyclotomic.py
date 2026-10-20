@@ -36,17 +36,12 @@ from number_compiler.arithmetic.polynomials.cyclotomic_ring import CyclotomicRin
 from number_compiler.arithmetic.polynomials.polynomial import (
     evaluate_polynomial,
     polynomial_divide_exact,
-    trim_polynomial,
 )
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.polynomials.cyclotomic_affine import (
         CyclotomicAffineMorphism,
     )
-
-
-def _trim(values: Sequence[int]) -> tuple[int, ...]:
-    return trim_polynomial(values)
 
 
 def _affine_morphism() -> type[CyclotomicAffineMorphism]:

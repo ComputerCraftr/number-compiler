@@ -6,7 +6,7 @@ observed, semantic function reduced, or runtime work counter incremented.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.exact_tree_context import (
@@ -50,12 +50,13 @@ from number_compiler.projection.radix_fused_action import (
 from number_compiler.projection.radix_original_source import (
     OriginalAffineSummary,
     OriginalAffineSummaryKey,
+    OriginalAffineWorkspaceInventory,
     OriginalRadixArena,
+    OriginalRadixAuditSnapshot,
     OriginalRadixKey,
     OriginalRadixSource,
     OriginalShiftTransfer,
     OriginalThreeCarryAction,
-    _OriginalAffineWorkspaceInventory,
 )
 from number_compiler.projection.source_audit import (
     RadixProjectionAuditSource,
@@ -93,7 +94,7 @@ class SemanticAuxiliaryPayloadRegistry:
         OriginalThreeCarryAction,
         OriginalAffineSummaryKey,
         OriginalAffineSummary,
-        _OriginalAffineWorkspaceInventory,
+        OriginalAffineWorkspaceInventory,
         BitSubstitutionKey,
         StructureDeclarationKey,
         *SemanticAdmissionPayloadRegistry.record_types,
@@ -114,7 +115,8 @@ class SemanticAuxiliaryPayloadRegistry:
             and root.ledger is ledger
             and root.runtime.ledger is ledger
             and root.structures in semantic.structures
-            and actual.get(root.records.owner) is root.records._data
+            and actual.get(root.records.audit_snapshot().owner)
+            is root.records.audit_snapshot().container
         )
         self.fused = tuple(
             root
@@ -127,12 +129,12 @@ class SemanticAuxiliaryPayloadRegistry:
         self.codec_records = {
             id(record): arena
             for arena in self.codecs
-            for _, record in _items(arena.records._data)
+            for _, record in _items(arena.records.audit_snapshot().container)
         }
         self.codec_requests = {
             id(key): (arena, record)
             for arena in self.codecs
-            for key, record in _items(arena.records._data)
+            for key, record in _items(arena.records.audit_snapshot().container)
         }
         self.fused_records = {
             id(record): arena
@@ -167,7 +169,7 @@ class SemanticAuxiliaryPayloadRegistry:
             OriginalThreeCarryAction,
             OriginalAffineSummaryKey,
             OriginalAffineSummary,
-            _OriginalAffineWorkspaceInventory,
+            OriginalAffineWorkspaceInventory,
             BitSubstitutionKey,
             StructureDeclarationKey,
             *SemanticAdmissionPayloadRegistry.record_types,
@@ -179,17 +181,18 @@ class SemanticAuxiliaryPayloadRegistry:
         )
         self.invalid_bindings.update(self.admissions.invalid_bindings)
         for bit_arena in semantic.bits:
-            owner = bit_arena._scalar_sources.owner
-            if actual.get(owner) is not bit_arena._scalar_sources._data:
-                self.invalid_bindings.add((owner, id(bit_arena._scalar_sources._data)))
+            scalar_snapshot = bit_arena.scalar_source_audit_snapshot()
+            owner, scalar_store = scalar_snapshot.owner, scalar_snapshot.container
+            if actual.get(owner) is not scalar_store:
+                self.invalid_bindings.add((owner, id(scalar_store)))
                 continue
-            for source, target in _items(bit_arena._scalar_sources._data):
+            for source, target in _items(scalar_store):
                 try:
                     accepted = (
                         semantic.handle(source)
                         and type(source) is SemanticFunctionID
                         and source.owner is bit_arena.functions.token
-                        and semantic._bit_handle(target)
+                        and semantic.validate_bit_handle(target)
                         and type(target) is FactoredFunctionID
                         and target.owner is bit_arena.token
                     )
@@ -214,24 +217,25 @@ class SemanticAuxiliaryPayloadRegistry:
                         ((owner, id(source)), (owner, id(target)))
                     )
         for original in self.originals:
+            snapshot: OriginalRadixAuditSnapshot = original.audit_snapshot()
             stores = (
-                (original._shift_owner, original._shift_nodes),
-                (original._shift_key_owner, original._shift_keys),
-                (original._carry_owner, original._carry_nodes),
-                (original._carry_key_owner, original._carry_keys),
-                (original._summary_owner, original._affine_summaries),
-                (original._workspace_owner, original._workspace),
+                (snapshot.shift_owner, snapshot.shift_nodes),
+                (snapshot.shift_key_owner, snapshot.shift_keys),
+                (snapshot.carry_owner, snapshot.carry_nodes),
+                (snapshot.carry_key_owner, snapshot.carry_keys),
+                (snapshot.summary_owner, snapshot.affine_summaries),
+                (snapshot.workspace_owner, snapshot.workspace),
             )
             if (
                 any(actual.get(owner) is not store for owner, store in stores)
-                or type(original._workspace.entries) is not int
-                or type(original._workspace.nodes) is not int
-                or original._workspace.entries != 0
-                or original._workspace.nodes != 0
+                or type(snapshot.workspace.entries) is not int
+                or type(snapshot.workspace.nodes) is not int
+                or snapshot.workspace.entries != 0
+                or snapshot.workspace.nodes != 0
             ):
                 self.invalid_bindings.add((original.owner, id(original)))
                 continue
-            self.original_workspace_records.add(id(original._workspace))
+            self.original_workspace_records.add(id(snapshot.workspace))
             for key, record in _items(original.sources):
                 try:
                     admitted = _original_encoding(key, record)
@@ -243,14 +247,14 @@ class SemanticAuxiliaryPayloadRegistry:
                     self.invalid_bindings.update(
                         ((original.owner, id(key)), (original.owner, id(record)))
                     )
-            for key, record in _items(original._shift_nodes):
+            for key, record in _items(snapshot.shift_nodes):
                 try:
                     if type(record) is OriginalShiftTransfer:
                         record.__post_init__()
                         valid = (
                             type(key) is int
-                            and 0 <= key < original._next_shift
-                            and original._shift_keys.get(record) == key
+                            and 0 <= key < snapshot.next_shift
+                            and snapshot.shift_keys.get(record) == key
                         )
                     else:
                         valid = False
@@ -259,15 +263,15 @@ class SemanticAuxiliaryPayloadRegistry:
                 if valid:
                     self.original_summary_records.update((id(key), id(record)))
                 else:
-                    self.invalid_bindings.add((original._shift_owner, id(record)))
-            for key, record in _items(original._carry_nodes):
+                    self.invalid_bindings.add((snapshot.shift_owner, id(record)))
+            for key, record in _items(snapshot.carry_nodes):
                 try:
                     if type(record) is OriginalThreeCarryAction:
                         record.__post_init__()
                         valid = (
                             type(key) is int
-                            and 0 <= key < original._next_carry
-                            and original._carry_keys.get(record) == key
+                            and 0 <= key < snapshot.next_carry
+                            and snapshot.carry_keys.get(record) == key
                         )
                     else:
                         valid = False
@@ -276,30 +280,30 @@ class SemanticAuxiliaryPayloadRegistry:
                 if valid:
                     self.original_summary_records.update((id(key), id(record)))
                 else:
-                    self.invalid_bindings.add((original._carry_owner, id(record)))
-            for key, record in _items(original._shift_keys):
+                    self.invalid_bindings.add((snapshot.carry_owner, id(record)))
+            for key, record in _items(snapshot.shift_keys):
                 valid = (
                     type(key) is OriginalShiftTransfer
                     and type(record) is int
-                    and original._shift_nodes.get(record) is key
+                    and snapshot.shift_nodes.get(record) is key
                 )
                 if valid:
                     self.original_summary_records.update((id(key), id(record)))
                 else:
-                    self.invalid_bindings.add((original._shift_key_owner, id(key)))
-            for key, record in _items(original._carry_keys):
+                    self.invalid_bindings.add((snapshot.shift_key_owner, id(key)))
+            for key, record in _items(snapshot.carry_keys):
                 valid = (
                     type(key) is OriginalThreeCarryAction
                     and type(record) is int
-                    and original._carry_nodes.get(record) is key
+                    and snapshot.carry_nodes.get(record) is key
                 )
                 if valid:
                     self.original_summary_records.update((id(key), id(record)))
                 else:
-                    self.invalid_bindings.add((original._carry_key_owner, id(key)))
-            for key, record in _items(original._affine_summaries):
+                    self.invalid_bindings.add((snapshot.carry_key_owner, id(key)))
+            for key, record in _items(snapshot.affine_summaries):
                 try:
-                    valid = _original_affine_summary(original, key, record)
+                    valid = _original_affine_summary(original, snapshot, key, record)
                 except (ValueError, TypeError, AttributeError, IndexError, KeyError):
                     valid = False
                 if valid:
@@ -307,8 +311,8 @@ class SemanticAuxiliaryPayloadRegistry:
                 else:
                     self.invalid_bindings.update(
                         (
-                            (original._summary_owner, id(key)),
-                            (original._summary_owner, id(record)),
+                            (snapshot.summary_owner, id(key)),
+                            (snapshot.summary_owner, id(record)),
                         )
                     )
         from number_compiler.projection.lazy_radix import RadixProjection
@@ -324,7 +328,7 @@ class SemanticAuxiliaryPayloadRegistry:
 
         self.projection_maps: set[int] = set()
         for term in sources:
-            store = term.projections
+            store = cast(LedgerDict[object, object], term.projections)
             if (
                 type(store) is not LedgerDict
                 or actual.get(store.owner) is not store
@@ -342,13 +346,13 @@ class SemanticAuxiliaryPayloadRegistry:
                     and type(projection.radix) is int
                     and projection.radix == radix
                     and (
-                        projection._bound_source is None
-                        or projection._bound_source is term.source
+                        projection.bound_source is None
+                        or projection.bound_source is term.source
                     )
                     and (
-                        projection._bound_steps is None
-                        or type(projection._bound_steps) is int
-                        and projection._bound_steps == term.steps
+                        projection.bound_steps is None
+                        or type(projection.bound_steps) is int
+                        and projection.bound_steps == term.steps
                     )
                 )
                 if not valid_entry:
@@ -369,24 +373,25 @@ class SemanticAuxiliaryPayloadRegistry:
             terms = tuple(
                 term
                 for term in sources
-                if term.source is projection._bound_source
+                if term.source is projection.bound_source
                 and type(term.steps) is int
-                and term.steps == projection._bound_steps
+                and term.steps == projection.bound_steps
             )
             if terms:
                 self.projection_sources.add(id(projection))
-            owner = projection._fused_actions.owner
-            if actual.get(owner) is not projection._fused_actions._data:
+            fused_snapshot = projection.fused_action_audit_snapshot()
+            owner, fused_store = fused_snapshot.owner, fused_snapshot.container
+            if actual.get(owner) is not fused_store:
                 continue
-            for key, record in _items(projection._fused_actions._data):
+            for key, record in _items(fused_store):
                 try:
                     accepted = (
                         type(key) is FusedRadixBindingKey
                         and type(key.index) is int
                         and 0 <= key.index < 4
                         and type(record) is FusedDivisionAction
-                        and projection._fused in self.fused
-                        and self.fused_records.get(id(record)) is projection._fused
+                        and projection.fused_arena in self.fused
+                        and self.fused_records.get(id(record)) is projection.fused_arena
                         and self.valid(record)
                         and type(projection.radix) is int
                         and record.radix == projection.radix
@@ -437,7 +442,7 @@ class SemanticAuxiliaryPayloadRegistry:
             OriginalAffineSummary,
         ):
             return id(value) in self.original_summary_records
-        if type(value) is _OriginalAffineWorkspaceInventory:
+        if type(value) is OriginalAffineWorkspaceInventory:
             return id(value) in self.original_workspace_records
         if type(value) is BitSubstitutionKey:
             return id(value) in self.compositions.keys
@@ -540,12 +545,12 @@ class SemanticAuxiliaryPayloadRegistry:
         )
         ports = tuple(sorted((anchor, *entries), key=lambda item: item.variable))
         if (
-            not self.semantic._signature(FunctionSignature(value.ports, BOOL))
-            or not self.semantic._signature(
+            not self.semantic.validate_signature(FunctionSignature(value.ports, BOOL))
+            or not self.semantic.validate_signature(
                 FunctionSignature(value.component_ports, BOOL)
             )
             or type(value.anchor_port) is not FinitePort
-            or not self.semantic._signature(
+            or not self.semantic.validate_signature(
                 FunctionSignature((value.anchor_port,), BOOL)
             )
             or value.anchor_port != anchor
@@ -558,7 +563,7 @@ class SemanticAuxiliaryPayloadRegistry:
                 return False
         elif (
             type(value.argument_port) is not FinitePort
-            or not self.semantic._signature(
+            or not self.semantic.validate_signature(
                 FunctionSignature((value.argument_port,), BOOL)
             )
             or value.argument_port != argument
@@ -574,7 +579,7 @@ class SemanticAuxiliaryPayloadRegistry:
             )
         )
         return (
-            self.semantic._structure_handle(value.structure)
+            self.semantic.validate_structure_handle(value.structure)
             and value.structure.owner is arena.structures.token
             and arena.structures.resolve(value.structure).signature
             == FunctionSignature(ports, output)
@@ -594,7 +599,9 @@ class SemanticAuxiliaryPayloadRegistry:
             or len(value.physical_exit) != 2
             or type(value.division_exit) is not tuple
             or len(value.division_exit) != value.stages
-            or not self.semantic._signature(FunctionSignature(value.ports, BOOL))
+            or not self.semantic.validate_signature(
+                FunctionSignature(value.ports, BOOL)
+            )
         ):
             return False
         expected = (
@@ -641,12 +648,12 @@ class SemanticAuxiliaryPayloadRegistry:
 
 
 def _items(container: object) -> tuple[tuple[object, object], ...]:
-    # Read verified factory backing directly: Mapping.items would rehash a
-    # maliciously mutated immutable key before the auditor validates it.
-    if type(container) is LedgerDict and container.ledger.is_factory_container(
-        container
-    ):
-        return tuple(container._data.items())
+    # LedgerDict.items reads its trusted backing store without a key lookup, so
+    # malformed keys remain inspectable before the auditor validates them.
+    if type(container) is LedgerDict:
+        store = cast(LedgerDict[object, object], container)
+        if store.ledger.is_factory_container(store):
+            return tuple(store.items())
     return ()
 
 
@@ -699,6 +706,7 @@ def _original_encoding(key: object, record: object) -> bool:
 
 def _original_affine_summary(
     arena: OriginalRadixArena,
+    snapshot: OriginalRadixAuditSnapshot,
     key: object,
     record: object,
 ) -> bool:
@@ -723,8 +731,8 @@ def _original_affine_summary(
     count = len(source.digits)
     if record.size < count or record.size >= 2 * count or record.width > count:
         return False
-    shift_nodes = tuple(arena._shift_nodes.get(item) for item in record.shift_tree)
-    carry_nodes = tuple(arena._carry_nodes.get(item) for item in record.carry_tree)
+    shift_nodes = tuple(snapshot.shift_nodes.get(item) for item in record.shift_tree)
+    carry_nodes = tuple(snapshot.carry_nodes.get(item) for item in record.carry_tree)
     if any(type(item) is not OriginalShiftTransfer for item in shift_nodes) or any(
         type(item) is not OriginalThreeCarryAction for item in carry_nodes
     ):

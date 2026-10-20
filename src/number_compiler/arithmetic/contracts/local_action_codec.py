@@ -42,22 +42,98 @@ class LocalCodec(Protocol[A, H]):
     leaf_hits: int
     spatial_hits: int
 
-    def _handle(self, local_id: int, transform: ActionTransform) -> H: ...
+    def scoped_handle(self, local_id: int, transform: ActionTransform) -> H: ...
+    @staticmethod
     def _source_key(
-        self, source: SourceCellID | SourceForestID
+        source: SourceCellID | SourceForestID,
     ) -> SourceCellID | SourceForestID: ...
     def _leaf(self, symbol: int, reservations: Reservations = ()) -> H: ...
     def _compose_actions(
         self, left: H, right: H, reservations: Reservations = ()
     ) -> H: ...
 
+    def initialize_local_stores(self) -> None:
+        self._nodes = self.ledger.make_list(self._node_owner)
+        self._keys = self.ledger.make_dict(self._key_owner)
+        self._compose = self.ledger.make_dict(self._compose_owner)
+        self._leaf_actions = self.ledger.make_dict(self._leaf_owner)
+        self._source_actions = self.ledger.make_dict(self._source_owner)
+
+    def publish_oriented_action(
+        self,
+        canonical: A,
+        transform: ActionTransform,
+        reservations: Reservations,
+    ) -> H:
+        found = self._keys.get(canonical)
+        if found is not None:
+            self.ledger.reserve_many(reservations)
+            self.semantic_alias_hits += 1
+            if transform is ActionTransform.MIRROR:
+                self.mirror_alias_hits += 1
+            return self.scoped_handle(found, transform)
+        local_id = append_indexed_node(
+            self.ledger,
+            self._nodes,
+            self._keys,
+            self._node_owner,
+            self._key_owner,
+            canonical,
+            canonical,
+            reservations=reservations,
+        )
+        if transform is ActionTransform.MIRROR:
+            self.mirror_alias_hits += 1
+        return self.scoped_handle(local_id, transform)
+
+    def local_cache_hit(
+        self,
+        cached: H | None,
+        reservations: Reservations,
+        *,
+        spatial: bool = False,
+    ) -> H | None:
+        if cached is not None:
+            self.ledger.reserve_many(reservations)
+            if spatial:
+                self.spatial_hits += 1
+            else:
+                self.leaf_hits += 1
+        return cached
+
+    def compile_source_cell(self, source: SourceCellID) -> H:
+        self.sources.resolve(source)
+        source_key = self._source_key(source)
+        found = self._source_actions.get(source_key)
+        if found is not None:
+            return found
+        pending: list[tuple[SourceCellID, bool]] = [(source, False)]
+        while pending:
+            current, ready = pending.pop()
+            current_key = self._source_key(current)
+            if current_key in self._source_actions:
+                continue
+            record = self.sources.resolve(current)
+            if record.level == 0:
+                result = self._leaf(
+                    self.sources.symbol(current), ((self._source_owner, 1, 0),)
+                )
+            elif not ready:
+                defer_binary_children(pending, current, self.sources.children)
+                continue
+            else:
+                left, right = self.sources.children(current)
+                result = self._compose_actions(
+                    self._source_actions[self._source_key(left)],
+                    self._source_actions[self._source_key(right)],
+                    ((self._source_owner, 1, 0),),
+                )
+            self._source_actions[current_key] = result
+        return self._source_actions[source_key]
+
 
 def initialize_local_stores(codec: LocalCodec[A, H]) -> None:
-    codec._nodes = codec.ledger.make_list(codec._node_owner)
-    codec._keys = codec.ledger.make_dict(codec._key_owner)
-    codec._compose = codec.ledger.make_dict(codec._compose_owner)
-    codec._leaf_actions = codec.ledger.make_dict(codec._leaf_owner)
-    codec._source_actions = codec.ledger.make_dict(codec._source_owner)
+    return codec.initialize_local_stores()
 
 
 def publish_oriented_action(
@@ -66,26 +142,7 @@ def publish_oriented_action(
     transform: ActionTransform,
     reservations: Reservations,
 ) -> H:
-    found = codec._keys.get(canonical)
-    if found is not None:
-        codec.ledger.reserve_many(reservations)
-        codec.semantic_alias_hits += 1
-        if transform is ActionTransform.MIRROR:
-            codec.mirror_alias_hits += 1
-        return codec._handle(found, transform)
-    local_id = append_indexed_node(
-        codec.ledger,
-        codec._nodes,
-        codec._keys,
-        codec._node_owner,
-        codec._key_owner,
-        canonical,
-        canonical,
-        reservations=reservations,
-    )
-    if transform is ActionTransform.MIRROR:
-        codec.mirror_alias_hits += 1
-    return codec._handle(local_id, transform)
+    return codec.publish_oriented_action(canonical, transform, reservations)
 
 
 def local_cache_hit(
@@ -95,41 +152,8 @@ def local_cache_hit(
     *,
     spatial: bool = False,
 ) -> H | None:
-    if cached is not None:
-        codec.ledger.reserve_many(reservations)
-        if spatial:
-            codec.spatial_hits += 1
-        else:
-            codec.leaf_hits += 1
-    return cached
+    return codec.local_cache_hit(cached, reservations, spatial=spatial)
 
 
 def compile_source_cell(codec: LocalCodec[A, H], source: SourceCellID) -> H:
-    codec.sources.resolve(source)
-    source_key = codec._source_key(source)
-    found = codec._source_actions.get(source_key)
-    if found is not None:
-        return found
-    pending: list[tuple[SourceCellID, bool]] = [(source, False)]
-    while pending:
-        current, ready = pending.pop()
-        current_key = codec._source_key(current)
-        if current_key in codec._source_actions:
-            continue
-        record = codec.sources.resolve(current)
-        if record.level == 0:
-            result = codec._leaf(
-                codec.sources.symbol(current), ((codec._source_owner, 1, 0),)
-            )
-        elif not ready:
-            defer_binary_children(pending, current, codec.sources.children)
-            continue
-        else:
-            left, right = codec.sources.children(current)
-            result = codec._compose_actions(
-                codec._source_actions[codec._source_key(left)],
-                codec._source_actions[codec._source_key(right)],
-                ((codec._source_owner, 1, 0),),
-            )
-        codec._source_actions[current_key] = result
-    return codec._source_actions[source_key]
+    return codec.compile_source_cell(source)

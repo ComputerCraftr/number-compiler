@@ -43,8 +43,8 @@ def run() -> dict[str, object]:
         }
         assert counters.get("recursive_output_stream_emitted_digits", 0) == 0
     finally:
-        if term._workspace is not None:
-            term._workspace.dispose()
+        if term.published_workspace is not None:
+            term.published_workspace.dispose()
     assert term.resource_ledger.entries == term.resource_ledger.nodes == 0
 
     observed_term = ReverseAddPoweredTerm(196, 97)
@@ -65,8 +65,8 @@ def run() -> dict[str, object]:
             if name.startswith("reverse_q19_temporal_stencil_")
         }
     finally:
-        if observed_term._workspace is not None:
-            observed_term._workspace.dispose()
+        if observed_term.published_workspace is not None:
+            observed_term.published_workspace.dispose()
     assert (
         observed_term.resource_ledger.entries
         == observed_term.resource_ledger.nodes

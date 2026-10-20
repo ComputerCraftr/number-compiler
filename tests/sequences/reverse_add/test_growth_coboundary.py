@@ -17,7 +17,7 @@ pytestmark = pytest.mark.validation
 
 
 def test_four_distinct_sources_have_one_growth_occurrence() -> None:
-    occurrences = set()
+    occurrences: set[GrowthCoboundaryHalf] = set()
     for a, b in product((1, 10), repeat=2):
         source = (10, a, b, b, a, 10)
         carry = carry_field(source)
@@ -39,7 +39,7 @@ def test_native_chart_consumes_only_residue_and_derived_ports() -> None:
     e = ThresholdExpressions()
     r, c, d = e.variable(10, 0), e.variable(2, 1), e.variable(2, 2)
     chart = e.growth_symbol(r, c, d)
-    seen = set()
+    seen: set[int] = set()
     for residue, outgoing, reflected in product(range(10), range(2), range(2)):
         symbol = e.evaluate((chart,), (residue, outgoing, reflected))[0]
         seen.add(symbol)

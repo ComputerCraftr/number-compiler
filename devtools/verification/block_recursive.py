@@ -21,10 +21,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.block_effect import (
-    _CONTEXT_IDS,
     BlockEffect,
     BoundarySide,
     BoundaryState,
+    next_context_id,
 )
 from number_compiler.arithmetic.fields.dyadic_tile import DyadicTile
 
@@ -76,7 +76,7 @@ class _RecursiveResidualAction:
         *,
         reversed: bool = False,
     ) -> None:
-        self.node_id = next(_CONTEXT_IDS)
+        self.node_id = next_context_id()
         self.side = side
         self.previous = previous
         self.tile = tile

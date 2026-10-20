@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaHandle,
@@ -93,7 +94,7 @@ class CollatzPoweredLocalTransferAdapter:
         self._validate_port = validate_port
         self._point = point
         self._width = width
-        self._validate_output = validate_output
+        self.output_validator = validate_output
         self._expected_output = expected_output
         self._source_action = (
             powered_local.source_action if source_action is None else source_action
@@ -111,7 +112,7 @@ class CollatzPoweredLocalTransferAdapter:
         self._action(action)
 
     def validate_port(self, incoming: ArenaHandle) -> None:
-        if not isinstance(incoming, ArenaHandle):
+        if not is_runtime_instance(incoming, ArenaHandle):
             raise TypeError("Collatz transfer requires a scoped boundary port")
         ArenaHandle.__post_init__(incoming)
         self._validate_port(incoming)
@@ -158,13 +159,13 @@ class CollatzPoweredLocalTransferAdapter:
             raise ValueError(
                 "Collatz transfer compiler returned another port signature"
             )
-        if self._validate_output is None:
+        if self.output_validator is None:
             if result.output != self.actions.coordinate_output(collatz_action):
                 raise ValueError(
                     "Collatz transfer compiler returned another output morphism"
                 )
         else:
-            self._validate_output(result.output)
+            self.output_validator(result.output)
             if (
                 self._expected_output is not None
                 and result.output != self._expected_output

@@ -2,22 +2,90 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
-from typing import Never
+from typing import Never, Protocol, cast
 
 import pytest
 
 from number_compiler.arithmetic.automata.program_word import CanonicalWord
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.radix import digits_lsd
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.physical_support_payload_audit import (
     audit_physical_support_payloads,
 )
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.clock_observers import CollatzClockObservers
+from number_compiler.sequences.collatz.frame import CollatzAffineSuffixGerm
 from number_compiler.sequences.collatz.germ_cache import CollatzGermTransitionCache
 from number_compiler.sequences.collatz.source_publisher import CollatzSourcePublisher
+from tests.support.private_attributes import private_test_attribute
+
+
+class _SourceWordComparison(Protocol):
+    def __call__(
+        self,
+        word: CanonicalWord,
+        limit: int,
+        *,
+        ledger: ResourceLedger | None = None,
+        frontier_owner: int | None = None,
+        frontier: LedgerList[tuple[CanonicalWord, int, int]] | None = None,
+    ) -> tuple[bool, int]: ...
+
+
+def _source_word_leq_integer(
+    word: CanonicalWord,
+    limit: int,
+    *,
+    ledger: ResourceLedger | None = None,
+    frontier_owner: int | None = None,
+    frontier: LedgerList[tuple[CanonicalWord, int, int]] | None = None,
+) -> tuple[bool, int]:
+    compare = cast(
+        _SourceWordComparison,
+        object.__getattribute__(CollatzSourcePublisher, "_source_word_leq_integer"),
+    )
+    return compare(
+        word,
+        limit,
+        ledger=ledger,
+        frontier_owner=frontier_owner,
+        frontier=frontier,
+    )
+
+
+def _germ_radix4_width(germ: CollatzAffineSuffixGerm) -> tuple[int, int]:
+    function = cast(
+        Callable[[CollatzAffineSuffixGerm], tuple[int, int]],
+        private_test_attribute(CollatzSourcePublisher, "_germ_radix4_width"),
+    )
+    return function(germ)
+
+
+def _germ_fits_digits(germ: CollatzAffineSuffixGerm, digits: int) -> tuple[bool, int]:
+    function = cast(
+        Callable[[CollatzAffineSuffixGerm, int], tuple[bool, int]],
+        private_test_attribute(CollatzSourcePublisher, "_germ_fits_digits"),
+    )
+    return function(germ, digits)
+
+
+def _event_store_sizes(publisher: CollatzSourcePublisher) -> tuple[int, int, int]:
+    rows = publisher.ledger.inventory()
+    keys = next(
+        row.entries
+        for row in rows
+        if row.name.startswith("collatz-event-") and row.name.endswith("-keys")
+    )
+    atoms = next(
+        row.entries
+        for row in rows
+        if row.name.startswith("collatz-event-") and row.name.endswith("-atoms")
+    )
+    return publisher.events.node_count, keys, atoms
 
 
 def test_canonical_event_validation_rejects_foreign_child_with_equal_id() -> None:
@@ -104,7 +172,7 @@ def test_even_seed_remains_a_physical_tick_source(seed: int) -> None:
     with pytest.raises(ValueError, match="odd seed"):
         CollatzSourcePublisher(seed, 1, max_events=1, max_digits=64)
     term = PoweredCollatzTerm(seed, 1)
-    workspace = term._source_image()
+    workspace = term.source_image()
     summary = workspace.summary()
     assert summary.width == 1 and summary.odd_steps == 0
     assert tuple(workspace.segments()) == ((0, 1, 0),)
@@ -171,18 +239,10 @@ def test_event_and_transition_retention_share_request_caps() -> None:
         for row in inventory
     )
     publisher.ledger.tighten_limits(publisher.ledger.nodes, publisher.ledger.entries)
-    event_sizes = (
-        publisher.events.node_count,
-        len(publisher.events._by_key),
-        len(publisher.events._events),
-    )
+    event_sizes = _event_store_sizes(publisher)
     with pytest.raises(BlockContextBudgetExceeded, match="budget exceeded"):
         publisher.events.event(97)
-    assert event_sizes == (
-        publisher.events.node_count,
-        len(publisher.events._by_key),
-        len(publisher.events._events),
-    )
+    assert event_sizes == _event_store_sizes(publisher)
     before_states = (
         publisher.transitions.raw_state_count,
         publisher.transitions.canonical_state_count,
@@ -230,11 +290,11 @@ def test_symbolic_width_admission_matches_exact_bounded_endpoints() -> None:
         value = seed
         cache = CollatzGermTransitionCache()
         for _ in range(8):
-            width, comparisons = CollatzSourcePublisher._germ_radix4_width(germ)
+            width, comparisons = _germ_radix4_width(germ)
             assert width == len(tuple(digits_lsd(value, 4)))
             assert comparisons >= 0
             for boundary in (max(1, width - 1), width, width + 1):
-                fits, _ = CollatzSourcePublisher._germ_fits_digits(germ, boundary)
+                fits, _ = _germ_fits_digits(germ, boundary)
                 assert fits is (len(tuple(digits_lsd(value, 4))) <= boundary)
             advance = cache.advance(germ)
             numerator = 3 * value + 1
@@ -273,7 +333,7 @@ def test_source_word_comparison_matches_bounded_integer_reference(
         (1 << (2 * len(digits))) - 1,
     )
     for boundary in boundaries:
-        observed, comparisons = CollatzSourcePublisher._source_word_leq_integer(
+        observed, comparisons = _source_word_leq_integer(
             word,
             boundary,
             ledger=ledger,
@@ -298,9 +358,7 @@ def test_most_significant_source_word_mismatch_does_not_exhaust_run_tail() -> No
         # Both operands have three radix-4 digits, and 3 > 2 at the most
         # significant digit. Reaching the deliberately malformed low tail would
         # prove that comparison had first exhausted/materialized every run.
-        observed, comparisons = CollatzSourcePublisher._source_word_leq_integer(
-            word, 2 << 4
-        )
+        observed, comparisons = _source_word_leq_integer(word, 2 << 4)
         assert observed is False and comparisons == 1
     finally:
         object.__setattr__(lowest, "symbol", original)
@@ -318,7 +376,7 @@ def test_long_common_prefix_uses_balanced_block_work() -> None:
     frontier: LedgerList[tuple[CanonicalWord, int, int]] = ledger.make_list(
         frontier_owner, append_only=False
     )
-    observed, comparisons = CollatzSourcePublisher._source_word_leq_integer(
+    observed, comparisons = _source_word_leq_integer(
         word,
         value,
         ledger=ledger,
@@ -347,7 +405,7 @@ def test_source_word_block_failure_releases_admission_frontier() -> None:
     object.__setattr__(lowest, "symbol", None)
     try:
         with pytest.raises(AssertionError):
-            CollatzSourcePublisher._source_word_leq_integer(
+            _source_word_leq_integer(
                 word,
                 (3 << 4) | (1 << 2),
                 ledger=ledger,

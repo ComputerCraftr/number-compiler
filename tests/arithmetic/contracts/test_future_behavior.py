@@ -131,7 +131,7 @@ def test_future_records_validate_one_shared_identity_union(
     shared: tuple[object, ...] = ("shared-primitive-behavior", 1)
     kernel = SemanticIdentity("kernel", shared)
     continuation = SemanticIdentity("continuation", shared)
-    original = semantic_identity._tuple_digest
+    original = semantic_identity.tuple_digest
     visits = 0
 
     def counted(value: tuple[object, ...], children: dict[int, bytes]) -> bytes:
@@ -139,7 +139,7 @@ def test_future_records_validate_one_shared_identity_union(
         visits += 1
         return original(value, children)
 
-    monkeypatch.setattr(semantic_identity, "_tuple_digest", counted)
+    monkeypatch.setattr(semantic_identity, "tuple_digest", counted)
     _test_profile(kernel, continuation)
     _test_certificate(kernel, continuation)
     assert visits == 2
@@ -177,7 +177,7 @@ def test_blank_admission_walks_one_shared_identity_union(
     _kernel, quotient = _behavior(3)
     arena = DiamondQuotientArena(SemanticFunctionArena(ResourceLedger()))
     original_validate = SemanticIdentityValidator.validate
-    original_digest = semantic_identity._tuple_digest
+    original_digest = semantic_identity.tuple_digest
     validators: set[int] = set()
     visited_tuples: list[int] = []
 
@@ -193,7 +193,7 @@ def test_blank_admission_walks_one_shared_identity_union(
         return original_digest(value, children)
 
     monkeypatch.setattr(SemanticIdentityValidator, "validate", validate)
-    monkeypatch.setattr(semantic_identity, "_tuple_digest", digest)
+    monkeypatch.setattr(semantic_identity, "tuple_digest", digest)
     arena.admit_quiescent_blank(quotient)
     assert len(validators) == 1
     assert visited_tuples
@@ -224,18 +224,19 @@ def test_blank_admission_finishes_identity_audit_before_publication(
             arena.admit_quiescent_blank(quotient)
     finally:
         object.__setattr__(quotient.source_identity, "digest", original_digest)
-    assert not arena._future_profiles
-    assert not arena._future_profile_keys
-    assert not arena._future_classes
-    assert not arena._future_class_keys
+    assert arena.future_behavior_store_counts() == (0, 0, 0, 0)
 
 
 def test_future_records_expose_no_validation_bypass() -> None:
     kernel = SemanticIdentity("kernel", ("kernel", 1))
     continuation = SemanticIdentity("continuation", ("continuation", 1))
     validator = SemanticIdentityValidator()
+
+    def bypass(_value: object) -> None:
+        return None
+
     with pytest.raises(AttributeError):
-        object.__setattr__(validator, "validate", lambda _value: None)
+        object.__setattr__(validator, "validate", bypass)
     profile_constructor = cast(
         Callable[..., FutureBehaviorProfile], FutureBehaviorProfile
     )
@@ -257,7 +258,7 @@ def test_future_records_expose_no_validation_bypass() -> None:
 
 def test_identity_validation_scope_rejects_nesting_without_retained_work() -> None:
     from number_compiler.hashlife.behavior.future_behavior import (
-        _identity_validation_scope,
+        identity_validation_scope,
     )
 
     _kernel, quotient = _behavior(3)
@@ -265,7 +266,7 @@ def test_identity_validation_scope_rejects_nesting_without_retained_work() -> No
     arena = DiamondQuotientArena(SemanticFunctionArena(ledger))
     before = ledger.snapshot()
     with (
-        _identity_validation_scope(),
+        identity_validation_scope(),
         pytest.raises(RuntimeError, match="cannot be nested"),
     ):
         arena.admit_quiescent_blank(quotient)
@@ -275,12 +276,12 @@ def test_identity_validation_scope_rejects_nesting_without_retained_work() -> No
 
 def test_identity_validation_scope_resets_after_exception() -> None:
     from number_compiler.hashlife.behavior.future_behavior import (
-        _identity_validation_scope,
+        identity_validation_scope,
     )
 
     with (
         pytest.raises(RuntimeError, match="injected identity audit failure"),
-        _identity_validation_scope(),
+        identity_validation_scope(),
     ):
         raise RuntimeError("injected identity audit failure")
     _kernel, quotient = _behavior(3)
@@ -446,10 +447,7 @@ def test_blank_behavior_budget_failure_publishes_nothing() -> None:
     before = ledger.snapshot()
     with pytest.raises(BlockContextBudgetExceeded):
         arena.admit_quiescent_blank(quotient)
-    assert not arena._future_profiles
-    assert not arena._future_profile_keys
-    assert not arena._future_classes
-    assert not arena._future_class_keys
+    assert arena.future_behavior_store_counts() == (0, 0, 0, 0)
     after = ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
 

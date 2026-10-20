@@ -13,6 +13,7 @@ from operator import add, lt, mul
 from typing import TYPE_CHECKING, Final, Literal, Self, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.fields.consumer_pullback import (
     ExactRational,
     SaturatingAffineAction,
@@ -117,9 +118,9 @@ class MahlerSourceBoundSafetyAction:
             raise BlockContextBudgetExceeded(
                 "Mahler composition exceeds hard extent limit"
             )
-        return self._then_with_authenticated_gain(after, 3**after.extent, ledger=ledger)
+        return self.then_with_authenticated_gain(after, 3**after.extent, ledger=ledger)
 
-    def _then_with_authenticated_gain(
+    def then_with_authenticated_gain(
         self,
         after: MahlerSourceBoundSafetyAction,
         after_gain: int,
@@ -128,9 +129,9 @@ class MahlerSourceBoundSafetyAction:
     ) -> MahlerSourceBoundSafetyAction:
         """Compose using the exact multiplier already carried by a joint action.
 
-        This private path avoids rebuilding ``3**after.extent`` during source
-        action powering.  Its caller is the checked joint-action owner, whose
-        ``after_gain`` is validated together with the source cylinder.
+        This collaborator path avoids rebuilding ``3**after.extent`` during
+        source-action powering. Callers must pass the gain from the same
+        authenticated joint action as ``after``.
         """
         if type(after) is not MahlerSourceBoundSafetyAction:
             raise TypeError("Mahler composition requires another source-bound action")
@@ -304,7 +305,7 @@ class MahlerSourceBoundSafetyAction:
                 )
             if _workspace is not None:
                 assert endpoint_h is not None
-                future = MahlerJointFutureAction._from_admitted_root_workspace(
+                future = MahlerJointFutureAction.from_admitted_root_workspace(
                     _workspace, endpoint_h, self, _workspace_transfer
                 )
             else:
@@ -575,7 +576,7 @@ class MahlerOccurrenceConsumer:
     ) -> tuple[DyadicReturnSupportRecord, MahlerSourceBoundSafetyAction, int]:
         """Validate the local memo key as well as its internally consistent payload."""
         if (
-            type(record) is not tuple
+            not is_exact_object_tuple(record)
             or len(record) != 3
             or type(record[0]) is not DyadicReturnSupportRecord
             or type(record[1]) is not MahlerSourceBoundSafetyAction
@@ -583,7 +584,14 @@ class MahlerOccurrenceConsumer:
             or record[2] < 0
         ):
             raise ValueError("local Mahler source action has another record sort")
-        node, action, publisher = record
+        node, action, publisher = cast(
+            tuple[
+                DyadicReturnSupportRecord,
+                MahlerSourceBoundSafetyAction,
+                int,
+            ],
+            record,
+        )
         self.count(
             "record_validation_operand_bits",
             width + residue.bit_length() + publisher.bit_length(),
@@ -686,7 +694,7 @@ class MahlerOccurrenceConsumer:
             return None
         try:
             if (
-                type(found) is not tuple
+                not is_exact_object_tuple(found)
                 or len(found) != 12
                 or any(type(part) is not int for part in found[:8])
                 or found[8] is not None

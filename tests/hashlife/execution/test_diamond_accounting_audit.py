@@ -1,11 +1,16 @@
 """Distinguish syntactic programs, reduced functions, and work before aliasing."""
 
+from collections.abc import Iterable, Mapping
 from dataclasses import replace
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
+from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
+from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
+from number_compiler.hashlife.execution.diamond_pair_macros import PairMacroKey
 from number_compiler.hashlife.execution.diamond_payload import DiamondPayloadRegistry
 from number_compiler.hashlife.interfaces.diamond_unary import UnaryComposition
 from number_compiler.resources.metric_collection import collect_ledger_metrics
@@ -16,19 +21,24 @@ from tests.support.dataclass_records import replace_record
 from tests.support.diamond_context_program import assert_context_inventory
 
 
+def _unary_composition_key(memo: Iterable[object]) -> UnaryComposition:
+    return next(key for key in memo if type(key) is UnaryComposition)
+
+
 def test_spatial_context_programs_are_not_counted_as_extensional_functions() -> None:
     runtime, _action, contexts, _request = collatz_context_program_case()
     arena = runtime.pair_macros
     report = collect_ledger_metrics(runtime.ledger)
     assert report.representation_boundary_complete == 1
-    assert report.spatial_action_program_nodes == len(contexts._nodes) + len(
-        arena._nodes
+    assert report.spatial_action_program_nodes == len(contexts.node_view) + len(
+        arena.node_view
     )
-    assert report.context_program_nodes == len(contexts._nodes)
-    assert report.macro_transfer_action_nodes == len(arena._nodes)
+    assert report.context_program_nodes == len(contexts.node_view)
+    assert report.macro_transfer_action_nodes == len(arena.node_view)
     assert len(contexts.observations) > 0
-    assert len(contexts.unary._memo) > 0
-    assert report.unary_function_cache_entries == len(contexts.unary._memo)
+    unary_memo = contexts.unary.audit_snapshot().container
+    assert len(unary_memo) > 0
+    assert report.unary_function_cache_entries == len(unary_memo)
     assert_context_inventory(contexts, report)
     assert report.boundary_substitution_cache_entries == len(runtime.continuations)
     partition = observed_node_partition(
@@ -43,8 +53,13 @@ def test_spatial_context_programs_are_not_counted_as_extensional_functions() -> 
     assert not any(
         name.startswith("pair_macro_extensional_") for name in runtime.ledger.counters
     )
-    key = next(iter(arena._bindings))
-    expected = arena._bindings[key]
+    binding_owner = cast(int, object.__getattribute__(arena, "_binding_owner"))
+    bindings = cast(
+        Mapping[PairMacroKey, TransferSummaryID],
+        runtime.ledger.registered_container(binding_owner),
+    )
+    key = next(iter(bindings))
+    expected = bindings[key]
     before = runtime.ledger.snapshot()
     assert arena.cache_probe(key.action, key.cell) == expected
     after = runtime.ledger.snapshot()
@@ -55,7 +70,7 @@ def test_spatial_context_programs_are_not_counted_as_extensional_functions() -> 
     assert after.counters.get(
         "pair_macro_program_interner_hits", 0
     ) == before.counters.get("pair_macro_program_interner_hits", 0)
-    assert arena._intern(arena.resolve(expected)) == expected
+    assert arena.intern_record(arena.resolve(expected)) == expected
     assert (
         runtime.ledger.counters["pair_macro_program_interner_hits"]
         == after.counters.get("pair_macro_program_interner_hits", 0) + 1
@@ -64,7 +79,7 @@ def test_spatial_context_programs_are_not_counted_as_extensional_functions() -> 
 
 def test_unary_key_audit_checks_declared_variable_support_and_exact_port_type() -> None:
     runtime, _, contexts, _ = collatz_context_program_case()
-    key = next(key for key in contexts.unary._memo if type(key) is UnaryComposition)
+    key = _unary_composition_key(contexts.unary.audit_snapshot().container)
     registry = DiamondPayloadRegistry(runtime.ledger)
     assert registry.valid(key)
     disguised = SimpleNamespace(
@@ -79,7 +94,7 @@ def test_unary_key_audit_checks_declared_variable_support_and_exact_port_type() 
 
 def test_early_unary_lookup_does_not_mask_late_expression_interning() -> None:
     runtime, _, contexts, _ = collatz_context_program_case()
-    key = next(key for key in contexts.unary._memo if type(key) is UnaryComposition)
+    key = _unary_composition_key(contexts.unary.audit_snapshot().container)
     before, after = measure_operation(
         runtime.ledger,
         lambda: contexts.unary.compose(
@@ -112,7 +127,7 @@ def test_repeated_finite_function_reduction_reports_late_alias_work() -> None:
     runtime, action, _, _ = collatz_context_program_case()
     primitive = runtime.actions.reference(runtime.actions.node(action).first)
     arena = runtime.boundaries
-    count = arena._domain_size(primitive, 0)
+    count = arena.domain_size(primitive, 0)
     assert count is not None
     values = [arena.literal(primitive, 0, 0)] * count
     expected = arena.finite_function(values, primitive, 0)
@@ -146,7 +161,7 @@ def test_singleton_finite_domain_reports_live_workspace_without_reduction_loop()
     engine, atom = runtime()
     arena = engine.boundaries
     value = arena.literal(atom, 0, 0)
-    assert arena._domain_size(atom, 1) == 1
+    assert arena.domain_size(atom, 1) == 1
     arena.finite_function([value], atom, 1)
     # Output references, singleton frontier, staged-node list and staged map.
     assert engine.ledger.counters["boundary_function_workspace_peak"] == 4
@@ -232,7 +247,11 @@ def test_primitive_spatial_bindings_have_actual_slots_and_early_hit_units() -> N
 
 def test_warm_unary_composition_hits_before_repeated_admission_work() -> None:
     runtime, _, contexts, _ = collatz_context_program_case()
-    key = next(key for key in contexts.unary._memo if type(key) is UnaryComposition)
+    key = next(
+        key
+        for key in contexts.unary.audit_snapshot().container
+        if type(key) is UnaryComposition
+    )
     contexts.unary.compose(key.kernel, key.side, key.before, key.after, key.port)
     before, after = measure_operation(
         runtime.ledger,
@@ -255,7 +274,7 @@ def test_warm_unary_composition_hits_before_repeated_admission_work() -> None:
     assert after.entries == before.entries and after.nodes == before.nodes
     same = runtime.kernels.constant(2, 0)
     before = runtime.ledger.snapshot()
-    assert contexts._input_port((same, same, same)) is None
+    assert contexts.input_port((same, same, same)) is None
     after = runtime.ledger.snapshot()
     assert (
         after.counters["context_variable_support_frame_visits"]
@@ -287,7 +306,7 @@ def test_spatial_source_admission_is_staged_and_warm_validation_work_is_visible(
     before = runtime.ledger.snapshot()
     # The immutable original_forward proof is checked directly: one visit,
     # no pending stack or seen-set workspace is allocated.
-    assert runtime.pair_macros._require_source(cell) == (1, 1, 0, 0)
+    assert runtime.pair_macros.require_source(cell) == (1, 1, 0, 0)
     assert runtime.ledger.snapshot() == before
     task = SpatialSummary(action, cell, 0)
     runtime.execute(task)
@@ -315,7 +334,7 @@ def test_original_source_reads_and_interner_reuse_have_distinct_units() -> None:
     index = HashLifeBlockIndex(
         DigitNormalizeBlockEffect(2), (1, 2, 1), logical_length=4
     )
-    geometry = index._source_geometry
+    geometry = cast(SourceGeometry, object.__getattribute__(index, "_source_geometry"))
     before = index.metrics()
     assert before.canonical_tile_arena_nodes > 0
     assert (

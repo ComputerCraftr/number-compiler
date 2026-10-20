@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import random
+from itertools import product
+
+import pytest
 
 from devtools.verification.block_power import (
     apply_block_power,
@@ -20,20 +23,43 @@ from tests.support.reverse_pair_oracle import reference_successor
 __all__ = ("symmetric_word",)
 
 
-def test_block_power_exact_multibase_without_intermediate_generations() -> None:
-    rng = random.Random(0xB10C196)
-    for base in range(2, 13):
-        for exponent in range(9):
-            power = power_block_effect(base=base, exponent=exponent)
-            for _ in range(8):
-                source = symmetric_word(rng, base, rng.randint(1, 10))
-                expected: tuple[int, ...] = source
-                for _step in range(exponent):
-                    expected = reference_successor(expected, base)
-                application = apply_block_power(power, source)
-                assert application.values == expected
-                assert application.intermediate_pair_words == 0
-                assert application.elementary_generations == 0
+_UNIT_BLOCK_POWER_CASES = (
+    (2, 0),
+    (2, 1),
+    (2, 8),
+    (3, 2),
+    (3, 8),
+    (10, 0),
+    (10, 4),
+    (10, 8),
+    (12, 1),
+    (12, 8),
+)
+_FULL_BLOCK_POWER_CASES = tuple(product(range(2, 13), range(9)))
+_BLOCK_POWER_CASES = tuple(
+    pytest.param(base, exponent, False) for base, exponent in _UNIT_BLOCK_POWER_CASES
+) + tuple(
+    pytest.param(base, exponent, True, marks=pytest.mark.validation)
+    for base, exponent in _FULL_BLOCK_POWER_CASES
+)
+
+
+@pytest.mark.parametrize("base,exponent,full_case", _BLOCK_POWER_CASES)
+def test_block_power_exact_multibase_without_intermediate_generations(
+    base: int, exponent: int, full_case: bool
+) -> None:
+    rng = random.Random(0xB10C196 + base * 9 + exponent)
+    power = power_block_effect(base=base, exponent=exponent)
+    source_samples = 8 if full_case else 2
+    for _ in range(source_samples):
+        source = symmetric_word(rng, base, rng.randint(1, 10))
+        expected: tuple[int, ...] = source
+        for _step in range(exponent):
+            expected = reference_successor(expected, base)
+        application = apply_block_power(power, source)
+        assert application.values == expected
+        assert application.intermediate_pair_words == 0
+        assert application.elementary_generations == 0
 
 
 def test_block_power_operator_syntax_is_logarithmic_for_huge_exponent() -> None:
@@ -186,7 +212,9 @@ def test_parallel_blank_tail_theorem_preserves_long_power_semantics() -> None:
 def test_higher_spacetime_macrocells_use_recursive_actions_not_boundary_roots() -> None:
     from devtools.verification.block_composed import ComposedBlockEffect
 
-    power = power_block_effect(base=10, exponent=128)
+    # T16 includes T4, T8 and their recursive parents. Larger endpoints add
+    # compatibility-lowering work without exercising another storage invariant.
+    power = power_block_effect(base=10, exponent=16)
     application = apply_block_power(power, (7, 18, 7))
     stats = application.runtime_stats
     assert stats["canonical_program_word_roots"] == 0
@@ -211,11 +239,9 @@ def test_higher_spacetime_macrocells_use_recursive_actions_not_boundary_roots() 
 
     # No temporal layer is allowed to retain another set of the same macrocell ids.
     stack = [power.root]
-    seen = set()
+    seen: set[object] = set()
     while stack:
         node = stack.pop()
-        if node is None:
-            continue
         node_id = getattr(node, "node_id", id(node))
         if node_id in seen:
             continue
@@ -225,59 +251,49 @@ def test_higher_spacetime_macrocells_use_recursive_actions_not_boundary_roots() 
             stack.extend((node.first, node.second))
 
 
-def test_t4_partition_ids_are_final_before_parent_hashlife_use() -> None:
+def test_partition_ids_are_final_before_recursive_parent_use() -> None:
     from pathlib import Path
 
     import devtools.verification.block_partition as partition_mod
     from devtools.verification.block_composed import ComposedBlockEffect
+    from tests.support.diamond_halos import suffix_parity
 
-    power = power_block_effect(
-        base=10, exponent=128, max_context_nodes=1_000_000, max_cache_entries=1_000_000
-    )
-    expected = apply_block_power(power, (7, 18, 7)).values
+    # A finite child explicitly admits the partition carrier. Reverse T4 now
+    # uses recursive actions and does not populate this compatibility carrier.
+    kernel = suffix_parity()
+    budget = BlockContextBudget(1_000_000, 1_000_000)
+    partition = compose_block_effects(kernel, kernel, budget=budget)
+    assert isinstance(partition, ComposedBlockEffect)
+    parent = compose_block_effects(partition, partition, budget=budget)
 
-    stack = [power.root]
-    t4 = None
-    seen = set()
-    while stack:
-        node = stack.pop()
-        if node is None:
-            continue
-        node_id = getattr(node, "node_id", id(node))
-        if node_id in seen:
-            continue
-        seen.add(node_id)
-        if isinstance(node, ComposedBlockEffect) and node.exponent == 4:
-            t4 = node
-            break
-        if isinstance(node, ComposedBlockEffect):
-            stack.extend((node.first, node.second))
-    assert t4 is not None
+    def warm_parent() -> tuple[object, ...]:
+        final_states: list[object] = []
+        for side in (BoundarySide.LEFT, BoundarySide.RIGHT):
+            state = parent.initial(side)
+            for symbol in (0, 1, 2, 3):
+                state = parent.advance(side, state, symbol)
+            final_states.append(state)
+        return tuple(final_states)
 
-    stats = t4.runtime_stats()
+    expected = warm_parent()
+    stats = partition.runtime_stats()
     assert stats["behavioral_partition_left_aliases"] == 0
     assert stats["behavioral_partition_right_aliases"] == 0
     assert stats["behavioral_partition_left_refinement_runs"] == 0
     assert stats["behavioral_partition_right_refinement_runs"] == 0
-    assert not hasattr(t4, "refine_partition_behavioral_aliases")
+    assert not hasattr(partition, "refine_partition_behavioral_aliases")
 
-    # Parent recursive actions retain child partition objects.  Their IDs must
-    # therefore be final at interning time; a later alias/canonical-representative
-    # rewrite would strand stale child IDs inside already-canonical parent nodes.
-    assert all(pool is not None for pool in t4._partition_intern)
-    states = [
-        state
-        for pool in t4._partition_intern
-        if pool is not None
-        for state in pool.values()
-    ]
-    before = {id(state): state.node_id for state in states}
+    # A recursive parent retains its child's partition objects. Their IDs must
+    # remain final so a warm parent cannot retain stale child identities.
+    states = partition.partition_identity_snapshot()
+    before = {state.object_id: state.node_id for state in states}
     assert states
-    assert all(state.canonical_cache_state() is state for state in states)
+    assert all(state.canonical for state in states)
 
-    assert apply_block_power(power, (7, 18, 7)).values == expected
-    assert all(state.canonical_cache_state() is state for state in states)
-    assert {id(state): state.node_id for state in states} == before
+    assert warm_parent() == expected
+    after = partition.partition_identity_snapshot()
+    assert all(state.canonical for state in after)
+    assert {state.object_id: state.node_id for state in after} == before
 
     source = Path(partition_mod.__file__).read_text()
     assert "canonical_representative" not in source

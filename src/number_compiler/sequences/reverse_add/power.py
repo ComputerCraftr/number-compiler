@@ -40,7 +40,9 @@ from number_compiler.sequences.reverse_add.palindrome import (
 )
 
 if TYPE_CHECKING:
-    from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
+    from number_compiler.resources.hashlife_behavior_metrics import (
+        HashLifeBehaviorMetrics,
+    )
     from number_compiler.resources.reverse_power_metrics import ReverseAddPowerMetrics
     from number_compiler.sequences.reverse_add.boundary_window import (
         ReverseBoundaryWindowObservation,
@@ -75,10 +77,10 @@ def pair_field_from_integer(value: int, base: int) -> tuple[int, ...]:
     """Original-source encoding retained for independent kernel consumers."""
     value = require_integer(value, "seed", 0)
     base = require_integer(base, "base", 2)
-    return _pair_field_from_digits(digits_lsd(value, base))
+    return pair_field_from_digits(digits_lsd(value, base))
 
 
-def _pair_field_from_digits(digits: tuple[int, ...]) -> tuple[int, ...]:
+def pair_field_from_digits(digits: tuple[int, ...]) -> tuple[int, ...]:
     if type(digits) is not tuple or not digits:
         raise ValueError("reverse pair source requires original digits")
     return tuple(digits[i] + digits[-1 - i] for i in range(len(digits)))
@@ -134,9 +136,9 @@ class ReverseAddPoweredTerm:
         self,
     ) -> tuple[ReversePairQ19OutputOwner, ReversePairOutputOccurrence, bool, int]:
         """Demand the authenticated endpoint through its existing workspace owner."""
-        return self._source_workspace().completed_q19_occurrence()
+        return self.source_workspace().completed_q19_occurrence()
 
-    def _source_workspace(self) -> ReverseSourceImageWorkspace:
+    def source_workspace(self) -> ReverseSourceImageWorkspace:
         from number_compiler.sequences.reverse_add.source_images import (
             ReverseSourceImageWorkspace,
         )
@@ -243,7 +245,7 @@ class ReverseAddPoweredTerm:
         position = require_integer(position, "digit coordinate")
         if position < 0:
             raise IndexError(position)
-        return self._source_workspace().digit(position)
+        return self.source_workspace().digit(position)
 
     def direct_powered_digit(self, position: int) -> int:
         """Compatibility alias; does not select another execution path."""
@@ -255,7 +257,7 @@ class ReverseAddPoweredTerm:
 
     @source_reads_only
     def _width_source_only(self) -> int:
-        return self._source_workspace().width()
+        return self.source_workspace().width()
 
     @property
     def estimated_bit_length(self) -> int:
@@ -265,7 +267,7 @@ class ReverseAddPoweredTerm:
     def _measured_output_digits(self) -> Iterator[int]:
         def source() -> Iterator[int]:
             self.prepare_recursive_source_authority()
-            yield from self._source_workspace().iter_digits()
+            yield from self.source_workspace().iter_digits()
 
         return measured_output_stream(self._ledger, "reverse_output_stream", source)
 
@@ -322,7 +324,7 @@ class ReverseAddPoweredTerm:
             raise ValueError("reverse/add term source/action binding changed")
         if self.base != 10:
             raise ValueError("spatial bank morphism requires decimal reversal")
-        return self._source_workspace().certified_spatial_bank_morphism(
+        return self.source_workspace().certified_spatial_bank_morphism(
             start, count, period=period
         )
 
@@ -332,7 +334,7 @@ class ReverseAddPoweredTerm:
         """Finite source-certified GT/EQ/LT, F5 and carry/borrow ring output."""
         if (self.seed, self.generation, self.base) != self._binding:
             raise ValueError("reverse/add term source/action binding changed")
-        return self._source_workspace().certified_temporal_ring_bank(start, count)
+        return self.source_workspace().certified_temporal_ring_bank(start, count)
 
     def temporal_seed_orbit_morphism(
         self, steps: int, *, start: int = 1
@@ -466,7 +468,7 @@ class ReverseAddPoweredTerm:
                 self.seed,
                 self.generation,
                 self._ledger,
-                source_workspace=self._source_workspace(),
+                source_workspace=self.source_workspace(),
                 max_states=max_states,
                 max_compositions=max_compositions,
                 max_relation_entries=max_relation_entries,
@@ -513,14 +515,4 @@ class ReverseAddPoweredTerm:
         )
 
 
-__all__ = ["ReverseAddPowerMetrics", "ReverseAddPoweredTerm", "pair_field_from_integer"]
-
-
-def __getattr__(name: str) -> object:
-    from number_compiler.api.lazy_exports import resolve_export
-
-    return resolve_export(
-        name,
-        {"ReverseAddPowerMetrics": "number_compiler.resources.reverse_power_metrics"},
-        globals(),
-    )
+__all__ = ["ReverseAddPoweredTerm", "pair_field_from_integer"]

@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import cast
 
-from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
+from number_compiler.arithmetic.automata.ledgered_slp import (
+    LedgerSLPArena,
+    LedgerSLPArenaAuditSnapshot,
+)
 from number_compiler.arithmetic.automata.slp import SLPNode
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.payload_containers import audit_mapping_items
@@ -13,7 +17,6 @@ from number_compiler.resources.stores import (
     LedgerDict,
     LedgerList,
     TrackedDict,
-    _TrackedList,
 )
 
 
@@ -104,16 +107,19 @@ def _interner_rows(
 ) -> tuple[tuple[object, object], ...] | None:
     if type(memo) is not OwnedMemo or type(container) is not LedgerDict:
         return None
-    memo_state = memo.audit_snapshot()
-    backing_store = container.backing_store
+    retained_memo = cast(OwnedMemo[object, object], memo)
+    store = cast(LedgerDict[object, object], container)
+    memo_state = retained_memo.audit_snapshot()
+    backing_store: Mapping[object, object] = store.backing_store
+    tracked_store = cast(TrackedDict[object, object], backing_store)
     if (
         memo_state.ledger is not ledger
         or type(memo_state.owner) is not int
         or memo_state.owner != owner
         or type(memo_state.nodes_per_entry) is not int
         or memo_state.nodes_per_entry != 0
-        or memo.node_cost is not None
-        or memo_state.container is not container
+        or retained_memo.node_cost is not None
+        or memo_state.container is not store
         or type(memo_state.dynamic_nodes) is not int
         or memo_state.dynamic_nodes != 0
         or type(memo_state.pending_clear_entries) is not int
@@ -121,46 +127,41 @@ def _interner_rows(
         or type(memo_state.pending_clear_nodes) is not int
         or memo_state.pending_clear_nodes != 0
         or type(memo_state.disposed) is not bool
-        or container.ledger is not ledger
-        or type(container.owner) is not int
-        or container.owner != owner
-        or type(container.nodes_per_entry) is not int
-        or container.nodes_per_entry != 0
-        or type(container.write_once) is not bool
-        or container.write_once
-        or type(container.sealed) is not bool
-        or not container.sealed
-        or not ledger.is_factory_container(container)
-        or not isinstance(backing_store, TrackedDict)
+        or store.ledger is not ledger
+        or type(store.owner) is not int
+        or store.owner != owner
+        or type(store.nodes_per_entry) is not int
+        or store.nodes_per_entry != 0
+        or type(store.write_once) is not bool
+        or store.write_once
+        or type(store.sealed) is not bool
+        or not store.sealed
+        or not ledger.is_factory_container(store)
         or type(backing_store) is not TrackedDict
-        or not backing_store.belongs_to(ledger)
+        or not tracked_store.belongs_to(ledger)
     ):
         return None
     try:
-        rows = audit_mapping_items(memo)
+        memo_rows = audit_mapping_items(retained_memo)
     except (KeyError, TypeError, ValueError, RuntimeError):
         return None
-    for key, local_id in rows:
+    rows: list[tuple[object, object]] = []
+    for key, local_id in memo_rows:
+        row_key: object = key
         if type(local_id) is not int or local_id < 0:
             return None
         if kind == "term" and (type(key) is not int or not 0 <= key < 1 << 64):
             return None
-        if kind in ("concat", "repeat") and (
-            type(key) is not tuple
-            or len(key) != 2
-            or any(type(part) is not int or part < 0 for part in key)
-        ):
-            return None
-    return rows
-
-
-def _store_rows(container: object) -> tuple[object, ...] | None:
-    if type(container) is LedgerList:
-        try:
-            return tuple(container)
-        except (RuntimeError, TypeError, ValueError):
-            return None
-    return None
+        if kind in ("concat", "repeat"):
+            if type(key) is not tuple:
+                return None
+            parts: tuple[object, ...] = cast(tuple[object, ...], key)
+            if len(parts) != 2 or any(
+                type(part) is not int or part < 0 for part in parts
+            ):
+                return None
+        rows.append((row_key, local_id))
+    return tuple(rows)
 
 
 def audit_ledger_slp_payloads(
@@ -189,17 +190,21 @@ def audit_ledger_slp_payloads(
             else 0
         )
         try:
-            nodes = arena._nodes_store
-            memos = (arena._term_store, arena._cat_store, arena._rep_store)
+            snapshot = arena.audit_snapshot()
+            if type(snapshot) is not LedgerSLPArenaAuditSnapshot:
+                raise AttributeError("SLP arena has a foreign audit snapshot")
+            nodes = snapshot.node_store
+            memos = (snapshot.term_memo, snapshot.concat_memo, snapshot.repeat_memo)
             if type(nodes) is not LedgerList or any(
                 type(memo) is not OwnedMemo for memo in memos
             ):
                 raise AttributeError("SLP arena has a foreign retained store")
-            if (
-                arena.nodes is not nodes
-                or arena._term is not arena._term_store
-                or arena._cat is not arena._cat_store
-                or arena._rep is not arena._rep_store
+            if not snapshot.node_store_alias_matches or not all(
+                (
+                    snapshot.term_alias_matches,
+                    snapshot.concat_alias_matches,
+                    snapshot.repeat_alias_matches,
+                )
             ):
                 raise AttributeError("SLP arena has a rebound public store")
             owners = (nodes.owner, *(memo.owner for memo in memos))
@@ -220,7 +225,7 @@ def audit_ledger_slp_payloads(
             invalid.update((owner, id(arena)) for owner in owners if type(owner) is int)
             invalid.add((fallback_owner, id(arena)))
             continue
-        node_rows = _store_rows(arena.nodes)
+        node_rows = snapshot.node_rows
         entries = tuple(
             _interner_rows(memo, ledger, owner, store, kind)
             for memo, owner, store, kind in zip(
@@ -232,28 +237,26 @@ def audit_ledger_slp_payloads(
             )
         )
         valid = (
-            arena.ledger is ledger
+            snapshot.ledger is ledger
             and owners_value == owners
             and len(set(owners)) == 4
-            and type(arena.empty_id) is int
-            and arena.empty_id == 0
-            and type(arena._closed) is bool
-            and type(arena._cleanup_complete) is bool
-            and type(arena._nodes_released) is bool
-            and type(arena.nodes) is LedgerList
-            and arena.nodes.ledger is ledger
-            and type(arena.nodes.owner) is int
-            and arena.nodes.owner == owners[0]
-            and type(arena.nodes.nodes_per_entry) is int
-            and arena.nodes.nodes_per_entry == 1
-            and type(arena.nodes.append_only) is bool
-            and arena.nodes.append_only
-            and type(arena.nodes._sealed) is bool
-            and arena.nodes._sealed
-            and ledger.is_factory_container(arena.nodes)
-            and type(arena.nodes._data) is _TrackedList
-            and arena.nodes._data.resource_ledger is ledger
-            and node_rows is not None
+            and type(snapshot.empty_id) is int
+            and snapshot.empty_id == 0
+            and type(snapshot.closed) is bool
+            and type(snapshot.cleanup_complete) is bool
+            and type(snapshot.nodes_released) is bool
+            and type(nodes) is LedgerList
+            and nodes.ledger is ledger
+            and type(nodes.owner) is int
+            and nodes.owner == owners[0]
+            and type(nodes.nodes_per_entry) is int
+            and nodes.nodes_per_entry == 1
+            and type(nodes.append_only) is bool
+            and nodes.append_only
+            and type(nodes.sealed) is bool
+            and nodes.sealed
+            and nodes.has_tracked_backing_store
+            and ledger.is_factory_container(nodes)
             and all(rows is not None for rows in entries)
             and all(owner in inventory for owner in owners)
             and all(
@@ -277,7 +280,7 @@ def audit_ledger_slp_payloads(
                 and inventory[owner].scope == first.scope
                 for owner, (suffix, role) in zip(owners, suffixes, strict=True)
             )
-        closed = arena._closed and arena._cleanup_complete
+        closed = snapshot.closed is True and snapshot.cleanup_complete is True
         valid &= all(
             inventory[owner].disposed == closed
             for owner in owners
@@ -289,10 +292,7 @@ def audit_ledger_slp_payloads(
             and memo.audit_snapshot().disposed == closed
             for memo in memos
         )
-        valid &= arena._nodes_released == closed
-        if node_rows is None:
-            valid = False
-            node_rows = ()
+        valid &= snapshot.nodes_released == closed
         if any(rows is None for rows in entries):
             valid = False
         if valid and closed:
@@ -308,7 +308,7 @@ def audit_ledger_slp_payloads(
                 )
             )
         elif valid:
-            valid &= not arena._closed and not arena._cleanup_complete
+            valid &= not snapshot.closed and not snapshot.cleanup_complete
             valid &= (
                 inventory[owners[0]].entries == len(node_rows)
                 and inventory[owners[0]].nodes == len(node_rows)

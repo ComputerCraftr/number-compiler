@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from itertools import product
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -38,7 +38,8 @@ def test_substitution_budget_rejection_publishes_no_partial_nodes_keys_or_cache(
 ) -> None:
     arena, root, replacements, _ = fixture()
     before = arena.ledger.snapshot()
-    original_nodes, original_keys = tuple(arena._nodes), dict(arena._keys)
+    snapshot = arena.audit_snapshot()
+    original_nodes, original_keys = snapshot.nodes, snapshot.key_rows
     arena.ledger.tighten_limits(
         max_nodes=None, max_cache_entries=before.entries + available_entries
     )
@@ -54,8 +55,8 @@ def test_substitution_budget_rejection_publishes_no_partial_nodes_keys_or_cache(
         assert after.counters[
             "finite_port_substitution_staged_nodes"
         ] > before.counters.get("finite_port_substitution_staged_nodes", 0)
-    assert tuple(arena._nodes) == original_nodes
-    assert dict(arena._keys) == original_keys
+    assert arena.audit_snapshot().nodes == original_nodes
+    assert arena.audit_snapshot().key_rows == original_keys
     assert [(row.observed_entries, row.observed_nodes) for row in after.inventory] == [
         (row.observed_entries, row.observed_nodes) for row in before.inventory
     ]
@@ -67,17 +68,17 @@ def test_simultaneous_replacements_and_query_eviction_preserve_function_identity
     None
 ):
     arena, root, replacements, variables = fixture()
-    before_nodes = len(arena._nodes)
+    before_nodes = arena.node_count
     result = arena.substitute(root, replacements)
     for x, y in product((False, True), repeat=2):
         assert arena.apply(result, dict(zip(variables, (x, y), strict=True))) == (
             x and not y
         )
-    final_nodes = len(arena._nodes)
+    final_nodes = arena.node_count
     assert final_nodes >= before_nodes
     arena.ledger.evict_query_memos()
     assert arena.substitute(root, dict(reversed(tuple(replacements.items())))) == result
-    assert len(arena._nodes) == final_nodes
+    assert arena.node_count == final_nodes
     assert arena.retained_entries() == arena.ledger.entries
     report = collect_ledger_metrics(arena.ledger)
     assert report.resource_audit_complete == 1
@@ -109,7 +110,7 @@ def test_effective_scoped_key_hits_before_reduction_and_ignores_unused_mapping_o
     ):
         assert after.counters.get(name, 0) == before.counters.get(name, 0)
     assert (after.nodes, after.entries) == (before.nodes, before.entries)
-    assert len(arena._substitution.memo) == 1
+    assert len(arena.audit_snapshot().substitution_rows) == 1
     assert collect_ledger_metrics(arena.ledger).forbidden_future_payloads == 0
 
 
@@ -129,7 +130,7 @@ def test_substitution_payload_audit_rejects_unowned_or_unallocated_component(
         FinitePortActionArena(arena.ledger).constant(False)
         if foreign_kind == "other-arena"
         else TransferSummaryID(
-            arena.owner, "finite-port-function", len(arena._nodes) + 100
+            arena.owner, "finite-port-function", arena.node_count + 100
         )
     )
     variable = next(iter(replacements))
@@ -154,20 +155,32 @@ def test_substitution_payload_audit_rejects_unowned_or_unallocated_component(
 def test_substitution_cache_uses_validated_private_integer_identities() -> None:
     arena, root, replacements, _ = fixture()
     expected = arena.substitute(root, replacements)
-    key, result = next(iter(arena._substitution.memo.items()))
+    from number_compiler.arithmetic.functions.finite_port_substitution import (
+        SubstitutionIndexKey,
+    )
+
+    raw_key, result = arena.audit_snapshot().substitution_rows[0]
+    key = cast(SubstitutionIndexKey, raw_key)
     assert type(key.function) is int
     assert all(type(component.function) is int for component in key.components)
     assert type(result) is int
     assert result == expected.local_id
-    assert all(type(index) is int for index in arena._substitution.supports)
+    assert all(type(index) is int for index, _ in arena.audit_snapshot().support_rows)
     assert collect_ledger_metrics(arena.ledger).forbidden_future_payloads == 0
 
 
 def test_private_substitution_numeric_alias_corruption_is_audited() -> None:
     arena, root, replacements, _ = fixture()
     arena.substitute(root, replacements)
-    key = next(iter(arena._substitution.memo))
-    arena._substitution.memo[key] = True
+    from number_compiler.arithmetic.functions.finite_port_substitution import (
+        FinitePortSubstitution,
+    )
+
+    substitution = cast(
+        FinitePortSubstitution, object.__getattribute__(arena, "_substitution")
+    )
+    key = next(iter(substitution.memo))
+    substitution.memo[key] = True
     assert collect_ledger_metrics(arena.ledger).forbidden_future_payloads > 0
 
 

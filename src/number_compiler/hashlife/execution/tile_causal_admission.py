@@ -24,7 +24,10 @@ def admit_run_actions(
     action: FieldCellActionID,
 ) -> CausalActionAdmission:
     """Deeply validate every reachable action under one workspace lease."""
-    if type(adapter._next_action) is not int or adapter._next_action < 1:
+    if (
+        type(adapter.next_action_identity) is not int
+        or adapter.next_action_identity < 1
+    ):
         raise ValueError("causal action authority has no admitted actions")
     token = tasks.begin_action_admission(action, adapter)
     visits = 0
@@ -34,7 +37,7 @@ def admit_run_actions(
             if type(current) is not FieldCellActionID:
                 raise TypeError("causal execution requires a field action ID")
             current.validate(
-                adapter.owner, "field-cell-action", size=adapter._next_action
+                adapter.owner, "field-cell-action", size=adapter.next_action_identity
             )
             if tasks.action_is_admitted(token, current):
                 continue

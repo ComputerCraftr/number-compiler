@@ -17,6 +17,7 @@ from number_compiler.sequences.comma.arithmetic import (
     phase_prefix_displacement,
 )
 from number_compiler.sequences.comma.boundary_chart import BoundaryChart, chart_step
+from number_compiler.sequences.comma.domain import canonical_entry_coordinate
 
 
 def _near_endpoint(leading: int, headroom: int) -> BoundaryChart:
@@ -37,7 +38,7 @@ def test_crt_projection_and_advance_match_scalar_clock() -> None:
     displacements = {
         cycle_transfer(f, d).displacement for f in range(1, 10) for d in range(10)
     }
-    clocks = set()
+    clocks: set[FrobeniusClock] = set()
     for residue in range(924):
         clock = FrobeniusClock.from_residue(residue)
         clocks.add(clock)
@@ -49,7 +50,7 @@ def test_crt_projection_and_advance_match_scalar_clock() -> None:
 
 
 def test_diagonal_occurrence_lift_preserves_exact_chart_and_weight() -> None:
-    controls = set()
+    controls: set[tuple[int, int, int]] = set()
     weights: dict[tuple[int, int, int], set[tuple[int, int, int]]] = {}
     for f in range(1, 10):
         for x in range(99):
@@ -69,7 +70,14 @@ def test_diagonal_occurrence_lift_preserves_exact_chart_and_weight() -> None:
                     entry_diagonal_headroom(f, x, power, transfer.displacement)
                     == expected
                 )
-                move = chart_step(exponent, BoundaryChart("entry", f, 0, x))
+                chart = BoundaryChart("entry", f, 0, x)
+                if not canonical_entry_coordinate(f, x):
+                    with pytest.raises(
+                        ValueError, match="invalid comma boundary chart"
+                    ):
+                        chart_step(exponent, chart)
+                    continue
+                move = chart_step(exponent, chart)
                 weights.setdefault(entry.control_id, set()).add(
                     (move.weight.scale, move.weight.offset, move.weight.denominator)
                 )

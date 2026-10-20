@@ -16,9 +16,9 @@ from number_compiler.sequences.double_reverse.temporal_border_bank import (
     EDGE_STATES,
     OBSERVERS,
     TemporalObserver,
-    _output,
-    _step,
+    border_step,
     minimize_temporal_border,
+    observer_output,
     power_temporal_border,
     pumped_border_word,
 )
@@ -96,10 +96,14 @@ def test_temporal_moore_is_future_closed_for_both_inward_carries() -> None:
                         outputs_left: list[tuple[int, ...]] = []
                         outputs_right: list[tuple[int, ...]] = []
                         for ingress in word:
-                            outputs_left.append(_output(left, ingress, observer))
-                            outputs_right.append(_output(right, ingress, observer))
-                            left = _step(left, ingress)[0]
-                            right = _step(right, ingress)[0]
+                            outputs_left.append(
+                                observer_output(left, ingress, observer)
+                            )
+                            outputs_right.append(
+                                observer_output(right, ingress, observer)
+                            )
+                            left = border_step(left, ingress)[0]
+                            right = border_step(right, ingress)[0]
                         if outputs_left != outputs_right:
                             witness = True
                             break
@@ -118,12 +122,15 @@ def test_binary_squared_moore_ranges_match_independent_branch_enumeration() -> N
                 paths = {(edge, 0)}
                 for _ in range(depth):
                     paths = {
-                        (_step(state, bit)[0], cost + _output(state, bit, observer)[0])
+                        (
+                            border_step(state, bit)[0],
+                            cost + observer_output(state, bit, observer)[0],
+                        )
                         for state, cost in paths
                         for bit in (0, 1)
                     }
                 expected_values = {
-                    _output(state, bit, observer)
+                    observer_output(state, bit, observer)
                     for state, _ in paths
                     for bit in (0, 1)
                 }
@@ -206,7 +213,7 @@ def test_term_publishes_temporal_bank_without_endpoint(
         assert rows["carry_edge"].exact_sum == 384
         assert rows["reflected_xor"].exact_sum == 72
         assert rows["gt_high"].exact_sum is None
-        assert term._image is None
+        assert term.published_image is None
         metrics = term.metrics()
         assert metrics["double_reverse_temporal_bank_moore_constructions"] == 6
         assert (

@@ -31,7 +31,7 @@ from devtools.checks.validation_policy import (
     PYTHON_COMMAND_SECONDS,
     PYTHON_MEMORY_BYTES,
 )
-from devtools.report_values import string_keyed_mapping
+from number_compiler.arithmetic.contracts.input_validation import string_keyed_mapping
 
 PROOF_GENERATION_ENV = "NUMBER_COMPILER_PROOF_GENERATION"
 GUARDED_COMMAND_ENV = "NUMBER_COMPILER_GUARDED_COMMAND"
@@ -39,6 +39,8 @@ GUARDED_PARENT_PID_ENV = "NUMBER_COMPILER_GUARDED_PARENT_PID"
 DEADLINE_ENV = "NUMBER_COMPILER_DEADLINE_MONOTONIC"
 MEMORY_BUDGET_ENV = "NUMBER_COMPILER_MEMORY_BUDGET_BYTES"
 _MEMORY_READ_ATTEMPTS = 2
+_LINUX_STATUS_READ_ATTEMPTS = 3
+_LINUX_STATUS_RETRY_SECONDS = 0.005
 
 
 def remaining_deadline_seconds(*, deadline: float | None = None) -> float:
@@ -146,20 +148,41 @@ def memory_reader() -> tuple[str, Callable[[int], int]]:
     if sys.platform.startswith("linux"):
 
         def linux(pid: int) -> int:
-            try:
-                rows = Path(f"/proc/{pid}/status").read_text().splitlines()
-            except FileNotFoundError:
-                return 0
-            values = {
-                parts[0]: int(parts[1]) * 1024
-                for row in rows
-                if (parts := row.split()) and parts[0] in {"VmRSS:", "VmSwap:"}
-            }
-            if "VmRSS:" not in values:
-                if any(row.startswith("State:") and "Z" in row for row in rows):
+            for attempt in range(_LINUX_STATUS_READ_ATTEMPTS):
+                try:
+                    rows = Path(f"/proc/{pid}/status").read_text().splitlines()
+                except FileNotFoundError:
                     return 0
-                raise RuntimeError("child memory measurement unavailable")
-            return values["VmRSS:"] + values.get("VmSwap:", 0)
+                values = {
+                    parts[0]: int(parts[1]) * 1024
+                    for row in rows
+                    if (parts := row.split()) and parts[0] in {"VmRSS:", "VmSwap:"}
+                }
+                if "VmRSS:" in values:
+                    return values["VmRSS:"] + values.get("VmSwap:", 0)
+                state = next(
+                    (
+                        parts[1]
+                        for row in rows
+                        if (parts := row.split(maxsplit=1))
+                        and parts[0] == "State:"
+                        and len(parts) == 2
+                    ),
+                    "",
+                )
+                if state.startswith(("Z", "X", "x")):
+                    return 0
+                if attempt + 1 < _LINUX_STATUS_READ_ATTEMPTS:
+                    # A just-forked child may not have an address space yet.
+                    # Give procfs a brief chance to publish its RSS fields;
+                    # if it remains unreadable, the outer identity check still
+                    # fails closed after its own bounded retry.
+                    time.sleep(_LINUX_STATUS_RETRY_SECONDS)
+            raise OSError(
+                errno.EAGAIN,
+                "child memory measurement temporarily unavailable",
+                pid,
+            )
 
         return "linux_rss_plus_swap", linux
     raise RuntimeError("no supported process-footprint measurement on this platform")
@@ -263,25 +286,25 @@ def _same_process(
 def read_member_footprint(
     member: ProcessIdentity, read_memory: Callable[[int], int]
 ) -> int:
-    """Read one sampled identity, retrying only a transient permission race.
+    """Read one sampled identity, retrying transient procfs read races.
 
     A denied procfs/libproc read is ambiguous: the process may have exited
     after the preceding membership snapshot, or access to a still-live worker
     may genuinely be unavailable. Refresh identity before deciding. A missing,
-    zombie, or replaced PID contributes zero for the old identity; a matching
+    exited, or replaced PID contributes zero for the old identity; a matching
     live identity gets only a small bounded retry and remains fail-closed.
     """
     for attempt in range(_MEMORY_READ_ATTEMPTS):
         try:
             return read_memory(member.pid)
         except OSError as error:
-            if error.errno not in {errno.EPERM, errno.EACCES}:
+            if error.errno not in {errno.EPERM, errno.EACCES, errno.EAGAIN}:
                 raise
             current = process_snapshot().get(member.pid)
             if (
                 not _same_process(member, current)
                 or current is None
-                or current.state.startswith("Z")
+                or current.state.startswith(("Z", "X", "x"))
             ):
                 return 0
             if attempt + 1 == _MEMORY_READ_ATTEMPTS:
@@ -741,13 +764,22 @@ def run_guarded(
                                     f"{active_test_timeout:g} seconds"
                                 )
                                 break
-                    # Do not reap the direct child until its process identity
-                    # has been observed.  A fast worker can otherwise exit
-                    # between the first ps snapshot and poll(), leaving only
-                    # an unanchored descendant in the next snapshot.  An
-                    # unreaped child remains visible as a zombie and pins its
-                    # PID, so the next bounded sample can bind it safely.
-                    if root_identity is not None and child.poll() is not None:
+                    # Keep the leader unreaped until a snapshot observes its
+                    # exit. It may spawn a worker and exit after a live sample;
+                    # polling then would release its PID before that worker
+                    # has been authenticated. A zombie still pins the PGID
+                    # while _snapshot_members captures the remaining group.
+                    current_root = snapshot.get(child.pid)
+                    exit_observed = (
+                        _same_process(root_identity, current_root)
+                        and current_root is not None
+                        and current_root.state.startswith(("Z", "X", "x"))
+                    )
+                    if (
+                        root_identity is not None
+                        and (exit_observed or child.returncode is not None)
+                        and child.poll() is not None
+                    ):
                         # The previous membership view predates waitpid. Refresh
                         # after observing leader exit so a descendant that died
                         # between ps and poll cannot cause a stale refusal.

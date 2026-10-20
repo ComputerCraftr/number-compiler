@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TypeGuard
+
 from number_compiler.arithmetic.automata.program_word import CanonicalWord
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.sequences.collatz.frame import (
@@ -10,6 +12,14 @@ from number_compiler.sequences.collatz.frame import (
 )
 from number_compiler.sequences.collatz.germ_cache import CollatzGermTransitionCache
 from number_compiler.sequences.collatz.power import CollatzEventArena
+
+
+def _is_event_arena(value: object) -> TypeGuard[CollatzEventArena]:
+    return isinstance(value, CollatzEventArena)
+
+
+def _is_transition_cache(value: object) -> TypeGuard[CollatzGermTransitionCache]:
+    return isinstance(value, CollatzGermTransitionCache)
 
 
 def collatz_affine_suffix_event_power_word(
@@ -34,12 +44,12 @@ def collatz_affine_suffix_event_power_word(
         raise ValueError(steps)
     if arena is None:
         arena = CollatzEventArena()
-    if not isinstance(arena, CollatzEventArena):
+    if not _is_event_arena(arena):
         raise TypeError(type(arena))
     germ = CollatzAffineSuffixGerm.from_word(word)
     if transition_cache is None:
         transition_cache = CollatzGermTransitionCache()
-    if not isinstance(transition_cache, CollatzGermTransitionCache):
+    if not _is_transition_cache(transition_cache):
         raise TypeError(type(transition_cache))
     before = arena.composition_operations
     powered = transition_cache.advance_event_power(germ, steps, arena=arena)
@@ -89,7 +99,7 @@ def collatz_affine_suffix_event_power_value(
 
     if arena is None:
         arena = CollatzEventArena()
-    if not isinstance(arena, CollatzEventArena):
+    if not _is_event_arena(arena):
         raise TypeError(type(arena))
     before = arena.composition_operations
     engine = CollatzCausalSpacetimeEngine(event_arena=arena)

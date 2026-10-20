@@ -6,10 +6,10 @@ Each width-w occurrence owns its low-w source germ and affine high-fiber action.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Final, Self, cast
+from typing import Final, Literal, Self, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
@@ -23,10 +23,12 @@ from number_compiler.sequences.collatz.conditional_scheduler_memo import (
 )
 from number_compiler.sequences.collatz.source_cylinder_types import (
     CollatzDyadicOccurrence,
-    _admit_source_key,
+    admit_source_key,
+    decode_width_summary,
+    validate_width_summary,
 )
 from number_compiler.sequences.collatz.source_cylinder_types import (
-    _canonical_gain as _canonical_gain,  # Cache tests patch this hook.
+    canonical_gain as _canonical_gain,  # Cache tests patch this hook.
 )
 from number_compiler.sequences.collatz.tape_width import (
     CollatzTapeWidthSummary,
@@ -37,10 +39,46 @@ from number_compiler.sequences.collatz.tape_width import (
 _OCCURRENCE_PUBLISHER = object()
 _GAIN_PUBLISHER = object()
 _WIDTH_SPINE_PUBLISHER = object()
+_MixedActionMetric = Literal[
+    "failed_work",
+    "mixed_admitted",
+    "mixed_applied_hits",
+    "mixed_bypasses",
+    "mixed_inapplicable",
+    "mixed_invalid_records",
+    "mixed_key_operand_bits",
+    "mixed_lookups",
+    "mixed_misses",
+    "mixed_payload_operand_bits",
+    "mixed_publications",
+    "mixed_rejected_fit",
+    "mixed_retrieved",
+    "mixed_root_tail_rejections",
+    "mixed_validation_operand_bits",
+]
+_MIXED_ACTION_METRICS: Final[frozenset[str]] = frozenset(
+    {
+        "failed_work",
+        "mixed_admitted",
+        "mixed_applied_hits",
+        "mixed_bypasses",
+        "mixed_inapplicable",
+        "mixed_invalid_records",
+        "mixed_key_operand_bits",
+        "mixed_lookups",
+        "mixed_misses",
+        "mixed_payload_operand_bits",
+        "mixed_publications",
+        "mixed_rejected_fit",
+        "mixed_retrieved",
+        "mixed_root_tail_rejections",
+        "mixed_validation_operand_bits",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True, init=False)
-class _CanonicalGain:
+class CanonicalGain:
     """An exact Collatz gain tied to the exponent that produced it.
 
     Normal construction computes the power. Cache rehydration is private and
@@ -60,7 +98,7 @@ class _CanonicalGain:
         object.__setattr__(self, "_seal", (odd_symbols, multiplier))
 
     @classmethod
-    def _from_issued_payload(cls, odd_symbols: int, multiplier: int) -> _CanonicalGain:
+    def from_issued_payload(cls, odd_symbols: int, multiplier: int) -> CanonicalGain:
         if (
             type(odd_symbols) is not int
             or odd_symbols < 0
@@ -76,6 +114,18 @@ class _CanonicalGain:
 
     def matches_seal(self) -> bool:
         return self._seal == (self.odd_symbols, self.multiplier)
+
+
+@dataclass(frozen=True, slots=True)
+class CollatzDyadicMacrosAuditSnapshot:
+    """Read-only lifecycle facts for a source-qualified memo owner."""
+
+    closed: bool
+    cleanup_complete: bool
+    occurrences_disposed: bool
+    width_spines_disposed: bool
+    gains_disposed: bool
+    frontier_disposed: bool
 
 
 class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
@@ -194,7 +244,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
                 ),
             )
             self.gains = cast(
-                OwnedMemo[int, _CanonicalGain],
+                OwnedMemo[int, CanonicalGain],
                 # Each immutable gain seal retains one additional tuple.
                 make_store("-gains", "query_memo", nodes_per_entry=1, evictable=True),
             )
@@ -210,7 +260,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
             raise
 
     def __enter__(self) -> Self:
-        self._check_open()
+        self.check_open()
         return self
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
@@ -230,15 +280,35 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
         cleanup_all(disposals)
         self._cleanup_complete = True
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         if self._closed:
             raise RuntimeError("Collatz dyadic macros are closed")
 
+    def audit_snapshot(self) -> CollatzDyadicMacrosAuditSnapshot:
+        """Report teardown state without exposing cache storage or seal fields."""
+        return CollatzDyadicMacrosAuditSnapshot(
+            closed=self._closed,
+            cleanup_complete=self._cleanup_complete,
+            occurrences_disposed=self.occurrences.audit_snapshot().disposed,
+            width_spines_disposed=self.width_spines.audit_snapshot().disposed,
+            gains_disposed=self.gains.audit_snapshot().disposed,
+            frontier_disposed=self.frontier.audit_snapshot().disposed,
+        )
+
     def _bump(self, suffix: str, amount: int = 1) -> None:
-        self._check_open()
+        self.check_open()
         self.ledger.bump("collatz_hashlife_" + suffix, amount)
 
-    def _retain_gain(self, gain: _CanonicalGain) -> None:
+    def bump_mixed_action_metric(
+        self, suffix: _MixedActionMetric, amount: int = 1
+    ) -> None:
+        """Record one metric owned by the mixed-action cache collaborator."""
+        self.check_open()
+        if suffix not in _MIXED_ACTION_METRICS:
+            raise ValueError("unknown Collatz mixed-action cache metric")
+        self.ledger.bump("collatz_hashlife_" + suffix, amount)
+
+    def _retain_gain(self, gain: CanonicalGain) -> None:
         if gain.odd_symbols not in self.gains and len(self.gains) >= self.GAIN_LIMIT:
             del self.gains[next(iter(self.gains))]
             self._bump("gain_evictions")
@@ -249,15 +319,15 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
             # this occurrence; retaining it is an optional query-memo benefit.
             self._bump("gain_bypasses")
 
-    def _gain(self, odd_symbols: int) -> _CanonicalGain:
-        self._check_open()
+    def canonical_gain(self, odd_symbols: int) -> CanonicalGain:
+        self.check_open()
         if type(odd_symbols) is not int or odd_symbols < 0:
             raise ValueError("Collatz gain exponent must be natural")
         self._bump("gain_key_operand_bits", odd_symbols.bit_length())
         found = self.gains.get(odd_symbols)
         if found is not None:
             if (
-                type(found) is not _CanonicalGain
+                type(found) is not CanonicalGain
                 or found.odd_symbols != odd_symbols
                 or type(found.multiplier) is not int
                 or found.multiplier <= 0
@@ -280,19 +350,23 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
                 with lease:
                     value = lease.get_issued(("gain",), _GAIN_PUBLISHER)
                     if value is not MISSING:
+                        if not is_exact_object_tuple(value):
+                            raise ValueError(
+                                "Collatz canonical gain cache is malformed"
+                            )
+                        raw_gain_payload = value
                         if (
-                            type(value) is not tuple
-                            or len(value) != 2
-                            or type(value[0]) is not int
-                            or value[0] != odd_symbols
-                            or type(value[1]) is not int
-                            or value[1] <= 0
+                            len(raw_gain_payload) != 2
+                            or type(raw_gain_payload[0]) is not int
+                            or raw_gain_payload[0] != odd_symbols
+                            or type(raw_gain_payload[1]) is not int
+                            or raw_gain_payload[1] <= 0
                         ):
                             raise ValueError(
                                 "Collatz canonical gain cache is malformed"
                             )
                         gain_payload = cast(tuple[int, int], value)
-                        gain = _CanonicalGain._from_issued_payload(*gain_payload)
+                        gain = CanonicalGain.from_issued_payload(*gain_payload)
                         self._retain_gain(gain)
                         self._bump("gain_process_hits")
                         return gain
@@ -306,8 +380,8 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
                     return gain
         return self._construct_gain(odd_symbols)
 
-    def _construct_gain(self, odd_symbols: int) -> _CanonicalGain:
-        gain = _CanonicalGain(odd_symbols)
+    def _construct_gain(self, odd_symbols: int) -> CanonicalGain:
+        gain = CanonicalGain(odd_symbols)
         self._bump("gain_operand_bits", gain.multiplier.bit_length())
         self._bump("gain_construction_operand_bits", gain.multiplier.bit_length())
         self._retain_gain(gain)
@@ -316,7 +390,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
     def _publish(
         self, occurrence: CollatzDyadicOccurrence, publisher_fiber: int
     ) -> CollatzDyadicOccurrence:
-        self._check_open()
+        self.check_open()
         if type(publisher_fiber) is not int or publisher_fiber < 0:
             raise ValueError("Collatz occurrence publisher fiber must be natural")
         self._bump(
@@ -364,24 +438,22 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
         cls, value: object, width: int, residue: int
     ) -> tuple[CollatzDyadicOccurrence, int]:
         if not (
-            type(value) is tuple
+            is_exact_object_tuple(value)
             and len(value) == 3
             and type(value[0]) is CollatzDyadicOccurrence
             and type(value[1]) is int
             and value[1] >= 0
-            and type(value[2]) is tuple
+            and is_exact_object_tuple(value[2])
             and len(value[2]) == 6
             and all(type(item) is int for item in value[2])
         ):
             raise ValueError("Collatz local occurrence record is malformed")
-        raw_occurrence, raw_fiber, raw_snapshot = cast(
-            tuple[object, object, object], value
-        )
+        raw_occurrence, raw_fiber, raw_snapshot = value
         occurrence = cast(CollatzDyadicOccurrence, raw_occurrence)
         publisher_fiber = cast(int, raw_fiber)
         snapshot = cast(tuple[int, ...], raw_snapshot)
         try:
-            occurrence._validate(None)
+            occurrence.validate_canonical_gain()
         except (TypeError, ValueError) as exc:
             raise ValueError("Collatz local occurrence binding was changed") from exc
         if (
@@ -393,8 +465,8 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
         return occurrence, publisher_fiber
 
     def lookup(self, source: int, width: int) -> CollatzDyadicOccurrence | None:
-        self._check_open()
-        residue, key_bits = _admit_source_key(source, width)
+        self.check_open()
+        residue, key_bits = admit_source_key(source, width)
         # The low-width slice forms the lookup key; the full source also
         # classifies an exact publisher match versus a transported fiber.
         self._bump("key_operand_bits", key_bits)
@@ -434,10 +506,13 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
                     raise
                 if payload is not MISSING:
                     try:
-                        if not (
-                            type(payload) is tuple
-                            and len(payload) == 4
-                            and all(type(item) is int for item in payload)
+                        if not is_exact_object_tuple(payload):
+                            raise ValueError(
+                                "Collatz shared occurrence payload is invalid"
+                            )
+                        raw_occurrence_payload = payload
+                        if len(raw_occurrence_payload) != 4 or any(
+                            type(item) is not int for item in raw_occurrence_payload
                         ):
                             raise ValueError(
                                 "Collatz shared occurrence payload is invalid"
@@ -448,7 +523,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
                             raise ValueError(
                                 "Collatz shared occurrence has an invalid gain key"
                             )
-                        canonical_gain = self._gain(ones)
+                        canonical_gain = self.canonical_gain(ones)
                         self._bump(
                             "gain_validation_operand_bits",
                             canonical_gain.multiplier.bit_length() + gain.bit_length(),
@@ -459,7 +534,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
                             "gain_validation_operand_bits",
                             ones.bit_length() + canonical_gain.multiplier.bit_length(),
                         )
-                        found = CollatzDyadicOccurrence._from_gain(
+                        found = CollatzDyadicOccurrence.from_canonical_gain(
                             width,
                             residue,
                             ones,
@@ -493,7 +568,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
     def _retrieved(
         self, source: int, width: int, publisher_fiber: int, location: str
     ) -> None:
-        self._check_open()
+        self.check_open()
         self._bump(f"occurrence_{location}_hits")
         self._bump(
             "occurrence_exact_hits"
@@ -503,16 +578,16 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
 
     def applied(self) -> None:
         """Called only after the admitted cached block advances the caller."""
-        self._check_open()
+        self.check_open()
         self._bump("occurrence_applied_hits")
         self._bump("occurrence_applied_parent_hits")
 
     def rejected_fit(self) -> None:
-        self._check_open()
+        self.check_open()
         self._bump("occurrence_rejected_fit")
 
     def _share(self, source: int, found: CollatzDyadicOccurrence) -> None:
-        self._check_open()
+        self.check_open()
         if self.shared_cache:
             cache = get_process_cache()
             if not cache.enabled:
@@ -549,8 +624,8 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
         *,
         tape_width_summary: CollatzTapeWidthSummary | None = None,
     ) -> bool:
-        self._check_open()
-        residue, key_bits = _admit_source_key(source, width)
+        self.check_open()
+        residue, key_bits = admit_source_key(source, width)
         if type(ones) is not int or not 0 <= ones <= width:
             raise ValueError("Collatz macro odd count is invalid")
         if type(endpoint) is not int or endpoint < 0:
@@ -558,7 +633,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
                 "Collatz macro endpoint must be a nonnegative exact integer"
             )
         if tape_width_summary is not None:
-            self._validate_width_summary(tape_width_summary, source, width)
+            validate_width_summary(tape_width_summary, source, width)
             if (
                 tape_width_summary.odd_steps != ones
                 or tape_width_summary.target_width != endpoint.bit_length()
@@ -572,8 +647,8 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
                 existing, _publisher_fiber = self._checked_local_occurrence(
                     existing_record, width, residue
                 )
-                existing._validate(None)
-                canonical_gain = self._gain(ones)
+                existing.validate_canonical_gain()
+                canonical_gain = self.canonical_gain(ones)
                 self._bump(
                     "gain_validation_operand_bits",
                     existing.multiplier.bit_length()
@@ -588,7 +663,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
                     raise ValueError(
                         "Collatz duplicate occurrence has a conflicting source germ"
                     )
-                existing._validate(canonical_gain.multiplier)
+                existing.validate_canonical_gain(canonical_gain.multiplier)
                 high_fiber = source >> width
                 self._bump(
                     "operand_bits",
@@ -620,7 +695,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
                 self._remember_exact_width(source, width, tape_width_summary)
             return False
         try:
-            gain = self._gain(ones)
+            gain = self.canonical_gain(ones)
         except (CacheRecordIssuerMismatch, ValueError):
             self._bump("occurrence_admission_rejections")
             self._bump("failed_work")
@@ -631,7 +706,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
             "gain_validation_operand_bits",
             ones.bit_length() + gain.multiplier.bit_length(),
         )
-        cell = CollatzDyadicOccurrence._from_gain(
+        cell = CollatzDyadicOccurrence.from_canonical_gain(
             width,
             residue,
             ones,
@@ -655,13 +730,13 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
         width: int,
         summary: CollatzTapeWidthSummary,
     ) -> None:
-        residue, _ = _admit_source_key(source, width)
+        residue, _ = admit_source_key(source, width)
         fiber = source >> width
         key = (width, residue, fiber)
-        self._validate_width_summary(summary, source, width)
+        validate_width_summary(summary, source, width)
         if key in self.width_spines:
             existing = self.width_spines[key]
-            self._validate_width_summary(existing, source, width)
+            validate_width_summary(existing, source, width)
             if existing != summary:
                 raise ValueError(
                     "conflicting Collatz width spines for one exact source"
@@ -710,12 +785,12 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
         Irregular run boundaries end the frontier rather than trigger splitting
         or source rediscovery.
         """
-        self._check_open()
+        self.check_open()
         if width < 8 or width & (width - 1):
             self.frontier.clear()
             return
         if tape_width_summary is not None:
-            self._validate_width_summary(tape_width_summary, source, width)
+            validate_width_summary(tape_width_summary, source, width)
             if (
                 tape_width_summary.normalized_symbols != width
                 or tape_width_summary.odd_steps != ones
@@ -771,7 +846,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
         self, source: int, width: int, physical_ticks: int
     ) -> CollatzDyadicOccurrence | None:
         """Try the admitted parent before smaller cached cylinders."""
-        self._check_open()
+        self.check_open()
         while width >= 16:
             found = self.lookup(source, width)
             if found is not None:
@@ -800,8 +875,8 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
         self, source: int, width: int
     ) -> CollatzTapeWidthSummary | None:
         """Look up a completed width spine only for its exact source fiber."""
-        self._check_open()
-        residue, _ = _admit_source_key(source, width)
+        self.check_open()
+        residue, _ = admit_source_key(source, width)
         fiber = source >> width
         key = (width, residue, fiber)
         self._bump("width_spine_lookups")
@@ -814,7 +889,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
             try:
                 if type(local) is not CollatzTapeWidthSummary:
                     raise ValueError("local Collatz width spine has another sort")
-                self._validate_width_summary(local, source, width)
+                validate_width_summary(local, source, width)
             except (TypeError, ValueError):
                 self._bump("width_spine_admission_rejections")
                 self._bump("failed_work")
@@ -848,7 +923,8 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
                 self._bump("width_spine_misses")
                 return None
             try:
-                summary = self._decode_width_summary(payload, source, width)
+                summary, payload_bits = decode_width_summary(payload, source, width)
+                self._bump("width_spine_payload_operand_bits", payload_bits)
                 self._retain_width_summary(key, summary)
             except (TypeError, ValueError, BlockContextBudgetExceeded):
                 self._bump("width_spine_admission_rejections")
@@ -856,60 +932,6 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
                 raise
             self._bump("width_spine_process_hits")
             return summary
-
-    def _validate_width_summary(
-        self, summary: CollatzTapeWidthSummary, source: int, width: int
-    ) -> None:
-        if type(summary) is not CollatzTapeWidthSummary:
-            raise ValueError("Collatz exact width spine is malformed or detached")
-        if type(summary.blank) is not BlankLedger:
-            raise ValueError("Collatz exact width spine has a foreign blank ledger")
-        # Frozen dataclasses can still be tampered with through object.__setattr__.
-        # Re-run canonical validation before trusting any cached field.
-        summary.blank.__post_init__()
-        summary.__post_init__()
-        if (
-            summary.source_width != source.bit_length()
-            or summary.normalized_symbols != width
-            or summary.physical_ticks != width + summary.odd_steps
-            or summary.odd_steps > width
-            or summary.target_width <= 0
-            or summary.blank.delta != summary.target_width - summary.source_width
-        ):
-            raise ValueError("Collatz exact width spine is malformed or detached")
-
-    def _decode_width_summary(
-        self, payload: object, source: int, width: int
-    ) -> CollatzTapeWidthSummary:
-        if (
-            type(payload) is not tuple
-            or len(payload) != 8
-            or any(type(value) is not int for value in payload)
-        ):
-            raise ValueError("Collatz shared width spine payload is invalid")
-        (
-            source_width,
-            target_width,
-            physical,
-            normalized,
-            odd,
-            delta,
-            minimum,
-            maximum,
-        ) = payload
-        summary = CollatzTapeWidthSummary(
-            source_width,
-            target_width,
-            physical,
-            normalized,
-            odd,
-            BlankLedger(delta, minimum, maximum),
-        )
-        self._validate_width_summary(summary, source, width)
-        self._bump(
-            "width_spine_payload_operand_bits", sum(v.bit_length() for v in payload)
-        )
-        return summary
 
     def _retain_width_summary(
         self,

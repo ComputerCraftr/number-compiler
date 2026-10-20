@@ -14,7 +14,7 @@ from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 
 
 def _direct_border(word: tuple[CarryFn, ...]) -> PortRows:
-    rows = []
+    rows: list[tuple[int, int, int]] = []
     for incoming in (0, 1):
         carry = incoming
         first = second = 0
@@ -29,7 +29,7 @@ def _direct_border(word: tuple[CarryFn, ...]) -> PortRows:
 
 
 def test_identity_puncture_and_twenty_active_classes_are_exact() -> None:
-    reached = set()
+    reached: set[PuncturedCarryHarmonic] = set()
     for width in range(7):
         for word in product(tuple(CarryFn), repeat=width):
             rows = _direct_border(word)

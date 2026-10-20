@@ -150,7 +150,7 @@ def test_cli_mirror_and_value_share_completed_output_without_width_replay(
 ) -> None:
     from number_compiler.arithmetic.carry import carry_itinerary, event_memory
 
-    monkeypatch.setattr(event_memory, "_pair_step_with_carry", _forbidden)
+    monkeypatch.setattr(event_memory, "pair_step_with_carry", _forbidden)
     monkeypatch.setattr(
         carry_itinerary, "reconstruct_pair_from_live_event_suffix", _forbidden
     )

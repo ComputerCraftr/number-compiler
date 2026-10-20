@@ -44,6 +44,10 @@ class PoweredFieldProviderView:
     _application: FieldImageApplication
     _seal: object
 
+    def issued_application(self) -> FieldImageApplication | None:
+        """Return the bound application only while this view retains its seal."""
+        return self._application if self._seal is _PROVIDER_VIEW_SEAL else None
+
     def __post_init__(self) -> None:
         if self._seal is not _PROVIDER_VIEW_SEAL:
             raise TypeError("powered provider views are issued by an application")
@@ -105,7 +109,7 @@ def _validate_for_application(
         raise TypeError("provider observation requires a field-image application")
     if type(view) is not PoweredFieldProviderView:
         raise TypeError("expected a powered field provider view")
-    if view._seal is not _PROVIDER_VIEW_SEAL or view._application is not application:
+    if view.issued_application() is not application:
         raise ValueError("powered provider view belongs to another application")
     record = application.executor.images.resolve(view.image)
     extent = (
@@ -179,10 +183,8 @@ def validate_powered_provider_view(view: object, ledger: object) -> bool:
 
     if type(view) is not PoweredFieldProviderView:
         return False
-    application = view._application
-    if view._seal is not _PROVIDER_VIEW_SEAL or not validate_field_image_application(
-        application, ledger
-    ):
+    application = view.issued_application()
+    if application is None or not validate_field_image_application(application, ledger):
         return False
     try:
         _validate_for_application(application, view)

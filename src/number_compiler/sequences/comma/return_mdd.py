@@ -12,25 +12,25 @@ from collections.abc import Callable
 from math import lcm
 from typing import TypeAlias
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.sequences.comma.return_scopes import (
-    _CLOCK_COMPONENTS,
-    _COMPONENT_DOMAINS,
-    _FALSE,
-    _REMAINING_CLOCK_PERIODS,
-    _TRUE,
-    _VALID_MASKS,
+    CLOCK_COMPONENTS,
+    COMPONENT_DOMAINS,
+    FALSE_COLUMN,
+    REMAINING_CLOCK_PERIODS,
+    TRUE_COLUMN,
+    VALID_MASKS,
     CanonicalReturnTemplate,
     ReturnColumnKey,
     ReturnMDDPartition,
     WorkCharge,
-    _mdd_child,
-    _mdd_intersection,
-    _mdd_union,
-    _MDDKey,
-    _scopes_from_key,
-    _translated_column_key,
-    _validate_cached_partition_shape,
+    mdd_child,
+    mdd_intersection,
+    mdd_union,
     scope_column_key,
+    scopes_from_key,
+    translated_column_key,
+    validate_cached_partition_shape,
 )
 
 _SubstitutionState: TypeAlias = tuple[
@@ -55,7 +55,7 @@ def translate_return_column(
     _require_column(column)
     if type(shift) is not int:
         raise TypeError("comma return-column shift must be an exact integer")
-    return _translated_column_key(column, shift % 924, charge)[0]
+    return translated_column_key(column, shift % 924, charge)[0]
 
 
 def translate_return_columns(
@@ -94,7 +94,7 @@ def translate_return_columns(
     try:
         translated: list[ReturnColumnKey] = []
         for column in columns:
-            result, _ = _translated_column_key(
+            result, _ = translated_column_key(
                 column,
                 normalized_shift,
                 charge,
@@ -118,7 +118,7 @@ def intersect_return_columns(
     """Intersect two reduced CRT columns on the admitted clock domain."""
     _require_column(left)
     _require_column(right)
-    return _mdd_intersection(left, right, 0, {}, charge)
+    return mdd_intersection(left, right, 0, {}, charge)
 
 
 def union_return_columns(
@@ -130,13 +130,13 @@ def union_return_columns(
     """Union two reduced CRT columns on the admitted clock domain."""
     _require_column(left)
     _require_column(right)
-    return _mdd_union(left, right, 0, {}, charge)
+    return mdd_union(left, right, 0, {}, charge)
 
 
 def is_empty_return_column(column: ReturnColumnKey) -> bool:
     """Return whether a reduced CRT column has empty admitted support."""
     _require_column(column)
-    return column == _FALSE
+    return column == FALSE_COLUMN
 
 
 def substitute_return_column(
@@ -190,18 +190,18 @@ def substitute_return_column(
 
     def child_state(state: _SubstitutionState, value: int) -> _SubstitutionState:
         level, left, right = state
-        child_left = _mdd_child(left, level, value)
+        child_left = mdd_child(left, level, value)
         charge("comma_power_substitution_cofactors", 1)
         account_workspace("memo", 1)
-        if child_left == _FALSE:
+        if child_left == FALSE_COLUMN:
             return level + 1, child_left, ()
         account_workspace("temporary", 1)
         child_right: list[tuple[int, ReturnColumnKey]] = []
-        right_value = (value + normalized_shift) % _COMPONENT_DOMAINS[level]
+        right_value = (value + normalized_shift) % COMPONENT_DOMAINS[level]
         for label, column in right:
-            child_column = _mdd_child(column, level, right_value)
+            child_column = mdd_child(column, level, right_value)
             charge("comma_power_substitution_cofactors", 1)
-            if child_column != _FALSE:
+            if child_column != FALSE_COLUMN:
                 account_workspace("memo", 1)
                 child_right.append((label, child_column))
         account_workspace("memo", 1)
@@ -232,13 +232,16 @@ def substitute_return_column(
         account_workspace("temporary", 1)
         built: list[tuple[int, ReturnColumnKey]] = []
         for label in labels:
-            first_child = child_maps[0].get(label, _FALSE)
-            if all(child.get(label, _FALSE) == first_child for child in child_maps[1:]):
+            first_child = child_maps[0].get(label, FALSE_COLUMN)
+            if all(
+                child.get(label, FALSE_COLUMN) == first_child
+                for child in child_maps[1:]
+            ):
                 column = first_child
             else:
                 account_workspace("retained", len(children) + 1)
-                by_label = tuple(child.get(label, _FALSE) for child in child_maps)
-                column = _MDDKey(2, state[0], by_label)
+                by_label = tuple(child.get(label, FALSE_COLUMN) for child in child_maps)
+                column = ReturnColumnKey(2, state[0], by_label)
             account_workspace("retained" if retain_payload else "memo", 1)
             built.append((label, column))
         account_workspace("retained" if retain_payload else "memo", 1)
@@ -271,12 +274,12 @@ def substitute_return_column(
             level, left, right = state
             if children is None:
                 charge_state()
-                if left == _FALSE or not right:
+                if left == FALSE_COLUMN or not right:
                     account_workspace("memo", 1)
                     results[state] = ()
                     continue
-                if left == _TRUE and (
-                    normalized_shift % _REMAINING_CLOCK_PERIODS[level] == 0
+                if left == TRUE_COLUMN and (
+                    normalized_shift % REMAINING_CLOCK_PERIODS[level] == 0
                     or (len(right) == 1 and right[0][1].kind != 2)
                 ):
                     if state is initial:
@@ -284,11 +287,11 @@ def substitute_return_column(
                     account_workspace("memo", 1)
                     results[state] = right
                     continue
-                if level >= len(_CLOCK_COMPONENTS):
+                if level >= len(CLOCK_COMPONENTS):
                     raise ValueError("nonterminal comma column exceeds CRT clock")
                 if left.kind == 2 and left.level < level:
                     raise ValueError("invalid comma left column during substitution")
-                domain = _COMPONENT_DOMAINS[level]
+                domain = COMPONENT_DOMAINS[level]
                 account_workspace("temporary", domain)
                 child_states = tuple(
                     child_state(state, value) for value in range(domain)
@@ -348,13 +351,11 @@ def evaluate_return_column(
         if charge is not None:
             charge("comma_return_column_point_nodes", 1)
         level = node.level
-        if type(level) is not int or not previous_level < level < len(
-            _CLOCK_COMPONENTS
-        ):
+        if type(level) is not int or not previous_level < level < len(CLOCK_COMPONENTS):
             raise ValueError("invalid comma return-column node level")
         if (
             type(node.children) is not tuple
-            or len(node.children) != _COMPONENT_DOMAINS[level]
+            or len(node.children) != COMPONENT_DOMAINS[level]
         ):
             raise ValueError("invalid comma return-column child vector")
         previous_level = level
@@ -369,13 +370,13 @@ def evaluate_return_column(
 
 
 def _mdd_cardinality(
-    root: _MDDKey,
+    root: ReturnColumnKey,
     charge: WorkCharge | None,
-    memo: dict[tuple[int, _MDDKey], int] | None = None,
+    memo: dict[tuple[int, ReturnColumnKey], int] | None = None,
 ) -> int:
     """Count admitted clock points from the reduced MDD without enumerating them."""
-    pending: list[tuple[int, _MDDKey, bool]] = [(0, root, False)]
-    results: dict[tuple[int, _MDDKey], int]
+    pending: list[tuple[int, ReturnColumnKey, bool]] = [(0, root, False)]
+    results: dict[tuple[int, ReturnColumnKey], int]
     results = {} if memo is None else memo
     while pending:
         level, key, ready = pending.pop()
@@ -384,25 +385,25 @@ def _mdd_cardinality(
             continue
         if charge is not None:
             charge("comma_output_template_cardinality_nodes", 1)
-        if key == _FALSE:
+        if key == FALSE_COLUMN:
             results[state] = 0
             continue
-        if level == len(_CLOCK_COMPONENTS):
-            results[state] = int(key == _TRUE)
+        if level == len(CLOCK_COMPONENTS):
+            results[state] = int(key == TRUE_COLUMN)
             continue
-        if key == _TRUE:
+        if key == TRUE_COLUMN:
             remaining = 1
-            for mask in _VALID_MASKS[level:]:
+            for mask in VALID_MASKS[level:]:
                 remaining *= mask.bit_count()
             results[state] = remaining
             continue
         valid_values = tuple(
             value
-            for value in range(_COMPONENT_DOMAINS[level])
-            if _VALID_MASKS[level] >> value & 1
+            for value in range(COMPONENT_DOMAINS[level])
+            if VALID_MASKS[level] >> value & 1
         )
         child_states = tuple(
-            (level + 1, _mdd_child(key, level, value)) for value in valid_values
+            (level + 1, mdd_child(key, level, value)) for value in valid_values
         )
         if ready:
             results[state] = sum(results[child] for child in child_states)
@@ -415,7 +416,7 @@ def _mdd_cardinality(
 
 
 def _canonical_rebase_records(
-    records: tuple[tuple[int, _MDDKey, int], ...],
+    records: tuple[tuple[int, ReturnColumnKey, int], ...],
     global_period: int,
     charge: WorkCharge | None,
     reserve_workspace: Callable[[int], None] | None,
@@ -424,8 +425,8 @@ def _canonical_rebase_records(
     int,
     int,
     int,
-    tuple[_MDDKey, ...],
-    tuple[tuple[_MDDKey, int], ...],
+    tuple[ReturnColumnKey, ...],
+    tuple[tuple[ReturnColumnKey, int], ...],
 ]:
     if not records:
         raise ValueError("comma return partition must be nonempty")
@@ -434,7 +435,7 @@ def _canonical_rebase_records(
         record for record in records if record[0] == rarest_cardinality
     )
     rarest_covers = tuple(
-        (key, _scopes_from_key(key, charge)) for _, key, _ in rarest_columns
+        (key, scopes_from_key(key, charge)) for _, key, _ in rarest_columns
     )
     if any(not scopes for _, scopes in rarest_covers):
         raise ValueError("rarest comma output column has empty support")
@@ -459,17 +460,17 @@ def _canonical_rebase_records(
     )
     if not candidates:
         raise AssertionError("comma CRT anchor produced no candidate rebases")
-    best_key: tuple[_MDDKey, ...] | None = None
-    best_encoded_columns: tuple[tuple[_MDDKey, int], ...] | None = None
+    best_key: tuple[ReturnColumnKey, ...] | None = None
+    best_encoded_columns: tuple[tuple[ReturnColumnKey, int], ...] | None = None
     best_shift = 0
     shifted_nodes = 0
-    shifted_subnodes: dict[tuple[int, _MDDKey, int], _MDDKey] = {}
+    shifted_subnodes: dict[tuple[int, ReturnColumnKey, int], ReturnColumnKey] = {}
     for shift in candidates:
         if charge is not None:
             charge("comma_output_template_anchor_candidates", 1)
-        shifted_columns: list[tuple[_MDDKey, int]] = []
+        shifted_columns: list[tuple[ReturnColumnKey, int]] = []
         for _, key, label in records:
-            shifted_key, visits = _translated_column_key(
+            shifted_key, visits = translated_column_key(
                 key,
                 shift,
                 charge,
@@ -499,7 +500,7 @@ def _canonical_rebase_records(
 
 
 def _canonical_template_from_records(
-    records: tuple[tuple[int, _MDDKey, int], ...],
+    records: tuple[tuple[int, ReturnColumnKey, int], ...],
     global_period: int,
     charge: WorkCharge | None,
     reserve_workspace: Callable[[int], None] | None,
@@ -547,15 +548,15 @@ def canonical_return_template(
         raise TypeError("comma template workspace callbacks must be callable")
     if type(partition) is not ReturnMDDPartition:
         raise ValueError("invalid completed comma MDD partition")
-    _validate_cached_partition_shape(partition)
-    records: list[tuple[int, _MDDKey, int]] = []
+    validate_cached_partition_shape(partition)
+    records: list[tuple[int, ReturnColumnKey, int]] = []
     labels: set[int] = set()
-    cardinality_memo: dict[tuple[int, _MDDKey], int] = {}
+    cardinality_memo: dict[tuple[int, ReturnColumnKey], int] = {}
     for label, key in partition.columns:
         if (
             type(label) is not int
             or label in labels
-            or not isinstance(key, ReturnColumnKey)
+            or not is_runtime_instance(key, ReturnColumnKey)
         ):
             raise ValueError("invalid completed comma MDD column")
         labels.add(label)
@@ -588,21 +589,21 @@ def validate_return_column(column: ReturnColumnKey) -> ReturnColumnKey:
             if node.level != 0 or node.children:
                 raise ValueError("malformed comma return-column terminal")
             continue
-        if node.kind != 2 or not 0 <= node.level < len(_CLOCK_COMPONENTS):
+        if node.kind != 2 or not 0 <= node.level < len(CLOCK_COMPONENTS):
             raise ValueError("malformed comma return-column decision node")
         if (
             node.level < parent_level
-            or len(node.children) != _COMPONENT_DOMAINS[node.level]
+            or len(node.children) != COMPONENT_DOMAINS[node.level]
         ):
             raise ValueError("invalid comma return-column decision shape")
         if all(child == node.children[0] for child in node.children[1:]):
             raise ValueError("comma return-column decision is not reduced")
         invalid_values = tuple(
             value
-            for value in range(_COMPONENT_DOMAINS[node.level])
-            if not (_VALID_MASKS[node.level] >> value & 1)
+            for value in range(COMPONENT_DOMAINS[node.level])
+            if not (VALID_MASKS[node.level] >> value & 1)
         )
-        if any(node.children[value] != _FALSE for value in invalid_values):
+        if any(node.children[value] != FALSE_COLUMN for value in invalid_values):
             raise ValueError("comma return column is nonempty outside the CRT domain")
         for child in node.children:
             if type(child) is not ReturnColumnKey:
@@ -629,7 +630,7 @@ def validate_return_mdd_partition(
     ):
         raise ValueError("invalid completed comma MDD partition")
     labels: set[int] = set()
-    covered = _FALSE
+    covered = FALSE_COLUMN
     for label, column in partition.columns:
         if type(label) is not int or label < 0 or label in labels:
             raise ValueError("comma partition labels must be distinct nonnegative ints")
@@ -637,10 +638,10 @@ def validate_return_mdd_partition(
         validate_return_column(column)
         if is_empty_return_column(column):
             raise ValueError("comma return partition contains an empty column")
-        overlap = _mdd_intersection(covered, column, 0, {}, charge)
-        if overlap != _FALSE:
+        overlap = mdd_intersection(covered, column, 0, {}, charge)
+        if overlap != FALSE_COLUMN:
             raise ValueError("comma return partition columns overlap")
-        covered = _mdd_union(covered, column, 0, {}, charge)
+        covered = mdd_union(covered, column, 0, {}, charge)
         if translate_return_column(column, partition.period, charge=charge) != column:
             raise ValueError("comma return partition period is not conservative")
     if covered != scope_column_key(((1, 0),)):

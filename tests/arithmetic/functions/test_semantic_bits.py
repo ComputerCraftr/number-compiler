@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from itertools import product
-from typing import Literal
+from typing import Literal, cast
 
 import pytest
 
@@ -233,7 +234,9 @@ def test_local_and_joint_substitution_share_complete_behavior_without_memo(
     total = arena.add(aa, bb, output)
     replacements = {a.variable: total, b.variable: aa}
     joint = arena.substitute(total, replacements)
-    arena._compositions.clear()
+    cast(
+        MutableMapping[object, object], object.__getattribute__(arena, "_compositions")
+    ).clear()
     before = arena.ledger.counters.get("semantic_bit_composition_evaluations", 0)
     local = arena.substitute(total, replacements, joint=False)
     assert arena.ledger.counters["semantic_bit_composition_evaluations"] == before + 1

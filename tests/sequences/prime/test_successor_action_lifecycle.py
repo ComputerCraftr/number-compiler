@@ -13,6 +13,7 @@ from number_compiler.sequences.prime.partial_successor_image import (
     PrimePartialSuccessorQuery,
 )
 from number_compiler.sequences.prime.successor_action import PrimeSuccessorActionArena
+from tests.support.prime_actions import partial_prime_arena
 
 
 def _assert_prior_inventory_unchanged(
@@ -102,11 +103,11 @@ def test_production_interval_query_can_replace_a_completed_prime_stage() -> None
     query = PrimePartialSuccessorQuery(dag)
     try:
         assert query.count_primes(2, 8, 2) == 4
-        previous = query._arena
+        previous = partial_prime_arena(query)
         assert previous is not None
         assert query.count_primes(2, 24, 3) == 9
-        assert previous._closed
-        assert query._arena is not previous
+        assert previous.audit_snapshot().closed
+        assert partial_prime_arena(query) is not previous
         assert query.count_primes(2, 8, 2) == 4
     finally:
         query.close()
@@ -140,7 +141,7 @@ def test_constructor_publication_failure_rolls_back_only_its_own_allocations(
     dag.validate_fresh_successor(5)
     before = dag.ledger.snapshot()
     first_arena_owner = len(before.inventory)
-    original = OwnedMemo.__setitem__
+    original = OwnedMemo[object, object].__setitem__
     publications = 0
 
     def fail_selected_publication(

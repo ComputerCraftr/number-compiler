@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.sequences.collatz.collatz_two_sided_ring import (
     CollatzTwoSidedCylinder,
 )
@@ -138,23 +139,25 @@ def _joined(joined: object) -> tuple[object, ...] | None:
     from number_compiler.sequences.collatz.guarded_radix6_bridge import FiveBand
 
     def bands_snapshot(bands: object) -> tuple[object, ...]:
-        if type(bands) is not tuple or any(
+        if not is_exact_object_tuple(bands) or any(
             type(band) is not FiveBand for band in bands
         ):
             raise TypeError("conditional bridge bands have malformed authority")
+        typed_bands = cast(tuple[FiveBand, ...], bands)
         return (
             id(bands),
             type(bands),
-            tuple((_tag(band.lower), _tag(band.upper)) for band in bands),
+            tuple((_tag(band.lower), _tag(band.upper)) for band in typed_bands),
         )
 
     defects = bridge.centered_defect_range
     if (
-        type(defects) is not tuple
+        not is_exact_object_tuple(defects)
         or len(defects) != 2
         or any(type(value) is not int for value in defects)
     ):
         raise TypeError("conditional bridge defect range is malformed")
+    typed_defects = defects
 
     return (
         id(joined),
@@ -173,7 +176,7 @@ def _joined(joined: object) -> tuple[object, ...] | None:
         bands_snapshot(bridge.born_fives),
         bands_snapshot(bridge.target_fives),
         _tag(bridge.centered_at_minus_one),
-        (id(defects), type(defects), tuple(_tag(value) for value in defects)),
+        (id(defects), type(defects), tuple(_tag(value) for value in typed_defects)),
     )
 
 
@@ -184,7 +187,7 @@ def snapshot_scheduler_candidate(
     port = candidate.port
     if type(port) is not SourceClosedPortAction:
         raise TypeError("conditional candidate port has malformed authority")
-    port._verify_issued()
+    port_snapshot = port.audit_snapshot()
     phase = candidate.numerator_phase
     phase_value = None
     if phase is not None:
@@ -219,8 +222,7 @@ def snapshot_scheduler_candidate(
 
         if type(carry_program) is not GuardedTemporalCarryCounts:
             raise TypeError("conditional candidate carry program is malformed")
-        carry_program._verify_issued()
-        carry_value = (id(carry_program), carry_program._snapshot())
+        carry_value = (id(carry_program), carry_program.audit_snapshot())
     upper = candidate.upper_sturmian
     upper_value = None
     if upper is not None:
@@ -241,7 +243,7 @@ def snapshot_scheduler_candidate(
         _tag(candidate.return_count),
         id(port),
         id(port.action),
-        repr(port._snapshot()),
+        repr(port_snapshot),
         _trace(port.trace),
         _trace(candidate.tail_trace),
         phase_value,

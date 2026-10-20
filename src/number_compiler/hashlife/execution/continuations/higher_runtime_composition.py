@@ -34,42 +34,6 @@ def _pair(
     return a, b
 
 
-def _publish(
-    arena: HigherSummaryArena,
-    key: tuple[HigherSummaryID, HigherSummaryID],
-    record: RuntimeUnarySummary,
-    *,
-    context: RuntimeContextSummary | None = None,
-) -> HigherSummaryID:
-    """Reserve the complete parent, its context, and its binding together."""
-    found = arena._keys.get(record)
-    context_new = context is not None and context not in arena._keys
-    charges = [(arena._runtime_composition_owner, 1, 0)]
-    if found is None:
-        charges.extend(((arena._node_owner, 1, 1), (arena._key_owner, 1, 0)))
-    if context_new:
-        charges.extend(((arena._node_owner, 1, 1), (arena._key_owner, 1, 0)))
-    arena.ledger.reserve_many(charges)
-    if context_new:
-        assert context is not None
-        local_id = len(arena._nodes)
-        arena._nodes.append(context)
-        arena._keys[context] = local_id
-        arena.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_PUBLICATIONS)
-    elif context is not None:
-        arena.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_HITS)
-    if found is None:
-        found = len(arena._nodes)
-        arena._nodes.append(record)
-        arena._keys[record] = found
-        arena.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_PUBLICATIONS)
-    else:
-        arena.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_HITS)
-    result = arena._handle(found, record)
-    arena._runtime_compositions[key] = result
-    return result
-
-
 def compose_runtime_pair(
     arena: HigherSummaryArena,
     first: HigherSummaryID,
@@ -85,20 +49,20 @@ def compose_runtime_pair(
     while stack:
         key, ready = stack.pop()
         arena.ledger.bump(_execution_keys.HIGHER_RUNTIME_COMPOSITION_REQUESTS)
-        if key in arena._runtime_compositions:
+        if key in arena.runtime_compositions:
             arena.ledger.bump(_execution_keys.HIGHER_RUNTIME_COMPOSITION_HITS)
             continue
         a, b = _pair(arena, *key)
         x, y = a.recipe, b.recipe
         if type(x) is UnaryIdentity or type(y) is UnaryIdentity:
             chosen = b if type(x) is UnaryIdentity else a
-            _publish(arena, key, chosen)
+            arena.publish_runtime_composition(key, chosen)
             arena.ledger.bump(_execution_keys.HIGHER_IDENTITY_TRANSFER_ELISIONS)
             continue
         if type(x) is UnaryAffine and type(y) is UnaryAffine:
             transfer = x.transfer.then(y.transfer, arena.ledger)
-            _publish(
-                arena, key, RuntimeUnarySummary(a.action, a.side, UnaryAffine(transfer))
+            arena.publish_runtime_composition(
+                key, RuntimeUnarySummary(a.action, a.side, UnaryAffine(transfer))
             )
             continue
         if type(x) is UnaryFinite and type(y) is UnaryFinite:
@@ -108,8 +72,7 @@ def compose_runtime_pair(
                 _execution_keys.HIGHER_FINITE_TRANSFER_STATE_VISITS,
                 len(outputs),
             )
-            _publish(
-                arena,
+            arena.publish_runtime_composition(
                 key,
                 RuntimeUnarySummary(
                     a.action,
@@ -121,8 +84,8 @@ def compose_runtime_pair(
             )
             continue
         if type(x) is not UnaryTemporal or type(y) is not UnaryTemporal:
-            _publish(
-                arena, key, RuntimeUnarySummary(a.action, a.side, UnarySpatial(*key))
+            arena.publish_runtime_composition(
+                key, RuntimeUnarySummary(a.action, a.side, UnarySpatial(*key))
             )
             continue
         forward = x.forward, y.forward
@@ -146,21 +109,19 @@ def compose_runtime_pair(
         # A prospective ID is private until the joint reservation succeeds.
         # Never retain the context first and then discover that the parent
         # binding cannot fit its budget.
-        context_id = arena._keys.get(context_record, len(arena._nodes))
-        context = arena._handle(context_id, context_record)
-        _publish(
-            arena,
+        context = arena.prospective_summary(context_record)
+        arena.publish_runtime_composition(
             key,
             RuntimeUnarySummary(
                 a.action,
                 a.side,
                 UnaryTemporal(
-                    arena._runtime_compositions[forward],
-                    arena._runtime_compositions[opposite],
+                    arena.runtime_compositions[forward],
+                    arena.runtime_compositions[opposite],
                     context,
                 ),
             ),
             context=context_record,
         )
         arena.ledger.bump(_execution_keys.HIGHER_RUNTIME_INTERCHANGE_COMPOSITIONS)
-    return arena._runtime_compositions[root]
+    return arena.runtime_compositions[root]

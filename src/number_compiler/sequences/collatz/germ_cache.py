@@ -20,6 +20,7 @@ from number_compiler.arithmetic.automata.symmetry_powering import (
     BinaryLiftEngine,
     BinaryLiftMetrics,
 )
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.arithmetic.fields.morphism_core import AffineCocycle
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
@@ -204,7 +205,7 @@ class CollatzGermTransitionCache:
         )
 
     def advance(self, germ: CollatzAffineSuffixGerm) -> CollatzAffineSuffixAdvance:
-        if not isinstance(germ, CollatzAffineSuffixGerm):
+        if not is_runtime_instance(germ, CollatzAffineSuffixGerm):
             raise TypeError(type(germ))
         self.lookups += 1
         raw_key = germ.canonical_key
@@ -263,7 +264,7 @@ class CollatzGermTransitionCache:
             else:
                 base_shift = alpha_v2
                 odd_denominator = alpha >> base_shift
-                h = germ._pow3_exponent(odd_denominator)
+                h = germ.pow3_exponent(odd_denominator)
                 root = RationalPadicRootGerm(h, beta >> base_shift)
                 matched, normalized_root, normalized_suffix = (
                     root.normalize_matching_prefix_word(
@@ -309,10 +310,9 @@ class CollatzGermTransitionCache:
             missing = True
         else:
             self.hits += 1
-        if self._ledger is not None:
-            self._ledger.check_capacity(
-                entries=int(raw_key not in self._raw_keys) + int(missing)
-            )
+        self._ledger.check_capacity(
+            entries=int(raw_key not in self._raw_keys) + int(missing)
+        )
         if missing:
             self._values[key] = payload
             self.misses += 1
@@ -356,7 +356,7 @@ class CollatzGermTransitionCache:
 
     @staticmethod
     def _admit_event_count(germ: CollatzAffineSuffixGerm, events: int) -> int:
-        if not isinstance(germ, CollatzAffineSuffixGerm):
+        if not is_runtime_instance(germ, CollatzAffineSuffixGerm):
             raise TypeError(type(germ))
         events = int(events)
         if events < 0:

@@ -57,7 +57,7 @@ def main() -> None:
     high = start + 2 * (length - 1)
 
     base_projection = project_odd_prime_block(start, length)
-    least_rows = []
+    least_rows: list[dict[str, object]] = []
     for n in (16, 64, 256, 1024, 4096):
         p = project_odd_prime_block(start, n)
         lf = project_least_factor_field(start, n)
@@ -82,7 +82,7 @@ def main() -> None:
     hyperbolic = prime_block_summary_hyperbolic_packed(start, length)
     selfmod = build_self_modifying_packed_wheel(int(high**0.5), 62)
 
-    pair_rows = []
+    pair_rows: list[dict[str, object]] = []
     for base in (2, 3, 10, 16, 64):
         field = prime_pair_field(previous_prime, 28, base=base)
         pair_rows.append(
@@ -95,7 +95,7 @@ def main() -> None:
             }
         )
 
-    power_radix = []
+    power_radix: list[dict[str, object]] = []
     for radix in (2, 4, 8, 16, 64):
         m = project_prime_power_radix_metrics(start, length, radix)
         power_radix.append(

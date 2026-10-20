@@ -23,6 +23,7 @@ from number_compiler.arithmetic.contracts.input_validation import require_intege
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
 from number_compiler.sequences.reverse_add.boundary_window_store import (
     BoundaryOperation,
@@ -159,7 +160,7 @@ class FiniteBoundaryWindow:
 
     def source_tile(self, source_digits_lsd: tuple[int, ...]) -> WindowTile:
         self._validate_source_digits(source_digits_lsd)
-        return self._source_tile_from_validated_digits(source_digits_lsd)
+        return self.source_tile_from_validated_digits(source_digits_lsd)
 
     def _check_source_geometry(self, source_digits_lsd: tuple[int, ...]) -> None:
         if type(source_digits_lsd) is not tuple:
@@ -167,7 +168,7 @@ class FiniteBoundaryWindow:
         if len(source_digits_lsd) < 2 * self.digits + 1:
             raise ValueError("source width must be at least 2K+1")
 
-    def _source_tile_from_validated_digits(
+    def source_tile_from_validated_digits(
         self, source_digits_lsd: tuple[int, ...]
     ) -> WindowTile:
         """Extract edge windows from digits validated by the owning caller."""
@@ -187,9 +188,9 @@ class FiniteBoundaryWindow:
     def source_inner_carry(self, source_digits_lsd: tuple[int, ...]) -> int:
         """Fold the authentic source through all pairs before its top K digits."""
         self._validate_source_digits(source_digits_lsd)
-        return self._source_inner_carry_from_validated_digits(source_digits_lsd)
+        return self.source_inner_carry_from_validated_digits(source_digits_lsd)
 
-    def _source_inner_carry_from_validated_digits(
+    def source_inner_carry_from_validated_digits(
         self, source_digits_lsd: tuple[int, ...]
     ) -> int:
         """Compute source carry from digits validated by the owning caller."""
@@ -644,9 +645,9 @@ class ReverseBoundaryWindowObserver:
             tuple[int, int, int],
             BoundaryObservationCacheRecord,
         ] = OwnedMemo(ledger, observation_owner, nodes_per_entry=16)
-        self._observation_data = self._observation_memo._data
-        self._state_tiles = self._relations._state_tiles
-        self._state_owner = self._relations._state_owner
+        self._observation_data = self._observation_memo.audit_container
+        self._state_tiles_binding = self._relations.state_tiles_binding
+        self._state_owner = self._relations.state_owner
         self._authority = (
             ledger,
             self.binding,
@@ -659,7 +660,7 @@ class ReverseBoundaryWindowObserver:
             self._relation_data,
             self._observation_memo,
             self._observation_data,
-            self._state_tiles,
+            self._state_tiles_binding,
             self._state_owner,
             source_workspace,
         )
@@ -680,7 +681,7 @@ class ReverseBoundaryWindowObserver:
                 ),
                 PayloadAuditStoreBinding(
                     self._state_owner,
-                    "_state_tiles",
+                    "_state_tiles_binding",
                     "reverse_boundary_window_states",
                 ),
             ),
@@ -691,7 +692,13 @@ class ReverseBoundaryWindowObserver:
     def relations(self) -> BoundaryRelationStore:
         return self._relations
 
-    def _validate_authority(self) -> None:
+    def observation_audit_snapshot(
+        self,
+    ) -> OwnedMemoAuditSnapshot[tuple[int, int, int], BoundaryObservationCacheRecord]:
+        """Expose exact cache ownership metadata through a read-only snapshot."""
+        return self._observation_memo.audit_snapshot()
+
+    def validate_authority(self) -> None:
         if type(self._relations) is not BoundaryRelationStore:
             raise ValueError("boundary observer relation store changed")
         memo = self._relations.memo
@@ -718,15 +725,14 @@ class ReverseBoundaryWindowObserver:
             or self._observation_memo is not authority[9]
             or self._observation_data is not authority[10]
             or self._observation_memo.ledger is not self.ledger
-            or self._observation_memo._data is not self._observation_data
+            or self._observation_memo.audit_container is not self._observation_data
             or self.ledger.registered_container(self._observation_memo.owner)
             is not self._observation_data
-            or self._state_tiles is not authority[11]
+            or self._state_tiles_binding is not authority[11]
             or self._state_owner != authority[12]
-            or self._state_tiles is not self._relations._state_tiles
-            or self._state_owner != self._relations._state_owner
-            or self.ledger.registered_container(self._state_owner)
-            is not self._state_tiles
+            or self._state_tiles_binding is not self._relations.state_tiles_binding
+            or self._state_owner != self._relations.state_owner
+            or not self._relations.stores_registered()
             or self.source_workspace is not authority[13]
         ):
             raise ValueError("boundary observer authority or ledger changed")
@@ -734,12 +740,12 @@ class ReverseBoundaryWindowObserver:
             self.source_workspace.check_request(self.seed, self.generation, 10)
             if self.source_workspace.ledger is not self.ledger:
                 raise ValueError("boundary source workspace belongs to another ledger")
-        cached = self._cached_record()
+        cached = self.cached_record()
         if cached is not None:
             result = cached.observation
             if type(result) is not ReverseBoundaryWindowObservation:
                 raise ValueError("boundary observation cache has another result type")
-            if _observation_fields(result) != cached.fields:
+            if observation_fields(result) != cached.fields:
                 raise ValueError("boundary observation cache was changed")
             try:
                 result.__post_init__()
@@ -751,10 +757,10 @@ class ReverseBoundaryWindowObserver:
     def observe(
         self, *, seed: int, generation: int, base: int
     ) -> ReverseBoundaryWindowObservation:
-        self._validate_authority()
+        self.validate_authority()
         if (seed, generation, base) != self.binding:
             raise ValueError("boundary observer source or index binding changed")
-        cached = self._cached_record()
+        cached = self.cached_record()
         if cached is not None:
             self.ledger.bump(
                 _reverse_add_keys.REVERSE_BOUNDARY_WINDOW_OBSERVATION_CACHE_HITS
@@ -797,10 +803,10 @@ class ReverseBoundaryWindowObserver:
                     _reverse_add_keys.REVERSE_BOUNDARY_WINDOW_SOURCE_DIGIT_READS,
                     2 * window_digits,
                 )
-                initial = engine._source_tile_from_validated_digits(source_digits)
+                initial = engine.source_tile_from_validated_digits(source_digits)
                 source_carry = None
                 if generation and self.source_workspace is None:
-                    source_carry = engine._source_inner_carry_from_validated_digits(
+                    source_carry = engine.source_inner_carry_from_validated_digits(
                         source_digits
                     )
                 elif generation and self.source_workspace is not None:
@@ -860,10 +866,10 @@ class ReverseBoundaryWindowObserver:
     def _cache_observation(self, result: ReverseBoundaryWindowObservation) -> None:
         result.__post_init__()
         self._observation_memo[self.binding] = BoundaryObservationCacheRecord(
-            result, _observation_fields(result)
+            result, observation_fields(result)
         )
 
-    def _cached_record(
+    def cached_record(
         self,
     ) -> BoundaryObservationCacheRecord | None:
         return self._observation_memo.get(self.binding)
@@ -948,7 +954,7 @@ def _common_boundary_digits(
     return common_prefix, common_suffix
 
 
-def _observation_fields(
+def observation_fields(
     result: ReverseBoundaryWindowObservation,
 ) -> tuple[object, ...]:
     return (
@@ -975,4 +981,5 @@ __all__ = [
     "ReverseBoundaryWindowObserver",
     "WindowRelationBudgetExceeded",
     "WindowTile",
+    "observation_fields",
 ]

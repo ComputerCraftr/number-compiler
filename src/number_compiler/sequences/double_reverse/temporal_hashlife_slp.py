@@ -45,7 +45,7 @@ def _valid_decimal_node(arena: LedgerSLPArena, node_id: int) -> bool:
     return False
 
 
-def _existing_symbol_at(
+def existingsymbol_at(
     arena: LedgerSLPArena,
     root: int,
     position: int,
@@ -87,13 +87,13 @@ def _existing_symbol_at(
     return None
 
 
-def _existing_concat(arena: LedgerSLPArena, left: int, right: int) -> int | None:
+def existing_concat(arena: LedgerSLPArena, left: int, right: int) -> int | None:
     """Resolve a concat only when its canonical interned node already exists."""
     if left == arena.empty_id:
         return right
     if right == arena.empty_id:
         return left
-    return arena._cat.get((left, right))
+    return arena.existing_concat(left, right)
 
 
 def _existing_repeat(arena: LedgerSLPArena, child: int, count: int) -> int | None:
@@ -103,7 +103,7 @@ def _existing_repeat(arena: LedgerSLPArena, child: int, count: int) -> int | Non
     key = canonical_repeat_key(arena.nodes, arena.empty_id, child, count)
     if isinstance(key, int):
         return key
-    return arena._rep.get(key)
+    return arena.existing_repeat_entry(key)
 
 
 def _existing_concat_many(arena: LedgerSLPArena, roots: list[int]) -> int | None:
@@ -117,7 +117,7 @@ def _existing_concat_many(arena: LedgerSLPArena, roots: list[int]) -> int | None
             if index + 1 == len(row):
                 next_row.append(left)
                 continue
-            joined = _existing_concat(arena, left, row[index + 1])
+            joined = existing_concat(arena, left, row[index + 1])
             if joined is None:
                 return None
             next_row.append(joined)
@@ -125,9 +125,7 @@ def _existing_concat_many(arena: LedgerSLPArena, roots: list[int]) -> int | None
     return row[0]
 
 
-def _existing_part(
-    arena: LedgerSLPArena, root: int, begin: int, end: int
-) -> int | None:
+def existing_part(arena: LedgerSLPArena, root: int, begin: int, end: int) -> int | None:
     """Reconstruct the exact canonical result of a slice without mutation."""
     if not _valid_decimal_node(arena, root):
         return None
@@ -186,4 +184,4 @@ def _existing_part(
     return _existing_concat_many(arena, fragments)
 
 
-__all__ = ["_existing_concat", "_existing_part", "_existing_symbol_at"]
+__all__ = ["existing_concat", "existing_part", "existingsymbol_at"]

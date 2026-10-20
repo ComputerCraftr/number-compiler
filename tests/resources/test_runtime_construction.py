@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextvars import Context, copy_context
-from typing import Never
+from typing import Never, cast
 from weakref import ReferenceType, ref
 
 import pytest
@@ -15,6 +16,16 @@ from number_compiler.resources.stores import LedgerDict
 
 class _ExecutionRoot:
     pass
+
+
+def _execution_roots_for_test(
+    ledger: ResourceLedger,
+) -> dict[int, ReferenceType[object]]:
+    """Expose the weakref registry for adversarial replacement tests only."""
+    return cast(
+        dict[int, ReferenceType[object]],
+        object.__getattribute__(ledger, "_execution_roots"),
+    )
 
 
 def _owned_value(ledger: ResourceLedger, name: str) -> tuple[int, LedgerDict[str, str]]:
@@ -82,7 +93,8 @@ def test_abort_attempts_other_owners_and_roots_after_release_failure(
     assert not first_store and not broken_store
     assert tuple(ledger.iter_execution_roots()) == ()
     assert ledger.entries == ledger.nodes == 1
-    scope._abort()
+    abort = cast(Callable[[], None], object.__getattribute__(scope, "_abort"))
+    abort()
     assert ledger.entries == ledger.nodes == 0
     assert ledger.counters["runtime_construction_released_entries"] == 2
 
@@ -181,7 +193,8 @@ def test_copied_context_cannot_abort_origin_scope() -> None:
 
     assert not ledger.inventory()[owner].disposed
     assert store["value"] == "origin-context"
-    assert scope._token is not None
+    scope_token: object = object.__getattribute__(scope, "_token")
+    assert scope_token is not None
     scope.__exit__(RuntimeError, RuntimeError("origin abort"), None)
     assert ledger.inventory()[owner].disposed
     assert ledger.entries == ledger.nodes == 0
@@ -194,19 +207,20 @@ def test_abort_does_not_expire_replacement_execution_root() -> None:
     scope.__enter__()
     ledger.register_execution_root(root)
     identity = id(root)
-    old_reference = ledger._execution_roots[identity]
+    roots = _execution_roots_for_test(ledger)
+    old_reference = roots[identity]
 
     replacement = _ExecutionRoot()
     replacement_reference: ReferenceType[object] = ref(
         replacement,
         lambda _reference: None,
     )
-    ledger._execution_roots[identity] = replacement_reference
+    roots[identity] = replacement_reference
     scope.__exit__(RuntimeError, RuntimeError("abort"), None)
 
-    assert ledger._execution_roots[identity] is replacement_reference
-    ledger._expire_execution_root(identity, old_reference)
-    assert ledger._execution_roots[identity] is replacement_reference
+    assert roots[identity] is replacement_reference
+    ledger.expire_execution_root(identity, old_reference)
+    assert roots[identity] is replacement_reference
 
 
 def test_scope_bookkeeping_allocation_failure_does_not_publish_owner(
@@ -215,17 +229,18 @@ def test_scope_bookkeeping_allocation_failure_does_not_publish_owner(
     ledger = ResourceLedger()
     scope = RuntimeConstruction(ledger)
     before = ledger.owner_count
-    original = scope._record_owner
+    original = scope.record_owner
 
     def fail_after_record(owner: int) -> Never:
         original(owner)
         raise MemoryError("scope owner bookkeeping failed")
 
     with scope:
-        monkeypatch.setattr(scope, "_record_owner", fail_after_record)
+        monkeypatch.setattr(scope, "record_owner", fail_after_record)
         with pytest.raises(MemoryError, match="bookkeeping"):
             ledger.register("not-published", "construction_test_owner")
 
     assert ledger.owner_count == before
-    assert not scope._owners
+    owners = cast(list[int], object.__getattribute__(scope, "_owners"))
+    assert not owners
     assert ledger.entries == ledger.nodes == 0

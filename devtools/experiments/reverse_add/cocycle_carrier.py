@@ -114,8 +114,8 @@ class CocycleReverseCarrier:
     """Primitive exact carrier for ``(domain, alpha mod 5, parity)``."""
 
     def __init__(self, *, max_work: int = 1_000_000) -> None:
-        self._factored = FactoredReverseCarrier(max_work=max_work)
-        self.planes = self._factored.planes
+        self.factored = FactoredReverseCarrier(max_work=max_work)
+        self.planes = self.factored.planes
         self.primitive_successors = 0
         self.nonlinear_gate_requests = 0
 
@@ -195,10 +195,10 @@ class CocycleReverseCarrier:
         return self.planes.apply(_BOOL_ADD, left, right)
 
     def add_planes(self, left: PlaneID, right: PlaneID) -> PlaneID:
-        return self._factored.add_planes(left, right)
+        return self.factored.add_planes(left, right)
 
     def scale_plane(self, plane: PlaneID, scalar: int) -> PlaneID:
-        return self._factored.scale_plane(plane, scalar)
+        return self.factored.scale_plane(plane, scalar)
 
     def successor_with_action(
         self, cell: CocycleCell
@@ -246,7 +246,7 @@ class CocycleReverseCarrier:
                 carry = p.concat(carry, p.constant("bool", 1, 1))
 
             reflected_carry = p.reverse(carry)
-            f5_forcing = self._factored.add_planes(
+            f5_forcing = self.factored.add_planes(
                 p.apply(_F5_CARRY, carry), p.apply(_F5_CARRY, reflected_carry)
             )
             epsilon_forcing = self._bool_add(carry, reflected_carry)
@@ -256,8 +256,8 @@ class CocycleReverseCarrier:
                 source_alpha,
                 f5_forcing,
                 shift=p.shift,
-                add=self._factored.add_planes,
-                scale=self._factored.scale_plane,
+                add=self.factored.add_planes,
+                scale=self.factored.scale_plane,
             )
             epsilon = epsilon_linear.apply_with_output_forcing(
                 source_epsilon,

@@ -74,7 +74,7 @@ def clear_accounted_store(
         if release_entries < 0 or release_nodes < 0:
             raise RuntimeError("store clear produced an invalid retained-store delta")
         record_pending(release_entries, release_nodes)
-        account = ledger._account(owner)
+        account = ledger.account_status(owner)
         if (
             account.entries != entries + release_entries
             or account.nodes != nodes + release_nodes
@@ -84,7 +84,7 @@ def clear_accounted_store(
             if release_entries or release_nodes:
                 ledger.release(owner, entries=release_entries, nodes=release_nodes)
         except BaseException as error:
-            account = ledger._account(owner)
+            account = ledger.account_status(owner)
             remaining_entries = account.entries - entries
             remaining_nodes = account.nodes - nodes
             if not (

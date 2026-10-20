@@ -63,7 +63,7 @@ def test_residue_compact_metadata_without_endpoint(
     family: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(DoubleReverseTerm, "prepare_endpoint", _no_endpoint)
-    monkeypatch.setattr(ReverseAddPoweredTerm, "_source_workspace", _no_endpoint)
+    monkeypatch.setattr(ReverseAddPoweredTerm, "source_workspace", _no_endpoint)
     assert (
         cli.main(
             [

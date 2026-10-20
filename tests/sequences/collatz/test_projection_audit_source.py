@@ -11,6 +11,7 @@ from number_compiler.projection.source_audit import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+from tests.support.radix_projection import radix_projections
 
 
 def test_projection_audit_source_preserves_original_authority() -> None:
@@ -19,8 +20,8 @@ def test_projection_audit_source_preserves_original_authority() -> None:
     source = term.radix_projection_audit_source(term.resource_ledger)
     assert source is not None
     assert source.owner is term
-    assert source.source is term._source_construction.source
-    assert source.projections is term._radix_projections
+    assert source.source is term.original_source_construction.source
+    assert source.projections is radix_projections(term)
     assert source.steps == term.steps
     assert source.seed_digits is term.seed_digits
     assert term.resource_ledger.counters == before

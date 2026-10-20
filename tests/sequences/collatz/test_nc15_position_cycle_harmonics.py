@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import pytest
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_tuple,
+    string_keyed_mapping,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.border_return_grammar import (
@@ -19,6 +25,19 @@ from number_compiler.sequences.collatz.position_cycle_harmonics import (
     issued_boundary_motif_orbit,
     minimize_fixed_word_odd_position,
 )
+
+
+def _object_map(value: object) -> Mapping[str, object]:
+    mapping = string_keyed_mapping(value)
+    if mapping is None:
+        raise AssertionError("expected a string-keyed observation map")
+    return mapping
+
+
+def _object_tuple(value: object) -> tuple[object, ...]:
+    if not is_object_tuple(value):
+        raise AssertionError("expected an observation tuple")
+    return value
 
 
 def _zero_tail_source(repetitions: int) -> int:
@@ -112,14 +131,16 @@ def test_boundary_macro_position_ports_are_explicit_term_demands() -> None:
         odd_position_moore_requests=((3, 1),),
         position_moore_walsh64=True,
     )
-    detail = packet["position_cycle_harmonics"]
-    assert isinstance(detail, dict)
+    detail = _object_map(packet["position_cycle_harmonics"])
     assert detail["status"] == "complete"
     assert detail["starting_physical_tick"] == 0
-    assert len(detail["spectra"]) == 1
-    assert detail["spectra"][0]["harmonic"]["radix"] == 6
-    assert len(detail["odd_position_moore"]) == 1
-    assert "future_digit_change_walsh64_mod5" in detail["odd_position_moore"][0]
+    spectra = _object_tuple(detail["spectra"])
+    assert len(spectra) == 1
+    harmonic = _object_map(_object_map(spectra[0])["harmonic"])
+    assert harmonic["radix"] == 6
+    moore = _object_tuple(detail["odd_position_moore"])
+    assert len(moore) == 1
+    assert "future_digit_change_walsh64_mod5" in _object_map(moore[0])
 
 
 def test_boundary_position_observer_is_absent_without_explicit_demand() -> None:

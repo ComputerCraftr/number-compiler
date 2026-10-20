@@ -1,5 +1,6 @@
 """Weak source-word interning rejects integer aliases before cache probes."""
 
+from collections.abc import Callable, Mapping
 from itertools import product
 from typing import cast
 
@@ -89,14 +90,25 @@ def test_word_authority_releases_definition_with_last_reference() -> None:
 
     from number_compiler.arithmetic.automata import program_word
 
+    watches = cast(
+        Mapping[int, Callable[[], object]],
+        object.__getattribute__(program_word, "_WORD_WATCHES"),
+    )
+    definitions = cast(
+        Mapping[int, object], object.__getattribute__(program_word, "_WORD_DEFINITIONS")
+    )
+    bounds = cast(
+        Mapping[int, object],
+        object.__getattribute__(program_word, "_WORD_SYMBOL_BOUNDS"),
+    )
     word = from_values((724019, 724021, 724023))
     identifier = word.node_id
     reference = weakref.ref(word)
-    assert program_word._WORD_WATCHES[identifier]() is word
-    assert identifier in program_word._WORD_DEFINITIONS
+    assert watches[identifier]() is word
+    assert identifier in definitions
     del word
     gc.collect()
     assert reference() is None
-    assert identifier not in program_word._WORD_WATCHES
-    assert identifier not in program_word._WORD_DEFINITIONS
-    assert identifier not in program_word._WORD_SYMBOL_BOUNDS
+    assert identifier not in watches
+    assert identifier not in definitions
+    assert identifier not in bounds

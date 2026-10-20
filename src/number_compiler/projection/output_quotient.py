@@ -15,6 +15,7 @@ from collections.abc import Hashable, Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.arithmetic.fields.symbolic_extent import DyadicExtent, Extent
 
 
@@ -163,7 +164,7 @@ def audit_binary_source_factor(
     outputs: Sequence[int] | Iterable[int],
 ) -> BinarySourceFactorAudit:
     raw_bits = tuple(source_bits)
-    if any(not isinstance(bit, bool) for bit in raw_bits):
+    if any(not is_runtime_instance(bit, bool) for bit in raw_bits):
         raise TypeError("source coordinate must contain literal bool values")
     bits = raw_bits
     values = tuple(map(int, outputs))
@@ -203,7 +204,9 @@ class SpecialBranchMask:
 
     @classmethod
     def from_checks(cls, pass_ok: bool, fail_ok: bool) -> SpecialBranchMask:
-        if not isinstance(pass_ok, bool) or not isinstance(fail_ok, bool):
+        if not is_runtime_instance(pass_ok, bool) or not is_runtime_instance(
+            fail_ok, bool
+        ):
             raise TypeError("branch checks must be literal bool values")
         return cls((1 if pass_ok else 0) | (2 if fail_ok else 0))
 
@@ -232,7 +235,7 @@ class SpecialBranchMask:
         return None
 
     def intersect(self, other: SpecialBranchMask) -> SpecialBranchMask:
-        if not isinstance(other, SpecialBranchMask):
+        if not is_runtime_instance(other, SpecialBranchMask):
             raise TypeError(type(other))
         return SpecialBranchMask(self.bits & other.bits)
 
@@ -382,7 +385,9 @@ class SpecialSourceGuard:
     def __post_init__(self) -> None:
         if self.family not in ("fermat", "mersenne"):
             raise ValueError(self.family)
-        if self.failure_bit is not None and not isinstance(self.failure_bit, bool):
+        if self.failure_bit is not None and not is_runtime_instance(
+            self.failure_bit, bool
+        ):
             raise TypeError("failure_bit must be bool or None")
         if int(self.parameter) < 0 or (
             self.family == "mersenne" and int(self.parameter) <= 0
@@ -489,7 +494,9 @@ class BinaryOutputCoordinate:
     resolved_bit: bool | None = None
 
     def __post_init__(self) -> None:
-        if self.resolved_bit is not None and not isinstance(self.resolved_bit, bool):
+        if self.resolved_bit is not None and not is_runtime_instance(
+            self.resolved_bit, bool
+        ):
             raise TypeError("resolved_bit must be bool or None")
         object.__setattr__(self, "false_value", int(self.false_value))
         object.__setattr__(self, "true_value", int(self.true_value))
@@ -501,7 +508,7 @@ class BinaryOutputCoordinate:
         *,
         resolved_bit: bool | None = None,
     ) -> BinaryOutputCoordinate:
-        if not isinstance(audit, BinarySourceFactorAudit):
+        if not is_runtime_instance(audit, BinarySourceFactorAudit):
             raise TypeError(type(audit))
         if not audit.coordinate_available:
             raise ValueError(
@@ -538,7 +545,7 @@ class BinaryOutputCoordinate:
         return self.true_value if self.resolved_bit else self.false_value
 
     def resolve(self, source_bit: bool) -> BinaryOutputCoordinate:
-        if not isinstance(source_bit, bool):
+        if not is_runtime_instance(source_bit, bool):
             raise TypeError("source_bit must be bool")
         return BinaryOutputCoordinate(
             self.false_value,
@@ -548,7 +555,7 @@ class BinaryOutputCoordinate:
 
     def restrict(self, mask: SpecialBranchMask) -> BinaryOutputCoordinate:
         """Specialize this coordinate when cheap source constraints kill a sheet."""
-        if not isinstance(mask, SpecialBranchMask):
+        if not is_runtime_instance(mask, SpecialBranchMask):
             raise TypeError(type(mask))
         mask.require_possible()
         bit = mask.failure_bit

@@ -59,7 +59,7 @@ def test_growth_does_not_consume_after_reset_and_closes_stream(
         finally:
             closed.append(True)
 
-    monkeypatch.setattr(cutover, "_pair_stream", prefix)
+    monkeypatch.setattr(cutover, "iter_pair_values", prefix)
     assert cutover.width(occurrence) == 4
     assert closed == [True]
     assert cutover.ledger.counters["reverse_recursive_terminal_reset_hits"] == 1

@@ -7,6 +7,10 @@ from dataclasses import replace
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_tuple,
+    string_keyed_mapping,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as collatz_keys
 from number_compiler.sequences.collatz.border_identity import (
@@ -38,6 +42,13 @@ from number_compiler.sequences.collatz.unified_skew_chain import (
 from number_compiler.sequences.collatz.unified_skew_clock import SkewQuadraticClock
 
 
+def _object_map(value: object) -> dict[str, object]:
+    mapping = string_keyed_mapping(value)
+    if mapping is None:
+        raise AssertionError("expected a string-keyed object map")
+    return dict(mapping)
+
+
 def _normalized(source: int, steps: int) -> tuple[int, tuple[int, ...]]:
     word: list[int] = []
     for _ in range(steps):
@@ -63,7 +74,13 @@ def test_general_affine_preimage_handles_nonunit_radix_three_and_six() -> None:
                 assert (preimage.admits(source) if preimage else False) == matches
 
 
-def test_candidate_quotient_keeps_selector_lower_bound_and_typed_phase() -> None:
+@pytest.mark.parametrize(
+    "full_grid",
+    (False, pytest.param(True, marks=pytest.mark.validation)),
+)
+def test_candidate_quotient_keeps_selector_lower_bound_and_typed_phase(
+    full_grid: bool,
+) -> None:
     identities: tuple[BoundaryActionIdentity, ...] = (
         ENTRY_421,
         ENTRY_4721,
@@ -78,9 +95,21 @@ def test_candidate_quotient_keeps_selector_lower_bound_and_typed_phase() -> None
         residue, modulus, minimum = candidate_family_guard(identity)
         guards[identity] = SourceCongruence(residue, modulus, minimum)
 
-    # Exhaust every finite source label and several lifts of each radix-160
-    # class. The quotient preserves the typed output, not an arbitrary word.
-    for source in range(1, 1_601):
+    # Unit coverage checks two lifts of every radix-160 class plus exact
+    # selector-threshold neighbors; validation retains the ten-lift sweep.
+    selector_edges: set[int] = set()
+    for identity in identities:
+        residue, modulus, minimum = candidate_family_guard(identity)
+        first_admitted = minimum + ((residue - minimum) % modulus)
+        selector_edges.update(
+            source
+            for source in (first_admitted - modulus, first_admitted)
+            if source > 0
+        )
+    sources = (
+        range(1, 1_601) if full_grid else sorted(set(range(1, 321)) | selector_edges)
+    )
+    for source in sources:
         candidate = JointRadix6Source.from_source(source).candidate_family
         for identity, guard in guards.items():
             _, _, minimum = candidate_family_guard(identity)
@@ -183,19 +212,15 @@ def test_chain_source_guard_and_power_preserve_exact_normalized_word() -> None:
     assert chain.source_closed_temporal_power(1) == joined
 
     observation = chain.observation(difference_places=4, include_walsh64=True)
-    family_ports = observation["source_closed_cross_family_ports"]
-    assert isinstance(family_ports, dict)
-    ports = family_ports["root_difference_ports"]
-    assert isinstance(ports, dict)
+    family_ports = _object_map(observation["source_closed_cross_family_ports"])
+    ports = _object_map(family_ports["root_difference_ports"])
     assert ports["endpoint"] == chain.endpoint
     assert ports["endpoint_f5"] == chain.endpoint % 5
-    differences = ports["difference_fields"]
-    assert isinstance(differences, dict)
+    differences = _object_map(ports["difference_fields"])
     assert set(differences) == {"3", "6", "10", "64"}
-    radix64 = differences["64"]
-    assert isinstance(radix64, dict)
+    radix64 = _object_map(differences["64"])
     walsh = radix64["walsh64_mod5"]
-    assert isinstance(walsh, tuple)
+    assert is_object_tuple(walsh)
     assert len(walsh) == 64
     scope = family_ports["scope"]
     assert isinstance(scope, str)

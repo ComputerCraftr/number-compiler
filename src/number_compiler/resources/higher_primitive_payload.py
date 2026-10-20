@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_integer_tuple,
+    is_exact_object_tuple,
+    object_mapping,
+)
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.continuations.higher_primitive_tables import (
     HigherPrimitiveTables,
@@ -17,17 +20,15 @@ def valid_higher_primitive_table(
     operation: str,
     container: object,
 ) -> bool:
-    if operation not in ("step", "emit", "interface") or not isinstance(
-        container, Mapping
-    ):
+    mapping = object_mapping(container)
+    if operation not in ("step", "emit", "interface") or mapping is None:
         return False
-    for key, result in audit_mapping_items(container):
+    for key, result in audit_mapping_items(mapping):
         if operation == "interface":
             if (
                 type(key) is not FieldCellActionID
-                or type(result) is not tuple
+                or not is_exact_integer_tuple(result)
                 or len(result) != 3
-                or any(type(item) is not int for item in result)
             ):
                 return False
             try:
@@ -41,16 +42,18 @@ def valid_higher_primitive_table(
             except (TypeError, ValueError, IndexError, AttributeError):
                 return False
             continue
+        if not is_exact_object_tuple(key) or len(key) != 4:
+            return False
+        action = key[0]
+        first, second, third = key[1], key[2], key[3]
         if (
-            type(key) is not tuple
-            or len(key) != 4
-            or type(key[0]) is not FieldCellActionID
-            or any(type(item) is not int for item in key[1:])
+            type(action) is not FieldCellActionID
+            or type(first) is not int
+            or type(second) is not int
+            or type(third) is not int
             or type(result) is not int
         ):
             return False
-        action = key[0]
-        first, second, third = key[1:]
         try:
             audit_validate_action(root.schema, action)
             _, blank = root.schema.alphabet(action)

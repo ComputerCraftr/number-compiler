@@ -33,7 +33,7 @@ def forbidden_environment_overrides(environment: Mapping[str, str]) -> tuple[str
     return tuple(name for name in FORBIDDEN_OVERRIDE_ENV if name in environment)
 
 
-def _timeout_overrides(arguments: tuple[str, ...]) -> tuple[str, ...]:
+def timeout_overrides(arguments: tuple[str, ...]) -> tuple[str, ...]:
     values: list[str] = []
     for index, argument in enumerate(arguments):
         if argument in {"-o", "--override-ini"} and index + 1 < len(arguments):
@@ -134,7 +134,7 @@ def pytest_configure(config: pytest.Config) -> None:
         _verify_acceptance_imports(Path(acceptance_root).resolve())
     elif acceptance_root:
         raise pytest.UsageError("development run cannot claim an acceptance worktree")
-    if _timeout_overrides(tuple(config.invocation_params.args)):
+    if timeout_overrides(tuple(config.invocation_params.args)):
         raise pytest.UsageError("pytest timeout configuration overrides are forbidden")
 
 

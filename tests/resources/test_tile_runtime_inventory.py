@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
-from typing import Never, TypeGuard
+from typing import Never, Protocol, TypeGuard, cast
 
 import pytest
 
@@ -20,7 +21,7 @@ from number_compiler.arithmetic.polynomials.frobenius_sector import (
 )
 from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
 from number_compiler.hashlife.actions.tile_action_algebra import (
-    PrimitiveTileAction as _Action,
+    PrimitiveTileAction as CommaActionRecord,
 )
 from number_compiler.hashlife.execution.causal_frames import (
     ReverseInterfaceFrame,
@@ -63,8 +64,17 @@ from number_compiler.resources.stores import LedgerDict
 from tests.support.assertions import assert_rejected_atomically
 
 
+class _ReverseInterfaceRunner(Protocol):
+    def __call__(self, root: ReverseInterfaceFrame, *, tile_result: bool) -> object: ...
+
+
 def _native_dict(value: object) -> TypeGuard[dict[object, object]]:
     return isinstance(value, dict)
+
+
+def _private_test_attribute(owner: object, name: str) -> object:
+    """Access private state only for deliberate corruption/fault-injection tests."""
+    return object.__getattribute__(owner, name)
 
 
 def _inject_malformed_mapping_value(
@@ -73,13 +83,14 @@ def _inject_malformed_mapping_value(
     """Corrupt a test mapping only after validating its native backing store."""
     if type(mapping) is not LedgerDict:
         raise TypeError("forensic mapping injection requires a ledger dictionary")
-    backing_value: object = object.__getattribute__(mapping, "_data")
+    typed_mapping = cast(LedgerDict[object, object], mapping)
+    backing_value: object = _private_test_attribute(typed_mapping, "_data")
     if not _native_dict(backing_value):
         raise TypeError("forensic mapping injection requires native dict storage")
-    ledger_value: object = object.__getattribute__(mapping, "ledger")
+    ledger_value: object = _private_test_attribute(typed_mapping, "ledger")
     if type(ledger_value) is not ResourceLedger:
         raise TypeError("forensic mapping injection requires its resource ledger")
-    dict.__setitem__(backing_value, key, value)
+    dict[object, object].__setitem__(backing_value, key, value)
     ledger_value.note_store_mutation()
 
 
@@ -139,16 +150,24 @@ def test_leaf_inventory_rejects_orphan_reverse_admission_without_executing(
     )
 
     ledger, adapter, _scheduler, projection = _runtime()
-    removed = {}
+    removed: dict[LeafProductKey | LocalInterfaceID, int | LocalInterfaceID] = {}
+    leaf_store: (
+        LedgerDict[LeafProductKey | LocalInterfaceID, int | LocalInterfaceID] | None
+    ) = None
     try:
         projection.point(0)
+        snapshot = adapter.audit_snapshot()
         forward = next(
-            key for key in adapter._leaf_records if type(key) is LeafProductKey
+            key for key in snapshot.leaf_records if type(key) is LeafProductKey
         )
-        interface = adapter._leaf_records[forward]
-        for key, value in tuple(adapter._leaf_records.items()):
+        interface = snapshot.leaf_records[forward]
+        leaf_store = cast(
+            LedgerDict[LeafProductKey | LocalInterfaceID, int | LocalInterfaceID],
+            _private_test_attribute(adapter, "_leaf_records"),
+        )
+        for key, value in tuple(snapshot.leaf_records.items()):
             if type(key) is LeafProductKey and value == interface:
-                removed[key] = adapter._leaf_records.pop(key)
+                removed[key] = leaf_store.pop(key)
 
         def forbidden(*_args: object) -> Never:
             raise AssertionError("inventory executed a semantic function")
@@ -158,10 +177,11 @@ def test_leaf_inventory_rejects_orphan_reverse_admission_without_executing(
         monkeypatch.setattr(adapter.bits, "evaluate", forbidden)
         before = ledger.snapshot()
         audit = audit_field_image_payloads(ledger)
-        assert (adapter._leaf_owner, id(interface)) in audit.invalid
+        assert (snapshot.leaf_owner, id(interface)) in audit.invalid
         assert ledger.snapshot() == before
     finally:
-        adapter._leaf_records.update(removed.items())
+        if leaf_store is not None:
+            leaf_store.update(removed.items())
         projection.close()
 
 
@@ -174,7 +194,7 @@ def test_tile_runtime_metrics_are_read_only_for_open_and_completed_applications(
     ledger, adapter, scheduler, projection = _runtime()
     extra = None
     try:
-        application = projection._application
+        application = projection.validated_application()
         if squared:
             action = adapter.power(application.action, 2)
             extra = scheduler.application(
@@ -191,7 +211,7 @@ def test_tile_runtime_metrics_are_read_only_for_open_and_completed_applications(
         assert metrics.resource_audit_complete == 1
         assert metrics.canonical_parent_identity_entries == sum(
             record.left is not None and record.right is not None
-            for record in adapter.tiles._nodes.values()
+            for record in adapter.tiles.audit_snapshot().nodes.values()
         )
         assert metrics.canonical_parent_identity_entries > 0
         assert ledger.snapshot() == before
@@ -203,10 +223,14 @@ def test_tile_runtime_metrics_are_read_only_for_open_and_completed_applications(
 
 def test_tile_runtime_inventory_rejects_action_signature_substitution() -> None:
     ledger, adapter, _, projection = _runtime()
-    original = adapter._actions[0]
+    snapshot = adapter.audit_snapshot()
+    actions = cast(
+        LedgerDict[int, CommaActionRecord], _private_test_attribute(adapter, "_actions")
+    )
+    original = snapshot.actions[0]
     try:
         other = adapter.admit(BaseBlockEffect(3))
-        adapter._actions[0] = _Action(
+        actions[0] = CommaActionRecord(
             original.kernel,
             adapter.signature_for(other),
         )
@@ -215,16 +239,20 @@ def test_tile_runtime_inventory_rejects_action_signature_substitution() -> None:
             adapter.admit(BaseBlockEffect(2))
         assert (ledger.entries, ledger.nodes, ledger.inventory()) == before
         audit = audit_field_image_payloads(ledger)
-        assert (adapter._action_owner, id(adapter._actions[0])) in audit.invalid
+        assert (snapshot.action_owner, id(actions[0])) in audit.invalid
     finally:
-        adapter._actions[0] = original
+        actions[0] = original
         projection.close()
 
 
 def test_tile_runtime_inventory_recomputes_reverse_frobenius_product() -> None:
     ledger, adapter, _, projection = _runtime(10)
-    action = adapter.power(projection._application.action, 2)
-    original = adapter._actions[action.local_id]
+    action = adapter.power(projection.validated_application().action, 2)
+    snapshot = adapter.audit_snapshot()
+    actions = cast(
+        LedgerDict[int, CommaActionRecord], _private_test_attribute(adapter, "_actions")
+    )
+    original = snapshot.actions[action.local_id]
     try:
         plan = original.reverse_frobenius
         assert plan is not None
@@ -241,10 +269,10 @@ def test_tile_runtime_inventory_recomputes_reverse_frobenius_product() -> None:
                 growth_certificate=ReverseGrowthRunCertificate.for_base(10),
             ),
         )
-        adapter._actions[action.local_id] = forged_certificate
+        actions[action.local_id] = forged_certificate
         certificate_audit = audit_field_image_payloads(ledger)
         assert (
-            adapter._action_owner,
+            snapshot.action_owner,
             id(forged_certificate),
         ) in certificate_audit.invalid
         forged = replace(
@@ -256,17 +284,17 @@ def test_tile_runtime_inventory_recomputes_reverse_frobenius_product() -> None:
                 growth_certificate=DECIMAL_REVERSE_GROWTH_CERTIFICATE,
             ),
         )
-        adapter._actions[action.local_id] = forged
+        actions[action.local_id] = forged
         audit = audit_field_image_payloads(ledger)
-        assert (adapter._action_owner, id(forged)) in audit.invalid
+        assert (snapshot.action_owner, id(forged)) in audit.invalid
     finally:
-        adapter._actions[action.local_id] = original
+        actions[action.local_id] = original
         projection.close()
 
 
 def test_warm_action_validation_rejects_mutated_shared_growth_certificate() -> None:
     _ledger, adapter, _, projection = _runtime(10)
-    action = adapter.power(projection._application.action, 2)
+    action = adapter.power(projection.validated_application().action, 2)
     certificate = DECIMAL_REVERSE_GROWTH_CERTIFICATE
     try:
         invalid_cases: tuple[tuple[str, object], ...] = (
@@ -289,11 +317,12 @@ def test_warm_action_validation_rejects_mutated_shared_growth_certificate() -> N
 
 def test_tile_runtime_inventory_rejects_mutated_reverse_observation_metadata() -> None:
     ledger, _adapter, scheduler, projection = _runtime(3)
-    application = projection._open()
+    application = projection.validated_application()
     assert len(application.ports) == 2
     engine = CausalTileEngine(scheduler)
     try:
-        engine._run(
+        run = cast(_ReverseInterfaceRunner, object.__getattribute__(engine, "_run"))
+        run(
             ReverseInterfaceFrame(
                 (
                     application.action,
@@ -304,13 +333,14 @@ def test_tile_runtime_inventory_rejects_mutated_reverse_observation_metadata() -
             ),
             tile_result=False,
         )
+        result_snapshot = scheduler.results.audit_snapshot()
         key = next(
             key
-            for key in scheduler.results._memo
+            for key in result_snapshot.memo
             if type(key) is CausalInterfaceKey
             and key.observation == "reverse-output-carry"
         )
-        result = scheduler.results._memo[key]
+        result = result_snapshot.memo[key]
         assert type(result) is CompletedInterfaceResult
         assert result.bound_reverse_output is not None
         before = ledger.snapshot()
@@ -318,7 +348,7 @@ def test_tile_runtime_inventory_rejects_mutated_reverse_observation_metadata() -
         object.__setattr__(key, "observation", "interface")
         try:
             audit = audit_field_image_payloads(ledger)
-            assert (scheduler.results._memo_owner, id(key)) in audit.invalid
+            assert (result_snapshot.memo_owner, id(key)) in audit.invalid
             assert ledger.snapshot() == before
         finally:
             object.__setattr__(key, "observation", "reverse-output-carry")
@@ -328,32 +358,35 @@ def test_tile_runtime_inventory_rejects_mutated_reverse_observation_metadata() -
         try:
             corrupted = ledger.snapshot()
             audit = audit_field_image_payloads(ledger)
-            assert (scheduler.results._memo_owner, id(key)) in audit.invalid
+            assert (result_snapshot.memo_owner, id(key)) in audit.invalid
             assert ledger.snapshot() == corrupted
         finally:
             object.__setattr__(result, "bound_reverse_output", output)
         assert ledger.snapshot() == before
     finally:
-        engine._release_workspace()
+        release_workspace = cast(
+            "Callable[[], None]", object.__getattribute__(engine, "_release_workspace")
+        )
+        release_workspace()
         projection.close()
 
 
 def test_reverse_frobenius_plan_compilation_does_not_claim_executed_algebra() -> None:
     ledger, adapter, _, projection = _runtime(10)
     try:
-        adapter.power(projection._application.action, 8)
+        adapter.power(projection.validated_application().action, 8)
         report = collect_ledger_metrics(ledger)
         assert report.reverse_frobenius_plan_compositions > 0
         assert report.reverse_frobenius_retained_component_nodes == sum(
             1 + len(record.reverse_frobenius.sectors)
-            for record in adapter._actions.values()
+            for record in adapter.audit_snapshot().actions.values()
             if record.reverse_frobenius is not None
         )
         assert report.resource_accounting_mismatch == 0
         action_inventory = next(
             item
             for item in report.resource_inventory
-            if item.owner == adapter._action_owner
+            if item.owner == adapter.audit_snapshot().action_owner
         )
         assert action_inventory.nodes == action_inventory.observed_nodes
         assert report.radial_action_operations == 0
@@ -365,7 +398,7 @@ def test_reverse_frobenius_plan_compilation_does_not_claim_executed_algebra() ->
 
 def test_annihilated_frobenius_sectors_do_not_erase_exact_source_binding() -> None:
     ledger, adapter, scheduler, projection = _runtime(10)
-    application = projection._application
+    application = projection.validated_application()
     powered = adapter.power(application.action, 64)
     extra = scheduler.application(
         powered,
@@ -374,7 +407,7 @@ def test_annihilated_frobenius_sectors_do_not_erase_exact_source_binding() -> No
         adapter.wiring(powered),
     )
     try:
-        plan = adapter._action(powered).reverse_frobenius
+        plan = adapter.action_record(powered).reverse_frobenius
         assert plan is not None and plan.all_source_sectors_annihilated
         assert extra.source == application.source
         assert not audit_field_image_payloads(ledger).invalid
@@ -428,8 +461,8 @@ def test_result_admission_rejects_action_with_another_tile_alphabet_before_warm_
     ledger, adapter, _, projection = _runtime()
     try:
         projection.point(0)
-        action = projection._application.action
-        kernel = adapter.kernels.kernel(adapter._action(action).kernel)
+        action = projection.validated_application().action
+        kernel = adapter.kernels.kernel(adapter.action_record(action).kernel)
         wrong_alphabet = adapter.tiles.intern_alphabet(
             TileAlphabet(
                 kernel.blank + 1,
@@ -445,7 +478,7 @@ def test_result_admission_rejects_action_with_another_tile_alphabet_before_warm_
             key = PoweredInterfaceKey(
                 action,
                 wrong_tile.tile,
-                projection._application.wiring,
+                projection.validated_application().wiring,
             )
             results = adapter.require_results()
             before = ledger.snapshot()
@@ -454,7 +487,7 @@ def test_result_admission_rejects_action_with_another_tile_alphabet_before_warm_
                     key,
                     next(
                         k
-                        for k in adapter._leaf_records
+                        for k in adapter.audit_snapshot().leaf_records
                         if isinstance(k, LocalInterfaceID)
                     ),
                 )
@@ -473,7 +506,7 @@ def test_fused_memo_rejects_unsupported_primitive_action_before_warm_lookup() ->
     ledger, adapter, _, projection = _runtime()
     try:
         projection.point(0)
-        application = projection._application
+        application = projection.validated_application()
         key = FusedInterfaceKey(
             application.action,
             application.source,
@@ -481,7 +514,9 @@ def test_fused_memo_rejects_unsupported_primitive_action_before_warm_lookup() ->
             application.wiring,
         )
         result = next(
-            k for k in adapter._leaf_records if isinstance(k, LocalInterfaceID)
+            k
+            for k in adapter.audit_snapshot().leaf_records
+            if isinstance(k, LocalInterfaceID)
         )
         before = ledger.snapshot()
         with pytest.raises(
@@ -514,9 +549,11 @@ def test_completed_result_rejects_output_with_another_tile_alphabet() -> None:
     ledger, adapter, _, projection = _runtime()
     wrong_tile = None
     try:
-        application = projection._application
+        application = projection.validated_application()
         completed = application.complete()
-        kernel = adapter.kernels.kernel(adapter._action(application.action).kernel)
+        kernel = adapter.kernels.kernel(
+            adapter.action_record(application.action).kernel
+        )
         wrong_alphabet = adapter.tiles.intern_alphabet(
             TileAlphabet(
                 kernel.blank + 1,
@@ -569,7 +606,7 @@ def test_application_result_lease_survives_query_memo_eviction(
     ledger, _, scheduler, projection = _runtime()
     try:
         expected = projection.point(0)
-        projection._application.complete()
+        projection.validated_application().complete()
         ledger.evict_query_memos()
 
         def forbidden(*_args: object, **_kwargs: object) -> Never:
@@ -590,11 +627,11 @@ def test_primitive_action_warm_interner_rejects_integer_alias_or_stale_id(
 ) -> None:
     ledger, adapter, _, projection = _runtime()
     try:
-        action = projection._application.action
-        kernel = adapter._action(action).kernel
-        record = adapter._action(action)
+        action = projection.validated_application().action
+        record = adapter.action_record(action)
+        kernel = record.kernel
         _inject_malformed_mapping_value(
-            adapter._action_keys,
+            _private_test_attribute(adapter, "_action_keys"),
             ("power", kernel, 1, record.cocycle),
             forged,
         )
@@ -612,11 +649,13 @@ def test_temporal_action_warm_interner_rejects_wrong_record_or_integer_alias(
 ) -> None:
     ledger, adapter, _, projection = _runtime()
     try:
-        primitive = projection._application.action
+        primitive = projection.validated_application().action
         composed = adapter.compose(primitive, primitive)
         key = primitive, primitive
-        assert adapter._compositions[key] == composed.local_id
-        _inject_malformed_mapping_value(adapter._compositions, key, forged)
+        assert adapter.audit_snapshot().compositions[key] == composed.local_id
+        _inject_malformed_mapping_value(
+            _private_test_attribute(adapter, "_compositions"), key, forged
+        )
         assert_rejected_atomically(
             ledger,
             lambda: adapter.compose(primitive, primitive),
@@ -629,7 +668,7 @@ def test_temporal_action_warm_interner_rejects_wrong_record_or_integer_alias(
 def test_tile_runtime_inventory_validates_composed_action_dag_and_interner() -> None:
     ledger, adapter, _, projection = _runtime()
     try:
-        primitive = projection._application.action
+        primitive = projection.validated_application().action
         composed = adapter.compose(primitive, primitive)
         assert adapter.power(primitive, 2) == composed
         left = adapter.compose(composed, primitive)
@@ -639,9 +678,16 @@ def test_tile_runtime_inventory_validates_composed_action_dag_and_interner() -> 
         _assert_payload_clean(ledger)
 
         key = primitive, primitive
-        adapter._compositions[key] = primitive.local_id
+        compositions = cast(
+            LedgerDict[tuple[object, object], int],
+            _private_test_attribute(adapter, "_compositions"),
+        )
+        compositions[key] = primitive.local_id
         audit = audit_field_image_payloads(ledger)
-        assert any(owner == adapter._compose_owner for owner, _ in audit.invalid)
+        assert any(
+            owner == adapter.audit_snapshot().compose_owner
+            for owner, _ in audit.invalid
+        )
     finally:
         projection.close()
 
@@ -649,7 +695,7 @@ def test_tile_runtime_inventory_validates_composed_action_dag_and_interner() -> 
 def test_tile_runtime_inventory_validates_retained_causal_task_payloads() -> None:
     ledger, _, scheduler, projection = _runtime()
     tasks = scheduler.audit_causal_owners().tasks
-    action = projection._open().action
+    action = projection.validated_application().action
     prefix = CausalPrefix(action, 0, 0, 0)
     memo_key = ("advance_symbol", (prefix,))
     active_key = ("advance_symbol", (prefix, True))

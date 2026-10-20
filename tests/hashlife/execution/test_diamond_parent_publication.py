@@ -63,7 +63,7 @@ def test_parent_action_image_and_binding_share_one_reservation(
         node.kind == "image"
         and node.action == result.local_id
         and node.left == key.cell.local_id
-        for node in runtime.cells._nodes
+        for node in runtime.cells.audit_snapshot().nodes
     )
     assert all(row.accounting_delta == 0 for row in runtime.ledger.inventory())
 
@@ -72,7 +72,7 @@ def test_parent_action_image_and_binding_share_one_reservation(
             "warm canonical parent planned descendants or another allocation"
         )
 
-    monkeypatch.setattr(runtime.actions, "_plan_compose", forbidden)
+    monkeypatch.setattr(runtime.actions, "plan_compose", forbidden)
     monkeypatch.setattr(runtime.ledger, "reserve_many", forbidden)
     monkeypatch.setattr(runtime.ledger, "reserve", forbidden)
     assert (

@@ -215,7 +215,7 @@ def _minimal_certified_period(ports: tuple[OpenRingPorts, ...]) -> int | None:
     return None
 
 
-def _closed_driven_moore(
+def closed_driven_moore(
     initial: OpenRingState,
     motif: tuple[OpenRingPorts, ...],
     target_time: int,
@@ -409,7 +409,7 @@ def certified_open_temporal_bank(
     preperiod: int | None = None
     cycle: int | None = None
     if candidate_p is not None:
-        quotient = _closed_driven_moore(initial, tuple(ports[:candidate_p]), d)
+        quotient = closed_driven_moore(initial, tuple(ports[:candidate_p]), d)
         if quotient is not None:
             frames, moore_count, preperiod, cycle = quotient
             if frames != emitted:

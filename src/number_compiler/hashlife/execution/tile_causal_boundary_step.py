@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.hashlife.execution.causal_frames import (
     AdvanceFrame,
     CausalTaskFrame,
@@ -50,10 +51,10 @@ def probe_boundary_result(
 ) -> BoundaryTileView | None:
     """Reuse an already completed dyadic boundary before either sibling scan."""
     action, side, view, anchor, argument = frame.args
-    pieces = engine._covered_chunks(view)
+    pieces = engine.boundary_chunks(view)
     if side:
         pieces = tuple(
-            engine._keep(engine.tiles.mirror(tile)) for tile in reversed(pieces)
+            engine.retain_tile(engine.tiles.mirror(tile)) for tile in reversed(pieces)
         )
         anchor, argument = argument, anchor
     engine.ledger.bump(
@@ -61,14 +62,14 @@ def probe_boundary_result(
         len(pieces),
     )
     if len(pieces) != 1:
-        chunks = engine.scheduler._causal_workspace.allocate(len(pieces))
+        chunks = engine.scheduler.causal_workspace.allocate(len(pieces))
         for tile in pieces:
             chunks.append(tile)
         frame.saved = (chunks, anchor, argument)
         return None
     tile = pieces[0]
     key: PoweredResultKey | None
-    if engine._children(action) is None:
+    if engine.child_actions(action) is None:
         if type(anchor) is not int or type(argument) is not int:
             raise TypeError("primitive boundary requires finite endpoints")
         key, completed = probe_causal_result(
@@ -76,11 +77,11 @@ def probe_boundary_result(
             action,
             tile,
             PrimitiveCausalPorts(anchor, argument),
-            engine._wiring(action),
+            engine.result_wiring(action),
             action_admission=engine.action_admission,
         )
     else:
-        key = engine._composite_key(action, tile, anchor, argument)
+        key = engine.composite_key(action, tile, anchor, argument)
         completed = (
             None
             if key is None
@@ -91,19 +92,19 @@ def probe_boundary_result(
             )
         )
     if completed is None:
-        chunks = engine.scheduler._causal_workspace.allocate(1)
+        chunks = engine.scheduler.causal_workspace.allocate(1)
         chunks.append(tile)
         frame.saved = (chunks, anchor, argument)
         return None
     if key is None:
         raise AssertionError("completed causal result has no request key")
     output = completed.output
-    if engine._application is None:
-        engine._result_leases.append(completed)
+    if engine.application_identity is None:
+        engine.lease_workspace.results.append(completed)
     else:
-        engine.scheduler._pin_causal(engine._application, key, completed)
+        engine.scheduler.pin_causal(engine.application_identity, key, completed)
     if side:
-        output = engine._keep(engine.tiles.mirror(output))
+        output = engine.retain_tile(engine.tiles.mirror(output))
     engine.ledger.bump(_execution_keys.TILE_CAUSAL_BOUNDARY_COMPLETED_PARENT_HITS)
     return BoundaryTileView(output, 0, view.relative_extent)
 
@@ -114,7 +115,7 @@ def boundary_step(
     frames: CausalFrameStack[CausalTaskFrame],
     values: CausalResults[CausalTaskValue],
 ) -> bool:
-    workspace = engine.scheduler._causal_workspace
+    workspace = engine.scheduler.causal_workspace
     if isinstance(frame, ScanChunksFrame):
         action, side, chunks, current, index, states = frame.args
         if frame.stage == 0:
@@ -184,7 +185,7 @@ def boundary_step(
                 )
             )
         return True
-    if not isinstance(frame, OutputBoundaryFrame):
+    if not is_runtime_instance(frame, OutputBoundaryFrame):
         return False
     action, side, view, anchor, argument = frame.args
     if frame.stage == 4:
@@ -195,7 +196,7 @@ def boundary_step(
             case _:
                 raise AssertionError("single-tile boundary lost its chunks")
         output = completed.output
-        output = engine._keep(
+        output = engine.retain_tile(
             engine.tiles.mirror(output) if side else engine.tiles.retain(output)
         )
         chunks.close()
@@ -259,7 +260,7 @@ def boundary_step(
                 len(outputs) - index - 1 if side else index,
             )
             if side:
-                tile = engine._keep(engine.tiles.mirror(tile))
+                tile = engine.retain_tile(engine.tiles.mirror(tile))
             node = engine.tiles.resolve(tile)
             child = BoundaryTileView(tile, 0, node.width)
             if merged is None:
@@ -274,13 +275,13 @@ def boundary_step(
                     merged,
                     child,
                     dependencies=(
-                        engine.scheduler._causal_dependencies
-                        if engine._application is not None
+                        engine.scheduler.dependency_leases
+                        if engine.application_identity is not None
                         else None
                     ),
-                    application=engine._application,
+                    application=engine.application_identity,
                 )
-            engine._leases.append(lease)
+            engine.lease_workspace.tiles.append(lease)
         outputs.close()
         chunks.close()
         if merged is None:

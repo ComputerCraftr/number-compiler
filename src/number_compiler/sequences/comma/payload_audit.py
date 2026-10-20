@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Hashable
+from collections.abc import Hashable, Mapping
 from typing import TYPE_CHECKING
 
 from number_compiler.hashlife.execution.source_image_inventory import SourceImageBinding
@@ -29,34 +29,34 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
     leaves per-image arithmetic binding to ``audit_image_binding``.
     """
     from number_compiler.hashlife.execution.source_image_inventory import SourceImageID
-    from number_compiler.resources.stores import LedgerDict
     from number_compiler.sequences.comma.action_arena import (
         CommaActionID,
-        _Action,
-        _action_snapshot,
+        CommaActionRecord,
+        action_snapshot,
     )
     from number_compiler.sequences.comma.boundary_quotient import (
         PERIOD,
         AffineWeight,
         BoundaryState,
         MacroTemplate,
-        _validate_macro_component_header,
-        _validate_macro_component_read,
         boundary_state_signature,
+        validate_macro_component_header,
+        validate_macro_component_read,
     )
     from number_compiler.sequences.comma.image_adapter import (
         SOURCE,
         BoundaryPrefixCursor,
     )
     from number_compiler.sequences.comma.power import (
+        CommaOccurrenceRecord,
         CommaTerm,
-        _Occurrence,
     )
 
     if type(ledger) is not ResourceLedger or type(root) is not CommaTerm:
         raise TypeError("comma payload audit requires its exact term root")
     term = root
-    arena = term.arena
+    term_snapshot = term.audit_snapshot()
+    arena = term_snapshot.arena
     invalid: list[PayloadAuditEntry] = []
 
     def reject(owner: int, value: object) -> None:
@@ -68,51 +68,32 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
     def charge_boundary_audit_bits(bits: int) -> None:
         ledger.bump(_comma_keys.COMMA_BOUNDARY_EXPLICIT_AUDIT_OPERAND_BITS, bits)
 
-    aliases = (
-        (arena._owner, "_audit_action_nodes", arena._nodes),
-        (arena._key_owner, "_audit_action_keys", arena._keys),
-        (arena._snapshot_owner, "_audit_action_snapshots", arena._snapshots),
-        (arena._boundary_owner, "_audit_boundary_templates", arena._boundary_templates),
-        (
-            arena._boundary_seal_owner,
-            "_audit_boundary_seals",
-            arena._boundary_seals,
-        ),
-        (
-            arena._boundary_seal_node_owner,
-            "_audit_boundary_seal_nodes",
-            arena._boundary_seal_nodes,
-        ),
-        (
-            arena._boundary_node_owner,
-            "_audit_boundary_nodes",
-            arena._boundary_nodes,
-        ),
-        (term._occurrence_owner, "_audit_occurrences", term._occurrences),
-        (
-            term._occurrence_seal_owner,
-            "_audit_occurrence_seals",
-            term._occurrence_seals,
-        ),
-    )
     if (
         term.ledger is not ledger
         or term.adapter.ledger is not ledger
-        or term.adapter.arena is not arena
-        or term.adapter._term is not term
+        or term.adapter.arena is not term.arena
+        or term.adapter.bound_term is not term
         or term.scheduler.ledger is not ledger
-        or term.scheduler._source_only is not True
-        or any(
-            getattr(term, attribute, None) is not store
-            for _, attribute, store in aliases
-        )
+        or term.scheduler.is_source_only is not True
+        or not term_snapshot.stores_owned
     ):
-        reject(arena._owner, term)
+        reject(arena.owner, term)
         return PayloadAuditContribution((), tuple(invalid))
 
-    nodes = arena._nodes._data
-    snapshots = arena._snapshots._data
-    keys = arena._keys._data
+    nodes = arena.nodes
+    snapshots = arena.snapshots
+    keys = arena.keys
+    aliases = (
+        (arena.owner, arena.nodes),
+        (arena.key_owner, arena.keys),
+        (arena.snapshot_owner, arena.snapshots),
+        (arena.boundary_owner, arena.boundary_templates),
+        (arena.boundary_seal_owner, arena.boundary_seals),
+        (arena.boundary_seal_node_owner, arena.boundary_seal_nodes),
+        (arena.boundary_node_owner, arena.boundary_nodes),
+        (term_snapshot.occurrence_owner, term_snapshot.occurrences),
+        (term_snapshot.occurrence_seal_owner, term_snapshot.occurrence_seals),
+    )
     canonical: dict[int, CommaActionID] = {}
     action_valid = len(nodes) == len(snapshots)
     for action_key, identifier in keys.items():
@@ -124,7 +105,7 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
             node = nodes[local_id]
             if local_id in canonical:
                 raise ValueError("comma action has multiple canonical keys")
-            if type(node) is not _Action:
+            if type(node) is not CommaActionRecord:
                 raise TypeError("comma action has another node sort")
             if node.kind == "identity":
                 expected_key: tuple[object, ...] = ("identity",)
@@ -197,7 +178,7 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                 expected_key = ("boundary-prefix-occurrence", state, node.steps)
             elif node.kind == "global-boundary-return":
                 from number_compiler.sequences.comma.future_authority import (
-                    _valid_artifact_digest,
+                    valid_artifact_digest,
                 )
 
                 state, target = node.boundary_source, node.boundary_target
@@ -208,7 +189,7 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                     raise ValueError("global return has another boundary state sort")
                 boundary_state_signature(state)
                 boundary_state_signature(target)
-                valid_node = node.steps == 0 and _valid_artifact_digest(
+                valid_node = node.steps == 0 and valid_artifact_digest(
                     node.future_digest
                 )
                 expected_key = (
@@ -219,14 +200,14 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                 )
             elif node.kind == "source20-first-child":
                 from number_compiler.sequences.comma.future_authority import (
-                    _valid_artifact_digest,
+                    valid_artifact_digest,
                 )
 
                 valid_node = (
                     node.steps == 1
                     and node.boundary_source is None
                     and node.boundary_target is None
-                    and _valid_artifact_digest(node.future_digest)
+                    and valid_artifact_digest(node.future_digest)
                 )
                 expected_key = ("source20-first-child", node.future_digest)
             else:
@@ -236,19 +217,19 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
             canonical[local_id] = identifier
         except (AttributeError, IndexError, TypeError, ValueError):
             action_valid = False
-            reject(arena._key_owner, action_key)
-            reject(arena._key_owner, identifier)
+            reject(arena.key_owner, action_key)
+            reject(arena.key_owner, identifier)
 
     for local_id, node in enumerate(nodes):
         try:
-            if type(node) is _Action and node.kind == "boundary-prefix":
+            if type(node) is CommaActionRecord and node.kind == "boundary-prefix":
                 state = node.boundary_source
                 if state is not None:
                     boundary_state_signature(state)
             if (
-                type(node) is not _Action
+                type(node) is not CommaActionRecord
                 or local_id not in canonical
-                or _action_snapshot(node) != snapshots[local_id]
+                or action_snapshot(node) != snapshots[local_id]
             ):
                 raise ValueError("comma action differs from its publication seal")
             if node.kind == "sequence":
@@ -272,7 +253,7 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                     boundary_state_signature(state)
                 if (
                     state is None
-                    or state not in arena._boundary_templates._data
+                    or state not in arena.boundary_templates
                     or node.boundary_exponent
                     != (
                         state.exponent_residue
@@ -283,16 +264,14 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                     raise ValueError("comma boundary action lost its admitted template")
             elif node.kind == "boundary-prefix-occurrence":
                 state = node.boundary_source
-                if state is None or state not in arena._boundary_templates._data:
+                if state is None or state not in arena.boundary_templates:
                     raise ValueError(
                         "comma receiver-bound action lost its admitted template"
                     )
             elif node.kind == "global-boundary-return":
                 state, target = node.boundary_source, node.boundary_target
                 template = (
-                    None
-                    if state is None
-                    else arena._boundary_templates._data.get(state)
+                    None if state is None else arena.boundary_templates.get(state)
                 )
                 if (
                     state is None
@@ -307,21 +286,21 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                     raise ValueError("source-20 action lost global artifact binding")
         except (AttributeError, IndexError, TypeError, ValueError):
             action_valid = False
-            reject(arena._owner, node)
+            reject(arena.owner, node)
             if local_id < len(snapshots):
-                reject(arena._snapshot_owner, snapshots[local_id])
+                reject(arena.snapshot_owner, snapshots[local_id])
     if len(canonical) != len(nodes):
         action_valid = False
-        reject(arena._owner, arena._nodes)
+        reject(arena.owner, arena.nodes)
 
     boundary_valid = True
     expected_nodes: list[object] = []
     expected_seal_nodes: list[object] = []
-    templates = arena._boundary_templates._data
-    seals = arena._boundary_seals._data
+    templates = arena.boundary_templates
+    seals = arena.boundary_seals
     if len(seals) != len(templates):
         boundary_valid = False
-        reject(arena._boundary_seal_owner, arena._boundary_seals)
+        reject(arena.boundary_seal_owner, arena.boundary_seals)
     for template_state, template in templates.items():
         template_seal: object | None = None
         try:
@@ -334,12 +313,11 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
             boundary_state_signature(template_state)
             template_seal = seals[template_state]
             charge_boundary_audit_component()
-            if (
-                type(template_seal) is not tuple
-                or template._component_seal is not template_seal
+            if type(template_seal) is not tuple or not template.owns_component_seal(
+                template_seal
             ):
                 raise ValueError("comma boundary template differs from its seal")
-            _validate_macro_component_header(
+            validate_macro_component_header(
                 template,
                 template_seal,
                 charge_bits=charge_boundary_audit_bits,
@@ -351,7 +329,7 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
             ):
                 for index in range(len(components)):
                     charge_boundary_audit_component()
-                    _validate_macro_component_read(
+                    validate_macro_component_read(
                         template,
                         template_seal,
                         kind,
@@ -399,43 +377,45 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
             expected_seal_nodes.extend(cast(tuple[object, ...], template_seal[3]))
         except (AttributeError, IndexError, KeyError, TypeError, ValueError):
             boundary_valid = False
-            reject(arena._boundary_owner, template)
+            reject(arena.boundary_owner, template)
             if template_seal is not None:
-                reject(arena._boundary_seal_owner, template_seal)
+                reject(arena.boundary_seal_owner, template_seal)
     if (
-        len(expected_nodes) != len(arena._boundary_nodes)
+        len(expected_nodes) != len(arena.boundary_nodes)
         or any(
             actual is not expected
             for actual, expected in zip(
-                arena._boundary_nodes._data, expected_nodes, strict=True
+                arena.boundary_nodes, expected_nodes, strict=True
             )
         )
-        or len(expected_seal_nodes) != len(arena._boundary_seal_nodes)
+        or len(expected_seal_nodes) != len(arena.boundary_seal_nodes)
         or any(
             actual is not expected
             for actual, expected in zip(
-                arena._boundary_seal_nodes._data, expected_seal_nodes, strict=True
+                arena.boundary_seal_nodes, expected_seal_nodes, strict=True
             )
         )
     ):
         boundary_valid = False
-        reject(arena._boundary_node_owner, arena._boundary_nodes)
-        reject(arena._boundary_seal_node_owner, arena._boundary_seal_nodes)
+        reject(arena.boundary_node_owner, arena.boundary_nodes)
+        reject(arena.boundary_seal_node_owner, arena.boundary_seal_nodes)
 
-    occurrence_valid = len(term._occurrences) == len(term._occurrence_seals)
+    occurrence_valid = len(term_snapshot.occurrences) == len(
+        term_snapshot.occurrence_seals
+    )
     for occurrence, occurrence_seal in zip(
-        term._occurrences._data, term._occurrence_seals._data, strict=False
+        term_snapshot.occurrences, term_snapshot.occurrence_seals, strict=False
     ):
         if (
-            type(occurrence) is not _Occurrence
+            type(occurrence) is not CommaOccurrenceRecord
             or occurrence is not occurrence_seal
             or type(occurrence.image) is not SourceImageID
             or type(occurrence.value) is not int
             or occurrence.value < SOURCE
         ):
             occurrence_valid = False
-            reject(term._occurrence_owner, occurrence)
-            reject(term._occurrence_seal_owner, occurrence_seal)
+            reject(term_snapshot.occurrence_owner, occurrence)
+            reject(term_snapshot.occurrence_seal_owner, occurrence_seal)
         elif (
             type(occurrence.absolute_index) is not int
             or occurrence.absolute_index < 1
@@ -446,7 +426,7 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
             )
         ):
             occurrence_valid = False
-            reject(term._occurrence_owner, occurrence)
+            reject(term_snapshot.occurrence_owner, occurrence)
         elif occurrence.boundary_cursor is not None:
             cursor = occurrence.boundary_cursor
             try:
@@ -463,18 +443,18 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                 boundary_state_signature(cursor.state)
             except (AttributeError, TypeError, ValueError):
                 occurrence_valid = False
-                reject(term._occurrence_owner, occurrence)
+                reject(term_snapshot.occurrence_owner, occurrence)
     if not action_valid or not boundary_valid or not occurrence_valid:
         return PayloadAuditContribution((), tuple(invalid))
 
     approved: list[PayloadAuditEntry] = []
-    for owner, _attribute, store in aliases:
-        if isinstance(store, LedgerDict):
-            for map_key, value in store._data.items():
+    for owner, store in aliases:
+        if isinstance(store, Mapping):
+            for map_key, value in store.items():
                 approved.append(PayloadAuditEntry(owner, map_key))
                 approved.append(PayloadAuditEntry(owner, value))
         else:
-            approved.extend(PayloadAuditEntry(owner, item) for item in store._data)
+            approved.extend(PayloadAuditEntry(owner, item) for item in store)
     return PayloadAuditContribution(tuple(approved), tuple(invalid))
 
 
@@ -490,7 +470,10 @@ def audit_comma_image_binding(
     """Validate one image's family binding without querying or charging it."""
     from number_compiler.hashlife.execution.source_bound_images import SourceImageRecord
     from number_compiler.hashlife.execution.source_image_inventory import SourceImageID
-    from number_compiler.sequences.comma.action_arena import CommaActionID, _Action
+    from number_compiler.sequences.comma.action_arena import (
+        CommaActionID,
+        CommaActionRecord,
+    )
     from number_compiler.sequences.comma.image_adapter import (
         SOURCE,
         BoundaryPrefixCursor,
@@ -499,13 +482,13 @@ def audit_comma_image_binding(
         CommaSource,
     )
     from number_compiler.sequences.comma.power import (
-        _Occurrence,
+        CommaOccurrenceRecord,
     )
 
     if failure_prefix is not None:
         raise ValueError("comma images cannot publish a failure prefix")
 
-    term = adapter._term
+    term = adapter.bound_term
     if (
         type(binding) is not SourceImageBinding
         or type(payload) is not CommaImagePayload
@@ -536,6 +519,8 @@ def audit_comma_image_binding(
     ):
         raise ValueError("comma image has invalid family binding fields")
 
+    term_snapshot = term.audit_snapshot()
+
     output_ports = cast(tuple[int, int, int], binding.boundary_ports)
     if not (
         1 <= output_ports[0] <= 9 and 0 <= output_ports[1] <= 9 and output_ports[2] >= 1
@@ -562,11 +547,10 @@ def audit_comma_image_binding(
         boundary_state_signature(cursor.state)
 
     action = binding.action
-    action.validate(
-        adapter.arena.token, adapter.arena.kind, size=len(adapter.arena._nodes)
-    )
-    node = adapter.arena._nodes._data[action.local_id]
-    if type(node) is not _Action:
+    action_arena = adapter.arena.audit_snapshot()
+    action.validate(action_arena.token, action_arena.kind, size=len(action_arena.nodes))
+    node = action_arena.nodes[action.local_id]
+    if type(node) is not CommaActionRecord:
         raise ValueError("comma image action has another node sort")
 
     source_value: int
@@ -584,16 +568,16 @@ def audit_comma_image_binding(
         source_payload = CommaImagePayload(SOURCE, 1, term.certificate_version)
     elif type(source) is CommaOccurrenceID:
         source.validate(
-            term._occurrence_token,
-            term._occurrence_kind,
-            size=len(term._occurrences),
+            term_snapshot.occurrence_token,
+            term_snapshot.occurrence_kind,
+            size=len(term_snapshot.occurrences),
         )
-        if source.local_id >= len(term._occurrence_seals):
+        if source.local_id >= len(term_snapshot.occurrence_seals):
             raise ValueError("comma image source occurrence has no seal")
-        occurrence = term._occurrences._data[source.local_id]
+        occurrence = term_snapshot.occurrences[source.local_id]
         if (
-            type(occurrence) is not _Occurrence
-            or occurrence is not term._occurrence_seals._data[source.local_id]
+            type(occurrence) is not CommaOccurrenceRecord
+            or occurrence is not term_snapshot.occurrence_seals[source.local_id]
             or occurrence.certificate_version != term.certificate_version
         ):
             raise ValueError("comma image source occurrence is unauthenticated")
@@ -606,13 +590,16 @@ def audit_comma_image_binding(
             occurrence.boundary_cursor,
         )
     elif type(source) is SourceImageID:
-        core = adapter.scheduler._source_images
+        core = adapter.scheduler.published_source_image_core
         if core is None:
             raise ValueError(
                 "comma image audit requires an existing source-image owner"
             )
-        source.validate(core.owner, core._KIND, size=len(core._nodes))
-        parent = core._nodes._data[source.local_id]
+        core_snapshot = core.audit_snapshot()
+        source.validate(
+            core_snapshot.owner, core_snapshot.kind, size=len(core_snapshot.nodes)
+        )
+        parent = core_snapshot.nodes[source.local_id]
         if (
             type(parent) is not SourceImageRecord
             or parent.binding.family != adapter.family
@@ -700,52 +687,54 @@ def register_comma_term_audit(term: CommaTerm) -> None:
     )
 
     term.ledger.register_execution_root(term)
+    term_snapshot = term.audit_snapshot()
+    arena = term_snapshot.arena
     term.ledger.register_payload_audit_contract(
         term,
         "comma",
         (
             PayloadAuditStoreBinding(
-                term.arena._owner,
+                arena.owner,
                 "_audit_action_nodes",
                 "temporal_action",
             ),
             PayloadAuditStoreBinding(
-                term.arena._key_owner,
+                arena.key_owner,
                 "_audit_action_keys",
                 "action_interning",
             ),
             PayloadAuditStoreBinding(
-                term.arena._snapshot_owner,
+                arena.snapshot_owner,
                 "_audit_action_snapshots",
                 "action_publication_seal",
             ),
             PayloadAuditStoreBinding(
-                term.arena._boundary_owner,
+                arena.boundary_owner,
                 "_audit_boundary_templates",
                 "boundary_template",
             ),
             PayloadAuditStoreBinding(
-                term.arena._boundary_seal_owner,
+                arena.boundary_seal_owner,
                 "_audit_boundary_seals",
                 "boundary_publication_seal",
             ),
             PayloadAuditStoreBinding(
-                term.arena._boundary_seal_node_owner,
+                arena.boundary_seal_node_owner,
                 "_audit_boundary_seal_nodes",
                 "boundary_publication_seal_component",
             ),
             PayloadAuditStoreBinding(
-                term.arena._boundary_node_owner,
+                arena.boundary_node_owner,
                 "_audit_boundary_nodes",
                 "boundary_template_node",
             ),
             PayloadAuditStoreBinding(
-                term._occurrence_owner,
+                term_snapshot.occurrence_owner,
                 "_audit_occurrences",
                 "source_occurrence",
             ),
             PayloadAuditStoreBinding(
-                term._occurrence_seal_owner,
+                term_snapshot.occurrence_seal_owner,
                 "_audit_occurrence_seals",
                 "source_occurrence_seal",
             ),

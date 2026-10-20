@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from operator import add, mul
-from typing import TypeAlias
+from typing import TypeAlias, cast
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+)
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.dyadic_return_records import DyadicReturnLaw
 from number_compiler.hashlife.execution.dyadic_return_transport import low_bits
@@ -17,7 +20,7 @@ from number_compiler.resources.physical_support_payload_audit import (
 AuditEffect: TypeAlias = tuple[SkewTransfer[int], int, int, int]
 
 
-def _balanced_saturated_audit(
+def balanced_saturated_audit(
     law: DyadicReturnLaw,
     source: int,
     width: int,
@@ -138,39 +141,47 @@ def audit_collatz_d8_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadA
     # neither its claimed odd count nor its target origin is trusted.
     from number_compiler.resources.stores import LedgerDict
 
+    def exact_table(value: object) -> LedgerDict[object, object] | None:
+        value_object = value
+        if type(value_object) is not LedgerDict:
+            return None
+        return cast(LedgerDict[object, object], value_object)
+
     for table_owner, table_inventory in inventory.items():
         if table_inventory.role != "collatz_d8_local_table":
             continue
         table = containers.get(table_owner)
+        table_store = exact_table(table)
         local_table_approved: set[int] = set()
         try:
             table_valid = (
-                type(table) is LedgerDict
-                and table.ledger is ledger
-                and table.owner == table_owner
-                and table.write_once
-                and table.nodes_per_entry == 3
-                and ledger.is_factory_container(table)
+                table_store is not None
+                and table_store.ledger is ledger
+                and table_store.owner == table_owner
+                and table_store.write_once
+                and table_store.nodes_per_entry == 3
+                and ledger.is_factory_container(table_store)
                 and table_inventory.name == "collatz-physical-d8-local-table"
                 and table_inventory.scope == ResourceScope.ENGINE_OWNED
                 and table_inventory.accounting_delta == 0
                 and not table_inventory.disposed
-                and table_inventory.entries == len(table)
-                and table_inventory.nodes == 3 * len(table)
-                and len(table) <= 256
+                and table_inventory.entries == len(table_store)
+                and table_inventory.nodes == 3 * len(table_store)
+                and len(table_store) <= 256
             )
             if table_valid:
-                assert type(table) is LedgerDict
-                for residue, record in table.items():
+                assert table_store is not None
+                for residue, record in table_store.items():
                     if (
                         type(residue) is not int
                         or not 0 <= residue < 256
-                        or type(record) is not tuple
+                        or not is_exact_object_tuple(record)
                         or len(record) != 2
                         or any(type(value) is not int for value in record)
                     ):
                         table_valid = False
                         break
+                    values = cast(tuple[int, int], record)
                     low, high, ones = residue, residue + 256, 0
                     for _ in range(8):
                         bit = low & 1
@@ -180,14 +191,14 @@ def audit_collatz_d8_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadA
                     ledger.bump(
                         _resources_keys.COLLATZ_D8_PAYLOAD_AUDIT_LOCAL_SYMBOLS, 16
                     )
-                    if record != (ones, low) or high - low != 3**ones:
+                    if values != (ones, low) or high - low != 3**ones:
                         table_valid = False
                         break
                     local_table_approved.add(id(record))
-                    canonical_rows[residue] = record
+                    canonical_rows[residue] = values
             if table_valid:
                 approved.update(local_table_approved)
-                approved.add(id(table))
+                approved.add(id(table_store))
             else:
                 invalid.add((table_owner, id(table)))
         except (AttributeError, ArithmeticError, KeyError, TypeError, ValueError):
@@ -197,37 +208,39 @@ def audit_collatz_d8_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadA
         if table_inventory.role != "collatz_d8_width_prefix_table":
             continue
         table = containers.get(table_owner)
+        table_store = exact_table(table)
         table_approved: set[int] = set()
         try:
             table_valid = (
-                type(table) is LedgerDict
-                and table.ledger is ledger
-                and table.owner == table_owner
-                and table.write_once
-                and table.nodes_per_entry == 24
-                and ledger.is_factory_container(table)
+                table_store is not None
+                and table_store.ledger is ledger
+                and table_store.owner == table_owner
+                and table_store.write_once
+                and table_store.nodes_per_entry == 24
+                and ledger.is_factory_container(table_store)
                 and table_inventory.name == "collatz-physical-d8-width-prefix-table"
                 and table_inventory.scope == ResourceScope.ENGINE_OWNED
                 and table_inventory.accounting_delta == 0
                 and not table_inventory.disposed
-                and table_inventory.entries == len(table)
-                and table_inventory.nodes == 24 * len(table)
-                and len(table) <= 256
+                and table_inventory.entries == len(table_store)
+                and table_inventory.nodes == 24 * len(table_store)
+                and len(table_store) <= 256
             )
             if table_valid:
-                assert type(table) is LedgerDict
-                for residue, record in table.items():
+                assert table_store is not None
+                for residue, record in table_store.items():
+                    if type(residue) is not int or not 0 <= residue < 256:
+                        table_valid = False
+                        break
                     row = canonical_rows.get(residue)
                     if (
-                        type(residue) is not int
-                        or not 0 <= residue < 256
-                        or row is None
-                        or type(record) is not tuple
+                        row is None
+                        or not is_exact_object_tuple(record)
                         or len(record) != 2
-                        or type(record[0]) is not tuple
+                        or not is_exact_object_tuple(record[0])
                         or len(record[0]) != 9
                         or any(
-                            type(prefix) is not tuple
+                            not is_exact_object_tuple(prefix)
                             or len(prefix) != 2
                             or any(type(value) is not int for value in prefix)
                             for prefix in record[0]
@@ -237,7 +250,8 @@ def audit_collatz_d8_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadA
                     ):
                         table_valid = False
                         break
-                    prefixes, odd_mask = record
+                    prefixes = cast(tuple[tuple[int, int], ...], record[0])
+                    odd_mask = record[1]
                     low, high, ones = residue + 256, residue + 512, 0
                     expected: list[tuple[int, int]] = [(1, 0)]
                     multiplier, offset = 1, 0
@@ -294,7 +308,7 @@ def audit_collatz_d8_payloads(ledger: ResourceLedger) -> PhysicalSupportPayloadA
                     table_approved.update(map(id, prefixes))
             if table_valid:
                 approved.update(table_approved)
-                approved.add(id(table))
+                approved.add(id(table_store))
             else:
                 invalid.add((table_owner, id(table)))
         except (AttributeError, ArithmeticError, KeyError, TypeError, ValueError):

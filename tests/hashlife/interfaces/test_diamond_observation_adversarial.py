@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from random import Random
+from typing import cast
 
 import pytest
 
@@ -13,6 +15,7 @@ from number_compiler.hashlife.execution.continuations.diamond_expression_eval im
 from number_compiler.hashlife.execution.continuations.diamond_higher_tasks import (
     HigherUnarySummary,
 )
+from number_compiler.hashlife.execution.continuations.diamond_tasks import Result, Task
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     ExprID,
     StateSort,
@@ -47,12 +50,12 @@ def test_public_points_cannot_cache_intermediate_symbols_disguised_as_finite_sta
     for position in range(24):
         assert parametric_point(runtime, app.root, position) == expected[position]
     intermediate = oracle(kernel, source, 32, 1)
-    recovered = []
+    recovered: list[tuple[ExprID, int]] = []
     observations = getattr(runtime, "boundary_observations", {})
     for position, output in enumerate(outputs):
         node = arena.node(output)
         assert node.kind == "emit"
-        right = arena._handle(node.children[2])
+        right = arena.scoped_handle(node.children[2])
         assert type(arena.node(right).sort) is StateSort
         cached = observations.get(LowerFinite(right))
         if cached is not None:
@@ -97,7 +100,10 @@ def test_foreign_finite_observation_rejected_before_any_cache_shortcut(
             with pytest.raises(ValueError):
                 runtime.execute(task)
             with pytest.raises(ValueError):
-                runtime._probe(task)
+                cast(
+                    "Callable[[Task], Result | None]",
+                    object.__getattribute__(runtime, "_probe"),
+                )(task)
     assert runtime.ledger.snapshot() == before
 
 
@@ -180,7 +186,8 @@ def test_all_retained_response_stores_obey_bound_realized_result_boundary(
         assert parametric_point(runtime, app.root, position) == expected[position]
 
     def realized(expression: ExprID) -> bool:
-        pending, seen = [expression.local_id], set()
+        pending = [expression.local_id]
+        seen: set[int] = set()
         while pending:
             index = pending.pop()
             if index in seen:

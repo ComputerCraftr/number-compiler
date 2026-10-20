@@ -25,7 +25,7 @@ def test_root_image_audits_and_owns_the_requested_innovation_tape() -> None:
         assert observation is not None and observation.producer_issued
         assert observation.modulus == 49
 
-        core = workspace.scheduler._source_image_core()
+        core = workspace.scheduler.source_image_core()
         view = core.view(workspace.root_image)
         innovation_ports = tuple(
             port

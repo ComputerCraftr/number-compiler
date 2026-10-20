@@ -8,8 +8,9 @@ term share the same 1,024-entry / 8-KiB payload budget.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Literal
 
 from number_compiler.arithmetic.contracts.scoped_handles import (
@@ -68,6 +69,16 @@ class ExactMicroblock:
     @property
     def payload_bytes(self) -> int:
         return (self.bit_count + 7) // 8
+
+
+@dataclass(frozen=True, slots=True)
+class MicroblockCacheAuditSnapshot:
+    """Detached read-only view of exact bounded cache payloads."""
+
+    ledger: ResourceLedger
+    owner: int
+    blocks: Mapping[MicroblockKey, ExactMicroblock]
+    payload_bytes: int
 
 
 class MicroblockCache:
@@ -305,8 +316,26 @@ class MicroblockCache:
         self.payload_bytes = 0
         self.ledger.counters[_projection_keys.MICROBLOCK_PAYLOAD_BYTES] = 0
 
+    def audit_snapshot(self) -> MicroblockCacheAuditSnapshot:
+        """Copy bounded payloads so forensic reads cannot mutate this cache."""
+        detached = {
+            self._key_snapshot(key): self._payload(value)
+            for key, value in self.blocks.items()
+        }
+        return MicroblockCacheAuditSnapshot(
+            self.ledger,
+            self.owner,
+            MappingProxyType(detached),
+            self.payload_bytes,
+        )
+
     def __len__(self) -> int:
         return len(self.blocks)
 
 
-__all__ = ["ExactMicroblock", "MicroblockCache", "MicroblockKey"]
+__all__ = [
+    "ExactMicroblock",
+    "MicroblockCache",
+    "MicroblockCacheAuditSnapshot",
+    "MicroblockKey",
+]

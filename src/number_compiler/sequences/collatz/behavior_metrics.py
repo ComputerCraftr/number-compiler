@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from number_compiler.resources.hashlife_behavior_metrics import (
+    HashLifeBehaviorMetrics,
+)
 from number_compiler.resources.metric_collection import (
     collect_ledger_metrics,
     ledger_fields_from,
 )
-from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
 from number_compiler.resources.metric_replace import replace_metric
 
 if TYPE_CHECKING:
@@ -16,7 +18,7 @@ if TYPE_CHECKING:
 
 
 def collatz_behavior_metrics(term: PoweredCollatzTerm) -> HashLifeBehaviorMetrics:
-    workspace = term._workspace
+    workspace = term.audit_snapshot().workspace
     # Reporting does not discover the source or evaluate the endpoint.
     actions = 0 if workspace is None else len(workspace.actions)
     sources = 0 if workspace is None else len(workspace.sources)

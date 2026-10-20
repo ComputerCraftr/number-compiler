@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gc
 from typing import cast
+from weakref import ReferenceType
 
 import pytest
 
@@ -34,7 +35,7 @@ class _MemoFamilyRoot:
         self.memo: OwnedMemo[str, object] = OwnedMemo(
             ledger, owner, node_cost=lambda _key, _value: 2
         )
-        self.records = self.memo._data
+        self.records = self.memo.audit_snapshot().container
         self.proposal = PayloadAuditContribution()
 
 
@@ -82,7 +83,7 @@ def test_dynamic_memo_contract_only_unwraps_accounting_envelope(nested: bool) ->
 
     assert ((owner, id(value)) in result.approved) is not nested
     assert bool(result.invalid) is nested
-    assert ledger._account(owner).nodes == 3
+    assert ledger.account_status(owner).nodes == 3
     root.memo.clear()
     assert not result.approved
 
@@ -480,9 +481,16 @@ def test_forged_contract_snapshot_cannot_approve_objects_or_roots() -> None:
             ),
         ),
         _roots_by_family=(("antihydra", frozenset((id(root),)), frozenset()),),
-        _ledger_reference=issued._ledger_reference,
-        _mutation_version=issued._mutation_version,
-        _registry_identity=issued._registry_identity,
+        _ledger_reference=cast(
+            ReferenceType[object] | None,
+            object.__getattribute__(issued, "_ledger_reference"),
+        ),
+        _mutation_version=cast(
+            int | None, object.__getattribute__(issued, "_mutation_version")
+        ),
+        _registry_identity=cast(
+            int | None, object.__getattribute__(issued, "_registry_identity")
+        ),
     )
 
     assert issued.approved == frozenset(((owner, id(value)),))
@@ -496,5 +504,6 @@ def test_contract_does_not_keep_closed_over_roots_alive() -> None:
     gc.collect()
 
     assert tuple(ledger.iter_execution_roots()) == ()
-    assert ledger.audit_payload_contracts().approved == frozenset()
-    assert ledger._payload_audit_contracts == {}
+    audit = ledger.audit_payload_contracts()
+    assert audit.approved == frozenset()
+    assert audit.roots_by_family == ()

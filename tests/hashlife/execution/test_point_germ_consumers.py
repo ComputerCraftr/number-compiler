@@ -111,7 +111,7 @@ def test_public_antihydra_point_is_lazy_and_reuses_discovery(
     assert {
         k: v for k, v in term.ledger.counters.items() if "point_germ" not in k
     } == construction
-    assert term._physical is None
+    assert term.published_physical_run is None
     workspace.dispose()
     with pytest.raises(ValueError):
         payload.digit(0)
@@ -129,7 +129,7 @@ def test_collatz_point_uses_same_kernel_without_endpoint(
         term.resource_ledger.counters["collatz_physical_run_contraction_publications"]
         == 1
     )
-    assert term._source_image().summary().transfer.upper == 0
+    assert term.source_image().summary().transfer.upper == 0
     assert (
         term.resource_ledger.counters.get(
             "collatz_physical_point_germ_normalizations", 0

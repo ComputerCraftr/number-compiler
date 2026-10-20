@@ -33,7 +33,7 @@ def test_complete_prefix_envelope_and_associative_chronological_pullback() -> No
     assert ThresholdEnvelope.normalize(left.lines) == left
     for source, threshold in product(range(-4, 25), range(-3, 25)):
         value = Fraction(source)
-        values = []
+        values: list[Fraction] = []
         for action in actions:
             value = (action.upper * value + action.offset) / action.lower
             values.append(value)

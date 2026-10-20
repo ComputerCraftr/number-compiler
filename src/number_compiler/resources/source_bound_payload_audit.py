@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field, fields, is_dataclass
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+)
 from number_compiler.hashlife.execution.source_bound_images import (
-    _IMAGE_RECORD_SEAL,
     SourceBoundImageBindingAuditor,
     SourceBoundSchedulerCore,
     SourceImageApplyKey,
-    SourceImageProjectionRecord,
     SourceImageRecord,
     SourceImageRelativeApplication,
     SourceImageRelativeKey,
@@ -19,7 +20,6 @@ from number_compiler.hashlife.execution.source_bound_images import (
 from number_compiler.hashlife.execution.source_image_inventory import SourceImageID
 from number_compiler.hashlife.execution.source_image_seals import (
     TypedPayloadKey,
-    publication_matches_readonly,
     typed_payload_equal,
 )
 from number_compiler.resources.ledger import ResourceLedger
@@ -30,31 +30,8 @@ def _resolve_readonly(
 ) -> SourceImageRecord:
     if type(image) is not SourceImageID:
         raise TypeError("expected an exact source image ID")
-    image.validate(core.owner, core._KIND, size=len(core._nodes))
-    record = core._nodes[image.local_id]
-    if (
-        type(record) is not SourceImageRecord
-        or record.publication_owner is not _IMAGE_RECORD_SEAL
-        or record.publication_snapshot
-        is not core._publication_seals.images[image.local_id]
-        or not publication_matches_readonly(
-            (
-                record.binding,
-                record.payload,
-                record.failure_prefix,
-                record.publication_provenance,
-                id(record.adapter),
-                record.binding_audit_required,
-            ),
-            record.publication_snapshot,
-        )
-        or core._adapters.get(record.adapter_key) is not record.adapter
-        or not source_bound_adapter_shape(record.adapter, core.ledger)
-        or record.binding_audit_required
-        is not callable(getattr(record.adapter, "audit_image_binding", None))
-        or (record.binding.family, record.binding.semantic_version)
-        != record.adapter_key
-    ):
+    record = core.resolve_readonly(image)
+    if not source_bound_adapter_shape(record.adapter, core.ledger):
         raise ValueError("source image publication record was altered")
     return record
 
@@ -83,7 +60,7 @@ def _sealed_members(root: object) -> dict[int, object]:
         if identity in members:
             continue
         members[identity] = value
-        if type(value) is tuple:
+        if is_exact_object_tuple(value):
             pending.extend(value)
         elif is_dataclass(value):
             params: object | None = getattr(type(value), "__dataclass_params__", None)
@@ -159,7 +136,7 @@ def audit_source_bound_payloads(
         for root in roots
         if type(root) is SourceBoundSchedulerCore
         and root.ledger is ledger
-        and not root._closed
+        and not root.audit_snapshot().closed
     )
     approved: set[int] = set()
     recognized: set[int] = set()
@@ -167,24 +144,25 @@ def audit_source_bound_payloads(
     valid_adapter_ids: set[int] = set()
     payload_members_by_owner: set[tuple[int, int]] = set()
     for core in cores:
+        snapshot = core.audit_snapshot()
         stores = (
-            (core._adapter_owner, core._adapters),
-            (core._node_owner, core._nodes),
-            (core._origin_owner, core._origins),
-            (core._apply_owner, core._applications),
-            (core._relative_owner, core._relative),
-            (core._projection_owner, core._projections),
-            (core._workspace_owner, core._workspace._storage),
-            (core._publication_seals._image_owner, core._publication_seals.images),
+            (snapshot.adapter_owner, snapshot.adapter_store),
+            (snapshot.node_owner, snapshot.node_store),
+            (snapshot.origin_owner, snapshot.origin_store),
+            (snapshot.application_owner, snapshot.application_store),
+            (snapshot.relative_owner, snapshot.relative_store),
+            (snapshot.projection_owner, snapshot.projection_store),
+            (snapshot.workspace.owner, snapshot.workspace.store_identity),
+            (snapshot.image_seal_owner, snapshot.image_seal_store),
             (
-                core._publication_seals._projection_owner,
-                core._publication_seals.projections,
+                snapshot.projection_seal_owner,
+                snapshot.projection_seal_store,
             ),
         )
         if any(containers.get(owner) is not store for owner, store in stores):
-            invalid.add((core._node_owner, id(core)))
+            invalid.add((snapshot.node_owner, id(core)))
             continue
-        for adapter_key, adapter in core._adapters.items():
+        for adapter_key, adapter in snapshot.adapters.items():
             recognized.update((id(adapter_key), id(adapter)))
             try:
                 valid_adapter = (
@@ -197,22 +175,22 @@ def audit_source_bound_payloads(
             except (AttributeError, TypeError, ValueError, RuntimeError):
                 valid_adapter = False
             if not valid_adapter:
-                invalid.add((core._adapter_owner, id(adapter_key)))
+                invalid.add((snapshot.adapter_owner, id(adapter_key)))
             else:
                 valid_adapter_ids.add(id(adapter))
                 approved.update((id(adapter_key), id(adapter)))
         valid_nodes: dict[int, SourceImageRecord] = {}
         linked_nodes: set[int] = set()
-        for local_id, record in enumerate(core._nodes):
+        for local_id, record in enumerate(snapshot.nodes):
             recognized.add(id(record))
             family_approved_objects: tuple[object, ...] = ()
             family_approved_payload_objects: tuple[object, ...] = ()
             try:
-                image = SourceImageID(core.owner, core._KIND, local_id)
+                image = SourceImageID(snapshot.owner, snapshot.kind, local_id)
                 resolved = _resolve_readonly(core, image)
                 if resolved is not record:
                     raise ValueError("source image resolution changed its record")
-                record_adapter = core._adapters.get(record.adapter_key)
+                record_adapter = snapshot.adapters.get(record.adapter_key)
                 if (
                     record_adapter is not record.adapter
                     or id(record_adapter) not in valid_adapter_ids
@@ -273,7 +251,7 @@ def audit_source_bound_payloads(
                 AttributeError,
                 RuntimeError,
             ):
-                invalid.add((core._node_owner, id(record)))
+                invalid.add((snapshot.node_owner, id(record)))
             else:
                 valid_nodes[local_id] = record
                 values = (
@@ -289,10 +267,10 @@ def audit_source_bound_payloads(
                 approved.update(map(id, family_approved_objects))
                 recognized.update(map(id, family_approved_objects))
                 payload_members_by_owner.update(
-                    (core._node_owner, id(value))
+                    (snapshot.node_owner, id(value))
                     for value in family_approved_payload_objects
                 )
-        for origin_key, image in core._origins.items():
+        for origin_key, image in snapshot.origins.items():
             recognized.update((id(origin_key), id(image)))
             try:
                 if type(origin_key) is not tuple or len(origin_key) != 2:
@@ -304,10 +282,10 @@ def audit_source_bound_payloads(
                 record = _resolve_readonly(core, image)
                 provenance = record.publication_provenance
                 if (
-                    type(provenance) is not tuple
+                    not is_exact_object_tuple(provenance)
                     or len(provenance) != 3
                     or provenance[0] != "origin"
-                    or type(provenance[1]) is not tuple
+                    or not is_exact_object_tuple(provenance[1])
                     or len(provenance[1]) != 2
                     or provenance[1][0] != adapter_key
                     or provenance[1][1] is not source
@@ -321,11 +299,11 @@ def audit_source_bound_payloads(
                 ):
                     raise ValueError("source image origin binding was altered")
             except (TypeError, ValueError, KeyError, IndexError, AttributeError):
-                invalid.add((core._origin_owner, id(origin_key)))
+                invalid.add((snapshot.origin_owner, id(origin_key)))
             else:
                 linked_nodes.add(image.local_id)
                 approved.update((id(origin_key), id(image)))
-        for apply_key, image in core._applications.items():
+        for apply_key, image in snapshot.applications.items():
             recognized.update((id(apply_key), id(image)))
             try:
                 if type(apply_key) is not SourceImageApplyKey:
@@ -345,7 +323,7 @@ def audit_source_bound_payloads(
                 if relative_key is not None:
                     if type(relative_key) is not SourceImageRelativeKey:
                         raise TypeError("application has another relative key sort")
-                    relative = core._relative.get(relative_key)
+                    relative = snapshot.relative.get(relative_key)
                     if (
                         type(relative) is not SourceImageRelativeApplication
                         or relative.source is not apply_key.source
@@ -353,11 +331,11 @@ def audit_source_bound_payloads(
                     ):
                         raise ValueError("application lost its relative publication")
             except (TypeError, ValueError, KeyError, IndexError, AttributeError):
-                invalid.add((core._apply_owner, id(apply_key)))
+                invalid.add((snapshot.application_owner, id(apply_key)))
             else:
                 linked_nodes.add(image.local_id)
                 approved.update((id(apply_key), id(image)))
-        for relative_key, application in core._relative.items():
+        for relative_key, application in snapshot.relative.items():
             recognized.update((id(relative_key), id(application)))
             try:
                 if (
@@ -380,43 +358,25 @@ def audit_source_bound_payloads(
                     relative_apply_key.adapter_key is not relative_key.adapter_key
                     or relative_apply_key.source is not application.source
                     or relative_apply_key.action is not relative_key.action
-                    or core._applications.get(relative_apply_key)
+                    or snapshot.applications.get(relative_apply_key)
                     is not application.result
                     or provenance[2] is not relative_key
                 ):
                     raise ValueError("relative transfer has another publication key")
             except (TypeError, ValueError, KeyError, IndexError, AttributeError):
-                invalid.add((core._relative_owner, id(relative_key)))
+                invalid.add((snapshot.relative_owner, id(relative_key)))
             else:
                 approved.update((id(relative_key), id(application)))
         for local_id, record in valid_nodes.items():
             if local_id not in linked_nodes:
-                invalid.add((core._node_owner, id(record)))
-        for projection_key, projection_record in core._projections.items():
+                invalid.add((snapshot.node_owner, id(record)))
+        for projection_key, projection_record in snapshot.projections.items():
             recognized.update((id(projection_key), id(projection_record)))
             try:
-                if (
-                    type(projection_key) is not tuple
-                    or len(projection_key) != 2
-                    or type(projection_record) is not SourceImageProjectionRecord
-                    or projection_key[0] is not projection_record.image
-                    or projection_key[1] is not projection_record.demand
-                    or projection_record.publication_owner is not _IMAGE_RECORD_SEAL
-                    or projection_record.publication_snapshot
-                    is not core._publication_seals.projections.get(projection_key)
-                    or not publication_matches_readonly(
-                        (
-                            projection_record.image,
-                            projection_record.demand,
-                            projection_record.projection,
-                        ),
-                        projection_record.publication_snapshot,
-                    )
-                ):
-                    raise ValueError("source projection publication was altered")
+                core.resolve_projection_readonly(projection_key, projection_record)
                 _resolve_readonly(core, projection_record.image)
             except (TypeError, ValueError, KeyError, IndexError, AttributeError):
-                invalid.add((core._projection_owner, id(projection_key)))
+                invalid.add((snapshot.projection_owner, id(projection_key)))
             else:
                 projection_values = (
                     projection_key,
@@ -425,16 +385,16 @@ def audit_source_bound_payloads(
                 )
                 approved.update(map(id, projection_values))
                 recognized.update(map(id, projection_values))
-        for seal in core._publication_seals.images:
+        for seal in snapshot.image_seals:
             recognized.add(id(seal))
             if id(seal) not in approved:
-                invalid.add((core._publication_seals._image_owner, id(seal)))
-        for seal_key, seal in core._publication_seals.projections.items():
+                invalid.add((snapshot.image_seal_owner, id(seal)))
+        for seal_key, seal in snapshot.projection_seals.items():
             recognized.update((id(seal_key), id(seal)))
             if id(seal) in approved:
                 approved.add(id(seal_key))
             else:
-                invalid.add((core._publication_seals._projection_owner, id(seal)))
+                invalid.add((snapshot.projection_seal_owner, id(seal)))
     return SourceBoundPayloadAudit(
         cores,
         frozenset(approved),

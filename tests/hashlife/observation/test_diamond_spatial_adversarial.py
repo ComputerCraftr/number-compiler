@@ -3,7 +3,7 @@
 from array import array
 from dataclasses import replace
 from functools import partial
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
@@ -11,6 +11,7 @@ from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
     FiniteBlockEffect,
 )
+from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.hashlife.execution.continuations.diamond_tasks import (
@@ -135,16 +136,17 @@ def test_public_custom_finite_composition_uses_diamonds_without_future_tiles(
         )
 
     index = HashLifeBlockIndex(effect, values, logical_length=length)
-    assert isinstance(index._lazy_application, LazyProjection)
+    assert isinstance(index.audit_snapshot().lazy_application, LazyProjection)
     import number_compiler.arithmetic.fields.dyadic_tile as tiles
 
     monkeypatch.setattr(tiles, "leaf", forbidden)
     monkeypatch.setattr(tiles, "join", forbidden)
-    before = tuple(index._source_geometry.nodes.items())
+    geometry = cast(SourceGeometry, object.__getattribute__(index, "_source_geometry"))
+    before = tuple(geometry.nodes.items())
     assert [
         index.direct_powered_point(position) for position in range(length)
     ] == expected
     assert index.direct_active_width() == max(
         (index + 1 for index, value in enumerate(expected) if value != 3), default=0
     )
-    assert tuple(index._source_geometry.nodes.items()) == before
+    assert tuple(geometry.nodes.items()) == before

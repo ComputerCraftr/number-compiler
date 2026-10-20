@@ -125,15 +125,8 @@ def test_character_types_reject_nonsemantic_inputs() -> None:
 
 
 @pytest.mark.validation  # Public API differential across 500 odd sources and orders.
-def test_number_api_character_queries_bypass_orbit_and_root_germ(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_number_api_character_queries_bypass_orbit_and_root_germ() -> None:
     from number_compiler.api import number_api
-
-    def forbidden(*_args: object, **_kwargs: object) -> Never:
-        raise AssertionError(
-            "full Collatz orbit/valuation path touched by character query"
-        )
 
     # The public nth-state module no longer imports any orbit builder at all.
     assert not hasattr(number_api, "collatz_orbit_formulas")

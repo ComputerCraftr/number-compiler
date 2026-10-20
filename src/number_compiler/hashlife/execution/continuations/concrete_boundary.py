@@ -28,7 +28,7 @@ def project_boundary(
         raise TypeError("boundary projection requires the shared port scheduler")
     scheduler.adapter.validate_action(action)
     side = scheduler.validate_side(side)
-    scheduler._validate_action_state(action, side, state)
+    scheduler.validate_action_state(action, side, state)
     children = scheduler.adapter.children(action)
     if children is None:
         raise ValueError("boundary projection requires a temporal composition")
@@ -38,9 +38,9 @@ def project_boundary(
     residual = scheduler.resolve_residual(port.residual)
     if residual.action != action or residual.side != side:
         raise ValueError("boundary residual has inconsistent temporal wiring")
-    scheduler._validate_action_state(children[0], 1 - side, opposite)
+    scheduler.validate_action_state(children[0], 1 - side, opposite)
     scheduler.validate_atom(opposite)
-    return scheduler._run(("RES", action, side, port.residual, opposite))
+    return scheduler.run(("RES", action, side, port.residual, opposite))
 
 
 __all__ = ["project_boundary"]

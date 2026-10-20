@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import TYPE_CHECKING, ParamSpec, TypeVar
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ArenaToken,
     ExactSource,
@@ -138,12 +139,12 @@ class OriginalSourceConstruction:
         """Run only the source allocator; never lend a scope to caller code."""
         from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 
-        if type(geometry) is not SourceGeometry or geometry._construction is not self:
+        if type(geometry) is not SourceGeometry or geometry.construction is not self:
             raise ValueError("source allocation authority belongs to another geometry")
         self._validate(values, blank, length)
         permit = _SOURCE_PERMIT.set(self.source)
         try:
-            return SourceGeometry._source_span(geometry, values, blank, length)
+            return SourceGeometry.allocate_source_span(geometry, values, blank, length)
         finally:
             _SOURCE_PERMIT.reset(permit)
 
@@ -160,7 +161,10 @@ def endpoint_construction(
     owner: ArenaToken, capability: LoweringCapability
 ) -> Generator[None, None, None]:
     """Explicit future-tree construction cannot be entered by a point callback."""
-    if not isinstance(capability, LoweringCapability) or capability.owner is not owner:
+    if (
+        not is_runtime_instance(capability, LoweringCapability)
+        or capability.owner is not owner
+    ):
         raise ValueError("foreign or missing endpoint lowering capability")
     require_endpoint_construction()
     yield

@@ -6,6 +6,7 @@ import argparse
 import json
 from time import perf_counter
 
+from devtools.benchmarks.report_schema import record
 from number_compiler.sequences.antihydra.observers import SpaceTimeProjection
 from number_compiler.sequences.antihydra.runtime import run
 
@@ -45,9 +46,7 @@ def main() -> None:
     actual.pop("sampled_sweep_classes")
     if expected != actual:
         raise AssertionError("cached projection changed the typed spacetime image")
-    cached_work = cached["work"]
-    if type(cached_work) is not dict:
-        raise AssertionError("benchmark work counters have the wrong shape")
+    cached_work = record(cached["work"])
     discovery = cached_work.get("observer_macro_discovery_steps", 0)
     retained = cached_work.get("observer_retained_support_steps", 0)
     print(

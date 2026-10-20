@@ -6,11 +6,14 @@ Finite innovation observations cannot authorize this substitution.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import cast
+from typing import Final, cast
 
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.resources.process_cache import CacheLease
 from number_compiler.sequences.collatz.border_identity import MixedParityMotif
 from number_compiler.sequences.collatz.boundary_macros import BoundaryActionTemplateMemo
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
@@ -23,6 +26,9 @@ from number_compiler.sequences.collatz.temporal_dyadic import (
 
 _ISSUER = object()
 _MIXED_ACTION_CACHE_ISSUER = object()
+MIXED_ACTION_CACHE_NAMESPACE: Final[str] = "collatz-mixed-action-index"
+MIXED_ACTION_CACHE_VERSION: Final[str] = "collatz-complete-mixed-action-v2"
+MIXED_ACTION_CACHE_INDEX_BITS = 16
 _PREVIEW_BITS = (32, 64, 96)
 _MAX_MOTIF = 64
 MAX_MIXED_ACTION_SYMBOLS = 4096
@@ -54,30 +60,52 @@ class MixedClockMacro:
     def physical_ticks(self) -> int:
         return self.normalized_symbols + self.odd_symbols
 
+    def validate_issued(self) -> None:
+        """Check this macro's issuer seal and unchanged payload in its owner."""
+        if (
+            type(self) is not MixedClockMacro
+            or getattr(self, "_issuer", None) is not _ISSUER
+        ):
+            raise ValueError("mixed clock macro has no producer authority")
+        if (
+            self._binding
+            != (
+                self.source,
+                self.motif,
+                self.repetitions,
+                self.fields,
+                self.endpoint,
+                self.width_blank,
+            )
+            or not self.fields.producer_issued
+            or (
+                self.width_blank is not None
+                and type(self.width_blank) is not BlankLedger
+            )
+        ):
+            raise ValueError("mixed clock macro payload changed after admission")
+
 
 def validate_mixed_clock_macro(macro: MixedClockMacro) -> None:
     """Check the producer seal and unchanged complete payload, without replay."""
-    if (
-        type(macro) is not MixedClockMacro
-        or getattr(macro, "_issuer", None) is not _ISSUER
-    ):
-        raise ValueError("mixed clock macro has no producer authority")
-    if (
-        macro._binding
-        != (
-            macro.source,
-            macro.motif,
-            macro.repetitions,
-            macro.fields,
-            macro.endpoint,
-            macro.width_blank,
-        )
-        or not macro.fields.producer_issued
-        or (
-            macro.width_blank is not None and type(macro.width_blank) is not BlankLedger
-        )
-    ):
-        raise ValueError("mixed clock macro payload changed after admission")
+    macro.validate_issued()
+
+
+def read_mixed_action_cache_bucket(lease: CacheLease) -> object:
+    """Read this owner's exact process-cache bucket through its issuer seal."""
+    if type(lease) is not CacheLease:
+        raise TypeError("mixed action cache lookup needs an exact cache lease")
+    return lease.get_issued(("macro",), _MIXED_ACTION_CACHE_ISSUER)
+
+
+def update_mixed_action_cache_bucket(
+    lease: CacheLease,
+    update: Callable[[object], tuple[object, str]],
+) -> tuple[bool | None, str | None]:
+    """Atomically update this owner's bucket without exposing its issuer seal."""
+    if type(lease) is not CacheLease:
+        raise TypeError("mixed action cache publication needs an exact cache lease")
+    return lease.update_issued(("macro",), _MIXED_ACTION_CACHE_ISSUER, update)
 
 
 def _issue_macro(
@@ -102,7 +130,7 @@ def _issue_macro(
     return macro
 
 
-def _mixed_cache_payload(macro: MixedClockMacro) -> tuple[int, ...]:
+def mixed_cache_payload(macro: MixedClockMacro) -> tuple[int, ...]:
     """Encode complete joint action fields and the compact parity descriptor."""
     validate_mixed_clock_macro(macro)
     if macro.width_blank is None:
@@ -134,7 +162,7 @@ def _mixed_cache_payload(macro: MixedClockMacro) -> tuple[int, ...]:
     )
 
 
-def _validate_mixed_cache_publication(macro: MixedClockMacro) -> int:
+def validate_mixed_cache_publication(macro: MixedClockMacro) -> int:
     """Check the exact action once before its immutable record is issued."""
     validate_mixed_clock_macro(macro)
     if macro.width_blank is None:
@@ -154,26 +182,24 @@ def _validate_mixed_cache_publication(macro: MixedClockMacro) -> int:
     return macro.odd_symbols + expected_gain.bit_length()
 
 
-def _restore_mixed_cache_payload(
+def restore_mixed_cache_payload(
     source: int,
     payload: object,
     *,
     include_width: bool,
-    issued_by: object | None = None,
+    cache_lease: CacheLease | None = None,
 ) -> MixedClockMacro | None:
     """Rehydrate a complete cached action only when its full cylinder agrees."""
-    if issued_by is not None and issued_by is not _MIXED_ACTION_CACHE_ISSUER:
-        raise ValueError("mixed cache payload has a foreign cache issuer")
-    trusted_cache_record = issued_by is _MIXED_ACTION_CACHE_ISSUER
     if (
         type(source) is not int
         or source <= 0
         or type(include_width) is not bool
-        or type(payload) is not tuple
+        or not is_exact_object_tuple(payload)
         or len(payload) != 17
         or any(type(value) is not int for value in payload)
     ):
         raise ValueError("mixed action cache payload is malformed")
+    record = cast(tuple[int, ...], payload)
     (
         steps,
         residue,
@@ -192,7 +218,24 @@ def _restore_mixed_cache_payload(
         width_delta,
         width_minimum,
         width_maximum,
-    ) = payload
+    ) = record
+    trusted_cache_record = cache_lease is not None
+    if trusted_cache_record:
+        expected_qualification = (
+            MIXED_ACTION_CACHE_NAMESPACE,
+            MIXED_ACTION_CACHE_VERSION,
+            (publisher_source & ((1 << MIXED_ACTION_CACHE_INDEX_BITS) - 1),),
+        )
+        if type(cache_lease) is not CacheLease:
+            raise ValueError("mixed cache payload has a foreign cache lease")
+        if cache_lease.source_qualification != expected_qualification:
+            raise ValueError("mixed cache payload has a foreign cache lease")
+        issued_bucket = read_mixed_action_cache_bucket(cache_lease)
+        if type(issued_bucket) is not tuple:
+            raise ValueError("mixed cache payload has a foreign cache issuer")
+        issued_records = cast(tuple[object, ...], issued_bucket)
+        if record not in issued_records:
+            raise ValueError("mixed cache payload has a foreign cache issuer")
     if (
         not 16 <= steps <= MAX_MIXED_ACTION_SYMBOLS
         or not 0 <= residue < 1 << steps
@@ -209,7 +252,7 @@ def _restore_mixed_cache_payload(
     motif = tuple((motif_code >> index) & 1 for index in range(motif_length))
     if not 0 < sum(motif) < motif_length or sum(motif) * repetitions != odd_symbols:
         raise ValueError("mixed action cache parity descriptor is inconsistent")
-    action = DyadicTerminalFieldAction._restore_issued(
+    action = DyadicTerminalFieldAction.restore_cache_payload(
         steps,
         (gain, offset, sum_gain, sum_offset, previous_gain, previous_offset),
     )
@@ -248,7 +291,7 @@ def _scalar_preview(
     if type(bits) is not int or bits < 16:
         raise ValueError("mixed clock preview needs at least 16 bits")
     value = source & ((1 << bits) - 1)
-    result = []
+    result: list[int] = []
     operand_bits = source.bit_length()
     for _ in range(bits):
         operand_bits += value.bit_length()
@@ -290,7 +333,7 @@ def _candidate_motifs(
     not demand symbols after the requested action: a valid finite repeated
     prefix can end immediately before the source leaves that period.
     """
-    candidates = []
+    candidates: list[tuple[int, ...]] = []
     for length in range(
         2, min(_MAX_MOTIF, len(preview), available_physical_ticks // 2) + 1
     ):

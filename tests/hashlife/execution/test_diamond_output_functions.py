@@ -105,7 +105,7 @@ def test_different_cells_share_one_function_binding_without_retaining_observed_v
 
 def test_same_observed_value_does_not_alias_distinct_complete_functions() -> None:
     runtime, action, request = setup()
-    functions = []
+    functions: list[tuple[TransferSummaryID, tuple[int, ...]]] = []
     for left in range(runtime.kernel(action).left_count):
         for right in range(runtime.kernel(action).right_count):
             key = replace(

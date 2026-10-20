@@ -1,6 +1,7 @@
 """Early identical-branch sharing must retain undefined-condition semantics."""
 
-from typing import Never
+from collections.abc import Callable
+from typing import Never, cast
 
 import pytest
 
@@ -68,7 +69,11 @@ def test_existing_padded_condition_is_proved_once_per_transaction() -> None:
     # Public total-on-admissible inputs still has an invalid padding branch.
     condition = arena.atom(FunctionSignature((port,), BOOL), 1)
     tx = _Transaction(arena)
-    assert not tx._total_condition(condition.local_id)
+    assert not cast(
+        Callable[[int], bool], object.__getattribute__(tx, "_total_condition")
+    )(condition.local_id)
     frames = arena.ledger.counters["semantic_total_condition_frames"]
-    assert not tx._total_condition(condition.local_id)
+    assert not cast(
+        Callable[[int], bool], object.__getattribute__(tx, "_total_condition")
+    )(condition.local_id)
     assert arena.ledger.counters["semantic_total_condition_frames"] == frames

@@ -1,4 +1,7 @@
-from devtools.verification.oracles.special_binary_jump import _mersenne_carrier_proof
+from collections.abc import Callable
+from typing import cast
+
+from devtools.verification.oracles.special_binary_jump import mersenne_carrier_proof
 from number_compiler.arithmetic.functions.finite_unary import (
     minimize_unary_moore,
     partition_equivalent,
@@ -31,23 +34,28 @@ def test_unary_image_filtration_is_a_canonical_set_morphism() -> None:
 
 
 def test_carry_interval_artifact_reuses_the_complete_recipe_row() -> None:
-    from devtools.experiments.power_numbers.special_successor_carry import (
-        _reachable_carry_interval,
+    from devtools.experiments.power_numbers import (
+        special_successor_carry as carry_owner,
     )
 
-    first_interval = _reachable_carry_interval("fermat", 3, 10)
-    assert _reachable_carry_interval("fermat", 3, 10) is first_interval
+    reachable_carry_interval = cast(
+        Callable[[str, int, int], tuple[int, int, int]],
+        object.__getattribute__(carry_owner, "_reachable_carry_interval"),
+    )
+
+    first_interval = reachable_carry_interval("fermat", 3, 10)
+    assert reachable_carry_interval("fermat", 3, 10) is first_interval
 
 
 def test_prime_mersenne_image_depth_matches_moore_but_composite_guard_does_not() -> (
     None
 ):
     for p in (7, 13):
-        proof = _mersenne_carrier_proof(p)
+        proof = mersenne_carrier_proof(p)
         moore = minimize_unary_moore(proof.transition, proof.outputs)
         filtration = unary_image_filtration(proof.transition)
         assert partition_equivalent(moore.class_ids, filtration.depth_ids)
-    proof = _mersenne_carrier_proof(11)
+    proof = mersenne_carrier_proof(11)
     moore = minimize_unary_moore(proof.transition, proof.outputs)
     filtration = unary_image_filtration(proof.transition)
     assert not partition_equivalent(moore.class_ids, filtration.depth_ids)
@@ -533,10 +541,27 @@ def test_sqrt_height_special_factor_scan_is_sound_sublinear_short_circuit_only()
 
 
 def test_temporal_history_partition_refinement_matches_materialized_histories() -> None:
+    from devtools.experiments.power_numbers import (
+        special_successor_carry as carry_owner,
+    )
     from devtools.experiments.power_numbers.special_successor_carry import (
-        _partition_ids,
-        _temporal_marker_histories,
-        _temporal_marker_history_ids,
+        temporal_marker_histories,
+    )
+
+    partition_ids = cast(
+        Callable[[tuple[object, ...]], tuple[int, ...]],
+        object.__getattribute__(carry_owner, "_partition_ids"),
+    )
+    temporal_marker_history_ids = cast(
+        Callable[[tuple[object, ...], tuple[int, ...], int], tuple[int, ...]],
+        object.__getattribute__(carry_owner, "_temporal_marker_history_ids"),
+    )
+    temporal_marker_closure = cast(
+        Callable[
+            [tuple[object, ...], tuple[int, ...], tuple[object, ...], int],
+            tuple[int | None, int],
+        ],
+        object.__getattribute__(carry_owner, "_temporal_marker_closure"),
     )
 
     transition = (1, 2, 3, 3)
@@ -545,10 +570,10 @@ def test_temporal_history_partition_refinement_matches_materialized_histories() 
         if horizon == 0:
             expected: tuple[int, ...] = (0, 0, 0, 0)
         else:
-            expected = _partition_ids(
-                _temporal_marker_histories(marker, transition, horizon)
+            expected = partition_ids(
+                temporal_marker_histories(marker, transition, horizon)
             )
-        actual = _temporal_marker_history_ids(marker, transition, horizon)
+        actual = temporal_marker_history_ids(marker, transition, horizon)
         # Class numbers may be canonicalized in a different encounter order;
         # compare the induced equivalence relation rather than integer labels.
         for i in range(len(transition)):
@@ -556,15 +581,14 @@ def test_temporal_history_partition_refinement_matches_materialized_histories() 
                 assert (actual[i] == actual[j]) == (expected[i] == expected[j])
 
     from devtools.experiments.power_numbers.special_successor_carry import (
-        _temporal_marker_closure,
-        _temporal_marker_partition,
+        temporal_marker_partition,
     )
 
     outputs = (False, False, True, False)
     expected_horizon = None
     expected_classes = len(set(marker))
     for horizon in range(1, 6):
-        expected_classes, conflicts = _temporal_marker_partition(
+        expected_classes, conflicts = temporal_marker_partition(
             marker,
             transition,
             outputs,
@@ -573,7 +597,7 @@ def test_temporal_history_partition_refinement_matches_materialized_histories() 
         if conflicts == 0:
             expected_horizon = horizon
             break
-    assert _temporal_marker_closure(marker, transition, outputs, 5) == (
+    assert temporal_marker_closure(marker, transition, outputs, 5) == (
         expected_horizon,
         expected_classes,
     )

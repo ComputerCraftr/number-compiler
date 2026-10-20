@@ -43,7 +43,6 @@ from math import comb, gcd
 from devtools.experiments.algebra.dyadic_difference_germ_core import (
     ambient_capacity_truth,
 )
-from number_compiler.sequences.power_numbers.etale_factor import _quadratic_mul_pair
 from number_compiler.sequences.power_numbers.numbers import (
     fermat_number,
     mersenne_composite_exponent_factor,
@@ -590,15 +589,6 @@ def fermat_terminal_fold_formula(parameter: int) -> FermatTerminalFoldFormula:
         False,
         False,
     )
-
-
-def _quadratic_pair_mul(
-    left: tuple[int, int],
-    right: tuple[int, int],
-    d: int,
-    modulus: int,
-) -> tuple[int, int]:
-    return _quadratic_mul_pair(left, right, d, modulus)
 
 
 def mersenne_cayley_lucas_quotient(exponent: int) -> MersenneCayleyLucasQuotientAudit:

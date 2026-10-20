@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import gcd, lcm
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.arithmetic.fields.radix import bit_width
 
 
@@ -41,7 +42,10 @@ class TropicalDivisorState:
         return cls(modulus, gcd(modulus, int(value)))
 
     def _check(self, other: TropicalDivisorState) -> None:
-        if not isinstance(other, TropicalDivisorState) or self.modulus != other.modulus:
+        if (
+            not is_runtime_instance(other, TropicalDivisorState)
+            or self.modulus != other.modulus
+        ):
             raise ValueError((self, other))
 
     def multiply(self, other: TropicalDivisorState) -> TropicalDivisorState:

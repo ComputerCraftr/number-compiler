@@ -87,7 +87,7 @@ def _jet(delta: tuple[int, ...], order: int) -> tuple[int, ...]:
 
 def _carry_word(delta: tuple[int, ...]) -> tuple[int, ...]:
     carry = 0
-    word = []
+    word: list[int] = []
     for coefficient in delta:
         carry = 1 if coefficient > 0 else 0 if coefficient < 0 else carry
         word.append(carry)

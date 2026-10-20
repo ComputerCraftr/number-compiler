@@ -36,7 +36,7 @@ def _literal_state(bits: tuple[int, ...]) -> MahlerPredicateState:
 
 def _temporal_bits(source: int, width: int) -> tuple[int, ...]:
     current = source
-    bits = []
+    bits: list[int] = []
     for _ in range(width):
         epsilon = current & 1
         bits.append(epsilon)

@@ -64,14 +64,21 @@ def physical_cycle(
     """Certify the actual source and complete action DAG before phase reduction."""
     runtime.actions.resolve(root)
     geometry = runtime.cells.source_geometry
-    source = geometry._construction.source
-    if source.base != 2 or source.blank != 2 or geometry._read_root is None:
+    source = geometry.construction.source
+    source_root = geometry.source_root
+    if source.base != 2 or source.blank != 2 or source_root is None:
         return None
-    extent = geometry._read_root.length
+    extent = source_root.length
     if extent < 3:
         return None  # A clipped 1 -> 4 transition does not preserve this cycle.
-    phase = {(1,): 0, (0, 0, 1): 1, (0, 1): 2}.get(source.digits)
-    if phase is None:
+    digits = source.digits
+    if digits == (1,):
+        phase = 0
+    elif digits == (0, 0, 1):
+        phase = 1
+    elif digits == (0, 1):
+        phase = 2
+    else:
         return None  # Leading active zeros are not canonical cycle fields.
     pending = [(root, False)]
     residues: dict[ActionProgramID, int] = {}
@@ -120,7 +127,7 @@ def validate_physical_cycle(
     if type(value) is not PhysicalCycleProjection:
         return False
     geometry = runtime.cells.source_geometry
-    source = geometry._read_root
+    source = geometry.source_root
     return (
         value.root == root
         and value.source is geometry.token

@@ -1,6 +1,10 @@
 """Profile encodings preserve binder scope before admission or cache work."""
 
+from collections.abc import Callable
+from typing import cast
+
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
+from number_compiler.hashlife.interfaces.diamond_boundary_expr import StateSort
 from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
 from number_compiler.hashlife.interfaces.semantic_expression_tasks import (
     StructuredExpressionTask,
@@ -27,7 +31,7 @@ def test_reachable_codec_namespace_cannot_capture_next_binder() -> None:
     expression = compiler.expressions.variable(
         compiler.expressions.state_sort(pair, 0), "free"
     )
-    binding = compiler._binding(
+    binding = compiler.expression_binding(
         expression, PortVariable(0, 0, "semantic-lambda-00000000", 0), profile
     )
     task = StructuredExpressionTask(
@@ -50,8 +54,14 @@ def test_profile_choice_is_explicit_and_foreign_rejects_before_warm_admission() 
     variable = compiler.expressions.variable(
         compiler.expressions.state_sort(primitive, 0), "free"
     )
-    compiler._admit(variable, (variable,), structured=True, profile=profile)
-    compiler._admit(variable, (variable,), structured=True)
+    cast(
+        Callable[..., tuple[StateSort, ...]],
+        object.__getattribute__(compiler, "_admit"),
+    )(variable, (variable,), structured=True, profile=profile)
+    cast(
+        Callable[..., tuple[StateSort, ...]],
+        object.__getattribute__(compiler, "_admit"),
+    )(variable, (variable,), structured=True)
     assert {key.profile for key in compiler.admissions} == {None, profile}
     other = build_collatz_diamond_application(
         PhysicalCollatzFourBlockEffect(), (0, 1), 16, 1
@@ -61,8 +71,9 @@ def test_profile_choice_is_explicit_and_foreign_rejects_before_warm_admission() 
     )
     assert_rejected_atomically(
         runtime.ledger,
-        lambda: compiler._admit(
-            variable, (variable,), structured=True, profile=foreign
-        ),
+        lambda: cast(
+            Callable[..., tuple[StateSort, ...]],
+            object.__getattribute__(compiler, "_admit"),
+        )(variable, (variable,), structured=True, profile=foreign),
         ValueError,
     )

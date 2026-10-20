@@ -186,7 +186,7 @@ class PrimitiveMacroArena:
     def interface_components(
         self, quotient: DiamondQuotientID
     ) -> tuple[FactoredFunctionID, ...]:
-        result = []
+        result: list[FactoredFunctionID] = []
         for reference in self.quotients.resolve(quotient).components.functions():
             from number_compiler.hashlife.interfaces.semantic_structures import (
                 StructureID,
@@ -329,7 +329,9 @@ class PrimitiveMacroArena:
                 *(self.structures.atom(channel) for channel in channels)
             )
             quotient = self.quotients.intern(interface, components)
-            self.bindings._data[task] = PrimitiveMacroBinding(quotient, extent)
+            self.bindings.publish_reserved(
+                task, PrimitiveMacroBinding(quotient, extent)
+            )
             self.ledger.bump(_interfaces_keys.PRIMITIVE_MACRO_COMPILATIONS)
         except BaseException:
             self.ledger.release(self.bindings.owner, entries=1)
@@ -548,6 +550,6 @@ def validate_primitive_request(
         raise UnsupportedInterfaceError(
             "fixed padded-cell growth requires at most 64 result bits"
         )
-    original = cells.source_geometry._construction.source
+    original = cells.source_geometry.construction.source
     if (primitive.base, primitive.blank) != (original.base, original.blank):
         raise ValueError("primitive macro alphabet differs from original source")

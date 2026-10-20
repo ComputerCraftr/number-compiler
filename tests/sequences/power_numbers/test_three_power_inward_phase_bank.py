@@ -1,5 +1,8 @@
 """Source-authenticated inward temporal harmonics, not a prime predicate."""
 
+from collections.abc import Callable
+from typing import cast
+
 import pytest
 
 from number_compiler.arithmetic.carry.tripling_transfer import (
@@ -7,14 +10,22 @@ from number_compiler.arithmetic.carry.tripling_transfer import (
     compose_transfer,
     digit_transfer,
 )
+from number_compiler.sequences.power_numbers import (
+    three_power_inward_phase_bank as phase_owner,
+)
 from number_compiler.sequences.power_numbers.numbers import FermatNumberSpec
 from number_compiler.sequences.power_numbers.three_power_bilateral_border import (
     carry_h5,
 )
 from number_compiler.sequences.power_numbers.three_power_inward_phase_bank import (
-    _certified_temporal_signal_periods,
     demand_inward_temporal_phase_bank,
     radix_phase_parameters,
+)
+from tests.support.exact_integer_power import exact_integer_power
+
+certified_temporal_signal_periods = cast(
+    Callable[[int, int], tuple[tuple[str, int], ...] | None],
+    object.__getattribute__(phase_owner, "_certified_temporal_signal_periods"),
 )
 
 
@@ -24,12 +35,19 @@ def test_decimal_position_orbits_are_exact_and_nested() -> None:
         pre, got = radix_phase_parameters(10, k)
         assert got == period
         assert pre == max(2, k - 2)
-        modulus = 10**k
+        modulus = exact_integer_power(10, k)
         for level in (pre, pre + 1, pre + 7, pre + period // 2):
             assert pow(3, 1 << level, modulus) == pow(
-                3, pow(2, level + period, 2 ** max(2, k - 2) * 5 ** (k - 1)), modulus
+                3,
+                pow(
+                    2,
+                    level + period,
+                    exact_integer_power(2, max(2, k - 2))
+                    * exact_integer_power(5, k - 1),
+                ),
+                modulus,
             )
-        signal_periods = _certified_temporal_signal_periods(10, k - 1)
+        signal_periods = certified_temporal_signal_periods(10, k - 1)
         assert signal_periods is not None
         assert dict(signal_periods)["joint"] == period
         assert all(period % value == 0 for _, value in signal_periods)
@@ -149,7 +167,7 @@ def test_carry_and_walsh_equal_does_not_determine_signed_fold() -> None:
     for value in range(1 << 10):
         action = IDENTITY
         carry = 0
-        carries = []
+        carries: list[int] = []
         for j in range(10):
             bit = (value >> j) & 1
             action = compose_transfer(action, digit_transfer(2, bit))
@@ -290,7 +308,11 @@ def test_harmonic_snapshot_preflights_children_and_checks_flat_node_count(
         enter_ordered_children(stack, active, parent, children)
 
     monkeypatch.setattr(authority, "enter_ordered_children", guarded_schedule)
-    wide_payload = (tuple(range(authority._MAX_SNAPSHOT_NODES)),)
+    wide_payload = (
+        tuple(
+            range(cast(int, object.__getattribute__(authority, "_MAX_SNAPSHOT_NODES")))
+        ),
+    )
     with pytest.raises(ValueError, match="snapshot budget"):
         authority.snapshot_harmonic_payload(wide_payload)
 

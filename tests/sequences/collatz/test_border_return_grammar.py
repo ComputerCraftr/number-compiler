@@ -250,12 +250,15 @@ def test_bulk_preflight_refusal_precedes_power_and_endpoint_construction(
     def forbidden(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("bulk construction ran before its preflight")
 
+    def forbidden_one_run(
+        _owner: type[DyadicTerminalFieldAction],
+        *_args: object,
+        **_kwargs: object,
+    ) -> object:
+        raise AssertionError("bulk construction ran before its preflight")
+
     monkeypatch.setattr(ZeroTailFreeBorderRing, "endpoint", forbidden)
-    monkeypatch.setattr(
-        DyadicTerminalFieldAction,
-        "one_run",
-        classmethod(forbidden),
-    )
+    monkeypatch.setattr(DyadicTerminalFieldAction, "one_run", forbidden_one_run)
     monkeypatch.setattr(DyadicTerminalFieldAction, "power", forbidden)
 
     with pytest.raises(RuntimeError, match="bulk scratch refused"):
@@ -341,7 +344,7 @@ def test_assembled_return_is_one_hashlife_action_and_exact_observer() -> None:
         assert ledger.counters["collatz_physical_boundary_6305R_macro_actions"] == 1
         tape = result.innovation_observation
         assert tape is not None
-        normalized_sources = []
+        normalized_sources: list[int] = []
         value = source
         for _ in range(result.normalized_symbols):
             normalized_sources.append(value)

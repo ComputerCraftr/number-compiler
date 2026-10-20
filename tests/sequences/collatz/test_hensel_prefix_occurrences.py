@@ -79,7 +79,7 @@ def test_h2_unit_clock_has_exact_three_quarter_radix64_cycle() -> None:
     expected_symbols = {1: 7, 2: 14, 4: 28, 5: 35, 7: 49, 8: 56}
     for constant, expected_symbol in expected_symbols.items():
         current = RationalPadicRootGerm(2, constant)
-        digits = []
+        digits: list[int] = []
         for _ in range(3):
             digit = current.radix4_digit
             digits.append(digit)
@@ -157,7 +157,7 @@ def test_matching_radix64_prefixes_are_weight_not_live_action_identity() -> None
         )
         mismatch_digit = (fixed.radix4_digit + 1) % 4
         tail = mismatch_digit + 4 * 6
-        images = []
+        images: list[tuple[RationalPadicRootGerm, int, int, int, int]] = []
         for chunks in range(1, 5):
             quarters = 3 * chunks
             source = root.root_residue(6 * chunks) + (tail << (6 * chunks))
@@ -189,7 +189,7 @@ def test_matching_radix64_prefixes_are_weight_not_live_action_identity() -> None
 def test_first_hole_stops_run_iteration_and_preserves_suffix(
     monkeypatch: pytest.MonkeyPatch, prefix: int, irregular: bool
 ) -> None:
-    symbols = []
+    symbols: list[int] = []
     state, last = 991, 1
     for _ in range(4096):
         state = (1103515245 * state + 12345) & 0x7FFFFFFF
@@ -234,7 +234,7 @@ def test_first_hole_stops_run_iteration_and_preserves_suffix(
 
 def _irregular_word(count: int) -> CanonicalWord:
     state, last = 991, 1
-    symbols = []
+    symbols: list[int] = []
     for _ in range(count):
         state = (1103515245 * state + 12345) & 0x7FFFFFFF
         last = (((state >> 11) % 3) + last + 1) % 4
@@ -248,7 +248,7 @@ def test_irregular_first_hole_constructs_only_boundary_cover(
 ) -> None:
     source = concat(from_runs(((1, 10**12), (0, 7))), _irregular_word(count))
     checked = 0
-    original = program_word._validate_word
+    original = program_word.validate_word
 
     def counted(word: CanonicalWord) -> None:
         nonlocal checked
@@ -258,7 +258,7 @@ def test_irregular_first_hole_constructs_only_boundary_cover(
     def forbidden(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("source suffix performed canonical rebalance")
 
-    monkeypatch.setattr(program_word, "_validate_word", counted)
+    monkeypatch.setattr(program_word, "validate_word", counted)
     monkeypatch.setattr(program_word, "_word_tasks", forbidden)
     mismatch, suffix = RationalPadicRootGerm(1, 1).first_mismatch_word(source)
     assert mismatch.matched_quarters == 10**12
@@ -283,12 +283,12 @@ def test_source_suffix_authority_and_memo_reset_are_independent(
     with pytest.raises(ValueError, match="foreign or stale"):
         validate_source_word(foreign)
     program_word.clear_transient_program_word_caches()
-    monkeypatch.setattr(program_word, "_SUFFIX_MEMO_LIMIT", 2)
+    monkeypatch.setattr(program_word, "SUFFIX_MEMO_LIMIT", 2)
     retained = [drop_source_prefix(source, offset) for offset in range(2, 6)]
     assert [word.length for word in retained] == [
         source.length - offset for offset in range(2, 6)
     ]
-    assert len(program_word._SUFFIXES) == 2
+    assert len(program_word.program_word_cache_snapshot().suffixes) == 2
     for word in retained:
         validate_source_word(word)
     validate_source_word(suffix)
@@ -296,7 +296,7 @@ def test_source_suffix_authority_and_memo_reset_are_independent(
     validate_source_word(suffix)
     reissued = drop_source_prefix(source, 1)
     assert reissued is not suffix and source_word_key(reissued) == key
-    assert len(program_word._SUFFIXES) <= 2
+    assert len(program_word.program_word_cache_snapshot().suffixes) <= 2
 
 
 def test_partial_source_suffix_counts_retained_nodes_and_integer_splits() -> None:

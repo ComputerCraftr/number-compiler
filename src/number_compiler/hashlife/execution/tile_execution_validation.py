@@ -19,7 +19,7 @@ def validate_execution_context(self: TileScheduler, key: PoweredResultKey) -> No
         tuple[FieldCellActionID, BoundaryTileOperands, ResultWiring], ...
     ] = ((key.action, key.boundaries, key.wiring),)
     if key.fusion is not None:
-        children = self._children(key.action)
+        children = self.child_actions(key.action)
         if children is None:
             raise ValueError("fused execution requires two temporal children")
         contexts = tuple(

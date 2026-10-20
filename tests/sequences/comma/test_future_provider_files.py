@@ -8,7 +8,7 @@ import os
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Protocol, cast
 
 import pytest
 
@@ -25,6 +25,16 @@ from tests.support.comma_future_provider_fixture import (
     install_synthetic_registry,
     work_log,
 )
+
+
+class _PreflightParser(Protocol):
+    def __call__(
+        self,
+        candidate: Mapping[str, object],
+        *,
+        charge_work: Callable[[int], None],
+        artifact_sha256: str | None = None,
+    ) -> future_provider.ParsedFutureCandidate: ...
 
 
 def test_file_loader_preflights_nested_metadata_before_canonical_dump(
@@ -112,7 +122,12 @@ def test_file_loader_charges_bytes_read_when_stat_underreports(
     ledger = ResourceLedger(max_nodes=131_072, max_cache_entries=131_072)
     with future_provider.SemanticFutureProviderStore(ledger) as store:
         parse_charge_totals: list[int] = []
-        actual_parser = future_provider._parse_preflighted_future_candidate
+        actual_parser = cast(
+            _PreflightParser,
+            object.__getattribute__(
+                future_provider, "_parse_preflighted_future_candidate"
+            ),
+        )
 
         def observe_parser(
             candidate: Mapping[str, object],
@@ -187,8 +202,9 @@ def test_authored_candidate_fits_default_comma_state_budget(
         snapshot = ledger.snapshot()
         controls = record["controls"]
         assert isinstance(controls, list)
+        control_rows = cast(list[object], controls)
         assert lease.artifact_sha256 == digest
-        assert lease.class_count == len(controls)
+        assert lease.class_count == len(control_rows)
         assert snapshot.nodes > 0
         assert snapshot.peak_nodes <= 131_072
         assert snapshot.counters["comma_future_provider_publications"] == 1

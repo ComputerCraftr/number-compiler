@@ -54,7 +54,7 @@ def point(
     held: list[ResultLease] = []
     try:
         while True:
-            key = self._key(
+            key = self.request_key(
                 action_now, tile_now, ports_now, wiring_now, boundaries, fusion
             )
             found = _probe_demand(
@@ -91,14 +91,14 @@ def point(
                     return fused
             node = self.tiles.resolve(tile_now)
             if not node.level:
-                result = self._complete_leaf(key)
+                result = self.complete_leaf(key)
                 output = _retain_output(self, key, result, held, _application)
                 return self.tiles.point(output, 0)
             if node.left is None or node.right is None:
                 raise ValueError("malformed canonical parent")
             half = 1 << (node.level - 1)
             side = int(coordinate >= half)
-            context = self._child_context(
+            context = self.child_context(
                 action_now,
                 tile_now,
                 node.left,
@@ -138,7 +138,7 @@ def width(
         raise ValueError("tile width limit lies outside the source")
     if not stop:
         self.validate_execution_key(
-            self._key(action, source, ports, wiring, boundaries, fusion)
+            self.request_key(action, source, ports, wiring, boundaries, fusion)
         )
         return 0
     action_now, tile_now, ports_now, wiring_now = action, source, ports, wiring
@@ -148,7 +148,7 @@ def width(
     initial_request = True
     try:
         while True:
-            key = self._key(
+            key = self.request_key(
                 action_now, tile_now, ports_now, wiring_now, boundaries, fusion
             )
             found = _probe_demand(self, key, len(held), "tile_scheduler_width_descents")
@@ -204,14 +204,14 @@ def width(
                     return offset + fused
             node = self.tiles.resolve(tile_now)
             if not node.level:
-                result = self._complete_leaf(key)
+                result = self.complete_leaf(key)
                 output = _retain_output(self, key, result, held, _application)
                 return offset + self.tiles.resolve(output).extent
             if node.left is None or node.right is None:
                 raise ValueError("malformed canonical parent")
             half = 1 << (node.level - 1)
             if remaining <= half:
-                context = self._child_context(
+                context = self.child_context(
                     action_now,
                     tile_now,
                     node.left,
@@ -225,7 +225,7 @@ def width(
                 ports_now, wiring_now = context.ports, context.wiring
                 boundaries, fusion = context.boundaries, None
                 continue
-            left_context = self._child_context(
+            left_context = self.child_context(
                 action_now,
                 tile_now,
                 node.left,
@@ -235,7 +235,7 @@ def width(
                 0,
                 boundaries,
             )
-            right_context = self._child_context(
+            right_context = self.child_context(
                 action_now,
                 tile_now,
                 node.left,
@@ -260,7 +260,7 @@ def width(
                 ports_now, wiring_now = right_context.ports, right_context.wiring
                 boundaries, fusion = right_context.boundaries, None
                 continue
-            if not self._active_context(action_now, node.left, left_context):
+            if not self.active_context(action_now, node.left, left_context):
                 return 0
             tile_now = node.left
             remaining = half
@@ -285,19 +285,19 @@ def prefix_active(
         raise ValueError("activity prefix lies outside its source")
     pending = [(source, ChildContext(ports, wiring, boundaries), limit)]
     while pending:
-        self._workspace_peak(len(pending))
+        self.record_workspace_peak(len(pending))
         tile, context, remaining = pending.pop()
         if not remaining:
             continue
         node = self.tiles.resolve(tile)
         if remaining == node.width or not node.level:
-            if self._active_context(action, tile, context):
+            if self.active_context(action, tile, context):
                 return True
             continue
         if node.left is None or node.right is None:
             raise ValueError("malformed canonical parent")
         half = node.width // 2
-        left = self._child_context(
+        left = self.child_context(
             action,
             tile,
             node.left,
@@ -309,7 +309,7 @@ def prefix_active(
         )
         pending.append((node.left, left, min(half, remaining)))
         if remaining > half:
-            right = self._child_context(
+            right = self.child_context(
                 action,
                 tile,
                 node.left,
@@ -335,7 +335,7 @@ def _retain_output(
     if application is None:
         held.append(result)
     else:
-        scheduler._pin(application, key, result)
+        scheduler.pin_result(application, key, result)
     return output
 
 
@@ -353,7 +353,7 @@ def _admitted_midpoint(
 ):
     """Transport the consumer only when the producer image is already admitted."""
     producer = before_context(scheduler, key, children[0])
-    before_key = scheduler._key(
+    before_key = scheduler.request_key(
         children[0], key.input, producer.ports, producer.wiring, producer.boundaries
     )
     midpoint = scheduler.lookup_execution_key(before_key)
@@ -374,7 +374,7 @@ def _probe_demand(
     scheduler: TileScheduler, key: PoweredResultKey, held_count: int, counter: str
 ) -> ResultLease | None:
     result = scheduler.lookup_execution_key(key)
-    scheduler._workspace_peak(held_count + 1)
+    scheduler.record_workspace_peak(held_count + 1)
     scheduler.ledger.bump(counter)
     return result
 
@@ -391,7 +391,7 @@ def _probe_midpoint(
     ]
     | None,
 ]:
-    children = scheduler._children(key.action)
+    children = scheduler.child_actions(key.action)
     return children, None if children is None else _admitted_midpoint(
         scheduler, key, children, held, application
     )

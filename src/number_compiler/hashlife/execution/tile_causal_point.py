@@ -61,7 +61,7 @@ def point_step(
             symbol = emitted_symbol
         else:
             symbol = pop_exact_integer(values)
-        if self._application is None:
+        if self.application_identity is None:
             values.append(symbol)
             return True
         frame.stage, frame.saved = 4, (symbol,)
@@ -82,7 +82,7 @@ def point_step(
             raise IndexError(coordinate)
         self.ledger.bump(_execution_keys.TILE_CAUSAL_POINT_PARENT_REQUESTS)
         key: PoweredResultKey | None
-        if self._children(action) is None:
+        if self.child_actions(action) is None:
             if type(base_left) is not int or type(base_right) is not int:
                 raise TypeError("primitive causal point requires exact boundary ports")
             key, completed = probe_causal_result(
@@ -90,11 +90,11 @@ def point_step(
                 action,
                 tile,
                 PrimitiveCausalPorts(base_left, base_right),
-                self._wiring(action),
+                self.result_wiring(action),
                 action_admission=self.action_admission,
             )
         else:
-            key = self._composite_key(action, tile, base_left, base_right)
+            key = self.composite_key(action, tile, base_left, base_right)
             completed = (
                 None
                 if key is None
@@ -108,10 +108,10 @@ def point_step(
             if key is None:
                 raise AssertionError("completed causal result has no request key")
             symbol = self.tiles.point(completed.output, coordinate)
-            if self._application is None:
-                self._result_leases.append(completed)
+            if self.application_identity is None:
+                self.lease_workspace.results.append(completed)
             else:
-                self.scheduler._pin_causal(self._application, key, completed)
+                self.scheduler.pin_causal(self.application_identity, key, completed)
             self.ledger.bump(_execution_keys.TILE_CAUSAL_POINT_PARENT_HITS)
             values.append(symbol)
             return True

@@ -1,18 +1,20 @@
 """Output morphisms determine next carry responses before exact successors."""
 
+from collections.abc import MutableMapping
 from itertools import product
+from typing import cast
 
 import pytest
 
+from number_compiler.arithmetic.carry.reverse_port_functions import (
+    ReverseRightTransfer,
+)
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
     BoundarySide,
 )
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
-from number_compiler.hashlife.execution.causal_frames import (
-    ResidualFrame,
-)
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.execution.tile_causal_pair_transfer import (
     finite_pair_transfer,
@@ -40,6 +42,7 @@ from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 @pytest.mark.parametrize("side", (0, 1))
 @pytest.mark.parametrize("terminal", (False, True))
 @pytest.mark.parametrize("width", (3, 4, 7))
+@pytest.mark.validation
 def test_reverse_add_pair_transfer_uses_finite_interfaces_without_output(
     base: int,
     side: int,
@@ -47,7 +50,37 @@ def test_reverse_add_pair_transfer_uses_finite_interfaces_without_output(
     width: int,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tests.arithmetic.contracts.test_tile_causal_private import _scan
+    _assert_reverse_add_pair_transfer(base, side, terminal, width, monkeypatch)
+
+
+@pytest.mark.parametrize(
+    ("base", "side", "terminal", "width"),
+    (
+        (2, 0, False, 3),
+        (3, 1, False, 4),
+        (10, 0, True, 7),
+        (10, 1, True, 3),
+        (2, 1, True, 4),
+    ),
+)
+def test_reverse_add_pair_transfer_representative_boundaries(
+    base: int,
+    side: int,
+    terminal: bool,
+    width: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_reverse_add_pair_transfer(base, side, terminal, width, monkeypatch)
+
+
+def _assert_reverse_add_pair_transfer(
+    base: int,
+    side: int,
+    terminal: bool,
+    width: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tests.arithmetic.contracts.test_tile_causal_private import scan
 
     ledger, tiles, adapter, before, scheduler = make_tile_runtime(BaseBlockEffect(base))
     after = adapter.admit(DigitNormalizeBlockEffect(base)) if terminal else before
@@ -55,7 +88,7 @@ def test_reverse_add_pair_transfer_uses_finite_interfaces_without_output(
     first, second = adapter.primitive_law(before), adapter.primitive_law(after)
     symbols = (0, base - 1, 2 * base - 2, first.blank) * 2
     producer_ports = (min(2, first.left_count - 1), min(1, first.right_count - 1))
-    expected_output = _scan(first, symbols[:width], producer_ports)
+    expected_output = scan(first, symbols[:width], producer_ports)
     incoming = min(1, (second.left_count, second.right_count)[side] - 1)
     expected = incoming
     for symbol in reversed(expected_output) if side else expected_output:
@@ -74,7 +107,7 @@ def test_reverse_add_pair_transfer_uses_finite_interfaces_without_output(
         )
         engine = CausalTileEngine(scheduler)
         monkeypatch.setattr(engine, "output", forbidden)
-        monkeypatch.setattr(scheduler, "_complete_direct", forbidden)
+        monkeypatch.setattr(scheduler, "complete_direct", forbidden)
         monkeypatch.setattr(tiles, "leaf", forbidden)
         try:
             assert (
@@ -91,33 +124,69 @@ def test_reverse_add_pair_transfer_uses_finite_interfaces_without_output(
             assert ledger.counters["tile_causal_finite_pair_transfers"] == 1
             assert ledger.counters.get("completed_result_publications", 0) == 0
         finally:
-            for lease in reversed(engine._leases):
+            for lease in reversed(engine.lease_workspace.tiles):
                 lease.close()
 
 
+@pytest.mark.validation
 def test_decimal_output_morphism_all_kernel_ports() -> None:
+    _assert_decimal_output_morphism_matches_kernel(
+        tuple(range(20)), tuple(range(43)), tuple(range(5))
+    )
+
+
+def test_decimal_output_morphism_matches_kernel_at_boundary_ports() -> None:
+    _assert_decimal_output_morphism_matches_kernel(
+        (0, 9, 10, 19), (0, 21, 42), (0, 2, 4)
+    )
+
+
+def _assert_decimal_output_morphism_matches_kernel(
+    symbols: tuple[int, ...], left_ports: tuple[int, ...], right_ports: tuple[int, ...]
+) -> None:
     _ledger, _tiles, adapter, action, _scheduler = make_tile_runtime(
         BaseBlockEffect(10)
     )
     kernel = adapter.primitive_law(action)
     arena = ReversePrimitiveOutputMorphism(adapter.bits, kernel)
-    for symbol in range(20):
+    for symbol in symbols:
         function = arena.leaf(symbol)
-        for left, right in product(range(43), range(5)):
+        for left, right in product(left_ports, right_ports):
             assert adapter.bits.evaluate(
                 function, {LEFT.variable: left, RIGHT.variable: right}
             ) == kernel.emit(left, symbol, right)
 
 
-@pytest.mark.parametrize("side", (0, 1))
-@pytest.mark.parametrize("width", (3, 4))
+@pytest.mark.parametrize(("side", "width"), ((0, 3), (1, 4)))
 def test_live_causal_edge_uses_morphism_before_fused_or_exact_outputs(
     monkeypatch: pytest.MonkeyPatch,
     side: int,
     width: int,
 ) -> None:
+    _assert_live_causal_edge_uses_morphism_before_fused_or_exact_outputs(
+        monkeypatch, side, width
+    )
+
+
+@pytest.mark.validation
+@pytest.mark.parametrize(("side", "width"), ((0, 3), (0, 4), (1, 3), (1, 4)))
+def test_live_causal_edge_full_side_width_grid(
+    monkeypatch: pytest.MonkeyPatch,
+    side: int,
+    width: int,
+) -> None:
+    _assert_live_causal_edge_uses_morphism_before_fused_or_exact_outputs(
+        monkeypatch, side, width
+    )
+
+
+def _assert_live_causal_edge_uses_morphism_before_fused_or_exact_outputs(
+    monkeypatch: pytest.MonkeyPatch,
+    side: int,
+    width: int,
+) -> None:
     from number_compiler.sequences.reverse_add import tile_pair_transfer
-    from tests.arithmetic.contracts.test_tile_causal_private import _scan
+    from tests.arithmetic.contracts.test_tile_causal_private import scan
 
     ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
         BaseBlockEffect(10)
@@ -126,7 +195,7 @@ def test_live_causal_edge_uses_morphism_before_fused_or_exact_outputs(
     law = adapter.primitive_law(primitive)
     symbols = (0, 9, 10, 19)
     ports = (31, 3)
-    produced = _scan(law, symbols[:width], ports)
+    produced = scan(law, symbols[:width], ports)
     expected = 0
     for s in reversed(produced) if side else produced:
         expected = law.advance(BoundarySide(side), expected, s)
@@ -144,14 +213,15 @@ def test_live_causal_edge_uses_morphism_before_fused_or_exact_outputs(
         monkeypatch.setattr(tile_pair_transfer, "fused_interface", forbidden)
         monkeypatch.setattr(adapter, "wiring", forbidden)
         monkeypatch.setattr(adapter, "initial_ports", forbidden)
-        monkeypatch.setattr(scheduler, "_complete_direct", forbidden)
+        monkeypatch.setattr(scheduler, "complete_direct", forbidden)
         monkeypatch.setattr(scheduler, "complete", forbidden)
         monkeypatch.setattr(tiles, "leaf", forbidden)
         monkeypatch.setattr(tiles, "join", forbidden)
         engine = CausalTileEngine(scheduler)
-        result = engine._run(
-            ResidualFrame((action, side, prefix, ports[1 - side])),
-            tile_result=False,
+        pair_transfer = adapter.pair_transfer
+        assert type(pair_transfer) is ReverseAddFinitePairTransfer
+        result = pair_transfer.transfer(
+            engine, action, side, prefix, ports[1 - side], 0
         )
         # Audits independently validate retained transfer metadata, including
         # wiring. Poison only execution, not the subsequent verifier.
@@ -161,7 +231,10 @@ def test_live_causal_edge_uses_morphism_before_fused_or_exact_outputs(
         assert type(strategy) is ReverseAddFinitePairTransfer
         morphisms = strategy.morphism_arena
         assert morphisms is not None
-        assert not morphisms._bound and not morphisms._sources
+        snapshot = morphisms.audit_snapshot()
+        bound = snapshot.bound if side == 0 else snapshot.right_bound
+        assert len(bound.container) > 0
+        assert len(snapshot.sources.container) > 0
         assert ledger.counters["reverse_morphism_transfer_observations"] == (
             2 if width == 3 else 1
         )
@@ -182,14 +255,16 @@ def test_morphism_budget_failure_cleans_traversal_and_stale_sources_are_rejected
         with pytest.raises(BlockContextBudgetExceeded):
             arena.consume(source.tile, (0, 0), 0, 0)
         assert (ledger.entries, ledger.nodes) == (before.entries, before.nodes)
-        assert not arena._workspace.frames and not arena._workspace.values
+        workspace = arena.audit_snapshot().workspace
+        assert not workspace.frames and not workspace.values
         ledger.max_cache_entries = None
         arena.consume(source.tile, (0, 0), 0, 0)
         stale = source.tile
     with pytest.raises(ValueError, match="stale"):
         arena.consume(stale, (0, 0), 0, 0)
     arena.clear_bindings()
-    assert not arena._bound and not arena._sources
+    snapshot = arena.audit_snapshot()
+    assert not snapshot.bound.container and not snapshot.sources.container
 
 
 def test_cancellation_and_carry_distinctions_survive_the_connected_projection() -> None:
@@ -220,16 +295,42 @@ def test_cancellation_and_carry_distinctions_survive_the_connected_projection() 
         assert (payload.forbidden_future_payloads, payload.unknown_payloads) == (0, 0)
         # An issued but incorrect carry function must not pass the independent
         # audit merely because its Python type is recognized.
-        key = next(iter(arena._compositions))
-        original = arena._compositions[key]
-        arena._compositions[key] = ReverseBoundOutput.leaf(10, 7)
+        compositions = cast(
+            MutableMapping[
+                tuple[ReverseBoundOutput, ReverseBoundOutput], ReverseBoundOutput
+            ],
+            arena.audit_snapshot().compositions.container,
+        )
+        key = next(iter(compositions))
+        original = compositions[key]
+        compositions[key] = ReverseBoundOutput.leaf(10, 7)
         assert audit_registered_payloads(ledger).forbidden_future_payloads > 0
-        arena._compositions[key] = original
+        compositions[key] = original
         arena.clear_bindings()
 
 
-@pytest.mark.parametrize("symbols", [(10, 0, 0, 10), (10, 9, 9, 10), (9, 19, 10, 19)])
+@pytest.mark.parametrize("symbols", [(10, 0, 0, 10)])
 def test_next_carry_is_parametric_and_never_constructs_successor(
+    symbols: tuple[int, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_next_carry_is_parametric_and_never_constructs_successor(
+        symbols, monkeypatch
+    )
+
+
+@pytest.mark.validation
+@pytest.mark.parametrize("symbols", [(10, 0, 0, 10), (10, 9, 9, 10), (9, 19, 10, 19)])
+def test_next_carry_full_symbol_patterns_never_construct_successor(
+    symbols: tuple[int, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_next_carry_is_parametric_and_never_constructs_successor(
+        symbols, monkeypatch
+    )
+
+
+def _assert_next_carry_is_parametric_and_never_constructs_successor(
     symbols: tuple[int, ...],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -263,7 +364,7 @@ def test_next_carry_is_parametric_and_never_constructs_successor(
 
         monkeypatch.setattr(tiles, "leaf", forbidden)
         monkeypatch.setattr(tiles, "join", forbidden)
-        monkeypatch.setattr(scheduler, "_complete_direct", forbidden)
+        monkeypatch.setattr(scheduler, "complete_direct", forbidden)
         monkeypatch.setattr(scheduler, "complete", forbidden)
         for (left, right, side, incoming), result in expected.items():
             assert arena.consume(source.tile, (left, right), side, incoming) == result
@@ -304,7 +405,8 @@ def test_directional_future_consumer_drops_exact_pair_output(
                     == expected[symbol, left, right]
                 )
             arena.clear_bindings()
-    assert not arena._bound and not arena._compositions
+    snapshot = arena.audit_snapshot()
+    assert not snapshot.bound.container and not snapshot.compositions.container
     assert ledger.counters["reverse_morphism_directional_leaf_consumers"] == 20 * 43 * 5
     assert ledger.counters.get("reverse_morphism_leaf_bindings", 0) == 0
 
@@ -321,18 +423,22 @@ def test_directional_composition_merges_different_exact_edges() -> None:
         assert arena.compile_right(first.tile, (0, 0)) == arena.compile_right(
             second.tile, (0, 0)
         )
-        assert len(arena._right_compositions) == 1
-        assert not arena._compositions and not arena._bound
+        snapshot = arena.audit_snapshot()
+        assert len(snapshot.right_compositions.container) == 1
+        assert not snapshot.compositions.container and not snapshot.bound.container
         assert audit_registered_payloads(ledger).forbidden_future_payloads == 0
-        key = next(iter(arena._right_compositions))
-        original = arena._right_compositions[key]
-        from number_compiler.arithmetic.carry.reverse_port_functions import (
-            ReverseRightTransfer,
+        right_compositions = cast(
+            MutableMapping[
+                tuple[ReverseRightTransfer, ReverseRightTransfer],
+                ReverseRightTransfer,
+            ],
+            snapshot.right_compositions.container,
         )
-
-        arena._right_compositions[key] = ReverseRightTransfer.leaf(10, 10)
+        key = next(iter(right_compositions))
+        original = right_compositions[key]
+        right_compositions[key] = ReverseRightTransfer.leaf(10, 10)
         assert audit_registered_payloads(ledger).forbidden_future_payloads > 0
-        arena._right_compositions[key] = original
+        right_compositions[key] = original
         arena.clear_bindings()
 
 

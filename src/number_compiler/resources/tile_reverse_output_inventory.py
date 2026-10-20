@@ -57,8 +57,9 @@ def valid_reverse_bound_output(
             )
         if node.left is None or node.right is None:
             return False
-        left = arena._memo.get(ReverseBoundOutputKey(node.left))
-        right = arena._memo.get(ReverseBoundOutputKey(node.right))
+        memo = arena.audit_snapshot().memo
+        left = memo.get(ReverseBoundOutputKey(node.left))
+        right = memo.get(ReverseBoundOutputKey(node.right))
         if (
             type(left) is not ReverseBoundOutput
             or type(right) is not ReverseBoundOutput

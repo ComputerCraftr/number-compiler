@@ -47,14 +47,14 @@ def promotion_step(
 ) -> bool:
     """Publish a temporal midpoint parent when both exact children exist."""
     action, tile, left, right = frame.args
-    children = engine._children(action)
-    if engine._application is None or children is None:
+    children = engine.child_actions(action)
+    if engine.application_identity is None or children is None:
         values.append(False)
         return True
     before, _after = children
     # Primitive parents are already completed directly.  Promotion targets
     # the composite midpoint whose spatial children arrived independently.
-    if engine._children(before) is None:
+    if engine.child_actions(before) is None:
         values.append(False)
         return True
     node = engine.tiles.resolve(tile)
@@ -68,7 +68,7 @@ def promotion_step(
             raise ValueError("midpoint promotion requires exact causal prefixes")
     if frame.stage == 0:
         from number_compiler.hashlife.tiles.result_reverse_indexes import (
-            _has_completed_result_input,
+            has_completed_result_input,
         )
 
         # A retained exact parent is reusable even after either child is
@@ -77,12 +77,12 @@ def promotion_step(
         # result. Reject only that impossible cold case before constructing
         # temporal anchors or half-parent contexts. A positive answer grants no
         # authority: the exact keyed lookups below validate the full requests.
-        parent_present = _has_completed_result_input(
+        parent_present = has_completed_result_input(
             engine.scheduler.results, before, tile
         )
         if not parent_present and (
-            not _has_completed_result_input(engine.scheduler.results, before, node.left)
-            or not _has_completed_result_input(
+            not has_completed_result_input(engine.scheduler.results, before, node.left)
+            or not has_completed_result_input(
                 engine.scheduler.results, before, node.right
             )
         ):
@@ -103,7 +103,7 @@ def promotion_step(
     if frame.stage == 1:
         right_anchor = pop_causal_state(values)
         left_anchor = pop_causal_state(values)
-        parent_key = engine._composite_key(
+        parent_key = engine.composite_key(
             before,
             tile,
             left_anchor,
@@ -118,8 +118,8 @@ def promotion_step(
             action_admission=engine.action_admission,
         )
         if completed is not None:
-            engine.scheduler._pin_causal(
-                engine._application,
+            engine.scheduler.pin_causal(
+                engine.application_identity,
                 parent_key,
                 completed,
             )
@@ -145,8 +145,8 @@ def promotion_step(
         case _:
             raise AssertionError("midpoint promotion lost its parent references")
     left_context, right_context = child_contexts
-    left_key = engine._composite_key(before, left_tile, *left_context)
-    right_key = engine._composite_key(before, right_tile, *right_context)
+    left_key = engine.composite_key(before, left_tile, *left_context)
+    right_key = engine.composite_key(before, right_tile, *right_context)
     if left_key is None or right_key is None:
         values.append(False)
         return True
@@ -177,8 +177,8 @@ def promotion_step(
             parent_key,
             payload,
         )
-        engine.scheduler._pin_causal(
-            engine._application,
+        engine.scheduler.pin_causal(
+            engine.application_identity,
             parent_key,
             published,
         )

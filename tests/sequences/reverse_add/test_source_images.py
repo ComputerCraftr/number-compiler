@@ -59,14 +59,16 @@ def test_one_step_stream_is_linear_and_retains_no_endpoint_word() -> None:
     counters = workspace.ledger.counters
     assert counters.get("reverse_q19_primitive_pair_applications", 0) == 0
     assert counters["recursive_output_stream_emitted_digits"] == 3
-    image = workspace._image
+    image = workspace.audit_snapshot().image
     assert image is not None
-    payload = workspace.scheduler._source_image_core().view(image).payload
+    payload = workspace.scheduler.source_image_core().view(image).payload
     assert not hasattr(payload, "digits")
     assert isinstance(payload, ReverseImagePayload)
     assert payload.pair_output is not None
     assert payload.pair_output.temporal_steps == 1
-    assert workspace.adapter._q19_source is workspace.actions.source(workspace.source)
+    assert workspace.adapter.audit_snapshot().q19_source is workspace.actions.source(
+        workspace.source
+    )
 
 
 @pytest.mark.parametrize("seed", (1, 196, int("4" * 128 + "5" * 128)))
@@ -190,7 +192,7 @@ def test_undemanded_second_step_publishes_one_fused_image() -> None:
     image = workspace.scheduler.source_image(
         workspace.adapter, workspace.source, workspace.root_action
     )
-    payload = workspace.scheduler._source_image_core().view(image).payload
+    payload = workspace.scheduler.source_image_core().view(image).payload
     assert isinstance(payload, ReverseImagePayload)
     assert workspace.actions.node(payload.action).steps == 2
     assert workspace.ledger.counters.get("source_image_primitive_applications", 0) == 0
@@ -236,12 +238,14 @@ def test_q19_completed_output_is_exact_for_small_decimal_words(
     assert counters["reverse_q19_root_bootstrap_publications"] == 1
     assert counters["reverse_q19_root_bootstrap_pair_steps"] == steps - 1
     assert counters.get("source_image_primitive_applications", 0) == 0
-    assert workspace._image is not None
-    view = workspace.scheduler._source_image_core().view(workspace._image)
+    image = workspace.audit_snapshot().image
+    assert image is not None
+    view = workspace.scheduler.source_image_core().view(image)
     assert isinstance(view.payload, ReverseImagePayload)
     assert view.payload.pair_output is not None
-    assert workspace.adapter._q19_owner is not None
-    workspace.adapter._q19_owner.validate(view.payload.pair_output)
+    q19_owner = workspace.adapter.audit_snapshot().q19_owner
+    assert q19_owner is not None
+    q19_owner.validate(view.payload.pair_output)
     assert view.payload.pair_output.temporal_steps == steps
 
 
@@ -264,12 +268,14 @@ def test_small_decimal_composite_uses_authenticated_q19_occurrence(
     assert_completed_child_work(counters)
     assert counters["reverse_q19_root_bootstrap_publications"] == 1
     assert counters["reverse_q19_root_bootstrap_pair_steps"] == steps - 1
-    assert workspace._image is not None
-    payload = workspace.scheduler._source_image_core().view(workspace._image).payload
+    image = workspace.audit_snapshot().image
+    assert image is not None
+    payload = workspace.scheduler.source_image_core().view(image).payload
     assert isinstance(payload, ReverseImagePayload)
     assert payload.pair_output is not None
-    assert workspace.adapter._q19_owner is not None
-    workspace.adapter._q19_owner.validate(payload.pair_output)
+    q19_owner = workspace.adapter.audit_snapshot().q19_owner
+    assert q19_owner is not None
+    q19_owner.validate(payload.pair_output)
     assert payload.pair_output.temporal_steps == steps
 
 
@@ -389,15 +395,15 @@ def test_zero_source_admits_huge_power_without_constructing_the_power() -> None:
         workspace.ledger.counters.get("reverse_successor_tape_width_compilations", 0)
         == 0
     )
-    assert workspace.adapter._q19_owner is None
-    assert workspace._image is None
+    assert workspace.adapter.audit_snapshot().q19_owner is None
+    assert workspace.audit_snapshot().image is None
 
 
 @pytest.mark.parametrize("fail_after_registration", (False, True))
 def test_workspace_constructor_rolls_back_audit_registration(
     fail_after_registration: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    original = ReverseSourceImageWorkspace._register_source_payload_audit_contract
+    original = ReverseSourceImageWorkspace.register_source_payload_audit_contract
 
     def fail_registration(self: ReverseSourceImageWorkspace) -> None:
         if fail_after_registration:
@@ -406,15 +412,16 @@ def test_workspace_constructor_rolls_back_audit_registration(
 
     monkeypatch.setattr(
         ReverseSourceImageWorkspace,
-        "_register_source_payload_audit_contract",
+        "register_source_payload_audit_contract",
         fail_registration,
     )
     ledger = ResourceLedger()
     with pytest.raises(RuntimeError, match="injected source payload"):
         ReverseSourceImageWorkspace(ledger, 196, 8)
-    assert not any(
-        family == "reverse_add" for _root, family in ledger._payload_audit_contracts
+    approved, invalid = ledger.audit_payload_contracts().family(
+        "reverse_add", ledger=ledger
     )
+    assert not approved and not invalid
     assert ledger.entries == ledger.nodes == 0
 
 
@@ -463,7 +470,8 @@ def test_adapter_memo_construction_failure_retires_its_registered_owner(
         )
         if (
             not failed_once
-            and ledger._account(owner).role == "reverse_recursive_occurrence_binding"
+            and ledger.account_status(owner).role
+            == "reverse_recursive_occurrence_binding"
         ):
             failed_once = True
             raise RuntimeError("injected recursive occurrence memo failure")
@@ -530,10 +538,10 @@ def test_width_demand_admits_completed_q19_image_without_rendering_digits() -> N
     # completed grammar. The scheduler must not fall back to the generic
     # source-image primitive path for this composite request.
     assert counters.get("source_image_primitive_applications", 0) == 0
-    image = workspace._image
+    image = workspace.audit_snapshot().image
     assert image is not None
-    assert workspace.adapter._q19_owner is not None
-    payload = workspace.scheduler._source_image_core().view(image).payload
+    assert workspace.adapter.audit_snapshot().q19_owner is not None
+    payload = workspace.scheduler.source_image_core().view(image).payload
     assert isinstance(payload, ReverseImagePayload)
     assert payload.pair_output is not None
     assert payload.pair_output.output_width == 11
@@ -548,21 +556,21 @@ def test_reset_in_another_workspace_does_not_invalidate_local_q19_owner() -> Non
     second = ReverseSourceImageWorkspace(ledger, 295, 3)
     try:
         expected_width = second.width()
-        image = second._image
-        q19_owner = second.adapter._q19_owner
+        image = second.audit_snapshot().image
+        q19_owner = second.adapter.audit_snapshot().q19_owner
         assert image is not None
         assert q19_owner is not None
-        second_cache_owner = second.scheduler._source_image_core().owner
+        second_cache_owner = second.scheduler.source_image_core().owner
         clears_before = ledger.counters.get("source_image_cache_clears", 0)
 
         first.scheduler.clear_source_images()
 
         assert ledger.counters["source_image_cache_clears"] == clears_before + 1
-        second._check_open()
-        assert second.scheduler._source_image_core().owner is second_cache_owner
-        assert second._image is image
-        assert second.adapter._q19_owner is q19_owner
-        assert not q19_owner._disposed
+        second.check_open()
+        assert second.scheduler.source_image_core().owner is second_cache_owner
+        assert second.audit_snapshot().image is image
+        assert second.adapter.audit_snapshot().q19_owner is q19_owner
+        assert not q19_owner.audit_snapshot().disposed
         assert second.width() == expected_width
     finally:
         first.dispose()
@@ -654,7 +662,7 @@ def _two_step_view() -> tuple[ReverseSourceImageWorkspace, SourceImageView]:
     image = workspace.scheduler.source_image(
         workspace.adapter, workspace.source, workspace.root_action
     )
-    view = workspace.scheduler._source_image_core().view(image)
+    view = workspace.scheduler.source_image_core().view(image)
     return workspace, view
 
 

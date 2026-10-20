@@ -87,7 +87,7 @@ def global_innovation_port_moore(
         raise ValueError("unknown signed, borrow, or carry port")
     if type(memo) is not InnovationObserverMemo:
         raise TypeError("global port minimization requires a query-owned memo")
-    memo._check_open()
+    memo.check_open()
 
     def build() -> GlobalInnovationPortMoore:
         states = 2 * modulus
@@ -148,7 +148,7 @@ def global_innovation_port_moore(
         )
         return machine
 
-    machine = memo._get_or_build(
+    machine = memo.get_or_build(
         "global-input-port-moore",
         (modulus, port),
         build,
@@ -188,7 +188,7 @@ class InnovationTapeObservation:
         raise TypeError("innovation tape observations are issued by a source run")
 
     @classmethod
-    def _issue(
+    def issue_from_observer(
         cls,
         source: int,
         endpoint: int,
@@ -221,7 +221,7 @@ class InnovationTapeObservation:
             ("sample", sample),
         ):
             object.__setattr__(observation, name, value)
-        observation._validate()
+        observation.validate()
         object.__setattr__(observation, "_authority", _OBSERVATION_ISSUER)
         object.__setattr__(
             observation,
@@ -244,7 +244,7 @@ class InnovationTapeObservation:
         )
         return observation
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
         values = (
             self.source,
             self.endpoint,
@@ -430,7 +430,7 @@ def _feed_factor(
         ]
         | None
     ) = None
-    memo.ledger.reserve(memo._scratch_owner, nodes=1)
+    memo.reserve_scratch(nodes=1)
     retained_entries = 0
     retained_nodes = 1
     iteration = 0
@@ -473,7 +473,7 @@ def _feed_factor(
                     max(1, (value.bit_length() + 63) // 64)
                     for value in (iteration, steps, *totals, *borrow, *carry)
                 )
-                memo.ledger.reserve(memo._scratch_owner, entries=1, nodes=cost)
+                memo.reserve_scratch(entries=1, nodes=cost)
                 try:
                     seen_table[key] = (
                         iteration,
@@ -482,7 +482,7 @@ def _feed_factor(
                         tuple(carry),
                     )
                 except BaseException:
-                    memo.ledger.release(memo._scratch_owner, entries=1, nodes=cost)
+                    memo.release_scratch(entries=1, nodes=cost)
                     raise
                 retained_entries += 1
                 retained_nodes += cost
@@ -501,11 +501,7 @@ def _feed_factor(
     finally:
         if seen is not None:
             seen.clear()
-        memo.ledger.release(
-            memo._scratch_owner,
-            entries=retained_entries,
-            nodes=retained_nodes,
-        )
+        memo.release_scratch(entries=retained_entries, nodes=retained_nodes)
     return control, (totals, borrow, carry, sample, steps)
 
 
@@ -515,7 +511,7 @@ def _observe_program_symbols(
     ledger: ResourceLedger,
     memo: InnovationObserverMemo,
 ) -> tuple[int, list[int], list[int], list[int], list[str], int]:
-    with ledger.reservation(memo._scratch_owner, nodes=128):
+    with memo.scratch_reservation(nodes=128):
         control = machine.control(program.source)
         totals = [0] * len(SIGNED_SYMBOLS)
         borrow = [0] * 6
@@ -590,7 +586,7 @@ def observe_parity_program(
             )
         ):
             raise ValueError("physical endpoint does not match the normalized tape")
-        return InnovationTapeObservation._issue(
+        return InnovationTapeObservation.issue_from_observer(
             program.source,
             program.endpoint,
             physical_endpoint,

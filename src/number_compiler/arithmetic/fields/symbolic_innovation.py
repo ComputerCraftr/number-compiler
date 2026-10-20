@@ -19,7 +19,6 @@ from collections.abc import Mapping, Sequence
 from copy import deepcopy
 
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
-from number_compiler.arithmetic.contracts.input_validation import is_object_tuple
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.fields.morphism_core import binary_power
@@ -37,6 +36,19 @@ from number_compiler.arithmetic.fields.radial_innovation import (
     ReverseAddCyclotomicInnovationBlock,
     SymbolicRadialInnovation,
 )
+from number_compiler.arithmetic.fields.symbolic_innovation_metadata import (
+    MAX_PRIMITIVE_IDENTITY_DEPTH,
+    MAX_PRIMITIVE_IDENTITY_UNITS,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation_metadata import (
+    innovation_node_units as _node_units,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation_metadata import (
+    integer_limb_units as _integer_limb_units,
+)
+from number_compiler.arithmetic.fields.symbolic_innovation_metadata import (
+    validate_bounded_primitive_identity as _validate_bounded_primitive_identity,
+)
 from number_compiler.arithmetic.polynomials.cyclotomic_ring import CyclotomicRing
 from number_compiler.arithmetic.polynomials.cyclotomic_transport import (
     power_two_cyclotomic_radial_quotient,
@@ -50,79 +62,8 @@ from number_compiler.resources.metric_keys import (
 )
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
-MAX_PRIMITIVE_IDENTITY_UNITS = 256
-MAX_PRIMITIVE_IDENTITY_DEPTH = 32
 MAX_CYCLOTOMIC_PROJECTION_ORDER = 16
 MAX_CYCLOTOMIC_PROJECTION_BITS = 64
-
-
-def _validate_bounded_primitive_identity(identity: SemanticIdentity) -> None:
-    pending: list[tuple[object, int]] = [(identity, 0)]
-    seen: set[int] = set()
-    identities: list[SemanticIdentity] = []
-    units = 0
-    while pending:
-        value, depth = pending.pop()
-        units += 1
-        if units > MAX_PRIMITIVE_IDENTITY_UNITS:
-            raise ValueError("primitive innovation identity exceeds its finite bound")
-        if depth > MAX_PRIMITIVE_IDENTITY_DEPTH:
-            raise ValueError("primitive innovation identity exceeds its depth bound")
-        if value is None or type(value) is bool:
-            continue
-        if type(value) is int:
-            if abs(value).bit_length() > 64:
-                raise ValueError("primitive innovation identity embeds a wide integer")
-            continue
-        if isinstance(value, (str, bytes)):
-            if len(value) > MAX_PRIMITIVE_IDENTITY_UNITS:
-                raise ValueError("primitive innovation identity embeds a wide scalar")
-            continue
-        object_id = id(value)
-        if object_id in seen:
-            continue
-        seen.add(object_id)
-        if is_object_tuple(value):
-            if type(value) is not tuple:
-                raise TypeError(
-                    "primitive innovation identity has a nonsemantic payload"
-                )
-            for child_index in range(len(value)):
-                child: object = value[child_index]
-                pending.append((child, depth + 1))
-        elif type(value) is SemanticIdentity:
-            identities.append(value)
-            pending.append((value.behavior, depth + 1))
-        else:
-            raise TypeError("primitive innovation identity has a nonsemantic payload")
-    # Digest validation runs only after the complete reachable identity has
-    # passed the finite structural bound above.
-    for value in identities:
-        value.validate()
-
-
-def _integer_limb_units(*values: int) -> int:
-    """Return 64-bit ledger units for retained exact-integer metadata."""
-    retained_bits = sum(max(1, abs(value).bit_length()) for value in values)
-    return max(1, (retained_bits + 63) // 64)
-
-
-def _node_units(node: InnovationNode) -> int:
-    """Ledger units retained by one node, including wide integer metadata."""
-    if isinstance(node, InnovationInterval):
-        return _integer_limb_units(node.length)
-    if isinstance(node, InnovationRadial):
-        return _integer_limb_units(node.multiplier.no_growth, node.multiplier.growth)
-    if isinstance(node, InnovationCharted):
-        return _integer_limb_units(
-            node.chart.slope,
-            node.chart.offset,
-            node.chart.extent_scale,
-            node.chart.growth_scale,
-        )
-    if isinstance(node, InnovationScale):
-        return _integer_limb_units(node.coefficient)
-    return 1
 
 
 class SymbolicInnovationArena:
@@ -175,14 +116,14 @@ class SymbolicInnovationArena:
             node_count=lambda: 0,
             payloads=lambda: self._keys.items(),
         )
-        self.zero = self._handle(0)
+        self.zero = self.scoped_handle(0)
         try:
-            self.zero = self._intern(InnovationZero())
+            self.zero = self.intern_record(InnovationZero())
         except BaseException:
             self.close()
             raise
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         if self._closed:
             raise ValueError("disposed symbolic innovation arena")
 
@@ -196,7 +137,7 @@ class SymbolicInnovationArena:
         innovation handles. Resizing evicts only cached arithmetic results; the
         canonical DAG and its issued handles remain intact.
         """
-        self._check_open()
+        self.check_open()
         if type(minimum_nodes) is not int or minimum_nodes < 1:
             raise ValueError("F5 memo metadata capacity must be positive")
         memo: (
@@ -257,12 +198,12 @@ class SymbolicInnovationArena:
             )
         return CylinderChart(chart.slope, chart.offset)
 
-    def _intern(self, node: InnovationNode) -> InnovationID:
-        self._check_open()
+    def intern_record(self, node: InnovationNode) -> InnovationID:
+        self.check_open()
         found = self._keys.get(node)
         if found is not None:
             return self._copy_ref(found)
-        result = self._handle(len(self._nodes))
+        result = self.scoped_handle(len(self._nodes))
         units = _node_units(node)
         self.ledger.reserve_many(
             ((self._node_owner, 1, units), (self._key_owner, 1, 0))
@@ -276,7 +217,7 @@ class SymbolicInnovationArena:
             )
         return self._copy_ref(result)
 
-    def _handle(self, local_id: int) -> InnovationID:
+    def scoped_handle(self, local_id: int) -> InnovationID:
         return InnovationID(
             self.owner,
             self._KIND,
@@ -296,7 +237,7 @@ class SymbolicInnovationArena:
         return self._copy_ref(reference)
 
     def resolve(self, reference: InnovationID) -> InnovationNode:
-        self._check_open()
+        self.check_open()
         if type(reference) is not InnovationID:
             raise TypeError("expected a symbolic innovation ID")
         reference.validate(self.owner, self._KIND, size=len(self._nodes))
@@ -317,7 +258,7 @@ class SymbolicInnovationArena:
         _validate_bounded_primitive_identity(semantic)
         retained = deepcopy(semantic)
         _validate_bounded_primitive_identity(retained)
-        return self._intern(InnovationAtom(retained))
+        return self.intern_record(InnovationAtom(retained))
 
     def interval(self, length: int) -> InnovationID:
         """Intern ``E_length = sum(z**i for i in range(length))`` unexpanded.
@@ -326,14 +267,14 @@ class SymbolicInnovationArena:
         ``E_1``, has one canonical interval node; it is not a source atom or a
         source-admission certificate.
         """
-        self._check_open()
+        self.check_open()
         if type(length) is not int:
             raise TypeError("innovation interval length must be an exact integer")
         if length < 0:
             raise ValueError("innovation interval length must be nonnegative")
         if length == 0:
             return self._copy_ref(self.zero)
-        return self._intern(InnovationInterval(length))
+        return self.intern_record(InnovationInterval(length))
 
     def close(self) -> None:
         """Release retained DAG stores and invalidate every issued handle."""
@@ -393,6 +334,12 @@ class SymbolicInnovationArena:
             current = next_level
         return current[0]
 
+    def scale(self, reference: InnovationID, coefficient: int) -> InnovationID:
+        """Scale an admitted innovation by an exact integer coefficient."""
+        if type(coefficient) is not int:
+            raise TypeError("innovation scale requires an exact integer coefficient")
+        return self._scale(reference, coefficient)
+
     def _scale(self, reference: InnovationID, coefficient: int) -> InnovationID:
         node = self.resolve(reference)
         if coefficient == 0 or isinstance(node, InnovationZero):
@@ -403,7 +350,9 @@ class SymbolicInnovationArena:
             node = self.resolve(reference)
         if coefficient == 1:
             return reference
-        return self._intern(InnovationScale(coefficient, self._copy_ref(reference)))
+        return self.intern_record(
+            InnovationScale(coefficient, self._copy_ref(reference))
+        )
 
     def _add_node(self, first: InnovationID, second: InnovationID) -> InnovationID:
         first_node, second_node = self.resolve(first), self.resolve(second)
@@ -413,7 +362,7 @@ class SymbolicInnovationArena:
             return first
         if second.local_id < first.local_id:
             first, second = second, first
-        return self._intern(
+        return self.intern_record(
             InnovationAdd(self._copy_ref(first), self._copy_ref(second))
         )
 
@@ -434,12 +383,14 @@ class SymbolicInnovationArena:
         if isinstance(node, InnovationZero) or multiplier.is_identity:
             return reference
         if isinstance(node, InnovationRadial):
-            return self._intern(
+            return self.intern_record(
                 InnovationRadial(
                     node.multiplier.then(multiplier), self._copy_ref(node.child)
                 )
             )
-        return self._intern(InnovationRadial(multiplier, self._copy_ref(reference)))
+        return self.intern_record(
+            InnovationRadial(multiplier, self._copy_ref(reference))
+        )
 
     def chart(self, reference: InnovationID, chart: CylinderChart) -> InnovationID:
         """Apply a closed translation/reflection and its radial transport law."""
@@ -468,7 +419,7 @@ class SymbolicInnovationArena:
         result = (
             reference
             if chart == CylinderChart()
-            else self._intern(InnovationCharted(chart, self._copy_ref(reference)))
+            else self.intern_record(InnovationCharted(chart, self._copy_ref(reference)))
         )
         return self.radial(result, radial)
 
@@ -568,7 +519,7 @@ class SymbolicInnovationArena:
 
     @property
     def node_count(self) -> int:
-        self._check_open()
+        self.check_open()
         return len(self._nodes)
 
     def project_cyclotomic(
@@ -987,6 +938,8 @@ def _negative_z_power(ring: CyclotomicRing, exponent: int) -> tuple[int, ...]:
 __all__ = [
     "MAX_CYCLOTOMIC_PROJECTION_BITS",
     "MAX_CYCLOTOMIC_PROJECTION_ORDER",
+    "MAX_PRIMITIVE_IDENTITY_DEPTH",
     "MAX_PRIMITIVE_IDENTITY_UNITS",
     "SymbolicInnovationArena",
+    "_node_units",
 ]

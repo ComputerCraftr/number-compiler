@@ -22,8 +22,8 @@ from number_compiler.arithmetic.contracts.block_effect import (
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
+from number_compiler.hashlife.execution.tile_application import TileApplication
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
-from number_compiler.hashlife.execution.tile_scheduler import TileApplication
 from number_compiler.hashlife.interfaces.semantic_structures import (
     QuotientRecord,
 )
@@ -123,7 +123,7 @@ def test_primitive_sector_product_uses_authenticated_source_before_future_interf
     source_values = (7, 18, 7)
     target, growth = pair_step(source_values, 10)
     with build_tile_projection(BaseBlockEffect(10), _source(ledger)) as projection:
-        application = projection._application
+        application = projection.validated_application()
 
         def forbidden(*_args: object, **_kwargs: object) -> Never:
             raise AssertionError(
@@ -153,7 +153,7 @@ def test_primitive_sector_product_uses_authenticated_source_before_future_interf
 def test_sector_observation_rejects_noninitial_and_asymmetric_applications() -> None:
     ledger = ResourceLedger()
     with build_tile_projection(BaseBlockEffect(10), _source(ledger)) as projection:
-        initial = projection._application
+        initial = projection.validated_application()
         adapter = initial.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
         ports = adapter.initial_ports(initial.action)
@@ -176,7 +176,7 @@ def test_sector_observation_rejects_noninitial_and_asymmetric_applications() -> 
         ) as projection,
         pytest.raises(ValueError, match="symmetric pair field"),
     ):
-        observe_reverse_sector_product(projection._application)
+        observe_reverse_sector_product(projection.validated_application())
 
 
 def test_annihilated_source_observation_skips_source_sector_compilation(
@@ -188,7 +188,7 @@ def test_annihilated_source_observation_skips_source_sector_compilation(
         ExactSource((0,), 10, blank=19, extent=64, alphabet_size=19),
     )
     with build_tile_projection(BaseBlockEffect(10), source) as projection:
-        original = projection._application
+        original = projection.validated_application()
         adapter = original.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
         action = adapter.power(original.action, 20)
@@ -229,7 +229,7 @@ def test_aligned_interval_forcing_counts_evaluation_and_failed_work(
         ExactSource((7, 18, 18, 7), 10, blank=19, extent=4, alphabet_size=19),
     )
     with build_tile_projection(BaseBlockEffect(10), source) as projection:
-        application = projection._application
+        application = projection.validated_application()
         adapter = application.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
         payload = application.interface()
@@ -281,7 +281,7 @@ def test_authenticated_local_interval_forcing_reuses_canonical_regions(
         ExactSource(source_values, 10, blank=19, extent=4, alphabet_size=19),
     )
     with build_tile_projection(BaseBlockEffect(10), source) as projection:
-        application = projection._application
+        application = projection.validated_application()
         expected = observe_reverse_interval_forcing(application, 0, 2)
         for sector in expected.sectors:
             assert sector.output == _reduce(target[:2], sector.classes)
@@ -308,7 +308,7 @@ def test_authenticated_local_interval_forcing_covers_growth_interior() -> None:
         ExactSource(source_values, 10, blank=19, extent=4, alphabet_size=19),
     )
     with build_tile_projection(BaseBlockEffect(10), source) as projection:
-        application = projection._application
+        application = projection.validated_application()
         observed = observe_reverse_interval_forcing(application, 1, 2)
         for sector in observed.sectors:
             assert sector.output == _reduce(target[1:3], sector.classes)
@@ -329,9 +329,9 @@ def test_sector_observation_rejects_malformed_and_foreign_action() -> None:
         build_tile_projection(BaseBlockEffect(10), _source(first_ledger)) as first,
         build_tile_projection(BaseBlockEffect(10), _source(second_ledger)) as second,
     ):
-        application = first._application
+        application = first.validated_application()
         original = application.action
-        object.__setattr__(application, "action", second._application.action)
+        object.__setattr__(application, "action", second.validated_application().action)
         try:
             with pytest.raises(ValueError):
                 observe_reverse_sector_product(application)
@@ -350,7 +350,7 @@ def test_digit_terminal_interface_exposes_exact_width_without_output(
         target, _growth = pair_step(target, 10)
     expected = len(target) + carry_field(target, base=10)[-1]
     with build_tile_projection(BaseBlockEffect(10), _source(ledger)) as projection:
-        primitive = projection._application
+        primitive = projection.validated_application()
         adapter = primitive.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
         powered = adapter.power(primitive.action, steps)
@@ -388,7 +388,7 @@ def test_digit_terminal_interface_exposes_exact_width_without_output(
 def test_digit_terminal_sector_width_declines_noncontiguous_activity() -> None:
     ledger = ResourceLedger()
     with build_tile_projection(BaseBlockEffect(10), _source(ledger)) as projection:
-        original = projection._application
+        original = projection.validated_application()
         adapter = original.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
         alphabet = adapter.alphabet(original.action)
@@ -432,7 +432,7 @@ def test_digit_terminal_empty_width_uses_quiescent_parent() -> None:
         ExactSource((19,), 10, blank=19, extent=16, alphabet_size=20),
     )
     with build_tile_projection(DigitNormalizeBlockEffect(10), source) as projection:
-        assert projection._application.width(16) == 0
+        assert projection.validated_application().width(16) == 0
 
 
 def test_spatial_quotient_and_memo_reservation_roll_back_together(
@@ -440,7 +440,7 @@ def test_spatial_quotient_and_memo_reservation_roll_back_together(
 ) -> None:
     ledger = ResourceLedger()
     with build_tile_projection(BaseBlockEffect(10), _source(ledger)) as projection:
-        application = projection._application
+        application = projection.validated_application()
         adapter = _primitive_adapter(application.scheduler.adapter)
         alphabet = adapter.alphabet(application.action)
         left_tile = adapter.tiles.leaf(alphabet, 7)
@@ -463,19 +463,19 @@ def test_spatial_quotient_and_memo_reservation_roll_back_together(
                     ledger,
                 )
             record = QuotientRecord(application.wiring.signature, components)
-            assert record not in adapter.quotients._keys
+            assert record not in adapter.quotients.audit_snapshot().keys
             key = SpatialInterfaceKey(left, right, application.wiring)
             before_entries = ledger.entries
-            before_nodes = len(adapter.quotients._nodes)
-            before_identity = adapter.quotients._next_node
+            before_nodes = len(adapter.quotients.audit_snapshot().nodes)
+            before_identity = adapter.quotients.audit_snapshot().next_node
             ledger.max_cache_entries = ledger.entries + 2
             with pytest.raises(BlockContextBudgetExceeded):
                 publish_spatial_quotient(application.scheduler.results, key, components)
             assert ledger.entries == before_entries
-            assert len(adapter.quotients._nodes) == before_nodes
-            assert adapter.quotients._next_node == before_identity
-            assert record not in adapter.quotients._keys
-            assert key not in application.scheduler.results._memo
+            assert len(adapter.quotients.audit_snapshot().nodes) == before_nodes
+            assert adapter.quotients.audit_snapshot().next_node == before_identity
+            assert record not in adapter.quotients.audit_snapshot().keys
+            assert key not in application.scheduler.results.audit_snapshot().memo
             ledger.max_cache_entries = None
 
             def fail_after_quotient(*_args: object, **_kwargs: object) -> Never:
@@ -483,16 +483,16 @@ def test_spatial_quotient_and_memo_reservation_roll_back_together(
 
             monkeypatch.setattr(
                 type(application.scheduler.results),
-                "_validate_spatial_result",
+                "validate_spatial_result",
                 fail_after_quotient,
             )
             with pytest.raises(RuntimeError, match="injected spatial"):
                 publish_spatial_quotient(application.scheduler.results, key, components)
             assert ledger.entries == before_entries
-            assert len(adapter.quotients._nodes) == before_nodes
-            assert adapter.quotients._next_node == before_identity + 1
-            assert record not in adapter.quotients._keys
-            assert key not in application.scheduler.results._memo
+            assert len(adapter.quotients.audit_snapshot().nodes) == before_nodes
+            assert adapter.quotients.audit_snapshot().next_node == before_identity + 1
+            assert record not in adapter.quotients.audit_snapshot().keys
+            assert key not in application.scheduler.results.audit_snapshot().memo
         finally:
             ledger.max_cache_entries = None
             right_tile.close()
@@ -502,7 +502,7 @@ def test_spatial_quotient_and_memo_reservation_roll_back_together(
 def test_unissued_sector_rejects_before_quotient_publication() -> None:
     ledger = ResourceLedger()
     with build_tile_projection(BaseBlockEffect(10), _source(ledger)) as projection:
-        application = projection._application
+        application = projection.validated_application()
         adapter = application.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
         interface = adapter.compile_interface(

@@ -27,7 +27,7 @@ def test_shared_odd_gain_inverse_covers_collatz_antihydra_and_centered_mahler() 
         ((3, 3), (0, 1)),
     ):
         for width in range(9):
-            seen = set()
+            seen: set[int] = set()
             for source in range(1 << width):
                 value = source
                 word = 0
@@ -177,7 +177,7 @@ def test_shifted_parity_germ_rejects_mutated_cursor_at_call_time() -> None:
 @pytest.mark.validation  # Exhaustive 2,046-residue dyadic-prefix bijection.
 def test_parity_coordinate_is_bijection_on_every_finite_dyadic_prefix() -> None:
     for width in range(1, 11):
-        seen = set()
+        seen: set[int] = set()
         for residue in range(1 << width):
             word = collatz_parity_word(residue, width)
             seen.add(word)
@@ -366,7 +366,7 @@ def test_run_compressed_valuation_schedule_matches_materialized_parity_cursor() 
 
     seed = 27
     value = seed
-    valuations = []
+    valuations: list[int] = []
     for _ in range(24):
         step = accelerated_odd_collatz(value)
         valuations.append(step.valuation)

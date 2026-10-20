@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from devtools.verification import exact_oracle
 from devtools.verification.reverse_geometry_context import ReverseGeometryContext
-from devtools.verification.reverse_successor_image_audit import _sources
+from devtools.verification.reverse_successor_image_audit import symmetric_sources
 from devtools.verification.threshold_expressions import ConsumerSchema
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -152,7 +152,9 @@ def audit_reverse_consumer_residuals(
             raise BlockContextBudgetExceeded("reverse consumer cell budget exceeded")
 
         sources = tuple(
-            source for width in range(1, capacity + 1) for source in _sources(width)
+            source
+            for width in range(1, capacity + 1)
+            for source in symmetric_sources(width)
         )
         if len(sources) != context_count:
             raise AssertionError((len(sources), context_count))

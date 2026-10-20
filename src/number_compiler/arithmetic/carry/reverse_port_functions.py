@@ -12,10 +12,10 @@ from number_compiler.arithmetic.carry.carry_monoid import (
     value_carry_fn,
 )
 from number_compiler.arithmetic.contracts.block_kernel import (
-    _BaseLeftState,
-    _BaseRightState,
-    _normalized_pair_sum,
-    _reverse_output_operands,
+    BaseLeftState,
+    BaseRightState,
+    normalized_pair_sum,
+    reverse_output_operands,
 )
 from number_compiler.arithmetic.functions.finite_function_types import (
     AtomSort,
@@ -51,70 +51,70 @@ class ReversePortCodec:
     def right_count(self) -> int:
         return 5
 
-    def decode_left(self, value: int) -> _BaseLeftState:
+    def decode_left(self, value: int) -> BaseLeftState:
         if type(value) is not int or not 0 <= value < self.left_count:
             raise ValueError("left reverse port lies outside its finite domain")
         base = self.base
         if value == 0:
-            return _BaseLeftState(0, -1, False)
+            return BaseLeftState(0, -1, False)
         if value <= base:
-            return _BaseLeftState(0, value - 1, False)
+            return BaseLeftState(0, value - 1, False)
         if value < 2 * base:
-            return _BaseLeftState(1, value - 1, False)
+            return BaseLeftState(1, value - 1, False)
         if value == 2 * base:
-            return _BaseLeftState(0, -1, True)
+            return BaseLeftState(0, -1, True)
         if value <= 3 * base:
-            return _BaseLeftState(0, value - 2 * base - 1, True)
+            return BaseLeftState(0, value - 2 * base - 1, True)
         if value == 3 * base + 1:
-            return _BaseLeftState(1, base - 1, False)
+            return BaseLeftState(1, base - 1, False)
         if value <= 4 * base:
-            return _BaseLeftState(1, value - 2 * base - 2, True)
+            return BaseLeftState(1, value - 2 * base - 2, True)
         if value == 4 * base + 1:
-            return _BaseLeftState(0, -1, True, True)
-        return _BaseLeftState(1, base - 1, True)
+            return BaseLeftState(0, -1, True, True)
+        return BaseLeftState(1, base - 1, True)
 
-    def encode_left(self, state: _BaseLeftState) -> int:
-        if type(state) is not _BaseLeftState:
+    def encode_left(self, state: BaseLeftState) -> int:
+        if type(state) is not BaseLeftState:
             raise TypeError("left reverse port has another state sort")
         base = self.base
         if state.sink:
-            if state != _BaseLeftState(0, -1, True, True):
+            if state != BaseLeftState(0, -1, True, True):
                 raise ValueError("left reverse sink is not canonical")
             return 4 * base + 1
         if not state.blank_seen:
-            if state == _BaseLeftState(0, -1, False):
+            if state == BaseLeftState(0, -1, False):
                 return 0
             if state.carry == 0 and 0 <= state.previous_pair < base:
                 return state.previous_pair + 1
             if state.carry == 1 and base <= state.previous_pair < 2 * base - 1:
                 return state.previous_pair + 1
-            if state == _BaseLeftState(1, base - 1, False):
+            if state == BaseLeftState(1, base - 1, False):
                 return 3 * base + 1
         else:
-            if state == _BaseLeftState(0, -1, True):
+            if state == BaseLeftState(0, -1, True):
                 return 2 * base
             if state.carry == 0 and 0 <= state.previous_pair < base:
                 return 2 * base + state.previous_pair + 1
             if state.carry == 1 and base <= state.previous_pair < 2 * base - 1:
                 return 2 * base + state.previous_pair + 2
-            if state == _BaseLeftState(1, base - 1, True):
+            if state == BaseLeftState(1, base - 1, True):
                 return 4 * base + 2
         raise ValueError("left reverse state is outside its reachable domain")
 
-    def decode_right(self, value: int) -> _BaseRightState:
+    def decode_right(self, value: int) -> BaseRightState:
         states = (
-            _BaseRightState(CarryFn.ID, CarryFn.ID),
-            _BaseRightState(CarryFn.CONST0, CarryFn.CONST0),
-            _BaseRightState(CarryFn.CONST1, CarryFn.CONST1),
-            _BaseRightState(CarryFn.CONST0, CarryFn.CONST1),
-            _BaseRightState(CarryFn.CONST1, CarryFn.CONST0),
+            BaseRightState(CarryFn.ID, CarryFn.ID),
+            BaseRightState(CarryFn.CONST0, CarryFn.CONST0),
+            BaseRightState(CarryFn.CONST1, CarryFn.CONST1),
+            BaseRightState(CarryFn.CONST0, CarryFn.CONST1),
+            BaseRightState(CarryFn.CONST1, CarryFn.CONST0),
         )
         if type(value) is not int or not 0 <= value < len(states):
             raise ValueError("right reverse port lies outside its finite domain")
         return states[value]
 
-    def encode_right(self, state: _BaseRightState) -> int:
-        if type(state) is not _BaseRightState:
+    def encode_right(self, state: BaseRightState) -> int:
+        if type(state) is not BaseRightState:
             raise TypeError("right reverse port has another state sort")
         states = (
             (CarryFn.ID, CarryFn.ID),
@@ -220,21 +220,21 @@ class ReverseLeftTransfer:
             after.last_symbol if after.has_active else self.last_symbol,
         )
 
-    def apply(self, state: _BaseLeftState) -> _BaseLeftState:
+    def apply(self, state: BaseLeftState) -> BaseLeftState:
         self.__post_init__()
-        if type(state) is not _BaseLeftState:
+        if type(state) is not BaseLeftState:
             raise TypeError("left transfer input has another state sort")
         if state.sink:
             return state
         if self.sinks or (state.blank_seen and self.has_active):
-            return _BaseLeftState(0, -1, True, True)
+            return BaseLeftState(0, -1, True, True)
         if not self.has_active:
-            return _BaseLeftState(
+            return BaseLeftState(
                 state.carry,
                 state.previous_pair,
                 state.blank_seen or self.has_blank,
             )
-        return _BaseLeftState(
+        return BaseLeftState(
             apply_carry_fn(self.carry, state.carry),
             self.last_symbol,
             self.has_blank,
@@ -326,11 +326,11 @@ class ReverseRightTransfer:
             compose_carry_fn(after.backward, self.backward),
         )
 
-    def apply(self, state: _BaseRightState) -> _BaseRightState:
+    def apply(self, state: BaseRightState) -> BaseRightState:
         self.__post_init__()
-        if type(state) is not _BaseRightState:
+        if type(state) is not BaseRightState:
             raise TypeError("right transfer input has another state sort")
-        return _BaseRightState(
+        return BaseRightState(
             compose_carry_fn(state.forward_suffix, self.forward),
             compose_carry_fn(self.backward, state.backward_suffix),
         )
@@ -571,12 +571,12 @@ class ReversePortFunction:
 
 def _emit(
     base: int,
-    left: _BaseLeftState,
+    left: BaseLeftState,
     symbol: int,
-    right: _BaseRightState,
+    right: BaseRightState,
 ) -> int:
-    operands = _reverse_output_operands(base, left, symbol, right)
-    return 2 * base - 1 if operands is None else _normalized_pair_sum(*operands, base)
+    operands = reverse_output_operands(base, left, symbol, right)
+    return 2 * base - 1 if operands is None else normalized_pair_sum(*operands, base)
 
 
 __all__ = [

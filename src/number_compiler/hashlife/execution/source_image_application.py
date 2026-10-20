@@ -72,9 +72,9 @@ def apply_source_image(
     *,
     demand: SourceImageDemand | None,
 ) -> SourceImageID:
-    adapter_key = self._registered(adapter)
-    self._validate_key(source, "source image source")
-    self._validate_key(action, "source image action")
+    adapter_key = self.registered_adapter_key(adapter)
+    self.validate_key(source, "source image source")
+    self.validate_key(action, "source image action")
     adapter.validate_action(action)
     self.ledger.bump(_execution_keys.SOURCE_IMAGE_APPLICATION_REQUESTS)
     split = adapter if isinstance(adapter, SourceBoundSplitContextAdapter) else None
@@ -88,34 +88,34 @@ def apply_source_image(
         return nullcontext() if transaction_factory is None else transaction_factory()
 
     origin = self.origin(adapter, source)
-    workspace = self._workspace
+    workspace = self.application_workspace
     if workspace.running or len(workspace):
         raise RuntimeError("source image workspace is already active")
     workspace_credit = 0
 
     def push_frame(frame: SourceImageApplyFrame) -> None:
         nonlocal workspace_credit
-        self.ledger.reserve(self._workspace_owner, entries=1, nodes=1)
+        self.ledger.reserve(self.application_workspace_owner, entries=1, nodes=1)
         try:
             workspace.push_frame(frame)
         except BaseException:
-            self.ledger.release(self._workspace_owner, entries=1, nodes=1)
+            self.ledger.release(self.application_workspace_owner, entries=1, nodes=1)
             raise
         workspace_credit += 1
 
     def push_value(image: SourceImageID) -> None:
         nonlocal workspace_credit
-        self.ledger.reserve(self._workspace_owner, entries=1, nodes=1)
+        self.ledger.reserve(self.application_workspace_owner, entries=1, nodes=1)
         try:
             workspace.push_value(image)
         except BaseException:
-            self.ledger.release(self._workspace_owner, entries=1, nodes=1)
+            self.ledger.release(self.application_workspace_owner, entries=1, nodes=1)
             raise
         workspace_credit += 1
 
     def release_workspace() -> None:
         nonlocal workspace_credit
-        self.ledger.release(self._workspace_owner, entries=1, nodes=1)
+        self.ledger.release(self.application_workspace_owner, entries=1, nodes=1)
         workspace_credit -= 1
 
     try:
@@ -143,7 +143,7 @@ def apply_source_image(
                     and self.view(frame.source).failure_prefix is not None
                 ):
                     raise ValueError("split contexts cannot transport guarded failure")
-                found = self._applications.get(apply_key)
+                found = self.application_results.get(apply_key)
                 if found is not None:
                     self.validate_application_binding(adapter, apply_key, found)
                     if (
@@ -160,11 +160,11 @@ def apply_source_image(
                 admitted_input = adapter.admitted_input_key(frame.action, source_view)
                 relative_key = None
                 if admitted_input is not None:
-                    self._validate_key(admitted_input, "source image admitted input")
+                    self.validate_key(admitted_input, "source image admitted input")
                     relative_key = SourceImageRelativeKey(
                         adapter_key, frame.action, admitted_input
                     )
-                    cached = self._relative.get(relative_key)
+                    cached = self.relative_applications.get(relative_key)
                     if cached is not None:
                         cached_source = self.view(cached.source)
                         cached_result = self.view(cached.result)
@@ -269,11 +269,15 @@ def apply_source_image(
                             else "source_image_demanded_composite_applications"
                         )
                         continue
-                self.ledger.reserve(self._workspace_owner, entries=1, nodes=1)
+                self.ledger.reserve(
+                    self.application_workspace_owner, entries=1, nodes=1
+                )
                 try:
                     workspace.add_active(action_key)
                 except BaseException:
-                    self.ledger.release(self._workspace_owner, entries=1, nodes=1)
+                    self.ledger.release(
+                        self.application_workspace_owner, entries=1, nodes=1
+                    )
                     raise
                 workspace_credit += 1
                 frame.stage, frame.children, frame.relative_key = (
@@ -373,7 +377,7 @@ def apply_source_image(
                 raise ValueError(
                     "source image composition discarded its chronological failure"
                 )
-            result = self._publish_application_result(
+            result = self.publish_application_result(
                 apply_key,
                 source_view.binding.source,
                 expected,
@@ -396,7 +400,7 @@ def apply_source_image(
         workspace.clear()
         if workspace_credit:
             self.ledger.release(
-                self._workspace_owner,
+                self.application_workspace_owner,
                 entries=workspace_credit,
                 nodes=workspace_credit,
             )
@@ -418,6 +422,6 @@ def _publish_candidate(
     if total and candidate.failure_prefix is not None:
         raise ValueError("split contexts require total arithmetic")
     cumulative = adapter.compose_actions(source.binding.action, action)
-    return core._publish_application_result(
+    return core.publish_application_result(
         key, source.binding.source, cumulative, candidate, relative_key=relative_key
     )

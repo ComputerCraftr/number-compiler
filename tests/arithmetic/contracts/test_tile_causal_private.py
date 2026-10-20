@@ -74,7 +74,7 @@ def test_causal_macro_recurrence_p4_p8_without_temporal_midpoint(
         source.close()
 
 
-def _scan(
+def scan(
     kernel: PrimitiveKernel,
     symbols: tuple[int, ...],
     ports: tuple[int, int],
@@ -82,7 +82,8 @@ def _scan(
     from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 
     left, right = ports
-    left_states, right_states = [], []
+    left_states: list[int] = []
+    right_states: list[int] = []
     for symbol in symbols:
         left_states.append(left)
         left = kernel.advance(BoundarySide.LEFT, left, symbol)
@@ -129,7 +130,7 @@ def test_causal_p4_p8_explicit_noninitial_edge_contract() -> None:
                     if stage == exponent - 1
                     else adapter.initial_ports(primitive)
                 )
-                expected = _scan(adapter.primitive_law(primitive), expected, ports)
+                expected = scan(adapter.primitive_law(primitive), expected, ports)
             assert (
                 tuple(
                     engine.point_bound(action, source.tile, i, contract)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Protocol, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.continuations.higher_types import (
@@ -32,13 +32,14 @@ def audit_identity_index(mapping: object, record: object, index: int) -> bool:
     """Check an interner entry without mutating it, even after record corruption."""
     if not isinstance(mapping, Mapping):
         return False
+    typed_mapping = cast(Mapping[object, object], mapping)
     try:
-        found = mapping.get(record)
+        found = typed_mapping.get(record)
         return type(found) is int and found == index
     except (KeyError, TypeError, AttributeError):
         return any(
             key is record and type(value) is int and value == index
-            for key, value in mapping.items()
+            for key, value in typed_mapping.items()
         )
 
 

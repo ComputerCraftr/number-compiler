@@ -25,6 +25,7 @@ from number_compiler.arithmetic.contracts.block_effect import (
 )
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.local_action_codec import (
+    LocalCodec,
     compile_source_cell,
     initialize_local_stores,
     local_cache_hit,
@@ -117,7 +118,7 @@ class ReversePoweredLocalAuditSnapshot:
     source_actions: Mapping[SourceCellID | SourceForestID, ReverseLocalActionID]
 
 
-class ReversePoweredLocalCodec:
+class ReversePoweredLocalCodec(LocalCodec[ReverseLocalAction, ReverseLocalActionID]):
     """Index-owned extensional codec over canonical recursive source cells."""
 
     _KIND = "reverse-powered-local-action"
@@ -303,7 +304,7 @@ class ReversePoweredLocalCodec:
                 action.right_reverse,
             )
             widths = (left_width, left_width, right_width, right_width)
-            reference = self._handle(index)
+            reference = self.scoped_handle(index)
             return (
                 all(
                     type(mapping) is tuple
@@ -373,7 +374,7 @@ class ReversePoweredLocalCodec:
             return False
         return True
 
-    def _handle(
+    def scoped_handle(
         self,
         local_id: int,
         transform: ActionTransform = ActionTransform.IDENTITY,
@@ -387,7 +388,7 @@ class ReversePoweredLocalCodec:
         raw = self._nodes[reference.local_id]
         return raw.mirrored() if reference.transform is ActionTransform.MIRROR else raw
 
-    def _intern(
+    def intern_record(
         self,
         action: ReverseLocalAction,
         reservations: tuple[tuple[int, int, int], ...] = (),
@@ -425,7 +426,7 @@ class ReversePoweredLocalCodec:
             return found
         left = self._mapping(BoundarySide.LEFT, symbol)
         right = self._mapping(BoundarySide.RIGHT, symbol)
-        result = self._intern(
+        result = self.intern_record(
             ReverseLocalAction(left, left, right, right),
             ((self._leaf_owner, 1, 0), *reservations),
         )
@@ -456,7 +457,7 @@ class ReversePoweredLocalCodec:
         )
         if found is not None:
             return found
-        result = self._intern(
+        result = self.intern_record(
             ReverseLocalAction(
                 self._then(a.left_forward, b.left_forward),
                 self._then(b.left_reverse, a.left_reverse),
@@ -485,7 +486,7 @@ class ReversePoweredLocalCodec:
             raise ValueError(
                 "reverse local codec has only the proved mirror automorphism"
             )
-        return self._handle(action.local_id, action.transform ^ transform)
+        return self.scoped_handle(action.local_id, action.transform ^ transform)
 
     def apply(
         self,

@@ -101,11 +101,11 @@ def _cutover_with_observed_pair_stream(
         failure=failure,
         close_failure=close_failure,
     )
-    monkeypatch.setattr(
-        cutover.outputs,
-        "iter_observe_range",
-        lambda *_args, **_kwargs: stream,
-    )
+
+    def iter_observe_range(*_args: object, **_kwargs: object) -> _TrackedOutputIterator:
+        return stream
+
+    monkeypatch.setattr(cutover.outputs, "iter_observe_range", iter_observe_range)
     return cutover, occurrence, stream
 
 
@@ -137,7 +137,7 @@ def test_completed_demands_do_not_recompile_temporal_history(
     monkeypatch.setattr(cutover, "pair_image", forbidden)
     monkeypatch.setattr(cutover, "apply_to_occurrence", forbidden)
     monkeypatch.setattr(cutover, "square_occurrence", forbidden)
-    monkeypatch.setattr(cutover.adapter, "_compile", forbidden)
+    monkeypatch.setattr(cutover.adapter, "compile_completed", forbidden)
 
     temporal_counters = (
         "reverse_recursive_occurrence_publications",
@@ -257,11 +257,11 @@ def test_cancelled_real_pair_stream_releases_charged_frames(
     for stream in streams:
         assert isinstance(stream, GeneratorType)
         assert stream.gi_frame is None
-    assert not outputs._stream_frames
+    assert outputs.audit_snapshot().stream_frame_count == 0
     stream_resources = tuple(
         item
         for item in outputs.ledger.inventory()
-        if item.owner == outputs._stream_owner
+        if item.owner == outputs.audit_snapshot().stream_owner
     )
     assert len(stream_resources) == 1
     assert stream_resources[0].entries == stream_resources[0].nodes == 0
@@ -294,7 +294,8 @@ def test_width_point_and_stream_reuse_the_same_admitted_extent(
         assert cutover.ledger.counters["reverse_recursive_pair_width_publications"] == 2
         with pytest.raises(ValueError):
             cutover.pair_width(replace(occurrence, _authority=object()))
-        assert cutover._pair_widths.owner in cutover.ledger.evict_query_memos()
+        pair_widths = cutover.audit_snapshot().pair_widths
+        assert pair_widths.owner in cutover.ledger.evict_query_memos()
         # Query eviction discards the extent memo, not publication authority.
         # Re-answer from the same occurrence without reapplying its action.
         with monkeypatch.context() as patch:
@@ -307,5 +308,4 @@ def test_width_point_and_stream_reuse_the_same_admitted_extent(
         cutover.dispose()
     with pytest.raises(ValueError, match="disposed"):
         cutover.pair_width(occurrence)
-    with pytest.raises(RuntimeError, match="disposed"):
-        len(cutover._pair_widths)
+    assert cutover.audit_snapshot().pair_widths.disposed

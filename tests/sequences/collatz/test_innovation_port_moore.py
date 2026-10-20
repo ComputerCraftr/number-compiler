@@ -9,8 +9,8 @@ from number_compiler.sequences.collatz.innovation_carry_cocycle import (
     CollatzInnovationCocycle,
 )
 from number_compiler.sequences.collatz.innovation_input_tape import (
+    D8ParityTransition,
     ParityProgramBuilder,
-    _D8ParityTransition,
 )
 from number_compiler.sequences.collatz.innovation_port_moore import (
     SIGNED_SYMBOLS,
@@ -316,7 +316,7 @@ def test_d8_issuer_rejects_same_length_and_popcount_alternate_word() -> None:
     assert forged_mask.bit_count() == transition.odd_mask.bit_count()
     assert forged_mask & 1 == transition.odd_mask & 1
     with pytest.raises(ValueError, match="exact action"):
-        _D8ParityTransition._issue(
+        D8ParityTransition.issue_from_d8_table(
             transition.source_local,
             transition.endpoint_local,
             forged_mask,
@@ -359,7 +359,7 @@ def test_parity_builder_close_can_retry_release_failure(
     monkeypatch.setattr(ledger, "release", fail_once)
     with pytest.raises(RuntimeError, match="injected release failure"):
         builder.close()
-    assert len(builder._factors) == 0
+    assert builder.issuance_snapshot().factors == ()
     assert ledger.nodes > 0
 
     builder.close()

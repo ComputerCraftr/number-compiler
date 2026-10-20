@@ -60,9 +60,9 @@ class TropicalMatrix:
         k2, n = other.shape
         if k != k2:
             raise ValueError((self.shape, other.shape))
-        out = []
+        out: list[tuple[int | None, ...]] = []
         for i in range(m):
-            row = []
+            row: list[int | None] = []
             for j in range(n):
                 best = None
                 for h in range(k):

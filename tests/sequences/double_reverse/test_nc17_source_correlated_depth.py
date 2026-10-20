@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
@@ -11,7 +13,7 @@ from number_compiler.sequences.double_reverse.temporal_birth_ring import (
     odd_boundary_pairs,
 )
 from number_compiler.sequences.double_reverse.temporal_certified_halo import (
-    _advance_halo_without_frames,
+    advance_halo_without_frames,
 )
 from number_compiler.sequences.double_reverse.temporal_depth_transfer_matrix import (
     CertifiedHalo,
@@ -66,7 +68,7 @@ def test_fast_halo_stencil_matches_canonical_ring_step() -> None:
                     phase,
                 )
                 expected = state.advance(BirthRingPorts(0, 0))[0]
-                assert _advance_halo_without_frames(state) == expected
+                assert advance_halo_without_frames(state) == expected
 
 
 def test_certified_halo_discards_uncertified_inward_successors() -> None:
@@ -175,7 +177,7 @@ def test_prepared_source_depth_matrix_is_a_finite_exact_window(
     with DoubleReverseTerm(196, 128, max_state_bits=16384) as term:
         # Seed 196 is admitted only once its source cylinder has a 16-digit
         # physical prefix; preserve the actual authority bound here.
-        _, source = term._prepare_bank_source(max_prefix=16)
+        _, source = term.prepare_bank_source(max_prefix=16)
         # Use the last four certified F steps so the genuine source has
         # reached the width needed by the 12-digit causal halo.
         steps = 4
@@ -233,7 +235,7 @@ def test_prepared_source_depth_matrix_is_a_finite_exact_window(
         assert continuation["infinite_period_certified"] is False
         transition_rows = packet["transition_rows"]
         assert isinstance(transition_rows, list)
-        assert len(transition_rows) == 100
+        assert len(cast(list[object], transition_rows)) == 100
 
         source_words = _orbit(196, start_generation + 2 * steps)
         expected_trace = tuple(

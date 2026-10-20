@@ -24,12 +24,12 @@ from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.sequences.comma.action_arena import (
     CommaActionArena,
     CommaActionID,
-    _Action,
+    CommaActionRecord,
 )
 from number_compiler.sequences.comma.arithmetic import (
-    _large_sector_children,
     comma_children,
     decimal_sector,
+    large_sector_children,
     phase_prefix_displacement,
     safe_complete_cycles_from_sector,
 )
@@ -88,6 +88,19 @@ class CommaImageAdapter(SourceBoundImageAdapter):
         self.ledger = arena.ledger
         self._term: CommaTerm | None = None
 
+    def bind_owner(self, owner: CommaTerm) -> None:
+        """Bind the one term that owns this adapter's source occurrences."""
+        if owner.arena is not self.arena or owner.scheduler is not self.scheduler:
+            raise ValueError("comma adapter owner belongs to another runtime")
+        if self._term is not None and self._term is not owner:
+            raise ValueError("comma adapter already has another owner")
+        self._term = owner
+
+    @property
+    def bound_term(self) -> CommaTerm | None:
+        """Return the owner binding for read-only cross-module verification."""
+        return self._term
+
     def audit_image_binding(
         self,
         binding: SourceImageBinding,
@@ -116,7 +129,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
             self._occurrence_payload(source)
             return
         if type(source) is SourceImageID:
-            record = self.scheduler._source_image_core().resolve(source)
+            record = self.scheduler.source_image_core().resolve(source)
             if (
                 record.binding.family != self.family
                 or record.binding.semantic_version != self.semantic_version
@@ -188,12 +201,12 @@ class CommaImageAdapter(SourceBoundImageAdapter):
             cast(CommaActionID, before), cast(CommaActionID, after)
         )
 
-    def _source_payload(self, source: Hashable) -> CommaImagePayload:
+    def source_payload(self, source: Hashable) -> CommaImagePayload:
         self.validate_source(source)
         if type(source) is CommaSource:
             return CommaImagePayload(source.value, 1, source.certificate_version)
         if type(source) is SourceImageID:
-            record = self.scheduler._source_image_core().resolve(source)
+            record = self.scheduler.source_image_core().resolve(source)
             return cast(CommaImagePayload, record.payload)
         return self._occurrence_payload(cast(CommaOccurrenceID, source))
 
@@ -201,17 +214,8 @@ class CommaImageAdapter(SourceBoundImageAdapter):
         owner = self._term
         if owner is None:
             raise ValueError("comma adapter has no source owner")
-        source.validate(
-            owner._occurrence_token,
-            owner._occurrence_kind,
-            size=len(owner._occurrences),
-        )
-        if source.local_id >= len(owner._occurrence_seals):
-            raise ValueError("comma occurrence has no publication seal")
-        record = owner._occurrences[source.local_id]
-        if record is not owner._occurrence_seals[source.local_id]:
-            raise ValueError("comma occurrence publication was altered")
-        image = self.scheduler._source_image_core().resolve(record.image)
+        record = owner.occurrence_record(source)
+        image = self.scheduler.source_image_core().resolve(record.image)
         if (
             image.binding.family != self.family
             or image.binding.semantic_version != self.semantic_version
@@ -240,7 +244,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
 
     def _authenticated_cycle_ports(
         self,
-        node: _Action,
+        node: CommaActionRecord,
         source: SourceImageView,
         *,
         malformed_message: str,
@@ -255,11 +259,11 @@ class CommaImageAdapter(SourceBoundImageAdapter):
         return leading, digit, headroom
 
     def admit_source(self, source: Hashable) -> SourceImageCandidate:
-        payload = self._source_payload(source)
+        payload = self.source_payload(source)
         if type(source) is CommaSource:
             return self._candidate(payload.value, payload.absolute_index, 0)
         if type(source) is SourceImageID:
-            record = self.scheduler._source_image_core().resolve(source)
+            record = self.scheduler.source_image_core().resolve(source)
             return SourceImageCandidate(
                 payload,
                 0,
@@ -272,8 +276,8 @@ class CommaImageAdapter(SourceBoundImageAdapter):
         owner = self._term
         if owner is None:
             raise ValueError("comma adapter has no source owner")
-        occurrence_record = owner._occurrences[occurrence.local_id]
-        image = self.scheduler._source_image_core().resolve(occurrence_record.image)
+        occurrence_record = owner.occurrence_record(occurrence)
+        image = self.scheduler.source_image_core().resolve(occurrence_record.image)
         return SourceImageCandidate(
             payload,
             0,
@@ -283,7 +287,9 @@ class CommaImageAdapter(SourceBoundImageAdapter):
             precision=image.binding.precision,
         )
 
-    def _apply(self, node: _Action, source: SourceImageView) -> SourceImageCandidate:
+    def _apply(
+        self, node: CommaActionRecord, source: SourceImageView
+    ) -> SourceImageCandidate:
         payload = cast(CommaImagePayload, source.payload)
         output_ports: tuple[int, int, int] | None = None
         if node.kind == "identity":
@@ -315,7 +321,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
                     raise ValueError(
                         "comma receiver-bound prefix action has a fixed exponent"
                     )
-                root = self._source_payload(source.binding.source)
+                root = self.source_payload(source.binding.source)
                 cursor = root.boundary_cursor
                 if cursor is None:
                     exponent = decimal_sector(root.value).exponent
@@ -341,7 +347,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
                         )
                     exponent = cursor.exponent
                     prior_steps = cursor.transitions
-            template = self.arena._boundary_template(state)
+            template = self.arena.boundary_template(state)
             if node.kind == "boundary-prefix-occurrence":
                 if node.boundary_exponent != 0:
                     raise ValueError("comma receiver-bound prefix has a fixed exponent")
@@ -384,7 +390,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
                 transitions,
                 charge=self.arena.charge,
                 charge_bits=self.arena.charge_bits,
-                validate_read=self.arena._boundary_read_guard(state, template),
+                validate_read=self.arena.boundary_read_guard(state, template),
             )
             self.ledger.bump(_comma_keys.COMMA_BOUNDARY_PREFIX_APPLICATIONS)
             self.ledger.bump(
@@ -417,7 +423,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
             owner = self._term
             if owner is None:
                 raise ValueError("comma adapter has no source owner")
-            provider = owner._require_global_future_provider(node.future_digest)
+            provider = owner.require_global_future_provider(node.future_digest)
             from number_compiler.sequences.comma.future_authority import (
                 SOURCE20_FIRST_FORK_CHILDREN,
                 SOURCE20_FIRST_FORK_INDEX,
@@ -454,7 +460,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
             owner = self._term
             if owner is None or state is None or target is None:
                 raise ValueError("comma global boundary action is incomplete")
-            provider = owner._require_global_future_provider(node.future_digest)
+            provider = owner.require_global_future_provider(node.future_digest)
             exponent = decimal_sector(payload.value).exponent
             from number_compiler.sequences.comma.occurrence import (
                 BoundaryOccurrence,
@@ -473,7 +479,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
                 != payload.value
             ):
                 raise ValueError("comma global boundary action has another source")
-            template = self.arena._boundary_template(state)
+            template = self.arena.boundary_template(state)
             prefix = OccurrencePrefixReturn(
                 source_occurrence,
                 template,
@@ -540,7 +546,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
             else:
                 self.arena.charge(2)
                 self.arena.charge_bits(4 * payload.value.bit_length())
-                children = _large_sector_children(payload.value, sector)
+                children = large_sector_children(payload.value, sector)
                 self.ledger.bump(_comma_keys.COMMA_SEAM_PREDICATE_CHECKS, 2)
             if not children:
                 raise UnresolvedCommaBranch(
@@ -552,7 +558,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
             value = (
                 children[0]
                 if len(children) == 1
-                else owner._certified_fork_child(
+                else owner.certified_fork_child(
                     payload.absolute_index, payload.value, children
                 )
             )

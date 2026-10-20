@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_integer_tuple,
+)
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.actions.diamond_actions import PortSignatureID
 from number_compiler.hashlife.tiles.tile_boundaries import (
@@ -37,7 +40,7 @@ def valid_ports(
     values: object,
 ) -> bool:
     """Check a finite assignment by walking its published admissibility DAG."""
-    if type(values) is not tuple or any(type(value) is not int for value in values):
+    if not is_exact_integer_tuple(values):
         return False
     try:
         declaration = scheduler.results.interfaces.interface(signature)
@@ -99,8 +102,8 @@ def valid_request(scheduler: TileScheduler, key: PoweredResultKey) -> bool:
     try:
         key.wiring.__post_init__()
         results = scheduler.results
-        results._validate_action(key.action)
-        expected = results._signature_for(key.action)
+        results.action_validator(key.action)
+        expected = results.signature_provider(key.action)
         declaration = results.interfaces.interface(expected)
         if (
             key.wiring.signature != expected
@@ -109,8 +112,8 @@ def valid_request(scheduler: TileScheduler, key: PoweredResultKey) -> bool:
         ):
             return False
         scheduler.tiles.resolve(key.input)
-        if results._validate_input is not None:
-            results._validate_input(key.action, key.input)
+        if results.input_validator is not None:
+            results.input_validator(key.action, key.input)
         if not valid_boundaries(scheduler, key.boundaries, key.input):
             return False
         valid = valid_ports(scheduler, expected, key.ports)
@@ -129,13 +132,13 @@ def valid_request(scheduler: TileScheduler, key: PoweredResultKey) -> bool:
                 and valid_ports(scheduler, context.signature, context.ports)
                 and valid_boundaries(scheduler, context.boundaries, key.input)
             )
-        if results._validate_fused_action is None:
+        if results.fused_action_validator is None:
             return False
-        results._validate_fused_action(key.action)
-        if results._validate_fused_wiring is None:
+        results.fused_action_validator(key.action)
+        if results.fused_wiring_validator is None:
             valid &= fusion.producer.wiring == fusion.consumer.wiring
         else:
-            results._validate_fused_wiring(
+            results.fused_wiring_validator(
                 key.action,
                 fusion.producer.wiring,
                 fusion.consumer.wiring,
@@ -162,8 +165,8 @@ def valid_causal_interface_record(
             type(key.observation) is str
             and key.observation in ("interface", "reverse-output-carry")
             and observed_reverse == (result.bound_reverse_output is not None)
-            and result._publication_owner is results._interface_publication_seal
-            and result._publication_snapshot == causal_interface_snapshot(key, result)
+            and results.issued_result(result)
+            and result.publication_matches(causal_interface_snapshot(key, result))
             and result.level == adapter.tiles.resolve(key.input).level
             and adapter.quotients.resolve(result.interface).signature
             == key.wiring.signature
@@ -213,15 +216,16 @@ def valid_source_root_match_record(
         return (
             alphabet == expected
             and result.level == source.level
-            and result._publication_owner is results._interface_publication_seal
-            and result._publication_snapshot
-            == (
-                key.input.owner,
-                key.input.kind,
-                key.input.local_id,
-                result.level,
-                result.phase0_first_mismatch,
-                result.phase1_first_mismatch,
+            and results.issued_result(result)
+            and result.publication_matches(
+                (
+                    key.input.owner,
+                    key.input.kind,
+                    key.input.local_id,
+                    result.level,
+                    result.phase0_first_mismatch,
+                    result.phase1_first_mismatch,
+                )
             )
         )
     except (TypeError, ValueError, KeyError, AttributeError, IndexError):

@@ -1,8 +1,9 @@
 """Structured boundary composition used by arbitrary-depth tile absorption."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import product
-from typing import Literal
+from typing import Literal, cast
 
 import pytest
 
@@ -25,6 +26,10 @@ from number_compiler.hashlife.execution.continuations.higher_semantic import (
 )
 from number_compiler.hashlife.execution.continuations.higher_types import (
     HigherExpressionID,
+)
+from number_compiler.hashlife.execution.continuations.higher_values import (
+    RuntimeAtom,
+    RuntimeValueID,
 )
 from number_compiler.hashlife.execution.recursive_outputs import (
     RecursiveCoordinateMorphismArena,
@@ -53,7 +58,7 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from tests.support.assertions import assert_rejected_atomically
-from tests.support.reverse_higher_runtime import _fixture
+from tests.support.reverse_higher_runtime import reverse_higher_fixture
 
 
 @dataclass
@@ -62,11 +67,11 @@ class _HigherSchema:
 
     def __post_init__(self) -> None:
         self.owner = ArenaToken("tile-absorption-actions")
-        self.primitive = self._handle(0)
-        self.p2 = self._handle(1)
-        self.p4 = self._handle(2)
+        self.primitive = self.scoped_handle(0)
+        self.p2 = self.scoped_handle(1)
+        self.p4 = self.scoped_handle(2)
 
-    def _handle(self, local_id: int) -> FieldCellActionID:
+    def scoped_handle(self, local_id: int) -> FieldCellActionID:
         return FieldCellActionID(self.owner, "field-cell-action", local_id)
 
     def validate_action(self, action: FieldCellActionID) -> None:
@@ -317,13 +322,22 @@ def test_p4_function_valued_boundaries_compose_without_runtime_evaluation(
 
     symbols = (zero, one, zero, zero)
     cells = tuple(cell(symbol) for symbol in symbols)
+
+    def forbidden_action_function(
+        _kind: Literal["constant", "step"],
+        _action: FieldCellActionID,
+        _side: int,
+        _anchor: RuntimeAtom,
+        _continuation: RuntimeValueID | None,
+        _symbol: int,
+    ) -> RuntimeValueID:
+        raise AssertionError("higher runtime continuation was evaluated")
+
     with monkeypatch.context() as guard:
         guard.setattr(
             semantics.runtime_values,
             "action_function",
-            lambda *args, **kwargs: (_ for _ in ()).throw(
-                AssertionError("higher runtime continuation was evaluated")
-            ),
+            forbidden_action_function,
         )
         two_left = compose_higher_spatial_transfers(semantics, cells[0], cells[1])
         two_right = compose_higher_spatial_transfers(semantics, cells[2], cells[3])
@@ -360,7 +374,7 @@ def test_live_higher_macro_composer_uses_shared_absorption_wiring(
         compiler,
         sources,
         binding,
-    ) = _fixture((7, 18, 7, 19))
+    ) = reverse_higher_fixture((7, 18, 7, 19))
     compiled = compiler.compile(primitive)
     outputs = RecursiveCoordinateMorphismArena(
         interfaces,
@@ -377,7 +391,17 @@ def test_live_higher_macro_composer_uses_shared_absorption_wiring(
         compiled.symbol,
         compiled.right,
     )
-    original = HigherSpatialMacroComposer._spatial_wiring
+    original = cast(
+        Callable[
+            [
+                HigherSpatialMacroComposer,
+                SourceBoundHigherMacro,
+                SourceBoundHigherMacro,
+            ],
+            HigherSpatialWiring,
+        ],
+        object.__getattribute__(HigherSpatialMacroComposer, "_spatial_wiring"),
+    )
     calls = 0
 
     def observed(

@@ -19,6 +19,7 @@ from number_compiler.arithmetic.fields.boolean_transfer import (
 from number_compiler.sequences.double_reverse.boundary_cycles import (
     Edge,
     boundary_steps,
+    is_edge_tuple,
 )
 from number_compiler.sequences.double_reverse.temporal_border_bank import EDGE_STATES
 from number_compiler.sequences.double_reverse.temporal_hashlife import (
@@ -61,12 +62,7 @@ def powered_border_relation(physical_ticks: int) -> tuple[int, ...]:
 
 
 def _validate_edge(edge: object) -> Edge:
-    if (
-        type(edge) is not tuple
-        or len(edge) != 4
-        or any(type(digit) is not int or not 0 <= digit <= 9 for digit in edge)
-        or edge not in _EDGE_INDEX
-    ):
+    if not is_edge_tuple(edge) or edge not in _EDGE_INDEX:
         raise ValueError("source border is outside the exact carry-closed cylinder")
     return edge
 
@@ -87,7 +83,7 @@ def _forced_outer_pair_word(
 ) -> tuple[tuple[int, int], ...]:
     """Accumulate only the short forced-prefix relation, without global memoization."""
     result: list[tuple[int, int]] = []
-    relation = BooleanMatrix.identity(_EDGE_STATE_SPACE)
+    relation = BooleanMatrix[Edge].identity(_EDGE_STATE_SPACE)
     one_step = _one_step()
     source = 1 << _EDGE_INDEX[edge]
     for tick in range(physical_ticks + 1):
@@ -129,7 +125,7 @@ def predictive_source_transfer(
         raise ValueError("powered matrix ticks must be even in 2..4096")
     if type(pair_depth) is not int or not 1 <= pair_depth <= 16:
         raise ValueError("powered matrix pair depth must be 1..16")
-    term._check_open()
+    term.check_open()
     origin = term.generation
     common: dict[str, object] = {
         "family": "2rev10",
@@ -148,9 +144,9 @@ def predictive_source_transfer(
     if origin + steps > term.max_steps:
         return unavailable("future endpoint exceeds the term step budget")
     try:
-        root = term._root()
-        arena = term._arena
-        engine = term._adapter.temporal_hashlife
+        root = term.endpoint_root()
+        arena = term.source_arena
+        engine = term.temporal_engine
         phase = engine.certify(root)
         if phase is None:
             return unavailable("source has no authenticated carry-closed border")
@@ -191,7 +187,7 @@ def predictive_source_transfer(
             arena,
             root,
             ledger=term.resource_ledger,
-            scratch_owner=term._scratch_owner,
+            scratch_owner=term.scratch_owner,
         )
         clock = certified_residue_action(
             phase=phase,

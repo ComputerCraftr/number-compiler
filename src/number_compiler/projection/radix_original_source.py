@@ -7,7 +7,7 @@ original-input prefix, and every arithmetic intermediate fits one 64-bit limb.
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.exact_tree_context import (
@@ -19,7 +19,7 @@ from number_compiler.resources.metric_keys import projection as _projection_keys
 
 
 @dataclass(slots=True)
-class _OriginalAffineWorkspaceInventory:
+class OriginalAffineWorkspaceInventory:
     """Live logical slots used while one immutable summary is compiled."""
 
     entries: int = 0
@@ -117,6 +117,26 @@ class OriginalAffineSummary:
             raise ValueError("affine summary has malformed canonical node references")
 
 
+@dataclass(frozen=True, slots=True)
+class OriginalRadixAuditSnapshot:
+    """Actual registered stores and counters for an independent read-only audit."""
+
+    shift_owner: int
+    shift_nodes: Mapping[int, OriginalShiftTransfer]
+    shift_key_owner: int
+    shift_keys: Mapping[OriginalShiftTransfer, int]
+    carry_owner: int
+    carry_nodes: Mapping[int, OriginalThreeCarryAction]
+    carry_key_owner: int
+    carry_keys: Mapping[OriginalThreeCarryAction, int]
+    summary_owner: int
+    affine_summaries: Mapping[OriginalAffineSummaryKey, OriginalAffineSummary]
+    workspace_owner: int
+    workspace: OriginalAffineWorkspaceInventory
+    next_shift: int
+    next_carry: int
+
+
 class OriginalRadixArena:
     """Immutable original-source encodings charged to the query's shared ledger."""
 
@@ -143,7 +163,7 @@ class OriginalRadixArena:
         self._workspace_owner = ledger.register(
             prefix + "-affine-workspace", "source_summary_workspace"
         )
-        self._workspace = _OriginalAffineWorkspaceInventory()
+        self._workspace = OriginalAffineWorkspaceInventory()
         self._shift_nodes: MutableMapping[int, OriginalShiftTransfer] = (
             ledger.make_dict(self._shift_owner)
         )
@@ -207,6 +227,25 @@ class OriginalRadixArena:
             payloads=lambda: (),
         )
         ledger.register_execution_root(self)
+
+    def audit_snapshot(self) -> OriginalRadixAuditSnapshot:
+        """Expose source-summary bindings without granting mutation operations."""
+        return OriginalRadixAuditSnapshot(
+            self._shift_owner,
+            self._shift_nodes,
+            self._shift_key_owner,
+            self._shift_keys,
+            self._carry_owner,
+            self._carry_nodes,
+            self._carry_key_owner,
+            self._carry_keys,
+            self._summary_owner,
+            self._affine_summaries,
+            self._workspace_owner,
+            self._workspace,
+            self._next_shift,
+            self._next_carry,
+        )
 
     @staticmethod
     def _validate(
@@ -446,7 +485,7 @@ class OriginalRadixArena:
         active = False
         for position in range(len(source.digits) - 1, -1, -1):
             digit = source.digits[position]
-            quotient, division_carry = self._divide_cell(
+            quotient, division_carry = self.divide_cell(
                 division_carry, source.radix, digit, shift
             )
             self.ledger.bump(_projection_keys.ORIGINAL_AFFINE_SUMMARY_DIVISION_CELLS)
@@ -666,7 +705,7 @@ class OriginalRadixArena:
             )
             self.ledger.bump(_projection_keys.ORIGINAL_AFFINE_SHIFT_SUMMARY_VISITS)
             stop -= block
-        quotient, _ = self._divide_cell(
+        quotient, _ = self.divide_cell(
             division_carry, source.radix, source.digits[index], shift
         )
         return self._triple_digit(quotient, carry, source.radix)[1]
@@ -675,7 +714,7 @@ class OriginalRadixArena:
         self.ledger.bump(_projection_keys.ORIGINAL_RADIX_SHIFT_LIMB_OPERATIONS)
         return self.ledger.observe_arithmetic(value)
 
-    def _divide_cell(
+    def divide_cell(
         self, carry: int, radix: int, digit: int, shift: int
     ) -> tuple[int, int]:
         """Return quotient digit/remainder of c*b+d without a wide integer.
@@ -728,7 +767,7 @@ class OriginalRadixArena:
             limbs[i + 2] = self._limb(limbs[i + 2] + incoming)
         word, bit = divmod(shift, 32)
         # Extract two quotient words directly. Never assemble the 126-bit total.
-        quotient_words = []
+        quotient_words: list[int] = []
         for index in (word, word + 1):
             low = self._limb(limbs[index] >> bit)
             high = self._limb(limbs[index + 1] << (32 - bit)) if bit else 0
@@ -786,7 +825,7 @@ class OriginalRadixArena:
         for position in range(len(source.digits) - 1, -1, -1):
             digit = self._limb(source.digits[position])
             self.ledger.bump(_projection_keys.ORIGINAL_RADIX_SHIFT_SOURCE_DIGIT_READS)
-            quotient, carry = self._divide_cell(carry, source.radix, digit, shift)
+            quotient, carry = self.divide_cell(carry, source.radix, digit, shift)
             self.ledger.bump(_projection_keys.ORIGINAL_RADIX_SHIFT_DIVISION_CELLS)
             if quotient:
                 active = True

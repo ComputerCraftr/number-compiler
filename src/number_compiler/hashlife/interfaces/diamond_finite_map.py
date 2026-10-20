@@ -12,9 +12,9 @@ from number_compiler.hashlife.execution.continuations.diamond_context_program im
     RIGHT_A,
 )
 from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
-    _valid_argument,
     evaluate_primitive_bits,
     input_expression,
+    valid_argument,
 )
 from number_compiler.resources.metric_keys import (
     hashlife_interfaces as _interfaces_keys,
@@ -38,8 +38,8 @@ def admit_map(
     Traversal and the ordinal check cover one immutable primitive domain. No
     composed boundary universe, spatial word, or temporal history is enumerated.
     """
-    arena._validate_sort(source)
-    arena._validate_sort(target)
+    arena.validate_sort(source)
+    arena.validate_sort(target)
     before, after = arena.primitive(source.action), arena.primitive(target.action)
     if before is None or after is None:
         raise ValueError("finite map requires two admitted primitive interfaces")
@@ -67,12 +67,15 @@ def admit_map(
         if bit in checked:
             continue
         checked.add(bit)
-        decision = functions._nodes[functions._resolve(bit)]
+        decision = functions.decision_record(bit)
         if decision.variable is not None:
             if decision.variable not in allowed:
                 raise ValueError("finite map contains another primitive input port")
             pending.extend(
-                (functions._handle(decision.low), functions._handle(decision.high))
+                (
+                    functions.scoped_handle(decision.low),
+                    functions.scoped_handle(decision.high),
+                )
             )
     constant_value: int | None = None
     constant, identity, invalid = True, source == target, False
@@ -103,7 +106,7 @@ def admit_map(
     if invalid:
         argument = input_expression(kernels, domain, port)
         summary = kernels.choose(
-            _valid_argument(kernels, argument), summary, kernels.constant(codomain, 0)
+            valid_argument(kernels, argument), summary, kernels.constant(codomain, 0)
         )
         arena.ledger.bump(
             _interfaces_keys.BOUNDARY_EXPRESSION_FINITE_ADMISSIBILITY_NORMALIZATIONS

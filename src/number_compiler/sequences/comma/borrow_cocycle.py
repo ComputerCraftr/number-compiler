@@ -18,7 +18,7 @@ from .carry_generator import (
     C1Phase,
     C1Return,
     WorkCharge,
-    _charge,
+    charge_carry_work,
 )
 
 _BORROW_PERIOD = 50
@@ -105,7 +105,7 @@ class BorrowPhase:
         if type(steps) is not int or steps < 0:
             raise ValueError("borrow duration must be a nonnegative exact integer")
         _validate_phase(self)
-        _charge(
+        charge_carry_work(
             charge_work,
             charge_bits,
             5,
@@ -142,7 +142,7 @@ def _powered_return_summary(
     _validate_phase(start)
     if type(steps) is not int or steps < 0:
         raise ValueError("borrow duration must be a nonnegative exact integer")
-    _charge(
+    charge_carry_work(
         charge_work,
         charge_bits,
         8,
@@ -173,7 +173,7 @@ def _powered_return_summary(
         base.target.suffix,
         sibling.target.suffix,
     )
-    _charge(
+    charge_carry_work(
         charge_work,
         charge_bits,
         3,
@@ -245,7 +245,7 @@ class BorrowReturn:
         _validate_phase(start)
         if type(steps) is not int or steps < 0:
             raise ValueError("borrow duration must be a nonnegative exact integer")
-        _charge(
+        charge_carry_work(
             charge_work,
             charge_bits,
             8,
@@ -263,7 +263,7 @@ class BorrowReturn:
         )
         _initialize_return(self, start, target, steps, innovation)
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
         if getattr(self, "_seal", None) is not _BORROW_RETURN_SEAL:
             raise ValueError("invalid or uninitialized comma borrow return")
         signature = _return_signature(
@@ -275,24 +275,29 @@ class BorrowReturn:
         if getattr(self, "_witness", None) != signature:
             raise ValueError("comma borrow return fields disagree with snapshot")
 
+    def structural_snapshot(self) -> tuple[BorrowPhase, BorrowPhase, int, int]:
+        """Return validated cocycle fields for paired-return auditing."""
+        self.validate()
+        return self._start, self._target, self._steps, self._innovation
+
     @property
     def start(self) -> BorrowPhase:
-        self._validate()
+        self.validate()
         return self._start
 
     @property
     def target(self) -> BorrowPhase:
-        self._validate()
+        self.validate()
         return self._target
 
     @property
     def steps(self) -> int:
-        self._validate()
+        self.validate()
         return self._steps
 
     @property
     def innovation(self) -> int:
-        self._validate()
+        self.validate()
         return self._innovation
 
     def then(
@@ -305,11 +310,11 @@ class BorrowReturn:
         """Compose adjacent returns without recomputing either innovation."""
         if type(after) is not BorrowReturn:
             raise ValueError("borrow returns have different chronological endpoints")
-        self._validate()
-        after._validate()
+        self.validate()
+        after.validate()
         if self._target != after._start:
             raise ValueError("borrow returns have different chronological endpoints")
-        _charge(
+        charge_carry_work(
             charge_work,
             charge_bits,
             2,
@@ -343,7 +348,7 @@ def _completed_return(
     """Complete a return from exact child cocycles and check its endpoint."""
     if type(start) is not BorrowPhase or type(target) is not BorrowPhase:
         raise TypeError("completed borrow return requires exact phases")
-    _charge(
+    charge_carry_work(
         charge_work,
         charge_bits,
         1,
@@ -366,15 +371,15 @@ def _completed_return(
 
 
 def _bound_signature(bound: BoundC1Return) -> tuple[int, ...]:
-    bound._validate()
-    action = bound._action
+    source_high, action, target_high = bound.structural_snapshot()
+    start, target, steps, count = action.structural_snapshot()
     return (
-        bound._source_high,
-        bound._target_high,
-        *_phase_signature(action._start),
-        *_phase_signature(action._target),
-        action._steps,
-        action._count,
+        source_high,
+        target_high,
+        *_phase_signature(start),
+        *_phase_signature(target),
+        steps,
+        count,
     )
 
 
@@ -403,12 +408,7 @@ def _bound_witness(
     target_borrow: int,
 ) -> tuple[int, ...]:
     return (
-        *_return_signature(
-            action._start,
-            action._target,
-            action._steps,
-            action._innovation,
-        ),
+        *_return_signature(*action.structural_snapshot()),
         *_bound_signature(base),
         *_bound_signature(sibling),
         source_borrow,
@@ -425,9 +425,9 @@ def _check_bound_pair(
     charge_bits: BitsCharge | None,
 ) -> tuple[int, int]:
     """Check low endpoints, physical borrow, and normalized high cocycle."""
-    action._validate()
-    base._validate()
-    sibling._validate()
+    action.validate()
+    base.validate()
+    sibling.validate()
     if base.steps != sibling.steps or action.steps != base.steps:
         raise ValueError("paired borrow returns must have equal durations")
     start = _paired_phase(base.start, sibling.start)
@@ -436,7 +436,7 @@ def _check_bound_pair(
         raise ValueError("borrow action does not match paired c1 endpoints")
     source_borrow = int(sibling.start.suffix < base.start.suffix)
     target_borrow = int(sibling.target.suffix < base.target.suffix)
-    _charge(
+    charge_carry_work(
         charge_work,
         charge_bits,
         3,
@@ -474,12 +474,12 @@ class BoundBorrowReturn:
     def __init__(self) -> None:
         raise TypeError("construct BoundBorrowReturn with bind_borrow_return")
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
         if getattr(self, "_seal", None) is not _BOUND_BORROW_RETURN_SEAL:
             raise ValueError("invalid or uninitialized bound borrow return")
-        self._action._validate()
-        self._base._validate()
-        self._sibling._validate()
+        self._action.validate()
+        self._base.validate()
+        self._sibling.validate()
         source_borrow = int(self._sibling.start.suffix < self._base.start.suffix)
         target_borrow = int(self._sibling.target.suffix < self._base.target.suffix)
         if (
@@ -498,37 +498,37 @@ class BoundBorrowReturn:
 
     @property
     def action(self) -> BorrowReturn:
-        self._validate()
+        self.validate()
         return self._action
 
     @property
     def steps(self) -> int:
-        self._validate()
+        self.validate()
         return self._action.steps
 
     @property
     def innovation(self) -> int:
-        self._validate()
+        self.validate()
         return self._action.innovation
 
     @property
     def base(self) -> BoundC1Return:
-        self._validate()
+        self.validate()
         return self._base
 
     @property
     def sibling(self) -> BoundC1Return:
-        self._validate()
+        self.validate()
         return self._sibling
 
     @property
     def source_borrow(self) -> int:
-        self._validate()
+        self.validate()
         return self._source_borrow
 
     @property
     def target_borrow(self) -> int:
-        self._validate()
+        self.validate()
         return self._target_borrow
 
     def normalized_high_difference(
@@ -538,8 +538,8 @@ class BoundBorrowReturn:
         charge_bits: BitsCharge | None = None,
     ) -> int:
         """Return the source ``H_B-H_A-b`` with a charged subtraction."""
-        self._validate()
-        _charge(
+        self.validate()
+        charge_carry_work(
             charge_work,
             charge_bits,
             1,
@@ -558,10 +558,10 @@ class BoundBorrowReturn:
         charge_bits: BitsCharge | None = None,
     ) -> int:
         """Recover the sibling high prefix from the base and signed cocycle."""
-        self._validate()
+        self.validate()
         if type(base_high_after) is not int or base_high_after < 0:
             raise ValueError("base high prefix must be a nonnegative exact integer")
-        _charge(
+        charge_carry_work(
             charge_work,
             charge_bits,
             2,
@@ -597,8 +597,8 @@ class BoundBorrowReturn:
         """Compose paired returns chronologically without replaying the orbit."""
         if type(after) is not BoundBorrowReturn:
             raise ValueError("bound borrow returns are not chronologically adjacent")
-        self._validate()
-        after._validate()
+        self.validate()
+        after.validate()
         base = self._base.then(
             after._base,
             charge_work=charge_work,
@@ -638,7 +638,7 @@ def _completed_bound_return(
         or type(sibling) is not BoundC1Return
     ):
         raise TypeError("completed bound borrow return requires exact returns")
-    _charge(
+    charge_carry_work(
         charge_work,
         charge_bits,
         4,
@@ -682,8 +682,8 @@ def bind_borrow_return(
     """Build and bind the exact adjacent-sector normalized borrow return."""
     if type(base) is not BoundC1Return or type(sibling) is not BoundC1Return:
         raise TypeError("borrow binding requires two BoundC1Return values")
-    base._validate()
-    sibling._validate()
+    base.validate()
+    sibling.validate()
     start = _paired_phase(base.start, sibling.start)
     if base.steps != sibling.steps:
         raise ValueError("paired borrow returns must have equal durations")

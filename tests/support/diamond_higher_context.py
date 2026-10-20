@@ -50,7 +50,7 @@ def summary(runtime: DiamondRuntime, task: Task) -> TransferSummaryID:
 def point(runtime: DiamondRuntime, action: ActionProgramID, position: int) -> int:
     left = expr(runtime, HigherInitial(action, 0))
     right = expr(runtime, HigherInitial(action, 1))
-    extent = runtime.cells.source_geometry._construction.source.extent
+    extent = runtime.cells.source_geometry.construction.source.extent
     assert extent is not None
     for _, cell in runtime.cells.source_span(0, position):
         transfer = summary(runtime, HigherUnarySummary(action, cell, 0))

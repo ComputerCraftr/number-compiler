@@ -10,7 +10,7 @@ from devtools.verification.endpoint_seam_audit import (
     BoundedEndpointPowerArena,
     audit_endpoint_frontier,
 )
-from devtools.verification.reverse_successor_image_audit import _sources
+from devtools.verification.reverse_successor_image_audit import symmetric_sources
 from number_compiler.arithmetic.carry.event_memory import pair_step
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums
 
@@ -25,7 +25,7 @@ def reachable_pairs(width: int) -> Iterator[Pair]:
     """Pair sums of positive width-digit words; center is even, outer sum nonzero."""
     if type(width) is not int or not 2 <= width <= 8:
         raise ValueError("bounded reachable pair width must be in 2..8")
-    yield from _sources(width, leading_nonzero=True)
+    yield from symmetric_sources(width, leading_nonzero=True)
 
 
 def neighborhood_sources() -> set[Pair]:
@@ -50,7 +50,7 @@ def orbit_sources(steps: int = 4095) -> Iterator[Pair]:
 def power_growth() -> list[dict[str, int]]:
     arena = BoundedEndpointPowerArena(decimal_step, max_entries=4096)
     source = reverse_pair_sums(196, 10)
-    rows = []
+    rows: list[dict[str, int]] = []
     for level in range(4, 11):
         target = arena.power(source, level)
         cold = arena.primitive_successors

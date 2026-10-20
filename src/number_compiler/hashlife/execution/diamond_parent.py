@@ -46,7 +46,7 @@ def publish_parent_identity(
         actions.resolve(key.after),
         cells.resolve(key.cell),
     )
-    source = cells.source_geometry._construction.source
+    source = cells.source_geometry.construction.source
     for action in (before, after):
         if action.kind != "identity" and (action.base, action.blank) != (
             source.base,
@@ -61,7 +61,7 @@ def publish_parent_identity(
         actions.ledger.bump(_execution_keys.IMAGE_PROGRAM_CACHE_HITS)
         actions.ledger.bump(_execution_keys.IMAGE_PROGRAM_ADMISSION_VISITS, 1)
         return found
-    result, temporal = actions._plan_compose(key.before, key.after)
+    result, temporal = actions.plan_compose(key.before, key.after)
     # A staged action is a composition; existing identity actions have no image.
     identity = temporal is None and actions.node(result).kind == "identity"
     image = (
@@ -71,25 +71,23 @@ def publish_parent_identity(
             "image", cell.level, left=key.cell.local_id, action=result.local_id
         )
     )
-    image_key = None if image is None else cells._key(image)
-    existing_image = None if image_key is None else cells._ids.get(image_key)
+    image_key = None if image is None else cells.cell_index_key(image)
+    existing_image = None if image_key is None else cells.find_node(image_key)
     reservations = [(bindings.owner, 1, bindings.nodes_per_entry)]
     if temporal is not None:
-        reservations.extend(((actions._node_owner, 1, 1), (actions._index_owner, 1, 0)))
+        reservations.extend(actions.publication_reservations())
     if image is not None and existing_image is None:
-        reservations.extend(((cells._node_owner, 1, 1), (cells._index_owner, 1, 0)))
+        reservations.extend(cells.publication_reservations())
     ledger = actions.ledger
     ledger.reserve_many(reservations)
     if temporal is not None:
-        actions._ids[temporal] = result.local_id
-        actions._nodes.append(temporal)
+        actions.publish_reserved(temporal, result.local_id)
     if image is not None and existing_image is None:
         assert image_key is not None
-        cells._ids[image_key] = len(cells._nodes)
-        cells._nodes.append(image)
+        cells.publish_reserved(image, image_key)
     # OwnedMemo.__setitem__ would reserve a second time. This store has already
     # received its share of the same atomic reservation as both canonical nodes.
-    bindings._data[key] = result
+    bindings.publish_reserved(key, result)
     ledger.bump(_execution_keys.IMAGE_PROGRAM_REQUESTS)
     ledger.bump(_execution_keys.IMAGE_PROGRAM_EVALUATIONS)
     ledger.bump(_execution_keys.IMAGE_PROGRAM_ADMISSION_VISITS, 1)

@@ -7,19 +7,9 @@ import pytest
 from number_compiler.arithmetic.polynomials.frobenius_sector import (
     DECIMAL_REVERSE_GROWTH_CERTIFICATE,
 )
-
-
-def _step(pair: tuple[int, ...]) -> tuple[tuple[int, ...], bool]:
-    carry = 0
-    digits = []
-    for value in pair:
-        carry, digit = divmod(value + carry, 10)
-        digits.append(digit)
-    if carry:
-        digits.append(1)
-    return tuple(a + b for a, b in zip(digits, reversed(digits), strict=True)), bool(
-        carry
-    )
+from tests.support.reference_arithmetic import (
+    literal_pair_sum_successor as _step,
+)
 
 
 def _rank(edge: int) -> int:
@@ -60,10 +50,10 @@ def test_source_growth_potential_bounds_live_radial_age(seed: int) -> None:
     state = tuple(a + b for a, b in zip(digits, reversed(digits), strict=True))
     initial_rank = _rank(state[0])
     q = r = run = 0
-    trace = []
+    trace: list[bool] = []
     for _ in range(256):
         state, growth = _step(state)
-        trace.append(growth)
+        trace.append(bool(growth))
         if growth:
             r += 1
             run += 1

@@ -98,11 +98,11 @@ def test_equal_terminal_summaries_do_not_select_the_first_b1_successor() -> None
             ),
         ),
     )
-    summaries = []
-    first_successors = []
+    summaries: list[tuple[int, B1Observation]] = []
+    first_successors: list[B1State | None] = []
     for initial, expected_first, expected_observations in cases:
         state = initial
-        observations = []
+        observations: list[B1Observation] = []
         first_successor = None
         for _ in range(3):
             reference = observe_b1(state)

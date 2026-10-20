@@ -1,6 +1,7 @@
 """Completed causal siblings opportunistically publish their exact parent."""
 
-from typing import Any, Never
+from collections.abc import Callable
+from typing import Never, cast
 
 import pytest
 
@@ -10,8 +11,15 @@ from number_compiler.hashlife.execution.causal_frames import (
     PromoteMidpointFrame,
 )
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
+from number_compiler.hashlife.execution.tile_causal_promotion import promotion_step
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 from number_compiler.hashlife.tiles.tiles import TileID
+from number_compiler.resources.causal_stacks import CausalResults
+from number_compiler.resources.causal_types import CausalTaskValue
+from tests.support.causal_frames import (
+    initial_causal_state,
+    run_causal_frame,
+)
 from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 
@@ -19,7 +27,7 @@ def _skip_promotion(
     _engine: object,
     frame: CausalTaskFrame,
     _frames: object,
-    values: list[Any],
+    values: CausalResults[CausalTaskValue],
 ) -> bool:
     if frame.op != "promote_midpoint":
         return False
@@ -37,7 +45,6 @@ def test_completed_p4_children_promote_without_more_output_work(
 ) -> None:
     import number_compiler.hashlife.execution.tile_causal as causal
 
-    causal_module: Any = causal
     ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     fourth = adapter.power(primitive, 4)
     eighth = adapter.power(primitive, 8)
@@ -50,14 +57,14 @@ def test_completed_p4_children_promote_without_more_output_work(
             adapter.wiring(eighth),
         ) as application,
     ):
-        original = causal_module.promotion_step
-        monkeypatch.setattr(causal_module, "promotion_step", _skip_promotion)
+        original = promotion_step
+        monkeypatch.setattr(causal, "promotion_step", _skip_promotion)
         assert tuple(application.point(index) for index in range(4)) == (2, 4, 0, 2)
 
         engine = CausalTileEngine(scheduler)
-        left = engine._initial(fourth, 0)
-        right = engine._initial(fourth, 1)
-        parent_key = engine._composite_key(fourth, source.tile, left, right)
+        left = initial_causal_state(engine, fourth, 0)
+        right = initial_causal_state(engine, fourth, 1)
+        parent_key = engine.composite_key(fourth, source.tile, left, right)
         assert isinstance(parent_key, PoweredResultKey)
         assert scheduler.results.lookup(parent_key) is None
 
@@ -69,12 +76,12 @@ def test_completed_p4_children_promote_without_more_output_work(
             left,
             right,
         )
-        left_key = engine._composite_key(
+        left_key = engine.composite_key(
             fourth,
             source_node.left,
             *left_context,
         )
-        right_key = engine._composite_key(
+        right_key = engine.composite_key(
             fourth,
             source_node.right,
             *right_context,
@@ -96,7 +103,7 @@ def test_completed_p4_children_promote_without_more_output_work(
         def forbidden(*_args: object, **_kwargs: object) -> Never:
             raise AssertionError("parent promotion constructed another exact output")
 
-        monkeypatch.setattr(causal_module, "promotion_step", original)
+        monkeypatch.setattr(causal, "promotion_step", original)
         monkeypatch.setattr(adapter, "primitive_law", forbidden)
         monkeypatch.setattr(adapter, "leaf_interface", forbidden)
         monkeypatch.setattr(adapter, "leaf_interface_symbol", forbidden)
@@ -105,14 +112,15 @@ def test_completed_p4_children_promote_without_more_output_work(
             "tile_causal_boundary_output_evaluations",
             0,
         )
-        engine._application = application.identity
-        promoted = engine._run(
+        engine.application_identity = application.identity
+        promoted = run_causal_frame(
+            engine,
             PromoteMidpointFrame(
                 (
                     eighth,
                     source.tile,
-                    engine._initial(eighth, 0),
-                    engine._initial(eighth, 1),
+                    initial_causal_state(engine, eighth, 0),
+                    initial_causal_state(engine, eighth, 1),
                 ),
             ),
             tile_result=False,
@@ -136,23 +144,27 @@ def test_completed_p4_children_promote_without_more_output_work(
         assert parent_guard is not None
         try:
             scheduler.release_application_pins(application.identity)
-            scheduler.results._remove_key(left_key)
-            assert left_key not in scheduler.results._memo
+            cast(
+                Callable[[PoweredResultKey], None],
+                object.__getattribute__(scheduler.results, "_remove_key"),
+            )(left_key)
+            assert left_key not in scheduler.results.audit_snapshot().memo
             retained_parent = scheduler.results.lookup(parent_key)
             assert retained_parent is not None
             retained_parent.close()
 
             monkeypatch.setattr(engine, "_append_prefix", forbidden)
             before_hits = ledger.counters.get("tile_causal_parent_promotion_hits", 0)
-            engine._application = application.identity
+            engine.application_identity = application.identity
             assert (
-                engine._run(
+                run_causal_frame(
+                    engine,
                     PromoteMidpointFrame(
                         (
                             eighth,
                             source.tile,
-                            engine._initial(eighth, 0),
-                            engine._initial(eighth, 1),
+                            initial_causal_state(engine, eighth, 0),
+                            initial_causal_state(engine, eighth, 1),
                         ),
                     ),
                     tile_result=False,
@@ -185,8 +197,8 @@ def test_cold_parent_promotion_declines_before_constructing_child_contexts(
             (
                 eighth,
                 source.tile,
-                engine._initial(eighth, 0),
-                engine._initial(eighth, 1),
+                initial_causal_state(engine, eighth, 0),
+                initial_causal_state(engine, eighth, 1),
             ),
         )
 
@@ -194,8 +206,8 @@ def test_cold_parent_promotion_declines_before_constructing_child_contexts(
             raise AssertionError("cold promotion constructed a child context")
 
         monkeypatch.setattr(promotion, "AnchorFrame", forbidden_frame)
-        engine._application = application.identity
-        assert engine._run(root, tile_result=False) is False
+        engine.application_identity = application.identity
+        assert run_causal_frame(engine, root, tile_result=False) is False
         assert ledger.counters["tile_causal_parent_promotion_preflight_misses"] == 1
         assert ledger.counters.get("tile_causal_parent_promotion_misses", 0) == 0
 
@@ -204,8 +216,6 @@ def test_promoted_p4_parent_reduces_later_p8_completion_frames(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import number_compiler.hashlife.execution.tile_causal as causal
-
-    causal_module: Any = causal
 
     def run(*, promote: bool) -> tuple[int, int]:
         ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
@@ -222,7 +232,7 @@ def test_promoted_p4_parent_reduces_later_p8_completion_frames(
             ) as application,
         ):
             if not promote:
-                monkeypatch.setattr(causal_module, "promotion_step", _skip_promotion)
+                monkeypatch.setattr(causal, "promotion_step", _skip_promotion)
             for coordinate in range(4):
                 application.point(coordinate)
             before_frames = ledger.counters.get("tile_causal_frames", 0)
@@ -237,9 +247,9 @@ def test_promoted_p4_parent_reduces_later_p8_completion_frames(
                 - before_compositions,
             )
 
-    original = causal_module.promotion_step
+    original = promotion_step
     baseline = run(promote=False)
-    monkeypatch.setattr(causal_module, "promotion_step", original)
+    monkeypatch.setattr(causal, "promotion_step", original)
     promoted = run(promote=True)
     assert promoted[0] < baseline[0]
     assert promoted[1] < baseline[1]

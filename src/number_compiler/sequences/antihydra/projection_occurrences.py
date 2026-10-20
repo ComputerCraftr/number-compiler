@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
@@ -13,6 +16,10 @@ from number_compiler.sequences.antihydra.blocks import (
     ArithmeticCylinder,
     arithmetic_from_word,
     physical_roof,
+)
+from number_compiler.sequences.antihydra.projection_audit_state import (
+    ProjectionCursorAuditState,
+    ProjectionStoreState,
 )
 from number_compiler.sequences.antihydra.projection_fragments import (
     ProjectionFragmentKey,
@@ -291,6 +298,35 @@ class ProjectionOccurrenceCursor:
 
         register_antihydra_payload_contract(self)
 
+    def audit_snapshot(self) -> ProjectionCursorAuditState:
+        return ProjectionCursorAuditState(
+            (
+                ProjectionStoreState(
+                    self._state_owner, "_states", "workspace", self._states
+                ),
+                ProjectionStoreState(
+                    self._state_seal_owner,
+                    "_state_seals",
+                    "projection_binding",
+                    self._state_seals,
+                ),
+                ProjectionStoreState(
+                    self._occurrence_owner,
+                    "_occurrences",
+                    "demanded_projection",
+                    self._occurrences,
+                ),
+                ProjectionStoreState(
+                    self._occurrence_seal_owner,
+                    "_occurrence_seals",
+                    "projection_binding",
+                    self._occurrence_seals,
+                ),
+            ),
+            self._active,
+            type(self._token) is ArenaToken,
+        )
+
     @staticmethod
     def _segment_seal(
         segment: ArithmeticSegment,
@@ -312,8 +348,10 @@ class ProjectionOccurrenceCursor:
 
     @classmethod
     def _state_seal_nodes(cls, seal: tuple[object, ...]) -> int:
+        if not is_exact_object_tuple(seal):
+            return cls._STATE_SEAL_NODES
         segment_seals = seal[-1]
-        count = len(segment_seals) if type(segment_seals) is tuple else 0
+        count = len(segment_seals) if is_exact_object_tuple(segment_seals) else 0
         return cls._STATE_SEAL_NODES + cls._SEGMENT_SEAL_NODES * count
 
     @staticmethod
@@ -353,8 +391,14 @@ class ProjectionOccurrenceCursor:
 
     @classmethod
     def _occurrence_seal_nodes(cls, seal: tuple[object, ...]) -> int:
+        if not is_exact_object_tuple(seal):
+            return cls._OCCURRENCE_SEAL_NODES
         image = seal[-1]
-        if type(image) is not tuple or len(image) != 7 or type(image[-1]) is not tuple:
+        if (
+            not is_exact_object_tuple(image)
+            or len(image) != 7
+            or not is_exact_object_tuple(image[-1])
+        ):
             return cls._OCCURRENCE_SEAL_NODES
         # The occurrence owns and charges the class tuple.  Its independent
         # seal retains one reference to that same immutable tuple plus the
@@ -365,21 +409,22 @@ class ProjectionOccurrenceCursor:
     def _state_seal(state: _CursorState) -> tuple[object, ...]:
         result = state.projection.result
         term = result.source_term
+        term_snapshot = term.audit_snapshot()
         # ``begin`` authenticates the result and materializes this exact store
         # before the first state is sealed.  Reading the public ``segments``
         # property here used to call ``result()`` (and therefore validate every
         # retained block) twice for every seal and on each cursor transition.
         # The store identity and length are part of this independent seal, while
         # each occurrence separately seals the block it consumes.
-        segments = term._segments
+        segments = term_snapshot.segment_store
         return (
             state.projection,
             result,
             term,
-            result._engine,
+            result.source_term.engine,
             result.ledger,
-            result._source,
-            term._result,
+            result.source_authority_is_valid,
+            term_snapshot.result,
             term.segment_owner,
             segments,
             len(segments),
@@ -433,7 +478,7 @@ class ProjectionOccurrenceCursor:
             type(result) is not Run
             or result.ledger is not self.ledger
             or type(result.source_term) is not AntihydraArithmeticTerm
-            or result.source_term.engine is not result._engine
+            or result.source_term.engine is not result.source_term.engine
             or any(
                 type(value) is not int
                 for value in (
@@ -573,8 +618,8 @@ class ProjectionOccurrenceCursor:
         # The cursor seal snapshots the authenticated retained store directly.
         # Publish it once here instead of reaching through the public property
         # during every subsequent state transition.
-        result.source_term._materialize_segments(result)
-        segments = result.source_term._segments
+        result.source_term.materialize_segments(result)
+        segments = result.source_term.audit_snapshot().segment_store
         segment_count = len(segments)
         state_nodes = self._STATE_NODES + self._SEGMENT_SEAL_NODES * segment_count
         seal_nodes = self._STATE_SEAL_NODES + self._SEGMENT_SEAL_NODES * segment_count
@@ -608,7 +653,7 @@ class ProjectionOccurrenceCursor:
         state = self._state()
         self._invalidate_occurrence()
         term = state.projection.result.source_term
-        segments = term._segments
+        segments = term.audit_snapshot().segment_store
         if state.segment_index == len(segments):
             if not state.terminal:
                 self._replace_state(
@@ -650,7 +695,7 @@ class ProjectionOccurrenceCursor:
             or state.balance + block.minimum < 0
         ):
             raise ValueError("retained Antihydra projection support was changed")
-        key = state.projection._fragment_key(
+        key = state.projection.fragment_key(
             block,
             state.completed,
             state.head,
@@ -803,7 +848,7 @@ class ProjectionOccurrenceCursor:
         if type(record) is not ProjectionOccurrence:
             raise ValueError("Antihydra projection occurrence was changed")
         source_index = state.segment_index - 1
-        segments = state.projection.result.source_term._segments
+        segments = state.projection.result.source_term.audit_snapshot().segment_store
         if (
             not 0 <= source_index < len(segments)
             or segments[source_index].cylinder is not record.block
@@ -826,7 +871,8 @@ class ProjectionOccurrenceCursor:
         result.require_source()
         if (
             not state.terminal
-            or state.segment_index != len(result.source_term._segments)
+            or state.segment_index
+            != len(result.source_term.audit_snapshot().segment_store)
             or (
                 state.completed,
                 state.h,

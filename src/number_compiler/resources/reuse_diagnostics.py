@@ -1,7 +1,7 @@
 """Read-only typed cache measurements; retrieval is distinct from application."""
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,8 +56,9 @@ def collect_complete_action_reuse(
     counters: Mapping[str, int], prefix: str
 ) -> CompleteActionReuse:
     """Project counters without looking up or validating any cached action."""
-    values = {}
-    for name in CompleteActionReuse.__dataclass_fields__:
+    values: dict[str, int | None] = {}
+    for field in fields(CompleteActionReuse):
+        name = field.name
         value = counters.get(prefix + name)
         if value is not None and (type(value) is not int or value < 0):
             raise ValueError(f"{prefix}{name} must be a nonnegative measured count")

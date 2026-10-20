@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
@@ -11,6 +12,7 @@ from number_compiler.hashlife.execution.causal_frames import (
     InterfaceFrame,
     OutputFrame,
     PointFrame,
+    ReverseInterfaceFrame,
 )
 from number_compiler.hashlife.execution.tile_causal_behavior import quiescent_boundary
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
@@ -55,6 +57,14 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 
 
+@dataclass(slots=True)
+class CausalLeaseWorkspace:
+    """Retryable tile and result lease journals for one causal execution."""
+
+    tiles: list[TileLease] = field(default_factory=list[TileLease])
+    results: list[ResultLease] = field(default_factory=list[ResultLease])
+
+
 class CausalTileAPI(Protocol):
     """Mixin; the concrete engine supplies the single iterative ``_run``."""
 
@@ -62,7 +72,8 @@ class CausalTileAPI(Protocol):
     tiles: TileArena
     adapter: PrimitiveTileKernelAdapter
     ledger: ResourceLedger
-    _application: int | None
+    application_identity: int | None
+    lease_workspace: CausalLeaseWorkspace
     _hold_workspace: bool
 
     @property
@@ -92,12 +103,12 @@ class CausalTileAPI(Protocol):
         """Return the admitted initial boundary state for one action side."""
         return self._initial(action, side, seed)
 
-    def _children(
+    def child_actions(
         self,
         action: FieldCellActionID,
     ) -> tuple[FieldCellActionID, FieldCellActionID] | None: ...
 
-    def _composite_key(
+    def composite_key(
         self,
         action: FieldCellActionID,
         tile: TileID,
@@ -105,9 +116,13 @@ class CausalTileAPI(Protocol):
         right: CausalState,
     ) -> PoweredResultKey | None: ...
 
-    def _wiring(self, action: FieldCellActionID) -> ResultWiring: ...
+    def result_wiring(self, action: FieldCellActionID) -> ResultWiring: ...
 
     def _release_workspace(self) -> None: ...
+
+    def release_workspace(self) -> None:
+        """Release any tile or result leases retained by this engine."""
+        self._release_workspace()
 
     def output(self, action: FieldCellActionID, tile: TileID) -> TileLease:
         result = self._run(
@@ -128,7 +143,7 @@ class CausalTileAPI(Protocol):
         *,
         application: int | None = None,
     ) -> int:
-        self._application = application
+        self.application_identity = application
         value = self._run(
             PointFrame(
                 (
@@ -161,7 +176,7 @@ class CausalTileAPI(Protocol):
             tile,
             contract,
         )
-        self._application = application
+        self.application_identity = application
         value = self._run(
             PointFrame(
                 (
@@ -212,7 +227,7 @@ class CausalTileAPI(Protocol):
         application: int | None = None,
     ) -> CausalInterfacePayload:
         if application is not None:
-            self._application = application
+            self.application_identity = application
         result = self._run(
             InterfaceFrame(
                 (action, tile, left, right),
@@ -221,6 +236,26 @@ class CausalTileAPI(Protocol):
         )
         if type(result) is not CausalInterfacePayload:
             raise AssertionError("causal interface returned another payload sort")
+        return result
+
+    def reverse_interface(
+        self,
+        action: FieldCellActionID,
+        tile: TileID,
+        left: CausalState,
+        right: CausalState,
+        *,
+        application: int | None = None,
+    ) -> CausalInterfacePayload:
+        """Return one interface payload bound to its exact reverse output."""
+        if application is not None:
+            self.application_identity = application
+        result = self._run(
+            ReverseInterfaceFrame((action, tile, left, right)),
+            tile_result=False,
+        )
+        if type(result) is not CausalInterfacePayload:
+            raise AssertionError("reverse interface returned another payload sort")
         return result
 
     def child_states(
@@ -262,10 +297,10 @@ class CausalTileAPI(Protocol):
                 tile,
                 contract,
             )
-        self._application = application
+        self.application_identity = application
         try:
             key: PoweredResultKey | None
-            if self._children(action) is None:
+            if self.child_actions(action) is None:
                 if type(left) is not int or type(right) is not int:
                     raise TypeError(
                         "primitive causal states require exact integer ports"
@@ -275,10 +310,10 @@ class CausalTileAPI(Protocol):
                     action,
                     tile,
                     PrimitiveCausalPorts(left, right),
-                    self._wiring(action),
+                    self.result_wiring(action),
                 )
             else:
-                key = self._composite_key(action, tile, left, right)
+                key = self.composite_key(action, tile, left, right)
                 completed = (
                     None
                     if key is None
@@ -299,15 +334,15 @@ class CausalTileAPI(Protocol):
                             )
                         return width
                 finally:
-                    self._application = None
+                    self.application_identity = None
             node = self.tiles.resolve(tile)
             if type(limit) is not int or not 0 <= limit <= node.width:
-                self._application = None
+                self.application_identity = None
                 raise ValueError(
                     "causal width limit requires an exact in-range integer"
                 )
             if not limit:
-                self._application = None
+                self.application_identity = None
                 return 0
             if (
                 node.first_active is None
@@ -322,7 +357,7 @@ class CausalTileAPI(Protocol):
                 )
                 is not None
             ):
-                self._application = None
+                self.application_identity = None
                 self.ledger.bump(_execution_keys.BEHAVIOR_WIDTH_OBSERVATIONS)
                 return 0
             self._hold_workspace = True
@@ -353,7 +388,7 @@ class CausalTileAPI(Protocol):
                 self._hold_workspace = False
                 self._release_workspace()
         finally:
-            self._application = None
+            self.application_identity = None
 
 
 __all__ = ["CausalTileAPI"]

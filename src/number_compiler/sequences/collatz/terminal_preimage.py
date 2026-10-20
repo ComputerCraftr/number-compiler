@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+)
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
@@ -91,7 +94,7 @@ def _validate_terminal_power2_macro(
         raise ValueError("terminal preimage macro has no producer authority")
     binding = getattr(macro, "_binding", None)
     if (
-        type(binding) is not tuple
+        not is_exact_object_tuple(binding)
         or len(binding) != 6
         or binding[0] != macro.source
         or binding[1] != macro.exponent

@@ -1,14 +1,25 @@
 """Focused checks for the bounded Compact B1 scope-graph audit."""
 
+from collections.abc import Callable
+from typing import Literal, cast
+
 import pytest
 
+import devtools.verification.comma_b1_scope_audit as scope_audit
 from devtools.verification.comma_b1_quotient import offset_representatives
 from devtools.verification.comma_b1_scope_audit import (
-    _terminal_label,
     audit_root,
     audit_scope_graph,
 )
 from number_compiler.sequences.comma.boundary_chart import BoundaryChart
+
+_terminal_label = cast(
+    Callable[
+        [BoundaryChart | None, int | None],
+        tuple[Literal["fork", "landmine", "live"], int | None] | None,
+    ],
+    object.__getattribute__(scope_audit, "_terminal_label"),
+)
 
 
 def test_root_zero_reproduces_compact_scope_graph_counts() -> None:

@@ -81,11 +81,11 @@ def validated_action_signature(
     if type(action) is not FieldCellActionID:
         raise TypeError("powered result requires a scoped field action")
     arena.validated_action_authority()
-    if arena._validated_signature_for is None:
-        arena._validate_action(action)
-        signature = arena._signature_for(action)
+    if arena.signature_validator is None:
+        arena.action_validator(action)
+        signature = arena.signature_provider(action)
     else:
-        admitted = arena._validated_signature_for(action)
+        admitted = arena.signature_validator(action)
         if type(admitted) is not PortSignatureID:
             raise TypeError(
                 "combined action validation returned another signature sort"
@@ -142,8 +142,8 @@ def validate_fused_edge(arena: CompletedResultArena, key: FusedInterfaceKey) -> 
             )
     validate_boundary_operands(arena.tiles, key.consumer_boundaries)
     for tile in key.consumer_boundaries.tile_ids():
-        if key.after is not None and arena._validate_input is not None:
-            arena._validate_input(key.after, tile)
+        if key.after is not None and arena.input_validator is not None:
+            arena.input_validator(key.after, tile)
         elif (
             arena.tiles.resolve(tile).alphabet
             != arena.tiles.resolve(key.input).alphabet
@@ -157,10 +157,10 @@ def validate_fused_request(arena: CompletedResultArena, key: FusedInterfaceKey) 
     if type(key) is not FusedInterfaceKey:
         raise TypeError("expected a fused-interface key")
     arena.validate_base(key.action, key.input, key.wiring)
-    arena._validate_boundaries(key.boundaries, key.input)
-    if arena._validate_fused_action is None:
+    arena.validate_boundaries(key.boundaries, key.input)
+    if arena.fused_action_validator is None:
         raise ValueError("action authority does not admit fused interfaces")
-    arena._validate_fused_action(key.action)
+    arena.fused_action_validator(key.action)
     validate_fused_edge(arena, key)
     producer_wiring = key.producer_wiring
     if type(producer_wiring) is not ResultWiring:
@@ -171,13 +171,13 @@ def validate_fused_request(arena: CompletedResultArena, key: FusedInterfaceKey) 
         raise ValueError("fused producer orientation lies outside its signature")
     if producer_wiring.phase >= producer_signature.phase_count:
         raise ValueError("fused producer phase lies outside its signature")
-    if arena._validate_fused_wiring is None:
+    if arena.fused_wiring_validator is None:
         if producer_wiring != key.wiring:
             raise ValueError(
                 "action authority does not admit heterogeneous fused wiring"
             )
     else:
-        arena._validate_fused_wiring(key.action, producer_wiring, key.wiring)
+        arena.fused_wiring_validator(key.action, producer_wiring, key.wiring)
     arena.validate_ports(producer_wiring.signature, key.ports)
 
 
@@ -201,16 +201,16 @@ def validate_fusion_contexts(
     if fusion.consumer != consumer:
         raise ValueError("fusion consumer disagrees with the execution request")
     if action_admission is None:
-        if arena._validate_fused_action is None:
+        if arena.fused_action_validator is None:
             raise ValueError("action authority does not admit fused interfaces")
-        arena._validate_fused_action(action)
-        if arena._validate_fused_wiring is None:
+        arena.fused_action_validator(action)
+        if arena.fused_wiring_validator is None:
             if fusion.producer.wiring != fusion.consumer.wiring:
                 raise ValueError(
                     "action authority does not admit heterogeneous fused wiring"
                 )
         else:
-            arena._validate_fused_wiring(
+            arena.fused_wiring_validator(
                 action, fusion.producer.wiring, fusion.consumer.wiring
             )
         children_hook = getattr(arena.action_authority, "action_children", None)
@@ -240,7 +240,7 @@ def validate_fusion_contexts(
         )(action)
         if type(children) is not tuple or len(children) != 2:
             raise ValueError("fusion requires two temporal children")
-    domain_validator = arena._validate_output if output else arena._validate_input
+    domain_validator = arena.output_validator if output else arena.input_validator
     visits = 0
     for side, context in enumerate((fusion.producer, fusion.consumer)):
         child = None
@@ -268,10 +268,10 @@ def validate_fusion_contexts(
                     domain_validator(child, tile)
                 else:
                     from number_compiler.hashlife.tiles.completed_result_validation import (
-                        _validate_admitted_input,
+                        validate_admitted_input,
                     )
 
-                    _validate_admitted_input(
+                    validate_admitted_input(
                         arena,
                         child,
                         tile,

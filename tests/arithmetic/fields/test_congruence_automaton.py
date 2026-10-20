@@ -13,8 +13,7 @@ def test_binary_digit_reinterpretation_is_bijective_but_changes_arithmetic_value
     for base in (3, 5, 10, 16):
         encoded = reinterpret_binary_digits(value, base)
         assert undo_binary_digit_reinterpretation(encoded, base) == value
-        if base != 2:
-            assert encoded != value
+        assert encoded != value
 
 
 def test_binary_reinterpretation_morphism_matches_reweighted_digit_integer() -> None:

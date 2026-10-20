@@ -18,7 +18,7 @@ from number_compiler.arithmetic.contracts.block_effect import (
 
 
 @dataclass(frozen=True, slots=True)
-class _DigitLeftState:
+class DigitLeftState:
     carry: int
     blank_seen: bool
     sink: bool = False
@@ -79,15 +79,15 @@ class DigitNormalizeBlockEffect:
         if side is BoundarySide.RIGHT:
             return (0,)
         return (
-            _DigitLeftState(0, False),
-            _DigitLeftState(1, False),
-            _DigitLeftState(0, True),
-            _DigitLeftState(0, True, True),
+            DigitLeftState(0, False),
+            DigitLeftState(1, False),
+            DigitLeftState(0, True),
+            DigitLeftState(0, True, True),
         )
 
     def initial(self, side: BoundarySide) -> BoundaryState:
         if side is BoundarySide.LEFT:
-            return _DigitLeftState(0, False, False)
+            return DigitLeftState(0, False, False)
         return 0
 
     def advance(
@@ -96,22 +96,22 @@ class DigitNormalizeBlockEffect:
         symbol = int(symbol)
         if side is BoundarySide.RIGHT:
             return 0
-        if not isinstance(state, _DigitLeftState):
+        if not isinstance(state, DigitLeftState):
             raise TypeError(type(state))
         if state.sink:
             out = state
         elif symbol == self.blank:
             # Consuming the first padding cell discharges the final carry.
-            out = _DigitLeftState(0, True, False)
+            out = DigitLeftState(0, True, False)
         elif state.blank_seen or not 0 <= symbol <= 2 * (self.base - 1):
-            out = _DigitLeftState(0, True, True)
+            out = DigitLeftState(0, True, True)
         else:
-            out = _DigitLeftState(int(symbol + state.carry >= self.base), False, False)
+            out = DigitLeftState(int(symbol + state.carry >= self.base), False, False)
         return out
 
     def emit(self, left: BoundaryState, symbol: int, right: BoundaryState) -> int:
         del right
-        if not isinstance(left, _DigitLeftState):
+        if not isinstance(left, DigitLeftState):
             raise TypeError(type(left))
         symbol = int(symbol)
         if left.sink or left.blank_seen:

@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
-from number_compiler.arithmetic.contracts.temporal_family import _issue_certificate
+from number_compiler.arithmetic.contracts.temporal_family import issue_certificate
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
 from number_compiler.hashlife.execution.bounded_application import (
     build_bounded_application,
@@ -34,7 +34,7 @@ def test_changed_certificate_claims_reject_before_dispatch_or_temporal_key(
     ledger = ResourceLedger()
     compiler = LazyCompiler(ledger)
     effect = compiler.compose(BaseBlockEffect(2), DigitNormalizeBlockEffect(2))
-    original = _issue_certificate(effect, "reverse-add", 1)
+    original = issue_certificate(effect, "reverse-add", 1)
     copied = replace_record(original, changed)
     before = ledger.snapshot()
     with pytest.raises(ValueError, match="certificate"):
@@ -65,8 +65,10 @@ def test_changed_certificate_claims_reject_before_dispatch_or_temporal_key(
 def test_unchanged_certificate_copy_keeps_its_immutable_issuance() -> None:
     compiler = LazyCompiler(ResourceLedger())
     effect = compiler.compose(BaseBlockEffect(2), DigitNormalizeBlockEffect(2))
-    certificate = _issue_certificate(effect, "reverse-add", 1)
+    certificate = issue_certificate(effect, "reverse-add", 1)
     copied = replace(certificate)
     copied.validate(effect)
     assert copied.temporal_key == certificate.temporal_key
-    assert copied._issuer is certificate._issuer
+    assert object.__getattribute__(copied, "_issuer") is object.__getattribute__(
+        certificate, "_issuer"
+    )

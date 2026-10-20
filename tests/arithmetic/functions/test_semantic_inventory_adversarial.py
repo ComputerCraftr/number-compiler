@@ -28,7 +28,7 @@ def _registry(
     ledger: ResourceLedger,
 ) -> SemanticPayloadRegistry:
     diamond = DiamondPayloadRegistry(ledger)
-    return SemanticPayloadRegistry(ledger, lambda value: False, diamond._handle)
+    return SemanticPayloadRegistry(ledger, lambda value: False, diamond.valid_handle)
 
 
 class _EqualToEverything:

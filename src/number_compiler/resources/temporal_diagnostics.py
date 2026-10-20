@@ -213,7 +213,7 @@ def _capacity_bypasses(counters: Mapping[str, int], family: str) -> int | None:
 
 
 def _macrocell_work(counters: Mapping[str, int]) -> tuple[TemporalMacrocellWork, ...]:
-    rows = []
+    rows: list[TemporalMacrocellWork] = []
     for family in ("reverse", "collatz", "antihydra", "mahler", "comma"):
         prefix = f"{family}_hashlife_"
         if not any(name.startswith(prefix) for name in counters):

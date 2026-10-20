@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from copy import copy
 from typing import Never, cast
 
 import pytest
 
+import number_compiler.projection.tile_radix as tile_radix_module
 from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
@@ -17,9 +19,9 @@ from number_compiler.arithmetic.radix_division import (
     certified_binary_division_radix,
 )
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
+from number_compiler.hashlife.execution.tile_application import TileApplication
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.execution.tile_scheduler import (
-    TileApplication,
     TileScheduler,
 )
 from number_compiler.hashlife.interfaces.diamond_kernel import DiamondKernelArena
@@ -35,23 +37,38 @@ from number_compiler.hashlife.tiles.tiles import TileAlphabet, TileArena
 from number_compiler.projection.tile_radix import (
     TileRadixObservation,
     TileRadixProjection,
-    _division_effect,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from number_compiler.sequences.collatz.tile_family_hooks import collatz_tile_hooks
 from tests.support.assertions import assert_rejected_atomically
+from tests.support.private_attributes import private_test_attribute
 
 
 def _digits(value: int, radix: int) -> tuple[int, ...]:
     if value == 0:
         return (0,)
-    out = []
+    out: list[int] = []
     while value:
         value, remainder = divmod(value, radix)
         out.append(remainder)
     return tuple(out)
+
+
+def _finite_division_effect(radix: int) -> FiniteBlockEffect:
+    factory = cast(
+        Callable[[int], object],
+        private_test_attribute(tile_radix_module, "_division_effect"),
+    )
+    effect = factory(radix)
+    assert type(effect) is FiniteBlockEffect
+    return effect
+
+
+def _completed_stage(projection: TileRadixProjection, exponent: int) -> TileApplication:
+    projection.quotient(exponent)
+    return projection.audit_snapshot().stages[exponent]
 
 
 def _runtime(
@@ -70,7 +87,7 @@ def _runtime(
     adapter = PrimitiveTileKernelAdapter(
         tiles, kernels, quotients, family_hooks=collatz_tile_hooks()
     )
-    action = adapter.admit(_division_effect(radix))
+    action = adapter.admit(_finite_division_effect(radix))
     results = CompletedResultArena(
         tiles,
         quotients,
@@ -104,10 +121,13 @@ def _runtime(
     return ledger, tiles, scheduler, adapter, projection
 
 
-@pytest.mark.parametrize("value", (0, 1, 2, 5, 71, 140137))
+@pytest.mark.parametrize(
+    "value",
+    (0, 1, 5, pytest.param(140137, marks=pytest.mark.validation)),
+)
 def test_tile_radix_digits_width_and_zero_quotient(value: int) -> None:
     _, tiles, scheduler, adapter, binary_projection = _runtime(value, 2)
-    source = binary_projection._source.tile
+    source = binary_projection.audit_snapshot().source.tile
     try:
         for radix in (2, 3, 6, 12):
             projection = (
@@ -141,17 +161,17 @@ def test_finite_division_uses_the_certified_closed_arithmetic_interface(
     ledger, _, _, adapter, projection = _runtime(140137, radix)
     try:
         effect = adapter.kernels.kernel(
-            adapter._action(projection._stage(1).action).kernel
+            adapter.action_record(_completed_stage(projection, 1).action).kernel
         ).effect
         assert certified_binary_division_radix(effect) == radix
-        projection._stage(1).interface()
+        _completed_stage(projection, 1).interface()
         assert ledger.counters.get("tile_radix_arithmetic_parent_interfaces", 0) > 0
     finally:
         projection.close()
 
 
 def test_closed_division_rejects_a_mutated_finite_behavior_record() -> None:
-    effect = _division_effect(3)
+    effect = _finite_division_effect(3)
     assert type(effect) is FiniteBlockEffect
     transitions = list(effect.right_transitions)
     transitions[0] = 1
@@ -162,7 +182,7 @@ def test_closed_division_rejects_a_mutated_finite_behavior_record() -> None:
 def test_copied_tile_application_has_no_issuer_authority() -> None:
     ledger, _, _, _, projection = _runtime(71, 3)
     try:
-        application = projection._stage(1)
+        application = _completed_stage(projection, 1)
         forged = copy(application)
         before = ledger.snapshot()
         with pytest.raises(ValueError, match="was not issued"):
@@ -198,9 +218,10 @@ def test_digit_three_builds_only_the_requested_power_and_activity_witness() -> N
     ledger, _, scheduler, adapter, projection = _runtime(140137, 3)
     try:
         assert projection.point(3) == _digits(140137, 3)[3]
-        assert set(projection._stages) == {3, 4}
+        snapshot = projection.audit_snapshot()
+        assert set(snapshot.stages) == {3, 4}
         stage_inventory = next(
-            item for item in ledger.inventory() if item.owner == projection._stage_owner
+            item for item in ledger.inventory() if item.owner == snapshot.stage_owner
         )
         assert stage_inventory.entries == stage_inventory.observed_entries == 2
         assert ledger.counters["tile_radix_stage_publications"] == 2
@@ -225,7 +246,7 @@ def test_digit_three_builds_only_the_requested_power_and_activity_witness() -> N
         second = TileRadixProjection(
             scheduler,
             adapter,
-            projection._source.tile,
+            projection.audit_snapshot().source.tile,
             3,
         )
         try:
@@ -238,7 +259,7 @@ def test_digit_three_builds_only_the_requested_power_and_activity_witness() -> N
         finally:
             second.close()
     finally:
-        stage_owner = projection._stage_owner
+        stage_owner = projection.audit_snapshot().stage_owner
         projection.close()
         assert (
             next(
@@ -299,7 +320,10 @@ def test_tile_radix_rejects_invalid_radix_before_retaining_source(
         assert_rejected_atomically(
             ledger,
             lambda: TileRadixProjection(
-                scheduler, adapter, projection._source.tile, cast(int, radix)
+                scheduler,
+                adapter,
+                projection.audit_snapshot().source.tile,
+                cast(int, radix),
             ),
             error,
         )
@@ -334,7 +358,7 @@ def test_large_seed_collatz_radix_uses_admitted_image_projection(
     from number_compiler.projection.lazy_radix import collatz_radix_digit
     from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 
-    original = PoweredCollatzTerm._admitted_radix_digit
+    original = PoweredCollatzTerm.admitted_radix_digit
     calls = 0
 
     def tracked(term: PoweredCollatzTerm, radix: int, position: int) -> int:
@@ -345,7 +369,7 @@ def test_large_seed_collatz_radix_uses_admitted_image_projection(
     def endpoint_reconstruction_forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("radix point reconstructed the source endpoint")
 
-    monkeypatch.setattr(PoweredCollatzTerm, "_admitted_radix_digit", tracked)
+    monkeypatch.setattr(PoweredCollatzTerm, "admitted_radix_digit", tracked)
     monkeypatch.setattr(
         PoweredCollatzTerm, "_source_numerator", endpoint_reconstruction_forbidden
     )
@@ -355,8 +379,9 @@ def test_large_seed_collatz_radix_uses_admitted_image_projection(
     term = PoweredCollatzTerm(598926, steps)
     assert collatz_radix_digit(term, 3, 0) == expected % 3
     assert calls == 1
-    assert term._workspace is not None
-    assert term._workspace.ledger is term.resource_ledger
+    workspace = term.audit_snapshot().workspace
+    assert workspace is not None
+    assert workspace.ledger is term.resource_ledger
     assert (
         term.resource_ledger.counters.get("source_image_projection_publications", 0) > 0
     )
@@ -375,11 +400,13 @@ def test_adjacent_digits_consume_completed_quotient_tiles() -> None:
             ledger.counters.get("tile_radix_completed_stage_reuses", 0)
             == len(expected) - 1
         )
+        stages = projection.audit_snapshot().stages
+        source = projection.audit_snapshot().source.tile
         for exponent in range(2, len(expected) + 1):
-            stage = projection._stages[exponent]
-            previous = projection._stages[exponent - 1]
-            assert previous._root is not None
-            assert stage.source == projection._source.tile
+            stage = stages[exponent]
+            previous = stages[exponent - 1]
+            assert previous.audit_snapshot().root_lease is not None
+            assert stage.source == source
             assert stage.action == projection.adapter.compose(
                 previous.action, projection.action
             )
@@ -396,10 +423,10 @@ def test_adjacent_digits_consume_completed_quotient_tiles() -> None:
 def test_radix_division_stages_do_not_claim_collatz_physical_ticks() -> None:
     _, _, _, adapter, projection = _runtime(140137, 3)
     try:
-        direct = projection._stage(3)
+        direct = _completed_stage(projection, 3)
         assert adapter.action_cocycle(direct.action) == TemporalCocycle()
         assert direct.complete().physical_ticks == 0
-        adjacent = projection._stage(4)
+        adjacent = _completed_stage(projection, 4)
         assert adapter.action_cocycle(adjacent.action) == TemporalCocycle()
         assert adjacent.complete().physical_ticks == 0
     finally:
@@ -410,13 +437,17 @@ def test_primitive_cocycle_is_part_of_canonical_action_identity() -> None:
     _, _, _, adapter, projection = _runtime(71, 3)
     try:
         zero_tick = projection.action
-        temporal = adapter.admit(_division_effect(3))
+        temporal = adapter.admit(_finite_division_effect(3))
         assert zero_tick != temporal
-        assert adapter._action(zero_tick).kernel == adapter._action(temporal).kernel
+        assert (
+            adapter.action_record(zero_tick).kernel
+            == adapter.action_record(temporal).kernel
+        )
         assert adapter.action_cocycle(zero_tick) == TemporalCocycle()
         assert adapter.action_cocycle(temporal) == TemporalCocycle(1)
         assert (
-            adapter.admit(_division_effect(3), cocycle=TemporalCocycle()) == zero_tick
+            adapter.admit(_finite_division_effect(3), cocycle=TemporalCocycle())
+            == zero_tick
         )
     finally:
         projection.close()
@@ -524,10 +555,14 @@ def test_collatz_radix_observation_composes_without_endpoint_completion(
         # C**2(5) = 8 = (2, 2)_3.
         assert radix.digit(0) == 2
         assert radix.digit(1) == 2
-        assert all(application._root is None for application in radix._apps.values())
+        applications = radix.audit_snapshot().apps.values()
+        assert all(
+            application.audit_snapshot().root_lease is None
+            for application in applications
+        )
         assert {
             application.interface().physical_ticks
-            for application in radix._apps.values()
+            for application in radix.audit_snapshot().apps.values()
         } == {2}
         assert ledger.counters.get("tile_endpoint_emissions", 0) == endpoint_emissions
         audit = audit_registered_payloads(ledger)

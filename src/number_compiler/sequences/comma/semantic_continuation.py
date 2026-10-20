@@ -28,10 +28,10 @@ from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.comma.arithmetic import (
     CycleTransfer,
     NearPortReturn,
-    _entry_headroom_from_validated_transfer,
     classify_near_port,
     cycle_residue_period,
     cycle_transfer,
+    entry_headroom_from_validated_transfer,
 )
 from number_compiler.sequences.comma.boundary_chart import (
     PERIOD,
@@ -45,7 +45,10 @@ from number_compiler.sequences.comma.domain import (
 )
 
 if TYPE_CHECKING:
-    from number_compiler.sequences.comma.semantic_power import PoweredDecadeApplication
+    from number_compiler.sequences.comma.semantic_power import (
+        PoweredDecadeApplication,
+        PoweredDecadeApplicationAuditSnapshot,
+    )
 
 ActionKind = Literal["goto", "live", "stop", "identity"]
 SourceState = BoundaryChart
@@ -258,6 +261,14 @@ class MooreRefinement:
 
 
 @dataclass(frozen=True, slots=True)
+class SemanticContinuationPoweredAuditSnapshot:
+    """Read-only lifecycle view of the reusable powered application owner."""
+
+    closed: bool
+    application: PoweredDecadeApplicationAuditSnapshot | None
+
+
+@dataclass(frozen=True, slots=True)
 class SemanticContinuation:
     """Read-only application view published by ``SemanticContinuationArena``."""
 
@@ -290,7 +301,7 @@ class SemanticContinuation:
         hash=False,
     )
 
-    def _validate_id(self, identifier: ContinuationID) -> ContinuationID:
+    def validate_id(self, identifier: ContinuationID) -> ContinuationID:
         identifier.validate(
             self.owner, "comma-continuation", size=len(self.actions_by_id)
         )
@@ -315,12 +326,12 @@ class SemanticContinuation:
 
     def evaluate_id(self, identifier: ContinuationID, phase: int) -> SemanticAction:
         """Apply a completed CID with an external cyclotomic phase."""
-        self._validate_id(identifier)
+        self.validate_id(identifier)
         if type(phase) is not int or not 0 <= phase < PERIOD:
             raise ValueError("comma continuation phase must be in 0..923")
         current = identifier
         while True:
-            actions = self.actions_by_id.get(self._validate_id(current))
+            actions = self.actions_by_id.get(self.validate_id(current))
             if actions is None or not actions:
                 raise ValueError("comma continuation action row is empty")
             action = actions[phase % len(actions)]
@@ -400,6 +411,17 @@ class SemanticContinuation:
             object.__setattr__(self, "_convenience_application", None)
             object.__setattr__(self, "_convenience_closed", True)
 
+    def powered_audit_snapshot(self) -> SemanticContinuationPoweredAuditSnapshot:
+        """Observe the convenience application's lifecycle without its stores."""
+        with self._convenience_lock:
+            application = self._convenience_application
+            return SemanticContinuationPoweredAuditSnapshot(
+                closed=self._convenience_closed,
+                application=(
+                    None if application is None else application.audit_snapshot()
+                ),
+            )
+
     def apply_decades(
         self,
         source: SourceState,
@@ -429,7 +451,7 @@ class SemanticContinuation:
     ) -> DecadeSummary:
         """Apply exactly ``count`` B1 blocks by memoized dyadic composition."""
         application = self._reusable_powered_application(source_for_live_root)
-        return application._apply_rebound(
+        return application.apply_rebound(
             source,
             phase,
             count,
@@ -516,7 +538,7 @@ def _selected_target(
             raise ArithmeticError("comma Entry action is missing its source transfer")
         # `_source_cycle` creates this transfer from the same source fields;
         # the checked public helper remains available for external transfers.
-        headroom = _entry_headroom_from_validated_transfer(
+        headroom = entry_headroom_from_validated_transfer(
             source.leading, source.coordinate, phase, transfer
         )
         entry_period = transfer.period
@@ -882,24 +904,12 @@ def build_semantic_continuation(
     return arena.publish(roots)
 
 
-def __getattr__(name: str) -> object:
-    """Lazily re-export the powered application without an import cycle."""
-    if name == "PoweredDecadeApplication":
-        from number_compiler.sequences.comma.semantic_power import (
-            PoweredDecadeApplication,
-        )
-
-        return PoweredDecadeApplication
-    raise AttributeError(name)
-
-
 __all__ = [
     "ActionKind",
     "ContinuationID",
     "DecadeSummary",
     "MooreRefinement",
     "OccurrenceWeight",
-    "PoweredDecadeApplication",
     "SemanticAction",
     "SemanticContinuation",
     "SemanticContinuationArena",

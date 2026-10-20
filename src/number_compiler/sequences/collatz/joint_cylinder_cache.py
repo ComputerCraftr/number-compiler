@@ -13,7 +13,10 @@ from typing import Final, Self, cast
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
-from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+    require_integer,
+)
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.process_cache import (
@@ -122,7 +125,7 @@ class JointCertifiedMacroCache:
             raise
 
     def __enter__(self) -> Self:
-        self._check_open()
+        self.check_open()
         return self
 
     def __exit__(self, *_args: object) -> None:
@@ -135,7 +138,7 @@ class JointCertifiedMacroCache:
         cleanup_all((self.actions.dispose, self.frontier.dispose))
         self._cleanup_complete = True
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         if self._closed:
             raise RuntimeError("joint macro cache is closed")
 
@@ -177,18 +180,19 @@ class JointCertifiedMacroCache:
         width: int, payload: object
     ) -> tuple[DyadicTerminalFieldAction, int, int]:
         if (
-            type(payload) is not tuple
+            not is_exact_object_tuple(payload)
             or len(payload) != 8
             or any(type(value) is not int for value in payload)
         ):
             raise ValueError("joint macro cache payload is malformed")
-        action = DyadicTerminalFieldAction._restore_issued(width, payload[:6])
-        odd_symbols, publisher_fiber = payload[6:]
+        integers = cast(tuple[int, ...], payload)
+        action = DyadicTerminalFieldAction.restore_cache_payload(width, integers[:6])
+        odd_symbols, publisher_fiber = integers[6:]
         if not 0 <= odd_symbols <= width or publisher_fiber < 0:
             raise ValueError("joint macro cache clock is malformed")
         return action, odd_symbols, publisher_fiber
 
-    def _validate(
+    def validate(
         self,
         action: DyadicTerminalFieldAction,
         odd_symbols: int,
@@ -234,7 +238,7 @@ class JointCertifiedMacroCache:
     def lookup(
         self, source: int, width: int
     ) -> tuple[DyadicTerminalFieldAction, int] | None:
-        self._check_open()
+        self.check_open()
         key = self._key(source, width)
         self._bump("lookups")
         self._bump("key_operand_bits", source.bit_length() + width.bit_length())
@@ -249,7 +253,7 @@ class JointCertifiedMacroCache:
                 self._bump("invalid_records")
                 raise ValueError("local joint macro record is malformed")
             action, odd_symbols, publisher_fiber = local
-            self._validate(action, odd_symbols, source, width, key[1])
+            self.validate(action, odd_symbols, source, width, key[1])
             fiber = self._fiber(source, width)
             self._classify_hit(fiber, publisher_fiber, "local_hits")
             return action, odd_symbols
@@ -279,7 +283,7 @@ class JointCertifiedMacroCache:
             return None
         try:
             action, odd_symbols, publisher_fiber = self._restore(width, payload)
-            self._validate(action, odd_symbols, source, width, key[1])
+            self.validate(action, odd_symbols, source, width, key[1])
             if publisher_fiber < 0:
                 raise ValueError("joint macro publisher fiber is invalid")
         except (TypeError, ValueError):
@@ -306,14 +310,14 @@ class JointCertifiedMacroCache:
         action: DyadicTerminalFieldAction,
         odd_symbols: int,
     ) -> bool:
-        self._check_open()
+        self.check_open()
         if type(action) is not DyadicTerminalFieldAction or not action.producer_issued:
             raise ValueError("joint cache publication requires a producer action")
         key = self._key(source, action.steps)
         odd_symbols = require_integer(
             odd_symbols, "joint macro odd count", 0, action.steps
         )
-        self._validate(action, odd_symbols, source, action.steps, key[1])
+        self.validate(action, odd_symbols, source, action.steps, key[1])
         existing = self.actions.get(key)
         if existing is not None:
             if (
@@ -365,7 +369,7 @@ class JointCertifiedMacroCache:
         anchor: int,
     ) -> None:
         """Store useful root/interior dyadic blocks emitted by the live run."""
-        self._check_open()
+        self.check_open()
         width = action.steps
         if width < 8 or width & (width - 1) or width > self.MAX_WIDTH:
             self.frontier.clear()
@@ -384,7 +388,7 @@ class JointCertifiedMacroCache:
             ):
                 raise ValueError("D8 joint producer differs from its source")
         else:
-            self._validate(
+            self.validate(
                 action, odd_symbols, source, width, source & ((1 << width) - 1)
             )
         if action.endpoint(source) != endpoint:
@@ -429,7 +433,7 @@ class JointCertifiedMacroCache:
             self._bump("parent_joins")
 
     def applied(self) -> None:
-        self._check_open()
+        self.check_open()
         self._bump("applied_hits")
 
 

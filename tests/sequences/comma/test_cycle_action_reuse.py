@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from math import gcd
+from typing import cast
 
 import pytest
 
@@ -12,10 +13,25 @@ from number_compiler.resources.temporal_diagnostics import (
     collect_temporal_diagnostics_snapshot,
 )
 from number_compiler.sequences.comma import cycle_actions
-from number_compiler.sequences.comma.action_arena import CommaActionArena, _Action
-from number_compiler.sequences.comma.image_adapter import CommaImagePayload
+from number_compiler.sequences.comma.action_arena import (
+    CommaActionArena,
+    CommaActionRecord,
+)
+from number_compiler.sequences.comma.image_adapter import (
+    CommaImagePayload,
+    CommaOccurrenceID,
+    CommaSource,
+)
 from number_compiler.sequences.comma.power import CommaTerm
 from tests.support.comma_oracles import literal_children
+
+
+def _issued_source(term: CommaTerm) -> CommaSource | CommaOccurrenceID:
+    return cast(
+        CommaSource | CommaOccurrenceID,
+        object.__getattribute__(term, "_source"),
+    )
+
 
 pytestmark = pytest.mark.usefixtures("isolated_process_cache")
 
@@ -102,9 +118,9 @@ def test_complete_cycle_id_is_canonical_but_partial_prefix_keeps_its_phase(
 def test_canonical_cycle_key_rejects_a_different_extensional_effect() -> None:
     arena = CommaTerm(1, shared_cache=False).arena
     arena.one_cycle(1, 4)
-    forged = _Action("cycle", 10, 1, 0, 1, 461, 462)
+    forged = CommaActionRecord("cycle", 10, 1, 0, 1, 461, 462)
     with pytest.raises(ValueError, match="aliases a different effect"):
-        arena._intern(("cycle", 1, 0, 1), forged)
+        arena.intern_record(("cycle", 1, 0, 1), forged)
 
 
 def test_public_arithmetic_warm_parent_avoids_cold_constructor(
@@ -222,13 +238,13 @@ def test_complete_cycle_rotation_shares_summary_but_retains_receiving_phase(
 def test_cycle_occurrence_reuse_rebinds_another_phase_in_the_same_coset() -> None:
     term = CommaTerm(22, shared_cache=False)
     assert term.materialize() == 1024
-    source = term._source
+    source = _issued_source(term)
     action = term.arena.cycles(1, 4, 1)
     first_image = term.scheduler.source_image(term.adapter, source, action)
 
     prefix = term.arena.phase_prefix(1, 4, 1)
     shifted_source = term.scheduler.source_image(term.adapter, source, prefix)
-    shifted_view = term.scheduler._source_image_core().view(shifted_source)
+    shifted_view = term.scheduler.source_image_core().view(shifted_source)
     shifted_payload = shifted_view.payload
     assert type(shifted_payload) is CommaImagePayload
     assert shifted_payload.value == 1065
@@ -241,7 +257,7 @@ def test_cycle_occurrence_reuse_rebinds_another_phase_in_the_same_coset() -> Non
     for prefix_steps in range(1, 10):
         prefix = term.arena.phase_prefix(1, 5, prefix_steps)
         prefix_image = term.scheduler.source_image(term.adapter, shifted_source, prefix)
-        prefix_payload = term.scheduler._source_image_core().view(prefix_image).payload
+        prefix_payload = term.scheduler.source_image_core().view(prefix_image).payload
         assert type(prefix_payload) is CommaImagePayload
         literal = shifted_payload.value
         for _ in range(prefix_steps):
@@ -255,7 +271,7 @@ def test_cycle_occurrence_reuse_rebinds_another_phase_in_the_same_coset() -> Non
     second_image = term.scheduler.source_image(
         term.adapter, shifted_source, shifted_action
     )
-    second = term.scheduler._source_image_core().view(second_image)
+    second = term.scheduler.source_image_core().view(second_image)
     second_payload = second.payload
     assert type(second_payload) is CommaImagePayload
     assert second_payload.value == 1525
@@ -275,7 +291,7 @@ def test_cycle_occurrence_reuse_rebinds_another_phase_in_the_same_coset() -> Non
     assert diagnostics.application.transported_hits == relative_before + 1
     # The cached result was consumed only after exact source/certificate and
     # strict headroom admission; no absolute index or endpoint was copied.
-    first = term.scheduler._source_image_core().view(first_image)
+    first = term.scheduler.source_image_core().view(first_image)
     first_payload = first.payload
     assert type(first_payload) is CommaImagePayload
     assert first_payload.value == 1484

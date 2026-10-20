@@ -130,7 +130,7 @@ def _eliminate(terms: tuple[ShiftTerm, ...], work: _Work) -> tuple[ShiftTerm, ..
     """L_{r,a} deletes the first term; all other shifts move down by one."""
     pivot = terms[0].shift
     work.retain(len(terms) - 1)
-    result = []
+    result: list[ShiftTerm] = []
     for term in terms[1:]:
         if work.counts.operator_terms >= work.limits.max_operator_terms:
             raise ValueError("sign operator-term budget exhausted")
@@ -254,7 +254,7 @@ def _restore(
         direction = run.sign
         if not direction or direction * low_sign > direction * high_sign:
             raise ArithmeticError("derivative sign disagrees with monotone ratio")
-        cuts = []
+        cuts: list[int] = []
         for threshold in (0, 1):
             low, high = left, right + 1
             while low < high:

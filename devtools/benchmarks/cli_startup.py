@@ -53,7 +53,7 @@ CASES = {
 }
 
 
-def _install(wheel: Path, directory: Path, environment: dict[str, str]) -> Path:
+def install_wheel(wheel: Path, directory: Path, environment: dict[str, str]) -> Path:
     subprocess.run(
         [sys.executable, "-m", "venv", str(directory)],
         check=True,
@@ -99,10 +99,10 @@ def compare(
     with tempfile.TemporaryDirectory(prefix="number-compiler-cli-timing-") as temporary:
         work = Path(temporary)
         interpreters = {
-            "baseline": _install(
+            "baseline": install_wheel(
                 baseline.resolve(strict=True), work / "baseline", environment
             ),
-            "candidate": _install(
+            "candidate": install_wheel(
                 candidate.resolve(strict=True), work / "candidate", environment
             ),
         }

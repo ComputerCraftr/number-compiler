@@ -28,6 +28,14 @@ class _Trajectory:
         return self.first_one - 2  # First 4, followed by 2, then 1.
 
 
+_UNIT_BLOCK_BOUNDARIES = (64, 256, 1024, 2048)
+_FULL_BLOCK_BOUNDARIES = (64, 128, 256, 512, 768, 1024, 1536, 2048)
+_UNIT_CYCLE_OFFSETS = (-1, 0, 1, 64, 65)
+_FULL_CYCLE_OFFSETS = (-1, 0, 1, 2, 3, 4, 63, 64, 65)
+_UNIT_CLI_STEPS = (0, 10000)
+_FULL_CLI_STEPS = (0, 1, 1000, 2000, 5000, 10000)
+
+
 @pytest.fixture(
     scope="module",
     params=((931386509544713451, 2283), (63728127, 949)),
@@ -57,12 +65,19 @@ def test_reference_has_a_long_distinct_prefix(trajectory: _Trajectory) -> None:
     assert trajectory.values[entry : entry + 6] == (4, 2, 1, 4, 2, 1)
 
 
+@pytest.mark.parametrize(
+    "boundaries",
+    (
+        _UNIT_BLOCK_BOUNDARIES,
+        pytest.param(_FULL_BLOCK_BOUNDARIES, marks=pytest.mark.validation),
+    ),
+)
 def test_noncycle_block_boundaries_and_clock_share_the_source_image(
     trajectory: _Trajectory,
     monkeypatch: pytest.MonkeyPatch,
+    boundaries: tuple[int, ...],
 ) -> None:
     monkeypatch.setattr(CausalTileEngine, "__init__", _forbidden)
-    boundaries = (64, 128, 256, 512, 768, 1024, 1536, 2048)
     steps_to_check = {0, 1, trajectory.cycle_entry - 1}
     steps_to_check.update(
         boundary + offset
@@ -97,8 +112,26 @@ def test_noncycle_block_boundaries_and_clock_share_the_source_image(
         )
 
 
-@pytest.mark.parametrize("offset", (-1, 0, 1, 2, 3, 4, 63, 64, 65))
+@pytest.mark.parametrize("offset", _UNIT_CYCLE_OFFSETS)
 def test_exact_cycle_entry_and_phase(
+    trajectory: _Trajectory,
+    offset: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_exact_cycle_entry_and_phase(trajectory, offset, monkeypatch)
+
+
+@pytest.mark.validation
+@pytest.mark.parametrize("offset", _FULL_CYCLE_OFFSETS)
+def test_exact_cycle_entry_and_full_phase_offsets(
+    trajectory: _Trajectory,
+    offset: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_exact_cycle_entry_and_phase(trajectory, offset, monkeypatch)
+
+
+def _assert_exact_cycle_entry_and_phase(
     trajectory: _Trajectory,
     offset: int,
     monkeypatch: pytest.MonkeyPatch,
@@ -115,8 +148,28 @@ def test_exact_cycle_entry_and_phase(
     )
 
 
-@pytest.mark.parametrize("steps", (0, 1, 1000, 2000, 5000, 10000))
+@pytest.mark.parametrize("steps", _UNIT_CLI_STEPS)
 def test_long_trajectory_cli_values(
+    trajectory: _Trajectory,
+    steps: int,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _assert_long_trajectory_cli_values(trajectory, steps, monkeypatch, capsys)
+
+
+@pytest.mark.validation
+@pytest.mark.parametrize("steps", _FULL_CLI_STEPS)
+def test_long_trajectory_cli_full_step_grid(
+    trajectory: _Trajectory,
+    steps: int,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _assert_long_trajectory_cli_values(trajectory, steps, monkeypatch, capsys)
+
+
+def _assert_long_trajectory_cli_values(
     trajectory: _Trajectory,
     steps: int,
     monkeypatch: pytest.MonkeyPatch,

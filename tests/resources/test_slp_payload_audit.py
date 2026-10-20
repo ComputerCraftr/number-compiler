@@ -42,8 +42,13 @@ def test_slp_audit_rejects_wrong_child_length() -> None:
 def test_slp_audit_rejects_interner_id_mismatch() -> None:
     ledger, arena = _arena()
     try:
-        term_table = cast(LedgerDict[int, int], arena._term_store._data)
-        term_table._data[2] = len(arena.nodes) + 100
+        term_memo = arena.audit_snapshot().term_memo
+        term_table = cast(
+            LedgerDict[int, int],
+            object.__getattribute__(term_memo, "_data"),
+        )
+        term_data = cast(dict[int, int], object.__getattribute__(term_table, "_data"))
+        term_data[2] = len(arena.nodes) + 100
         report = audit_registered_payloads(ledger, fresh=True)
         assert report.forbidden_future_payloads > 0
     finally:
@@ -65,7 +70,7 @@ def test_slp_audit_rejects_owner_rebinding() -> None:
 def test_slp_audit_rejects_partial_interner_disposal() -> None:
     ledger, arena = _arena()
     try:
-        arena._rep_store.dispose()
+        arena.audit_snapshot().repeat_memo.dispose()
         report = audit_registered_payloads(ledger, fresh=True)
         assert report.forbidden_future_payloads > 0
     finally:

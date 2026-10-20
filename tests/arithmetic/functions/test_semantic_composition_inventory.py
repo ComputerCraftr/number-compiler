@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
@@ -13,16 +13,39 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
+from number_compiler.hashlife.interfaces.semantic_bit_records import BitSubstitutionKey
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
 )
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 
 if TYPE_CHECKING:
-    from number_compiler.hashlife.interfaces.semantic_bits import (
-        FactoredFunctionID,
+    from number_compiler.hashlife.interfaces.semantic_bit_records import (
+        BitSubstitutionKey,
     )
+from number_compiler.hashlife.interfaces.semantic_bits import (
+    FactoredFunctionID,
+)
+
+
+def _compositions(
+    arena: BitFunctionArena,
+) -> OwnedMemo[BitSubstitutionKey, FactoredFunctionID]:
+    return cast(
+        OwnedMemo[BitSubstitutionKey, FactoredFunctionID],
+        object.__getattribute__(arena, "_compositions"),
+    )
+
+
+def _replace_composition(
+    arena: BitFunctionArena, key: BitSubstitutionKey, value: FactoredFunctionID
+) -> None:
+    storage = cast(
+        dict[BitSubstitutionKey, FactoredFunctionID],
+        object.__getattribute__(_compositions(arena), "_data"),
+    )
+    storage[key] = value
 
 
 def fixture() -> tuple[
@@ -93,7 +116,7 @@ def test_memo_injection_rejects_wrong_semantics_scope_and_replacement_declaratio
 ) -> None:
     arena, ports, _sort, function, x, y = fixture()
     arena.substitute(function, {ports[0].variable: y})
-    key, result = next(iter(arena._compositions.items()))
+    key, result = next(iter(_compositions(arena).items()))
     if mode == "wrong-value":
         result = arena.constant(arena.resolve(result).signature, 0)
     elif mode == "foreign-target":
@@ -108,9 +131,9 @@ def test_memo_injection_rejects_wrong_semantics_scope_and_replacement_declaratio
         key = replace(key, replacements=key.replacements * 2)
     else:
         key = replace(key, replacements=((PortVariable(10, 0, "not-a-port", 0), x),))
-    if key not in arena._compositions:
-        arena.ledger.reserve(arena._compositions.owner, entries=1)
-    arena._compositions._data[key] = result
+    if key not in _compositions(arena):
+        arena.ledger.reserve(_compositions(arena).owner, entries=1)
+    _replace_composition(arena, key, result)
     before = arena.ledger.snapshot()
     report = collect_ledger_metrics(arena.ledger)
     assert report.forbidden_future_payloads > 0
@@ -167,10 +190,10 @@ def test_late_source_bit_arguments_are_cofactored_in_external_variable_order(
     )[0]
     key = next(
         key
-        for key, value in arena._compositions.items()
+        for key, value in _compositions(arena).items()
         if key.function == function and value == target
     )
-    arena._compositions._data[key] = bad
+    _replace_composition(arena, key, bad)
     before = arena.ledger.snapshot()
     assert collect_ledger_metrics(arena.ledger).forbidden_future_payloads > 0
     assert arena.ledger.snapshot() == before

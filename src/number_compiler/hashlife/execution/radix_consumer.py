@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping, MutableSequence
+from collections.abc import Mapping, MutableMapping, MutableSequence
 from dataclasses import dataclass
+from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.fields.morphism_core import semigroup_power
@@ -19,6 +20,7 @@ from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
 from number_compiler.resources.metric_keys import shared as _shared_keys
+from number_compiler.resources.payload_containers import audit_mapping_items
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,10 +40,29 @@ class RadixDivisionAction:
             raise ValueError("radix action requires a positive exact exponent")
 
 
+@dataclass(frozen=True, slots=True)
+class RadixDivisionActionAuditSnapshot:
+    """Detached retained rows and exact stores for resource admission."""
+
+    ledger: ResourceLedger
+    owner: ArenaToken
+    kind: str
+    radix: int
+    node_owner: int
+    node_store_identity: int
+    nodes: tuple[RadixDivisionAction, ...]
+    key_owner: int
+    key_store_identity: int
+    key_rows: tuple[tuple[object, object], ...]
+    composition_owner: int
+    composition_store_identity: int
+    composition_rows: tuple[tuple[object, object], ...]
+
+
 class RadixDivisionActionArena:
     """Hash-cons division powers and their one-step finite semantic circuit."""
 
-    _KIND = "radix-division-action"
+    KIND = "radix-division-action"
 
     def __init__(self, ledger: ResourceLedger, radix: int) -> None:
         if type(ledger) is not ResourceLedger:
@@ -94,18 +115,42 @@ class RadixDivisionActionArena:
             payloads=self._children.items,
         )
         ledger.register_execution_root(self)
-        self.primitive = self._intern(1)
+        self.primitive = self.intern_record(1)
 
-    def _handle(self, local_id: int) -> RadixDivisionActionID:
-        return RadixDivisionActionID(self.owner, self._KIND, local_id)
+    def scoped_handle(self, local_id: int) -> RadixDivisionActionID:
+        return RadixDivisionActionID(self.owner, self.KIND, local_id)
+
+    def audit_snapshot(self) -> RadixDivisionActionAuditSnapshot:
+        """Capture retained rows without exposing mutable factory containers."""
+        return RadixDivisionActionAuditSnapshot(
+            ledger=self.ledger,
+            owner=self.owner,
+            kind=self.KIND,
+            radix=self.radix,
+            node_owner=self._node_owner,
+            node_store_identity=id(self._nodes),
+            nodes=tuple(self._nodes),
+            key_owner=self._key_owner,
+            key_store_identity=id(self._keys),
+            key_rows=audit_mapping_items(cast(Mapping[object, object], self._keys)),
+            composition_owner=self._compose_owner,
+            composition_store_identity=id(self._children),
+            composition_rows=audit_mapping_items(
+                cast(Mapping[object, object], self._children)
+            ),
+        )
+
+    def exponent_index(self, exponent: int) -> int | None:
+        """Return the canonical local ID for one exponent, if published."""
+        return self._keys.get(exponent)
 
     def resolve(self, action: RadixDivisionActionID) -> RadixDivisionAction:
         if type(action) is not RadixDivisionActionID:
             raise TypeError("expected a scoped radix division action")
-        action.validate(self.owner, self._KIND, size=len(self._nodes))
+        action.validate(self.owner, self.KIND, size=len(self._nodes))
         return self._nodes[action.local_id]
 
-    def _intern(
+    def intern_record(
         self,
         exponent: int,
         children: tuple[RadixDivisionActionID, RadixDivisionActionID] | None = None,
@@ -118,7 +163,7 @@ class RadixDivisionActionArena:
         found = self._keys.get(exponent)
         if found is not None:
             self.ledger.bump(_execution_keys.RADIX_TEMPORAL_ACTION_EARLY_HITS)
-            return self._handle(found)
+            return self.scoped_handle(found)
         reservations = [
             (self._node_owner, 1, 1),
             (self._key_owner, 1, 0),
@@ -133,7 +178,7 @@ class RadixDivisionActionArena:
             self._children[local_id] = children
         self.ledger.bump(_execution_keys.RADIX_TEMPORAL_ACTION_EVALUATIONS)
         self.ledger.bump(_shared_keys.FIELD_ACTION_PUBLICATIONS)
-        return self._handle(local_id)
+        return self.scoped_handle(local_id)
 
     def compose(
         self,
@@ -146,8 +191,8 @@ class RadixDivisionActionArena:
         found = self._keys.get(a.exponent + b.exponent)
         if found is not None:
             self.ledger.bump(_execution_keys.RADIX_TEMPORAL_ACTION_EARLY_HITS)
-            return self._handle(found)
-        return self._intern(a.exponent + b.exponent, (before, after))
+            return self.scoped_handle(found)
+        return self.intern_record(a.exponent + b.exponent, (before, after))
 
     def children(
         self,
@@ -165,12 +210,13 @@ class RadixDivisionActionArena:
         found = self._keys.get(exponent)
         if found is not None:
             self.ledger.bump(_execution_keys.RADIX_TEMPORAL_ACTION_EARLY_HITS)
-            return self._handle(found)
+            return self.scoped_handle(found)
         return semigroup_power(self.primitive, exponent, compose=self.compose)
 
 
 __all__ = [
     "RadixDivisionAction",
+    "RadixDivisionActionAuditSnapshot",
     "RadixDivisionActionArena",
     "RadixDivisionActionID",
 ]

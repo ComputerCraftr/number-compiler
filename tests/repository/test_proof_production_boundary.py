@@ -19,6 +19,7 @@ from tests.support.production_ast import ProductionASTGraph
 ROOT = repository_root()
 
 
+@pytest.mark.validation
 def test_all_production_modules_exclude_exact_oracle_dependencies(
     production_ast_graph: ProductionASTGraph,
 ) -> None:

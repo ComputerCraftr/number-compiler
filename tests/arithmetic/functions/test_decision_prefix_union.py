@@ -1,6 +1,7 @@
 """Sparse prefix construction preserves exact extensional decision identity."""
 
 from itertools import product
+from typing import cast
 
 import pytest
 
@@ -12,7 +13,7 @@ def test_prefix_union_matches_cartesian_builder_with_permuted_order() -> None:
     prefixes = ((0, 1), (0,), (2, 0, 1), (1, 0), (1, 1))
     root = arena.build_prefix_union(prefixes)
     assert root == arena.build_prefix_union(reversed(prefixes))
-    boxes = []
+    boxes: list[tuple[bool, tuple[int, ...]]] = []
     for prefix in prefixes:
         masks = [3, 7, 3]
         for level, value in enumerate(prefix):
@@ -41,7 +42,7 @@ def test_terminal_relabeling_reduces_exact_moore_projection_structurally() -> No
 
     def endpoint(value: object) -> object:
         assert isinstance(value, tuple)
-        return value[0]
+        return cast(tuple[object, ...], value)[0]
 
     projected, projected_root = arena.relabel_terminals(root, endpoint)
     reduced = projected.structural_metrics(projected_root)

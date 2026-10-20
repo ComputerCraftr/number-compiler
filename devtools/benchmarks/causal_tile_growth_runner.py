@@ -13,7 +13,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict, fields, replace
 from pathlib import Path
 from time import perf_counter
-from typing import Required, TypedDict, TypeGuard
+from typing import Required, TypedDict, TypeGuard, cast
 
 from devtools.benchmarks.causal_tile_growth_probe import (
     CausalGrowthRow,
@@ -174,7 +174,10 @@ def _failure(
 
 
 def _json_object(value: object) -> TypeGuard[dict[str, object]]:
-    return type(value) is dict and all(type(key) is str for key in value)
+    if type(value) is not dict:
+        return False
+    candidate = cast(dict[object, object], value)
+    return all(type(key) is str for key in candidate)
 
 
 def _required_text(value: Mapping[str, object], name: str) -> str:

@@ -14,7 +14,7 @@ def test_composed_actions_publish_certified_blank_tail_law() -> None:
     )
     expected = ((1, 1, 0), (2, 2, 1), (4, 4, 3), (8, 8, 7))
     for exponent, left, right in expected:
-        record = adapter._action(adapter.power(primitive, exponent))
+        record = adapter.action_record(adapter.power(primitive, exponent))
         assert (
             record.blank_left_tail,
             record.blank_right_tail,
@@ -40,7 +40,7 @@ def test_blank_output_tail_is_not_misused_as_a_right_transfer_reset(base: int) -
             BoundPorts(initial, wiring),
             1,
         )
-        assert adapter._action(primitive).blank_right_tail == 0
+        assert adapter.action_record(primitive).blank_right_tail == 0
         assert full != initial[1]
     finally:
         source.close()

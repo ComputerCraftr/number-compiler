@@ -148,7 +148,7 @@ class UnifiedSkewChain:
         ):
             object.__setattr__(chain, name, value)
         object.__setattr__(chain, "_issuer", _ISSUER)
-        chain._verify_issued()
+        chain.verify_issued()
         object.__setattr__(chain, "_binding", chain._snapshot())
         return chain
 
@@ -230,7 +230,7 @@ class UnifiedSkewChain:
         if self._binding != self._snapshot():
             raise ValueError("unified skew publication seal is invalid")
 
-    def _verify_issued(self) -> None:
+    def verify_issued(self) -> None:
         """Do the full source/action/clock proof once, before publication."""
         from number_compiler.sequences.collatz.skew_cylinder_repeat import (
             RepeatedWordMooreCylinder,

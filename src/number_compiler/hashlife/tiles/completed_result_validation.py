@@ -125,7 +125,7 @@ def validate_action_wiring(
         raise ValueError("powered result phase lies outside its signature")
 
 
-def _validate_admitted_input(
+def validate_admitted_input(
     self: CompletedResultArena,
     action: FieldCellActionID,
     source: TileID,
@@ -170,9 +170,9 @@ def validate_base(
         raise TypeError("powered result requires a scoped input tile")
     self.tiles.resolve(input_tile)
     if action_admission is not None:
-        _validate_admitted_input(self, action, input_tile, action_admission)
-    elif self._validate_input is not None:
-        self._validate_input(action, input_tile)
+        validate_admitted_input(self, action, input_tile, action_admission)
+    elif self.input_validator is not None:
+        self.input_validator(action, input_tile)
 
 
 def validate_key(
@@ -214,7 +214,7 @@ def validate_key(
         self.ledger.bump(_tiles_keys.COMPLETED_RESULT_PORT_VALIDATION_REQUESTS, 2)
         self.ledger.bump(_tiles_keys.COMPLETED_RESULT_PORT_VALIDATION_VISITS, visits)
     else:
-        self._validate_boundaries(key.boundaries, key.input)
+        self.validate_boundaries(key.boundaries, key.input)
         self.validate_ports(key.wiring.signature, key.ports)
 
 
@@ -286,7 +286,7 @@ def validate_interface_key(
     if type(key) is not PoweredInterfaceKey:
         raise TypeError("expected a powered-interface key")
     self.validate_base(key.action, key.input, key.wiring)
-    self._validate_boundaries(key.boundaries, key.input)
+    self.validate_boundaries(key.boundaries, key.input)
 
 
 def validate_interface(
@@ -310,7 +310,7 @@ def result_tile_ids(
             *result.fusion.producer.boundaries.tile_ids(),
             *result.fusion.consumer.boundaries.tile_ids(),
         )
-    return self._unique_tiles(
+    return self.unique_tiles(
         (result.output, *result.outgoing_boundaries.tile_ids(), *fused_tiles)
     )
 
@@ -349,17 +349,17 @@ def validate_result(
         ):
             raise ValueError("physical support disagrees with result weights")
     output = _result_output(self, key, result)
-    self._validate_boundaries(result.outgoing_boundaries, result.output)
+    self.validate_boundaries(result.outgoing_boundaries, result.output)
     if action_admission is not None:
-        _validate_admitted_input(
+        validate_admitted_input(
             self,
             key.action,
             result.output,
             action_admission,
             output=True,
         )
-    elif self._validate_output is not None:
-        self._validate_output(key.action, result.output)
+    elif self.output_validator is not None:
+        self.output_validator(key.action, result.output)
     if result.relative_extent > output.width:
         raise ValueError("completed relative extent exceeds its output tile")
     if result.relative_extent != output.extent:
@@ -431,16 +431,16 @@ def validate_leased(
             raise ValueError("leased fusion consumer disagrees with its request")
         self.validate_bound_port_allocations(key.fusion.producer, counted=False)
         self.validate_bound_port_allocations(key.fusion.consumer, counted=False)
-        if self._validate_fused_action is None:
+        if self.fused_action_validator is None:
             raise ValueError("action authority does not admit fused interfaces")
-        self._validate_fused_action(key.action)
-        if self._validate_fused_wiring is None:
+        self.fused_action_validator(key.action)
+        if self.fused_wiring_validator is None:
             if key.fusion.producer.wiring != key.fusion.consumer.wiring:
                 raise ValueError(
                     "action authority does not admit heterogeneous fused wiring"
                 )
         else:
-            self._validate_fused_wiring(
+            self.fused_wiring_validator(
                 key.action,
                 key.fusion.producer.wiring,
                 key.fusion.consumer.wiring,
@@ -456,8 +456,8 @@ def validate_leased(
     if tile.tile != result.output:
         raise ValueError("completed-result lease pins another output")
     output = _result_output(self, key, result)
-    if self._validate_output is not None:
-        self._validate_output(key.action, result.output)
+    if self.output_validator is not None:
+        self.output_validator(key.action, result.output)
     if result.relative_extent != output.extent:
         raise ValueError("completed-result lease has another extent")
     outgoing = self.interfaces.resolve(result.outgoing)
@@ -470,7 +470,7 @@ def validate_leased(
             result.observed_input_ports,
             counted=False,
         )
-    self._validate_boundaries(result.outgoing_boundaries, result.output)
+    self.validate_boundaries(result.outgoing_boundaries, result.output)
     expected_consumer = BoundPorts(
         result.outgoing_ports,
         key.wiring,
@@ -501,11 +501,7 @@ def validate_leased(
         raise ValueError("completed-result lease pins other boundary tiles")
     if operand_views != self.result_operand_views(result):
         raise ValueError("completed-result lease retains other boundary operands")
-    if any(
-        type(self._leased_boundary_operands.records.get(view)) is not int
-        or self._leased_boundary_operands.records.get(view, 0) < 1
-        for view in operand_views
-    ):
+    if any(not self.boundary_operand_is_leased(view) for view in operand_views):
         raise ValueError("completed-result boundary operand is not inventoried")
 
 
@@ -517,11 +513,11 @@ def tiles_for(
     if type(key) is BoundaryConcatKey:
         if type(result) is not BoundaryConcatResult:
             raise TypeError("boundary concat memo has another value sort")
-        return self._unique_tiles((key.first.tile, key.second.tile, result.view.tile))
+        return self.unique_tiles((key.first.tile, key.second.tile, result.view.tile))
     if type(key) is NormalizedRegionKey:
         if type(result) is not NormalizedRegionResult:
             raise TypeError("normalized region memo has another value sort")
-        return self._unique_tiles((key.input, result.view.tile))
+        return self.unique_tiles((key.input, result.view.tile))
     if type(key) is ReverseThresholdSummaryKey:
         if type(result) is not BlockSummary:
             raise TypeError("reverse threshold memo has another value sort")
@@ -570,10 +566,10 @@ def tiles_for(
         CausalInterfaceKey,
         BehaviorBindingKey,
     ):
-        return self._unique_tiles(key_tiles)
+        return self.unique_tiles(key_tiles)
     if type(result) is not CompletedResult:
         raise TypeError("completed result memo has another value sort")
-    return self._unique_tiles((*key_tiles, *self.result_tile_ids(result)))
+    return self.unique_tiles((*key_tiles, *self.result_tile_ids(result)))
 
 
 def _result_output(

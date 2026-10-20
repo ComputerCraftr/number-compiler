@@ -417,7 +417,7 @@ def test_distinct_tile_witnesses_reuse_canonical_child_interface_pair(
         assert first_left.tile != second_left.tile
         assert first_effect == second_effect
         expected = adapter.compile_interface(action, first_root.tile, wiring)
-        nodes = len(adapter.quotients._nodes)
+        nodes = len(adapter.quotients.audit_snapshot().nodes)
         hits = adapter.ledger.counters.get(
             "spatial_interface_composition_early_hits",
             0,
@@ -429,7 +429,7 @@ def test_distinct_tile_witnesses_reuse_canonical_child_interface_pair(
         monkeypatch.setattr(adapter, "parent_components", poisoned)
         actual = adapter.compile_interface(action, second_root.tile, wiring)
         assert actual == expected
-        assert len(adapter.quotients._nodes) == nodes
+        assert len(adapter.quotients.audit_snapshot().nodes) == nodes
         assert (
             adapter.ledger.counters["spatial_interface_composition_early_hits"] > hits
         )
@@ -497,7 +497,7 @@ def test_fused_leaf_accepts_noninitial_producer_ports() -> None:
             consumer,
             adapter.wiring(action),
         )
-        kernel = adapter.kernels.kernel(adapter._action(primitive).kernel)
+        kernel = adapter.kernels.kernel(adapter.action_record(primitive).kernel)
         first = kernel.emit(producer[0], 18, producer[1])
         assert result.symbol == kernel.emit(consumer[0], first, consumer[1])
     finally:
@@ -582,9 +582,9 @@ def test_failed_fused_parent_releases_charged_traversal_workspace(
                 adapter.initial_ports(primitive),
                 adapter.wiring(action),
             )
-        account = ledger.inventory()[adapter._fused_workspace.owner]
-        assert adapter._fused_workspace.active is False
-        assert adapter._fused_workspace.nodes == 0
+        account = ledger.inventory()[adapter.audit_snapshot().fused_workspace.owner]
+        assert adapter.audit_snapshot().fused_workspace.active is False
+        assert adapter.audit_snapshot().fused_workspace.nodes == 0
         assert (account.nodes, account.observed_nodes) == (0, 0)
     finally:
         source.close()

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
@@ -20,14 +20,34 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
 )
 from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
+    StructureDeclarationKey,
 )
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.semantic_structures import (
         StructureID,
     )
+
+
+def _declarations(
+    arena: StructureArena,
+) -> OwnedMemo[StructureDeclarationKey, StructureID]:
+    return cast(
+        "OwnedMemo[StructureDeclarationKey, StructureID]",
+        object.__getattribute__(arena, "_declarations"),
+    )
+
+
+def _replace_declaration(
+    arena: StructureArena, key: StructureDeclarationKey, value: StructureID
+) -> None:
+    storage = cast(
+        "dict[StructureDeclarationKey, StructureID]",
+        object.__getattribute__(_declarations(arena), "_data"),
+    )
+    storage[key] = value
 
 
 def fixture(
@@ -78,7 +98,7 @@ def test_declaration_audit_transports_binders_and_checks_padding_without_executi
     assert report.forbidden_future_payloads == 0
     assert report.resource_audit_complete == 1
     assert report.semantic_structure_declaration_cache_entries == len(
-        arena._declarations
+        arena.declaration_audit_snapshot().container
     )
     for suffix in ("requests", "identity_hits", "early_hits", "evaluations"):
         name = "semantic_structure_declaration_" + suffix
@@ -103,7 +123,7 @@ def test_injected_declaration_binding_requires_actual_owner_interface_and_values
 ) -> None:
     arena, x, y, value = fixture()
     result = arena.declare(value, (x, y))
-    key = next(iter(arena._declarations))
+    key = next(iter(_declarations(arena)))
     if mode == "wrong-value":
         result = arena.atom(arena.bits.constant(arena.resolve(result).signature, 0))
     elif mode.startswith("foreign"):
@@ -127,9 +147,9 @@ def test_injected_declaration_binding_requires_actual_owner_interface_and_values
     else:
         object.__setattr__(y, "cardinality", True)
     if mode not in ("mutable-inputs", "boolean-cardinality"):
-        if key not in arena._declarations:
-            arena.ledger.reserve(arena._declarations.owner, entries=1)
-        arena._declarations._data[key] = result
+        if key not in _declarations(arena):
+            arena.ledger.reserve(_declarations(arena).owner, entries=1)
+        _replace_declaration(arena, key, result)
     before = arena.ledger.snapshot()
     report = collect_ledger_metrics(arena.ledger)
     assert report.forbidden_future_payloads > 0
@@ -141,12 +161,12 @@ def test_declaration_audit_rejects_unmasked_extra_port_storage_codes() -> None:
     arena, x, y, _ = fixture()
     value = arena.atom(arena.bits.constant(FunctionSignature((x,), BOOL), 1))
     arena.declare(value, (x, y))
-    key = next(iter(arena._declarations))
+    key = next(iter(_declarations(arena)))
     circuit = BooleanCircuit(arena.functions, (x, y))
     one = circuit.one
     raw = circuit.normalized(FunctionSignature((x, y), BOOL), (one,), one)
     bad = arena.atom(arena.bits.publish_circuit(circuit, (raw,))[0])
-    arena._declarations._data[key] = bad
+    _replace_declaration(arena, key, bad)
     before = arena.ledger.snapshot()
     assert collect_ledger_metrics(arena.ledger).forbidden_future_payloads > 0
     assert arena.ledger.snapshot() == before
@@ -158,14 +178,14 @@ def test_declaration_audit_rejects_wrong_function_body_with_identical_complete_s
     arena, x, y, value = fixture()
     function = arena.curry(value, (x,))
     arena.declare(function, (y,))
-    key = next(iter(arena._declarations))
+    key = next(iter(_declarations(arena)))
     zero = arena.atom(arena.bits.constant(arena.resolve(value).signature, 0))
     wrong = arena.declare(arena.curry(zero, (x,)), (y,))
     assert (
         arena.resolve(wrong).signature
-        == arena.resolve(arena._declarations[key]).signature
+        == arena.resolve(_declarations(arena)[key]).signature
     )
-    arena._declarations._data[key] = wrong
+    _replace_declaration(arena, key, wrong)
     before = arena.ledger.snapshot()
     assert collect_ledger_metrics(arena.ledger).forbidden_future_payloads > 0
     assert arena.ledger.snapshot() == before

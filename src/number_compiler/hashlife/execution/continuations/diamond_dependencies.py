@@ -19,23 +19,25 @@ if TYPE_CHECKING:
 
 
 def execute(self: DiamondRuntime, root: Task) -> Result:
-    from number_compiler.hashlife.execution.continuations.diamond_runtime import _Frame
+    from number_compiler.hashlife.execution.continuations.diamond_runtime import (
+        DiamondEvaluationFrame,
+    )
 
     """One trampoline for all temporal, spatial, and observation requests."""
-    frames: list[_Frame] = []
-    task = self._canonical_task(root)
+    frames: list[DiamondEvaluationFrame] = []
+    task = self.canonical_task(root)
     result: Result = 0
     descending = True
     try:
         while True:
             self.ledger.bump(_execution_keys.SCHEDULER_TRANSITIONS)
             if descending:
-                cached = self._probe_admitted(task)
+                cached = self.probe_admitted_task(task)
                 if cached is not None:
                     result = cached
                 else:
-                    program = self._program(task)
-                    frames.append(_Frame(task, program))
+                    program = self.task_program(task)
+                    frames.append(DiamondEvaluationFrame(task, program))
                     peak = self.ledger.counters.get(
                         _execution_keys.SCHEDULER_WORKSPACE_PEAK, 0
                     )
@@ -49,9 +51,9 @@ def execute(self: DiamondRuntime, root: Task) -> Result:
                     except StopIteration as done:
                         frame = frames.pop()
                         result = cast(Result, done.value)
-                        self._publish(frame.task, result)
+                        self.publish_task(frame.task, result)
                     else:
-                        task = self._canonical_task(task)
+                        task = self.canonical_task(task)
                         continue
             if not frames:
                 return result
@@ -60,10 +62,10 @@ def execute(self: DiamondRuntime, root: Task) -> Result:
             except StopIteration as done:
                 frame = frames.pop()
                 result = cast(Result, done.value)
-                self._publish(frame.task, result)
+                self.publish_task(frame.task, result)
                 descending = False
             else:
-                task = self._canonical_task(task)
+                task = self.canonical_task(task)
                 descending = True
     finally:
         for frame in frames:

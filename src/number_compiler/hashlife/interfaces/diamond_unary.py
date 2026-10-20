@@ -22,16 +22,17 @@ from number_compiler.hashlife.interfaces.diamond_kernel import (
     PrimitiveKernel,
 )
 from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
-    _valid_argument,
     input_expression,
     observation_inputs,
     scan_primitive_support,
     substitution_bindings,
+    valid_argument,
 )
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import (
     hashlife_interfaces as _interfaces_keys,
 )
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +65,13 @@ class PrimitiveUnaryFunctions:
         self._memo: OwnedMemo[
             UnaryComposition | UnaryKernelApplication, TransferSummaryID
         ] = OwnedMemo(self.ledger, self.owner, evictable=True)
+
+    def audit_snapshot(
+        self,
+    ) -> OwnedMemoAuditSnapshot[
+        UnaryComposition | UnaryKernelApplication, TransferSummaryID
+    ]:
+        return self._memo.audit_snapshot()
 
     def compose(
         self,
@@ -195,7 +203,7 @@ class PrimitiveUnaryFunctions:
         nodes = tuple(expressions)
         widths = tuple(len(expression.bits) for expression in nodes)
         roots = tuple(
-            self.kernels.functions._resolve(bit)
+            self.kernels.functions.resolve_index(bit)
             for expression in nodes
             for bit in expression.bits
         )
@@ -222,7 +230,7 @@ class PrimitiveUnaryFunctions:
                 continue
             visits += 1
             variables = [
-                functions._nodes[index].variable for index in key if index >= 2
+                functions.decision_at(index).variable for index in key if index >= 2
             ]
             if not variables:
                 values: list[int] = []
@@ -251,14 +259,14 @@ class PrimitiveUnaryFunctions:
                     candidate for candidate in variables if candidate is not None
                 )
                 low = tuple(
-                    functions._nodes[index].low
-                    if index >= 2 and functions._nodes[index].variable == variable
+                    functions.decision_at(index).low
+                    if index >= 2 and functions.decision_at(index).variable == variable
                     else index
                     for index in key
                 )
                 high = tuple(
-                    functions._nodes[index].high
-                    if index >= 2 and functions._nodes[index].variable == variable
+                    functions.decision_at(index).high
+                    if index >= 2 and functions.decision_at(index).variable == variable
                     else index
                     for index in key
                 )
@@ -290,7 +298,7 @@ class PrimitiveUnaryFunctions:
                 values = tuple(
                     self.kernels.evaluate(argument, inputs)
                     for argument in (
-                        self.kernels._intern_expression(expression)
+                        self.kernels.intern_expression(expression)
                         for expression in nodes
                     )
                 )
@@ -309,18 +317,18 @@ class PrimitiveUnaryFunctions:
         for key in sorted(splits, key=lambda item: splits[item][0], reverse=True):
             variable, low, high = splits[key]
             results[key] = tuple(
-                functions._intern(variable, a, b)
+                functions.intern_record(variable, a, b)
                 for a, b in zip(results[low], results[high], strict=True)
             )
-        answer = self.kernels._intern_expression(
+        answer = self.kernels.intern_expression(
             FiniteExpression(
                 output_domain,
-                tuple(functions._handle(bit) for bit in results[roots]),
+                tuple(functions.scoped_handle(bit) for bit in results[roots]),
             )
         )
         source_argument = input_expression(self.kernels, domain, port)
         return self.kernels.choose(
-            _valid_argument(self.kernels, source_argument),
+            valid_argument(self.kernels, source_argument),
             answer,
             self.kernels.constant(output_domain, 0),
         )
@@ -368,12 +376,12 @@ class PrimitiveUnaryFunctions:
                     port.time, port.side, port.role, port.bit + position
                 )
                 result = tuple(
-                    functions._handle(
-                        functions._intern(variable, low.local_id, high.local_id)
+                    functions.scoped_handle(
+                        functions.intern_record(variable, low.local_id, high.local_id)
                     )
                     for low, high in zip(lower, result, strict=True)
                 )
             else:
-                return self.kernels._intern_expression(
+                return self.kernels.intern_expression(
                     FiniteExpression(output_domain, result)
                 )

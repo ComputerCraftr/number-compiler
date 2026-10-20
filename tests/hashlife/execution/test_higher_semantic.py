@@ -32,25 +32,26 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     LocalInterfaceID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.assertions import assert_no_forbidden_dataclass_fields
 
 
 @dataclass
-class _Schema:
+class SchemaFixture:
     ledger: ResourceLedger
 
     def __post_init__(self) -> None:
         self.owner = ArenaToken("higher-test-actions")
-        self.identity = self._handle(0)
-        self.primitive = self._handle(1)
-        self.second = self._handle(2)
-        self.t2 = self._handle(3)
-        self.t4 = self._handle(4)
+        self.identity = self.scoped_handle(0)
+        self.primitive = self.scoped_handle(1)
+        self.second = self.scoped_handle(2)
+        self.t2 = self.scoped_handle(3)
+        self.t4 = self.scoped_handle(4)
         self._children = {
             3: (self.primitive, self.second),
             4: (self.t2, self.t2),
         }
 
-    def _handle(self, local_id: int) -> FieldCellActionID:
+    def scoped_handle(self, local_id: int) -> FieldCellActionID:
         return FieldCellActionID(self.owner, "field-cell-action", local_id)
 
     def validate_action(self, action: FieldCellActionID) -> None:
@@ -108,13 +109,13 @@ class _Schema:
         return (left + symbol + 2 * right + action.local_id) % 3
 
 
-def _arena() -> tuple[_Schema, HigherSemanticArena]:
-    schema = _Schema(ResourceLedger())
+def arena_fixture() -> tuple[SchemaFixture, HigherSemanticArena]:
+    schema = SchemaFixture(ResourceLedger())
     return schema, HigherSemanticArena(schema)
 
 
 def test_substitution_preserves_variable_dependency_identity() -> None:
-    schema, arena = _arena()
+    schema, arena = arena_fixture()
     symbol = arena.variable(arena.symbol_sort(schema.primitive), "symbol")
     state = arena.variable(arena.state_sort(schema.primitive, 0), "state", (symbol,))
     expression = arena.primitive_step(schema.primitive, 0, state, symbol)
@@ -132,7 +133,7 @@ def test_substitution_preserves_variable_dependency_identity() -> None:
 
 
 def test_substitution_keeps_occurrences_inside_replacement_free() -> None:
-    schema, arena = _arena()
+    schema, arena = arena_fixture()
     state = arena.variable(arena.state_sort(schema.primitive, 0), "state")
     zero = arena.symbol(schema.primitive, 0)
     expression = arena.primitive_step(schema.primitive, 0, state, zero)
@@ -143,7 +144,7 @@ def test_substitution_keeps_occurrences_inside_replacement_free() -> None:
 
 
 def test_substitution_reaches_free_symbol_under_function_binder() -> None:
-    schema, arena = _arena()
+    schema, arena = arena_fixture()
     parameter = arena.variable(arena.state_sort(schema.primitive, 0), "parameter")
     symbol = arena.variable(arena.symbol_sort(schema.primitive), "symbol")
     body = arena.primitive_step(schema.primitive, 0, parameter, symbol)
@@ -157,7 +158,7 @@ def test_substitution_reaches_free_symbol_under_function_binder() -> None:
 
 
 def test_substitution_reaches_deferred_binding_replacement() -> None:
-    schema, arena = _arena()
+    schema, arena = arena_fixture()
     state = arena.literal(schema.primitive, 0, 1)
     symbol = arena.variable(arena.symbol_sort(schema.primitive), "symbol")
     replacement = arena.variable(arena.symbol_sort(schema.primitive), "replacement")
@@ -170,7 +171,7 @@ def test_substitution_reaches_deferred_binding_replacement() -> None:
 
 
 def test_higher_identity_and_noncommuting_primitive_order() -> None:
-    schema, arena = _arena()
+    schema, arena = arena_fixture()
     assert arena.evaluate(arena.literal(schema.identity, 0, 0)) == 0
     state = arena.literal(schema.primitive, 0, 1)
     zero = arena.symbol(schema.primitive, 0)
@@ -192,7 +193,7 @@ def test_higher_identity_and_noncommuting_primitive_order() -> None:
 
 
 def test_higher_functions_are_alpha_canonical_and_beta_reduce() -> None:
-    schema, arena = _arena()
+    schema, arena = arena_fixture()
     sort = arena.state_sort(schema.primitive, 0)
     x, y = arena.variable(sort, "x"), arena.variable(sort, "y")
     symbol = arena.symbol(schema.primitive, 0)
@@ -211,33 +212,33 @@ def test_higher_functions_are_alpha_canonical_and_beta_reduce() -> None:
 
 
 def test_deferred_free_binding_is_constant_size_and_exact() -> None:
-    schema, arena = _arena()
+    schema, arena = arena_fixture()
     sort = arena.state_sort(schema.primitive, 0)
     variable = arena.variable(sort, "deferred-port")
     symbol = arena.symbol(schema.primitive, 0)
     expression = arena.primitive_step(schema.primitive, 0, variable, symbol)
     replacement = arena.literal(schema.primitive, 0, 2)
-    before = len(arena._expressions)
+    before = len(arena.audit_snapshot().expressions)
     bound = arena.bind_free(expression, variable, replacement)
-    assert len(arena._expressions) == before + 1
+    assert len(arena.audit_snapshot().expressions) == before + 1
     assert arena.expression(bound).kind == "bind-free"
     assert arena.evaluate(bound) == arena.evaluate(expression, {variable: 2})
     assert arena.component_free_variables(bound) == ()
 
 
 def test_identity_free_binding_is_normalized_before_publication() -> None:
-    schema, arena = _arena()
+    schema, arena = arena_fixture()
     sort = arena.state_sort(schema.primitive, 0)
     variable = arena.variable(sort, "shared-macro-port")
     symbol = arena.symbol(schema.primitive, 0)
     expression = arena.primitive_step(schema.primitive, 0, variable, symbol)
-    before = len(arena._expressions)
+    before = len(arena.audit_snapshot().expressions)
     assert arena.bind_free(expression, variable, variable) == expression
-    assert len(arena._expressions) == before
+    assert len(arena.audit_snapshot().expressions) == before
 
 
 def test_bounded_scalar_identities_fold_before_publication() -> None:
-    _schema, arena = _arena()
+    _schema, arena = arena_fixture()
     small = FieldAtomSort("small-coordinate", 4)
     large = FieldAtomSort("large-coordinate", 16)
     variable = arena.variable(small, "coordinate")
@@ -249,7 +250,7 @@ def test_bounded_scalar_identities_fold_before_publication() -> None:
 
 
 def test_higher_select_evaluates_only_the_selected_branch() -> None:
-    schema, arena = _arena()
+    schema, arena = arena_fixture()
     sort = arena.state_sort(schema.primitive, 0)
     unreachable = arena.variable(sort, "poisoned-unbound-branch")
     selected = arena.literal(schema.primitive, 0, 2)
@@ -258,7 +259,7 @@ def test_higher_select_evaluates_only_the_selected_branch() -> None:
 
 
 def test_higher_runtime_values_are_canonical_and_stale_safe() -> None:
-    schema, arena = _arena()
+    schema, arena = arena_fixture()
     parameter = arena.variable(arena.state_sort(schema.primitive, 0), "runtime-x")
     expression = arena.function_expression(arena.function(parameter, parameter))
     first = arena.evaluate(expression)
@@ -270,18 +271,23 @@ def test_higher_runtime_values_are_canonical_and_stale_safe() -> None:
 
 
 def test_higher_expression_publication_is_atomic_at_zero_budget() -> None:
-    schema = _Schema(ResourceLedger(max_cache_entries=0))
+    schema = SchemaFixture(ResourceLedger(max_cache_entries=0))
     arena = HigherSemanticArena(schema)
     with pytest.raises(BlockContextBudgetExceeded):
         arena.literal(schema.primitive, 0, 0)
-    assert not arena._expressions
-    assert not arena._expression_keys
-    assert not arena._expression_free_ids
+    snapshot = arena.audit_snapshot()
+    assert not snapshot.expressions
+    assert not snapshot.expression_keys
+    assert not snapshot.expression_free_ids
 
 
 def test_higher_primitive_refuses_unbounded_state_enumeration() -> None:
-    schema, arena = _arena()
-    object.__setattr__(schema, "state_count", lambda _action, _side: 2**64)
+    schema, arena = arena_fixture()
+
+    def unbounded_state_count(_action: FieldCellActionID, _side: int) -> int:
+        return 2**64
+
+    object.__setattr__(schema, "state_count", unbounded_state_count)
     state = arena.variable(arena.state_sort(schema.primitive, 0), "large-state")
     symbol = arena.symbol(schema.primitive, 0)
     with pytest.raises(ValueError, match="bounded interface"):
@@ -289,7 +295,7 @@ def test_higher_primitive_refuses_unbounded_state_enumeration() -> None:
 
 
 def test_higher_t2_and_t4_state_sorts_remain_structured() -> None:
-    schema, arena = _arena()
+    schema, arena = arena_fixture()
     anchor = arena.literal(schema.primitive, 0, 1)
     opposite = arena.variable(arena.state_sort(schema.primitive, 1), "opposite")
     target = arena.literal(schema.second, 0, 2)
@@ -315,7 +321,7 @@ def test_higher_t2_and_t4_state_sorts_remain_structured() -> None:
 
 
 def test_higher_nested_continuation_preserves_outer_port_dependency() -> None:
-    schema, arena = _arena()
+    schema, arena = arena_fixture()
     outer = arena.variable(arena.state_sort(schema.primitive, 0), "outer")
     inner = arena.variable(arena.state_sort(schema.primitive, 1), "inner")
     source = arena.symbol(schema.primitive, 0)
@@ -343,7 +349,7 @@ def test_higher_nested_continuation_preserves_outer_port_dependency() -> None:
 
 
 def test_higher_handles_reject_foreign_integer_bool_and_wrong_sort() -> None:
-    schema, arena = _arena()
+    schema, arena = arena_fixture()
     value = arena.literal(schema.primitive, 0, 0)
     function = arena.function(
         arena.variable(arena.state_sort(schema.primitive, 0), "x"),
@@ -371,10 +377,12 @@ def test_higher_handles_reject_foreign_integer_bool_and_wrong_sort() -> None:
 def test_higher_records_contain_no_exact_future_payloads() -> None:
     _unused_schema_binding, arena = _issued_records()
     forbidden = {"digits", "tile", "span", "carry_rows", "future", "coefficient"}
-    for record in arena._expressions:
-        assert forbidden.isdisjoint(record.__dataclass_fields__)
-    for function in arena._functions:
-        assert forbidden.isdisjoint(function.__dataclass_fields__)
+    snapshot = arena.audit_snapshot()
+    assert_no_forbidden_dataclass_fields(
+        forbidden,
+        (record.__dataclass_fields__ for record in snapshot.expressions),
+        (function.__dataclass_fields__ for function in snapshot.functions),
+    )
 
 
 def test_higher_payload_audit_validates_issued_records_and_rejects_mutation() -> None:
@@ -386,11 +394,9 @@ def test_higher_payload_audit_validates_issued_records_and_rejects_mutation() ->
     assert audit_registered_payloads(arena.ledger).forbidden_future_payloads == 0
     assert audit_registered_payloads(arena.ledger).unknown_payloads == 0
 
-    original = arena._expressions[0]
-    storage_attribute = "_data"
-    expressions = cast(
-        dict[int, object], getattr(arena._expressions, storage_attribute)
-    )
+    store = arena.audit_snapshot().expression_store
+    original = arena.audit_snapshot().expressions[0]
+    expressions = cast(dict[int, object], object.__getattribute__(store, "_data"))
     expressions[0] = replace(original, value=1 << 65)
     damaged = audit_registered_payloads(arena.ledger)
     assert damaged.forbidden_future_payloads > 0
@@ -399,7 +405,7 @@ def test_higher_payload_audit_validates_issued_records_and_rejects_mutation() ->
 def test_higher_local_interface_publishes_typed_components_without_integer_encoding() -> (
     None
 ):
-    schema, semantics = _arena()
+    schema, semantics = arena_fixture()
     value = semantics.variable(semantics.state_sort(schema.t4, 0), "left-state")
     interface = HigherMacroInterface(
         SemanticIdentity("higher-test-v1", ("complete", "t4")),
@@ -441,7 +447,7 @@ def test_higher_local_interface_publishes_typed_components_without_integer_encod
 def test_semantic_work_counts_deep_frames_even_when_observation_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    schema, arena = _arena()
+    schema, arena = arena_fixture()
     source = arena.variable(arena.state_sort(schema.primitive, 0), "frame-source")
     expression = source
     symbol = arena.symbol(schema.primitive, 0)
@@ -465,8 +471,8 @@ def test_semantic_work_counts_deep_frames_even_when_observation_fails(
     assert schema.ledger.counters.get("higher_semantic_evaluations", 0) == 0
 
 
-def _issued_records() -> tuple[_Schema, HigherSemanticArena]:
-    schema, arena = _arena()
+def _issued_records() -> tuple[SchemaFixture, HigherSemanticArena]:
+    schema, arena = arena_fixture()
     state = arena.literal(schema.primitive, 0, 0)
     symbol = arena.symbol(schema.primitive, 0)
     arena.primitive_step(schema.primitive, 0, state, symbol)

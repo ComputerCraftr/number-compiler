@@ -8,12 +8,15 @@ context and never enters the cached semantic action.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Self, cast
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
-from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+    require_integer,
+)
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
@@ -23,9 +26,9 @@ from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
 from number_compiler.sequences.collatz.joint_cylinder_cache import (
     JointCertifiedMacroCache,
 )
+from number_compiler.sequences.collatz.temporal_dyadic import D8CylinderFrame
 
 _MAX_JOINT_COEFFICIENT_BITS = 1_000_000
-_D8_BATCH_VALIDATION_ISSUER = object()
 
 
 if TYPE_CHECKING:
@@ -137,18 +140,19 @@ class CollatzJointRunAction:
         )
 
     @classmethod
-    def _from_admitted_root_payload(cls, payload: object) -> CollatzJointRunAction:
+    def from_admitted_root_payload(cls, payload: object) -> CollatzJointRunAction:
         """Rehydrate only after a root-image owner has authenticated the tuple."""
         if (
-            type(payload) is not tuple
+            not is_exact_object_tuple(payload)
             or len(payload) != 13
             or any(type(value) is not int for value in payload)
         ):
             raise ValueError("admitted Collatz root joint payload is malformed")
+        record = cast(tuple[int, ...], payload)
         source, endpoint, normalized_endpoint, physical, normalized, odd, phase = (
-            payload[:7]
+            record[:7]
         )
-        fields = DyadicTerminalFieldAction._restore_issued(normalized, payload[7:])
+        fields = DyadicTerminalFieldAction.restore_cache_payload(normalized, record[7:])
         return cls(
             source,
             endpoint,
@@ -239,10 +243,15 @@ class JointTemporalSpine:
         self._levels: OwnedMemo[int, tuple[DyadicTerminalFieldAction, int]] = OwnedMemo(
             ledger,
             owner,
-            node_cost=lambda _rank, item: self._action_nodes(item[0]),
+            node_cost=lambda _rank, item: self.action_nodes(item[0]),
             evictable=False,
         )
         self._root_source = root_source
+
+    @property
+    def cursor_source(self) -> int:
+        """Return the checked source cursor for the builder collaborator."""
+        return self._cursor_source
 
     def append(
         self,
@@ -270,17 +279,13 @@ class JointTemporalSpine:
         self._append_frontier(action, odd_symbols)
         self._cursor_source = action.endpoint(source)
 
-    def _append_checked_d8_batch(
+    def append_checked_d8_batch(
         self,
         action: DyadicTerminalFieldAction,
         source: int,
         odd_symbols: int,
-        endpoint: int,
-        *,
-        issuer: object,
-    ) -> None:
-        if issuer is not _D8_BATCH_VALIDATION_ISSUER:
-            raise ValueError("D8 batch endpoint lacks its checked frame authority")
+        frame: object,
+    ) -> int:
         if (
             type(action) is not DyadicTerminalFieldAction
             or not action.producer_issued
@@ -288,12 +293,24 @@ class JointTemporalSpine:
             or not action.certifies(source)
             or type(odd_symbols) is not int
             or not 0 <= odd_symbols <= action.steps
-            or type(endpoint) is not int
-            or endpoint <= 0
+            or type(frame) is not D8CylinderFrame
+            or frame.source != source
+            or frame.consumed != action.steps
         ):
             raise ValueError("checked D8 batch differs from its joint spine")
+        denominator = 1 << action.steps
+        residue = source & (denominator - 1)
+        if (
+            action.gain != frame.gain
+            or action.offset != denominator * frame.origin - frame.gain * residue
+        ):
+            raise ValueError("checked D8 action differs from its authenticated frame")
+        endpoint = frame.materialize()
+        if endpoint <= 0:
+            raise ValueError("checked D8 endpoint is not positive")
         self._append_frontier(action, odd_symbols)
         self._cursor_source = endpoint
+        return endpoint
 
     def _append_frontier(
         self, action: DyadicTerminalFieldAction, odd_symbols: int
@@ -302,13 +319,13 @@ class JointTemporalSpine:
         while rank in self._levels:
             left, left_ones = self._levels[rank]
             del self._levels[rank]
-            action = self._compose(left, action)
+            action = self.compose_actions(left, action)
             odd_symbols += left_ones
             rank += 1
         self._levels[rank] = (action, odd_symbols)
 
     @staticmethod
-    def _action_nodes(action: DyadicTerminalFieldAction) -> int:
+    def action_nodes(action: DyadicTerminalFieldAction) -> int:
         return 8 + sum(
             (max(1, value.bit_length()) + 63) // 64
             for value in (
@@ -332,7 +349,11 @@ class JointTemporalSpine:
         try:
             for rank in sorted(self._levels, reverse=True):
                 action, ones = self._levels[rank]
-                fields = action if fields.steps == 0 else self._compose(fields, action)
+                fields = (
+                    action
+                    if fields.steps == 0
+                    else self.compose_actions(fields, action)
+                )
                 counted_ones += ones
             return fields, counted_ones
         finally:
@@ -364,7 +385,7 @@ class JointTemporalSpine:
             fields,
         )
 
-    def _compose(
+    def compose_actions(
         self,
         before: DyadicTerminalFieldAction,
         after: DyadicTerminalFieldAction,
@@ -465,7 +486,7 @@ class CollatzJointTemporalBuilder:
                 self._d8_batch_levels = OwnedMemo(
                     ledger,
                     batch_owner,
-                    node_cost=lambda _rank, item: JointTemporalSpine._action_nodes(
+                    node_cost=lambda _rank, item: JointTemporalSpine.action_nodes(
                         item[0]
                     ),
                     evictable=False,
@@ -555,7 +576,7 @@ class CollatzJointTemporalBuilder:
         levels = self._d8_batch_levels
         if not self.requested or self.spine is None or levels is None:
             raise RuntimeError("joint D8 batch was not requested")
-        if self._d8_batch_source is not None or source != self.spine._cursor_source:
+        if self._d8_batch_source is not None or source != self.spine.cursor_source:
             raise ValueError("joint D8 batch does not begin at the current source")
         # D8 frame publication bypasses the observed dyadic frontier.  A
         # prior composite return or cached macro may leave a shorter pending
@@ -595,7 +616,7 @@ class CollatzJointTemporalBuilder:
         rank = 0
         while rank in levels:
             before, before_odd = levels.pop(rank)
-            action = spine._compose(before, action)
+            action = spine.compose_actions(before, action)
             odd_symbols += before_odd
             rank += 1
         levels[rank] = (action, odd_symbols)
@@ -606,8 +627,6 @@ class CollatzJointTemporalBuilder:
         frame: object,
     ) -> int:
         """Authenticate a balanced frame batch and use one exact endpoint."""
-        from number_compiler.sequences.collatz.temporal_dyadic import D8CylinderFrame
-
         source = self._d8_batch_source
         levels = self._d8_batch_levels
         spine = self.spine
@@ -625,7 +644,7 @@ class CollatzJointTemporalBuilder:
         composed_odd = 0
         for rank in sorted(levels, reverse=True):
             part, part_odd = levels[rank]
-            action = part if action.steps == 0 else spine._compose(action, part)
+            action = part if action.steps == 0 else spine.compose_actions(action, part)
             composed_odd += part_odd
         steps = self._d8_batch_steps
         denominator = 1 << steps
@@ -642,7 +661,12 @@ class CollatzJointTemporalBuilder:
         # The exact endpoint comes from the frame only after the composed
         # producer action has been checked against its source and affine
         # coordinates. Callers cannot inject an unrelated cached integer.
-        endpoint = frame.materialize()
+        endpoint = spine.append_checked_d8_batch(
+            action,
+            source,
+            odd_count,
+            frame,
+        )
         self.ledger.bump(
             _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_FRAME_MATERIALIZATIONS
         )
@@ -652,13 +676,6 @@ class CollatzJointTemporalBuilder:
         self.ledger.bump(
             _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_RUN_OPERAND_BITS,
             source.bit_length() + frame.gain.bit_length() + endpoint.bit_length(),
-        )
-        spine._append_checked_d8_batch(
-            action,
-            source,
-            odd_count,
-            endpoint,
-            issuer=_D8_BATCH_VALIDATION_ISSUER,
         )
         self._d8_batch_source = None
         self._d8_batch_steps = 0

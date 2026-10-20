@@ -31,16 +31,19 @@ from number_compiler.sequences.collatz.raw_field import (
 
 
 def spatial() -> dict[str, object]:
-    leaves = tuple(Action.digit(d) for d in (0, 21, 22, 42, 43))
-    current = {Action.identity().response_key: Action.identity()}
-    counts = []
+    leaves: tuple[Action, ...] = tuple(Action.digit(d) for d in (0, 21, 22, 42, 43))
+    initial = Action.identity()
+    current: dict[tuple[WireResponse, WireResponse], Action] = {
+        initial.response_key: initial
+    }
+    counts: list[int] = []
     transitions = 0
     witnesses: dict[tuple[WireResponse, WireResponse], tuple[int, ...]] = {
         Action.identity().response_key: ()
     }
     for _ in range(1, 9):
-        following = {}
-        next_words = {}
+        following: dict[tuple[WireResponse, WireResponse], Action] = {}
+        next_words: dict[tuple[WireResponse, WireResponse], tuple[int, ...]] = {}
         for key, before in current.items():
             for digit, leaf in zip((0, 21, 22, 42, 43), leaves, strict=True):
                 after = before.then(leaf)
@@ -56,7 +59,8 @@ def spatial() -> dict[str, object]:
         for key, action in current.items():
             for incoming in range(3):
                 carry = incoming
-                lower, upper = [], []
+                lower: list[int] = []
+                upper: list[int] = []
                 for digit in witnesses[key]:
                     lower.append(int(carry >= 1))
                     upper.append(int(carry == 2))
@@ -82,7 +86,7 @@ def temporal(chunk: int) -> dict[str, object]:
     if not 0 <= chunk < 16:
         raise ValueError("sixteen-bit sweep uses sixteen fixed chunks")
     checked = empty = even_tails = 0
-    phases = set()
+    phases: set[int] = set()
     for n in range(4096 * chunk + 1, 4096 * (chunk + 1), 2):
         digits = digits_lsd(n, 64)
         boundary = summarize_collatz_sentinel_boundaries(digits, base=64)

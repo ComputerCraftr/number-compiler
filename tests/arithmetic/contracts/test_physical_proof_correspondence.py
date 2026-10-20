@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import re
 from pathlib import Path
+from typing import cast
 
 from devtools.paths import isabelle_root
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
@@ -31,9 +32,9 @@ def _proof_rows(name: str) -> list[list[int | bool]]:
     rows: list[list[int | bool]] = []
     for text in selector.groups():
         row = ast.literal_eval(text)
-        assert type(row) is list and len(row) == 6
-        assert all(type(value) in (int, bool) for value in row)
-        rows.append(row)
+        assert type(row) is list and len(cast(list[object], row)) == 6
+        assert all(type(value) in (int, bool) for value in cast(list[object], row))
+        rows.append(cast(list[int | bool], row))
     return rows
 
 

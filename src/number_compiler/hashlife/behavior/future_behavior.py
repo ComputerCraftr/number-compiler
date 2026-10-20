@@ -49,7 +49,7 @@ _ACTIVE_IDENTITY_VALIDATOR: ContextVar[SemanticIdentityValidator | None] = Conte
 
 
 @contextmanager
-def _identity_validation_scope() -> Generator[SemanticIdentityValidator, None, None]:
+def identity_validation_scope() -> Generator[SemanticIdentityValidator, None, None]:
     """Own one synchronous union-DAG audit without exposing a public bypass."""
     if _ACTIVE_IDENTITY_VALIDATOR.get() is not None:
         raise RuntimeError("identity validation scope cannot be nested")
@@ -271,7 +271,7 @@ def certify_quiescent_blank(
 ) -> QuiescentBlankCertificate:
     """Compute the greatest primitive blank and absorbing-sink fixed points."""
     if _ACTIVE_IDENTITY_VALIDATOR.get() is None:
-        with _identity_validation_scope():
+        with identity_validation_scope():
             return _certify_quiescent_blank(quotient, work=work)
     return _certify_quiescent_blank(quotient, work=work)
 

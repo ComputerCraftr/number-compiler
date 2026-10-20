@@ -251,7 +251,7 @@ def test_canonical_output_boxes_reconstruct_exact_t2_relation() -> None:
         left_index = rng.choice(t2.left.states)
         a = rng.choice(t2.alphabet)
         r = rng.choice(t2.right.states)
-        hits = []
+        hits: list[tuple[int, ...] | None] = []
         for word, (lm, _am, rm) in boxes_by_symbol[a]:
             if ((lm >> left_index) & 1) and ((rm >> r) & 1):
                 hits.append(word)

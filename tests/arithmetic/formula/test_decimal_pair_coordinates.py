@@ -181,12 +181,12 @@ def test_decimal_base_kernel_uses_factored_carry_and_output_laws(
     from number_compiler.arithmetic.contracts import block_kernel
     from number_compiler.arithmetic.contracts.block_effect import BoundarySide
     from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
-        _decimal_kernel_carry_action,
-        _decimal_kernel_pair_sum,
+        decimal_kernel_carry_action,
+        decimal_kernel_pair_sum,
     )
 
-    carry_law = _decimal_kernel_carry_action
-    output_law = _decimal_kernel_pair_sum
+    carry_law = decimal_kernel_carry_action
+    output_law = decimal_kernel_pair_sum
     calls = {"carry": 0, "output": 0}
 
     def carry(symbol: int) -> CarryFn:
@@ -202,8 +202,8 @@ def test_decimal_base_kernel_uses_factored_carry_and_output_laws(
         calls["output"] += 1
         return output_law(left_symbol, left_carry, right_symbol, right_carry)
 
-    monkeypatch.setattr(block_kernel, "_decimal_kernel_carry_action", carry)
-    monkeypatch.setattr(block_kernel, "_decimal_kernel_pair_sum", output)
+    monkeypatch.setattr(block_kernel, "decimal_kernel_carry_action", carry)
+    monkeypatch.setattr(block_kernel, "decimal_kernel_pair_sum", output)
     effect = BaseBlockEffect(10)
     left_states = effect.boundary_universe(BoundarySide.LEFT)
     right_states = effect.boundary_universe(BoundarySide.RIGHT)
@@ -234,8 +234,8 @@ def test_a_local_chamber_does_not_replace_the_full_spatial_cylinder() -> None:
     # but another internal domain changes the next reflected pair. This only
     # rules out a context-free 19->19 successor on one coordinate.
     seeds = (111, 191)
-    old_pairs = []
-    new_pairs = []
+    old_pairs: list[tuple[int, ...]] = []
+    new_pairs: list[tuple[int, ...]] = []
     for seed in seeds:
         digits = tuple(map(int, str(seed)))
         old_pairs.append(

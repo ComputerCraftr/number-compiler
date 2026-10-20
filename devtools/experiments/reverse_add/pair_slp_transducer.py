@@ -177,7 +177,7 @@ class PairSLPTransducer:
                     and 0 <= node.symbol <= 18
                     and node.left == node.right == node.child == -1
                     and node.count == 0
-                    and self._arena._term.get(node.symbol) == node_id
+                    and self._arena.find_terminal(node.symbol) == node_id
                 )
             elif node.kind == "CONCAT":
                 valid = (
@@ -185,7 +185,7 @@ class PairSLPTransducer:
                     and 0 <= node.right < node_id
                     and node.symbol == node.child == -1
                     and node.count == 0
-                    and self._arena._cat.get((node.left, node.right)) == node_id
+                    and self._arena.find_concat(node.left, node.right) == node_id
                     and node.length
                     == self._arena.nodes[node.left].length
                     + self._arena.nodes[node.right].length
@@ -196,7 +196,7 @@ class PairSLPTransducer:
                     0 <= node.child < node_id
                     and node.count >= 2
                     and node.symbol == node.left == node.right == -1
-                    and self._arena._rep.get((node.child, node.count)) == node_id
+                    and self._arena.find_repeat(node.child, node.count) == node_id
                     and node.length == self._arena.nodes[node.child].length * node.count
                 )
                 pending.append(node.child)
@@ -255,7 +255,7 @@ class PairSLPTransducer:
         self._check_open()
         if type(symbol) is not int or not 0 <= symbol <= 18:
             raise ValueError("pair/digit grammar symbol must lie in 0..18")
-        old = self._arena._term.get(symbol)
+        old = self._arena.find_terminal(symbol)
         if old is not None:
             return old
         predicted = SLPNode(len(self._arena.nodes), "TERM", 1, symbol=symbol)
@@ -270,7 +270,7 @@ class PairSLPTransducer:
             return right
         if right == self._arena.empty_id:
             return left
-        old = self._arena._cat.get((left, right))
+        old = self._arena.find_concat(left, right)
         if old is not None:
             return old
         predicted = SLPNode(
@@ -311,7 +311,7 @@ class PairSLPTransducer:
             count *= node.count
             child = node.child
             node = self._arena.nodes[child]
-        old = self._arena._rep.get((child, count))
+        old = self._arena.find_repeat(child, count)
         if old is not None:
             return old
         predicted = SLPNode(
@@ -329,8 +329,8 @@ class PairSLPTransducer:
         return self.concat_many(tuple(self.terminal(value) for value in values))
 
     def _compose(self, before: _Effect, after: _Effect) -> _Effect:
-        outputs = []
-        finals = []
+        outputs: list[int] = []
+        finals: list[int] = []
         for carry in (0, 1):
             middle = before.final(carry)
             outputs.append(self.concat(before.output(carry), after.output(middle)))
@@ -341,8 +341,8 @@ class PairSLPTransducer:
         if count and all(
             effect.final(effect.final(carry)) == effect.final(carry) for carry in (0, 1)
         ):
-            outputs = []
-            finals = []
+            outputs: list[int] = []
+            finals: list[int] = []
             for carry in (0, 1):
                 fixed = effect.final(carry)
                 first = effect.output(carry)
@@ -485,7 +485,7 @@ class PairSLPTransducer:
                         ),
                     )
                 else:
-                    dependencies_list = []
+                    dependencies_list: list[tuple[int, int, int]] = []
                     if item_start % child_length:
                         dependencies_list.append(
                             (current.child, item_start % child_length, child_length)
@@ -818,9 +818,7 @@ class PairSLPTransducer:
         count = len(self._arena.nodes)
         units = sum(_node_units(node) for node in self._arena.nodes)
         self._arena.nodes.clear()
-        self._arena._term.clear()
-        self._arena._cat.clear()
-        self._arena._rep.clear()
+        self._arena.clear()
         self.ledger.release(self._node_owner, entries=count, nodes=units)
         self.ledger.mark_disposed(self._node_owner)
         self.ledger.mark_disposed(self._memo_owner)

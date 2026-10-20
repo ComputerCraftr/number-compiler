@@ -23,6 +23,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
 )
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
 from number_compiler.sequences.reverse_add.active_output import (
     CARRY_ACTION,
@@ -59,7 +60,7 @@ class ReverseContextualResidualArena:
         self._successors: OwnedMemo[_EdgeKey, FactoredFunctionID] = OwnedMemo(
             self.ledger, owner, nodes_per_entry=8, evictable=True
         )
-        self._audit_successors = self._successors._data
+        self.successor_audit_container = self._successors.audit_container
         from number_compiler.sequences.reverse_add.contextual_residual_audit import (
             audit_reverse_contextual_residual,
         )
@@ -67,9 +68,19 @@ class ReverseContextualResidualArena:
         self.ledger.register_payload_audit_contract(
             self,
             "reverse_add",
-            (PayloadAuditStoreBinding(owner, "_audit_successors", "query_memo"),),
+            (
+                PayloadAuditStoreBinding(
+                    owner, "successor_audit_container", "query_memo"
+                ),
+            ),
             audit_reverse_contextual_residual,
         )
+
+    def successor_audit_snapshot(
+        self,
+    ) -> OwnedMemoAuditSnapshot[_EdgeKey, FactoredFunctionID]:
+        """Return typed accounting evidence for the retained successor store."""
+        return self._successors.audit_snapshot()
 
     def carry_prefix(
         self, domains: tuple[FactoredFunctionID, ...]
@@ -235,7 +246,8 @@ class ReverseContextualResidualArena:
         self.ledger.reserve(
             self._successors.owner, entries=len(pending), nodes=8 * len(pending)
         )
-        self._successors._data.update(pending)
+        for key, value in pending.items():
+            self._successors.publish_reserved(key, value)
         self.ledger.bump(_reverse_add_keys.REVERSE_RESIDUAL_TRANSPORTS_CERTIFIED)
         return len(mapping)
 
@@ -277,7 +289,7 @@ class ReverseContextualResidualArena:
         """
         current, successor = self._rows(before, after, source)
         classes: dict[tuple[FactoredFunctionID, FactoredFunctionID], int] = {}
-        labels = []
+        labels: list[int] = []
         for pair in zip(current, successor, strict=True):
             labels.append(classes.setdefault(pair, len(classes)))
         variable = self.bits.variable(

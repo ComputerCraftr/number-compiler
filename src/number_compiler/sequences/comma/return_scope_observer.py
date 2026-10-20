@@ -20,9 +20,9 @@ from number_compiler.sequences.comma.return_scopes import (
     ReturnMDDPartition,
     ReturnScope,
     WorkCharge,
-    _scopes_from_key,
-    _validate_scopes,
     scope_column_key,
+    scopes_from_key,
+    validate_scopes,
 )
 
 ReturnPartition: TypeAlias = tuple[tuple[int, tuple[ReturnScope, ...]], ...]
@@ -44,7 +44,7 @@ def _legacy_rebase_result(
     """Materialize historical scope observations at this explicit boundary."""
     forward_shift = (-template.return_shift) % 924
     template_columns = tuple(
-        (key, label, _scopes_from_key(key, charge))
+        (key, label, scopes_from_key(key, charge))
         for key, label in zip(template.columns, template.labels, strict=True)
     )
     scopes_by_label = {label: scopes for _, label, scopes in template_columns}
@@ -101,7 +101,7 @@ def canonical_partition_rebase(
         if type(label) is not int or label in labels:
             raise ValueError("comma return labels must be distinct exact integers")
         labels.add(label)
-        validated = _validate_scopes(scopes)
+        validated = validate_scopes(scopes)
         key = scope_column_key(validated, charge=charge)
         if _mdd_cardinality(key, charge, cardinality_memo) == 0:
             raise ValueError("comma output column must have nonempty admitted support")

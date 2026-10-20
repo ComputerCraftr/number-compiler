@@ -38,6 +38,7 @@ from number_compiler.hashlife.execution.field_executor import (
 from number_compiler.hashlife.execution.field_images import (
     FieldImageID,
     FieldImageRecord,
+    FieldImageSemanticKey,
     FieldImageSummary,
     ImageRequestKey,
     RecursiveFieldImageArena,
@@ -45,7 +46,7 @@ from number_compiler.hashlife.execution.field_images import (
 )
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.resources.stores import LedgerList
+from number_compiler.resources.stores import LedgerDict, LedgerList
 from tests.support.recursive_field_images import (
     FieldTransferPortID,
     RecursiveImageTestAdapter,
@@ -88,8 +89,15 @@ def test_application_observes_parent_before_realizing_images(
         recursive_field_image_setup()
     )
     incoming = ArenaHandle(adapter.port_owner, "test-image-port", 0)
-    adapter.observe_parent_point = lambda *args: ParentObservation(1)
-    adapter.observe_parent_width = lambda *args: ParentObservation(7, True)
+
+    def observe_point(*_args: object) -> ParentObservation:
+        return ParentObservation(1)
+
+    def observe_width(*_args: object) -> ParentObservation:
+        return ParentObservation(7, True)
+
+    adapter.observe_parent_point = observe_point
+    adapter.observe_parent_width = observe_width
     application = executor.application(
         action,
         root,
@@ -97,13 +105,11 @@ def test_application_observes_parent_before_realizing_images(
         signature,
         incoming,
     )
-    monkeypatch.setattr(
-        type(executor),
-        "image",
-        lambda *_args: (_ for _ in ()).throw(
-            AssertionError("parent observation realized a field image")
-        ),
-    )
+
+    def forbidden_image(*_args: object) -> Never:
+        raise AssertionError("parent observation realized a field image")
+
+    monkeypatch.setattr(type(executor), "image", forbidden_image)
     assert application.point(0) == 1
     assert application.active_width() == 7
     assert images.retained_images == 0
@@ -426,18 +432,23 @@ def test_unallocated_semantic_id_rejects_before_the_node_store(
     if kind == "image":
         ledger, _, _, _, _, image_arena, _, _ = recursive_field_image_setup()
         arena: object = image_arena
-        probe = _probe(image_arena.resolve, image_arena._handle(image_arena._next_id))
+        probe = _probe(
+            image_arena.resolve,
+            image_arena.scoped_handle(image_arena.audit_snapshot().next_id),
+        )
     elif kind == "provider":
         ledger, provider_arena, _, _ = provider_absorption_setup()
         arena = provider_arena
         probe = _probe(
-            provider_arena.resolve, provider_arena._handle(provider_arena._next_id)
+            provider_arena.resolve,
+            provider_arena.scoped_handle(provider_arena.audit_snapshot().next_id),
         )
     elif kind == "transfer":
         ledger, _, _, _, _, _, _, transfer_arena, _ = field_transfer_setup()
         arena = transfer_arena
         probe = _probe(
-            transfer_arena.resolve, transfer_arena._handle(transfer_arena._next_id)
+            transfer_arena.resolve,
+            transfer_arena.scoped_handle(transfer_arena.audit_snapshot().next_id),
         )
     else:
         ledger = ResourceLedger()
@@ -445,7 +456,7 @@ def test_unallocated_semantic_id_rejects_before_the_node_store(
         arena = tiles
         probe = _probe(
             tiles.resolve,
-            TileID(tiles.owner, "canonical-tile", tiles._next_tile),
+            TileID(tiles.owner, "canonical-tile", tiles.audit_snapshot().next_tile),
         )
 
     class Unreachable(dict[object, object]):
@@ -470,7 +481,7 @@ def test_field_image_semantic_key_excludes_source_action_and_proof_occurrences()
         recursive_field_image_setup()
     )
     executor.image(action, source, geometry, signature)
-    semantic = next(iter(images._keys))
+    semantic = next(iter(images.audit_snapshot().keys))
     names = set(semantic.__dataclass_fields__)
     assert names == {
         "level",
@@ -507,14 +518,18 @@ def test_payload_audit_reconstructs_image_interner_keys_instead_of_trusting_them
         audit_field_image_payloads,
     )
 
-    semantic, local_id = next(iter(images._keys.items()))
+    semantic, local_id = next(iter(images.audit_snapshot().keys.items()))
     corrupted = replace(
         semantic,
         output=replace(semantic.output, local_id=semantic.output.local_id + 1),
     )
-    images._keys[corrupted] = images._keys.pop(semantic)
+    keys = cast(
+        LedgerDict[FieldImageSemanticKey, int],
+        object.__getattribute__(images, "_keys"),
+    )
+    keys[corrupted] = keys.pop(semantic)
     audit = audit_field_image_payloads(ledger)
-    assert (images._key_owner, id(corrupted)) in audit.invalid
+    assert (images.audit_snapshot().key_owner, id(corrupted)) in audit.invalid
     assert local_id < images.retained_images
 
 
@@ -528,12 +543,17 @@ def test_payload_audit_rejects_forward_references_in_source_cell_dag() -> None:
     )
 
     root = images.sources.resolve(source)
-    assert isinstance(images.sources._nodes, LedgerList)
-    images.sources._nodes._data[source.local_id] = replace(root, left=source.local_id)
+    nodes = images.sources.audit_snapshot().nodes
+    assert isinstance(nodes, LedgerList)
+    raw_nodes = cast(
+        list[object],
+        object.__getattribute__(nodes, "_data"),
+    )
+    raw_nodes[source.local_id] = replace(root, left=source.local_id)
     audit = audit_field_image_payloads(ledger)
     assert (
-        images.sources._node_owner,
-        id(images.sources._nodes[source.local_id]),
+        images.sources.audit_snapshot().node_owner,
+        id(images.sources.audit_snapshot().nodes[source.local_id]),
     ) in audit.invalid
 
 
@@ -562,7 +582,7 @@ def test_foreign_image_action_rejects_before_adapter_and_binding_probe() -> None
         raise AssertionError("foreign image action reached family validation")
 
     assert type(executor.adapter) is RecursiveImageTestAdapter
-    images._action_validate = poison
+    object.__setattr__(images, "_action_validate", poison)
     foreign = FieldCellActionID(
         ArenaToken("foreign-image-actions"),
         action.kind,
@@ -737,7 +757,7 @@ def test_image_adapter_candidate_requires_the_exact_complete_record_type() -> No
 
     duck = DuckAdapter(action, adapter.interface, adapter.output)
     duck.signature_id = signature
-    images._action_validate = duck.validate_action
+    object.__setattr__(images, "_action_validate", duck.validate_action)
     executor = RecursiveFieldImageExecutor(images.sources, images, duck)
     leaf, _ = images.sources.children(source)
     leaf_geometry = images.geometries.child(geometry, 0)
@@ -791,7 +811,7 @@ def test_recursive_image_callbacks_cannot_hide_future_words_or_affine_b() -> Non
     def retained_validator(_reference: object) -> int:
         return whole_word ^ affine_b
 
-    images._output_validate = retained_validator
+    object.__setattr__(images, "_output_validate", retained_validator)
     assert audit_callback_future_payloads(ledger)
 
 
@@ -835,7 +855,7 @@ def test_foreign_request_ids_reject_before_adapter_or_warm_cache_lookup() -> Non
     def poison(_value: object) -> Never:
         raise AssertionError("foreign ID reached family validation")
 
-    transfers._action_validate = poison
+    object.__setattr__(transfers, "_action_validate", poison)
     foreign = FieldCellActionID(
         ArenaToken("foreign-actions"),
         action.kind,
@@ -874,7 +894,7 @@ def test_foreign_source_rejects_before_other_request_range_lookups() -> None:
     def poison(_value: object) -> Never:
         raise AssertionError("foreign source triggered action range validation")
 
-    transfers._action_validate = poison
+    object.__setattr__(transfers, "_action_validate", poison)
     assert_rejected_atomically(
         ledger,
         lambda: executor.transfer(action, foreign_source, geometry, signature),

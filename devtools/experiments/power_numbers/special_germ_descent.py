@@ -261,7 +261,7 @@ class GermOrientationAudit:
         )
 
 
-def _crt_pairwise(residues: tuple[int, ...], moduli: tuple[int, ...]) -> int:
+def crt_pairwise(residues: tuple[int, ...], moduli: tuple[int, ...]) -> int:
     if len(residues) != len(moduli) or not moduli:
         raise ValueError((residues, moduli))
     modulus = prod(moduli)
@@ -289,7 +289,7 @@ def _orientation_audit_from_parts(
             "orientation audit requires a complete squarefree factor control"
         )
     orientations = tuple(1 if depth >= spec.end_level else -1 for depth in depths)
-    b = _crt_pairwise(orientations, factors)
+    b = crt_pairwise(orientations, factors)
     defect = (b - 1) % modulus
     packet = SpecialFrobeniusDefectPacket(
         spec,

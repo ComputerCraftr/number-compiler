@@ -162,7 +162,7 @@ def audit_pair_quotients(depth: int = 10) -> tuple[PairQuotientAudit, ...]:
         for f in range(1, 10)
         for d in range(10)
     }
-    rows = []
+    rows: list[PairQuotientAudit] = []
     for layer in pair_block_levels(depth):
         outputs = tuple((b.leading, q19[b.leading, b.source], b.weight) for b in layer)
         minimized = minimize_finite_observer(

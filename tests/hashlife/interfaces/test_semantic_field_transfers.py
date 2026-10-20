@@ -375,7 +375,7 @@ def test_transfer_semantic_key_excludes_occurrence_and_observation_coordinates()
         fixture.geometry,
         fixture.signature,
     )
-    semantic = next(iter(fixture.transfers._keys))
+    semantic = next(iter(fixture.transfers.audit_snapshot().keys))
     assert set(semantic.__dataclass_fields__) == {
         "level",
         "interface",
@@ -408,7 +408,7 @@ def test_transfer_arena_rejects_owner_and_sort_aliases_atomically(
     ledger, sources, _, _, _, quotients, compiler = _setup((0, 1))
     geometries = FieldGeometryArena(ledger)
     action_owner = ArenaToken("semantic-test-actions")
-    arguments = {
+    arguments: dict[str, object] = {
         "action_owner": action_owner,
         "output_owner": compiler.outputs.owner,
         "action_kind": "field-cell-action",
@@ -466,15 +466,23 @@ def test_binding_eviction_preserves_canonical_transfer_id_and_accounting() -> No
 def test_global_query_eviction_cannot_stale_semantic_transfer_ids() -> None:
     fixture, first, record = _published_transfer_fixture()
     before_inventory = {row.owner: row for row in fixture.ledger.inventory()}
-    node_entries = before_inventory[fixture.transfers._node_owner].entries
-    key_entries = before_inventory[fixture.transfers._key_owner].entries
+    node_entries = before_inventory[
+        fixture.transfers.audit_snapshot().node_owner
+    ].entries
+    key_entries = before_inventory[fixture.transfers.audit_snapshot().key_owner].entries
     fixture.ledger.evict_query_memos()
     assert fixture.transfers.resolve(first) == record
     assert fixture.transfers.retained_transfers == 1
     assert fixture.transfers.retained_bindings == 0
     after_inventory = {row.owner: row for row in fixture.ledger.inventory()}
-    assert after_inventory[fixture.transfers._node_owner].entries == node_entries
-    assert after_inventory[fixture.transfers._key_owner].entries == key_entries
+    assert (
+        after_inventory[fixture.transfers.audit_snapshot().node_owner].entries
+        == node_entries
+    )
+    assert (
+        after_inventory[fixture.transfers.audit_snapshot().key_owner].entries
+        == key_entries
+    )
     assert (
         fixture.executor.transfer(
             fixture.action, fixture.root, fixture.geometry, fixture.signature
@@ -492,9 +500,9 @@ def test_semantic_alias_with_inconsistent_occurrence_bound_rejects_atomically() 
     fixture.transfers.clear_bindings()
     ledger_before = fixture.ledger.snapshot()
     before = (
-        len(fixture.transfers._nodes),
-        len(fixture.transfers._keys),
-        len(fixture.transfers._bindings),
+        len(fixture.transfers.audit_snapshot().nodes),
+        len(fixture.transfers.audit_snapshot().keys),
+        len(fixture.transfers.audit_snapshot().bindings),
         fixture.ledger.counters.get("field_transfer_binding_publications", 0),
     )
     with pytest.raises(ValueError, match="inconsistent admission bounds"):
@@ -505,9 +513,9 @@ def test_semantic_alias_with_inconsistent_occurrence_bound_rejects_atomically() 
             replace(record, extent_bound=record.extent_bound + 1),
         )
     assert (
-        len(fixture.transfers._nodes),
-        len(fixture.transfers._keys),
-        len(fixture.transfers._bindings),
+        len(fixture.transfers.audit_snapshot().nodes),
+        len(fixture.transfers.audit_snapshot().keys),
+        len(fixture.transfers.audit_snapshot().bindings),
         fixture.ledger.counters.get("field_transfer_binding_publications", 0),
     ) == before
     assert fixture.ledger.snapshot() == ledger_before

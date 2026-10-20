@@ -32,7 +32,7 @@ def _require_published_view(
     workspace: DyadicReturnImageWorkspace, view: SourceImageView
 ) -> None:
     """Bind all view fields to the scheduler's sealed image publication."""
-    published = workspace.scheduler._source_image_core().view(view.identity)
+    published = workspace.scheduler.source_image_core().view(view.identity)
     # Dataclass equality would accept bool/float aliases for integer fields.
     # The sealed record owns these immutable objects; a copied view has no
     # authority to replace them, even when its values compare equal.
@@ -120,7 +120,7 @@ def transport_reuse(
         raise ValueError("a singleton cycle cannot represent a high-fiber cylinder")
     # Share complete immutable support; issue a new source-bound image. No
     # endpoint, branch word, spatial coefficient, or midpoint is rediscovered.
-    payload = workspace._append_image(
+    payload = workspace.append_image(
         DyadicReturnImageRecord(source.binding.source, action, summary)
     )
     workspace.bump_metric("complete_effect_reuses")

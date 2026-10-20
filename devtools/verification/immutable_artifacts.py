@@ -14,6 +14,7 @@ from sys import getsizeof
 from threading import RLock
 from typing import Protocol, TypeVar, cast
 
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.contracts.iterative_queries import (
     enter_tuple_node,
     finish_postorder,
@@ -93,11 +94,12 @@ def _immutable(value: object) -> bool:
             continue
         if isinstance(item, (ArenaHandle, ArenaToken)):
             return False
-        if type(item) is tuple:
+        if is_exact_object_tuple(item):
             enter_tuple_node(pending, active, item)
             continue
         active.add(identity)
         pending.append((item, True))
+        parent_types = type(item).__mro__
         if (
             is_dataclass(item)
             and cast(
@@ -107,7 +109,7 @@ def _immutable(value: object) -> bool:
         ):
             declared_fields = {field.name for field in fields(item)}
             storage_slots: set[str] = set()
-            for cls in cast(tuple[type, ...], type(item).__mro__):
+            for cls in parent_types:
                 raw_slots = cls.__dict__.get("__slots__", ())
                 if type(raw_slots) is str:
                     slots: tuple[object, ...] = (raw_slots,)
@@ -140,7 +142,7 @@ def _retained_bytes(value: object) -> int:
             continue
         seen.add(identity)
         total += getsizeof(item)
-        if type(item) is tuple:
+        if is_exact_object_tuple(item):
             pending.extend(item)
         elif is_dataclass(item):
             pending.extend(getattr(item, field.name) for field in fields(item))

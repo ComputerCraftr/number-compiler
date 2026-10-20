@@ -68,19 +68,19 @@ if TYPE_CHECKING:
     from devtools.verification.lazy_collatz import (
         CollatzLazyView,
         LazyCollatzResult,
-        _Mul3Port,
-        _Program,
-        _ResultKey,
-        _ShiftPort,
-        _SourceRangeKey,
-        _SummaryKey,
+        Mul3Port,
+        Program,
+        ResultKey,
+        ShiftPort,
+        SourceRangeKey,
+        SummaryKey,
     )
     from devtools.verification.lazy_collatz_range import (
         CollatzRangeEffect,
-        _CompositionKey,
-        _RangeKey,
-        _Request,
-        _SourceTileKey,
+        CompositionKey,
+        RangeKey,
+        Request,
+        SourceTileKey,
     )
     from devtools.verification.lazy_reverse import (
         OffsetProgram,
@@ -88,19 +88,19 @@ if TYPE_CHECKING:
         ReverseRangeKey,
     )
     from number_compiler.arithmetic.contracts.block_kernel import (
-        _BaseLeftState,
-        _BaseRightState,
+        BaseLeftState,
+        BaseRightState,
     )
     from number_compiler.arithmetic.functions.finite_port_action import (
         ChoiceKey,
         DecisionKey,
+        FinitePortDecisionRecord,
         FoldedPortCut,
         PortComponent,
         PortCompositionKey,
         PortVariable,
-        _Decision,
     )
-    from number_compiler.projection.digit_terminal import _DigitLeftState
+    from number_compiler.projection.digit_terminal import DigitLeftState
 
 
 def templates() -> tuple[
@@ -119,29 +119,29 @@ def templates() -> tuple[
     CarryIntervalCompositionKey,
     CompilerCompositionKey,
     PointResponse,
-    _Program,
-    _ResultKey,
-    _SummaryKey,
-    _SourceRangeKey,
-    _Mul3Port,
-    _ShiftPort,
+    Program,
+    ResultKey,
+    SummaryKey,
+    SourceRangeKey,
+    Mul3Port,
+    ShiftPort,
     CollatzLazyView,
     LazyCollatzResult,
     CarryRangeSummary,
     CarryRangeTransfer,
     CollatzRangeEffect,
-    _RangeKey,
-    _CompositionKey,
-    _Request,
+    RangeKey,
+    CompositionKey,
+    Request,
     TransferSummaryID,
-    _SourceTileKey,
+    SourceTileKey,
     FieldTransferRequestKey,
     FieldTransferRecord,
-    _BaseLeftState,
-    _BaseRightState,
-    _DigitLeftState,
+    BaseLeftState,
+    BaseRightState,
+    DigitLeftState,
     PortVariable,
-    _Decision,
+    FinitePortDecisionRecord,
     PortComponent,
     FoldedPortCut,
     DecisionKey,
@@ -187,12 +187,12 @@ def templates() -> tuple[
             ActionProgramID(token, "action-program", 0),
         ),
         PointResponse(ActionProgramID(token, "action-program", 0), 0, 0),
-        collatz._Program("mul3"),
-        collatz._ResultKey("events", 1),
-        collatz._SummaryKey(program, 1),
-        collatz._SourceRangeKey(1),
-        collatz._Mul3Port(program),
-        collatz._ShiftPort(program, 1),
+        collatz.Program("mul3"),
+        collatz.ResultKey("events", 1),
+        collatz.SummaryKey(program, 1),
+        collatz.SourceRangeKey(1),
+        collatz.Mul3Port(program),
+        collatz.ShiftPort(program, 1),
         view,
         collatz.LazyCollatzResult(view, (1,)),
         carry_ranges.CarryRangeSummary(1, 0, 0, 0),
@@ -200,18 +200,18 @@ def templates() -> tuple[
         collatz_range.CollatzRangeEffect(
             carry_ranges.CarryRangeTransfer.bit(0), None, None
         ),
-        collatz_range._RangeKey(program, 0, 8),
-        collatz_range._CompositionKey(range_action, range_action),
-        collatz_range._Request("range", program, 0, 8),
+        collatz_range.RangeKey(program, 0, 8),
+        collatz_range.CompositionKey(range_action, range_action),
+        collatz_range.Request("range", program, 0, 8),
         range_action,
-        collatz_range._SourceTileKey(ArenaHandle(token, "source-tile", 0), 8),
+        collatz_range.SourceTileKey(ArenaHandle(token, "source-tile", 0), 8),
         FieldTransferRequestKey(field_action, source_binding, geometry, signature),
         FieldTransferRecord(0, interface, output, geometry, 1),
-        base._BaseLeftState(0, 0, False),
-        base._BaseRightState(CarryFn.ID, CarryFn.ID),
-        digit._DigitLeftState(0, False),
+        base.BaseLeftState(0, 0, False),
+        base.BaseRightState(CarryFn.ID, CarryFn.ID),
+        digit.DigitLeftState(0, False),
         port,
-        finite._Decision(None),
+        finite.FinitePortDecisionRecord(None),
         component,
         finite.FoldedPortCut((component,)),
         finite.DecisionKey(port, function, function),
@@ -236,7 +236,7 @@ CASES = tuple(
 def test_every_semantic_field_rejects_a_numeric_four_limb_substitution(
     record: object, field_name: str
 ) -> None:
-    forged = []
+    forged: list[object] = []
     for index in range(4):
         try:
             forged.append(
@@ -254,18 +254,26 @@ def test_every_semantic_field_rejects_a_numeric_four_limb_substitution(
     assert report.forbidden_future_payloads > 0, (type(record).__name__, field_name)
 
 
+def _field_transfer_with_source(value: int) -> FieldTransferRequestKey:
+    return FieldTransferRequestKey(
+        FieldCellActionID(ArenaToken("test"), "field-cell-action", 0),
+        cast("SourceBindingID", value),
+        FieldGeometryID(ArenaToken("test"), "field-geometry", 0),
+        PortSignatureID(ArenaToken("test"), "port-signature", 0),
+    )
+
+
+def _base_left_with_state(value: int) -> base.BaseLeftState:
+    return base.BaseLeftState(0, value, False)
+
+
+def _finite_decision_with_id(value: int) -> finite.FinitePortDecisionRecord:
+    return finite.FinitePortDecisionRecord(None, value, 0)
+
+
 @pytest.mark.parametrize(
     "make",
-    (
-        lambda value: FieldTransferRequestKey(
-            FieldCellActionID(ArenaToken("test"), "field-cell-action", 0),
-            cast("SourceBindingID", value),
-            FieldGeometryID(ArenaToken("test"), "field-geometry", 0),
-            PortSignatureID(ArenaToken("test"), "port-signature", 0),
-        ),
-        lambda value: base._BaseLeftState(0, value, False),
-        lambda value: finite._Decision(None, value, 0),
-    ),
+    (_field_transfer_with_source, _base_left_with_state, _finite_decision_with_id),
 )
 def test_raw_numeric_words_cannot_pose_as_finite_states_or_local_ids(
     make: Callable[[int], object],
@@ -280,7 +288,7 @@ def test_raw_numeric_words_cannot_pose_as_finite_states_or_local_ids(
 
 
 @pytest.mark.parametrize(
-    "record", (reverse.OffsetProgram("zero"), collatz._ResultKey("events", 1))
+    "record", (reverse.OffsetProgram("zero"), collatz.ResultKey("events", 1))
 )
 def test_unknown_operation_strings_are_not_semantic_programs(record: object) -> None:
     forged = replace_record(

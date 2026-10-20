@@ -94,10 +94,6 @@ def same_git_revision(before: GitSource, after: GitSource) -> bool:
     )
 
 
-def _clean_status(root: Path) -> bool:
-    return not _git(root, "status", "--porcelain=v1", "--untracked-files=all")
-
-
 def _worktree_is_registered(root: Path, checkout: Path) -> bool:
     output = _git(root, "worktree", "list", "--porcelain")
     paths = {

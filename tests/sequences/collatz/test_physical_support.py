@@ -26,10 +26,11 @@ def test_unbalanced_support_concat_accounts_only_retained_entries() -> None:
         False,
         False,
     )
+    support_snapshot = arena.audit_snapshot()
     support_owners = {
-        arena._node_owner,
-        arena._join_owner,
-        arena._concat_owner,
+        support_snapshot.node_owner,
+        support_snapshot.join_owner,
+        support_snapshot.concat_owner,
     }
     support_rows = tuple(
         item for item in ledger.inventory() if item.owner in support_owners
@@ -51,7 +52,7 @@ def test_support_payload_audit_rejects_modified_program() -> None:
 def test_support_payload_audit_rejects_redirected_store_ledger() -> None:
     ledger = ResourceLedger()
     arena = PhysicalSupportArena(max_nodes=64, ledger=ledger)
-    arena._store_ledger = ResourceLedger()
+    object.__setattr__(arena, "_store_ledger", ResourceLedger())
     assert audit_physical_support_payloads(ledger).invalid
 
 
@@ -60,7 +61,7 @@ def test_certified_tail_is_canonical_input_to_later_concat(
     entry: int, cycle: int
 ) -> None:
     arena = PhysicalSupportArena(max_nodes=512, ledger=ResourceLedger())
-    support = arena._proved_collatz_power_two_tail(entry, cycle)
+    support = arena.proved_collatz_power_two_tail(entry, cycle)
     word = (False,) * entry + tuple(index % 3 == 0 for index in range(cycle))
     assert tuple(support.tick(index) for index in range(len(word))) == word
 

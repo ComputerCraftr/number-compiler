@@ -11,10 +11,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeGuard, TypeVar, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+    require_integer,
+)
 from number_compiler.arithmetic.fields.affine_high_digits import (
     AffineHighDigitTransport,
 )
@@ -48,6 +51,16 @@ if TYPE_CHECKING:
         CollatzBoundaryMacro,
     )
     from number_compiler.sequences.collatz.unified_skew_chain import UnifiedSkewChain
+
+
+_ExactType = TypeVar("_ExactType")
+
+
+def _is_exact_instance(
+    value: object, expected: type[_ExactType]
+) -> TypeGuard[_ExactType]:
+    """Narrow an object after the exact-type admission used by these seals."""
+    return type(value) is expected
 
 
 def _valuation2(value: int) -> int:
@@ -206,7 +219,7 @@ class RepeatedWordMooreCylinder:
         if (
             type(self) is not RepeatedWordMooreCylinder
             or getattr(self, "_issuer", None) is not self
-            or type(binding) is not tuple
+            or not is_exact_object_tuple(binding)
             or len(binding) != 4
             or type(action) is not DyadicTerminalFieldAction
             or not action.producer_issued
@@ -666,52 +679,83 @@ class GuardedSkewCylinderPower:
         )
 
     def verify(self) -> None:
+        action_value: object = getattr(self, "action", None)
+        cylinder_value: object = getattr(self, "cylinder", None)
+        skew_clock_value: object = getattr(self, "skew_clock", None)
+        radial_clock = self.radial_clock
+        if not _is_exact_instance(action_value, DyadicTerminalFieldAction):
+            raise ValueError("guarded skew-power authority fields were altered")
+        if not _is_exact_instance(cylinder_value, RepeatedWordMooreCylinder):
+            raise ValueError("guarded skew-power authority fields were altered")
+        if skew_clock_value is not None and not _is_exact_instance(
+            skew_clock_value, SkewQuadraticClock
+        ):
+            raise ValueError("guarded skew-power authority fields were altered")
+        if not _is_exact_instance(radial_clock, RadialSturmianClock):
+            raise ValueError("guarded skew-power authority fields were altered")
+        action = action_value
+        cylinder = cylinder_value
+        skew_clock = skew_clock_value
+        source_value: object = getattr(self, "source", None)
+        repetitions_value: object = getattr(self, "repetitions", None)
+        odd_symbols_value: object = getattr(self, "odd_symbols", None)
+        physical_ticks_value: object = getattr(self, "physical_ticks", None)
+        if any(
+            type(value) is not int
+            for value in (
+                source_value,
+                repetitions_value,
+                odd_symbols_value,
+                physical_ticks_value,
+            )
+        ):
+            raise ValueError("guarded skew-power scalar fields were altered")
+        source = cast(int, source_value)
+        repetitions = cast(int, repetitions_value)
+        odd_symbols = cast(int, odd_symbols_value)
+        physical_ticks = cast(int, physical_ticks_value)
         binding = getattr(self, "_binding", None)
         if (
             type(self) is not GuardedSkewCylinderPower
             or getattr(self, "_issuer", None) is not self
-            or type(binding) is not tuple
+            or not is_exact_object_tuple(binding)
             or len(binding) != 14
-            or self.source is not binding[0]
-            or self.repetitions is not binding[1]
-            or self.odd_symbols is not binding[2]
-            or self.action is not binding[3]
-            or self.cylinder is not binding[4]
-            or self.skew_clock is not binding[6]
+            or source is not binding[0]
+            or repetitions is not binding[1]
+            or odd_symbols is not binding[2]
+            or action is not binding[3]
+            or cylinder is not binding[4]
+            or skew_clock is not binding[6]
             or self.radial_clock is not binding[8]
-            or self.radial_clock.scale is not binding[9]
-            or self.radial_clock.scale.growths is not binding[10]
-            or self.radial_clock.scale.halvings is not binding[11]
-            or self.physical_ticks is not binding[12]
-            or self.action.coefficient_snapshot() != binding[13]
+            or radial_clock.scale is not binding[9]
+            or radial_clock.scale.growths is not binding[10]
+            or radial_clock.scale.halvings is not binding[11]
+            or physical_ticks is not binding[12]
+            or action.coefficient_snapshot() != binding[13]
         ):
             raise ValueError("guarded skew-power seal is invalid")
-        if _cylinder_snapshot(self.cylinder) != binding[5]:
+        if _cylinder_snapshot(cylinder) != binding[5]:
             raise ValueError("guarded skew-power defect snapshot changed")
-        self.cylinder.verify_for(self.action, self.source)
-        if (
-            self.skew_clock is not None
-            and _clock_snapshot(self.skew_clock) != binding[7]
-        ):
+        cylinder.verify_for(action, source)
+        if skew_clock is not None and _clock_snapshot(skew_clock) != binding[7]:
             raise ValueError("guarded skew-power clock snapshot changed")
         if (
-            not self.action.producer_issued
-            or not self.action.certifies(self.source)
-            or self.cylinder.source != self.source
-            or self.cylinder.normalized_steps != self.action.steps
-            or self.cylinder.gain != self.action.gain
-            or self.cylinder.offset != self.action.offset
-            or not self.cylinder.admits(self.repetitions)
-            or self.radial_clock.scale
+            not action.producer_issued
+            or not action.certifies(source)
+            or cylinder.source != source
+            or cylinder.normalized_steps != action.steps
+            or cylinder.gain != action.gain
+            or cylinder.offset != action.offset
+            or not cylinder.admits(repetitions)
+            or radial_clock.scale
             != HomogeneousGrowthScale(
-                self.odd_symbols * self.repetitions,
-                self.action.steps * self.repetitions,
+                odd_symbols * repetitions,
+                action.steps * repetitions,
             )
-            or self.physical_ticks
-            != (self.action.steps + self.odd_symbols) * self.repetitions
+            or physical_ticks != (action.steps + odd_symbols) * repetitions
             or (
-                self.skew_clock is not None
-                and self.skew_clock.radial_sturmian_clock != self.radial_clock
+                skew_clock is not None
+                and skew_clock.radial_sturmian_clock != radial_clock
             )
         ):
             raise ValueError("guarded temporal power does not match its source word")

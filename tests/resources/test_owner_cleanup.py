@@ -1,13 +1,14 @@
 """A failed child cleanup must not strand a process-cache authority."""
 
 from contextlib import closing
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
+from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.projection import lazy_radix
 from number_compiler.projection.microblock_cache import MicroblockCache
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.process_cache import ProcessCache
 from number_compiler.sequences.antihydra import mahler_source_actions
 from number_compiler.sequences.antihydra.arithmetic_images import (
@@ -18,6 +19,9 @@ from number_compiler.sequences.prime import select
 from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
 from number_compiler.sequences.prime.partial_successor_image import (
     PrimePartialSuccessorQuery,
+)
+from number_compiler.sequences.prime.successor_action import (
+    PrimeSuccessorActionArena,
 )
 
 
@@ -41,7 +45,12 @@ def test_prime_teardown_releases_lease_after_child_failure(
     with monkeypatch.context() as patch:
         if child != "neither":
             if child == "scheduler":
-                patch.setattr(query._scheduler, "dispose_source_images", failed_close)
+                scheduler = cast(
+                    TileScheduler | None,
+                    object.__getattribute__(query, "_scheduler"),
+                )
+                assert scheduler is not None
+                patch.setattr(scheduler, "dispose_source_images", failed_close)
             else:
                 patch.setattr(
                     query if child == "query" else owner.dag, "close", failed_close
@@ -49,7 +58,12 @@ def test_prime_teardown_releases_lease_after_child_failure(
             with pytest.raises(RuntimeError, match="child cleanup failed"):
                 owner.close()
             if child == "scheduler":
-                assert query._arena is not None and query._arena._closed
+                arena = cast(
+                    PrimeSuccessorActionArena | None,
+                    object.__getattribute__(query, "_arena"),
+                )
+                assert arena is not None
+                assert arena.audit_snapshot().closed is True
         else:
             with closing(owner):
                 assert owner.count_prime_interval(2, 10) == 4
@@ -107,9 +121,13 @@ def test_prime_dag_disposes_remaining_stores_when_first_cleanup_fails(
         with pytest.raises(RuntimeError, match="progression disposal failed"):
             dag.close()
     rows = {row.owner: row for row in dag.ledger.inventory()}
+    inverse_memo = cast(
+        OwnedMemo[int, int], object.__getattribute__(dag, "_progression_inverses")
+    )
+    factor_owner = cast(int, object.__getattribute__(dag, "_factor_owner"))
     assert rows[dag.memo.owner].disposed
-    assert rows[dag._progression_inverses.owner].disposed
-    assert rows[dag._factor_owner].disposed
+    assert rows[inverse_memo.owner].disposed
+    assert rows[factor_owner].disposed
     dag.close()
     assert dag.ledger.entries == dag.ledger.nodes == 0
 

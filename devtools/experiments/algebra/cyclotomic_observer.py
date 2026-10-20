@@ -740,7 +740,7 @@ def special_sign_quotient_work_profile(
     parameter: int,
 ) -> SignQuotientWorkProfile:
     """Compare the old unquotiented digit work with the canonical sign quotient."""
-    from devtools.verification.oracles.digit_power import (
+    from devtools.verification.oracles.special_digit_power import (
         lucas_lehmer_digit_field,
         pepin_digit_field,
     )

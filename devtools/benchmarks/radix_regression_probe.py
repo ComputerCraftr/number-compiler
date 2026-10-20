@@ -199,7 +199,7 @@ def worker() -> dict[str, Any]:
 
 def run_trials() -> dict[str, Any]:
     before = git_source(ROOT)
-    rows = []
+    rows: list[dict[str, Any]] = []
     environment = dict(os.environ)
     environment.pop("PYTHONPATH", None)
     environment.pop("MYPYPATH", None)

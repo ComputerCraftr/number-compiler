@@ -70,8 +70,8 @@ def validate_source_root_match_value(
     if value.level != arena.tiles.resolve(key.input).level:
         raise ValueError("source root summary has another spatial level")
     if published and (
-        value._publication_owner is not arena._interface_publication_seal
-        or value._publication_snapshot != _snapshot(key, value)
+        not arena.issued_result(value)
+        or not value.publication_matches(_snapshot(key, value))
     ):
         raise ValueError("source root summary publication metadata was modified")
 
@@ -82,13 +82,7 @@ def _sealed(
     value: RootMatchResult,
 ) -> RootMatchResult:
     value.__post_init__()
-    return RootMatchResult(
-        value.level,
-        value.phase0_first_mismatch,
-        value.phase1_first_mismatch,
-        arena._interface_publication_seal,
-        _snapshot(key, value),
-    )
+    return arena.seal_result(value, _snapshot(key, value))
 
 
 def lookup_source_root_match(
@@ -97,7 +91,7 @@ def lookup_source_root_match(
     """Return one validated summary before any child inspection."""
     _validate_key(arena, key)
     arena.ledger.bump(_tiles_keys.COLLATZ_SOURCE_ROOT_MATCH_REQUESTS)
-    found = arena._memo.get(key)
+    found = arena.memo_view.get(key)
     if found is None:
         record_unattributed_post_eviction_miss(arena.ledger, ResultCacheKind.INTERFACE)
         return None
@@ -116,7 +110,7 @@ def _publish(
     _validate_key(arena, key)
     value = _sealed(arena, key, plain)
     validate_source_root_match_value(arena, key, value, published=True)
-    found = arena._memo.get(key)
+    found = arena.memo_view.get(key)
     if found is not None:
         if type(found) is not RootMatchResult:
             raise TypeError("source root memo contains another result sort")
@@ -156,7 +150,7 @@ def source_root_match(arena: CompletedResultArena, tile: TileID) -> RootMatchRes
     found = lookup_source_root_match(arena, root_key)
     if found is not None:
         return found
-    tasks = arena._causal_tasks
+    tasks = arena.causal_tasks
     if tasks is None:
         raise ValueError("source root matching requires the scheduler workspace")
 

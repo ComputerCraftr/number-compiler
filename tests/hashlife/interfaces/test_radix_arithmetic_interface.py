@@ -42,7 +42,7 @@ def test_numeric_parent_hit_does_not_expand_boolean_ports(
         )
         app = projection.scheduler.application(
             action,
-            projection._application.source,
+            projection.validated_application().source,
             adapter.initial_ports(action),
             adapter.wiring(action),
         )

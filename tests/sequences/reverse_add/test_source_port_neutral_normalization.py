@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Never
+from collections.abc import Callable
+from typing import Never, cast
 
 import pytest
 
@@ -14,8 +15,8 @@ from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.source_ports import (
     SourceCarryPorts,
-    _QueryWorkspace,
 )
+from tests.support.private_attributes import private_test_attribute
 
 
 def _neutral_source(width: int) -> ExactSource:
@@ -98,7 +99,9 @@ def test_whole_neutral_interval_retains_only_its_normalized_root() -> None:
     ledger = ResourceLedger()
     ports = SourceCarryPorts(_neutral_source(width), ledger)
     assert ports.range_transfer(1, 0, width) is CarryFn.ID
-    assert dict(ports._cache) == {(1, 0, width): CarryFn.ID}
+    assert dict(ports.audit_snapshot().cache.payload_view) == {
+        (1, 0, width): CarryFn.ID
+    }
     account = next(
         item
         for item in ledger.inventory()
@@ -118,11 +121,14 @@ def test_failed_parent_normalization_preserves_preexisting_identity_child(
     ports = SourceCarryPorts(_neutral_source(8), ledger)
     assert ports.range_transfer(1, 0, 2) is CarryFn.ID
     before = ledger.snapshot()
-    original = SourceCarryPorts._publish
+    original = cast(
+        Callable[[SourceCarryPorts, object, tuple[int, int, int], CarryFn], None],
+        private_test_attribute(SourceCarryPorts, "_publish"),
+    )
 
     def fail_after_pruning_is_staged(
         self: SourceCarryPorts,
-        workspace: _QueryWorkspace,
+        workspace: object,
         key: tuple[int, int, int],
         result: CarryFn,
     ) -> None:
@@ -133,7 +139,7 @@ def test_failed_parent_normalization_preserves_preexisting_identity_child(
     monkeypatch.setattr(SourceCarryPorts, "_publish", fail_after_pruning_is_staged)
     with pytest.raises(BlockContextBudgetExceeded, match="forced normalization"):
         ports.range_transfer(1, 0, 8)
-    assert dict(ports._cache) == {(1, 0, 2): CarryFn.ID}
+    assert dict(ports.audit_snapshot().cache.payload_view) == {(1, 0, 2): CarryFn.ID}
     assert (ledger.entries, ledger.nodes) == (before.entries, before.nodes)
     workspace = next(
         item

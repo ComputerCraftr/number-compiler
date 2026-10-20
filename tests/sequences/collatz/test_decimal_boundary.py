@@ -12,7 +12,7 @@ from number_compiler.sequences.collatz.decimal_boundary import (
 
 
 def test_all_twenty_guards_cover_the_fifteen_physical_edges() -> None:
-    edges = set()
+    edges: set[tuple[int, int]] = set()
     for residue in range(20):
         for high in (1, 2, 31):
             source = 20 * high + residue

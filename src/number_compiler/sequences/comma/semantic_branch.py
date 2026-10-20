@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 
 from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
-    _affine_weight_signature,
+    affine_weight_signature,
     boundary_source_index,
     boundary_state_signature,
 )
@@ -26,7 +26,7 @@ from number_compiler.sequences.comma.future_authority import (
     SOURCE20_FIRST_FORK_VALUE,
     SOURCE20_SELECTED_CHILD,
     SOURCE20_SELECTED_CHILD_INDEX,
-    _valid_artifact_digest,
+    valid_artifact_digest,
 )
 from number_compiler.sequences.comma.future_provider import (
     SemanticFutureProvider,
@@ -62,7 +62,7 @@ def _numeric_payload_signature(
         boundary_state_signature(weighted_action.start),
         boundary_state_signature(weighted_action.end),
         weighted_action.exponent_delta,
-        _affine_weight_signature(weighted_action.weight),
+        affine_weight_signature(weighted_action.weight),
     )
 
 
@@ -85,7 +85,7 @@ def _exact_source_class(
     return class_id
 
 
-def _validate_selection_class_bindings(
+def validate_selection_class_bindings(
     source: BoundaryState,
     ordered_children: tuple[BoundaryState, ...],
     selection: UnrankedChildSelection,
@@ -207,9 +207,9 @@ class SemanticMacroChild:
             _numeric_payload_signature(literal_value, weighted_action),
         )
         object.__setattr__(self, "_seal", _seal)
-        self._validate()
+        self.validate()
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
         if getattr(self, "_seal", None) is not _SEMANTIC_MACRO_CHILD_SEAL:
             raise ValueError("invalid semantic macro child")
         if (
@@ -221,7 +221,7 @@ class SemanticMacroChild:
             or type(self.weighted_action) is not WeightedBoundaryAction
         ):
             raise ValueError("invalid semantic macro child fields")
-        self.source._validate()
+        self.source.validate()
         selected_classes = self.selection.ordered_child_classes
         if (
             type(self.selection.source) is not BoundaryState
@@ -269,18 +269,18 @@ class SemanticMacroChild:
     @property
     def fork_event_offset(self) -> int:
         """Number of forced literal steps before the selected fork edge."""
-        self._validate()
+        self.validate()
         return self.prefix.transition_count
 
     @property
     def total_transition_count(self) -> int:
         """Forced prefix steps plus the one selected-child transition."""
-        self._validate()
+        self.validate()
         return self.prefix.transition_count + 1
 
     @property
     def target(self) -> BoundaryOccurrence:
-        self._validate()
+        self.validate()
         return self.occurrence.target
 
 
@@ -339,7 +339,7 @@ class Source20FirstChildEntry:
         object.__setattr__(self, "_occurrence", occurrence)
         object.__setattr__(self, "_seal", _seal)
         object.__setattr__(self, "_snapshot", self._current_snapshot())
-        self._validate()
+        self.validate()
 
     def _current_snapshot(self) -> tuple[object, ...]:
         occurrence = self._occurrence
@@ -368,7 +368,7 @@ class Source20FirstChildEntry:
             state_signature,
         )
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
         if getattr(self, "_seal", None) is not _SOURCE20_ENTRY_SEAL:
             raise ValueError("invalid source-20 first-child entry")
         if (
@@ -388,7 +388,7 @@ class Source20FirstChildEntry:
             or self.child_value != SOURCE20_SELECTED_CHILD
             or type(self.source_class) is not int
             or self.source_class < 0
-            or not _valid_artifact_digest(self.artifact_sha256)
+            or not valid_artifact_digest(self.artifact_sha256)
             or type(self.session_id) is not str
             or self.session_id != GLOBAL_RELEASE_SESSION_ID
             or type(self.theorem_id) is not str
@@ -398,7 +398,7 @@ class Source20FirstChildEntry:
             or type(self._occurrence) is not BoundaryOccurrence
         ):
             raise ValueError("source-20 first-child authority changed")
-        self._occurrence._validate()
+        self._occurrence.validate()
         if (
             boundary_state_signature(self._occurrence.state)
             != boundary_state_signature(BoundaryState("N", 2, 10))
@@ -414,7 +414,7 @@ class Source20FirstChildEntry:
         charge_work: WorkCharger,
     ) -> BoundaryOccurrence:
         """Return the child occurrence only under its original global artifact."""
-        self._validate()
+        self.validate()
         if type(provider) not in (SemanticFutureProvider, SemanticFutureProviderLease):
             raise TypeError("source-20 entry needs its exact semantic provider")
         provider.require_global_release_admission()
@@ -519,7 +519,7 @@ def select_semantic_macro_child(
     """
     if type(source) is not BoundaryOccurrence:
         raise TypeError("semantic branch source must be an exact boundary occurrence")
-    source._validate()
+    source.validate()
     if type(prefix) is not OccurrencePrefixReturn:
         raise TypeError("semantic branch needs an exact occurrence prefix")
     if type(provider) not in (SemanticFutureProvider, SemanticFutureProviderLease):
@@ -578,7 +578,7 @@ def select_semantic_macro_child(
     )
     if type(selection) is not UnrankedChildSelection:
         raise TypeError("semantic provider returned a malformed child selection")
-    _validate_selection_class_bindings(
+    validate_selection_class_bindings(
         source.state,
         (boundary_children[0].state, boundary_children[1].state),
         selection,

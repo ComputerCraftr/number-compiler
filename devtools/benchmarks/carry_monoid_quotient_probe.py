@@ -8,7 +8,7 @@ from typing import TypedDict
 from devtools.paths import report_directory, report_output, repository_root
 from devtools.verification import exact_oracle
 from devtools.verification.carry_action_quotient import analyze_carry_action_quotient
-from devtools.verification.oracles.digit_power import (
+from devtools.verification.oracles.special_digit_power import (
     lucas_lehmer_digit_field,
     pepin_digit_field,
 )
@@ -97,7 +97,7 @@ def main() -> None:
             }
         )
 
-    carry_rows = []
+    carry_rows: list[dict[str, object]] = []
     for seed, base in ((196, 8), (196, 10), (195, 4)):
         m = analyze_carry_action_quotient(seed, base=base, transitions=512)
         carry_rows.append(
@@ -113,7 +113,7 @@ def main() -> None:
             }
         )
 
-    collatz_rows = []
+    collatz_rows: list[dict[str, object]] = []
     compiler = CanonicalSequenceCompiler()
     for radix_1 in (2, 3, 6, 12, 18, 24, 30, 36):
         c = compiler.compile_diagnostic(CollatzSequenceSpec(27, radix_1, 111))
@@ -131,7 +131,7 @@ def main() -> None:
             }
         )
 
-    special = []
+    special: list[dict[str, object]] = []
     for family, result in (
         ("mersenne-31", lucas_lehmer_digit_field(31)),
         ("fermat-5", pepin_digit_field(5)),
@@ -149,7 +149,7 @@ def main() -> None:
             }
         )
 
-    dense = []
+    dense: list[dict[str, object]] = []
     for width in (64, 128, 256, 512, 1024):
         _, metrics = adaptive_square_convolution((1,) * width)
         sb_m = width * width
@@ -166,7 +166,7 @@ def main() -> None:
             }
         )
 
-    factor_witnesses = []
+    factor_witnesses: list[dict[str, object]] = []
     for family, parameter, factor, witness in (
         ("fermat", 5, 641, fermat_factor_witness(5, 641)),
         ("fermat", 5, 6700417, fermat_factor_witness(5, 6700417)),
@@ -214,7 +214,7 @@ def main() -> None:
         },
     }
 
-    reinterpret = []
+    reinterpret: list[dict[str, object]] = []
     for radix_2 in (2, 3, 6, 10):
         cyclotomic_metrics = reinterpreted_prime_cyclotomic_metrics(
             9_999_993, 1024, radix_2
@@ -228,7 +228,7 @@ def main() -> None:
                 "modulus_bits": cyclotomic_metrics.modulus_bits,
             }
         )
-    residual = []
+    residual: list[dict[str, object]] = []
     for period in ((2,), (4,), (4, 8), (4, 8, 16)):
         residual_metrics = mixed_radix_prime_residual_metrics(9_999_993, 1024, period)
         residual.append(

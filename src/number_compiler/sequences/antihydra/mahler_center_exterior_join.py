@@ -18,6 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.arithmetic.fields.walsh import WalshH5
 from number_compiler.sequences.antihydra.mahler_low_border_carry import (
     MahlerBorderCarryMap,
@@ -65,7 +66,7 @@ class MahlerExteriorMotif:
         if type(self.start) is not int or self.start < 0:
             raise ValueError("exterior start must be a nonnegative digit position")
         if (
-            not isinstance(self.motif, str)
+            not is_runtime_instance(self.motif, str)
             or not self.motif
             or not self.motif.isascii()
             or not self.motif.isdecimal()

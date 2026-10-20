@@ -35,7 +35,7 @@ def test_live_carry_primary_cyclotomic_interface_is_semantic_and_self_advancing(
     base = 10
     horizon = event_memory_horizon(base)
     pair = _pair(196, base)
-    rows = []
+    rows: list[tuple[int, ...]] = []
     for _ in range(horizon):
         rows.append(carry_field(pair, base=base))
         pair, _ = pair_step(pair, base)

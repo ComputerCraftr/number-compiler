@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -87,10 +88,10 @@ def test_reverse_projection_respects_explicit_context_budget() -> None:
     # Construction is intentionally lazy: the zero budget must reject the
     # first source-image demand, before any workspace or retained storage is
     # published, rather than forcing allocation in the term constructor.
-    assert zero_budget._workspace is None
+    assert zero_budget.published_workspace is None
     with pytest.raises(BlockContextBudgetExceeded):
         zero_budget.digit(zero_budget.maximum_width // 3)
-    assert zero_budget._workspace is None
+    assert zero_budget.published_workspace is None
     assert zero_budget.resource_ledger.entries == zero_budget.resource_ledger.nodes == 0
     # Every retained action, source and publication is charged. The bounded
     # application must refuse atomically; an unbounded application still has
@@ -154,7 +155,7 @@ def test_reverse_release_probe_requires_measured_source_image_execution(
     )
     projection = result["projection"]
     assert isinstance(projection, list)
-    for row in projection:
+    for row in cast(list[object], projection):
         record = object_record(row)
         assert record["runtime_image_matches_scalar"] is True
         assert record["source_image_replay_stable"] is True

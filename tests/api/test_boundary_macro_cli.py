@@ -97,7 +97,7 @@ def test_value_and_boundary_share_admitted_source_carries(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(boundary_window, "digits_lsd", forbid_explicit_lowering)
-    for name in ("source_inner_carry", "_source_inner_carry_from_validated_digits"):
+    for name in ("source_inner_carry", "source_inner_carry_from_validated_digits"):
         monkeypatch.setattr(
             boundary_window.FiniteBoundaryWindow, name, forbid_explicit_lowering
         )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping, MutableSequence
+from collections.abc import Mapping, MutableMapping, MutableSequence
 from dataclasses import dataclass
 from typing import Literal, cast
 
@@ -34,6 +34,7 @@ from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
 from number_compiler.resources.metric_keys import shared as _shared_keys
+from number_compiler.resources.payload_containers import audit_mapping_items
 from number_compiler.resources.stores import (
     NodeIndexFactory,
     append_indexed_node,
@@ -46,18 +47,33 @@ class RadixProviderActionID(FieldCellActionID):
 
 
 @dataclass(frozen=True, slots=True)
-class _RadixProviderAction:
+class RadixProviderActionRecord:
     provider: FieldCellActionID
     consumer: RadixDivisionActionID
+
+
+@dataclass(frozen=True, slots=True)
+class RadixProviderActionAuditSnapshot:
+    """Detached provider-action records and the identities of their stores."""
+
+    ledger: ResourceLedger
+    owner: ArenaToken
+    kind: str
+    node_owner: int
+    node_store_identity: int
+    nodes: tuple[RadixProviderActionRecord, ...]
+    key_owner: int
+    key_store_identity: int
+    key_rows: tuple[tuple[object, object], ...]
 
 
 class RadixProviderActionArena:
     """Intern heterogeneous roots without weakening either child action sort."""
 
-    _nodes: MutableSequence[_RadixProviderAction]
-    _keys: MutableMapping[_RadixProviderAction, int]
+    _nodes: MutableSequence[RadixProviderActionRecord]
+    _keys: MutableMapping[RadixProviderActionRecord, int]
 
-    _KIND = "radix-provider-action"
+    KIND = "radix-provider-action"
 
     def __init__(
         self,
@@ -75,17 +91,35 @@ class RadixProviderActionArena:
         self._node_owner = ledger.register(prefix + "-nodes", "field_cell_action")
         self._key_owner = ledger.register(prefix + "-keys", "field_action_interner")
         self._nodes, self._keys = NodeIndexFactory[
-            _RadixProviderAction, _RadixProviderAction
+            RadixProviderActionRecord, RadixProviderActionRecord
         ].dense(ledger, self._node_owner, self._key_owner)
         ledger.register_execution_root(self)
 
-    def _handle(self, local_id: int) -> RadixProviderActionID:
-        return RadixProviderActionID(self.owner, self._KIND, local_id)
+    def scoped_handle(self, local_id: int) -> RadixProviderActionID:
+        return RadixProviderActionID(self.owner, self.KIND, local_id)
 
-    def resolve(self, action: RadixProviderActionID) -> _RadixProviderAction:
+    def audit_snapshot(self) -> RadixProviderActionAuditSnapshot:
+        """Capture action rows without exposing mutable interner storage."""
+        return RadixProviderActionAuditSnapshot(
+            ledger=self.ledger,
+            owner=self.owner,
+            kind=self.KIND,
+            node_owner=self._node_owner,
+            node_store_identity=id(self._nodes),
+            nodes=tuple(self._nodes),
+            key_owner=self._key_owner,
+            key_store_identity=id(self._keys),
+            key_rows=audit_mapping_items(cast(Mapping[object, object], self._keys)),
+        )
+
+    def record_index(self, record: RadixProviderActionRecord) -> int | None:
+        """Return the canonical local ID for one provider-action record."""
+        return self._keys.get(record)
+
+    def resolve(self, action: RadixProviderActionID) -> RadixProviderActionRecord:
         if type(action) is not RadixProviderActionID:
             raise TypeError("expected a scoped radix provider action")
-        action.validate(self.owner, self._KIND, size=len(self._nodes))
+        action.validate(self.owner, self.KIND, size=len(self._nodes))
         return self._nodes[action.local_id]
 
     def intern(
@@ -95,11 +129,11 @@ class RadixProviderActionArena:
     ) -> RadixProviderActionID:
         self.provider.validate_action(provider)
         self.divisions.resolve(consumer)
-        record = _RadixProviderAction(provider, consumer)
+        record = RadixProviderActionRecord(provider, consumer)
         found = self._keys.get(record)
         if found is not None:
             self.ledger.bump(_execution_keys.RADIX_PROVIDER_ACTION_EARLY_HITS)
-            return self._handle(found)
+            return self.scoped_handle(found)
         local_id = append_indexed_node(
             self.ledger,
             self._nodes,
@@ -111,7 +145,7 @@ class RadixProviderActionArena:
         )
         self.ledger.bump(_execution_keys.RADIX_PROVIDER_ACTION_EVALUATIONS)
         self.ledger.bump(_shared_keys.FIELD_ACTION_PUBLICATIONS)
-        return self._handle(local_id)
+        return self.scoped_handle(local_id)
 
 
 class RadixProviderAdapter:
@@ -415,7 +449,9 @@ class RadixProviderAdapter:
 
 
 __all__ = [
+    "RadixProviderActionAuditSnapshot",
     "RadixProviderActionArena",
     "RadixProviderActionID",
     "RadixProviderAdapter",
+    "RadixProviderActionRecord",
 ]

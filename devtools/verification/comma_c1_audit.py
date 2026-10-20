@@ -8,14 +8,14 @@ from number_compiler.sequences.comma.boundary_quotient import (
     AffineWeight,
     BoundaryState,
     MacroTemplate,
-    _macro_template_component_seal,
+    macro_template_component_seal,
 )
 
 _Control = tuple[Literal["fork", "landmine"], int | None]
 
 
 @dataclass(frozen=True, slots=True)
-class _CompletedMacroReturn:
+class CompletedMacroReturnAudit:
     """Minimal immutable projection retained after one macro is checked."""
 
     source: BoundaryState
@@ -55,9 +55,9 @@ def _canonical_exponent(state: BoundaryState) -> int:
     return residue if residue >= 5 else residue + PERIOD
 
 
-def _c1_payloads(
+def c1_payloads(
     states: tuple[BoundaryState, ...],
-    macros: tuple[_CompletedMacroReturn, ...],
+    macros: tuple[CompletedMacroReturnAudit, ...],
     indices: dict[BoundaryState, int],
 ) -> tuple[C1OccurrencePayload, ...]:
     """Project exact C1 audit fields from checked completed returns."""
@@ -153,7 +153,7 @@ def candidate_c1_return(
     C1 increments telescope to the difference of high prefixes. This is not
     runtime admission: the Isabelle instance must still check the candidate.
     """
-    _macro_template_component_seal(macro)
+    macro_template_component_seal(macro)
     if type(scale) is not int or scale <= 0 or scale % 100_000:
         raise ValueError("candidate scale is outside the admitted decimal domain")
     if macro.source != state:

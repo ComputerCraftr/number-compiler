@@ -122,7 +122,7 @@ def _normalized_digit_root(
     # K_width = 1 is the ordinary terminal radix carry, so append final digit 1.
     out_width = width + 1
     terminal = arena.range_mask(width, out_width, out_width)
-    out = []
+    out: list[Expr] = []
     for bit, plane in enumerate(planes):
         extended = arena.resize(plane, out_width)
         if bit == 0:

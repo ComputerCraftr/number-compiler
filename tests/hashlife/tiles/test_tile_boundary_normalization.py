@@ -37,11 +37,11 @@ def _retained_state(
     return (
         tiles.ledger.entries,
         tiles.ledger.nodes,
-        dict(tiles._nodes),
-        dict(tiles._keys),
-        dict(tiles._refs),
-        dict(tiles._edges),
-        dict(tiles._leases),
+        dict(tiles.audit_snapshot().nodes),
+        dict(tiles.audit_snapshot().keys),
+        dict(tiles.audit_snapshot().refs),
+        dict(tiles.audit_snapshot().edges),
+        dict(tiles.audit_snapshot().leases),
     )
 
 

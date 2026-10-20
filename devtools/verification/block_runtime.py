@@ -12,13 +12,13 @@ from devtools.verification.block_recursive import (
 )
 from devtools.verification.block_spacetime_runtime import SpacetimeRuntimeMixin
 from number_compiler.arithmetic.contracts.block_effect import (
-    _CONTEXT_IDS,
     BlockContextBudget,
     BlockEffect,
     BoundarySide,
     BoundaryState,
     _cache_state_key,
     _state_key,
+    next_context_id,
 )
 from number_compiler.arithmetic.fields.dyadic_tile import leaf
 
@@ -52,7 +52,7 @@ class _FunctionalBoundaryState:
         anchor: BoundaryState,
         image: tuple[BoundaryState, ...],
     ) -> None:
-        self.node_id = next(_CONTEXT_IDS)
+        self.node_id = next_context_id()
         self.side = side
         self.anchor = anchor
         self.image = image
@@ -234,7 +234,7 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
         # tile goes straight to the single effect-owned HashLife action cache.
         # Do not wrap this forest in a second SpacetimeBoundary state carrier.
         for chunk in uniform_span(0, count, int(symbol)).chunks:
-            out = self._advance_effect_tile_macro(
+            out = self.advance_effect_tile_macro(
                 cast(BlockEffect, self), side, out, chunk.tile
             )
         return out
@@ -319,7 +319,7 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
             domain_index = indices[index]
             if domain is None or domain_index is None:
                 raise AssertionError("missing canonical functional domain")
-            next_anchor = self._canonical_child_state(
+            next_anchor = self.canonical_child_state(
                 self.first, side, self.first.advance(side, state.anchor, symbol)
             )
             image: list[BoundaryState] = []
@@ -335,7 +335,7 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
                         self.first, argument, symbol, state.anchor
                     )
                 image.append(
-                    self._canonical_child_state(
+                    self.canonical_child_state(
                         self.second,
                         side,
                         self.second.advance(side, previous_value, first_symbol),
@@ -350,7 +350,7 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
         if self._recursive_enabled[int(side)]:
             if not isinstance(state, _RecursiveBoundaryState):
                 raise AssertionError(type(state))
-            out = self._advance_effect_tile_macro(
+            out = self.advance_effect_tile_macro(
                 cast(BlockEffect, self), side, state, leaf(int(symbol))
             )
             if out is state and symbol == self.blank:
@@ -375,7 +375,7 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
             raise ValueError((state.side, side))
         return None
 
-    def _state_anchor(self, side: BoundarySide, state: BoundaryState) -> BoundaryState:
+    def state_anchor(self, side: BoundarySide, state: BoundaryState) -> BoundaryState:
         assert isinstance(
             state,
             (
@@ -386,7 +386,7 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
         ), (side, type(state))
         return state.anchor
 
-    def _residual_value_for_argument(
+    def residual_value_for_argument(
         self,
         side: BoundarySide,
         state: BoundaryState,
@@ -428,12 +428,10 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
             return None
         grouped = cast(
             dict[object, tuple[BoundaryState, int]],
-            cast("ComposedBlockEffect", self)._owned_dict(
-                "block_boundary_anchor_group"
-            ),
+            cast("ComposedBlockEffect", self).owned_dict("block_boundary_anchor_group"),
         )
         for i, state in enumerate(domain):
-            anchor = self._state_anchor(side, state)
+            anchor = self.state_anchor(side, state)
             merge_state_mask(grouped, anchor, 1 << i)
         self._boundary_anchor_masks[index] = grouped
         return grouped
@@ -467,7 +465,7 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
             return None
         grouped = cast(
             dict[object, tuple[BoundaryState, int]],
-            cast("ComposedBlockEffect", self)._owned_dict("block_boundary_value_group"),
+            cast("ComposedBlockEffect", self).owned_dict("block_boundary_value_group"),
         )
         for i, state in enumerate(domain):
             if isinstance(state, _PartitionBoundaryState):
@@ -476,7 +474,7 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
                 value = state.image[coordinate]
             else:
                 raise AssertionError(type(state))
-            value = self._canonical_child_state(self.second, side, value)
+            value = self.canonical_child_state(self.second, side, value)
             merge_state_mask(grouped, value, 1 << i)
         cache[coordinate] = grouped
         self._boundary_value_index_builds += 1
@@ -515,7 +513,7 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
         anchor_groups = self._boundary_anchor_groups(opposite)
         if anchor_groups is None:
             return None
-        first_anchor = self._state_anchor(side, anchor)
+        first_anchor = self.state_anchor(side, anchor)
         symbol = int(symbol)
         if side is BoundarySide.LEFT:
             fixed_argument = self.first.advance(BoundarySide.LEFT, first_anchor, symbol)
@@ -622,14 +620,14 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
                 moving_argument = self.first.advance(
                     BoundarySide.RIGHT, varying_anchor, symbol
                 )
-                second_fixed = self._residual_value_for_argument(
+                second_fixed = self.residual_value_for_argument(
                     BoundarySide.LEFT, anchor, moving_argument
                 )
             else:
                 moving_argument = self.first.advance(
                     BoundarySide.LEFT, varying_anchor, symbol
                 )
-                second_fixed = self._residual_value_for_argument(
+                second_fixed = self.residual_value_for_argument(
                     BoundarySide.RIGHT, anchor, moving_argument
                 )
 
@@ -721,8 +719,8 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
         *,
         cache_children: bool,
     ) -> int:
-        left_anchor = self._state_anchor(BoundarySide.LEFT, left)
-        right_anchor = self._state_anchor(BoundarySide.RIGHT, right)
+        left_anchor = self.state_anchor(BoundarySide.LEFT, left)
+        right_anchor = self.state_anchor(BoundarySide.RIGHT, right)
         if cache_children:
             first_symbol = self.first.emit(left_anchor, symbol, right_anchor)
         else:
@@ -807,7 +805,7 @@ class ComposedRuntimeMixin(SpacetimeRuntimeMixin):
         if slots is None:
             slots = cast(
                 dict[tuple[object, int, object], int],
-                cast("ComposedBlockEffect", self)._owned_dict("block_output_slots"),
+                cast("ComposedBlockEffect", self).owned_dict("block_output_slots"),
             )
             self._output_slots = slots
         if cache_key not in slots:

@@ -392,7 +392,7 @@ def test_live_fragment_cache_computes_coefficients_from_image(
         ProjectionFragmentCache,
     )
 
-    engine, result, request, expected = _evaluated_projection(64)
+    engine, _result, request, expected = _evaluated_projection(64)
     cache = engine.projection_fragments
     original_fragment = next(iter(cache.fragments.values()))
     invalid = replace(original_fragment, typed_ports=((0, 0, 0, 0),) * 12)

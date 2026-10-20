@@ -6,6 +6,9 @@ from collections.abc import Hashable, MutableSequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, cast
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundImageAdapter,
@@ -23,6 +26,10 @@ from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.ledger import ResourceInventory, ResourceLedger
 from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.sequences.antihydra.blocks import ArithmeticCylinder
+from number_compiler.sequences.antihydra.projection_audit_state import (
+    ProjectionAdapterAuditState,
+    ProjectionStoreState,
+)
 from number_compiler.sequences.antihydra.projection_fragments import (
     ProjectionFragment,
     ProjectionFragmentCache,
@@ -64,7 +71,7 @@ class _FragmentRecord:
     image: ProjectionBlockImage | None
 
 
-class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
+class AntihydraFragmentAdapter(SourceBoundImageAdapter):
     family = "antihydra"
     semantic_version = ANTIHYDRA_SECTION_FRAGMENT_VERSION
 
@@ -131,6 +138,36 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         )
 
         register_antihydra_payload_contract(self)
+
+    def audit_snapshot(self) -> ProjectionAdapterAuditState:
+        return ProjectionAdapterAuditState(
+            (
+                ProjectionStoreState(
+                    self._owner, "_records", "demanded_projection", self._records
+                ),
+                ProjectionStoreState(
+                    self._seal_owner, "_seals", "projection_binding", self._seals
+                ),
+                ProjectionStoreState(
+                    self._source_seal_owner,
+                    "_source_seals",
+                    "projection_binding",
+                    self._source_seals,
+                ),
+            ),
+            self.projection is None
+            and self.key is None
+            and self.block is None
+            and self._cursor is None
+            and self._occurrence is None
+            and self._source_h == self._source_balance == 0
+            and self._section_capacity == 0
+            and self._source_token is None
+            and not self._records
+            and not self._seals
+            and not self._source_seals,
+            type(self._token) is ArenaToken,
+        )
 
     def configure(
         self,
@@ -220,15 +257,21 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
 
     @classmethod
     def _seal_nodes(cls, seal: tuple[object, ...]) -> int:
+        if not is_exact_object_tuple(seal):
+            return 1
         image = seal[-1]
         image_nodes = 0
-        if type(image) is tuple and len(image) == 7 and type(image[-1]) is tuple:
+        if (
+            is_exact_object_tuple(image)
+            and len(image) == 7
+            and is_exact_object_tuple(image[-1])
+        ):
             # The seal copies the seven-field wrapper and refers to the class
             # tuple already charged by the occurrence owner.
             image_nodes = 8
         return 1 + image_nodes
 
-    def _handle(self, record: _FragmentRecord) -> AntihydraFragmentID:
+    def scoped_handle(self, record: _FragmentRecord) -> AntihydraFragmentID:
         _projection, _key, _block = self._context()
         seal = self._record_seal(record)
         nodes = self._record_nodes(record)
@@ -354,7 +397,7 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
     def admit_source(self, source: Hashable) -> SourceImageCandidate:
         self.validate_source(source)
         _projection, key, _block = self._context()
-        payload = self._handle(_FragmentRecord(0, None))
+        payload = self.scoped_handle(_FragmentRecord(0, None))
         return SourceImageCandidate(payload, 0, (key.source_owner, key.start))
 
     def apply_primitive(
@@ -373,7 +416,7 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
         occurrence = self._active_occurrence()
         if exact.offset != 0 or exact.width != block.width or occurrence.image is None:
             raise ValueError("Antihydra primitive requires the admitted block image")
-        payload = self._handle(_FragmentRecord(block.width, occurrence.image))
+        payload = self.scoped_handle(_FragmentRecord(block.width, occurrence.image))
         self.ledger.bump(_antihydra_keys.SPACETIME_PROJECTION_CORE_PRIMITIVE_FRAGMENTS)
         return SourceImageCandidate(
             payload,
@@ -434,7 +477,7 @@ class _AntihydraFragmentAdapter(SourceBoundImageAdapter):
             raise ArithmeticError("shared Antihydra image disagrees with its roof")
         ports = [[0] * key.area for _ in range(12)]
         samples = 0
-        workspace = projection.result._engine.projection_workspace
+        workspace = projection.result.source_term.engine.projection_workspace
         if workspace is None:
             raise RuntimeError("Antihydra section workspace was not started")
         classes: dict[tuple[tuple[int, int], int, int], int] = {}
@@ -488,7 +531,7 @@ class AntihydraProjectionDriver:
     """One reusable common scheduler authority owned by a cylinder engine."""
 
     def __init__(self, ledger: ResourceLedger) -> None:
-        self.adapter = _AntihydraFragmentAdapter(ledger)
+        self.adapter = AntihydraFragmentAdapter(ledger)
         self.cursor = ProjectionOccurrenceCursor(ledger)
         self.scheduler = TileScheduler.source_only(ledger)
         self.scheduler.register_source_image_adapter(self.adapter)
@@ -496,7 +539,7 @@ class AntihydraProjectionDriver:
     @property
     def core(self) -> SourceBoundSchedulerCore:
         """Read-only access to the core owned by the canonical scheduler."""
-        core = self.scheduler._source_images
+        core = self.scheduler.published_source_image_core
         if core is None:
             raise RuntimeError("Antihydra projection scheduler has been disposed")
         return core
@@ -509,8 +552,9 @@ class AntihydraProjectionDriver:
         if (
             projection is None
             or cache.ledger is not self.core.ledger
-            or projection.result._engine.projection_fragments is not cache
-            or projection.result._engine.projection_fragment_driver is not self
+            or projection.result.source_term.engine.projection_fragments is not cache
+            or projection.result.source_term.engine.projection_fragment_driver
+            is not self
         ):
             raise ValueError(
                 "Antihydra fragment requires an active source-image publication"
@@ -535,7 +579,8 @@ class AntihydraProjectionDriver:
         projection = self.cursor.projection
         if (
             projection is None
-            or projection.result._engine.projection_fragment_driver is not self
+            or projection.result.source_term.engine.projection_fragment_driver
+            is not self
         ):
             raise ValueError("Antihydra fragment requires its active source driver")
         self.adapter.configure(self.cursor, occurrence, section_capacity)
@@ -545,7 +590,7 @@ class AntihydraProjectionDriver:
                 self.adapter.source(),
                 AntihydraFragmentAction(0, record.block.width),
             )
-            cache = projection.result._engine.projection_fragments
+            cache = projection.result.source_term.engine.projection_fragments
             return cache.put(image, fragment_capacity, issuer=self)
         finally:
             try:
@@ -561,7 +606,7 @@ def build_projection_fragment(
     section_capacity: int | None = None,
 ) -> ProjectionFragment:
     """Run the common chronological driver and return one detached root image."""
-    engine = projection.result._engine
+    engine = projection.result.source_term.engine
     driver = engine.projection_fragment_driver
     if type(driver) is not AntihydraProjectionDriver:
         raise ValueError("Antihydra projection driver owner was changed")

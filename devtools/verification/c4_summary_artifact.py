@@ -45,7 +45,9 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     SymbolSort,
 )
 from number_compiler.hashlife.interfaces.diamond_kernel import FiniteExpression
-from number_compiler.hashlife.interfaces.expression_transactions import _Transaction
+from number_compiler.hashlife.interfaces.expression_transactions import (
+    ExpressionTransaction,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.physical_kernel import (
     PhysicalCollatzFourBlockEffect,
@@ -132,31 +134,34 @@ _KINDS = frozenset(
 
 
 def _valid_sort(value: object) -> bool:
-    if type(value) is not tuple or not value or type(value[0]) is not str:
+    if type(value) is not tuple:
         return False
-    if value[0] == "state":
+    parts = cast(tuple[object, ...], value)
+    if not parts or type(parts[0]) is not str:
+        return False
+    if parts[0] == "state":
         return (
-            len(value) == 3
-            and type(value[1]) is int
-            and 0 <= value[1] <= 4
-            and type(value[2]) is int
-            and value[2] in (0, 1)
+            len(parts) == 3
+            and type(parts[1]) is int
+            and 0 <= parts[1] <= 4
+            and type(parts[2]) is int
+            and parts[2] in (0, 1)
         )
-    if value[0] == "symbol":
+    if parts[0] == "symbol":
         return (
-            len(value) == 3
-            and type(value[1]) is int
-            and value[1] == 2
-            and type(value[2]) is int
-            and value[2] == 2
+            len(parts) == 3
+            and type(parts[1]) is int
+            and parts[1] == 2
+            and type(parts[2]) is int
+            and parts[2] == 2
         )
-    if value[0] == "function":
+    if parts[0] == "function":
         return (
-            len(value) == 3
-            and type(value[1]) is tuple
-            and type(value[2]) is tuple
-            and _valid_state_sort(value[1])
-            and _valid_state_sort(value[2])
+            len(parts) == 3
+            and type(parts[1]) is tuple
+            and type(parts[2]) is tuple
+            and _valid_state_sort(cast(tuple[object, ...], parts[1]))
+            and _valid_state_sort(cast(tuple[object, ...], parts[2]))
         )
     return False
 
@@ -288,7 +293,7 @@ def _validate_artifact(artifact: object, digest: str) -> C4UnarySummaryArtifact:
     for parameters in parameter_sets:
         if not 1 <= len(parameters) <= 3 or len(set(parameters)) != len(parameters):
             raise ValueError("C4 summary artifact requires distinct state parameters")
-        identities = set()
+        identities: set[tuple[PortableSort, str]] = set()
         for parameter in parameters:
             node = artifact.expressions[parameter]
             if node.kind != "port" or not _valid_state_sort(node.sort) or not node.role:
@@ -384,12 +389,12 @@ def _sort(runtime: DiamondRuntime, value: object) -> PortableSort:
     raise TypeError("C4 summary contains an unknown expression sort")
 
 
-def _recipe(
+def c4_artifact_recipe(
     runtime: DiamondRuntime, action: ActionProgramID, cell: CellID, side: int
 ) -> str:
     temporal = runtime.actions.resolve(action)
     primitive, repetitions, action_digest = _action_recipe(runtime, action)
-    source = runtime.cells.source_geometry._construction.source
+    source = runtime.cells.source_geometry.construction.source
     node = runtime.cells.require_original(cell)
     if (
         temporal.exponent != 16
@@ -523,40 +528,39 @@ def _freeze(
     finite_map = {old: new for new, old in enumerate(finite_handles)}
     functions = runtime.kernels.functions
     decision_ids = {0, 1}
+    finite_storage = runtime.kernels.audit_snapshot()
+    finite_expressions = finite_storage.expressions
+    functions = runtime.kernels.functions
+    function_nodes = functions.audit_snapshot().nodes
     decision_pending = [
-        bit.local_id
-        for old in finite_handles
-        for bit in runtime.kernels._expressions[old].bits
+        bit.local_id for old in finite_handles for bit in finite_expressions[old].bits
     ]
     while decision_pending:
         index = decision_pending.pop()
         if index in decision_ids:
             continue
         decision_ids.add(index)
-        decision = functions._nodes[index]
+        decision = function_nodes[index]
         decision_pending.extend((decision.low, decision.high))
     ordered_decisions = (0, 1, *sorted(decision_ids - {0, 1}))
     decision_map = {old: new for new, old in enumerate(ordered_decisions)}
 
     decisions = tuple(
         PortableDecision(
-            functions._nodes[old].variable,
-            decision_map[functions._nodes[old].low],
-            decision_map[functions._nodes[old].high],
+            function_nodes[old].variable,
+            decision_map[function_nodes[old].low],
+            decision_map[function_nodes[old].high],
         )
         for old in ordered_decisions
     )
     finite = tuple(
         PortableFiniteExpression(
-            runtime.kernels._expressions[old].domain,
-            tuple(
-                decision_map[bit.local_id]
-                for bit in runtime.kernels._expressions[old].bits
-            ),
+            finite_expressions[old].domain,
+            tuple(decision_map[bit.local_id] for bit in finite_expressions[old].bits),
         )
         for old in finite_handles
     )
-    expressions = []
+    expressions: list[PortableExpression] = []
     for old in ordered_expressions:
         node = arena.nodes[old]
         expressions.append(
@@ -618,9 +622,12 @@ def _restore_state(
     value: object,
     actions: dict[int, ActionProgramID],
 ) -> StateSort:
-    if type(value) is not tuple or len(value) != 3 or value[0] != "state":
+    if type(value) is not tuple:
         raise ValueError("portable function sort has invalid state metadata")
-    exponent, side = value[1], value[2]
+    parts = cast(tuple[object, ...], value)
+    if len(parts) != 3 or parts[0] != "state":
+        raise ValueError("portable function sort has invalid state metadata")
+    exponent, side = parts[1], parts[2]
     if type(exponent) is not int or type(side) is not int:
         raise ValueError("portable state sort has invalid metadata")
     return StateSort(_restored_action(runtime, primitive, exponent, actions), side)
@@ -648,8 +655,12 @@ def _restore_sort(
         domain_value, codomain_value = value[1], value[2]
         if type(domain_value) is not tuple or type(codomain_value) is not tuple:
             raise ValueError("portable function sort has invalid metadata")
-        domain = _restore_state(runtime, primitive, domain_value, actions)
-        codomain = _restore_state(runtime, primitive, codomain_value, actions)
+        domain = _restore_state(
+            runtime, primitive, cast(tuple[object, ...], domain_value), actions
+        )
+        codomain = _restore_state(
+            runtime, primitive, cast(tuple[object, ...], codomain_value), actions
+        )
         result = FunctionSort(domain, codomain)
         sorts[value] = result
         return result
@@ -678,21 +689,24 @@ def _bind(
             raise ValueError("nonterminal portable decision has no variable")
         runtime.ledger.bump("proof_artifact_loading_work")
         runtime.ledger.bump("proof_artifact_decision_loads")
-        actual = functions._intern(
+        actual = functions.intern_record(
             decision.variable, decision_ids[decision.low], decision_ids[decision.high]
         )
         decision_ids.append(actual)
         if len(decision_ids) != index + 1:
             raise AssertionError("portable decision order was not topological")
-    finite_results = []
+    finite_results: list[TransferSummaryID] = []
     for finite in artifact.finite_expressions:
         runtime.ledger.bump("proof_artifact_loading_work")
         runtime.ledger.bump("proof_artifact_finite_expression_loads")
         finite_results.append(
-            runtime.kernels._intern_expression(
+            runtime.kernels.intern_expression(
                 FiniteExpression(
                     finite.domain,
-                    tuple(functions._handle(decision_ids[bit]) for bit in finite.bits),
+                    tuple(
+                        functions.scoped_handle(decision_ids[bit])
+                        for bit in finite.bits
+                    ),
                 )
             )
         )
@@ -713,7 +727,7 @@ def _bind(
         )
 
     def expression(root: int, parameters: dict[int, ExprID]) -> ExprID:
-        transaction = _Transaction(arena)
+        transaction = ExpressionTransaction(arena)
         resolved = {index: handle.local_id for index, handle in parameters.items()}
         pending = [(root, False)]
         while pending:
@@ -791,7 +805,7 @@ def _bind(
     return root
 
 
-def _build_isolated(digest: str) -> C4UnarySummaryArtifact:
+def build_isolated_c4_artifact(digest: str) -> C4UnarySummaryArtifact:
     """Build shared proof data without borrowing the requesting index."""
     effect = PhysicalCollatzFourBlockEffect()
     ledger = ResourceLedger()
@@ -818,7 +832,7 @@ def _build_isolated(digest: str) -> C4UnarySummaryArtifact:
     pair = runtime.actions.compose(primitive, primitive)
     fourth = runtime.actions.compose(pair, pair)
     cell = runtime.cells.source(0, 4)
-    if _recipe(runtime, fourth, cell, 1) != digest:
+    if c4_artifact_recipe(runtime, fourth, cell, 1) != digest:
         raise ValueError("isolated C4 artifact recipe differs from its requester")
     return _freeze(runtime, fourth, cell, 1, digest)
 
@@ -845,7 +859,7 @@ def c4_fourth_right_summary(
     registry: ImmutableArtifactRegistry = REGISTRY,
 ) -> ClosureProgramID:
     """Return a fresh-runtime closure from one immutable upstream proof artifact."""
-    digest = _recipe(runtime, action, cell, 1)
+    digest = c4_artifact_recipe(runtime, action, cell, 1)
     try:
         _preflight_first_target_reservation(runtime)
     except BaseException:
@@ -857,7 +871,7 @@ def c4_fourth_right_summary(
     try:
         artifact, hit = registry.obtain(
             ArtifactKey(_KIND, digest),
-            lambda: _build_isolated(digest),
+            lambda: build_isolated_c4_artifact(digest),
             uncached=uncached,
         )
     except BaseException:

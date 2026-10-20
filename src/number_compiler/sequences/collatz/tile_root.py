@@ -65,4 +65,4 @@ def initial_event_shift(
     )
     if type(primitive) is not int:
         raise ValueError("Collatz power has no canonical primitive action")
-    return adapter._handle(primitive), ticks - 1
+    return adapter.scoped_handle(primitive), ticks - 1

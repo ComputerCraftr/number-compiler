@@ -45,7 +45,7 @@ def test_production_endpoint_uses_source_bound_fiber_chart(
             def forbidden(*args: object) -> int:
                 raise AssertionError("endpoint reconstructed input or history")
 
-            monkeypatch.setattr(workspace, "_source_value", forbidden)
+            monkeypatch.setattr(workspace, "source_value", forbidden)
             monkeypatch.setattr(workspace, "branch_segments", forbidden)
             assert workspace.endpoint() == expected
             assert (

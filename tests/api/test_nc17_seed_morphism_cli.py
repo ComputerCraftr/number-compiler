@@ -17,7 +17,10 @@ from tests.support.reverse_add_source_data import iterate_double_reverse as lite
 
 
 def _mapping(value: object) -> dict[str, object]:
-    if not isinstance(value, dict) or any(type(key) is not str for key in value):
+    if not isinstance(value, dict):
+        raise AssertionError("expected a string-keyed JSON object")
+    mapping = cast(dict[object, object], value)
+    if any(type(key) is not str for key in mapping):
         raise AssertionError("expected a string-keyed JSON object")
     return cast(dict[str, object], value)
 
@@ -25,7 +28,7 @@ def _mapping(value: object) -> dict[str, object]:
 def _sequence(value: object) -> list[object]:
     if not isinstance(value, list):
         raise TypeError("expected a JSON array")
-    return value
+    return cast(list[object], value)
 
 
 def _integer(value: object) -> int:
@@ -224,24 +227,58 @@ def test_center_period_scan_matches_exact_time_samples_and_real_drivers(
     assert packet["all_depth_period_claim"] is False
 
 
+@pytest.mark.validation
 def test_different_center_return_gaps_across_seeds(
     capsys: pytest.CaptureFixture[str],
+) -> None:
+    _assert_different_center_return_gaps(
+        capsys, index=512, samples=64, require_long_gap=True
+    )
+
+
+@pytest.mark.parametrize(
+    "index",
+    [
+        pytest.param(128, id="unit"),
+        pytest.param(512, marks=pytest.mark.validation, id="full"),
+    ],
+)
+def test_representative_center_return_gaps_are_seed_specific(
+    capsys: pytest.CaptureFixture[str],
+    index: int,
+) -> None:
+    _assert_different_center_return_gaps(
+        capsys,
+        index=index,
+        samples=32,
+        require_long_gap=False,
+        require_short_gap=index == 512,
+    )
+
+
+def _assert_different_center_return_gaps(
+    capsys: pytest.CaptureFixture[str],
+    *,
+    index: int,
+    samples: int,
+    require_long_gap: bool,
+    require_short_gap: bool = False,
 ) -> None:
     first = cli_packet(
         capsys,
         1,
-        512,
+        index,
         "--temporal-period-samples",
-        "64",
+        str(samples),
         "--temporal-period-depth",
         "0",
     )
     second = cli_packet(
         capsys,
         196,
-        512,
+        index,
         "--temporal-period-samples",
-        "64",
+        str(samples),
         "--temporal-period-depth",
         "0",
     )
@@ -257,9 +294,12 @@ def test_different_center_return_gaps_across_seeds(
         _integer(_mapping(row)["physical_gap"])
         for row in _sequence(b["consecutive_observed_return_gaps"])
     }
-    assert 4 in gaps_a
-    assert 40 in gaps_b
     assert gaps_a != gaps_b
+    if require_short_gap:
+        assert 4 in gaps_a
+    if require_long_gap:
+        assert 4 in gaps_a
+        assert 40 in gaps_b
     assert a["finite_window_period_lags"] == []
     assert b["finite_window_period_lags"] == []
 
@@ -268,13 +308,13 @@ def test_exact_morphism_after_prefix_does_not_replay_scalar(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     with DoubleReverseTerm(196, 144, max_state_bits=16384) as term:
-        term._prepare_bank_source(max_prefix=32)
+        term.prepare_bank_source(max_prefix=32)
 
         def forbidden(*_args: object, **_kwargs: object) -> None:
             raise AssertionError("powered suffix replayed scalar transition")
 
-        monkeypatch.setattr(type(term._adapter), "_general_two_step", forbidden)
-        monkeypatch.setattr(type(term._adapter), "_apply_word", forbidden)
+        monkeypatch.setattr(type(term.source_adapter), "_general_two_step", forbidden)
+        monkeypatch.setattr(type(term.source_adapter), "_apply_word", forbidden)
         answer = seed_morphism_cli_packet(term, period_samples=4, period_depth=2)
         assert _mapping(answer["endpoint"])["center"] == "50"
         assert _mapping(answer["power"])["physical_powered_generations"] == 128

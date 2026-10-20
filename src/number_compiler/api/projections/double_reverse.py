@@ -23,13 +23,12 @@ def project(
         return (
             (owner.seed, owner.generation, owner.max_steps, owner.max_state_bits)
             == (query.seed, query.index, query.max_steps, query.max_state_bits)
-            and owner.resource_ledger.max_nodes == compiler._max_context_nodes
-            and owner.resource_ledger.max_cache_entries == compiler._max_cache_entries
-            and not owner._closed
-            and not owner._cleanup_complete
+            and owner.resource_ledger.max_nodes == compiler.max_context_nodes
+            and owner.resource_ledger.max_cache_entries == compiler.max_cache_entries
+            and owner.is_usable
         )
 
-    term = compiler._powered_term(
+    term = compiler.powered_term(
         query,
         DoubleReverseTerm,
         lambda: DoubleReverseTerm(
@@ -37,8 +36,8 @@ def project(
             query.index,
             max_steps=query.max_steps,
             max_state_bits=query.max_state_bits,
-            max_context_nodes=compiler._max_context_nodes,
-            max_cache_entries=compiler._max_cache_entries,
+            max_context_nodes=compiler.max_context_nodes,
+            max_cache_entries=compiler.max_cache_entries,
         ),
         valid,
     )

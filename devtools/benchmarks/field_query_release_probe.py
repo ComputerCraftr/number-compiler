@@ -15,13 +15,13 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from time import perf_counter
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, TypedDict, cast
 from unittest.mock import patch
 
 from devtools.checks.validation_policy import PYTHON_COMMAND_SECONDS
 from devtools.git_source import git_source, same_git_revision
 from devtools.paths import repository_root
-from devtools.report_values import string_keyed_mapping
+from number_compiler.arithmetic.contracts.input_validation import string_keyed_mapping
 from number_compiler.resources.temporal_diagnostics import METRICS_SCHEMA_VERSION
 
 if TYPE_CHECKING:
@@ -239,10 +239,10 @@ def _worker_failure(
 def _worker_mapping(value: object) -> Mapping[str, object] | None:
     if type(value) is not dict:
         return None
-    return string_keyed_mapping(value)
+    return string_keyed_mapping(cast(dict[object, object], value))
 
 
-def _family_report(
+def family_report(
     family: str,
     rows: Sequence[Mapping[str, object]],
     horizons: tuple[int, ...],
@@ -255,12 +255,12 @@ def _family_report(
         len(selected) == len(horizons)
         and [row.get("horizon") for row in selected] == list(horizons)
         and len(passed) == len(horizons)
-        and all(_valid_worker_metrics(row.get("metrics")) for row in passed)
+        and all(valid_worker_metrics(row.get("metrics")) for row in passed)
     )
     measurements: list[dict[str, object]] = []
     for row in passed:
         metrics = _worker_mapping(row.get("metrics"))
-        if metrics is not None and _valid_worker_metrics(metrics):
+        if metrics is not None and valid_worker_metrics(metrics):
             measurements.append({**metrics, "generation": row["horizon"]})
     prefix: list[dict[str, object]] = []
     for horizon, row in zip(horizons, measurements, strict=False):
@@ -274,7 +274,7 @@ def _family_report(
     envelopes = {
         field: observed[field] if complete else None for field in ENVELOPE_FIELDS
     }
-    blockers = []
+    blockers: list[str] = []
     if not complete:
         blockers.append("measurement_series_incomplete")
     if len(prefix) < 2:
@@ -287,7 +287,7 @@ def _family_report(
     for field in FORBIDDEN_EXECUTION_FIELDS:
         if any(_metric_observed(row, field) for row in passed):
             blockers.append(field + "_observed")
-    if any(not _runtime_executed(row) for row in passed):
+    if any(not runtime_executed(row) for row in passed):
         blockers.append("powered_tile_execution_not_demonstrated")
     return {
         "family": family,
@@ -300,7 +300,7 @@ def _family_report(
     }
 
 
-def _valid_worker_metrics(value: object) -> bool:
+def valid_worker_metrics(value: object) -> bool:
     metrics = _worker_mapping(value)
     if metrics is None:
         return False
@@ -310,7 +310,7 @@ def _valid_worker_metrics(value: object) -> bool:
     )
 
 
-def _runtime_executed(row: Mapping[str, object]) -> bool:
+def runtime_executed(row: Mapping[str, object]) -> bool:
     """A small compiler and source tile population cannot prove execution.
 
     Successful demand must be measured independently from action compilation.
@@ -409,7 +409,7 @@ def run_probe() -> FieldProbeReport:
                                 stderr=run.stderr,
                                 reason="worker identified another sample",
                             )
-                        elif not _valid_worker_metrics(parsed_fields.get("metrics")):
+                        elif not valid_worker_metrics(parsed_fields.get("metrics")):
                             row = _worker_failure(
                                 family,
                                 horizon,
@@ -434,7 +434,7 @@ def run_probe() -> FieldProbeReport:
         if row.get("status") == "passed"
     )
     family_reports = {
-        family: _family_report(family, rows, HORIZONS)
+        family: family_report(family, rows, HORIZONS)
         for family in ("reverse", "collatz")
     }
     series_complete = all(

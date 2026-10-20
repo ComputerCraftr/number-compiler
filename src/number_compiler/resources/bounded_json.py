@@ -229,16 +229,20 @@ def snapshot_canonical_json(
             )
             assign(destination, slot, value)
         elif type(value) is list:
-            child_count = len(value)
+            source_list = cast(list[object], value)
+            child_count = len(source_list)
             if node + child_count > max_nodes:
                 raise ValueError("JSON value exceeds its bounded node count")
             size = add_size(size, 2 + max(0, child_count - 1))
             reserve_container_and_slots(1 + child_count)
             copied_list: list[object] = []
             assign(destination, slot, copied_list)
-            stack.append(("list", value, copied_list, None, depth + 1, 0, child_count))
+            stack.append(
+                ("list", source_list, copied_list, None, depth + 1, 0, child_count)
+            )
         elif type(value) is dict or (depth == 0 and type(value) is MappingProxyType):
-            child_count = len(value)
+            source_mapping = cast(Mapping[object, object], value)
+            child_count = len(source_mapping)
             if node + 2 * child_count > max_nodes:
                 raise ValueError("JSON value exceeds its bounded node count")
             size = add_size(
@@ -246,10 +250,10 @@ def snapshot_canonical_json(
                 2 + 2 * child_count + max(0, child_count - 1),
             )
             reserve_container_and_slots(1 + 2 * child_count)
-            copied_dict = {}
+            copied_dict = cast(dict[str, object], {})
             assign(destination, slot, copied_dict)
             try:
-                iterator = iter(value.items())
+                iterator = iter(source_mapping.items())
             except RuntimeError as exc:
                 raise ValueError("JSON object changed during bounded snapshot") from exc
             stack.append(

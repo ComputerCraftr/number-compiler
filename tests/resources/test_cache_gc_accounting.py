@@ -17,8 +17,8 @@ from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.ownership import (
     audit_execution_ownership as _canonical_audit_execution_ownership,
 )
-from tests.resources.test_tile_causal_interface_memo import _binding
-from tests.support.tile_results import _setup
+from tests.resources.test_tile_causal_interface_memo import causal_interface_binding
+from tests.support.tile_results import setup_tile_results
 
 if TYPE_CHECKING:
     from number_compiler.resources.ownership import OwnershipAudit
@@ -31,7 +31,7 @@ def test_metric_projection_rejects_a_mixed_live_cache_snapshot(
 
     ledger = ResourceLedger()
     tiles = TileArena(ledger)
-    tiles._cache_metrics.record(
+    tiles.cache_metrics.record(
         "tile",
         "publication",
         spatial_level=0,
@@ -43,8 +43,8 @@ def test_metric_projection_rejects_a_mixed_live_cache_snapshot(
         selected: ResourceLedger, *, fresh: bool = True
     ) -> OwnershipAudit:
         result = ordinary(selected, fresh=fresh)
-        key = next(iter(tiles._cache_metrics.buckets))
-        tiles._cache_metrics.buckets[key] += 1
+        key = next(iter(tiles.cache_metrics.buckets))
+        tiles.cache_metrics.buckets[key] += 1
         return result
 
     monkeypatch.setattr(collection, "audit_execution_ownership", mutate_after_capture)
@@ -73,7 +73,9 @@ def test_metric_projection_rejects_counter_work_after_snapshot(
 
 
 def test_result_hits_are_distributed_by_spatial_level_and_temporal_span() -> None:
-    ledger, _actions, _tiles, results, input_lease, output_lease, key, result = _setup()
+    ledger, _actions, _tiles, results, input_lease, output_lease, key, result = (
+        setup_tile_results()
+    )
     held = None
     warm = None
     try:
@@ -103,7 +105,7 @@ def test_result_hits_are_distributed_by_spatial_level_and_temporal_span() -> Non
 
 def test_tile_retirement_reports_gc_deltas_and_unknown_recreation() -> None:
     ledger, _actions, tiles, _results, input_lease, output_lease, key, _result = (
-        _setup()
+        setup_tile_results()
     )
     alphabet = tiles.resolve(key.input).alphabet
     output_lease.close()
@@ -123,7 +125,9 @@ def test_tile_retirement_reports_gc_deltas_and_unknown_recreation() -> None:
 
 
 def test_result_eviction_and_unattributed_post_eviction_miss_are_separate() -> None:
-    ledger, _actions, _tiles, results, input_lease, output_lease, key, result = _setup()
+    ledger, _actions, _tiles, results, input_lease, output_lease, key, result = (
+        setup_tile_results()
+    )
     held = results.publish(key, result)
     try:
         ledger.evict_query_memos()
@@ -139,7 +143,7 @@ def test_result_eviction_and_unattributed_post_eviction_miss_are_separate() -> N
 
 
 def test_interface_hits_report_actual_temporal_span_without_semantic_replay() -> None:
-    ledger, _tiles, results, source, key, payload = _binding()
+    ledger, _tiles, results, source, key, payload = causal_interface_binding()
     try:
         lookup_causal_interface(results, key)
         publish_causal_interface(results, key, payload)
@@ -155,19 +159,19 @@ def test_cache_histogram_has_a_hard_charged_bucket_bound() -> None:
     ledger = ResourceLedger()
     tiles = TileArena(ledger)
     for level in range(MAX_CACHE_EVENT_BUCKETS):
-        tiles._cache_metrics.record(
+        tiles.cache_metrics.record(
             "tile",
             "publication",
             spatial_level=level,
             temporal_span=None,
         )
     entries = ledger.entries
-    tiles._cache_metrics.record(
+    tiles.cache_metrics.record(
         "tile",
         "publication",
         spatial_level=MAX_CACHE_EVENT_BUCKETS,
         temporal_span=None,
     )
-    assert len(tiles._cache_metrics.buckets) == MAX_CACHE_EVENT_BUCKETS
+    assert len(tiles.cache_metrics.buckets) == MAX_CACHE_EVENT_BUCKETS
     assert ledger.entries == entries
     assert ledger.counters["cache_event_histogram_dropped"] == 1

@@ -32,19 +32,19 @@ def project(
                 query.index,
                 query.base,
             )
-            and owner.resource_ledger.max_nodes == compiler._max_context_nodes
-            and owner.resource_ledger.max_cache_entries == compiler._max_cache_entries
+            and owner.resource_ledger.max_nodes == compiler.max_context_nodes
+            and owner.resource_ledger.max_cache_entries == compiler.max_cache_entries
         )
 
-    term = compiler._powered_term(
+    term = compiler.powered_term(
         query,
         ReverseAddPoweredTerm,
         lambda: ReverseAddPoweredTerm(
             query.seed,
             query.index,
             base=query.base,
-            max_context_nodes=compiler._max_context_nodes,
-            max_cache_entries=compiler._max_cache_entries,
+            max_context_nodes=compiler.max_context_nodes,
+            max_cache_entries=compiler.max_cache_entries,
         ),
         valid,
     )

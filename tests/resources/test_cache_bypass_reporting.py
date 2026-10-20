@@ -1,5 +1,8 @@
 """Cache bypass reasons stay distinct from misses, capacity and local reuse."""
 
+from collections.abc import Callable
+from typing import cast
+
 import pytest
 
 from number_compiler.resources.ledger import ResourceLedger
@@ -9,7 +12,9 @@ from number_compiler.resources.temporal_diagnostics import (
 from number_compiler.sequences.antihydra import mahler_cache
 from number_compiler.sequences.antihydra.mahler_action import associated_action
 from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
-from number_compiler.sequences.collatz.source_cylinder_cache import CollatzDyadicMacros
+from number_compiler.sequences.collatz.source_cylinder_cache import (
+    CollatzDyadicMacros,
+)
 
 
 def test_disabled_process_reuse_does_not_hide_local_collatz_hits() -> None:
@@ -80,7 +85,11 @@ def test_republication_at_capacity_preserves_other_local_occurrences(
         assert macros.remember(2, 8, 4, 2)
         second = macros.lookup(2, 8)
         assert second is not None
-        macros._publish(second, 0)
+        publish = cast(
+            Callable[[object, int], object],
+            object.__getattribute__(macros, "_publish"),
+        )
+        publish(second, 0)
         assert macros.lookup(1, 8) is not None
         assert len(macros.occurrences) == 2
         assert macros.ledger.counters["collatz_hashlife_occurrence_evictions"] == 0

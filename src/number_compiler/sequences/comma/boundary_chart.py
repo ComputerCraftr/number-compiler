@@ -14,9 +14,9 @@ from typing import Literal
 
 from number_compiler.sequences.comma.arithmetic import (
     CycleTransfer,
-    _sector_child_increments,
     classify_near_port,
     entry_headroom,
+    sector_child_increments,
 )
 from number_compiler.sequences.comma.cyclotomic_clock import CyclotomicClock
 from number_compiler.sequences.comma.domain import canonical_entry_coordinate
@@ -168,7 +168,7 @@ def _near_chart_target_validated(chart: BoundaryChart) -> NearChartTarget:
     """Shared Near law for callers that already validated their chart."""
     leading, delta, coordinate = chart.leading, chart.delta, chart.coordinate
     digit = (-coordinate) % 10
-    increments = _sector_child_increments(leading, digit, coordinate)
+    increments = sector_child_increments(leading, digit, coordinate)
     if not increments:
         return NearChartTarget(None, None, 0)
     if len(increments) == 2:

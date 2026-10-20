@@ -16,6 +16,7 @@ the active query ledger and are released with that observer scope.
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Self, TypeVar, cast
 
@@ -124,7 +125,7 @@ class InnovationObserverMemo:
     def __exit__(self, *_args: object) -> None:
         self.dispose()
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         if self._closed:
             raise RuntimeError("innovation observer memo is closed")
         # A caller may dispose an owner directly through the ledger. Validate
@@ -133,13 +134,33 @@ class InnovationObserverMemo:
         self.ledger.registered_container(self._scratch_owner)
 
     def note_refinement(self, state_count: int) -> None:
-        self._check_open()
+        self.check_open()
         if type(state_count) is not int or state_count < 0:
             raise ValueError("refinement state count must be nonnegative")
         self.ledger.bump(_COUNTER_PREFIX + "refinement_levels")
         self.ledger.bump(_COUNTER_PREFIX + "refinement_state_visits", state_count)
 
-    def _get_or_build(
+    def reserve_scratch(self, *, entries: int = 0, nodes: int = 0) -> None:
+        """Reserve temporary state through this memo's private ledger owner."""
+        self.check_open()
+        self.ledger.reserve(self._scratch_owner, entries=entries, nodes=nodes)
+
+    def release_scratch(self, *, entries: int = 0, nodes: int = 0) -> None:
+        """Release temporary state through this memo's private ledger owner."""
+        self.check_open()
+        self.ledger.release(self._scratch_owner, entries=entries, nodes=nodes)
+
+    def scratch_reservation(self, *, nodes: int) -> AbstractContextManager[None]:
+        """Return a reservation context tied to this live query owner."""
+        self.check_open()
+        return self.ledger.reservation(self._scratch_owner, nodes=nodes)
+
+    @property
+    def scratch_disposed(self) -> bool:
+        """Expose only the scratch account's disposed state for audits."""
+        return self.ledger.account_status(self._scratch_owner).disposed
+
+    def get_or_build(
         self,
         layer: str,
         key: tuple[object, ...],
@@ -147,7 +168,7 @@ class InnovationObserverMemo:
         *,
         work_nodes: int,
     ) -> _MemoValue:
-        self._check_open()
+        self.check_open()
         if type(layer) is not str or not layer:
             raise ValueError("observer cache layer must be named")
         if type(key) is not tuple or any(
@@ -305,7 +326,7 @@ class InnovationMooreClock:
         global_id = machine.global_id(self.identity, phase, memo=memo)
         finite_id = machine.finite_id(self.identity, phase, returns, memo=memo)
         finite_count = machine.finite_count(returns, memo=memo)
-        orbit = _global_class_orbit(self.modulus, global_id, memo=memo)
+        orbit = global_class_orbit(self.modulus, global_id, memo=memo)
         prefix, period = orbit.prefix, orbit.period
         # One previously compiled finite future can be used by distinct
         # infinite-future classes whenever their requested prefixes agree.
@@ -384,7 +405,7 @@ def innovation_moore_clock(
     if memo is not None:
         if type(memo) is not InnovationObserverMemo:
             raise TypeError("innovation clock memo must be query-owned")
-        memo._check_open()
+        memo.check_open()
     multipliers = {
         ENTRY_421: (3, 4),
         ENTRY_4721: (9, 4),
@@ -427,7 +448,7 @@ def innovation_moore_clock(
     if memo is None:
         clock = build()
     else:
-        clock = memo._get_or_build(
+        clock = memo.get_or_build(
             "local-clock",
             (identity, modulus),
             build,
@@ -474,7 +495,7 @@ class _GlobalClassOrbit:
         return b, c
 
 
-def _global_class_orbit(
+def global_class_orbit(
     modulus: int,
     global_id: int,
     *,
@@ -511,7 +532,7 @@ def _global_class_orbit(
 
     if memo is None:
         return build()
-    return memo._get_or_build(
+    return memo.get_or_build(
         "global-class-orbit",
         (modulus, global_id),
         build,
@@ -539,7 +560,7 @@ def _finite_future_summary(
     def build() -> tuple[int, int, tuple[str, ...]]:
         machine = innovation_future_moore(modulus, memo=memo)
         representative = machine.finite_representative(returns, finite_id, memo=memo)
-        orbit = _global_class_orbit(modulus, representative, memo=memo)
+        orbit = global_class_orbit(modulus, representative, memo=memo)
         b, c = orbit.counts(returns)
         sample: list[str] = []
         for tick in range(min(returns, 24)):
@@ -554,7 +575,7 @@ def _finite_future_summary(
 
     if memo is None:
         return build()
-    return memo._get_or_build(
+    return memo.get_or_build(
         "finite-summary",
         (modulus, returns, finite_id),
         build,
@@ -615,7 +636,7 @@ def innovation_macro_tape(
     if memo is not None:
         if type(memo) is not InnovationObserverMemo:
             raise TypeError("innovation tape memo must be query-owned")
-        memo._check_open()
+        memo.check_open()
     if type(macro) is not CollatzBoundaryMacro:
         raise ValueError("normalized innovation tape requires a certified macro")
     validate_boundary_macro(macro)
@@ -729,7 +750,7 @@ def observed_innovation_macro_tape(
             raise TypeError("Moore observer memo must be query-owned")
         if memo.ledger is not ledger:
             raise ValueError("Moore observer memo belongs to another query ledger")
-        memo._check_open()
+        memo.check_open()
         return innovation_macro_tape(macro, modulus, memo=memo)
     with InnovationObserverMemo(ledger) as scoped_memo:
         return innovation_macro_tape(macro, modulus, memo=scoped_memo)

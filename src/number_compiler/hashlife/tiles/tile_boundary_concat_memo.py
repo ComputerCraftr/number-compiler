@@ -124,9 +124,9 @@ def validate_boundary_concat_value(
     ):
         raise ValueError("boundary concatenation changed its logical geometry")
     if published:
-        if value._publication_owner is not arena._interface_publication_seal:
+        if not arena.issued_result(value):
             raise ValueError("boundary concat result was not issued by this arena")
-        if value._publication_snapshot != _snapshot(key, value):
+        if not value.publication_matches(_snapshot(key, value)):
             raise ValueError("boundary concat publication metadata was modified")
 
 
@@ -136,11 +136,7 @@ def _sealed(
     view: BoundaryTileView,
 ) -> BoundaryConcatResult:
     plain = BoundaryConcatResult(_view(view))
-    return BoundaryConcatResult(
-        plain.view,
-        arena._interface_publication_seal,
-        _snapshot(key, plain),
-    )
+    return arena.seal_result(plain, _snapshot(key, plain))
 
 
 def lookup_boundary_concat(
@@ -159,7 +155,7 @@ def _lookup_canonical(
     canonical: BoundaryConcatKey,
 ) -> BoundaryConcatResult | None:
     arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CACHE_REQUESTS)
-    found = arena._memo.get(canonical)
+    found = arena.memo_view.get(canonical)
     if found is None:
         arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CACHE_MISSES)
         record_unattributed_post_eviction_miss(arena.ledger, ResultCacheKind.REGION)
@@ -178,7 +174,7 @@ def _publish(
 ) -> tuple[BoundaryConcatResult, bool]:
     _validate_key(arena, key)
     validate_boundary_concat_value(arena, key, value, published=True)
-    found = arena._memo.get(key)
+    found = arena.memo_view.get(key)
     arena.ledger.bump(_tiles_keys.TILE_BOUNDARY_CONCAT_CACHE_PUBLICATION_REQUESTS)
     if found is not None:
         if type(found) is not BoundaryConcatResult:

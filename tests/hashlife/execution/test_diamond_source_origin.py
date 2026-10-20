@@ -69,7 +69,7 @@ def test_warm_parent_never_reads_source_descendants_for_admission(
     request = _request(runtime, action, cell, kind)
     expected = runtime.execute(request)
     original = runtime.cells.resolve
-    reads = []
+    reads: list[CellID] = []
 
     def only_root(
         reference: CellID,
@@ -141,7 +141,7 @@ def test_original_metadata_is_derived_and_independently_audited() -> None:
         right=image.local_id,
         original_forward=True,
     )
-    joined = runtime.cells._intern(forged)
+    joined = runtime.cells.intern_record(forged)
     assert runtime.cells.node(joined).original_forward is False
     record = runtime.cells.node(joined)
     assert DiamondPayloadRegistry(runtime.ledger).valid(record)
@@ -159,14 +159,16 @@ def test_origin_metadata_and_node_publication_share_the_same_budget_reservation(
     leaf = runtime.cells.source(0, 0)
     runtime.ledger.tighten_limits(None, runtime.ledger.entries + 1)
     before = runtime.ledger.snapshot()
-    nodes, keys = tuple(runtime.cells._nodes), tuple(runtime.cells._ids.items())
+    snapshot = runtime.cells.audit_snapshot()
+    nodes, keys = tuple(snapshot.nodes), tuple(snapshot.index.items())
     with pytest.raises(BlockContextBudgetExceeded):
-        runtime.cells._intern(
+        runtime.cells.intern_record(
             CellNode("join", 1, left=leaf.local_id, right=leaf.local_id)
         )
     assert runtime.ledger.snapshot() == before
-    assert tuple(runtime.cells._nodes) == nodes
-    assert tuple(runtime.cells._ids.items()) == keys
+    after = runtime.cells.audit_snapshot()
+    assert tuple(after.nodes) == nodes
+    assert tuple(after.index.items()) == keys
 
 
 def test_source_validation_no_longer_retains_a_second_boolean_cache() -> None:

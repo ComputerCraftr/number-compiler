@@ -39,7 +39,9 @@ def test_balanced_program_import_executes_existing_causal_scheduler(
         )
         assert ledger.counters.get("tile_causal_frames", 0) == 0
         assert tuple(projection.point(i) for i in range(4)) == expected
-        assert projection._application._root is None
+        assert (
+            projection.audit_snapshot().application.audit_snapshot().root_lease is None
+        )
         assert ledger.counters["powered_absorption_max_span"] == exponent
     work = [
         item

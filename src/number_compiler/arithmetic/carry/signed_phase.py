@@ -123,7 +123,7 @@ class BinaryPhaseCarryAction:
         dcounts = [0] * p
         output: list[list[int]] = [[0] * p for _ in range(3)]
         carries: list[list[int]] = [[0] * p for _ in range(3)]
-        end = []
+        end: list[int] = []
         for i in range(width):
             dcounts[i % p] += (data[i // 8] >> (i % 8)) & 1
         for cin in (0, 1, 2):
@@ -217,9 +217,9 @@ class BinaryPhaseCarryAction:
         src = phase_add(
             self.source_counts, phase_rotate(upper.source_counts, self.width)
         )
-        out = []
-        car = []
-        end = []
+        out: list[tuple[int, ...]] = []
+        car: list[tuple[int, ...]] = []
+        end: list[int] = []
         for ci in (0, 1, 2):
             c_mid = self.carry_out[ci]
             out.append(

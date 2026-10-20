@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import replace
-from typing import Literal
+from typing import Literal, cast
 
 import pytest
 
@@ -14,6 +14,9 @@ from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
     BoundaryTileView,
 )
+from number_compiler.hashlife.tiles.tile_result_acquisition import (
+    ResultAcquisitionLeaseOwner,
+)
 from number_compiler.hashlife.tiles.tile_result_records import (
     CompletedResult,
     PoweredResultKey,
@@ -22,24 +25,33 @@ from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerList
+from tests.support.private_attributes import private_test_attribute
 from tests.support.tile_kernel import make_tile_runtime
-from tests.support.tile_results import _setup, incoming_setup
+from tests.support.tile_results import incoming_setup, setup_tile_results
+
+
+def _lease_flag(lease: object, field: str) -> bool:
+    """Inspect a lease state bit in a deliberately adversarial cleanup test."""
+    value = object.__getattribute__(lease, field)
+    if type(value) is not bool:
+        raise AssertionError(f"lease field {field} is not boolean")
+    return value
 
 
 @pytest.mark.parametrize(
     "callback_name",
     (
-        "_validated_signature_for",
-        "_validate_input",
-        "_validate_output",
-        "_validate_fused_action",
-        "_validate_fused_wiring",
+        "signature_validator",
+        "input_validator",
+        "output_validator",
+        "fused_action_validator",
+        "fused_wiring_validator",
     ),
 )
 def test_result_authority_rejects_replaced_validator(
     monkeypatch: pytest.MonkeyPatch, callback_name: str
 ) -> None:
-    _, _, _, results, source, output, _, _ = _setup()
+    _, _, _, results, source, output, _, _ = setup_tile_results()
 
     def replacement(*_args: object) -> None:
         raise AssertionError("a replaced validator must not be called")
@@ -90,8 +102,11 @@ def test_result_lease_cleanup_closes_dependencies_before_output(
         _published_with_boundary("right")
     )
     held = results.publish(key, outgoing)
-    boundary_ids = tuple(lease._id for lease in held._boundary_tiles)
-    output_id = held._tile._id
+    held_snapshot = held.audit_snapshot()
+    boundary_ids = tuple(
+        lease.audit_snapshot().identity for lease in held_snapshot.boundary_tiles
+    )
+    output_id = held_snapshot.tile.audit_snapshot().identity
     events: list[tuple[str, int]] = []
 
     with monkeypatch.context() as patch:
@@ -99,8 +114,9 @@ def test_result_lease_cleanup_closes_dependencies_before_output(
         release_boundary = results.release_boundary_leases
 
         def tracked_close(lease: TileLease) -> None:
-            if lease._id in boundary_ids or lease._id == output_id:
-                events.append(("tile", lease._id))
+            identity = lease.audit_snapshot().identity
+            if identity in boundary_ids or identity == output_id:
+                events.append(("tile", identity))
             close_tile(lease)
 
         def tracked_accounting(
@@ -137,7 +153,7 @@ def test_result_lease_cleanup_closes_dependencies_before_output(
 def test_result_lease_rejects_binding_change_after_partial_close(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _ledger, _, _, results, source, output, key, result = _setup()
+    _ledger, _, _, results, source, output, key, result = setup_tile_results()
     held = results.publish(key, result)
     release_boundary = results.release_boundary_leases
     fail_once = True
@@ -163,19 +179,19 @@ def test_result_lease_rejects_binding_change_after_partial_close(
     monkeypatch.setattr(results, "release_boundary_leases", fail_operand_release)
     with pytest.raises(RuntimeError, match="injected operand release failure"):
         held.close()
-    assert held._closing is True
-    assert held._output_closed is True
-    assert held._closed is False
+    assert _lease_flag(held, "_closing") is True
+    assert _lease_flag(held, "_output_closed") is True
+    assert held.audit_snapshot().closed is False
 
-    original_tile = held._tile
-    held._tile = source
+    original_tile = held.audit_snapshot().tile
+    object.__setattr__(held, "_tile", source)
     with pytest.raises(ValueError, match="cleanup binding changed"):
         held.close()
-    assert source._closed is False
-    held._tile = original_tile
+    assert source.audit_snapshot().closed is False
+    object.__setattr__(held, "_tile", original_tile)
 
     held.close()
-    assert held._closed is True
+    assert held.audit_snapshot().closed is True
     output.close()
     source.close()
 
@@ -186,7 +202,7 @@ def test_result_arena_clear_retries_unpublished_acquisition_lease(
     _ledger, tiles, results, source, output, boundary, key, outgoing = (
         _published_with_boundary("left")
     )
-    original_acquire = tiles._acquire_reserved
+    original_acquire = tiles.acquire_reserved
     acquired: list[TileLease] = []
     calls = 0
 
@@ -210,22 +226,24 @@ def test_result_arena_clear_retries_unpublished_acquisition_lease(
         original_close(lease)
 
     with monkeypatch.context() as patch:
-        patch.setattr(tiles, "_acquire_reserved", fail_second_acquisition)
+        patch.setattr(tiles, "acquire_reserved", fail_second_acquisition)
         patch.setattr(TileLease, "close", fail_first_rollback_close)
         with pytest.raises(RuntimeError, match="injected rollback close failure"):
             results.publish(key, outgoing)
 
     pending = tuple(
-        record for record in results._pending_acquisitions if type(record) is TileLease
+        record
+        for record in results.audit_snapshot().pending_records
+        if type(record) is TileLease
     )
     assert len(pending) == 1
     pending_lease = pending[0]
     assert pending_lease is acquired[0]
-    assert pending_lease._closed is False
+    assert pending_lease.audit_snapshot().closed is False
 
     results.clear()
-    assert not results._pending_acquisitions
-    assert pending_lease._closed is True
+    assert not results.audit_snapshot().pending_records
+    assert pending_lease.audit_snapshot().closed is True
     boundary.close()
     output.close()
     source.close()
@@ -238,21 +256,23 @@ def test_causal_workspace_teardown_attempts_later_roots_and_retries_failure(
     engine = CausalTileEngine(scheduler)
     first = tiles.leaf(adapter.alphabet(action), 0)
     failing = tiles.leaf(adapter.alphabet(action), 1)
-    engine._leases.extend((first, failing))
+    engine.lease_workspace.tiles.extend((first, failing))
     close_order: list[int | str] = []
     original_close = TileLease.close
     fail_once = True
 
     def fail_then_close(lease: TileLease) -> None:
         nonlocal fail_once
-        close_order.append(lease._id)
+        close_order.append(lease.audit_snapshot().identity)
         if lease is failing and fail_once:
             fail_once = False
             raise RuntimeError("injected root close failure")
         original_close(lease)
 
-    workspace_clear = scheduler._causal_workspace.clear
-    tasks_clear = scheduler._causal_tasks.clear
+    workspace = scheduler.causal_workspace
+    tasks = scheduler.causal_tasks
+    workspace_clear = workspace.clear
+    tasks_clear = tasks.clear
 
     def record_workspace_clear() -> None:
         close_order.append("workspace")
@@ -264,34 +284,46 @@ def test_causal_workspace_teardown_attempts_later_roots_and_retries_failure(
 
     with monkeypatch.context() as patch:
         patch.setattr(TileLease, "close", fail_then_close)
-        patch.setattr(scheduler._causal_workspace, "clear", record_workspace_clear)
-        patch.setattr(scheduler._causal_tasks, "clear", record_tasks_clear)
+        patch.setattr(workspace, "clear", record_workspace_clear)
+        patch.setattr(tasks, "clear", record_tasks_clear)
         with pytest.raises(RuntimeError, match="injected root close failure"):
-            engine._release_workspace()
+            engine.release_workspace()
 
-    assert close_order[:2] == [failing._id, first._id]
+    assert close_order[:2] == [
+        failing.audit_snapshot().identity,
+        first.audit_snapshot().identity,
+    ]
     assert "workspace" in close_order and "tasks" in close_order
-    assert first._closed is True
-    assert failing._closed is False
-    assert engine._leases == [failing]
+    assert first.audit_snapshot().closed is True
+    assert failing.audit_snapshot().closed is False
+    assert engine.lease_workspace.tiles == [failing]
 
-    engine._release_workspace()
-    assert failing._closed is True
-    assert not engine._leases
+    engine.release_workspace()
+    assert failing.audit_snapshot().closed is True
+    assert not engine.lease_workspace.tiles
 
 
 def test_acquisition_restore_releases_unwritten_cleanup_reservations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    ledger, _, _, results, source, output, _, _ = _setup()
-    owner = results._lease_acquisitions
-    extend = LedgerList.extend
+    ledger, _, _, results, source, output, _, _ = setup_tile_results()
+    owner_value: object = object.__getattribute__(results, "_lease_acquisitions")
+    if type(owner_value) is not ResultAcquisitionLeaseOwner:
+        raise AssertionError("result acquisition owner has an unexpected type")
+    owner = owner_value
+    extend = cast(
+        Callable[
+            [LedgerList[TileLease | int | None], Iterable[TileLease | int | None]],
+            None,
+        ],
+        private_test_attribute(LedgerList, "extend"),
+    )
 
     def append_one_then_fail(
         store: LedgerList[TileLease | int | None],
         values: Iterable[TileLease | int | None],
     ) -> None:
-        if store is owner.records:
+        if id(store) == results.audit_snapshot().pending_acquisitions_store_identity:
             store.append(next(iter(values)))
             raise RuntimeError("injected partial cleanup restore")
         extend(store, values)
@@ -299,12 +331,20 @@ def test_acquisition_restore_releases_unwritten_cleanup_reservations(
     with monkeypatch.context() as patch:
         patch.setattr(LedgerList, "extend", append_one_then_fail)
         with pytest.raises(RuntimeError, match="partial cleanup restore"):
-            owner._restore_leases([source, output])
+            restore_leases = cast(
+                Callable[[list[TileLease]], None],
+                object.__getattribute__(owner, "_restore_leases"),
+            )
+            restore_leases([source, output])
 
     assert owner.clear_entries == owner.clear_nodes == 1
     owner.retry()
-    owner._close_unrecorded([source, output])
-    account = ledger._account(owner.owner)
+    close_unrecorded = cast(
+        Callable[[list[TileLease]], None],
+        object.__getattribute__(owner, "_close_unrecorded"),
+    )
+    close_unrecorded([source, output])
+    account = ledger.account_status(owner.owner)
     assert account.entries == account.nodes == 0
     assert not owner.records
-    assert source._closed and output._closed
+    assert source.audit_snapshot().closed and output.audit_snapshot().closed

@@ -42,7 +42,7 @@ def _m7_cegar() -> dict[str, object]:
     p = 7
     modulus = (1 << p) - 1
     factors = cyclotomic_factors_mod_prime(p, 2)
-    features = []
+    features: list[ObserverFeature] = []
     for i, factor in enumerate(factors):
         values = tuple(
             CyclotomicDigitBlock.from_coefficients(

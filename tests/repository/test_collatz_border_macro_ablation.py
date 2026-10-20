@@ -9,7 +9,7 @@ from number_compiler.sequences.collatz.border_harmonic_ring import PeriodicTail6
 
 
 def test_packet_reads_consumed_macro_counters_from_execution_metrics() -> None:
-    observed, _execution = benchmark._packets(
+    observed, _execution = benchmark.packets(
         {
             "info": {
                 "temporal.macro": {
@@ -69,7 +69,7 @@ def test_all_selector_ablation_disables_named_and_mixed_selector() -> None:
         mixed.select_mixed_clock_macro,
         conditional.issue_conditional_scheduler_candidate,
     )
-    with benchmark._selector_ablation(include_mixed=True):
+    with benchmark.selector_ablation(include_mixed=True):
         assert execution.select_border_return_macro() is None
         assert unified.select_border_return_macro() is None
         assert mixed.select_mixed_clock_macro() is None
@@ -87,7 +87,7 @@ def test_missing_6305_action_retains_raw_cli_samples(
 ) -> None:
     motif = (1, 2)
     groups = 12
-    source = benchmark._source_for(motif, groups)
+    source = benchmark.source_for(motif, groups)
     ring = PeriodicTail6305Ring.from_source(source, motif)
     ticks = groups * ring.physical_ticks
     endpoint = collatz_literal(source, ticks)

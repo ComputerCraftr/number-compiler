@@ -88,8 +88,8 @@ def retain_response(
 def retain_expression_response(
     arena: BoundaryExpressionArena, result: ExprID, inputs: Sequence[ExprID]
 ) -> bool:
-    root = arena._resolve(result)
-    arguments = tuple(arena._resolve(argument) for argument in inputs)
+    root = arena.resolve_index(result)
+    arguments = tuple(arena.resolve_index(argument) for argument in inputs)
     keep, visits, peak = retain_response(arena.nodes.__getitem__, root, arguments)
     arena.ledger.bump(_shared_keys.BOUND_RESPONSE_GUARD_VISITS, visits)
     name = "bound_response_guard_workspace_peak"

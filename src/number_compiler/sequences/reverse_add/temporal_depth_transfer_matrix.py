@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from weakref import ReferenceType, ref
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.fields.boolean_transfer import (
     BooleanMatrix,
     BooleanStateSpace,
@@ -24,11 +25,15 @@ if TYPE_CHECKING:
     from .temporal_carry_phase import CertifiedCarryPhase, CertifiedCarryWord
 
 PAIR_COUNT = 100
-ALL_PAIRS = tuple((left, right) for left in range(10) for right in range(10))
+ALL_PAIRS: tuple[tuple[int, int], ...] = tuple(
+    (left, right) for left in range(10) for right in range(10)
+)
 # Ordered pair states follow the inward coordinates used by the Q19 border
 # rows: the LSD side first, then the mirrored MSD side.
 PAIR_COORDINATE_ORDER = ("lower_lsd_inward", "upper_msd_inward")
-_PAIR_STATE_SPACE = BooleanStateSpace("reverse_add.decimal-pair", ALL_PAIRS)
+_PAIR_STATE_SPACE: BooleanStateSpace[tuple[int, int]] = BooleanStateSpace(
+    "reverse_add.decimal-pair", ALL_PAIRS
+)
 _ISSUER = object()
 
 
@@ -74,7 +79,11 @@ class BooleanPairMatrix:
 
     @classmethod
     def identity(cls) -> BooleanPairMatrix:
-        return cls._from_relation(BooleanMatrix.identity(_PAIR_STATE_SPACE))
+        relation: BooleanMatrix[tuple[int, int]] = BooleanMatrix(
+            _PAIR_STATE_SPACE,
+            tuple(1 << state for state in range(_PAIR_STATE_SPACE.size)),
+        )
+        return cls._from_relation(relation)
 
     def then(self, later: BooleanPairMatrix) -> BooleanPairMatrix:
         if type(later) is not BooleanPairMatrix:
@@ -213,13 +222,13 @@ def _scalar_snapshot(value: object) -> tuple[object, object]:
 
 
 def _integer_tuple_snapshot(value: object) -> tuple[object, ...]:
-    if type(value) is not tuple:
+    if not is_exact_object_tuple(value):
         return (type(value), value)
     return (tuple, tuple(_scalar_snapshot(item) for item in value))
 
 
 def _domain_rows_snapshot(value: object) -> tuple[object, ...]:
-    if type(value) is not tuple:
+    if not is_exact_object_tuple(value):
         return (type(value), value)
     return (tuple, tuple(_integer_tuple_snapshot(row) for row in value))
 
@@ -231,7 +240,7 @@ def _matrix_snapshot(value: object) -> tuple[object, ...]:
 
 
 def _matrix_rows_snapshot(value: object) -> tuple[object, ...]:
-    if type(value) is not tuple:
+    if not is_exact_object_tuple(value):
         return (type(value), value)
     return (tuple, tuple(_matrix_snapshot(matrix) for matrix in value))
 
@@ -425,7 +434,7 @@ def _window_domains(
     word: CertifiedCarryWord, position: int
 ) -> tuple[tuple[int, ...], ...]:
     values: list[tuple[int, ...]] = []
-    for bank in word._source_banks:
+    for bank in word.source_banks:
         if position not in bank.positions:
             raise ValueError("carry word has no retained domain at this depth")
         row = bank.phase_pair_domains[bank.positions.index(position)]

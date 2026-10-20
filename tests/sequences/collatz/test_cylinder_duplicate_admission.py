@@ -1,6 +1,6 @@
 """Detect inconsistent local records when a Collatz cylinder is reused."""
 
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 from typing import cast
 
 import pytest
@@ -10,6 +10,18 @@ from number_compiler.sequences.collatz.source_cylinder_cache import CollatzDyadi
 from number_compiler.sequences.collatz.source_cylinder_types import (
     CollatzDyadicOccurrence,
 )
+
+
+def _publish_occurrence(
+    macros: CollatzDyadicMacros,
+    occurrence: CollatzDyadicOccurrence,
+    publisher_fiber: int,
+) -> CollatzDyadicOccurrence:
+    publish = cast(
+        Callable[[CollatzDyadicOccurrence, int], CollatzDyadicOccurrence],
+        object.__getattribute__(macros, "_publish"),
+    )
+    return publish(occurrence, publisher_fiber)
 
 
 def _normalized_prefix(source: int, width: int) -> tuple[int, int]:
@@ -65,7 +77,7 @@ def test_duplicate_rejects_a_well_formed_but_wrong_published_endpoint() -> None:
     )
     ledger = ResourceLedger()
     with CollatzDyadicMacros(ledger) as macros:
-        macros._publish(forged, source >> width)
+        _publish_occurrence(macros, forged, source >> width)
         with pytest.raises(ValueError, match="disagrees with the new endpoint"):
             macros.remember(source, width, odd_symbols, endpoint)
 

@@ -289,12 +289,12 @@ class SourceClosedPortAction:
         object.__setattr__(self, "odd_events", odd_events)
         object.__setattr__(self, "_clock", _clock)
         object.__setattr__(self, "trace", trace)
-        self._validate_components(check_growth=_issuer is None)
+        self.validate_components(check_growth=_issuer is None)
         object.__setattr__(self, "_issuer", _SOURCE_CLOSED_PORT_ISSUER)
         object.__setattr__(self, "_issued_snapshot", self._snapshot())
 
     @classmethod
-    def _create_checked(
+    def create_checked(
         cls,
         action: DyadicTerminalFieldAction,
         guard: SourceCongruence,
@@ -312,7 +312,7 @@ class SourceClosedPortAction:
             _issuer=_SOURCE_CLOSED_PORT_ISSUER,
         )
 
-    def _validate_components(self, *, check_growth: bool) -> None:
+    def validate_components(self, *, check_growth: bool) -> None:
         clock = object.__getattribute__(self, "_clock")
         if (
             type(self.action) is not DyadicTerminalFieldAction
@@ -390,24 +390,29 @@ class SourceClosedPortAction:
         except (AttributeError, TypeError, ValueError):
             return False
 
-    def _verify_issued(self) -> None:
+    def verify_issued(self) -> None:
         if not self.producer_issued:
             raise ValueError("source-closed action issuance seal is invalid")
 
+    def audit_snapshot(self) -> tuple[object, ...]:
+        """Return immutable validated binding facts to audit collaborators."""
+        self.verify_issued()
+        return self._snapshot()
+
     @property
     def clock(self) -> SkewQuadraticClock | None:
-        self._verify_issued()
+        self.verify_issued()
         return self._clock
 
     @property
     def source_trace(self) -> tuple[int, ...]:
-        self._verify_issued()
+        self.verify_issued()
         assert type(self.trace) is MacroTraceGrammar
         return self.trace.materialize()
 
     @classmethod
     def identity(cls, *, precision: int | None = None) -> SourceClosedPortAction:
-        return cls._create_checked(
+        return cls.create_checked(
             DyadicTerminalFieldAction.identity(),
             SourceCongruence(),
             0,
@@ -462,7 +467,7 @@ class SourceClosedPortAction:
             prefix = prefix.then(seam.action)
         if prefix != chain.fields or not guard.admits(chain.source):
             raise AssertionError("compiled guard disagrees with its certified chain")
-        action = cls._create_checked(
+        action = cls.create_checked(
             chain.fields, guard, chain.odd_symbols, chain.clock, tuple(trace)
         )
         if ledger is not None:
@@ -481,8 +486,8 @@ class SourceClosedPortAction:
     ) -> SourceClosedPortAction | None:
         if type(after) is not SourceClosedPortAction:
             raise TypeError("joint temporal composition requires another port action")
-        self._verify_issued()
-        after._verify_issued()
+        self.verify_issued()
+        after.verify_issued()
         if (self.clock is None) != (after.clock is None) or (
             self.clock is not None
             and after.clock is not None
@@ -505,7 +510,7 @@ class SourceClosedPortAction:
             if self.clock is not None and after.clock is not None
             else None
         )
-        return SourceClosedPortAction._create_checked(
+        return SourceClosedPortAction.create_checked(
             joint_action,
             joint_guard,
             self.odd_events + after.odd_events,
@@ -520,7 +525,7 @@ class SourceClosedPortAction:
         max_coefficient_bits: int = 8192,
         ledger: ResourceLedger | None = None,
     ) -> SourceClosedPortAction | None:
-        self._verify_issued()
+        self.verify_issued()
         if type(repetitions) is not int or repetitions < 0:
             raise ValueError("power repetitions must be a natural integer")
         if type(max_coefficient_bits) is not int or max_coefficient_bits < 1:
@@ -567,7 +572,7 @@ class SourceClosedPortAction:
         return result
 
     def admits(self, source: int) -> bool:
-        self._verify_issued()
+        self.verify_issued()
         return self.guard.admits(source) and self.action.certifies(source)
 
     def endpoint(self, source: int) -> int:
@@ -750,7 +755,7 @@ class SourceClosedPortAction:
 
     @property
     def radial_clock(self) -> RadialSturmianClock:
-        self._verify_issued()
+        self.verify_issued()
         return RadialSturmianClock(
             HomogeneousGrowthScale(self.odd_events, self.action.steps)
         )

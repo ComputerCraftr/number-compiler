@@ -104,7 +104,7 @@ def test_two_ingress_carry_composition_and_repeat_are_exact() -> None:
             action = action.then(Radix19CarryBlock.atom(symbol, z, modulus))
         for ingress in (0, 1):
             carry = ingress
-            carries = []
+            carries: list[int] = []
             for symbol in symbols:
                 carry = int(symbol + carry >= 10)
                 carries.append(carry)
@@ -254,11 +254,11 @@ def test_following_nongrowth_borrow_walsh_keeps_both_ingresses() -> None:
                 reverse_current = digits_lsd(_reverse(target), 10)
                 reverse_following = digits_lsd(_reverse(following), 10)
                 carry = 0
-                carries = []
+                carries: list[int] = []
                 for index, digit in enumerate(source_digits):
                     carry = int(digit + source_digits[-1 - index] + carry >= 10)
                     carries.append(carry)
-                expected = []
+                expected: list[tuple[int, ...]] = []
                 for entering in (0, 1):
                     borrow, mask = entering, 0
                     for index in range(178, 178 + 64):

@@ -23,7 +23,7 @@ from number_compiler.sequences.double_reverse.boundary_cycles import (
     boundary_steps,
 )
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
-from number_compiler.sequences.double_reverse.source_bound_bank import _source_suffix
+from number_compiler.sequences.double_reverse.source_bound_bank import source_suffix
 from number_compiler.sequences.double_reverse.temporal_birth_induction import (
     MAX_BIRTH_DURATION_BITS,
     CertifiedBirthClock,
@@ -64,7 +64,7 @@ def _phase(value: int) -> int | None:
 def test_birth_centered_step_matches_arithmetic_all_phases() -> None:
     for seed in (1, 196, 173488, 174388):
         value = seed
-        seen = set()
+        seen: set[int] = set()
         for _ in range(90):
             word = str(value)
             phase = _phase(value)
@@ -114,7 +114,7 @@ def test_source_independent_layer_intertwining() -> None:
 def test_birth_modular_clock_predicts_every_source_step() -> None:
     for seed in (1, 196):
         with DoubleReverseTerm(seed, 300) as term:
-            _entry, source = term._prepare_bank_source(
+            _entry, source = term.prepare_bank_source(
                 max_prefix=min(32, term.generation - 2)
             )
             clock = birth_clock_for_source(source)
@@ -305,10 +305,10 @@ def test_unrelated_model_value_error_is_not_misreported_as_budget_refusal(
         raise ValueError("injected unrelated model validation error")
 
     with DoubleReverseTerm(196, 64) as term:
-        _entry, source = term._prepare_bank_source(
+        _entry, source = term.prepare_bank_source(
             max_prefix=min(32, term.generation - 2)
         )
-        source = _source_suffix(source, min(12, source.f_steps))
+        source = source_suffix(source, min(12, source.f_steps))
         with monkeypatch.context() as poison:
             poison.setattr(birth_ring_module, "finite_suffix_period", forced_lasso)
             poison.setattr(
@@ -366,10 +366,10 @@ def test_failed_birth_publication_releases_its_reservation(
         raise RuntimeError("injected birth publisher failure")
 
     with DoubleReverseTerm(196, 64) as term:
-        _entry, source = term._prepare_bank_source(
+        _entry, source = term.prepare_bank_source(
             max_prefix=min(32, term.generation - 2)
         )
-        source = _source_suffix(source, min(12, source.f_steps))
+        source = source_suffix(source, min(12, source.f_steps))
         ledger = source.ledger
         before = (ledger.entries, ledger.nodes)
         published = ledger.counters.get(
@@ -402,7 +402,7 @@ def test_forged_birth_ports_and_foreign_source_roots_are_rejected() -> None:
     with pytest.raises(ValueError, match="decimal digits"):
         BirthRingPorts(10, 0)
     with DoubleReverseTerm(196, 64) as term:
-        _entry, source = term._prepare_bank_source(max_prefix=32)
+        _entry, source = term.prepare_bank_source(max_prefix=32)
         foreign_root = (source.root + 1) % len(source.arena.nodes)
         forged_root = replace(source, root=foreign_root)
         with pytest.raises(ValueError, match="pointed source"):

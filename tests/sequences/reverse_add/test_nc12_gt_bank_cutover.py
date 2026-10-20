@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import fields, replace
-from typing import TypeVar
+from typing import Protocol, TypeVar, cast
 
 import pytest
 
+import number_compiler.sequences.reverse_add.q19_controlled_gt_bank as q19_gt_bank
 from number_compiler.api.number_api import NumberCompiler, PoweredReverseAddTermPayload
 from number_compiler.api.query_types import ReverseAddTermQuery
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -18,7 +20,7 @@ from number_compiler.sequences.reverse_add.mixed_periodic_bank import (
     IncompleteMixedBorder,
     MixedFrame,
     MixedPeriodicCore,
-    _controlled_bank_workspace,
+    controlled_bank_workspace,
 )
 from number_compiler.sequences.reverse_add.q19_border_control import (
     BoundaryControlNotAuthorized,
@@ -26,7 +28,6 @@ from number_compiler.sequences.reverse_add.q19_border_control import (
 )
 from number_compiler.sequences.reverse_add.q19_controlled_gt_bank import (
     SourceGuardedGTBankAction,
-    _finite_proved_action,
     conditional_alternating_first_growth,
 )
 from number_compiler.sequences.reverse_add.q19_output import ReversePairQ19OutputOwner
@@ -47,6 +48,7 @@ from number_compiler.sequences.reverse_add.temporal_bulk_moore import (
     alternating_moore_certificate,
     uniform_bulk_moore_certificate,
 )
+from tests.support.private_attributes import private_test_attribute
 from tests.support.reverse_add_sources import periodic_reverse_add_source
 
 
@@ -77,13 +79,30 @@ def _trace(
 _RecordT = TypeVar("_RecordT", CertifiedBorderGrowth, SourceGuardedGTBankAction)
 
 
+class _FiniteProvedAction(Protocol):
+    def __call__(
+        self,
+        period: tuple[int, ...],
+        word: tuple[int, ...],
+        *,
+        workspace_reserve: Callable[[int, int], None],
+    ) -> object: ...
+
+
+def _refresh_binding(record: object) -> None:
+    snapshot = cast(
+        Callable[[], tuple[object, ...]], object.__getattribute__(record, "_snapshot")
+    )
+    object.__setattr__(record, "_binding", snapshot())
+
+
 def _resealed_copy(record: _RecordT, **changes: object) -> _RecordT:
     forged = object.__new__(type(record))
     for descriptor in fields(record):
         object.__setattr__(forged, descriptor.name, getattr(record, descriptor.name))
     for name, value in changes.items():
         object.__setattr__(forged, name, value)
-    object.__setattr__(forged, "_binding", forged._snapshot())
+    _refresh_binding(forged)
     return forged
 
 
@@ -108,7 +127,7 @@ def test_controlled_bank_reserves_before_allocating_and_releases_on_rejection() 
     workspace = ledger.register("controlled-bank-test-workspace", "bank_workspace")
 
     with (
-        _controlled_bank_workspace(ledger, workspace) as reserve,
+        controlled_bank_workspace(ledger, workspace) as reserve,
         pytest.raises(BlockContextBudgetExceeded),
     ):
         ControlledMixedBank(
@@ -148,10 +167,13 @@ def test_finite_control_fallback_reserves_before_allocating_its_output_arena() -
     workspace = ledger.register("finite-bank-test-workspace", "bank_workspace")
 
     with (
-        _controlled_bank_workspace(ledger, workspace) as reserve,
+        controlled_bank_workspace(ledger, workspace) as reserve,
         pytest.raises(BlockContextBudgetExceeded),
     ):
-        _finite_proved_action((5, 16), (0, 0, 0, 0, 1), workspace_reserve=reserve)
+        cast(
+            _FiniteProvedAction,
+            private_test_attribute(q19_gt_bank, "_finite_proved_action"),
+        )((5, 16), (0, 0, 0, 0, 1), workspace_reserve=reserve)
 
     assert ledger.entries == 0
     assert ledger.nodes == 0
@@ -250,9 +272,9 @@ def test_public_digit_demand_consumes_certified_bank_without_q19_discovery(
         projected = compiler.project(query)
         assert isinstance(projected.payload, PoweredReverseAddTermPayload)
         term = projected.payload.term
-        workspace = term._workspace
+        workspace = term.published_workspace
         assert workspace is not None
-        assert workspace._image is None
+        assert workspace.audit_snapshot().image is None
         counters = term.resource_ledger.counters
         assert counters["reverse_q19_pointed_gt_bank_applied_actions"] == 1
         assert counters["reverse_q19_border_control_state_visits"] > 0
@@ -262,8 +284,8 @@ def test_public_digit_demand_consumes_certified_bank_without_q19_discovery(
         assert counters.get("reverse_q19_punctured_t4_applications", 0) == 0
         workspace.dispose()
     finally:
-        if term is not None and term._workspace is not None:
-            term._workspace.dispose()
+        if term is not None and term.published_workspace is not None:
+            term.published_workspace.dispose()
 
 
 def test_same_pointed_request_reuses_ledger_owned_gt_bank(
@@ -281,7 +303,7 @@ def test_same_pointed_request_reuses_ledger_owned_gt_bank(
     try:
         assert workspace.digit(coordinate) == expected
         before = dict(ledger.counters)
-        owner = workspace.adapter._q19_owner
+        owner = workspace.adapter.audit_snapshot().q19_owner
         assert owner is not None
 
         def forbidden(*_args: object, **_kwargs: object) -> None:
@@ -303,7 +325,7 @@ def test_same_pointed_request_reuses_ledger_owned_gt_bank(
             ledger.counters["reverse_q19_pointed_gt_bank_applied_actions"]
             == before["reverse_q19_pointed_gt_bank_applied_actions"]
         )
-        assert workspace._image is None
+        assert workspace.audit_snapshot().image is None
     finally:
         workspace.dispose()
         assert ledger.entries == ledger.nodes == 0
@@ -364,11 +386,11 @@ def test_owner_registry_rejects_resealed_certificates_and_actions() -> None:
             )
         original_word = certificate.growth_word
         object.__setattr__(certificate, "growth_word", changed_word)
-        object.__setattr__(certificate, "_binding", certificate._snapshot())
+        _refresh_binding(certificate)
         with pytest.raises(ValueError, match="retained by this Q19 owner"):
             certificate.validate(owner, owner.initial)
         object.__setattr__(certificate, "growth_word", original_word)
-        object.__setattr__(certificate, "_binding", certificate._snapshot())
+        _refresh_binding(certificate)
         certificate.validate(owner, owner.initial)
 
         action = owner.authorize_controlled_gt_bank(
@@ -383,19 +405,19 @@ def test_owner_registry_rejects_resealed_certificates_and_actions() -> None:
             forged_action.validate_source_authority()
         original_coordinate = action.coordinate
         object.__setattr__(action, "coordinate", original_coordinate + 1)
-        object.__setattr__(action, "_binding", action._snapshot())
+        _refresh_binding(action)
         with pytest.raises(ValueError, match="retained by this Q19 owner"):
             action.validate_source_authority()
         object.__setattr__(action, "coordinate", original_coordinate)
-        object.__setattr__(action, "_binding", action._snapshot())
+        _refresh_binding(action)
         action.validate_source_authority()
         original_target = action.action.target
         object.__setattr__(action.action, "target", replace(original_target))
-        object.__setattr__(action, "_binding", action._snapshot())
+        _refresh_binding(action)
         with pytest.raises(ValueError, match="not retained by this Q19 owner"):
             action.validate_source_authority()
         object.__setattr__(action.action, "target", original_target)
-        object.__setattr__(action, "_binding", action._snapshot())
+        _refresh_binding(action)
         action.validate_source_authority()
         frame = action.frame(0)
         with pytest.raises((AttributeError, TypeError)):

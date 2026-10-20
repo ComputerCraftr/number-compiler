@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import MutableSequence
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.block_kernel import FiniteBlockEffect
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
 from number_compiler.hashlife.actions.diamond_actions import CellID
+from number_compiler.hashlife.actions.diamond_storage_snapshot import (
+    DiamondApplicationStorageSnapshot,
+)
 from number_compiler.hashlife.execution.continuations.diamond_runtime import (
     DiamondRuntime,
 )
@@ -29,6 +31,7 @@ from number_compiler.hashlife.observation.diamond_observers import NonblankBlock
 from number_compiler.resources.metric_keys import (
     hashlife_observation as _observation_keys,
 )
+from number_compiler.resources.stores import LedgerList
 
 
 def _boundary(result: Result) -> BoundaryStateID:
@@ -55,7 +58,7 @@ class DiamondApplication:
         program: ActionProgramID | None = None,
     ) -> None:
         node = runtime.actions.resolve(root)
-        source = runtime.cells.source_geometry._construction.source
+        source = runtime.cells.source_geometry.construction.source
         if node.kind != "identity" and (node.base, node.blank) != (
             source.base,
             source.blank,
@@ -81,7 +84,7 @@ class DiamondApplication:
             f"diamond-certificate-{len(self.ledger.inventory())}",
             "composition_certificate",
         )
-        self._certificates: MutableSequence[DiamondCompositionCertificate] = (
+        self._certificates: LedgerList[DiamondCompositionCertificate] = (
             self.ledger.make_list(owner)
         )
         self.ledger.reserve(owner, entries=1, nodes=1)
@@ -93,10 +96,23 @@ class DiamondApplication:
         cycle_owner = self.ledger.register(
             f"diamond-cycle-{len(self.ledger.inventory())}", "finite_cycle_certificate"
         )
-        self._cycles: MutableSequence[object] = self.ledger.make_list(cycle_owner)
+        self._cycles: LedgerList[object] = self.ledger.make_list(cycle_owner)
         if cycle is not None:
             self.ledger.reserve(cycle_owner, entries=1, nodes=1)
             self._cycles.append(cycle)
+
+    def audit_snapshot(self) -> DiamondApplicationStorageSnapshot:
+        return DiamondApplicationStorageSnapshot(
+            id(self._certificates),
+            id(self._cycles),
+            self._certificates.audit_view(),
+            self._cycles.audit_view(),
+        )
+
+    def owns_issued_cycle(self, value: object) -> bool:
+        return value is self._issued_cycle and any(
+            record is value for record in self._cycles
+        )
 
     def _cycle(self) -> object | None:
         if not self._cycles:
@@ -104,7 +120,7 @@ class DiamondApplication:
         projection = self._cycles[0]
         hooks = self.runtime.family_hooks
         geometry = self.runtime.cells.source_geometry
-        source = geometry._read_root
+        source = geometry.source_root
         if (
             hooks is None
             or projection is not self._issued_cycle
@@ -124,7 +140,7 @@ class DiamondApplication:
         """
         runtime = self.runtime
         node = runtime.actions.resolve(self.root)
-        source = runtime.cells.source_geometry._read_root
+        source = runtime.cells.source_geometry.source_root
         if (
             node.kind != "atom"
             or source is None
@@ -153,7 +169,7 @@ class DiamondApplication:
     @source_reads_only
     def point(self, position: int) -> int:
         self.runtime.actions.resolve(self.root)
-        source = self.runtime.cells.source_geometry._read_root
+        source = self.runtime.cells.source_geometry.source_root
         if type(position) is not int or position < 0:
             raise ValueError("point coordinate must be nonnegative")
         if source is None or position >= source.length:
@@ -196,7 +212,7 @@ class DiamondApplication:
         runtime = self.runtime
         runtime.actions.resolve(self.root)
         runtime.actions.resolve(self.observer)
-        source = runtime.cells.source_geometry._read_root
+        source = runtime.cells.source_geometry.source_root
         if source is not None and maxwidth is None:
             maxwidth = source.length
         if (

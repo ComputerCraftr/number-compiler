@@ -11,10 +11,19 @@ from devtools.benchmarks.public_query_comparison import Sample, compare
 from number_compiler.api.number_api import NumberCompiler
 
 
-def test_public_routes_agree_and_warm_priming_is_retained() -> None:
-    rows = compare("collatz", [0, 2], 1, ["cold", "warm", "bypass"], seed=27)
-    assert len(rows) == 24
-    assert sum(row["phase"] == "priming" for row in rows) == 6
+@pytest.mark.parametrize(
+    "horizons",
+    [
+        pytest.param((2,), id="unit"),
+        pytest.param((0, 2), marks=pytest.mark.validation, id="full"),
+    ],
+)
+def test_public_routes_agree_and_warm_priming_is_retained(
+    horizons: tuple[int, ...],
+) -> None:
+    rows = compare("collatz", list(horizons), 1, ["cold", "warm", "bypass"], seed=27)
+    assert len(rows) == 12 * len(horizons)
+    assert sum(row["phase"] == "priming" for row in rows) == 3 * len(horizons)
     assert {row["route"] for row in rows} == {"cli", "point"}
     for row in rows:
         expected = 27 if row["horizon"] == 0 else 41
@@ -125,11 +134,11 @@ def test_sample_journal_survives_failure_without_rewriting_the_growing_report(
     from devtools.benchmarks import public_query_comparison as module
 
     output = tmp_path / "comparison.json"
-    monkeypatch.setattr(
-        module,
-        "report_output",
-        lambda _module, _filename: output,
-    )
+
+    def report_output(_module: str, _filename: str) -> Path:
+        return output
+
+    monkeypatch.setattr(module, "report_output", report_output)
     monkeypatch.setattr(sys, "argv", ["comparison"])
     writes: list[Path] = []
     write_text = Path.write_text

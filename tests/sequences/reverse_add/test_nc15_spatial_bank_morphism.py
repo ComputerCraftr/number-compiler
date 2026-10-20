@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from collections.abc import Callable
+from typing import cast
 
 import pytest
 
@@ -34,7 +35,7 @@ def _rev(x: int) -> int:
 
 def _trace(x: int, steps: int) -> tuple[list[int], tuple[int, ...]]:
     values = [x]
-    bits = []
+    bits: list[int] = []
     for _ in range(steps):
         nxt = x + _rev(x)
         bits.append(int(len(str(nxt)) > len(str(x))))
@@ -268,7 +269,11 @@ def test_morphism_rejects_tampered_halo_and_source_binding() -> None:
         ):
             object.__setattr__(forged, name, getattr(morph, name))
         object.__setattr__(forged, "start", morph.start + 1)
-        object.__setattr__(forged, "_binding", forged._snapshot())
+        snapshot_method = cast(
+            Callable[[], tuple[object, ...]],
+            object.__getattribute__(forged, "_snapshot"),
+        )
+        object.__setattr__(forged, "_binding", snapshot_method())
         with pytest.raises(ValueError, match="not retained by this Q19 owner"):
             forged.output_word("coefficient")
 
@@ -293,7 +298,7 @@ def test_failed_spatial_window_publication_releases_both_records(
             raise RuntimeError("forced spatial window publication failure")
 
         monkeypatch.setattr(
-            owner._issuance_registry,
+            owner.audit_snapshot().issuance_registry,
             "validate_spatial_bank_window",
             fail_after_retention,
         )
@@ -306,10 +311,11 @@ def test_failed_spatial_window_publication_releases_both_records(
                 period_size=2,
                 growth_control=bits,
             )
-        assert len(owner._spatial_bank_windows) == 0
-        assert owner._issuance_registry.spatial_bank_window_next == 0
-        assert len(owner._controlled_gt_banks) == 0
-        assert owner._issuance_registry.controlled_gt_bank_next == 0
+        snapshot = owner.audit_snapshot()
+        assert not snapshot.spatial_bank_windows.payload_view
+        assert snapshot.issuance_registry.spatial_bank_window_next == 0
+        assert not snapshot.controlled_gt_banks.payload_view
+        assert snapshot.issuance_registry.controlled_gt_bank_next == 0
     finally:
         owner.dispose()
         assert ledger.entries == ledger.nodes == 0

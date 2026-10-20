@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.carry.reverse_port_functions import (
@@ -25,6 +26,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
 )
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 from number_compiler.sequences.reverse_add.active_output import (
     CARRY_ACTION,
     PAIR,
@@ -40,6 +42,15 @@ LEFT_STATE = AtomSort("primitive-left-state", 43)
 RIGHT_STATE = AtomSort("primitive-right-state", 5)
 CHANNEL_SYMBOL = AtomSort("primitive-symbol", 20)
 CARRIES = (CarryFn.CONST0, CarryFn.ID, CarryFn.CONST1)
+
+
+@dataclass(frozen=True, slots=True)
+class ReversePrimitiveOutputMorphismAuditSnapshot:
+    """Read-only owner views for output and symbolic-channel memo stores."""
+
+    leaves: OwnedMemoAuditSnapshot[int, FactoredFunctionID]
+    channel_templates: OwnedMemoAuditSnapshot[int, tuple[FactoredFunctionID, ...]]
+    channel_seals: OwnedMemoAuditSnapshot[int, tuple[FactoredFunctionID, ...]]
 
 
 class ReversePrimitiveOutputMorphism:
@@ -87,6 +98,14 @@ class ReversePrimitiveOutputMorphism:
                 "query_memo",
             ),
             evictable=True,
+        )
+
+    def audit_snapshot(self) -> ReversePrimitiveOutputMorphismAuditSnapshot:
+        """Expose immutable memo metadata and exact stores for independent audits."""
+        return ReversePrimitiveOutputMorphismAuditSnapshot(
+            leaves=self._leaves.audit_snapshot(),
+            channel_templates=self._channel_templates.audit_snapshot(),
+            channel_seals=self._channel_seals.audit_snapshot(),
         )
 
     def pullback_channels(
@@ -168,6 +187,7 @@ class ReversePrimitiveOutputMorphism:
                     self._compile_leaf(value), CHANNEL_SYMBOL, tuple(range(20))
                 ),
             )
+
             condition = bits.map_atoms(
                 symbol, BOOL, tuple(int(i == value) for i in range(20))
             )

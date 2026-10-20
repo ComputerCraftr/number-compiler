@@ -25,11 +25,11 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
         BoundaryExpressionArena,
         BoundaryExprNode,
+        ExpressionRewrite,
         ExprID,
         ExprSubstitutionKey,
         FormalPort,
         StateSort,
-        _Rewrite,
     )
     from number_compiler.hashlife.interfaces.diamond_kernel import (
         DiamondKernelArena,
@@ -46,7 +46,7 @@ def _constant_function_value(expression: FiniteExpression) -> int | None:
     )
 
 
-class _Transaction:
+class ExpressionTransaction:
     """Local rewrite DAG; no allocation is retained before one reservation."""
 
     def __init__(self, arena: BoundaryExpressionArena) -> None:
@@ -203,11 +203,11 @@ class _Transaction:
             )
         return False
 
-    def reduce(self, node: BoundaryExprNode) -> int | _Rewrite:
+    def reduce(self, node: BoundaryExprNode) -> int | ExpressionRewrite:
         from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
             BoundaryExprNode,
+            ExpressionRewrite,
             StateSort,
-            _Rewrite,
         )
 
         if node.kind == "call":
@@ -225,14 +225,14 @@ class _Transaction:
                 return node.children[record.support.index(record.body)]
             body = self.arena.nodes[record.body.local_id]
             if body.kind in ("anchor", "continuation", "finite_apply", "finite_map"):
-                parameter = self.arena._handle(body.children[0])
+                parameter = self.arena.scoped_handle(body.children[0])
                 if parameter in record.support:
                     argument_index = node.children[record.support.index(parameter)]
                     projected = self.intern(replace(body, children=(argument_index,)))
                     self.arena.ledger.bump(
                         _interfaces_keys.BOUNDARY_EXPRESSION_PROJECTION_CALL_EARLY_HITS
                     )
-                    return _Rewrite("normal", projected)
+                    return ExpressionRewrite("normal", projected)
         if node.kind == "finite_map":
             kernels, function_handle, expression, function_sort = (
                 self._finite_function_expression(node)
@@ -283,7 +283,7 @@ class _Transaction:
                 temporary = self.intern(
                     replace(node, function=combined, children=argument.children)
                 )
-                return _Rewrite("normal", temporary)
+                return ExpressionRewrite("normal", temporary)
         if node.kind == "finite_apply":
             kernels, function_handle, expression, function_sort = (
                 self._finite_function_expression(node)
@@ -309,7 +309,7 @@ class _Transaction:
                 return self.intern(BoundaryExprNode("literal", node.sort, value=value))
             if argument.kind == "finite_apply" and argument.sort == node.sort:
                 assert argument.function is not None
-                primitive_handle = kernels._kernel_ids[
+                primitive_handle = kernels.kernel_bindings[
                     _effect_key(self.arena.actions.primitive(function_sort.action))
                 ]
                 combined = self.arena.unary.compose(
@@ -325,7 +325,7 @@ class _Transaction:
                     node, function=combined, children=argument.children
                 )
                 temporary = self.intern(combined_node)
-                return _Rewrite("normal", temporary)
+                return ExpressionRewrite("normal", temporary)
         if node.kind in ("advance", "emit"):
             arguments = tuple(self.node(child) for child in node.children)
             kinds = tuple(argument.kind for argument in arguments)
@@ -377,7 +377,7 @@ class _Transaction:
                 self.arena.ledger.bump(
                     _interfaces_keys.BOUNDARY_EXPRESSION_BETA_REDUCTIONS
                 )
-                return _Rewrite(
+                return ExpressionRewrite(
                     "beta", function.children[0], parameter=node.children[1]
                 )
         elif node.kind == "lambda":
@@ -392,18 +392,18 @@ class _Transaction:
                     self.arena.ledger.bump(
                         _interfaces_keys.BOUNDARY_EXPRESSION_ETA_REDUCTIONS
                     )
-                    return _Rewrite("shift", body.children[0], parameter=-1)
+                    return ExpressionRewrite("shift", body.children[0], parameter=-1)
         return self.intern(node)
 
-    def rewrite(self, initial: _Rewrite) -> int:
+    def rewrite(self, initial: ExpressionRewrite) -> int:
         from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
             BoundaryExprNode,
+            ExpressionRewrite,
             FormalPort,
-            _Rewrite,
         )
 
-        results: dict[_Rewrite, int] = {}
-        dependencies: dict[_Rewrite, tuple[_Rewrite, ...]] = {}
+        results: dict[ExpressionRewrite, int] = {}
+        dependencies: dict[ExpressionRewrite, tuple[ExpressionRewrite, ...]] = {}
         dependency_slots = 0
         pending = [(initial, 0)]
         while pending:
@@ -457,7 +457,7 @@ class _Transaction:
                     )
                     results[task] = task.root
                     continue
-                replacement: int | _Rewrite | None = None
+                replacement: int | ExpressionRewrite | None = None
                 if task.mode == "free" and task.root in self.substitutions:
                     replacement = self.substitutions[task.root]
                 elif task.mode == "abstract" and task.root == task.parameter:
@@ -466,7 +466,7 @@ class _Transaction:
                     )
                 elif node.kind == "bound":
                     if task.mode == "beta" and node.bound == task.depth:
-                        replacement = _Rewrite(
+                        replacement = ExpressionRewrite(
                             "shift", task.parameter, parameter=task.depth
                         )
                     elif task.mode == "beta" and node.bound > task.depth:
@@ -489,7 +489,7 @@ class _Transaction:
                     else task.depth + int(node.kind == "lambda")
                 )
                 children = tuple(
-                    _Rewrite(task.mode, child, depth, task.parameter)
+                    ExpressionRewrite(task.mode, child, depth, task.parameter)
                     for child in node.children
                 )
                 dependencies[task] = children
@@ -561,7 +561,7 @@ class _Transaction:
             actual = replace(node, children=children)
             index = len(self.arena.nodes)
             self.arena.nodes.append(actual)
-            self.arena.keys[actual] = self.arena._handle(index)
+            self.arena.keys[actual] = self.arena.scoped_handle(index)
             published[local] = index
             self._peak("boundary_expression_publication_map_peak", len(published))
             self.arena.ledger.bump(
@@ -569,7 +569,7 @@ class _Transaction:
                 len(actual.free_ports),
             )
             self._peak("boundary_expression_max_free_ports", len(actual.free_ports))
-        result = self.arena._handle(root if root >= 0 else published[root])
+        result = self.arena.scoped_handle(root if root >= 0 else published[root])
         if memo is not None:
             self.arena.memo[memo] = result
         self.arena.ledger.bump(

@@ -10,7 +10,7 @@ import pytest
 from devtools.experiments.collatz.generate_physical_collatz_four_kernel import (
     build as proof_kernel,
 )
-from number_compiler.arithmetic.contracts.temporal_family import _issue_certificate
+from number_compiler.arithmetic.contracts.temporal_family import issue_certificate
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.observation.diamond_query import DiamondApplication
 from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlockIndex
@@ -19,8 +19,6 @@ from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from number_compiler.sequences.collatz.compilation import compile_physical_diamond
 from number_compiler.sequences.collatz.physical_kernel import (
-    _HEADER,
-    _RAW_SHA256,
     PhysicalCollatzFourBlockEffect,
 )
 from number_compiler.sequences.collatz.tile_family_hooks import (
@@ -36,11 +34,18 @@ def test_complete_fixed_kernel_matches_all_old_bimachine_states_transitions_and_
 ):
     expected = proof_kernel()
     effect = PhysicalCollatzFourBlockEffect()
+    expected_header = b"PC4KERN1" + bytes((2, 2, 4, 50, 90, 0, 0, 8, 7))
     actual = (
-        _HEADER + effect.left_transitions + effect.right_transitions + effect.outputs
+        expected_header
+        + effect.left_transitions
+        + effect.right_transitions
+        + effect.outputs
     )
     assert actual == expected
-    assert hashlib.sha256(actual).hexdigest() == _RAW_SHA256
+    assert (
+        hashlib.sha256(actual).hexdigest()
+        == "04f2a30ac31ed5de5542fa096475320bda6a3acdefeda922625795183b324dc3"
+    )
     with pytest.raises(FrozenInstanceError):
         effect.__setattr__("base", 3)
 
@@ -50,12 +55,23 @@ def test_fixed_kernel_metadata_and_tables_cannot_forge_family_issuance() -> None
         effect = PhysicalCollatzFourBlockEffect()
         object.__setattr__(effect, attribute, value)
         with pytest.raises(ValueError):
-            _issue_certificate(effect, "collatz", effect.exponent)
+            issue_certificate(effect, "collatz", effect.exponent)
 
 
-def test_fixed_kernel_generic_projection_keeps_its_full_halo() -> None:
+@pytest.mark.parametrize(
+    "full_grid",
+    [False, pytest.param(True, marks=pytest.mark.validation)],
+)
+def test_fixed_kernel_generic_projection_keeps_its_full_halo(
+    full_grid: bool,
+) -> None:
+    bit_patterns = (
+        tuple(product((0, 1), repeat=4))
+        if full_grid
+        else ((0, 0, 0, 0), (0, 1, 0, 1), (1, 0, 1, 0), (1, 1, 1, 1))
+    )
     effect = PhysicalCollatzFourBlockEffect()
-    for bits in product((0, 1), repeat=4):
+    for bits in bit_patterns:
         source = (*bits, 1)
         application = HashLifeBlockIndex(
             effect,
@@ -93,7 +109,7 @@ def test_kernel_audit_rejects_duck_typed_unadmitted_boundary_effect() -> None:
             )
     assert kernel is not None
     audit = DiamondPayloadRegistry(runtime.ledger)
-    assert audit._kernel_fields(kernel)
+    assert audit.valid(kernel)
 
     class Impostor:
         blank = 2
@@ -111,7 +127,7 @@ def test_kernel_audit_rejects_duck_typed_unadmitted_boundary_effect() -> None:
             return tuple(range(50 if side is BoundarySide.LEFT else 90))
 
     object.__setattr__(kernel, "effect", Impostor())
-    assert not audit._kernel_fields(kernel)
+    assert not DiamondPayloadRegistry(runtime.ledger).valid(kernel)
 
 
 def test_fixed_kernel_projection_lowers_before_tile_execution(
@@ -128,12 +144,13 @@ def test_fixed_kernel_projection_lowers_before_tile_execution(
     )
     from number_compiler.hashlife.observation.tile_projection import LazyProjection
 
-    assert type(application._lazy_application) is LazyProjection
-    adapter = application._lazy_application.scheduler.adapter
+    projection = application.audit_snapshot().lazy_application
+    assert type(projection) is LazyProjection
+    adapter = projection.scheduler.adapter
     assert isinstance(adapter, PrimitiveTileKernelAdapter)
     assert all(
         type(kernel.effect) is CollatzPhysicalBlockEffect
-        for kernel in adapter.kernels._kernels
+        for kernel in adapter.kernels.audit_snapshot().kernels
     )
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
@@ -222,5 +239,5 @@ def test_equal_but_wrong_type_metadata_is_rejected_before_warm_compiler_admissio
     with pytest.raises(ValueError):
         compiler.atom(effect)
     with pytest.raises(ValueError):
-        _issue_certificate(effect, "collatz", 4)
+        issue_certificate(effect, "collatz", 4)
     assert compiler.ledger.snapshot() == before

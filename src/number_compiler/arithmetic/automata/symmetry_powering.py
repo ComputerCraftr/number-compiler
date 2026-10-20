@@ -21,6 +21,7 @@ from enum import IntFlag
 from hashlib import sha256
 from typing import Generic, TypeVar
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaToken,
@@ -173,7 +174,10 @@ class OrientedActionRef(ActionProgramID):
 
     def __post_init__(self) -> None:
         super(OrientedActionRef, self).__post_init__()
-        if not isinstance(self.transform, ActionTransform) or int(self.transform) & ~3:
+        if (
+            not is_runtime_instance(self.transform, ActionTransform)
+            or int(self.transform) & ~3
+        ):
             raise ValueError("invalid oriented action transform")
 
     @property
@@ -274,7 +278,7 @@ class OrientedFiniteActionArena:
             self._owner, "finite-mapping", size=len(self._mappings)
         ).local_id
 
-    def _validate_action(self, reference: OrientedActionRef) -> int:
+    def action_validator(self, reference: OrientedActionRef) -> int:
         if type(reference) is not OrientedActionRef:
             raise TypeError("oriented action requires a scoped oriented reference")
         reference.validate(self._owner, "oriented-action", size=len(self._actions))
@@ -314,7 +318,7 @@ class OrientedFiniteActionArena:
     def raw_action(
         self, reference: OrientedActionRef
     ) -> tuple[TransferSummaryID, TransferSummaryID]:
-        first, second = self._raw_action(self._validate_action(reference))
+        first, second = self._raw_action(self.action_validator(reference))
         return self._mapping_handle(first), self._mapping_handle(second)
 
     def oriented_pair(
@@ -351,8 +355,6 @@ class OrientedFiniteActionArena:
         if found is not None:
             return found
         sc = self.kernel.state_conjugate
-        if sc is None:
-            raise AssertionError("missing state conjugacy")
         mapping = self._mappings[mapping_id]
         # K o f o K; K is an involution.
         out = self._intern_mapping(
@@ -414,7 +416,7 @@ class OrientedFiniteActionArena:
         return self._actions[int(action_id)]
 
     def _oriented_pair(self, ref: OrientedActionRef) -> tuple[int, int]:
-        pair = self._raw_action(self._validate_action(ref))
+        pair = self._raw_action(self.action_validator(ref))
         return self._apply_transform_pair(
             pair, ref.transform.inverse, self._conjugate_mapping
         )
@@ -438,8 +440,8 @@ class OrientedFiniteActionArena:
     def compose(
         self, left: OrientedActionRef, right: OrientedActionRef
     ) -> OrientedActionRef:
-        self._validate_action(left)
-        self._validate_action(right)
+        self.action_validator(left)
+        self.action_validator(right)
         lf, lr = self._oriented_pair(left)
         rf, rr = self._oriented_pair(right)
         forward = self._compose_mapping(lf, rf)
@@ -449,7 +451,7 @@ class OrientedFiniteActionArena:
     def apply(
         self, ref: OrientedActionRef, state: int, *, reverse: bool = False
     ) -> int:
-        self._validate_action(ref)
+        self.action_validator(ref)
         if (
             type(state) is not int
             or not 0 <= state < self.kernel.state_count
@@ -463,8 +465,8 @@ class OrientedFiniteActionArena:
     def transformed(
         self, ref: OrientedActionRef, transform: ActionTransform
     ) -> OrientedActionRef:
-        self._validate_action(ref)
-        if not isinstance(transform, ActionTransform) or int(transform) & ~3:
+        self.action_validator(ref)
+        if not is_runtime_instance(transform, ActionTransform) or int(transform) & ~3:
             raise ValueError("invalid oriented action transform")
         if (
             transform & ActionTransform.CONJUGATE

@@ -296,7 +296,7 @@ def _apply_recursive_pair_power(
     represented_positions: int,
 ) -> BlockApplication:
     """Lower one exact final pair field from the shared recursive executor."""
-    from number_compiler.arithmetic.contracts.temporal_family import _issue_certificate
+    from number_compiler.arithmetic.contracts.temporal_family import issue_certificate
     from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
     from number_compiler.hashlife.observation.hashlife_projection import (
         HashLifeBlockIndex,
@@ -314,7 +314,7 @@ def _apply_recursive_pair_power(
     ).root
     if compiled is None:
         raise AssertionError("positive pair exponent has no executable action")
-    certificate = _issue_certificate(
+    certificate = issue_certificate(
         compiled,
         "reverse-add",
         power.exponent,
@@ -329,24 +329,12 @@ def _apply_recursive_pair_power(
         ledger=ledger,
         compiler=compiler,
     )
-    from number_compiler.arithmetic.contracts.scoped_handles import LoweringCapability
-    from number_compiler.projection.endpoint_lowering import iter_endpoint_digits
 
     # T commutes with reflection of the complete pair field. Original
     # palindromic pair sources therefore need only one half of the final
     # scalar observations; the other half is emitted from the requested
     # endpoint buffer, never from an intermediate generation.
-    output = tuple(
-        iter_endpoint_digits(
-            owner=index._lowering_owner,
-            capability=LoweringCapability(index._lowering_owner),
-            width=index.direct_active_width(),
-            blank=compiled.blank,
-            point=index.direct_powered_point,
-            ledger=ledger,
-            reflect_output=values == values[::-1],
-        )
-    )
+    output = tuple(index.iter_direct_points(reflect_output=values == values[::-1]))
     snapshot = ledger.snapshot()
     stats = {} if power.root is None else power.root.runtime_stats()
     stats.update(snapshot.counters)
@@ -356,12 +344,13 @@ def _apply_recursive_pair_power(
     recursive_nodes = sum(
         item.nodes
         for item in snapshot.inventory
-        if item.role in ("higher_semantic_expression", "higher_runtime_value")
+        if item.role
+        in ("higher_semantic_expression", "field_cell_action", "field_action")
     )
-    output_nodes = sum(
-        item.nodes
+    output_entries = sum(
+        item.entries
         for item in snapshot.inventory
-        if item.role in ("output_morphism", "higher_local_interface")
+        if item.role == "completed_result_memo"
     )
     stats.update(
         {
@@ -383,7 +372,7 @@ def _apply_recursive_pair_power(
             "canonical_recursive_right_states": recursive_nodes,
             "recursive_action_left_nodes": recursive_nodes,
             "recursive_action_right_nodes": recursive_nodes,
-            "spacetime_tile_output_entries": output_nodes,
+            "spacetime_tile_output_entries": output_entries,
         }
     )
     return BlockApplication(output, represented_positions, 0, 0, stats)

@@ -16,6 +16,10 @@ from number_compiler.api.query_types import CommaTermQuery
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
 from number_compiler.sequences.comma import future_authority
 from number_compiler.sequences.comma.power import CommaTerm
+from tests.support.comma_certificate_cache import (
+    count_forest_certificate_verifications,
+    forbid_certificate_asset_access,
+)
 
 
 @pytest.mark.parametrize(
@@ -84,7 +88,7 @@ def test_certificate_and_metrics_do_not_compute_finite_orbit(
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("certificate/reporting unexpectedly evaluated a term")
 
-    monkeypatch.setattr(CommaTerm, "_resolve", forbidden)
+    monkeypatch.setattr(CommaTerm, "resolve_index", forbidden)
     monkeypatch.setattr(certificates, "_verify", forbidden)
     monkeypatch.setattr(certificates, "files", forbidden)
     monkeypatch.setattr(certificates, "sha256", forbidden)
@@ -137,7 +141,7 @@ def test_registered_global_certificate_admits_snapshot_without_loading_provider(
     monkeypatch.setattr(certificates, "_verify", forbidden)
     monkeypatch.setattr(certificates, "files", forbidden)
     monkeypatch.setattr(certificates, "sha256", forbidden)
-    monkeypatch.setattr(CommaTerm, "_resolve", forbidden)
+    monkeypatch.setattr(CommaTerm, "resolve_index", forbidden)
 
     assert (
         main(
@@ -165,15 +169,27 @@ def test_registered_global_certificate_admits_snapshot_without_loading_provider(
     assert packet["coverage"] == "all_positive_indices"
 
 
-def test_public_api_requires_prefix_evidence_on_every_value_demand() -> None:
-    compiler = NumberCompiler()
-    assert compiler.project(CommaTermQuery(1)).materialize(max_bits=64) == 20
-    assert compiler.nth(CommaTermQuery(1)) == 20
-    term = compiler.project(CommaTermQuery(412987861))
-    with pytest.raises(UnresolvedSequenceTerm):
-        term.materialize(max_bits=64)
-    with pytest.raises(UnresolvedSequenceTerm):
-        term.digit(0)
+def test_public_api_requires_prefix_evidence_on_every_value_demand(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.resources.process_cache import (
+        ProcessCache,
+        temporary_process_cache,
+    )
+
+    # Exercise public admission and every demand route here; the standalone
+    # certificate-cache test performs the expensive independent forest walk.
+    verification_calls = count_forest_certificate_verifications(monkeypatch)
+    with temporary_process_cache(ProcessCache()):
+        compiler = NumberCompiler()
+        assert compiler.project(CommaTermQuery(1)).materialize(max_bits=64) == 20
+        assert compiler.nth(CommaTermQuery(1)) == 20
+        term = compiler.project(CommaTermQuery(412987861))
+        with pytest.raises(UnresolvedSequenceTerm):
+            term.materialize(max_bits=64)
+        with pytest.raises(UnresolvedSequenceTerm):
+            term.digit(0)
+    assert len(verification_calls) == 1
 
 
 @pytest.mark.validation
@@ -187,10 +203,21 @@ def test_public_api_requires_prefix_evidence_on_every_value_demand() -> None:
     ],
 )
 def test_release_checked_prefix_emits_exact_value(
-    index: int, expected: str, capsys: pytest.CaptureFixture[str]
+    index: int,
+    expected: str,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Positive release gate: refusal is not completion of certified-prefix rollout."""
-    assert main(["a367620", "--nth", str(index)]) == 0
+    from number_compiler.resources.process_cache import (
+        ProcessCache,
+        temporary_process_cache,
+    )
+
+    verification_calls = count_forest_certificate_verifications(monkeypatch)
+    with temporary_process_cache(ProcessCache()):
+        assert main(["a367620", "--nth", str(index)]) == 0
+        assert len(verification_calls) == 1
     assert capsys.readouterr().out.strip() == expected
 
 
@@ -200,7 +227,7 @@ def test_metrics_only_remains_visible_at_unresolved_boundary(
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("metrics evaluated the comma trajectory")
 
-    monkeypatch.setattr(CommaTerm, "_resolve", forbidden)
+    monkeypatch.setattr(CommaTerm, "resolve_index", forbidden)
     assert (
         main(
             [
@@ -232,7 +259,7 @@ def test_metrics_only_does_not_verify_or_construct(
         raise AssertionError("metrics initiated certificate or arithmetic work")
 
     monkeypatch.setattr(certificates, "_verify", forbidden)
-    monkeypatch.setattr(CommaTerm, "_resolve", forbidden)
+    monkeypatch.setattr(CommaTerm, "resolve_index", forbidden)
     assert (
         main(
             [
@@ -291,14 +318,27 @@ def test_forged_shared_certificate_marker_cannot_authorize_digits() -> None:
         cache.reset()
 
 
-def test_bypassed_public_query_verifies_once_and_reuses_its_own_admission() -> None:
+def test_bypassed_public_query_reuses_its_own_admission_without_asset_io(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Keep the real admission, compressed checksum, and local cache behavior;
+    # the certificate-cache test owns the full forest traversal.
+    verification_calls = count_forest_certificate_verifications(monkeypatch)
     term = NumberCompiler(shared_cache=False).project(CommaTermQuery(1))
-    assert term.materialize(max_bits=64) == 20
     assert term.materialize(max_bits=64) == 20
     from number_compiler.api.comma_term import CommaTermPayload
 
     assert isinstance(term.payload, CommaTermPayload)
     counters = term.payload.term.ledger.counters
+    read_bytes = counters.get("comma_certificate_read_bytes", 0)
+    certificate_work = counters["comma_certificate_work"]
+    assert read_bytes > 0
+    assert len(verification_calls) == 1
+    forbid_certificate_asset_access(monkeypatch)
+    assert term.materialize(max_bits=64) == 20
+    assert len(verification_calls) == 1
+    assert counters["comma_certificate_read_bytes"] == read_bytes
+    assert counters["comma_certificate_work"] <= certificate_work + 8
     assert counters["comma_certificate_cache_bypasses"] == 1
     assert counters["comma_certificate_local_hits"] == 1
     assert counters["comma_certificate_work"] < 1_000_000

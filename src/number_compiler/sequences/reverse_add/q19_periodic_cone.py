@@ -30,7 +30,7 @@ from number_compiler.sequences.reverse_add.q19_conditional_stencil import (
 )
 from number_compiler.sequences.reverse_add.q19_uniform_cone import (
     UniformConeNotAuthorized,
-    _bulk_at,
+    bulk_at,
 )
 
 _UNIFORMIZING_CONE_SEAL = object()
@@ -131,7 +131,7 @@ def _fold_match(
     """Memoize all Q19 SLP nodes under exact periodic *output* matching."""
     node_bound = len(owner.arena.nodes)
     with owner.ledger.reservation(
-        owner._scratch_owner,
+        owner.scratch_owner,
         entries=4 * (node_bound + 1),
         nodes=8 * (node_bound + 1),
     ):
@@ -205,7 +205,7 @@ def _match_region(
     return report.accepts[lo % len(pattern)]
 
 
-def _periodic_guard(
+def periodic_guard(
     owner: ReversePairQ19OutputOwner,
     source: ReversePairOutputOccurrence,
     lo: int,
@@ -241,7 +241,7 @@ class CertifiedUniformizingCone:
             raise ValueError("uniformizing cone records are issued by a Q19 owner")
 
     @classmethod
-    def _issue(
+    def issue_after_periodic_guard(
         cls,
         source: ReversePairOutputOccurrence,
         owner: ReversePairQ19OutputOwner,
@@ -279,7 +279,7 @@ class CertifiedUniformizingCone:
         object.__setattr__(record, "_seal", _UNIFORMIZING_CONE_SEAL)
         return record
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
         from number_compiler.sequences.reverse_add.q19_output import (
             ReversePairQ19OutputOwner,
         )
@@ -299,13 +299,13 @@ class CertifiedUniformizingCone:
         self.owner.validate_issued_occurrence(self.source)
 
     def at(self, depth: int) -> int:
-        self._validate()
+        self.validate()
         if type(depth) is not int or not 0 <= depth <= self.steps:
             raise ValueError("query outside certified mixed temporal cone")
         return (
             self.period[self.coordinate % len(self.period)]
             if depth == 0
-            else _bulk_at(
+            else bulk_at(
                 self.uniform_successor, int(self.uniform_successor > 9), depth - 1
             )
         )
@@ -320,7 +320,7 @@ class CertifiedUniformizingCone:
 
     def next_quiet_borrow_response(self, offset: int) -> tuple[int, int]:
         """Raw signed borrow transfer if the following reversal is nongrowth."""
-        self._validate()
+        self.validate()
         if type(offset) is not int or not 0 <= offset < self.steps:
             raise ValueError("borrow gate must lie inside the mixed cone")
         if offset == 0:
@@ -394,19 +394,19 @@ def _derive_uniformizing_cone(
     if coordinate - halo < 0 or coordinate + halo >= w:
         raise UniformConeNotAuthorized("insufficient protected mixed-period halo")
     anchor = coordinate - coordinate % period_size
-    period = tuple(owner._pair_value_at(source, anchor + j) for j in range(period_size))
+    period = tuple(owner.pair_value_at(source, anchor + j) for j in range(period_size))
     first = _step(period, 0)
     second = _step(period, 1)
     if first != second or len(set(first)) != 1 or first[0] % 2:
         raise UniformConeNotAuthorized(
             "growth alternatives do not enter the same resetting Moore state"
         )
-    if not _periodic_guard(
+    if not periodic_guard(
         owner, source, coordinate - halo, coordinate + halo + 1, period
     ):
         raise UniformConeNotAuthorized("mixed-period source SLP guard mismatch")
     owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_AUTHORIZED_MIXED_UNIFORMIZING_CELLS)
-    return CertifiedUniformizingCone._issue(
+    return CertifiedUniformizingCone.issue_after_periodic_guard(
         source, owner, coordinate, steps, period, first[0], halo
     )
 

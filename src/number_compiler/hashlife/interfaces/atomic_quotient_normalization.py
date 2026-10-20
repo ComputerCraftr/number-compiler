@@ -79,7 +79,7 @@ def _existing_mask(
                 return None
             workspace.reserve_workspace(entries=1)
             done[identity] = found
-        return functions._handle(done[root.local_id])
+        return functions.scoped_handle(done[root.local_id])
 
 
 def atomic_product_is_masked(

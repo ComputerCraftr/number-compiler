@@ -5,13 +5,31 @@ from __future__ import annotations
 from collections.abc import Callable, Generator, Iterable, Iterator, Sized
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from enum import StrEnum
-from typing import TypeVar
 from weakref import ReferenceType, ref
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
+from number_compiler.resources.factory_containers import (
+    ContainerItemT as _StoreT,
+)
+from number_compiler.resources.factory_containers import (
+    ContainerKeyT as _StoreK,
+)
+from number_compiler.resources.factory_containers import (
+    ContainerValueT as _StoreV,
+)
+from number_compiler.resources.factory_containers import (
+    FactoryContainerRegistry,
+)
+from number_compiler.resources.ledger_records import (
+    LedgerAccountStatus as LedgerAccountStatus,
+)
+from number_compiler.resources.ledger_records import LedgerSnapshot as LedgerSnapshot
+from number_compiler.resources.ledger_records import (
+    ResourceInventory as ResourceInventory,
+)
+from number_compiler.resources.ledger_records import ResourceScope as ResourceScope
 from number_compiler.resources.metric_keys import resources as _resources_keys
 from number_compiler.resources.owned_memo import (
     LedgerReservation,
@@ -22,6 +40,7 @@ from number_compiler.resources.payload_contracts import (
     PayloadAuditContractAudit,
     PayloadAuditContribution,
     PayloadAuditStoreBinding,
+    PayloadContractRegistry,
     audit_payload_contracts,
     clear_payload_audit_contracts,
     drop_owner_contracts,
@@ -29,58 +48,14 @@ from number_compiler.resources.payload_contracts import (
     register_payload_audit_contract,
     remove_payload_audit_contract,
 )
+from number_compiler.resources.root_audit_signature import root_audit_signature
 from number_compiler.resources.stores import LedgerDict, LedgerList, TrackedDict
 
 __all__ = ("LedgerReservation", "OwnedMemo")
 
-_StoreK = TypeVar("_StoreK")
-_StoreV = TypeVar("_StoreV")
-_StoreT = TypeVar("_StoreT")
-
 
 def _empty_root_map() -> dict[ArenaHandle, None]:
     return {}
-
-
-class ResourceScope(StrEnum):
-    ENGINE_OWNED = "ENGINE_OWNED"
-    INDEX_OWNED = "INDEX_OWNED"
-    SHARED_GLOBAL = "SHARED_GLOBAL"
-
-
-@dataclass(frozen=True, slots=True)
-class ResourceInventory:
-    owner: int
-    name: str
-    role: str
-    scope: ResourceScope
-    entries: int
-    nodes: int
-    roots: tuple[ArenaHandle, ...]
-    observed_entries: int | None = None
-    observed_nodes: int | None = None
-    payloads_registered: bool = False
-    evictable: bool = False
-    composition_entries: int = 0
-    disposed: bool = False
-
-    @property
-    def accounting_delta(self) -> int | None:
-        if self.observed_entries is None:
-            return None
-        return abs(self.observed_entries - self.entries) + (
-            0 if self.observed_nodes is None else abs(self.observed_nodes - self.nodes)
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class LedgerSnapshot:
-    entries: int
-    nodes: int
-    peak_entries: int
-    peak_nodes: int
-    counters: dict[str, int]
-    inventory: tuple[ResourceInventory, ...]
 
 
 @dataclass(slots=True)
@@ -100,7 +75,7 @@ class _Account:
     disposed: bool = False
 
 
-class ResourceLedger:
+class ResourceLedger(PayloadContractRegistry):
     """Reserve before publishing an allocation; rejected reservations mutate nothing.
 
     Nodes and cache entries are separate resource dimensions. Registering a root
@@ -120,7 +95,7 @@ class ResourceLedger:
         self._reservations: TrackedDict[object, tuple[int, int, int]] = TrackedDict(
             self
         )
-        self._factory_containers: set[int] = set()
+        self._factory_containers = FactoryContainerRegistry()
         self._execution_roots: dict[int, ReferenceType[object]] = {}
         self._payload_audit_contracts: dict[tuple[int, str], PayloadAuditBinding] = {}
         self._payload_audit_snapshot: PayloadAuditContractAudit | None = None
@@ -169,34 +144,7 @@ class ResourceLedger:
         self,
     ) -> tuple[tuple[int, tuple[tuple[str, int, int | None], ...]], ...]:
         """Return a shallow live-root signature without walking retained DAGs."""
-        rows: list[tuple[int, tuple[tuple[str, int, int | None], ...]]] = []
-        for root in self.iter_execution_roots():
-            try:
-                attributes = dict(vars(root))
-            except TypeError:
-                attributes = {}
-            for cls in type(root).__mro__:
-                slots = cls.__dict__.get("__slots__", ())
-                if isinstance(slots, str):
-                    slots = (slots,)
-                for name in slots:
-                    if name in ("__dict__", "__weakref__") or name in attributes:
-                        continue
-                    if name.startswith("__") and not name.endswith("__"):
-                        name = "_" + cls.__name__.lstrip("_") + name
-                    try:
-                        attributes[name] = getattr(root, name)
-                    except AttributeError:
-                        continue
-            fields: list[tuple[str, int, int | None]] = []
-            for name, value in attributes.items():
-                try:
-                    size = len(value) if isinstance(value, Sized) else None
-                except (RuntimeError, TypeError, ValueError):
-                    size = None
-                fields.append((name, id(value), size))
-            rows.append((id(root), tuple(sorted(fields))))
-        return tuple(sorted(rows))
+        return root_audit_signature(self.iter_execution_roots())
 
     def _cached_audit(
         self, cached: tuple[int, object, object] | None, root_signature: object | None
@@ -249,7 +197,7 @@ class ResourceLedger:
             return
 
         def expire(reference: ReferenceType[object]) -> None:
-            self._expire_execution_root(identity, reference)
+            self.expire_execution_root(identity, reference)
 
         reference = ref(root, expire)
         from number_compiler.resources.construction_scope import (
@@ -276,7 +224,7 @@ class ResourceLedger:
         reference = self._execution_roots.get(id(root))
         return reference is not None and reference() is root
 
-    def _expire_execution_root(
+    def expire_execution_root(
         self,
         identity: int,
         expected: ReferenceType[object] | None = None,
@@ -287,6 +235,27 @@ class ResourceLedger:
         self._execution_roots.pop(identity, None)
         drop_root_contracts(self, identity)
         self.note_store_mutation()
+
+    def retire_unpublished_owner(self, owner: int) -> None:
+        """Release a newly created owner after its enclosing construction fails."""
+        account = self._account(owner)
+        if account.disposed:
+            return
+        entries, nodes = account.entries, account.nodes
+        container = account.container
+        container_identity = None if container is None else id(container)
+        if isinstance(container, (LedgerDict, LedgerList)):
+            container.clear_unpublished_storage()
+        self.release(owner, entries, nodes)
+        self.bump(_resources_keys.RUNTIME_CONSTRUCTION_RELEASED_ENTRIES, entries)
+        self.bump(_resources_keys.RUNTIME_CONSTRUCTION_RELEASED_NODES, nodes)
+        if container_identity is not None:
+            self._factory_containers.discard(container_identity)
+        account.container = None
+        account.node_count = account.payloads = account.root_resolver = None
+        account.evict = account.composition_count = None
+        account.roots.clear()
+        self.mark_disposed(owner)
 
     def register_payload_audit_contract(
         self,
@@ -442,7 +411,7 @@ class ResourceLedger:
         account.nodes += nodes
         self._commit_reserved_totals(next_entries, next_nodes)
 
-    def _register_reservation(self, reservation: object, owner: int) -> None:
+    def register_reservation(self, reservation: object, owner: int) -> None:
         if type(reservation) is not LedgerReservation:
             raise TypeError("resource reservation needs its exact tracker")
         if reservation in self._reservations:
@@ -460,7 +429,11 @@ class ResourceLedger:
             raise RuntimeError("ledger reservation has been closed or is foreign")
         return state
 
-    def _reserve_for_reservation(
+    def validate_reservation(self, reservation: object) -> None:
+        """Confirm a tracker remains open without exposing held charges."""
+        self._reservation_state(reservation)
+
+    def reserve_for_reservation(
         self, reservation: object, *, entries: int = 0, nodes: int = 0
     ) -> None:
         owner, held_entries, held_nodes = self._reservation_state(reservation)
@@ -472,7 +445,7 @@ class ResourceLedger:
         self.reserve(owner, entries=entries, nodes=nodes)
         self._reservations[reservation] = next_state
 
-    def _transfer_reservation_to(
+    def transfer_reservation_to(
         self,
         reservation: object,
         owner: int,
@@ -490,7 +463,7 @@ class ResourceLedger:
         self.reassign_many(((source, entries, nodes),), ((owner, entries, nodes),))
         self._reservations[reservation] = next_state
 
-    def _transfer_reservation_from(
+    def transfer_reservation_from(
         self,
         reservation: object,
         owner: int,
@@ -506,7 +479,7 @@ class ResourceLedger:
         self.reassign_many(((owner, entries, nodes),), ((target, entries, nodes),))
         self._reservations[reservation] = next_state
 
-    def _close_reservation(self, reservation: object) -> None:
+    def close_reservation(self, reservation: object) -> None:
         if type(reservation) is not LedgerReservation:
             raise TypeError("resource reservation needs its exact tracker")
         if not reservation.belongs_to(self):
@@ -553,28 +526,15 @@ class ResourceLedger:
         key_type: type[_StoreK] | None = None,
         value_type: type[_StoreV] | None = None,
     ) -> LedgerDict[_StoreK, _StoreV]:
-        """Create a typed, ledger-accounted map.
-
-        Optional type parameters are static inference anchors for callers that
-        do not have an assignment context. Runtime values remain checked by
-        the owning operation at its authority boundary.
-        """
-        if (key_type is None) != (value_type is None):
-            raise TypeError("map type parameters must be supplied together")
-        require_integer(nodes_per_entry, "nodes per entry", 0)
-        if type(write_once) is not bool:
-            raise TypeError("mapping write-once policy must be Boolean")
-        result: LedgerDict[_StoreK, _StoreV] = LedgerDict(
-            self, owner, nodes_per_entry, write_once=write_once
-        )
-        self.register_container(
+        """Create a typed, ledger-accounted map."""
+        return self._factory_containers.make_dict(
+            self,
             owner,
-            result,
-            node_count=lambda: len(result) * nodes_per_entry,
-            payloads=lambda: result.items(),
+            nodes_per_entry=nodes_per_entry,
+            write_once=write_once,
+            key_type=key_type,
+            value_type=value_type,
         )
-        self._factory_containers.add(id(result))
-        return result
 
     def make_list(
         self,
@@ -585,24 +545,17 @@ class ResourceLedger:
         item_type: type[_StoreT] | None = None,
     ) -> LedgerList[_StoreT]:
         """Create a typed, ledger-accounted sequence store."""
-        require_integer(nodes_per_entry, "nodes per entry", 0)
-        if type(append_only) is not bool:
-            raise TypeError("append_only must be a boolean")
-        result: LedgerList[_StoreT] = LedgerList(
-            self, owner, nodes_per_entry, append_only
-        )
-        self.register_container(
+        return self._factory_containers.make_list(
+            self,
             owner,
-            result,
-            node_count=lambda: len(result) * nodes_per_entry,
-            payloads=lambda: result,
+            nodes_per_entry=nodes_per_entry,
+            append_only=append_only,
+            item_type=item_type,
         )
-        self._factory_containers.add(id(result))
-        return result
 
     def is_factory_container(self, container: object) -> bool:
         """Identity provenance; registered containers stay live with this ledger."""
-        return id(container) in self._factory_containers
+        return self._factory_containers.contains(container)
 
     def check_capacity(self, *, entries: int = 0, nodes: int = 0) -> None:
         """Check a required allocation before constructing any dependent store."""
@@ -886,6 +839,98 @@ class ResourceLedger:
         return tuple(
             self.inventory_owner(owner) for owner in range(len(self._accounts))
         )
+
+    def matches_store_account(
+        self,
+        owner: int,
+        store: object,
+        role: str,
+        *,
+        entries: int | None = None,
+        nodes: int | None = None,
+    ) -> bool:
+        """Validate exact backing identity and its live charged quantities."""
+        if not isinstance(store, Sized):
+            return False
+        try:
+            account = self._account(owner)
+            actual_entries = len(store)
+            actual_nodes = None if account.node_count is None else account.node_count()
+        except (AttributeError, TypeError, ValueError, RuntimeError):
+            return False
+        return (
+            not account.disposed
+            and account.container is store
+            and account.role == role
+            and account.entries == actual_entries
+            and actual_nodes is not None
+            and account.nodes == actual_nodes
+            and (entries is None or account.entries == entries)
+            and (nodes is None or account.nodes == nodes)
+        )
+
+    def refresh_payload_audit_contract(
+        self,
+        root: object,
+        family: str,
+        register: Callable[[], None],
+        *,
+        missing_message: str,
+        restore_message: str,
+    ) -> None:
+        """Refresh a live contract and restore its exact binding on failure."""
+        key = id(root), family
+        old_binding = self._payload_audit_contracts.get(key)
+        if old_binding is None or old_binding.root_reference() is not root:
+            raise ValueError(missing_message)
+        from number_compiler.resources.payload_contracts import (
+            remove_payload_audit_contract,
+        )
+
+        remove_payload_audit_contract(self, root, family)
+        try:
+            register()
+        except BaseException:
+            try:
+                self._payload_audit_contracts[key] = old_binding
+                self.note_store_mutation()
+            except BaseException as restore_error:
+                raise RuntimeError(restore_message) from restore_error
+            raise
+
+    def account_status(self, owner: int) -> LedgerAccountStatus:
+        """Read charged state and backing identity without traversing payloads."""
+        account = self._account(owner)
+        return LedgerAccountStatus(
+            account.role,
+            account.entries,
+            account.nodes,
+            account.disposed,
+            None if account.container is None else id(account.container),
+        )
+
+    def ownership_audit_identities(self) -> tuple[int, ...]:
+        """Expose bookkeeping identities without returning mutable ledger stores."""
+        snapshot = self._payload_audit_snapshot
+        snapshot_ids = (
+            (id(snapshot),) if type(snapshot) is PayloadAuditContractAudit else ()
+        )
+        return (
+            id(self._accounts),
+            id(self._names),
+            id(self._reservations),
+            self._factory_containers.audit_identity,
+            id(self._execution_roots),
+            id(self._payload_audit_contracts),
+            id(self.counters),
+            *(id(account.roots) for account in self._accounts),
+            *snapshot_ids,
+        )
+
+    def account_usage(self, owner: int) -> tuple[int, int]:
+        """Read reservation totals without walking retained roots or payloads."""
+        account = self._account(owner)
+        return account.entries, account.nodes
 
     def inventory_owner(self, owner: int) -> ResourceInventory:
         """Audit one account without visiting unrelated owners or their resolvers."""

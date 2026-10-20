@@ -13,9 +13,9 @@ from number_compiler.sequences.reverse_add.q19_output import ReversePairQ19Outpu
 from number_compiler.sequences.reverse_add.q19_uniform_cone import (
     CertifiedUniformCone,
     UniformConeNotAuthorized,
-    _bulk_at,
-    _same_symbol_range,
     authorize_uniform_cone,
+    bulk_at,
+    same_symbol_range,
 )
 
 
@@ -29,7 +29,8 @@ def _pair_at(value: int, index: int) -> int:
 
 
 def _word_from_pairs(half: list[int], rng: Random) -> int:
-    low, high = [], []
+    low: list[int] = []
+    high: list[int] = []
     for index, s in enumerate(half):
         lo = max(0, s - 9)
         hi = min(9, s)
@@ -209,9 +210,9 @@ def test_virtual_repeat_is_checked_once_and_never_claimed_reachable() -> None:
     owner = ReversePairQ19OutputOwner(ledger, digits_lsd(196, 10), base=10)
     try:
         long_word = owner.arena.repeat(owner.arena.terminal(6), 10**18)
-        assert _same_symbol_range(owner, long_word, 1, 10**18 - 1, 6)
-        assert not _same_symbol_range(owner, long_word, 1, 10**18 - 1, 8)
-        assert _bulk_at(6, 0, 10**18) == _bulk_at(6, 0, 4 + (10**18 - 4) % 6)
+        assert same_symbol_range(owner, long_word, 1, 10**18 - 1, 6)
+        assert not same_symbol_range(owner, long_word, 1, 10**18 - 1, 8)
+        assert bulk_at(6, 0, 10**18) == bulk_at(6, 0, 4 + (10**18 - 4) % 6)
     finally:
         owner.dispose()
         assert ledger.entries == ledger.nodes == 0
@@ -282,6 +283,6 @@ def test_exhaustive_uniform_moore_closure() -> None:
     assert set(proof.cycle_lengths) == {1, 2, 6}
     for initial in range(19):
         for c in range(2) if initial == 9 else (int(initial > 9),):
-            target = _bulk_at(initial, c, 1)
+            target = bulk_at(initial, c, 1)
             assert target in proof.future_coefficients
-            assert _bulk_at(initial, c, 200) == (_bulk_at(target, int(target > 9), 199))
+            assert bulk_at(initial, c, 200) == (bulk_at(target, int(target > 9), 199))

@@ -1,6 +1,6 @@
 """Resource limits fail before allocation and retain an auditable owner inventory."""
 
-from collections.abc import Iterator
+from collections.abc import Iterator, MutableMapping, MutableSequence
 from copy import copy
 from typing import TypeGuard, cast
 
@@ -19,14 +19,16 @@ from number_compiler.resources.owned_memo import (
     OwnedMemoAuditPayloadView,
 )
 from number_compiler.resources.ownership import audit_execution_ownership
-from number_compiler.resources.stores import LedgerDict, TrackedDict
+from number_compiler.resources.stores import LedgerDict, LedgerList, TrackedDict
 from tests.support.assertions import assert_rejected_atomically
+from tests.support.private_attributes import set_private_test_attribute
 
 
 def _is_reservation_store(value: object) -> TypeGuard[TrackedDict[object, object]]:
-    return type(value) is TrackedDict and all(
-        type(key) is LedgerReservation for key in value
-    )
+    if type(value) is not TrackedDict:
+        return False
+    store = cast(TrackedDict[object, object], value)
+    return all(type(key) is LedgerReservation for key in store)
 
 
 def test_owner_name_batch_preflight_is_exact_distinct_and_nonmutating() -> None:
@@ -243,6 +245,91 @@ def test_owned_memo_accounts_updates_eviction_and_clear() -> None:
     assert (ledger.entries, ledger.nodes) == (0, 0)
 
 
+def test_owned_memo_publish_reserved_reuses_prior_fixed_charge() -> None:
+    ledger = ResourceLedger(max_nodes=2, max_cache_entries=1)
+    owner = ledger.register("reserved-memo", "ACTION_PROGRAM")
+    memo: OwnedMemo[str, str] = OwnedMemo(ledger, owner, nodes_per_entry=2)
+
+    with pytest.raises(RuntimeError, match="prior ledger reservation"):
+        memo.publish_reserved("key", "value")
+    assert ledger.entries == ledger.nodes == 0
+
+    ledger.reserve(owner, entries=1, nodes=2)
+    memo.publish_reserved("key", "value")
+    assert memo["key"] == "value"
+    assert ledger.entries == 1 and ledger.nodes == 2
+    assert ledger.inventory()[owner].entries == 1
+    assert ledger.inventory()[owner].nodes == 2
+
+    before_duplicate = ledger.snapshot()
+    with pytest.raises(KeyError, match="new key"):
+        memo.publish_reserved("key", "replacement")
+    assert ledger.snapshot() == before_duplicate
+    assert memo["key"] == "value"
+    memo.clear()
+    assert ledger.entries == ledger.nodes == 0
+
+
+def test_owned_memo_publish_reserved_rejects_malformed_or_disposed_memo() -> None:
+    ledger = ResourceLedger()
+    malformed_owner = ledger.register("malformed-memo", "ACTION_PROGRAM")
+    malformed: OwnedMemo[str, str] = OwnedMemo(ledger, malformed_owner)
+    object.__setattr__(malformed, "_data", {})
+    with pytest.raises(RuntimeError, match="lost its ledger-owned mapping"):
+        malformed.publish_reserved("key", "value")
+    assert ledger.entries == ledger.nodes == 0
+
+    disposed_owner = ledger.register("disposed-memo", "ACTION_PROGRAM")
+    disposed: OwnedMemo[str, str] = OwnedMemo(ledger, disposed_owner)
+    disposed.dispose()
+    with pytest.raises(RuntimeError, match="disposed"):
+        disposed.publish_reserved("key", "value")
+    assert ledger.entries == ledger.nodes == 0
+
+
+def test_ledger_dict_audit_view_is_live_read_only_and_preserves_values() -> None:
+    ledger = ResourceLedger(max_cache_entries=2)
+    owner = ledger.register("dict-audit-view", "WORKSPACE")
+    store: LedgerDict[str, object] = ledger.make_dict(owner)
+    first = object()
+    ledger.reserve(owner, entries=1)
+    store["first"] = first
+    view = store.audit_view()
+
+    assert view["first"] is first
+    ledger.reserve(owner, entries=1)
+    second = object()
+    store["second"] = second
+    assert tuple(view.items()) == (("first", first), ("second", second))
+    assert view["second"] is second
+    with pytest.raises(TypeError, match="does not support item assignment"):
+        cast(MutableMapping[str, object], view)["third"] = object()
+    assert "third" not in store
+
+
+def test_ledger_list_audit_view_is_live_read_only_and_preserves_values() -> None:
+    ledger = ResourceLedger(max_cache_entries=3)
+    owner = ledger.register("list-audit-view", "WORKSPACE")
+    store: LedgerList[object] = ledger.make_list(
+        owner, nodes_per_entry=0, append_only=True
+    )
+    first = object()
+    ledger.reserve(owner, entries=1)
+    store.append(first)
+    view = store.audit_view()
+    first_snapshot = view[:]
+
+    assert len(view) == 1 and view[0] is first
+    ledger.reserve(owner, entries=1)
+    second = object()
+    store.append(second)
+    assert len(view) == 2 and view[1] is second
+    assert first_snapshot == (first,)
+    with pytest.raises(TypeError, match="does not support item assignment"):
+        cast(MutableSequence[object], view)[0] = second
+    assert store[0] is first
+
+
 def test_dynamic_memo_adopts_exact_workspace_charge() -> None:
     ledger = ResourceLedger(max_nodes=8, max_cache_entries=2)
     source = ledger.register("memo-workspace", "WORKSPACE")
@@ -301,7 +388,7 @@ def test_dynamic_memo_adoption_rejects_unowned_or_duplicate_credit() -> None:
     with pytest.raises(RuntimeError, match="closed or is foreign"):
         copied.transfer_to(target, nodes=1)
     with pytest.raises(AttributeError, match="binding is immutable"):
-        untracked._ledger = foreign_ledger
+        set_private_test_attribute(untracked, "_ledger", foreign_ledger)
     with pytest.raises(AttributeError):
         untracked._nodes = 3
     _assert_adoption_refusal_is_atomic(memo, "new", untracked)
@@ -791,11 +878,14 @@ def test_reservation_bookkeeping_audits_mutable_children(
     reservation = LedgerReservation(ledger, owner)
     assert audit_execution_ownership(ledger).violations == ()
 
-    reservation_store = object.__getattribute__(ledger, "_reservations")
+    reservation_store = cast(
+        TrackedDict[object, object], object.__getattribute__(ledger, "_reservations")
+    )
     assert _is_reservation_store(reservation_store)
     assert reservation in reservation_store
     with monkeypatch.context() as patch:
-        patch.setitem(reservation_store, reservation, (owner, 0, []))
+        malformed_child: list[object] = []
+        patch.setitem(reservation_store, reservation, (owner, 0, malformed_child))
         audit = audit_execution_ownership(ledger)
         assert any("_reservations.value" in item.path for item in audit.violations)
 
@@ -815,10 +905,10 @@ def test_reservation_close_rejects_foreign_and_spoofed_handles() -> None:
     assert not foreign_reservation.belongs_to(ledger)
     assert foreign_reservation.resource_ledger is foreign
     with pytest.raises(TypeError, match="exact tracker"):
-        ledger._close_reservation(object())
+        ledger.close_reservation(object())
     with pytest.raises(ValueError, match="another ledger"):
-        ledger._close_reservation(foreign_reservation)
-    assert ledger._reservation_state(reservation) == (owner, 1, 1)
+        ledger.close_reservation(foreign_reservation)
+    ledger.validate_reservation(reservation)
     reservation.close()
     reservation.close()
     assert (ledger.entries, ledger.nodes) == (0, 0)

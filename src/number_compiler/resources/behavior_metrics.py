@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from number_compiler.resources.hashlife_behavior_metrics import HashLifeBehaviorMetrics
 from number_compiler.resources.metric_collection import ledger_fields_from
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
-from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
 from number_compiler.resources.metric_replace import replace_metric
 
 if TYPE_CHECKING:
@@ -17,25 +17,8 @@ if TYPE_CHECKING:
 
 def collect_behavior_metrics(index: HashLifeBlockIndex) -> HashLifeBehaviorMetrics:
     report = index.metrics()
-    baseline = dict(index._effect_metric_baseline)
-    seed_nodes = index._collect_tile_nodes(
-        {chunk.tile for chunk in index.seed_root.chunks}
-    )
-    root_nodes = index._collect_tile_nodes(
-        {chunk.tile for chunk in index.evaluation_root.chunks}
-    )
-    retained_nodes = index._retained_tile_nodes()
-    seen: set[int] = set()
-    stack: list[object] = [index.effect]
-    while stack:
-        node = stack.pop()
-        if id(node) in seen:
-            continue
-        seen.add(id(node))
-        for name in ("first", "second"):
-            child = getattr(node, name, None)
-            if child is not None:
-                stack.append(child)
+    index_snapshot = index.audit_snapshot()
+    baseline = dict(index_snapshot.effect_metric_baseline)
     from number_compiler.hashlife.observation.tile_projection import (
         LazyProjection as TileProjection,
     )
@@ -44,8 +27,8 @@ def collect_behavior_metrics(index: HashLifeBlockIndex) -> HashLifeBehaviorMetri
     horizon = bits = local_bound = symbolic_exponents = cocycle_fields = 0
     state_bound = action_bound = 0
     carry_function_bound = interval_bound = interval_classes = 0
-    certificate = index._certificate
-    tile_runtime = type(index._lazy_application) is TileProjection
+    certificate = index_snapshot.certificate
+    tile_runtime = type(index_snapshot.lazy_application) is TileProjection
     if certificate is not None and tile_runtime:
         family = f"{certificate.family}-tile-hashlife"
         state_bound = report.local_interface_nodes
@@ -68,11 +51,11 @@ def collect_behavior_metrics(index: HashLifeBlockIndex) -> HashLifeBehaviorMetri
     result = HashLifeBehaviorMetrics(
         effect_exponent=int(index.effect.exponent),
         logical_width_bound=index.logical_length,
-        seed_payload_tile_nodes=len(seed_nodes),
-        padded_root_tile_nodes=len(root_nodes),
-        retained_spatial_tile_nodes=len(retained_nodes),
-        application_spatial_tile_nodes=len(retained_nodes - root_nodes),
-        powered_operator_nodes=len(seen),
+        seed_payload_tile_nodes=index_snapshot.seed_payload_tile_nodes,
+        padded_root_tile_nodes=index_snapshot.padded_root_tile_nodes,
+        retained_spatial_tile_nodes=index_snapshot.retained_spatial_tile_nodes,
+        application_spatial_tile_nodes=index_snapshot.application_spatial_tile_nodes,
+        powered_operator_nodes=index_snapshot.powered_operator_nodes,
         temporal_quotient_family=family,
         temporal_quotient_horizon=horizon,
         temporal_cell_payload_bits=bits,

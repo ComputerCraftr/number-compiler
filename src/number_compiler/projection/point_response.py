@@ -18,6 +18,16 @@ class PointResponse:
     value: int
 
 
+@dataclass(frozen=True, slots=True)
+class PointResponseAuditSnapshot:
+    """Detached response rows and exact registered-store identity."""
+
+    ledger: ResourceLedger
+    owner: int
+    store_identity: int
+    responses: tuple[PointResponse, ...]
+
+
 class PointResponseRegister:
     """Keep at most the last requested scalar, charged before evaluation."""
 
@@ -38,6 +48,15 @@ class PointResponseRegister:
             node_count=self._value.__len__,
             payloads=lambda: self._value,
             evict=self.clear,
+        )
+
+    def audit_snapshot(self) -> PointResponseAuditSnapshot:
+        """Expose bounded response records without exposing the mutable store."""
+        return PointResponseAuditSnapshot(
+            self.ledger,
+            self.owner,
+            id(self._value),
+            tuple(self._value),
         )
 
     def clear(self) -> None:

@@ -65,11 +65,11 @@ def consume_midpoint_parent(
             before,
             tile,
             PrimitiveCausalPorts(left_anchor, right_anchor),
-            engine._wiring(before),
+            engine.result_wiring(before),
             action_admission=engine.action_admission,
         )
     else:
-        key = engine._composite_key(before, tile, left_anchor, right_anchor)
+        key = engine.composite_key(before, tile, left_anchor, right_anchor)
         completed = (
             None
             if key is None

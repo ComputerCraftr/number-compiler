@@ -25,7 +25,7 @@ from number_compiler.arithmetic.polynomials.radix64_mirror import (
 
 
 def test_all_radix64_leaf_pairs_have_exactly_seven_actions() -> None:
-    observed = set()
+    observed: set[MirrorCorrActionID] = set()
     for left, right in product(range(64), repeat=2):
         action = mirror_leaf_action(left, right)
         expected = sum(((left >> i) & 1) * ((right >> i) & 1) for i in range(6))

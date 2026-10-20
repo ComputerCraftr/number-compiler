@@ -180,7 +180,7 @@ class FusedRadixArena:
             prepared = prepare_functions(circuit.tx, roots)
             offset = 2
             physical_exit = prepared.roots[:offset]
-            division_exit = []
+            division_exit: list[tuple[SemanticFunctionID, ...]] = []
             for port in ports[1:-1]:
                 division_exit.append(prepared.roots[offset : offset + port.bits])
                 offset += port.bits
@@ -222,7 +222,7 @@ class FusedRadixArena:
         if physical:
             add = 3 * symbol
             pending = c.zero
-            total = []
+            total: list[int] = []
             for bit in range(3):
                 left = carry[bit] if bit < 2 else c.zero
                 right = c.one if (add >> bit) & 1 else c.zero
@@ -232,7 +232,7 @@ class FusedRadixArena:
             output, physical_exit = total[0], tuple(total[1:])
         else:
             output, physical_exit = c.one if symbol else c.zero, carry
-        exits = []
+        exits: list[tuple[int, ...]] = []
         active = output
         for incoming in divisions:
             active = output

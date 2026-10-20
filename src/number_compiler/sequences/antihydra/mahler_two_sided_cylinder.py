@@ -125,14 +125,14 @@ class MahlerTwoSidedCylinder(IntegerCylinder):
         """Restrict this source fiber to an already issued odd-return word."""
         if type(action) is not MahlerOddToOddAction:
             raise TypeError("Mahler admission needs an issued odd-to-odd action")
-        action._verify_issued()
+        action.verify_issued()
         return self.intersect_congruence(action.source_residue, action.source_modulus)
 
     def transport(self, action: MahlerOddToOddAction) -> MahlerTwoSidedCylinder:
         """Transport the complete admitted progression, retaining its 3-power."""
         if type(action) is not MahlerOddToOddAction:
             raise TypeError("Mahler transport needs an issued odd-to-odd action")
-        action._verify_issued()
+        action.verify_issued()
         admitted = self.admitted_by(action)
         if admitted is None or admitted.count != self.count:
             raise ValueError("source fiber does not imply the complete action guard")
@@ -323,7 +323,7 @@ class MahlerGuardedSourceFiber:
         """Transport all three coordinates only under complete exact guards."""
         if type(action) is not MahlerOddToOddAction:
             raise TypeError("guarded fiber transport requires an issued odd action")
-        action._verify_issued()
+        action.verify_issued()
         admitted = self.integers.admitted_by(action)
         if admitted is None or admitted.count != self.integers.count:
             raise ValueError("odd action does not admit the complete integer fiber")

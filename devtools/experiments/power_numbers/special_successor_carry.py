@@ -29,8 +29,8 @@ from devtools.experiments.power_numbers.special_successor_models import (
 )
 from devtools.verification.immutable_artifacts import REGISTRY, ArtifactKey
 from devtools.verification.oracles.special_binary_jump import (
-    _fermat_carrier_proof,
-    _mersenne_carrier_proof,
+    fermat_carrier_proof,
+    mersenne_carrier_proof,
 )
 from devtools.verification.quotient_synthesis import (
     ObserverFeature,
@@ -77,9 +77,9 @@ def _special_square_fields(family: str, parameter: int) -> tuple[tuple[int, ...]
     family = str(family)
     parameter = int(parameter)
     proof = (
-        _fermat_carrier_proof(parameter)
+        fermat_carrier_proof(parameter)
         if family == "fermat"
-        else _mersenne_carrier_proof(parameter)
+        else mersenne_carrier_proof(parameter)
     )
     width = (1 << parameter) if family == "fermat" else parameter
     out: list[tuple[int, ...]] = []
@@ -226,9 +226,9 @@ def carry_transfer_automaton_audits() -> tuple[CarryTransferAutomatonAudit, ...]
         ("mersenne", 13),
     ):
         proof = (
-            _fermat_carrier_proof(parameter)
+            fermat_carrier_proof(parameter)
             if family == "fermat"
-            else _mersenne_carrier_proof(parameter)
+            else mersenne_carrier_proof(parameter)
         )
         width = _special_width(family, parameter)
         block_size = _coarse_carry_block_size(width)
@@ -278,9 +278,9 @@ def carry_cyclotomic_transducer_audits() -> tuple[CarryCyclotomicTransducerAudit
     rows: list[CarryCyclotomicTransducerAudit] = []
     for family, parameter in (("fermat", 4), ("mersenne", 11), ("mersenne", 13)):
         proof = (
-            _fermat_carrier_proof(parameter)
+            fermat_carrier_proof(parameter)
             if family == "fermat"
-            else _mersenne_carrier_proof(parameter)
+            else mersenne_carrier_proof(parameter)
         )
         width = _special_width(family, parameter)
         block_size = _coarse_carry_block_size(width)
@@ -351,9 +351,9 @@ def boundary_consumer_quotient_audits() -> tuple[BoundaryConsumerQuotientAudit, 
         ("mersenne", 13),
     ):
         proof = (
-            _fermat_carrier_proof(parameter)
+            fermat_carrier_proof(parameter)
             if family == "fermat"
-            else _mersenne_carrier_proof(parameter)
+            else mersenne_carrier_proof(parameter)
         )
         width = _special_width(family, parameter)
         spec = getattr(ArithmeticTileSpec, family)(width)
@@ -427,9 +427,9 @@ def _carry_hensel_features(
     parameter: int,
 ) -> tuple[tuple[ObserverFeature, ...], tuple[ObserverFeature, ...]]:
     proof = (
-        _fermat_carrier_proof(parameter)
+        fermat_carrier_proof(parameter)
         if family == "fermat"
-        else _mersenne_carrier_proof(parameter)
+        else mersenne_carrier_proof(parameter)
     )
     width = _special_width(family, parameter)
     fields = _special_square_fields(family, parameter)
@@ -497,9 +497,9 @@ def carry_hensel_cyclotomic_audits() -> tuple[CarryHenselCyclotomicAudit, ...]:
     rows: list[CarryHenselCyclotomicAudit] = []
     for family, parameter in (("fermat", 4), ("mersenne", 11), ("mersenne", 13)):
         proof = (
-            _fermat_carrier_proof(parameter)
+            fermat_carrier_proof(parameter)
             if family == "fermat"
-            else _mersenne_carrier_proof(parameter)
+            else mersenne_carrier_proof(parameter)
         )
         raw, carry = _carry_hensel_features(family, parameter)
         for name, features in (
@@ -539,7 +539,7 @@ def _partition_successor_conflicts_from_ids(
     return len(signatures), conflicts
 
 
-def _temporal_marker_partition(
+def temporal_marker_partition(
     marker: tuple[object, ...],
     transition: tuple[int, ...],
     outputs: tuple[object, ...],
@@ -598,9 +598,9 @@ def carry_temporal_automaton_audits() -> tuple[CarryTemporalAutomatonAudit, ...]
         ("mersenne", 17),
     ):
         proof = (
-            _fermat_carrier_proof(parameter)
+            fermat_carrier_proof(parameter)
             if family == "fermat"
-            else _mersenne_carrier_proof(parameter)
+            else mersenne_carrier_proof(parameter)
         )
         width = _special_width(family, parameter)
         block_size = _coarse_carry_block_size(width)
@@ -632,7 +632,7 @@ def carry_temporal_automaton_audits() -> tuple[CarryTemporalAutomatonAudit, ...]
     # Composite adversary: a cheap boundary itinerary can close quickly on M11,
     # which is exactly why such closure must never be promoted to the prime theorem.
     family, parameter = "mersenne", 11
-    proof = _mersenne_carrier_proof(parameter)
+    proof = mersenne_carrier_proof(parameter)
     boundary: list[int] = []
     for field in _special_square_fields(family, parameter):
         block = RadixCarryBlock.from_coefficients(field, base=10)
@@ -660,7 +660,7 @@ def carry_temporal_automaton_audits() -> tuple[CarryTemporalAutomatonAudit, ...]
     return tuple(rows)
 
 
-def _temporal_marker_histories(
+def temporal_marker_histories(
     marker: tuple[object, ...],
     transition: tuple[int, ...],
     horizon: int,
@@ -736,9 +736,9 @@ def carry_phase_refinement_audits() -> tuple[CarryPhaseRefinementAudit, ...]:
         ("mersenne", 17),
     ):
         proof = (
-            _fermat_carrier_proof(parameter)
+            fermat_carrier_proof(parameter)
             if family == "fermat"
-            else _mersenne_carrier_proof(parameter)
+            else mersenne_carrier_proof(parameter)
         )
         filtration = unary_image_filtration(proof.transition)
         depth_ids = filtration.depth_ids

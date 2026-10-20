@@ -17,6 +17,7 @@ from dataclasses import dataclass
 
 from number_compiler.arithmetic.automata.slp import SLPArena
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 
 MAX_SIGNED_CARRY_WIDTH = 65_536
 MAX_SIGNED_WEIGHTED_BITS = 262_144
@@ -135,7 +136,7 @@ class WideSignedCarryAction:
         max_width: int = MAX_SIGNED_CARRY_WIDTH,
         max_weighted_bits: int = MAX_SIGNED_WEIGHTED_BITS,
     ) -> None:
-        if not isinstance(arena, SLPArena):
+        if not is_runtime_instance(arena, SLPArena):
             raise TypeError("a signed carry source must be an SLP arena")
         if type(root) is not int or not 0 <= root < len(arena.nodes):
             raise IndexError(root)

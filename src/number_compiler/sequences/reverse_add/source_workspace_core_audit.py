@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import cast
 
 from number_compiler.resources.ledger import ResourceInventory, ResourceLedger
 
@@ -20,6 +21,7 @@ def source_image_core_storage_valid(
 
     if type(state) is not SourceBoundSchedulerCoreAuditSnapshot:
         return False
+    state = cast(SourceBoundSchedulerCoreAuditSnapshot[object, object], state)
     try:
         from number_compiler.hashlife.execution.source_image_seals import (
             PublicationSeal,

@@ -1,5 +1,6 @@
 """Resource scopes cover setup, mutation failure, and caller mode restoration."""
 
+from collections.abc import Callable
 from contextlib import closing
 from typing import Never
 
@@ -65,7 +66,7 @@ def test_dyadic_stack_append_failure_rolls_back_its_reservation(
     ledger = ResourceLedger()
     workspace = DyadicReturnImageWorkspace(ledger, 0, 0, ANTIHYDRA_ARITHMETIC_LAW)
     stack = workspace.construction_stack
-    original = LedgerList.append
+    original: Callable[[LedgerList[object], object], None] = LedgerList[object].append
     calls = 0
 
     def fail_append(self: LedgerList[object], value: object) -> None:

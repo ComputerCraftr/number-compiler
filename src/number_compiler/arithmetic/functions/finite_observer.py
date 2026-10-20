@@ -11,6 +11,9 @@ from __future__ import annotations
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass
 from itertools import islice
+from typing import cast
+
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 
 
 def canonical_partition(signatures: tuple[object, ...]) -> tuple[int, ...]:
@@ -238,7 +241,7 @@ def _validate_orbit_labels(labels: tuple[Hashable, ...]) -> None:
         visits += 1
         if type(value) in (type(None), bool, int, str, bytes):
             continue
-        if type(value) is not tuple:
+        if not is_exact_object_tuple(value):
             raise TypeError("finite orbit labels must be immutable hashable values")
         if depth >= 64 or visits + len(pending) + len(value) > 1_048_576:
             raise ValueError("finite orbit label structure exceeds its budget")
@@ -262,7 +265,9 @@ def minimize_finite_orbit(
     """
     if type(max_states) is not int or not 1 <= max_states <= MAX_FINITE_ORBIT_STATES:
         raise ValueError("finite orbit state budget is outside the supported bound")
-    if not isinstance(successors, Sequence) or not isinstance(outputs, Sequence):
+    if not isinstance(cast(object, successors), Sequence) or not isinstance(
+        cast(object, outputs), Sequence
+    ):
         raise TypeError("finite orbit inputs must be finite sequences")
     size = len(successors)
     if size == 0:

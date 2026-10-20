@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from number_compiler.arithmetic.carry.carry_monoid import (
     apply_carry_fn,
 )
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.resources.metric_keys import reverse_add as _metric
 
@@ -70,7 +71,7 @@ def _mask_snapshot(mask: object) -> tuple[object, ...]:
     )
 
 
-def _action_snapshot(action: object) -> tuple[object, ...]:
+def action_snapshot(action: object) -> tuple[object, ...]:
     if type(action) is not DirectedDiagonalAction:
         return (type(action), id(action))
     return (
@@ -85,7 +86,7 @@ def _action_snapshot(action: object) -> tuple[object, ...]:
 
 
 def _inlets_snapshot(inlets: object) -> tuple[object, ...]:
-    if type(inlets) is not tuple:
+    if not is_exact_object_tuple(inlets):
         return (type(inlets), id(inlets))
     return tuple(_inlet_snapshot(inlet) for inlet in inlets)
 
@@ -349,7 +350,7 @@ def _source_bilateral_port(
 ) -> BilateralCyclePort:
     candidate = bilateral_cycle_letter(source, target, growth)
     if tick == 0:
-        initial_middle = certificate._initial_middle_transfer(window_digits=source.k)
+        initial_middle = certificate.initial_middle_transfer(window_digits=source.k)
         if initial_middle is not None:
             if not candidate.admits(initial_middle):
                 raise AssertionError(
@@ -441,7 +442,7 @@ class CertifiedDiagonalComparison:
             _scalar_snapshot(self.first_start),
             _scalar_snapshot(self.second_start),
             _mask_snapshot(self.initial),
-            _action_snapshot(self.action),
+            action_snapshot(self.action),
             _inlets_snapshot(self.first_inlets),
             _inlets_snapshot(self.second_inlets),
         )
@@ -450,27 +451,27 @@ class CertifiedDiagonalComparison:
         """Return structural fields for the owning issuer's binding check."""
         return self._snapshot()
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
         from .q19_border_control import CertifiedBorderGrowth
 
         if type(self.certificate) is not CertifiedBorderGrowth:
             raise ValueError("diagonal comparison has no issued source certificate")
-        self.certificate.owner._issuance_registry.validate_diagonal_comparison(self)
+        self.certificate.owner.issuance_registry.validate_diagonal_comparison(self)
 
     def validate_source_authority(self) -> None:
         """Validate the complete source-bound issuance chain for this comparison."""
-        self._validate()
+        self.validate()
 
     def terminal(self) -> DirectedGrowthMask:
-        self._validate()
+        self.validate()
         return self.action.apply(self.initial)
 
     def signed_width_delta(self) -> int:
-        self._validate()
+        self.validate()
         return self.action.signed_growth
 
     def formal_power(self, repetitions: int) -> DirectedDiagonalAction:
-        self._validate()
+        self.validate()
         return self.action.formal_power(repetitions)
 
 
@@ -514,7 +515,7 @@ def _issue_diagonal_comparison(
     retained_nodes_bound = 81 + 80 * inlet_bound
     scratch_nodes = 16 + 4 * window + 16 * continuation + snapshot_nodes_bound
     owner.ledger.check_capacity(entries=1, nodes=scratch_nodes + retained_nodes_bound)
-    with owner.ledger.reservation(owner._scratch_owner, nodes=scratch_nodes):
+    with owner.ledger.reservation(owner.scratch_owner, nodes=scratch_nodes):
         initial = DirectedGrowthMask.from_growth_words(
             certificate.growth_word[first_start : first_start + window],
             certificate.growth_word[second_start : second_start + window],
@@ -542,12 +543,12 @@ def _issue_diagonal_comparison(
             ("_registry_key", -1),
         ):
             object.__setattr__(packet, name, value)
-        registry = owner._issuance_registry
+        registry = owner.issuance_registry
         key = registry.allocate_diagonal_comparison_key()
         object.__setattr__(packet, "_registry_key", key)
         registry.retain_diagonal_comparison(key, packet)
         try:
-            packet._validate()
+            packet.validate()
         except BaseException:
             registry.discard_diagonal_comparison(key, packet)
             raise

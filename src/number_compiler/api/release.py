@@ -163,7 +163,9 @@ def certify_full_jump_backend(
         return FullJumpReleaseReport(False, (), error)
     if checked_backend is None:
         raise AssertionError("validated release backend was not returned")
-    builder = StrictBinaryRootBuilder(checked_backend)
+    builder: StrictBinaryRootBuilder[FormulaRoot] = StrictBinaryRootBuilder(
+        checked_backend
+    )
     results: list[ReleaseProbeResult] = []
     try:
         for n in tuple(map(int, probes)):

@@ -61,7 +61,7 @@ def collatz_radix_metrics() -> dict[str, object]:
     _a3, ternary = collatz_orbit_formulas_ternary(
         27, max_steps=111, stop_at_one=False, materialize_values=True
     )
-    points = []
+    points: list[dict[str, object]] = []
     for step in (1, 8, 16, 32, 64, 96, 111):
         b = binary[step]
         t = ternary[step]
@@ -79,7 +79,7 @@ def collatz_radix_metrics() -> dict[str, object]:
 
 
 def collatz_parity_metrics() -> dict[str, object]:
-    maps = []
+    maps: list[dict[str, object]] = []
     # Keep a truth-table differential through width 12, then switch to the exact
     # residual-state construction.  This removes the old 2**k materialization
     # from the benchmark while preserving an independent check of the symbolic
@@ -104,7 +104,7 @@ def collatz_parity_metrics() -> dict[str, object]:
             }
         )
 
-    native_slabs = []
+    native_slabs: list[dict[str, object]] = []
     for width in (8, 16, 32, 64, 128, 256, 512, 1024, 2048):
         word = collatz_parity_word(27, width)
         slab = collatz_parity_slab(word, width)
@@ -119,7 +119,7 @@ def collatz_parity_metrics() -> dict[str, object]:
             }
         )
 
-    powered = []
+    powered: list[dict[str, object]] = []
     for steps in (8, 16, 32, 64, 128, 256, 512, 1024):
         width = steps + 2
         word = collatz_parity_word(27, width)
@@ -140,7 +140,7 @@ def collatz_parity_metrics() -> dict[str, object]:
             }
         )
 
-    binomial = []
+    binomial: list[dict[str, object]] = []
     for exponent in (1, 5, 17, 257, 1 << 20):
         bits = 5
         modulus = 1 << bits
@@ -175,7 +175,7 @@ def collatz_parity_metrics() -> dict[str, object]:
 def prime_metrics() -> dict[str, object]:
     p = 9_999_991
     start = p + 2
-    radix_rows = []
+    radix_rows: list[dict[str, object]] = []
     for length_1 in (16, 32, 64, 128, 256, 512, 1024, 2048, 4096):
         ordinary = project_odd_prime_block(start, length_1)
         radix = project_odd_prime_block_radix(start, length_1)
@@ -195,7 +195,7 @@ def prime_metrics() -> dict[str, object]:
             }
         )
 
-    pascal_rows = []
+    pascal_rows: list[dict[str, object]] = []
     for length_2 in (16, 64, 256):
         projection = project_binomial_prime_block(9_993, length_2)
         multiplicative = project_odd_prime_block(9_993, length_2)
@@ -209,7 +209,7 @@ def prime_metrics() -> dict[str, object]:
             }
         )
 
-    quotient_scale = []
+    quotient_scale: list[dict[str, object]] = []
     for n in (10_000, 1_000_000, 10_000_000, 100_000_000):
         result = prime_count_quotient(n)
         quotient_scale.append(
@@ -222,7 +222,7 @@ def prime_metrics() -> dict[str, object]:
             }
         )
 
-    quotient_blocks = []
+    quotient_blocks: list[dict[str, object]] = []
     for length_3 in (16, 64, 256, 1024, 4096):
         block_result = prime_block_summary_quotient(start, length_3)
         ordinary = project_odd_prime_block(start, length_3)

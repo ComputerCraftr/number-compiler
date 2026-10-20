@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING, Never, Protocol, cast
 
 import pytest
 
@@ -223,22 +224,27 @@ def test_profile_loader_failure_releases_reservations(
     assert not arena.nodes and not arena.keys
 
 
+class _TableLookup(Protocol):
+    def compile(self, values: tuple[int, ...]) -> tuple[int, ...]: ...
+
+
 def test_fixed_subtable_is_reused_before_boolean_decisions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import number_compiler.hashlife.interfaces.semantic_reachable_profile as profiles
     from number_compiler.arithmetic.functions.finite_function_types import FinitePort
     from number_compiler.arithmetic.functions.semantic_function_transactions import (
         _Transaction,
     )
     from number_compiler.hashlife.interfaces.semantic_bits import BooleanCircuit
-    from number_compiler.hashlife.interfaces.semantic_reachable_profile import (
-        _FixedTableLookup,
-    )
 
     runtime, arena, _, structures, _ = setup()
     port = FinitePort(PortVariable(0, 0, "fixed-test-column", 0), 16)
     circuit = BooleanCircuit(structures.functions, (port,))
-    lookup = _FixedTableLookup(arena, circuit, port, 2)
+    lookup = cast(
+        Callable[..., _TableLookup],
+        object.__getattribute__(profiles, "_FixedTableLookup"),
+    )(arena, circuit, port, 2)
     values = (0, 1, 2, 3) * 4
     roots = lookup.compile(values)
     signature = FunctionSignature((port,), AtomSort("column", 4))

@@ -6,6 +6,7 @@ import pytest
 
 from devtools.experiments.algebra.polynomial_morphisms import (
     NewtonPrecisionMorphism,
+    ProgressionAffineAction,
     ProgressionProductArena,
     ProgressionProductMorphism,
 )
@@ -58,7 +59,7 @@ def test_progression_materialization_is_interned_not_rebuilt() -> None:
 
 def test_newton_precision_schedule_is_explicit_doubling_morphism() -> None:
     stage = NewtonPrecisionMorphism(1)
-    widths = []
+    widths: list[int] = []
     while stage.precision < 37:
         stage = stage.doubled(limit=37)
         widths.append(stage.precision)
@@ -87,8 +88,8 @@ def test_progression_cache_normalizes_translation_and_unit_scale_before_lowering
     blocks = [
         ProgressionProductMorphism(modulus, 7 + 19 * i, 13, 32) for i in range(8)
     ] + [ProgressionProductMorphism(modulus, 5 + 23 * i, 17, 32) for i in range(8)]
-    shapes = []
-    actions = []
+    shapes: list[tuple[object, ...]] = []
+    actions: list[ProgressionAffineAction] = []
     for block in blocks:
         shape, action = arena.canonicalize(block)
         shapes.append(shape.canonical_key)

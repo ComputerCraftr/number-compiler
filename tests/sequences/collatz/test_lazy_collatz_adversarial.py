@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from itertools import product
 from typing import cast
 
@@ -11,16 +12,31 @@ from devtools.verification.collatz_carry_ranges import CarryRangeTransfer
 from devtools.verification.lazy_collatz import (
     CollatzLazyView,
     LazyCollatzApplication,
-    _Program,
+    Program,
 )
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     LoweringCapability,
 )
 from number_compiler.arithmetic.fields.dyadic_tile import tile_arena_metrics
+from number_compiler.projection.microblock_cache import MicroblockCache
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.assertions import forbid_explicit_lowering as _forbid
+
+
+def _microblock_cache(application: LazyCollatzApplication) -> MicroblockCache:
+    return MicroblockCache.shared(application.ledger)
+
+
+def _set_exact_program_width(
+    application: LazyCollatzApplication, program_id: int, width: int
+) -> None:
+    update = cast(
+        Callable[[int, int], None],
+        object.__getattribute__(application, "_set_exact_program_width"),
+    )
+    update(program_id, width)
 
 
 def _bits(value: int) -> tuple[int, ...]:
@@ -85,7 +101,7 @@ def test_collatz_transfer_is_complete_for_all_input_carries() -> None:
                 transfer = transfer.compose(CarryRangeTransfer.bit(bit))
             for incoming in range(3):
                 carry = incoming
-                ones = []
+                ones: list[int] = []
                 for position, bit in enumerate(bits):
                     value = 3 * bit + carry
                     if value & 1:
@@ -113,9 +129,9 @@ def test_far_mul3_microblock_retains_only_bounded_window_blocks() -> None:
     seed = (1 << 4096) | int("10" * 1024, 2) | 1
     application = LazyCollatzApplication(2, 0, _bits(seed))
     expected = 3 * seed + 1
-    view = application._append(
+    view = application.append_program(
         application.initial,
-        _Program("mul3"),
+        Program("mul3"),
         expected.bit_length(),
     )
     block = 32
@@ -123,17 +139,15 @@ def test_far_mul3_microblock_retains_only_bounded_window_blocks() -> None:
     assert observed == (expected >> (64 * block)) & ((1 << 64) - 1)
     owned = tuple(
         key
-        for key in application._microblocks.blocks
+        for key in _microblock_cache(application).audit_snapshot().blocks
         if key.program.owner is application.token and key.kind == "binary"
     )
     assert len(owned) <= 3
     assert {key.block for key in owned} <= {block, block + 1}
     assert application.carry_cell_evaluations == 64
-    assert len(application._microblocks) <= application._microblocks.MAX_ENTRIES
-    assert (
-        application._microblocks.payload_bytes
-        <= application._microblocks.MAX_PAYLOAD_BYTES
-    )
+    cache = _microblock_cache(application).audit_snapshot()
+    assert len(cache.blocks) <= MicroblockCache.MAX_ENTRIES
+    assert cache.payload_bytes <= MicroblockCache.MAX_PAYLOAD_BYTES
     report = collect_ledger_metrics(application.ledger)
     assert report.resource_accounting_mismatch == 0
     assert report.forbidden_future_payloads == 0
@@ -144,13 +158,13 @@ def test_program_width_and_view_validation_reject_aliases_before_mutation() -> N
     stale = ActionProgramID(
         application.token,
         "program",
-        len(application._programs),
+        application.program_count,
     )
     before = application.ledger.snapshot()
     with pytest.raises(ValueError):
-        application._known_program_width(stale)
+        application.known_program_width(stale)
     with pytest.raises(ValueError):
-        application._set_exact_program_width(stale.local_id, 1)
+        _set_exact_program_width(application, stale.local_id, 1)
     for width, exact in ((True, True), (5, 1), (0, True)):
         invalid = CollatzLazyView(
             application.initial.source,
@@ -164,13 +178,13 @@ def test_program_width_and_view_validation_reject_aliases_before_mutation() -> N
         with pytest.raises(TypeError):
             application.view_point(application.initial, cast(int, coordinate))
         with pytest.raises(TypeError):
-            application._range_evaluator.point(
+            application.range_evaluator.point(
                 application.initial.program,
                 cast(int, coordinate),
             )
     for start, length in ((True, 1), (0, 1.5)):
         with pytest.raises(TypeError):
-            application._range_evaluator.range_effect(
+            application.range_evaluator.range_effect(
                 application.initial.program,
                 start,
                 cast(int, length),

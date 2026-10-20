@@ -34,7 +34,7 @@ def complete_composite_candidate(
     self: DyadicReturnImageWorkspace, action: Hashable, source: SourceImageView
 ) -> SourceImageCandidate:
     """Scope finite arithmetic reuse to this one authenticated application."""
-    self._validate_law()
+    self.validate_law()
     if self.closed or self.macros or self.macro_stack or self.balanced_stack:
         raise RuntimeError("nested or disposed dyadic finite construction")
     try:
@@ -119,7 +119,7 @@ def _complete_composite_candidate(
     )
     # Admission uses disjoint residue/lift bit extents. Do not assemble an
     # exact source merely to reject unused or over-wide cycle tracking.
-    tracked_value = self._source_value(source_node) if track_cycle else None
+    tracked_value = self.source_value(source_node) if track_cycle else None
 
     remaining = width
     transfer = SkewTransfer(1, 0, 1)
@@ -160,7 +160,7 @@ def _complete_composite_candidate(
             tail_transfer = SkewTransfer(0, terminal, 1)
             tail_support = None
             if retain_support:
-                tail_support = self._append_support(
+                tail_support = self.append_support(
                     DyadicReturnSupportRecord(
                         remaining,
                         transport_low_bits(tracked_value, remaining),
@@ -190,7 +190,7 @@ def _complete_composite_candidate(
             )
             if retain_support:
                 assert support is not None and tail_support is not None
-                support = self._append_support(
+                support = self.append_support(
                     DyadicReturnSupportRecord(
                         width,
                         source_node.residue,
@@ -250,7 +250,7 @@ def _complete_composite_candidate(
             support = (
                 chunk_support
                 if support is None
-                else self._append_support(
+                else self.append_support(
                     DyadicReturnSupportRecord(
                         total_width,
                         transport_low_bits(source_node.residue, total_width),
@@ -311,7 +311,7 @@ def _complete_composite_candidate(
             if support is None:
                 support = tail_support
             else:
-                support = self._append_support(
+                support = self.append_support(
                     DyadicReturnSupportRecord(
                         width,
                         source_node.residue,
@@ -339,7 +339,7 @@ def _complete_composite_candidate(
         remaining = 0
 
     if not retain_support:
-        support = self._append_support(
+        support = self.append_support(
             DyadicReturnSupportRecord(
                 width,
                 source_node.residue,
@@ -366,7 +366,7 @@ def _complete_composite_candidate(
         support,
         published_cycle,
     )
-    payload = self._append_image(DyadicReturnImageRecord(source_id, action, summary))
+    payload = self.append_image(DyadicReturnImageRecord(source_id, action, summary))
     self.bump_metric("composite_cutover_publications")
     return SourceImageCandidate(
         payload,

@@ -37,6 +37,11 @@ _CLOCK_POWERS = tuple(
 )
 
 
+def clock_power(phase: int) -> tuple[int, ...]:
+    """Read the fixed algebraic clock without exposing its implementation table."""
+    return _CLOCK_POWERS[phase % 128]
+
+
 def _reflected(jet: tuple[int, ...], clock: tuple[int, ...]) -> tuple[int, ...]:
     """Evaluate ``z^L P(z^-1)`` within the existing primary algebra."""
     substitution = primary_jet_add(INVERSE_Z, ONE, 32)

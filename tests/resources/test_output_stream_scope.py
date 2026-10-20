@@ -1,6 +1,7 @@
 """Scoped output cleanup preserves failures without inheriting caller errors."""
 
 from collections.abc import Generator, Iterator
+from typing import cast
 
 import pytest
 
@@ -161,10 +162,11 @@ def test_reverse_cancellation_closes_both_ports_when_one_cleanup_fails(
                 raise RuntimeError("forward cleanup failed")
 
     monkeypatch.setattr(SourceCarryPorts, "iter_first_ports", first_ports)
-    stream = (
+    stream = cast(
+        Generator[int, None, None],
         ports.iter_second_pairs()
         if second_pairs
-        else iter_admitted_same_carry_digits(ports, 2)
+        else iter_admitted_same_carry_digits(ports, 2),
     )
     assert isinstance(stream, Generator)
     assert next(stream) == 4

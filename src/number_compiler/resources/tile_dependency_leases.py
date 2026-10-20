@@ -24,6 +24,10 @@ class DependencyLeaseBatch:
     leases: tuple[TileLease, ...]
     _issuer: object = field(repr=False, compare=False)
 
+    def issued_by(self, issuer: object) -> bool:
+        """Check issuance authority without exposing the opaque issuer token."""
+        return self._issuer is issuer
+
 
 class TileDependencyLeases:
     """Charged per-application roots for transient causal request inputs."""
@@ -94,13 +98,13 @@ class TileDependencyLeases:
         lease_slots: list[TileLease | None] = [None] * len(bindings)
         reservations = (
             (self.owner, len(bindings), 0),
-            (self.tiles._lease_owner, len(bindings), 0),
+            (self.tiles.lease_owner, len(bindings), 0),
         )
         self.ledger.reserve_many(reservations)
         acquired = 0
         try:
             for position, (_, tile) in enumerate(bindings):
-                lease_slots[position] = self.tiles._acquire_reserved(tile)
+                lease_slots[position] = self.tiles.acquire_reserved(tile)
                 acquired += 1
             leases = tuple(lease for lease in lease_slots if lease is not None)
             if len(leases) != len(bindings):
@@ -120,7 +124,7 @@ class TileDependencyLeases:
                 if cleanup_lease is not None:
                     cleanup_lease.close()
             self.ledger.release(
-                self.tiles._lease_owner,
+                self.tiles.lease_owner,
                 entries=len(bindings) - acquired,
             )
             self.ledger.release(self.owner, entries=len(bindings))
@@ -131,7 +135,7 @@ class TileDependencyLeases:
         """Remove precisely the roots introduced by a failed result pin."""
         if (
             type(batch) is not DependencyLeaseBatch
-            or batch._issuer is not self._batch_issuer
+            or not batch.issued_by(self._batch_issuer)
             or type(batch.bindings) is not tuple
             or type(batch.leases) is not tuple
             or len(batch.leases) != len(batch.bindings)
@@ -164,8 +168,8 @@ class TileDependencyLeases:
             leases.append(lease)
         count = len(leases)
         if (
-            self.ledger._account(self.owner).entries < count
-            or self.ledger._account(self.tiles._lease_owner).entries < count
+            self.ledger.account_usage(self.owner)[0] < count
+            or self.ledger.account_usage(self.tiles.lease_owner)[0] < count
         ):
             raise ValueError("causal dependency rollback accounting is inconsistent")
         for binding, lease in reversed(tuple(zip(batch.bindings, leases, strict=True))):
@@ -182,7 +186,7 @@ class TileDependencyLeases:
             try:
                 lease.close()
             except BaseException:
-                if lease._closed:
+                if lease.audit_snapshot().closed:
                     self.ledger.release(self.owner, entries=1)
                 else:
                     self.records[binding] = lease
@@ -207,7 +211,7 @@ class TileDependencyLeases:
             try:
                 lease.close()
             except BaseException:
-                if not lease._closed:
+                if not lease.audit_snapshot().closed:
                     self.records[binding] = lease
                 else:
                     self.ledger.release(self.owner, entries=1)
@@ -241,8 +245,14 @@ def audit_tile_dependency_leases(
                 and application >= 0
                 and type(tile) is TileID
                 and lease.tile == tile
-                and dependencies.tiles.resolve(tile) is not None
             )
+            if (
+                type(application) is int
+                and application >= 0
+                and type(tile) is TileID
+                and lease.tile == tile
+            ):
+                dependencies.tiles.resolve(tile)
         except (TypeError, ValueError, KeyError, AttributeError, IndexError):
             valid = False
         if valid:

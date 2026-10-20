@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import cast
+
 import pytest
 
 from number_compiler.sequences.comma import weighted_return
@@ -11,6 +14,23 @@ from number_compiler.sequences.comma.boundary_quotient import (
     construct_macro,
 )
 from number_compiler.sequences.comma.weighted_return import WeightedBoundaryAction
+
+
+def _capped_geometric(
+    base: int,
+    count: int,
+    cap: int,
+    charge: Callable[[int], None] | None,
+    charge_bits: Callable[[int], None] | None,
+) -> int:
+    function = cast(
+        Callable[
+            [int, int, int, Callable[[int], None] | None, Callable[[int], None] | None],
+            int,
+        ],
+        object.__getattribute__(weighted_return, "_capped_geometric"),
+    )
+    return function(base, count, cap, charge, charge_bits)
 
 
 def test_chronological_weight_transport_and_associativity() -> None:
@@ -107,9 +127,9 @@ def test_capped_shared_skew_power_matches_small_geometric_sums() -> None:
         for count in range(10):
             exact = sum(base**i for i in range(count))
             for cap in (0, 1, 2, 9, 100):
-                assert weighted_return._capped_geometric(
-                    base, count, cap, None, None
-                ) == min(exact, cap)
+                assert _capped_geometric(base, count, cap, None, None) == min(
+                    exact, cap
+                )
 
 
 def test_constant_weight_and_unused_clock_factors_do_not_allocate_huge_powers(

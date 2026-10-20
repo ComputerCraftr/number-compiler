@@ -20,9 +20,8 @@ from devtools.verification.partition_refinement import (
 from devtools.verification.transducer_graph import (
     DenseInterner,
     append_reachable_edge,
-    compose_arc_table,
+    compose_product_graph,
     compose_suffix_outputs,
-    product_states,
     quotient_graph,
     trim_ids,
 )
@@ -178,9 +177,8 @@ def trim(t: RTTransducer) -> RTTransducer:
 def compose(a: RTTransducer, b: RTTransducer) -> RTTransducer:
     if a.base != b.base:
         raise ValueError("base mismatch")
-    pairs, initials, sid = product_states(a.initials, b.initials)
-    idx, arcs = compose_arc_table(
-        initials, pairs, a.arcs, b.arcs, sid, lambda edge: Arc(*edge)
+    pairs, initials, idx, arcs = compose_product_graph(
+        a.initials, b.initials, a.arcs, b.arcs, lambda edge: Arc(*edge)
     )
     finals: dict[int, tuple[int, ...]] = {}
     for qi, (p, q) in enumerate(pairs):
@@ -237,22 +235,22 @@ def selftest() -> None:
         got = T.apply(w)
         exp = reference_step(w)
         assert got == exp, (w, got, exp)
-    P = T
+    powered = T
     for k in range(1, 5):
         t0 = time.perf_counter()
-        P = compose(P, P)
+        powered = compose(powered, powered)
         dt = time.perf_counter() - t0
         print(
             "power",
             2**k,
             "states",
-            P.states,
+            powered.states,
             "arcs",
-            P.arc_count,
+            powered.arc_count,
             "initials",
-            len(P.initials),
+            len(powered.initials),
             "finals",
-            len(P.finals),
+            len(powered.finals),
             "sec",
             dt,
         )
@@ -263,7 +261,7 @@ def selftest() -> None:
             exp = w
             for __ in range(2**k):
                 exp = reference_step(exp)
-            assert P.apply(w) == exp
+            assert powered.apply(w) == exp
 
 
 if __name__ == "__main__":

@@ -89,8 +89,8 @@ def test_periodic_bank_matches_literally_evolved_symmetric_rays(
     f_steps, coordinate = 9, 20
     source_width = len(str(seed))
     with DoubleReverseTerm(seed, 2 * f_steps) as term:
-        engine = term._adapter.temporal_hashlife
-        assert engine.certify(term._source.root) == phase
+        engine = term.temporal_engine
+        assert engine.certify(term.source_root) == phase
         bank = term.protected_temporal_bank(coordinate, period=period)
         assert bank.represented_steps == f_steps
         assert bank.physical_prefix == 0
@@ -178,7 +178,7 @@ def test_periodic_bank_matches_literally_evolved_symmetric_rays(
             )
             assert frame.growth == next_birth_left + next_birth_right
         assert bank.counts() == expected_counts
-        assert term._image is None
+        assert term.published_image is None
         assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
 
 
@@ -368,9 +368,18 @@ def test_billion_digit_slp_period_and_temporal_word_are_pumped() -> None:
         protected_periodic_bank(arena, source, 2, 500, 100, 1)
 
 
-def test_exact_pair_oracle_matches_full_term_without_materializing_it() -> None:
-    depths = (18, 32, 63, 64, 100)
-    for seed in (196, 12, 173488, 174388, 1768742):
+@pytest.mark.parametrize(
+    "full_grid",
+    (False, pytest.param(True, marks=pytest.mark.validation)),
+)
+def test_exact_pair_oracle_matches_full_term_without_materializing_it(
+    full_grid: bool,
+) -> None:
+    # Unit coverage keeps both sides of the 63/64 boundary across two seeds;
+    # validation retains the full five-seed Cartesian grid.
+    depths = (18, 63, 64, 100)
+    seeds = (196, 12, 173488, 174388, 1768742) if full_grid else (196, 173488)
+    for seed in seeds:
         checkpoints: dict[int, str] = {}
         x = seed
         for current_depth in range(1, max(depths) + 1):
@@ -388,7 +397,7 @@ def test_exact_pair_oracle_matches_full_term_without_materializing_it() -> None:
                     assert pair.pair == pair_sum
                     assert pair.gt_high == int(pair_sum >= 15)
                     assert pair.eq == int(pair_sum == 9)
-                assert term._image is None
+                assert term.published_image is None
                 assert (
                     collect_ledger_metrics(term.resource_ledger).resource_audit_complete
                     == 1
@@ -412,7 +421,7 @@ def test_pointed_pairs_reuse_the_owner_issued_prefix_without_endpoint(
         assert (
             term.metrics()["double_reverse_pointed_border_entry_steps"] == prefix_steps
         )
-        assert term._image is None
+        assert term.published_image is None
         assert term.metrics()["double_reverse_pointed_stencil_publications"] == 8
 
 

@@ -17,6 +17,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeVar
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
+
 T = TypeVar("T")
 _VALID_KINDS = frozenset({"ZERO", "ONE", "SPLIT", "UNKNOWN"})
 
@@ -116,7 +118,7 @@ class BinaryPiecewiseHandler:
         split_branch: Callable[[BinaryBranchDecision], T],
         unknown_branch: Callable[[BinaryBranchDecision], T],
     ) -> T:
-        if not isinstance(decision, BinaryBranchDecision):
+        if not is_runtime_instance(decision, BinaryBranchDecision):
             raise TypeError(type(decision))
         if decision.kind == "ZERO":
             return zero_branch(decision)

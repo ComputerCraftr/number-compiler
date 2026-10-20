@@ -14,7 +14,7 @@ import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.sequences.comma import future_authority, future_provider
 from number_compiler.sequences.comma.boundary_chart import PERIOD
 from number_compiler.sequences.comma.boundary_quotient import (
@@ -39,7 +39,46 @@ from tests.support.comma_future_provider_fixture import (
 def _record_list(record: dict[str, object], field: str) -> list[object]:
     value = record[field]
     assert isinstance(value, list)
-    return value
+    return cast(list[object], value)
+
+
+def _kernel_admission_count() -> int:
+    instances = cast(
+        Mapping[str, object],
+        object.__getattribute__(future_provider, "_ADMITTED_KERNEL_INSTANCES"),
+    )
+    return len(instances)
+
+
+def _stage_artifact(term: CommaTerm, path: Path) -> None:
+    stage = cast(
+        Callable[[Path], None],
+        object.__getattribute__(term, "_stage_global_future_provider_artifact"),
+    )
+    stage(path)
+
+
+def _provider_classes(
+    provider: future_provider.SemanticFutureProvider,
+) -> tuple[future_provider.FutureClass, ...]:
+    return cast(
+        tuple[future_provider.FutureClass, ...],
+        object.__getattribute__(provider, "_classes"),
+    )
+
+
+def _provider_source_classes(
+    provider: future_provider.SemanticFutureProvider,
+) -> tuple[int, ...]:
+    return cast(tuple[int, ...], object.__getattribute__(provider, "_source_classes"))
+
+
+def _workspace_owner(ledger: ResourceLedger) -> int:
+    return next(
+        row.owner
+        for row in ledger.inventory()
+        if row.role == "semantic_future_provider_workspace"
+    )
 
 
 def test_structural_parser_decodes_nested_boundary_binding_without_authority() -> None:
@@ -75,24 +114,28 @@ def test_read_only_root_mapping_uses_the_same_bounded_canonical_digest() -> None
 
     charges, charge_work = _work_log()
     expected_charges, expected_charge = _work_log()
-    future_provider._preflight_future_candidate(
+    future_provider.preflight_future_candidate(
         read_only_record, charge_work=expected_charge
     )
     expected_preflight_work = sum(expected_charges)
     charges.clear()
     callback_charge_totals: list[int] = []
+
+    def observe_preparse(_record: Mapping[str, object]) -> None:
+        callback_charge_totals.append(sum(charges))
+
     with pytest.raises(PermissionError, match="no kernel-admitted"):
         future_provider.SemanticFutureProvider.from_record(
             read_only_record,
             charge_work=charge_work,
-            _before_parse=lambda _record: callback_charge_totals.append(sum(charges)),
+            _before_parse=observe_preparse,
         )
     assert callback_charge_totals == [expected_preflight_work]
 
 
 def test_empty_production_registry_rejects_structurally_valid_candidate() -> None:
     _charges, charge_work = _work_log()
-    assert not future_provider._ADMITTED_KERNEL_INSTANCES
+    assert _kernel_admission_count() == 0
     with pytest.raises(PermissionError, match="no kernel-admitted"):
         future_provider.SemanticFutureProvider.from_record(
             _candidate_record(), charge_work=charge_work
@@ -119,18 +162,18 @@ def test_runtime_schema_rejects_source_discovery_diagnostics(field: str) -> None
 def test_private_term_staging_rejects_unadmitted_artifact_and_closes_store(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(
-        future_provider, "_ADMITTED_KERNEL_INSTANCES", MappingProxyType({})
+    empty_registry: Mapping[str, future_authority.KernelInstanceAdmission] = (
+        MappingProxyType({})
     )
+    monkeypatch.setattr(future_provider, "_ADMITTED_KERNEL_INSTANCES", empty_registry)
     candidate_path = tmp_path / "unadmitted-future.json"
     candidate_path.write_bytes(_canonical_bytes(_candidate_record()))
     term = CommaTerm(1)
 
     with pytest.raises(PermissionError, match="no kernel-admitted"):
-        term._stage_global_future_provider_artifact(candidate_path)
+        _stage_artifact(term, candidate_path)
 
-    assert term._future_provider_store is None
-    assert term._future_provider_lease is None
+    assert term.retained_global_future_provider is None
     assert term.ledger.counters.get("comma_future_provider_load_failures", 0) == 1
     assert term.ledger.counters.get("comma_future_provider_closes", 0) == 1
     term.close()
@@ -145,9 +188,9 @@ def test_private_term_staging_rejects_query_progress_before_reading_artifact(
     missing_path = tmp_path / "must-not-be-read.json"
 
     with pytest.raises(ValueError, match="only allowed before use"):
-        term._stage_global_future_provider_artifact(missing_path)
+        _stage_artifact(term, missing_path)
 
-    assert term._future_provider_store is None
+    assert term.retained_global_future_provider is None
     assert term.ledger.counters.get("comma_future_provider_load_requests", 0) == 0
 
 
@@ -163,13 +206,17 @@ def test_in_memory_record_bounds_unknown_metadata_before_serializing(
     def reject_serialize(_record: Mapping[str, object]) -> str:
         raise AssertionError("oversized input reached canonical serialization")
 
-    monkeypatch.setattr(future_provider, "_future_candidate_sha256", reject_serialize)
+    monkeypatch.setattr(future_provider, "future_candidate_sha256", reject_serialize)
     callback_calls: list[bool] = []
+
+    def record_before_parse(_record: Mapping[str, object]) -> None:
+        callback_calls.append(True)
+
     with pytest.raises(ValueError, match="bounded JSON size"):
         future_provider.SemanticFutureProvider.from_record(
             record,
             charge_work=charge_work,
-            _before_parse=lambda _record: callback_calls.append(True),
+            _before_parse=record_before_parse,
         )
     assert sum(charges) > 0
     assert callback_calls == []
@@ -180,7 +227,7 @@ def test_record_callback_cannot_mutate_the_bounded_parse_snapshot(
 ) -> None:
     record = _candidate_record()
     expected_controls = copy.deepcopy(record["controls"])
-    original_digest = future_provider._future_candidate_sha256
+    original_digest = future_provider.future_candidate_sha256
     observed_snapshots: list[Mapping[str, object]] = []
     charges, charge_work = _work_log()
 
@@ -196,7 +243,7 @@ def test_record_callback_cannot_mutate_the_bounded_parse_snapshot(
         assert "unexpected_metadata" not in snapshot
         return original_digest(snapshot)
 
-    monkeypatch.setattr(future_provider, "_future_candidate_sha256", observe_digest)
+    monkeypatch.setattr(future_provider, "future_candidate_sha256", observe_digest)
     with pytest.raises(PermissionError, match="no kernel-admitted"):
         future_provider.SemanticFutureProvider.from_record(
             record,
@@ -247,21 +294,23 @@ def test_provider_leases_reject_altered_tables_and_rows(
     ledger = ResourceLedger(max_nodes=65_536, max_cache_entries=2)
     store = future_provider.SemanticFutureProviderStore(ledger)
     lease = store.load_record(record, charge_work=charge_work)
-    provider = store._providers[digest]
+    provider = store.get(digest).resolve_provider()
 
     if mutation == "source_tuple":
-        altered = tuple(1 if cid == 0 else cid for cid in provider._source_classes)
+        altered = tuple(
+            1 if cid == 0 else cid for cid in _provider_source_classes(provider)
+        )
         object.__setattr__(provider, "_source_classes", altered)
     elif mutation == "class_tuple":
         object.__setattr__(
             provider,
             "_classes",
-            tuple(row for row in provider._classes),
+            tuple(row for row in _provider_classes(provider)),
         )
     elif mutation == "control":
-        object.__setattr__(provider._classes[2].control, "kind", "landmine")
+        object.__setattr__(_provider_classes(provider)[2].control, "kind", "landmine")
     else:
-        object.__setattr__(provider._classes[2], "rank", 0)
+        object.__setattr__(_provider_classes(provider)[2], "rank", 0)
 
     with pytest.raises(PermissionError, match="provider|row"):
         if query == "source":
@@ -280,16 +329,16 @@ def test_warm_class_row_guard_checks_only_its_signature(
     ledger = ResourceLedger(max_nodes=65_536, max_cache_entries=2)
     store = future_provider.SemanticFutureProviderStore(ledger)
     lease = store.load_record(record, charge_work=charge_work)
-    provider = store._providers[digest]
-    object.__setattr__(provider._classes[1], "rank", 7)
+    provider = store.get(digest).resolve_provider()
+    object.__setattr__(_provider_classes(provider)[1], "rank", 7)
 
     def reject_full_validation(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("warm lookup must not reparse or hash the full table")
 
-    monkeypatch.setattr(future_provider, "_validate_record", reject_full_validation)
+    monkeypatch.setattr(future_provider, "validate_record", reject_full_validation)
     monkeypatch.setattr(
         future_provider,
-        "_future_candidate_sha256",
+        "future_candidate_sha256",
         reject_full_validation,
     )
     row = lease.class_row(2, charge_work=charge_work)
@@ -319,13 +368,13 @@ def test_preflight_charges_before_validation_and_in_bounded_string_chunks() -> N
         raise RuntimeError("work budget exhausted")
 
     with pytest.raises(RuntimeError, match="work budget exhausted"):
-        future_provider._preflight_future_candidate(malformed, charge_work=no_budget)
+        future_provider.preflight_future_candidate(malformed, charge_work=no_budget)
     assert refused_charges == [1]
 
     large_string_record = _candidate_record()
     large_string_record["unexpected_metadata"] = {"ignored": "\x01" * 100_000}
     charges, charge_work = _work_log()
-    future_provider._preflight_future_candidate(
+    future_provider.preflight_future_candidate(
         large_string_record, charge_work=charge_work
     )
     expected_size_units = (
@@ -349,13 +398,15 @@ def test_lease_rejects_a_total_fake_store_and_direct_unretained_binding() -> Non
 
     ledger = ResourceLedger(max_nodes=64, max_cache_entries=1)
     store = future_provider.SemanticFutureProviderStore(ledger)
-    store.__dict__["_resolve"] = lambda *_args: cast(
-        future_provider.SemanticFutureProvider, object()
-    )
+
+    def forged_resolver(*_args: object) -> future_provider.SemanticFutureProvider:
+        return cast(future_provider.SemanticFutureProvider, object())
+
+    store.__dict__["resolve_index"] = forged_resolver
     forged = future_provider.SemanticFutureProviderLease(
         store,
         "0" * 64,
-        store._token,
+        cast(ArenaToken, object.__getattribute__(store, "_token")),
     )
     with pytest.raises(RuntimeError, match="no longer retained"):
         _ = forged.class_count
@@ -481,7 +532,7 @@ def test_release_authority_requires_exact_global_theorem_and_all_claims() -> Non
         assert not future_authority.registered_admission_matches(probe, digest)
         assert not future_authority.global_release_admission_matches(probe, digest)
 
-    assert future_provider._ADMITTED_KERNEL_INSTANCES == {}
+    assert _kernel_admission_count() == 0
 
 
 def test_provider_rejects_digest_changes_to_control_children_or_rank(
@@ -701,7 +752,7 @@ def test_store_budget_refusal_and_reset_reclaim_all_provider_nodes(
     with pytest.raises(BlockContextBudgetExceeded):
         publish_refused.load_record(record, charge_work=charge_work)
     assert publish_limited.entries == publish_limited.nodes == 0
-    workspace = publish_limited.inventory()[publish_refused._workspace_owner]
+    workspace = publish_limited.inventory_owner(_workspace_owner(publish_limited))
     assert workspace.nodes == 0
     assert publish_limited.counters["comma_future_provider_load_failures"] == 1
     publish_refused.close()
@@ -719,7 +770,11 @@ def test_store_budget_refusal_and_reset_reclaim_all_provider_nodes(
     current = store.load_record(record, charge_work=charge_work)
     assert current.runtime_admitted
     removed_digest = current.artifact_sha256
-    del store._providers[removed_digest]
+    providers = cast(
+        OwnedMemo[str, future_provider.SemanticFutureProvider],
+        object.__getattribute__(store, "_providers"),
+    )
+    del providers[removed_digest]
     assert not current.runtime_admitted
     with pytest.raises(RuntimeError, match="no longer retained"):
         _ = current.class_count
@@ -738,7 +793,11 @@ def test_store_cancellation_releases_workspace_without_validation_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     record = _candidate_record()
-    _install_synthetic_registry(monkeypatch, record, lambda _amount: None)
+
+    def no_work(_amount: int) -> None:
+        return None
+
+    _install_synthetic_registry(monkeypatch, record, no_work)
     ledger = ResourceLedger(max_nodes=65_536, max_cache_entries=2)
     store = future_provider.SemanticFutureProviderStore(ledger)
 
@@ -752,7 +811,7 @@ def test_store_cancellation_releases_workspace_without_validation_failure(
         store.load_record(record, charge_work=cancel_load)
 
     assert ledger.entries == ledger.nodes == 0
-    workspace = ledger.inventory()[store._workspace_owner]
+    workspace = ledger.inventory_owner(_workspace_owner(ledger))
     assert workspace.nodes == 0
     assert ledger.counters["comma_future_provider_load_cancellations"] == 1
     assert ledger.counters.get("comma_future_provider_load_failures", 0) == 0

@@ -48,7 +48,7 @@ def test_temporal_adapter_imports_binary_dag_and_keeps_real_identity() -> None:
     assert actions.primitive(first).base == 10
     result = actions.power(first, 1 << 30)
     assert actions.node(result).exponent == 1 << 30
-    assert len(actions._nodes) < 40
+    assert len(actions.audit_snapshot().nodes) < 40
     assert all(row.accounting_delta == 0 for row in ledger.inventory())
 
 
@@ -80,7 +80,7 @@ def test_nested_images_normalize_before_cell_lookup_without_emission() -> None:
     )
     expected = cells.image(combined, source)
     intermediate = cells.image(first, source)
-    before = len(cells._nodes)
+    before = len(cells.audit_snapshot().nodes)
 
     @source_reads_only
     def query() -> CellID:
@@ -94,10 +94,11 @@ def test_nested_images_normalize_before_cell_lookup_without_emission() -> None:
         return result
 
     assert query() == expected
-    assert len(cells._nodes) == before + 3  # two slices and one mirror
+    assert len(cells.audit_snapshot().nodes) == before + 3  # two slices and one mirror
     assert ledger.counters["diamond_cell_interner_hits"] > 0
     assert not any(
-        hasattr(node, "digits") or hasattr(node, "symbol") for node in cells._nodes
+        hasattr(node, "digits") or hasattr(node, "symbol")
+        for node in cells.audit_snapshot().nodes
     )
 
 
@@ -128,7 +129,9 @@ def test_foreign_action_and_cell_reject_before_warm_and_identity_paths() -> None
     with pytest.raises(ValueError):
         cells.slice(foreign, 0, 4)
     with pytest.raises(ValueError):
-        cells.resolve(CellID(cells.token, "diamond-cell", len(cells._nodes)))
+        cells.resolve(
+            CellID(cells.token, "diamond-cell", len(cells.audit_snapshot().nodes))
+        )
     with pytest.raises(TypeError):
         cells.resolve(cast("CellID", ActionProgramID(cells.token, "diamond-cell", 0)))
     assert ledger.snapshot() == before
@@ -229,7 +232,7 @@ def test_source_join_uses_child_ids_when_representatives_are_not_siblings() -> N
     repeated = cells.source(1, 0)
     assert cells.source(4, 0) == repeated
     parent = cells.source(4, 1)
-    count = len(cells._nodes)
+    count = len(cells.audit_snapshot().nodes)
 
     @source_reads_only
     def query() -> None:
@@ -239,7 +242,7 @@ def test_source_join_uses_child_ids_when_representatives_are_not_siblings() -> N
         assert cells.join(padding, padding) == cells.source(8, 2)
 
     query()
-    assert len(cells._nodes) == count + 2
+    assert len(cells.audit_snapshot().nodes) == count + 2
 
 
 def test_formal_alphabet_is_implicit_kernel_constants_without_geometry(
@@ -273,7 +276,7 @@ def test_formal_alphabet_is_implicit_kernel_constants_without_geometry(
     compile_cofactors()
     assert ledger.snapshot() == before
     assert tuple(cells.source_geometry.nodes.items()) == source_nodes
-    assert not cells._nodes
+    assert not cells.audit_snapshot().nodes
 
 
 def test_formal_symbol_rejects_foreign_kind_and_domain_before_any_mutation() -> None:

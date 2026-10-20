@@ -32,8 +32,8 @@ from devtools.experiments.power_numbers.special_successor_purity import (
     crt_purity_audits,
 )
 from devtools.verification.oracles.special_binary_jump import (
-    _fermat_carrier_proof,
-    _mersenne_carrier_proof,
+    fermat_carrier_proof,
+    mersenne_carrier_proof,
 )
 from devtools.verification.quotient_synthesis import (
     ObserverFeature,
@@ -52,7 +52,7 @@ from number_compiler.arithmetic.polynomials.primary_jet import primary_jet_from_
 from number_compiler.sequences.prime.set import jacobi_symbol
 
 if TYPE_CHECKING:
-    from devtools.verification.oracles.special_binary_jump import _SpecialCarrierProof
+    from devtools.verification.oracles.special_binary_jump import SpecialCarrierProof
 
 
 def _two_primary_shape(
@@ -220,9 +220,9 @@ def behavioral_purity_block_audits() -> tuple[BehavioralPurityBlockAudit, ...]:
     rows: list[BehavioralPurityBlockAudit] = []
     for family, parameter in (("fermat", 4), ("mersenne", 13), ("mersenne", 11)):
         proof = (
-            _fermat_carrier_proof(parameter)
+            fermat_carrier_proof(parameter)
             if family == "fermat"
-            else _mersenne_carrier_proof(parameter)
+            else mersenne_carrier_proof(parameter)
         )
         for block_size in (1, 2, 4, 8):
             _machine, report = unary_behavioral_block_machine(
@@ -258,7 +258,7 @@ def _native_algebraic_block_features(
     family = str(family)
     parameter = int(parameter)
     if family == "fermat":
-        proof = _fermat_carrier_proof(parameter)
+        proof = fermat_carrier_proof(parameter)
         modulus = (1 << (1 << parameter)) + 1
         representatives = proof.representatives
         width = 1 << parameter
@@ -273,7 +273,7 @@ def _native_algebraic_block_features(
             for shift in (-2, -1, 0, 1, 2)
         ]
     elif family == "mersenne":
-        proof = _mersenne_carrier_proof(parameter)
+        proof = mersenne_carrier_proof(parameter)
         modulus = (1 << parameter) - 1
         representatives = tuple(range((modulus + 1) // 2))
         width = parameter
@@ -318,7 +318,7 @@ def _native_algebraic_block_features(
 
 
 def _block_transition_and_trace(
-    proof: _SpecialCarrierProof,
+    proof: SpecialCarrierProof,
     block_size: int,
 ) -> tuple[tuple[int, ...], tuple[tuple[object, ...], ...]]:
     block_size = int(block_size)
@@ -338,9 +338,9 @@ def algebraic_block_observer_audits() -> tuple[AlgebraicBlockObserverAudit, ...]
     rows: list[AlgebraicBlockObserverAudit] = []
     for family, parameter in (("fermat", 4), ("mersenne", 13), ("mersenne", 11)):
         proof = (
-            _fermat_carrier_proof(parameter)
+            fermat_carrier_proof(parameter)
             if family == "fermat"
-            else _mersenne_carrier_proof(parameter)
+            else mersenne_carrier_proof(parameter)
         )
         features = _native_algebraic_block_features(family, parameter)
         for block_size in (1, 2, 4, 8):

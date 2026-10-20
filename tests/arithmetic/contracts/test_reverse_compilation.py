@@ -8,7 +8,7 @@ from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
     FiniteBlockEffect,
 )
-from number_compiler.arithmetic.contracts.temporal_family import _issue_certificate
+from number_compiler.arithmetic.contracts.temporal_family import issue_certificate
 from number_compiler.hashlife.actions.lazy_compiler import (
     LazyCompiler,
     ProgramComposition,
@@ -75,7 +75,7 @@ def test_public_reverse_descriptor_excludes_t2_and_certifies_physical_steps() ->
     power = compile_reverse_pair_power(compiler, 10, 17)
     assert power.root is not None and power.root.exponent == 17
     assert not any(type(node) is FiniteBlockEffect for node in compiler.nodes)
-    certificate = _issue_certificate(
+    certificate = issue_certificate(
         power.root, "reverse-add", 17, output_encoding="pair"
     )
     certificate.validate(power.root)
@@ -108,7 +108,7 @@ def test_same_name_finite_machine_cannot_grant_arithmetic_certificate() -> None:
     fake = fake_kernel()
     effect = compiler.compose(fake, DigitNormalizeBlockEffect(10))
     with pytest.raises(ValueError, match="certified arithmetic"):
-        _issue_certificate(effect, "reverse-add", 2)
+        issue_certificate(effect, "reverse-add", 2)
 
 
 def test_production_compilation_has_no_t2_artifact_loader() -> None:

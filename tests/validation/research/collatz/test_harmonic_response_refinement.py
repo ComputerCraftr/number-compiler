@@ -13,8 +13,8 @@ from devtools.verification.collatz_harmonic_ports import (
 from number_compiler.arithmetic.fields.radix import digits_lsd, value_from_lsd_digits
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from tests.validation.research.collatz.test_carry_domain_hensel_quotient import (
-    _crop,
-    _observe,
+    crop_source,
+    observe_source,
 )
 
 PAIRS = (
@@ -35,13 +35,13 @@ def reference_scope() -> Iterator[None]:
 
 
 def response_key(n: int) -> Hashable:
-    digits, _q = _crop(digits_lsd(n, 64))
+    digits, _q = crop_source(digits_lsd(n, 64))
     m = value_from_lsd_digits(digits, 64)
-    return _observe(n).key(True), binary_output_response(m)
+    return observe_source(n).key(True), binary_output_response(m)
 
 
 def pointwise_phi(n: int) -> tuple[int, ...]:
-    digits, _q = _crop(digits_lsd(n, 64))
+    digits, _q = crop_source(digits_lsd(n, 64))
     return tuple(radix64_phi5(d) for d in digits)
 
 
@@ -53,7 +53,7 @@ def test_output_response_has_exactly_seven_remaining_conflicts() -> None:
     conflicts = sorted(
         tuple(group)
         for group in fibers.values()
-        if len({response_key(_observe(n).target) for n in group}) > 1
+        if len({response_key(observe_source(n).target) for n in group}) > 1
     )
     assert len(sources) == 1984 and len(fibers) == 1977
     assert conflicts == list(PAIRS)
@@ -70,8 +70,8 @@ def test_phi5_fibers_and_seven_pair_separation() -> None:
     for left, right in PAIRS:
         assert right - left == 5 * 64
         assert response_key(left) == response_key(right)
-        assert response_key(_observe(left).target) != response_key(
-            _observe(right).target
+        assert response_key(observe_source(left).target) != response_key(
+            observe_source(right).target
         )
         assert pointwise_phi(left) != pointwise_phi(right)
 
@@ -79,7 +79,7 @@ def test_phi5_fibers_and_seven_pair_separation() -> None:
 def test_output_and_phi_preserve_consumed_frame_gauge() -> None:
     for e in range(6):
         m = next(m for m in range(64) if m != 21 and v2_positive(3 * m + 1) == e)
-        keys = []
+        keys: list[tuple[Hashable, tuple[int, ...]]] = []
         for q in (1, 193, 385):
             n = 64**q * m + (64**q - 1) // 3
             keys.append((response_key(n), pointwise_phi(n)))

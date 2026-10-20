@@ -7,9 +7,10 @@ as a connected aggregate, including nested containers and arbitrary records.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, fields, is_dataclass
 from types import GeneratorType
+from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import CarryBit, WordLimb
 from number_compiler.resources.payload_containers import audit_mapping_items
@@ -40,7 +41,9 @@ def numeric_aggregate_audit(
     stack: list[tuple[object, bool]] = [(root, False)]
     maximum = 0
     while stack:
-        value, finishing = stack.pop()
+        work_frame = stack.pop()
+        value = work_frame[0]
+        finishing = work_frame[1]
         identity = id(value)
         if identity in widths:
             continue
@@ -71,30 +74,40 @@ def numeric_aggregate_audit(
             visiting.add(identity)
             if isinstance(value, GeneratorType):
                 frame = value.gi_frame
-                parts = () if frame is None else tuple(frame.f_locals.values())
+                if frame is None:
+                    parts: tuple[object, ...] = ()
+                else:
+                    local_values = cast(dict[str, object], frame.f_locals)
+                    parts = tuple(local_values.values())
             elif isinstance(value, Mapping):
+                mapping = cast(Mapping[object, object], value)
                 parts = tuple(
-                    item for pair in audit_mapping_items(value) for item in pair
+                    item for pair in audit_mapping_items(mapping) for item in pair
                 )
             elif isinstance(value, (Sequence, set, frozenset)):
-                parts = tuple(value)
+                parts = tuple(cast(Iterable[object], value))
             elif is_dataclass(value) and not isinstance(value, type):
-                parts = tuple(getattr(value, item.name) for item in fields(value))
+                parts = tuple(
+                    cast(object, getattr(value, item.name)) for item in fields(value)
+                )
             elif hasattr(value, "__dict__"):
-                parts = tuple(vars(value).values())
+                attributes = cast(dict[str, object], vars(value))
+                parts = tuple(attributes.values())
             else:
                 parts = tuple(
-                    getattr(value, slot)
+                    cast(object, getattr(value, slot))
                     for slot in getattr(type(value), "__slots__", ())
                     if isinstance(slot, str) and hasattr(value, slot)
                 )
             children[identity] = parts
-            stack.append((value, True))
+            pending_frame: tuple[object, bool] = (work_frame[0], True)
+            stack.append(pending_frame)
             stack.extend((child, False) for child in reversed(parts))
             continue
         parts = children[identity]
         if isinstance(value, Mapping):
-            items = audit_mapping_items(value)
+            mapping = cast(Mapping[object, object], value)
+            items = audit_mapping_items(mapping)
             keys, values = (
                 tuple(key for key, _ in items),
                 tuple(item for _, item in items),

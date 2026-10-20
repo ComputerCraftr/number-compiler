@@ -120,7 +120,7 @@ def local_multiply3_add1_radix_multiple3(
     padded = FormulaRoot(tuple(arena.resize(p, width) for p in root.planes))
     masks = digit_value_masks(arena, padded, spec)
     chunk = spec.base // 3
-    carry_class = []
+    carry_class: list[Expr] = []
     for q in range(3):
         carry_class.append(
             arena.or_many((masks[d] for d in range(q * chunk, (q + 1) * chunk)), width)

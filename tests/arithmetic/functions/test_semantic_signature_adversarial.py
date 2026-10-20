@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Hashable
-from typing import Never, TypeVar
+from collections.abc import Callable, Hashable
+from typing import Never, TypeVar, cast
 
 import pytest
 
@@ -36,7 +36,11 @@ def test_forged_or_stale_signature_hash_rejects_before_any_interner_lookup(
     arena = SemanticFunctionArena(ledger)
     signature = FunctionSignature((), BOOL)
     handle = arena.atom(signature, 0)
-    original = (signature.inputs, signature.output, signature._hash)
+    original = (
+        signature.inputs,
+        signature.output,
+        object.__getattribute__(signature, "_hash"),
+    )
 
     class Callback:
         def __hash__(self) -> Never:
@@ -53,7 +57,7 @@ def test_forged_or_stale_signature_hash_rejects_before_any_interner_lookup(
         object.__setattr__(signature, "output", AtomSort("changed", 2))
     else:
         value = (
-            signature._hash + 1
+            object.__getattribute__(signature, "_hash") + 1
             if mutation == "integer"
             else True
             if mutation == "boolean"
@@ -61,19 +65,22 @@ def test_forged_or_stale_signature_hash_rejects_before_any_interner_lookup(
         )
         object.__setattr__(signature, "_hash", value)
     before = ledger.snapshot()
-    old_get = LedgerDict.__getitem__
+    old_get = object.__getattribute__(LedgerDict, "__getitem__")
 
     def lookup(store: LedgerDict[KeyT, ValueT], key: KeyT) -> ValueT:
         if store is arena.keys:
             raise AssertionError("invalid signature reached the semantic interner")
-        return old_get(store, key)
+        original = cast(Callable[[LedgerDict[KeyT, ValueT], KeyT], ValueT], old_get)
+        return original(store, key)
 
     monkeypatch.setattr(LedgerDict, "__getitem__", lookup)
     try:
         with pytest.raises(ValueError, match="forged or stale cached hash"):
             arena.atom(signature, 0)
         diamond = DiamondPayloadRegistry(ledger)
-        audit = SemanticPayloadRegistry(ledger, lambda value: False, diamond._handle)
+        audit = SemanticPayloadRegistry(
+            ledger, lambda value: False, diamond.valid_handle
+        )
         assert not audit.valid(signature)
         assert not audit.valid(handle)
         assert ledger.snapshot() == before
@@ -89,7 +96,10 @@ def test_valid_cached_hash_collision_still_uses_complete_signature_equality(
 ) -> None:
     import number_compiler.arithmetic.functions.finite_function_types as semantic
 
-    monkeypatch.setattr(semantic, "_sort_hash", lambda sort: 7)
+    def collision(_sort: object) -> int:
+        return 7
+
+    monkeypatch.setattr(semantic, "_sort_hash", collision)
     first = FunctionSignature((), AtomSort("first", 2))
     second = FunctionSignature((), AtomSort("second", 2))
     assert hash(first) == hash(second)

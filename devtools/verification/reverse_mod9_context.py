@@ -22,28 +22,34 @@ def primitive_mod9(context: ReverseGeometryContext) -> GeometryAction:
     e, capacity = context.expressions, context.capacity
     e.work = 0
     width = context.inputs[0]
-    width_is = tuple(context._eq(width, m) for m in range(1, capacity + 1))
+    width_is = tuple(context.equal_constant(width, m) for m in range(1, capacity + 1))
     domain_inputs, residues = context.inputs[1::2], context.inputs[2::2]
     zero, one = context.zero, context.one
     blank_domain, blank_value = e.constant(3, 0), e.constant(9, 0)
-    admitted = context._not(context._eq(width, 0))
+    admitted = context.not_expression(context.equal_constant(width, 0))
     for i, (domain, residue) in enumerate(zip(domain_inputs, residues, strict=True)):
-        is_eq = context._eq(domain, 1)
-        valid = e.select(is_eq, context._eq(residue, 0), one)
-        padding = context._and(context._eq(domain, 0), context._eq(residue, 0))
+        is_eq = context.equal_constant(domain, 1)
+        valid = e.select(is_eq, context.equal_constant(residue, 0), one)
+        padding = context.and_expression(
+            context.equal_constant(domain, 0), context.equal_constant(residue, 0)
+        )
         inactive = e.table(
             width, 2, tuple(int(m <= 2 * i) for m in range(capacity + 1))
         )
-        admitted = context._and(admitted, e.select(inactive, padding, valid))
+        admitted = context.and_expression(admitted, e.select(inactive, padding, valid))
         # GT u=0 decodes to18; other GT residues decode to u+9.
         low_even = e.table(residue, 2, tuple(int(u % 2 == 0) for u in range(9)))
         high_even = e.table(
             residue, 2, tuple(int(u == 0 or u % 2 == 1) for u in range(9))
         )
         even = e.select(
-            is_eq, zero, e.select(context._eq(domain, 2), high_even, low_even)
+            is_eq,
+            zero,
+            e.select(context.equal_constant(domain, 2), high_even, low_even),
         )
-        admitted = context._and(admitted, e.select(width_is[2 * i], even, one))
+        admitted = context.and_expression(
+            admitted, e.select(width_is[2 * i], even, one)
+        )
     domains: list[Expr] = []
     for i in range(capacity):
         domain = blank_domain
@@ -103,4 +109,4 @@ def primitive_mod9(context: ReverseGeometryContext) -> GeometryAction:
         *(v for pair in zip(out_domain, out_value, strict=True) for v in pair),
     )
     context.primitive_successors += 1
-    return context._action(outputs, admitted, 1)
+    return context.build_action(outputs, admitted, 1)

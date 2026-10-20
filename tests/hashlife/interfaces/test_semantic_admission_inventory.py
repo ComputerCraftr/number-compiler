@@ -82,7 +82,10 @@ def test_actual_admission_bindings_do_not_attest_spoofed_modes_or_foreign_roots(
         assert other is not runtime
     if key not in compiler.admissions:
         runtime.ledger.reserve(compiler.admissions.owner, entries=1)
-    cast(MutableMapping[object, object], compiler.admissions._data)[key] = proof
+    cast(
+        MutableMapping[object, object],
+        object.__getattribute__(compiler.admissions, "_data"),
+    )[key] = proof
     before = runtime.ledger.snapshot()
     report = collect_ledger_metrics(runtime.ledger)
     assert report.forbidden_future_payloads > 0

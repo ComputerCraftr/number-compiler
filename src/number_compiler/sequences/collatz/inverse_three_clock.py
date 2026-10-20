@@ -13,7 +13,7 @@ from number_compiler.arithmetic.fields.inverse_three_clock import (
     InverseThreeClock as _SharedInverseThreeClock,
 )
 from number_compiler.arithmetic.fields.inverse_three_clock import (
-    _root_digit_mod64,
+    root_digit_mod64,
 )
 from number_compiler.arithmetic.fields.morphism_core import DyadicAffineCocycle
 from number_compiler.arithmetic.fields.two_adic import v2_nonzero
@@ -217,7 +217,7 @@ def radix64_cylinder_views(
         raise ValueError("radix-64 cylinder view needs a q>=6 clock")
     if type(source_digit) is not int or not 0 <= source_digit < 64:
         raise ValueError("source digit is outside radix 64")
-    return Radix64CylinderViews(source_digit, _root_digit_mod64(clock.phase))
+    return Radix64CylinderViews(source_digit, root_digit_mod64(clock.phase))
 
 
 def inverse_three_root_cylinder(clock: InverseThreeClock) -> HenselCylinder:

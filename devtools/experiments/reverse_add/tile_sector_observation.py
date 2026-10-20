@@ -20,6 +20,7 @@ from number_compiler.arithmetic.polynomials.frobenius_sector import (
     ReverseFrobeniusPlan,
 )
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.tile_application import TileApplication
 from number_compiler.hashlife.execution.tile_application_authority import (
     application_source,
 )
@@ -29,7 +30,6 @@ from number_compiler.hashlife.execution.tile_causal_interfaces import (
 )
 from number_compiler.hashlife.execution.tile_causal_results import PrimitiveCausalPorts
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
-from number_compiler.hashlife.execution.tile_scheduler import TileApplication
 from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.hashlife.interfaces.tile_reverse_sector_functions import (
     aligned_reverse_interval_forcing,
@@ -54,7 +54,7 @@ def _primitive_branch(
     action: FieldCellActionID,
 ) -> tuple[FieldCellActionID, int]:
     """Return one primitive witness while visiting at most a logarithmic spine."""
-    record = adapter._action(action)
+    record = adapter.action_record(action)
     repetitions = record.repetitions
     if not record.homogeneous:
         raise ValueError("reverse sector observation requires a homogeneous action")
@@ -63,7 +63,10 @@ def _primitive_branch(
     visits = 1
     while record.children is not None:
         left, right = record.children
-        left_record, right_record = adapter._action(left), adapter._action(right)
+        left_record, right_record = (
+            adapter.action_record(left),
+            adapter.action_record(right),
+        )
         if (
             not left_record.homogeneous
             or not right_record.homogeneous
@@ -118,7 +121,7 @@ def _existing_interface_payload(
     application: TileApplication,
 ) -> CausalInterfacePayload:
     """Read an already available interface without starting another execution."""
-    root = application._cached_root()
+    root = application.cached_execution_root()
     if root is not None:
         from number_compiler.hashlife.execution.tile_causal_interfaces import (
             interface_payload_from_completed,
@@ -143,7 +146,12 @@ def _existing_interface_payload(
         application.wiring,
     )
     arena = application.scheduler.results
-    payload = lookup_causal_interface(arena, causal_interface_key(key))
+    interface_key = causal_interface_key(key)
+    if interface_key not in arena.memo_view:
+        raise ValueError(
+            "powered reverse sector observation requires a prior interface request"
+        )
+    payload = lookup_causal_interface(arena, interface_key)
     if payload is None:
         raise ValueError(
             "powered reverse sector observation requires a prior interface request"
@@ -162,14 +170,14 @@ def _source_is_symmetric(
     forward, forward_lease = normalize_cached_region(
         scheduler.results,
         BoundaryTileView(source, 0, active_width),
-        dependencies=scheduler._causal_dependencies,
+        dependencies=scheduler.dependency_leases,
         application=application.identity,
     )
     try:
         reflected, reflected_lease = normalize_cached_region(
             scheduler.results,
             BoundaryTileView(source, 0, active_width, 1),
-            dependencies=scheduler._causal_dependencies,
+            dependencies=scheduler.dependency_leases,
             application=application.identity,
         )
         try:
@@ -199,7 +207,7 @@ def observe_reverse_sector_product(
     adapter.validate_wiring(application.action, application.wiring)
     if application.ports != adapter.initial_ports(application.action):
         raise ValueError("reverse sector observation requires initial boundary ports")
-    record = adapter._action(application.action)
+    record = adapter.action_record(application.action)
     kernel = adapter.kernels.kernel(record.kernel)
     if (
         not record.homogeneous
@@ -327,7 +335,7 @@ def _observe_reverse_interval_forcing(
     adapter.validate_action(application.action)
     adapter.validate_input(application.action, source)
     adapter.validate_wiring(application.action, application.wiring)
-    record = adapter._action(application.action)
+    record = adapter.action_record(application.action)
     kernel = adapter.kernels.kernel(record.kernel)
     if (
         record.children is not None
@@ -359,7 +367,7 @@ def _observe_reverse_interval_forcing(
                 extent,
                 source_offset=start,
             ),
-            dependencies=scheduler._causal_dependencies,
+            dependencies=scheduler.dependency_leases,
             application=application.identity,
         )
 
@@ -390,7 +398,7 @@ def _observe_reverse_interval_forcing(
         prefix, lease = normalize_cached_region(
             scheduler.results,
             BoundaryTileView(source, 0, boundary),
-            dependencies=scheduler._causal_dependencies,
+            dependencies=scheduler.dependency_leases,
             application=application.identity,
         )
         try:

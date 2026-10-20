@@ -217,6 +217,14 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         return wire
 
     @property
+    def mahler_wire(self) -> tuple[int, int, int | None] | None:
+        return self._mahler_wire
+
+    @property
+    def mahler_consumer_active(self) -> bool:
+        return self._mahler_consumer is not None
+
+    @property
     def returns(self) -> int:
         return self.steps
 
@@ -300,7 +308,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             )
         )
         if source_h is None:
-            source_h = self._source_value(admitted)
+            source_h = self.source_value(admitted)
         endpoint_d = source_h - 1
         delta, minimum, odd_steps = 0, 0, 0
         remaining = node.width
@@ -312,7 +320,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                     run_minimum,
                     run_odds,
                     prefix_endpoint_d,
-                ) in self._punctured_steps(
+                ) in self.punctured_steps(
                     source_h, macro_selection.prefix_steps, scratch
                 ):
                     delta, minimum = compose_prefix_safety_values(
@@ -362,7 +370,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             run_minimum,
             run_odds,
             residual_endpoint_d,
-        ) in self._punctured_steps(residual_source_h, remaining, scratch):
+        ) in self.punctured_steps(residual_source_h, remaining, scratch):
             delta, minimum = compose_prefix_safety_values(
                 delta, minimum, run_delta, run_minimum
             )
@@ -442,7 +450,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             # An exact source with no high lift is already its low residue;
             # preserve the no-reconstruction path for small admitted seeds.
             source_h = (
-                admitted.residue if admitted.lift == 0 else self._source_value(admitted)
+                admitted.residue if admitted.lift == 0 else self.source_value(admitted)
             )
             centered = source_h - 1
             self.bump_metric("temporal_odd_macro_selector_calls")
@@ -483,7 +491,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         if operand_bits:
             self.bump_metric("temporal_odd_macro_selector_operand_bits", operand_bits)
 
-    def _punctured_steps(
+    def punctured_steps(
         self, h: int, width: int, scratch: RunArithmeticWorkspace
     ) -> Iterator[tuple[int, int, int, int, int]]:
         """Contract bounded source events inside the scheduler's exact leaf.
@@ -541,7 +549,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         """Retain only the complete affine and ledger effect until explicit demand."""
         return False
 
-    def _whole_initial_run(self, source: SourceImageView, width: int) -> bool:
+    def whole_initial_run(self, source: SourceImageView, width: int) -> bool:
         """Admit a homogeneous run from its low cylinder, without its value.
 
         For ``h=r+2**width*u`` and centered ``d=h-1``, a run of at least
@@ -607,7 +615,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                 )
                 return candidate
         if self.source_node(source_id).exact and (
-            width <= self.MAX_LEAF_STEPS or self._whole_initial_run(source, width)
+            width <= self.MAX_LEAF_STEPS or self.whole_initial_run(source, width)
         ):
             candidate = self._run_candidate(action, source)
         elif self.source_node(source_id).exact:

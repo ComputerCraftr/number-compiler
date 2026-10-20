@@ -7,7 +7,7 @@ import pytest
 from number_compiler.arithmetic.fields.walsh import walsh64_mod5
 from number_compiler.sequences.collatz.border_harmonic_ring import (
     PeriodicTail6305Ring,
-    _periodic_return_capacity,
+    periodic_return_capacity,
 )
 from number_compiler.sequences.collatz.border_return_grammar import (
     select_border_return_macro,
@@ -187,8 +187,8 @@ def test_forged_ring_state_and_expensive_motif_refused() -> None:
 
 
 def test_zero_defect_is_explicitly_unbounded_not_a_large_sentinel() -> None:
-    assert _periodic_return_capacity(0, 5) is None
-    assert _periodic_return_capacity(32, 5) == 0
+    assert periodic_return_capacity(0, 5) is None
+    assert periodic_return_capacity(32, 5) == 0
 
 
 @pytest.mark.parametrize("motif", ((0, 1), (1, 2), (1, 2, 1)))

@@ -191,11 +191,11 @@ class ProviderAbsorptionArena:
         ):
             raise TypeError("provider absorption requires executable validators")
         self.ledger, self.sources = ledger, sources
-        self._validate_output = validate_output
+        self.output_validator = validate_output
         self._validate_bound_output = validate_bound_output
         self._validate_interface = validate_interface
         self._validate_bound_interface = validate_bound_interface
-        self._validate_action = validate_action
+        self.action_validator = validate_action
         self._validate_boundary = validate_boundary
         self._observe = observe
         if validate_image is not None and not callable(validate_image):
@@ -294,7 +294,7 @@ class ProviderAbsorptionArena:
         self._points.clear()
         self.ledger.release(self._point_owner, entries=count)
 
-    def _handle(self, local_id: int) -> ProviderActionID:
+    def scoped_handle(self, local_id: int) -> ProviderActionID:
         return ProviderActionID(self.owner, self._KIND, local_id)
 
     @property
@@ -324,9 +324,9 @@ class ProviderAbsorptionArena:
         if type(record) is not ProviderAction:
             raise TypeError("expected a canonical provider action")
         record.__post_init__()
-        self._validate_output(record.output)
+        self.output_validator(record.output)
         self._validate_interface(record.interface)
-        self._validate_action(record.action)
+        self.action_validator(record.action)
 
     def resolve(self, provider: ProviderActionID) -> ProviderAction:
         if type(provider) is not ProviderActionID:
@@ -347,19 +347,26 @@ class ProviderAbsorptionArena:
             raise TypeError("provider action requires a bounded local interface")
         if type(record.action) is not FieldCellActionID:
             raise TypeError("provider action requires a scoped temporal action")
-        self._validate_output(record.output)
+        self.output_validator(record.output)
         self._validate_interface(record.interface)
-        self._validate_action(record.action)
+        self.action_validator(record.action)
         found = self._keys.get(record)
         if found is not None:
             self.ledger.bump(_execution_keys.PROVIDER_ACTION_ALIAS_HITS)
-            return self._handle(found)
+            return self.scoped_handle(found)
         local_id, self._next_id = reserve_indexed_id(
             self.ledger, self._node_owner, self._key_owner, self._next_id
         )
         record_indexed_node(self._nodes, self._keys, local_id, record)
         self.ledger.bump(_execution_keys.PROVIDER_ACTION_PUBLICATIONS)
-        return self._handle(local_id)
+        return self.scoped_handle(local_id)
+
+    @property
+    def binding_owner(self) -> int:
+        return self._binding_owner
+
+    def has_binding(self, binding: ProviderBindingKey) -> bool:
+        return binding in self._bindings
 
     def bind(
         self,
@@ -380,13 +387,13 @@ class ProviderAbsorptionArena:
         requests: tuple[ProviderBindingRequest, ...],
     ) -> tuple[ProviderBindingKey, ...]:
         """Validate and atomically publish several occurrence bindings."""
-        keys = self._prepare_bindings(requests)
+        keys = self.prepare_bindings(requests)
         missing = tuple(dict.fromkeys(key for key in keys if key not in self._bindings))
         self.ledger.reserve(self._binding_owner, entries=len(missing))
-        self._publish_prepared_bindings(missing)
+        self.publish_prepared_bindings(missing)
         return keys
 
-    def _prepare_bindings(
+    def prepare_bindings(
         self,
         requests: tuple[ProviderBindingRequest, ...],
     ) -> tuple[ProviderBindingKey, ...]:
@@ -443,7 +450,7 @@ class ProviderAbsorptionArena:
             )
         return tuple(keys)
 
-    def _publish_prepared_bindings(
+    def publish_prepared_bindings(
         self,
         missing: tuple[ProviderBindingKey, ...],
     ) -> None:

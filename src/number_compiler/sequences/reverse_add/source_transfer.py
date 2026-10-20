@@ -90,7 +90,8 @@ def source_transfer_packet(
     """
     if type(term) is not ReverseAddPoweredTerm:
         raise TypeError("reverse/add source transfer requires ReverseAddPoweredTerm")
-    if (term.seed, term.generation, term.base) != term._binding or term.base != 10:
+    term.validate_source_binding()
+    if term.base != 10:
         raise ValueError("reverse/add term source/action binding changed")
     if type(steps) is not int or not 1 <= steps <= MAX_PHYSICAL_STEPS:
         raise ValueError(f"physical steps must be in 1..{MAX_PHYSICAL_STEPS}")
@@ -110,7 +111,7 @@ def source_transfer_packet(
             steps=steps,
             pair_depth=pair_depth,
         )
-    workspace = term._source_workspace()
+    workspace = term.source_workspace()
     if (
         type(workspace) is not ReverseSourceImageWorkspace
         or workspace.ledger is not term.resource_ledger

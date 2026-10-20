@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from random import Random
+from typing import cast
 
 import pytest
 
@@ -132,9 +134,12 @@ def test_failed_radial_certificate_releases_all_temporary_ownership(
     arena = SymbolicInnovationArena(ledger)
     expression = _identity(arena, arena.interval(1), 0, 4)
     before = ledger.entries, ledger.nodes
-    original = event_innovation._certificate_reserve
+    original = cast(
+        Callable[[event_innovation.EventWork, int], None],
+        object.__getattribute__(event_innovation, "_certificate_reserve"),
+    )
 
-    def refuse_after_first_term(work: event_innovation._EventWork, bits: int) -> None:
+    def refuse_after_first_term(work: event_innovation.EventWork, bits: int) -> None:
         if ledger.counters.get("event_radial_certificate_terms", 0):
             raise BlockContextBudgetExceeded("injected certificate allocation failure")
         original(work, bits)

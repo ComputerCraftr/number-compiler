@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Never
+from collections.abc import Mapping
+from typing import Never, cast
 
 import pytest
 
@@ -21,6 +22,7 @@ from number_compiler.hashlife.execution.tile_causal_boundary_step import (
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.resources.causal_stacks import CausalFrameStack, CausalResults
 from number_compiler.resources.causal_types import CausalPrefix, CausalTaskValue
+from tests.support.causal_frames import initial_causal_state
 from tests.support.tile_kernel import (
     make_tile_from_symbols,
     make_tile_runtime,
@@ -45,8 +47,8 @@ def test_quiescent_deep_boundary_reuses_input_without_constructors(
     blank = adapter.primitive_law(primitive).blank
     with make_tile_from_symbols(tiles, adapter, primitive, (blank,) * 4) as source:
         view = BoundaryTileView(source.tile, 11, 4, side)
-        anchor = engine._initial(action, side)
-        argument = engine._initial(action, 1 - side)
+        anchor = initial_causal_state(engine, action, side)
+        argument = initial_causal_state(engine, action, 1 - side)
 
         def forbidden(*_args: object, **_kwargs: object) -> Never:
             raise AssertionError("behavior constructed an exact causal boundary")
@@ -93,7 +95,7 @@ def test_public_scheduler_blank_dependencies_avoid_boundary_output(
         ) as application:
             assert application.point(3) == 5
             assert application.point(6) == 5
-            assert application._root is None
+            assert application.audit_snapshot().root_lease is None
     assert ledger.counters["tile_causal_quiescent_boundary_reuses"] > 0
     assert ledger.counters["powered_absorption_max_span"] == exponent
 
@@ -115,8 +117,8 @@ def test_active_input_and_unsafe_physical_left_context_decline() -> None:
     )
     with make_tile_from_symbols(tiles, adapter, primitive, (5,) * 4) as blank:
         # For a right scan the physical LEFT context is the opposite argument.
-        left = engine._initial(action, 0, unsafe)
-        right = engine._initial(action, 1)
+        left = initial_causal_state(engine, action, 0, unsafe)
+        right = initial_causal_state(engine, action, 1)
         assert (
             quiescent_boundary(
                 engine,
@@ -135,8 +137,8 @@ def test_active_input_and_unsafe_physical_left_context_decline() -> None:
                 action,
                 0,
                 BoundaryTileView(active.tile, 0, 4),
-                engine._initial(action, 0),
-                engine._initial(action, 1),
+                initial_causal_state(engine, action, 0),
+                initial_causal_state(engine, action, 1),
             )
             is None
         )
@@ -171,7 +173,7 @@ def test_nonblank_left_prefix_is_not_erased() -> None:
                 0,
                 BoundaryTileView(blank.tile, 0, 4),
                 left,
-                engine._initial(action, 1),
+                initial_causal_state(engine, action, 1),
             )
             is None
         )
@@ -194,8 +196,8 @@ def test_failed_behavior_width_releases_active_application_context(
         monkeypatch.setattr(causal_api, "quiescent_boundary", fail)
         with pytest.raises(RuntimeError, match="injected behavior failure"):
             engine.width(action, source.tile, limit=4, application=17)
-        assert engine._application is None
-        assert not engine._hold_workspace
+        assert engine.application_identity is None
+        assert not cast(bool, object.__getattribute__(engine, "_hold_workspace"))
 
 
 def test_blank_output_proof_does_not_invent_a_right_transfer() -> None:
@@ -262,8 +264,12 @@ def test_new_behavior_admission_rolls_back_after_binding_write_failure(
     blank = adapter.primitive_law(primitive).blank
     with make_tile_from_symbols(tiles, adapter, primitive, (blank,) * 4) as source:
         before = ledger.snapshot()
-        next_profile = adapter.quotients._next_future_profile
-        next_class = adapter.quotients._next_future_class
+        next_profile = cast(
+            int, object.__getattribute__(adapter.quotients, "_next_future_profile")
+        )
+        next_class = cast(
+            int, object.__getattribute__(adapter.quotients, "_next_future_class")
+        )
 
         def fail_reverse_index(*_args: object, **_kwargs: object) -> Never:
             raise RuntimeError("injected reverse-index failure")
@@ -275,19 +281,34 @@ def test_new_behavior_admission_rolls_back_after_binding_write_failure(
                 action,
                 0,
                 BoundaryTileView(source.tile, 0, 4),
-                engine._initial(action, 0),
-                engine._initial(action, 1),
+                initial_causal_state(engine, action, 0),
+                initial_causal_state(engine, action, 1),
             )
 
-        assert not adapter.quotients._future_admissions
-        assert not adapter.quotients._future_profiles
-        assert not adapter.quotients._future_classes
-        assert not adapter.quotients._future_certificates
-        assert not adapter.quotients._future_snapshots
-        assert adapter.quotients._next_future_profile > next_profile
-        assert adapter.quotients._next_future_class > next_class
-        assert not scheduler.results._memo
-        assert not scheduler.results._reverse
+        assert adapter.quotients.future_behavior_store_counts() == (0, 0, 0, 0)
+        for attribute in (
+            "_future_admissions",
+            "_future_certificates",
+            "_future_snapshots",
+        ):
+            retained = cast(
+                Mapping[object, object],
+                object.__getattribute__(adapter.quotients, attribute),
+            )
+            assert not retained
+        assert (
+            cast(
+                int, object.__getattribute__(adapter.quotients, "_next_future_profile")
+            )
+            > next_profile
+        )
+        assert (
+            cast(int, object.__getattribute__(adapter.quotients, "_next_future_class"))
+            > next_class
+        )
+        result_snapshot = scheduler.results.audit_snapshot()
+        assert not result_snapshot.memo
+        assert not result_snapshot.reverse
         after = ledger.snapshot()
         before_semantic = {
             item.name: (item.entries, item.nodes)

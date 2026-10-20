@@ -43,7 +43,7 @@ def _right_frame(
     )
 
 
-def _recursive_residual_phase(
+def recursive_residual_phase(
     residual: _RecursiveResidualAction | None,
     modulus: int,
 ) -> int:
@@ -69,7 +69,7 @@ def _recursive_residual_phase(
     return phase
 
 
-def _is_composed_runtime(effect: object) -> TypeGuard[ComposedBlockEffect]:
+def is_composed_runtime(effect: object) -> TypeGuard[ComposedBlockEffect]:
     return (
         hasattr(effect, "_partition_enabled")
         and hasattr(effect, "_functional_enabled")
@@ -111,8 +111,41 @@ class SpacetimeRuntimeMixin:
     _provider_task_hits: int
     _provider_task_misses: int
 
+    def recursive_side_enabled(self, side: BoundarySide) -> bool:
+        return self._recursive_enabled[int(side)]
+
+    def provider_task_lookup(
+        self, key: tuple[object, ...], sentinel: object
+    ) -> BoundaryState:
+        found = self._provider_task_cache.get(key, sentinel)
+        if found is sentinel:
+            self._provider_task_misses += 1
+        else:
+            self._provider_task_hits += 1
+        return found
+
+    def publish_provider_task(
+        self, key: tuple[object, ...], value: BoundaryState
+    ) -> None:
+        self._memo_store(self._provider_task_cache, key, value)
+
+    def recursive_value_lookup(self, key: tuple[object, object]) -> BoundaryState:
+        found = self._recursive_value_cache.get(key)
+        if found is not None:
+            self._recursive_value_cache_hits += 1
+        return found
+
+    def has_recursive_value(self, key: tuple[object, object]) -> bool:
+        return key in self._recursive_value_cache
+
+    def publish_recursive_value(
+        self, key: tuple[object, object], value: BoundaryState
+    ) -> None:
+        self._memo_store(self._recursive_value_cache, key, value)
+        self._recursive_value_cache_misses += 1
+
     @staticmethod
-    def _canonical_child_state(
+    def canonical_child_state(
         effect: object, side: BoundarySide, state: BoundaryState
     ) -> BoundaryState:
         raise NotImplementedError
@@ -129,7 +162,7 @@ class SpacetimeRuntimeMixin:
         cache[key] = value
         return value
 
-    def _intern_recursive_residual(
+    def intern_recursive_residual(
         self,
         side: BoundarySide,
         previous: _RecursiveResidualAction,
@@ -151,7 +184,7 @@ class SpacetimeRuntimeMixin:
         pool = self._recursive_residual_intern[index]
         if pool is None:
             raise AssertionError("recursive residual carrier is not enabled")
-        anchor_after = self._canonical_child_state(self.first, side, anchor_after)
+        anchor_after = self.canonical_child_state(self.first, side, anchor_after)
         current = tile
         current_reverse = reverse
         prior = previous
@@ -162,7 +195,7 @@ class SpacetimeRuntimeMixin:
             and not prior.layers
             and prior.reversed == current_reverse
             and prior.tile.level == current.level
-            and _recursive_residual_phase(prior.previous, 2 * current.width) == 0
+            and recursive_residual_phase(prior.previous, 2 * current.width) == 0
         ):
             parent = (
                 existing_join(current, prior.tile)
@@ -216,7 +249,7 @@ class SpacetimeRuntimeMixin:
         record_residual_metrics(states=1)
         return out
 
-    def _intern_recursive_state(
+    def intern_recursive_state(
         self,
         side: BoundarySide,
         anchor: BoundaryState,
@@ -228,7 +261,7 @@ class SpacetimeRuntimeMixin:
         to allocate a second wrapper.  It performs a consistency check and never
         allocates, interns, or increments fake state-cache hit/miss counters.
         """
-        anchor = self._canonical_child_state(self.first, side, anchor)
+        anchor = self.canonical_child_state(self.first, side, anchor)
         if residual.side is not side:
             raise ValueError((residual.side, side))
         if residual.anchor is not anchor and _cache_state_key(
@@ -268,7 +301,7 @@ class SpacetimeRuntimeMixin:
         # Align by splitting only existing immutable source tiles.  Point/width
         # execution must not manufacture an exact occurrence span merely to
         # express dyadic alignment.
-        phase = _recursive_residual_phase(state.residual, tile.width)
+        phase = recursive_residual_phase(state.residual, tile.width)
         pending: list[tuple[int, DyadicTile, bool]] = [(phase, tile, reverse)]
         aligned_tiles: list[tuple[DyadicTile, bool]] = []
         while pending:
@@ -291,21 +324,21 @@ class SpacetimeRuntimeMixin:
         residual = state.residual
         for current, current_reverse in aligned_tiles:
             before = anchor
-            anchor = self._advance_effect_tile_macro(
+            anchor = self.advance_effect_tile_macro(
                 self.first,
                 side,
                 before,
                 current,
                 reverse=current_reverse,
             )
-            residual = self._intern_recursive_residual(
+            residual = self.intern_recursive_residual(
                 side,
                 residual,
                 current,
                 anchor,
                 reverse=current_reverse,
             )
-        return self._intern_recursive_state(side, anchor, residual)
+        return self.intern_recursive_state(side, anchor, residual)
 
     @staticmethod
     def _provider_symbol(tile: DyadicTile, layers: tuple[_ProviderLayer, ...]) -> int:
@@ -331,7 +364,7 @@ class SpacetimeRuntimeMixin:
         provider program.  The transient output scalar is never wrapped in a
         ``DyadicTile`` and never enters a semantic cache key.
         """
-        result = self._run_provider_tasks(("ADV", effect, side, state, tile, layers))
+        result = self.run_provider_tasks(("ADV", effect, side, state, tile, layers))
         return result
 
     def _emit_provider_leaf(
@@ -342,15 +375,15 @@ class SpacetimeRuntimeMixin:
         layers: tuple[_ProviderLayer, ...],
         right: BoundaryState,
     ) -> int:
-        result = self._run_provider_tasks(("EMIT", effect, left, right, tile, layers))
+        result = self.run_provider_tasks(("EMIT", effect, left, right, tile, layers))
         if type(result) is not int:
             raise AssertionError("provider emission returned another result sort")
         return result
 
-    def _run_provider_tasks(self, root: tuple[object, ...]) -> BoundaryState:
-        from devtools.verification.provider_recurrence import _run_provider_tasks
+    def run_provider_tasks(self, root: tuple[object, ...]) -> BoundaryState:
+        from devtools.verification.provider_recurrence import run_provider_tasks
 
-        return _run_provider_tasks(self, root)
+        return run_provider_tasks(self, root)
 
     def _eval_recursive_residual(
         self,
@@ -369,7 +402,7 @@ class SpacetimeRuntimeMixin:
         opposite = (
             BoundarySide.RIGHT if side is BoundarySide.LEFT else BoundarySide.LEFT
         )
-        argument = self._canonical_child_state(self.first, opposite, argument)
+        argument = self.canonical_child_state(self.first, opposite, argument)
         root_key: tuple[object, object] = (residual, _cache_state_key(argument))
         found = self._recursive_value_cache.get(root_key)
         if found is not None:
@@ -414,7 +447,7 @@ class SpacetimeRuntimeMixin:
                     current.layers,
                 )
             else:
-                argument_before = self._advance_effect_tile_macro(
+                argument_before = self.advance_effect_tile_macro(
                     self.first,
                     opposite,
                     argument_after,
@@ -431,7 +464,7 @@ class SpacetimeRuntimeMixin:
                     argument_after,
                 )
             )
-            current_argument = self._canonical_child_state(
+            current_argument = self.canonical_child_state(
                 self.first, opposite, argument_before
             )
             current = current.previous
@@ -452,7 +485,7 @@ class SpacetimeRuntimeMixin:
                 reverse=tile_reverse,
                 layers=layers,
             )
-            value = self._canonical_child_state(self.second, side, value)
+            value = self.canonical_child_state(self.second, side, value)
             if key not in self._recursive_value_cache:
                 self._memo_store(self._recursive_value_cache, key, value)
                 self._recursive_value_cache_misses += 1
@@ -563,7 +596,7 @@ class SpacetimeRuntimeMixin:
                         argument if side is BoundarySide.LEFT else anchor,
                     )
                     if (
-                        _is_composed_runtime(self.second)
+                        is_composed_runtime(self.second)
                         and self.second._recursive_enabled[int(side)]
                     ):
                         provider = current_layers + (
@@ -582,7 +615,7 @@ class SpacetimeRuntimeMixin:
                         )
                     else:
                         out = self.second.advance(side, incoming, int(first_symbol))
-                    out = self._canonical_child_state(self.second, side, out)
+                    out = self.canonical_child_state(self.second, side, out)
                     self._memo_store(self._macro_tile_output_cache, key, out)
                     results.append(out)
                     continue
@@ -598,14 +631,14 @@ class SpacetimeRuntimeMixin:
                     if current_reverse
                     else (current.left, current.right)
                 )
-                middle_anchor = self._advance_effect_tile_macro(
+                middle_anchor = self.advance_effect_tile_macro(
                     self.first,
                     side,
                     anchor,
                     left,
                     reverse=current_reverse,
                 )
-                middle_argument = self._advance_effect_tile_macro(
+                middle_argument = self.advance_effect_tile_macro(
                     self.first,
                     opposite,
                     argument,
@@ -705,7 +738,7 @@ class SpacetimeRuntimeMixin:
             step += 1
         return out
 
-    def _advance_effect_tile_macro(
+    def advance_effect_tile_macro(
         self,
         effect: BlockEffect,
         side: BoundarySide,
@@ -724,8 +757,8 @@ class SpacetimeRuntimeMixin:
         this node's cache.  Runtime statistics already traverse the operator DAG,
         so ownership follows the algebra node without losing accounting.
         """
-        if _is_composed_runtime(effect) and effect is not self:
-            return effect._advance_effect_tile_macro(
+        if is_composed_runtime(effect) and effect is not self:
+            return effect.advance_effect_tile_macro(
                 effect,
                 side,
                 state,
@@ -773,7 +806,7 @@ class SpacetimeRuntimeMixin:
                     self._macro_tile_advance_misses += 1
 
                 if (
-                    _is_composed_runtime(effect)
+                    is_composed_runtime(effect)
                     and isinstance(incoming, _RecursiveBoundaryState)
                     and effect._recursive_enabled[int(side)]
                 ):

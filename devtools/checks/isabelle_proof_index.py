@@ -46,10 +46,6 @@ _ML_FILE_ARGUMENT = re.compile(
 )
 
 
-def _scope(text: str) -> str:
-    return first_documentation_scope(text)
-
-
 def _declaration_records(
     declarations: tuple[IsabelleDeclaration, ...],
 ) -> tuple[dict[str, object], ...]:
@@ -152,7 +148,7 @@ def build_index() -> dict[str, object]:
         declared[name] = (
             path,
             imports,
-            _scope(text),
+            first_documentation_scope(text),
             (),
             ml_file_references(text, path),
         )

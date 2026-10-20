@@ -28,23 +28,23 @@ def project(compiler: NumberCompiler, query: CollatzTermQuery) -> ProjectedNumbe
     def valid(owner: PoweredCollatzTerm) -> bool:
         return (
             (owner.seed, owner.steps) == (query.seed, query.index)
-            and owner._shared_cache is compiler._shared_cache
-            and owner._max_context_nodes == compiler._max_context_nodes
-            and owner._max_cache_entries == compiler._max_cache_entries
-            and owner.resource_ledger.max_nodes == compiler._max_context_nodes
-            and owner.resource_ledger.max_cache_entries == compiler._max_cache_entries
+            and owner.shared_cache is compiler.shared_cache
+            and owner.max_context_nodes == compiler.max_context_nodes
+            and owner.max_cache_entries == compiler.max_cache_entries
+            and owner.resource_ledger.max_nodes == compiler.max_context_nodes
+            and owner.resource_ledger.max_cache_entries == compiler.max_cache_entries
         )
 
     # Radix is a demand-time view, not part of the binary source owner key.
-    term = compiler._powered_term(
+    term = compiler.powered_term(
         (CollatzTermQuery, query.seed, query.index),
         PoweredCollatzTerm,
         lambda: PoweredCollatzTerm(
             query.seed,
             query.index,
-            shared_cache=compiler._shared_cache,
-            max_context_nodes=compiler._max_context_nodes,
-            max_cache_entries=compiler._max_cache_entries,
+            shared_cache=compiler.shared_cache,
+            max_context_nodes=compiler.max_context_nodes,
+            max_cache_entries=compiler.max_cache_entries,
         ),
         valid,
     )

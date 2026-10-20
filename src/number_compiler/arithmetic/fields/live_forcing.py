@@ -20,11 +20,11 @@ from typing import Self
 
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.fields.event_innovation import (
-    _children,
-    _Context,
-    _context_units,
-    _emit,
-    _EventWork,
+    EventContext,
+    EventWork,
+    emit_events,
+    event_children,
+    event_context_units,
 )
 from number_compiler.arithmetic.fields.radial_innovation import (
     InnovationAtom,
@@ -82,7 +82,7 @@ class LiveForcingProjection:
         # Query work limit, not a source certificate. On a separately admitted
         # decimal trajectory the three-growth-run law proves this is sufficient.
         self._maximum_growth = 3 * bits
-        self._work = _EventWork(arena)
+        self._work = EventWork(arena)
         self._closed = False
         try:
             self._construct(expression)
@@ -113,9 +113,9 @@ class LiveForcingProjection:
             raise ValueError("closed live-forcing projection")
         self._work.arena.resolve(self._work.arena.zero)
 
-    def _add_weight(self, state: _Context, value: int) -> None:
+    def _add_weight(self, state: EventContext, value: int) -> None:
         work = self._work
-        work.reserve(_context_units(state) + 2)
+        work.reserve(event_context_units(state) + 2)
         work.ledger.bump(
             _fields_keys.LIVE_FORCING_MODULAR_INTEGER_BITS,
             self.bits * 2 + 1,
@@ -124,7 +124,7 @@ class LiveForcingProjection:
 
     def _construct(self, expression: InnovationID) -> None:
         work, arena = self._work, self._work.arena
-        root = _Context(expression)
+        root = EventContext(expression)
         work.enqueue(root)
         while work.stack:
             state = work.stack.pop()
@@ -134,8 +134,8 @@ class LiveForcingProjection:
             if state.radial.no_growth >= self.bits:
                 work.ledger.bump(_fields_keys.LIVE_FORCING_DEAD_CONTEXTS)
                 continue
-            children = _children(arena, state)
-            edges = []
+            children = event_children(arena, state)
+            edges: list[tuple[int, EventContext]] = []
             work.reserve(2 * len(children))
             for coefficient, child in children:
                 work.reserve(max(1, (abs(coefficient).bit_length() + 63) // 64))
@@ -174,10 +174,10 @@ class LiveForcingProjection:
                 self.bits * 2 + 1,
             )
             scale = (weight << q) % self.modulus
-            live = _Context(
+            live = EventContext(
                 state.reference, state.chart, RadialMultiplier(0, state.radial.growth)
             )
-            _emit(work, live, scale, False)
+            emit_events(work, live, scale, False)
         # Cancellation is modulo the requested precision and precedes the live
         # degree check. No discarded modular term is rewritten in the exact DAG.
         work.reserve(len(work.terms))
@@ -193,7 +193,7 @@ class LiveForcingProjection:
         work.graph.clear()
         work.weights.clear()
         retained_units = sum(
-            _context_units(state) + (self.bits + 63) // 64 for state in work.terms
+            event_context_units(state) + (self.bits + 63) // 64 for state in work.terms
         )
         if retained_units > work.scratch_units:
             work.reserve(retained_units - work.scratch_units)

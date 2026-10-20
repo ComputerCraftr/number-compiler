@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.hashlife.tiles.ordered_boolean_support import OrderedBooleanSupport
 from number_compiler.hashlife.tiles.temporal_cocycle import (
@@ -83,7 +84,7 @@ class ResultSemantics:
         ):
             raise TypeError("observed input ports require exact immutable integers")
         if self.physical_support is not None:
-            if not isinstance(self.physical_support, OrderedBooleanSupport):
+            if not is_runtime_instance(self.physical_support, OrderedBooleanSupport):
                 raise TypeError("result semantics has another shadow-support sort")
             self.physical_support.owner.validate(self.physical_support)
 

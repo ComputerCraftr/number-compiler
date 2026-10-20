@@ -41,7 +41,7 @@ class PrimePartialSuccessorQuery:
         self._closed = False
         self.peak_scheduler_entries = 0
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         if self._closed:
             raise RuntimeError("prime partial successor query is closed")
         rank, ledger, source_identity = self._rank_authority
@@ -74,7 +74,7 @@ class PrimePartialSuccessorQuery:
         PrimeSuccessorImageAdapter,
         TileScheduler,
     ]:
-        self._check_open()
+        self.check_open()
         if type(depth) is not int or not 1 <= depth <= self.rank.factor_count:
             raise ValueError("prime partial stage depth is outside the source")
         if self._depth == depth:
@@ -143,7 +143,7 @@ class PrimePartialSuccessorQuery:
 
     def count_primes(self, lower: int, upper: int, depth: int) -> int:
         """Count primes in ``[lower, upper)`` from one admitted prefix image."""
-        self._check_open()
+        self.check_open()
         if (
             type(lower) is not int
             or type(upper) is not int

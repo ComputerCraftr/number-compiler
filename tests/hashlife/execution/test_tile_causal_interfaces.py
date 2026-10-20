@@ -23,6 +23,7 @@ from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 from number_compiler.hashlife.tiles.tile_results import ResultLease
 from number_compiler.resources.ledger import LedgerSnapshot, ResourceLedger
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
+from tests.support.causal_frames import initial_causal_state, run_causal_frame
 from tests.support.tile_kernel import (
     literal_tile_output,
     make_tile_from_symbols,
@@ -280,9 +281,13 @@ def test_composite_interface_pins_completed_subresults_to_issued_application() -
     node = tiles.resolve(source.tile)
     assert node.left is not None
     engine = CausalTileEngine(scheduler)
-    left, right = engine._initial(action, 0), engine._initial(action, 1)
+    left, right = (
+        initial_causal_state(engine, action, 0),
+        initial_causal_state(engine, action, 1),
+    )
     left_context, _right_context = engine.child_states(action, source.tile, left, right)
-    completed = engine._run(
+    completed = run_causal_frame(
+        engine,
         OutputFrame((action, node.left, *left_context)),
         tile_result=True,
         return_result=True,
@@ -303,7 +308,7 @@ def test_composite_interface_pins_completed_subresults_to_issued_application() -
             binding[0] == application.identity
             for binding in scheduler.audit_snapshot().pins
         )
-        if not completed._closed:
+        if not completed.audit_snapshot().closed:
             completed.close()
         source.close()
 

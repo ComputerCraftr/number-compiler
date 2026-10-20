@@ -267,7 +267,7 @@ class BoundaryActionArena:
         handle.validate(self.token, "diamond-boundary-action", size=len(self.actions))
         return self.actions[handle.local_id]
 
-    def _domain_size(self, action: ActionProgramID, side: int) -> int | None:
+    def domain_size(self, action: ActionProgramID, side: int) -> int | None:
         node = self.temporals.resolve(action)
         self._side(side)
         if node.kind == "identity":
@@ -279,7 +279,7 @@ class BoundaryActionArena:
         )
         return len(primitive.domain(BoundarySide(side)))
 
-    def _signature(
+    def action_signature(
         self,
         input_action: ActionProgramID,
         input_side: int,
@@ -305,7 +305,7 @@ class BoundaryActionArena:
             input_side,
             output_action,
             output_side,
-            self._domain_size(input_action, input_side),
+            self.domain_size(input_action, input_side),
         )
 
     def _state(self, node: BoundaryStateNode) -> BoundaryStateID:
@@ -327,7 +327,7 @@ class BoundaryActionArena:
         self._side(side)
         if type(value) is not int or value < 0 or value.bit_length() > 64:
             raise ValueError("invalid primitive boundary state")
-        size = self._domain_size(action, side)
+        size = self.domain_size(action, side)
         if size is None or value >= size:
             raise ValueError("literal outside complete primitive boundary domain")
         return self._state(BoundaryStateNode(action, side, value))
@@ -385,7 +385,7 @@ class BoundaryActionArena:
         self, state: BoundaryStateID, input_action: ActionProgramID, input_side: int
     ) -> BoundaryActionID:
         output = self.state(state)
-        signature = self._signature(
+        signature = self.action_signature(
             input_action, input_side, output.action, output.side
         )
         return self._action(
@@ -446,7 +446,9 @@ class BoundaryActionArena:
         self._side(step.side)
         previous, anchor = self.action(step.previous), self.state(step.anchor)
         self.validate_binding(step.provider)
-        expected = self._signature(step.first, 1 - step.side, step.second, step.side)
+        expected = self.action_signature(
+            step.first, 1 - step.side, step.second, step.side
+        )
         if previous.signature != expected or previous.kind == "invalid":
             raise ValueError(
                 "previous continuation does not match substituted interface"
@@ -464,7 +466,7 @@ class BoundaryActionArena:
         input_side: int,
     ) -> BoundaryActionID:
         """Reduce exactly one certified primitive domain, never a composed one."""
-        size = self._domain_size(input_action, input_side)
+        size = self.domain_size(input_action, input_side)
         if size is None or len(values) != size:
             raise ValueError("finite function must cover its complete primitive domain")
         outputs = [self.state(value) for value in values]
@@ -474,7 +476,9 @@ class BoundaryActionArena:
             for value in outputs
         ):
             raise ValueError("finite function values have incompatible codomains")
-        signature = self._signature(input_action, input_side, first.action, first.side)
+        signature = self.action_signature(
+            input_action, input_side, first.action, first.side
+        )
         counters: dict[str, int] = {}
 
         def measure(name: str, value: int = 1) -> None:

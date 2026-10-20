@@ -6,8 +6,9 @@ factored decision diagrams; no spatial word or temporal trajectory is stored.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, MutableMapping, MutableSequence, Sequence
+from collections.abc import Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Literal, Protocol, cast
 
 from number_compiler.arithmetic.contracts.block_effect import (
@@ -35,6 +36,9 @@ from number_compiler.arithmetic.functions.finite_port_action import (
     PortVariable,
 )
 from number_compiler.arithmetic.radix_division import SymbolicBinaryDivisionEffect
+from number_compiler.hashlife.actions.diamond_storage_snapshot import (
+    DiamondKernelStorageSnapshot,
+)
 from number_compiler.hashlife.execution.tile_execution_adapter import FamilyTileHooks
 from number_compiler.hashlife.interfaces.primitive_behavior import (
     MAX_PRIMITIVE_BEHAVIOR_TABLE_ENTRIES,
@@ -42,10 +46,10 @@ from number_compiler.hashlife.interfaces.primitive_behavior import (
     LocalSymmetryWitness,
     PrimitiveBehaviorQuotient,
     PrimitiveBehaviorWork,
-    _capture_primitive_behavior,
-    _minimize_primitive_behavior,
+    capture_primitive_behavior_with_validator,
     certify_local_symmetry,
     identity_symmetry,
+    minimize_primitive_behavior_with_validator,
     primitive_behavior_table_slots,
 )
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
@@ -55,6 +59,8 @@ from number_compiler.resources.metric_keys import (
     hashlife_interfaces as _interfaces_keys,
 )
 from number_compiler.resources.metric_keys import shared as _shared_keys
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
+from number_compiler.resources.stores import LedgerList
 
 
 class _BoundedBoundaryUniverse(Protocol):
@@ -124,7 +130,7 @@ class PrimitiveKernel:
 
     def decode(self, side: BoundarySide, state: int) -> BoundaryState:
         domain = self.domain(side)
-        self._check(state, self._domain_count(side))
+        self.validate_atom_index(state, self._domain_count(side))
         if type(self.effect) is SymbolicBinaryDivisionEffect:
             return state
         return domain[state]
@@ -134,8 +140,8 @@ class PrimitiveKernel:
 
     def advance(self, side: BoundarySide, state: int, symbol: int) -> int:
         domain = self.domain(side)
-        self._check(state, self._domain_count(side))
-        self._check(symbol, self.blank + 1)
+        self.validate_atom_index(state, self._domain_count(side))
+        self.validate_atom_index(symbol, self.blank + 1)
         self.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_TRANSITION_EVALUATIONS)
         self.ledger.bump(_shared_keys.PRIMITIVE_TRANSITION_EVALUATIONS)
         behavior = self.behavior
@@ -162,9 +168,9 @@ class PrimitiveKernel:
         return self.encode(side, self.effect.advance(side, domain[state], symbol))
 
     def emit(self, left: int, symbol: int, right: int) -> int:
-        self._check(left, self.left_count)
-        self._check(right, self.right_count)
-        self._check(symbol, self.blank + 1)
+        self.validate_atom_index(left, self.left_count)
+        self.validate_atom_index(right, self.right_count)
+        self.validate_atom_index(symbol, self.blank + 1)
         self.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_OUTPUT_EVALUATIONS)
         self.ledger.bump(_shared_keys.PRIMITIVE_OUTPUT_EVALUATIONS)
         if type(self.effect) is SymbolicBinaryDivisionEffect:
@@ -177,7 +183,7 @@ class PrimitiveKernel:
                 symbol,
                 self.behavior.right_classes[right],
             )
-        self._check(result, self.blank + 1)
+        self.validate_atom_index(result, self.blank + 1)
         return self.ledger.observe_arithmetic(result)
 
     def observe(self, left: int, symbol: int, right: int) -> tuple[int, ...]:
@@ -186,9 +192,9 @@ class PrimitiveKernel:
         A family may attach a source-owned occurrence observer. Generic
         kernels default to the identity occurrence cocycle.
         """
-        self._check(left, self.left_count)
-        self._check(right, self.right_count)
-        self._check(symbol, self.blank + 1)
+        self.validate_atom_index(left, self.left_count)
+        self.validate_atom_index(right, self.right_count)
+        self.validate_atom_index(symbol, self.blank + 1)
         self.ledger.bump(_interfaces_keys.PRIMITIVE_OCCURRENCE_OBSERVATION_EVALUATIONS)
         if self.behavior is not None:
             return self.behavior.observation(
@@ -203,7 +209,7 @@ class PrimitiveKernel:
 
     def is_absorbing(self, side: BoundarySide, state: int) -> bool:
         """Check the complete primitive alphabet, never a sampled input word."""
-        self._check(state, self._domain_count(side))
+        self.validate_atom_index(state, self._domain_count(side))
         self.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_ABSORBER_CHECKS)
         if type(self.effect) is NonblankBlockEffect:
             return state == 1
@@ -213,7 +219,7 @@ class PrimitiveKernel:
         )
 
     @staticmethod
-    def _check(value: int, size: int) -> None:
+    def validate_atom_index(value: int, size: int) -> None:
         if type(value) is not int or not 0 <= value < size:
             raise ValueError("value outside primitive interface")
 
@@ -243,7 +249,7 @@ class FiniteExpression:
 
 
 @dataclass(frozen=True, slots=True)
-class _KernelApplication:
+class KernelApplication:
     kernel: ActionProgramID
     operation: Literal["advance", "emit"]
     side: int
@@ -251,7 +257,7 @@ class _KernelApplication:
 
 
 @dataclass(frozen=True, slots=True)
-class _KernelTemplateKey:
+class KernelTemplateKey:
     kernel: ActionProgramID
     operation: Literal["advance", "emit"]
     side: int
@@ -259,7 +265,7 @@ class _KernelTemplateKey:
 
 
 @dataclass(frozen=True, slots=True)
-class _KernelTemplate:
+class KernelTemplate:
     parameters: tuple[TransferSummaryID, ...]
     function: TransferSummaryID
 
@@ -285,13 +291,13 @@ class DiamondKernelArena:
         self._expression_key_owner = self.ledger.register(
             prefix + "-expression-ids", "transfer_interner"
         )
-        self._kernels: MutableSequence[PrimitiveKernel] = self.ledger.make_list(
+        self._kernels: LedgerList[PrimitiveKernel] = self.ledger.make_list(
             self._kernel_owner
         )
         self._kernel_ids: MutableMapping[object, ActionProgramID] = (
             self.ledger.make_dict(self._key_owner)
         )
-        self._expressions: MutableSequence[FiniteExpression] = self.ledger.make_list(
+        self._expressions: LedgerList[FiniteExpression] = self.ledger.make_list(
             self._expression_owner
         )
         self._expression_ids: MutableMapping[FiniteExpression, TransferSummaryID] = (
@@ -324,18 +330,16 @@ class DiamondKernelArena:
             payloads=lambda: self._local_symmetries.items(),
         )
         application_owner = self.ledger.register(prefix + "-applications", "query_memo")
-        self._applications: OwnedMemo[_KernelApplication, TransferSummaryID] = (
-            OwnedMemo(
-                self.ledger,
-                application_owner,
-                evictable=True,
-                composition_entries=True,
-            )
+        self._applications: OwnedMemo[KernelApplication, TransferSummaryID] = OwnedMemo(
+            self.ledger,
+            application_owner,
+            evictable=True,
+            composition_entries=True,
         )
         template_owner = self.ledger.register(
             prefix + "-templates", "finite_kernel_template"
         )
-        self._templates: OwnedMemo[_KernelTemplateKey, _KernelTemplate] = OwnedMemo(
+        self._templates: OwnedMemo[KernelTemplateKey, KernelTemplate] = OwnedMemo(
             self.ledger,
             template_owner,
             nodes_per_entry=1,
@@ -499,19 +503,19 @@ class DiamondKernelArena:
             symmetry: CertifiedLocalSymmetry | None = None
             if has_runtime_behavior:
                 identity_validator = SemanticIdentityValidator()
-                source = SemanticIdentity._from_validator(
+                source = SemanticIdentity.from_validator(
                     SemanticIdentityDomain.PRIMITIVE_BEHAVIOR,
                     ("primitive-behavior", key),
                     identity_validator,
                 )
                 work = PrimitiveBehaviorWork()
                 try:
-                    table = _capture_primitive_behavior(
+                    table = capture_primitive_behavior_with_validator(
                         raw_kernel,
                         source,
                         validator=identity_validator,
                     )
-                    behavior = _minimize_primitive_behavior(
+                    behavior = minimize_primitive_behavior_with_validator(
                         table,
                         work=work,
                         validator=identity_validator,
@@ -542,7 +546,7 @@ class DiamondKernelArena:
             )
         except BaseException:
             if identity_validator is not None:
-                identity_validator._discard()
+                identity_validator.discard()
             for owner, entries, nodes in reversed(reservations):
                 self.ledger.release(owner, entries=entries, nodes=nodes)
             self.ledger.bump(_interfaces_keys.PRIMITIVE_BEHAVIORAL_QUOTIENT_FAILURES)
@@ -618,6 +622,37 @@ class DiamondKernelArena:
                     values.append(target)
         return tuple(values)
 
+    def storage_is_registered(self, actual: Mapping[int, object]) -> bool:
+        return (
+            actual.get(self._kernel_owner) is self._kernels
+            and actual.get(self._expression_owner) is self._expressions
+        )
+
+    def audit_snapshot(self) -> DiamondKernelStorageSnapshot:
+        return DiamondKernelStorageSnapshot(
+            self._kernel_owner,
+            self._expression_owner,
+            id(self._kernels),
+            id(self._expressions),
+            self._kernels.audit_view(),
+            self._expressions.audit_view(),
+        )
+
+    def template_audit_snapshot(
+        self,
+    ) -> OwnedMemoAuditSnapshot[KernelTemplateKey, KernelTemplate]:
+        """Expose retained primitive templates through the memo audit interface."""
+        return self._templates.audit_snapshot()
+
+    @property
+    def behavioral_quotients(self) -> Mapping[int, PrimitiveBehaviorQuotient]:
+        return MappingProxyType(self._behavioral_quotients)
+
+    @property
+    def kernel_bindings(self) -> Mapping[object, ActionProgramID]:
+        """Read canonical primitive bindings without publishing a new kernel."""
+        return self._kernel_ids
+
     def kernel(self, handle: ActionProgramID) -> PrimitiveKernel:
         if type(handle) is not ActionProgramID:
             raise TypeError("expected primitive kernel ID")
@@ -678,9 +713,9 @@ class DiamondKernelArena:
         )
         return self._expressions[handle.local_id]
 
-    def _intern_expression(self, expression: FiniteExpression) -> TransferSummaryID:
+    def intern_expression(self, expression: FiniteExpression) -> TransferSummaryID:
         for bit in expression.bits:
-            self.functions._resolve(bit)
+            self.functions.resolve_index(bit)
         found = self._expression_ids.get(expression)
         if found is not None:
             self.ledger.bump(_interfaces_keys.FINITE_EXPRESSION_INTERNER_REQUESTS)
@@ -707,10 +742,10 @@ class DiamondKernelArena:
         return handle
 
     def constant(self, domain: int, value: int) -> TransferSummaryID:
-        PrimitiveKernel._check(value, domain)
+        PrimitiveKernel.validate_atom_index(value, domain)
         if type(domain) is not int or not 1 <= domain <= 1 << 64:
             raise ValueError("invalid finite domain")
-        return self._intern_expression(
+        return self.intern_expression(
             FiniteExpression(
                 domain,
                 tuple(
@@ -727,7 +762,7 @@ class DiamondKernelArena:
             or not 1 <= domain <= 1 << 64
         ):
             raise ValueError("invalid finite variable")
-        return self._intern_expression(
+        return self.intern_expression(
             FiniteExpression(
                 domain,
                 tuple(
@@ -747,7 +782,7 @@ class DiamondKernelArena:
             int(self.functions.apply(bit, inputs)) << index
             for index, bit in enumerate(node.bits)
         )
-        PrimitiveKernel._check(value, node.domain)
+        PrimitiveKernel.validate_atom_index(value, node.domain)
         return value
 
     def substitute(
@@ -760,8 +795,8 @@ class DiamondKernelArena:
         for variable, value in substitutions.items():
             if type(variable) is not PortVariable:
                 raise ValueError("invalid substitution variable")
-            self.functions._resolve(value)
-        return self._intern_expression(
+            self.functions.resolve_index(value)
+        return self.intern_expression(
             FiniteExpression(
                 node.domain,
                 tuple(
@@ -777,10 +812,10 @@ class DiamondKernelArena:
         no: TransferSummaryID,
     ) -> TransferSummaryID:
         first, second = self.expression(yes), self.expression(no)
-        self.functions._resolve(condition)
+        self.functions.resolve_index(condition)
         if first.domain != second.domain:
             raise ValueError("finite choice codomains disagree")
-        return self._intern_expression(
+        return self.intern_expression(
             FiniteExpression(
                 first.domain,
                 tuple(
@@ -831,7 +866,7 @@ class DiamondKernelArena:
         )
         if tuple(node.domain for node in nodes) != domains:
             raise ValueError("primitive expression domains disagree")
-        key = _KernelApplication(kernel, operation, int(side), arguments)
+        key = KernelApplication(kernel, operation, int(side), arguments)
         self.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_EXPRESSION_REQUESTS)
         found = self._applications.get(key)
         if found is not None:
@@ -858,9 +893,7 @@ class DiamondKernelArena:
                 for variable_bit, replacement in zip(
                     self.expression(parameter).bits, actual.bits, strict=True
                 ):
-                    variable = self.functions._nodes[
-                        self.functions._resolve(variable_bit)
-                    ].variable
+                    variable = self.functions.decision_record(variable_bit).variable
                     if variable is None:
                         continue  # This primitive argument was fixed in the template key.
                     replacements[variable] = replacement
@@ -876,8 +909,8 @@ class DiamondKernelArena:
         side: BoundarySide,
         domains: tuple[int, ...],
         constants: tuple[int | None, ...],
-    ) -> _KernelTemplate:
-        key = _KernelTemplateKey(kernel, operation, int(side), constants)
+    ) -> KernelTemplate:
+        key = KernelTemplateKey(kernel, operation, int(side), constants)
         self.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_TEMPLATE_REQUESTS)
         found = self._templates.get(key)
         if found is not None:
@@ -899,7 +932,7 @@ class DiamondKernelArena:
             side,
             tuple(self.expression(value) for value in parameters),
         )
-        template = _KernelTemplate(parameters, function)
+        template = KernelTemplate(parameters, function)
         self._templates[key] = template
         self.ledger.bump(_interfaces_keys.DIAMOND_KERNEL_TEMPLATE_EVALUATIONS)
         return template

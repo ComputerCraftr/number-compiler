@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import fields
 from typing import Never, cast
 
@@ -276,16 +277,20 @@ def test_failed_composition_reservation_publishes_no_partial_state() -> None:
     ledger.tighten_limits(ledger.nodes, ledger.entries)
     before = (
         arena.action_count,
-        len(arena._compositions),
-        len(arena._witnesses),
+        arena.metrics.composition_cache_entries,
+        len(
+            cast(Mapping[object, object], object.__getattribute__(arena, "_witnesses"))
+        ),
         ledger.snapshot(),
     )
     with pytest.raises(BlockContextBudgetExceeded):
         arena.compose(a, b)
     after = (
         arena.action_count,
-        len(arena._compositions),
-        len(arena._witnesses),
+        arena.metrics.composition_cache_entries,
+        len(
+            cast(Mapping[object, object], object.__getattribute__(arena, "_witnesses"))
+        ),
         ledger.snapshot(),
     )
     assert after[:3] == before[:3]

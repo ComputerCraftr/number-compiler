@@ -134,7 +134,7 @@ def canonicalize_digit_transducer(transducer: DigitTransducer) -> DigitTransduce
             if nq not in mapping:
                 mapping[nq] = len(order)
                 order.append(nq)
-    transition = {}
+    transition: dict[tuple[int, int], tuple[int, int]] = {}
     for old in order:
         q = mapping[old]
         for digit in range(transducer.base):
@@ -450,7 +450,7 @@ def synthesize_multiply_add(
                 states.add(nc)
                 todo.append(nc)
     st = tuple(sorted(states))
-    trans = {}
+    trans: dict[tuple[int, int], tuple[int, int]] = {}
     for c in st:
         for a in range(b):
             z = m * a + c
@@ -464,7 +464,7 @@ def synthesize_divide(base: int, divisor: int) -> DigitTransducer:
     if b < 2 or d <= 0:
         raise ValueError((base, divisor))
     states = tuple(range(d))
-    trans = {}
+    trans: dict[tuple[int, int], tuple[int, int]] = {}
     for r in states:
         for a in range(b):
             z = r * b + a

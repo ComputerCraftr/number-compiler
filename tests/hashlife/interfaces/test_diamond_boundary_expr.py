@@ -9,7 +9,7 @@ from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     StateSort,
 )
 from number_compiler.hashlife.interfaces.expression_transactions import (
-    _Transaction as _canonical_Transaction,
+    ExpressionTransaction as _canonicalExpressionTransaction,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from tests.support.assertions import assert_rejected_atomically
@@ -233,11 +233,11 @@ def test_unaffected_substitution_and_closed_beta_skip_large_argument_dags(
     assert arena.substitute(large, {x: z}) == large
     assert ledger.counters.get("boundary_expression_rewrite_visits", 0) == before
     result = arena.substitute(large, {y: z})
-    monkeypatch.setattr(
-        _canonical_Transaction,
-        "rewrite",
-        lambda *args: pytest.fail("warm substitution rewrote children"),
-    )
+
+    def forbidden_rewrite(*args: object) -> object:
+        pytest.fail("warm substitution rewrote children")
+
+    monkeypatch.setattr(_canonicalExpressionTransaction, "rewrite", forbidden_rewrite)
     assert arena.substitute(large, {y: z, x: y}) == result
 
 
@@ -269,7 +269,7 @@ def test_finite_apply_is_extensional_and_rejects_bad_functions_before_warm() -> 
     foreign_port = input_expression(
         kernels, domain, PortVariable(0, 0, "wrong-namespace", 0)
     )
-    invalid_range = kernels._intern_expression(
+    invalid_range = kernels.intern_expression(
         FiniteExpression(
             domain,
             tuple(
@@ -300,11 +300,11 @@ def test_closure_calls_are_opaque_to_capture_safe_outer_substitution(
     assert arena.node(call).closure == program
     assert arena.node(call).children == (x.local_id,)
     original_expand = arena.closures.expand
-    monkeypatch.setattr(
-        arena.closures,
-        "expand",
-        lambda *args: pytest.fail("outer substitution expanded an opaque body"),
-    )
+
+    def forbidden_expand(*args: object) -> object:
+        pytest.fail("outer substitution expanded an opaque body")
+
+    monkeypatch.setattr(arena.closures, "expand", forbidden_expand)
     changed = arena.substitute(call, {x: y})
     assert changed == arena.call(program, (y,))
     function = arena.lambda_(x, call)

@@ -116,7 +116,7 @@ class ReverseActionArena:
             raise
         self.identity, self.primitive = identity, primitive
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         if self._closed:
             raise ValueError("disposed reverse action arena")
 
@@ -150,7 +150,7 @@ class ReverseActionArena:
         return handle
 
     def node(self, action: ReverseActionID) -> ReverseActionNode:
-        self._check_open()
+        self.check_open()
         if type(action) is not ReverseActionID:
             raise TypeError("reverse/add image requires a scoped action ID")
         action.validate(self.owner, self._KIND, size=len(self._nodes))
@@ -187,7 +187,7 @@ class ReverseActionArena:
         return node
 
     def admit_source(self, seed: int, base: int) -> ReverseSource:
-        self._check_open()
+        self.check_open()
         seed = require_integer(seed, "seed", 0)
         base = require_integer(base, "base", 2)
         if self._source_authority is not None:
@@ -210,7 +210,7 @@ class ReverseActionArena:
         return handle
 
     def source(self, source: ReverseSource) -> ExactSource:
-        self._check_open()
+        self.check_open()
         if type(source) is not ReverseSource:
             raise TypeError("reverse/add image requires a scoped source ID")
         source.validate(self.owner, self._SOURCE_KIND, size=len(self._sources))
@@ -231,7 +231,7 @@ class ReverseActionArena:
         return record.exact
 
     def action(self, steps: int) -> ReverseActionID:
-        self._check_open()
+        self.check_open()
         steps = require_integer(steps, "reverse/add steps", 0)
         found = self._normal.get(steps)
         if found is not None:

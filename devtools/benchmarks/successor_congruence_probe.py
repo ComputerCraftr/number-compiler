@@ -66,7 +66,7 @@ def _reverse_witness() -> ReverseWitness:
         raise AssertionError("reverse linear operator did not alias")
     if len({state.cache_identity.exact_cache_key for state in states}) != 3:
         raise AssertionError("reverse exact target keys aliased")
-    targets = []
+    targets: list[list[int]] = []
     for state in states:
         target, _ = engine.advance_forcing_power(state, 1)
         targets.append(list(engine.forcing.pair_values(target)))
@@ -97,7 +97,7 @@ def _collatz_witness() -> CollatzWitness:
         == states[1].cache_identity.exact_cache_key
     ):
         raise AssertionError("Collatz exact target keys aliased")
-    targets = []
+    targets: list[int] = []
     audit = SuccessorCongruenceAudit()
     for source, value in zip(states, (3, 11), strict=True):
         target, _ = engine.advance_event_power(CollatzRadixField.from_value(value), 1)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import (
@@ -94,7 +96,10 @@ def test_fused_workspace_inventory_reconciles_active_exhausted_and_cleanup() -> 
             ports,
             adapter.wiring(action),
         )
-        workspace = adapter._fused_workspace
+        workspace = cast(
+            FusedTraversalWorkspace,
+            object.__getattribute__(adapter, "_fused_workspace"),
+        )
         with workspace.scope(1, len(ports)):
             for ready in (False, False, True):
                 workspace.append_frame((source.tile, ports, ready))

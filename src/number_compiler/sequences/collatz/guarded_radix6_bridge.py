@@ -77,7 +77,7 @@ class FiveBand:
         return FiveBand(lower, upper) if lower < upper else None
 
 
-def _merge_bands(bands: tuple[FiveBand, ...]) -> tuple[FiveBand, ...]:
+def merge_bands(bands: tuple[FiveBand, ...]) -> tuple[FiveBand, ...]:
     if not bands:
         return ()
     result: list[FiveBand] = []
@@ -90,7 +90,7 @@ def _merge_bands(bands: tuple[FiveBand, ...]) -> tuple[FiveBand, ...]:
     return tuple(result)
 
 
-def _transport_bands(
+def transport_bands(
     bands: tuple[FiveBand, ...], odds: int, halvings: int
 ) -> tuple[FiveBand, ...]:
     transported: list[FiveBand] = []
@@ -137,7 +137,7 @@ def _vp(value: int, prime: int) -> int:
     return count
 
 
-def _common_plus_one_valuation(cylinder: CollatzTwoSidedCylinder, prime: int) -> int:
+def common_plus_one_valuation(cylinder: CollatzTwoSidedCylinder, prime: int) -> int:
     """Exact *lower bound* on v_p(x+1) for every x in the cylinder.
 
     When more than one source is present, no source witness can replace the
@@ -148,7 +148,7 @@ def _common_plus_one_valuation(cylinder: CollatzTwoSidedCylinder, prime: int) ->
     return min(_vp(cylinder.residue + 1, prime), _vp(cylinder.modulus, prime))
 
 
-def _trace_is_zero_tail(trace: MacroTraceGrammar) -> bool:
+def trace_is_zero_tail(trace: MacroTraceGrammar) -> bool:
     """Check the existing trace grammar without materializing its word."""
     if type(trace) is not MacroTraceGrammar:
         return False
@@ -244,7 +244,7 @@ class GuardedTemporalCarryCounts:
         object.__setattr__(self, "_issued_snapshot", self._snapshot())
 
     @classmethod
-    def _create_checked(
+    def create_checked(
         cls,
         guard: SourceCongruence,
         steps: int,
@@ -304,7 +304,7 @@ class GuardedTemporalCarryCounts:
             tagged(self.scalar_steps),
         )
 
-    def _verify_issued(self) -> None:
+    def verify_issued(self) -> None:
         try:
             valid = (
                 object.__getattribute__(self, "_issuer") is _CARRY_COUNTS_ISSUER
@@ -315,6 +315,11 @@ class GuardedTemporalCarryCounts:
             valid = False
         if not valid:
             raise ValueError("guarded carry count issuance seal is invalid")
+
+    def audit_snapshot(self) -> tuple[object, ...]:
+        """Return immutable validated fields for external candidate auditing."""
+        self.verify_issued()
+        return self._snapshot()
 
     def __post_init__(self) -> None:
         if (
@@ -444,15 +449,15 @@ class GuardedRadix6Bridge:
             if self.target_coverage is not None
             else None
         )
-        v2 = _common_plus_one_valuation(inlet, 2)
-        v3 = _common_plus_one_valuation(inlet, 3)
+        v2 = common_plus_one_valuation(inlet, 2)
+        v3 = common_plus_one_valuation(inlet, 3)
         low = min(v2, v3)
-        source_fives = _merge_bands(
+        source_fives = merge_bands(
             self.source_fives + ((FiveBand(0, low),) if low else ())
         )
-        inherited = _merge_bands(
+        inherited = merge_bands(
             self.inherited_fives
-            + _transport_bands(source_fives, self.odd_events, self.action.steps)
+            + transport_bands(source_fives, self.odd_events, self.action.steps)
         )
         born = self.born_fives
         if self.centered_at_minus_one:
@@ -462,8 +467,8 @@ class GuardedRadix6Bridge:
                 )
             digits = min(v2 - self.action.steps, v3 + self.odd_events)
             if digits:
-                born = _merge_bands(born + (FiveBand(0, digits),))
-        bands = _merge_bands(self.target_fives + inherited + born)
+                born = merge_bands(born + (FiveBand(0, digits),))
+        bands = merge_bands(self.target_fives + inherited + born)
         k = (1 << self.action.steps) - self.action.gain
         d1 = k * inlet.first - self.action.offset
         d2 = k * inlet.last - self.action.offset
@@ -502,16 +507,16 @@ class GuardedRadix6Bridge:
             joined_clock.scale.halvings != action.steps
         ):
             raise ArithmeticError("joined upper Sturmian factor lost event clock")
-        inherited = _merge_bands(
-            _transport_bands(self.inherited_fives, after.odd_events, after.action.steps)
+        inherited = merge_bands(
+            transport_bands(self.inherited_fives, after.odd_events, after.action.steps)
             + after.inherited_fives
         )
-        born = _merge_bands(
-            _transport_bands(self.born_fives, after.odd_events, after.action.steps)
+        born = merge_bands(
+            transport_bands(self.born_fives, after.odd_events, after.action.steps)
             + after.born_fives
         )
-        outputs = _merge_bands(
-            _transport_bands(self.target_fives, after.odd_events, after.action.steps)
+        outputs = merge_bands(
+            transport_bands(self.target_fives, after.odd_events, after.action.steps)
             + after.target_fives
         )
         denominator = 1 << action.steps
@@ -612,7 +617,7 @@ class GuardedRadix6Bridge:
             raise ArithmeticError(
                 "weighted carry program disagrees with the issued macro"
             )
-        return GuardedTemporalCarryCounts._create_checked(
+        return GuardedTemporalCarryCounts.create_checked(
             guard, self.action.steps, odds, tens, hundreds, current % 100
         )
 
@@ -626,7 +631,7 @@ class GuardedRadix6Bridge:
         """
         if not self.inlet.contains(source) or type(trace) is not MacroTraceGrammar:
             raise ValueError("upper Sturmian request lacks source/trace authority")
-        if not _trace_is_zero_tail(trace):
+        if not trace_is_zero_tail(trace):
             return None
         if source % 10 != 3 or trace.length == 0:
             return None
@@ -730,7 +735,7 @@ def certify_guarded_radix6_bridge(
         else None
     )
     starts = _coverage_fives(source_cover)
-    inherited = _merge_bands(
+    inherited = merge_bands(
         tuple(
             survived
             for band in starts
@@ -740,8 +745,8 @@ def certify_guarded_radix6_bridge(
     centered = action.offset + (1 << action.steps) == action.gain
     born: tuple[FiveBand, ...] = ()
     if centered:
-        v2 = _common_plus_one_valuation(inlet, 2)
-        v3 = _common_plus_one_valuation(inlet, 3)
+        v2 = common_plus_one_valuation(inlet, 2)
+        v3 = common_plus_one_valuation(inlet, 3)
         if v2 < action.steps:
             raise ArithmeticError(
                 "centered Collatz cylinder has incomplete division guard"
@@ -750,7 +755,7 @@ def certify_guarded_radix6_bridge(
         if digits:
             born = (FiveBand(0, digits),)
     covered = _coverage_fives(target_cover)
-    joined = _merge_bands(inherited + born + covered)
+    joined = merge_bands(inherited + born + covered)
     # A true band must fit the actual target width for *all* source values.
     if target_cover is not None and any(b.upper > target_cover.width for b in joined):
         raise ArithmeticError("forced five interval extends beyond certified width")

@@ -32,11 +32,11 @@ from devtools.experiments.power_numbers.special_successor_models import (
 )
 from devtools.verification.factorization_truth import factor_multiplicities_truth
 from devtools.verification.oracles.special_binary_jump import (
-    _fermat_carrier_proof,
-    _mersenne_carrier_proof,
-    _minimized_carrier,
+    fermat_carrier_proof,
     fermat_radix_orbit_representative,
+    mersenne_carrier_proof,
     mersenne_sign_representative,
+    minimized_carrier,
 )
 from devtools.verification.quotient_synthesis import (
     ObserverFeature,
@@ -53,7 +53,7 @@ from number_compiler.arithmetic.functions.finite_unary import (
 from number_compiler.arithmetic.polynomials.two_primary_filtration import (
     pure_two_primary_image_filtration,
 )
-from number_compiler.sequences.power_numbers.etale_factor import _quadratic_mul_pair
+from number_compiler.sequences.power_numbers.etale_factor import quadratic_mul_pair
 from number_compiler.sequences.prime.automaton import boolean_anf_metrics
 from number_compiler.sequences.prime.set import jacobi_symbol
 
@@ -71,9 +71,9 @@ def _target_conflicts(values: tuple[object, ...], labels: tuple[bool, ...]) -> i
 
 def _image_audit(family: str, parameter: int, prime_case: bool) -> ImageFiltrationAudit:
     proof = (
-        _mersenne_carrier_proof(parameter, max_exponent=max(19, parameter))
+        mersenne_carrier_proof(parameter, max_exponent=max(19, parameter))
         if family == "mersenne"
-        else _fermat_carrier_proof(parameter, max_width=max(16, 1 << parameter))
+        else fermat_carrier_proof(parameter, max_width=max(16, 1 << parameter))
     )
     moore = minimize_unary_moore(proof.transition, proof.outputs)
     filtration = unary_image_filtration(proof.transition)
@@ -134,7 +134,7 @@ def residue_constraint_audits() -> tuple[ResidueConstraintAudit, ...]:
     # split/nonsplit stable-core boundary.  M11 demonstrates why +1 cannot be
     # promoted through a composite ring.
     for p in (7, 11, 13, 17):
-        proof = _mersenne_carrier_proof(p, max_exponent=max(19, p))
+        proof = mersenne_carrier_proof(p, max_exponent=max(19, p))
         filt = unary_image_filtration(proof.transition)
         first_image = {proof.transition[state] for state in range(proof.classes)}
         stable = {state for state, depth in enumerate(filt.depth_ids) if depth < 0}
@@ -159,7 +159,7 @@ def residue_constraint_audits() -> tuple[ResidueConstraintAudit, ...]:
     # Fermat: radix phases have Jacobi(2/F_n)=+1 for n>=2, so Jacobi(x/F_n)=-1
     # is a sound no-square/no-first-image certificate even for composite F_n.
     for n in (3, 4):
-        proof = _fermat_carrier_proof(n)
+        proof = fermat_carrier_proof(n)
         modulus = (1 << (1 << n)) + 1
         first_image = {proof.transition[state] for state in range(proof.classes)}
         fermat_values = tuple(
@@ -216,7 +216,7 @@ def residue_constraint_audits() -> tuple[ResidueConstraintAudit, ...]:
 
 
 def _fermat_static_features(index: int) -> tuple[ObserverFeature, ...]:
-    proof = _fermat_carrier_proof(index)
+    proof = fermat_carrier_proof(index)
     modulus = (1 << (1 << index)) + 1
     reps = proof.representatives
     features: list[ObserverFeature] = []
@@ -269,18 +269,19 @@ def _mersenne_static_features(exponent: int) -> tuple[ObserverFeature, ...]:
             )
         )
     for a, c in ((-2, 2), (1, -1), (1, 1), (0, 2), (0, -2)):
-        values = []
+        values: list[tuple[int, int]] = []
         for x in reps:
-            pair = []
+            pair: list[int] = []
             for y in (x, (-x) % modulus):
                 pair.append(jacobi_symbol(y * y + a * y + c, modulus))
-            values.append(tuple(sorted(pair)))
+            lower, upper = sorted(pair)
+            values.append((lower, upper))
         features.append(ObserverFeature(f"sign_jacobi_quad_{a}_{c}", tuple(values), 2))
     return tuple(features)
 
 
 def static_injection_audits() -> tuple[StaticInjectionAudit, ...]:
-    rows = []
+    rows: list[StaticInjectionAudit] = []
     for family, parameter in (
         ("fermat", 3),
         ("fermat", 4),
@@ -288,9 +289,9 @@ def static_injection_audits() -> tuple[StaticInjectionAudit, ...]:
         ("mersenne", 13),
     ):
         proof = (
-            _fermat_carrier_proof(parameter)
+            fermat_carrier_proof(parameter)
             if family == "fermat"
-            else _mersenne_carrier_proof(parameter)
+            else mersenne_carrier_proof(parameter)
         )
         moore = minimize_unary_moore(proof.transition, proof.outputs)
         features = (
@@ -319,7 +320,7 @@ def _raw_class_labels(family: str, parameter: int) -> tuple[tuple[int, ...], int
     if family == "mersenne":
         p = int(parameter)
         modulus = (1 << p) - 1
-        proof = _mersenne_carrier_proof(p)
+        proof = mersenne_carrier_proof(p)
         moore = minimize_unary_moore(proof.transition, proof.outputs)
         labels = tuple(
             moore.class_ids[mersenne_sign_representative(value, p)]
@@ -329,7 +330,7 @@ def _raw_class_labels(family: str, parameter: int) -> tuple[tuple[int, ...], int
     n = int(parameter)
     width = 1 << n
     modulus = (1 << width) + 1
-    proof = _fermat_carrier_proof(n)
+    proof = fermat_carrier_proof(n)
     moore = minimize_unary_moore(proof.transition, proof.outputs)
     _by_rep = {rep: index for index, rep in enumerate(proof.representatives)}
     raw_labels = [0] * modulus
@@ -344,7 +345,7 @@ def _raw_class_labels(family: str, parameter: int) -> tuple[tuple[int, ...], int
 
 
 def _base_digits_domain(length: int, base: int) -> tuple[int, ...]:
-    out = []
+    out: list[int] = []
     domain = 1
     while domain < length:
         out.append(int(base))
@@ -357,7 +358,7 @@ def _decision_dag_metrics(
 ) -> tuple[int, int]:
     domain = prod(bases)
     padded = labels + (-1,) * (domain - len(labels))
-    strides = []
+    strides: list[int] = []
     stride = 1
     for base in bases:
         strides.append(stride)
@@ -381,7 +382,9 @@ def _decision_dag_metrics(
         pos = order[level]
         step = strides[pos]
         base = bases[pos]
-        child_states = tuple((level + 1, index + digit * step) for digit in range(base))
+        child_states: tuple[tuple[int, int], ...] = tuple(
+            (level + 1, index + digit * step) for digit in range(base)
+        )
         if not expanded:
             stack.append((level, index, True))
             for child in reversed(child_states):
@@ -395,7 +398,7 @@ def _decision_dag_metrics(
 
 
 def structured_automaton_audits() -> tuple[StructuredAutomatonAudit, ...]:
-    rows = []
+    rows: list[StructuredAutomatonAudit] = []
     for family, parameter in (
         ("fermat", 3),
         ("fermat", 4),
@@ -430,12 +433,12 @@ def structured_automaton_audits() -> tuple[StructuredAutomatonAudit, ...]:
 
 
 def boolean_set_audits() -> tuple[BooleanSetAudit, ...]:
-    rows = []
+    rows: list[BooleanSetAudit] = []
     # Choose a middle layer where a low-degree Boolean-vector morphism would be
     # most valuable.  Use power-of-two domains only: M13 sign carrier and the
     # ordinary 16-bit slice of F4 (the exceptional -1 residue is excluded).
     p = 13
-    proof = _mersenne_carrier_proof(p)
+    proof = mersenne_carrier_proof(p)
     filt = unary_image_filtration(proof.transition)
     level = 6
     target = _filtration_target(filt.depth_ids, level)
@@ -447,7 +450,7 @@ def boolean_set_audits() -> tuple[BooleanSetAudit, ...]:
 
     n = 4
     width = 1 << n
-    proof = _fermat_carrier_proof(n)
+    proof = fermat_carrier_proof(n)
     filt = unary_image_filtration(proof.transition)
     level = 6
     target_carriers = _filtration_target(filt.depth_ids, level)
@@ -472,7 +475,7 @@ def _filtration_target(depth_ids: tuple[int, ...], level: int) -> set[int]:
     }
 
 
-def _exact_target_hitting_times(
+def exact_target_hitting_times(
     transition: tuple[int, ...],
     outputs: tuple[bool, ...],
 ) -> tuple[int | None, ...]:
@@ -526,13 +529,13 @@ def prime_group_depth_audits() -> tuple[PrimeGroupDepthAudit, ...]:
     ):
         theorem = pure_two_primary_image_filtration(family, parameter)
         proof = (
-            _fermat_carrier_proof(parameter)
+            fermat_carrier_proof(parameter)
             if family == "fermat"
-            else _mersenne_carrier_proof(parameter, max_exponent=max(19, parameter))
+            else mersenne_carrier_proof(parameter, max_exponent=max(19, parameter))
         )
-        moore, bounded_machine, bounded_source = _minimized_carrier(proof)
+        moore, bounded_machine, bounded_source = minimized_carrier(proof)
         filtration = unary_image_filtration(proof.transition)
-        hitting_times = _exact_target_hitting_times(proof.transition, proof.outputs)
+        hitting_times = exact_target_hitting_times(proof.transition, proof.outputs)
         target_depths = {
             filtration.depth_ids[index]
             for index, output in enumerate(proof.outputs)
@@ -607,13 +610,8 @@ def _v2_odd(value: int) -> tuple[int, int]:
     return exponent, value
 
 
-def _factorization(value: int) -> tuple[tuple[int, int], ...]:
-    """Complete bounded factorization for research truth labels only."""
-    return factor_multiplicities_truth(value)
-
-
 def _prime_divisors(value: int) -> tuple[int, ...]:
-    return tuple(prime for prime, _multiplicity in _factorization(value))
+    return tuple(prime for prime, _multiplicity in factor_multiplicities_truth(value))
 
 
 def _fermat_source_quotient_order(
@@ -630,15 +628,6 @@ def _fermat_source_quotient_order(
     return order
 
 
-def _quadratic_mul(
-    first: tuple[int, int],
-    second: tuple[int, int],
-    delta: int,
-    modulus: int,
-) -> tuple[int, int]:
-    return _quadratic_mul_pair(first, second, delta, modulus)
-
-
 def _quadratic_pow(
     value: tuple[int, int],
     exponent: int,
@@ -650,10 +639,10 @@ def _quadratic_pow(
     n = int(exponent)
     while n:
         if n & 1:
-            result = _quadratic_mul(result, base, delta, modulus)
+            result = quadratic_mul_pair(result, base, delta, modulus)
         n >>= 1
         if n:
-            base = _quadratic_mul(base, base, delta, modulus)
+            base = quadratic_mul_pair(base, base, delta, modulus)
     return result
 
 
@@ -696,7 +685,7 @@ def _crt_purity_audit(family: str, parameter: int) -> CRTPurityAudit:
         modulus = (1 << parameter) - 1
     else:
         raise ValueError(family)
-    factors = _factorization(modulus)
+    factors = factor_multiplicities_truth(modulus)
     components: list[LocalTwoPrimaryComponent] = []
     obstructions: list[str] = []
     if len(factors) != 1 or factors[0][1] != 1:

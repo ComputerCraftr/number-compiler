@@ -5,12 +5,15 @@ from __future__ import annotations
 import unittest
 from collections.abc import Generator
 from contextlib import contextmanager
+from typing import Protocol, cast
 from unittest.mock import patch
 
+from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.border_identity import (
     ENTRY_0563,
     BoundaryPathKind,
+    CollatzSegmentIdentity,
     GuardedBorderPath,
     NonBorderSegment,
 )
@@ -22,16 +25,73 @@ from number_compiler.sequences.collatz.innovation_carry_cocycle import (
     exact_source_symbol,
 )
 from number_compiler.sequences.collatz.innovation_port_moore import SIGNED_SYMBOLS
+from number_compiler.sequences.collatz.radial_boundary_coupling import (
+    CollatzRadialBoundarySeam,
+)
+from number_compiler.sequences.collatz.skew_cylinder_repeat import (
+    RepeatedWordMooreCylinder,
+)
 from number_compiler.sequences.collatz.temporal_run_quotient import (
     CollatzTemporalRunQuotient,
     compile_collatz_temporal_run_quotient,
 )
 from number_compiler.sequences.collatz.unified_skew_chain import (
+    BoundaryWitness,
+    FactorSpecs,
     UnifiedSkewChain,
     select_unified_skew_chain,
 )
 from number_compiler.sequences.collatz.unified_skew_clock import SkewQuadraticClock
 from tests.support.collatz_finite_trace import normalized_trace, physical_values
+
+
+class _UnifiedChainFactory(Protocol):
+    def __call__(
+        self,
+        source: int,
+        endpoint: int,
+        fields: DyadicTerminalFieldAction,
+        width_blank: BlankLedger,
+        clock: SkewQuadraticClock | None,
+        odd_symbols: int,
+        factors: FactorSpecs,
+        segment_identities: tuple[CollatzSegmentIdentity, ...],
+        first_boundary: tuple[int, BoundaryWitness] | None,
+        seams: tuple[CollatzRadialBoundarySeam, ...],
+        repeat_cylinder: RepeatedWordMooreCylinder | None = None,
+    ) -> UnifiedSkewChain: ...
+
+
+def _issue_unified_chain(
+    source: int,
+    endpoint: int,
+    fields: DyadicTerminalFieldAction,
+    width_blank: BlankLedger,
+    clock: SkewQuadraticClock | None,
+    odd_symbols: int,
+    factors: FactorSpecs,
+    segment_identities: tuple[CollatzSegmentIdentity, ...],
+    first_boundary: tuple[int, BoundaryWitness] | None,
+    seams: tuple[CollatzRadialBoundarySeam, ...],
+    repeat_cylinder: RepeatedWordMooreCylinder | None = None,
+) -> UnifiedSkewChain:
+    factory = cast(
+        _UnifiedChainFactory,
+        type.__getattribute__(UnifiedSkewChain, "_issue"),
+    )
+    return factory(
+        source,
+        endpoint,
+        fields,
+        width_blank,
+        clock,
+        odd_symbols,
+        factors,
+        segment_identities,
+        first_boundary,
+        seams,
+        repeat_cylinder,
+    )
 
 
 def required_quadratic_clock(chain: UnifiedSkewChain) -> SkewQuadraticClock:
@@ -197,8 +257,6 @@ class UnifiedSkewTerminalRegression(unittest.TestCase):
                 )
                 self.assertEqual(current, 1)
                 tape = result.innovation_observation
-                if tape is None:
-                    raise AssertionError("innovation observer was not published")
                 expected = tuple(exact_source_symbol(v, 49) for v in normalized)
                 self.assertEqual(
                     tuple(tape.symbol_counts),
@@ -386,7 +444,7 @@ class UnifiedSkewTerminalRegression(unittest.TestCase):
         # Keep the issued clock/seam shape intact and change only the source
         # residue, so this exercises source admission rather than shape rejection.
         with self.assertRaisesRegex(ValueError, "certify their source"):
-            UnifiedSkewChain._issue(
+            _issue_unified_chain(
                 chain.source ^ 1,
                 chain.endpoint,
                 chain.fields,

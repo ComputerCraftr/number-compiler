@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
 from itertools import chain
-from typing import TypeGuard, TypeVar
+from typing import TypeGuard, TypeVar, cast
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp import SLPNode
-from number_compiler.arithmetic.contracts.input_validation import is_object_tuple
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+    object_mapping,
+)
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import (
     OwnedMemo,
@@ -30,14 +33,37 @@ _MemoKey = TypeVar("_MemoKey")
 _MemoValue = TypeVar("_MemoValue")
 
 
+def _object_memo_snapshot(
+    value: object,
+) -> OwnedMemoAuditSnapshot[object, object] | None:
+    """Erase memo generics only at an exact, read-only audit boundary."""
+    if type(value) is OwnedMemoAuditSnapshot:
+        return cast(OwnedMemoAuditSnapshot[object, object], value)
+    if type(value) is not OwnedMemo:
+        return None
+    memo = cast(OwnedMemo[object, object], value)
+    snapshot: object = memo.audit_snapshot()
+    if type(snapshot) is not OwnedMemoAuditSnapshot:
+        return None
+    return snapshot
+
+
 def _is_int_triple(value: object) -> TypeGuard[tuple[int, int, int]]:
-    if type(value) is not tuple or not is_object_tuple(value) or len(value) != 3:
+    if not is_exact_object_tuple(value) or len(value) != 3:
         return False
     return all(type(part) is int for part in value)
 
 
+def _is_exact_int_tuple(value: object, size: int) -> TypeGuard[tuple[int, ...]]:
+    return (
+        is_exact_object_tuple(value)
+        and len(value) == size
+        and all(type(part) is int for part in value)
+    )
+
+
 def _is_object_pair(value: object) -> TypeGuard[tuple[object, object]]:
-    return type(value) is tuple and is_object_tuple(value) and len(value) == 2
+    return is_exact_object_tuple(value) and len(value) == 2
 
 
 def _node_shape(node: SLPNode, index: int, nodes: Sequence[SLPNode]) -> bool:
@@ -74,15 +100,11 @@ def _store_shape(
     owner: int,
     role: str,
 ) -> bool:
-    if type(store) is OwnedMemo:
-        snapshot = store.audit_snapshot()
-    elif type(store) is OwnedMemoAuditSnapshot:
-        snapshot = store
-    else:
-        snapshot = None
+    snapshot = _object_memo_snapshot(store)
     item = inventory.get(owner)
+    container_identity: object
     if snapshot is not None:
-        container_identity: object = snapshot.container
+        container_identity = snapshot.container
         memo_container: Mapping[object, object] = snapshot.container
         if (
             snapshot.ledger is not ledger
@@ -109,11 +131,14 @@ def _store_shape(
             nodes = len(memo_container) * snapshot.nodes_per_entry
         entries = len(memo_container)
     elif isinstance(store, (LedgerList, LedgerDict)):
-        container_identity = store
+        container_identity = cast(object, store)
         if store.owner != owner or store.ledger is not ledger:
             return False
-        nodes = len(store) * store.nodes_per_entry
-        entries = len(store)
+        if isinstance(store, LedgerList):
+            entries = len(cast(Sequence[object], store.audit_view()))
+        else:
+            entries = len(cast(Mapping[object, object], store.audit_view()))
+        nodes = entries * store.nodes_per_entry
     else:
         return False
     return (
@@ -154,14 +179,15 @@ def memo_payload_objects(snapshot: object) -> Iterator[tuple[object, object]]:
     """
     if type(snapshot) is not OwnedMemoAuditSnapshot:
         raise TypeError("expected an owned-memo audit snapshot")
-    view = snapshot.payload_view
-    for raw_key in snapshot.container:
+    object_snapshot = cast(OwnedMemoAuditSnapshot[object, object], snapshot)
+    view = object_snapshot.payload_view
+    for raw_key in object_snapshot.container:
         key: object = raw_key
         try:
             payload: object = view[raw_key]
         except TypeError:
             # Preserve malformed wrapper visibility for the exact shape check.
-            payload = snapshot.container[raw_key]
+            payload = object_snapshot.container[raw_key]
         yield key, payload
 
 
@@ -204,17 +230,15 @@ _MISSING = object()
 
 
 def _store_length(store: object) -> int:
-    if type(store) is OwnedMemoAuditSnapshot:
-        container: Mapping[object, object] = store.container
+    snapshot = _object_memo_snapshot(store)
+    if snapshot is not None:
+        container: Mapping[object, object] = snapshot.container
         return len(container)
-    if type(store) is OwnedMemo:
-        container = store.audit_snapshot().container
-        return len(container)
-    if isinstance(store, Mapping):
-        container = store
-        return len(container)
+    mapping = object_mapping(store)
+    if mapping is not None:
+        return len(mapping)
     if isinstance(store, Sequence):
-        sequence: Sequence[object] = store
+        sequence: Sequence[object] = cast(Sequence[object], store)
         return len(sequence)
     return 0
 
@@ -450,7 +474,7 @@ def audit_reverse_pair_output_roots(
                     else (node.child, node.count)
                 )
                 valid &= (
-                    type(node_key) is tuple
+                    is_exact_object_tuple(node_key)
                     and all(type(part) is int for part in node_key)
                     and node.kind == kind
                     and node_key == expected
@@ -505,7 +529,7 @@ def audit_reverse_pair_output_roots(
                 valid = False
             valid &= (
                 occurrence.owner is state.authority
-                and type(occurrence_key) is tuple
+                and is_exact_object_tuple(occurrence_key)
                 and all(type(part) is int for part in occurrence_key)
                 and occurrence_key == (occurrence.root, occurrence.temporal_steps)
                 and 0 <= occurrence.root < size
@@ -532,9 +556,8 @@ def audit_reverse_pair_output_roots(
                 invalid.add((state.word_fibers_owner, id(cached)))
                 continue
             fiber_value, fiber_binding_value = cached
-            if (
-                type(fiber_value) is not Q19WordFiber
-                or type(fiber_binding_value) is not tuple
+            if type(fiber_value) is not Q19WordFiber or not is_exact_object_tuple(
+                fiber_binding_value
             ):
                 valid = False
                 invalid.add((state.word_fibers_owner, id(cached)))
@@ -588,7 +611,7 @@ def audit_reverse_pair_output_roots(
             state.border_certificates
         ):
             recognized.update((id(certificate_key), id(border_issued)))
-            if type(border_issued) is not tuple or len(border_issued) != 2:
+            if not _is_object_pair(border_issued):
                 valid = False
                 invalid.add((state.border_certificates_owner, id(border_issued)))
                 continue
@@ -665,7 +688,7 @@ def audit_reverse_pair_output_roots(
                 invalid.add((state.border_certificates_owner, id(certificate)))
         for action_key, bank_issued in memo_payload_items(state.controlled_gt_banks):
             recognized.update((id(action_key), id(bank_issued)))
-            if type(bank_issued) is not tuple or len(bank_issued) != 2:
+            if not _is_object_pair(bank_issued):
                 valid = False
                 invalid.add((state.controlled_gt_banks_owner, id(bank_issued)))
                 continue
@@ -708,7 +731,7 @@ def audit_reverse_pair_output_roots(
                 invalid.add((state.controlled_gt_banks_owner, id(bank_action)))
         for window_key, window_issued in memo_payload_items(state.spatial_bank_windows):
             recognized.update((id(window_key), id(window_issued)))
-            if type(window_issued) is not tuple or len(window_issued) != 2:
+            if not _is_object_pair(window_issued):
                 valid = False
                 invalid.add((state.spatial_bank_windows_owner, id(window_issued)))
                 continue
@@ -738,7 +761,7 @@ def audit_reverse_pair_output_roots(
                 invalid.add((state.spatial_bank_windows_owner, id(window)))
         for ring_key, ring_issued in memo_payload_items(state.temporal_ring_banks):
             recognized.update((id(ring_key), id(ring_issued)))
-            if type(ring_issued) is not tuple or len(ring_issued) != 2:
+            if not _is_object_pair(ring_issued):
                 valid = False
                 invalid.add((state.temporal_ring_banks_owner, id(ring_issued)))
                 continue
@@ -780,7 +803,7 @@ def audit_reverse_pair_output_roots(
             state.diagonal_comparisons
         ):
             recognized.update((id(diagonal_key), id(diagonal_issued)))
-            if type(diagonal_issued) is not tuple or len(diagonal_issued) != 2:
+            if not _is_object_pair(diagonal_issued):
                 valid = False
                 invalid.add((state.diagonal_comparisons_owner, id(diagonal_issued)))
                 continue
@@ -841,11 +864,11 @@ def audit_reverse_pair_output_roots(
         ):
             valid &= entries_valid
             for memo_key, result in entries:
+                if not _is_exact_int_tuple(memo_key, arity):
+                    valid = False
+                    continue
                 valid &= (
-                    type(memo_key) is tuple
-                    and len(memo_key) == arity
-                    and all(type(part) is int for part in memo_key)
-                    and 0 <= memo_key[0] < size
+                    0 <= memo_key[0] < size
                     and memo_key[1] in states
                     and (arity == 2 or memo_key[-1] >= 0)
                     and (result is None or type(result) is int and result in states)
@@ -855,11 +878,11 @@ def audit_reverse_pair_output_roots(
         )
         valid &= block_entries_valid
         for block_key, result in block_entries:
+            if not _is_int_triple(block_key):
+                valid = False
+                continue
             valid &= (
-                type(block_key) is tuple
-                and len(block_key) == 3
-                and all(type(part) is int for part in block_key)
-                and 0 <= block_key[0] < size
+                0 <= block_key[0] < size
                 and block_key[1] in left_states
                 and block_key[2] in right_states
                 and type(result) is int
@@ -900,12 +923,13 @@ def audit_reverse_pair_output_roots(
                 _memo_values(state.diagonal_comparisons),
                 _memo_values(state.word_fibers),
             ):
-                if type(retained_issue) is tuple and len(retained_issue) == 2:
+                if _is_object_pair(retained_issue):
                     retained_record, retained_binding = retained_issue
                     approved.update(
                         (id(retained_issue), id(retained_record), id(retained_binding))
                     )
-                    approved.update(id(value) for value in retained_binding)
+                    if is_exact_object_tuple(retained_binding):
+                        approved.update(id(value) for value in retained_binding)
         else:
             invalid.add((owner, id(root)))
     return approved, recognized, invalid

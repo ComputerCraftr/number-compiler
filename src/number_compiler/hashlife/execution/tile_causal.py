@@ -41,6 +41,7 @@ from number_compiler.hashlife.execution.tile_causal_admission import (
     admitted_wiring,
 )
 from number_compiler.hashlife.execution.tile_causal_api import (
+    CausalLeaseWorkspace,
     CausalRunResult,
     CausalTileAPI,
 )
@@ -130,65 +131,64 @@ class CausalTileEngine(CausalTileAPI):
         self.tiles = scheduler.tiles
         self.adapter: PrimitiveTileKernelAdapter = scheduler.adapter
         self.ledger = scheduler.ledger
-        self._leases: list[TileLease] = []
-        self._result_leases: list[ResultLease] = []
-        self._application: int | None = None
+        self.lease_workspace = CausalLeaseWorkspace()
+        self.application_identity: int | None = None
         self._hold_workspace = False
         self._action_admission_token: CausalActionAdmission | None = None
         self._running = False
-        self._workspace_memo = scheduler._causal_tasks.memo
-        self._workspace_active = scheduler._causal_tasks.active
+        self._workspace_memo = scheduler.causal_tasks.memo
+        self._workspace_active = scheduler.causal_tasks.active
 
     @property
     def action_admission(self) -> CausalActionAdmission | None:
         """Expose the current run lease to checked causal helper operations."""
         return self._action_admission_token
 
-    def _children(
+    def child_actions(
         self,
         action: FieldCellActionID,
     ) -> tuple[FieldCellActionID, FieldCellActionID] | None:
         return admitted_children(
             self.adapter,
-            self.scheduler._causal_tasks,
+            self.scheduler.causal_tasks,
             self._action_admission_token,
             action,
         )
 
-    def _law(self, action: FieldCellActionID) -> PrimitiveKernel:
+    def kernel_law(self, action: FieldCellActionID) -> PrimitiveKernel:
         return admitted_kernel(
             self.adapter,
-            self.scheduler._causal_tasks,
+            self.scheduler.causal_tasks,
             self._action_admission_token,
             action,
         )
 
-    def _cocycle(self, action: FieldCellActionID) -> TemporalCocycle:
+    def action_cocycle(self, action: FieldCellActionID) -> TemporalCocycle:
         return admitted_cocycle(
             self.adapter,
-            self.scheduler._causal_tasks,
+            self.scheduler.causal_tasks,
             self._action_admission_token,
             action,
         )
 
-    def _wiring(self, action: FieldCellActionID) -> ResultWiring:
+    def result_wiring(self, action: FieldCellActionID) -> ResultWiring:
         return admitted_wiring(
             self.adapter,
-            self.scheduler._causal_tasks,
+            self.scheduler.causal_tasks,
             self._action_admission_token,
             action,
         )
 
     def _admit_run_actions(self, action: FieldCellActionID) -> CausalActionAdmission:
         return admit_run_actions(
-            self.adapter, self.scheduler._causal_tasks, self.ledger, action
+            self.adapter, self.scheduler.causal_tasks, self.ledger, action
         )
 
     def _release_run_action_admission(self) -> None:
         token = self._action_admission_token
         self._action_admission_token = None
         if token is not None:
-            self.scheduler._causal_tasks.clear_action_admission(token)
+            self.scheduler.causal_tasks.clear_action_admission(token)
 
     def _initial(
         self,
@@ -196,7 +196,7 @@ class CausalTileEngine(CausalTileAPI):
         side: int,
         seed: int | None = None,
     ) -> int | _Prefix:
-        children = self._children(action)
+        children = self.child_actions(action)
         if children is None:
             return self._initial_port(action, side) if seed is None else seed
         before, after = children
@@ -206,14 +206,14 @@ class CausalTileEngine(CausalTileAPI):
 
     def _initial_port(self, action: FieldCellActionID, side: int) -> int:
         if self._action_admission_token is not None:
-            return self._law(action).initial(BoundarySide(side))
+            return self.kernel_law(action).initial(BoundarySide(side))
         return self.adapter.initial_ports(action)[side]
 
-    def _keep(self, lease: TileLease) -> TileID:
-        self._leases.append(lease)
+    def retain_tile(self, lease: TileLease) -> TileID:
+        self.lease_workspace.tiles.append(lease)
         return lease.tile
 
-    def _composite_key(
+    def composite_key(
         self,
         action: FieldCellActionID,
         tile: TileID,
@@ -230,23 +230,23 @@ class CausalTileEngine(CausalTileAPI):
             action_admission=self._action_admission_token,
         )
 
-    def _covered_chunks(self, view: BoundaryTileView) -> tuple[TileID, ...]:
-        return covered_chunks(self.tiles, self._leases, view)
+    def boundary_chunks(self, view: BoundaryTileView) -> tuple[TileID, ...]:
+        return covered_chunks(self.tiles, self.lease_workspace.tiles, view)
 
     def _append_prefix(self, state: _Prefix, view: BoundaryTileView) -> _Prefix:
         return append_prefix(
             self.adapter,
             self.tiles,
-            self._leases,
+            self.lease_workspace.tiles,
             state,
             view,
             results=self.scheduler.results,
             dependencies=(
-                self.scheduler._causal_dependencies
-                if self._application is not None
+                self.scheduler.dependency_leases
+                if self.application_identity is not None
                 else None
             ),
-            application=self._application,
+            application=self.application_identity,
         )
 
     def _release_workspace(self) -> None:
@@ -271,28 +271,26 @@ class CausalTileEngine(CausalTileAPI):
             except BaseException:
                 if not tile_lease_was_released(lease):
                     failed_tiles.append(lease)
-                else:
-                    lease._closed = True
                 raise
 
         cleanups.extend(
-            partial(close_result, result) for result in reversed(self._result_leases)
+            partial(close_result, result)
+            for result in reversed(self.lease_workspace.results)
         )
-        cleanups.extend(partial(close_tile, lease) for lease in reversed(self._leases))
         cleanups.extend(
-            (self.scheduler._causal_workspace.clear, self.scheduler._causal_tasks.clear)
+            partial(close_tile, lease) for lease in reversed(self.lease_workspace.tiles)
         )
-        cleanups.append(self.scheduler.results._retry_pending_acquisition_leases)
+        cleanups.extend(
+            (self.scheduler.causal_workspace.clear, self.scheduler.causal_tasks.clear)
+        )
+        cleanups.append(self.scheduler.results.retry_pending_acquisition_leases)
         try:
             cleanup_all(cleanups)
         finally:
-            self._result_leases = failed_results
-            self._leases = failed_tiles
-            self._application = None
-            if (
-                self.scheduler._causal_tasks._action_admission_token is None
-                and self.scheduler._causal_tasks._issued_action_admission_token is None
-            ):
+            self.lease_workspace.results = failed_results
+            self.lease_workspace.tiles = failed_tiles
+            self.application_identity = None
+            if not self.scheduler.causal_tasks.has_action_admission():
                 self._action_admission_token = None
 
     def _run(
@@ -304,11 +302,11 @@ class CausalTileEngine(CausalTileAPI):
     ) -> CausalRunResult:
         if self._running:
             raise RuntimeError("causal tile engine cannot reenter an active run")
-        frames = self.scheduler._causal_tasks.frames
-        values = self.scheduler._causal_tasks.values
+        frames = self.scheduler.causal_tasks.frames
+        values = self.scheduler.causal_tasks.values
         memo = self._workspace_memo
         active = self._workspace_active
-        run_token = self.scheduler._causal_tasks.begin_run()
+        run_token = self.scheduler.causal_tasks.begin_run()
         self._running = True
         try:
             match root:
@@ -339,7 +337,7 @@ class CausalTileEngine(CausalTileAPI):
                             "causal memo completion lost its dependency"
                         )
                     value = values.pop()
-                    self.scheduler._causal_tasks.finish(key, value)
+                    self.scheduler.causal_tasks.finish(key, value)
                     values.append(value)
                     self.ledger.bump(_execution_keys.TILE_CAUSAL_TASK_MEMO_PUBLICATIONS)
                     continue
@@ -371,17 +369,17 @@ class CausalTileEngine(CausalTileAPI):
                             boundary_argument,
                         ) = frame.args
                         dependencies = (
-                            self.scheduler._causal_dependencies
-                            if self._application is not None
+                            self.scheduler.dependency_leases
+                            if self.application_identity is not None
                             else None
                         )
                         normalized, lease = normalize_cached_region(
                             self.scheduler.results,
                             boundary_view,
                             dependencies=dependencies,
-                            application=self._application,
+                            application=self.application_identity,
                         )
-                        self._leases.append(lease)
+                        self.lease_workspace.tiles.append(lease)
                         frame.args = (
                             boundary_action,
                             boundary_side,
@@ -420,7 +418,7 @@ class CausalTileEngine(CausalTileAPI):
                     if isinstance(frame, OutputBoundaryFrame):
                         self.ledger.bump(
                             counter + "_requested_extent",
-                            frame.args[2].relative_extent,
+                            frame.boundary_view.relative_extent,
                         )
                     found = memo.get(memo_key)
                     if found is not None:
@@ -430,7 +428,7 @@ class CausalTileEngine(CausalTileAPI):
                         if isinstance(frame, OutputBoundaryFrame):
                             self.ledger.bump(
                                 counter + "_cached_extent",
-                                frame.args[2].relative_extent,
+                                frame.boundary_view.relative_extent,
                             )
                         continue
                     if isinstance(frame, OutputBoundaryFrame):
@@ -440,14 +438,14 @@ class CausalTileEngine(CausalTileAPI):
                             self.ledger.bump(counter + "_hits")
                             self.ledger.bump(
                                 counter + "_cached_extent",
-                                frame.args[2].relative_extent,
+                                frame.boundary_view.relative_extent,
                             )
                             continue
                     if memo_key in active:
                         raise ValueError("causal task dependency contains a cycle")
                     self.ledger.bump(counter + "_evaluations")
                     try:
-                        self.scheduler._causal_tasks.begin(memo_key)
+                        self.scheduler.causal_tasks.begin(memo_key)
                     except BaseException:
                         self.ledger.bump(counter + "_failures")
                         raise
@@ -482,7 +480,7 @@ class CausalTileEngine(CausalTileAPI):
                     advance_action, advance_side, advance_state, advance_view = (
                         frame.args
                     )
-                    if self._children(advance_action) is None:
+                    if self.child_actions(advance_action) is None:
                         if type(advance_state) is not int:
                             raise TypeError("primitive advance requires a finite state")
                         values.append(
@@ -513,7 +511,7 @@ class CausalTileEngine(CausalTileAPI):
                     symbol_action, symbol_side, symbol_state, symbol = frame.args
                     if type(symbol_side) is not int or symbol_side not in (0, 1):
                         raise ValueError("symbol advance requires an exact direction")
-                    if self._children(symbol_action) is None:
+                    if self.child_actions(symbol_action) is None:
                         if type(symbol_state) is not int:
                             raise TypeError(
                                 "primitive symbol advance requires a finite state"
@@ -522,7 +520,7 @@ class CausalTileEngine(CausalTileAPI):
                         # Publishing a tile and a directed-transfer cache entry
                         # for it duplicates the admitted kernel's transition law.
                         values.append(
-                            self._law(symbol_action).advance(
+                            self.kernel_law(symbol_action).advance(
                                 BoundarySide(symbol_side), symbol_state, symbol
                             )
                         )
@@ -552,7 +550,7 @@ class CausalTileEngine(CausalTileAPI):
                     anchor_action, anchor_side, anchor_state = frame.args
                     if not isinstance(anchor_state, _Prefix):
                         raise TypeError("anchor task requires a causal prefix")
-                    if self._children(anchor_state.action) is None:
+                    if self.child_actions(anchor_state.action) is None:
                         raise ValueError("causal prefix belongs to a primitive action")
                     if anchor_state.view is None:
                         values.append(
@@ -580,7 +578,7 @@ class CausalTileEngine(CausalTileAPI):
                     composite, side, prefix, argument = frame.args
                     if not isinstance(prefix, _Prefix):
                         raise TypeError("residual task requires a causal prefix")
-                    children = self._children(composite)
+                    children = self.child_actions(composite)
                     if children is None:
                         raise TypeError("residual requires a composite action")
                     before, after = children
@@ -733,14 +731,14 @@ class CausalTileEngine(CausalTileAPI):
                     continue
                 if isinstance(frame, OutputFrame):
                     output_action, output_tile, output_left, output_right = frame.args
-                    children = self._children(output_action)
+                    children = self.child_actions(output_action)
                     if (
                         frame.stage == 0
                         and children is None
                         and type(output_left) is int
                         and type(output_right) is int
                     ):
-                        wiring = self._wiring(output_action)
+                        wiring = self.result_wiring(output_action)
                         result_key, completed = probe_causal_result(
                             self.scheduler.results,
                             output_action,
@@ -750,7 +748,7 @@ class CausalTileEngine(CausalTileAPI):
                             action_admission=self._action_admission_token,
                         )
                         if completed is None:
-                            completed = self.scheduler._complete_direct(result_key)
+                            completed = self.scheduler.complete_direct(result_key)
                             self.ledger.bump(
                                 _execution_keys.TILE_CAUSAL_RESULT_EVALUATIONS
                             )
@@ -760,7 +758,7 @@ class CausalTileEngine(CausalTileAPI):
                         values.append(payload)
                         continue
                     if frame.stage == 0 and children is not None:
-                        composite_result_key = self._composite_key(
+                        composite_result_key = self.composite_key(
                             output_action,
                             output_tile,
                             output_left,
@@ -916,7 +914,7 @@ class CausalTileEngine(CausalTileAPI):
                 raise AssertionError("causal recurrence returned another arity")
             token = self._action_admission_token
             if token is not None:
-                self.scheduler._causal_tasks.validate_admitted_actions(
+                self.scheduler.causal_tasks.validate_admitted_actions(
                     token, self.adapter
                 )
             result: CausalTaskValue = values.pop()
@@ -933,7 +931,7 @@ class CausalTileEngine(CausalTileAPI):
                 if not isinstance(root, OutputFrame):
                     raise TypeError("leased result return requires an output request")
                 root_action, root_tile, root_left, root_right = root.args
-                root_result_key = self._composite_key(
+                root_result_key = self.composite_key(
                     root_action, root_tile, root_left, root_right
                 )
                 completed = (
@@ -961,7 +959,7 @@ class CausalTileEngine(CausalTileAPI):
                         self._release_workspace()
                 finally:
                     self._running = False
-                    self.scheduler._causal_tasks.end_run(run_token)
+                    self.scheduler.causal_tasks.end_run(run_token)
 
 
 __all__ = ["CausalTileEngine"]

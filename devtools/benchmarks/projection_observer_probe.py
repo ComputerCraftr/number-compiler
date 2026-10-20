@@ -31,7 +31,7 @@ def _reverse_value(value: int, base: int) -> int:
 
 def _reverse_growths(seed: int, base: int, steps: int) -> tuple[int, ...]:
     value = int(seed)
-    out = []
+    out: list[int] = []
     for _ in range(int(steps)):
         width = len(digits_lsd(value, base))
         nxt = value + _reverse_value(value, base)

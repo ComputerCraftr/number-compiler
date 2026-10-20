@@ -446,7 +446,7 @@ def _pair_residue(
     ) % modulus
 
 
-def _spatial_bank_residue(bank: CertifiedSpatialBankMorphism, modulus: int) -> int:
+def spatial_bank_residue(bank: CertifiedSpatialBankMorphism, modulus: int) -> int:
     """Geometric/spatial motif fold, constant work in `bank.repeats`."""
     motif = bank.motif
     p = len(motif)
@@ -584,8 +584,8 @@ def certified_cyclotomic_center(
         ):
             raise ValueError("center exterior witnesses disagree on global residues")
         if type(witness) is CertifiedSpatialBankMorphism:
-            outer99 += _spatial_bank_residue(witness, 99)
-            outer198 += _spatial_bank_residue(witness, 198)
+            outer99 += spatial_bank_residue(witness, 99)
+            outer198 += spatial_bank_residue(witness, 198)
         elif type(witness) is ExactPointedBankWindow:
             outer99 += _window_residue(witness, 99)
             outer198 += _window_residue(witness, 198)

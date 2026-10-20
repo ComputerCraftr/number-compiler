@@ -76,12 +76,12 @@ def _term(seed: int, generation: int) -> Generator[ReverseAddPoweredTerm, None, 
     try:
         yield term
     finally:
-        workspace = term._workspace
+        workspace = term.published_workspace
         if workspace is not None:
             workspace.dispose()
-            if workspace._cleanup_complete:
-                term._workspace = None
-                term._workspace_identity = None
+            if workspace.audit_snapshot().cleanup_complete:
+                object.__setattr__(term, "_workspace", None)
+                object.__setattr__(term, "_workspace_identity", None)
         if term.resource_ledger.entries or term.resource_ledger.nodes:
             raise AssertionError("reverse temporal test leaked ledger resources")
 
@@ -134,7 +134,7 @@ def test_cross_owner_gap_and_mutation_refused() -> None:
             block.then(a.temporal_seed_orbit_morphism(1, start=5))
         with pytest.raises(ValueError):
             replace(block).validate()
-        seal = block._seal
+        seal = object.__getattribute__(block, "_seal")
         object.__setattr__(block, "_seal", object())
         with pytest.raises(ValueError):
             block.validate()
@@ -172,7 +172,7 @@ def test_source_interval_bounds_and_no_fast_claim() -> None:
 def test_disposed_q19_owner_invalidates_returned_morphism() -> None:
     with _term(196, 4) as term:
         record = term.temporal_seed_orbit_morphism(1)
-        term._source_workspace().dispose()
+        term.source_workspace().dispose()
         with pytest.raises(ValueError, match="disposed Q19"):
             record.validate()
 
@@ -182,12 +182,12 @@ def test_seed_morphism_reuses_endpoint_after_stream_demand(
 ) -> None:
     with _term(196, 17) as term:
         expected = tuple(term.iter_digits())
-        workspace = term._source_workspace()
-        owner = workspace.adapter._q19_owner
-        image = workspace._image
+        workspace = term.source_workspace()
+        owner = workspace.adapter.audit_snapshot().q19_owner
+        image = workspace.audit_snapshot().image
         assert owner is not None and image is not None
-        view = workspace.scheduler._source_image_core().view(image)
-        payload = workspace.adapter._validate_view(view)
+        view = workspace.scheduler.source_image_core().view(image)
+        payload = workspace.adapter.validate_view(view)
         endpoint = payload.pair_output
         assert endpoint is not None
         before = workspace.ledger.snapshot().counters
@@ -218,7 +218,7 @@ def test_seed_morphism_first_shares_endpoint_with_later_stream(
 ) -> None:
     with _term(196, 17) as term:
         record = certified_completed_reverse_add_seed_morphism(term)
-        workspace = term._source_workspace()
+        workspace = term.source_workspace()
         assert not record.terminal_occurrence_reused
         assert record.q19_block_applications > 0
         before = workspace.ledger.snapshot().counters
@@ -247,7 +247,7 @@ def test_repeated_completed_demand_reuses_exact_word_fiber_projection(
 ) -> None:
     with _term(196, 17) as term:
         first = certified_completed_reverse_add_seed_morphism(term)
-        workspace = term._source_workspace()
+        workspace = term.source_workspace()
         before = workspace.ledger.snapshot().counters
         payload = audit_registered_payloads(workspace.ledger)
         assert (payload.forbidden_future_payloads, payload.unknown_payloads) == (0, 0)

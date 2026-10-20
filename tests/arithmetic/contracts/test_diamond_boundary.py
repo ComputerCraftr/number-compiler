@@ -15,7 +15,7 @@ def test_constant_reduction_preserves_domain_and_codomain_admissibility() -> Non
     ledger, actions, _, arena, first, second = boundary()
     output = arena.literal(second, 0, 0)
     function = arena.constant(output, first, 1)
-    size = arena._domain_size(first, 1)
+    size = arena.domain_size(first, 1)
     assert size is not None
     assert arena.finite_function([output] * size, first, 1) == function
     assert arena.select(function, arena.literal(first, 1, 0)) == output
@@ -88,7 +88,7 @@ def test_complete_finite_function_validates_all_values_and_reserves_atomically()
     None
 ):
     ledger, actions, _, arena, first, second = boundary()
-    size = arena._domain_size(first, 1)
+    size = arena.domain_size(first, 1)
     assert size is not None and size > 1
     values = [arena.literal(second, 0, index % 2) for index in range(size)]
     ledger.max_cache_entries = ledger.entries + 1

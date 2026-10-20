@@ -186,11 +186,19 @@ def test_unissued_mutation_is_rejected_at_both_ports() -> None:
         replace(cylinder).bounded_phase_fibers()
 
 
-def test_terminal_last_five_join_does_not_promote_source_harmonic_to_prime() -> None:
-    demand = SourceTerminalDemand.for_candidate("fermat", 5)
+@pytest.mark.parametrize(
+    "candidate",
+    (4, pytest.param(5, marks=pytest.mark.validation)),
+)
+def test_terminal_last_five_join_does_not_promote_source_harmonic_to_prime(
+    candidate: int,
+) -> None:
+    demand = SourceTerminalDemand.for_candidate("fermat", candidate)
     rows = demand.observe_fermat_source_restricted_phase()
     assert len(rows) == 5 and all(row.producer_verified for row in rows)
-    assert [row.phase.source_level for row in rows] == list(range(27, 32))
+    assert [row.phase.source_level for row in rows] == list(
+        range(demand.source_level - 4, demand.source_level + 1)
+    )
     assert all(row.terminal_status == "UNKNOWN" for row in rows)
     assert all(not row.source_to_global_fold_proven for row in rows)
     for row in rows:

@@ -8,9 +8,13 @@ from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.arithmetic.contracts.block_kernel import (
     BaseBlockEffect,
+    BaseLeftState,
+    BaseRightState,
     FiniteBlockEffect,
-    _BaseLeftState,
-    _BaseRightState,
+)
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_integer_in_range,
+    is_exact_object_tuple,
 )
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
@@ -18,11 +22,11 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
 from number_compiler.arithmetic.radix_division import SymbolicBinaryDivisionEffect
 from number_compiler.hashlife.actions.diamond_actions import (
     CellID,
+    CellIndexKey,
     CellNode,
     FormalSymbolID,
     PortSignature,
     TemporalActionNode,
-    _CellKey,
 )
 from number_compiler.hashlife.interfaces.diamond_boundary import (
     BoundaryActionID,
@@ -36,8 +40,8 @@ from number_compiler.hashlife.interfaces.diamond_boundary import (
 from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
 from number_compiler.hashlife.observation.diamond_observers import NonblankBlockEffect
 from number_compiler.projection.digit_terminal import (
+    DigitLeftState,
     DigitNormalizeBlockEffect,
-    _DigitLeftState,
 )
 
 if TYPE_CHECKING:
@@ -46,26 +50,25 @@ if TYPE_CHECKING:
     )
 
 
-def _original_cell(
+def original_cell(
     self: DiamondPayloadRegistry, handle: CellID | FormalSymbolID
 ) -> bool:
-    from number_compiler.hashlife.execution.diamond_payload import _integer
-
     if type(handle) is FormalSymbolID:
-        return self._handle(handle)
+        return self.valid_handle(handle)
     for arena in self.cells:
         if handle.owner is not arena.token:
             continue
+        nodes = arena.audit_snapshot().nodes
         pending = [handle.local_id]
         seen: set[int] = set()
         while pending:
             index = pending.pop()
             if index in seen:
                 continue
-            if not _integer(index, 0, len(arena._nodes)):
+            if not is_exact_integer_in_range(index, 0, len(nodes)):
                 return False
             seen.add(index)
-            node = arena._nodes[index]
+            node = nodes[index]
             if node.kind == "source":
                 if not any(
                     tile.node_id == node.source_tile
@@ -73,11 +76,11 @@ def _original_cell(
                 ):
                     return False
             elif node.kind == "join" and all(
-                _integer(child, 0, len(arena._nodes))
+                is_exact_integer_in_range(child, 0, len(nodes))
                 for child in (node.left, node.right)
             ):
                 if any(
-                    arena._nodes[child].level + 1 != node.level
+                    nodes[child].level + 1 != node.level
                     for child in (node.left, node.right)
                 ):
                     return False
@@ -88,21 +91,19 @@ def _original_cell(
     return False
 
 
-def _boundary(self: DiamondPayloadRegistry, value: object) -> bool:
-    from number_compiler.hashlife.execution.diamond_payload import _integer
-
+def boundary_value(self: DiamondPayloadRegistry, value: object) -> bool:
     if type(value) is BoundaryFunctionSignature:
-        return self._function_signature(value)
+        return self.validate_function_signature(value)
     if type(value) is ImageBinding:
-        return self._binding(value)
+        return self.validate_binding(value)
     if type(value) is ContinuationStep:
-        return self._step(value)
+        return self.validate_step(value)
     if type(value) is BoundaryStateNode:
         if (
             type(value.action) is not ActionProgramID
             or value.action.kind != "diamond-action"
-            or not self._handle(value.action)
-            or not _integer(value.side, 0, 2)
+            or not self.valid_handle(value.action)
+            or not is_exact_integer_in_range(value.side, 0, 2)
         ):
             return False
         if value.anchor is not None or value.continuation is not None:
@@ -111,21 +112,21 @@ def _boundary(self: DiamondPayloadRegistry, value: object) -> bool:
                 and type(value.literal) is int
                 and type(value.anchor) is BoundaryStateID
                 and type(value.continuation) is BoundaryActionID
-                and self._handle(value.anchor)
-                and self._handle(value.continuation)
+                and self.valid_handle(value.anchor)
+                and self.valid_handle(value.continuation)
                 and value.anchor.owner is value.continuation.owner
             ):
                 return False
             anchor, continuation = (
-                self._state_node(value.anchor),
-                self._function_node(value.continuation),
+                self.state_node(value.anchor),
+                self.function_node(value.continuation),
             )
             if anchor is None or continuation is None or continuation.signature is None:
                 return False
             signature = continuation.signature
             for arena in self.temporal:
                 if value.action.owner is arena.token:
-                    node = arena._nodes[value.action.local_id]
+                    node = arena.audit_snapshot().nodes[value.action.local_id]
                     return (
                         node.kind == "compose"
                         and anchor.action.owner is arena.token
@@ -141,16 +142,16 @@ def _boundary(self: DiamondPayloadRegistry, value: object) -> bool:
         for arena in self.temporal:
             if value.action.owner is not arena.token:
                 continue
-            node = arena._nodes[value.action.local_id]
+            node = arena.audit_snapshot().nodes[value.action.local_id]
             if node.kind == "identity":
                 return type(value.literal) is int and value.literal == 0
             if node.kind != "atom":
                 return False
-            effect = arena.compiler._nodes[node.compiler_id]
+            effect = arena.compiler.definition_at(node.compiler_id)
             for kernel_arena in self.kernels:
-                for kernel in kernel_arena._kernels:
+                for kernel in kernel_arena.audit_snapshot().kernels:
                     if kernel.effect is effect:
-                        return _integer(
+                        return is_exact_integer_in_range(
                             value.literal,
                             0,
                             len(kernel.left if value.side == 0 else kernel.right),
@@ -159,7 +160,7 @@ def _boundary(self: DiamondPayloadRegistry, value: object) -> bool:
     if type(value) is ContinuationNode:
         if type(
             value.signature
-        ) is not BoundaryFunctionSignature or not self._function_signature(
+        ) is not BoundaryFunctionSignature or not self.validate_function_signature(
             value.signature
         ):
             return False
@@ -168,7 +169,7 @@ def _boundary(self: DiamondPayloadRegistry, value: object) -> bool:
         if value.kind == "constant":
             if not (
                 type(value.value) is BoundaryStateID
-                and self._handle(value.value)
+                and self.valid_handle(value.value)
                 and type(value.bit) is int
                 and value.bit == -1
                 and value.low is None
@@ -176,7 +177,7 @@ def _boundary(self: DiamondPayloadRegistry, value: object) -> bool:
                 and value.step is None
             ):
                 return False
-            state = self._state_node(value.value)
+            state = self.state_node(value.value)
             return (
                 state is not None
                 and state.action == value.signature.output_action
@@ -184,19 +185,19 @@ def _boundary(self: DiamondPayloadRegistry, value: object) -> bool:
             )
         if value.kind == "decision":
             if not (
-                _integer(value.bit, 0, 64)
+                is_exact_integer_in_range(value.bit, 0, 64)
                 and value.value is None
                 and value.step is None
                 and type(value.low) is BoundaryActionID
                 and type(value.high) is BoundaryActionID
-                and self._handle(value.low)
-                and self._handle(value.high)
+                and self.valid_handle(value.low)
+                and self.valid_handle(value.high)
                 and value.low.owner is value.high.owner
             ):
                 return False
             low, high = (
-                self._function_node(value.low),
-                self._function_node(value.high),
+                self.function_node(value.low),
+                self.function_node(value.high),
             )
             return (
                 low is not None
@@ -212,7 +213,7 @@ def _boundary(self: DiamondPayloadRegistry, value: object) -> bool:
                 and type(value.bit) is int
                 and value.bit == -1
                 and type(step) is ContinuationStep
-                and self._step(step)
+                and self.validate_step(step)
                 and value.signature.input_action == step.first
                 and value.signature.input_side == 1 - step.side
                 and value.signature.output_action == step.second
@@ -221,28 +222,27 @@ def _boundary(self: DiamondPayloadRegistry, value: object) -> bool:
     return False
 
 
-def _function_signature(
+def function_signature(
     self: DiamondPayloadRegistry, value: BoundaryFunctionSignature
 ) -> bool:
-    from number_compiler.hashlife.execution.diamond_payload import _integer
-
     if (
         type(value.input_action) is not ActionProgramID
         or type(value.output_action) is not ActionProgramID
         or value.input_action.kind != "diamond-action"
         or value.output_action.kind != "diamond-action"
-        or not self._handle(value.input_action)
-        or not self._handle(value.output_action)
+        or not self.valid_handle(value.input_action)
+        or not self.valid_handle(value.output_action)
         or value.input_action.owner is not value.output_action.owner
-        or not _integer(value.input_side, 0, 2)
-        or not _integer(value.output_side, 0, 2)
+        or not is_exact_integer_in_range(value.input_side, 0, 2)
+        or not is_exact_integer_in_range(value.output_side, 0, 2)
     ):
         return False
     for arena in self.temporal:
         if value.input_action.owner is not arena.token:
             continue
-        node = arena._nodes[value.input_action.local_id]
-        output = arena._nodes[value.output_action.local_id]
+        action_nodes = arena.audit_snapshot().nodes
+        node = action_nodes[value.input_action.local_id]
+        output = action_nodes[value.output_action.local_id]
         if (
             node.kind != "identity"
             and output.kind != "identity"
@@ -253,9 +253,9 @@ def _function_signature(
             return value.input_size is None
         if node.kind == "identity":
             return type(value.input_size) is int and value.input_size == 1
-        effect = arena.compiler._nodes[node.compiler_id]
+        effect = arena.compiler.definition_at(node.compiler_id)
         for kernel_arena in self.kernels:
-            for kernel in kernel_arena._kernels:
+            for kernel in kernel_arena.audit_snapshot().kernels:
                 if kernel.effect is effect:
                     return type(value.input_size) is int and value.input_size == len(
                         kernel.left if value.input_side == 0 else kernel.right
@@ -263,26 +263,24 @@ def _function_signature(
     return False
 
 
-def _port_signature(self: DiamondPayloadRegistry, value: PortSignature) -> bool:
-    from number_compiler.hashlife.execution.diamond_payload import _integer
-
+def port_signature(self: DiamondPayloadRegistry, value: PortSignature) -> bool:
     if (
         type(value.kernel) is not ActionProgramID
         or value.kernel.kind != "diamond-kernel"
-        or not self._handle(value.kernel)
+        or not self.valid_handle(value.kernel)
         or value.first is not None
         or value.second is not None
         or value.left_role != "left-boundary"
         or value.right_role != "right-boundary"
-        or not _integer(value.halo_left)
-        or not _integer(value.halo_right)
+        or not is_exact_integer_in_range(value.halo_left)
+        or not is_exact_integer_in_range(value.halo_right)
         or value.horizon is not None
-        and not _integer(value.horizon)
+        and not is_exact_integer_in_range(value.horizon)
     ):
         return False
     for arena in self.kernels:
         if value.kernel.owner is arena.owner:
-            kernel = arena._kernels[value.kernel.local_id]
+            kernel = arena.audit_snapshot().kernels[value.kernel.local_id]
             return all(
                 type(item) is int
                 for item in (
@@ -305,25 +303,26 @@ def _port_signature(self: DiamondPayloadRegistry, value: PortSignature) -> bool:
     return False
 
 
-def _temporal(self: DiamondPayloadRegistry, value: TemporalActionNode) -> bool:
-    from number_compiler.hashlife.execution.diamond_payload import _integer
-
+def temporal_node(self: DiamondPayloadRegistry, value: TemporalActionNode) -> bool:
     if (
-        not _integer(value.left, -1)
-        or not _integer(value.right, -1)
-        or not _integer(value.compiler_id, -1)
-        or not _integer(value.exponent)
-        or not _integer(value.base)
-        or not _integer(value.blank)
+        not is_exact_integer_in_range(value.left, -1)
+        or not is_exact_integer_in_range(value.right, -1)
+        or not is_exact_integer_in_range(value.compiler_id, -1)
+        or not is_exact_integer_in_range(value.exponent)
+        or not is_exact_integer_in_range(value.base)
+        or not is_exact_integer_in_range(value.blank)
     ):
         return False
     if value.kind == "identity":
         return value == TemporalActionNode("identity")
     for arena in self.temporal:
+        action_nodes = arena.audit_snapshot().nodes
         if value.kind == "atom" and value.left == value.right == -1:
-            if not _integer(value.compiler_id, 0, len(arena.compiler._nodes)):
+            if not is_exact_integer_in_range(
+                value.compiler_id, 0, arena.compiler.node_count
+            ):
                 continue
-            effect = arena.compiler._nodes[value.compiler_id]
+            effect = arena.compiler.definition_at(value.compiler_id)
             if (value.base, value.blank, value.exponent) == (
                 effect.base,
                 effect.blank,
@@ -332,11 +331,11 @@ def _temporal(self: DiamondPayloadRegistry, value: TemporalActionNode) -> bool:
                 return True
         if value.kind == "compose" and value.compiler_id == -1:
             if not all(
-                _integer(index, 0, len(arena._nodes))
+                is_exact_integer_in_range(index, 0, len(action_nodes))
                 for index in (value.left, value.right)
             ):
                 continue
-            before, after = arena._nodes[value.left], arena._nodes[value.right]
+            before, after = action_nodes[value.left], action_nodes[value.right]
             if (
                 before.base == after.base == value.base
                 and before.blank == after.blank == value.blank
@@ -346,32 +345,31 @@ def _temporal(self: DiamondPayloadRegistry, value: TemporalActionNode) -> bool:
     return False
 
 
-def _cell(self: DiamondPayloadRegistry, value: CellNode | _CellKey) -> bool:
-    from number_compiler.hashlife.execution.diamond_payload import _integer
-
+def cell_node(self: DiamondPayloadRegistry, value: CellNode | CellIndexKey) -> bool:
     if (
         value.kind not in ("source", "image", "slice", "join", "mirror")
-        or not _integer(value.level)
-        or not _integer(value.offset)
+        or not is_exact_integer_in_range(value.level)
+        or not is_exact_integer_in_range(value.offset)
         or any(
-            not _integer(index, -1)
+            not is_exact_integer_in_range(index, -1)
             for index in (value.left, value.right, value.action, value.source_tile)
         )
         or isinstance(value, CellNode)
-        and not _integer(value.source_start)
+        and not is_exact_integer_in_range(value.source_start)
     ):
         return False
     for arena in self.cells:
+        cell_nodes = arena.audit_snapshot().nodes
         if isinstance(value, CellNode):
-            if self._cell_owners.get(id(value)) is not arena:
+            if not self.owns_cell_record(value, arena):
                 continue
             expected_original = value.kind == "source"
             if value.kind == "join":
                 expected_original = (
-                    _integer(value.left, 0, len(arena._nodes))
-                    and _integer(value.right, 0, len(arena._nodes))
-                    and arena._nodes[value.left].original_forward is True
-                    and arena._nodes[value.right].original_forward is True
+                    is_exact_integer_in_range(value.left, 0, len(cell_nodes))
+                    and is_exact_integer_in_range(value.right, 0, len(cell_nodes))
+                    and cell_nodes[value.left].original_forward is True
+                    and cell_nodes[value.right].original_forward is True
                 )
             if (
                 type(value.original_forward) is not bool
@@ -389,15 +387,19 @@ def _cell(self: DiamondPayloadRegistry, value: CellNode | _CellKey) -> bool:
             ):
                 return True
             continue
-        if value.source_tile != -1 or not _integer(value.left, 0, len(arena._nodes)):
+        if value.source_tile != -1 or not is_exact_integer_in_range(
+            value.left, 0, len(cell_nodes)
+        ):
             continue
-        before = arena._nodes[value.left]
+        before = cell_nodes[value.left]
         if value.kind == "image":
             if (
                 value.right == -1
                 and value.offset == 0
                 and value.level == before.level
-                and _integer(value.action, 0, len(arena.actions._nodes))
+                and is_exact_integer_in_range(
+                    value.action, 0, len(arena.actions.audit_snapshot().nodes)
+                )
             ):
                 return True
         elif value.kind == "join":
@@ -405,8 +407,8 @@ def _cell(self: DiamondPayloadRegistry, value: CellNode | _CellKey) -> bool:
                 value.action == -1
                 and value.offset == 0
                 and value.level == before.level + 1
-                and _integer(value.right, 0, len(arena._nodes))
-                and arena._nodes[value.right].level == before.level
+                and is_exact_integer_in_range(value.right, 0, len(cell_nodes))
+                and cell_nodes[value.right].level == before.level
             ):
                 return True
         elif (
@@ -426,66 +428,70 @@ def _cell(self: DiamondPayloadRegistry, value: CellNode | _CellKey) -> bool:
     return False
 
 
-def _kernel_fields(self: DiamondPayloadRegistry, value: PrimitiveKernel) -> bool:
-    from number_compiler.hashlife.execution.diamond_payload import _integer
-
+def kernel_fields(self: DiamondPayloadRegistry, value: PrimitiveKernel) -> bool:
     if (
         value.ledger is not self.ledger
-        or type(value.left) is not tuple
-        or type(value.right) is not tuple
+        or not is_exact_object_tuple(value.left)
+        or not is_exact_object_tuple(value.right)
         or not value.left
         or not value.right
         or not any(
-            any(item is value for item in arena._kernels) for arena in self.kernels
+            any(item is value for item in arena.audit_snapshot().kernels)
+            for arena in self.kernels
         )
     ):
         return False
+    left_states = value.left
+    right_states = value.right
     effect = value.effect
-    if not _integer(effect.blank, 0, 1 << 64):
+    if not is_exact_integer_in_range(effect.blank, 0, 1 << 64):
         return False
     if type(effect) is BaseBlockEffect:
         return all(
-            type(state) is _BaseLeftState
-            and _integer(state.carry, 0, 2)
-            and _integer(state.previous_pair, -1, effect.blank + 1)
+            type(state) is BaseLeftState
+            and is_exact_integer_in_range(state.carry, 0, 2)
+            and is_exact_integer_in_range(state.previous_pair, -1, effect.blank + 1)
             and type(state.blank_seen) is bool
             and type(state.sink) is bool
-            for state in value.left
+            for state in left_states
         ) and all(
-            type(state) is _BaseRightState
+            type(state) is BaseRightState
             and type(state.forward_suffix) is CarryFn
             and type(state.backward_suffix) is CarryFn
-            for state in value.right
+            for state in right_states
         )
     if type(effect) is DigitNormalizeBlockEffect:
         return all(
-            type(state) is _DigitLeftState
-            and _integer(state.carry, 0, 2)
+            type(state) is DigitLeftState
+            and is_exact_integer_in_range(state.carry, 0, 2)
             and type(state.blank_seen) is bool
             and type(state.sink) is bool
-            for state in value.left
-        ) and all(type(state) is int and state == 0 for state in value.right)
+            for state in left_states
+        ) and all(type(state) is int and state == 0 for state in right_states)
     if type(effect) is FiniteBlockEffect:
         return (
-            all(type(state) is int for state in (*value.left, *value.right))
-            and value.left == tuple(range(effect.left_count))
-            and value.right == tuple(range(effect.right_count))
+            all(type(state) is int for state in (*left_states, *right_states))
+            and left_states == tuple(range(effect.left_count))
+            and right_states == tuple(range(effect.right_count))
         )
     if type(effect) is SymbolicBinaryDivisionEffect:
         effect.__post_init__()
         return (
-            value.left == (0,)
-            and value.right == (0,)
+            left_states == (0,)
+            and right_states == (0,)
             and value.left_count == 1
             and value.right_count == 2 * effect.radix
         )
     if type(effect) is NonblankBlockEffect:
-        return all(_integer(state, 0, 2) for state in (*value.left, *value.right))
+        return all(
+            is_exact_integer_in_range(state, 0, 2)
+            for state in (*left_states, *right_states)
+        )
     kernel_arena = next(
         (
             arena
             for arena in self.kernels
-            if any(candidate is value for candidate in arena._kernels)
+            if any(candidate is value for candidate in arena.audit_snapshot().kernels)
         ),
         None,
     )
@@ -507,15 +513,14 @@ def _kernel_fields(self: DiamondPayloadRegistry, value: PrimitiveKernel) -> bool
             bounds = state_bounds()
         except (TypeError, ValueError):
             return False
-        return (
-            type(bounds) is tuple
-            and len(bounds) == 2
-            and all(type(bound) is int for bound in bounds)
-            and bounds[0] <= bounds[1]
-            and all(
-                _integer(state, bounds[0], bounds[1])
-                for state in (*value.left, *value.right)
-            )
+        if not is_exact_object_tuple(bounds) or len(bounds) != 2:
+            return False
+        lower, upper = bounds
+        if type(lower) is not int or type(upper) is not int or lower > upper:
+            return False
+        return all(
+            is_exact_integer_in_range(state, lower, upper)
+            for state in (*left_states, *right_states)
         )
     boundary_universe = getattr(effect, "boundary_universe", None)
     if callable(boundary_universe):
@@ -525,9 +530,9 @@ def _kernel_fields(self: DiamondPayloadRegistry, value: PrimitiveKernel) -> bool
         except (TypeError, ValueError, OSError):
             return False
         return (
-            type(left) is tuple
-            and type(right) is tuple
-            and value.left == left
-            and value.right == right
+            is_exact_object_tuple(left)
+            and is_exact_object_tuple(right)
+            and left_states == left
+            and right_states == right
         )
     return False

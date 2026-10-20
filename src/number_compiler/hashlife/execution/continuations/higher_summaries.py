@@ -8,18 +8,39 @@ never source digits, future words, or proof-machine states.
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping, MutableSequence
-from dataclasses import dataclass, field
+from collections.abc import Mapping
+from dataclasses import dataclass
 
-from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
-from number_compiler.arithmetic.radix_transfer import RadixRemainderTransfer
+from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.continuations.higher_semantic import (
     HigherSemanticArena,
 )
+from number_compiler.hashlife.execution.continuations.higher_summary_records import (
+    ContextBinding,
+    ContextLeaf,
+    ContextRecipe,
+    ContextSpatial,
+    ContextSummary,
+    HigherSummaryID,
+    RuntimeContextSummary,
+    RuntimeUnarySummary,
+    SummaryRecord,
+    UnaryAffine,
+    UnaryBinding,
+    UnaryFinite,
+    UnaryIdentity,
+    UnaryLeaf,
+    UnaryRecipe,
+    UnarySpatial,
+    UnarySummary,
+    UnaryTemporal,
+)
+from number_compiler.hashlife.execution.continuations.higher_summary_snapshot import (
+    HigherSummaryAuditSnapshot,
+)
 from number_compiler.hashlife.execution.continuations.higher_types import (
     HigherExpressionID,
-    HigherFunctionID,
 )
 from number_compiler.hashlife.execution.continuations.higher_values import (
     RuntimeAtom,
@@ -34,7 +55,7 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
-from number_compiler.resources.stores import append_indexed_node
+from number_compiler.resources.stores import LedgerDict, LedgerList, append_indexed_node
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,134 +64,6 @@ class InputCellGeometry:
 
     level: int
     uniform_symbol: int | None
-
-
-@dataclass(frozen=True, slots=True)
-class HigherSummaryID(ArenaHandle):
-    """Scoped canonical K/U semantic summary."""
-
-
-@dataclass(frozen=True, slots=True)
-class UnarySummary:
-    action: FieldCellActionID
-    side: int
-    function: HigherFunctionID
-    recipe: UnaryRecipe = field(compare=False, hash=False)
-
-
-@dataclass(frozen=True, slots=True)
-class ContextSummary:
-    provider: FieldCellActionID
-    consumer: FieldCellActionID
-    left: HigherExpressionID
-    right: HigherExpressionID
-    incoming_left: HigherExpressionID
-    incoming_right: HigherExpressionID
-    left_body: HigherExpressionID
-    right_body: HigherExpressionID
-    recipe: ContextRecipe = field(compare=False, hash=False)
-
-
-@dataclass(frozen=True, slots=True)
-class UnaryLeaf:
-    symbol: int
-
-
-@dataclass(frozen=True, slots=True)
-class UnaryIdentity:
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class UnaryFinite:
-    """Complete bounded primitive port function, never an emitted tape."""
-
-    outputs: tuple[int, ...]
-
-    def __post_init__(self) -> None:
-        if (
-            type(self.outputs) is not tuple
-            or not 1 <= len(self.outputs) <= 64
-            or any(
-                type(value) is not int or not 0 <= value < len(self.outputs)
-                for value in self.outputs
-            )
-        ):
-            raise ValueError("finite unary transfer has an invalid bounded port")
-
-
-@dataclass(frozen=True, slots=True)
-class UnaryAffine:
-    """A bounded modular port action; its payload never grows with cell width."""
-
-    transfer: RadixRemainderTransfer
-
-
-@dataclass(frozen=True, slots=True)
-class UnarySpatial:
-    first: HigherSummaryID
-    second: HigherSummaryID
-
-
-@dataclass(frozen=True, slots=True)
-class UnaryTemporal:
-    forward: HigherSummaryID
-    opposite: HigherSummaryID
-    context: HigherSummaryID
-
-
-UnaryRecipe = (
-    UnaryIdentity | UnaryFinite | UnaryAffine | UnaryLeaf | UnarySpatial | UnaryTemporal
-)
-
-
-@dataclass(frozen=True, slots=True)
-class ContextLeaf:
-    symbol: int
-
-
-@dataclass(frozen=True, slots=True)
-class ContextSpatial:
-    low: HigherSummaryID
-    high: HigherSummaryID
-    low_forward: HigherSummaryID
-    high_backward: HigherSummaryID
-
-
-ContextRecipe = ContextLeaf | ContextSpatial
-
-
-@dataclass(frozen=True, slots=True)
-class RuntimeUnarySummary:
-    action: FieldCellActionID
-    side: int
-    recipe: UnaryRecipe
-
-
-@dataclass(frozen=True, slots=True)
-class RuntimeContextSummary:
-    provider: FieldCellActionID
-    consumer: FieldCellActionID
-    recipe: ContextRecipe
-
-
-SummaryRecord = (
-    UnarySummary | ContextSummary | RuntimeUnarySummary | RuntimeContextSummary
-)
-
-
-@dataclass(frozen=True, slots=True)
-class _UnaryBinding:
-    action: FieldCellActionID
-    source: SourceCellID
-    side: int
-
-
-@dataclass(frozen=True, slots=True)
-class _ContextBinding:
-    provider: FieldCellActionID
-    consumer: FieldCellActionID
-    source: SourceCellID
 
 
 class HigherSummaryArena:
@@ -211,7 +104,7 @@ class HigherSummaryArena:
             prefix + "-runtime-compositions",
             "spatial_parent_memo",
         )
-        self._runtime_compositions: MutableMapping[
+        self._runtime_compositions: LedgerDict[
             tuple[HigherSummaryID, HigherSummaryID], HigherSummaryID
         ] = self.ledger.make_dict(self._runtime_composition_owner)
         self.ledger.register_container(
@@ -224,19 +117,17 @@ class HigherSummaryArena:
             prefix + "-blank-identities",
             "query_memo",
         )
-        self._nodes: MutableSequence[SummaryRecord] = self.ledger.make_list(
-            self._node_owner
-        )
-        self._keys: MutableMapping[SummaryRecord, int] = self.ledger.make_dict(
+        self._nodes: LedgerList[SummaryRecord] = self.ledger.make_list(self._node_owner)
+        self._keys: LedgerDict[SummaryRecord, int] = self.ledger.make_dict(
             self._key_owner
         )
-        self._bindings: MutableMapping[
-            _UnaryBinding | _ContextBinding, HigherSummaryID
-        ] = self.ledger.make_dict(self._binding_owner)
-        self._runtime_bindings: MutableMapping[
-            _UnaryBinding | _ContextBinding, HigherSummaryID
+        self._bindings: LedgerDict[UnaryBinding | ContextBinding, HigherSummaryID] = (
+            self.ledger.make_dict(self._binding_owner)
+        )
+        self._runtime_bindings: LedgerDict[
+            UnaryBinding | ContextBinding, HigherSummaryID
         ] = self.ledger.make_dict(self._runtime_binding_owner)
-        self._blank_identity: MutableMapping[tuple[FieldCellActionID, int], bool] = (
+        self._blank_identity: LedgerDict[tuple[FieldCellActionID, int], bool] = (
             self.ledger.make_dict(self._blank_identity_owner)
         )
         self.ledger.register_container(
@@ -270,12 +161,40 @@ class HigherSummaryArena:
             evict=self.clear_bindings,
         )
 
+    def audit_snapshot(self) -> HigherSummaryAuditSnapshot:
+        """Expose the exact stores and read-only views for explicit audits."""
+        return HigherSummaryAuditSnapshot(
+            self.ledger,
+            self.owner,
+            self.semantics,
+            self.sources,
+            self.schema,
+            self._node_owner,
+            self._nodes,
+            self._nodes.audit_view(),
+            self._key_owner,
+            self._keys,
+            self._keys.audit_view(),
+            self._binding_owner,
+            self._bindings,
+            self._bindings.audit_view(),
+            self._runtime_binding_owner,
+            self._runtime_bindings,
+            self._runtime_bindings.audit_view(),
+            self._blank_identity_owner,
+            self._blank_identity,
+            self._blank_identity.audit_view(),
+            self._runtime_composition_owner,
+            self._runtime_compositions,
+            self._runtime_compositions.audit_view(),
+        )
+
     def validate_input(self, cell: SourceCellID) -> None:
         if type(cell) is not SourceCellID:
             raise TypeError("summary input requires an issued source cell")
         self.sources.resolve(cell)
 
-    def _input_geometry(self, cell: SourceCellID) -> InputCellGeometry:
+    def input_geometry(self, cell: SourceCellID) -> InputCellGeometry:
         self.validate_input(cell)
         node = self.sources.resolve(cell)
         return InputCellGeometry(node.level, node.uniform_symbol)
@@ -284,7 +203,7 @@ class HigherSummaryArena:
         self.validate_input(cell)
         return self.sources.children(cell)
 
-    def _input_symbol(self, cell: SourceCellID) -> int:
+    def input_symbol(self, cell: SourceCellID) -> int:
         self.validate_input(cell)
         return self.sources.symbol(cell)
 
@@ -302,7 +221,7 @@ class HigherSummaryArena:
         self.ledger.release(self._runtime_binding_owner, entries=runtime_count)
         self.ledger.release(self._blank_identity_owner, entries=identity_count)
 
-    def _handle(self, local_id: int, record: SummaryRecord) -> HigherSummaryID:
+    def scoped_handle(self, local_id: int, record: SummaryRecord) -> HigherSummaryID:
         kind = (
             self._UNARY_KIND
             if type(record) in (UnarySummary, RuntimeUnarySummary)
@@ -399,11 +318,11 @@ class HigherSummaryArena:
             side,
         )
 
-    def _intern(self, record: SummaryRecord) -> HigherSummaryID:
+    def intern_summary(self, record: SummaryRecord) -> HigherSummaryID:
         found = self._keys.get(record)
         if found is not None:
             self.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_HITS)
-            return self._handle(found, record)
+            return self.scoped_handle(found, record)
         local_id = append_indexed_node(
             self.ledger,
             self._nodes,
@@ -414,7 +333,7 @@ class HigherSummaryArena:
             record,
         )
         self.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_PUBLICATIONS)
-        return self._handle(local_id, record)
+        return self.scoped_handle(local_id, record)
 
     def _variable(
         self, action: FieldCellActionID, side: int, role: str
@@ -473,7 +392,7 @@ class HigherSummaryArena:
         body: HigherExpressionID,
         recipe: UnaryRecipe,
     ) -> HigherSummaryID:
-        return self._intern(
+        return self.intern_summary(
             UnarySummary(
                 action,
                 side,
@@ -510,7 +429,7 @@ class HigherSummaryArena:
         right_body: HigherExpressionID,
         recipe: ContextRecipe,
     ) -> HigherSummaryID:
-        return self._intern(
+        return self.intern_summary(
             ContextSummary(
                 provider,
                 consumer,
@@ -592,7 +511,7 @@ class HigherSummaryArena:
         self.sources.resolve(source)
         if type(side) is not int or side not in (0, 1):
             raise ValueError("unary summary side must be zero or one")
-        return self._ensure(_UnaryBinding(action, source, side))
+        return self._ensure(UnaryBinding(action, source, side))
 
     def context(
         self,
@@ -603,64 +522,64 @@ class HigherSummaryArena:
         self.schema.validate_action(provider)
         self.schema.validate_action(consumer)
         self.sources.resolve(source)
-        return self._ensure(_ContextBinding(provider, consumer, source))
+        return self._ensure(ContextBinding(provider, consumer, source))
 
-    def _dependencies(
+    def summary_dependencies(
         self,
-        key: _UnaryBinding | _ContextBinding,
-    ) -> tuple[_UnaryBinding | _ContextBinding, ...]:
-        node = self._input_geometry(key.source)
-        if isinstance(key, _UnaryBinding):
+        key: UnaryBinding | ContextBinding,
+    ) -> tuple[UnaryBinding | ContextBinding, ...]:
+        node = self.input_geometry(key.source)
+        if isinstance(key, UnaryBinding):
             children = self.schema.children(key.action)
             if children is not None:
                 before, after = children
                 return (
-                    _UnaryBinding(before, key.source, key.side),
-                    _UnaryBinding(before, key.source, 1 - key.side),
-                    _ContextBinding(before, after, key.source),
+                    UnaryBinding(before, key.source, key.side),
+                    UnaryBinding(before, key.source, 1 - key.side),
+                    ContextBinding(before, after, key.source),
                 )
             if node.level:
                 low, high = self._input_children(key.source)
                 first, second = (low, high) if key.side == 0 else (high, low)
                 return (
-                    _UnaryBinding(key.action, first, key.side),
-                    _UnaryBinding(key.action, second, key.side),
+                    UnaryBinding(key.action, first, key.side),
+                    UnaryBinding(key.action, second, key.side),
                 )
             return ()
         if node.level:
             low, high = self._input_children(key.source)
             return (
-                _ContextBinding(key.provider, key.consumer, low),
-                _ContextBinding(key.provider, key.consumer, high),
-                _UnaryBinding(key.provider, low, 0),
-                _UnaryBinding(key.provider, high, 1),
+                ContextBinding(key.provider, key.consumer, low),
+                ContextBinding(key.provider, key.consumer, high),
+                UnaryBinding(key.provider, low, 0),
+                UnaryBinding(key.provider, high, 1),
             )
         return ()
 
-    def _blank_is_identity(self, action: FieldCellActionID, side: int) -> bool:
+    def blank_is_identity(self, action: FieldCellActionID, side: int) -> bool:
         from number_compiler.hashlife.execution.continuations.summary_dependencies import (
-            _blank_is_identity,
+            blank_is_identity,
         )
 
-        return _blank_is_identity(self, action, side)
+        return blank_is_identity(self, action, side)
 
-    def _runtime_dependencies(
+    def runtime_dependencies(
         self,
-        key: _UnaryBinding | _ContextBinding,
-    ) -> tuple[_UnaryBinding | _ContextBinding, ...]:
+        key: UnaryBinding | ContextBinding,
+    ) -> tuple[UnaryBinding | ContextBinding, ...]:
         from number_compiler.hashlife.execution.continuations.summary_dependencies import (
-            _runtime_dependencies,
+            runtime_dependencies,
         )
 
-        return _runtime_dependencies(self, key)
+        return runtime_dependencies(self, key)
 
     def _build(
         self,
-        key: _UnaryBinding | _ContextBinding,
-        dependencies: tuple[_UnaryBinding | _ContextBinding, ...],
+        key: UnaryBinding | ContextBinding,
+        dependencies: tuple[UnaryBinding | ContextBinding, ...],
     ) -> HigherSummaryID:
-        node = self._input_geometry(key.source)
-        if isinstance(key, _UnaryBinding):
+        node = self.input_geometry(key.source)
+        if isinstance(key, UnaryBinding):
             variable = self._variable(key.action, key.side, "unary")
             action_children = self.schema.children(key.action)
             if action_children is not None:
@@ -705,7 +624,7 @@ class HigherSummaryArena:
                     self._bindings[dependencies[0]],
                     self._bindings[dependencies[1]],
                 )
-            symbol = self.semantics.symbol(key.action, self._input_symbol(key.source))
+            symbol = self.semantics.symbol(key.action, self.input_symbol(key.source))
             body = (
                 variable
                 if self.schema.kind(key.action) == "identity"
@@ -721,7 +640,7 @@ class HigherSummaryArena:
                 key.side,
                 variable,
                 body,
-                UnaryLeaf(self._input_symbol(key.source)),
+                UnaryLeaf(self.input_symbol(key.source)),
             )
         if node.level:
             self.ledger.bump(_execution_keys.HIGHER_CONTEXT_SPATIAL_COMPOSITIONS)
@@ -730,7 +649,7 @@ class HigherSummaryArena:
             )
         variables = self._context_variables(key.provider, key.consumer)
         left, right, incoming_left, incoming_right = variables
-        original = self.semantics.symbol(key.provider, self._input_symbol(key.source))
+        original = self.semantics.symbol(key.provider, self.input_symbol(key.source))
         symbol = self.semantics.action_emit(key.provider, left, original, right)
         left_body = self.semantics.action_step(key.consumer, 0, incoming_left, symbol)
         right_body = self.semantics.action_step(key.consumer, 1, incoming_right, symbol)
@@ -740,25 +659,25 @@ class HigherSummaryArena:
             variables,
             left_body,
             right_body,
-            ContextLeaf(self._input_symbol(key.source)),
+            ContextLeaf(self.input_symbol(key.source)),
         )
 
     def _ensure(
         self,
-        root: _UnaryBinding | _ContextBinding,
+        root: UnaryBinding | ContextBinding,
     ) -> HigherSummaryID:
         found = self._bindings.get(root)
         if found is not None:
             self.ledger.bump(_execution_keys.HIGHER_SUMMARY_BINDING_HITS)
             return found
-        stack: list[tuple[_UnaryBinding | _ContextBinding, bool]] = [(root, False)]
-        active: set[_UnaryBinding | _ContextBinding] = set()
+        stack: list[tuple[UnaryBinding | ContextBinding, bool]] = [(root, False)]
+        active: set[UnaryBinding | ContextBinding] = set()
         while stack:
             key, ready = stack.pop()
             if key in self._bindings:
                 active.discard(key)
                 continue
-            dependencies = self._dependencies(key)
+            dependencies = self.summary_dependencies(key)
             if not ready:
                 if key in active:
                     raise AssertionError("cyclic higher summary dependency")
@@ -783,26 +702,100 @@ class HigherSummaryArena:
             active.discard(key)
         return self._bindings[root]
 
-    def _build_runtime(
+    def build_runtime(
         self,
-        key: _UnaryBinding | _ContextBinding,
-        dependencies: tuple[_UnaryBinding | _ContextBinding, ...],
+        key: UnaryBinding | ContextBinding,
+        dependencies: tuple[UnaryBinding | ContextBinding, ...],
     ) -> HigherSummaryID:
         from number_compiler.hashlife.execution.continuations.summary_dependencies import (
-            _build_runtime,
+            build_runtime,
         )
 
-        return _build_runtime(self, key, dependencies)
+        return build_runtime(self, key, dependencies)
 
-    def _ensure_runtime(
+    def ensure_runtime(
         self,
-        root: _UnaryBinding | _ContextBinding,
+        root: UnaryBinding | ContextBinding,
     ) -> HigherSummaryID:
         from number_compiler.hashlife.execution.continuations.summary_dependencies import (
-            _ensure_runtime,
+            ensure_runtime,
         )
 
-        return _ensure_runtime(self, root)
+        return ensure_runtime(self, root)
+
+    def publish_runtime_composition(
+        self,
+        key: tuple[HigherSummaryID, HigherSummaryID],
+        record: RuntimeUnarySummary,
+        *,
+        context: RuntimeContextSummary | None = None,
+    ) -> HigherSummaryID:
+        """Reserve the complete parent, its context, and its binding together."""
+        found = self._keys.get(record)
+        context_new = context is not None and context not in self._keys
+        charges = [(self._runtime_composition_owner, 1, 0)]
+        if found is None:
+            charges.extend(((self._node_owner, 1, 1), (self._key_owner, 1, 0)))
+        if context_new:
+            charges.extend(((self._node_owner, 1, 1), (self._key_owner, 1, 0)))
+        self.ledger.reserve_many(charges)
+        if context_new:
+            assert context is not None
+            local_id = len(self._nodes)
+            self._nodes.append(context)
+            self._keys[context] = local_id
+            self.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_PUBLICATIONS)
+        elif context is not None:
+            self.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_HITS)
+        if found is None:
+            found = len(self._nodes)
+            self._nodes.append(record)
+            self._keys[record] = found
+            self.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_PUBLICATIONS)
+        else:
+            self.ledger.bump(_execution_keys.HIGHER_SUMMARY_SEMANTIC_HITS)
+        result = self.scoped_handle(found, record)
+        self._runtime_compositions[key] = result
+        return result
+
+    @property
+    def runtime_bindings(
+        self,
+    ) -> Mapping[UnaryBinding | ContextBinding, HigherSummaryID]:
+        return self._runtime_bindings.audit_view()
+
+    @property
+    def runtime_compositions(
+        self,
+    ) -> Mapping[tuple[HigherSummaryID, HigherSummaryID], HigherSummaryID]:
+        return self._runtime_compositions.audit_view()
+
+    @property
+    def blank_identities(self) -> Mapping[tuple[FieldCellActionID, int], bool]:
+        return self._blank_identity.audit_view()
+
+    def publish_blank_identity(
+        self, key: tuple[FieldCellActionID, int], value: bool
+    ) -> None:
+        self.ledger.reserve(self._blank_identity_owner, entries=1)
+        self._blank_identity[key] = value
+
+    def build_and_bind_runtime(
+        self,
+        key: UnaryBinding | ContextBinding,
+        dependencies: tuple[UnaryBinding | ContextBinding, ...],
+    ) -> None:
+        self.ledger.reserve(self._runtime_binding_owner, entries=1)
+        try:
+            result = self.build_runtime(key, dependencies)
+            self._runtime_bindings[key] = result
+        except BaseException:
+            self.ledger.release(self._runtime_binding_owner, entries=1)
+            raise
+        self.ledger.bump(_execution_keys.HIGHER_RUNTIME_SUMMARY_PUBLICATIONS)
+
+    def prospective_summary(self, record: SummaryRecord) -> HigherSummaryID:
+        return self.scoped_handle(self._keys.get(record, len(self._nodes)), record)
 
     def runtime_unary(
         self,
@@ -814,7 +807,7 @@ class HigherSummaryArena:
         self.validate_input(source)
         if type(side) is not int or side not in (0, 1):
             raise ValueError("runtime unary summary side must be zero or one")
-        return self._ensure_runtime(_UnaryBinding(action, source, side))
+        return self.ensure_runtime(UnaryBinding(action, source, side))
 
     def runtime_context(
         self,
@@ -826,7 +819,7 @@ class HigherSummaryArena:
         self.schema.validate_action(provider)
         self.schema.validate_action(consumer)
         self.validate_input(source)
-        return self._ensure_runtime(_ContextBinding(provider, consumer, source))
+        return self.ensure_runtime(ContextBinding(provider, consumer, source))
 
     def combine_runtime_unary(
         self,
@@ -886,15 +879,22 @@ class HigherSummaryArena:
 
 
 __all__ = [
+    "ContextBinding",
     "ContextLeaf",
+    "ContextRecipe",
     "ContextSpatial",
     "ContextSummary",
     "HigherSummaryArena",
     "HigherSummaryID",
+    "RuntimeContextSummary",
+    "RuntimeUnarySummary",
+    "SummaryRecord",
     "UnaryAffine",
+    "UnaryBinding",
     "UnaryFinite",
     "UnaryIdentity",
     "UnaryLeaf",
+    "UnaryRecipe",
     "UnarySpatial",
     "UnarySummary",
     "UnaryTemporal",

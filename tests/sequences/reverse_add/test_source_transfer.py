@@ -1,5 +1,7 @@
 """Finite reverse/add transfer stays attached to completed source children."""
 
+from typing import cast
+
 import pytest
 
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
@@ -34,7 +36,9 @@ def test_reverse_add_transfer_joins_forward_children_from_query_endpoint() -> No
     packet = source_transfer_packet(term, steps=2, pair_depth=1, trace=True)
     trace = packet["trace"]
     assert isinstance(trace, dict)
-    detailed_packet = {**packet, **trace}
+    trace_packet = cast(dict[str, object], trace)
+    detailed_packet = dict(packet)
+    detailed_packet.update(trace_packet)
 
     assert_exact_source_transfer_path(
         detailed_packet,
@@ -50,7 +54,7 @@ def test_reverse_add_transfer_reuses_a_warm_query_endpoint(
 ) -> None:
     generation = 79
     term = ReverseAddPoweredTerm(196, generation)
-    workspace = term._source_workspace()
+    workspace = term.source_workspace()
     owner, endpoint, _reused, _applications = workspace.completed_q19_occurrence()
 
     def forbid_cold_source_image(*_args: object, **_kwargs: object) -> None:
@@ -66,7 +70,7 @@ def test_reverse_add_transfer_reuses_a_warm_query_endpoint(
     assert packet["source_generation"] == endpoint.temporal_steps
     assert packet["future_q19_roots_constructed"] is False
     assert packet["matrix_semantics"] == "projected_source_word_overapproximation"
-    assert owner is workspace.adapter._q19_owner
+    assert owner is workspace.adapter.audit_snapshot().q19_owner
 
 
 def test_reverse_add_generation_257_uses_reflected_incoming_carry() -> None:
@@ -83,14 +87,16 @@ def test_reverse_add_summary_does_not_build_future_q19_children(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     term = ReverseAddPoweredTerm(196, 79)
-    workspace = term._source_workspace()
+    workspace = term.source_workspace()
     workspace.completed_q19_occurrence()
 
     def forbid_future_child(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("summary matrix constructed a future Q19 child")
 
     monkeypatch.setattr(
-        type(workspace.adapter._q19_owner), "apply_pair_step", forbid_future_child
+        type(workspace.adapter.audit_snapshot().q19_owner),
+        "apply_pair_step",
+        forbid_future_child,
     )
     packet = source_transfer_packet(term, steps=2, pair_depth=1)
 

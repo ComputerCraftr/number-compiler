@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_integer_tuple,
+    is_exact_object_tuple,
+)
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.hashlife.tiles.tiles import TileID
@@ -18,14 +22,13 @@ def _valid_frame(
     frame: object,
     port_count: int,
 ) -> tuple[TileID, tuple[int, ...], bool] | None:
-    if type(frame) is not tuple or len(frame) != 3:
+    if not is_exact_object_tuple(frame) or len(frame) != 3:
         return None
     tile, ports, ready = frame
     if (
         type(tile) is not TileID
-        or type(ports) is not tuple
+        or not is_exact_integer_tuple(ports)
         or len(ports) != port_count
-        or any(type(port) is not int for port in ports)
         or type(ready) is not bool
     ):
         return None

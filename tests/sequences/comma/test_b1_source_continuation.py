@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping
-from typing import cast
+from collections.abc import Callable, Mapping, MutableMapping
+from typing import Protocol, cast
 
 import pytest
 
@@ -26,6 +26,55 @@ from number_compiler.sequences.comma.semantic_continuation import (
     SemanticContinuationArena,
     TerminalWeight,
 )
+
+
+def _arena_mapping(
+    arena: SemanticContinuationArena, name: str
+) -> Mapping[object, object]:
+    value = object.__getattribute__(arena, name)
+    if not isinstance(value, Mapping):
+        raise AssertionError(f"semantic continuation {name} is not a mapping")
+    return cast(Mapping[object, object], value)
+
+
+def _row_length(value: object) -> int:
+    if type(value) is not tuple:
+        raise AssertionError("semantic continuation row is not an exact tuple")
+    return len(cast(tuple[object, ...], value))
+
+
+class _ArenaStore(Protocol):
+    def __call__(
+        self,
+        mapping: MutableMapping[object, object],
+        owner: int,
+        key: object,
+        value: object,
+        *,
+        nodes: int = 1,
+    ) -> None: ...
+
+
+def _store_callable(
+    arena: SemanticContinuationArena,
+) -> _ArenaStore:
+    return cast(_ArenaStore, object.__getattribute__(arena, "_store"))
+
+
+def _raw_action_callable(
+    module: object,
+) -> Callable[[BoundaryChart, int, CycleTransfer | None], object]:
+    return cast(
+        Callable[[BoundaryChart, int, CycleTransfer | None], object],
+        object.__getattribute__(module, "_raw_action"),
+    )
+
+
+def _next_id(arena: SemanticContinuationArena) -> int:
+    value = object.__getattribute__(arena, "_next_id")
+    if type(value) is not int:
+        raise AssertionError("semantic continuation ID cursor is not an integer")
+    return value
 
 
 def _root(offset: int, delta: int = 0) -> BoundaryChart:
@@ -101,11 +150,16 @@ def test_discovery_builds_one_cycle_transfer_per_entry_source(
 
     monkeypatch.setattr(semantic, "cycle_transfer", counted)
     arena.compile(source)
-    entries = [state for state in arena._raw if state.kind == "entry"]
+    raw_rows = _arena_mapping(arena, "_raw")
+    entries = [
+        state
+        for state in raw_rows
+        if isinstance(state, BoundaryChart) and state.kind == "entry"
+    ]
     assert len(transfers) == len(entries)
     assert arena.ledger.counters["comma_semantic_cycle_transfer_builds"] == len(entries)
     assert arena.ledger.counters["comma_semantic_action_evaluations"] == sum(
-        len(actions) for actions in arena._raw.values()
+        _row_length(actions) for actions in raw_rows.values()
     )
     assert set(transfers) == {
         (state.leading, state.coordinate % 10) for state in entries
@@ -117,7 +171,7 @@ def test_failed_discovery_rolls_back_rows_and_reservations(
 ) -> None:
     arena = SemanticContinuationArena()
     source = _root(offset_representatives()[0])
-    original = semantic._raw_action
+    original = _raw_action_callable(semantic)
     calls = 0
 
     def poison(
@@ -134,9 +188,9 @@ def test_failed_discovery_rolls_back_rows_and_reservations(
     monkeypatch.setattr(semantic, "_raw_action", poison)
     with pytest.raises(RuntimeError, match="poisoned"):
         arena.compile(source)
-    assert not arena._raw
-    assert not arena._transitions
-    assert not arena._source_ids
+    assert not _arena_mapping(arena, "_raw")
+    assert not _arena_mapping(arena, "_transitions")
+    assert not _arena_mapping(arena, "_source_ids")
     assert arena.ledger.entries == 0
     assert arena.ledger.nodes == 0
     assert arena.ledger.counters["comma_semantic_action_failures"] == 1
@@ -152,7 +206,7 @@ def test_signature_publication_failure_restores_id_allocator(
 ) -> None:
     arena = SemanticContinuationArena()
     source = _root(offset_representatives()[0])
-    original_store = arena._store
+    original_store = _store_callable(arena)
     failed = False
 
     def poison_signature_store(
@@ -164,7 +218,7 @@ def test_signature_publication_failure_restores_id_allocator(
         nodes: int = 1,
     ) -> None:
         nonlocal failed
-        if mapping is arena._signatures and not failed:
+        if mapping is _arena_mapping(arena, "_signatures") and not failed:
             failed = True
             raise RuntimeError("poisoned signature publication")
         original_store(mapping, owner, key, value, nodes=nodes)
@@ -172,9 +226,9 @@ def test_signature_publication_failure_restores_id_allocator(
     monkeypatch.setattr(arena, "_store", poison_signature_store)
     with pytest.raises(RuntimeError, match="poisoned signature"):
         arena.compile(source)
-    assert arena._next_id == 0
-    assert not arena._raw
-    assert not arena._source_ids
+    assert _next_id(arena) == 0
+    assert not _arena_mapping(arena, "_raw")
+    assert not _arena_mapping(arena, "_source_ids")
     monkeypatch.setattr(arena, "_store", original_store)
     identifier = arena.compile(source)
     clean_arena = SemanticContinuationArena()
@@ -188,8 +242,8 @@ def test_budget_failure_does_not_publish_partial_source() -> None:
         arena.compile(_root(offset_representatives()[0]))
     assert arena.ledger.entries == 0
     assert arena.ledger.nodes == 0
-    assert not arena._raw
-    assert not arena._source_ids
+    assert not _arena_mapping(arena, "_raw")
+    assert not _arena_mapping(arena, "_source_ids")
 
 
 def test_powered_count_zero_is_identity_and_count_is_exact(

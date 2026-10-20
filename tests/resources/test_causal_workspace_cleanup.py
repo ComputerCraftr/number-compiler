@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
+from number_compiler.resources.causal_stacks import StoreClearRetry
 from number_compiler.resources.causal_types import CausalMemoKey
 from number_compiler.resources.causal_workspace import CausalTaskWorkspace
 from number_compiler.resources.ledger import ResourceLedger
@@ -33,8 +36,12 @@ def test_causal_clear_rejects_unexplained_owner_charge() -> None:
         workspace.clear()
 
     assert not workspace.memo
-    assert ledger._account(workspace.memo_owner).entries == 2
-    assert workspace._memo_clear_retry.pending == (1, 0)
+    assert ledger.account_status(workspace.memo_owner).entries == 2
+    clear_retry = cast(
+        StoreClearRetry,
+        object.__getattribute__(workspace, "_memo_clear_retry"),
+    )
+    assert clear_retry.pending == (1, 0)
 
 
 @pytest.mark.parametrize("failure_timing", ("before", "after"))
@@ -54,9 +61,13 @@ def test_causal_clear_retries_exact_delta_after_release_failure(
     expected_entries = int(failure_timing == "before")
     expected_pending = (expected_entries, 0)
     assert not workspace.memo
-    assert ledger._account(owner).entries == expected_entries
-    assert workspace._memo_clear_retry.pending == expected_pending
+    assert ledger.account_status(owner).entries == expected_entries
+    clear_retry = cast(
+        StoreClearRetry,
+        object.__getattribute__(workspace, "_memo_clear_retry"),
+    )
+    assert clear_retry.pending == expected_pending
 
     workspace.clear()
-    assert ledger._account(owner).entries == 0
-    assert workspace._memo_clear_retry.pending == (0, 0)
+    assert ledger.account_status(owner).entries == 0
+    assert clear_retry.pending == (0, 0)

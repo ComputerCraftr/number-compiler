@@ -80,7 +80,7 @@ class SLP:
         return balanced_reduce(ids, self.cat, self.empty)
 
     def materialize(self, q: int) -> tuple[int, ...]:
-        out = []
+        out: list[int] = []
         stack = [q]
         while stack:
             z = stack.pop()
@@ -97,7 +97,7 @@ class SLP:
         return tuple(out)
 
     def reachable(self, q: int) -> set[int]:
-        seen = set()
+        seen: set[int] = set()
         st = [q]
         while st:
             z = st.pop()
@@ -129,7 +129,7 @@ def repair_build(arena: SLP, word: tuple[int, ...]) -> int:
         if freq < 2:
             break
         nt = arena.cat(a, b)
-        out = []
+        out: list[int] = []
         i = 0
         reps = 0
         while i < len(seq):
@@ -254,7 +254,7 @@ def main() -> None:
     # actual 196 pair half is parity 1, [7,18] for pair full [7,18,7]
     assert decode(A.materialize(seed), 10) == (1, (7, 18))
     T = BimachineSLP(B, A)
-    rows = []
+    rows: list[dict[str, int | float]] = []
     q = seed
     _rng = random.Random(196)
     for step in range(1, 257):

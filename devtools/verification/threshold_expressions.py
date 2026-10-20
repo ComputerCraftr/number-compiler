@@ -16,7 +16,6 @@ from devtools.verification.growth_coboundary import (
     growth_pair_value,
     growth_symbol_value,
 )
-from devtools.verification.skew_residue_laws import skew_normalized_digit
 from number_compiler.arithmetic.carry.carry_monoid import (
     CarryFn,
     apply_carry_fn,
@@ -30,6 +29,7 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
 from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
     decimal_normalized_pair_sum,
 )
+from number_compiler.arithmetic.formula.skew_residue_laws import skew_normalized_digit
 
 # Specialize the existing exact local-law owner on two equal residues. The
 # incoming bits matter only through their sum; no geometry coordinate enters
@@ -200,7 +200,7 @@ class ThresholdExpressions:
         self._schema_keys[key] = result
         return result
 
-    def _intern(
+    def intern_record(
         self,
         kind: str,
         size: int,
@@ -231,7 +231,7 @@ class ThresholdExpressions:
             or not 0 <= value < size
         ):
             raise ValueError("constant outside finite sort")
-        return self._intern("constant", size, (), (value,), frozenset((value,)))
+        return self.intern_record("constant", size, (), (value,), frozenset((value,)))
 
     def variable(self, size: int, slot: int) -> Expr:
         if (
@@ -241,7 +241,7 @@ class ThresholdExpressions:
             or slot < 0
         ):
             raise ValueError("invalid finite input coordinate")
-        return self._intern("variable", size, (), (slot,), frozenset(range(size)))
+        return self.intern_record("variable", size, (), (slot,), frozenset(range(size)))
 
     def table(self, value: Expr, size: int, table: tuple[int, ...]) -> Expr:
         node = self.resolve(value)
@@ -265,7 +265,7 @@ class ThresholdExpressions:
             table = tuple(table[v] for v in self.schemas[node.data[0]].table)
             value = self.handle(node.args[0])
         schema = self._intern_schema(self.resolve(value).size, size, table)
-        return self._intern("table", size, (value.index,), (schema,), possible)
+        return self.intern_record("table", size, (value.index,), (schema,), possible)
 
     def affine(
         self, size: int, terms: Iterable[tuple[Expr, int]], offset: int = 0
@@ -311,7 +311,7 @@ class ThresholdExpressions:
         if len(possible) == 1:
             self.bound_reductions += 1
             return self.constant(size, next(iter(possible)))
-        return self._intern(
+        return self.intern_record(
             "affine",
             size,
             tuple(i for i, _ in pairs),
@@ -334,7 +334,7 @@ class ThresholdExpressions:
         ):
             return condition
         self.tick(len(a.possible) + len(b.possible))
-        return self._intern(
+        return self.intern_record(
             "select",
             a.size,
             (condition.index, yes.index, no.index),
@@ -358,7 +358,7 @@ class ThresholdExpressions:
             for x in a.possible
             for y in b.possible
         )
-        return self._intern(
+        return self.intern_record(
             "carry_compose", 3, (after.index, before.index), (), possible
         )
 
@@ -381,7 +381,7 @@ class ThresholdExpressions:
         if len(possible) == 1:
             self.bound_reductions += 1
             return self.constant(19, next(iter(possible)))
-        return self._intern(
+        return self.intern_record(
             "mirror_pair", 19, (residue.index, carry_sum.index), (), possible
         )
 
@@ -403,7 +403,7 @@ class ThresholdExpressions:
         )
         if len(possible) == 1:
             return self.constant(3, next(iter(possible)))
-        return self._intern(
+        return self.intern_record(
             "mirror_domain", 3, (chart.index, carry_sum.index), (), possible
         )
 
@@ -433,7 +433,7 @@ class ThresholdExpressions:
         if len(possible) == 1:
             self.bound_reductions += 1
             return self.constant(3, next(iter(possible)))
-        return self._intern(
+        return self.intern_record(
             "decimal_sum_domain",
             3,
             tuple(sorted((left.index, right.index))),
@@ -490,7 +490,7 @@ class ThresholdExpressions:
         if len(possible) == 1:
             self.bound_reductions += 1
             return self.constant(12, next(iter(possible)))
-        return self._intern(
+        return self.intern_record(
             "growth_symbol", 12, tuple(v.index for v in operands), (), possible
         )
 
@@ -507,7 +507,7 @@ class ThresholdExpressions:
         )
         if len(possible) == 1:
             return self.constant(3, next(iter(possible)))
-        return self._intern(
+        return self.intern_record(
             "growth_domain", 3, (previous.index, current.index), (), possible
         )
 
@@ -532,7 +532,7 @@ class ThresholdExpressions:
         )
         if len(possible) == 1:
             return self.constant(modulus, next(iter(possible)))
-        return self._intern(
+        return self.intern_record(
             "growth_value_plane", modulus, (previous.index, current.index), (), possible
         )
 
@@ -561,7 +561,7 @@ class ThresholdExpressions:
         found = self.keys.get(("skew_pair_domain", 3, arguments, ()))
         if found is not None:
             return self.handle(found)
-        ranges = []
+        ranges: list[frozenset[int]] = []
         for offset in (0, 3):
             local = nodes[offset : offset + 3]
             self.tick(
@@ -579,7 +579,7 @@ class ThresholdExpressions:
         )
         if len(possible) == 1:
             return self.constant(3, next(iter(possible)))
-        return self._intern("skew_pair_domain", 3, arguments, (), possible)
+        return self.intern_record("skew_pair_domain", 3, arguments, (), possible)
 
     def carry_apply(self, domain: Expr, incoming: Expr) -> Expr:
         """Carry is an operation on geometry, never a new source variable."""
@@ -595,7 +595,7 @@ class ThresholdExpressions:
         )
         if len(possible) == 1:
             return self.constant(2, next(iter(possible)))
-        return self._intern(
+        return self.intern_record(
             "carry_apply", 2, (domain.index, incoming.index), (), possible
         )
 

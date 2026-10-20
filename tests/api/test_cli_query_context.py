@@ -186,7 +186,7 @@ def test_reverse_metrics_only_does_not_construct_reachable_image(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from number_compiler.hashlife.execution.tile_scheduler import TileApplication
+    from number_compiler.hashlife.execution.tile_application import TileApplication
 
     monkeypatch.setattr(TileApplication, "complete", forbidden)
     monkeypatch.setattr(TileApplication, "point", forbidden)

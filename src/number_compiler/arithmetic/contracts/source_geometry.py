@@ -77,6 +77,11 @@ class SourceGeometry:
         self._read_root: DyadicSpan | None = None
 
     @property
+    def source_root(self) -> DyadicSpan | None:
+        """Return the already constructed source root without adding geometry."""
+        return self._read_root
+
+    @property
     def construction(self) -> OriginalSourceConstruction:
         """Return the authenticated immutable source construction owner."""
         OriginalSourceConstruction.validate_source(self._construction)
@@ -282,7 +287,7 @@ class SourceGeometry:
             raise ValueError("source geometry does not describe this original input")
 
     @exact_constructor
-    def _source_span(
+    def allocate_source_span(
         self, source: Sequence[int], blank: int, length: int
     ) -> DyadicSpan:
         if not source or length < len(source):

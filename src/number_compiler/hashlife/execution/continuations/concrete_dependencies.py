@@ -56,8 +56,8 @@ if TYPE_CHECKING:
     )
 
 
-def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
-    cached = self._memo.get(root)
+def run_tasks(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
+    cached = self.cached_result(root)
     if cached is not None:
         self.ledger.bump(_execution_keys.CONCRETE_PORT_TASK_EARLY_HITS)
         return cached
@@ -69,14 +69,14 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
         frame = normalize_request(self, tasks.pop())
         tag = cast(str, frame[0])
         if tag in ("ADV", "RES"):
-            hit = self._memo.get(frame)
+            hit = self.cached_result(frame)
             if hit is not None:
                 self.ledger.bump(_execution_keys.CONCRETE_PORT_TASK_EARLY_HITS)
                 results.append(hit)
                 continue
         if tag == "INIT":
             action, side = cast(FieldCellActionID, frame[1]), cast(int, frame[2])
-            hit = self._memo.get(frame)
+            hit = self.cached_result(frame)
             if hit is not None:
                 self.ledger.bump(_execution_keys.CONCRETE_PORT_TASK_EARLY_HITS)
                 results.append(hit)
@@ -93,14 +93,14 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 )(action, side)
                 if initial is not None:
                     self.validate_atom(initial)
-                    self._store(frame, initial)
+                    self.store_result(frame, initial)
                     results.append(initial)
                     continue
             children = self.adapter.children(action)
             if children is None:
                 initial = self.adapter.primitive_initial(action, side)
-                self._validate_action_state(action, side, initial)
-                self._store(frame, initial)
+                self.validate_action_state(action, side, initial)
+                self.store_result(frame, initial)
                 results.append(initial)
             else:
                 tasks.append(("INIT_COMPOSED", frame, action, side))
@@ -113,13 +113,13 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 cast(FieldCellActionID, frame[2]),
                 cast(int, frame[3]),
             )
-            residual = self._intern_residual(
+            residual = self.intern_residual(
                 _Residual(action, side, None, None, None, anchor),
             )
-            composed_initial = self._intern_port(
+            composed_initial = self.intern_port(
                 _ComposedPort(action, side, anchor, residual)
             )
-            self._store(key, composed_initial)
+            self.store_result(key, composed_initial)
             results.append(composed_initial)
             continue
         if tag == "ADV":
@@ -158,10 +158,10 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 )
                 if canonical is not None:
                     self.validate_atom(canonical)
-                    self._store(key, canonical)
+                    self.store_result(key, canonical)
                     results.append(canonical)
                     continue
-            cached_initial: PortAtom | None = self._memo.get(("INIT", action, side))
+            cached_initial: PortAtom | None = self.cached_result(("INIT", action, side))
             uniform = self.sources.resolve(cell).uniform_symbol
             _base, blank = self.sources.alphabet()
             if (
@@ -171,7 +171,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 and state == cached_initial
                 and self.adapter.blank_initial_is_stable(action, side)
             ):
-                self._store(key, state)
+                self.store_result(key, state)
                 self.ledger.bump(_execution_keys.CONCRETE_PORT_BLANK_PARENT_SKIPS)
                 results.append(state)
                 continue
@@ -222,7 +222,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
             node = self.sources.resolve(cell)
             if layer_id is not None:
                 if node.level:
-                    first, second = self._cell_parts(cell, reverse)
+                    first, second = self.cell_parts(cell, reverse)
                     tasks.append(
                         (
                             "ADV_AFTER_FIRST",
@@ -258,16 +258,16 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                     cell,
                     reverse,
                 )
-                self._validate_action_state(action, side, macro_result)
-                self._store(key, macro_result)
+                self.validate_action_state(action, side, macro_result)
+                self.store_result(key, macro_result)
                 results.append(macro_result)
             else:
                 symbol = self.sources.symbol(cell)
                 out = self.adapter.primitive_advance(
                     action, side, cast(int, state), symbol
                 )
-                self._validate_action_state(action, side, out)
-                self._store(key, out)
+                self.validate_action_state(action, side, out)
+                self.store_result(key, out)
                 results.append(out)
             continue
         if tag == "ADV_AFTER_FIRST":
@@ -279,7 +279,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
             continue
         if tag == "ADV_STORE":
             stored_value = results[-1]
-            self._store(cast(tuple[object, ...], frame[1]), stored_value)
+            self.store_result(cast(tuple[object, ...], frame[1]), stored_value)
             continue
         if tag == "ADV_PRIMITIVE":
             emitted_symbol = results.pop()
@@ -289,12 +289,12 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 cast(int, frame[4]),
                 cast(int, emitted_symbol),
             )
-            self._validate_action_state(
+            self.validate_action_state(
                 cast(FieldCellActionID, frame[2]),
                 cast(int, frame[3]),
                 primitive_result,
             )
-            self._store(cast(tuple[object, ...], frame[1]), primitive_result)
+            self.store_result(cast(tuple[object, ...], frame[1]), primitive_result)
             results.append(primitive_result)
             continue
         if tag == "ADV_COMPOSED":
@@ -308,13 +308,13 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 cast(ProviderLayerID | None, frame[6]),
                 cast(bool, frame[7]),
             )
-            residual = self._intern_residual(
+            residual = self.intern_residual(
                 _Residual(action, side, port.residual, cell, layer_id, anchor, reverse),
             )
-            composed_result = self._intern_port(
+            composed_result = self.intern_port(
                 _ComposedPort(action, side, anchor, residual)
             )
-            self._store(key, composed_result)
+            self.store_result(key, composed_result)
             results.append(composed_result)
             continue
         if tag == "ADV_DIRECTED":
@@ -383,7 +383,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
             constant = results.pop()
             d_key, d_action, d_side = _directed_header(frame)
             d_anchor = cast(PortAtom, frame[4])
-            residual = self._intern_residual(
+            residual = self.intern_residual(
                 _Residual(
                     d_action,
                     d_side,
@@ -395,7 +395,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                     constant,
                 )
             )
-            directed_state = self._intern_port(
+            directed_state = self.intern_port(
                 _ComposedPort(
                     d_action,
                     d_side,
@@ -403,7 +403,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                     residual,
                 )
             )
-            self._store(d_key, directed_state)
+            self.store_result(d_key, directed_state)
             results.append(directed_state)
             continue
         if tag == "EMIT":
@@ -522,12 +522,12 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 raise ValueError("residual belongs to a primitive action")
             before, after = children
             if residual_record.constant_result is not None:
-                self._validate_action_state(
+                self.validate_action_state(
                     after,
                     side,
                     residual_record.constant_result,
                 )
-                self._store(key, residual_record.constant_result)
+                self.store_result(key, residual_record.constant_result)
                 results.append(residual_record.constant_result)
                 self.ledger.bump(_execution_keys.CONCRETE_CONSTANT_RESIDUAL_HITS)
                 continue
@@ -549,7 +549,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 (
                     "ADV",
                     before,
-                    self._opposite(side),
+                    self.opposite(side),
                     argument,
                     residual_record.cell,
                     residual_record.layer,
@@ -602,7 +602,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
             )
             continue
         if tag == "RES_STORE":
-            self._store(cast(tuple[object, ...], frame[1]), results[-1])
+            self.store_result(cast(tuple[object, ...], frame[1]), results[-1])
             continue
         if tag == "SECOND":
             action, side, incoming, cell, layer_id, anchor, argument, reverse = (
@@ -619,10 +619,10 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 tuple[FieldCellActionID, FieldCellActionID],
                 self.adapter.children(action),
             )
-            self._validate_action_state(after, side, incoming)
+            self.validate_action_state(after, side, incoming)
             second_key = frame
             self.ledger.bump(_execution_keys.CONCRETE_PORT_SECOND_REQUESTS)
-            second_hit = self._memo.get(second_key)
+            second_hit = self.cached_result(second_key)
             if second_hit is not None:
                 self.ledger.bump(_execution_keys.CONCRETE_PORT_TASK_EARLY_HITS)
                 self.ledger.bump(_execution_keys.CONCRETE_PORT_SECOND_EARLY_HITS)
@@ -663,7 +663,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 continue
             if layer_id is not None:
                 raise AssertionError("provider layers must remain source-leaf bound")
-            first, second = self._cell_parts(cell, reverse)
+            first, second = self.cell_parts(cell, reverse)
             tasks.append(("SECOND_STORE", second_key))
             tasks.append(
                 (
@@ -682,7 +682,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 (
                     "ADV",
                     before,
-                    self._opposite(side),
+                    self.opposite(side),
                     argument,
                     second,
                     None,
@@ -693,7 +693,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
             continue
         if tag == "VIRTUAL":
             binding = cast(_VirtualBinding, frame[1])
-            interface_id = self._virtual_bindings.get(binding)
+            interface_id = self.virtual_bindings.get(binding)
             if interface_id is not None:
                 self.resolve_virtual(interface_id)
                 self.ledger.bump(_execution_keys.CONCRETE_VIRTUAL_INTERFACE_EARLY_HITS)
@@ -724,7 +724,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 continue
             if binding.layer is not None:
                 raise AssertionError("provider layers must remain source-leaf bound")
-            first, second = self._cell_parts(
+            first, second = self.cell_parts(
                 binding.cell,
                 binding.reverse,
             )
@@ -741,7 +741,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 (
                     "ADV",
                     before,
-                    self._opposite(binding.side),
+                    self.opposite(binding.side),
                     binding.argument,
                     second,
                     None,
@@ -772,7 +772,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 binding.side,
                 symbol,
             )
-            self._publish_virtual(
+            self.publish_virtual(
                 binding,
                 _VirtualInterface(consumer, binding.side, outputs),
             )
@@ -826,8 +826,8 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 cast(_VirtualBinding, frame[3]),
                 cast(_VirtualBinding, frame[4]),
             )
-            first_id = self._virtual_bindings[first_binding]
-            second_id = self._virtual_bindings[second_binding]
+            first_id = self.virtual_bindings[first_binding]
+            second_id = self.virtual_bindings[second_binding]
             first_map = self.resolve_virtual(first_id).outputs
             second_map = self.resolve_virtual(second_id).outputs
             outputs = compose_virtual_transfers(
@@ -837,7 +837,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 first_map,
                 second_map,
             )
-            self._publish_virtual(
+            self.publish_virtual(
                 binding,
                 _VirtualInterface(consumer, binding.side, outputs),
             )
@@ -851,7 +851,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 cast(_VirtualBinding, frame[2]),
                 cast(int, frame[3]),
             )
-            interface = self.resolve_virtual(self._virtual_bindings[binding])
+            interface = self.resolve_virtual(self.virtual_bindings[binding])
             result = apply_virtual_transfer(
                 self.adapter,
                 interface.consumer,
@@ -859,12 +859,12 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
                 interface.outputs,
                 incoming,
             )
-            self._validate_action_state(interface.consumer, interface.side, result)
-            self._store(key, result)
+            self.validate_action_state(interface.consumer, interface.side, result)
+            self.store_result(key, result)
             results.append(result)
             continue
         if tag == "SECOND_STORE":
-            self._store(cast(tuple[object, ...], frame[1]), results[-1])
+            self.store_result(cast(tuple[object, ...], frame[1]), results[-1])
             continue
         if tag == "SECOND_MIDDLE":
             middle_argument, middle_anchor = results.pop(), results.pop()
@@ -912,7 +912,7 @@ def _run(self: ConcretePortScheduler, root: tuple[object, ...]) -> PortAtom:
         raise AssertionError(f"unknown concrete port task {tag}")
     if len(results) != 1:
         raise AssertionError((root[0], len(results)))
-    self._store(root, results[0])
+    self.store_result(root, results[0])
     return results[0]
 
 

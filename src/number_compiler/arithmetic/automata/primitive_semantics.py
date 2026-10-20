@@ -148,7 +148,7 @@ class PrimitiveSemanticsAdapter:
             )
             prepared.reserve_with(((self.records.owner, 1, 0),))
             prepared.publish_reserved()
-            self.records._data[handle] = record
+            self.records.publish_reserved(handle, record)
             self.ledger.bump(_automata_keys.PRIMITIVE_SEMANTICS_COMPILATIONS)
             return record
         finally:

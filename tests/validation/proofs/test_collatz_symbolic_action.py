@@ -37,7 +37,9 @@ def test_symbolic_power_retains_exponents_and_ids_without_coefficients() -> None
     assert arena.action_count == 32
     assert not hasattr(arena, "_offset_ports")
     assert not hasattr(arena, "_tile_ports")
-    assert all(isinstance(part, int) for key in powers._compositions for part in key)
+    assert all(
+        type(part) is int for key in powers.composition_keys_snapshot() for part in key
+    )
 
 
 def test_production_symbolic_power_never_projects_intermediate_fields(
@@ -132,7 +134,9 @@ def test_exact_endpoint_budget_is_separate_from_symbolic_action_interning() -> N
     assert bounded.metrics().exact_endpoint_entries == 2
     assert bounded.metrics().macro_applications == 3
     # The read of request1 refreshed it; request2 was the oldest entry.
-    assert [key[1] for key in bounded._action_endpoints] == [1, 3]
+    before = bounded.metrics().macro_applications
+    bounded.advance_event_power(source, 1)
+    assert bounded.metrics().macro_applications == before
     bounded.advance_event_power(source, 2)
-    assert bounded.metrics().macro_applications == 4
+    assert bounded.metrics().macro_applications == before + 1
     assert bounded.metrics().exact_endpoint_entries == 2

@@ -14,7 +14,10 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final, TypeGuard
 
-from number_compiler.arithmetic.contracts.input_validation import is_object_tuple
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+    is_object_tuple,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaToken,
@@ -160,7 +163,7 @@ class CollatzRuntimeProgramArena:
             raise ValueError("unknown Collatz runtime program role")
         return role
 
-    def _intern(
+    def intern_record(
         self,
         node: CollatzRuntimeProgram,
         reservations: tuple[tuple[int, int, int], ...] = (),
@@ -223,7 +226,7 @@ class CollatzRuntimeProgramArena:
         node.__post_init__()
         if node.role != role:
             raise ValueError("Collatz runtime program has another semantic role")
-        return self._semantic_identity_for(role, node.exponent)
+        return self.semantic_identity_for_exponent(role, node.exponent)
 
     def audit_semantic_identity(
         self,
@@ -271,13 +274,13 @@ class CollatzRuntimeProgramArena:
         record: object,
     ) -> SemanticIdentity:
         """Check an existing identity row against its exact semantic key."""
-        if type(record) is not tuple or len(record) != 4:
+        if not is_exact_object_tuple(record) or len(record) != 4:
             raise ValueError("malformed Collatz semantic identity record")
         identity, digest, behavior, stored_exponent = record
         if (
             type(identity) is not SemanticIdentity
             or type(digest) is not str
-            or type(behavior) is not tuple
+            or not is_exact_object_tuple(behavior)
             or len(behavior) != 3
             or type(stored_exponent) is not int
             or stored_exponent != exponent
@@ -289,7 +292,7 @@ class CollatzRuntimeProgramArena:
             raise ValueError("Collatz semantic identity lost its exact binding")
         descriptor = behavior[2]
         if (
-            type(descriptor) is not tuple
+            not is_exact_object_tuple(descriptor)
             or len(descriptor) != 3
             or descriptor[0] != EXACT_EXPONENT_LIMBS_TAG
             or descriptor[1] != exponent.bit_length()
@@ -304,9 +307,15 @@ class CollatzRuntimeProgramArena:
         identity.validate()
         return identity
 
-    def _semantic_identity_for(
+    def semantic_identity_for_exponent(
         self, role: ProgramRole, exponent: int
     ) -> SemanticIdentity:
+        """Authenticate or publish one exact role/exponent identity.
+
+        This source-free descriptor operation does not issue a runtime program
+        handle. It is useful when the mathematical exponent is too large to
+        materialize as an explicit program composition.
+        """
         role = self._role(role)
         if type(exponent) is not int or exponent < 0:
             raise ValueError("Collatz semantic exponent must be nonnegative")
@@ -452,15 +461,17 @@ class CollatzRuntimeProgramArena:
             _collatz_keys.COLLATZ_RUNTIME_IDENTITY_SUM_BIT_WORK,
             max(1, first.exponent.bit_length()) + max(1, second.exponent.bit_length()),
         )
-        return self._semantic_identity_for(role, first.exponent + second.exponent)
+        return self.semantic_identity_for_exponent(
+            role, first.exponent + second.exponent
+        )
 
     def identity(self, role: ProgramRole) -> ActionProgramID:
         role = self._role(role)
-        return self._intern(CollatzRuntimeProgram(role, 0))
+        return self.intern_record(CollatzRuntimeProgram(role, 0))
 
     def primitive(self, role: ProgramRole) -> ActionProgramID:
         role = self._role(role)
-        return self._intern(CollatzRuntimeProgram(role, 1))
+        return self.intern_record(CollatzRuntimeProgram(role, 1))
 
     def compose(
         self,
@@ -485,7 +496,7 @@ class CollatzRuntimeProgramArena:
             before,
             after,
         )
-        result = self._intern(node, ((self._compose_owner, 1, 0),))
+        result = self.intern_record(node, ((self._compose_owner, 1, 0),))
         self._compositions[key] = result
         self.ledger.bump(_collatz_keys.COLLATZ_PROGRAM_COMPOSITIONS)
         return result

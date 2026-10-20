@@ -29,10 +29,10 @@ from number_compiler.projection.radix_original_source import OriginalRadixArena
 from number_compiler.projection.tile_radix import (
     TileRadixObservation,
 )
-from number_compiler.resources.construction_scope import RuntimeConstruction
-from number_compiler.resources.ledger import OwnedMemo, ResourceLedger, ResourceScope
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import projection as _projection_keys
 from number_compiler.resources.metric_keys import shared as _shared_keys
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.cycle import fixed_cycle_target
 
@@ -79,8 +79,34 @@ class RadixProjection:
             OwnedMemo(ledger, fused_owner, evictable=True)
         )
 
+    @property
+    def bound_source(self) -> ExactSource | None:
+        """Original source identity bound by a successful digit request."""
+        return self._bound_source
+
+    @property
+    def bound_steps(self) -> int | None:
+        """Physical iteration count bound with the original source."""
+        return self._bound_steps
+
+    @property
+    def fused_arena(self) -> FusedRadixArena | None:
+        """Semantic arena owning the retained original-source fused actions."""
+        return self._fused
+
+    @property
+    def native_source_arena(self) -> OriginalRadixArena | None:
+        """Owner of the original-source encoding, when already initialized."""
+        return self._native_source
+
+    def fused_action_audit_snapshot(
+        self,
+    ) -> OwnedMemoAuditSnapshot[FusedRadixBindingKey, FusedDivisionAction]:
+        """Read retained fused associations through the memo's audit interface."""
+        return self._fused_actions.audit_snapshot()
+
     def _source_image_program(self, term: PoweredCollatzTerm) -> ActionProgramID:
-        return term._source_image_program()
+        return term.source_image_program()
 
     def _provider_digit(self, term: PoweredCollatzTerm, index: int) -> int:
         """Observe one digit through a division action in the shared scheduler.
@@ -89,7 +115,7 @@ class RadixProjection:
         reused by adjacent observations. No continuation/provider backend or
         separate flat quotient word is available here.
         """
-        workspace = term._source_image()
+        workspace = term.source_image()
         key = MicroblockKey(
             self._source_image_program(term),
             self.radix,
@@ -106,7 +132,7 @@ class RadixProjection:
 
         # Exterior admission uses the same affine image; a zero remainder
         # alone cannot distinguish an internal zero digit from blank padding.
-        digit = term._admitted_radix_digit(self.radix, index)
+        digit = term.admitted_radix_digit(self.radix, index)
         term.resource_ledger.bump(_shared_keys.COLLATZ_IMAGE_RADIX_DEMANDS)
         if not 0 <= digit < self.radix:
             raise AssertionError("radix provider produced an invalid digit")
@@ -122,7 +148,9 @@ class RadixProjection:
         """Observe the source affine law through canonical prefix summaries."""
         if self._native_source is None:
             self._native_source = OriginalRadixArena(self.ledger)
-        encoding = self._native_source.encode(term._source_construction, self.radix)
+        encoding = self._native_source.encode(
+            term.original_source_construction, self.radix
+        )
         return self._native_source.affine_shifted_point(
             encoding, source_skip, index, incoming
         )
@@ -133,7 +161,7 @@ class RadixProjection:
             raise TypeError("radix projection requires an owned powered Collatz term")
         if type(index) is not int:
             raise TypeError("digit coordinate must be an exact integer")
-        source = term._source_construction.validate_source()
+        source = term.original_source_construction.validate_source()
         if (
             term.resource_ledger is not self.ledger
             or self._bound_source is not None
@@ -203,12 +231,14 @@ class RadixProjection:
             # still use the bounded observation and avoid rescanning that full
             # encoding once per requested digit.
             encoding = (
-                self._native_source.encode(term._source_construction, self.radix)
+                self._native_source.encode(
+                    term.original_source_construction, self.radix
+                )
                 if term.steps == 2
                 else None
             )
             bounded = self._native_source.bounded_shifted_point(
-                term._source_construction,
+                term.original_source_construction,
                 self.radix,
                 source_start,
                 source_index,
@@ -218,7 +248,7 @@ class RadixProjection:
                 return bounded
             if encoding is None:
                 encoding = self._native_source.encode(
-                    term._source_construction, self.radix
+                    term.original_source_construction, self.radix
                 )
             self.ledger.bump(
                 "radix_native_odd_shift_queries"
@@ -269,7 +299,7 @@ class RadixProjection:
                         physical=physical,
                         shift=shift,
                     )
-                    self._fused_actions._data[key] = action
+                    self._fused_actions.publish_reserved(key, action)
                 except BaseException:
                     self.ledger.release(self._fused_actions.owner, entries=1)
                     raise
@@ -304,29 +334,11 @@ def collatz_radix_digit(term: PoweredCollatzTerm, radix: int, index: int) -> int
         raise IndexError(index)
     term.resource_ledger.bump(_projection_keys.RADIX_OBSERVATIONS)
     if radix & (radix - 1) == 0:
-        symbol = term._point_radix_symbol(radix, index)
+        symbol = term.point_radix_symbol(radix, index)
         if symbol == radix:
             raise IndexError(index)
         return term.resource_ledger.observe_arithmetic(symbol)
-    projection = term._radix_projections.get(radix)
-    if projection is None:
-        owner = term.resource_ledger.register(
-            "radix-applications", "application_index", ResourceScope.INDEX_OWNED
-        )
-        term.resource_ledger.reserve(owner, entries=1)
-        try:
-            with RuntimeConstruction(term.resource_ledger):
-                projection = RadixProjection(
-                    radix,
-                    width,
-                    term.resource_ledger,
-                    term._microblocks,
-                    width_is_upper_bound=True,
-                )
-                term._radix_projections[radix] = projection
-        except BaseException:
-            term.resource_ledger.release(owner, entries=1)
-            raise
+    projection = term.radix_application(radix, width)
     return projection.digit(term, index)
 
 

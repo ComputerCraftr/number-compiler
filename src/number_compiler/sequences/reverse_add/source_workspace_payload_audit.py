@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sized
-from typing import TypeGuard, TypeVar
+from collections.abc import Iterator, Mapping
+from typing import Protocol, TypeGuard, TypeVar, cast
 
 from number_compiler.resources.ledger import (
     OwnedMemo,
@@ -21,6 +21,14 @@ from number_compiler.sequences.reverse_add.source_workspace_core_audit import (
 
 _AuditKey = TypeVar("_AuditKey")
 _AuditValue = TypeVar("_AuditValue")
+
+
+class _LedgerSizedStore(Protocol):
+    owner: int
+    ledger: ResourceLedger
+    nodes_per_entry: int
+
+    def __len__(self) -> int: ...
 
 
 def _audit_payload_items(
@@ -67,9 +75,9 @@ def store_valid_for_audit(
     entries = 0
     expected_nodes = 0
     if type(store) is OwnedMemo:
-        snapshot = store.audit_snapshot()
+        snapshot = cast(OwnedMemo[object, object], store).audit_snapshot()
     elif type(store) is OwnedMemoAuditSnapshot:
-        snapshot = store
+        snapshot = cast(OwnedMemoAuditSnapshot[object, object], store)
     else:
         snapshot = None
     if snapshot is not None:
@@ -97,11 +105,11 @@ def store_valid_for_audit(
             if measured_nodes != expected_nodes:
                 return False
     elif isinstance(store, (LedgerList, LedgerDict)):
-        sized_store: Sized = store
-        owned_container = store
-        entries = len(sized_store)
-        expected_nodes = entries * store.nodes_per_entry
-        if store.owner != owner or store.ledger is not ledger:
+        owned_store = cast(_LedgerSizedStore, store)
+        owned_container = cast(object, store)
+        entries = len(owned_store)
+        expected_nodes = entries * owned_store.nodes_per_entry
+        if owned_store.owner != owner or owned_store.ledger is not ledger:
             return False
     else:
         return False
@@ -271,10 +279,11 @@ def audit_reverse_source_workspaces(
             ):
                 stores_valid = False
             else:
-                data = (
-                    store.container if type(store) is OwnedMemoAuditSnapshot else store
-                )
-                approved.add(id(data))
+                if type(store) is OwnedMemoAuditSnapshot:
+                    snapshot = cast(OwnedMemoAuditSnapshot[object, object], store)
+                    approved.add(id(snapshot.container))
+                else:
+                    approved.add(id(store))
         valid &= stores_valid
         for bank_key, bank_action in _audit_payload_items(state.pointed_gt_banks):
             recognized.update((id(bank_key), id(bank_action)))

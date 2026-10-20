@@ -23,18 +23,19 @@ from number_compiler.sequences.antihydra.mahler_odd_macro import (
     odd_seam_step,
 )
 from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+from tests.support.exact_integer_power import exact_integer_power
 
 
 def _mapping(value: object) -> Mapping[object, object]:
     assert isinstance(value, Mapping)
-    return value
+    return cast(Mapping[object, object], value)
 
 
 def _literal(
     source: int, exponent: int, balance: int
 ) -> tuple[int, int, int, tuple[int, ...]]:
     lowest = balance
-    word = []
+    word: list[int] = []
     for _ in range(exponent):
         epsilon = source & 1
         word.append(epsilon)
@@ -127,7 +128,7 @@ def test_odd_action_seal_detects_nested_guard_and_safety_mutation() -> None:
 
 def test_q_formula_and_barrier_valuation_recurrence_on_source_seven() -> None:
     source, clock, balance, q = 7, 0, 0, 22
-    times = []
+    times: list[int] = []
     for index in range(85):
         times.append(clock)
         step = odd_seam_step(source, index, clock, balance)
@@ -209,8 +210,8 @@ def test_q_multiradix_orbit_recurrence_carries_and_decimal_crt() -> None:
             carries = borrows = 0
             for j in range(1, 7):
                 m = base**j
-                left = pow(3, step.exponent, m) * (qi % m) % m
-                right = pow(2, step.next_clock, m)
+                left = exact_integer_power(3, step.exponent, m) * (qi % m) % m
+                right = exact_integer_power(2, step.next_clock, m)
                 carries |= int(left + right >= m) << (j - 1)
                 borrows |= int(qj % m < qi % m) << (j - 1)
             assert data["carry_mask"] == carries
@@ -221,7 +222,10 @@ def test_q_multiradix_orbit_recurrence_carries_and_decimal_crt() -> None:
         odd_seam_step(7, 0, 0, 0).demanded_q_ports(places=3, walsh=True)["radix_ports"]
     )
     walsh_at_64 = _mapping(walsh_ports[64])["walsh64_mod5"]
-    assert isinstance(walsh_at_64, tuple) and len(walsh_at_64) == 64
+    assert (
+        isinstance(walsh_at_64, tuple)
+        and len(cast(tuple[object, ...], walsh_at_64)) == 64
+    )
 
 
 def test_joint_boolean_harmonics_source_authentication() -> None:
@@ -239,7 +243,10 @@ def test_joint_boolean_harmonics_source_authentication() -> None:
         assert packet["radial_scale"] == (exponent, exponent)
         assert set(_mapping(packet["radix_ports"])) == {2, 5, 10}
         binary_h5 = packet["binary_counter_h5"]
-        assert isinstance(binary_h5, tuple) and len(binary_h5) == 2
+        assert (
+            isinstance(binary_h5, tuple)
+            and len(cast(tuple[object, ...], binary_h5)) == 2
+        )
         assert packet["all_time_claim"] is False
         with pytest.raises(ValueError):
             action.demanded_harmonics(source + (1 << exponent))

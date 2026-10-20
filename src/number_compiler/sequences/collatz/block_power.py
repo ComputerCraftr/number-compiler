@@ -63,13 +63,25 @@ from number_compiler.sequences.collatz.physical_state import (
     odd_carry_parts,
     odd_carry_state,
 )
+from number_compiler.sequences.collatz.radix_source_api import (
+    ExteriorRadixCoordinate as _ExteriorRadixCoordinate,
+)
+from number_compiler.sequences.collatz.radix_source_api import (
+    admitted_radix_digit as _admitted_radix_digit_impl,
+)
+from number_compiler.sequences.collatz.radix_source_api import (
+    observe_radix_symbol,
+    source_radix_application,
+)
 
 if TYPE_CHECKING:
     from number_compiler.projection.lazy_radix import RadixProjection
     from number_compiler.resources.collatz_power_metrics import (
         CollatzPhysicalBlockMetrics,
     )
-    from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
+    from number_compiler.resources.hashlife_behavior_metrics import (
+        HashLifeBehaviorMetrics,
+    )
     from number_compiler.sequences.collatz.clock_observers import SArithmeticClock
     from number_compiler.sequences.collatz.joint_temporal_action import (
         CollatzAccumulatorObservation,
@@ -87,10 +99,6 @@ if TYPE_CHECKING:
 # Left boundary states.  START means no active source digit has been consumed.
 _START = 0
 _EVEN = 1
-
-
-class _ExteriorRadixCoordinate(IndexError):
-    """Exact affine threshold says a scalar coordinate is outside the value."""
 
 
 # Odd states encode (previous_bit, carry) in states 2..5.
@@ -415,7 +423,11 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             CollatzTermAuditSnapshot,
         )
 
-        return CollatzTermAuditSnapshot(self._ledger, self._workspace)
+        return CollatzTermAuditSnapshot(
+            self._ledger,
+            self._workspace,
+            self._microblocks.audit_snapshot(),
+        )
 
     def radix_projection_audit_source(
         self, ledger: ResourceLedger
@@ -428,6 +440,33 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             self.steps,
             self.seed_digits,
             self._radix_projections,
+        )
+
+    @property
+    def shared_cache(self) -> bool:
+        """Cache-sharing policy admitted for this exact powered term."""
+        return self._shared_cache
+
+    @property
+    def max_context_nodes(self) -> int | None:
+        """Caller node limit bound to this term's resource ledger."""
+        return self._max_context_nodes
+
+    @property
+    def max_cache_entries(self) -> int | None:
+        """Caller cache-entry limit bound to this term's resource ledger."""
+        return self._max_cache_entries
+
+    @property
+    def original_source_construction(self) -> OriginalSourceConstruction:
+        """Return the immutable authority for the caller-supplied source."""
+        self._source_construction.validate_source()
+        return self._source_construction
+
+    def radix_application(self, radix: int, width: int) -> RadixProjection:
+        """Get or create this term's accounted source-bound radix application."""
+        return source_radix_application(
+            radix, width, self._ledger, self._radix_projections, self._microblocks
         )
 
     @property
@@ -486,7 +525,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         # counters it reports.
         return 0 if self._power is None else int(self._power.operator_nodes)
 
-    def _source_image(self) -> CollatzPhysicalImageWorkspace:
+    def source_image(self) -> CollatzPhysicalImageWorkspace:
         from number_compiler.sequences.collatz.physical_images import (
             COLLATZ_PHYSICAL_LAW,
             CollatzPhysicalImageWorkspace,
@@ -548,7 +587,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
 
     def _source_numerator(self) -> tuple[int, int]:
         """Demand the terminal affine expression, without retaining an endpoint."""
-        transfer = self._source_image().saturated_summary().transfer
+        transfer = self.source_image().saturated_summary().transfer
         numerator = transfer.upper * self.seed + transfer.offset
         self._ledger.bump(
             _collatz_keys.COLLATZ_IMAGE_PROJECTION_OPERAND_BITS,
@@ -569,124 +608,47 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         self._ledger.bump(_shared_keys.TEMPORAL_POINT_REQUESTS)
         self._ledger.bump(_shared_keys.COLLATZ_IMAGE_RADIX_DEMANDS)
         try:
-            return self._admitted_radix_digit(radix, position)
+            return self.admitted_radix_digit(radix, position)
         except _ExteriorRadixCoordinate:
             # The low-level modular view zero-pads exterior coordinates.
             return 0
 
-    def _admitted_radix_digit(self, radix: int, position: int) -> int:
+    def admitted_radix_digit(self, radix: int, position: int) -> int:
         """Extract an active digit without constructing the affine numerator."""
-        if radix == 2:
-            from number_compiler.hashlife.execution.dyadic_return_observers import (
-                binary_cell,
-            )
-
-            symbol = binary_cell(self._source_image(), position)
-            if symbol == 2:
-                raise _ExteriorRadixCoordinate(position)
-            return symbol
-        transfer = self._source_image().saturated_summary().transfer
-        numerator_bits = (
-            max(
-                transfer.upper.bit_length() + self.seed.bit_length(),
-                abs(transfer.offset).bit_length(),
-            )
-            + 1
+        return _admitted_radix_digit_impl(
+            radix,
+            position,
+            self.seed,
+            self.resource_ledger,
+            self.source_image,
         )
-        scaled_place_bits = (
-            transfer.lower.bit_length() - 1 + position * (radix.bit_length() - 1)
-        )
-        if scaled_place_bits >= numerator_bits:
-            self._ledger.bump(_collatz_keys.COLLATZ_RADIX_EXTERIOR_SHORTCUTS)
-            if position == 0:
-                return 0
-            raise _ExteriorRadixCoordinate(position)
-        place = int(radix**position)
-        threshold = transfer.lower * place
-        # For N=u*seed+o, N<T iff o<T and
-        # (u=0 or seed <= floor((T-o-1)/u)).
-        exterior = transfer.offset < threshold and (
-            transfer.upper == 0
-            or self.seed <= (threshold - transfer.offset - 1) // transfer.upper
-        )
-        if exterior:
-            self._ledger.bump(_collatz_keys.COLLATZ_RADIX_EXTERIOR_SHORTCUTS)
-            if position == 0:
-                return 0
-            raise _ExteriorRadixCoordinate(position)
-        modulus = threshold * radix
-        residue = (
-            (transfer.upper % modulus) * (self.seed % modulus)
-            + transfer.offset % modulus
-        ) % modulus
-        self._ledger.bump(
-            _collatz_keys.COLLATZ_IMAGE_PROJECTION_OPERAND_BITS, modulus.bit_length()
-        )
-        return residue // threshold
 
     @source_reads_only
     def _point_symbol(self, position: int) -> int:
         """Observe a binary cell, preserving the kernel's explicit blank symbol."""
-        return self._point_radix_symbol(2, position)
+        return self.point_radix_symbol(2, position)
 
     @source_reads_only
-    def _point_radix_symbol(self, radix: int, position: int) -> int:
+    def point_radix_symbol(self, radix: int, position: int) -> int:
         """Observe a whole binary limb once; ``radix`` denotes exterior blank.
 
         The shared affine threshold supplies the Archimedean guard. This
         batches demanded bits without claiming a new shifted-Q constructor.
         """
-        radix = require_integer(radix, "binary limb radix", 2, 1 << 63)
-        if radix & (radix - 1):
-            raise ValueError("binary limb radix must be a power of two")
-        position = require_integer(position, "digit coordinate")
-        limb_bits = radix.bit_length() - 1
-        start = position * limb_bits
-        if position < 0 or start >= self.maximum_width:
-            raise IndexError(position)
-        if self.steps == 0:
-            if start >= len(self.seed_digits):
-                return radix
-            value = 0
-            for offset in range(min(limb_bits, len(self.seed_digits) - start)):
-                value = self._ledger.observe_arithmetic(
-                    value | (self.seed_digits[start + offset] << offset)
-                )
-                self._ledger.bump(_collatz_keys.COLLATZ_ORIGINAL_LIMB_SOURCE_READS)
-            return value
-        from number_compiler.projection.microblock_cache import (
-            ExactMicroblock,
-            MicroblockKey,
-        )
-
-        self._ledger.bump(_collatz_keys.DIRECT_POWERED_POINT_QUERIES)
-        workspace = self._source_image()
-        key = MicroblockKey(
-            self._source_image_program(),
+        return observe_radix_symbol(
             radix,
-            0,
             position,
-            "output",
-            source_scope=workspace.owner,
+            self.steps,
+            self.seed_digits,
+            self.resource_ledger,
+            self._microblocks,
+            lambda: self.maximum_width,
+            self.source_image,
+            self.source_image_program,
+            self.admitted_radix_digit,
         )
-        cached = self._microblocks.get(key)
-        if cached is not None:
-            # Source/action/image authority was checked before the cache lookup.
-            if not 0 <= cached.encoded <= radix:
-                raise ValueError("cached Collatz point belongs to another alphabet")
-            return cached.encoded
-        try:
-            symbol = self._admitted_radix_digit(radix, position)
-        except _ExteriorRadixCoordinate:
-            symbol = radix
-        else:
-            self._ledger.bump(_shared_keys.COLLATZ_IMAGE_RADIX_DEMANDS)
-            if not 0 <= symbol < radix:
-                raise AssertionError("source image produced an invalid limb")
-        self._microblocks.put(key, ExactMicroblock(symbol, limb_bits + 1))
-        return symbol
 
-    def _source_image_program(self) -> ActionProgramID:
+    def source_image_program(self) -> ActionProgramID:
         """Name cached digits without compiling a compatibility power DAG."""
         if self.steps <= 0:
             raise ValueError("source-image program requires a positive Collatz term")
@@ -713,11 +675,11 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             return len(self.seed_digits)
         found = self._active_width
         if found is None:
-            workspace = self._source_image()
+            workspace = self.source_image()
             tape_width = workspace.tape_width_summary
             if tape_width is not None:
                 # The workspace validates this sealed root-source/action port
-                # after _source_image has checked the term binding. Its blank
+                # after source_image has checked the term binding. Its blank
                 # displacement is the exact endpoint-width change, so no
                 # affine coefficient or endpoint is needed for this demand.
                 found = tape_width.source_width + tape_width.blank.delta
@@ -751,7 +713,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
                 raise ArithmeticError("positive Collatz image has no active bits")
             self._active_width = found
         else:
-            self._source_image()  # Cached extent is not live image authority.
+            self.source_image()  # Cached extent is not live image authority.
         return found
 
     @property
@@ -786,7 +748,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             return CollatzAccumulatorObservation(
                 modulus, self.seed % modulus, True, 0, 0, 0
             )
-        action = self._source_image().joint_action
+        action = self.source_image().joint_action
         if action is None:
             raise ValueError("joint cocycle was not published with this source image")
         return action.accumulator_observation(modulus)
@@ -842,7 +804,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             )
         if self.steps == 0:
             raise ValueError("zero-span Collatz queries have no positive root morphism")
-        return self._source_image().true_root_morphism
+        return self.source_image().true_root_morphism
 
     def observe_boundary_macro(
         self,
@@ -881,7 +843,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         if prepared_modulus is not None and modulus not in (None, prepared_modulus):
             raise ValueError("requested innovation modulus differs from prepared tape")
         selected_modulus = prepared_modulus if prepared_modulus is not None else modulus
-        workspace = None if self.steps == 0 else self._source_image()
+        workspace = None if self.steps == 0 else self.source_image()
         witness = None if workspace is None else workspace.first_boundary_macro
         global_tape = None
         if prepared_modulus is not None:
@@ -918,7 +880,7 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
         # only before the source image is first built; an already published
         # ordinary image is reused with its optional summary absent.
         self.prepare_width_spine()
-        odd = self._source_image().odd_steps()
+        odd = self.source_image().odd_steps()
         if not 0 <= odd <= self.steps:
             raise ValueError("bound Collatz result has an invalid physical clock")
         return SArithmeticClock(odd, self.steps - odd)
@@ -979,19 +941,6 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
 
 __all__ = [
     "CollatzPhysicalBlockEffect",
-    "CollatzPhysicalBlockMetrics",
     "PoweredCollatzTerm",
     "power_collatz_physical_effect",
 ]
-
-
-def __getattr__(name: str) -> object:
-    from number_compiler.api.lazy_exports import resolve_export
-
-    return resolve_export(
-        name,
-        {
-            "CollatzPhysicalBlockMetrics": "number_compiler.resources.collatz_power_metrics"
-        },
-        globals(),
-    )

@@ -70,9 +70,9 @@ from devtools.experiments.power_numbers.special_successor_models import (
     TwoPrimaryShiftAudit,
 )
 from devtools.experiments.power_numbers.special_successor_purity import (
-    _exact_target_hitting_times,
     boolean_set_audits,
     crt_purity_audits,
+    exact_target_hitting_times,
     image_filtration_audits,
     prime_group_depth_audits,
     residue_constraint_audits,
@@ -87,9 +87,10 @@ from devtools.experiments.power_numbers.special_successor_residual import (
 )
 from devtools.paths import repository_root
 from devtools.verification.oracles.special_binary_jump import (
-    _fermat_carrier_proof,
-    _mersenne_carrier_proof,
+    fermat_carrier_proof,
+    mersenne_carrier_proof,
 )
+from number_compiler.arithmetic.contracts.input_validation import is_object_tuple
 from number_compiler.arithmetic.functions.finite_unary import (
     minimize_unary_moore,
     partition_equivalent,
@@ -100,11 +101,11 @@ from number_compiler.arithmetic.functions.finite_unary import (
 def composite_depth_semantics_audit() -> CompositeDepthSemanticsAudit:
     """Reconstruct M11 image depth and target semantics without carry data."""
     family, parameter = "mersenne", 11
-    proof = _mersenne_carrier_proof(parameter)
+    proof = mersenne_carrier_proof(parameter)
     filtration = unary_image_filtration(proof.transition)
     depth_ids = filtration.depth_ids
     moore = minimize_unary_moore(proof.transition, proof.outputs)
-    hitting = _exact_target_hitting_times(proof.transition, proof.outputs)
+    hitting = exact_target_hitting_times(proof.transition, proof.outputs)
     finite_depth_strata = tuple(
         sum(depth == level for depth in depth_ids)
         for level in range(filtration.finite_depths)
@@ -140,12 +141,12 @@ def composite_depth_semantics_audit() -> CompositeDepthSemanticsAudit:
 
 
 def pure_two_group_audits() -> tuple[PureTwoGroupAudit, ...]:
-    rows = []
+    rows: list[PureTwoGroupAudit] = []
     # Prime Fermat: F_n^* has order 2^N and the radix subgroup <2> has exact
     # order 2^(n+1), so the nonzero orbit quotient has order 2^(N-n-1).
     for n in (2, 3, 4):
         width = 1 << n
-        proof = _fermat_carrier_proof(n)
+        proof = fermat_carrier_proof(n)
         exponent = width - n - 1
         predicted = 1 << exponent
         rows.append(
@@ -206,7 +207,7 @@ HeavyAuditParts = tuple[
 _AuditRecord = TypeVar("_AuditRecord")
 
 
-def _ordinary_special_successor_parts() -> OrdinaryAuditParts:
+def ordinary_special_successor_parts() -> OrdinaryAuditParts:
     """Compute all bounded audits except the M17/reconstruction-heavy controls."""
     return (
         image_filtration_audits(),
@@ -227,15 +228,6 @@ def _ordinary_special_successor_parts() -> OrdinaryAuditParts:
         carry_cyclotomic_transducer_audits(),
         composite_depth_semantics_audit(),
         special_factor_short_circuit_audits(),
-    )
-
-
-def _heavy_special_successor_parts() -> HeavyAuditParts:
-    """Compute exhaustive negative/phase controls as one explicit audit group."""
-    return (
-        carry_hensel_cyclotomic_audits(),
-        carry_temporal_automaton_audits(),
-        carry_phase_refinement_audits(),
     )
 
 
@@ -295,8 +287,9 @@ def _run_audit_groups_isolated() -> tuple[OrdinaryAuditParts, HeavyAuditParts]:
                         process.kill()
                         process.wait()
         ordinary: object = pickle.loads(paths["ordinary"].read_bytes())
-        if not isinstance(ordinary, tuple) or len(ordinary) != 18:
+        if not is_object_tuple(ordinary) or len(ordinary) != 18:
             raise TypeError("ordinary audit worker returned another result schema")
+        ordinary_rows = ordinary
         expected = (
             ImageFiltrationAudit,
             ResidueConstraintAudit,
@@ -317,14 +310,18 @@ def _run_audit_groups_isolated() -> tuple[OrdinaryAuditParts, HeavyAuditParts]:
             CompositeDepthSemanticsAudit,
             SpecialFactorShortCircuitAudit,
         )
-        for index, (part, kind_type) in enumerate(zip(ordinary, expected, strict=True)):
+        for index, (part, kind_type) in enumerate(
+            zip(ordinary_rows, expected, strict=True)
+        ):
             if index == 16:
                 if not isinstance(part, CompositeDepthSemanticsAudit):
                     raise TypeError("depth audit has another record type")
-            elif not isinstance(part, tuple) or any(
-                not isinstance(item, kind_type) for item in part
-            ):
-                raise TypeError("ordinary audit has another record type")
+            else:
+                if not isinstance(part, tuple):
+                    raise TypeError("ordinary audit has another record type")
+                part_rows = cast(tuple[object, ...], part)
+                if any(not isinstance(item, kind_type) for item in part_rows):
+                    raise TypeError("ordinary audit has another record type")
         return cast(OrdinaryAuditParts, ordinary), (
             _load_audit_records(paths["hensel"], CarryHenselCyclotomicAudit),
             _load_audit_records(paths["temporal"], CarryTemporalAutomatonAudit),
@@ -336,11 +333,12 @@ def _load_audit_records(
     path: Path, record_type: type[_AuditRecord]
 ) -> tuple[_AuditRecord, ...]:
     value: object = pickle.loads(path.read_bytes())
-    if not isinstance(value, tuple) or any(
-        not isinstance(item, record_type) for item in value
-    ):
+    if not is_object_tuple(value):
         raise TypeError("audit worker returned another record type")
-    return cast(tuple[_AuditRecord, ...], value)
+    records = value
+    if any(not isinstance(item, record_type) for item in records):
+        raise TypeError("audit worker returned another record type")
+    return cast(tuple[_AuditRecord, ...], records)
 
 
 @lru_cache(maxsize=1)

@@ -80,7 +80,7 @@ def evaluate(arena: SymbolicInnovationArena, root: InnovationID) -> dict[int, in
                 node.chart.slope * (index - node.chart.offset): value
                 for index, value in memo[node.child].items()
             }
-        elif isinstance(node, InnovationRadial):
+        else:
             assert node.multiplier.growth <= 20
             assert node.multiplier.no_growth <= 20
             result = {
@@ -91,7 +91,5 @@ def evaluate(arena: SymbolicInnovationArena, root: InnovationID) -> dict[int, in
                 before = result.copy()
                 for index, value in before.items():
                     result[index + 1] = result.get(index + 1, 0) + value
-        else:
-            assert_never(node)
         memo[ref] = {index: value for index, value in result.items() if value}
     return memo[root]

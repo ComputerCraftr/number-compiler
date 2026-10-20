@@ -1,7 +1,7 @@
 """Run admission remains exact across causal execution and cleanup."""
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, TypeGuard
+from typing import TYPE_CHECKING, TypeGuard, cast
 
 import pytest
 
@@ -27,14 +27,15 @@ from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAd
 from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_directed_transfer_memo import (
-    _prepare_canonical_admission,
-    _prepare_directed_transfer_with_admission,
     lookup_prepared_directed_transfer,
+    prepare_canonical_admission,
+    prepare_directed_transfer_with_admission,
 )
 from number_compiler.hashlife.tiles.tile_result_records import DirectedTransferKey
 from number_compiler.resources.causal_workspace import CausalActionAdmission
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.resources.stores import LedgerDict
+from tests.support.causal_frames import run_causal_frame
 from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 if TYPE_CHECKING:
@@ -51,9 +52,10 @@ def _is_primitive_action_store(
 ) -> TypeGuard[LedgerDict[int, PrimitiveTileAction]]:
     if type(value) is not LedgerDict:
         return False
+    entries = cast(LedgerDict[object, object], value)
     return all(
         type(key) is int and type(action) is PrimitiveTileAction
-        for key, action in value.items()
+        for key, action in entries.items()
     )
 
 
@@ -71,7 +73,8 @@ def _primitive_action_store(
 
 def _advance_one_symbol(engine: CausalTileEngine, action: FieldCellActionID) -> int:
     """Run the admitted one-symbol action used by mutation regressions."""
-    result = engine._run(
+    result = run_causal_frame(
+        engine,
         AdvanceSymbolFrame((action, 0, 0, 1)),
         tile_result=False,
     )
@@ -232,15 +235,15 @@ def test_final_validation_runs_on_a_causal_task_memo_hit(
     assert children is not None
     child = children[0]
     engine = CausalTileEngine(scheduler)
-    engine._hold_workspace = True
-    initial = engine._initial(action, 0)
+    object.__setattr__(engine, "_hold_workspace", True)
+    initial = engine.initial_state(action, 0)
 
     def frame() -> CausalTaskFrame:
         return AnchorFrame((action, 0, initial))
 
     record = _primitive_action_store(adapter)[child.local_id]
     try:
-        engine._run(frame(), tile_result=False)
+        run_causal_frame(engine, frame(), tile_result=False)
         memo_hits = ledger.counters.get("tile_causal_task_memo_hits", 0)
         original = _causal_tasks(scheduler).validate_admitted_actions
 
@@ -259,12 +262,12 @@ def test_final_validation_runs_on_a_causal_task_memo_hit(
             poison_before_final,
         )
         with pytest.raises(ValueError, match="composition witness is inconsistent"):
-            engine._run(frame(), tile_result=False)
+            run_causal_frame(engine, frame(), tile_result=False)
         assert ledger.counters["tile_causal_task_memo_hits"] == memo_hits + 1
     finally:
         _primitive_action_store(adapter)[child.local_id] = record
-        engine._hold_workspace = False
-        engine._release_workspace()
+        object.__setattr__(engine, "_hold_workspace", False)
+        engine.release_workspace()
 
 
 def test_callback_mutation_cannot_publish_a_directed_parent(
@@ -295,7 +298,8 @@ def test_callback_mutation_cannot_publish_a_directed_parent(
         with make_tile_from_symbols(tiles, adapter, action, (0, 1, 2, 3)) as source:
             engine = CausalTileEngine(scheduler)
             with pytest.raises(ValueError, match="metadata changed"):
-                engine._run(
+                run_causal_frame(
+                    engine,
                     AdvanceFrame(
                         (
                             action,
@@ -320,13 +324,13 @@ def test_prepared_directed_request_expires_with_its_run_admission() -> None:
         tasks = _causal_tasks(scheduler)
         run = tasks.begin_run()
         token = admit_run_actions(adapter, tasks, scheduler.ledger, action)
-        admission = _prepare_canonical_admission(
+        admission = prepare_canonical_admission(
             scheduler.results,
             action,
             0,
             action_admission=token,
         )
-        request = _prepare_directed_transfer_with_admission(
+        request = prepare_directed_transfer_with_admission(
             scheduler.results,
             DirectedTransferKey(
                 action,
@@ -364,7 +368,7 @@ def test_transient_action_replacement_is_rejected_before_metadata_use() -> None:
         assert _primitive_action_store(adapter)[action.local_id] != record
         try:
             with pytest.raises(ValueError, match="metadata changed after admission"):
-                engine._children(action)
+                engine.child_actions(action)
         finally:
             _primitive_action_store(adapter)[action.local_id] = record
     finally:
@@ -396,14 +400,15 @@ def test_transient_reverse_sector_integer_alias_is_rejected_before_use(
     ) -> int:
         object.__setattr__(sector, "classes", True)
         try:
-            engine._cocycle(action)
+            engine.action_cocycle(action)
         finally:
             object.__setattr__(sector, "classes", 1)
         return original(kernel, side, state, symbol)
 
     monkeypatch.setattr(PrimitiveKernel, "advance", mutate_then_restore)
     with pytest.raises(ValueError, match="metadata changed after admission"):
-        engine._run(
+        run_causal_frame(
+            engine,
             AdvanceSymbolFrame((action, 0, 0, 1)),
             tile_result=False,
         )
@@ -425,7 +430,7 @@ def test_transient_reverse_sector_list_is_rejected_before_use() -> None:
         object.__setattr__(plan, "sectors", list(sectors))
         try:
             with pytest.raises(TypeError, match="immutable reverse sectors"):
-                engine._cocycle(action)
+                engine.action_cocycle(action)
         finally:
             object.__setattr__(plan, "sectors", sectors)
     finally:

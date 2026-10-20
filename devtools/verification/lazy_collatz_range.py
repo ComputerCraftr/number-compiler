@@ -7,9 +7,16 @@ spatial observers do not establish temporal successor closure.
 
 from __future__ import annotations
 
-from collections.abc import Generator, Iterator, MutableMapping, MutableSequence
+from collections.abc import (
+    Generator,
+    Iterator,
+    Mapping,
+    MutableMapping,
+    MutableSequence,
+)
 from dataclasses import dataclass
 from importlib import import_module
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, cast
 
 from devtools.verification.collatz_carry_ranges import (
@@ -17,8 +24,9 @@ from devtools.verification.collatz_carry_ranges import (
     CarryRangeTransfer,
 )
 from devtools.verification.lazy_collatz import (
-    _Mul3Port,
-    _ShiftPort,
+    LazyCollatzPayloadAuditSnapshot,
+    Mul3Port,
+    ShiftPort,
 )
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
@@ -83,16 +91,37 @@ class _RangeKey:
     length: int
 
 
+RangeKey = _RangeKey
+
+
 @dataclass(frozen=True, slots=True)
 class _CompositionKey:
     left: TransferSummaryID
     right: TransferSummaryID
 
 
+CompositionKey = _CompositionKey
+
+
 @dataclass(frozen=True, slots=True)
 class _SourceTileKey:
     tile: ArenaHandle
     length: int
+
+
+SourceTileKey = _SourceTileKey
+
+
+@dataclass(frozen=True, slots=True)
+class CollatzRangeAuditSnapshot:
+    """Read-only canonical effects and current range-cache bindings."""
+
+    effects: tuple[CollatzRangeEffect, ...]
+    ids: Mapping[CollatzRangeEffect, TransferSummaryID]
+    ranges: Mapping[RangeKey, TransferSummaryID]
+    events: Mapping[RangeKey, CarryRangeSummary]
+    source_tiles: Mapping[object, TransferSummaryID]
+    compositions: Mapping[object, TransferSummaryID]
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,8 +132,29 @@ class _Request:
     length: int = 0
 
 
+Request = _Request
+
+
 _Value = int | CollatzRangeEffect | CarryRangeSummary
 _Computation = Generator[_Request, _Value, _Value]
+
+
+@dataclass(frozen=True, slots=True)
+class CollatzRangePayloadAuditSnapshot:
+    """Read-only range stores and indices needed by payload admission."""
+
+    application: LazyCollatzPayloadAuditSnapshot
+    action_owner: ArenaToken
+    effects: tuple[CollatzRangeEffect, ...]
+    effect_owner: int
+    effect_store: object
+    ids: Mapping[CollatzRangeEffect, TransferSummaryID]
+    interner_owner: int
+    interner_store: object
+    ranges_owner: int
+    ranges_store: object
+    events_owner: int
+    events_store: object
 
 
 class CollatzRangeEvaluator:
@@ -163,7 +213,37 @@ class CollatzRangeEvaluator:
             composition_entries=True,
         )
 
-    def _handle(self, index: int) -> TransferSummaryID:
+    def payload_audit_snapshot(self) -> CollatzRangePayloadAuditSnapshot:
+        """Return exact stores and immutable indexes for forensic payload audits."""
+        ranges = self._ranges.audit_snapshot()
+        events = self._events.audit_snapshot()
+        return CollatzRangePayloadAuditSnapshot(
+            self.application.payload_audit_snapshot(),
+            self.action_owner,
+            tuple(self._effects),
+            self._effect_owner,
+            self._effects,
+            dict(self._ids),
+            self._interner_owner,
+            self._ids,
+            ranges.owner,
+            ranges.container,
+            events.owner,
+            events.container,
+        )
+
+    def audit_snapshot(self) -> CollatzRangeAuditSnapshot:
+        """Capture read-only cache contents for tests and resource inspection."""
+        return CollatzRangeAuditSnapshot(
+            effects=tuple(self._effects),
+            ids=MappingProxyType(dict(self._ids)),
+            ranges=MappingProxyType(dict(self._ranges.items())),
+            events=MappingProxyType(dict(self._events.items())),
+            source_tiles=MappingProxyType(dict(self._source_tiles.items())),
+            compositions=MappingProxyType(dict(self._compositions.items())),
+        )
+
+    def scoped_handle(self, index: int) -> TransferSummaryID:
         return TransferSummaryID(self.action_owner, "collatz-range-effect", index)
 
     def effect(self, action: TransferSummaryID) -> CollatzRangeEffect:
@@ -174,14 +254,14 @@ class CollatzRangeEvaluator:
         )
         return self._effects[action.local_id]
 
-    def _intern(self, effect: CollatzRangeEffect) -> TransferSummaryID:
+    def intern_record(self, effect: CollatzRangeEffect) -> TransferSummaryID:
         found = self._ids.get(effect)
         if found is not None:
             return found
         self.ledger.reserve_many(
             ((self._effect_owner, 1, 1), (self._interner_owner, 1, 0))
         )
-        action = self._handle(len(self._effects))
+        action = self.scoped_handle(len(self._effects))
         self._effects.append(effect)
         self._ids[effect] = action
         return action
@@ -198,7 +278,7 @@ class CollatzRangeEvaluator:
             self.ledger.bump("collatz_range_composition_hits")
             self.ledger.bump("composition_cache_hits")
             return found
-        result = self._intern(first.then(second))
+        result = self.intern_record(first.then(second))
         self._compositions[key] = result
         self.ledger.bump("collatz_range_composition_evaluations")
         self.ledger.bump("composition_evaluations")
@@ -232,7 +312,7 @@ class CollatzRangeEvaluator:
     def _leaf_stream(self, program: ActionProgramID) -> Iterator[int]:
         """Finite live ports for one leaf scan; no retained operation expansion."""
         pending = [program]
-        ports: list[_Mul3Port | _ShiftPort] = []
+        ports: list[Mul3Port | ShiftPort] = []
         while pending:
             stack_peak = self.ledger.counters.get(
                 "collatz_leaf_dag_stack_peak_frames", 0
@@ -241,7 +321,7 @@ class CollatzRangeEvaluator:
                 "collatz_leaf_dag_stack_peak_frames", max(0, len(pending) - stack_peak)
             )
             reference = pending.pop()
-            node = self.application._programs[reference.local_id]
+            node = self.application.program_record(reference)
             self.ledger.bump("collatz_leaf_dag_visits")
             if node.kind == "compose":
                 pending.extend(
@@ -251,14 +331,14 @@ class CollatzRangeEvaluator:
                     )
                 )
             elif node.kind == "mul3":
-                ports.append(_Mul3Port(reference))
+                ports.append(Mul3Port(reference))
                 if node.shift:
-                    ports.append(_ShiftPort(reference, node.shift))
+                    ports.append(ShiftPort(reference, node.shift))
             elif node.kind == "shift":
-                ports.append(_ShiftPort(reference, node.shift))
+                ports.append(ShiftPort(reference, node.shift))
         peak = self.ledger.counters.get("collatz_leaf_peak_ports", 0)
         self.ledger.bump("collatz_leaf_peak_ports", max(0, len(ports) - peak))
-        capacity = 2 * sum(isinstance(port, _Mul3Port) for port in ports)
+        capacity = 2 * sum(isinstance(port, Mul3Port) for port in ports)
         capacity_peak = self.ledger.counters.get(
             "collatz_leaf_peak_carry_payload_bits", 0
         )
@@ -268,17 +348,12 @@ class CollatzRangeEvaluator:
         cursor = 0
         while True:
             bit = 0
-            if cursor < len(self.application._source):
-                geometry = self.application.source_geometry
-                bit = (
-                    self.application._source[cursor]
-                    if geometry is None
-                    else geometry.read(cursor)
-                )
+            if cursor < self.application.source_width:
+                bit = self.application.source_cell(cursor)
                 self.ledger.bump("collatz_source_reads")
             cursor += 1
             for port in ports:
-                if isinstance(port, _ShiftPort):
+                if isinstance(port, ShiftPort):
                     if port.remaining:
                         port.remaining -= 1
                         break
@@ -314,13 +389,15 @@ class CollatzRangeEvaluator:
         return result, answer
 
     def _input(self, program: ActionProgramID) -> tuple[ActionProgramID, str, int]:
-        program.validate(self.owner, "program", size=len(self.application._programs))
+        program.validate(self.owner, "program", size=self.application.program_count)
         self.ledger.bump("collatz_dag_visits")
-        node = self.application._programs[program.local_id]
+        node = self.application.program_record(program)
         before = ActionProgramID(self.owner, "program", 0)
         if node.kind == "compose":
             before = ActionProgramID(self.owner, "program", node.left)
-            node = self.application._programs[node.right]
+            node = self.application.program_record(
+                ActionProgramID(self.owner, "program", node.right)
+            )
             if node.kind == "compose":
                 raise ValueError("Collatz programs require an atomic right action")
         return before, node.kind, node.shift
@@ -333,15 +410,10 @@ class CollatzRangeEvaluator:
             )
         position = request.start
         self.ledger.bump("collatz_source_reads")
-        if position >= len(self.application._source):
+        if position >= self.application.source_width:
             return 0
         yield from ()
-        geometry = self.application.source_geometry
-        return (
-            self.application._source[position]
-            if geometry is None
-            else geometry.read(position)
-        )
+        return self.application.source_cell(position)
 
     def _event(self, request: _Request) -> _Computation:
         """Unresolved event fallback still scans the complete finite width.
@@ -374,7 +446,7 @@ class CollatzRangeEvaluator:
                 if first is None:
                     first = position
                 last = position
-        self.application._finish_program_scan(request.program, request.length)
+        self.application.finish_program_scan(request.program, request.length)
         yield from ()  # This finite leaf kernel needs no child requests.
         return CarryRangeSummary(request.length + 2, carry, first, last)
 
@@ -385,7 +457,7 @@ class CollatzRangeEvaluator:
             return self._zero(0)
         if kind == "shift":
             return (yield _Request("range", before, start + shift, length))
-        if kind == "identity" and start >= len(self.application._source):
+        if kind == "identity" and start >= self.application.source_width:
             return self._zero(length)
         if kind != "identity" and length <= 8:
             return self._leaf_scan(request.program, start, length)[0]
@@ -407,7 +479,9 @@ class CollatzRangeEvaluator:
             (yield _Request("range", request.program, start + split, length - split)),
         )
         if left.length >= 8 and right.length >= 8:
-            return self.effect(self.compose(self._intern(left), self._intern(right)))
+            return self.effect(
+                self.compose(self.intern_record(left), self.intern_record(right))
+            )
         self.ledger.bump("collatz_range_small_compositions")
         return left.then(right)
 
@@ -427,7 +501,7 @@ class CollatzRangeEvaluator:
 
     def _store_range(self, request: _Request, value: CollatzRangeEffect) -> None:
         key = _RangeKey(request.program, request.start, request.length)
-        action = self._intern(value)
+        action = self.intern_record(value)
         tile = self._source_tile(request)
         if tile is None:
             self._ranges[key] = action
@@ -441,7 +515,7 @@ class CollatzRangeEvaluator:
         if (
             geometry is None
             or request.program.local_id != 0
-            or request.start + request.length > len(self.application._source)
+            or request.start + request.length > self.application.source_width
         ):
             return None
         tile = geometry.tile_at(request.start, request.length.bit_length() - 1)
@@ -509,7 +583,7 @@ class CollatzRangeEvaluator:
     def point(self, program: ActionProgramID, position: int) -> int:
         if type(program) is not ActionProgramID:
             raise TypeError("expected a scoped Collatz action program")
-        program.validate(self.owner, "program", size=len(self.application._programs))
+        program.validate(self.owner, "program", size=self.application.program_count)
         if type(position) is not int:
             raise TypeError("Collatz point coordinate must be an exact integer")
         if position < 0:
@@ -542,7 +616,7 @@ class CollatzRangeEvaluator:
     ) -> CollatzRangeEffect:
         if type(program) is not ActionProgramID:
             raise TypeError("expected a scoped Collatz action program")
-        program.validate(self.owner, "program", size=len(self.application._programs))
+        program.validate(self.owner, "program", size=self.application.program_count)
         if type(start) is not int or type(length) is not int:
             raise TypeError("Collatz range geometry requires exact integers")
         if start < 0 or length < 0:
@@ -557,7 +631,7 @@ class CollatzRangeEvaluator:
             raise TypeError("expected a scoped Collatz action program")
         if type(width) is not int or width <= 0:
             raise ValueError("Collatz event extent must be positive")
-        program.validate(self.owner, "program", size=len(self.application._programs))
+        program.validate(self.owner, "program", size=self.application.program_count)
         self.ledger.bump("collatz_event_summary_requests")
         key = _RangeKey(program, 0, width)
         # Future arbitrary-prefix witnesses can collectively reveal a word;

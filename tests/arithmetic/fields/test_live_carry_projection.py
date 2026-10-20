@@ -23,6 +23,7 @@ from number_compiler.arithmetic.fields.symbolic_innovation import (
     SymbolicInnovationArena,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.reference_carry import decimal_pair_carries
 from tests.support.symbolic_innovation import evaluate, polynomial
 
 
@@ -353,11 +354,7 @@ def test_bounded_orbit_crosses_growth_and_neutral_runs(seed: int) -> None:
     for _ in range(32):
         digits = tuple(map(int, str(value)[::-1]))
         pair = [a + b for a, b in zip(digits, reversed(digits), strict=True)]
-        carry = 0
-        expected: list[int] = []
-        for p in pair:
-            carry = int(p + carry >= 10)
-            expected.append(carry)
+        expected, carry = decimal_pair_carries(pair)
         ledger = ResourceLedger()
         arena = SymbolicInnovationArena(ledger)
         residual = polynomial(arena, [p - 9 for p in pair])

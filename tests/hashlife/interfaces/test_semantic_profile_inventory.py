@@ -118,33 +118,51 @@ def _assert_read_only_profile_inventory(
         )
 
 
+@pytest.mark.parametrize(
+    "full_inventory",
+    (False, pytest.param(True, marks=pytest.mark.validation)),
+)
 def test_actual_profile_tables_and_lazy_decoders_have_read_only_inventory(
     monkeypatch: pytest.MonkeyPatch,
+    full_inventory: bool,
 ) -> None:
     app, arena, _, structures, codec = setup()
     runtime = app.runtime
     assert arena is not None
 
-    # Exercise the empty and first-component cache states on one immutable
-    # graph, avoiding duplicate application setup while keeping each audit.
-    _assert_read_only_profile_inventory(monkeypatch, runtime, arena, structures, 0)
-    arena.component(codec, 0, structures)
-    _assert_read_only_profile_inventory(monkeypatch, runtime, arena, structures, 1)
-    arena.component(codec, 1, structures)
-    _assert_read_only_profile_inventory(monkeypatch, runtime, arena, structures, 2)
+    if full_inventory:
+        # The validation tier checks every lazy cache level on the full C4 table.
+        _assert_read_only_profile_inventory(monkeypatch, runtime, arena, structures, 0)
+        arena.component(codec, 0, structures)
+        _assert_read_only_profile_inventory(monkeypatch, runtime, arena, structures, 1)
+        arena.component(codec, 1, structures)
+        _assert_read_only_profile_inventory(monkeypatch, runtime, arena, structures, 2)
+    else:
+        # Unit coverage audits a real C4 profile after its first lazy decoder.
+        arena.component(codec, 0, structures)
+        _assert_read_only_profile_inventory(monkeypatch, runtime, arena, structures, 1)
 
 
-def test_cold_full_profile_decode_is_read_only_to_inventory(
+@pytest.mark.parametrize(
+    "full_inventory",
+    (False, pytest.param(True, marks=pytest.mark.validation)),
+)
+def test_cold_full_profile_decode_builds_the_expected_product(
     monkeypatch: pytest.MonkeyPatch,
+    full_inventory: bool,
 ) -> None:
     app, arena, _, structures, codec = setup()
     runtime = app.runtime
     assert arena is not None
 
-    # Keep this cold: decode must construct both components itself before the
-    # read-only inventory sees all three decoder entries.
-    arena.decode(codec, structures)
-    _assert_read_only_profile_inventory(monkeypatch, runtime, arena, structures, 3)
+    # Keep this cold: decode must construct both components itself. The unit
+    # assertion checks its product and all three cache entries; validation also
+    # inventories the full fixed-size profile after construction.
+    decoded = arena.decode(codec, structures)
+    assert structures.resolve(decoded).kind == "product"
+    assert len(arena.decodes) == 3
+    if full_inventory:
+        _assert_read_only_profile_inventory(monkeypatch, runtime, arena, structures, 3)
 
 
 def test_profile_audit_checks_action_once_and_rejects_stale_action_before_load() -> (
@@ -321,10 +339,18 @@ def test_profile_interner_cannot_borrow_an_equal_profile_from_another_arena() ->
     assert_forbidden_payloads_read_only(app.runtime.ledger)
 
 
-def test_profile_table_audit_rechecks_frozen_mutations_on_next_query() -> None:
+@pytest.mark.parametrize(
+    "component_index",
+    (0, pytest.param(1, marks=pytest.mark.validation)),
+)
+def test_profile_table_audit_rechecks_frozen_mutations_on_next_query(
+    component_index: int,
+) -> None:
     app, arena, _, structures, codec = setup()
     assert arena is not None
-    function = arena.component(codec, 1, structures)
+    # Unit coverage for the exact interner-key mutation uses the compact first
+    # component. The full function-decoder component remains in validation.
+    function = arena.component(codec, component_index, structures)
     from number_compiler.arithmetic.functions.finite_function_types import BOOL
 
     all_valid = structures.functions.atom(FunctionSignature(codec.ports, BOOL), 1)
@@ -338,7 +364,9 @@ def test_profile_table_audit_rechecks_frozen_mutations_on_next_query() -> None:
     )
 
     # A new inventory pass must inspect the current frozen record, not reuse
-    # the previous query's successful table-audit result.
+    # the previous query's successful table-audit result. The record is also
+    # part of the interner key, so this bypassed hash mutation must be rejected
+    # without crashing the audit.
     object.__setattr__(node, "valid", all_valid)
     before = app.runtime.ledger.snapshot()
     assert (
@@ -348,16 +376,3 @@ def test_profile_table_audit_rechecks_frozen_mutations_on_next_query() -> None:
         > 0
     )
     assert app.runtime.ledger.snapshot() == before
-
-
-def test_bypassed_frozen_key_mutation_is_reported_instead_of_crashing() -> None:
-    app, arena, _, structures, codec = setup()
-    assert arena is not None
-    function = arena.component(codec, 1, structures)
-    from number_compiler.arithmetic.functions.finite_function_types import BOOL
-
-    all_valid = structures.functions.atom(FunctionSignature(codec.ports, BOOL), 1)
-    # This bypasses the public immutable-record boundary and invalidates the
-    # existing interner key hash; an adversarial audit must still finish.
-    object.__setattr__(structures.nodes[function.local_id], "valid", all_valid)
-    assert_forbidden_payloads_read_only(app.runtime.ledger)

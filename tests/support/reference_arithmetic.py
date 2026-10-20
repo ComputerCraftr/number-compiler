@@ -18,7 +18,13 @@ from number_compiler.arithmetic.carry.reverse_sector_transfer import (
 from number_compiler.arithmetic.fields.consumer_pullback import SaturatingAffineAction
 from number_compiler.hashlife.execution.dyadic_return_records import DyadicReturnLaw
 
-__all__ = ("collatz_literal", "literal_reverse_add", "literal_reverse_add_digits")
+__all__ = (
+    "collatz_literal",
+    "literal_pair_sum_successor",
+    "literal_reverse_add",
+    "literal_reverse_add_digits",
+    "radix_digits_lsd",
+)
 
 
 def literal_reverse_add_digits(
@@ -40,21 +46,37 @@ def literal_reverse_add_digits(
     value = literal_reverse_add(seed, steps) if base == 10 else seed
     if base != 10:
         for _ in range(steps):
-            digits = _radix_digits(value, base)
+            digits = radix_digits_lsd(value, base)
             reverse = sum(
                 digit * base**index for index, digit in enumerate(reversed(digits))
             )
             value += reverse
-    return _radix_digits(value, base)
+    return radix_digits_lsd(value, base)
 
 
-def _radix_digits(value: int, base: int) -> tuple[int, ...]:
+def radix_digits_lsd(value: int, base: int) -> tuple[int, ...]:
+    """Return the nonnegative integer's digits in least-significant-first order."""
     digits: list[int] = []
     while True:
         value, digit = divmod(value, base)
         digits.append(digit)
         if value == 0:
             return tuple(digits)
+
+
+def literal_pair_sum_successor(
+    source: tuple[int, ...],
+) -> tuple[tuple[int, ...], int]:
+    """Independently add mirrored pair sums and return the terminal carry."""
+    carry = 0
+    digits: list[int] = []
+    for pair in source:
+        carry, digit = divmod(pair + carry, 10)
+        digits.append(digit)
+    if carry:
+        digits.append(carry)
+    target = tuple(a + b for a, b in zip(digits, reversed(digits), strict=True))
+    return target, carry
 
 
 def rational_action_components(
@@ -123,8 +145,8 @@ def reverse_add_digit_step(
     digits: tuple[int, ...], base: int
 ) -> tuple[tuple[int, ...], tuple[int, ...]]:
     """Literal LSD-first addition with independently recorded carry boundaries."""
-    output = []
-    carries = [0]
+    output: list[int] = []
+    carries: list[int] = [0]
     for left, right in zip(digits, reversed(digits), strict=True):
         carry, digit = divmod(left + right + carries[-1], base)
         carries.append(carry)

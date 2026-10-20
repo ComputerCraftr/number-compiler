@@ -52,7 +52,7 @@ def _required_work(metrics: CollatzPhysicalBlockMetrics, name: str) -> int:
     return value
 
 
-def _source_image_work(metrics: CollatzPhysicalBlockMetrics) -> tuple[int, int, int]:
+def source_image_work(metrics: CollatzPhysicalBlockMetrics) -> tuple[int, int, int]:
     """Charge operations, operand bits, and seal bytes in distinct units."""
     counters = metrics.resource_work_counters
     prefixes = ("source_image_", "collatz_physical_", "collatz_image_")
@@ -94,7 +94,7 @@ def _scalar(seed: int, steps: int) -> int:
 
 
 def _construction_rows() -> list[dict[str, int | float]]:
-    rows = []
+    rows: list[dict[str, int | float]] = []
     for steps in CONSTRUCTION_STEPS:
         started = perf_counter()
         term = PoweredCollatzTerm(27, steps)
@@ -119,8 +119,8 @@ def _construction_rows() -> list[dict[str, int | float]]:
     return rows
 
 
-def _projection_rows() -> list[dict[str, object]]:
-    rows = []
+def projection_rows() -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
     for steps in PROJECTION_STEPS:
         term = PoweredCollatzTerm(27, steps)
         expected = _scalar(27, steps)
@@ -190,7 +190,7 @@ def _projection_rows() -> list[dict[str, object]]:
             != image_work["source_image_projection_publications"]
         ):
             raise AssertionError(("source-image-diagnostic-incomplete", steps))
-        image_action_work, image_operand_bits, image_seal_bytes = _source_image_work(
+        image_action_work, image_operand_bits, image_seal_bytes = source_image_work(
             metrics
         )
         # A single admitted <=64-step leaf has no chronological join; absence
@@ -390,7 +390,7 @@ def run_probe() -> dict[str, object]:
 
     rejection: UnsupportedInterfaceError | None = None
     try:
-        projection = _projection_rows()
+        projection = projection_rows()
     except UnsupportedInterfaceError as error:
         projection = []
         rejection = error
@@ -698,7 +698,7 @@ def limb_projection(
                 limb_term = PoweredCollatzTerm(seed, steps)
                 limb_payload = PoweredCollatzTermPayload(limb_term, radix)
                 limb_described = perf_counter()
-                limb_term._source_image()
+                limb_term.source_image()
                 limb_constructed = perf_counter()
                 limb_before = dict(limb_term.resource_ledger.counters)
                 limb_value = limb_payload.digit(limb_index)
@@ -712,7 +712,7 @@ def limb_projection(
                 bit_term = PoweredCollatzTerm(seed, steps)
                 bit_payload = PoweredCollatzTermPayload(bit_term, 2)
                 bit_described = perf_counter()
-                bit_term._source_image()
+                bit_term.source_image()
                 bit_constructed = perf_counter()
                 bit_before = dict(bit_term.resource_ledger.counters)
 

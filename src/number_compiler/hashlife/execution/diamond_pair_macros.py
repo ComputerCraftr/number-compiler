@@ -7,7 +7,7 @@ symbols. The coordinate-parametric output program remains a separate action.
 
 from __future__ import annotations
 
-from collections.abc import Generator, MutableMapping, MutableSequence
+from collections.abc import Generator, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
@@ -42,6 +42,7 @@ from number_compiler.hashlife.interfaces.diamond_kernel_bridge import (
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
+from number_compiler.resources.stores import LedgerList
 
 LEFT_A = PortVariable(0, 0, "diamond-pair-left-a", 0)
 RIGHT_A = PortVariable(0, 1, "diamond-pair-right-a", 0)
@@ -113,7 +114,7 @@ class PrimitivePairMacros:
         self._binding_owner = self.ledger.register(
             prefix + "-bindings", "macro_transfer_memo"
         )
-        self._nodes: MutableSequence[PairMacroRecord] = self.ledger.make_list(
+        self._nodes: LedgerList[PairMacroRecord] = self.ledger.make_list(
             self._node_owner
         )
         self._ids: MutableMapping[PairMacroRecord, TransferSummaryID] = (
@@ -128,6 +129,13 @@ class PrimitivePairMacros:
             payloads=lambda: self._bindings.items(),
             evict=self._evict_bindings,
         )
+
+    def storage_is_registered(self, actual: Mapping[int, object]) -> bool:
+        return actual.get(self._node_owner) is self._nodes
+
+    @property
+    def node_view(self) -> Sequence[PairMacroRecord]:
+        return self._nodes.audit_view()
 
     def _evict_bindings(self) -> None:
         count = len(self._bindings)
@@ -147,7 +155,7 @@ class PrimitivePairMacros:
         summary.validate(self.token, "diamond-pair-macro", size=len(self._nodes))
         return self._nodes[summary.local_id]
 
-    def _intern(self, record: PairMacroRecord) -> TransferSummaryID:
+    def intern_record(self, record: PairMacroRecord) -> TransferSummaryID:
         found = self._ids.get(record)
         if found is not None:
             self.ledger.bump(_execution_keys.PAIR_MACRO_PROGRAM_INTERNER_HITS)
@@ -159,7 +167,9 @@ class PrimitivePairMacros:
         self.ledger.bump(_execution_keys.PAIR_MACRO_PROGRAM_INTERNER_EVALUATIONS)
         return result
 
-    def _publish(self, key: PairMacroKey, record: PairMacroRecord) -> TransferSummaryID:
+    def publish_record(
+        self, key: PairMacroKey, record: PairMacroRecord
+    ) -> TransferSummaryID:
         result = self._ids.get(record)
         reservations = [(self._binding_owner, 1, 0)]
         if result is None:
@@ -199,7 +209,7 @@ class PrimitivePairMacros:
         expression: TransferSummaryID,
         replacements: tuple[tuple[PortVariable, int, TransferSummaryID], ...],
     ) -> TransferSummaryID:
-        bindings = {}
+        bindings: dict[PortVariable, TransferSummaryID] = {}
         for port, domain, value in replacements:
             bindings.update(substitution_bindings(self.kernels, domain, port, value))
         return self.kernels.substitute(expression, bindings)
@@ -209,23 +219,23 @@ class PrimitivePairMacros:
     ) -> TransferSummaryID | None:
         if not self.supports(action):
             raise ValueError("pair macro requires primitive temporal children")
-        source_admission = self._require_source(cell)
+        source_admission = self.require_source(cell)
         node = self.actions.node(action)
-        original = self.cells.source_geometry._construction.source
+        original = self.cells.source_geometry.construction.source
         if (node.base, node.blank) != (original.base, original.blank):
             raise ValueError("macro and original source have incompatible alphabets")
-        self._record_source_admission(source_admission)
+        self.record_source_admission(source_admission)
         self.ledger.bump(_execution_keys.MACRO_TRANSFER_REQUESTS)
         found = self._bindings.get(PairMacroKey(action, cell))
         if found is not None:
             self.ledger.bump(_execution_keys.MACRO_TRANSFER_CACHE_HITS)
         return found
 
-    def _require_source(self, cell: CellID) -> tuple[int, int, int, int]:
+    def require_source(self, cell: CellID) -> tuple[int, int, int, int]:
         self.cells.require_original(cell)
         return 1, 1, 0, 0
 
-    def _record_source_admission(self, stats: tuple[int, int, int, int]) -> None:
+    def record_source_admission(self, stats: tuple[int, int, int, int]) -> None:
         visits, unique, pending_peak, workspace_peak = stats
         self.ledger.bump(_execution_keys.SPATIAL_SOURCE_ADMISSION_FRAME_VISITS, visits)
         self.ledger.bump(_execution_keys.SPATIAL_SOURCE_ADMISSION_UNIQUE_VISITS, unique)
@@ -244,7 +254,7 @@ class PrimitivePairMacros:
             raise ValueError("parametric source macros cannot contain future images")
         return self.cells.split(cell)
 
-    def _leaf(self, action: ActionProgramID, cell: CellID) -> PairMacroRecord:
+    def leaf_record(self, action: ActionProgramID, cell: CellID) -> PairMacroRecord:
         _, _, a_id, _ = self._interfaces(action)
         a = self.kernels.kernel(a_id)
         original_symbol = self.cells.source_symbol(cell)
@@ -261,7 +271,7 @@ class PrimitivePairMacros:
             context,
         )
 
-    def _parent(
+    def compose_parent(
         self, action: ActionProgramID, left: PairMacroRecord, right: PairMacroRecord
     ) -> PairMacroRecord:
         if left.action != action or right.action != action:
@@ -285,7 +295,7 @@ class PrimitivePairMacros:
     ) -> TransferSummaryID:
         first, second = self.resolve(left), self.resolve(right)
         self.actions.resolve(action)
-        return self._intern(self._parent(action, first, second))
+        return self.intern_record(self.compose_parent(action, first, second))
 
     def summary(self, action: ActionProgramID, cell: CellID) -> TransferSummaryID:
         found = self.cache_probe(action, cell)
@@ -318,14 +328,14 @@ class PrimitivePairMacros:
                         )
                     )
                     continue
-                record = self._parent(
+                record = self.compose_parent(
                     action,
                     self.resolve(self._bindings[PairMacroKey(action, left)]),
                     self.resolve(self._bindings[PairMacroKey(action, right)]),
                 )
             else:
-                record = self._leaf(action, current)
-            self._publish(key, record)
+                record = self.leaf_record(action, current)
+            self.publish_record(key, record)
             self.ledger.bump(_execution_keys.MACRO_TRANSFER_EVALUATIONS)
         return self._bindings[PairMacroKey(action, cell)]
 

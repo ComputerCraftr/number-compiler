@@ -62,7 +62,7 @@ class HigherTemporalProviderEvaluator:
             raise TypeError("higher temporal provider requires scoped runtime objects")
         self.runtime = runtime
         self.ledger: ResourceLedger = runtime.ledger
-        self._validate_output = validate_output
+        self.output_validator = validate_output
         self._validate_binding = validate_binding
         self._compose_actions = compose_actions
         self.ledger.register_execution_root(self)
@@ -93,7 +93,7 @@ class HigherTemporalProviderEvaluator:
             self.runtime.schema,
             self.runtime.semantics,
             self.runtime.summaries,
-            self._validate_output,
+            self.output_validator,
             self._validate_binding,
             self._compose_actions,
             self._binding_owner,
@@ -114,7 +114,7 @@ class HigherTemporalProviderEvaluator:
 
     def validate_output(self, provider: CoordinateOutputMorphismID) -> None:
         """Validate a provider ID through the configured output issuer."""
-        self._validate_output(provider)
+        self.output_validator(provider)
 
     def audit_snapshot(self) -> HigherTemporalProviderAuditSnapshot:
         """Expose a read-only view of source/action bindings for audits."""

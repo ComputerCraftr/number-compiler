@@ -24,6 +24,7 @@ from devtools.benchmarks.public_query_comparison import (
     named_counter_lane,
     run_jsonl_report,
 )
+from devtools.benchmarks.report_schema import record
 from devtools.verification.oracles.sequence_arithmetic import collatz_literal
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.api.registry_cli import option_argv
@@ -59,7 +60,7 @@ class MacroSummary(TypedDict):
     mixed_macro_physical_ticks: int | None
 
 
-def _source_for(motif: tuple[int, ...], groups: int) -> int:
+def source_for(motif: tuple[int, ...], groups: int) -> int:
     residue, modulus = PeriodicTail6305Ring.guard_residue(motif, groups)
     source = residue + modulus * ((3 - residue) * pow(modulus, -1, 5) % 5)
     return source
@@ -81,7 +82,7 @@ def _disabled_selector(*_args: object, **_kwargs: object) -> None:
 
 
 @contextmanager
-def _selector_ablation(*, include_mixed: bool = False) -> Generator[None, None, None]:
+def selector_ablation(*, include_mixed: bool = False) -> Generator[None, None, None]:
     """Disable named 6305 selector call sites and optionally mixed selection."""
     execution = import_module(
         "number_compiler.sequences.collatz.temporal_border_return_execution"
@@ -114,18 +115,15 @@ def _selector_ablation(*, include_mixed: bool = False) -> Generator[None, None, 
         yield
 
 
-def _packets(packet: dict[str, object]) -> tuple[MacroSummary, object]:
+def packets(packet: dict[str, object]) -> tuple[MacroSummary, object]:
     info, _metrics, execution, collatz_work = family_execution_work(
         packet, "collatz_physical"
     )
-    if not isinstance(info, dict) or set(info) != {"temporal.macro", "metrics"}:
+    if set(info) != {"temporal.macro", "metrics"}:
         raise TypeError("CLI did not return the requested Collatz observations")
-    macro = info["temporal.macro"]
-    if not isinstance(macro, dict):
-        raise TypeError("CLI observation packet has an invalid shape")
+    macro = record(info["temporal.macro"])
     actions = macro.get("executed_macro_actions")
-    if not isinstance(actions, dict):
-        raise TypeError("temporal.macro omitted executed action counters")
+    actions = record(actions)
     action_count = actions.get("6305R")
     if type(action_count) is not int or action_count < 0:
         raise TypeError("temporal.macro omitted the measured 6305R count")
@@ -176,7 +174,7 @@ def _sample(
     context = (
         nullcontext()
         if mode == "enabled"
-        else _selector_ablation(include_mixed=mode == "all_selectors_disabled")
+        else selector_ablation(include_mixed=mode == "all_selectors_disabled")
     )
     try:
         with context:
@@ -186,7 +184,7 @@ def _sample(
     raw_value = packet.get("value")
     if not isinstance(raw_value, str) or raw_value != str(expected):
         raise AssertionError("public Collatz CLI differs from literal physical steps")
-    observed, execution_metrics = _packets(packet)
+    observed, execution_metrics = packets(packet)
     return Sample(
         mode=mode,
         trial=trial,
@@ -212,7 +210,7 @@ def compare(
 ) -> dict[str, object]:
     if type(trials) is not int or trials < 1:
         raise ValueError("trial count must be positive")
-    source = _source_for(motif, groups)
+    source = source_for(motif, groups)
     if source.bit_length() > 4096:
         raise ValueError("constructed source exceeds the benchmark output-size cap")
     ring = PeriodicTail6305Ring.from_source(source, motif)

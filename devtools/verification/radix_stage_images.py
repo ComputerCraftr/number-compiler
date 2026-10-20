@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import MutableMapping, MutableSequence
 from dataclasses import dataclass
+from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.resources.ledger import ResourceLedger
@@ -57,6 +58,24 @@ class RadixDivisionImage:
             raise ValueError("source division image cannot have a parent")
         if self.stage > 0 and type(self.parent) is not RadixDivisionImageID:
             raise ValueError("derived division image requires a scoped parent")
+
+
+@dataclass(frozen=True, slots=True)
+class RadixDivisionImageAuditSnapshot:
+    """Detached state for checking the registered image stores and identities."""
+
+    ledger: ResourceLedger
+    interface_owner: int
+    image_owner: int
+    key_owner: int
+    interface_store: object
+    image_store: object
+    key_store: object
+    interfaces: tuple[RadixDivisionInterface, ...]
+    images: tuple[RadixDivisionImage, ...]
+    key_rows: tuple[tuple[object, object], ...]
+    interface: RadixDivisionInterfaceID
+    source: RadixDivisionImageID
 
 
 class RadixDivisionImageArena:
@@ -133,8 +152,28 @@ class RadixDivisionImageArena:
         reference.validate(self.token, self._IMAGE_KIND, size=len(self._images))
         return self._images[reference.local_id]
 
-    def _image_id(self, local_id: int) -> RadixDivisionImageID:
+    def image_id(self, local_id: int) -> RadixDivisionImageID:
         return RadixDivisionImageID(self.token, self._IMAGE_KIND, local_id)
+
+    def audit_snapshot(self) -> RadixDivisionImageAuditSnapshot:
+        """Capture exact registered stores and immutable rows for the auditor."""
+        return RadixDivisionImageAuditSnapshot(
+            self.ledger,
+            self._interface_owner,
+            self._image_owner,
+            self._key_owner,
+            self._interfaces,
+            self._images,
+            self._keys,
+            tuple(self._interfaces),
+            tuple(self._images),
+            tuple(
+                (cast(object, image), cast(object, index))
+                for image, index in self._keys.items()
+            ),
+            self.interface,
+            self.source,
+        )
 
     def advance(
         self,
@@ -155,7 +194,7 @@ class RadixDivisionImageArena:
         found = self._keys.get(record)
         if found is not None:
             self.ledger.bump("radix_division_image_intern_hits")
-            return self._image_id(found)
+            return self.image_id(found)
         self.ledger.reserve_many(
             ((self._image_owner, 1, 1), (self._key_owner, 1, 0)),
         )
@@ -163,42 +202,45 @@ class RadixDivisionImageArena:
         self._images.append(record)
         self._keys[record] = found
         self.ledger.bump("radix_division_image_publications")
-        return self._image_id(found)
+        return self.image_id(found)
 
 
 def _audit_radix_stage_images(ledger: ResourceLedger) -> set[tuple[int, int]]:
     """Validate only explicitly loaded proof-stage image arenas."""
-    containers = dict(ledger.iter_containers())
+    containers: dict[int, object] = dict(ledger.iter_containers())
     invalid: set[tuple[int, int]] = set()
     for root in ledger.iter_execution_roots():
         if type(root) is not RadixDivisionImageArena:
             continue
+        snapshot = root.audit_snapshot()
         stores = (
-            (root._interface_owner, root._interfaces),
-            (root._image_owner, root._images),
-            (root._key_owner, root._keys),
+            (snapshot.interface_owner, snapshot.interface_store),
+            (snapshot.image_owner, snapshot.image_store),
+            (snapshot.key_owner, snapshot.key_store),
         )
-        valid_root = root.ledger is ledger and all(
+        valid_root = snapshot.ledger is ledger and all(
             containers.get(owner) is store for owner, store in stores
         )
-        for index, interface in enumerate(root._interfaces):
+        for index, interface in enumerate(snapshot.interfaces):
             try:
                 valid = valid_root and type(interface) is RadixDivisionInterface
                 interface.__post_init__()
                 valid &= (
-                    index == 0 and root.resolve_interface(root.interface) is interface
+                    index == 0
+                    and root.resolve_interface(snapshot.interface) is interface
                 )
             except (TypeError, ValueError, IndexError, AttributeError):
                 valid = False
             if not valid:
-                invalid.add((root._interface_owner, id(interface)))
-        for index, image in enumerate(root._images):
+                invalid.add((snapshot.interface_owner, id(interface)))
+        for index, image in enumerate(snapshot.images):
             try:
                 valid = valid_root and type(image) is RadixDivisionImage
                 image.__post_init__()
-                handle = root.source if index == 0 else root._image_id(index)
+                handle = snapshot.source if index == 0 else root.image_id(index)
                 valid &= (
-                    root.resolve(handle) is image and root._keys.get(image) == index
+                    root.resolve(handle) is image
+                    and dict(snapshot.key_rows).get(image) == index
                 )
                 root.resolve_interface(image.interface)
                 if image.parent is None:
@@ -208,16 +250,16 @@ def _audit_radix_stage_images(ledger: ResourceLedger) -> set[tuple[int, int]]:
             except (TypeError, ValueError, IndexError, AttributeError):
                 valid = False
             if not valid:
-                invalid.add((root._image_owner, id(image)))
-        for image, index in root._keys.items():
+                invalid.add((snapshot.image_owner, id(image)))
+        for key_image, key_index in snapshot.key_rows:
             if not (
                 valid_root
-                and type(image) is RadixDivisionImage
-                and type(index) is int
-                and 0 <= index < len(root._images)
-                and root._images[index] is image
+                and type(key_image) is RadixDivisionImage
+                and type(key_index) is int
+                and 0 <= key_index < len(snapshot.images)
+                and snapshot.images[key_index] is key_image
             ):
-                invalid.add((root._key_owner, id(image)))
+                invalid.add((snapshot.key_owner, id(key_image)))
     return invalid
 
 
@@ -231,6 +273,7 @@ register_proof_payload_auditor(_audit_radix_stage_images)
 
 
 __all__ = [
+    "RadixDivisionImageAuditSnapshot",
     "RadixDivisionImage",
     "RadixDivisionImageArena",
     "RadixDivisionImageID",

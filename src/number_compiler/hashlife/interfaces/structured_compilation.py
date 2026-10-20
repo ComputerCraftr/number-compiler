@@ -61,14 +61,14 @@ if TYPE_CHECKING:
     )
 
 
-def _structured_program(
+def structured_program(
     self: SemanticExpressionCompiler,
     task: StructuredExpressionTask,
     structures: StructureArena,
 ) -> Generator[Task, Result, Result]:
     arena, bits = self.expressions, structures.bits
     node = arena.node(task.expression)
-    inputs = self._environment_ports(task.environment)
+    inputs = self.environment_ports(task.environment)
     if node.kind in ("call", "anchor", "continuation", "apply"):
         # Expose only the requested constructor before compiling children.
         # In particular, projecting a closure's anchor must not compile its
@@ -96,19 +96,19 @@ def _structured_program(
             raise ValueError("unbound structured semantic port")
         if isinstance(binding, FinitePort):
             return structures.atom(
-                bits.variable(inputs, binding, self._atom_sort(node.sort))
+                bits.variable(inputs, binding, self.atom_sort(node.sort))
             )
         if isinstance(binding, ReachableCodec):
             if self.profiles is None:
                 raise AssertionError("reachable binding has no profile arena")
-            return self._declare_structure(
+            return self.declare_structure(
                 self.profiles.decode(binding, structures), inputs, structures
             )
-        return self._declare_structure(binding.structure, inputs, structures)
+        return self.declare_structure(binding.structure, inputs, structures)
     if node.kind in ("literal", "symbol"):
         return structures.atom(
             bits.constant(
-                FunctionSignature(inputs, self._atom_sort(node.sort)), node.value
+                FunctionSignature(inputs, self.atom_sort(node.sort)), node.value
             )
         )
     if node.kind == "lambda":
@@ -118,7 +118,7 @@ def _structured_program(
             "semantic-bound-input",
             (task.expression,) + tuple(item[0] for item in task.environment),
         )
-        binding = self._binding(
+        binding = self.expression_binding(
             variable,
             PortVariable(0, 0, f"semantic-lambda-{task.depth:08}", 0),
             task.profile,
@@ -138,7 +138,7 @@ def _structured_program(
         )
         curried_node = structures.resolve(curried)
         assert type(curried_node.signature.output) is SemanticFunctionSort
-        declarations = self._input_ports(
+        declarations = self.input_ports(
             node.sort.domain,
             PortVariable(0, 0, "semantic-argument", 0),
             task.profile,
@@ -160,7 +160,7 @@ def _structured_program(
             )
         )
     if node.kind in ("anchor", "continuation"):
-        projected_source = arena._handle(node.children[0])
+        projected_source = arena.reference(node.children[0])
         binding = dict(task.environment).get(projected_source)
         if isinstance(binding, ReachableCodec):
             if self.profiles is None:
@@ -168,16 +168,16 @@ def _structured_program(
             projected = self.profiles.component(
                 binding, 0 if node.kind == "anchor" else 1, structures
             )
-            return self._declare_structure(projected, inputs, structures)
+            return self.declare_structure(projected, inputs, structures)
         if isinstance(binding, StateCodec):
             projected = structures.component(
                 binding.structure, 0 if node.kind == "anchor" else 1
             )
-            return self._declare_structure(projected, inputs, structures)
+            return self.declare_structure(projected, inputs, structures)
     children: list[StructureID] = []
     for child_index in node.children:
         child_result = yield StructuredExpressionTask(
-            arena._handle(child_index), task.environment, task.depth, task.profile
+            arena.reference(child_index), task.environment, task.depth, task.profile
         )
         if type(child_result) is not StructureID:
             raise AssertionError("structured child returned a different result")
@@ -188,18 +188,18 @@ def _structured_program(
         return structures.product(tuple(children))
     if node.kind == "apply":
         target = structures.resolve(children[0]).signature.output
-        original = arena.node(arena._handle(node.children[0])).sort
+        original = arena.node(arena.reference(node.children[0])).sort
         if not isinstance(target, SemanticFunctionSort) or not isinstance(
             original, FunctionSort
         ):
             raise UnsupportedInterfaceError(
                 "application requires a typed semantic function"
             )
-        encoded = self._encode_argument(
+        encoded = self.encode_argument(
             original.domain, target.inputs, children[1], structures, task.profile
         )
         return structures.apply(children[0], encoded)
-    arguments = []
+    arguments: list[FactoredFunctionID] = []
     for child in children:
         value = structures.resolve(child).atom
         if value is None:
@@ -208,9 +208,9 @@ def _structured_program(
             )
         arguments.append(value)
     if node.kind in ("finite_apply", "finite_map"):
-        mapped, port = self._finite_child(node)
+        mapped, port = self.finite_child(node)
         return structures.atom(
-            bits.substitute(self._factored(mapped, bits), {port.variable: arguments[0]})
+            bits.substitute(self.factored(mapped, bits), {port.variable: arguments[0]})
         )
     if node.kind in ("advance", "emit") and node.action is not None:
         primitive = self.primitives.compile(self.runtime.actions.primitive(node.action))
@@ -220,14 +220,14 @@ def _structured_program(
             primitive, node.kind, node.side, tuple(arguments), zero_left, zero_right
         )
         scalar = bits.substitute(
-            self._factored(primitive_function, bits),
+            self.factored(primitive_function, bits),
             dict(zip((port.variable for port in primitive.ports), actual, strict=True)),
         )
         return structures.atom(scalar)
     raise UnsupportedInterfaceError(f"unsupported structured constructor: {node.kind}")
 
 
-def _encode_argument(
+def encode_argument(
     self: SemanticExpressionCompiler,
     sort: StateSort,
     ports: tuple[FinitePort, ...],
@@ -242,7 +242,7 @@ def _encode_argument(
             raise ValueError("primitive application requires one numeric argument")
         return {ports[0].variable: atom}
     if profile is not None:
-        self._profile(profile)
+        self.semantic_profile(profile)
         raise UnsupportedInterfaceError(
             "reachable application requires certified ordinal transport"
         )
@@ -273,7 +273,7 @@ def _encode_argument(
         values.append(atom)
     if len(values) != len(ports):
         raise ValueError("paired application has another flat input interface")
-    result = {}
+    result: dict[PortVariable, FactoredFunctionID] = {}
     for port, value in zip(ports, values, strict=True):
         node = bits.resolve(value)
         circuit = BooleanCircuit(self.functions, node.signature.inputs)

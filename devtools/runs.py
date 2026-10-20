@@ -22,7 +22,7 @@ from uuid import uuid4
 from devtools.checks.process_guard import run_guarded
 from devtools.checks.pyright_policy import node_executable, pyright_version
 from devtools.paths import repository_root
-from devtools.report_values import string_keyed_mapping
+from number_compiler.arithmetic.contracts.input_validation import string_keyed_mapping
 
 EVIDENCE_SCHEMA_VERSION = 2
 

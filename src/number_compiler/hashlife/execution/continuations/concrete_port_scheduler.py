@@ -8,7 +8,7 @@ from typing import Protocol, cast
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.continuations.concrete_directed_residual import (
-    intern_residual,
+    validate_residual,
 )
 from number_compiler.hashlife.execution.continuations.concrete_port_records import (
     ComposedPort as _ComposedPort,
@@ -305,7 +305,7 @@ class ConcretePortScheduler:
         self.ledger.bump(_execution_keys.CONCRETE_VIRTUAL_INTERFACE_PUBLICATIONS)
         return self._virtual_id(local_id)
 
-    def _publish_virtual(
+    def publish_virtual(
         self,
         binding: _VirtualBinding,
         record: _VirtualInterface,
@@ -384,7 +384,7 @@ class ConcretePortScheduler:
         except KeyError as exc:
             raise ValueError("stale concrete residual binding") from exc
 
-    def _intern_port(self, record: _ComposedPort) -> PortStateID:
+    def intern_port(self, record: _ComposedPort) -> PortStateID:
         self.adapter.validate_action(record.action)
         self.validate_side(record.side)
         self.validate_atom(record.anchor)
@@ -403,8 +403,22 @@ class ConcretePortScheduler:
         self.ledger.bump(_execution_keys.CONCRETE_PORT_STATE_PUBLICATIONS)
         return self._port_id(local_id)
 
-    def _intern_residual(self, record: _Residual) -> ResidualBindingID:
-        return intern_residual(self, record)
+    def intern_residual(self, record: _Residual) -> ResidualBindingID:
+        """Hash-cons a validated residual under this scheduler's ledger."""
+        validate_residual(self, record)
+        found = self._residual_keys.get(record)
+        if found is not None:
+            self.ledger.bump(_execution_keys.CONCRETE_RESIDUAL_ALIAS_HITS)
+            return self._residual_id(found)
+        self.ledger.reserve_many(
+            ((self._residual_owner, 1, 1), (self._residual_key_owner, 1, 0))
+        )
+        local_id = self._next_residual
+        self._next_residual += 1
+        self._residuals[local_id] = record
+        self._residual_keys[record] = local_id
+        self.ledger.bump(_execution_keys.CONCRETE_RESIDUAL_PUBLICATIONS)
+        return self._residual_id(local_id)
 
     def validate_atom(self, state: object) -> None:
         if type(state) is int:
@@ -427,7 +441,7 @@ class ConcretePortScheduler:
             raise ValueError("concrete port side must be zero or one")
         return side
 
-    def _validate_action_state(
+    def validate_action_state(
         self,
         action: FieldCellActionID,
         side: int,
@@ -458,13 +472,13 @@ class ConcretePortScheduler:
     def initial(self, action: FieldCellActionID, side: int) -> PortAtom:
         self.adapter.validate_action(action)
         side = self.validate_side(side)
-        return self._run(("INIT", action, side))
+        return self.run(("INIT", action, side))
 
     @staticmethod
-    def _opposite(side: int) -> int:
+    def opposite(side: int) -> int:
         return 1 - side
 
-    def _cell_parts(
+    def cell_parts(
         self,
         cell: SourceCellID,
         reverse: bool,
@@ -483,13 +497,13 @@ class ConcretePortScheduler:
     ) -> PortAtom:
         self.adapter.validate_action(action)
         side = self.validate_side(side)
-        self._validate_action_state(action, side, state)
+        self.validate_action_state(action, side, state)
         if type(cell) is not SourceCellID:
             raise TypeError("concrete advance requires a scoped source cell")
         self.sources.resolve(cell)
         if type(reverse) is not bool:
             raise TypeError("concrete traversal direction must be Boolean")
-        return self._run(("ADV", action, side, state, cell, None, reverse))
+        return self.run(("ADV", action, side, state, cell, None, reverse))
 
     def emit(
         self,
@@ -499,14 +513,14 @@ class ConcretePortScheduler:
         right: PortAtom,
     ) -> int:
         self.adapter.validate_action(action)
-        self._validate_action_state(action, 0, left)
-        self._validate_action_state(action, 1, right)
+        self.validate_action_state(action, 0, left)
+        self.validate_action_state(action, 1, right)
         if type(symbol_cell) is not SourceCellID:
             raise TypeError("concrete emission requires a scoped source cell")
         node = self.sources.resolve(symbol_cell)
         if node.level:
             raise ValueError("concrete emission requires one source leaf")
-        result = self._run(("EMIT", action, left, right, symbol_cell, None))
+        result = self.run(("EMIT", action, left, right, symbol_cell, None))
         if type(result) is not int:
             raise AssertionError("concrete emission returned a structured port")
         return result
@@ -541,14 +555,23 @@ class ConcretePortScheduler:
     ) -> int:
         return active_width(self, action, source)
 
-    def _run(self, root: tuple[object, ...]) -> PortAtom:
+    def run(self, root: tuple[object, ...]) -> PortAtom:
         from number_compiler.hashlife.execution.continuations.concrete_dependencies import (
-            _run,
+            run_tasks,
         )
 
-        return _run(self, root)
+        return run_tasks(self, root)
 
-    def _store(self, key: tuple[object, ...], value: PortAtom) -> None:
+    def cached_result(self, key: tuple[object, ...]) -> PortAtom | None:
+        """Read a completed task without exposing the retained memo."""
+        return self._memo.get(key)
+
+    @property
+    def virtual_bindings(self) -> Mapping[_VirtualBinding, VirtualInterfaceID]:
+        """Read the scheduler's admitted virtual interface bindings."""
+        return self._virtual_bindings
+
+    def store_result(self, key: tuple[object, ...], value: PortAtom) -> None:
         if key in self._memo:
             return
         self.ledger.reserve(self._memo_owner, entries=1)

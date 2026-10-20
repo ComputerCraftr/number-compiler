@@ -123,7 +123,8 @@ def compress_repeated_block(
     action = block_carry_action(multiplier, block_modulus, block_value)
     action.apply(incoming)  # Validate the incoming port even for zero repeats.
     bound = _candidate_bound(multiplier, block_modulus)
-    carry, transient, remaining = incoming, [], repetitions
+    transient: list[int] = []
+    carry, remaining = incoming, repetitions
     checked = 0
     while remaining and action.apply(carry) != carry:
         if checked >= bound:

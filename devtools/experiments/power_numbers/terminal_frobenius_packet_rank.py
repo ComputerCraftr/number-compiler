@@ -94,13 +94,9 @@ def folded_x_sequence(modulus: int, terms: int) -> tuple[int, ...]:
     return tuple(out)
 
 
-def _matrix_rank_fraction(matrix: list[list[int]]) -> int:
-    return fraction_matrix_rank(matrix)
-
-
 def small_hankel_rank_differential(modulus: int) -> int:
     """Materialize only tiny M controls and verify the structural rank theorem."""
     modulus = int(modulus)
     seq = folded_x_sequence(modulus, 2 * modulus + 1)
     hankel = [[seq[i + j] for j in range(modulus)] for i in range(modulus)]
-    return _matrix_rank_fraction(hankel)
+    return fraction_matrix_rank(hankel)

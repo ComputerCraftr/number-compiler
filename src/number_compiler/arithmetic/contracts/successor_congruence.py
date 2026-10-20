@@ -22,6 +22,8 @@ from __future__ import annotations
 from collections.abc import Hashable
 from dataclasses import dataclass
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
+
 
 class SuccessorCongruenceViolation(ValueError):
     """Raised when one semantic class is observed with incompatible successors."""
@@ -79,7 +81,7 @@ class SuccessorCongruenceAudit:
         self._exact_conflict_keys: set[Hashable] = set()
 
     def observe(self, observation: SuccessorObservation) -> None:
-        if not isinstance(observation, SuccessorObservation):
+        if not is_runtime_instance(observation, SuccessorObservation):
             raise TypeError(type(observation))
         self.observations += 1
         key = observation.semantic_key

@@ -81,4 +81,4 @@ def test_generic_runtime_rejects_an_exhausted_budget_before_registration() -> No
         parametric_point(app.runtime, app.root, 0)
 
     assert (app.ledger.snapshot(), tuple(app.ledger.inventory())) == before
-    assert not hasattr(app.runtime, "_generic_higher_runtime")
+    assert not hasattr(app.runtime, "generic_higher_executor")

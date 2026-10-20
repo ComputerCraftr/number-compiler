@@ -97,7 +97,7 @@ def test_event_arena_consumes_valuations_without_expanding_forced_even_runs() ->
 
     source = 27
     value = source
-    valuations = []
+    valuations: list[int] = []
     for _ in range(32):
         step = accelerated_odd_collatz(value)
         valuations.append(step.valuation)

@@ -17,6 +17,14 @@ from number_compiler.sequences.comma.boundary_quotient import (
     construct_macro,
 )
 
+_INVALID_ROWS: tuple[tuple[list[object], str], ...] = (
+    ([True, [], 0, 1], "unordered"),
+    ([0, [1], 0, 1], "incomplete comma fork"),
+    ([0, [1, 1], 1, 1], "unbound comma fork"),
+    ([0, [], -1, 1], "construction counts"),
+    ([0, [], 0, 0], "construction counts"),
+)
+
 
 def test_lifting_checks_all_prefixes_and_both_fork_children() -> None:
     macro = construct_macro(BoundaryState("N", 2, 10))
@@ -87,13 +95,7 @@ def test_near_run_lifting_rejects_hidden_crossing_and_wrong_weight() -> None:
 
 @pytest.mark.parametrize(
     "row,reason",
-    [
-        ([True, [], 0, 1], "unordered"),
-        ([0, [1], 0, 1], "incomplete comma fork"),
-        ([0, [1, 1], 1, 1], "unbound comma fork"),
-        ([0, [], -1, 1], "construction counts"),
-        ([0, [], 0, 0], "construction counts"),
-    ],
+    _INVALID_ROWS,
 )
 def test_audit_merge_rejects_malformed_or_partial_alternatives(
     tmp_path: Path, row: list[object], reason: str

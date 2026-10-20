@@ -76,14 +76,18 @@ def test_special_source_compiler_defers_theorems_until_concrete_output_is_demand
     guarded = fresh.project_special_branch_values("fermat", 4, 3, 7)
     assert guarded.mode is SpecialOutputMode.GUARDED
     assert fresh.theorem_cache_size == 0
-    resolved = fresh.project_special_branch_values(
+    unresolved = fresh.project_special_branch_values(
         "fermat",
         4,
         3,
         7,
         require_concrete=True,
     )
-    assert resolved.mode is SpecialOutputMode.RESOLVED and resolved.value == 3
+    assert (
+        unresolved.mode is SpecialOutputMode.GUARDED and unresolved.resolved_bit is None
+    )
+    resolution = fresh.resolve_special_theorem("fermat", 4)
+    assert resolution.primality is not None and resolution.primality.status == "unknown"
     assert fresh.theorem_cache_size == 1
 
     m11, m13, m15 = compiler.compile(
@@ -95,21 +99,23 @@ def test_special_source_compiler_defers_theorems_until_concrete_output_is_demand
     assert mshape.bit_length == 13 and mshape.boundary_sign == 1
     assert all(mshape.digit(i) == 1 for i in range(13)) and mshape.digit(13) == 0
 
-    # The old theorem outcomes are still available, but only through the
-    # separately cached demand boundary.
+    # Only independently certified cases resolve at the demand boundary.
+    # Other special-form theorem queries stay unknown until a source-bound
+    # certificate or proper divisor is available; exponent rejection still
+    # proves M15 composite.
     assert (
         compiler.resolve_special_theorem("fermat", 2).source_guard.failure_bit is False
     )
     assert (
-        compiler.resolve_special_theorem("fermat", 5).source_guard.failure_bit is True
+        compiler.resolve_special_theorem("fermat", 5).source_guard.failure_bit is None
     )
     assert (
         compiler.resolve_special_theorem("mersenne", 11).source_guard.failure_bit
-        is True
+        is None
     )
     assert (
         compiler.resolve_special_theorem("mersenne", 13).source_guard.failure_bit
-        is False
+        is None
     )
     assert (
         compiler.resolve_special_theorem("mersenne", 15).source_guard.failure_bit

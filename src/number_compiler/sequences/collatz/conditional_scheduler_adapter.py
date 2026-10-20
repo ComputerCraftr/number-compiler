@@ -120,10 +120,10 @@ class CertifiedSchedulerCandidate:
         object.__setattr__(self, "_memo_issuer", None)
         object.__setattr__(self, "_memo_snapshot", None)
 
-    def _seal_for_memo(self) -> None:
+    def seal_for_memo(self) -> None:
         """Memo-seal only after every observer has passed full verification."""
         if self._memo_issuer is _CANDIDATE_MEMO_ISSUER:
-            self._verify_memo_issued()
+            self.verify_memo_issued()
             return
         self.verify()
         from number_compiler.sequences.collatz.conditional_candidate_seal import (
@@ -134,7 +134,7 @@ class CertifiedSchedulerCandidate:
         object.__setattr__(self, "_memo_snapshot", snapshot)
         object.__setattr__(self, "_memo_issuer", _CANDIDATE_MEMO_ISSUER)
 
-    def _verify_memo_issued(self) -> None:
+    def verify_memo_issued(self) -> None:
         from number_compiler.sequences.collatz.conditional_candidate_seal import (
             snapshot_scheduler_candidate,
         )
@@ -150,8 +150,8 @@ class CertifiedSchedulerCandidate:
         if not valid:
             raise ValueError("conditional candidate memo issuance seal is invalid")
 
-    def _verify_memo_hit(self, source: int) -> None:
-        self._verify_memo_issued()
+    def verify_memo_hit(self, source: int) -> None:
+        self.verify_memo_issued()
         self._verify_scheduler_core()
         if type(source) is not int or source != self.source:
             raise ValueError("conditional memo hit does not match its exact source")
@@ -167,7 +167,7 @@ class CertifiedSchedulerCandidate:
             or type(self.return_count) is not int
         ):
             raise TypeError("conditional scheduler action has malformed authority")
-        self.port._verify_issued()
+        self.port.verify_issued()
         if (
             self.source <= 0
             or self.endpoint <= 0
@@ -183,7 +183,7 @@ class CertifiedSchedulerCandidate:
             raise ValueError(
                 "conditional scheduler clocks/guards differ from issued source"
             )
-        clock = self.port._clock
+        clock = self.port.clock
         if clock is not None:
             clock.verify(self.port.action, self.source, self.endpoint)
 
@@ -316,7 +316,7 @@ class CertifiedSchedulerCandidate:
             raise TypeError("conditional scheduler action has malformed integer fields")
         if control_bits < 0:
             raise ValueError("conditional scheduler control bound must be nonnegative")
-        clock = self.port._clock
+        clock = self.port.clock
         if clock is not None and type(clock) is not SkewQuadraticClock:
             raise TypeError("conditional scheduler clock has malformed authority")
         if clock is not None:
@@ -361,7 +361,7 @@ class CertifiedSchedulerCandidate:
     def verify(self) -> None:
         self._verify_scheduler_core()
         if self._memo_issuer is _CANDIDATE_MEMO_ISSUER:
-            self._verify_memo_issued()
+            self.verify_memo_issued()
             return
         if (
             self.tail_trace is not None
@@ -435,7 +435,7 @@ class CertifiedSchedulerCandidate:
                 or program.guard.modulus % (200 << program.steps) != 0
             ):
                 raise ValueError("conditional carry program lost its source guard")
-            program._verify_issued()
+            program.verify_issued()
         if self.upper_sturmian is not None and (
             type(self.upper_sturmian) is not tuple
             or len(self.upper_sturmian) != 3
@@ -514,12 +514,12 @@ def issue_conditional_scheduler_candidate(
             if type(cached) is not CertifiedSchedulerCandidate:
                 raise ValueError("conditional port memo lost certified type")
             if cached.source == source:
-                cached._verify_memo_hit(source)
+                cached.verify_memo_hit(source)
                 if cached.physical_ticks <= remaining:
                     scratch.require_bits(
                         cached.verification_operand_bits(remaining.bit_length())
                     )
-                    cached._verify_memo_hit(source)
+                    cached.verify_memo_hit(source)
                     ledger.bump(
                         _collatz_keys.COLLATZ_CONDITIONAL_SCHEDULER_GUARDED_CACHE_HITS
                     )

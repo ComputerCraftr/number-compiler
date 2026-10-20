@@ -31,10 +31,10 @@ if TYPE_CHECKING:
 # larger directed primitive port; admitting that fixed kernel interface keeps
 # T^2 on the extensional carrier.  Higher temporal domains remain recursive
 # and are never enumerated here.
-_MAX_EXTENSIONAL_TABLE_DOMAIN = 64
+MAX_EXTENSIONAL_TABLE_DOMAIN = 64
 
 
-def _singleton_state(
+def singleton_state(
     arena: HigherSemanticArena,
     machine: OperationMachine,
     action: FieldCellActionID,
@@ -51,7 +51,7 @@ def _singleton_state(
         current_key = current, side
         if current_key in machine.singleton_states:
             continue
-        children = _children(arena, machine, current)
+        children = operation_children(arena, machine, current)
         if children is None:
             machine.singleton_states[current_key] = (
                 arena.schema.state_count(current, side) == 1
@@ -67,7 +67,7 @@ def _singleton_state(
     return machine.singleton_states[key]
 
 
-def _constant_anchor(
+def constant_anchor(
     arena: HigherSemanticArena,
     machine: OperationMachine,
     function: RuntimeValueID,
@@ -112,7 +112,7 @@ def _constant_anchor(
     return None
 
 
-def _is_constant_function(
+def is_constant_function(
     arena: HigherSemanticArena,
     function: RuntimeValueID,
 ) -> bool:
@@ -139,7 +139,7 @@ class OperationMachine:
     constant_anchors: dict[RuntimeValueID, RuntimeAtom | None]
 
 
-def _children(
+def operation_children(
     arena: HigherSemanticArena,
     machine: OperationMachine,
     action: FieldCellActionID,
@@ -153,18 +153,18 @@ def _children(
         return result
 
 
-def _has_primitive_children(
+def has_primitive_children(
     arena: HigherSemanticArena,
     machine: OperationMachine,
     action: FieldCellActionID,
 ) -> tuple[FieldCellActionID, FieldCellActionID] | None:
     """Return a bottom temporal diamond whose state domain stays bounded."""
-    children = _children(arena, machine, action)
+    children = operation_children(arena, machine, action)
     if children is None:
         return None
     return (
         children
-        if all(_children(arena, machine, child) is None for child in children)
+        if all(operation_children(arena, machine, child) is None for child in children)
         else None
     )
 
@@ -209,9 +209,8 @@ def evaluate_operation(
         arena,
         start_operation(operation, action, side, arguments),
     )
-    match result:
-        case RuntimeFunctionRequest():
-            raise ValueError("operation requires the unified continuation scheduler")
+    if isinstance(result, RuntimeFunctionRequest):
+        raise ValueError("operation requires the unified continuation scheduler")
     return result
 
 
@@ -224,9 +223,8 @@ def force_value(arena: HigherSemanticArena, value: RuntimeAtom) -> RuntimeAtom:
         arena,
         OperationMachine([("force", value)], [], {}, {}, {}),
     )
-    match result:
-        case RuntimeFunctionRequest():
-            raise ValueError("summary forcing reached a syntax continuation")
+    if isinstance(result, RuntimeFunctionRequest):
+        raise ValueError("summary forcing reached a syntax continuation")
     return result
 
 

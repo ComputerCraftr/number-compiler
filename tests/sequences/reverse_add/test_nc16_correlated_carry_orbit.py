@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from itertools import product
 from random import Random
+from typing import cast
 from unittest.mock import patch
 
 import pytest
@@ -31,6 +33,7 @@ from number_compiler.sequences.reverse_add.temporal_carry_wire import (
 from number_compiler.sequences.reverse_add.temporal_inward_constraints import (
     ReverseInwardConstraints,
 )
+from tests.support.private_attributes import private_test_attribute
 
 
 def _successor(number: int) -> int:
@@ -141,18 +144,18 @@ def test_exact_regular_projection_matches_bruteforce_small_middle_words() -> Non
         k = 1
         center = (width + 1) // 2 - k
         for _ in range(90):
-            domain_rows = []
+            domain_rows: list[tuple[int, ...]] = []
             for j in range(center):
                 candidates = (
                     range(0, 19, 2) if width & 1 and j == center - 1 else range(19)
                 )
                 domain = tuple(s for s in candidates if rng.randrange(4) == 0)
                 domain_rows.append(domain or (rng.choice(tuple(candidates)),))
-            domains = tuple(domain_rows)
-            subset = tuple(fn for fn in maps if rng.randrange(2))
+            domains: tuple[tuple[int, ...], ...] = tuple(domain_rows)
+            subset: tuple[CarryFn, ...] = tuple(fn for fn in maps if rng.randrange(2))
             if not subset:
                 subset = (rng.choice(maps),)
-            supported = set()
+            supported: set[CarryFn] = set()
             supported_coeffs: list[set[int]] = [set() for _ in range(center)]
             reset_witnesses: set[tuple[int, CarryFn]] = set()
             for values in product(*domains):
@@ -238,19 +241,22 @@ def test_middle_projection_reuses_only_unchanged_domains() -> None:
 
     system = ReverseInwardConstraints((9, 9), on_middle_filter_visit=count_visit)
     system.constrain_middle_transfer(0, 1, tuple(CarryFn))
-    system._middle_constraints()
+    recompute = cast(
+        Callable[[], None], private_test_attribute(system, "_middle_constraints")
+    )
+    recompute()
     first_visits = visits
     assert first_visits > 0
 
     # The stored projection is a fixed point for identical pair domains and
     # transfer maps. Endpoint carries are still joined on every invocation.
-    system._middle_constraints()
+    recompute()
     assert visits == first_visits
 
     current = system.pair_domain(0, 2)
     assert len(current) > 1
     system.constrain_pair(0, 2, current[0])
-    system._middle_constraints()
+    recompute()
     assert visits > first_visits
     assert system.pair_domain(0, 2) == (current[0],)
 
@@ -323,7 +329,9 @@ def test_g79_ring_retains_two_sided_correlated_maps_with_no_q19_replay() -> None
         correlated = diag["correlated_carry_phases"]
         reset_ports = diag["middle_first_reset_ports"]
         assert type(correlated) is int and correlated >= 9
-        assert isinstance(reset_ports, (tuple, list)) and len(reset_ports) >= 9
+        assert isinstance(reset_ports, (tuple, list))
+        reset_port_rows = cast(tuple[object, ...] | list[object], reset_ports)
+        assert len(reset_port_rows) >= 9
     finally:
         owner.dispose()
         assert ledger.entries == ledger.nodes == 0

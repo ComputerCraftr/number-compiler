@@ -112,7 +112,7 @@ class Q19IssuanceRegistry:
         ] = OwnedMemo(ledger, ring_owner, node_cost=self._temporal_ring_bank_cost)
         self.temporal_ring_bank_next = 0
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         self.owner.validate_issuance_registry(self)
 
     def validate_stores(
@@ -265,7 +265,7 @@ class Q19IssuanceRegistry:
         )
 
     def allocate_diagonal_comparison_key(self) -> int:
-        self._check_open()
+        self.check_open()
         if type(
             self.diagonal_comparison_next
         ) is not int or self.diagonal_comparison_next != len(self.diagonal_comparisons):
@@ -275,7 +275,7 @@ class Q19IssuanceRegistry:
     def retain_diagonal_comparison(
         self, key: int, record: CertifiedDiagonalComparison
     ) -> None:
-        self._check_open()
+        self.check_open()
         if (
             type(key) is not int
             or key != self.diagonal_comparison_next
@@ -287,7 +287,7 @@ class Q19IssuanceRegistry:
         self.diagonal_comparison_next += 1
 
     def validate_diagonal_comparison(self, record: CertifiedDiagonalComparison) -> None:
-        self._check_open()
+        self.check_open()
         key = record.registry_key
         if type(key) is not int or not 0 <= key < self.diagonal_comparison_next:
             raise ValueError(
@@ -312,7 +312,7 @@ class Q19IssuanceRegistry:
         """Roll back only the latest record after failed publication."""
         if self.owner.is_disposed:
             return
-        self._check_open()
+        self.check_open()
         if key != self.diagonal_comparison_next - 1:
             return
         issued = self.diagonal_comparisons.get(key)
@@ -329,7 +329,7 @@ class Q19IssuanceRegistry:
         tuple[int, int, int, int],
         tuple[CertifiedBorderGrowth, tuple[object, ...]] | None,
     ]:
-        self._check_open()
+        self.check_open()
         self.owner.validate_occurrence(source)
         key = _border_certificate_key(source, steps, window_digits)
         return key, self.border_certificates.get(key)
@@ -394,7 +394,7 @@ class Q19IssuanceRegistry:
         """Roll back only the exact last record after failed publication."""
         if self.owner.is_disposed:
             return
-        self._check_open()
+        self.check_open()
         key = _border_certificate_key(
             certificate.source,
             len(certificate.growth_word),
@@ -405,7 +405,7 @@ class Q19IssuanceRegistry:
             del self.border_certificates[key]
 
     def allocate_bank_key(self) -> int:
-        self._check_open()
+        self.check_open()
         if type(
             self.controlled_gt_bank_next
         ) is not int or self.controlled_gt_bank_next != len(self.controlled_gt_banks):
@@ -413,7 +413,7 @@ class Q19IssuanceRegistry:
         return self.controlled_gt_bank_next
 
     def retain_bank(self, key: int, action: SourceGuardedGTBankAction) -> None:
-        self._check_open()
+        self.check_open()
         if (
             type(key) is not int
             or key != self.controlled_gt_bank_next
@@ -425,7 +425,7 @@ class Q19IssuanceRegistry:
         self.controlled_gt_bank_next += 1
 
     def validate_bank(self, action: SourceGuardedGTBankAction) -> None:
-        self._check_open()
+        self.check_open()
         key = action.registry_key
         if type(key) is not int or not 0 <= key < self.controlled_gt_bank_next:
             raise ValueError(
@@ -449,7 +449,7 @@ class Q19IssuanceRegistry:
         """Roll back a failed final validation without consuming its key."""
         if self.owner.is_disposed:
             return
-        self._check_open()
+        self.check_open()
         if key != self.controlled_gt_bank_next - 1:
             return
         issued = self.controlled_gt_banks.get(key)
@@ -458,7 +458,7 @@ class Q19IssuanceRegistry:
             self.controlled_gt_bank_next = key
 
     def allocate_spatial_bank_window_key(self) -> int:
-        self._check_open()
+        self.check_open()
         if type(
             self.spatial_bank_window_next
         ) is not int or self.spatial_bank_window_next != len(self.spatial_bank_windows):
@@ -468,7 +468,7 @@ class Q19IssuanceRegistry:
     def retain_spatial_bank_window(
         self, key: int, window: ReverseAddSpatialBankMorphism
     ) -> None:
-        self._check_open()
+        self.check_open()
         if (
             type(key) is not int
             or key != self.spatial_bank_window_next
@@ -482,7 +482,7 @@ class Q19IssuanceRegistry:
     def validate_spatial_bank_window(
         self, window: ReverseAddSpatialBankMorphism
     ) -> None:
-        self._check_open()
+        self.check_open()
         key = window.registry_key
         if type(key) is not int or not 0 <= key < self.spatial_bank_window_next:
             raise ValueError("spatial bank window is not retained by this Q19 owner")
@@ -504,7 +504,7 @@ class Q19IssuanceRegistry:
         """Roll back only the latest spatial window after failed publication."""
         if self.owner.is_disposed:
             return
-        self._check_open()
+        self.check_open()
         if key != self.spatial_bank_window_next - 1:
             return
         issued = self.spatial_bank_windows.get(key)
@@ -513,7 +513,7 @@ class Q19IssuanceRegistry:
             self.spatial_bank_window_next = key
 
     def allocate_temporal_ring_bank_key(self) -> int:
-        self._check_open()
+        self.check_open()
         if type(
             self.temporal_ring_bank_next
         ) is not int or self.temporal_ring_bank_next != len(self.temporal_ring_banks):
@@ -523,7 +523,7 @@ class Q19IssuanceRegistry:
     def retain_temporal_ring_bank(
         self, key: int, bank: ReverseAddTemporalRingBank
     ) -> None:
-        self._check_open()
+        self.check_open()
         if (
             type(key) is not int
             or key != self.temporal_ring_bank_next
@@ -535,7 +535,7 @@ class Q19IssuanceRegistry:
         self.temporal_ring_bank_next += 1
 
     def validate_temporal_ring_bank(self, bank: ReverseAddTemporalRingBank) -> None:
-        self._check_open()
+        self.check_open()
         key = bank.registry_key
         if type(key) is not int or not 0 <= key < self.temporal_ring_bank_next:
             raise ValueError("temporal ring bank is not retained by this Q19 owner")
@@ -557,7 +557,7 @@ class Q19IssuanceRegistry:
         """Roll back the latest ring only after failed publication."""
         if self.owner.is_disposed:
             return
-        self._check_open()
+        self.check_open()
         if key != self.temporal_ring_bank_next - 1:
             return
         issued = self.temporal_ring_banks.get(key)

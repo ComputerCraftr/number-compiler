@@ -41,7 +41,7 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     SemanticTerminal,
 )
 from number_compiler.arithmetic.functions.finite_function_types import (
-    _signature as validate_signature,
+    validate_function_signature as validate_signature,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.semantic_functions import (
@@ -69,7 +69,7 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
     StructuredNode,
     StructureID,
-    _aliases,
+    allocate_bound_aliases,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.semantic_auxiliary_payload import (
@@ -141,22 +141,27 @@ class SemanticPayloadRegistry:
             and actual.get(root.node_owner) is root.nodes
             and actual.get(root.key_owner) is root.keys
         )
-        self.quotients = tuple(
-            root
-            for root in roots
-            if type(root) is DiamondQuotientArena
-            and root.ledger is ledger
-            and root.functions in self.functions
-            and actual.get(root._node_owner) is root._nodes
-            and actual.get(root._key_owner) is root._keys
-        )
+        quotients: list[DiamondQuotientArena] = []
+        for root in roots:
+            if type(root) is not DiamondQuotientArena:
+                continue
+            snapshot = root.audit_snapshot()
+            if (
+                root.ledger is ledger
+                and root.functions in self.functions
+                and actual.get(snapshot.node_owner) is snapshot.nodes
+                and actual.get(snapshot.key_owner) is snapshot.keys
+            ):
+                quotients.append(root)
+        self.quotients = tuple(quotients)
         self.primitives = tuple(
             root
             for root in roots
             if type(root) is PrimitiveSemanticsAdapter
             and root.ledger is ledger
             and root.functions in self.functions
-            and actual.get(root.records.owner) is root.records._data
+            and actual.get(root.records.owner)
+            is root.records.audit_snapshot().container
         )
         self.structures = tuple(
             root
@@ -208,7 +213,7 @@ class SemanticPayloadRegistry:
         )
 
     @staticmethod
-    def _signature(value: object) -> bool:
+    def validate_signature(value: object) -> bool:
         try:
             if type(value) is not FunctionSignature:
                 return False
@@ -237,7 +242,7 @@ class SemanticPayloadRegistry:
     ) -> bool:
         if (
             type(node) is not SemanticNode
-            or not self._signature(node.signature)
+            or not self.validate_signature(node.signature)
             or type(node.support) is not tuple
             or type(node.low) is not int
             or type(node.high) is not int
@@ -324,9 +329,9 @@ class SemanticPayloadRegistry:
             and node.support == support
         )
 
-    def _factored(self, value: FactoredFunction) -> bool:
+    def factored(self, value: FactoredFunction) -> bool:
         if (
-            not self._signature(value.signature)
+            not self.validate_signature(value.signature)
             or type(value.signature.output) is not AtomSort
             or type(value.bits) is not tuple
         ):
@@ -348,13 +353,13 @@ class SemanticPayloadRegistry:
             for fn in functions
         )
 
-    def _bit_handle(self, value: object) -> bool:
+    def validate_bit_handle(self, value: object) -> bool:
         return type(value) is FactoredFunctionID and any(
-            value.owner is arena.token and self._factored(arena.resolve(value))
+            value.owner is arena.token and self.factored(arena.resolve(value))
             for arena in self.bits
         )
 
-    def _structure_handle(self, value: object) -> bool:
+    def validate_structure_handle(self, value: object) -> bool:
         if (
             type(value) is not StructureID
             or type(value.owner) is not ArenaToken
@@ -374,10 +379,10 @@ class SemanticPayloadRegistry:
     ) -> bool:
         if (
             type(value) is not StructuredNode
-            or not self._signature(value.signature)
+            or not self.validate_signature(value.signature)
             or type(value.kind) is not str
             or type(value.components) is not tuple
-            or not self._signature(FunctionSignature(value.bound, BOOL))
+            or not self.validate_signature(FunctionSignature(value.bound, BOOL))
             or not self.handle(value.valid)
             or value.valid.owner is not arena.functions.token
             or arena.functions.signature(value.valid)
@@ -402,7 +407,7 @@ class SemanticPayloadRegistry:
                 type(output) is AtomSort
                 and not children
                 and not value.bound
-                and self._bit_handle(value.atom)
+                and self.validate_bit_handle(value.atom)
                 and type(value.atom) is FactoredFunctionID
                 and value.atom.owner is arena.bits.token
                 and arena.bits.resolve(value.atom).signature == value.signature
@@ -430,7 +435,7 @@ class SemanticPayloadRegistry:
                 or value.body is None
             ):
                 return False
-            if value.bound != _aliases(
+            if value.bound != allocate_bound_aliases(
                 value.signature.inputs, output.inputs, output.output
             ):
                 return False
@@ -454,19 +459,19 @@ class SemanticPayloadRegistry:
                 self.handle(value.admissible)
                 and value.admissible.owner is arena.functions.token
             ):
-                arena._validate_interface(value)
+                arena.validate_interface_record(value)
                 return True
         return False
 
-    def _quotient_record(self, value: QuotientRecord) -> bool:
+    def quotient_record(self, value: QuotientRecord) -> bool:
         for arena in self.quotients:
             if value.signature.owner is arena.owner:
-                arena._validate_components(value.signature, value.components)
+                arena.validate_quotient_record(value)
                 return self._interface(arena.interface(value.signature)) and all(
                     self._closed_function(fn)
                     if type(fn) in (RadixPortFunction, ReversePortFunction)
                     else type(fn) is StructureID
-                    and self._structure_handle(fn)
+                    and self.validate_structure_handle(fn)
                     and fn.owner is arena.structures.token
                     for fn in value.components.functions()
                 )
@@ -474,14 +479,14 @@ class SemanticPayloadRegistry:
 
     def _radix_function(self, value: RadixPortFunction) -> bool:
         value.__post_init__()
-        return self._signature(value.signature)
+        return self.validate_signature(value.signature)
 
     def _reverse_function(self, value: ReversePortFunction) -> bool:
         """Validate a bounded closed reverse function and its slot policy."""
         value.__post_init__()
         if (
             not MIN_CLOSED_REVERSE_BASE <= value.base <= MAX_CLOSED_REVERSE_BASE
-            or not self._signature(value.signature)
+            or not self.validate_signature(value.signature)
             or tuple(port.cardinality for port in value.signature.inputs)
             != (4 * value.base + 3, 5)
             or value.truth_bits.bit_length() > 4 * value.base + 3
@@ -532,7 +537,7 @@ class SemanticPayloadRegistry:
             return (
                 type(value.roots) is tuple
                 and not value.roots
-                and self._signature(FunctionSignature(value.ports, BOOL))
+                and self.validate_signature(FunctionSignature(value.ports, BOOL))
             )
         if (
             type(value.operation) is not str
@@ -540,7 +545,7 @@ class SemanticPayloadRegistry:
             or not value.roots
             or not all(self.handle(fn) for fn in value.roots)
             or len({fn.owner for fn in value.roots}) != 1
-            or not self._signature(FunctionSignature(value.ports, BOOL))
+            or not self.validate_signature(FunctionSignature(value.ports, BOOL))
         ):
             return False
         arena = next(
@@ -629,7 +634,7 @@ class SemanticPayloadRegistry:
         if type(value) is StructuredNode:
             return self.structure_records.get(id(value), False)
         if type(value) is StructureID:
-            return self._structure_handle(value)
+            return self.validate_structure_handle(value)
         if type(value) is SemanticFunctionID:
             return self.handle(value)
         if type(value) is SemanticNode:
@@ -637,27 +642,29 @@ class SemanticPayloadRegistry:
         if type(value) is SemanticTerminal:
             return self.terminals.get(id(value), False)
         if type(value) is FunctionSignature:
-            return self._signature(value)
+            return self.validate_signature(value)
         if type(value) in (AtomSort, ProductSort, FunctionSort):
-            return self._signature(FunctionSignature((), cast(SemanticSort, value)))
+            return self.validate_signature(
+                FunctionSignature((), cast(SemanticSort, value))
+            )
         if type(value) is FinitePort:
-            return self._signature(FunctionSignature((value,), BOOL))
+            return self.validate_signature(FunctionSignature((value,), BOOL))
         if type(value) is SemanticRequest:
             return self._request(value)
         if type(value) is FactoredFunction:
-            return self._factored(value)
+            return self.factored(value)
         if type(value) is FactoredFunctionID:
-            return self._bit_handle(value)
+            return self.validate_bit_handle(value)
         if type(value) is BinaryDivision:
-            return self._bit_handle(value.remainder) and self._bit_handle(
-                value.quotient
-            )
+            return self.validate_bit_handle(
+                value.remainder
+            ) and self.validate_bit_handle(value.quotient)
         if isinstance(value, (DiamondQuotientID, PortSignatureID)):
             for arena in self.quotients:
                 if value.owner is not arena.owner:
                     continue
                 if type(value) is DiamondQuotientID:
-                    return self._quotient_record(arena.resolve(value))
+                    return self.quotient_record(arena.resolve(value))
                 if type(value) is PortSignatureID:
                     return self._interface(arena.interface(value))
             return False
@@ -671,21 +678,21 @@ class SemanticPayloadRegistry:
             ) and all(
                 self._closed_function(fn)
                 if type(fn) in (RadixPortFunction, ReversePortFunction)
-                else self._structure_handle(fn)
+                else self.validate_structure_handle(fn)
                 for fn in value.functions()
             )
         if type(value) is QuotientRecord:
-            return self._quotient_record(value)
+            return self.quotient_record(value)
         if type(value) is DiamondKey:
             for arena in self.quotients:
                 if (
                     type(value.before) is DiamondQuotientID
                     and value.before.owner is arena.owner
                 ):
-                    arena._validate_key(value)
+                    arena.validate_parent_key(value)
                     return (
-                        self._quotient_record(arena.resolve(value.before))
-                        and self._quotient_record(arena.resolve(value.after))
+                        self.quotient_record(arena.resolve(value.before))
+                        and self.quotient_record(arena.resolve(value.after))
                         and self._interface(arena.interface(value.signature))
                     )
             return False
@@ -698,7 +705,7 @@ class SemanticPayloadRegistry:
                     if type(value.ports) is not tuple or len(value.ports) != 3:
                         return False
                     signature = FunctionSignature(value.ports, BOOL)
-                    if not self._signature(signature):
+                    if not self.validate_signature(signature):
                         return False
                     if not all(
                         type(item) is int

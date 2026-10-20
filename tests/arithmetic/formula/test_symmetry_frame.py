@@ -162,9 +162,9 @@ def test_symmetry_linear_action_composition_and_binary_power_are_exact() -> None
 
 def test_symmetry_innovation_block_composes_contiguous_events_exactly() -> None:
     pair: tuple[int, ...] = (2, 9, 18, 9, 2)
-    events = []
-    growths = []
-    widths = []
+    events: list[tuple[int, ...]] = []
+    growths: list[int] = []
+    widths: list[int] = []
     for _ in range(12):
         target, growth = pair_step(pair, 10)
         widths.append(len(pair))

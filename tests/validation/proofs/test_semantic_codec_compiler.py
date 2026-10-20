@@ -379,8 +379,8 @@ def test_malformed_artifact_parameters_reject_before_target_binding(
 
     value = fresh_c4_fourth_input()
     runtime = value.runtime
-    digest = module._recipe(runtime, value.fourth, value.cell, 1)
-    artifact = module._build_isolated(digest)
+    digest = module.c4_artifact_recipe(runtime, value.fourth, value.cell, 1)
+    artifact = module.build_isolated_c4_artifact(digest)
     parameter = artifact.root_parameters[0]
     expressions = list(artifact.expressions)
     expressions[parameter] = replace(expressions[parameter], kind="literal")
@@ -396,10 +396,18 @@ def test_malformed_artifact_parameters_reject_before_target_binding(
     monkeypatch.setattr(module, "_bind", forbidden)
     registry = ImmutableArtifactRegistry()
     for altered in malformed:
+
+        def return_altered(
+            *_args: object,
+            artifact: module.C4UnarySummaryArtifact = altered,
+            **_kw: object,
+        ) -> tuple[module.C4UnarySummaryArtifact, bool]:
+            return artifact, True
+
         monkeypatch.setattr(
             registry,
             "obtain",
-            lambda *_args, altered=altered, **_kw: (altered, True),
+            return_altered,
         )
         before = runtime.ledger.snapshot()
         with pytest.raises(ValueError, match="parameter"):
@@ -476,7 +484,7 @@ def test_projecting_opaque_pair_does_not_compile_its_unused_continuation(
     call = arena.call(arena.closures.intern((x,), body), (x,))
     projected = arena.anchor(call)
     assert arena.node(projected).kind == "anchor"
-    original = compiler._structured_program
+    original = compiler.structured_program
 
     def guarded(
         task: StructuredExpressionTask, structures: StructureArena
@@ -524,7 +532,7 @@ def test_projecting_opaque_pair_does_not_compile_its_unused_continuation(
         )
         return original(task, structures)
 
-    monkeypatch.setattr(compiler, "_structured_program", guarded)
+    monkeypatch.setattr(compiler, "structured_program", guarded)
     result = compiler.compile_structured(projected, (x,))
     for value in range(2):
         assert compiler.structures is not None
@@ -549,7 +557,7 @@ def test_constant_opaque_function_discards_argument_before_semantic_compilation(
     argument = arena.primitive_advance(primitive, 1, q, arena.symbol(primitive, 1))
     applied = arena.apply(opaque, argument)
     assert arena.node(applied).kind == "apply"
-    original = compiler._structured_program
+    original = compiler.structured_program
 
     def guarded(
         task: StructuredExpressionTask, structures: StructureArena
@@ -597,7 +605,7 @@ def test_constant_opaque_function_discards_argument_before_semantic_compilation(
         )
         return original(task, structures)
 
-    monkeypatch.setattr(compiler, "_structured_program", guarded)
+    monkeypatch.setattr(compiler, "structured_program", guarded)
     result = compiler.compile_structured(applied, (x, q))
     for left in range(2):
         for right in range(4):

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from itertools import combinations
+from typing import cast
 
+import devtools.verification.comma_b1_moore_audit as moore_audit
 from devtools.verification.comma_b1_moore_audit import (
     AUDIT_PHASES,
     FULL_AUDIT_COUNT,
     B1Action,
-    _structural_trie,
     audit_b1_phase_pairs,
     full_audit_command,
     structural_audit_command,
@@ -26,6 +28,17 @@ from number_compiler.arithmetic.functions.finite_observer import (
 from number_compiler.sequences.comma.decisive_endpoint import (
     EndpointOutcome,
     EndpointRun,
+)
+
+_StructuralTrie = tuple[
+    tuple[tuple[int | None, ...], ...],
+    tuple[object, ...],
+    tuple[int, ...],
+    dict[tuple[int, ...], int],
+]
+_structural_trie = cast(
+    Callable[[dict[tuple[int, ...], set[B1Action]]], _StructuralTrie],
+    object.__getattribute__(moore_audit, "_structural_trie"),
 )
 
 # Recorded by the bounded 46*924 structural audit.  This is the language-only

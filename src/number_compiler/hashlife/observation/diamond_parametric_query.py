@@ -18,7 +18,7 @@ def admit_point(
     runtime: DiamondRuntime, action: ActionProgramID, position: int
 ) -> DyadicSpan:
     runtime.actions.resolve(action)
-    source = runtime.cells.source_geometry._read_root
+    source = runtime.cells.source_geometry.source_root
     if type(position) is not int or position < 0:
         raise ValueError("point coordinate must be nonnegative")
     if source is None or position >= source.length:
@@ -34,7 +34,7 @@ def admit_width(
 ) -> DyadicSpan:
     runtime.actions.resolve(action)
     runtime.actions.resolve(observer)
-    source = runtime.cells.source_geometry._read_root
+    source = runtime.cells.source_geometry.source_root
     if (
         source is None
         or type(maxwidth) is not int

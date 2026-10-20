@@ -57,7 +57,7 @@ def resolve_expression(
         expanded = arena.expand_call(task.expression)
         return (yield ResolveExpr(expanded))
     if node.kind in ("anchor", "continuation"):
-        parent = yield ResolveExpr(arena._handle(node.children[0]))
+        parent = yield ResolveExpr(arena.scoped_handle(node.children[0]))
         if type(parent) is not ExprID:
             raise AssertionError("structured expression head returned a scalar")
         result = (
@@ -79,7 +79,7 @@ def resolve_expression(
             NormalizePrimitiveLambda,
         )
 
-        function = yield ResolveExpr(arena._handle(node.children[0]))
+        function = yield ResolveExpr(arena.scoped_handle(node.children[0]))
         if type(function) is not ExprID:
             raise AssertionError("continuation head returned a scalar")
         function = yield NormalizePrimitiveLambda(function)
@@ -87,7 +87,7 @@ def resolve_expression(
             raise AssertionError(
                 "complete continuation normalization returned a scalar"
             )
-        result = arena.apply(function, arena._handle(node.children[1]))
+        result = arena.apply(function, arena.scoped_handle(node.children[1]))
         if result == task.expression:
             return result
         return (yield ResolveExpr(result))
@@ -121,7 +121,7 @@ def lower_finite(
         return node.value
     if node.kind in ("finite_apply", "finite_map"):
         assert node.function is not None and type(node.sort) is StateSort
-        result = yield LowerFinite(arena._handle(node.children[0]))
+        result = yield LowerFinite(arena.scoped_handle(node.children[0]))
         if type(result) is not int:
             raise AssertionError("finite input was not a primitive state ordinal")
         input_sort = arena.nodes[node.children[0]].sort
@@ -174,7 +174,7 @@ def lower_finite(
                 i,
             ),
         )
-        result = yield LowerFinite(arena._handle(node.children[index]))
+        result = yield LowerFinite(arena.scoped_handle(node.children[index]))
         if type(result) is not int:
             raise AssertionError(
                 "finite primitive dependency returned a structured value"

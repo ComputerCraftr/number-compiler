@@ -278,6 +278,13 @@ def _factor_table(family: str) -> dict[int, tuple[int, ...]]:
     raise ValueError(family)
 
 
+def complete_factorization_rows(
+    family: str,
+) -> tuple[tuple[int, tuple[int, ...]], ...]:
+    """Return immutable rows from the complete supplied factor tables."""
+    return tuple(sorted(_factor_table(family).items()))
+
+
 def _local_factor_witnesses(family: str) -> dict[int, tuple[int, ...]]:
     """Divisor witnesses sufficient for local-axis CEGIS controls."""
     if family == "fermat":

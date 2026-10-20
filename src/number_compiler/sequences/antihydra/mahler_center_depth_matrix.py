@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from itertools import pairwise
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.fields.boolean_transfer import (
     BooleanMatrix,
     BooleanStateSpace,
@@ -48,7 +49,7 @@ from number_compiler.sequences.antihydra.mahler_port_puncture import (
 )
 
 FULL = (1 << STATES) - 1
-_MAHLER_CENTER_STATE_SPACE = BooleanStateSpace(
+_MAHLER_CENTER_STATE_SPACE: BooleanStateSpace[int] = BooleanStateSpace(
     "antihydra.mahler-decimal-center", tuple(range(STATES))
 )
 MAX_CERTIFIED_TICKS = 32
@@ -100,7 +101,9 @@ class MahlerCenterBooleanMatrix:
 
     @classmethod
     def identity(cls) -> MahlerCenterBooleanMatrix:
-        return cls._from_relation(BooleanMatrix.identity(_MAHLER_CENTER_STATE_SPACE))
+        return cls._from_relation(
+            BooleanMatrix[int].identity(_MAHLER_CENTER_STATE_SPACE)
+        )
 
     @classmethod
     def from_driver(
@@ -146,7 +149,7 @@ class MahlerCenterBooleanMatrix:
         join = evidence.join
         if join.center_places != 2:
             raise TypeError("100x100 matrix needs an issued two-digit exterior join")
-        low_border = MahlerLowBorderCarryCertificate._from_verified_evidence(evidence)
+        low_border = MahlerLowBorderCarryCertificate.from_verified_evidence(evidence)
         rows = [0] * STATES
         allowed = set(
             join.source_admitted_centers
@@ -157,7 +160,7 @@ class MahlerCenterBooleanMatrix:
         for item in join.candidates:
             if item.center not in allowed:
                 continue
-            port = MahlerCenterPortPuncture._from_verified_evidence(
+            port = MahlerCenterPortPuncture.from_verified_evidence(
                 evidence, item.center
             )
             if port.lower_carry != low_border.actual_carry:
@@ -290,7 +293,7 @@ class MahlerCertifiedCenterDepthTransfer:
             allocate_transfer_fields,
         )
 
-        fields = {
+        fields: dict[str, object] = {
             "matrix": matrix,
             "safety_matrix": safety_matrix,
             "steps": steps,
@@ -398,7 +401,7 @@ class MahlerCertifiedCenterDepthTransfer:
 
     @classmethod
     def _snapshot_value(cls, value: object, field_name: str = "") -> object:
-        if field_name == "low_border_carries" and type(value) is tuple:
+        if field_name == "low_border_carries" and is_exact_object_tuple(value):
             return (
                 "low-border-carry-tuple",
                 tuple(
@@ -406,18 +409,18 @@ class MahlerCertifiedCenterDepthTransfer:
                     for item in value
                 ),
             )
-        if field_name == "source_port_punctures" and type(value) is tuple:
+        if field_name == "source_port_punctures" and is_exact_object_tuple(value):
             frames = tuple(
                 (
                     "puncture-frame",
                     tuple(cls._snapshot_port(item) for item in frame),
                 )
-                if type(frame) is tuple
+                if is_exact_object_tuple(frame)
                 else (type(frame), id(frame))
                 for frame in value
             )
             return "source-port-punctures", frames
-        if field_name == "source_fiber_edges" and type(value) is tuple:
+        if field_name == "source_fiber_edges" and is_exact_object_tuple(value):
             return (
                 "source-fiber-edges",
                 tuple(
@@ -441,7 +444,7 @@ class MahlerCertifiedCenterDepthTransfer:
                 id(value),
                 tuple((type(row), row) for row in value.rows),
             )
-        if type(value) is tuple:
+        if is_exact_object_tuple(value):
             return (
                 "tuple",
                 tuple((type(item), item) for item in value),
@@ -450,7 +453,7 @@ class MahlerCertifiedCenterDepthTransfer:
             return (None,)
         return (type(value), value)
 
-    def _require_issued(self) -> None:
+    def require_issued(self) -> None:
         issuer = getattr(self, "_issuer", None)
         issuance_snapshot = getattr(self, "_issuance_snapshot", None)
         if issuer is not _SOURCE_MATRIX_ISSUER or issuance_snapshot != (
@@ -579,14 +582,14 @@ class MahlerCertifiedCenterDepthTransfer:
         low_ports = tuple(
             None
             if evidence is None
-            else MahlerLowBorderCarryCertificate._from_verified_evidence(evidence)
+            else MahlerLowBorderCarryCertificate.from_verified_evidence(evidence)
             for evidence in joins[:-1]
         )
         port_frames = tuple(
             ()
             if evidence is None
             else tuple(
-                MahlerCenterPortPuncture._from_verified_evidence(
+                MahlerCenterPortPuncture.from_verified_evidence(
                     evidence, candidate.center
                 )
                 for candidate in evidence.join.candidates
@@ -806,7 +809,26 @@ class MahlerCertifiedCenterDepthTransfer:
             compose_transfers,
         )
 
-        return compose_transfers(self, after)
+        fields = compose_transfers(self, after)
+        return type(self)._issue(
+            matrix=fields.matrix,
+            safety_matrix=fields.safety_matrix,
+            steps=fields.steps,
+            pointed_sources=fields.pointed_sources,
+            pointed_centers=fields.pointed_centers,
+            center_positions=fields.center_positions,
+            radix99=fields.radix99,
+            radix198=fields.radix198,
+            rejected_source_paths=fields.rejected_source_paths,
+            width_births=fields.width_births,
+            conditional_composition=fields.conditional_composition,
+            initial_ledger=fields.initial_ledger,
+            low_border_carries=fields.low_border_carries,
+            source_port_punctures=fields.source_port_punctures,
+            source_fiber_edges=fields.source_fiber_edges,
+            composition_joins=fields.composition_joins,
+            equal_span_joins=fields.equal_span_joins,
+        )
 
     def square_with(
         self, actual_next_half: MahlerCertifiedCenterDepthTransfer
@@ -873,7 +895,7 @@ class MahlerCertifiedCenterDepthTransfer:
                 raise ArithmeticError("radix-4 two-step port lost its source endpoint")
         return ports
 
-    def _first_separating_port_punctures(
+    def first_separating_port_punctures(
         self,
     ) -> tuple[tuple[dict[str, object], ...], ...]:
         frames: list[tuple[dict[str, object], ...]] = []

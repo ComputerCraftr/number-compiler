@@ -60,7 +60,7 @@ def _prepared() -> tuple[
         FinitePort(PortVariable(0, 0, "y", 0), 2),
     )
     builder = StructureBuilder(arena)
-    roots = []
+    roots: list[int] = []
     for port in ports:
         identity = builder.variable(ports, port)
         value = builder.bit(identity)
@@ -69,8 +69,8 @@ def _prepared() -> tuple[
                 StructuredNode(
                     value.signature,
                     "atom",
-                    arena.functions._handle(value.valid),
-                    atom=bits._handle(identity),
+                    arena.functions.scoped_handle(value.valid),
+                    atom=bits.scoped_handle(identity),
                 )
             )
         )
@@ -147,7 +147,7 @@ def test_publication_insert_failure_rolls_back_every_arena(
     ledger, arena, _, _, prepared = _prepared()
     retained = _retained_stores(arena)
     prepared.reserve_with()
-    original = TrackedDict.__setitem__
+    original = TrackedDict[object, object].__setitem__
     failed = False
 
     def fail_once(

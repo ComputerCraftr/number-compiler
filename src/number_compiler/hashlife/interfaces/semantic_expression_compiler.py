@@ -91,6 +91,7 @@ from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_interfaces as _interfaces_keys,
 )
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -150,7 +151,7 @@ class _Task:
 
 
 @dataclass(frozen=True, slots=True)
-class _FiniteLiftKey:
+class FiniteLiftKey:
     function: TransferSummaryID
     source: StateSort
     target: ExpressionSort
@@ -192,10 +193,17 @@ class SemanticExpressionCompiler:
             "query_memo",
         )
         self._finite_lifts: OwnedMemo[
-            _FiniteLiftKey, tuple[SemanticFunctionID, FinitePort]
+            FiniteLiftKey, tuple[SemanticFunctionID, FinitePort]
         ] = OwnedMemo(self.ledger, finite_owner, evictable=True)
 
-    def _atom_sort(self, sort: ExpressionSort) -> AtomSort:
+    def finite_lift_audit_snapshot(
+        self,
+    ) -> OwnedMemoAuditSnapshot[FiniteLiftKey, tuple[SemanticFunctionID, FinitePort]]:
+        """Return read-only accounting and store identity for finite-lift audits."""
+        return self._finite_lifts.audit_snapshot()
+
+    def atom_sort(self, sort: ExpressionSort) -> AtomSort:
+        """Return the finite atom domain represented by an expression sort."""
         if isinstance(sort, SymbolSort):
             return AtomSort("primitive-symbol", sort.blank + 1)
         if not isinstance(sort, StateSort):
@@ -219,7 +227,7 @@ class SemanticExpressionCompiler:
             self.profiles = SemanticProfileArena(self.runtime)
         return self.profiles.source_initial_profile(action)
 
-    def _profile(
+    def semantic_profile(
         self, profile: SemanticProfileID | None
     ) -> SemanticProfileArena | None:
         if profile is None:
@@ -237,7 +245,7 @@ class SemanticExpressionCompiler:
         structured: bool = False,
         profile: SemanticProfileID | None = None,
     ) -> tuple[StateSort, ...]:
-        self._profile(profile)
+        self.semantic_profile(profile)
         if type(parameters) is not tuple:
             raise ValueError("semantic parameters must be distinct scoped ports")
         root = self.expressions.node(expression)
@@ -267,13 +275,13 @@ class SemanticExpressionCompiler:
         # composed-state codec merely to rediscover the proof above.
         for sort in sorts:
             if structured:
-                self._input_ports(
+                self.input_ports(
                     sort,
                     PortVariable(0, 0, "admission", 0),
                     profile,
                 )
             else:
-                self._atom_sort(sort)
+                self.atom_sort(sort)
         visits, frames, peak = self._validate_domains(expression, structured, profile)
         self.ledger.bump(_interfaces_keys.SEMANTIC_EXPRESSION_ADMISSION_REQUESTS)
         self.ledger.bump(_interfaces_keys.SEMANTIC_EXPRESSION_ADMISSION_NODES, visits)
@@ -313,9 +321,9 @@ class SemanticExpressionCompiler:
             node = self.expressions.nodes[current]
             if node.kind == "lambda":
                 assert isinstance(node.sort, FunctionSort)
-                self._input_ports(
+                self.input_ports(
                     node.sort.domain, PortVariable(0, 0, "admission", 0), profile
-                ) if structured else self._atom_sort(node.sort.domain)
+                ) if structured else self.atom_sort(node.sort.domain)
             pending.extend(node.children)
             if node.closure is not None:
                 pending.append(
@@ -330,7 +338,7 @@ class SemanticExpressionCompiler:
         ports = tuple(
             FinitePort(
                 PortVariable(0, 0, f"semantic-parameter-{index:08}", 0),
-                self._atom_sort(sort).cardinality,
+                self.atom_sort(sort).cardinality,
             )
             for index, sort in enumerate(sorts)
         )
@@ -377,18 +385,18 @@ class SemanticExpressionCompiler:
             result, ports, sorts, self.expressions.node(expression).sort
         )
 
-    def _input_ports(
+    def input_ports(
         self,
         sort: StateSort,
         namespace: PortVariable,
         profile: SemanticProfileID | None = None,
     ) -> tuple[FinitePort, ...]:
-        profiles = self._profile(profile)
+        profiles = self.semantic_profile(profile)
         if profiles is not None:
             assert profile is not None
             return profiles.ports(profile, sort.action, sort.side, namespace)
         if self.expressions.primitive(sort.action) is not None:
-            return (FinitePort(namespace, self._atom_sort(sort).cardinality),)
+            return (FinitePort(namespace, self.atom_sort(sort).cardinality),)
         try:
             return describe_state(self.runtime, sort.action, sort.side, namespace).ports
         except ValueError as error:
@@ -406,7 +414,7 @@ class SemanticExpressionCompiler:
                 case _:
                     raise ValueError("semantic input must be a state")
             ports.extend(
-                self._input_ports(
+                self.input_ports(
                     sort,
                     PortVariable(0, 0, f"semantic-parameter-{index:08}", 0),
                     profile,
@@ -414,7 +422,7 @@ class SemanticExpressionCompiler:
             )
         return tuple(sorted(ports, key=lambda port: port.variable))
 
-    def _binding(
+    def expression_binding(
         self,
         variable: ExprID,
         namespace: PortVariable,
@@ -426,7 +434,7 @@ class SemanticExpressionCompiler:
                 pass
             case _:
                 raise ValueError("semantic input must be a state")
-        profiles = self._profile(profile)
+        profiles = self.semantic_profile(profile)
         if profiles is not None:
             if self.structures is None:
                 raise AssertionError(
@@ -436,7 +444,7 @@ class SemanticExpressionCompiler:
             return profiles.binding(
                 profile, sort.action, sort.side, namespace, self.structures
             )
-        ports = self._input_ports(sort, namespace)
+        ports = self.input_ports(sort, namespace)
         if self.expressions.primitive(sort.action) is not None:
             return ports[0]
         if self.structures is None:
@@ -448,7 +456,7 @@ class SemanticExpressionCompiler:
         return self.codecs.compile(sort.action, sort.side, namespace)
 
     @staticmethod
-    def _environment_ports(
+    def environment_ports(
         environment: tuple[
             tuple[ExprID, FinitePort | StateCodec | ReachableCodec], ...
         ],
@@ -488,7 +496,7 @@ class SemanticExpressionCompiler:
         root = self.expressions.node(expression)
         effective_profile = profile
         if profile is not None and not parameters and not root.free_ports:
-            self._profile(profile)  # validate ownership before the fast path
+            self.semantic_profile(profile)  # validate ownership before the fast path
             effective_profile = None
             self.ledger.bump(
                 _interfaces_keys.SEMANTIC_REACHABLE_CLOSED_UNIVERSAL_COMPILATIONS
@@ -518,14 +526,14 @@ class SemanticExpressionCompiler:
             return
         if type(task) is not StructuredExpressionTask:
             raise TypeError("unknown semantic expression construction task")
-        self._profile(task.profile)
+        self.semantic_profile(task.profile)
         if (
             type(task.depth) is not int
             or type(task.environment) is not tuple
             or not 0 <= task.depth <= len(task.environment)
         ):
             raise ValueError("invalid semantic expression binder depth")
-        parameters = []
+        parameters: list[ExprID] = []
         variables: set[PortVariable] = set()
         namespaces: set[str] = set()
         for binding in task.environment:
@@ -537,7 +545,7 @@ class SemanticExpressionCompiler:
                 raise ValueError("semantic environment requires state variables")
             if type(value) is FinitePort:
                 FinitePort.__post_init__(value)
-                if value.cardinality != self._atom_sort(node.sort).cardinality:
+                if value.cardinality != self.atom_sort(node.sort).cardinality:
                     raise ValueError("semantic environment has a mismatched port")
                 ports: tuple[FinitePort, ...] = (value,)
             elif type(value) is StateCodec and self.codecs is not None:
@@ -545,7 +553,7 @@ class SemanticExpressionCompiler:
                     raise ValueError(
                         "universal state codec cannot enter a reachable profile"
                     )
-                self.codecs._validate(value)
+                self.codecs.validate_codec(value)
                 if (
                     value.request.action != node.sort.action
                     or value.request.side != node.sort.side
@@ -607,10 +615,10 @@ class SemanticExpressionCompiler:
         while pending:
             expected, actual = pending.pop()
             if isinstance(expected, SymbolSort):
-                if actual != self._atom_sort(expected):
+                if actual != self.atom_sort(expected):
                     return False
             elif isinstance(expected, FunctionSort):
-                domain = self._input_ports(
+                domain = self.input_ports(
                     expected.domain, PortVariable(0, 0, "output-domain", 0), profile
                 )
                 if type(actual) is not SemanticFunctionSort or tuple(
@@ -619,7 +627,7 @@ class SemanticExpressionCompiler:
                     return False
                 pending.append((expected.codomain, actual.output))
             elif self.expressions.primitive(expected.action) is not None:
-                if actual != self._atom_sort(expected):
+                if actual != self.atom_sort(expected):
                     return False
             else:
                 action = self.runtime.actions.resolve(expected.action)
@@ -655,7 +663,7 @@ class SemanticExpressionCompiler:
         if isinstance(task, CompileStructuredExpression):
             ports = self._ports_for(task.parameters, task.profile)
         else:
-            ports = self._environment_ports(task.environment)
+            ports = self.environment_ports(task.environment)
         if value.signature.inputs != ports or not self._output_matches(
             expected, value.signature.output, task.profile
         ):
@@ -673,7 +681,7 @@ class SemanticExpressionCompiler:
             environment = tuple(
                 (
                     parameter,
-                    self._binding(
+                    self.expression_binding(
                         parameter,
                         PortVariable(0, 0, f"semantic-parameter-{index:08}", 0),
                         task.profile,
@@ -688,24 +696,24 @@ class SemanticExpressionCompiler:
             )
         assert isinstance(task, StructuredExpressionTask)
         self.ledger.bump(_interfaces_keys.SEMANTIC_STRUCTURED_EXPRESSION_TASKS)
-        return (yield from self._structured_program(task, self.structures))
+        return (yield from self.structured_program(task, self.structures))
 
-    def _factored(
+    def factored(
         self, function: SemanticFunctionID, bits: BitFunctionArena
     ) -> FactoredFunctionID:
         """Convert a canonical scalar function through the shared semantic cache."""
         return bits.from_scalar(function)
 
-    def _structured_program(
+    def structured_program(
         self, task: StructuredExpressionTask, structures: StructureArena
     ) -> Generator[Task, Result, Result]:
         from number_compiler.hashlife.interfaces.structured_compilation import (
-            _structured_program,
+            structured_program,
         )
 
-        return _structured_program(self, task, structures)
+        return structured_program(self, task, structures)
 
-    def _declare_structure(
+    def declare_structure(
         self,
         value: StructureID,
         inputs: tuple[FinitePort, ...],
@@ -713,7 +721,7 @@ class SemanticExpressionCompiler:
     ) -> StructureID:
         return structures.declare(value, inputs)
 
-    def _encode_argument(
+    def encode_argument(
         self,
         sort: StateSort,
         ports: tuple[FinitePort, ...],
@@ -722,10 +730,10 @@ class SemanticExpressionCompiler:
         profile: SemanticProfileID | None = None,
     ) -> dict[PortVariable, FactoredFunctionID]:
         from number_compiler.hashlife.interfaces.structured_compilation import (
-            _encode_argument,
+            encode_argument,
         )
 
-        return _encode_argument(self, sort, ports, argument, structures, profile)
+        return encode_argument(self, sort, ports, argument, structures, profile)
 
     def _declare(
         self, function: SemanticFunctionID, ports: tuple[FinitePort, ...]
@@ -746,11 +754,13 @@ class SemanticExpressionCompiler:
         root = transaction.resign(function.local_id, signature)
         return transaction.finish(transaction.admissible(root))
 
-    def _finite_child(
+    def finite_child(
         self, node: BoundaryExprNode
     ) -> tuple[SemanticFunctionID, FinitePort]:
         assert node.function is not None
-        source = self.expressions.node(self.expressions._handle(node.children[0])).sort
+        source = self.expressions.node(
+            self.expressions.reference(node.children[0])
+        ).sort
         assert isinstance(source, StateSort)
         return self._finite(node.function, source, node.sort)
 
@@ -770,14 +780,14 @@ class SemanticExpressionCompiler:
             port = dict(task.environment).get(task.expression)
             if port is None:
                 raise ValueError("unbound semantic port")
-            return self.functions.variable((port,), port, self._atom_sort(node.sort))
+            return self.functions.variable((port,), port, self.atom_sort(node.sort))
         if node.kind in ("literal", "symbol"):
             return self.functions.atom(
-                FunctionSignature((), self._atom_sort(node.sort)), node.value
+                FunctionSignature((), self.atom_sort(node.sort)), node.value
             )
         if node.kind == "lambda":
             assert isinstance(node.sort, FunctionSort)
-            domain = self._atom_sort(node.sort.domain)
+            domain = self.atom_sort(node.sort.domain)
             variable = arena.fresh_variable(
                 node.sort.domain,
                 "semantic-bound-input",
@@ -795,7 +805,7 @@ class SemanticExpressionCompiler:
         children: list[SemanticFunctionID] = []
         for child in node.children:
             children.append(
-                (yield _Task(arena._handle(child), task.environment, task.depth))
+                (yield _Task(arena.reference(child), task.environment, task.depth))
             )
         if node.kind == "pair":
             return self.functions.product(tuple(children))
@@ -809,7 +819,7 @@ class SemanticExpressionCompiler:
                 children[0], {target.inputs[0].variable: children[1]}
             )
         if node.kind in ("finite_apply", "finite_map"):
-            mapped, port = self._finite_child(node)
+            mapped, port = self.finite_child(node)
             return self.functions.substitute(mapped, {port.variable: children[0]})
         if node.kind in ("advance", "emit") and node.action is not None:
             primitive = self.primitives.compile(
@@ -844,10 +854,10 @@ class SemanticExpressionCompiler:
         if type(reference) is not TransferSummaryID:
             raise ValueError("finite map needs an actual function ID")
         self.runtime.kernels.expression(reference)
-        domain = self._atom_sort(source).cardinality
+        domain = self.atom_sort(source).cardinality
         port = FinitePort(PortVariable(0, 0, "semantic-finite-map-input", 0), domain)
-        signature = FunctionSignature((port,), self._atom_sort(target))
-        key = _FiniteLiftKey(reference, source, target)
+        signature = FunctionSignature((port,), self.atom_sort(target))
+        key = FiniteLiftKey(reference, source, target)
         self.ledger.bump(_interfaces_keys.SEMANTIC_EXPRESSION_FINITE_LIFT_REQUESTS)
         cached = self._finite_lifts.get(key)
         if cached is not None:
@@ -900,7 +910,7 @@ class SemanticExpressionCompiler:
             prepared.reserve_with(((self._finite_lifts.owner, 1, 0),))
             prepared.publish_reserved()
             result = prepared.roots[0], port
-            self._finite_lifts._data[key] = result
+            self._finite_lifts.publish_reserved(key, result)
             self.ledger.bump(
                 _interfaces_keys.SEMANTIC_EXPRESSION_FINITE_LIFT_EVALUATIONS
             )

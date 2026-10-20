@@ -109,11 +109,11 @@ class BoundaryOperandLeaseInventory:
     def _release_entries(self, entries: int) -> None:
         if entries <= 0:
             return
-        before = self.ledger._account(self.owner).entries
+        before = self.ledger.account_usage(self.owner)[0]
         try:
             self.ledger.release(self.owner, entries=entries)
         except BaseException as error:
-            applied = before - self.ledger._account(self.owner).entries
+            applied = before - self.ledger.account_usage(self.owner)[0]
             if not 0 <= applied <= entries:
                 raise RuntimeError(
                     "boundary operand release changed unrelated accounting"

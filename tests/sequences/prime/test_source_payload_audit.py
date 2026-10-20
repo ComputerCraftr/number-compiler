@@ -101,10 +101,12 @@ def test_prime_source_payload_audit_rejects_forged_arena_ownership(
             arena.prefix(11),
         )
         if damage == "node-width":
-            object.__setattr__(arena._nodes[2], "width", 99)
+            object.__setattr__(dict(arena.audit_snapshot().nodes)[2], "width", 99)
         elif damage == "node-child":
             composite = next(
-                node for node in arena._nodes.values() if node.before is not None
+                node
+                for node in dict(arena.audit_snapshot().nodes).values()
+                if node.before is not None
             )
             object.__setattr__(composite, "before", arena.descriptor_id)
         else:

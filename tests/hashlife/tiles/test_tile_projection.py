@@ -240,8 +240,8 @@ def _runtime() -> tuple[
             one,
         )
     )
-    interfaces = {}
-    symbols = {}
+    interfaces: dict[int, LocalInterfaceID] = {}
+    symbols: dict[LocalInterfaceID, int] = {}
     for symbol in range(3):
         bits = tuple(
             one if symbol & (1 << (index % 2)) else zero
@@ -285,7 +285,7 @@ def test_source_import_reads_original_leaves_and_compacts_padding() -> None:
         )
         blank_nodes = [
             record
-            for record in tiles._nodes.values()
+            for record in tiles.audit_snapshot().nodes.values()
             if record.symbol == 2
             or (record.symbol is None and record.first_active is None)
         ]
@@ -307,8 +307,8 @@ def test_source_import_padding_builds_one_monotonic_blank_tower() -> None:
         assert ledger.counters["tile_intern_requests"] <= 4 * extent.bit_length()
         # SourceGeometry authenticates only the supplied source.  It does not
         # materialize the enormous blank extension in its exact source DAG.
-        assert geometry._read_root is not None
-        assert geometry._read_root.end == 1
+        assert geometry.source_root is not None
+        assert geometry.source_root.end == 1
     finally:
         root.close()
 
@@ -364,7 +364,7 @@ def test_projection_validates_action_and_ports_before_source_import() -> None:
             (0,),
             wiring,
         )
-    assert geometry._read_root is None
+    assert geometry.source_root is None
     assert ledger.snapshot() == snapshot
 
     with pytest.raises(TypeError, match="exact immutable integers"):
@@ -377,7 +377,7 @@ def test_projection_validates_action_and_ports_before_source_import() -> None:
             (False,),
             wiring,
         )
-    assert geometry._read_root is None
+    assert geometry.source_root is None
     assert ledger.snapshot() == snapshot
 
     foreign_wiring = ResultWiring(
@@ -397,7 +397,7 @@ def test_projection_validates_action_and_ports_before_source_import() -> None:
             (0,),
             foreign_wiring,
         )
-    assert geometry._read_root is None
+    assert geometry.source_root is None
     assert ledger.snapshot() == snapshot
 
 

@@ -12,7 +12,7 @@ class PayloadAudit:
     unknown_payloads: int
 
 
-_DIGIT_FIELDS = frozenset(
+DIGIT_FIELDS = frozenset(
     {
         "digits",
         "tail",
@@ -36,7 +36,7 @@ _DIGIT_FIELDS = frozenset(
         "tile_ports",
     }
 )
-_HISTORY_FIELDS = frozenset(
+HISTORY_FIELDS = frozenset(
     {
         "carry_row",
         "carry_rows",
@@ -71,5 +71,14 @@ AGGREGATE_EXEMPT_PAYLOAD_ROLES = frozenset(
 )
 
 
-def _role(role: str) -> str:
+def normalize_payload_role(role: str) -> str:
     return role.lower().replace("-", "_")
+
+
+__all__ = [
+    "AGGREGATE_EXEMPT_PAYLOAD_ROLES",
+    "DIGIT_FIELDS",
+    "HISTORY_FIELDS",
+    "PayloadAudit",
+    "normalize_payload_role",
+]

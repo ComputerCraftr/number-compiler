@@ -71,7 +71,7 @@ def audit(context: ReverseGeometryContext, action: GeometryAction) -> dict[str, 
             )
         variants: list[int] = []
         for reflected in (0, 1):
-            children = []
+            children: list[tuple[int, int, int]] = []
             parent_span = extent[index]
             for position, child in enumerate(node.args):
                 child_span = extent[child]
@@ -193,7 +193,7 @@ def main() -> None:
             growth_quotient=args.growth_coboundary,
             value_quotient="mod9" if args.mod9 else "crt",
         )
-        rows = []
+        rows: list[dict[str, object]] = []
         stage = 1
         try:
             action = context.primitive()

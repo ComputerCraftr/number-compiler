@@ -122,7 +122,7 @@ def quotient_dfa(dfa: DFA, part: dict[int, int]) -> tuple[DFA, dict[int, int]]:
     rep_old = {c: min(q for q in dfa.states if part[q] == c) for c in classes}
     cmap = {c: i for i, c in enumerate(classes)}
     old_to_new = {q: cmap[part[q]] for q in dfa.states}
-    trans = {}
+    trans: dict[tuple[int, int], int] = {}
     for c, old in rep_old.items():
         nq = cmap[c]
         for a in dfa.alphabet:

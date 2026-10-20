@@ -23,7 +23,7 @@ def project(compiler: NumberCompiler, query: PrimeTermQuery) -> ProjectedNumberT
         max_states=query.max_prime_states,
         max_work=query.max_prime_work,
         max_stages=query.max_prime_stages,
-        shared_cache=compiler._shared_cache,
+        shared_cache=compiler.shared_cache,
     )
     return ProjectedNumberTerm(
         FamilyId.PRIME,

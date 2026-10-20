@@ -20,11 +20,14 @@ from number_compiler.hashlife.execution.tile_execution_adapter import (
     FinitePairTransferFactory,
 )
 from number_compiler.hashlife.execution.tile_fused_kernel import fused_interface
+from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
+from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
 from number_compiler.hashlife.tiles.interface_publication import (
     lookup_execution_fused_interface,
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_result_records import FusedInterfaceKey
+from number_compiler.hashlife.tiles.tiles import TileArena
 from number_compiler.resources.causal_types import CausalPrefix
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.sequences.reverse_add.reverse_morphism_transfer import (
@@ -52,6 +55,13 @@ class ReverseAddFinitePairTransfer(FinitePairTransfer):
     @property
     def morphism_arena(self) -> ReverseMorphismTransferArena | None:
         """Expose the owned arena to family-local validation and diagnostics."""
+        return self._morphism
+
+    def morphism_for(
+        self, tiles: TileArena, bits: BitFunctionArena, kernel: PrimitiveKernel
+    ) -> ReverseMorphismTransferArena:
+        if self._morphism is None:
+            self._morphism = ReverseMorphismTransferArena(tiles, bits, kernel)
         return self._morphism
 
     def transfer(
@@ -109,23 +119,21 @@ def _finite_pair_transfer(
         return consumer
     before, after = pair
     adapter, tiles = engine.adapter, engine.tiles
-    chunks = engine._covered_chunks(prefix.view)
+    chunks = engine.boundary_chunks(prefix.view)
     left, right = prefix.producer_seed, opposite
     if side:
-        chunks = tuple(engine._keep(tiles.mirror(tile)) for tile in reversed(chunks))
+        chunks = tuple(
+            engine.retain_tile(tiles.mirror(tile)) for tile in reversed(chunks)
+        )
         left, right = right, left
 
     morphism = None
     wiring = None
     producer_wiring = None
     initial: tuple[int, int] | None = None
-    laws = tuple(engine._law(child) for child in pair)
+    laws = tuple(engine.kernel_law(child) for child in pair)
     if all(type(law.effect) is BaseBlockEffect and law.base == 10 for law in laws):
-        if strategy._morphism is None:
-            strategy._morphism = ReverseMorphismTransferArena(
-                tiles, adapter.bits, laws[0]
-            )
-        morphism = strategy._morphism
+        morphism = strategy.morphism_for(tiles, adapter.bits, laws[0])
         if len(chunks) == 1:
             # Exterior producer states already bind this whole interval. Its
             # two exits are not needed to discover a nonexistent midpoint.
@@ -148,7 +156,7 @@ def _finite_pair_transfer(
                 0,
                 anchors[-1],
                 BoundaryTileView(tile, 0, node.width),
-                action_admission=engine._action_admission_token,
+                action_admission=engine.action_admission,
             )
         )
     arguments = [right]
@@ -161,14 +169,17 @@ def _finite_pair_transfer(
                 1,
                 arguments[-1],
                 BoundaryTileView(tile, 0, node.width, 1),
-                action_admission=engine._action_admission_token,
+                action_admission=engine.action_admission,
             )
         )
     arguments.reverse()
 
     if morphism is None:
-        wiring, producer_wiring = engine._wiring(after), engine._wiring(before)
-        after_law = engine._law(after)
+        wiring, producer_wiring = (
+            engine.result_wiring(after),
+            engine.result_wiring(before),
+        )
+        after_law = engine.kernel_law(after)
         initial = (
             after_law.initial(BoundarySide.LEFT),
             after_law.initial(BoundarySide.RIGHT),

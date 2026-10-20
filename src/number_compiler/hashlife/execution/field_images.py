@@ -160,7 +160,7 @@ class SourceCellArena:
             SourceForestRecord, tuple[tuple[int, ...], int]
         ].dense(self.ledger, self._forest_node_owner, self._forest_key_owner)
 
-    def _handle(self, local_id: int) -> SourceCellID:
+    def scoped_handle(self, local_id: int) -> SourceCellID:
         return SourceCellID(self.owner, self._KIND, local_id)
 
     @property
@@ -312,7 +312,7 @@ class SourceCellArena:
         found = self._keys.get(tile)
         if found is not None:
             self.ledger.bump(_execution_keys.SOURCE_CELL_INTERNER_HITS)
-            return self._handle(found)
+            return self.scoped_handle(found)
         pending: list[tuple[DyadicTile, bool]] = [(tile, False)]
         while pending:
             current, ready = pending.pop()
@@ -360,13 +360,13 @@ class SourceCellArena:
                 record,
             )
             self.ledger.bump(_execution_keys.SOURCE_CELL_PUBLICATIONS)
-        return self._handle(self._keys[tile])
+        return self.scoped_handle(self._keys[tile])
 
     def children(self, source: SourceCellID) -> tuple[SourceCellID, SourceCellID]:
         record = self.resolve(source)
         if record.level == 0:
             raise ValueError("a source leaf has no children")
-        return self._handle(record.left), self._handle(record.right)
+        return self.scoped_handle(record.left), self.scoped_handle(record.right)
 
     def existing_join(
         self,
@@ -382,7 +382,7 @@ class SourceCellArena:
         if parent is None:
             return None
         local_id = self._keys.get(parent)
-        return None if local_id is None else self._handle(local_id)
+        return None if local_id is None else self.scoped_handle(local_id)
 
     def symbol(self, source: SourceCellID) -> int:
         record = self.resolve(source)
@@ -395,7 +395,7 @@ class SourceCellArena:
 
     def alphabet(self) -> tuple[int, int]:
         """Return immutable source alphabet metadata without exposing its digits."""
-        original = self.source._construction.source
+        original = self.source.construction.source
         return original.base, original.blank
 
 
@@ -706,7 +706,7 @@ class RecursiveFieldImageArena:
             raise ValueError("local interface belongs to an unregistered image domain")
         return cast(_InterfaceRecord, found.arena.resolve(reference))
 
-    def _handle(self, local_id: int) -> FieldImageID:
+    def scoped_handle(self, local_id: int) -> FieldImageID:
         return FieldImageID(self.owner, self._KIND, local_id)
 
     def resolve(self, reference: FieldImageID) -> FieldImageRecord:
@@ -901,7 +901,7 @@ class RecursiveFieldImageArena:
             self.ledger.bump(_execution_keys.NEW_FIELD_IMAGE_NODES)
         else:
             self.ledger.bump(_execution_keys.FIELD_IMAGE_SEMANTIC_ALIAS_HITS)
-        result = self._handle(existing_id)
+        result = self.scoped_handle(existing_id)
         self._bindings[key] = result
         self.ledger.bump(_execution_keys.FIELD_IMAGE_BINDING_PUBLICATIONS)
         return result

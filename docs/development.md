@@ -40,10 +40,19 @@ npm lock before analysis; put npm on PATH or set `NUMBER_COMPILER_NPM` to its
 JavaScript CLI entrypoint. Shell wrappers are not used by the runner.
 
 VS Code uses `.venv`, strict Pylance and open-file background diagnostics to
-limit editor memory. The guarded sweep supplies whole-repository coverage.
-Evidence records the Pylance extension version separately; a CLI Pyright pass
-does not certify editor diagnostics. Ruff enables `E4`, `E7`, `E9`, `F`, `I`,
-`UP`, `B`, `ANN` and `RUF100`, with preview disabled.
+limit editor memory. The workspace recommends the Python, Pylance and Ruff
+extensions; Ruff uses the selected environment so its version matches the
+project's pinned development dependency. After creating `.venv` and installing
+the project in editable mode, select `.venv/bin/python` with **Python: Select
+Interpreter** if VS Code retained another interpreter from an earlier session.
+The default interpreter setting applies when VS Code first chooses an
+interpreter; it does not replace a previously selected one. The editable
+installation makes source changes available immediately without reinstalling.
+Pylance resolves the source tree through `src` and checks open files strictly.
+The guarded sweep supplies whole-repository coverage. Evidence records the
+Pylance extension version separately; a CLI Pyright pass does not certify
+editor diagnostics. Ruff enables `E4`, `E7`, `E9`, `F`, `I`, `UP`, `B`, `ANN`
+and `RUF100`, with preview disabled.
 Maintained executable reproductions live under `devtools`; reviewed weekly records live under `docs/sprints`. New raw evidence goes to ignored `results/runs`; old local logs and scripts remain historical evidence, not maintained launchers. Repository-wide Ruff checks include every remaining authored Python file. There are no mypy error exclusions or inline mypy/Ruff suppressions
 in the maintained roots.
 
@@ -107,6 +116,10 @@ python -m devtools.checks.release --suite all
 python -m devtools.checks.release --suite unit --select tests/repository/test_process_guard.py
 ```
 
+Add `--unit-only` to a selected unit run to exclude validation-marked cases,
+matching the default unit suite's marker filter. Use this without `--profile`
+when measuring whether a subset fits the unit timing budget.
+
 To locate expensive functions in a failing performance selection, add `--profile`.
 The runner writes `unit.pstats` (or `p0.pstats`) beside the phase timing log. Read
 it with Python's `pstats` module. Profiling includes collection and fixture work,
@@ -114,9 +127,10 @@ retains the same execution limits, and is development-only; its overhead must no
 be confused with an unprofiled acceptance measurement.
 
 The validation directory contains independent proofs and research experiments.
-Long integration workloads beside their subsystem tests carry the `validation`
-marker. Small correctness, ownership, budget, identity and poison-route regressions
-remain in the unit suite. Classification changes selection, not test assertions,
+Long integration workloads and complete repository AST/Isabelle dependency scans
+beside their subsystem tests carry the `validation` marker. Small correctness,
+ownership, budget, identity, poison-route and checker-fixture regressions remain
+in the unit suite. Classification changes selection, not test assertions,
 fixtures, parameter values, watchdogs or runtime budgets. New long workloads must
 declare their validation role; a failing unit test is not moved merely to hide it.
 
@@ -388,14 +402,14 @@ cleanup. Paths in retained summaries describe local outputs, and their recorded
 passes do not certify the current source. Generate and validate fresh evidence
 before a release; the evidence requirements above remain unchanged. See the artifact retention policy below.
 
-For an interrupted-suite diagnostic, add
-`-p devtools.benchmarks.pytest_timing --timing-output /tmp/NEW-phases.jsonl`
-to a guarded pytest command. The file is created exclusively and flushed after
-collection and each setup/call/teardown record, with a 32,768-record/8 MiB cap. A missing finish
-record means the run was interrupted; a truncation record invalidates complete
-coverage claims. Use this trace to locate expensive tests, then time the default
-serial release command without the plugin. The plugin caches no test runtime or
-proof result.
+The shared runner writes `unit.phases.jsonl` with collection timing and each
+test's setup, call and teardown timing, including after an interrupted run.
+The file is created exclusively and flushed after each record. Its record allowance
+scales with the selected item count, up to 65,536 records, with an 8 MiB byte cap.
+A missing finish record means the run was interrupted; a truncation record
+invalidates complete coverage claims. Use this trace to locate expensive tests,
+then measure the default serial release command without `--profile`. The timing
+plugin caches no test runtime or proof result.
 
 ## Artifact retention policy
 

@@ -4,6 +4,7 @@ import gc
 import random
 import weakref
 from array import array
+from typing import Never
 
 import pytest
 
@@ -67,8 +68,8 @@ def test_generic_identity_then_normalization_is_two_without_family_inference() -
         BaseBlockEffect(10), DigitNormalizeBlockEffect(10), budget=BlockContextBudget()
     )
     index = HashLifeBlockIndex(effect, (2,), logical_length=3)
-    assert isinstance(index._lazy_application, LazyProjection)
-    assert index._bounded_application is None
+    assert isinstance(index.audit_snapshot().lazy_application, LazyProjection)
+    assert object.__getattribute__(index, "_bounded_application") is None
     assert index.direct_powered_point(0) == 2
     assert index.direct_active_width() == 1
     assert _effect_key(effect) != _effect_key(reverse)
@@ -93,54 +94,76 @@ def test_finite_kernel_identity_covers_frozen_behavior_and_ignores_names() -> No
         first.outputs = bytes([0] * 20)
 
 
+@pytest.mark.parametrize(("base", "steps"), ((2, 1), (3, 2), (4, 3), (5, 1)))
 def test_generic_compositions_never_lower_midpoint_fields(
+    base: int,
+    steps: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_generic_compositions_never_lower_midpoint_fields(base, steps, monkeypatch)
+
+
+@pytest.mark.validation
+@pytest.mark.parametrize("base", (2, 3, 4, 5))
+@pytest.mark.parametrize("steps", (1, 2, 3))
+def test_generic_compositions_full_base_depth_grid(
+    base: int,
+    steps: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assert_generic_compositions_never_lower_midpoint_fields(base, steps, monkeypatch)
+
+
+def _assert_generic_compositions_never_lower_midpoint_fields(
+    base: int,
+    steps: int,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import number_compiler.arithmetic.fields.dyadic_tile as tiles
 
-    rng = random.Random(553)
-    for base in range(2, 6):
-        for steps in range(1, 4):
-            digits = [rng.randrange(base) for _ in range(4)]
-            digits[-1] = 1
-            pair = tuple(digits[i] + digits[-1 - i] for i in range(4))
-            expected = pair
-            effect: BlockEffect = BaseBlockEffect(base)
-            for _ in range(steps - 1):
-                effect = compose_block_effects(
-                    effect, BaseBlockEffect(base), budget=BlockContextBudget()
-                )
-            effect = compose_block_effects(
-                effect, DigitNormalizeBlockEffect(base), budget=BlockContextBudget()
-            )
-            index = HashLifeBlockIndex(
-                effect, pair, logical_length=len(pair) + steps + 2
-            )
-            for _ in range(steps):
-                expected, _ = pair_step(expected, base)
-            out, carry = [], 0
-            for symbol in expected:
-                carry, digit = divmod(symbol + carry, base)
-                out.append(digit)
-            if carry:
-                out.append(carry)
-            before = tile_arena_metrics()["intern_misses"]
-            with monkeypatch.context() as patch:
-                patch.setattr(
-                    tiles,
-                    "source_span",
-                    lambda *a, **k: pytest.fail("future exact tape"),
-                )
-                assert tuple(
-                    index.direct_powered_point(i) for i in range(len(out))
-                ) == tuple(out)
-                assert index.direct_active_width() == len(out)
-            assert tile_arena_metrics()["intern_misses"] == before
-            m = index.metrics()
-            audit = collect_ledger_metrics(index.resource_ledger)
-            assert audit.resource_audit_complete == 1
-            assert audit.forbidden_future_payloads == 0
-            assert m.resource_accounting_mismatch == 0
+    def forbidden_source(*args: object, **kwargs: object) -> Never:
+        pytest.fail("future exact tape")
+
+    rng = random.Random(553 + 17 * base + steps)
+    digits = [rng.randrange(base) for _ in range(4)]
+    digits[-1] = 1
+    pair = tuple(digits[i] + digits[-1 - i] for i in range(4))
+    expected = pair
+    effect: BlockEffect = BaseBlockEffect(base)
+    for _ in range(steps - 1):
+        effect = compose_block_effects(
+            effect, BaseBlockEffect(base), budget=BlockContextBudget()
+        )
+    effect = compose_block_effects(
+        effect, DigitNormalizeBlockEffect(base), budget=BlockContextBudget()
+    )
+    index = HashLifeBlockIndex(effect, pair, logical_length=len(pair) + steps + 2)
+    for _ in range(steps):
+        expected, _ = pair_step(expected, base)
+    out: list[int] = []
+    carry = 0
+    for symbol in expected:
+        carry, digit = divmod(symbol + carry, base)
+        out.append(digit)
+    if carry:
+        out.append(carry)
+    before = tile_arena_metrics()["intern_misses"]
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            tiles,
+            "source_span",
+            forbidden_source,
+        )
+        assert tuple(index.direct_powered_point(i) for i in range(len(out))) == tuple(
+            out
+        )
+        assert index.direct_active_width() == len(out)
+    assert tile_arena_metrics()["intern_misses"] == before
+    m = index.metrics()
+    audit = collect_ledger_metrics(index.resource_ledger)
+    assert audit.resource_audit_complete == 1
+    assert audit.forbidden_future_payloads == 0
+    assert m.resource_accounting_mismatch == 0
 
 
 def test_zero_budget_rejects_before_source_geometry_or_branch_work() -> None:

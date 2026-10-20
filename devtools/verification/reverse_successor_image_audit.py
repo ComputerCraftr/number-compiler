@@ -87,7 +87,9 @@ def occurrence_image_key(source: tuple[int, ...]) -> SourceOccurrenceImageKey:
     return SourceOccurrenceImageKey(source_domain_provenance(source), image)
 
 
-def _sources(width: int, *, leading_nonzero: bool = False) -> Iterator[tuple[int, ...]]:
+def symmetric_sources(
+    width: int, *, leading_nonzero: bool = False
+) -> Iterator[tuple[int, ...]]:
     if type(width) is not int or not 1 <= width <= 8:
         raise ValueError("bounded successor-image audit supports widths 1..8")
     alphabets = [range(19)] * (width // 2)
@@ -115,7 +117,7 @@ def audit_width(width: int) -> SuccessorImageAudit:
         set[tuple[tuple[CarryFn, ...], tuple[int, ...]]],
     ] = (set(), set())
     all_images: set[tuple[int, ...]] = set()
-    for source in _sources(width):
+    for source in symmetric_sources(width):
         output, growth = pair_step(source, 10)
         sources[growth] += 1
         images[growth].add(output)

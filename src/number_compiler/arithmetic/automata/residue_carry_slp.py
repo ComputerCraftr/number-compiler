@@ -109,6 +109,24 @@ class ResidueCarrySLPResult:
         self.final_carry = 0
         self.input_length = 0
 
+    def complete(
+        self,
+        incoming_root: int,
+        outgoing_root: int,
+        jump_root: int,
+        closed_jump_root: int,
+        final_carry: int,
+        input_length: int,
+    ) -> None:
+        """Bind the roots produced by the projector's completed traversal."""
+        self._check_open()
+        self._incoming_root = incoming_root
+        self._outgoing_root = outgoing_root
+        self._jump_root = jump_root
+        self._closed_jump_root = closed_jump_root
+        self.final_carry = final_carry
+        self.input_length = input_length
+
     def _check_open(self) -> None:
         if self._closed:
             raise ValueError("disposed residue carry SLP result")
@@ -150,7 +168,7 @@ class ResidueCarrySLPResult:
         return units
 
     def terminal(self, symbol: int) -> int:
-        existing = self.arena._term.get(symbol)
+        existing = self.arena.find_terminal(symbol)
         if existing is not None:
             return existing
         predicted = SLPNode(len(self.arena.nodes), "TERM", 1, symbol=symbol)
@@ -172,7 +190,7 @@ class ResidueCarrySLPResult:
             return right
         if right == self.arena.empty_id:
             return left
-        existing = self.arena._cat.get((left, right))
+        existing = self.arena.find_concat(left, right)
         if existing is not None:
             return existing
         left_length = self.arena.nodes[left].length
@@ -215,10 +233,7 @@ class ResidueCarrySLPResult:
             return
         count = len(self.arena.nodes)
         units = sum(_slp_node_units(node) for node in self.arena.nodes)
-        self.arena._term.clear()
-        self.arena._cat.clear()
-        self.arena._rep.clear()
-        self.arena.nodes.clear()
+        self.arena.clear()
         self.ledger.release(self._owner, entries=count, nodes=units)
         self.ledger.mark_disposed(self._owner)
         self._closed = True
@@ -324,7 +339,7 @@ class ResidueCarrySLPProjector:
                 and 0 <= node.symbol <= MAX_DECIMAL_PAIR_RESIDUE
                 and node.left == node.right == node.child == -1
                 and node.count == 0
-                and arena._term.get(node.symbol) == node_id
+                and arena.find_terminal(node.symbol) == node_id
             )
         elif node.kind == "CONCAT":
             basic = (
@@ -332,7 +347,7 @@ class ResidueCarrySLPProjector:
                 and 0 <= node.right < node_id
                 and node.symbol == node.child == -1
                 and node.count == 0
-                and arena._cat.get((node.left, node.right)) == node_id
+                and arena.find_concat(node.left, node.right) == node_id
                 and type(arena.nodes[node.left]) is SLPNode
                 and type(arena.nodes[node.right]) is SLPNode
             )
@@ -351,7 +366,7 @@ class ResidueCarrySLPProjector:
                 0 <= node.child < node_id
                 and node.count >= 2
                 and node.symbol == node.left == node.right == -1
-                and arena._rep.get((node.child, node.count)) == node_id
+                and arena.find_repeat(node.child, node.count) == node_id
                 and type(arena.nodes[node.child]) is SLPNode
                 and arena.nodes[node.child].kind != "REPEAT"
             )
@@ -490,12 +505,14 @@ class ResidueCarrySLPProjector:
             closed_jumps = output.concat(
                 selected.jumps, output.terminal(-selected.final_carry)
             )
-            output._incoming_root = root_id
-            output._outgoing_root = selected.outgoing
-            output._jump_root = selected.jumps
-            output._closed_jump_root = closed_jumps
-            output.final_carry = selected.final_carry
-            output.input_length = root.length
+            output.complete(
+                root_id,
+                selected.outgoing,
+                selected.jumps,
+                closed_jumps,
+                selected.final_carry,
+                root.length,
+            )
             return output
         except BaseException:
             output.close()

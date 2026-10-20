@@ -15,8 +15,8 @@ from number_compiler.resources.metric_keys.double_reverse import (
 )
 from number_compiler.sequences.double_reverse._temporal_bank_authority import (
     SourceAuthorizedRecord,
-    _snapshot_value,
     issue_source_record,
+    snapshot_value,
     validate_source_record,
 )
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
@@ -173,7 +173,7 @@ def test_nonperiodic_finite_window_and_periodic_spatial_morphism_match_digits(
         scratch = next(
             account
             for account in term.resource_ledger.inventory()
-            if account.owner == term._scratch_owner
+            if account.owner == term.scratch_owner
         )
         assert scratch.entries == scratch.nodes == 0
 
@@ -202,7 +202,7 @@ def test_source_snapshot_is_iterative_bounded_and_rejects_cycles() -> None:
     nested: object = 7
     for _ in range(2_000):
         nested = [nested]
-    assert _snapshot_value(nested) is not None
+    assert snapshot_value(nested) is not None
     arena = SLPArena()
     root = arena.word([4, 8])
     packet = issue_source_record(_NestedSnapshotRecord(nested), arena, root)
@@ -210,7 +210,7 @@ def test_source_snapshot_is_iterative_bounded_and_rejects_cycles() -> None:
     cyclic: list[object] = []
     cyclic.append(cyclic)
     with pytest.raises(ValueError, match="cycle"):
-        _snapshot_value(cyclic)
+        snapshot_value(cyclic)
 
 
 def test_source_snapshot_preserves_concrete_nested_types() -> None:
@@ -231,13 +231,13 @@ def test_source_snapshot_preserves_concrete_nested_types() -> None:
 def test_zero_step_pair_reads_source_and_excludes_mirrored_center() -> None:
     seed = int("17" + "48" * 15 + "888")
     with DoubleReverseTerm(seed, 0) as term:
-        root = term._source.root
-        width = term._arena.nodes[root].length
+        root = term.source_root
+        width = term.source_arena.nodes[root].length
         source = PointedBankSource(
-            term._arena,
-            term._adapter.temporal_hashlife,
+            term.source_arena,
+            term.temporal_engine,
             term.resource_ledger,
-            term._scratch_owner,
+            term.scratch_owner,
             0,
             root,
             0,
@@ -245,7 +245,7 @@ def test_zero_step_pair_reads_source_and_excludes_mirrored_center() -> None:
             width,
             term.max_steps,
             term.max_state_bits,
-            term._adapter._width_bits,
+            term.source_adapter.width_bits,
         )
         expected = str(seed)
         digits, used_bank = exact_temporal_pair_digits(source, 4)

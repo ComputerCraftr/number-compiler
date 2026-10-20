@@ -13,13 +13,13 @@ from dataclasses import asdict, dataclass
 from itertools import product
 
 from number_compiler.arithmetic.carry.decimal_jet_cylinder import (
-    _CLOCK_POWERS,
     DecimalCarryJetBlock,
+    clock_power,
 )
 from number_compiler.arithmetic.carry.event_memory import (
-    _pair_step_with_carry,
     forcing_event,
     pair_step,
+    pair_step_with_carry,
 )
 from number_compiler.arithmetic.fields.radix import reverse_pair_sums
 from number_compiler.arithmetic.polynomials.primary_jet import (
@@ -58,7 +58,7 @@ def _port_event(
     pair: tuple[int, ...], incoming: int
 ) -> tuple[tuple[int, ...], int, tuple[int, ...]]:
     """Exact physical counterfactual step for either incoming carry port."""
-    return _pair_step_with_carry(pair, 10, incoming=incoming)
+    return pair_step_with_carry(pair, 10, incoming=incoming)
 
 
 def _signature(pair: tuple[int, ...]) -> tuple[object, ...]:
@@ -78,7 +78,7 @@ def _signature(pair: tuple[int, ...]) -> tuple[object, ...]:
         rows.append(
             (
                 growth,
-                primary_jet_multiply(_CLOCK_POWERS[-len(pair) % 128], tangent, MODULUS),
+                primary_jet_multiply(clock_power(-len(pair) % 128), tangent, MODULUS),
             )
         )
         morphism = PrimaryJetAffineMorphism.reverse_add_event(
@@ -176,14 +176,14 @@ def audit_decimal_root_tangent(
             if left != right:
                 rebase_failures += 1
             phase_checks += 1
-            old_phase = _CLOCK_POWERS[-len(pair) % 128]
-            new_phase = _CLOCK_POWERS[-len(target) % 128]
+            old_phase = clock_power(-len(pair) % 128)
+            new_phase = clock_power(-len(target) % 128)
             normalized_left = primary_jet_multiply(new_phase, left, MODULUS)
             tangent = primary_jet_add(
                 source, primary_jet_scale(root, -1, MODULUS), MODULUS
             )
             transport = primary_jet_multiply(
-                _CLOCK_POWERS[-growth % 128], _kernel(growth), MODULUS
+                clock_power(-growth % 128), _kernel(growth), MODULUS
             )
             normalized_right = primary_jet_add(
                 primary_jet_multiply(
@@ -236,7 +236,7 @@ def build_report() -> dict[str, object]:
     interned: dict[tuple[object, ...], int] = {}
     hits = 0
     pair = reverse_pair_sums(196, 10)
-    growth = []
+    growth: list[dict[str, int]] = []
     for generation in range(1, 1025):
         pair = pair_step(pair, 10)[0]
         key = _signature(pair)

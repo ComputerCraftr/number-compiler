@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from devtools.checks import repository_policy as policy_checker
+from devtools.checks import source_discovery
 from devtools.checks.repository_policy import (
     MAX_SOURCE_LINES,
     isabelle_session_option_violations,
@@ -48,7 +48,7 @@ def test_aggregate_policy_report_uses_one_authored_source_walk(
     tests.mkdir()
     (tests / "__init__.py").write_text('"""Temporary policy test package."""\n')
     (tests / "test_sample.py").write_text("def sample() -> int:\n    return 1\n")
-    original_walk = policy_checker._iter_authored_files
+    original_walk = source_discovery.authored_files
     walk_calls = 0
 
     def count_walks(root: Path) -> tuple[Path, ...]:
@@ -56,7 +56,7 @@ def test_aggregate_policy_report_uses_one_authored_source_walk(
         walk_calls += 1
         return original_walk(root)
 
-    monkeypatch.setattr(policy_checker, "_iter_authored_files", count_walks)
+    monkeypatch.setattr(source_discovery, "authored_files", count_walks)
     report = repository_policy_report(tmp_path)
     assert walk_calls == 1
     assert report["source_line_violations"] == ()

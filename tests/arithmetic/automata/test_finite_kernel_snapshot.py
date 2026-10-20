@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import gc
 import weakref
-from collections.abc import Callable
 from typing import Never, cast
 
 import pytest
@@ -50,7 +49,10 @@ def test_kernel_equality_is_extensional_and_verifies_digest_collisions(
         def hexdigest(self) -> str:
             return "intentional-collision"
 
-    monkeypatch.setattr(shared_powering, "sha256", lambda _data: ConstantDigest())
+    def digest(_data: object) -> ConstantDigest:
+        return ConstantDigest()
+
+    monkeypatch.setattr(shared_powering, "sha256", digest)
     first = FiniteKernel(2, 1, lambda state, _symbol: state, name="one")
     alias = FiniteKernel(2, 1, lambda state, _symbol: state, name="different-name")
     different = FiniteKernel(2, 1, lambda state, _symbol: 1 - state, name="one")
@@ -65,10 +67,11 @@ def test_kernel_equality_is_extensional_and_verifies_digest_collisions(
 def test_kernel_rejects_transitions_outside_its_finite_domain(
     target: float,
 ) -> None:
+    def transition(_state: int, _symbol: int) -> int:
+        return cast(int, target)
+
     with pytest.raises(ValueError, match="outside finite state domain"):
-        FiniteKernel(
-            2, 1, cast("Callable[[int, int], int]", lambda _state, _symbol: target)
-        )
+        FiniteKernel(2, 1, transition)
 
 
 def test_conjugacy_proof_reads_frozen_table_after_callable_mutation() -> None:
@@ -82,9 +85,11 @@ def test_conjugacy_proof_reads_frozen_table_after_callable_mutation() -> None:
 def test_kernel_subclass_cannot_replace_frozen_execution_with_a_live_callable() -> None:
     with pytest.raises(TypeError, match="frozen table"):
 
-        class MutableKernel(FiniteKernel):
+        class _MutableKernel(FiniteKernel):
             def transition(self, state: int, symbol: object) -> int:
                 return 1 - state
+
+        _ = _MutableKernel
 
 
 @pytest.mark.parametrize(
@@ -94,7 +99,7 @@ def test_kernel_subclass_cannot_replace_frozen_execution_with_a_live_callable() 
 def test_kernel_dimensions_reject_integer_aliases_before_reading_transition(
     states: bool | float, alphabet: bool | float
 ) -> None:
-    calls = []
+    calls: list[tuple[int, object]] = []
 
     def transition(state: int, symbol: int) -> int:
         calls.append((state, symbol))

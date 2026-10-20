@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect
@@ -19,7 +21,7 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.arithmetic.contracts.temporal_family import (
     TemporalFamilyCertificate,
-    _issue_certificate,
+    issue_certificate,
 )
 from number_compiler.arithmetic.fields.dyadic_tile import DyadicTile
 from number_compiler.hashlife.actions.lazy_compiler import (
@@ -52,10 +54,30 @@ if TYPE_CHECKING:
         OrderedBooleanSupport,
     )
     from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
-    from number_compiler.resources.metric_records import (
+    from number_compiler.resources.hashlife_behavior_metrics import (
         HashLifeBehaviorMetrics,
+    )
+    from number_compiler.resources.metric_records import (
         HashLifeProjectionMetrics,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class HashLifeBlockIndexAuditSnapshot:
+    """Detached metric inputs captured by the index that owns them."""
+
+    effect_metric_baseline: Mapping[str, int]
+    certificate: TemporalFamilyCertificate | None
+    lazy_application: LazyProjection
+    point_queries: int
+    direct_powered_point_queries: int
+    canonical_tiles_at_build: int
+    canonical_tile_roots: int
+    seed_payload_tile_nodes: int
+    padded_root_tile_nodes: int
+    retained_spatial_tile_nodes: int
+    application_spatial_tile_nodes: int
+    powered_operator_nodes: int
 
 
 class HashLifeBlockIndex:
@@ -149,7 +171,7 @@ class HashLifeBlockIndex:
         if compiler is None:
             effect = self._compiler.import_effect(effect)
             if certificate is not None:
-                certificate = _issue_certificate(
+                certificate = issue_certificate(
                     effect,
                     certificate.family,
                     certificate.steps,
@@ -208,7 +230,7 @@ class HashLifeBlockIndex:
 
         self._output_symbol_count: int
         self._canonical_tiles_at_build: int
-        application = self._lazy_application._open()
+        application = self._lazy_application.validated_application()
         adapter = application.scheduler.adapter
         if type(adapter) is not PrimitiveTileKernelAdapter:
             raise ValueError("point observation requires an admitted output alphabet")
@@ -216,7 +238,7 @@ class HashLifeBlockIndex:
             adapter.alphabet(application.action)
         ).symbol_count
         self._canonical_tiles_at_build = len(
-            self._lazy_application.scheduler.tiles._nodes
+            self._lazy_application.scheduler.tiles.audit_snapshot().nodes
         )
 
     @property
@@ -249,6 +271,41 @@ class HashLifeBlockIndex:
     def _retained_tile_node_count(self) -> int:
         return len(self._source_geometry.nodes)
 
+    def audit_snapshot(self) -> HashLifeBlockIndexAuditSnapshot:
+        """Return read-only state needed by resource and behavior reports."""
+        seed_nodes = self._collect_tile_nodes(
+            {chunk.tile for chunk in self.seed_root.chunks}
+        )
+        root_nodes = self._collect_tile_nodes(
+            {chunk.tile for chunk in self.evaluation_root.chunks}
+        )
+        retained_nodes = set(self._source_geometry.nodes.values())
+        seen: set[int] = set()
+        stack: list[object] = [self.effect]
+        while stack:
+            node = stack.pop()
+            if id(node) in seen:
+                continue
+            seen.add(id(node))
+            for name in ("first", "second"):
+                child = getattr(node, name, None)
+                if child is not None:
+                    stack.append(child)
+        return HashLifeBlockIndexAuditSnapshot(
+            effect_metric_baseline=MappingProxyType(dict(self._effect_metric_baseline)),
+            certificate=self._certificate,
+            lazy_application=self._lazy_application,
+            point_queries=self._point_queries,
+            direct_powered_point_queries=self._direct_powered_point_queries,
+            canonical_tiles_at_build=self._canonical_tiles_at_build,
+            canonical_tile_roots=len(self._tile_roots),
+            seed_payload_tile_nodes=len(seed_nodes),
+            padded_root_tile_nodes=len(root_nodes),
+            retained_spatial_tile_nodes=len(retained_nodes),
+            application_spatial_tile_nodes=len(retained_nodes - root_nodes),
+            powered_operator_nodes=len(seen),
+        )
+
     @source_reads_only
     def direct_powered_point(self, position: int) -> int:
         """Project one exact scalar through source/program/transfer summaries."""
@@ -257,7 +314,7 @@ class HashLifeBlockIndex:
             raise IndexError(position)
         # Authenticate the issued application before either scalar cache can
         # answer.  Program ownership alone does not confer source authority.
-        self._lazy_application._open().validate_execution()
+        self._lazy_application.validated_application().validate_execution()
         self._point_queries += 1
         self._direct_powered_point_queries += 1
         return self._point_response.query(self.program, position, self._point)
@@ -284,7 +341,7 @@ class HashLifeBlockIndex:
 
     def _point(self, position: int) -> int:
         """Read or publish one bounded exact point after program authentication."""
-        self._lazy_application._open()
+        self._lazy_application.validated_application()
         key = MicroblockKey(
             self.program,
             self.effect.base,
@@ -313,6 +370,20 @@ class HashLifeBlockIndex:
         """Find the output extent without constructing an endpoint tape."""
         return self._lazy_application.active_width()
 
+    def iter_direct_points(self, *, reflect_output: bool = False) -> Iterator[int]:
+        """Lower requested final points with an explicitly certified mirror policy."""
+        from number_compiler.projection.endpoint_lowering import iter_endpoint_digits
+
+        yield from iter_endpoint_digits(
+            owner=self._lowering_owner,
+            capability=LoweringCapability(self._lowering_owner),
+            width=self.direct_active_width(),
+            blank=self.effect.blank,
+            point=self.direct_powered_point,
+            ledger=self._ledger,
+            reflect_output=reflect_output,
+        )
+
     def iter_direct_active(self) -> Iterator[int]:
         """Explicit output lowering, separated from the scalar query path."""
         from number_compiler.projection.endpoint_lowering import (
@@ -338,17 +409,4 @@ class HashLifeBlockIndex:
         return collect_projection_metrics(self)
 
 
-__all__ = ["HashLifeBehaviorMetrics", "HashLifeBlockIndex", "HashLifeProjectionMetrics"]
-
-
-def __getattr__(name: str) -> object:
-    from number_compiler.api.lazy_exports import resolve_export
-
-    return resolve_export(
-        name,
-        {
-            "HashLifeProjectionMetrics": "number_compiler.resources.metric_records",
-            "HashLifeBehaviorMetrics": "number_compiler.resources.metric_records",
-        },
-        globals(),
-    )
+__all__ = ["HashLifeBlockIndex"]

@@ -90,10 +90,8 @@ def native_macro(seed: int, steps: int) -> dict[str, object]:
         "gate_cache_hits": carrier.planes.gate_cache_hits,
         "cofactor_cells": carrier.planes.cofactor_cells,
         "cofactor_hits": carrier.planes.cofactor_hits,
-        "cofactor_entries": len(carrier.planes._cofactors),
-        "cofactor_table_cells": sum(
-            len(gate.table) for gate in carrier.planes._cofactors.values()
-        ),
+        "cofactor_entries": carrier.planes.audit_snapshot().cofactor_entries,
+        "cofactor_table_cells": carrier.planes.cofactor_table_cells,
         "cofactor_evictions": carrier.planes.cofactor_evictions,
         "projection_returns": carrier.planes.projection_returns,
         "constant_returns": carrier.planes.constant_returns,
@@ -191,9 +189,9 @@ def trajectory(
             )
     cell = source
     power = FactoredTemporalPower(carrier)
-    rows = []
+    rows: list[dict[str, object]] = []
     started = perf_counter()
-    outputs = set()
+    outputs: set[object] = set()
     checkpoints = {1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, steps}
     for event in range(start + 1, steps + 1):
         field, _ = pair_step(field, 10)

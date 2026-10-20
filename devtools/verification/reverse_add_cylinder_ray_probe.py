@@ -21,7 +21,7 @@ def audit(steps: int = 20_000) -> dict[str, object]:
         counts["ID" if reset is None else "CONST1" if reset > 9 else "CONST0"] += 1
         carry = 0
         any_carry = False
-        target = []
+        target: list[int] = []
         for s in pair:
             value = s + carry
             carry = int(value >= 10)

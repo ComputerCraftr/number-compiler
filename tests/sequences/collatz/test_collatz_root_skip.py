@@ -29,7 +29,7 @@ def test_initial_root_run_uses_only_primitive_observation(
     digits = tuple(
         (seed >> i) & 1 if i < seed.bit_length() else 2 for i in range(width)
     )
-    original = CausalTileEngine._children
+    original = CausalTileEngine.child_actions
 
     def primitive_only(self: CausalTileEngine, action: object) -> None:
         assert action == primitive, "valuation shortcut replayed a temporal action"
@@ -40,7 +40,7 @@ def test_initial_root_run_uses_only_primitive_observation(
         key = PoweredResultKey(
             action, source.tile, adapter.initial_ports(action), adapter.wiring(action)
         )
-        monkeypatch.setattr(CausalTileEngine, "_children", primitive_only)
+        monkeypatch.setattr(CausalTileEngine, "child_actions", primitive_only)
         assert causal_point(scheduler, key, 0) == int(complete_event)
         assert causal_point(scheduler, key, 1) == (2 if complete_event else 1)
         assert causal_width_query(scheduler, key, width) == (1 if complete_event else 2)

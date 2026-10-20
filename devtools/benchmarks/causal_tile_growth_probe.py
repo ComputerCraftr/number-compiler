@@ -17,7 +17,10 @@ if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
     )
-    from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+    from number_compiler.hashlife.execution.tile_scheduler import (
+        TileScheduler,
+        TileSchedulerAuditSnapshot,
+    )
     from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
     from number_compiler.hashlife.tiles.tile_ports import BoundPorts, ResultWiring
     from number_compiler.hashlife.tiles.tiles import TileArena
@@ -238,7 +241,7 @@ def power_of_two_at_least(value: int) -> int:
     return 1 << (value - 1).bit_length()
 
 
-def _runtime(
+def runtime(
     base: int,
 ) -> tuple[
     ResourceLedger,
@@ -289,7 +292,9 @@ def _bound_semantics(bound: BoundPorts) -> tuple[tuple[int, ...], tuple[int, int
 
 
 def _interval_diagnostics(
-    scheduler: TileScheduler, application: int
+    scheduler: TileScheduler,
+    application: int,
+    scheduler_view: TileSchedulerAuditSnapshot,
 ) -> _IntervalDiagnostics:
     """Compare semantic contracts with exact spatial interval bindings.
 
@@ -309,7 +314,7 @@ def _interval_diagnostics(
             (view.source_offset, view.source_offset + view.relative_extent)
         )
 
-    for owner, key in scheduler._pins:
+    for owner, key in scheduler_view.pins:
         if owner != application:
             continue
         children = scheduler.adapter.action_children(key.action)
@@ -388,7 +393,7 @@ def cold_row(
         raise ValueError("causal spatial width requires a positive power of two")
     if type(coordinate) is not int or not 0 <= coordinate < spatial_width:
         raise ValueError("causal coordinate lies outside its spatial probe")
-    ledger, tiles, adapter, primitive, scheduler = _runtime(base)
+    ledger, tiles, adapter, primitive, scheduler = runtime(base)
     pair = _pair_from_integer(seed, base)
     if len(pair) > spatial_width:
         raise ValueError("causal spatial width cannot contain the source pair")
@@ -436,14 +441,20 @@ def cold_row(
             observation_seconds = observation_finished - observation_started
             cold_seconds = observation_finished - cold_started
             diagnostics_started = perf_counter()
-            diagnostics = _interval_diagnostics(scheduler, application.identity)
+            scheduler_view = scheduler.audit_snapshot()
+            diagnostics = _interval_diagnostics(
+                scheduler, application.identity, scheduler_view
+            )
+            result_view = scheduler.results.audit_snapshot()
+            adapter_view = adapter.audit_snapshot()
+            tile_view = tiles.audit_snapshot()
             snapshot = ledger.snapshot()
-            diagnostics_seconds = perf_counter() - diagnostics_started
             counters = dict(snapshot.counters)
             memo_key_counts: dict[str, int] = {}
-            for memo_key in scheduler.results._memo:
+            for memo_key in result_view.memo:
                 name = type(memo_key).__name__
                 memo_key_counts[name] = memo_key_counts.get(name, 0) + 1
+            diagnostics_seconds = perf_counter() - diagnostics_started
             accounting_version = _exact_counter(
                 counters, "tile_causal_accounting_version"
             )
@@ -524,8 +535,18 @@ def cold_row(
                 spatial_buffer_reversal_visits=_exact_counter(
                     counters, "tile_causal_spatial_buffer_reversal_visits"
                 ),
-                spatial_buffer_live_slots=scheduler._causal_workspace.slots,
-                spatial_buffer_live_bytes=scheduler._causal_workspace.backing_bytes,
+                spatial_buffer_live_slots=(
+                    scheduler_view.causal_workspace.slots
+                    if scheduler_view.causal_workspace is not None
+                    else 0
+                ),
+                spatial_buffer_live_bytes=(
+                    scheduler_view.causal_workspace.object_bytes
+                    + scheduler_view.causal_workspace.reference_store.backing_bytes
+                    + scheduler_view.causal_workspace.buffer_store.backing_bytes
+                    if scheduler_view.causal_workspace is not None
+                    else 0
+                ),
                 spatial_buffer_peak_slots=_exact_counter(
                     counters, "tile_causal_spatial_buffer_peak_slots"
                 ),
@@ -592,8 +613,8 @@ def cold_row(
                 directed_transfer_validation_visits=_exact_counter(
                     counters, "tile_directed_transfer_validation_visits"
                 ),
-                action_nodes=len(adapter._actions),
-                action_composition_entries=len(adapter._compositions),
+                action_nodes=len(adapter_view.actions),
+                action_composition_entries=len(adapter_view.compositions),
                 completed_result_entries=memo_key_counts.get("PoweredResultKey", 0),
                 directed_transfer_entries=memo_key_counts.get("DirectedTransferKey", 0),
                 causal_interface_entries=memo_key_counts.get("CausalInterfaceKey", 0),
@@ -612,7 +633,7 @@ def cold_row(
                         "SpatialInterfaceKey",
                     )
                 ),
-                canonical_tile_nodes=len(tiles._nodes),
+                canonical_tile_nodes=len(tile_view.nodes),
                 retained_entries=snapshot.entries,
                 retained_nodes=snapshot.nodes,
                 peak_entries=snapshot.peak_entries,
@@ -824,7 +845,7 @@ def series_report(
     }
 
 
-def _cold_rows(
+def cold_rows(
     requests: Iterable[tuple[str, int, int, int]],
 ) -> tuple[CausalGrowthRow, ...]:
     rows: list[CausalGrowthRow] = []
@@ -857,18 +878,18 @@ def run_probe(
         for value in (*temporal, *widths)
     ):
         raise ValueError("causal growth axes require positive exact powers of two")
-    fixed_width_rows = _cold_rows(
+    fixed_width_rows = cold_rows(
         ("fixed-width", steps, fixed_width, min(2, fixed_width - 1))
         for steps in temporal
     )
-    fixed_depth_rows = _cold_rows(
+    fixed_depth_rows = cold_rows(
         ("fixed-depth", fixed_depth, width, min(2, width - 1)) for width in widths
     )
-    growing_requests = []
+    growing_requests: list[tuple[str, int, int, int]] = []
     for steps in temporal:
         width = power_of_two_at_least(3 + steps)
         growing_requests.append(("growing-196", steps, width, 0))
-    growing_rows = _cold_rows(growing_requests)
+    growing_rows = cold_rows(growing_requests)
     reports = {
         "fixed_width_temporal": series_report(
             fixed_width_rows,

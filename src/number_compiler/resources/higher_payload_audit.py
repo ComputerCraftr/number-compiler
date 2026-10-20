@@ -129,6 +129,7 @@ def audit_higher_payloads(
             and store(snapshot.key_owner, snapshot.key_store)
         )
 
+    valid: bool
     for root in ledger.iter_execution_roots():
         if type(root) is HigherSemanticArena:
             semantic_snapshot = root.audit_snapshot()

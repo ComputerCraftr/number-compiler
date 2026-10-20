@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
-from number_compiler.arithmetic.formula.types import Expr, FormulaStorage, _bits, _mask
+from number_compiler.arithmetic.formula.types import (
+    Expr,
+    FormulaStorage,
+    bits,
+    width_mask,
+)
 
 
 class FormulaBuildMixin(FormulaStorage):
@@ -41,7 +46,7 @@ class FormulaBuildMixin(FormulaStorage):
         old = self._nodes.get(key)
         if old is not None:
             return old
-        node = Expr(self._next_id, kind, width, args, param, int(pbits) + _bits(width))
+        node = Expr(self._next_id, kind, width, args, param, int(pbits) + bits(width))
         self._next_id += 1
         self._nodes[key] = node
         return node
@@ -57,14 +62,14 @@ class FormulaBuildMixin(FormulaStorage):
 
         forbid_in_powered_jump("literal")
         return self._raw(
-            "LITERAL", width, param=(int(value) & _mask(width),), pbits=int(width)
+            "LITERAL", width, param=(int(value) & width_mask(width),), pbits=int(width)
         )
 
     def variable(self, slot: int, width: int) -> Expr:
         slot = int(slot)
         if slot < 0:
             raise ValueError(slot)
-        return self._raw("VAR", width, param=(slot,), pbits=_bits(slot))
+        return self._raw("VAR", width, param=(slot,), pbits=bits(slot))
 
     def range_mask(self, lo: int, hi: int, width: int) -> Expr:
         lo, hi, width = int(lo), int(hi), int(width)
@@ -74,7 +79,7 @@ class FormulaBuildMixin(FormulaStorage):
             return self.zero(width)
         if lo == 0 and hi == width:
             return self.ones(width)
-        return self._raw("RANGE", width, param=(lo, hi), pbits=_bits(lo) + _bits(hi))
+        return self._raw("RANGE", width, param=(lo, hi), pbits=bits(lo) + bits(hi))
 
     def not_(self, x: Expr) -> Expr:
         self.require_owned(x)
@@ -95,7 +100,8 @@ class FormulaBuildMixin(FormulaStorage):
 
     @staticmethod
     def _complements(items: Iterable[Expr]) -> tuple[set[int], set[int]]:
-        pos, neg = set(), set()
+        pos: set[int] = set()
+        neg: set[int] = set()
         for item in items:
             if item.kind == "NOT":
                 neg.add(item.args[0].id)
@@ -290,7 +296,7 @@ class FormulaBuildMixin(FormulaStorage):
             x = x.args[0]
             if amount >= x.width or x.kind == "ZERO":
                 return self.zero(x.width)
-        return self._raw(kind, x.width, (x,), (amount,), _bits(amount))
+        return self._raw(kind, x.width, (x,), (amount,), bits(amount))
 
     def shl(self, x: Expr, amount: int) -> Expr:
         return self._shift(x, amount, "SHL")
@@ -315,7 +321,7 @@ class FormulaBuildMixin(FormulaStorage):
             return x
         if x.kind == "ZERO":
             return self.zero(width)
-        return self._raw("PAD_RIGHT", width, (x,), (x.width,), _bits(x.width))
+        return self._raw("PAD_RIGHT", width, (x,), (x.width,), bits(x.width))
 
     def crop(self, x: Expr, width: int) -> Expr:
         """Keep the least-significant ``width`` positions without materializing."""
@@ -333,7 +339,7 @@ class FormulaBuildMixin(FormulaStorage):
             x = x.args[0]
             if width == x.width:
                 return x
-        return self._raw("CROP", width, (x,), (x.width,), _bits(x.width))
+        return self._raw("CROP", width, (x,), (x.width,), bits(x.width))
 
     def predicate(self, op: str, threshold: int, planes: Sequence[Expr]) -> Expr:
         planes = tuple(planes)
@@ -345,7 +351,7 @@ class FormulaBuildMixin(FormulaStorage):
         if op not in ("EQ", "GT"):
             raise ValueError(op)
         return self._raw(
-            "PRED", width, planes, (op, int(threshold)), _bits(threshold) + 1
+            "PRED", width, planes, (op, int(threshold)), bits(threshold) + 1
         )
 
     def ite(self, selector: Expr, when_false: Expr, when_true: Expr) -> Expr:
@@ -440,7 +446,7 @@ class FormulaBuildMixin(FormulaStorage):
             width,
             args,
             (table,),
-            pbits=(1 << n) + _bits(n),
+            pbits=(1 << n) + bits(n),
         )
 
     def coeffmap(
@@ -464,5 +470,5 @@ class FormulaBuildMixin(FormulaStorage):
             width,
             args,
             (mode, int(bit), int(base), int(nplanes)),
-            _bits(base) + _bits(bit) + _bits(nplanes) + 2,
+            bits(base) + bits(bit) + bits(nplanes) + 2,
         )

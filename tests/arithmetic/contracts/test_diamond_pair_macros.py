@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Never
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
@@ -121,7 +122,7 @@ def test_warm_parent_probe_precedes_children_and_parameter_application(
         raise AssertionError("warm parent expanded a spatial descendant")
 
     monkeypatch.setattr(arena, "build_children", forbidden)
-    monkeypatch.setattr(arena, "_leaf", forbidden)
+    monkeypatch.setattr(arena, "leaf_record", forbidden)
     assert arena.summary(pair, cell) == expected
     after = arena.ledger.snapshot()
     assert after.entries == before.entries and after.nodes == before.nodes
@@ -143,11 +144,13 @@ def test_parent_publication_is_atomic_and_eviction_preserves_canonical_effects()
     summary = arena.summary(pair, cell)
     record = arena.resolve(summary)
     arena.ledger.evict_query_memos()
-    assert not arena._bindings
+    assert not cast(
+        Mapping[object, object], object.__getattribute__(arena, "_bindings")
+    )
     arena.ledger.max_cache_entries = arena.ledger.entries
     assert_rejected_atomically(
         arena.ledger,
-        lambda: arena._publish(PairMacroKey(pair, cell), record),
+        lambda: arena.publish_record(PairMacroKey(pair, cell), record),
         BlockContextBudgetExceeded,
     )
     arena.ledger.max_cache_entries = None

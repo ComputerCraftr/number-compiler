@@ -463,10 +463,11 @@ class SymbolicReturnView:
                 binding.function, (phase + binding.input_shift) % PERIOD
             ),
         )
+        terminal_value: object = terminal.value
         if (
             terminal.kind != "atom"
-            or terminal.value is None
-            or not 0 <= terminal.value < len(binding.output_binding)
+            or type(terminal_value) is not int
+            or not 0 <= terminal_value < len(binding.output_binding)
         ):
             raise ValueError(
                 "canonical comma output template returned an invalid color"

@@ -98,7 +98,8 @@ class ReverseGeometryContext:
             tuple(q % 2 for q, _ in GROWTH_SYMBOLS),
             tuple(2 * q % 2 for q, _ in GROWTH_SYMBOLS),
         }
-        pending, seen = [value.index], set()
+        pending = [value.index]
+        seen: set[int] = set()
         while pending:
             index = pending.pop()
             if index in seen or index in boundaries:
@@ -114,13 +115,13 @@ class ReverseGeometryContext:
                     self.growth_generic_parity_tables += 1
             pending.extend(node.args)
 
-    def _and(self, a: Expr, b: Expr) -> Expr:
+    def and_expression(self, a: Expr, b: Expr) -> Expr:
         return self.expressions.select(a, b, self.zero)
 
-    def _not(self, value: Expr) -> Expr:
+    def not_expression(self, value: Expr) -> Expr:
         return self.expressions.table(value, 2, (1, 0))
 
-    def _eq(self, value: Expr, target: int) -> Expr:
+    def equal_constant(self, value: Expr, target: int) -> Expr:
         e = self.expressions
         return e.table(
             value, 2, tuple(int(i == target) for i in range(e.resolve(value).size))
@@ -132,7 +133,7 @@ class ReverseGeometryContext:
         beta = e.affine(2, ((parity, 1), (epsilon, 1)))
         return e.affine(10, ((alpha, 1), (e.table(beta, 6, (0, 5)), 1)))
 
-    def _action(
+    def build_action(
         self, outputs: tuple[Expr, ...], admitted: Expr, events: int
     ) -> GeometryAction:
         return GeometryAction(
@@ -188,7 +189,7 @@ class ReverseGeometryContext:
                 e.affine(2, ((epsilon[min(i, m - 1 - i)], 1), (carry[i], 1)))
                 for i in range(m)
             ) + (self.one,)
-            outputs = []
+            outputs: list[tuple[Expr, Expr, Expr]] = []
             ports = frozenset(v.index for v in (*epsilon, *carry))
             for i in range((m + 2) // 2):
                 f2 = e.affine(2, ((normal_epsilon[i], 1), (normal_epsilon[m - i], 1)))
@@ -238,8 +239,9 @@ class ReverseGeometryContext:
         for m, condition in enumerate(width_is, 1):
             growth = e.select(condition, carry[m], growth)
         extended_width = e.affine(capacity + 2, ((width, 1), (growth, 1)))
-        admitted = self._and(
-            admitted, self._not(self._eq(extended_width, capacity + 1))
+        admitted = self.and_expression(
+            admitted,
+            self.not_expression(self.equal_constant(extended_width, capacity + 1)),
         )
         next_width = e.table(extended_width, capacity + 1, (*range(capacity + 1), 0))
         return carry, growth, admitted, next_width
@@ -253,7 +255,7 @@ class ReverseGeometryContext:
         e.work = 0
         self.growth_generic_parity_tables = 0
         width = self.inputs[0]
-        width_is = tuple(self._eq(width, m) for m in range(1, capacity + 1))
+        width_is = tuple(self.equal_constant(width, m) for m in range(1, capacity + 1))
         domain_inputs, alpha_inputs, epsilon_inputs = (
             self.inputs[1::3],
             self.inputs[2::3],
@@ -263,24 +265,34 @@ class ReverseGeometryContext:
             self._residue(alpha, epsilon)
             for alpha, epsilon in zip(alpha_inputs, epsilon_inputs, strict=True)
         )
-        admitted = self._not(self._eq(width, 0))
+        admitted = self.not_expression(self.equal_constant(width, 0))
         blank_domain, blank_alpha = e.constant(3, 0), e.constant(5, 0)
         for i, (domain, alpha, epsilon) in enumerate(
             zip(domain_inputs, alpha_inputs, epsilon_inputs, strict=True)
         ):
             residue = residues[i]
-            valid = self._not(
-                e.affine(2, ((self._eq(domain, 1), 1), (self._eq(residue, 9), 1)))
+            valid = self.not_expression(
+                e.affine(
+                    2,
+                    (
+                        (self.equal_constant(domain, 1), 1),
+                        (self.equal_constant(residue, 9), 1),
+                    ),
+                )
             )
-            padding = self._and(
-                self._eq(domain, 0), self._and(self._eq(alpha, 0), self._not(epsilon))
+            padding = self.and_expression(
+                self.equal_constant(domain, 0),
+                self.and_expression(
+                    self.equal_constant(alpha, 0), self.not_expression(epsilon)
+                ),
             )
             inactive = e.table(
                 width, 2, tuple(int(m <= 2 * i) for m in range(capacity + 1))
             )
-            admitted = self._and(admitted, e.select(inactive, padding, valid))
-            admitted = self._and(
-                admitted, e.select(width_is[2 * i], self._not(epsilon), self.one)
+            admitted = self.and_expression(admitted, e.select(inactive, padding, valid))
+            admitted = self.and_expression(
+                admitted,
+                e.select(width_is[2 * i], self.not_expression(epsilon), self.one),
             )
         domains: list[Expr] = []
         for i in range(capacity):
@@ -334,7 +346,7 @@ class ReverseGeometryContext:
                 for v in triple
             ),
         )
-        action = self._action(outputs, admitted, 1)
+        action = self.build_action(outputs, admitted, 1)
         self.primitive_successors += 1
         return action
 
@@ -355,7 +367,9 @@ class ReverseGeometryContext:
             raise ValueError("geometry action changes coordinate sorts")
         if (
             action.geometry
-            != self._action(action.outputs, action.admitted, action.events).geometry
+            != self.build_action(
+                action.outputs, action.admitted, action.events
+            ).geometry
         ):
             raise ValueError("geometry does not describe action outputs")
         for index in e.reachable((*action.outputs, action.admitted)):
@@ -370,7 +384,7 @@ class ReverseGeometryContext:
         pulled = self.pullback(
             before, GeometryConsumer(after.sizes, after.outputs, after.admitted)
         )
-        result = self._action(
+        result = self.build_action(
             pulled.outputs,
             pulled.admitted,
             before.events + after.events,
@@ -419,7 +433,9 @@ class ReverseGeometryContext:
         with e.construction_transaction():
             pulled = e.substitute(roots, dict(enumerate(before.outputs)))
             result = GeometryConsumer(
-                self.sizes, pulled[:-1], self._and(before.admitted, pulled[-1])
+                self.sizes,
+                pulled[:-1],
+                self.and_expression(before.admitted, pulled[-1]),
             )
         self.consumer_pullbacks += 1
         return result
@@ -454,11 +470,13 @@ class ReverseGeometryContext:
         if not values[0]:
             return None
         width = values[1]
-        result = []
+        result: list[int] = []
         for i in range(width):
             orbit = min(i, width - 1 - i)
             if self.stride == 2:
-                from devtools.verification.skew_residue_laws import skew_pair_value
+                from number_compiler.arithmetic.formula.skew_residue_laws import (
+                    skew_pair_value,
+                )
 
                 domain, residue = values[2 + 2 * orbit : 4 + 2 * orbit]
                 result.append(skew_pair_value(domain, residue))
@@ -556,7 +574,7 @@ class ReverseGeometryContext:
             else 0,
             "domain_nodes": len(e.reachable(action.outputs[1 :: self.stride])),
             "geometry_word_nodes": words.word_metrics(action.geometry.word)["nodes"],
-            "derived_geometry_summary_cache_entries": len(self.geometry._carry_actions),
+            "derived_geometry_summary_cache_entries": self.geometry.summary_cache_entries,
             "primitive_successors": self.primitive_successors,
             "temporal_compositions": self.temporal_compositions,
             "consumer_pullbacks": self.consumer_pullbacks,

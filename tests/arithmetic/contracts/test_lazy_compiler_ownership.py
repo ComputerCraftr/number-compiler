@@ -58,8 +58,12 @@ def test_compilers_sharing_a_ledger_keep_distinct_owned_stores() -> None:
 
     assert left.owner != right.owner
     assert left.index_owner != right.index_owner
-    assert left._nodes is not right._nodes
-    assert left._ids is not right._ids
+    assert object.__getattribute__(left, "_nodes") is not object.__getattribute__(
+        right, "_nodes"
+    )
+    assert object.__getattribute__(left, "_ids") is not object.__getattribute__(
+        right, "_ids"
+    )
     left.atom(BaseBlockEffect(10))
     assert len(left.nodes) == 1
     assert right.nodes == ()

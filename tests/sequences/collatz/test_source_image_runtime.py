@@ -33,7 +33,7 @@ def test_collatz_radix_projection_reports_source_image_work() -> None:
     counters = metrics.resource_work_counters
     assert counters.get("source_image_publications", 0) > 0
     assert counters.get("collatz_image_radix_demands", 0) > 0
-    assert projected_term._power is None
+    assert projected_term.operator_nodes == 0
     assert metrics.whole_word_sweeps == metrics.proof_machine_applications == 0
     assert metrics.sequential_generation_advances == 0
     assert (

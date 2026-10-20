@@ -42,7 +42,7 @@ def append_run(target: list[tuple[int, int]], symbol: int, count: int) -> None:
         target.append((symbol, count))
 
 
-class _CarryPrefix:
+class CarryPrefix:
     """Exact carry transfer at run boundaries, with logarithmic point lookup."""
 
     __slots__ = ("_switches", "effects", "ends", "runs", "work")
@@ -144,12 +144,12 @@ def _paired_half_runs(
     return paired, odd
 
 
-def _one_two_step_pair(
+def one_two_step_pair(
     source_runs: Sequence[tuple[int, int]],
     work: PuncturedTemporalWork,
 ) -> tuple[tuple[tuple[int, int], ...], int]:
     """Return pair-half runs after one exact two-step pair transition."""
-    source = _CarryPrefix(source_runs, work)
+    source = CarryPrefix(source_runs, work)
     width = source.width
     if width < 1:
         raise ValueError("source pair tape must be nonempty")
@@ -209,7 +209,7 @@ def _one_two_step_pair(
             raise ValueError("carry event partition failed exact local validation")
         append_run(temporal_runs, value, end - start)
 
-    normalized_prefix = _CarryPrefix(temporal_runs, work)
+    normalized_prefix = CarryPrefix(temporal_runs, work)
     digit_runs, final_carry = normalized_prefix.emitted_digit_runs()
     if final_carry:
         mutable_digits = list(digit_runs)
@@ -234,7 +234,7 @@ def punctured_pair_runs(
     result: tuple[tuple[int, int], ...] = ()
     width = 0
     for index in range(steps // 2):
-        result, width = _one_two_step_pair(full_runs, work)
+        result, width = one_two_step_pair(full_runs, work)
         if index + 1 < steps // 2:
             full_runs = _palindromic_runs(result, odd=bool(width & 1), work=work)
     return result, width

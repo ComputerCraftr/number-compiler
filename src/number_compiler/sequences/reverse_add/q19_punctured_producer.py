@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
-from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_on_error
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.sequences.reverse_add.punctured_temporal import (
@@ -24,22 +24,36 @@ if TYPE_CHECKING:
 class _OutputOwner(Protocol):
     ledger: ResourceLedger
     arena: LedgerSLPArena
-    _digits: tuple[int, ...]
-    _scratch_owner: int
-    _summaries: OwnedMemo[int, WordSummary]
-    _issued: OwnedMemo[tuple[int, int], ReversePairOutputOccurrence]
 
     def validate(self, occurrence: ReversePairOutputOccurrence) -> None: ...
 
-    def _word_summary(self, root: int) -> WordSummary: ...
+    def word_summary(self, root: int) -> WordSummary: ...
 
-    def _candidate(
+    @property
+    def scratch_owner(self) -> int: ...
+
+    def published_word_summary(self, root: int) -> WordSummary: ...
+
+    def discard_published_word_summary(self, root: int) -> None: ...
+
+    def candidate(
         self, root: int, temporal_steps: int
     ) -> ReversePairOutputOccurrence: ...
 
-    def _publish(
+    def publish(
         self, occurrence: ReversePairOutputOccurrence
     ) -> ReversePairOutputOccurrence: ...
+
+    def issued_occurrence(
+        self, key: tuple[int, int]
+    ) -> ReversePairOutputOccurrence | None: ...
+
+    def rollback_punctured_application(
+        self,
+        first_new_node: int,
+        published: ReversePairOutputOccurrence | None,
+        previous_publication: ReversePairOutputOccurrence | None,
+    ) -> None: ...
 
 
 class PuncturedPairProducer:
@@ -70,12 +84,12 @@ class PuncturedPairProducer:
 
         try:
             with cleanup_on_error(rollback):
-                source_summary = owner._word_summary(occurrence.root)
+                source_summary = owner.word_summary(occurrence.root)
                 # T4 keeps one more bounded pullback's run partitions live.
                 scratch_per_run = 512 if steps == 2 else 1024
                 scratch = scratch_per_run * (source_summary.runs + 1)
                 with owner.ledger.reservation(
-                    owner._scratch_owner, entries=scratch, nodes=scratch
+                    owner.scratch_owner, entries=scratch, nodes=scratch
                 ):
                     source_runs = self._coefficient_runs(occurrence.root)
                     output_runs, output_width = punctured_pair_runs(
@@ -85,7 +99,7 @@ class PuncturedPairProducer:
                         work=work,
                     )
                     target_root = self._run_word(output_runs, output_width, work)
-                    candidate = owner._candidate(
+                    candidate = owner.candidate(
                         target_root, occurrence.temporal_steps + steps
                     )
                     width_change = candidate.output_width - occurrence.output_width
@@ -94,8 +108,8 @@ class PuncturedPairProducer:
                             "punctured reverse/add block escaped its per-step width bound"
                         )
                     issue_key = candidate.root, candidate.temporal_steps
-                    previous_publication = owner._issued.get(issue_key)
-                    published = owner._publish(candidate)
+                    previous_publication = owner.issued_occurrence(issue_key)
+                    published = owner.publish(candidate)
                 emitted_nodes = len(owner.arena.nodes) - first_new_node
                 recording_started = True
                 self._record_work(work, emitted_nodes=emitted_nodes, steps=steps)
@@ -150,7 +164,7 @@ class PuncturedPairProducer:
 
     def _coefficient_runs(self, root: int) -> tuple[tuple[int, int], ...]:
         owner = self._owner
-        summary = owner._word_summary(root)
+        summary = owner.word_summary(root)
         runs: list[tuple[int, int]] = []
         symbol_count = 0
         tasks: list[tuple[str, int, int]] = [("NODE", root, 1)]
@@ -173,7 +187,7 @@ class PuncturedPairProducer:
                 tasks.append(("NODE", node.right, 1))
                 tasks.append(("NODE", node.left, 1))
             elif node.kind == "REPEAT":
-                child_summary = owner._summaries[node.child]
+                child_summary = owner.published_word_summary(node.child)
                 if child_summary.symbols == 0:
                     continue
                 if child_summary.runs == 1:
@@ -227,39 +241,9 @@ class PuncturedPairProducer:
         previous_publication: ReversePairOutputOccurrence | None,
     ) -> None:
         owner = self._owner
-        if published is not None:
-            issued_key = published.root, published.temporal_steps
-            if owner._issued.get(issued_key) == published:
-                if previous_publication is None:
-                    del owner._issued[issued_key]
-                else:
-                    owner._issued[issued_key] = previous_publication
-        if type(first_new_node) is not int or not 1 <= first_new_node <= len(
-            owner.arena.nodes
-        ):
-            raise ValueError("invalid Q19 arena transaction boundary")
-        while len(owner.arena.nodes) > first_new_node:
-            node_id = len(owner.arena.nodes) - 1
-            node = owner.arena.nodes[node_id]
-            if node_id in owner._summaries:
-                del owner._summaries[node_id]
-            if node.kind == "TERM":
-                if owner.arena._term.get(node.symbol) == node_id:
-                    del owner.arena._term[node.symbol]
-            elif node.kind == "CONCAT":
-                key = node.left, node.right
-                if owner.arena._cat.get(key) == node_id:
-                    del owner.arena._cat[key]
-            elif node.kind == "REPEAT":
-                key = node.child, node.count
-                if owner.arena._rep.get(key) == node_id:
-                    del owner.arena._rep[key]
-            else:
-                raise AssertionError("cannot roll back the Q19 empty node")
-            # _add_interned can append a node before a mapping assignment fails.
-            # Only erase an interner entry when it still names this exact node.
-            owner.arena._nodes_store.rollback_unpublished(node_id)
-            owner.ledger.release(owner.arena.owners[0], entries=1, nodes=1)
+        owner.rollback_punctured_application(
+            first_new_node, published, previous_publication
+        )
 
 
 __all__ = ["PuncturedPairProducer"]

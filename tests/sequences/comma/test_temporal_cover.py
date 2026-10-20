@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+from typing import Never
 
 import pytest
 
@@ -46,7 +47,7 @@ def _literal_cycle_advance(leading: int, digit: int, steps: int) -> int:
     if steps == 0:
         return digit
     first = _literal_next(leading, digit)
-    cycle = []
+    cycle: list[int] = []
     current = first
     while current not in cycle:
         cycle.append(current)
@@ -59,7 +60,7 @@ def _literal_weight(leading: int, digit: int, steps: int) -> tuple[int, int]:
     if steps == 0:
         return digit, 0
     first = _literal_next(leading, digit)
-    cycle = []
+    cycle: list[int] = []
     current = first
     while current not in cycle:
         cycle.append(current)
@@ -311,19 +312,17 @@ def test_budget_refusal_happens_before_cycle_work_or_large_power(
     def refused(_: int) -> None:
         raise RuntimeError("budget refused")
 
-    monkeypatch.setattr(
-        temporal_cover,
-        "cycle_transfer",
-        lambda *_args: pytest.fail("cycle arithmetic ran before budget admission"),
-    )
+    def forbidden_cycle_transfer(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail("cycle arithmetic ran before budget admission")
+
+    monkeypatch.setattr(temporal_cover, "cycle_transfer", forbidden_cycle_transfer)
     with pytest.raises(RuntimeError, match="budget refused"):
         advance_weighted_port(5, 6, 10**100, charge_work=refused)
 
-    monkeypatch.setattr(
-        builtins,
-        "pow",
-        lambda *_args: pytest.fail("dyadic power ran before budget admission"),
-    )
+    def forbidden_power(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail("dyadic power ran before budget admission")
+
+    monkeypatch.setattr(builtins, "pow", forbidden_power)
     with pytest.raises(RuntimeError, match="budget refused"):
         dyadic_time_semantics(PortDyadicTime(13), charge_work=refused)
 

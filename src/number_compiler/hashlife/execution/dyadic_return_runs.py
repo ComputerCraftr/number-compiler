@@ -119,7 +119,7 @@ def publish_exact_run_candidate(
     ):
         raise ValueError("run contraction requires an exact identity source")
     with workspace.composite_transaction():
-        support = workspace._append_support(
+        support = workspace.append_support(
             DyadicReturnSupportRecord(
                 width,
                 admitted.residue,
@@ -143,7 +143,7 @@ def publish_exact_run_candidate(
             support,
             cycle,
         )
-        payload = workspace._append_image(
+        payload = workspace.append_image(
             DyadicReturnImageRecord(source_id, action, summary)
         )
         workspace.bump_metric("saturated_support_publications")

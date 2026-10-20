@@ -27,7 +27,7 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     FunctionSignature,
     FunctionSort,
     ProductSort,
-    _union_inputs,
+    union_inputs,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
@@ -38,7 +38,7 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureBuilder,
     StructuredNode,
     StructureID,
-    _aliases,
+    allocate_bound_aliases,
 )
 from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import (
@@ -56,7 +56,7 @@ class _ReachableState(Protocol):
     continuation: int
 
 
-class _ReachableDefinition(Protocol):
+class ReachableDefinition(Protocol):
     version: int
     initial: int
     kernel_digest: str
@@ -80,7 +80,7 @@ class SemanticProfileID(ArenaHandle):
 class SemanticReachableProfile:
     action: ActionProgramID
     side: int
-    definition: _ReachableDefinition
+    definition: ReachableDefinition
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,7 +156,7 @@ class SemanticProfileArena:
         self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_PROFILE_EVALUATIONS)
         try:
             definition = cast(
-                _ReachableDefinition,
+                ReachableDefinition,
                 hooks.source_profile(self.runtime, action),
             )
         except BaseException:
@@ -304,8 +304,8 @@ class SemanticProfileArena:
             PortVariable(0, 0, "semantic-argument", 0),
             definition.argument_count,
         )
-        aliases = _aliases(ports, (argument,))
-        joint = _union_inputs(ports, aliases)
+        aliases = allocate_bound_aliases(ports, (argument,))
+        joint = union_inputs(ports, aliases)
         circuit = builder.circuit(joint)
         selector = aliases[0]
         # The selector precedes the outer ordinal in canonical binder order.
@@ -331,7 +331,7 @@ class SemanticProfileArena:
                 _interfaces_keys.SEMANTIC_REACHABLE_DECODER_CERTIFICATE_WORD_READS,
                 len(definition.states) if value < definition.argument_count else 0,
             )
-            self._peak(
+            self.record_peak(
                 "semantic_reachable_decoder_numeric_column_slots_peak",
                 len(values) * (2 if value else 1),
             )
@@ -363,7 +363,7 @@ class SemanticProfileArena:
             prepared = prepare_structures(builder, (root,))
             prepared.reserve_with(((self.decodes.owner, 1, 0),))
             prepared.publish_reserved()
-            self.decodes._data[key] = prepared.roots[0]
+            self.decodes.publish_reserved(key, prepared.roots[0])
             self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_DECODER_COMPILATIONS)
             return prepared.roots[0]
         finally:
@@ -413,13 +413,13 @@ class SemanticProfileArena:
             StructuredNode(
                 signature,
                 "product",
-                structures.functions._handle(valid),
+                builder.function_reference(valid),
                 components=(first, second),
             )
         )
         return self._publish_decode(builder, root, key)
 
-    def _peak(self, name: str, value: int) -> None:
+    def record_peak(self, name: str, value: int) -> None:
         self.ledger.counters[name] = max(self.ledger.counters.get(name, 0), value)
 
     def _table_work(
@@ -437,8 +437,8 @@ class SemanticProfileArena:
             _interfaces_keys.SEMANTIC_REACHABLE_DECODER_CERTIFICATE_BIT_TESTS,
             valid_rows * width,
         )
-        self._peak("semantic_reachable_decoder_local_rows_peak", live_rows)
-        self._peak(
+        self.record_peak("semantic_reachable_decoder_local_rows_peak", live_rows)
+        self.record_peak(
             "semantic_reachable_decoder_local_bit_references_peak", live_rows * width
         )
 
@@ -462,8 +462,8 @@ class SemanticProfileArena:
                 + count
                 + (0 if leaves is original else len(original))
             )
-            self._peak("semantic_reachable_decoder_local_rows_peak", live)
-            self._peak(
+            self.record_peak("semantic_reachable_decoder_local_rows_peak", live)
+            self.record_peak(
                 "semantic_reachable_decoder_local_bit_references_peak", live * width
             )
             self.ledger.bump(_interfaces_keys.SEMANTIC_REACHABLE_DECODER_LOOKUP_LEVELS)
@@ -498,14 +498,14 @@ class SemanticProfileArena:
             _interfaces_keys.SEMANTIC_REACHABLE_DECODER_DOMAIN_LEAF_ROWS,
             size,
         )
-        self._peak("semantic_reachable_decoder_domain_references_peak", size)
+        self.record_peak("semantic_reachable_decoder_domain_references_peak", size)
         leaves = {
             value: accepted if value < port.cardinality else circuit.zero
             for value in range(size)
         }
         for bit in reversed(range(port.bits)):
             count = 1 << bit
-            self._peak(
+            self.record_peak(
                 "semantic_reachable_decoder_domain_references_peak", len(leaves) + count
             )
             self.ledger.bump(
@@ -567,10 +567,10 @@ class _FixedTableLookup:
         pending_slots = len(values)
         ledger, circuit = self.arena.ledger, self.circuit
         while pending:
-            self.arena._peak(
+            self.arena.record_peak(
                 "semantic_reachable_decoder_subtable_pending_frames_peak", len(pending)
             )
-            self.arena._peak(
+            self.arena.record_peak(
                 "semantic_reachable_decoder_subtable_pending_value_slots_peak",
                 pending_slots,
             )
@@ -661,14 +661,14 @@ class _FixedTableLookup:
             )
             self.memo[key] = result
             self.value_slots += len(table)
-            self.arena._peak(
+            self.arena.record_peak(
                 "semantic_reachable_decoder_subtable_memo_keys_peak", len(self.memo)
             )
-            self.arena._peak(
+            self.arena.record_peak(
                 "semantic_reachable_decoder_subtable_memo_value_slots_peak",
                 self.value_slots,
             )
-            self.arena._peak(
+            self.arena.record_peak(
                 "semantic_reachable_decoder_subtable_memo_result_references_peak",
                 len(self.memo),
             )

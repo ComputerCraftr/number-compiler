@@ -24,7 +24,7 @@ def test_local_composite_radix_collatz_exact_in_base6_and12() -> None:
             _arena, rows = collatz_orbit_formulas_local_composite_radix(
                 seed, radix=base, max_steps=160, materialize_values=True
             )
-            values = []
+            values: list[int] = []
             for row in rows:
                 assert row.value is not None
                 values.append(row.value)

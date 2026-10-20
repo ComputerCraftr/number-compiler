@@ -126,8 +126,10 @@ def test_canonical_collatz_handles_survive_memo_eviction_and_inspection_is_immut
     with pytest.raises(AttributeError):
         powers.__setattr__("identity", original)
     squared = powers.power(original, 2)
-    powers._powers.clear()
-    powers._compositions.clear()
+    cast(dict[tuple[int, int], int], object.__getattribute__(powers, "_powers")).clear()
+    cast(
+        dict[tuple[int, int], int], object.__getattribute__(powers, "_compositions")
+    ).clear()
     newer = arena.atom(7)
     assert newer.local_id > squared.local_id > original.local_id
     assert arena.node(original) is original_node

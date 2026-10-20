@@ -6,8 +6,8 @@ import pytest
 
 from devtools.benchmarks.causal_tile_growth_probe import (
     CausalGrowthRow,
-    _cold_rows,
     cold_row,
+    cold_rows,
     run_probe,
     series_report,
 )
@@ -155,7 +155,7 @@ def test_forbidden_execution_blocks_an_otherwise_bounded_sample() -> None:
 
 
 def test_cold_rows_use_distinct_indexes_and_report_real_causal_work() -> None:
-    rows = _cold_rows(
+    rows = cold_rows(
         (
             ("fixed-width", 4, 4, 1),
             ("fixed-width", 8, 4, 1),

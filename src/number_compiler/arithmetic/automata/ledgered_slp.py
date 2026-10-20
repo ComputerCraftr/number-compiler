@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, MutableMapping, Sequence
-from typing import TypeVar
+from collections.abc import Callable, Iterable, Mapping, MutableMapping, Sequence
+from dataclasses import dataclass
+from typing import TypeVar, cast
 
 from number_compiler.arithmetic.automata.guard import record_slp_metrics
 from number_compiler.arithmetic.automata.slp import SLPArena, SLPMetrics, SLPNode
@@ -12,6 +13,34 @@ from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.stores import LedgerList
 
 _Key = TypeVar("_Key")
+
+
+@dataclass(frozen=True, slots=True)
+class LedgerSLPArenaAuditSnapshot:
+    """Detached typed state used to audit one ledger-owned SLP arena."""
+
+    ledger: ResourceLedger
+    owners: object
+    empty_id: object
+    closed: object
+    cleanup_complete: object
+    nodes_released: object
+    node_store: LedgerList[SLPNode]
+    node_store_identity: int
+    node_store_alias_matches: bool
+    node_rows: tuple[object, ...]
+    term_memo: OwnedMemo[int, int]
+    term_store_identity: int
+    term_alias_matches: bool
+    term_rows: tuple[tuple[object, object], ...]
+    concat_memo: OwnedMemo[tuple[int, int], int]
+    concat_store_identity: int
+    concat_alias_matches: bool
+    concat_rows: tuple[tuple[object, object], ...]
+    repeat_memo: OwnedMemo[tuple[int, int], int]
+    repeat_store_identity: int
+    repeat_alias_matches: bool
+    repeat_rows: tuple[tuple[object, object], ...]
 
 
 class LedgerSLPArena(SLPArena):
@@ -91,6 +120,56 @@ class LedgerSLPArena(SLPArena):
             self._rep_store.audit_container,
         )
 
+    def existing_concat(self, left: int, right: int) -> int | None:
+        return self._cat.get((left, right))
+
+    def existing_repeat_entry(self, key: tuple[int, int]) -> int | None:
+        return self._rep.get(key)
+
+    def existing_terminal(self, symbol: int) -> int | None:
+        """Read an existing terminal without interning or charging a node."""
+        return self._term.get(symbol)
+
+    def audit_snapshot(self) -> LedgerSLPArenaAuditSnapshot:
+        """Capture exact stores, lifecycle state, and detached retained rows."""
+        from number_compiler.resources.payload_containers import audit_mapping_items
+
+        return LedgerSLPArenaAuditSnapshot(
+            ledger=self.ledger,
+            owners=cast(object, self.owners),
+            empty_id=cast(object, self.empty_id),
+            closed=cast(object, self._closed),
+            cleanup_complete=cast(object, self._cleanup_complete),
+            nodes_released=cast(object, self._nodes_released),
+            node_store=self._nodes_store,
+            node_store_identity=id(self._nodes_store),
+            node_store_alias_matches=self.nodes is self._nodes_store,
+            node_rows=tuple(
+                cast(object, value) for value in self._nodes_store.snapshot()
+            ),
+            term_memo=self._term_store,
+            term_store_identity=id(self._term_store.audit_snapshot().container),
+            term_alias_matches=self._term is self._term_store,
+            term_rows=tuple(
+                (cast(object, key), cast(object, value))
+                for key, value in audit_mapping_items(self._term_store)
+            ),
+            concat_memo=self._cat_store,
+            concat_store_identity=id(self._cat_store.audit_snapshot().container),
+            concat_alias_matches=self._cat is self._cat_store,
+            concat_rows=tuple(
+                (cast(object, key), cast(object, value))
+                for key, value in audit_mapping_items(self._cat_store)
+            ),
+            repeat_memo=self._rep_store,
+            repeat_store_identity=id(self._rep_store.audit_snapshot().container),
+            repeat_alias_matches=self._rep is self._rep_store,
+            repeat_rows=tuple(
+                (cast(object, key), cast(object, value))
+                for key, value in audit_mapping_items(self._rep_store)
+            ),
+        )
+
     def _check_open(self) -> None:
         if self._closed:
             raise ValueError("disposed ledgered SLP arena")
@@ -168,6 +247,45 @@ class LedgerSLPArena(SLPArena):
             raise
         record_slp_metrics(nodes=1)
         return node_id
+
+    def rollback_unpublished_suffix(
+        self,
+        first_new_node: int,
+        *,
+        before_remove: Callable[[int], None] | None = None,
+    ) -> None:
+        """Remove an unpublished suffix and its exact interner publications."""
+        self._check_open()
+        if type(first_new_node) is not int or not 1 <= first_new_node <= len(
+            self.nodes
+        ):
+            raise ValueError("invalid SLP rollback boundary")
+        owner = self.owners[0]
+        while len(self.nodes) > first_new_node:
+            node_id = len(self.nodes) - 1
+            node = self.nodes[node_id]
+            if before_remove is not None:
+                before_remove(node_id)
+            if node.kind == "TERM":
+                if (
+                    type(node.symbol) is int
+                    and self._term_store.get(node.symbol) == node_id
+                ):
+                    del self._term_store[node.symbol]
+            elif node.kind == "CONCAT":
+                if type(node.left) is int and type(node.right) is int:
+                    key = node.left, node.right
+                    if self._cat_store.get(key) == node_id:
+                        del self._cat_store[key]
+            elif node.kind == "REPEAT":
+                if type(node.child) is int and type(node.count) is int:
+                    key = node.child, node.count
+                    if self._rep_store.get(key) == node_id:
+                        del self._rep_store[key]
+            else:
+                raise AssertionError("cannot roll back the SLP empty node")
+            self._nodes_store.rollback_unpublished(node_id)
+            self.ledger.release(owner, entries=1, nodes=1)
 
     def dispose(self) -> None:
         if self._cleanup_complete:

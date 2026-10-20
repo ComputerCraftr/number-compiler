@@ -19,7 +19,7 @@ from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
 
 @pytest.mark.algebra
 def test_crt_digit_is_the_exact_f5_parity_bijection() -> None:
-    observed = set()
+    observed: set[int] = set()
     for alpha, epsilon in product(range(5), range(2)):
         digit = decimal_crt_digit(alpha, epsilon)
         assert digit % 5 == alpha

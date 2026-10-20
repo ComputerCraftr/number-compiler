@@ -203,7 +203,7 @@ class LazyBimachine:
     # dataclass(slots=True) does not include post-init dynamic fields, so declare
     # it as a class annotation to make the slot.
     _cache: dict[tuple[int, int, int], tuple[int, ...] | None] = field(
-        default_factory=dict, init=False
+        default_factory=dict[tuple[int, int, int], tuple[int, ...] | None], init=False
     )
 
     def emit(self, left: int, symbol: int, right: int) -> tuple[int, ...] | None:

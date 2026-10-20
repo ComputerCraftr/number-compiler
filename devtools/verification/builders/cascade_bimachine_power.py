@@ -146,9 +146,9 @@ def build_left(
     startd0 = {r: {B2.left.start: 1 << B1.left.start} for r in B1.right.states}
     start = R.intern(startd0)
     predR = predecessor_index(B1.right.states, A, B1.right.step)
-    trans = {}
+    trans: dict[tuple[int, int], int] = {}
     dq = deque([start])
-    seen = set()
+    seen: set[int] = set()
     emit_cache, word_cache, mask_map_cache = _compose_caches()
 
     emit = _cached_emit(B1, emit_cache)
@@ -246,9 +246,9 @@ def build_right(
     }
     start = R.intern(startd)
     predL = predecessor_index(B1.left.states, A, B1.left.step)
-    trans = {}
+    trans: dict[tuple[int, int], int] = {}
     dq = deque([start])
-    seen = set()
+    seen: set[int] = set()
     emit_cache, word_cache, mask_map_cache = _compose_caches()
 
     emit = _cached_emit(B1, emit_cache)

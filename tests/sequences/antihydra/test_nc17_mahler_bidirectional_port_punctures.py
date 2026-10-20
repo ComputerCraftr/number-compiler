@@ -189,7 +189,7 @@ def test_mutated_join_and_cancelled_port_witnesses_are_rejected(
     with pytest.raises(ValueError, match="changed|issuance"):
         MahlerCenterBooleanMatrix.from_exterior(forged)
 
-    original = MahlerCenterPortPuncture._from_verified_evidence
+    original = MahlerCenterPortPuncture.from_verified_evidence
 
     def changed(
         cls: type[MahlerCenterPortPuncture],
@@ -200,7 +200,7 @@ def test_mutated_join_and_cancelled_port_witnesses_are_rejected(
         return replace(point, center_upper_carry=(point.center_upper_carry + 1) % 3)
 
     monkeypatch.setattr(
-        MahlerCenterPortPuncture, "_from_verified_evidence", classmethod(changed)
+        MahlerCenterPortPuncture, "from_verified_evidence", classmethod(changed)
     )
     with pytest.raises(ArithmeticError, match="port|carry"):
         MahlerCertifiedCenterDepthTransfer.from_source(100007, 1)

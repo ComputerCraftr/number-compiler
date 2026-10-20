@@ -13,6 +13,7 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+from number_compiler.hashlife.execution.tile_application import TileApplication
 from number_compiler.hashlife.execution.tile_execution_adapter import (
     FamilyTileHooks,
     FinitePairTransfer,
@@ -21,7 +22,6 @@ from number_compiler.hashlife.execution.tile_execution_adapter import (
     is_finite_pair_transfer_factory,
 )
 from number_compiler.hashlife.execution.tile_scheduler import (
-    TileApplication,
     TileScheduler,
 )
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
@@ -211,7 +211,8 @@ class LazyProjection:
         self._cylinder_workspace: TileCylinderWorkspace | None = None
         self.ledger.register_execution_root(self)
 
-    def _open(self) -> TileApplication:
+    def validated_application(self) -> TileApplication:
+        """Return the application after checking its live issue authority."""
         issued = self.ledger.owns_execution_root(self)
         if not issued:
             raise ValueError("tile projection was not issued by its ledger")
@@ -248,11 +249,11 @@ class LazyProjection:
             raise TypeError("tile projection coordinate requires an exact integer")
         if not 0 <= position < self._logical_extent:
             raise IndexError(position)
-        return self._open().point(position)
+        return self.validated_application().point(position)
 
     @source_reads_only
     def active_width(self) -> int:
-        width = self._open().width(self._logical_extent)
+        width = self.validated_application().width(self._logical_extent)
         self.ledger.bump(_observation_keys.TILE_PROJECTION_WIDTH_OBSERVATIONS)
         return width
 
@@ -261,7 +262,7 @@ class LazyProjection:
         """Demand authenticated bound weights through the existing interface."""
         from number_compiler.hashlife.tiles.tile_context import TemporalCocycle
 
-        application = self._open()
+        application = self.validated_application()
         application.validate_execution()
         result = application.interface()
         self.ledger.bump(_observation_keys.TILE_PROJECTION_COCYCLE_OBSERVATIONS)
@@ -272,7 +273,7 @@ class LazyProjection:
     @source_reads_only
     def physical_support(self) -> OrderedBooleanSupport:
         """Demand the source-bound ordered support from the normal interface path."""
-        application = self._open()
+        application = self.validated_application()
         application.validate_execution()
         result = application.interface()
         support = result.physical_support
@@ -300,7 +301,7 @@ class LazyProjection:
             tile_mirror_obstruction,
         )
 
-        application = self._open()
+        application = self.validated_application()
         if self._cylinder_workspace is None:
             self._cylinder_workspace = TileCylinderWorkspace(self.ledger)
         return tile_mirror_obstruction(
@@ -311,12 +312,12 @@ class LazyProjection:
         )
 
     def retained_entries(self) -> int:
-        self._open()
+        self.validated_application()
         return self.ledger.entries
 
     def iter_endpoint_tiles(self) -> Generator[TileID, None, None]:
         """Explicitly lower the complete endpoint as a stream of leaf TileIDs."""
-        application = self._open()
+        application = self.validated_application()
         completed = application.complete()
         lease = self.scheduler.tiles.retain(completed.output)
         try:
@@ -354,7 +355,7 @@ class LazyProjection:
             self._closed = True
 
     def __enter__(self) -> Self:
-        self._open()
+        self.validated_application()
         return self
 
     def __exit__(self, *_exception: object) -> None:

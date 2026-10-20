@@ -12,6 +12,7 @@ from math import gcd
 from typing import Final, cast
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.resources.process_cache import (
@@ -121,7 +122,7 @@ class CycleActionReuse:
         try:
             value = lease.get_issued(key, _CYCLE_PUBLISHER)
             if value is not MISSING:
-                if type(value) is not tuple or len(value) != 3:
+                if not is_exact_object_tuple(value) or len(value) != 3:
                     raise ValueError("malformed comma cycle action")
                 fields = cast(CycleSummary, value)
                 if any(type(field) is not int or field <= 0 for field in fields):

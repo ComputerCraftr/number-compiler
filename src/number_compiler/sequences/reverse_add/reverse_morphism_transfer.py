@@ -7,21 +7,29 @@ never an exact output row or a whole-state future-behavior certificate.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import TypeGuard
+
 from number_compiler.arithmetic.carry.reverse_port_functions import (
     ReverseLeftTransfer,
     ReversePortCodec,
     ReverseRightTransfer,
 )
-from number_compiler.arithmetic.contracts.block_kernel import _reverse_output_carry
+from number_compiler.arithmetic.contracts.block_kernel import reverse_output_carry
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel
 from number_compiler.hashlife.interfaces.semantic_bits import BitFunctionArena
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
 from number_compiler.resources.fused_traversal_workspace import FusedTraversalWorkspace
-from number_compiler.resources.ledger import OwnedMemo
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 from number_compiler.resources.tile_alphabet_contract import (
     CANONICAL_TILE_ALPHABET_VERSION,
+)
+from number_compiler.resources.tile_runtime_audit_contracts import (
+    FusedTraversalWorkspaceAuditSnapshot,
 )
 from number_compiler.sequences.reverse_add.primitive_output_morphism import (
     ReversePrimitiveOutputMorphism,
@@ -29,6 +37,58 @@ from number_compiler.sequences.reverse_add.primitive_output_morphism import (
 
 _SourceControl = tuple[ReverseLeftTransfer, ReverseRightTransfer]
 _Binding = tuple[TileID, tuple[int, int]]
+
+
+def _is_source_frame(value: object) -> TypeGuard[tuple[TileID, bool]]:
+    return (
+        is_exact_object_tuple(value)
+        and len(value) == 2
+        and type(value[0]) is TileID
+        and type(value[1]) is bool
+    )
+
+
+def _is_source_control(value: object) -> TypeGuard[_SourceControl]:
+    return (
+        is_exact_object_tuple(value)
+        and len(value) == 2
+        and type(value[0]) is ReverseLeftTransfer
+        and type(value[1]) is ReverseRightTransfer
+    )
+
+
+_OutputFrame = tuple[TileID, tuple[int, int], bool]
+
+
+def _is_output_frame(value: object) -> TypeGuard[_OutputFrame]:
+    if not is_exact_object_tuple(value) or len(value) != 3:
+        return False
+    tile, incoming, ready = value
+    return (
+        type(tile) is TileID
+        and is_exact_object_tuple(incoming)
+        and len(incoming) == 2
+        and type(incoming[0]) is int
+        and type(incoming[1]) is int
+        and type(ready) is bool
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ReverseMorphismTransferAuditSnapshot:
+    """Read-only identity and memo views for the independent owner audit."""
+
+    ledger: ResourceLedger
+    sources: OwnedMemoAuditSnapshot[TileID, _SourceControl]
+    bound: OwnedMemoAuditSnapshot[_Binding, ReverseBoundOutput]
+    compositions: OwnedMemoAuditSnapshot[
+        tuple[ReverseBoundOutput, ReverseBoundOutput], ReverseBoundOutput
+    ]
+    right_bound: OwnedMemoAuditSnapshot[_Binding, ReverseRightTransfer]
+    right_compositions: OwnedMemoAuditSnapshot[
+        tuple[ReverseRightTransfer, ReverseRightTransfer], ReverseRightTransfer
+    ]
+    workspace: FusedTraversalWorkspaceAuditSnapshot
 
 
 class ReverseMorphismTransferArena:
@@ -73,11 +133,11 @@ class ReverseMorphismTransferArena:
         ] = OwnedMemo(
             self.ledger, right_composition_owner, nodes_per_entry=2, evictable=True
         )
-        self._audit_sources = self._sources._data
-        self._audit_bound = self._bound._data
-        self._audit_compositions = self._compositions._data
-        self._audit_right_bound = self._right_bound._data
-        self._audit_right_compositions = self._right_compositions._data
+        self._audit_sources = self._sources.audit_container
+        self._audit_bound = self._bound.audit_container
+        self._audit_compositions = self._compositions.audit_container
+        self._audit_right_bound = self._right_bound.audit_container
+        self._audit_right_compositions = self._right_compositions.audit_container
         self._workspace = FusedTraversalWorkspace(self.ledger, prefix)
         from number_compiler.resources.payload_contracts import (
             PayloadAuditStoreBinding,
@@ -109,6 +169,18 @@ class ReverseMorphismTransferArena:
         self._right_bound.clear()
         self._sources.clear()
 
+    def audit_snapshot(self) -> ReverseMorphismTransferAuditSnapshot:
+        """Expose read-only memo snapshots with their exact owner bindings."""
+        return ReverseMorphismTransferAuditSnapshot(
+            ledger=self.ledger,
+            sources=self._sources.audit_snapshot(),
+            bound=self._bound.audit_snapshot(),
+            compositions=self._compositions.audit_snapshot(),
+            right_bound=self._right_bound.audit_snapshot(),
+            right_compositions=self._right_compositions.audit_snapshot(),
+            workspace=self._workspace.audit_snapshot(),
+        )
+
     def _source_control(self, source: TileID) -> _SourceControl:
         node = self.tiles.resolve(source)
         cached = self._sources.get(source)
@@ -119,7 +191,7 @@ class ReverseMorphismTransferArena:
             workspace.append_frame((source, False))
             while workspace.frames:
                 frame = workspace.pop_frame()
-                if type(frame) is not tuple or len(frame) != 2:
+                if not _is_source_frame(frame):
                     raise TypeError("source control lost its traversal frame")
                 tile, ready = frame
                 record = self.tiles.resolve(tile)
@@ -136,7 +208,7 @@ class ReverseMorphismTransferArena:
                     )
                 elif ready:
                     second, first = workspace.pop_value(), workspace.pop_value()
-                    if type(first) is not tuple or type(second) is not tuple:
+                    if not _is_source_control(first) or not _is_source_control(second):
                         raise TypeError("source control lost its children")
                     result = (
                         first[0].then(second[0], self.ledger),
@@ -152,13 +224,7 @@ class ReverseMorphismTransferArena:
                 self._sources[tile] = result
                 workspace.append_value(result)
             root = workspace.pop_value()
-            if (
-                type(root) is not tuple
-                or len(root) != 2
-                or workspace.values
-                or type(root[0]) is not ReverseLeftTransfer
-                or type(root[1]) is not ReverseRightTransfer
-            ):
+            if not _is_source_control(root) or workspace.values:
                 raise TypeError("source control produced an invalid root")
             return root[0], root[1]
 
@@ -213,7 +279,7 @@ class ReverseMorphismTransferArena:
             workspace.append_frame((source, ports, False))
             while workspace.frames:
                 frame = workspace.pop_frame()
-                if type(frame) is not tuple or len(frame) != 3:
+                if not _is_output_frame(frame):
                     raise TypeError("output morphism lost its traversal frame")
                 tile, incoming, ready = frame
                 record = self.tiles.resolve(tile)
@@ -225,7 +291,7 @@ class ReverseMorphismTransferArena:
                     if record.symbol is None:
                         raise ValueError("output morphism leaf has no symbol")
                     if right_only:
-                        action = _reverse_output_carry(
+                        action = reverse_output_carry(
                             10,
                             codec.decode_left(incoming[0]),
                             record.symbol,

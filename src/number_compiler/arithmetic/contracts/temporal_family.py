@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, Literal
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, _effect_key
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.resources.metric_keys import (
     arithmetic_contracts as _contracts_keys,
 )
@@ -46,11 +47,7 @@ class TemporalFamilyCertificate:
 
     def _validate_issuance(self) -> None:
         issued = self._issuer
-        if (
-            type(issued) is not _IssuedClaims
-            or not isinstance(issued, _IssuedClaims)
-            or issued.origin is not _ISSUER
-        ):
+        if type(issued) is not _IssuedClaims or issued.origin is not _ISSUER:
             raise ValueError("family certificate was not issued by the compiler")
         if (
             type(self.base) is not int
@@ -136,7 +133,9 @@ def _verify_program(
                     _contracts_keys.CERTIFICATE_WORKSPACE_PEAK,
                     size - peak,
                 )
-        if type(node) is ProgramComposition and isinstance(node, ProgramComposition):
+        if type(node) is ProgramComposition and is_runtime_instance(
+            node, ProgramComposition
+        ):
             if not ready:
                 if identity in active:
                     raise ValueError("cyclic arithmetic program")
@@ -179,7 +178,7 @@ def _verify_program(
         raise ValueError("reverse digit projection requires one terminal normalization")
 
 
-def _issue_certificate(
+def issue_certificate(
     effect: BlockEffect,
     family: Family,
     steps: int,

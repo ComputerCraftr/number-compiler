@@ -15,6 +15,9 @@ from devtools.experiments.reverse_add.threshold_cocycle import (
     ThresholdCocycleArena,
     ThresholdCocycleResidualID,
 )
+from number_compiler.arithmetic.contracts.exact_equality import (
+    typed_tuple_tree_equal,
+)
 from number_compiler.arithmetic.functions.finite_function_types import (
     BOOL,
     FinitePort,
@@ -135,7 +138,9 @@ class CocycleTemporalArena:
         pending: list[tuple[object, bool]] = [(value, False)]
         results: list[object] = []
         while pending:
-            current, expanded = pending.pop()
+            frame = pending.pop()
+            current = frame[0]
+            expanded = frame[1]
             if type(current) is tuple:
                 items = cast(tuple[object, ...], current)
                 if expanded:
@@ -145,8 +150,7 @@ class CocycleTemporalArena:
                         del results[-count:]
                     results.append(children)
                 else:
-                    widened_current: object = current
-                    pending.append((widened_current, True))
+                    pending.append((frame[0], True))
                     pending.extend((item, False) for item in reversed(items))
                 continue
             if type(current) is PortVariable:
@@ -214,20 +218,7 @@ class CocycleTemporalArena:
 
     @staticmethod
     def _exact_equal(left: object, right: object) -> bool:
-        pending = [(left, right)]
-        while pending:
-            current_left, current_right = pending.pop()
-            if type(current_left) is not type(current_right):
-                return False
-            if type(current_left) is tuple:
-                left_items = cast(tuple[object, ...], current_left)
-                right_items = cast(tuple[object, ...], current_right)
-                if len(left_items) != len(right_items):
-                    return False
-                pending.extend(zip(left_items, right_items, strict=True))
-            elif current_left != current_right:
-                return False
-        return True
+        return typed_tuple_tree_equal(left, right)
 
     @staticmethod
     def _key_fields(key: CocycleCompositionKey) -> tuple[object, ...]:

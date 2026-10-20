@@ -7,6 +7,7 @@ import os
 import sys
 import textwrap
 import time
+from collections.abc import Callable
 from itertools import pairwise
 from pathlib import Path
 from types import SimpleNamespace
@@ -104,14 +105,29 @@ def test_shared_execution_budgets_have_one_canonical_owner() -> None:
 
 def test_explicit_selectors_are_exact_and_default_unit_is_partitioned() -> None:
     selector = "tests/repository/test_git_source.py::test_git_source"
-    assert release._pytest_selection("unit", (selector,)) == ((selector,), "")
-    assert release._pytest_selection("unit", ()) == (("tests",), "not validation")
-    assert release._pytest_selection("p0", (release.P0[0],)) == ((release.P0[0],), "")
+    assert release.pytest_selection("unit", (selector,)) == ((selector,), "")
+    assert release.pytest_selection("unit", ()) == (("tests",), "not validation")
+    assert release.pytest_selection("p0", (release.P0[0],)) == ((release.P0[0],), "")
+
+
+def test_selected_unit_only_run_preserves_the_default_marker_filter(
+    tmp_path: Path,
+) -> None:
+    selection = ("tests/sequences/reverse_add",)
+    selectors, mark = release.pytest_selection("unit", selection, unit_only=True)
+    assert selectors == selection
+    assert mark == "not validation"
+    command = release.pytest_command(tmp_path, "unit", selectors, mark)
+    marker = command.index("not validation")
+    assert command[marker - 1] == "-m"
+    assert selection[0] in command
+    with pytest.raises(ValueError, match="requires --suite unit"):
+        release.pytest_selection("all", selection, unit_only=True)
 
 
 def test_selection_command_uses_one_guarded_pytest_process(tmp_path: Path) -> None:
     selector = "tests/repository/test_git_source.py::test_git_source"
-    command = release._pytest_command(tmp_path, "unit", (selector,), "")
+    command = release.pytest_command(tmp_path, "unit", (selector,), "")
     assert command.count("pytest") == 1
     assert "--collect-only" not in command
     assert "--timeout" in command
@@ -126,8 +142,8 @@ def test_selection_command_uses_one_guarded_pytest_process(tmp_path: Path) -> No
 def test_default_unit_skips_already_excluded_validation_tree(
     tmp_path: Path,
 ) -> None:
-    selectors, mark = release._pytest_selection("unit", ())
-    command = release._pytest_command(tmp_path, "unit", selectors, mark)
+    selectors, mark = release.pytest_selection("unit", ())
+    command = release.pytest_command(tmp_path, "unit", selectors, mark)
 
     assert mark == "not validation"
     assert command[command.index("--ignore") + 1] == "tests/validation"
@@ -139,33 +155,33 @@ def test_explicit_and_p0_selections_do_not_skip_requested_files(
     tmp_path: Path,
 ) -> None:
     validation_selector = "tests/validation/test_example.py::test_requested"
-    explicit_selectors, explicit_mark = release._pytest_selection(
+    explicit_selectors, explicit_mark = release.pytest_selection(
         "unit", (validation_selector,)
     )
-    explicit_command = release._pytest_command(
+    explicit_command = release.pytest_command(
         tmp_path, "unit", explicit_selectors, explicit_mark
     )
     assert validation_selector in explicit_command
     assert "--ignore" not in explicit_command
 
-    p0_selectors, p0_mark = release._pytest_selection("p0", ())
-    p0_command = release._pytest_command(tmp_path, "p0", p0_selectors, p0_mark)
+    p0_selectors, p0_mark = release.pytest_selection("p0", ())
+    p0_command = release.pytest_command(tmp_path, "p0", p0_selectors, p0_mark)
     assert p0_mark == ""
     assert "--ignore" not in p0_command
     assert all(selector in p0_command for selector in release.P0)
 
-    all_selectors, all_mark = release._pytest_selection("all", ())
-    all_command = release._pytest_command(tmp_path, "all", all_selectors, all_mark)
+    all_selectors, all_mark = release.pytest_selection("all", ())
+    all_command = release.pytest_command(tmp_path, "all", all_selectors, all_mark)
     assert all_mark == ""
     assert "--ignore" not in all_command
 
 
 def test_timeout_override_parser_handles_both_compact_spellings() -> None:
-    assert pytest_policy._timeout_overrides(("-otimeout=2",)) == ("timeout=2",)
-    assert pytest_policy._timeout_overrides(
+    assert pytest_policy.timeout_overrides(("-otimeout=2",)) == ("timeout=2",)
+    assert pytest_policy.timeout_overrides(
         ("--override-ini=timeout_method=signal",)
     ) == ("timeout_method=signal",)
-    assert pytest_policy._timeout_overrides(("-o", "addopts=")) == ()
+    assert pytest_policy.timeout_overrides(("-o", "addopts=")) == ()
 
 
 def test_runner_rejects_inherited_pytest_environment_overrides() -> None:
@@ -176,7 +192,7 @@ def test_runner_rejects_inherited_pytest_environment_overrides() -> None:
 
 
 def test_native_isabelle_inventory_includes_external_parents() -> None:
-    inventory = release._parse_session_inventory(
+    inventory = release.parse_session_inventory(
         "HOL\nHOL-Number_Theory\nHOL-Computational_Algebra\nComma_Check\n",
         ("Comma_Check",),
     )
@@ -189,11 +205,11 @@ def test_native_isabelle_inventory_includes_external_parents() -> None:
 
 
 def test_native_inventory_does_not_require_syntactic_but_unbuilt_ancestors() -> None:
-    assert release._parse_session_inventory(
+    assert release.parse_session_inventory(
         "HOL\nSelected_Check\n", ("Selected_Check",)
     ) == ("HOL", "Selected_Check")
     try:
-        release._parse_session_inventory("HOL\n", ("Selected_Check",))
+        release.parse_session_inventory("HOL\n", ("Selected_Check",))
     except ValueError as error:
         assert "omitted requested sessions" in str(error)
     else:
@@ -201,7 +217,10 @@ def test_native_inventory_does_not_require_syntactic_but_unbuilt_ancestors() -> 
 
 
 def test_isabelle_environment_command_executes_tool_after_assignments() -> None:
-    command = release._isabelle_environment_command(
+    command = cast(
+        Callable[[str, tuple[str, ...], tuple[str, ...]], tuple[str, ...]],
+        object.__getattribute__(release, "_isabelle_environment_command"),
+    )(
         "/opt/Isabelle/bin/isabelle",
         ("ML_OPTIONS=--maxheap 4096",),
         ("sessions", "-b", "-d", "proofs/isabelle", "Selected_Check"),
@@ -221,7 +240,7 @@ def test_isabelle_environment_command_executes_tool_after_assignments() -> None:
 
 def test_native_build_summary_separates_rebuilds_reuse_and_failure() -> None:
     inventory = ("HOL", "HOL-Library", "Theory_Check")
-    success = release._session_build_summary(
+    success = release.session_build_summary(
         "Building HOL-Library\n"
         "Finished HOL-Library (0:00:12.50 elapsed time, 0:00:08 cpu time)\n"
         "Running Theory_Check\n"
@@ -237,7 +256,7 @@ def test_native_build_summary_separates_rebuilds_reuse_and_failure() -> None:
         "HOL-Library": 12.5,
         "Theory_Check": 3.0,
     }
-    failure = release._session_build_summary(
+    failure = release.session_build_summary(
         "Building Theory_Check ...\n"
         'Theory_Check FAILED (see also "isabelle build_log -H Error Theory_Check")\n'
         "Unfinished session(s): Theory_Check\n",
@@ -254,7 +273,7 @@ def test_native_build_summary_separates_rebuilds_reuse_and_failure() -> None:
 
 
 def test_native_build_footer_preserves_registered_at_session() -> None:
-    summary = release._session_build_summary(
+    summary = release.session_build_summary(
         "Finished at (0:00:01 elapsed time, 0:00:01 cpu time)\n"
         "Finished Unexpected_Check (0:00:02 elapsed time, 0:00:01 cpu time)\n",
         ("at",),
@@ -265,7 +284,7 @@ def test_native_build_footer_preserves_registered_at_session() -> None:
 
 
 def test_native_success_keeps_reported_elapsed_budget_failures_visible() -> None:
-    summary = release._session_build_summary(
+    summary = release.session_build_summary(
         "Finished At_Limit (0:05:00 elapsed time, 0:04:58 cpu time)\n"
         "Finished Too_Slow (0:05:00.01 elapsed time, 0:04:58 cpu time)\n",
         ("At_Limit", "Too_Slow", "Cached"),
@@ -284,7 +303,10 @@ def test_acceptance_environment_does_not_inherit_external_python_paths(
 ) -> None:
     (tmp_path / "src").mkdir()
     environment = {"PYTHONPATH": "/poisoned/original/checkout"}
-    release._acceptance_environment(tmp_path, environment)
+    cast(
+        Callable[[Path, dict[str, str]], None],
+        object.__getattribute__(release, "_acceptance_environment"),
+    )(tmp_path, environment)
     assert environment["PYTHONPATH"] == str((tmp_path / "src").resolve())
     assert environment[release.ACCEPTANCE_ROOT_ENV] == str(tmp_path.resolve())
     assert set(environment) == {
@@ -304,7 +326,7 @@ def test_phase_summary_rejects_missing_or_truncated_phase_data(tmp_path: Path) -
         {"status": "finished", "exitstatus": 0},
     ]
     path.write_text("".join(json.dumps(row) + "\n" for row in rows))
-    summary = release._phase_summary(path)
+    summary = release.phase_summary(path)
     assert summary["complete"] is True
     assert summary["slowest_test_nodes"] == [
         {"nodeid": "tests/a.py::test_a", "seconds": 0.45}
@@ -317,7 +339,7 @@ def test_phase_summary_rejects_missing_or_truncated_phase_data(tmp_path: Path) -
         + json.dumps(rows[-1])
         + "\n"
     )
-    summary = release._phase_summary(path)
+    summary = release.phase_summary(path)
     assert summary["complete"] is False
     assert summary["truncated"] is True
 
@@ -339,7 +361,7 @@ def test_phase_summary_retains_failed_test_classification_and_excerpt(
         {"status": "finished", "exitstatus": 1},
     ]
     path.write_text("".join(json.dumps(row) + "\n" for row in rows))
-    summary = release._phase_summary(path)
+    summary = release.phase_summary(path)
     assert summary["failure_report_count"] == 1
     assert summary["failure_reports"] == [
         {
@@ -417,7 +439,11 @@ def test_active_test_clamps_nested_deadline_and_restores_it_on_failure(
     monkeypatch.setenv(pytest_policy.ACTIVE_TEST_ENV, str(marker))
     monkeypatch.setenv(process_guard.DEADLINE_ENV, parent_deadline)
     monkeypatch.setenv(process_guard.MEMORY_BUDGET_ENV, str(PYTHON_MEMORY_BYTES))
-    monkeypatch.setattr(process_guard, "guard_context_is_live", lambda _env: True)
+
+    def live(_env: object) -> bool:
+        return True
+
+    monkeypatch.setattr(process_guard, "guard_context_is_live", live)
     protocol = pytest_policy.pytest_runtest_protocol(
         cast(
             pytest.Item,
@@ -431,7 +457,9 @@ def test_active_test_clamps_nested_deadline_and_restores_it_on_failure(
     marker_data = json.loads(marker.read_text(encoding="utf-8"))
     assert active_deadline <= marker_data["deadline_monotonic"]
     assert active_deadline - time.monotonic() <= PYTHON_TEST_SECONDS
-    assert runs._trusted_guard_context()
+    assert cast(
+        Callable[[], bool], object.__getattribute__(runs, "_trusted_guard_context")
+    )()
 
     with pytest.raises(RuntimeError, match="simulated test failure"):
         protocol.throw(RuntimeError("simulated test failure"))

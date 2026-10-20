@@ -15,6 +15,7 @@ from math import log2
 from pathlib import Path
 from typing import Any
 
+from devtools.benchmarks.report_schema import record, sequence
 from devtools.checks.lazy_scaling_audit import SPACE_METRICS, assess_series
 
 PHASES = (
@@ -89,10 +90,40 @@ def sampled(
     }
 
 
-def phase(row: Mapping[str, Any], name: str) -> Mapping[str, Any] | None:
-    return next(
-        (value for value in row.get("phases") or () if value["name"] == name), None
-    )
+def phase(row: Mapping[str, Any], name: str) -> Mapping[str, object] | None:
+    raw_phases: object = row.get("phases")
+    if raw_phases is None:
+        return None
+    for raw_phase in sequence(raw_phases):
+        phase_record = record(raw_phase)
+        if phase_record.get("name") == name:
+            return phase_record
+    return None
+
+
+def _work_delta(value: Mapping[str, object] | None) -> dict[str, object]:
+    if value is None:
+        return {}
+    raw_delta = value.get("work_delta")
+    return {} if raw_delta is None else record(raw_delta)
+
+
+def _counter_value(delta: Mapping[str, object], counter: str) -> int:
+    value = delta.get(counter, 0)
+    if type(value) is not int:
+        raise TypeError(f"work counter {counter!r} must be an exact integer")
+    return value
+
+
+def _optional_counter(value: Mapping[str, object] | None, field: str) -> int | None:
+    if value is None:
+        return None
+    counter = value.get(field)
+    if counter is None:
+        return None
+    if type(counter) is not int:
+        raise TypeError(f"report counter {field!r} must be an exact integer or null")
+    return counter
 
 
 def metrics(value: Mapping[str, Any] | None) -> Mapping[str, Any] | None:
@@ -107,14 +138,14 @@ def completed(value: Mapping[str, Any] | None) -> bool:
 def phase_analysis(
     rows: Sequence[Mapping[str, Any]], axis: Sequence[int], name: str
 ) -> dict[str, Any]:
-    phases = [phase(row, name) for row in rows]
+    phases: list[Mapping[str, object] | None] = [phase(row, name) for row in rows]
     reports = [metrics(value) for value in phases]
     names: set[str] = set()
     workspace_names: set[str] = set()
     roles: set[str] = set()
     for value, report in zip(phases, reports, strict=True):
         if value is not None:
-            names.update(value.get("work_delta") or {})
+            names.update(_work_delta(value))
         if report is not None:
             names.update(report["resource_work_counters"])
             workspace_names.update(report["resource_workspace_peaks"])
@@ -124,8 +155,8 @@ def phase_analysis(
         if counter.endswith("_peak") or "_peak_" in counter:
             workspace_names.add(counter)
             continue
-        values = [
-            (value.get("work_delta") or {}).get(counter, 0)
+        values: list[int | None] = [
+            _counter_value(_work_delta(value), counter)
             if value is not None and completed(value)
             else None
             for value in phases
@@ -133,7 +164,7 @@ def phase_analysis(
         work[counter] = sampled(axis, values)
         attempted[counter] = [
             (
-                (value.get("work_delta") or {}).get(counter, 0)
+                _counter_value(_work_delta(value), counter)
                 if value is not None and value.get("work_delta") is not None
                 else None
             )
@@ -152,7 +183,9 @@ def phase_analysis(
         retained[counter] = sampled(
             axis,
             [
-                value.get(counter) if value is not None and completed(value) else None
+                _optional_counter(value, counter)
+                if value is not None and completed(value)
+                else None
                 for value in phases
             ],
         )
@@ -179,7 +212,7 @@ def phase_analysis(
                 for item in report["resource_inventory"]
             ):
                 continue  # Reference-only index slots do not own node records.
-            values = []
+            role_values: list[int | None] = []
             for value, report in zip(phases, reports, strict=True):
                 records = (
                     []
@@ -196,7 +229,7 @@ def phase_analysis(
                         for row in records
                         if row["observed_nodes"] is not None or row["nodes"] > 0
                     ]
-                values.append(
+                role_values.append(
                     sum(row[unit] for row in records)
                     if value is not None
                     and completed(value)
@@ -204,7 +237,7 @@ def phase_analysis(
                     and all(row[unit] is not None for row in records)
                     else None
                 )
-            role_series[f"{role}.{unit}"] = sampled(axis, values)
+            role_series[f"{role}.{unit}"] = sampled(axis, role_values)
     categories = {
         "work": work,
         "retained": retained,
@@ -272,8 +305,10 @@ def phase_analysis(
 
 
 def analyze(reports: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    rows = [row for report in reports for row in report["rows"]]
-    groups = {}
+    rows: list[Mapping[str, Any]] = [
+        row for report in reports for row in report["rows"]
+    ]
+    groups: dict[str, dict[str, Any]] = {}
     for family in sorted({row["family"] for row in rows}):
         for series in ("temporal", "width"):
             selected = [
@@ -304,10 +339,10 @@ def analyze(reports: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
                     primitive_replay.append(None)
                 else:
                     assert repeated is not None
-                    delta = repeated["work_delta"]
+                    delta = _work_delta(repeated)
                     primitive_replay.append(
                         any(
-                            delta.get(name, 0) > 0
+                            _counter_value(delta, name) > 0
                             for name in (
                                 "primitive_transition_evaluations",
                                 "primitive_output_evaluations",
@@ -373,7 +408,9 @@ def main() -> None:
     parser.add_argument("profiles", nargs="+", type=Path)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    reports = [json.loads(path.read_text()) for path in args.profiles]
+    reports: list[Mapping[str, Any]] = [
+        record(json.loads(path.read_text())) for path in args.profiles
+    ]
     result = analyze(reports)
     result["inputs"] = [
         {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}

@@ -1,6 +1,7 @@
 """Powered sector requests must not recover an action from its endpoint."""
 
-from typing import Never
+from collections.abc import MutableMapping
+from typing import Never, cast
 
 import pytest
 
@@ -13,7 +14,7 @@ from devtools.experiments.reverse_add.tile_sector_observation import (
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
-from number_compiler.hashlife.execution.tile_scheduler import TileApplication
+from number_compiler.hashlife.execution.tile_application import TileApplication
 from number_compiler.hashlife.observation.tile_projection import (
     build_tile_projection,
     import_exact_source,
@@ -133,6 +134,9 @@ def test_powered_sector_rejects_foreign_cached_interface_binding(
             action, other_root.tile, ports, wiring
         )
         arena = application.scheduler.results
+        memo = cast(
+            MutableMapping[object, object], object.__getattribute__(arena, "_memo")
+        )
         target_key = causal_interface_key(
             PoweredResultKey(action, application.source, ports, wiring)
         )
@@ -141,22 +145,22 @@ def test_powered_sector_rejects_foreign_cached_interface_binding(
         )
         try:
             assert target_key != foreign_key
-            assert arena._memo.get(target_key) is None
+            assert memo.get(target_key) is None
             other_application.interface()
-            foreign_record = arena._memo[foreign_key]
+            foreign_record = memo[foreign_key]
             monkeypatch.setattr(TileApplication, "interface", forbidden)
             monkeypatch.setattr(TileApplication, "complete", forbidden)
             monkeypatch.setattr(application.scheduler, "complete", forbidden)
             monkeypatch.setattr(adapter, "apply_leaf", forbidden)
-            with ledger.reservation(arena._memo_owner, entries=1):
-                arena._memo[target_key] = foreign_record
+            with ledger.reservation(arena.audit_snapshot().memo_owner, entries=1):
+                memo[target_key] = foreign_record
                 try:
                     with pytest.raises(
                         ValueError, match="publication metadata was modified"
                     ):
                         observe_reverse_sector_product(application)
                 finally:
-                    arena._memo.pop(target_key)
+                    memo.pop(target_key)
         finally:
             other_application.close()
             application.close()

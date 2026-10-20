@@ -80,7 +80,7 @@ def test_seed196_whole_word_power_and_punctured_outer_ring(n: int) -> None:
 
 def test_public_word_fiber_root_rejects_bool_and_foreign_indices() -> None:
     with DoubleReverseTerm(196, 20, max_state_bits=16384) as term:
-        _owner, source = term._prepare_bank_source(max_prefix=32)
+        _owner, source = term.prepare_bank_source(max_prefix=32)
         arguments = (source.arena, source.ledger, source.scratch_owner)
         with pytest.raises(TypeError, match="exact integer"):
             word_fiber_from_root(*arguments, True)
@@ -109,15 +109,17 @@ def test_seed196_joint_square_uses_actual_midroot_not_replayed_word(
     with DoubleReverseTerm(196, 144, max_state_bits=16384) as term:
         # The genuine 16-physical-step transient must be issued once, then
         # the powered suffix is forbidden from using either scalar adapter.
-        _, pointed = term._prepare_bank_source(max_prefix=32)
+        _, pointed = term.prepare_bank_source(max_prefix=32)
         assert pointed.physical_prefix == 16
         assert pointed.f_steps == 64
 
         def forbid_scalar(*_args: object, **_kwargs: object) -> None:
             raise AssertionError("powered seed morphism replayed scalar arithmetic")
 
-        monkeypatch.setattr(type(term._adapter), "_apply_word", forbid_scalar)
-        monkeypatch.setattr(type(term._adapter), "_general_two_step", forbid_scalar)
+        monkeypatch.setattr(type(term.source_adapter), "_apply_word", forbid_scalar)
+        monkeypatch.setattr(
+            type(term.source_adapter), "_general_two_step", forbid_scalar
+        )
         start = term.temporal_seed_orbit_morphism(1)
         current = start
         for exponent in range(1, 7):

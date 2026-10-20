@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sized
 from typing import Never, cast
 
 import pytest
@@ -11,6 +12,7 @@ from devtools.experiments.reverse_add.local_interface import (
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
 from number_compiler.arithmetic.contracts.block_effect import (
     BoundarySide,
+    BoundaryState,
 )
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken, ExactSource
 from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
@@ -123,7 +125,8 @@ def test_source_cell_and_forest_local_bindings_cannot_integer_alias() -> None:
     assert codec.source_action(root) == codec.source_action(forest)
     assert codec.metrics().source_bindings == 2
     assert all(
-        type(key) in (SourceCellID, SourceForestID) for key in codec._source_actions
+        type(key) in (SourceCellID, SourceForestID)
+        for key in codec.payload_audit_snapshot().source_actions
     )
     foreign = SourceForestID(ArenaToken("foreign"), "source-forest", 0)
     with pytest.raises(ValueError):
@@ -184,7 +187,7 @@ def test_powered_local_codec_alias_does_not_imply_output_equivalence() -> None:
     exterior_right = kernel.initial(BoundarySide.RIGHT)
 
     def emitted(word: tuple[int, ...]) -> tuple[int, ...]:
-        left_states = []
+        left_states: list[BoundaryState] = []
         state = exterior_left
         for symbol in word:
             left_states.append(state)
@@ -279,7 +282,12 @@ def test_reverse_local_codec_rejects_leaf_and_parent_publication_atomically() ->
     codec = ReversePoweredLocalCodec(10, cells, ledger=ledger)
     assert_publication_refused(
         ledger,
-        (codec._nodes, codec._keys, codec._leaf_actions, codec._compose),
+        (
+            cast(Sized, codec.payload_audit_snapshot().node_backing),
+            cast(Sized, codec.payload_audit_snapshot().key_backing),
+            cast(Sized, codec.payload_audit_snapshot().leaf_backing),
+            cast(Sized, codec.payload_audit_snapshot().compose_backing),
+        ),
         lambda: codec.leaf(3),
     )
 
@@ -288,7 +296,11 @@ def test_reverse_local_codec_rejects_leaf_and_parent_publication_atomically() ->
     left, right = codec.leaf(2), codec.leaf(7)
     assert_publication_refused(
         ledger,
-        (codec._nodes, codec._keys, codec._compose),
+        (
+            cast(Sized, codec.payload_audit_snapshot().node_backing),
+            cast(Sized, codec.payload_audit_snapshot().key_backing),
+            cast(Sized, codec.payload_audit_snapshot().compose_backing),
+        ),
         lambda: codec.compose(left, right),
     )
 

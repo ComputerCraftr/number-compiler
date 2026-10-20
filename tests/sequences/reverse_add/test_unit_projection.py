@@ -15,7 +15,7 @@ def test_small_public_reverse_point_width_and_lowering(base: int) -> None:
             remaining, digit = divmod(remaining, base)
             reflected = reflected * base + digit
         expected += reflected
-    digits = []
+    digits: list[int] = []
     remaining = expected
     while remaining:
         remaining, digit = divmod(remaining, base)

@@ -74,7 +74,3 @@ def initialize_projected(
     values = (family, index, parameter, source_radix, descriptor, payload, metrics)
     for name, value in zip(names, values, strict=True):
         object.__setattr__(term, name, value)
-
-
-def render_symbolic(term: ProjectedNumberTerm, index_text: str) -> str:
-    return term.symbolic_expression.render(index_text)

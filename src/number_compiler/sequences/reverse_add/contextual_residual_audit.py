@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.functions.finite_function_types import FinitePort
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
@@ -9,11 +10,12 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
     FactoredFunctionID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 from number_compiler.resources.payload_contracts import (
     PayloadAuditContribution,
     PayloadAuditEntry,
 )
-from number_compiler.resources.semantic_composition_payload import _agreement
+from number_compiler.resources.semantic_composition_payload import agreement
 from number_compiler.sequences.reverse_add.active_output import PAIR
 from number_compiler.sequences.reverse_add.contextual_residual import (
     ReverseContextualResidualArena,
@@ -54,12 +56,16 @@ def audit_reverse_contextual_residual(
         or type(root) is not ReverseContextualResidualArena
     ):
         raise TypeError("contextual residual audit requires its exact ledger and arena")
-    owner = root._successors.owner
+    snapshot: OwnedMemoAuditSnapshot[
+        tuple[FactoredFunctionID, FactoredFunctionID, FinitePort, FactoredFunctionID],
+        FactoredFunctionID,
+    ] = root.successor_audit_snapshot()
+    owner = snapshot.owner
     if (
         root.ledger is not ledger
         or root.bits.ledger is not ledger
-        or root._successors.ledger is not ledger
-        or root._audit_successors is not root._successors._data
+        or snapshot.ledger is not ledger
+        or root.successor_audit_container is not snapshot.container
     ):
         return PayloadAuditContribution(invalid=(PayloadAuditEntry(owner, root),))
 
@@ -69,11 +75,18 @@ def audit_reverse_contextual_residual(
     ] = {}
     approved: list[PayloadAuditEntry] = []
     invalid: list[PayloadAuditEntry] = []
-    for key, result in root._successors.items():
+    for key, result in snapshot.payload_view.items():
         try:
-            if type(key) is not tuple or len(key) != 4:
+            if not is_exact_object_tuple(key) or len(key) != 4:
                 raise ValueError("invalid residual successor key")
             before, after, source, residual = key
+            if (
+                type(before) is not FactoredFunctionID
+                or type(after) is not FactoredFunctionID
+                or type(residual) is not FactoredFunctionID
+                or type(result) is not FactoredFunctionID
+            ):
+                raise ValueError("invalid residual function identity")
             if type(source) is not FinitePort or source.cardinality != 19:
                 raise ValueError("invalid residual source")
             source.__post_init__()
@@ -96,8 +109,8 @@ def audit_reverse_contextual_residual(
             matches: set[int] = set()
             for value, atom in atoms.items():
                 replacement = {source.variable: atom}
-                if _agreement(root.bits.functions, a, replacement, old):
-                    if not _agreement(root.bits.functions, b, replacement, new):
+                if agreement(root.bits.functions, a, replacement, old):
+                    if not agreement(root.bits.functions, b, replacement, new):
                         raise ValueError("residual successor does not commute")
                     matches.add(value)
             if not matches:
@@ -110,7 +123,7 @@ def audit_reverse_contextual_residual(
                 (PayloadAuditEntry(owner, key), PayloadAuditEntry(owner, result))
             )
     if any(len(values) != 19 for values in covered.values()):
-        invalid.append(PayloadAuditEntry(owner, root._audit_successors))
+        invalid.append(PayloadAuditEntry(owner, snapshot.container))
     return PayloadAuditContribution(tuple(approved), tuple(invalid))
 
 

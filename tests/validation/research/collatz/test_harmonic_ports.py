@@ -139,7 +139,7 @@ def test_binary_jet_identity_and_phase_units() -> None:
 
 
 def test_five_step_linear_death_does_not_kill_source_dependent_births() -> None:
-    outcomes = []
+    outcomes: list[tuple[int, ...]] = []
     for source in (1, 27):
         n = source
         combined = PrimaryJetAffineMorphism.identity(5, 32)

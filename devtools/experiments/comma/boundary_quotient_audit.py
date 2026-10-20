@@ -14,7 +14,10 @@ from typing import Literal
 
 from devtools.benchmarks.report_schema import sequence
 from devtools.experiments.comma.macro_lifting import check_macro_lifting
-from devtools.report_values import object_list, string_keyed_mapping
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_list,
+    string_keyed_mapping,
+)
 from number_compiler.sequences.comma.boundary_quotient import (
     PERIOD,
     BoundaryState,
@@ -85,10 +88,10 @@ def summarize_shards(
         ):
             raise ValueError("invalid comma audit shard bounds")
         rows = packet["rows"]
-        if not object_list(rows) or len(rows) != stop - start:
+        if not is_object_list(rows) or len(rows) != stop - start:
             raise ValueError("truncated comma audit shard")
         for expected, row in enumerate(sequence(rows), start):
-            if not object_list(row) or len(row) != 4:
+            if not is_object_list(row) or len(row) != 4:
                 raise ValueError("invalid comma audit row")
             index, children, gain, fragments = sequence(row)
             if type(index) is not int or index != expected:
@@ -100,7 +103,7 @@ def summarize_shards(
                 or fragments <= 0
             ):
                 raise ValueError("invalid comma audit construction counts")
-            if not object_list(children) or len(children) not in (0, 2):
+            if not is_object_list(children) or len(children) not in (0, 2):
                 raise ValueError("incomplete comma fork alternatives")
             state = boundary_state(index)
             alternatives = tuple(boundary_state(child) for child in children)

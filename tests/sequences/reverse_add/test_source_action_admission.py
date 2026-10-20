@@ -32,8 +32,9 @@ def test_source_admission_rejects_invalid_integer_geometry_without_mutation(
         arena.admit_source(cast(int, seed), cast(int, base))
 
     assert ledger.snapshot() == before
-    assert len(arena._sources) == 0
-    assert arena._source_authority is None
+    snapshot = arena.audit_snapshot()
+    assert not snapshot.sources.payload_view
+    assert snapshot.source_authority is None
     arena.dispose()
 
 
@@ -73,7 +74,8 @@ def test_failed_source_reservation_does_not_publish_source_authority() -> None:
     assert ledger.snapshot() == replace(
         before, counters={"reverse_source_original_digit_decodes": 3}
     )
-    assert len(arena._sources) == 0
-    assert arena._source_authority is None
+    snapshot = arena.audit_snapshot()
+    assert not snapshot.sources.payload_view
+    assert snapshot.source_authority is None
     arena.dispose()
     assert ledger.entries == ledger.nodes == 0

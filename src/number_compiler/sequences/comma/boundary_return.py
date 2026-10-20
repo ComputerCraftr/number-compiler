@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from math import gcd
-from typing import Literal, Protocol, TypeVar, cast
+from typing import Literal, Protocol, TypeVar
 
 from number_compiler.arithmetic.fields.consumer_pullback import (
     ONE as _Q_ONE,
@@ -21,11 +21,11 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
 from number_compiler.arithmetic.fields.consumer_pullback import ExactRational
 from number_compiler.resources.immutable_signature import (
     ScalarSignature,
-    matches_scalar_signature,
+    make_scalar_signature,
 )
 from number_compiler.sequences.comma.arithmetic import (
-    _sector_child_increments,
     phase_prefix_displacement,
+    sector_child_increments,
 )
 from number_compiler.sequences.comma.boundary_chart import (
     PERIOD,
@@ -33,16 +33,16 @@ from number_compiler.sequences.comma.boundary_chart import (
     chart_moves,
 )
 from number_compiler.sequences.comma.boundary_quotient import (
-    _ZERO_WEIGHT,
+    ZERO_AFFINE_WEIGHT,
     AffineWeight,
     BoundaryState,
     CompletedMacroReturn,
     MacroTemplate,
     SectorFragment,
-    _affine_component_signature,
-    _macro_template_header,
-    _sector_fragment_signature,
+    affine_component_signature,
     boundary_state_signature,
+    macro_template_header,
+    sector_fragment_signature,
 )
 
 Q = ExactRational
@@ -80,7 +80,7 @@ class _Affine:
 
     def weight(self) -> AffineWeight:
         if self.is_zero:
-            return _ZERO_WEIGHT
+            return ZERO_AFFINE_WEIGHT
         if self.slope.numerator == 0:
             return AffineWeight(0, self.offset.numerator, self.offset.denominator)
         if self.offset.numerator == 0:
@@ -167,11 +167,11 @@ def _indexed_macro(
     charge: Callable[[int], None] | None,
     charge_bits: Callable[[int], None] | None,
 ) -> MacroTemplate:
-    prefix_weights = [_ZERO_WEIGHT]
-    prefix_displacements = [_ZERO_WEIGHT]
+    prefix_weights = [ZERO_AFFINE_WEIGHT]
+    prefix_displacements = [ZERO_AFFINE_WEIGHT]
     fragment_signatures: list[tuple[object, ...]] = []
-    weight_signatures = [_affine_component_signature(_ZERO_WEIGHT)]
-    displacement_signatures = [_affine_component_signature(_ZERO_WEIGHT)]
+    weight_signatures = [affine_component_signature(ZERO_AFFINE_WEIGHT)]
+    displacement_signatures = [affine_component_signature(ZERO_AFFINE_WEIGHT)]
     total_weight = _ZERO_AFFINE
     total_displacement = _ZERO_AFFINE
     for fragment in fragments:
@@ -199,7 +199,7 @@ def _indexed_macro(
                     )
                 )
             )
-        fragment_signature = _sector_fragment_signature(fragment)
+        fragment_signature = sector_fragment_signature(fragment)
         complete_cycles = fragment.complete_cycles
         if (
             complete_cycles.numerator_scale == 0
@@ -224,8 +224,8 @@ def _indexed_macro(
         prefix_weights.append(next_weight)
         prefix_displacements.append(next_displacement)
         fragment_signatures.append(fragment_signature)
-        weight_signatures.append(_affine_component_signature(next_weight))
-        displacement_signatures.append(_affine_component_signature(next_displacement))
+        weight_signatures.append(affine_component_signature(next_weight))
+        displacement_signatures.append(affine_component_signature(next_displacement))
         if charge_bits is not None:
             charge_bits(
                 sum(
@@ -271,7 +271,7 @@ def _indexed_macro(
         tuple(prefix_displacements),
     )
     seal = (
-        _macro_template_header(template),
+        macro_template_header(template),
         tuple(fragment_signatures),
         tuple(weight_signatures),
         tuple(displacement_signatures),
@@ -303,7 +303,7 @@ class _MacroPublisher(Protocol[_MacroResult_co]):
 
 def _completed_return_header(
     completed: CompletedMacroReturn,
-) -> tuple[object, ...]:
+) -> ScalarSignature:
     if type(completed) is not CompletedMacroReturn:
         raise ValueError("comma completed return publication was altered")
     source = boundary_state_signature(completed.source)
@@ -336,37 +336,26 @@ def _completed_return_header(
         or any(fields[1] != destination for fields in child_fields)
     ):
         raise ValueError("comma fork return has malformed ordered children")
-    return (
-        id(completed),
-        id(completed.source),
-        *source,
-        outcome,
-        completed.exponent_delta,
-        destination,
-        *_affine_component_signature(completed.weight),
-        *_affine_component_signature(completed.endpoint),
-        id(children),
-        len(children),
-        *child_signatures,
+    return make_scalar_signature(
+        (
+            id(completed),
+            id(completed.source),
+            *source,
+            outcome,
+            completed.exponent_delta,
+            destination,
+            *affine_component_signature(completed.weight),
+            *affine_component_signature(completed.endpoint),
+            id(children),
+            len(children),
+            *child_signatures,
+        )
     )
 
 
-def _completed_macro_return_component_seal(
-    completed: CompletedMacroReturn,
-) -> tuple[object, ...]:
-    seal = completed._component_seal
-    if type(seal) is not tuple or len(seal) != 1:
-        raise ValueError("comma completed return has no component seal")
-    header = _completed_return_header(completed)
-    expected = seal[0]
-    if (
-        type(expected) is not tuple
-        or len(expected) != len(header)
-        or any(type(value) not in (str, int, type(None)) for value in expected)
-        or not matches_scalar_signature(header, cast(ScalarSignature, expected))
-    ):
-        raise ValueError("comma completed return was altered (snapshot mismatch)")
-    return seal
+def validate_completed_macro_return(completed: CompletedMacroReturn) -> None:
+    """Check a compact return through its owner-held immutable seal."""
+    completed.validate_component_header(_completed_return_header(completed))
 
 
 def _publish_completed_return(
@@ -531,7 +520,7 @@ def _construct_macro_with_publisher(
             digit = (-x) % 10
             if charge_bits is not None:
                 charge_bits(f.bit_length() + x.bit_length() + digit.bit_length())
-            terminal_increments = _sector_child_increments(f, digit, x)
+            terminal_increments = sector_child_increments(f, digit, x)
             if len(terminal_increments) == 2:
                 if move.fork_a != f + 1:
                     raise AssertionError(
@@ -691,7 +680,7 @@ def construct_completed_return(
 
 
 __all__ = [
-    "_completed_macro_return_component_seal",
     "construct_completed_return",
     "construct_macro",
+    "validate_completed_macro_return",
 ]

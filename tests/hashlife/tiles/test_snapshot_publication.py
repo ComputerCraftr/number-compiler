@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
@@ -13,8 +13,8 @@ from number_compiler.hashlife.tiles.tile_behavior_memo import (
 )
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.resources.ledger import LedgerSnapshot, ResourceLedger
-from tests.hashlife.tiles.test_tile_behavior_memo import _binding
-from tests.support.tile_results import _setup, fused_setup
+from tests.hashlife.tiles.test_tile_behavior_memo import behavior_binding_fixture
+from tests.support.tile_results import fused_setup, setup_tile_results
 
 
 def _assert_snapshot_failure(
@@ -27,11 +27,14 @@ def _assert_snapshot_failure(
 ) -> None:
     before = ledger.snapshot() if baseline is None else baseline
     memo, reverse, variants = (
-        dict(results._memo),
-        dict(results._reverse),
-        dict(results._variants),
+        dict(results.audit_snapshot().memo),
+        dict(results.audit_snapshot().reverse),
+        dict(results.audit_snapshot().variants),
     )
-    references, leases = dict(results.tiles._refs), dict(results.tiles._leases)
+    references, leases = (
+        dict(results.tiles.audit_snapshot().refs),
+        dict(results.tiles.audit_snapshot().leases),
+    )
 
     def fail_snapshot(*_args: object) -> Never:
         raise RuntimeError("injected reverse snapshot failure")
@@ -46,12 +49,19 @@ def _assert_snapshot_failure(
         before.nodes,
         before.inventory,
     )
-    assert (dict(results._memo), dict(results._reverse), dict(results._variants)) == (
+    assert (
+        dict(results.audit_snapshot().memo),
+        dict(results.audit_snapshot().reverse),
+        dict(results.audit_snapshot().variants),
+    ) == (
         memo,
         reverse,
         variants,
     )
-    assert (dict(results.tiles._refs), dict(results.tiles._leases)) == (
+    assert (
+        dict(results.tiles.audit_snapshot().refs),
+        dict(results.tiles.audit_snapshot().leases),
+    ) == (
         references,
         leases,
     )
@@ -71,7 +81,9 @@ def test_snapshot_failure_precedes_result_reservations(
         def operation() -> object:
             return results.publish_fused_interface(fused_key, result.outgoing)
     else:
-        ledger, _, _, results, input_lease, output_lease, key, result = _setup()
+        ledger, _, _, results, input_lease, output_lease, key, result = (
+            setup_tile_results()
+        )
 
         def operation() -> object:
             return results.publish(key, result)
@@ -87,7 +99,7 @@ def test_snapshot_failure_precedes_result_reservations(
 def test_behavior_snapshot_failure_releases_issued_reservation(
     monkeypatch: pytest.MonkeyPatch, supplied: bool
 ) -> None:
-    ledger, _adapter, results, source, key, behavior = _binding()
+    ledger, _adapter, results, source, key, behavior = behavior_binding_fixture()
     before = ledger.snapshot()
     reservation = (
         reserve_behavior_publication(results, key.request) if supplied else None
@@ -104,7 +116,7 @@ def test_behavior_snapshot_failure_releases_issued_reservation(
         )
         assert ledger.counters["future_behavior_publication_failures"] == 1
         if reservation is not None:
-            assert not reservation._open
+            assert not cast(bool, object.__getattribute__(reservation, "_open"))
             retained = ledger.entries, ledger.nodes
             reservation.close()
             assert (ledger.entries, ledger.nodes) == retained

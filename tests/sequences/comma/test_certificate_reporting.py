@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from types import MappingProxyType
+from typing import cast
 
 import pytest
 
@@ -20,6 +22,14 @@ from number_compiler.sequences.comma.future_authority import (
 )
 from number_compiler.sequences.comma.power import CommaTerm
 from tests.support.comma_future_provider_fixture import candidate_record
+
+
+def _admission_marker(generation: int) -> tuple[tuple[str, str], str]:
+    marker = cast(
+        Callable[[int], tuple[tuple[str, str], str]],
+        object.__getattribute__(certificates, "_admission_marker"),
+    )
+    return marker(generation)
 
 
 def test_unverified_report_does_no_work_or_asset_io(
@@ -111,9 +121,9 @@ def test_admitted_global_lease_marks_runtime_status_verified(
     )
     with CommaTerm(1) as term:
         store = future_provider.SemanticFutureProviderStore(term.ledger)
-        term._future_provider_store = store
+        object.__setattr__(term, "_future_provider_store", store)
         lease = store.load_record(record, charge_work=no_work_limit)
-        term._future_provider_lease = lease
+        object.__setattr__(term, "_future_provider_lease", lease)
         before = dict(term.ledger.counters)
         payload = CommaTermPayload(term)
         for _ in range(3):
@@ -142,7 +152,7 @@ def test_reporting_retains_generation_binding_without_mutating_cache(
     # This unit test checks reporting only; actual admission is covered by the
     # independent asset, forged-marker and cache-lifecycle tests.
     generation = cache.generation if shared_cache else -1
-    key, tag = certificates._admission_marker(generation)
+    key, tag = _admission_marker(generation)
     memo[key] = tag
     counters = dict(ledger.counters)
     stats = cache.stats()
@@ -206,7 +216,10 @@ def test_stream_admission_is_checked_on_first_pull(
 def test_stream_reset_rejects_before_another_digit_is_emitted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(CommaTermPayload, "require_certified", lambda _self: None)
+    def admitted_payload(_payload: CommaTermPayload) -> None:
+        return None
+
+    monkeypatch.setattr(CommaTermPayload, "require_certified", admitted_payload)
     cache = get_process_cache()
     term = CommaTerm(1)
     stream = CommaTermPayload(term).iter_digits()

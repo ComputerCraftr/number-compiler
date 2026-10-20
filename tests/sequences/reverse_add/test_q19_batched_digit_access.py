@@ -67,7 +67,8 @@ def _positions_for(
     owner: ReversePairQ19OutputOwner, occurrence: ReversePairOutputOccurrence
 ) -> tuple[int, ...]:
     width = occurrence.output_width
-    half = owner._summaries[occurrence.root].symbols
+    summary = owner.published_word_summary(occurrence.root)
+    half = summary.symbols
     candidates = [0, 1, max(0, half - 1), half, min(width - 1, half + 1), width - 1]
     if occurrence.pair_width < width:
         candidates.append(occurrence.pair_width)

@@ -41,4 +41,4 @@ def test_reverse_fused_parent_bypasses_retired_provider_and_higher_point_routes(
     )
     assert counters.get("source_image_primitive_applications", 0) == 0
     assert counters.get("provider_fused_point_evaluations", 0) == 0
-    assert workspace is term._workspace
+    assert workspace is term.published_workspace

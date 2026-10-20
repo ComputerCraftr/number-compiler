@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import cast
 
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
+from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.continuations.higher_semantic import (
     HigherSemanticArena,
 )
@@ -22,7 +24,7 @@ def valid_higher_operation(
 ) -> bool:
     """Validate one canonical operation key and its scoped result."""
     try:
-        if type(operation) is not tuple or semantics is None:
+        if not is_exact_object_tuple(operation) or semantics is None:
             return False
         tag = operation[0]
         arities = {"initial": 3, "step": 5, "emit": 6, "apply": 3, "force": 2}
@@ -41,7 +43,7 @@ def valid_higher_operation(
             arena.validate_atom(cast(RuntimeAtom, argument))
         else:
             action, side = operation[1:3]
-            semantics.schema.validate_action(action)
+            semantics.schema.validate_action(cast(FieldCellActionID, action))
             if type(side) is not int or side not in (-1, 0, 1):
                 return False
             for argument in operation[3:]:

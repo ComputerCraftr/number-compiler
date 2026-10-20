@@ -7,7 +7,7 @@ All midpoint behavior is evaluated through canonical K/U summaries.
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping, MutableSequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
@@ -32,9 +32,11 @@ from number_compiler.hashlife.execution.field_images import (
     SourceCellArena,
     SourceCellID,
 )
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
     hashlife_execution as _execution_keys,
 )
+from number_compiler.resources.stores import LedgerDict, LedgerList
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -44,9 +46,24 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
-class _GenericHigherAction:
+class GenericHigherAction:
     original: ActionProgramID
     children: tuple[FieldCellActionID, FieldCellActionID] | None
+
+
+@dataclass(frozen=True, slots=True)
+class GenericHigherActionAuditSnapshot:
+    """Read-only view of the exact stores retained by this action schema."""
+
+    ledger: ResourceLedger
+    owner: ArenaToken
+    kind: str
+    node_owner: int
+    nodes: Sequence[GenericHigherAction]
+    node_store: object
+    key_owner: int
+    keys: Mapping[ActionProgramID, int]
+    key_store: object
 
 
 class GenericHigherActionSchema:
@@ -57,17 +74,17 @@ class GenericHigherActionSchema:
     def __init__(self, runtime: DiamondRuntime) -> None:
         self.runtime, self.ledger = runtime, runtime.ledger
         self.owner = ArenaToken("generic-higher-actions")
-        source = runtime.cells.source_geometry._construction.source
+        source = runtime.cells.source_geometry.construction.source
         self._alphabet = source.base, source.blank
         prefix = f"generic-higher-actions-{len(self.ledger.inventory())}"
         self._node_owner = self.ledger.register(prefix + "-nodes", "field_cell_action")
         self._key_owner = self.ledger.register(
             prefix + "-keys", "field_action_interner"
         )
-        self._nodes: MutableSequence[_GenericHigherAction] = self.ledger.make_list(
+        self._nodes: LedgerList[GenericHigherAction] = self.ledger.make_list(
             self._node_owner,
         )
-        self._keys: MutableMapping[ActionProgramID, int] = self.ledger.make_dict(
+        self._keys: LedgerDict[ActionProgramID, int] = self.ledger.make_dict(
             self._key_owner,
         )
         self.ledger.register_container(
@@ -83,21 +100,43 @@ class GenericHigherActionSchema:
         )
         self.ledger.register_execution_root(self)
 
-    def _handle(self, local_id: int) -> FieldCellActionID:
+    def scoped_handle(self, local_id: int) -> FieldCellActionID:
         return FieldCellActionID(self.owner, self._KIND, local_id)
 
-    def _resolve(self, action: FieldCellActionID) -> _GenericHigherAction:
+    def resolve_index(self, action: FieldCellActionID) -> GenericHigherAction:
         if type(action) is not FieldCellActionID:
             raise TypeError("generic higher actions require exact scoped IDs")
         action.validate(self.owner, self._KIND, size=len(self._nodes))
         return self._nodes[action.local_id]
+
+    def handle(self, local_id: int) -> FieldCellActionID:
+        """Create a scoped handle for an already allocated local slot."""
+        return self.scoped_handle(local_id)
+
+    def resolve(self, action: FieldCellActionID) -> GenericHigherAction:
+        """Resolve one exact schema record through its live owner boundary."""
+        return self.resolve_index(action)
+
+    def audit_snapshot(self) -> GenericHigherActionAuditSnapshot:
+        """Expose the current action stores as live, read-only audit views."""
+        return GenericHigherActionAuditSnapshot(
+            self.ledger,
+            self.owner,
+            self._KIND,
+            self._node_owner,
+            self._nodes.audit_view(),
+            self._nodes,
+            self._key_owner,
+            self._keys.audit_view(),
+            self._keys,
+        )
 
     def import_action(self, root: ActionProgramID) -> FieldCellActionID:
         self.runtime.actions.resolve(root)
         found = self._keys.get(root)
         if found is not None:
             self.ledger.bump(_execution_keys.GENERIC_HIGHER_ACTION_EARLY_HITS)
-            return self._handle(found)
+            return self.scoped_handle(found)
         order: list[ActionProgramID] = []
         seen: set[ActionProgramID] = set()
         stack = [(root, False)]
@@ -117,7 +156,7 @@ class GenericHigherActionSchema:
             order.append(action)
         offset = len(self._nodes)
         planned = {action: offset + index for index, action in enumerate(order)}
-        records: list[_GenericHigherAction] = []
+        records: list[GenericHigherAction] = []
         for action in order:
             node = self.runtime.actions.resolve(action)
             children = None
@@ -127,18 +166,18 @@ class GenericHigherActionSchema:
                     self.runtime.actions.reference(node.right),
                 )
                 children = (
-                    self._handle(
+                    self.scoped_handle(
                         self._keys[original[0]]
                         if original[0] in self._keys
                         else planned[original[0]]
                     ),
-                    self._handle(
+                    self.scoped_handle(
                         self._keys[original[1]]
                         if original[1] in self._keys
                         else planned[original[1]]
                     ),
                 )
-            records.append(_GenericHigherAction(action, children))
+            records.append(GenericHigherAction(action, children))
         count = len(records)
         self.ledger.reserve_many(
             ((self._node_owner, count, count), (self._key_owner, count, 0)),
@@ -147,27 +186,27 @@ class GenericHigherActionSchema:
             self._keys[action] = len(self._nodes)
             self._nodes.append(record)
         self.ledger.bump(_execution_keys.GENERIC_HIGHER_ACTION_PUBLICATIONS, count)
-        return self._handle(self._keys[root])
+        return self.scoped_handle(self._keys[root])
 
     def validate_action(self, action: FieldCellActionID) -> None:
-        record = self._resolve(action)
+        record = self.resolve_index(action)
         self.runtime.actions.resolve(record.original)
 
     def children(
         self,
         action: FieldCellActionID,
     ) -> tuple[FieldCellActionID, FieldCellActionID] | None:
-        return self._resolve(action).children
+        return self.resolve_index(action).children
 
     def kind(
         self,
         action: FieldCellActionID,
     ) -> Literal["identity", "primitive", "compose"]:
-        kind = self.runtime.actions.resolve(self._resolve(action).original).kind
+        kind = self.runtime.actions.resolve(self.resolve_index(action).original).kind
         return "primitive" if kind == "atom" else kind
 
     def alphabet(self, action: FieldCellActionID) -> tuple[int, int]:
-        record = self._resolve(action)
+        record = self.resolve_index(action)
         node = self.runtime.actions.resolve(record.original)
         if node.kind != "identity" and (node.base, node.blank) != self._alphabet:
             raise ValueError("generic action and original source alphabets disagree")
@@ -180,7 +219,7 @@ class GenericHigherActionSchema:
         return BoundarySide(side)
 
     def _kernel(self, action: FieldCellActionID) -> PrimitiveKernel:
-        original = self._resolve(action).original
+        original = self.resolve_index(action).original
         if self.runtime.actions.resolve(original).kind != "atom":
             raise ValueError("generic primitive operation requires an atom")
         return self.runtime.kernel(original)
@@ -261,7 +300,7 @@ class GenericHigherRuntime:
         self.runtime, self.ledger = runtime, runtime.ledger
         self.schema = GenericHigherActionSchema(runtime)
         self.sources = SourceCellArena(runtime.cells.source_geometry)
-        source = runtime.cells.source_geometry._read_root
+        source = runtime.cells.source_geometry.source_root
         if source is None:
             raise ValueError("generic higher runtime requires an exact source")
         self.source = self.sources.forest(0, source.length)
@@ -368,7 +407,7 @@ class GenericHigherRuntime:
 
 def generic_higher_runtime(runtime: DiamondRuntime) -> GenericHigherRuntime:
     """Return the one per-index generic structural executor."""
-    value = getattr(runtime, "_generic_higher_runtime", None)
+    value = getattr(runtime, "generic_higher_executor", None)
     if value is None:
         if (
             runtime.ledger.max_cache_entries is not None
@@ -382,7 +421,7 @@ def generic_higher_runtime(runtime: DiamondRuntime) -> GenericHigherRuntime:
                 "generic higher runtime needs one source binding",
             )
         value = GenericHigherRuntime(runtime)
-        runtime._generic_higher_runtime = value
+        runtime.generic_higher_executor = value
     if type(value) is not GenericHigherRuntime or value.runtime is not runtime:
         raise ValueError("generic higher runtime binding is invalid")
     return value

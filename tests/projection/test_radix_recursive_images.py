@@ -1,5 +1,6 @@
 """Recursive radix images keep stage identity separate from exact leaf blocks."""
 
+from collections.abc import MutableSequence
 from typing import cast
 
 import pytest
@@ -71,7 +72,7 @@ def test_division_consumer_power_is_canonical_logarithmic_and_scoped() -> None:
     powered = arena.power(257)
     assert arena.resolve(powered).exponent == 257
     assert arena.power(257) == powered
-    assert len(arena._nodes) <= 2 * (257).bit_length() + 1
+    assert len(arena.audit_snapshot().nodes) <= 2 * (257).bit_length() + 1
     foreign = RadixDivisionActionArena(ResourceLedger(), 3)
     for invalid in (
         foreign.primitive,
@@ -89,7 +90,10 @@ def test_radix_action_semantic_records_are_append_only_and_remain_auditable() ->
     arena = RadixDivisionActionArena(ledger, 3)
     assert audit_registered_payloads(ledger).forbidden_future_payloads == 0
     with pytest.raises(TypeError, match="append-only"):
-        arena._nodes[0] = RadixDivisionAction(5, 1)
+        cast(
+            MutableSequence[RadixDivisionAction],
+            object.__getattribute__(arena, "_nodes"),
+        )[0] = RadixDivisionAction(5, 1)
     assert audit_registered_payloads(ledger).forbidden_future_payloads == 0
 
 
@@ -155,9 +159,9 @@ def test_radix_projection_consumes_sealed_provider_without_public_term_replay(
     term = PoweredCollatzTerm(140137, 11)
     expected = collatz_radix_digit(term, radix, 2)
     term = PoweredCollatzTerm(140137, 11)
-    monkeypatch.setattr(
-        PoweredCollatzTerm,
-        "digit",
-        lambda *_args: (_ for _ in ()).throw(AssertionError("public digit replay")),
-    )
+
+    def forbidden(*_args: object) -> int:
+        raise AssertionError("public digit replay")
+
+    monkeypatch.setattr(PoweredCollatzTerm, "digit", forbidden)
     assert collatz_radix_digit(term, radix, 2) == expected

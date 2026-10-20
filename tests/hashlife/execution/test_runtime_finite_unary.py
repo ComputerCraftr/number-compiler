@@ -35,8 +35,9 @@ from number_compiler.hashlife.execution.field_images import SourceCellArena
 from number_compiler.resources.higher_value_record_audit import (
     valid_runtime_value_record,
 )
+from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
-from tests.support.reverse_higher_runtime import _fixture
+from tests.support.reverse_higher_runtime import reverse_higher_fixture
 
 
 def _two_unary_fixture() -> tuple[
@@ -47,7 +48,7 @@ def _two_unary_fixture() -> tuple[
     HigherSummaryID,
     HigherSummaryID,
 ]:
-    _, primitive, semantics, runtime, _, _, sources, _ = _fixture((0, 10))
+    _, primitive, semantics, runtime, _, _, sources, _ = reverse_higher_fixture((0, 10))
     first = runtime.summaries.runtime_unary(primitive, sources.intern(0, 0), 1)
     second = runtime.summaries.runtime_unary(primitive, sources.intern(1, 0), 1)
     return primitive, semantics, runtime, sources, first, second
@@ -71,7 +72,7 @@ def _ordered_unary_fixture() -> tuple[
 
 
 def test_equal_complete_primitive_transfers_share_one_runtime_summary() -> None:
-    _, primitive, _, runtime, _, _, sources, _ = _fixture((0, 1))
+    _, primitive, _, runtime, _, _, sources, _ = reverse_higher_fixture((0, 1))
     first = runtime.summaries.runtime_unary(primitive, sources.intern(0, 0), 1)
     alias = runtime.summaries.runtime_unary(primitive, sources.intern(1, 0), 1)
 
@@ -79,11 +80,11 @@ def test_equal_complete_primitive_transfers_share_one_runtime_summary() -> None:
     record = runtime.summaries.runtime_unary_record(first)
     assert isinstance(record.recipe, UnaryFinite)
     assert record.recipe.outputs == (1, 1, 4, 1, 4)
-    assert len(runtime.summaries._runtime_bindings) == 2
+    assert len(runtime.summaries.audit_snapshot().runtime_bindings) == 2
 
 
 def test_equal_observed_exit_does_not_alias_a_different_complete_transfer() -> None:
-    _, primitive, _, runtime, _, _, sources, _ = _fixture((0, 9))
+    _, primitive, _, runtime, _, _, sources, _ = reverse_higher_fixture((0, 9))
     constant = runtime.summaries.runtime_unary(primitive, sources.intern(0, 0), 1)
     identity = runtime.summaries.runtime_unary(primitive, sources.intern(1, 0), 1)
     constant_record = runtime.summaries.runtime_unary_record(constant)
@@ -177,7 +178,7 @@ def test_normalized_finite_composition_matches_unreduced_spatial_semantics(
     if reverse:
         first, second = second, first
     normalized = runtime.summaries.combine_runtime_unary((first, second))
-    baseline = runtime.summaries._intern(
+    baseline = runtime.summaries.intern_summary(
         RuntimeUnarySummary(
             primitive,
             1,
@@ -205,12 +206,14 @@ def test_normalized_finite_composition_matches_unreduced_spatial_semantics(
 def test_runtime_temporal_spatial_interchange_matches_unreduced_baseline(
     side: int,
 ) -> None:
-    actions, primitive, semantics, runtime, _, _, sources, _ = _fixture((7, 18))
+    actions, primitive, semantics, runtime, _, _, sources, _ = reverse_higher_fixture(
+        (7, 18)
+    )
     temporal = actions.compose(primitive, primitive)
     first = runtime.summaries.runtime_unary(temporal, sources.intern(0, 0), side)
     second = runtime.summaries.runtime_unary(temporal, sources.intern(1, 0), side)
     normalized = runtime.summaries.combine_runtime_unary((first, second))
-    baseline = runtime.summaries._intern(
+    baseline = runtime.summaries.intern_summary(
         RuntimeUnarySummary(
             temporal,
             side,
@@ -243,10 +246,12 @@ def test_runtime_temporal_spatial_interchange_matches_unreduced_baseline(
 def test_runtime_unary_rejects_numeric_foreign_and_wrong_side_aliases_atomically() -> (
     None
 ):
-    _, primitive, semantics, runtime, _, _, sources, _ = _fixture((7, 9))
+    _, primitive, semantics, runtime, _, _, sources, _ = reverse_higher_fixture((7, 9))
     left = runtime.summaries.runtime_unary(primitive, sources.intern(0, 0), 0)
     right = runtime.summaries.runtime_unary(primitive, sources.intern(0, 0), 1)
-    _, foreign_action, _, foreign_runtime, _, _, foreign_sources, _ = _fixture((7,))
+    _, foreign_action, _, foreign_runtime, _, _, foreign_sources, _ = (
+        reverse_higher_fixture((7,))
+    )
     foreign = foreign_runtime.summaries.runtime_unary(
         foreign_action,
         foreign_sources.intern(0, 0),
@@ -273,7 +278,9 @@ def test_runtime_unary_rejects_numeric_foreign_and_wrong_side_aliases_atomically
 
 @pytest.mark.parametrize("side", (0, 1))
 def test_temporal_context_parent_and_binding_publish_atomically(side: int) -> None:
-    actions, primitive, semantics, runtime, _, _, sources, _ = _fixture((7, 18))
+    actions, primitive, semantics, runtime, _, _, sources, _ = reverse_higher_fixture(
+        (7, 18)
+    )
     summaries = runtime.summaries
     temporal = actions.compose(primitive, primitive)
     first = summaries.runtime_unary(temporal, sources.intern(0, 0), side)
@@ -286,10 +293,11 @@ def test_temporal_context_parent_and_binding_publish_atomically(side: int) -> No
     summaries.combine_runtime_unary((a.forward, b.forward))
     summaries.combine_runtime_unary((b.opposite, a.opposite))
     before = semantics.ledger.snapshot()
+    snapshot = summaries.audit_snapshot()
     populations = (
-        len(summaries._nodes),
-        len(summaries._keys),
-        len(summaries._runtime_compositions),
+        len(snapshot.nodes),
+        len(snapshot.keys),
+        len(snapshot.runtime_compositions),
     )
     semantics.ledger.max_cache_entries = before.entries + 4
     with pytest.raises(BlockContextBudgetExceeded):
@@ -297,11 +305,11 @@ def test_temporal_context_parent_and_binding_publish_atomically(side: int) -> No
     after = semantics.ledger.snapshot()
     assert (after.nodes, after.entries) == (before.nodes, before.entries)
     assert (
-        len(summaries._nodes),
-        len(summaries._keys),
-        len(summaries._runtime_compositions),
+        len(summaries.audit_snapshot().nodes),
+        len(summaries.audit_snapshot().keys),
+        len(summaries.audit_snapshot().runtime_compositions),
     ) == populations
-    assert (first, second) not in summaries._runtime_compositions
+    assert (first, second) not in summaries.audit_snapshot().runtime_compositions
     semantics.ledger.max_cache_entries += 1
     parent = summaries.combine_runtime_unary((first, second))
     assert summaries.combine_runtime_unary((first, second)) == parent
@@ -309,7 +317,7 @@ def test_temporal_context_parent_and_binding_publish_atomically(side: int) -> No
 
 
 def test_primitive_tables_validate_exact_inputs_before_warm_lookup() -> None:
-    actions, primitive, semantics, _, _, _, _, _ = _fixture((7,))
+    actions, primitive, semantics, _, _, _, _, _ = reverse_higher_fixture((7,))
     tables = semantics.primitive_tables
     left_count = semantics.schema.state_count(primitive, 0)
     right_count = semantics.schema.state_count(primitive, 1)
@@ -317,7 +325,7 @@ def test_primitive_tables_validate_exact_inputs_before_warm_lookup() -> None:
     tables.step(primitive, 0, 0, 0)
     tables.emit(primitive, 0, 0, 0)
     composed = actions.compose(primitive, primitive)
-    _foreign_actions, foreign, *_ = _fixture((7,))
+    _foreign_actions, foreign, *_ = reverse_higher_fixture((7,))
     before = semantics.ledger.snapshot()
 
     for side, state, symbol in (
@@ -368,7 +376,9 @@ def test_primitive_tables_validate_exact_inputs_before_warm_lookup() -> None:
 
 
 def test_runtime_record_audit_rejects_numeric_aliases_and_incomplete_tables() -> None:
-    actions, primitive, semantics, runtime, _, _, sources, _ = _fixture((7,))
+    actions, primitive, semantics, runtime, _, _, sources, _ = reverse_higher_fixture(
+        (7,)
+    )
     temporal = actions.compose(primitive, primitive)
     values = semantics.runtime_values
     domain = semantics.schema.state_count(primitive, 1)
@@ -419,11 +429,13 @@ def test_production_collatz_shares_one_tile_execution_authority() -> None:
     )
     term = PoweredCollatzTerm(27, 8)
     assert term.digit(0) in (0, 1)
-    workspace = term._source_image()
+    workspace = term.source_image()
     scheduler = workspace.scheduler
-    core = scheduler._source_image_core()
-    assert scheduler._source_only
-    assert core._adapters == {(workspace.family, workspace.semantic_version): workspace}
+    core = scheduler.source_image_core()
+    assert scheduler.is_source_only
+    assert core.audit_snapshot().adapters == {
+        (workspace.family, workspace.semantic_version): workspace
+    }
     view = core.view(workspace.root_image)
     assert view.binding.source == workspace.root_source
     assert view.binding.action == workspace.root_action
@@ -453,7 +465,12 @@ def test_composition_inventory_rejects_wrong_same_interface_result() -> None:
     # Check the retained generic summary owner, without whitelisting the fixture.
     clean = audit_higher_payloads(semantics.ledger)
     assert not clean.invalid
-    runtime.summaries._runtime_compositions[(first, second)] = reverse
+    summary_snapshot = runtime.summaries.audit_snapshot()
+    runtime_compositions = cast(
+        LedgerDict[tuple[HigherSummaryID, HigherSummaryID], HigherSummaryID],
+        summary_snapshot.runtime_composition_store,
+    )
+    runtime_compositions[(first, second)] = reverse
     damaged = audit_higher_payloads(semantics.ledger)
     assert damaged.invalid
 
@@ -465,7 +482,7 @@ def test_temporal_leaf_publishes_complete_parent_for_warm_reuse(
         evaluate_temporal_leaf,
     )
 
-    actions, primitive, semantics, *_ = _fixture()
+    actions, primitive, semantics, *_ = reverse_higher_fixture()
     action = actions.compose(primitive, primitive)
     left = evaluate_operation(semantics, "initial", action, 0, ())
     right = evaluate_operation(semantics, "initial", action, 1, ())

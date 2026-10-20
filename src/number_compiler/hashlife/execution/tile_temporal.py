@@ -69,7 +69,7 @@ def complete_temporal(
                 if children is None:
                     values.append(
                         own(
-                            scheduler._complete_direct(
+                            scheduler.complete_direct(
                                 key,
                                 checked_miss=True,
                             )

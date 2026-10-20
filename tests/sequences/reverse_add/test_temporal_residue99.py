@@ -29,7 +29,7 @@ def _reverse(value: int) -> int:
 
 def _trace(seed: int, duration: int) -> tuple[list[int], tuple[int, ...]]:
     values = [seed]
-    growth = []
+    growth: list[int] = []
     for _ in range(duration):
         src = values[-1]
         nxt = src + _reverse(src)
@@ -179,9 +179,9 @@ def test_seed_term_mod99_does_not_construct_workspace(
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("scalar congruence opened the physical Q19 publisher")
 
-    monkeypatch.setattr(ReverseAddPoweredTerm, "_source_workspace", forbidden)
+    monkeypatch.setattr(ReverseAddPoweredTerm, "source_workspace", forbidden)
     term = ReverseAddPoweredTerm(196, 10**50)
     got = term.temporal_residue99()
     assert got.target_mod99 == 11 * pow(2, 10**50 - 3, 99) % 99
-    assert term._workspace is None
+    assert term.published_workspace is None
     assert term.resource_ledger.entries == term.resource_ledger.nodes == 0

@@ -232,7 +232,7 @@ def _expanded_saturated_support(
             law_cycle = workspace.law.cycle
             if law_cycle is None or not source.exact:
                 raise ValueError("saturated cycle requires an exact cycle law")
-            source_value = workspace._source_value(source)
+            source_value = workspace.source_value(source)
             numerator = (
                 prefix_node.transfer.upper * source_value + prefix_node.transfer.offset
             )
@@ -252,7 +252,7 @@ def _expanded_saturated_support(
                 cycle.delta,
                 cycle.minimum,
             )
-            tail_id = workspace._append_support(
+            tail_id = workspace.append_support(
                 DyadicReturnSupportRecord(
                     tail_width,
                     low_bits(entry_value, tail_width),
@@ -271,7 +271,7 @@ def _expanded_saturated_support(
             safety_delta, safety_minimum = compose_prefix_safety_values(
                 prefix_node.delta, prefix_node.minimum, cycle.delta, cycle.minimum
             )
-            completed_id = workspace._append_support(
+            completed_id = workspace.append_support(
                 DyadicReturnSupportRecord(
                     summary.width,
                     summary.residue,
@@ -289,7 +289,7 @@ def _expanded_saturated_support(
         if not transfer_matches and summary.transfer.upper == 0 and source.exact:
             # A constant published image denotes this exact occurrence only.
             # The expanded affine cylinder may act differently on other lifts.
-            source_value = workspace._source_value(source)
+            source_value = workspace.source_value(source)
             numerator = (
                 completed.transfer.upper * source_value + completed.transfer.offset
             )
@@ -321,7 +321,7 @@ def _expanded_saturated_support(
         workspace.bump_metric("saturated_support_expansions")
         return completed_id
     except BaseException:
-        workspace._rollback_new_publications(support_start, image_start)
+        workspace.rollback_new_publications(support_start, image_start)
         raise
 
 

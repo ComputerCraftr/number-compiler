@@ -2,16 +2,49 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Protocol, cast
+
 import pytest
 
 from devtools.verification.comma_b1_source_continuation import production_semantic_owner
 from number_compiler.arithmetic.functions.semantic_functions import (
     SemanticFunctionArena,
 )
+from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.sequences.comma import return_scope_observer, semantic_power
 from number_compiler.sequences.comma.domain import canonical_offset_orbit
 from number_compiler.sequences.comma.semantic_continuation import SemanticContinuation
 from number_compiler.sequences.comma.semantic_power import SymbolicDecadePowers
+
+
+class _PowerBinding(Protocol):
+    labels: tuple[int, ...]
+
+
+def _memo(powers: SymbolicDecadePowers, attribute: str) -> OwnedMemo[object, object]:
+    return cast(OwnedMemo[object, object], object.__getattribute__(powers, attribute))
+
+
+def _power_labels(
+    powers: SymbolicDecadePowers, level: int, root: int
+) -> tuple[int, ...]:
+    view: Mapping[object, object] = _memo(powers, "_powers").audit_payload_view()
+    return cast(_PowerBinding, view[level, root]).labels
+
+
+def _workspace_owner(powers: SymbolicDecadePowers) -> int:
+    owner = object.__getattribute__(powers, "_composition_workspace_owner")
+    if type(owner) is not int:
+        raise AssertionError("composition workspace owner is not an integer")
+    return owner
+
+
+def _lifecycle_flag(powers: SymbolicDecadePowers, name: str) -> bool:
+    value = object.__getattribute__(powers, name)
+    if type(value) is not bool:
+        raise AssertionError("symbolic power lifecycle flag is not Boolean")
+    return value
 
 
 def _reference(
@@ -66,13 +99,13 @@ def test_completed_columns_square_without_point_replay(
         assert powers.evaluate(5, 24, 42) == ("stop", 9 * 26 + 3)
         powers.construct(5)
         b32_offsets = tuple(
-            label - 46 for root in range(46) for label in powers._powers[5, root].labels
+            label - 46 for root in range(46) for label in _power_labels(powers, 5, root)
         )
         assert b32_offsets
         assert all(
             label >= 46
             for root in range(46)
-            for label in powers._powers[5, root].labels
+            for label in _power_labels(powers, 5, root)
         )
         assert max(offset // 9 for offset in b32_offsets) == 26
         publications = view.ledger.counters["comma_power_publications"]
@@ -139,13 +172,14 @@ def test_failed_symbolic_power_close_is_fail_closed_and_retryable(
     baseline_nodes = view.ledger.nodes
     powers = SymbolicDecadePowers(view)
     owners = (
-        powers._input_templates.owner,
-        powers._powers.owner,
-        powers._columns.owner,
-        powers._base.owner,
-        powers._composition_workspace_owner,
+        _memo(powers, "_input_templates").owner,
+        _memo(powers, "_powers").owner,
+        _memo(powers, "_columns").owner,
+        _memo(powers, "_base").owner,
+        _workspace_owner(powers),
     )
-    dispose_powers = powers._powers.dispose
+    power_memo = _memo(powers, "_powers")
+    dispose_powers = power_memo.dispose
     attempts = 0
 
     def fail_once() -> None:
@@ -155,13 +189,13 @@ def test_failed_symbolic_power_close_is_fail_closed_and_retryable(
             raise RuntimeError("power memo cleanup failed")
         dispose_powers()
 
-    monkeypatch.setattr(powers._powers, "dispose", fail_once)
+    monkeypatch.setattr(power_memo, "dispose", fail_once)
     with pytest.raises(RuntimeError, match="power memo cleanup failed"):
         powers.close()
 
     assert attempts == 1
-    assert powers._closing
-    assert not powers._closed
+    assert _lifecycle_flag(powers, "_closing")
+    assert not _lifecycle_flag(powers, "_closed")
     assert view.ledger.inventory_owner(owners[0]).disposed
     assert not view.ledger.inventory_owner(owners[1]).disposed
     assert all(view.ledger.inventory_owner(owner).disposed for owner in owners[2:])
@@ -172,8 +206,8 @@ def test_failed_symbolic_power_close_is_fail_closed_and_retryable(
 
     monkeypatch.undo()
     powers.close()
-    assert powers._closed
-    assert not powers._closing
+    assert _lifecycle_flag(powers, "_closed")
+    assert not _lifecycle_flag(powers, "_closing")
     assert all(view.ledger.inventory_owner(owner).disposed for owner in owners)
     assert view.ledger.entries == baseline_entries
     assert view.ledger.nodes == baseline_nodes
@@ -186,7 +220,7 @@ def test_symbolic_power_context_disposes_its_workspace_on_failure() -> None:
         pytest.raises(ValueError, match="synthetic consumer failure"),
         SymbolicDecadePowers(view) as powers,
     ):
-        owner = powers._composition_workspace_owner
+        owner = _workspace_owner(powers)
         raise ValueError("synthetic consumer failure")
     assert owner is not None
     with pytest.raises(RuntimeError, match="disposed"):

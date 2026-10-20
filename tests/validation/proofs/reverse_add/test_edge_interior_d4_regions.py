@@ -68,7 +68,7 @@ def _literal_step(
     pair: list[int], base: int = 10
 ) -> tuple[list[int], list[int], list[int]]:
     carry = [0]
-    digits = []
+    digits: list[int] = []
     for coefficient in pair:
         next_carry, digit = divmod(coefficient + carry[-1], base)
         carry.append(next_carry)
@@ -132,7 +132,7 @@ def test_d4_regions_and_arrows_match_four_independent_forward_steps(
     )
     source = [edge, *([2 * interior] * (extent - 2)), edge]
     pair = source
-    steps = []
+    steps: list[tuple[list[int], list[int], list[int]]] = []
     for _ in range(4):
         step = _literal_step(pair)
         steps.append(step)
@@ -243,7 +243,7 @@ def test_d4_construction_never_observes_a_future_coefficient(
 
     monkeypatch.setattr(SymbolicInnovationArena, "project_cyclotomic", forbidden)
     monkeypatch.setattr(FiniteCarryRegion, "contains", forbidden)
-    counts = []
+    counts: list[int] = []
     for extent in (3, 17, 10**6):
         arena = SymbolicInnovationArena(ResourceLedger())
         clause = construct_edge_interior_d4(

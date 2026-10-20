@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from typing import cast
 
 import pytest
 
@@ -133,7 +134,20 @@ def test_public_composite_poison_checks_d8_after_source_bound_prefix(
 ) -> None:
     route: list[BoundaryPathKind | str] = []
     original_selector = select_border_return_macro
-    original_transition = D8TemporalTable._transition
+    original_transition = cast(
+        Callable[
+            ...,
+            tuple[
+                D8CylinderFrame,
+                int,
+                int,
+                int,
+                CollatzTapeWidthSummary | None,
+                DyadicTerminalFieldAction | None,
+            ],
+        ],
+        object.__getattribute__(D8TemporalTable, "_transition"),
+    )
 
     def record_border(
         source: int,

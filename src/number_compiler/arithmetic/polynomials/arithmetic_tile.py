@@ -23,6 +23,7 @@ from number_compiler.arithmetic.carry.carry_normalization import (
     normalize_cyclic_block,
     normalize_negacyclic_block,
 )
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.arithmetic.fields.morphism_core import (
     QuadraticPower,
     binary_power,
@@ -68,7 +69,7 @@ class SquarePrecisionMap:
 
     def __post_init__(self) -> None:
         if (
-            not isinstance(self.bits, int)
+            not is_runtime_instance(self.bits, int)
             or isinstance(self.bits, bool)
             or self.bits <= 0
         ):
@@ -245,7 +246,7 @@ class SquareTileAction:
         return self.endpoint_power.depth
 
     def then(self, other: SquareTileAction) -> SquareTileAction:
-        if not isinstance(other, SquareTileAction):
+        if not is_runtime_instance(other, SquareTileAction):
             raise TypeError(type(other))
         if self.family != other.family:
             raise ValueError((self.family, other.family))

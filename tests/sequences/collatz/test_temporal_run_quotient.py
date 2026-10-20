@@ -64,11 +64,14 @@ def test_large_source_d8_batch_materializes_its_high_fiber_once(
 ) -> None:
     from number_compiler.sequences.collatz.temporal_dyadic import D8CylinderFrame
 
-    # This regression is specifically about the D8 materialization route; the
-    # independently tested source-certified chain may now own this same seed.
+    # Decline the independent source-certified route so this test stays focused
+    # on the D8 frame materialization path.
+    def decline_chain(*_args: object, **_kwargs: object) -> None:
+        return None
+
     monkeypatch.setattr(
         "number_compiler.sequences.collatz.temporal_unified_skew_execution.consume_unified_skew_chain",
-        lambda *_args, **_kwargs: None,
+        decline_chain,
     )
 
     seed = (1 << 131_072) + 27
@@ -265,7 +268,7 @@ def test_powered_vieta_requires_natural_exact_width(symbols: object) -> None:
 def test_run_contraction_retains_scheduler_authority_and_optional_support() -> None:
     term = PoweredCollatzTerm(27, 64)
     assert term.materialize(max_bits=100) == 1619
-    workspace = term._source_image()
+    workspace = term.source_image()
     assert len(workspace.support) == 1 and workspace.support[0].saturated
     counters = term.resource_ledger.snapshot().counters
     assert counters["source_image_primitive_applications"] == 1
@@ -419,7 +422,7 @@ def test_huge_cycle_explicit_audit_and_support_only_expand_finite_prefix(
     )
     from number_compiler.resources import dyadic_return_payload_audit as payload_audit
     from number_compiler.resources.dyadic_return_balanced_audit import (
-        _balanced_saturated_audit as audit_prefix,
+        balanced_saturated_audit as audit_prefix,
     )
     from number_compiler.resources.payload_audit import audit_registered_payloads
 
@@ -440,11 +443,11 @@ def test_huge_cycle_explicit_audit_and_support_only_expand_finite_prefix(
         assert 0 < width <= 111
         return support_prefix(workspace, width, residue)
 
-    monkeypatch.setattr(payload_audit, "_balanced_saturated_audit", bounded_audit)
+    monkeypatch.setattr(payload_audit, "balanced_saturated_audit", bounded_audit)
     monkeypatch.setattr(observers, "balanced_residue_macro", bounded_support)
     term = PoweredCollatzTerm(27, 10**26)
     assert term.materialize(max_bits=8) == 4
-    workspace = term._source_image()
+    workspace = term.source_image()
     cycle = workspace.summary().cycle
     assert cycle is not None and cycle.entry_steps == 111
     report = audit_registered_payloads(term.resource_ledger)

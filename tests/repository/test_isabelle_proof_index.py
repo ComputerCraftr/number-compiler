@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import TypeGuard
+from typing import TypeGuard, cast
 
 import pytest
 
@@ -41,12 +41,14 @@ def _sample(directory: Path) -> Path:
 
 
 def _record(value: object) -> TypeGuard[dict[str, object]]:
-    return type(value) is dict and all(type(key) is str for key in value)
+    return type(value) is dict and all(
+        type(key) is str for key in cast(dict[object, object], value)
+    )
 
 
 def _record_sequence(value: object) -> TypeGuard[Sequence[dict[str, object]]]:
     if type(value) is list or type(value) is tuple:
-        return all(_record(item) for item in value)
+        return all(_record(item) for item in cast(Sequence[object], value))
     return False
 
 
@@ -539,6 +541,7 @@ def test_header_rejects_unquoted_hyphens_and_keeps_quoted_symbols() -> None:
         "Comma_Powered_Boundary",
     ],
 )
+@pytest.mark.validation
 def test_weighted_comma_ancestry_excludes_legacy_execution(
     target: str, repository_proof_graph: _RepositoryProofGraph
 ) -> None:
@@ -636,6 +639,7 @@ def test_session_dependency_closure_counts_project_parent_and_sessions_edges() -
         syntax.session_dependency_closure(sessions, ("Missing",))
 
 
+@pytest.mark.validation
 def test_collatz_hensel_owner_has_no_reverse_ancestry(
     repository_proof_graph: _RepositoryProofGraph,
 ) -> None:
@@ -648,6 +652,7 @@ def test_collatz_hensel_owner_has_no_reverse_ancestry(
     assert local["Temporal_Clock_Jumps"].parent == "Reverse_Residuals"
 
 
+@pytest.mark.validation
 def test_structural_future_instance_avoids_legacy_checked_instance(
     repository_proof_graph: _RepositoryProofGraph,
 ) -> None:
@@ -703,6 +708,7 @@ def _session_ancestors(sessions: Mapping[str, syntax.Session], target: str) -> s
         ),
     ],
 )
+@pytest.mark.validation
 def test_local_induction_does_not_require_global_rank_or_summary_instances(
     target: str,
     required: set[str],
@@ -722,6 +728,7 @@ def test_local_induction_does_not_require_global_rank_or_summary_instances(
     )
 
 
+@pytest.mark.validation
 def test_period_inherits_checked_return_instead_of_replaying_imported_setup(
     repository_proof_graph: _RepositoryProofGraph,
 ) -> None:
@@ -739,6 +746,7 @@ def test_period_inherits_checked_return_instead_of_replaying_imported_setup(
         assert "Comma_Return_Engine.Comma_Return_Engine" in imports
 
 
+@pytest.mark.validation
 def test_native_release_inherits_completed_provider_without_legacy_replay(
     repository_proof_graph: _RepositoryProofGraph,
 ) -> None:
@@ -847,6 +855,7 @@ def test_comma_global_release_endpoints_use_strict_native_dependency_audit() -> 
     assert "comma_future_concrete_near_child_unranked" not in future_release_ml
 
 
+@pytest.mark.validation
 def test_direct_summary_semantics_does_not_depend_on_fuel_or_concrete_tables(
     repository_proof_graph: _RepositoryProofGraph,
 ) -> None:
@@ -938,6 +947,7 @@ def test_direct_summary_semantics_does_not_depend_on_fuel_or_concrete_tables(
         ),
     ],
 )
+@pytest.mark.validation
 def test_compact_proof_layers_reuse_owners_without_fuel_tables(
     name: str,
     parent: str,

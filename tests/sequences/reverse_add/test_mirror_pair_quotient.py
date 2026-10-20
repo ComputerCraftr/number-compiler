@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from itertools import product
 from typing import cast
 
@@ -12,6 +13,7 @@ from devtools.verification.threshold_expressions import (
     MIRROR_DOMAIN_CLASSES,
     MIRROR_DOMAIN_ROWS,
     MIRROR_PAIR_TABLE,
+    Expr,
     ThresholdExpressions,
 )
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn, value_carry_fn
@@ -22,6 +24,7 @@ from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
     decimal_normalize_cocycle,
     decimal_normalized_pair_sum,
 )
+from tests.support.private_attributes import private_test_attribute
 
 pytestmark = pytest.mark.validation
 
@@ -105,7 +108,11 @@ def test_mirror_outputs_epsilon_depends_only_on_carry_ports() -> None:
     old_parity = e.variable(2, 1)
     left_carry = e.variable(2, 2)
     right_carry = e.variable(2, 3)
-    _domain, _alpha, epsilon = context._mirror_outputs(
+    mirror_outputs = cast(
+        Callable[[Expr, Expr, Expr, Expr], tuple[Expr, Expr, Expr]],
+        private_test_attribute(context, "_mirror_outputs"),
+    )
+    _domain, _alpha, epsilon = mirror_outputs(
         alpha, old_parity, left_carry, right_carry
     )
     reachable = e.reachable((epsilon,))

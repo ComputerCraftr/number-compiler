@@ -225,7 +225,7 @@ def audit_image_binding(
         payload = joint_ports[0][1]
         if type(payload) is not tuple or payload != root._joint_action_snapshot:
             raise ValueError("Collatz joint port is not producer-issued by this root")
-        joint = CollatzJointRunAction._from_admitted_root_payload(payload)
+        joint = CollatzJointRunAction.from_admitted_root_payload(payload)
         normalized_endpoint = (
             endpoint
             if joint.phase == 0

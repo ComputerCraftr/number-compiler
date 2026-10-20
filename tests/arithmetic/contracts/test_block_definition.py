@@ -2,7 +2,9 @@
 
 import gc
 import weakref
+from collections.abc import Sequence
 from dataclasses import fields
+from typing import cast
 
 import pytest
 
@@ -44,7 +46,12 @@ def test_shared_definition_has_independent_runtime_contexts_and_readonly_semanti
     assert (
         tuple(getattr(definition, field.name) for field in fields(definition)) == before
     )
-    assert first._functional_intern[0] is not second._functional_intern[0]
+    assert (
+        cast(Sequence[object], object.__getattribute__(first, "_functional_intern"))[0]
+        is not cast(
+            Sequence[object], object.__getattribute__(second, "_functional_intern")
+        )[0]
+    )
     for name, replacement in (
         ("base", 3),
         ("blank", 7),
@@ -96,7 +103,10 @@ def test_definition_digest_collision_still_compares_complete_child_semantics(
         def digest(self) -> bytes:
             return b"x" * 32
 
-    monkeypatch.setattr(semantic_identity, "sha256", lambda _data: ConstantDigest())
+    def digest(_data: object) -> ConstantDigest:
+        return ConstantDigest()
+
+    monkeypatch.setattr(semantic_identity, "sha256", digest)
     atom = BaseBlockEffect(2)
     one = ComposedBlockDefinition(atom, atom)
     alias = ComposedBlockDefinition(BaseBlockEffect(2), BaseBlockEffect(2))

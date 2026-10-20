@@ -180,10 +180,7 @@ def project_live_pair_carries(
         if projector is not None:
             projector.close()
         if grammar is not None:
-            grammar.nodes.clear()
-            grammar._cat.clear()
-            grammar._rep.clear()
-            grammar._term.clear()
+            grammar.clear()
         ledger.release(owner, nodes=units)
         ledger.mark_disposed(owner)
 

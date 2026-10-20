@@ -58,7 +58,7 @@ def _join(before: object, after: object) -> object:
     return before + after
 
 
-def _fixture(
+def reverse_higher_fixture(
     source: tuple[int, ...] = (7, 18, 7, 19, 19, 19, 19, 19),
 ) -> tuple[
     ReverseFieldActionArena,
@@ -135,7 +135,7 @@ def _fixture(
     )
 
 
-def _macro_composer(
+def macro_composer(
     semantics: HigherSemanticArena,
     interfaces: HigherLocalInterfaceArena,
     sources: SourceCellArena,
@@ -163,7 +163,7 @@ def _macro_composer(
     return outputs, composer
 
 
-def _single_cell_fixture() -> tuple[
+def single_cell_fixture() -> tuple[
     ReverseFieldActionArena,
     FieldCellActionID,
     HigherSemanticArena,
@@ -174,7 +174,7 @@ def _single_cell_fixture() -> tuple[
     SourceForestID,
     SourceForestRecord,
 ]:
-    fixture = _fixture()
+    fixture = reverse_higher_fixture()
     forest = fixture[6].resolve_forest(fixture[7])
     assert len(forest.cells) == 1
     return (*fixture, forest)
@@ -192,7 +192,7 @@ def single_cell_summary_fixture() -> tuple[
     SourceCellID,
     HigherSummaryID,
 ]:
-    fixture = _single_cell_fixture()
+    fixture = single_cell_fixture()
     cell = fixture[8].cells[0]
     summary = fixture[3].summaries.unary(fixture[1], cell, 0)
     return (*fixture[:8], cell, summary)
@@ -213,7 +213,7 @@ def observed_macro(
     object,
     object,
 ]:
-    outputs, composer = _macro_composer(
+    outputs, composer = macro_composer(
         semantics, interfaces, sources, primitive, compiler
     )
     macro = composer.compile(binding)
@@ -238,9 +238,9 @@ def compiled_macro_fixture(
     SourceBoundHigherMacro,
 ]:
     actions, primitive, semantics, runtime, interfaces, compiler, sources, binding = (
-        _fixture(word)
+        reverse_higher_fixture(word)
     )
-    outputs, composer = _macro_composer(
+    outputs, composer = macro_composer(
         semantics, interfaces, sources, primitive, compiler
     )
     macro = composer.compile(binding)

@@ -227,7 +227,7 @@ def _decimal_sector_from_scale(value: int, scale: int, exponent: int) -> Decimal
     )
 
 
-def _large_sector_children(value: int, sector: DecimalSector) -> tuple[int, ...]:
+def large_sector_children(value: int, sector: DecimalSector) -> tuple[int, ...]:
     """Classify children from the authentic sector of ``value`` for exponent >= 2.
 
     Callers must obtain ``sector`` from :func:`decimal_sector` for this value.
@@ -235,13 +235,13 @@ def _large_sector_children(value: int, sector: DecimalSector) -> tuple[int, ...]
     """
     return tuple(
         value + increment
-        for increment in _sector_child_increments(
+        for increment in sector_child_increments(
             sector.leading, sector.digit, sector.headroom
         )
     )
 
 
-def _sector_child_increments(f: int, d: int, h: int) -> tuple[int, ...]:
+def sector_child_increments(f: int, d: int, h: int) -> tuple[int, ...]:
     """Complete ordered seam alternatives for an admitted large sector.
 
     Both literal values and symbolic Near charts consume this classifier.
@@ -270,7 +270,7 @@ def comma_children(value: int) -> tuple[int, ...]:
     """
     sector = decimal_sector(value)
     if sector.exponent >= 2:
-        return _large_sector_children(value, sector)
+        return large_sector_children(value, sector)
     digit = sector.digit
     children = tuple(
         value + 10 * digit + new_leading
@@ -394,7 +394,7 @@ def entry_headroom_from_transfer(
     """
     _validate_entry_headroom_input(leading, coordinate, residue, exponent_delta)
     _validate_cycle_transfer_binding(transfer, leading, coordinate % 10)
-    return _entry_headroom_from_validated_transfer(
+    return entry_headroom_from_validated_transfer(
         leading,
         coordinate,
         residue,
@@ -404,7 +404,7 @@ def entry_headroom_from_transfer(
     )
 
 
-def _entry_headroom_from_validated_transfer(
+def entry_headroom_from_validated_transfer(
     leading: int,
     coordinate: int,
     residue: int | CyclotomicClock,
@@ -472,7 +472,7 @@ def entry_headroom(
     """
     _validate_entry_headroom_input(leading, coordinate, residue, exponent_delta)
     transfer = cycle_transfer(leading, coordinate % 10)
-    headroom = _entry_headroom_from_validated_transfer(
+    headroom = entry_headroom_from_validated_transfer(
         leading,
         coordinate,
         residue,
@@ -483,9 +483,7 @@ def entry_headroom(
     return transfer, headroom
 
 
-def _phase_prefix_displacement_from_transfer(
-    transfer: CycleTransfer, steps: int
-) -> int:
+def phase_prefix_displacement_from_transfer(transfer: CycleTransfer, steps: int) -> int:
     """Apply an internally constructed transfer to a bounded digit tail.
 
     The public scalar wrapper below and the source-bound C1 constructor pass
@@ -515,7 +513,7 @@ def phase_prefix_displacement(leading: int, entering_digit: int, steps: int) -> 
     if type(steps) is not int or steps < 0:
         raise ValueError("invalid comma phase prefix")
     transfer = cycle_transfer(leading, entering_digit)
-    return _phase_prefix_displacement_from_transfer(transfer, steps)
+    return phase_prefix_displacement_from_transfer(transfer, steps)
 
 
 def punctured_digit_port(
@@ -737,14 +735,17 @@ __all__ = [
     "cycle_residue_period",
     "cycle_transfer",
     "decimal_sector",
+    "entry_headroom_from_validated_transfer",
     "entry_headroom",
     "entry_headroom_from_transfer",
     "is_sector9_landmine_headroom",
     "leading_digit",
     "phase_prefix_displacement",
+    "phase_prefix_displacement_from_transfer",
     "punctured_digit_port",
     "recursive_core_residue",
     "safe_complete_cycles",
+    "sector_child_increments",
 ]
 
 

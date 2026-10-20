@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.behavior.future_behavior import (
     FutureBehaviorClassID,
@@ -12,6 +13,7 @@ from number_compiler.hashlife.behavior.future_behavior import (
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.hashlife.tiles.ordered_boolean_support import OrderedBooleanSupport
+from number_compiler.hashlife.tiles.published_result import PublishedResult
 from number_compiler.hashlife.tiles.tile_boundaries import (
     EMPTY_BOUNDARY_TILES,
     BoundaryTileOperands,
@@ -106,7 +108,7 @@ class SourceRootMatchKey:
 
 
 @dataclass(frozen=True, slots=True)
-class RootMatchResult:
+class RootMatchResult(PublishedResult):
     """First mismatch geometry for the two alternating root phases."""
 
     level: int
@@ -146,7 +148,7 @@ class NormalizedRegionKey:
 
 
 @dataclass(frozen=True, slots=True)
-class NormalizedRegionResult:
+class NormalizedRegionResult(PublishedResult):
     """Sealed canonical exact content for one clipped tile occurrence."""
 
     view: BoundaryTileView
@@ -174,7 +176,7 @@ class BoundaryConcatKey:
 
 
 @dataclass(frozen=True, slots=True)
-class BoundaryConcatResult:
+class BoundaryConcatResult(PublishedResult):
     """Sealed canonical content produced by concatenating two exact views."""
 
     view: BoundaryTileView
@@ -206,7 +208,7 @@ class CausalInterfaceKey:
 
 
 @dataclass(frozen=True, slots=True)
-class CompletedInterfaceResult:
+class CompletedInterfaceResult(PublishedResult):
     """Bounded causal behavior with no exact final-output tile."""
 
     interface: LocalInterfaceID
@@ -246,7 +248,7 @@ class CompletedInterfaceResult:
         if self.physical_ticks < 0 or self.event_weight < 0:
             raise ValueError("completed interface weights cannot be negative")
         if self.physical_support is not None:
-            if not isinstance(self.physical_support, OrderedBooleanSupport):
+            if not is_runtime_instance(self.physical_support, OrderedBooleanSupport):
                 raise TypeError("completed interface has another shadow-support sort")
             self.physical_support.owner.validate(self.physical_support)
             if self.physical_support.ticks and (
@@ -309,7 +311,7 @@ class BehaviorBindingKey:
 
 
 @dataclass(frozen=True, slots=True)
-class CompletedBehaviorClassification:
+class CompletedBehaviorClassification(PublishedResult):
     behavior: FutureBehaviorClassID
     _publication_owner: object | None = None
     _publication_snapshot: tuple[object, ...] | None = None
@@ -420,7 +422,7 @@ class CompletedResult:
         ):
             raise TypeError("observed input ports require exact immutable integers")
         if self.physical_support is not None:
-            if not isinstance(self.physical_support, OrderedBooleanSupport):
+            if not is_runtime_instance(self.physical_support, OrderedBooleanSupport):
                 raise TypeError("completed result has another shadow-support sort")
             self.physical_support.owner.validate(self.physical_support)
 
@@ -578,7 +580,8 @@ def execution_request_snapshot(key: object) -> tuple[object, ...]:
 def _reverse_output_snapshot(value: object) -> tuple[object, ...] | None:
     if value is None:
         return None
-    left, right = getattr(value, "left", None), getattr(value, "right", None)
+    left: object = getattr(value, "left", None)
+    right: object = getattr(value, "right", None)
     return (
         type(value),
         type(left),

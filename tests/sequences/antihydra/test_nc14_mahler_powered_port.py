@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.sequences.antihydra.mahler_action import associated_action
 from number_compiler.sequences.antihydra.mahler_source_actions import (
@@ -34,7 +36,7 @@ def test_radix_ports_are_optional_and_share_admitted_mahler_extent() -> None:
     assert isinstance(packet, dict)
     assert packet["source_extent"] == result.returns
     assert packet["base"] == 6
-    difference = packet["dyadic_block_difference"]
+    difference = cast(dict[object, object], packet)["dyadic_block_difference"]
     assert isinstance(difference, tuple)
     expected_power = pow(3, result.returns, 6**4)
     assert difference == ((8 * expected_power) % (6**4), 3, expected_power)

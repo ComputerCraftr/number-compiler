@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from math import gcd
 from typing import Literal, cast
 
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.resources.immutable_signature import (
     ScalarSignature,
     matches_scalar_signature,
@@ -161,7 +162,7 @@ def boundary_state_signature(state: BoundaryState) -> tuple[str, int, int]:
     return kind, a, residue
 
 
-def _affine_weight_signature(weight: AffineWeight) -> tuple[int, int, int]:
+def affine_weight_signature(weight: AffineWeight) -> tuple[int, int, int]:
     """Return exact affine scalars from the value type's owning module."""
     if type(weight) is not AffineWeight:
         raise ValueError("macro affine descriptor changed after construction")
@@ -178,7 +179,7 @@ def _affine_weight_signature(weight: AffineWeight) -> tuple[int, int, int]:
     return scale, offset, denominator
 
 
-_ZERO_WEIGHT = AffineWeight(0, 0, 1)
+ZERO_AFFINE_WEIGHT = AffineWeight(0, 0, 1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +214,18 @@ class MacroTemplate:
         hash=False,
     )
 
+    def owns_component_seal(self, expected: object) -> bool:
+        """Check seal identity without exposing the issuer-owned tuple."""
+        return type(self._component_seal) is tuple and self._component_seal is expected
+
+    def component_seal_snapshot(self) -> tuple[object, ...]:
+        """Return the immutable component facts after authenticating their owner."""
+        seal = self._component_seal
+        if seal is None:
+            raise ValueError("comma boundary template has no component seal")
+        validate_macro_component_header(self, seal)
+        return seal
+
     def point(
         self,
         exponent: int,
@@ -232,7 +245,7 @@ class MacroTemplate:
         if seal is not None:
             if charge is not None:
                 charge(1)
-            _validate_macro_component_header(self, seal, charge_bits=charge_bits)
+            validate_macro_component_header(self, seal, charge_bits=charge_bits)
 
         def read_component(kind: str, index: int, *, precharged: bool = False) -> None:
             if validate_read is not None:
@@ -240,7 +253,7 @@ class MacroTemplate:
             elif charge is not None and not precharged:
                 charge(1)
             if seal is not None:
-                _validate_macro_component_read(
+                validate_macro_component_read(
                     self,
                     seal,
                     kind,
@@ -343,11 +356,11 @@ class MacroTemplate:
         )
 
 
-def _affine_component_signature(weight: AffineWeight) -> tuple[int, int, int, int]:
-    return (id(weight), *_affine_weight_signature(weight))
+def affine_component_signature(weight: AffineWeight) -> tuple[int, int, int, int]:
+    return (id(weight), *affine_weight_signature(weight))
 
 
-def _sector_fragment_signature(fragment: SectorFragment) -> tuple[int, ...]:
+def sector_fragment_signature(fragment: SectorFragment) -> tuple[int, ...]:
     if type(fragment) is not SectorFragment:
         raise ValueError("macro sector fragment changed after construction")
     scalars = (
@@ -365,7 +378,7 @@ def _sector_fragment_signature(fragment: SectorFragment) -> tuple[int, ...]:
         id(fragment),
         fragment.leading,
         fragment.entering_digit,
-        *_affine_component_signature(fragment.complete_cycles),
+        *affine_component_signature(fragment.complete_cycles),
         fragment.period,
         fragment.displacement,
         fragment.maximum_guard,
@@ -374,7 +387,7 @@ def _sector_fragment_signature(fragment: SectorFragment) -> tuple[int, ...]:
     )
 
 
-def _macro_template_header(template: MacroTemplate) -> tuple[object, ...]:
+def macro_template_header(template: MacroTemplate) -> tuple[object, ...]:
     if type(template) is not MacroTemplate:
         raise ValueError(_TEMPLATE_PUBLICATION_ERROR)
     source = boundary_state_signature(template.source)
@@ -413,8 +426,8 @@ def _macro_template_header(template: MacroTemplate) -> tuple[object, ...]:
         template.outcome,
         template.exponent_delta,
         template.destination_a,
-        *_affine_component_signature(template.weight),
-        *_affine_component_signature(template.endpoint),
+        *affine_component_signature(template.weight),
+        *affine_component_signature(template.endpoint),
         id(children),
         len(children),
         *child_signatures,
@@ -424,7 +437,7 @@ def _macro_template_header(template: MacroTemplate) -> tuple[object, ...]:
     )
 
 
-def _validate_macro_component_header(
+def validate_macro_component_header(
     template: MacroTemplate,
     seal: tuple[object, ...],
     *,
@@ -432,10 +445,10 @@ def _validate_macro_component_header(
 ) -> None:
     if type(seal) is not tuple or len(seal) != 4:
         raise ValueError(_TEMPLATE_PUBLICATION_ERROR)
-    current_header = _macro_template_header(template)
+    current_header = macro_template_header(template)
     expected_header = seal[0]
     if (
-        type(expected_header) is not tuple
+        not is_exact_object_tuple(expected_header)
         or len(expected_header) != len(current_header)
         or any(type(value) not in (str, int, type(None)) for value in expected_header)
     ):
@@ -446,7 +459,7 @@ def _validate_macro_component_header(
             + _component_signature_bits(expected_header)
         )
     if any(
-        type(rows) is not tuple for rows in seal[1:]
+        not is_exact_object_tuple(rows) for rows in seal[1:]
     ) or not matches_scalar_signature(
         current_header, cast(ScalarSignature, expected_header)
     ):
@@ -462,7 +475,7 @@ def _validate_macro_component_header(
         raise ValueError(_TEMPLATE_PUBLICATION_ERROR)
 
 
-def _validate_macro_component_read(
+def validate_macro_component_read(
     template: MacroTemplate,
     seal: tuple[object, ...],
     kind: str,
@@ -480,9 +493,9 @@ def _validate_macro_component_read(
         rows = seal[3]
     else:
         raise ValueError("unknown comma boundary component")
-    if type(rows) is not tuple:
+    if not is_exact_object_tuple(rows):
         raise ValueError("comma boundary component seal is malformed")
-    sealed_rows = cast(tuple[object, ...], rows)
+    sealed_rows = rows
     if index >= len(sealed_rows):
         raise ValueError("comma boundary component index is outside its seal")
     current: ScalarSignature
@@ -490,20 +503,20 @@ def _validate_macro_component_read(
         fragments = template.sector_fragments
         if index >= len(fragments):
             raise ValueError("comma boundary component index is outside its seal")
-        current = _sector_fragment_signature(fragments[index])
+        current = sector_fragment_signature(fragments[index])
     elif kind == "weight":
         weights = template.prefix_weights
         if index >= len(weights):
             raise ValueError("comma boundary component index is outside its seal")
-        current = _affine_component_signature(weights[index])
+        current = affine_component_signature(weights[index])
     else:
         displacements = template.prefix_displacements
         if index >= len(displacements):
             raise ValueError("comma boundary component index is outside its seal")
-        current = _affine_component_signature(displacements[index])
+        current = affine_component_signature(displacements[index])
     expected = sealed_rows[index]
     if (
-        type(expected) is not tuple
+        not is_exact_object_tuple(expected)
         or len(expected) != len(current)
         or any(type(value) not in (str, int, type(None)) for value in expected)
     ):
@@ -523,7 +536,7 @@ def _component_signature_bits(value: object) -> int:
         item = stack.pop()
         if type(item) is int:
             bits += max(1, item.bit_length())
-        elif type(item) is tuple:
+        elif is_exact_object_tuple(item):
             stack.extend(item)
         elif type(item) is str or item is None:
             continue
@@ -532,12 +545,8 @@ def _component_signature_bits(value: object) -> int:
     return bits
 
 
-def _macro_template_component_seal(template: MacroTemplate) -> tuple[object, ...]:
-    seal = template._component_seal
-    if seal is None:
-        raise ValueError("comma boundary template has no component seal")
-    _validate_macro_component_header(template, seal)
-    return seal
+def macro_template_component_seal(template: MacroTemplate) -> tuple[object, ...]:
+    return template.component_seal_snapshot()
 
 
 @dataclass(frozen=True, slots=True)
@@ -558,6 +567,20 @@ class CompletedMacroReturn:
         compare=False,
         hash=False,
     )
+
+    def validate_component_header(self, header: ScalarSignature) -> None:
+        """Validate a compact return against its owner-held sealed header."""
+        seal = self._component_seal
+        if type(seal) is not tuple or len(seal) != 1:
+            raise ValueError("comma completed return has no component seal")
+        expected = seal[0]
+        if (
+            not is_exact_object_tuple(expected)
+            or len(expected) != len(header)
+            or any(type(value) not in (str, int, type(None)) for value in expected)
+            or not matches_scalar_signature(header, cast(ScalarSignature, expected))
+        ):
+            raise ValueError("comma completed return was altered (snapshot mismatch)")
 
 
 def construct_macro(
@@ -599,6 +622,11 @@ __all__ = [
     "CompletedMacroReturn",
     "MacroTemplate",
     "SectorFragment",
+    "ZERO_AFFINE_WEIGHT",
+    "affine_component_signature",
+    "affine_weight_signature",
     "construct_completed_return",
     "construct_macro",
+    "macro_template_header",
+    "sector_fragment_signature",
 ]

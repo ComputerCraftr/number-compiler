@@ -8,6 +8,7 @@ from devtools.verification.reverse_spacetime import (
     ReverseAddCausalSpacetimeEngine,
     ReverseAddPairField,
 )
+from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
 from number_compiler.arithmetic.fields.dyadic_tile import iter_symbols, source_span
 
 
@@ -29,7 +30,7 @@ def test_complete_macro_action_composes_associatively_and_applies_exactly() -> N
     arena = ReverseAddMacroActionArena(10)
     source = ReverseAddPairField.from_value(196)
     current = source
-    ids = []
+    ids: list[ActionProgramID] = []
     for _ in range(3):
         occurrence = engine.forcing_image(current)
         ids.append(arena.primitive(occurrence.action))

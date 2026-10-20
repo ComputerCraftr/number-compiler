@@ -49,11 +49,13 @@ def _direct_wheel_gaps(modulus: int) -> tuple[int, ...]:
 
 
 def prime_clock_wheel_audits() -> tuple[PrimeClockWheelStageAudit, ...]:
-    stages = []
-    M = 2
+    stages: list[PrimeClockWheelStageAudit] = []
+    modulus = 2
     gaps: tuple[int, ...] = (2,)
     for q in (3, 5, 7, 11, 13, 17):
-        new, block, _initial = extend_prime_wheel_gaps(gaps, old_modulus=M, new_prime=q)
+        new, block, _initial = extend_prime_wheel_gaps(
+            gaps, old_modulus=modulus, new_prime=q
+        )
         histogram = block.circular.histogram()
         raw_histogram_bits = sum(bit_width(value) for value in histogram)
         phase_itinerary_bits = len(gaps) * bit_width(q - 1)
@@ -72,10 +74,10 @@ def prime_clock_wheel_audits() -> tuple[PrimeClockWheelStageAudit, ...]:
         )
         powered = block.power_block(q)
         powered_histogram = powered.circular.histogram()
-        direct = _direct_wheel_gaps(M * q)
+        direct = _direct_wheel_gaps(modulus * q)
         stages.append(
             PrimeClockWheelStageAudit(
-                M,
+                modulus,
                 q,
                 len(gaps),
                 len(new),
@@ -97,7 +99,7 @@ def prime_clock_wheel_audits() -> tuple[PrimeClockWheelStageAudit, ...]:
                 new == direct,
             )
         )
-        M *= q
+        modulus *= q
         gaps = new
     return tuple(stages)
 

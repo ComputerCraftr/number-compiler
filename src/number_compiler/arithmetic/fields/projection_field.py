@@ -85,7 +85,7 @@ class BinomialMomentBlock:
     def then(self, other: BinomialMomentBlock) -> BinomialMomentBlock:
         if (self.degree, self.modulus) != (other.degree, other.modulus):
             raise ValueError((self, other))
-        out = []
+        out: list[int] = []
         for r in range(self.degree):
             shifted = sum(
                 comb(self.length, r - s) * other.moments[s] for s in range(r + 1)

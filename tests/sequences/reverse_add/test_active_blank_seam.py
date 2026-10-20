@@ -36,14 +36,28 @@ def test_completed_children_keep_first_blank_seam_and_source_authority(
     right_image = cutover.executor.image(
         action, right_source, right_geometry, right_signature
     )
-    cutover._boundaries(action)
+    boundaries = (
+        cutover.semantics.evaluate(cutover.runtime.initial(action, 0)),
+        cutover.semantics.evaluate(cutover.runtime.initial(action, 1)),
+    )
+    # Evict only reconstructible request bindings and rebuild the children.
+    # Issue a genuine occurrence afterward so its exact provider-qualified
+    # binding remains available while the ordinary parent request is a miss.
+    cutover.images.clear_bindings()
+    left_image = cutover.executor.image(
+        action, left_source, left_geometry, left_signature
+    )
+    right_image = cutover.executor.image(
+        action, right_source, right_geometry, right_signature
+    )
+    occurrence = cutover.pair_image(2)
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("completed parent join replayed primitive semantics")
 
     for name in ("step", "emit", "boundary"):
         monkeypatch.setattr(cutover.runtime, name, forbidden)
-    monkeypatch.setattr(cutover.adapter, "_compile", forbidden)
+    monkeypatch.setattr(cutover.adapter, "compile_completed", forbidden)
 
     joins_before = cutover.ledger.counters.get(
         "reverse_recursive_completed_child_joins", 0
@@ -60,7 +74,7 @@ def test_completed_children_keep_first_blank_seam_and_source_authority(
     range_summary = getattr(summary, "range_summary", None)
     assert range_summary is not None
 
-    recovered = cutover.adapter._macro_from_completed(
+    recovered = cutover.adapter.macro_from_completed(
         image, source, action, cutover.geometry, None
     )
     for name in ("activity", "first_active", "last_active", "extent", "growth"):
@@ -68,17 +82,24 @@ def test_completed_children_keep_first_blank_seam_and_source_authority(
     assert recovered.source_extent == 4
     assert recovered.width == cutover.extent == 8
 
-    boundaries = cutover._boundaries(action)
-    bound = cutover.outputs._inputs(recovered.interface, *boundaries)
+    signature = cutover.interfaces.interface(
+        cutover.interfaces.resolve(recovered.interface).signature
+    )
+    ports = {port.role: port.variable for port in signature.inputs}
+    assert set(ports) == {"left-boundary", "right-boundary"}
+    bound = {
+        ports["left-boundary"]: boundaries[0],
+        ports["right-boundary"]: boundaries[1],
+    }
     local_extent = cutover.interfaces.resolve(recovered.interface).components.extent
     assert isinstance(local_extent, HigherExpressionID)
     assert cutover.semantics.evaluate(recovered.extent, bound) == 5
     assert cutover.semantics.evaluate(local_extent, bound) == 1
 
-    occurrence = cutover._new_occurrence(image, action, 2, None)
+    assert occurrence.image == image
     cutover.validate_occurrence(occurrence)
     assert cutover.pair_width(occurrence) == 5
-    assert tuple(cutover._pair_stream(occurrence, cutover.extent)) == (
+    assert tuple(cutover.iter_pair_values(occurrence, cutover.extent)) == (
         9,
         18,
         18,

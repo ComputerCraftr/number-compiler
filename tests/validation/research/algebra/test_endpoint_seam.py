@@ -23,7 +23,9 @@ def test_reachable_pair_domain_and_endpoint_fibers() -> None:
 
 
 def test_closed_primitive_table_powers_without_primitive_execution() -> None:
-    arena = BoundedEndpointPowerArena(lambda n: (n * n) % 17)
+    arena: BoundedEndpointPowerArena[int] = BoundedEndpointPowerArena(
+        lambda n: (n * n) % 17
+    )
     for source in range(17):
         arena.power(source, 0)
     assert arena.primitive_successors == 17
@@ -39,7 +41,7 @@ def test_closed_primitive_table_powers_without_primitive_execution() -> None:
 
 
 def test_cold_nonrepeating_orbit_is_charged_and_warm_result_reused() -> None:
-    arena = BoundedEndpointPowerArena(lambda n: n + 1)
+    arena: BoundedEndpointPowerArena[int] = BoundedEndpointPowerArena(lambda n: n + 1)
     for level in range(11):
         assert arena.power(0, level) == 1 << level
         assert arena.primitive_successors == 1 << level
@@ -61,7 +63,9 @@ def test_endpoint_aliases_share_future_cache_but_do_not_close_source_domain() ->
 
 
 def test_primitive_budget_does_not_claim_a_cold_jump() -> None:
-    arena = BoundedEndpointPowerArena(lambda n: n + 1, max_primitives=1)
+    arena: BoundedEndpointPowerArena[int] = BoundedEndpointPowerArena(
+        lambda n: n + 1, max_primitives=1
+    )
     with pytest.raises(ValueError, match="primitive budget"):
         arena.power(0, 4)
     assert arena.primitive_successors == 1

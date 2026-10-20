@@ -13,11 +13,11 @@ from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.assertions import collect_counter_quantities
 
 if TYPE_CHECKING:
-    from number_compiler.resources.metric_records import LedgerMetrics
-    from number_compiler.sequences.collatz.block_power import (
+    from number_compiler.resources.collatz_power_metrics import (
         CollatzPhysicalBlockMetrics,
     )
-    from number_compiler.sequences.reverse_add.power import ReverseAddPowerMetrics
+    from number_compiler.resources.metric_records import LedgerMetrics
+    from number_compiler.resources.reverse_power_metrics import ReverseAddPowerMetrics
 
 
 def assert_node_partition(
@@ -154,13 +154,17 @@ def test_generic_diamond_bindings_are_counted_by_their_actual_runtime_roles() ->
     assert_node_partition(metrics)
     from number_compiler.hashlife.observation.tile_projection import LazyProjection
 
-    runtime = application._lazy_application
+    runtime = application.audit_snapshot().lazy_application
     assert type(runtime) is LazyProjection
     results = runtime.scheduler.results
     assert metrics.powered_interface_entries == results.retained_interfaces > 0
     assert metrics.completed_result_entries == results.retained_results > 0
     assert metrics.local_interface_nodes > 0
-    assert metrics.canonical_tile_nodes == len(runtime.scheduler.tiles._nodes) > 0
+    assert (
+        metrics.canonical_tile_nodes
+        == len(runtime.scheduler.tiles.audit_snapshot().nodes)
+        > 0
+    )
 
 
 def test_public_projection_metrics_do_not_run_deep_audits() -> None:

@@ -5,6 +5,9 @@ from __future__ import annotations
 from collections.abc import Iterable
 from enum import StrEnum
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_runtime_instance,
+)
 from number_compiler.hashlife.behavior.reverse_bound_output import ReverseBoundOutput
 from number_compiler.hashlife.tiles.tile_result_records import (
     BehaviorBindingKey,
@@ -84,7 +87,7 @@ def record_cache_removal(
     """Attribute one removed entry while retaining no semantic request history."""
     if type(ledger) is not ResourceLedger:
         raise TypeError("cache removal accounting requires an index ledger")
-    if not isinstance(cause, RemovalCause):
+    if not is_runtime_instance(cause, RemovalCause):
         raise TypeError("cache removal accounting has another cause")
     kind = result_cache_kind(key)
     ledger.bump(_resources_keys.RESULT_CACHE_KIND_CLASSIFICATION_VISITS)
@@ -103,7 +106,7 @@ def record_unattributed_post_eviction_miss(
     """Count an unknown-attribution miss only after this cache kind was evicted."""
     if type(ledger) is not ResourceLedger:
         raise TypeError("cache miss accounting requires an index ledger")
-    if not isinstance(kind, ResultCacheKind):
+    if not is_runtime_instance(kind, ResultCacheKind):
         raise TypeError("cache miss accounting has another bounded kind")
     if ledger.counters.get(f"result_cache_{kind}_evicted_entries", 0):
         ledger.bump(f"result_cache_{kind}_post_eviction_misses_attribution_unknown")

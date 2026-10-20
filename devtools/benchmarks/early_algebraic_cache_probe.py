@@ -48,7 +48,7 @@ def _bsgs_rows() -> list[dict[str, object]]:
 def _collatz_frame_pair() -> dict[str, object]:
     cache = CollatzGermTransitionCache()
     arena = CollatzEventArena()
-    rows = []
+    rows: list[dict[str, object]] = []
     for q in (100, 1_000_000):
         word = from_runs(((1, q), (3, 1)))
         before = cache.metrics()

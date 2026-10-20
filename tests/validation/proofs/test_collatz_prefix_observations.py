@@ -23,16 +23,16 @@ def test_adaptive_last_one_prefix_queries_do_not_retain_general_future_inverse()
         assert (summary.last_one == width - 1) == bool((expected >> (width - 1)) & 1)
     rows = {
         key.width: value
-        for key, value in engine._summaries.items()
+        for key, value in engine.payload_audit_snapshot().summary_payloads.items()
         if key.program == view.program
     }
     assert not rows
     # Reusable aligned dyadic carry effects remain; removing them would hide
     # the distinct arbitrary-prefix problem by discarding the permitted image.
-    assert any(key.program == view.program for key in engine._range_evaluator._ranges)
+    range_snapshot = engine.range_evaluator.audit_snapshot()
+    assert any(key.program == view.program for key in range_snapshot.ranges)
     assert all(
-        key.start % key.length == 0 and key.length >= 8
-        for key in engine._range_evaluator._ranges
+        key.start % key.length == 0 and key.length >= 8 for key in range_snapshot.ranges
     )
 
 
@@ -41,22 +41,33 @@ def test_future_mul3_prefix_observations_are_transient_but_source_can_reuse() ->
     for width in range(1, 17):
         prefix = CollatzLazyView(view.source, view.program, width, False)
         engine.mul3_summary(prefix)
-    assert not any(key.program == view.program for key in engine._mul3_summaries)
+    assert not any(
+        key.program == view.program
+        for key in engine.payload_audit_snapshot().mul3_payloads
+    )
     source_summary = engine.range_summary(engine.initial)
     source_transfer = engine.mul3_summary(engine.initial)
     assert engine.range_summary(engine.initial) is source_summary
     assert engine.mul3_summary(engine.initial) == source_transfer
-    assert all(key.program == engine.initial.program for key in engine._summaries)
-    assert all(key.program == engine.initial.program for key in engine._mul3_summaries)
+    application_snapshot = engine.payload_audit_snapshot()
+    assert all(
+        key.program == engine.initial.program
+        for key in application_snapshot.summary_payloads
+    )
+    assert all(
+        key.program == engine.initial.program
+        for key in application_snapshot.mul3_payloads
+    )
 
 
 def test_arbitrary_future_event_prefixes_are_not_retained() -> None:
     engine, view, _ = application()
-    evaluator = engine._range_evaluator
+    evaluator = engine.range_evaluator
     for width in range(1, 17):
         result = evaluator.event_summary(view.program, width)
         assert result.length == width + 2
-    assert not any(key.program == view.program for key in evaluator._events)
+    range_snapshot = evaluator.audit_snapshot()
+    assert not any(key.program == view.program for key in range_snapshot.events)
     result = evaluator.event_summary(engine.initial.program, engine.initial.width)
     assert (
         evaluator.event_summary(engine.initial.program, engine.initial.width) is result

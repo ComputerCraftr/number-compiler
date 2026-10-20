@@ -18,26 +18,22 @@ from collections.abc import Callable
 from devtools.experiments.collatz.free_cylinder_consumers import (
     BoundCylinderAction,
     BoundCylinderEndpoint,
+    ConsumerAction,
+    ConsumerOutput,
+    CylinderBranch,
+    FreeCylinderResidual,
     FreeCylinderResidualID,
-    _bounded_cylinder_nonempty,
-    _branch_key,
-    _coalesce_sibling_guards,
-    _constant_target,
-    _consume_guard,
-    _ConsumerAction,
-    _ConsumerOutput,
-    _CylinderBranch,
-    _FreeCylinderResidual,
-    _GuardTrieNode,
+    GuardTrieNode,
+    bounded_cylinder_nonempty,
+    branch_key,
+    coalesce_sibling_guards,
+    constant_target,
+    consume_guard,
 )
 from devtools.experiments.collatz.free_cylinder_moore import (
     CollatzMooreObservation,
     CollatzSpatialMooreProjection,
     project_collatz_spatial_moore,
-)
-from devtools.experiments.collatz.physical_support import (
-    PhysicalSupport,
-    PhysicalSupportArena,
 )
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.functions.decision import MultiTerminalDecisionArena
@@ -45,6 +41,10 @@ from number_compiler.sequences.collatz.hensel_cylinders import (
     MAX_CYLINDER_BITS,
     HenselAffineBlock,
     HenselCylinder,
+)
+from number_compiler.sequences.collatz.physical_support import (
+    PhysicalSupport,
+    PhysicalSupportArena,
 )
 
 
@@ -77,17 +77,17 @@ class FreeCylinderResidualArena:
         self.max_pair_checks = max_pair_checks
         self.supports = PhysicalSupportArena(max_nodes=max_support_nodes)
         self._owner = object()
-        self._nodes: list[_FreeCylinderResidual] = []
+        self._nodes: list[FreeCylinderResidual] = []
         self._keys: dict[tuple[object, ...], FreeCylinderResidualID] = {}
         self._decisions: dict[int, MultiTerminalDecisionArena] = {}
-        self._guard_tries: dict[int, tuple[tuple[_GuardTrieNode, ...], int]] = {}
+        self._guard_tries: dict[int, tuple[tuple[GuardTrieNode, ...], int]] = {}
         self._moore_projections: dict[
             tuple[int, CollatzMooreObservation], CollatzSpatialMooreProjection
         ] = {}
         self._moore_retained_nodes = 0
         self._physical_powers: dict[tuple[int, int], FreeCylinderResidualID] = {}
         self._constant_powers: dict[
-            tuple[int, tuple[int, ...]], dict[int, _ConsumerAction]
+            tuple[int, tuple[int, ...]], dict[int, ConsumerAction]
         ] = {}
         self.primitive_constructions = 0
         self.temporal_compositions = 0
@@ -106,7 +106,7 @@ class FreeCylinderResidualArena:
         self.future_endpoint_consumptions = 0
         self.original_source_bit_probes = 0
 
-    def resolve(self, residual: FreeCylinderResidualID) -> _FreeCylinderResidual:
+    def resolve(self, residual: FreeCylinderResidualID) -> FreeCylinderResidual:
         if (
             type(residual) is not FreeCylinderResidualID
             or residual.owner is not self._owner
@@ -132,20 +132,20 @@ class FreeCylinderResidualArena:
             for bit in range(precision)
         )
 
-    def _intern(
+    def intern_record(
         self,
         events: int | None,
         physical_ticks: int | None,
         max_source_bits: int,
-        branches: tuple[_CylinderBranch, ...],
+        branches: tuple[CylinderBranch, ...],
     ) -> FreeCylinderResidualID:
         if (events is None) == (physical_ticks is None):
             raise ValueError("a residual needs exactly one temporal coordinate")
         if not branches:
             raise ValueError("free cylinder residual has an empty admitted domain")
-        bounded: list[_CylinderBranch] = []
+        bounded: list[CylinderBranch] = []
         for branch in branches:
-            if not _bounded_cylinder_nonempty(branch.domain, max_source_bits):
+            if not bounded_cylinder_nonempty(branch.domain, max_source_bits):
                 continue
             domain = branch.domain
             if domain.bits > max_source_bits:
@@ -155,11 +155,9 @@ class FreeCylinderResidualArena:
                 # cylinder identity.
                 domain = HenselCylinder(max_source_bits, domain.residue)
             bounded.append(
-                _CylinderBranch(domain, _consume_guard(branch, max_source_bits))
+                CylinderBranch(domain, consume_guard(branch, max_source_bits))
             )
-        canonical = tuple(
-            sorted(set(_coalesce_sibling_guards(bounded)), key=_branch_key)
-        )
+        canonical = tuple(sorted(set(coalesce_sibling_guards(bounded)), key=branch_key))
         if not canonical:
             raise ValueError("free cylinder residual has an empty bounded domain")
         if len(canonical) > self.max_branches:
@@ -182,7 +180,7 @@ class FreeCylinderResidualArena:
             raise BlockContextBudgetExceeded("cylinder residual action budget exceeded")
         result = FreeCylinderResidualID(self._owner, len(self._nodes))
         self._nodes.append(
-            _FreeCylinderResidual(
+            FreeCylinderResidual(
                 events,
                 physical_ticks,
                 max_source_bits,
@@ -202,17 +200,17 @@ class FreeCylinderResidualArena:
                 "primitive cylinder precision must lie in 3..max_precision"
             )
         branches = tuple(
-            _CylinderBranch(
+            CylinderBranch(
                 HenselCylinder.from_root(k + 1, 1, 1 - (1 << k)),
-                _ConsumerAction(
-                    _ConsumerOutput(transport=HenselAffineBlock(1, k, 1)),
+                ConsumerAction(
+                    ConsumerOutput(transport=HenselAffineBlock(1, k, 1)),
                     self.supports.event(k),
                 ),
             )
             for k in range(1, precision)
         )
         self.primitive_constructions += 1
-        return self._intern(1, None, precision - 2, branches)
+        return self.intern_record(1, None, precision - 2, branches)
 
     def physical_primitive(self, source_bits: int) -> FreeCylinderResidualID:
         """Return the exact parity-guarded one-physical-tick action."""
@@ -221,22 +219,22 @@ class FreeCylinderResidualArena:
         found = self._physical_powers.get((1, source_bits))
         if found is not None:
             return found
-        result = self._intern(
+        result = self.intern_record(
             None,
             1,
             source_bits,
             (
-                _CylinderBranch(
+                CylinderBranch(
                     HenselCylinder(1, 0),
-                    _ConsumerAction(
-                        _ConsumerOutput(transport=HenselAffineBlock(0, 1, 0)),
+                    ConsumerAction(
+                        ConsumerOutput(transport=HenselAffineBlock(0, 1, 0)),
                         self.supports.even,
                     ),
                 ),
-                _CylinderBranch(
+                CylinderBranch(
                     HenselCylinder(1, 1),
-                    _ConsumerAction(
-                        _ConsumerOutput(transport=HenselAffineBlock(1, 0, 1)),
+                    ConsumerAction(
+                        ConsumerOutput(transport=HenselAffineBlock(1, 0, 1)),
                         self.supports.odd,
                     ),
                 ),
@@ -247,7 +245,7 @@ class FreeCylinderResidualArena:
         return result
 
     @staticmethod
-    def _maximum_output_bits(node: _FreeCylinderResidual, source_bits: int) -> int:
+    def _maximum_output_bits(node: FreeCylinderResidual, source_bits: int) -> int:
         """Exact monotone affine range enclosure over a bounded source chart."""
         if not 1 <= source_bits <= node.max_source_bits:
             raise ValueError("source width lies outside the residual chart")
@@ -275,14 +273,14 @@ class FreeCylinderResidualArena:
 
     def _guard_trie(
         self, residual: FreeCylinderResidualID
-    ) -> tuple[tuple[_GuardTrieNode, ...], int]:
+    ) -> tuple[tuple[GuardTrieNode, ...], int]:
         """Build the canonical low-bit prefix DAG for one residual's guards."""
         found = self._guard_tries.get(residual.index)
         if found is not None:
             return found
         node = self.resolve(residual)
         children: list[list[int | None]] = [[None, None]]
-        terminals: list[_ConsumerAction | None] = [None]
+        terminals: list[ConsumerAction | None] = [None]
         for branch in node.branches:
             cursor = 0
             for depth in range(branch.domain.bits):
@@ -303,7 +301,7 @@ class FreeCylinderResidualArena:
             terminals[cursor] = branch.action
 
         raw_to_canonical = [-1] * len(children)
-        canonical: list[_GuardTrieNode] = []
+        canonical: list[GuardTrieNode] = []
         intern: dict[tuple[object, ...], int] = {}
         for raw in range(len(children) - 1, -1, -1):
             zero_raw, one_raw = children[raw]
@@ -313,7 +311,7 @@ class FreeCylinderResidualArena:
             guard = intern.get(key)
             if guard is None:
                 guard = len(canonical)
-                canonical.append(_GuardTrieNode(terminals[raw], zero, one))
+                canonical.append(GuardTrieNode(terminals[raw], zero, one))
                 intern[key] = guard
             raw_to_canonical[raw] = guard
         result = (tuple(canonical), raw_to_canonical[0])
@@ -321,7 +319,7 @@ class FreeCylinderResidualArena:
         return result
 
     @staticmethod
-    def _apply_consumer(action: _ConsumerAction, source: int) -> int:
+    def _apply_consumer(action: ConsumerAction, source: int) -> int:
         if action.output.constant_target is not None:
             return action.output.constant_target
         transport = action.output.transport
@@ -334,12 +332,12 @@ class FreeCylinderResidualArena:
         return int(numerator // denominator)
 
     def _then_consumers(
-        self, before: _ConsumerAction, after: _ConsumerAction
-    ) -> _ConsumerAction:
+        self, before: ConsumerAction, after: ConsumerAction
+    ) -> ConsumerAction:
         if after.output.constant_target is not None:
             output = after.output
         elif before.output.constant_target is not None:
-            output = _ConsumerOutput(
+            output = ConsumerOutput(
                 constant_target=self._apply_consumer(
                     after, before.output.constant_target
                 )
@@ -349,24 +347,24 @@ class FreeCylinderResidualArena:
             second = after.output.transport
             if first is None or second is None:
                 raise AssertionError("affine consumer composition lost a transport")
-            output = _ConsumerOutput(transport=first.then(second))
-        return _ConsumerAction(
+            output = ConsumerOutput(transport=first.then(second))
+        return ConsumerAction(
             output,
             self.supports.concat(before.support, after.support),
         )
 
     def _select_value(
         self, residual: FreeCylinderResidualID, source: int
-    ) -> _ConsumerAction:
+    ) -> ConsumerAction:
         node = self.resolve(residual)
         if source <= 0 or source.bit_length() > node.max_source_bits:
             raise BlockContextBudgetExceeded("constant image left the following chart")
         decisions = self._decision_arena(node.predicate_bits)
         decision = node.decision_root
         while True:
-            record = decisions._nodes[decision]
+            record = decisions.decision_record(decision)
             if record[0] == "T":
-                if type(record[1]) is not _ConsumerAction:
+                if type(record[1]) is not ConsumerAction:
                     raise AssertionError("constant image has no following consumer")
                 return record[1]
             _, level, entries = record
@@ -382,7 +380,7 @@ class FreeCylinderResidualArena:
     def _publish_constant_context(
         self,
         key: tuple[int, tuple[int, ...]],
-        mapping: dict[int, _ConsumerAction],
+        mapping: dict[int, ConsumerAction],
     ) -> None:
         if len(self._constant_powers) >= self.max_actions:
             raise BlockContextBudgetExceeded("constant context budget exceeded")
@@ -406,7 +404,7 @@ class FreeCylinderResidualArena:
 
     def _constant_power(
         self, physical_ticks: int, sources: tuple[int, ...]
-    ) -> dict[int, _ConsumerAction]:
+    ) -> dict[int, ConsumerAction]:
         """Power the parity germ on one normalized finite image grammar."""
         normalized = tuple(sorted(set(sources)))
         if not normalized or any(source <= 0 for source in normalized):
@@ -419,7 +417,7 @@ class FreeCylinderResidualArena:
         ]
         partials: dict[
             tuple[int, tuple[int, ...]],
-            tuple[dict[int, _ConsumerAction], int, tuple[int, ...]],
+            tuple[dict[int, ConsumerAction], int, tuple[int, ...]],
         ] = {}
         while pending:
             ticks, context, stage = pending.pop()
@@ -427,14 +425,14 @@ class FreeCylinderResidualArena:
             if key in self._constant_powers:
                 continue
             if ticks == 1:
-                mapping: dict[int, _ConsumerAction] = {}
+                mapping: dict[int, ConsumerAction] = {}
                 for source in context:
                     if source & 1:
                         endpoint, events = 3 * source + 1, 1
                     else:
                         endpoint, events = source // 2, 0
-                    mapping[source] = _ConsumerAction(
-                        _ConsumerOutput(constant_target=endpoint),
+                    mapping[source] = ConsumerAction(
+                        ConsumerOutput(constant_target=endpoint),
                         self.supports.odd if events else self.supports.even,
                     )
                     self.parity_germ_applications += 1
@@ -456,7 +454,7 @@ class FreeCylinderResidualArena:
                 ):
                     raise AssertionError("constant power emitted a nonconstant output")
                 image = tuple(
-                    sorted({_constant_target(action) for action in first.values()})
+                    sorted({constant_target(action) for action in first.values()})
                 )
                 partials[key] = first, after_ticks, image
                 pending.append((ticks, context, 2))
@@ -516,10 +514,10 @@ class FreeCylinderResidualArena:
         live_left = tuple(
             branch
             for branch in before.branches
-            if _bounded_cylinder_nonempty(branch.domain, max_source_bits)
+            if bounded_cylinder_nonempty(branch.domain, max_source_bits)
         )
         guard_nodes, guard_root = self._guard_trie(after)
-        branches: list[_CylinderBranch] = []
+        branches: list[CylinderBranch] = []
         visits = 0
         prunes = 0
         terminal_checks = 0
@@ -532,7 +530,7 @@ class FreeCylinderResidualArena:
                     raise AssertionError("constant branch has no endpoint")
                 right = self._select_value(after, target)
                 branches.append(
-                    _CylinderBranch(
+                    CylinderBranch(
                         left.domain,
                         self._then_consumers(left.action, right),
                     )
@@ -554,7 +552,7 @@ class FreeCylinderResidualArena:
                     terminal_checks += 1
                     intersections += 1
                     branches.append(
-                        _CylinderBranch(
+                        CylinderBranch(
                             domain,
                             self._then_consumers(left.action, trie_node.terminal),
                         )
@@ -568,13 +566,13 @@ class FreeCylinderResidualArena:
                     prefix = HenselCylinder(child_depth, child_residue)
                     pulled = prefix.pullback(left_transport)
                     child_domain = left.domain.intersect(pulled)
-                    if child_domain is None or not _bounded_cylinder_nonempty(
+                    if child_domain is None or not bounded_cylinder_nonempty(
                         child_domain, max_source_bits
                     ):
                         prunes += 1
                         continue
                     stack.append((child, child_depth, child_residue, child_domain))
-        result = self._intern(
+        result = self.intern_record(
             events,
             physical_ticks,
             max_source_bits,
@@ -627,23 +625,23 @@ class FreeCylinderResidualArena:
                     image = tuple(
                         sorted(
                             {
-                                _constant_target(branch.action)
+                                constant_target(branch.action)
                                 for branch in first_node.branches
                             }
                         )
                     )
                     after_constants = self._constant_power(after_ticks, image)
                     branches = tuple(
-                        _CylinderBranch(
+                        CylinderBranch(
                             branch.domain,
                             self._then_consumers(
                                 branch.action,
-                                after_constants[_constant_target(branch.action)],
+                                after_constants[constant_target(branch.action)],
                             ),
                         )
                         for branch in first_node.branches
                     )
-                    self._physical_powers[key] = self._intern(
+                    self._physical_powers[key] = self.intern_record(
                         None,
                         ticks,
                         bits,
@@ -704,7 +702,7 @@ class FreeCylinderResidualArena:
             raise ValueError("accelerated source occurrence must be odd")
         decision = node.decision_root
         while True:
-            record = decisions._nodes[decision]
+            record = decisions.decision_record(decision)
             if record[0] == "T":
                 transport = record[1]
                 break
@@ -716,7 +714,7 @@ class FreeCylinderResidualArena:
                     break
             else:
                 raise AssertionError("cylinder decision omitted a Boolean branch")
-        if type(transport) is not _ConsumerAction:
+        if type(transport) is not ConsumerAction:
             raise AssertionError("admitted source has no cylinder consumer")
         return BoundCylinderAction(
             transport.output.constant_target,
@@ -791,18 +789,18 @@ class FreeCylinderResidualArena:
         seen: set[int] = set()
         internal_nodes = 0
         terminals = 0
-        output_ids: set[_ConsumerOutput] = set()
-        weighted_ids: set[tuple[_ConsumerOutput, int, int]] = set()
+        output_ids: set[ConsumerOutput] = set()
+        weighted_ids: set[tuple[ConsumerOutput, int, int]] = set()
         support_ids: set[PhysicalSupport] = set()
         while pending:
             decision = pending.pop()
             if decision in seen:
                 continue
             seen.add(decision)
-            record = decisions._nodes[decision]
+            record = decisions.decision_record(decision)
             if record[0] == "T":
                 terminals += 1
-                if type(record[1]) is _ConsumerAction:
+                if type(record[1]) is ConsumerAction:
                     weighted_ids.add(
                         (
                             record[1].output,

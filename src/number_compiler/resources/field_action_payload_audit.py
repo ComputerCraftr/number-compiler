@@ -57,8 +57,8 @@ def audit_field_action_payloads(
         FieldCellActionID,
     )
     from number_compiler.hashlife.execution.continuations.generic_higher import (
+        GenericHigherAction,
         GenericHigherActionSchema,
-        _GenericHigherAction,
     )
 
     containers = dict(ledger.iter_containers())
@@ -66,13 +66,14 @@ def audit_field_action_payloads(
     invalid: set[tuple[int, int]] = set(scoped_invalid)
     for root in ledger.iter_execution_roots():
         if type(root) is GenericHigherActionSchema:
-            stores = root._nodes, root._keys
+            snapshot = root.audit_snapshot()
+            stores = snapshot.node_store, snapshot.key_store
             all_valid = (
-                root.ledger is ledger
+                snapshot.ledger is ledger
                 and root.runtime.ledger is ledger
                 and (
-                    containers.get(root._node_owner) is root._nodes
-                    and containers.get(root._key_owner) is root._keys
+                    containers.get(snapshot.node_owner) is snapshot.node_store
+                    and containers.get(snapshot.key_owner) is snapshot.key_store
                 )
             )
 
@@ -104,14 +105,14 @@ def audit_field_action_payloads(
                     and left.local_id == right.local_id
                 )
 
-            for index, record in enumerate(root._nodes):
-                valid = type(record) is _GenericHigherAction
+            for index, record in enumerate(snapshot.nodes):
+                valid = type(record) is GenericHigherAction
                 try:
                     if not valid:
                         raise TypeError("invalid generic higher record")
                     node = root.runtime.actions.resolve(record.original)
-                    handle = root._handle(index)
-                    valid &= root._resolve(handle) is record
+                    handle = root.handle(index)
+                    valid &= root.resolve(handle) is record
                     expected = None
                     if node.kind == "compose":
                         originals = (
@@ -119,7 +120,7 @@ def audit_field_action_payloads(
                             root.runtime.actions.reference(node.right),
                         )
                         expected = tuple(
-                            root._handle(root._keys[item]) for item in originals
+                            root.handle(snapshot.keys[item]) for item in originals
                         )
                     if expected is None:
                         valid &= record.children is None
@@ -136,7 +137,7 @@ def audit_field_action_payloads(
                         )
                     matches = [
                         value
-                        for key, value in root._keys.items()
+                        for key, value in snapshot.keys.items()
                         if exact_action(key, record.original)
                     ]
                     valid &= (
@@ -149,27 +150,27 @@ def audit_field_action_payloads(
                 if valid:
                     approved.add(id(record))
                 else:
-                    invalid.add((root._node_owner, id(record)))
+                    invalid.add((snapshot.node_owner, id(record)))
                     all_valid = False
-            for original, index in root._keys.items():
+            for original, index in snapshot.keys.items():
                 try:
                     valid = (
                         type(original) is ActionProgramID
                         and type(index) is int
-                        and 0 <= index < len(root._nodes)
+                        and 0 <= index < len(snapshot.nodes)
                     )
                     if not valid:
                         raise TypeError("invalid generic higher interner entry")
                     root.runtime.actions.resolve(original)
-                    valid &= exact_action(root._nodes[index].original, original)
+                    valid &= exact_action(snapshot.nodes[index].original, original)
                 except (TypeError, ValueError, IndexError, AttributeError):
                     valid = False
                 if valid:
                     approved.update((id(original), id(index)))
                 else:
-                    invalid.add((root._key_owner, id(original)))
+                    invalid.add((snapshot.key_owner, id(original)))
                     all_valid = False
-            all_valid &= len(root._keys) == len(root._nodes)
+            all_valid &= len(snapshot.keys) == len(snapshot.nodes)
             if all_valid:
                 approved.update(id(value) for value in stores)
     return FieldActionPayloadAudit(frozenset(approved), frozenset(invalid))

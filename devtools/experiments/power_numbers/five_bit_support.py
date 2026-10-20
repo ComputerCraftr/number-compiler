@@ -21,10 +21,9 @@ from devtools.experiments.algebra.dyadic_difference_germ_core import (
     ambient_capacity_truth,
     mixed_capacity_controls,
 )
-from devtools.experiments.power_numbers.special_germ_descent import _crt_pairwise
+from devtools.experiments.power_numbers.special_germ_descent import crt_pairwise
 from devtools.experiments.power_numbers.special_source_certificate import (
-    _FERMAT_FACTORS,
-    _MERSENNE_FACTORS,
+    complete_factorization_rows,
 )
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.arithmetic.polynomials.digit_convolution import (
@@ -169,7 +168,7 @@ class UnrestrictedSheetCounterexample:
 def supplied_factor_sheets() -> tuple[SuppliedFactorSheet, ...]:
     """Return only tables whose listed factors multiply to the candidate."""
     rows: list[SuppliedFactorSheet] = []
-    for parameter, factors in sorted(_FERMAT_FACTORS.items()):
+    for parameter, factors in complete_factorization_rows("fermat"):
         modulus = fermat_number(parameter)
         if prod(factors) != modulus:
             raise AssertionError(("incomplete-fermat-sheet", parameter))
@@ -178,7 +177,7 @@ def supplied_factor_sheets() -> tuple[SuppliedFactorSheet, ...]:
                 "fermat", parameter, modulus, factors, -1, 1 << parameter
             )
         )
-    for parameter, factors in sorted(_MERSENNE_FACTORS.items()):
+    for parameter, factors in complete_factorization_rows("mersenne"):
         modulus = mersenne_number(parameter)
         if prod(factors) != modulus:
             raise AssertionError(("incomplete-mersenne-sheet", parameter))
@@ -220,7 +219,7 @@ def _crt_orientation(
         or any(orientation not in (-1, 1) for orientation in orientations)
     ):
         raise ValueError((factors, orientations))
-    representative = _crt_pairwise(orientations, factors)
+    representative = crt_pairwise(orientations, factors)
     if any(
         representative % q != orientation % q
         for q, orientation in zip(factors, orientations, strict=True)

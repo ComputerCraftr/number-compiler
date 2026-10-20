@@ -4,7 +4,7 @@ import pytest
 
 from devtools.verification import exact_oracle
 from devtools.verification.carry_action_quotient import CarryThresholdSignature
-from devtools.verification.oracles.digit_power import (
+from devtools.verification.oracles.special_digit_power import (
     lucas_lehmer_digit_field,
     pepin_digit_field,
 )
@@ -187,8 +187,8 @@ def test_special_digit_power_is_independent_exact_projection_path() -> None:
 def test_special_digit_power_uses_shared_arithmetic_tile_without_legacy_convolution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import devtools.verification.oracles.special_digit_power as digit_power
     import number_compiler.arithmetic.polynomials.digit_convolution as legacy
-    from devtools.verification.oracles import digit_power
 
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError((args, kwargs))

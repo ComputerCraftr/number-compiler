@@ -36,10 +36,10 @@ def _retained(
 ) -> tuple[object, ...]:
     snapshot = ledger.snapshot()
     return (
-        tuple(arena._nodes),
-        tuple(arena._keys.items()),
-        tuple(arena._normalizations.items()),
-        tuple(arena._parents.items()),
+        tuple(arena.audit_snapshot().nodes),
+        tuple(arena.audit_snapshot().keys.items()),
+        tuple(arena.audit_snapshot().normalizations.items()),
+        tuple(arena.audit_snapshot().parents.items()),
         snapshot.entries,
         snapshot.nodes,
         snapshot.inventory,
@@ -85,15 +85,20 @@ def test_arithmetic_interface_store_failure_rolls_back_publication(
         signature, components = _candidate(arena, interface_id)
         retained = _retained(ledger, arena)
         peak = ledger.peak_entries, ledger.peak_nodes
-        attempted_id = arena._next_node
+        attempted_id = arena.audit_snapshot().next_node
         retained_record = arena.resolve(interface_id)
         publications = ledger.counters.get("quotient_semantic_interner_evaluations", 0)
         failures = ledger.counters.get("quotient_publication_failures", 0)
-        node_store = cast(LedgerDict[int, QuotientRecord], arena._nodes)._data
-        key_store = cast(LedgerDict[QuotientRecord, object], arena._keys)._data
+        node_store = object.__getattribute__(
+            cast(LedgerDict[int, QuotientRecord], arena.audit_snapshot().nodes), "_data"
+        )
+        key_store = object.__getattribute__(
+            cast(LedgerDict[QuotientRecord, object], arena.audit_snapshot().keys),
+            "_data",
+        )
         target = node_store if store_kind == "node" else key_store
         failed = False
-        setitem = TrackedDict.__setitem__
+        setitem = TrackedDict[object, object].__setitem__
 
         def fail_setitem(
             store: TrackedDict[object, object], key: object, value: object
@@ -142,7 +147,7 @@ def test_arithmetic_interface_reservation_failure_cancels_before_publication(
         )
         signature, components = _candidate(arena, interface_id)
         retained = _retained(ledger, arena)
-        next_node = arena._next_node
+        next_node = arena.audit_snapshot().next_node
         failures = ledger.counters.get("quotient_publication_failures", 0)
         ledger.tighten_limits(
             ledger.nodes if budget == "nodes" else None,
@@ -151,6 +156,6 @@ def test_arithmetic_interface_reservation_failure_cancels_before_publication(
         with pytest.raises(BlockContextBudgetExceeded):
             arena.intern(signature, components)
         assert _retained(ledger, arena) == retained
-        assert arena._next_node == next_node
+        assert arena.audit_snapshot().next_node == next_node
         assert ledger.counters.get("quotient_publication_failures", 0) == failures + 1
         assert all(row.accounting_delta == 0 for row in ledger.inventory())

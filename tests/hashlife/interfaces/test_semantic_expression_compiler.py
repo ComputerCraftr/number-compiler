@@ -68,7 +68,7 @@ def _cubed_reference(
         state = runtime.execute(HigherStep(cubed, 0, state, arena.symbol(cubed, bit)))
     outer = runtime.execute(ResolveExpr(arena.continuation(state)))
     kernel = runtime.kernel(action)
-    expected = {}
+    expected: dict[int, tuple[int, tuple[int, ...]]] = {}
     for x in range(kernel.right_count):
         body = runtime.execute(
             ResolveExpr(arena.apply(outer, literal(runtime, action, 1, x)))
@@ -128,7 +128,7 @@ def _zero_word_recipes(
     paired = runtime.actions.compose(action, action)
     x = arena.variable(arena.state_sort(action, 0), "outer")
     y = arena.variable(arena.state_sort(action, 1), "inner")
-    bodies = []
+    bodies: list[ExprID] = []
     for count in (4, 8):
         reset = x
         for _ in range(count):
@@ -251,7 +251,7 @@ def test_finite_map_lift_is_canonical_and_its_binding_cache_is_evictable() -> No
     )
     assert runtime.ledger.counters["semantic_expression_finite_lift_hits"] > 0
     runtime.ledger.evict_query_memos()
-    assert not compiler._finite_lifts
+    assert not compiler.finite_lift_audit_snapshot().container
     rebuilt = compiler.compile(normalized)
     assert rebuilt.function == first.function
     assert (
@@ -418,7 +418,7 @@ def test_structured_wrapper_uses_one_runtime_entry_and_keeps_no_result_memo(
     call = arena.call(arena.closures.intern((x,), body), (x,))
     execute = runtime.execute
     active = False
-    entries = []
+    entries: list[Task] = []
 
     def guarded(task: Task) -> Result:
         nonlocal active

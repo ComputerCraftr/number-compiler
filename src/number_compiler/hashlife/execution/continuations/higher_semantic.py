@@ -19,6 +19,9 @@ from number_compiler.hashlife.execution.continuations.higher_expression_validati
 from number_compiler.hashlife.execution.continuations.higher_semantic_audit import (
     HigherSemanticAuditSnapshot,
 )
+from number_compiler.hashlife.execution.continuations.higher_semantic_storage import (
+    HigherSemanticStorage,
+)
 from number_compiler.hashlife.execution.continuations.higher_sort_validation import (
     validate_higher_sort,
 )
@@ -51,7 +54,7 @@ if TYPE_CHECKING:
 _MAX_ENUMERATED_PRIMITIVE_STATES = 1 << 12
 
 
-class HigherSemanticArena:
+class HigherSemanticArena(HigherSemanticStorage):
     """Canonical recursive state/function DAG for one index and action arena."""
 
     _EXPRESSION_KIND = "higher-semantic-expression"
@@ -559,7 +562,7 @@ class HigherSemanticArena:
                 if target_record.signature == signature:
                     return target_node.function
         free = self.free_variables(normalized)
-        return self._intern_function(
+        return self.intern_function(
             HigherFunction(
                 signature,
                 canonical,
@@ -569,7 +572,7 @@ class HigherSemanticArena:
             )
         )
 
-    def _intern_function(self, record: HigherFunction) -> HigherFunctionID:
+    def intern_function(self, record: HigherFunction) -> HigherFunctionID:
         found = self._function_keys.get(record)
         if found is not None:
             self._function_hits += 1

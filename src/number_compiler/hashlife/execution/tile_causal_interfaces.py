@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
+
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
@@ -109,6 +111,9 @@ class CausalInterfacePayload:
         default=None, kw_only=True, repr=False
     )
 
+    def bound_request_matches(self, snapshot: tuple[object, ...]) -> bool:
+        return self._bound_output_request_snapshot == snapshot
+
     def __post_init__(self) -> None:
         if type(self.interface) is not LocalInterfaceID:
             raise TypeError("causal interface payload requires a local interface ID")
@@ -140,7 +145,7 @@ class CausalInterfacePayload:
         if self.physical_ticks < 0 or self.event_weight < 0:
             raise ValueError("causal interface weights cannot be negative")
         if self.physical_support is not None:
-            if not isinstance(self.physical_support, OrderedBooleanSupport):
+            if not is_runtime_instance(self.physical_support, OrderedBooleanSupport):
                 raise TypeError("causal interface has another shadow-support sort")
             self.physical_support.owner.validate(self.physical_support)
             if self.physical_support.ticks and (
@@ -184,7 +189,7 @@ class CausalLeafInterface:
     payload: CausalInterfacePayload
 
 
-def _attach_bound_reverse_output(
+def attach_bound_reverse_output(
     payload: CausalInterfacePayload,
     output: ReverseBoundOutput,
 ) -> CausalInterfacePayload:
@@ -223,7 +228,7 @@ def _attach_bound_reverse_output(
     )
 
 
-def _bind_bound_reverse_output_request(
+def bind_bound_reverse_output_request(
     payload: CausalInterfacePayload,
     request_snapshot: tuple[object, ...],
 ) -> CausalInterfacePayload:
@@ -544,7 +549,7 @@ def combine_causal_interfaces(
     )
     if left.bound_reverse_output is None or right.bound_reverse_output is None:
         return payload
-    return _attach_bound_reverse_output(
+    return attach_bound_reverse_output(
         payload,
         left.bound_reverse_output.then(right.bound_reverse_output, results.ledger),
     )

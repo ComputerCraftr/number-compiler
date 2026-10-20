@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Hashable, Sequence
+from collections.abc import Hashable, Sequence, Sized
 from math import lcm
 from typing import cast
 
@@ -21,12 +21,13 @@ from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageProjection,
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.antihydra.blocks import Cylinder
 from number_compiler.sequences.antihydra.observers import SpaceTimeProjection
 from number_compiler.sequences.antihydra.projection_core import (
+    AntihydraFragmentAdapter,
     AntihydraFragmentID,
     AntihydraProjectionDriver,
-    _AntihydraFragmentAdapter,
 )
 from number_compiler.sequences.antihydra.projection_fragments import ProjectionFragment
 from number_compiler.sequences.antihydra.projection_occurrences import (
@@ -35,7 +36,11 @@ from number_compiler.sequences.antihydra.projection_occurrences import (
     ProjectionOccurrenceCursor,
     ProjectionOccurrenceID,
 )
-from number_compiler.sequences.antihydra.runtime import run
+from number_compiler.sequences.antihydra.runtime import (
+    AntihydraArithmeticTerm,
+    ArithmeticSegment,
+    run,
+)
 from number_compiler.sequences.antihydra.support import (
     F0,
     STARTUP,
@@ -43,6 +48,16 @@ from number_compiler.sequences.antihydra.support import (
     section_suffix,
     sweep,
 )
+
+
+def _mutable_segments_for_adversarial_mutation(
+    term: AntihydraArithmeticTerm,
+) -> LedgerList[ArithmeticSegment]:
+    """Narrow the exact owner store before intentionally corrupting it in tests."""
+    store = term.audit_snapshot().segment_store
+    if type(store) is not LedgerList:
+        raise AssertionError("term audit snapshot lost its exact segment store")
+    return cast(LedgerList[ArithmeticSegment], store)
 
 
 def _projection(returns: int = 128) -> SpaceTimeProjection:
@@ -185,14 +200,14 @@ def test_projection_adapter_finish_does_not_replay_physical_roofs(
     projection = _projection(64)
     result = projection.result
     driver = AntihydraProjectionDriver(result.ledger)
-    result._engine.projection_fragment_driver = driver
-    original_finish = _AntihydraFragmentAdapter.finish
+    result.source_engine.projection_fragment_driver = driver
+    original_finish = AntihydraFragmentAdapter.finish
     original_apply = Cylinder.apply
     finishing = False
     finishes = 0
 
     def trace_finish(
-        adapter: _AntihydraFragmentAdapter, payload: AntihydraFragmentID
+        adapter: AntihydraFragmentAdapter, payload: AntihydraFragmentID
     ) -> ProjectionFragment:
         nonlocal finishes, finishing
         finishes += 1
@@ -209,10 +224,10 @@ def test_projection_adapter_finish_does_not_replay_physical_roofs(
             raise AssertionError("projection finish replayed a physical cylinder")
         return original_apply(cylinder, h, balance)
 
-    monkeypatch.setattr(_AntihydraFragmentAdapter, "finish", trace_finish)
+    monkeypatch.setattr(AntihydraFragmentAdapter, "finish", trace_finish)
     monkeypatch.setattr(Cylinder, "apply", reject_finish_replay)
     projection.evaluate()
-    assert finishes == len(result._term.segments)
+    assert finishes == len(result.source_term.segments)
 
 
 def test_projection_cursor_chronology_matches_scalar_macro_recurrence() -> None:
@@ -222,7 +237,7 @@ def test_projection_cursor_chronology_matches_scalar_macro_recurrence() -> None:
     h, balance, head, time, completed = 8, 0, 1, 11, 0
     cursor.begin(projection)
     try:
-        for segment in result._term.segments:
+        for segment in result.source_term.segments:
             occurrence = cursor.next()
             assert type(occurrence) is ProjectionOccurrenceID
             record = cursor.resolve(occurrence)
@@ -241,7 +256,7 @@ def test_projection_cursor_chronology_matches_scalar_macro_recurrence() -> None:
                 balance,
                 head,
                 time,
-                projection._fragment_key(
+                projection.fragment_key(
                     segment.cylinder,
                     completed,
                     head,
@@ -279,7 +294,7 @@ def test_projection_cursor_does_not_rescan_all_retained_segments_per_step() -> N
     sealed_rows = result.ledger.counters[
         "antihydra_projection_occurrence_segment_seal_rows"
     ]
-    assert sealed_rows == len(result._term._segments)
+    assert sealed_rows == len(result.source_term.audit_snapshot().segments)
     validations = result.ledger.counters.get("arithmetic_result_validation_blocks", 0)
     try:
         while (occurrence := cursor.next()) is not None:
@@ -303,7 +318,7 @@ def test_projection_cursor_rejects_post_begin_segment_replacement() -> None:
     result = projection.result
     cursor = ProjectionOccurrenceCursor(result.ledger)
     cursor.begin(projection)
-    segments = result._term._segments
+    segments = _mutable_segments_for_adversarial_mutation(result.source_term)
     original = segments[0]
     replacement = type(original)(
         original.start,
@@ -332,7 +347,7 @@ def test_projection_cursor_finish_rejects_mutated_consumed_segment() -> None:
     result = projection.result
     cursor = ProjectionOccurrenceCursor(result.ledger)
     cursor.begin(projection)
-    segments = result._term._segments
+    segments = _mutable_segments_for_adversarial_mutation(result.source_term)
     original = segments[0]
     try:
         while cursor.next() is not None:
@@ -546,8 +561,11 @@ def test_projection_cursor_budget_failure_releases_transient_authority() -> None
         ledger.max_nodes = ledger.nodes
         with pytest.raises(BlockContextBudgetExceeded, match="budget exceeded"):
             cursor.next()
-        assert not cursor._occurrences
-        assert not cursor._occurrence_seals
+        assert all(
+            not cast(Sized, state.store)
+            for state in cursor.audit_snapshot().stores
+            if state.attribute in ("_occurrences", "_occurrence_seals")
+        )
     finally:
         ledger.max_nodes = original_limit
         cursor.clear()
@@ -580,7 +598,7 @@ def test_projection_cursor_admits_segment_snapshot_before_allocating_it(
 ) -> None:
     projection = _projection(128)
     result = projection.result
-    result._term._materialize_segments(result)
+    result.source_term.materialize_segments(result)
     cursor = ProjectionOccurrenceCursor(result.ledger)
     original_limit = result.ledger.max_nodes
     result.ledger.max_nodes = result.ledger.nodes
@@ -609,7 +627,7 @@ def test_fragment_adapter_rejects_unissued_raw_occurrence_records() -> None:
     projection = _projection(64)
     result = projection.result
     driver = AntihydraProjectionDriver(result.ledger)
-    result._engine.projection_fragment_driver = driver
+    result.source_engine.projection_fragment_driver = driver
     driver.cursor.begin(projection)
     try:
         handle = driver.cursor.next()
@@ -698,7 +716,7 @@ def test_spacetime_fragments_use_tile_scheduler_and_transport_cached_segments(
     monkeypatch.setattr(ProjectionOccurrenceCursor, "next", trace_occurrence)
     projection = _projection()
     result = projection.result
-    segments = len(result._term.segments)
+    segments = len(result.source_term.segments)
     # Arithmetic construction is now an actual shared-scheduler consumer.
     # Measure observer calls separately so its exact reuse contract stays fixed.
     assert (image_calls, projection_calls, occurrence_calls) == (1, 1, 0)
@@ -727,7 +745,7 @@ def test_spacetime_fragments_use_tile_scheduler_and_transport_cached_segments(
         result.ledger.counters["antihydra_projection_occurrence_steps"] - before_steps
         == segments
     )
-    driver = result._engine.projection_fragment_driver
+    driver = result.source_engine.projection_fragment_driver
     assert type(driver) is AntihydraProjectionDriver
     assert type(driver.scheduler) is TileScheduler
     assert driver.cursor.projection is None

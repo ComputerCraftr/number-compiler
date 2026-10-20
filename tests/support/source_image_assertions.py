@@ -11,8 +11,8 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
 from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageView,
 )
+from number_compiler.resources.hashlife_behavior_metrics import HashLifeBehaviorMetrics
 from number_compiler.resources.metric_collection import collect_ledger_metrics
-from number_compiler.resources.metric_records import HashLifeBehaviorMetrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
@@ -50,7 +50,7 @@ def assert_source_image_runtime_bridge(term: SourceImageTerm, family: str) -> No
         assert metrics.tile_temporal_action_publications == 0
         assert metrics.field_action_nodes == 0
         assert_collatz_source_work(counters)
-        assert term._power is None
+        assert term.operator_nodes == 0
     else:
         assert counters.get("source_image_publications", 0) > 0
         assert counters.get("source_image_projection_publications", 0) > 0
@@ -112,7 +112,7 @@ def assert_source_image_behavior(
     if collatz:
         assert isinstance(term, PoweredCollatzTerm)
         assert after.seed_application_temporal_action_nodes > 0
-        assert term._power is None
+        assert term.operator_nodes == 0
         assert_collatz_source_publications(counters)
         assert runtime.temporal_parent_requests == 0
         assert runtime.temporal_parent_compositions == 0

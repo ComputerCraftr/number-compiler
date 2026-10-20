@@ -114,10 +114,10 @@ def _retention(
         tuple(functions.nodes),
         tuple(functions.keys.items()),
         tuple(functions.memo.items()),
-        tuple(quotient._signatures),
-        tuple(quotient._signature_keys.items()),
-        tuple(quotient._nodes.values()),
-        tuple(quotient._keys.items()),
+        tuple(quotient.audit_snapshot().signatures),
+        tuple(quotient.audit_snapshot().signature_keys.items()),
+        tuple(quotient.audit_snapshot().nodes.values()),
+        tuple(quotient.audit_snapshot().keys.items()),
         tuple(quotient.parents.items()),
     )
 

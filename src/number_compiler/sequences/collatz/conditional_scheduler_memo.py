@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -31,12 +32,12 @@ class ConditionalSchedulerMemo:
         self._closed = False
         self._cleanup_complete = False
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         if self._closed:
             raise RuntimeError("conditional scheduler memo is closed")
 
     def _port_memo(self) -> OwnedMemo[tuple[int, ...], object]:
-        self._check_open()
+        self.check_open()
         if self._ports is None:
 
             def cost(_key: tuple[int, ...], candidate: object) -> int:
@@ -70,7 +71,7 @@ class ConditionalSchedulerMemo:
         control_bits: int,
     ) -> CertifiedSchedulerCandidate | None:
         """Preflight each retained guard at its exact verification size."""
-        self._check_open()
+        self.check_open()
         memo = self._ports
         if memo is None:
             return None
@@ -95,7 +96,7 @@ class ConditionalSchedulerMemo:
                 continue
             if type(candidate) is not CertifiedSchedulerCandidate:
                 raise ValueError("conditional port cache is malformed")
-            candidate._verify_memo_issued()
+            candidate.verify_memo_issued()
             bits = candidate.verification_operand_bits(
                 control_bits, source_override=source
             )
@@ -111,8 +112,8 @@ class ConditionalSchedulerMemo:
             with reservation:
                 reservation.reserve(nodes=max(nodes for _, nodes in candidates))
                 for candidate, _ in candidates:
-                    candidate._verify_memo_issued()
-                    candidate.port._verify_issued()
+                    candidate.verify_memo_issued()
+                    candidate.port.verify_issued()
                     if candidate.port.admits(source):
                         return candidate
         except BlockContextBudgetExceeded:
@@ -126,7 +127,7 @@ class ConditionalSchedulerMemo:
         coefficient_budget: int,
     ) -> None:
         """Retain one verified guarded action in a bounded query-owned memo."""
-        self._check_open()
+        self.check_open()
         from number_compiler.sequences.collatz.conditional_scheduler_adapter import (
             CertifiedSchedulerCandidate,
         )
@@ -139,7 +140,7 @@ class ConditionalSchedulerMemo:
             or coefficient_budget < 32
         ):
             raise ValueError("conditional source action or demand is malformed")
-        candidate._seal_for_memo()
+        candidate.seal_for_memo()
         guard = candidate.port.guard
         key = (
             candidate.return_count,
@@ -160,7 +161,7 @@ class ConditionalSchedulerMemo:
             self.ledger.bump(_collatz_keys.COLLATZ_CONDITIONAL_SCHEDULER_CACHE_BYPASSES)
 
     def _miss_memo(self) -> OwnedMemo[tuple[int, ...], bool]:
-        self._check_open()
+        self.check_open()
         if self._misses is None:
             owner = self.ledger.register(
                 f"collatz-dyadic-{self.ledger.owner_count}-conditional-misses",
@@ -176,12 +177,12 @@ class ConditionalSchedulerMemo:
         return self._misses
 
     def has_miss(self, key: tuple[int, ...]) -> bool:
-        self._check_open()
+        self.check_open()
         return self._misses is not None and key in self._misses
 
     def remember_miss(self, key: tuple[int, ...]) -> None:
         """Remember proof misses, never precision or temporary budget refusal."""
-        self._check_open()
+        self.check_open()
         if type(key) is not tuple or any(type(value) is not int for value in key):
             raise TypeError("conditional miss key must contain exact integers")
         memo = self._miss_memo()
@@ -198,7 +199,7 @@ class ConditionalSchedulerMemo:
         if self._cleanup_complete:
             return
         self._closed = True
-        disposals = []
+        disposals: list[Callable[[], None]] = []
         if self._misses is not None:
             disposals.append(self._misses.dispose)
         if self._ports is not None:
@@ -214,11 +215,11 @@ class ConditionalSchedulerMemoOwner:
 
     ledger: ResourceLedger
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         raise NotImplementedError("memo owner must enforce its own lifecycle")
 
     def _scheduler_memo(self) -> ConditionalSchedulerMemo:
-        self._check_open()
+        self.check_open()
         memo = getattr(self, "_conditional_scheduler_memo", None)
         if memo is None:
             memo = ConditionalSchedulerMemo(self.ledger)
@@ -243,7 +244,7 @@ class ConditionalSchedulerMemoOwner:
         self._scheduler_memo().remember_port(candidate, demand, coefficient_budget)
 
     def was_conditional_miss(self, key: tuple[int, ...]) -> bool:
-        self._check_open()
+        self.check_open()
         memo = getattr(self, "_conditional_scheduler_memo", None)
         return memo is not None and memo.has_miss(key)
 

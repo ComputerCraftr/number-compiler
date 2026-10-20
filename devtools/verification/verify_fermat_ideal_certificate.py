@@ -10,9 +10,12 @@ import sys
 from pathlib import Path
 
 from devtools.benchmarks.report_schema import sequence
-from devtools.report_values import object_list, string_keyed_mapping
 from devtools.verification.fermat_integral_ideal_reference import (
     FermatIntegralIdealWitness,
+)
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_list,
+    string_keyed_mapping,
 )
 
 MAX_CERTIFICATE_BYTES = 2_000_000
@@ -30,7 +33,7 @@ def _decode_int(value: object) -> int:
 
 
 def _parse_vector(value: object, *, maximum: int) -> tuple[int, ...]:
-    if not object_list(value) or len(value) > maximum:
+    if not is_object_list(value) or len(value) > maximum:
         raise ValueError("invalid bounded proof vector")
     return tuple(_decode_int(item) for item in sequence(value))
 
@@ -66,7 +69,7 @@ def verify(path: str | Path) -> dict[str, object]:
     if type(claimed_width) is not int or claimed_width != width:
         raise ValueError("claimed source width does not match the Fermat index")
     raw_digits = data.get("signed_digits")
-    if not object_list(raw_digits):
+    if not is_object_list(raw_digits):
         raise ValueError("invalid signed output vector")
     digits_raw = sequence(raw_digits)
     if len(digits_raw) != width:

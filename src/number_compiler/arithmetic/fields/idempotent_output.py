@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.arithmetic.polynomials.digit_cyclotomic import CyclotomicDigitBlock
 from number_compiler.projection.output_quotient import (
     BinaryOutputCoordinate,
@@ -176,9 +177,9 @@ class IdempotentCyclotomicDigitBlock:
     one_sheet: CyclotomicDigitBlock
 
     def __post_init__(self) -> None:
-        if not isinstance(self.zero_sheet, CyclotomicDigitBlock) or not isinstance(
-            self.one_sheet, CyclotomicDigitBlock
-        ):
+        if not is_runtime_instance(
+            self.zero_sheet, CyclotomicDigitBlock
+        ) or not is_runtime_instance(self.one_sheet, CyclotomicDigitBlock):
             raise TypeError((type(self.zero_sheet), type(self.one_sheet)))
         if self.zero_sheet.module_key != self.one_sheet.module_key:
             raise ValueError((self.zero_sheet.module_key, self.one_sheet.module_key))
@@ -199,7 +200,7 @@ class IdempotentCyclotomicDigitBlock:
         )
 
     def _check(self, other: IdempotentCyclotomicDigitBlock) -> None:
-        if not isinstance(other, IdempotentCyclotomicDigitBlock):
+        if not is_runtime_instance(other, IdempotentCyclotomicDigitBlock):
             raise TypeError(type(other))
         if self.module_key != other.module_key:
             raise ValueError((self.module_key, other.module_key))

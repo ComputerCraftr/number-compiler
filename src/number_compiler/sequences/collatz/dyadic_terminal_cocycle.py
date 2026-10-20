@@ -105,10 +105,10 @@ class DyadicTerminalFieldAction:
         )
 
     @classmethod
-    def _restore_issued(
+    def restore_cache_payload(
         cls, steps: int, coefficients: tuple[int, ...]
     ) -> DyadicTerminalFieldAction:
-        """Rehydrate only a complete record read from this family's issued cache."""
+        """Restore an exact coefficient record after its cache owner check."""
         if type(coefficients) is not tuple or len(coefficients) != 6:
             raise ValueError("issued dyadic field payload is malformed")
         if any(type(value) is not int for value in coefficients):

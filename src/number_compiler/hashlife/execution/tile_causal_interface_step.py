@@ -22,7 +22,7 @@ from number_compiler.hashlife.execution.causal_frames import (
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
     CausalLeafInterface,
-    _attach_bound_reverse_output,
+    attach_bound_reverse_output,
     combine_causal_interfaces,
     interface_payload_from_causal,
     primitive_interface_payload,
@@ -37,7 +37,7 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
-    _bind_reverse_output_request,
+    bind_reverse_output_request,
     causal_interface_key,
     lookup_causal_interface,
     publish_causal_interface,
@@ -79,7 +79,7 @@ def _publish_interface(
 ) -> CausalInterfacePayload:
     """Publish an active observation only after binding its full request."""
     if payload.bound_reverse_output is not None:
-        payload = _bind_reverse_output_request(key, payload)
+        payload = bind_reverse_output_request(key, payload)
     return publish_causal_interface(engine.scheduler.results, key, payload)
 
 
@@ -97,7 +97,7 @@ def _primitive_parent_payload(
     )
     from number_compiler.projection.digit_terminal import DigitNormalizeBlockEffect
 
-    kernel = engine._law(action)
+    kernel = engine.kernel_law(action)
     hooks = engine.adapter.family_hooks
     family_effect = hooks is not None and hooks.owns_effect(kernel.effect)
     zero_occurrence = (
@@ -122,7 +122,7 @@ def _primitive_parent_payload(
         action,
         tile,
         PrimitiveCausalPorts(left, right),
-        engine._wiring(action),
+        engine.result_wiring(action),
         occurrence,
         physical_support=support,
         action_admission=engine.action_admission,
@@ -137,20 +137,20 @@ def _leaf(
     right: int,
     require_output: bool,
 ) -> CausalLeafInterface:
-    wiring = engine._wiring(action)
+    wiring = engine.result_wiring(action)
     output, interface, occurrence = engine.adapter.leaf_interface_symbol(
         action,
         symbol,
         (left, right),
         wiring,
     )
-    action_weight = engine._cocycle(action)
+    action_weight = engine.action_cocycle(action)
     outgoing = (
         engine.adapter.observe(interface, "boundary_left", (left, right)),
         engine.adapter.observe(interface, "boundary_right", (left, right)),
     )
     active = bool(engine.adapter.observe(interface, "activity", (left, right)))
-    law = engine._law(action)
+    law = engine.kernel_law(action)
     support = None
     hooks = engine.adapter.family_hooks
     if hooks is not None and hooks.owns_effect(law.effect):
@@ -172,7 +172,7 @@ def _leaf(
         physical_support=support,
     )
     if require_output and bound_reverse_output is not None:
-        payload = _attach_bound_reverse_output(payload, bound_reverse_output)
+        payload = attach_bound_reverse_output(payload, bound_reverse_output)
     return CausalLeafInterface(output, payload)
 
 
@@ -285,7 +285,7 @@ def interface_step(
                 _publish_interface(
                     engine,
                     saved_observation_key,
-                    _attach_bound_reverse_output(saved_payload, bound_output),
+                    attach_bound_reverse_output(saved_payload, bound_output),
                 )
             )
             engine.ledger.bump(_execution_keys.REVERSE_EXACT_OUTPUT_SUMMARY_EVALUATIONS)
@@ -295,7 +295,7 @@ def interface_step(
                 cached_midpoint_interface_step,
             )
 
-            children = engine._children(action)
+            children = engine.child_actions(action)
             if children is None:
                 raise AssertionError("cached interface midpoint lost its temporal edge")
             match frame.saved:
@@ -332,7 +332,7 @@ def interface_step(
             midpoint_missed = True
         if frame.stage == 0 and not midpoint_missed:
             key: PoweredResultKey | None
-            if engine._children(action) is None:
+            if engine.child_actions(action) is None:
                 if type(left) is not int or type(right) is not int:
                     raise TypeError("primitive causal interface requires finite ports")
                 key, completed = probe_causal_result(
@@ -340,11 +340,11 @@ def interface_step(
                     action,
                     tile,
                     PrimitiveCausalPorts(left, right),
-                    engine._wiring(action),
+                    engine.result_wiring(action),
                     action_admission=engine.action_admission,
                 )
             else:
-                key = engine._composite_key(action, tile, left, right)
+                key = engine.composite_key(action, tile, left, right)
                 completed = (
                     None
                     if key is None
@@ -378,15 +378,15 @@ def interface_step(
                         )
                         return True
                 causal = result_payload(engine.tiles, completed)
-                if engine._application is None:
-                    engine._result_leases.append(completed)
+                if engine.application_identity is None:
+                    engine.lease_workspace.results.append(completed)
                 else:
                     if key is None:
                         raise AssertionError(
                             "causal interface result lost its completed request"
                         )
-                    engine.scheduler._pin_causal(
-                        engine._application,
+                    engine.scheduler.pin_causal(
+                        engine.application_identity,
                         key,
                         completed,
                     )
@@ -394,7 +394,7 @@ def interface_step(
                     engine.scheduler.results,
                     action,
                     causal,
-                    engine._wiring(action),
+                    engine.result_wiring(action),
                     expected_level=node.level,
                 )
                 if require_output:
@@ -422,7 +422,7 @@ def interface_step(
                         _execution_keys.TILE_CAUSAL_INTERFACE_PARENT_HITS
                     )
                     return True
-            children = engine._children(action)
+            children = engine.child_actions(action)
             if children is not None and not require_output:
                 from number_compiler.hashlife.execution.tile_causal_interface_midpoint import (
                     cached_midpoint_interface_step,
@@ -442,7 +442,7 @@ def interface_step(
                     observation_key,
                 ):
                     return True
-            if engine._children(action) is None and not require_output:
+            if engine.child_actions(action) is None and not require_output:
                 if type(left) is not int or type(right) is not int:
                     raise TypeError("primitive causal interface requires finite ports")
                 primitive_parent_payload = _primitive_parent_payload(
@@ -561,7 +561,7 @@ def interface_step(
                 action,
                 left_payload,
                 right_payload,
-                engine._wiring(action),
+                engine.result_wiring(action),
                 expected_level=node.level,
             )
             values.append(
@@ -575,7 +575,7 @@ def interface_step(
     action, left, symbol, right, require_output = frame.args
     if type(require_output) is not bool:
         raise TypeError("interface output demand requires an exact Boolean")
-    children = engine._children(action)
+    children = engine.child_actions(action)
     if children is None:
         if type(left) is not int or type(right) is not int:
             raise TypeError("primitive interface emission requires finite ports")
@@ -615,7 +615,7 @@ def interface_step(
             ),
         )
         if second.payload.bound_reverse_output is not None:
-            second_payload = _attach_bound_reverse_output(
+            second_payload = attach_bound_reverse_output(
                 second_payload,
                 second.payload.bound_reverse_output,
             )

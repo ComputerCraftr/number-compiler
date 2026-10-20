@@ -8,6 +8,7 @@ Uncovered positions remain explicit and cannot be used for macro admission.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -126,7 +127,7 @@ def certify_radix6_coverage(
         cylinder.modulus,
     )
     first, last = cylinder.first, cylinder.last
-    charge_width_bits = (
+    charge_width_bits: Callable[[int], None] | None = (
         None
         if ledger is None
         else lambda bits: ledger.bump(

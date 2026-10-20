@@ -204,7 +204,7 @@ def shared_radix_decision_metrics(
             memo[state] = old
         return memo[root]
 
-    roots = []
+    roots: list[int] = []
     for bit in range(output_bits):
         vector = tuple((value >> bit) & 1 for value in vals)
         roots.append(reduce_vector(vector, 0))

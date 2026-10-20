@@ -28,7 +28,7 @@ def valid_runtime_value_record(
     if type(record) is RuntimeFunction:
         if type(record.environment) is not int or record.environment < -1:
             return False
-        arena._validate_function(record.function)
+        arena.validate_function(record.function)
         if record.environment >= 0:
             arena.environment(record.environment)
         return True
@@ -70,7 +70,7 @@ def valid_runtime_value_record(
                 return False
             expected = children[0]
         try:
-            arena._validate_action_atom(expected, record.side, record.anchor)
+            arena.validate_action_atom(expected, record.side, record.anchor)
         except (TypeError, ValueError):
             return False
         return True
@@ -103,17 +103,17 @@ def valid_runtime_value_record(
             and all(0 <= value < codomain for value in record.outputs)
         )
     if type(record) is RuntimeTransferredState:
-        arena._validate_summary(record.summary, kind="unary")
+        arena.validate_summary(record.summary, kind="unary")
         arena.validate_atom(record.incoming)
         return True
     if type(record) is RuntimeContextState:
-        arena._validate_summary(record.summary, kind="context")
+        arena.validate_summary(record.summary, kind="context")
         for atom in (record.left, record.right, record.incoming):
             arena.validate_atom(atom)
         return type(record.side) is int and record.side in (0, 1)
     if type(record) is RuntimeSummaryFunction:
-        arena._validate_summary(record.context, kind="context")
-        arena._validate_summary(record.opposite, kind="unary")
+        arena.validate_summary(record.context, kind="context")
+        arena.validate_summary(record.opposite, kind="unary")
         arena.validate_atom(record.anchor)
         arena.resolve(record.continuation)
         return type(record.side) is int and record.side in (0, 1)

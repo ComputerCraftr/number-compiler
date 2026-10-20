@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Final, cast
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.process_cache import (
     MISSING,
@@ -21,19 +22,22 @@ from number_compiler.resources.process_cache import (
     get_process_cache,
 )
 from number_compiler.sequences.collatz.mixed_clock_macros import (
-    _MIXED_ACTION_CACHE_ISSUER,
     MAX_MIXED_ACTION_SYMBOLS,
+    MIXED_ACTION_CACHE_INDEX_BITS,
+    MIXED_ACTION_CACHE_NAMESPACE,
+    MIXED_ACTION_CACHE_VERSION,
     MixedClockMacro,
-    _mixed_cache_payload,
-    _restore_mixed_cache_payload,
-    _validate_mixed_cache_publication,
+    mixed_cache_payload,
+    read_mixed_action_cache_bucket,
+    restore_mixed_cache_payload,
+    update_mixed_action_cache_bucket,
+    validate_mixed_cache_publication,
     validate_mixed_clock_macro,
 )
 
-_ISSUER = _MIXED_ACTION_CACHE_ISSUER
-_VERSION: Final[str] = "collatz-complete-mixed-action-v2"
-_INDEX_BITS = 16
-_MAX_RECORDS_PER_PREFIX = 8
+_VERSION: Final[str] = MIXED_ACTION_CACHE_VERSION
+_INDEX_BITS = MIXED_ACTION_CACHE_INDEX_BITS
+MAX_RECORDS_PER_PREFIX: Final[int] = 8
 _MIXED_RECORD_SIZE = 17
 
 
@@ -72,7 +76,7 @@ def lookup_mixed_action(
         raise ValueError("mixed action cache lookup coordinates are malformed")
     if not getattr(macros, "shared_cache", False):
         return None
-    bump = macros._bump
+    bump = macros.bump_mixed_action_metric
     bump("mixed_lookups")
     prefix = source & ((1 << _INDEX_BITS) - 1)
     bump("mixed_key_operand_bits", source.bit_length() + prefix.bit_length())
@@ -83,95 +87,98 @@ def lookup_mixed_action(
         return None
     try:
         scratch.require_bits(8 * (source.bit_length() + _INDEX_BITS + 32))
-        lease = cache.acquire("collatz-mixed-action-index", _VERSION, (prefix,))
+        lease = cache.acquire(MIXED_ACTION_CACHE_NAMESPACE, _VERSION, (prefix,))
     except BlockContextBudgetExceeded:
         bump("mixed_bypasses")
         bump("mixed_misses")
         return None
     with lease:
         try:
-            bucket = lease.get_issued(("macro",), _ISSUER)
+            bucket = read_mixed_action_cache_bucket(lease)
         except CacheRecordIssuerMismatch:
             bump("mixed_invalid_records")
             bump("failed_work")
             raise
-    if bucket is MISSING:
-        bump("mixed_misses")
-        return None
-    bump("mixed_retrieved")
-    try:
-        records = _decode_mixed_action_bucket(bucket)
-    except ValueError:
-        bump("mixed_invalid_records")
-        bump("failed_work")
-        raise
-    payload_bits = _mixed_bucket_operand_bits(records)
-    bump("mixed_validation_operand_bits", payload_bits)
-    # Publication stores a canonical descending order. Validate it once and
-    # consume the already-ranked tuple directly on warm lookup; sorting here
-    # would repeat publication work on every hit.
-    root_tail_rejection = False
-    for payload in records:
-        action_ticks = _mixed_record_physical_ticks(payload)
-        if action_ticks > physical_ticks:
-            bump("mixed_rejected_fit")
-            continue
-        if include_width and source != payload[12]:
-            bump("mixed_inapplicable")
-            continue
-        if minimum_physical_ticks is not None and action_ticks < minimum_physical_ticks:
+        if bucket is MISSING:
+            bump("mixed_misses")
+            return None
+        bump("mixed_retrieved")
+        try:
+            records = _decode_mixed_action_bucket(bucket)
+        except ValueError:
+            bump("mixed_invalid_records")
+            bump("failed_work")
+            raise
+        payload_bits = _mixed_bucket_operand_bits(records)
+        bump("mixed_validation_operand_bits", payload_bits)
+        # Publication stores a canonical descending order. Validate it once and
+        # consume the already-ranked tuple directly on warm lookup; sorting here
+        # would repeat publication work on every hit.
+        root_tail_rejection = False
+        for payload in records:
+            action_ticks = _mixed_record_physical_ticks(payload)
+            if action_ticks > physical_ticks:
+                bump("mixed_rejected_fit")
+                continue
+            if include_width and source != payload[12]:
+                bump("mixed_inapplicable")
+                continue
+            if (
+                minimum_physical_ticks is not None
+                and action_ticks < minimum_physical_ticks
+            ):
+                try:
+                    scratch.require_bits(8 * (source.bit_length() + payload[0] + 32))
+                except BlockContextBudgetExceeded:
+                    bump("mixed_bypasses")
+                    bump("mixed_misses")
+                    return None
+                bump("mixed_validation_operand_bits", source.bit_length() + payload[0])
+                if _mixed_record_admits_source(source, payload):
+                    bump("mixed_root_tail_rejections")
+                    root_tail_rejection = True
+                else:
+                    bump("mixed_inapplicable")
+                continue
             try:
-                scratch.require_bits(8 * (source.bit_length() + payload[0] + 32))
+                scratch.require_bits(16 * (source.bit_length() + payload_bits + 32))
             except BlockContextBudgetExceeded:
                 bump("mixed_bypasses")
                 bump("mixed_misses")
                 return None
-            bump("mixed_validation_operand_bits", source.bit_length() + payload[0])
-            if _mixed_record_admits_source(source, payload):
-                bump("mixed_root_tail_rejections")
-                root_tail_rejection = True
-            else:
+            bump("mixed_validation_operand_bits", _mixed_record_operand_bits(payload))
+            try:
+                macro = restore_mixed_cache_payload(
+                    source,
+                    payload,
+                    include_width=include_width,
+                    cache_lease=lease,
+                )
+            except (TypeError, ValueError):
+                bump("mixed_invalid_records")
+                bump("failed_work")
+                raise
+            if macro is None:
                 bump("mixed_inapplicable")
-            continue
-        try:
-            scratch.require_bits(16 * (source.bit_length() + payload_bits + 32))
-        except BlockContextBudgetExceeded:
-            bump("mixed_bypasses")
-            bump("mixed_misses")
-            return None
-        bump("mixed_validation_operand_bits", _mixed_record_operand_bits(payload))
-        try:
-            macro = _restore_mixed_cache_payload(
-                source,
-                payload,
-                include_width=include_width,
-                issued_by=_ISSUER,
+                continue
+            if macro.physical_ticks > physical_ticks:
+                bump("mixed_rejected_fit")
+                continue
+            validate_mixed_clock_macro(macro)
+            bump("mixed_admitted")
+            bump(
+                "mixed_validation_operand_bits",
+                macro.fields.gain.bit_length()
+                + macro.fields.offset.bit_length()
+                + macro.fields.sum_gain.bit_length()
+                + macro.fields.sum_offset.bit_length()
+                + macro.source.bit_length()
+                + macro.endpoint.bit_length(),
             )
-        except (TypeError, ValueError):
-            bump("mixed_invalid_records")
-            bump("failed_work")
-            raise
-        if macro is None:
-            bump("mixed_inapplicable")
-            continue
-        if macro.physical_ticks > physical_ticks:
-            bump("mixed_rejected_fit")
-            continue
-        validate_mixed_clock_macro(macro)
-        bump("mixed_admitted")
-        bump(
-            "mixed_validation_operand_bits",
-            macro.fields.gain.bit_length()
-            + macro.fields.offset.bit_length()
-            + macro.fields.sum_gain.bit_length()
-            + macro.fields.sum_offset.bit_length()
-            + macro.source.bit_length()
-            + macro.endpoint.bit_length(),
-        )
-        return macro
-    if root_tail_rejection:
-        raise MixedActionTailNotAdmitted
-    return None
+            return macro
+        if root_tail_rejection:
+            raise MixedActionTailNotAdmitted
+        return None
 
 
 def remember_mixed_action(
@@ -185,7 +192,7 @@ def remember_mixed_action(
     validate_mixed_clock_macro(macro)
     if not getattr(macros, "shared_cache", False):
         return False
-    bump = macros._bump
+    bump = macros.bump_mixed_action_metric
     cache = get_process_cache()
     if not cache.enabled:
         # This is optional retention.  Do not construct a cache key, exact
@@ -242,13 +249,13 @@ def remember_mixed_action(
     except BlockContextBudgetExceeded:
         bump("mixed_bypasses")
         return False
-    validation_bits = _validate_mixed_cache_publication(macro)
+    validation_bits = validate_mixed_cache_publication(macro)
     bump("mixed_validation_operand_bits", validation_bits)
-    payload = _mixed_cache_payload(macro)
+    payload = mixed_cache_payload(macro)
     payload_bits = _mixed_record_operand_bits(payload)
     bump("mixed_payload_operand_bits", payload_bits)
     try:
-        lease = cache.acquire("collatz-mixed-action-index", _VERSION, (prefix,))
+        lease = cache.acquire(MIXED_ACTION_CACHE_NAMESPACE, _VERSION, (prefix,))
     except BlockContextBudgetExceeded:
         bump("mixed_bypasses")
         return False
@@ -269,13 +276,13 @@ def remember_mixed_action(
                 )
             if payload in records:
                 return MISSING, "duplicate"
-            retained, disposition = _merge_mixed_action_records(records, payload)
+            retained, disposition = merge_mixed_action_records(records, payload)
             if disposition != "retained":
                 return MISSING, disposition
             return cast(ImmutableValue, retained), disposition
 
         with lease:
-            stored, disposition = lease.update_issued(("macro",), _ISSUER, merge)
+            stored, disposition = update_mixed_action_cache_bucket(lease, merge)
     except BlockContextBudgetExceeded:
         bump("mixed_bypasses")
         return False
@@ -307,28 +314,32 @@ def remember_mixed_action(
 
 def applied_mixed_action(macros: CollatzDyadicMacros) -> None:
     """Count a retrieved action only after its exact consumer used it."""
-    macros._bump("mixed_applied_hits")
+    macros.bump_mixed_action_metric("mixed_applied_hits")
 
 
 def _decode_mixed_action_bucket(payload: object) -> tuple[tuple[int, ...], ...]:
     if (
-        type(payload) is not tuple
-        or not 1 <= len(payload) <= _MAX_RECORDS_PER_PREFIX
-        or any(
-            type(record) is not tuple
-            or len(record) != _MIXED_RECORD_SIZE
-            or any(type(value) is not int for value in record)
-            for record in payload
-        )
+        not is_exact_object_tuple(payload)
+        or not 1 <= len(payload) <= MAX_RECORDS_PER_PREFIX
     ):
         raise ValueError("mixed action cache bucket is malformed")
-    records = cast(tuple[tuple[int, ...], ...], payload)
-    for index in range(1, len(records)):
-        if _mixed_record_order(records[index - 1]) <= _mixed_record_order(
-            records[index]
+    records: list[tuple[int, ...]] = []
+    for value in payload:
+        if not is_exact_object_tuple(value):
+            raise ValueError("mixed action cache bucket is malformed")
+        record = value
+        if len(record) != _MIXED_RECORD_SIZE or any(
+            type(item) is not int for item in record
+        ):
+            raise ValueError("mixed action cache bucket is malformed")
+        records.append(cast(tuple[int, ...], record))
+    decoded = tuple(records)
+    for index in range(1, len(decoded)):
+        if _mixed_record_order(decoded[index - 1]) <= _mixed_record_order(
+            decoded[index]
         ):
             raise ValueError("mixed action cache bucket is not canonical")
-    return records
+    return decoded
 
 
 def _mixed_record_operand_bits(record: tuple[int, ...]) -> int:
@@ -339,12 +350,12 @@ def _mixed_bucket_operand_bits(records: tuple[tuple[int, ...], ...]) -> int:
     return sum(_mixed_record_operand_bits(record) for record in records)
 
 
-def _merge_mixed_action_records(
+def merge_mixed_action_records(
     records: tuple[tuple[int, ...], ...], payload: tuple[int, ...]
 ) -> tuple[tuple[tuple[int, ...], ...], str]:
     """Keep only the largest bounded actions, reporting a dropped candidate."""
     ranked = sorted((*records, payload), key=_mixed_record_order, reverse=True)
-    retained = tuple(ranked[:_MAX_RECORDS_PER_PREFIX])
+    retained = tuple(ranked[:MAX_RECORDS_PER_PREFIX])
     if payload not in retained:
         return records, "pruned"
     return retained, "retained"

@@ -7,7 +7,7 @@ this module owns the Antihydra arithmetic and projection invariants.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Sized
+from collections.abc import Callable, Iterator
 from dataclasses import fields
 from typing import TYPE_CHECKING, TypeVar, cast
 
@@ -95,7 +95,7 @@ def register_antihydra_payload_contract(root: object) -> None:
         AntihydraArithmeticImageWorkspace,
     )
     from number_compiler.sequences.antihydra.projection_core import (
-        _AntihydraFragmentAdapter,
+        AntihydraFragmentAdapter,
     )
     from number_compiler.sequences.antihydra.projection_fragments import (
         ProjectionFragmentCache,
@@ -184,32 +184,20 @@ def register_antihydra_payload_contract(root: object) -> None:
             ),
             audit_antihydra_fragment_cache,
         )
-    elif type(root) is ProjectionOccurrenceCursor:
+    elif (
+        type(root) is ProjectionOccurrenceCursor
+        or type(root) is AntihydraFragmentAdapter
+    ):
         register(
             root,
             "antihydra",
-            (
-                bind(root._state_owner, "_states", "workspace"),
-                bind(root._state_seal_owner, "_state_seals", "projection_binding"),
-                bind(root._occurrence_owner, "_occurrences", "demanded_projection"),
-                bind(
-                    root._occurrence_seal_owner,
-                    "_occurrence_seals",
-                    "projection_binding",
-                ),
+            tuple(
+                bind(row.owner, row.attribute, row.role)
+                for row in root.audit_snapshot().stores
             ),
-            audit_antihydra_cursor,
-        )
-    elif type(root) is _AntihydraFragmentAdapter:
-        register(
-            root,
-            "antihydra",
-            (
-                bind(root._owner, "_records", "demanded_projection"),
-                bind(root._seal_owner, "_seals", "projection_binding"),
-                bind(root._source_seal_owner, "_source_seals", "projection_binding"),
-            ),
-            audit_antihydra_fragment_adapter,
+            audit_antihydra_cursor
+            if type(root) is ProjectionOccurrenceCursor
+            else audit_antihydra_fragment_adapter,
         )
     elif type(root) is SectionImageWorkspace:
         register(
@@ -221,39 +209,20 @@ def register_antihydra_payload_contract(root: object) -> None:
 
 
 def refresh_antihydra_payload_contract(root: object) -> None:
-    """Refresh a term contract after its lazy Mahler memo is published."""
-    from number_compiler.resources.payload_contracts import (
-        remove_payload_audit_contract,
-    )
-
+    """Refresh a live term contract atomically through its ledger owner."""
     ledger = getattr(root, "ledger", None)
     if type(ledger) is not ResourceLedger:
         raise TypeError("Antihydra payload roots require their ResourceLedger")
-    # Registration rejects replacement by design.  Capture the existing
-    # binding before the remove/register pair so a constructor or validator
-    # failure cannot leave this live term without its prior authority.
-    key = (id(root), "antihydra")
-    old_binding = ledger._payload_audit_contracts.get(key)
-    if old_binding is None or old_binding.root_reference() is not root:
-        raise ValueError("Antihydra term has no exact contract to refresh")
-    remove_payload_audit_contract(ledger, root, "antihydra")
-    try:
-        register_antihydra_payload_contract(root)
-    except BaseException:
-        try:
-            # Restore the already-validated immutable binding directly.  This
-            # also repairs a hypothetical partial replacement before the
-            # exception escapes to the demand caller.
-            ledger._payload_audit_contracts[key] = old_binding
-            ledger.note_store_mutation()
-        except BaseException as restore_error:
-            raise RuntimeError(
-                "failed to restore the Antihydra payload contract"
-            ) from restore_error
-        raise
+    ledger.refresh_payload_audit_contract(
+        root,
+        "antihydra",
+        lambda: register_antihydra_payload_contract(root),
+        missing_message="Antihydra term has no exact contract to refresh",
+        restore_message="failed to restore the Antihydra payload contract",
+    )
 
 
-def _owned_row_matches(
+def owned_row_matches(
     ledger: ResourceLedger,
     owner: int,
     store: object,
@@ -262,31 +231,18 @@ def _owned_row_matches(
     entries: int | None = None,
     nodes: int | None = None,
 ) -> bool:
-    if not isinstance(store, Sized):
-        return False
-    try:
-        account = ledger._account(owner)
-        actual_entries = len(store)
-        actual_nodes = None if account.node_count is None else account.node_count()
-    except (AttributeError, TypeError, ValueError, RuntimeError):
-        return False
-    return (
-        not account.disposed
-        and account.container is store
-        and account.role == role
-        and account.entries == actual_entries
-        and actual_nodes is not None
-        and account.nodes == actual_nodes
-        and (entries is None or account.entries == entries)
-        and (nodes is None or account.nodes == nodes)
+    return ledger.matches_store_account(
+        owner, store, role, entries=entries, nodes=nodes
     )
 
 
-def _approve(approved: list[PayloadAuditEntry], owner: int, value: object) -> None:
+def approve_payload(
+    approved: list[PayloadAuditEntry], owner: int, value: object
+) -> None:
     approved.append(PayloadAuditEntry(owner, value))
 
 
-def _reject(invalid: list[PayloadAuditEntry], owner: int, value: object) -> None:
+def reject_payload(invalid: list[PayloadAuditEntry], owner: int, value: object) -> None:
     invalid.append(PayloadAuditEntry(owner, value))
 
 
@@ -297,8 +253,8 @@ def audit_antihydra_engine(ledger: object, root: object) -> PayloadAuditContribu
     )
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
     from number_compiler.sequences.antihydra.projection_core import (
+        AntihydraFragmentAdapter,
         AntihydraProjectionDriver,
-        _AntihydraFragmentAdapter,
     )
     from number_compiler.sequences.antihydra.projection_fragments import (
         ProjectionFragmentCache,
@@ -343,7 +299,7 @@ def audit_antihydra_engine(ledger: object, root: object) -> PayloadAuditContribu
         and engine.term_serial >= 0
         and len(engine.memo) + len(engine.arithmetic_memo) <= engine.capacity
         and not engine.stack
-        and _owned_row_matches(
+        and owned_row_matches(
             ledger,
             engine.memo.owner,
             engine.audit_memo_store,
@@ -351,7 +307,7 @@ def audit_antihydra_engine(ledger: object, root: object) -> PayloadAuditContribu
             entries=len(engine.memo),
             nodes=len(engine.memo),
         )
-        and _owned_row_matches(
+        and owned_row_matches(
             ledger,
             engine.arithmetic_memo.owner,
             engine.audit_arithmetic_memo_store,
@@ -359,7 +315,7 @@ def audit_antihydra_engine(ledger: object, root: object) -> PayloadAuditContribu
             entries=len(engine.arithmetic_memo),
             nodes=len(engine.arithmetic_memo),
         )
-        and _owned_row_matches(
+        and owned_row_matches(
             ledger,
             engine.workspace,
             engine.stack,
@@ -387,38 +343,27 @@ def audit_antihydra_engine(ledger: object, root: object) -> PayloadAuditContribu
             scheduler = driver.scheduler
             cursor = driver.cursor
             structural &= (
-                type(adapter) is _AntihydraFragmentAdapter
+                type(adapter) is AntihydraFragmentAdapter
                 and type(core) is SourceBoundSchedulerCore
                 and type(scheduler) is TileScheduler
-                and scheduler._source_only
+                and scheduler.is_source_only
                 and scheduler.ledger is ledger
-                and scheduler._source_images is core
+                and scheduler.published_source_image_core is core
                 and cursor.ledger is ledger
-                and not cursor._active
-                and not cursor._states
-                and not cursor._state_seals
-                and not cursor._occurrences
-                and not cursor._occurrence_seals
+                and not (cursor_snapshot := cursor.audit_snapshot()).active
+                and all(not row.store for row in cursor_snapshot.stores)
                 and adapter.ledger is ledger
-                and adapter.projection is None
-                and adapter.key is None
-                and adapter.block is None
-                and adapter._cursor is None
-                and adapter._occurrence is None
-                and adapter._source_h == adapter._source_balance == 0
-                and adapter._section_capacity == 0
-                and adapter._source_token is None
-                and not adapter._records
-                and not adapter._seals
-                and not adapter._source_seals
-                and len(core._adapters) == 1
-                and core._adapters.get((adapter.family, adapter.semantic_version))
+                and adapter.audit_snapshot().idle
+                and len((core_snapshot := core.audit_snapshot()).adapters) == 1
+                and core_snapshot.adapters.get(
+                    (adapter.family, adapter.semantic_version)
+                )
                 is adapter
-                and not core._nodes
-                and not core._origins
-                and not core._applications
-                and not core._relative
-                and not core._projections
+                and not core_snapshot.nodes
+                and not core_snapshot.origins
+                and not core_snapshot.applications
+                and not core_snapshot.relative
+                and not core_snapshot.projections
             )
 
     for physical_key, physical_value in engine.memo.items():
@@ -430,12 +375,12 @@ def audit_antihydra_engine(ledger: object, root: object) -> PayloadAuditContribu
             and physical_key == (physical_value.width, physical_value.residue)
         )
         if valid:
-            _approve(approved, engine.memo.owner, physical_key)
-            _approve(approved, engine.memo.owner, physical_value)
+            approve_payload(approved, engine.memo.owner, physical_key)
+            approve_payload(approved, engine.memo.owner, physical_value)
         else:
             structural = False
-            _reject(invalid, engine.memo.owner, physical_key)
-            _reject(invalid, engine.memo.owner, physical_value)
+            reject_payload(invalid, engine.memo.owner, physical_key)
+            reject_payload(invalid, engine.memo.owner, physical_value)
 
     for arithmetic_key, arithmetic_value in engine.arithmetic_memo.items():
         valid = (
@@ -446,15 +391,15 @@ def audit_antihydra_engine(ledger: object, root: object) -> PayloadAuditContribu
             and arithmetic_key == (arithmetic_value.width, arithmetic_value.residue)
         )
         if valid:
-            _approve(approved, engine.arithmetic_memo.owner, arithmetic_key)
-            _approve(approved, engine.arithmetic_memo.owner, arithmetic_value)
+            approve_payload(approved, engine.arithmetic_memo.owner, arithmetic_key)
+            approve_payload(approved, engine.arithmetic_memo.owner, arithmetic_value)
         else:
             structural = False
-            _reject(invalid, engine.arithmetic_memo.owner, arithmetic_key)
-            _reject(invalid, engine.arithmetic_memo.owner, arithmetic_value)
+            reject_payload(invalid, engine.arithmetic_memo.owner, arithmetic_key)
+            reject_payload(invalid, engine.arithmetic_memo.owner, arithmetic_value)
 
     if not structural:
-        _reject(invalid, first_owner, engine)
+        reject_payload(invalid, first_owner, engine)
     return PayloadAuditContribution(tuple(approved), tuple(invalid))
 
 
@@ -481,15 +426,15 @@ def audit_antihydra_image_workspace(
         image.ledger is ledger
         and image.seed == 8
         and image.law == ANTIHYDRA_ARITHMETIC_LAW
-        and image._mahler_consumer is None
+        and not image.mahler_consumer_active
     )
     if bindings is None:
-        valid &= owner is None and image._mahler_wire is None
+        valid &= owner is None and image.mahler_wire is None
     else:
         valid &= (
             type(owner) is int
             and image.ledger.registered_container(owner) is bindings
-            and _owned_row_matches(
+            and owned_row_matches(
                 ledger,
                 owner,
                 bindings,
@@ -508,7 +453,7 @@ def audit_antihydra_image_workspace(
                 and len(key) == 2
                 and key[0] == image.root_source
                 and key[1] == image.root_action
-                and wire is image._mahler_wire
+                and wire is image.mahler_wire
             )
             if (
                 type(wire) is tuple
@@ -527,14 +472,14 @@ def audit_antihydra_image_workspace(
             else:
                 valid = False
             if valid:
-                _approve(approved, owner, key)
-                _approve(approved, owner, wire)
+                approve_payload(approved, owner, key)
+                approve_payload(approved, owner, wire)
             else:
-                _reject(invalid, owner, key)
-                _reject(invalid, owner, wire)
+                reject_payload(invalid, owner, key)
+                reject_payload(invalid, owner, wire)
     if not valid:
         invalid_owner = owner if type(owner) is int else image.image_owner
-        _reject(invalid, invalid_owner, image)
+        reject_payload(invalid, invalid_owner, image)
     return PayloadAuditContribution(tuple(approved), tuple(invalid))
 
 
@@ -558,13 +503,14 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
         AntihydraArithmeticTerm,
         ArithmeticResult,
         ArithmeticSegment,
+        PhysicalPublication,
         Run,
-        _PhysicalPublication,
     )
 
     if type(ledger) is not ResourceLedger or type(root) is not AntihydraArithmeticTerm:
         raise TypeError("Antihydra term audit requires its exact term root")
     term = root
+    term_snapshot = term.audit_snapshot()
     approved: list[PayloadAuditEntry] = []
     invalid: list[PayloadAuditEntry] = []
     owner = term.segment_owner
@@ -593,24 +539,24 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
         and term.ledger is ledger
         and term.engine.ledger is ledger
         and type(term.requested) is int
-        and type(term._mahler_prepared) is bool
-        and type(term._source_action_prepared) is bool
+        and type(term.mahler_prepared) is bool
+        and type(term.source_action_prepared) is bool
         and type(term.max_steps) is int
         and type(term.max_state_bits) is int
         and 0 <= term.requested <= term.max_steps
         and 4 + term.requested <= term.max_state_bits
         and term.max_cache_entries == term.engine.capacity
-        and _owned_row_matches(
+        and owned_row_matches(
             ledger,
             owner,
-            term._segments,
+            term_snapshot.segment_store,
             "arithmetic_cylinder_support",
-            entries=len(term._segments),
+            entries=len(term_snapshot.segments),
         )
-        and type(term._segments_ready) is bool
-        and (term._segments_ready or not term._segments)
-        and len(term._segments) <= (term.requested + 63) // 64
-        and _owned_row_matches(
+        and type(term_snapshot.segments_ready) is bool
+        and (term_snapshot.segments_ready or not term_snapshot.segments)
+        and len(term_snapshot.segments) <= (term.requested + 63) // 64
+        and owned_row_matches(
             ledger,
             term.result_owner,
             term.result_publications,
@@ -619,7 +565,7 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
             nodes=len(term.result_publications),
         )
         and len(term.result_publications) <= 1
-        and _owned_row_matches(
+        and owned_row_matches(
             ledger,
             term.physical_owner,
             term.physical_publications,
@@ -656,19 +602,22 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
                 + max(1, source.lift.bit_length()),
             )
             first_failure = image.first_failure_index()
-    elif term._result is not None or term._segments_ready:
+    elif term_snapshot.result is not None or term_snapshot.segments_ready:
         valid = False
 
     expected_segments: Iterator[tuple[int, ArithmeticCylinder]] | None = None
-    if term._segments_ready and type(image) is AntihydraArithmeticImageWorkspace:
+    if (
+        term_snapshot.segments_ready
+        and type(image) is AntihydraArithmeticImageWorkspace
+    ):
         # Segments are borrowed from the authenticated source image.  Their
         # validity comes from exact source/start/cylinder equality, not current
         # residence in the engine's evictable arithmetic memo.
         expected_segments = iter(image.segments())
 
-    if term._segments_ready:
+    if term_snapshot.segments_ready:
         source_h, source_balance, source_minimum, start = 8, 0, 0, 0
-        for segment in term._segments:
+        for segment in term_snapshot.segments:
             expected_segment = (
                 next(expected_segments, None) if expected_segments is not None else None
             )
@@ -679,7 +628,7 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
                 or type(segment.cylinder) is not ArithmeticCylinder
             ):
                 valid = False
-                _reject(invalid, owner, segment)
+                reject_payload(invalid, owner, segment)
                 continue
             block = segment.cylinder
             segment_valid = (
@@ -701,13 +650,13 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
                 segment_valid = False
             if not segment_valid:
                 valid = False
-                _reject(invalid, owner, segment)
+                reject_payload(invalid, owner, segment)
                 continue
             source_minimum = min(
                 source_minimum, source_balance - block.delta + block.minimum
             )
             start += block.width
-            _approve(approved, owner, segment)
+            approve_payload(approved, owner, segment)
         if expected_segments is not None and next(expected_segments, None) is not None:
             valid = False
         if start != term.requested:
@@ -719,7 +668,7 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
         ) != (expected_h, balance, minimum):
             valid = False
 
-    arithmetic = term._result
+    arithmetic = term_snapshot.result
     if arithmetic is not None:
         result_valid = (
             type(arithmetic) is ArithmeticResult
@@ -735,15 +684,15 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
             and arithmetic.balance.bit_length() <= term.max_state_bits
         )
         if result_valid:
-            _approve(approved, term.result_owner, arithmetic)
+            approve_payload(approved, term.result_owner, arithmetic)
         else:
             valid = False
             if len(term.result_publications) == 1:
-                _reject(invalid, term.result_owner, term.result_publications[0])
+                reject_payload(invalid, term.result_owner, term.result_publications[0])
     elif term.result_publications:
         valid = False
         for published_result in term.result_publications:
-            _reject(invalid, term.result_owner, published_result)
+            reject_payload(invalid, term.result_owner, published_result)
 
     mahler = term.mahler_workspace
     if mahler is not None:
@@ -759,20 +708,19 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
             except (TypeError, ValueError, AttributeError):
                 valid = False
             else:
-                memo = mahler._window_memo
-                window_owner = mahler._window_owner
-                if memo is not None:
-                    if type(window_owner) is not int or memo.owner != window_owner:
+                window_owner = mahler.window_memo_owner
+                if mahler.window_memo_container is not None:
+                    if type(window_owner) is not int:
                         valid = False
                     else:
-                        for key, window in memo.items():
-                            _approve(approved, window_owner, key)
-                            _approve(approved, window_owner, window)
+                        for key, window in mahler.window_memo_entries():
+                            approve_payload(approved, window_owner, key)
+                            approve_payload(approved, window_owner, window)
 
     physicals = term.physical_publications
     if physicals:
         physical = physicals[0]
-        valid &= term._segments_ready
+        valid &= term_snapshot.segments_ready
         h, ledger_value = 8, 0
         left, right = 5, 6
         physical_minimum, returns, halted = 0, 0, False
@@ -793,10 +741,10 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
             returns += 1
             ledger.bump(_antihydra_keys.ANTIHYDRA_PAYLOAD_AUDIT_PHYSICAL_STEPS)
         physical_valid = (
-            type(physical) is _PhysicalPublication
+            type(physical) is PhysicalPublication
             and type(physical.run) is Run
             and physical.matches(physical.run)
-            and physical.run._engine is term.engine
+            and physical.run.is_bound_to_engine(term.engine)
             and physical.run.source_term is term
             and physical.run.ledger is ledger
             and physical.run.requested == term.requested
@@ -812,13 +760,13 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
             == (h, ledger_value, physical_minimum, left, right, returns, halted)
         )
         if physical_valid:
-            _approve(approved, term.physical_owner, physical)
+            approve_payload(approved, term.physical_owner, physical)
         else:
             valid = False
-            _reject(invalid, term.physical_owner, physical)
+            reject_payload(invalid, term.physical_owner, physical)
 
     if not valid:
-        _reject(invalid, owner, term)
+        reject_payload(invalid, owner, term)
     return PayloadAuditContribution(tuple(approved), tuple(invalid))
 
 

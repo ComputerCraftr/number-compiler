@@ -124,7 +124,7 @@ class CarryActionQuotientArena(FinitePortActionArena):
         This inspects the finite kernel node, never a source occurrence or a
         table of emitted carries. Unknown ports and non-monotone maps reject.
         """
-        index = self._resolve(function)
+        index = self.resolve_index(function)
         if type(port) is not PortVariable:
             raise TypeError("carry classification requires a symbolic port")
         self.ledger.bump("reverse_carry_function_classifications")
@@ -142,9 +142,9 @@ class CarryActionQuotientArena(FinitePortActionArena):
         action.validate(self.owner, "carry-interval-effect", size=len(self._intervals))
         return self._intervals[action.local_id]
 
-    def _interval(self, effect: CarryIntervalEffect) -> TransferSummaryID:
-        self._resolve(effect.forward)
-        self._resolve(effect.backward)
+    def intern_interval(self, effect: CarryIntervalEffect) -> TransferSummaryID:
+        self.resolve_index(effect.forward)
+        self.resolve_index(effect.backward)
         found = self._interval_ids.get(effect)
         if found is None:
             self.ledger.reserve_many(
@@ -170,7 +170,7 @@ class CarryActionQuotientArena(FinitePortActionArena):
             self.ledger.bump("interval_reflection_cache_hits")
             return found
         self.ledger.bump("interval_reflection_evaluations")
-        result = self._interval(
+        result = self.intern_interval(
             CarryIntervalEffect(effect.backward, effect.forward, effect.reset_count)
         )
         self._interval_reflections[action] = result
@@ -187,7 +187,7 @@ class CarryActionQuotientArena(FinitePortActionArena):
             self.ledger.bump("interval_literal_cache_hits")
             return found
         self.ledger.bump("interval_literal_evaluations")
-        result = self._interval(CarryIntervalEffect(function, function, resets))
+        result = self.intern_interval(CarryIntervalEffect(function, function, resets))
         self._interval_literals[function] = result
         return result
 
@@ -228,7 +228,7 @@ class CarryActionQuotientArena(FinitePortActionArena):
         forward = self.compose(first.forward, second.forward, port)
         backward = self.compose(second.backward, first.backward, port)
         count = cast(Literal[0, 1, 2], min(2, first.reset_count + second.reset_count))
-        result = self._interval(CarryIntervalEffect(forward, backward, count))
+        result = self.intern_interval(CarryIntervalEffect(forward, backward, count))
         self._interval_compositions[key] = result
         return result
 
@@ -251,6 +251,14 @@ class CarryActionQuotientArena(FinitePortActionArena):
             + len(self._interval_compositions)
             + len(self._interval_literals)
             + len(self._interval_reflections)
+        )
+
+    def interval_cache_sizes(self) -> tuple[int, int, int]:
+        """Report composition, literal, and reflection memo entry counts."""
+        return (
+            len(self._interval_compositions),
+            len(self._interval_literals),
+            len(self._interval_reflections),
         )
 
     def symbol(self, value: int, *, base: int, port: PortVariable) -> TransferSummaryID:

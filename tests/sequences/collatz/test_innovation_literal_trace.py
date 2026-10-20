@@ -24,7 +24,7 @@ from number_compiler.sequences.collatz.temporal_run_quotient import (
 
 
 def _literal_word(source: int, steps: int, modulus: int) -> tuple[str, ...]:
-    symbols = []
+    symbols: list[str] = []
     for _ in range(steps):
         branch = source % 4
         if branch == 0:

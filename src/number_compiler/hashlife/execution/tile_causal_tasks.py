@@ -178,7 +178,7 @@ def primitive_advance(
 
         if type(action_admission) is not CausalActionAdmission:
             raise TypeError("primitive advance requires a causal admission lease")
-        tasks = action_admission._workspace
+        tasks = action_admission.live_workspace()
         wiring = admitted_wiring(adapter, tasks, action_admission, action)
         law = admitted_kernel(adapter, tasks, action_admission, action)
         initial = (
@@ -535,10 +535,10 @@ def retain_completed(
 ) -> CausalCompletedOutput:
     """Retain a completed result for this observation or its application."""
     payload = result_payload(engine.tiles, completed)
-    if engine._application is None:
-        engine._result_leases.append(completed)
+    if engine.application_identity is None:
+        engine.lease_workspace.results.append(completed)
     else:
-        engine.scheduler._pin_causal(engine._application, key, completed)
+        engine.scheduler.pin_causal(engine.application_identity, key, completed)
     return payload
 
 
@@ -553,16 +553,16 @@ def combine_spatial_outputs(
         combine_causal_outputs,
     )
 
-    producer = producer_parent(engine.tiles, engine._leases, left, right)
+    producer = producer_parent(engine.tiles, engine.lease_workspace.tiles, left, right)
     joined = engine.tiles.join(left.output, right.output)
-    engine._leases.append(joined)
+    engine.lease_workspace.tiles.append(joined)
     return combine_causal_outputs(
         engine.scheduler.results,
         action,
         joined.tile,
         left,
         right,
-        engine._wiring(action),
+        engine.result_wiring(action),
         producer_output=producer,
     )
 
@@ -580,7 +580,7 @@ def publish_composite_output(
         publish_causal_completed,
     )
 
-    key = engine._composite_key(action, tile, left, right)
+    key = engine.composite_key(action, tile, left, right)
     if key is None:
         return payload
     completed = publish_causal_completed(engine.scheduler.results, key, payload)

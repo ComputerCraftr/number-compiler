@@ -7,6 +7,7 @@ dimension, including when several slots refer to the same canonical node.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
+from typing import cast
 
 from number_compiler.resources import semantic_metric_registry
 from number_compiler.resources.ledger import ResourceInventory
@@ -916,12 +917,14 @@ def observed_node_partition(
             from number_compiler.hashlife.actions.diamond_actions import CellNode
 
             container = containers.get(item.owner)
-            if isinstance(container, Sequence) and len(container) == nodes:
-                images = sum(
-                    type(value) is CellNode and value.kind == "image"
-                    for value in container
-                )
-                counts["image_action_nodes"] += images
-                nodes -= images
+            if isinstance(container, Sequence):
+                values = cast(Sequence[object], container)
+                if len(values) == nodes:
+                    images = sum(
+                        type(value) is CellNode and value.kind == "image"
+                        for value in values
+                    )
+                    counts["image_action_nodes"] += images
+                    nodes -= images
         counts[category] += nodes
     return counts

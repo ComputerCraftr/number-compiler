@@ -19,7 +19,7 @@ from number_compiler.hashlife.interfaces.semantic_bits import (
 )
 from number_compiler.hashlife.interfaces.semantic_structures import (
     StructureArena,
-    _aliases,
+    allocate_bound_aliases,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
@@ -76,11 +76,13 @@ def test_product_height_uses_maximum_branch_and_skips_occupied_free_slots() -> N
     )
     free = (port(0, "semantic-bound"), port(2, "semantic-bound"))
     declared = (port(5, "outer"), port(6, "outer"))
-    aliases = _aliases(free, declared, output)
+    aliases = allocate_bound_aliases(free, declared, output)
     # Available slots1,3,4 belong to output height3; this binder uses5,6.
     assert tuple(alias.variable.time for alias in aliases) == (5, 6)
     assert not {alias.variable for alias in aliases} & {item.variable for item in free}
-    assert tuple(alias.variable.time for alias in _aliases(free, declared)) == (1, 3)
+    assert tuple(
+        alias.variable.time for alias in allocate_bound_aliases(free, declared)
+    ) == (1, 3)
 
 
 def test_inner_selector_precedes_outer_entry_band_with_bounded_actual_publication() -> (

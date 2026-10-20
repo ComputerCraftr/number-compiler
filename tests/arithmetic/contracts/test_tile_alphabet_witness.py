@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -25,8 +26,11 @@ def test_mixed_deep_action_checks_endpoint_alphabet_without_temporal_walk(
         adapter.power(primitive, 128), adapter.admit(DigitNormalizeBlockEffect(3))
     )
     with make_tile_from_symbols(tiles, adapter, primitive, (0, 0, 0, 1)) as source:
-        original = adapter._action
-        seen = []
+        original = cast(
+            "Callable[[FieldCellActionID], PrimitiveTileAction]",
+            object.__getattribute__(adapter, "_action"),
+        )
+        seen: list[FieldCellActionID] = []
 
         def resolve(
             current: FieldCellActionID,

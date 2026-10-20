@@ -83,13 +83,13 @@ def test_unregistered_kernel_copy_cannot_confer_original_domain_authority() -> N
 
 
 def test_kernel_template_constants_are_bounded_by_actual_primitive_domains() -> None:
-    from number_compiler.hashlife.interfaces.diamond_kernel import _KernelTemplateKey
+    from number_compiler.hashlife.interfaces.diamond_kernel import KernelTemplateKey
 
     arena = DiamondKernelArena()
     kernel = arena.intern(DigitNormalizeBlockEffect(10))
     primitive = arena.kernel(kernel)
     registry = DiamondPayloadRegistry(arena.ledger)
-    key = _KernelTemplateKey(kernel, "emit", 0, (None, 0, None))
+    key = KernelTemplateKey(kernel, "emit", 0, (None, 0, None))
     assert registry.valid(key)
     assert not registry.valid(replace(key, constants=(None, primitive.blank + 1, None)))
     assert not registry.valid(replace(key, constants=(None, 1 << 1000, None)))
@@ -113,9 +113,13 @@ def test_temporal_images_retain_only_scoped_dag_metadata() -> None:
     assert not registry.valid(replace(cells.node(image), action=1000000))
     report = collect_ledger_metrics(ledger)
     assert report.representation_boundary_complete == 1
-    assert report.diamond_cell_nodes + report.image_action_nodes == len(cells._nodes)
+    assert report.diamond_cell_nodes + report.image_action_nodes == len(
+        cells.audit_snapshot().nodes
+    )
     assert report.image_action_nodes == 1
-    assert report.temporal_program_nodes == len(compiler._nodes) + len(actions._nodes)
+    assert report.temporal_program_nodes == len(compiler.nodes) + len(
+        actions.audit_snapshot().nodes
+    )
 
 
 def test_complete_runtime_continuations_and_memo_keys_are_typed_payloads() -> None:
@@ -170,16 +174,16 @@ def test_composition_certification_requires_the_actual_registered_bound_record()
     report = index.metrics()
     assert report.bimachine_composition_certified == 1
     assert collect_ledger_metrics(ledger).representation_boundary_complete == 1
-    original = index._lazy_application
+    original = index.audit_snapshot().lazy_application
     from number_compiler.hashlife.observation.tile_projection import LazyProjection
 
     assert type(original) is LazyProjection
-    index._lazy_application = copy(original)
+    object.__setattr__(index, "_lazy_application", copy(original))
     assert index.metrics().bimachine_composition_certified == 0
-    index._lazy_application = original
+    object.__setattr__(index, "_lazy_application", original)
     adapter = original.scheduler.adapter
     assert type(adapter) is PrimitiveTileKernelAdapter
-    action = adapter._actions[original._application.action.local_id]
+    action = adapter.action_record(original.validated_application().action)
     owner = ledger.register("forged action certificate", "field_cell_action")
     records: LedgerList[object] = ledger.make_list(owner)
     ledger.reserve(owner, entries=1, nodes=1)
@@ -209,10 +213,17 @@ def test_parametric_macro_bindings_and_extensional_functions_have_distinct_units
         assert report.representation_boundary_complete == 1
         assert (
             report.fused_interface_entries
-            == sum(type(key) is FusedInterfaceKey for key in scheduler.results._memo)
+            == sum(
+                type(key) is FusedInterfaceKey
+                for key in scheduler.results.audit_snapshot().memo
+            )
             > 0
         )
-        assert report.local_interface_nodes == len(adapter.quotients._nodes) > 0
+        assert (
+            report.local_interface_nodes
+            == len(adapter.quotients.audit_snapshot().nodes)
+            > 0
+        )
         # Binding entries point to canonical semantic nodes; they are not
         # another population of interface functions or output images.
         assert report.image_program_cache_entries == 0
@@ -246,7 +257,7 @@ def test_projection_compatibility_fields_forward_actual_tile_work() -> None:
     index = projection.HashLifeBlockIndex(
         effect, (1, 2, 1), logical_length=8, ledger=ledger, compiler=compiler
     )
-    assert type(index._lazy_application) is LazyProjection
+    assert type(index.audit_snapshot().lazy_application) is LazyProjection
     index.direct_powered_point(0)
     report = index.metrics()
     assert report.bimachine_composition_certified == 1
@@ -303,9 +314,10 @@ def test_public_index_rejects_a_foreign_execution_backend(
     import number_compiler.hashlife.observation.hashlife_projection as projection
     from number_compiler.hashlife.actions.lazy_compiler import UnsupportedInterfaceError
 
-    monkeypatch.setattr(
-        projection, "build_bounded_application", lambda *_args, **_kwargs: object()
-    )
+    def foreign_backend(*_args: object, **_kwargs: object) -> object:
+        return object()
+
+    monkeypatch.setattr(projection, "build_bounded_application", foreign_backend)
     with pytest.raises(UnsupportedInterfaceError, match="canonical tile executor"):
         projection.HashLifeBlockIndex(BaseBlockEffect(2), (1, 2, 1), logical_length=8)
 

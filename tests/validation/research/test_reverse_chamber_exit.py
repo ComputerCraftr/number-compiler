@@ -12,7 +12,7 @@ from tests.support.reference_arithmetic import reverse_add_digit_step
 
 
 def _digits(seed: int, base: int) -> tuple[int, ...]:
-    result = []
+    result: list[int] = []
     while True:
         seed, digit = divmod(seed, base)
         result.append(digit)

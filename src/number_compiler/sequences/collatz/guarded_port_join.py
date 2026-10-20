@@ -54,11 +54,11 @@ from number_compiler.sequences.collatz.guarded_port_types import (
 from number_compiler.sequences.collatz.guarded_radix6_bridge import (
     FiveBand,
     GuardedRadix6Bridge,
-    _common_plus_one_valuation,
-    _merge_bands,
-    _trace_is_zero_tail,
-    _transport_bands,
     certify_guarded_radix6_bridge,
+    common_plus_one_valuation,
+    merge_bands,
+    trace_is_zero_tail,
+    transport_bands,
 )
 from number_compiler.sequences.collatz.source_closed_port_action import (
     MacroTraceGrammar,
@@ -106,7 +106,7 @@ class GuardedPortJoin:
             raise TypeError(
                 "port join requires a cylinder, issued action and base-6 certificate"
             )
-        self.port._verify_issued()
+        self.port.verify_issued()
         if (
             self.bridge.action.coefficient_snapshot()
             != self.port.action.coefficient_snapshot()
@@ -204,7 +204,7 @@ class GuardedPortJoin:
             ):
                 raise ValueError("retained parity tape differs from the issued action")
 
-    def _tape(self) -> ParityCarryTape | None:
+    def parity_tape_for_action(self) -> ParityCarryTape | None:
         """Return only an already-retained, source-validated parity grammar."""
         if self.parity_tape is not None:
             return self.parity_tape
@@ -231,7 +231,7 @@ class GuardedPortJoin:
             raise ValueError("time puncture outside issued normalized action")
         if time == self.port.action.steps:
             return self.port.action, self.port.odd_events
-        tape = self._tape()
+        tape = self.parity_tape_for_action()
         if tape is not None:
             action = tape.prefix_action(time)
             odds = tape.prefix_odds(time)
@@ -291,17 +291,17 @@ class GuardedPortJoin:
         # radix conversion.  If a narrower port forces additional trailing
         # fives, the 2/3-adic valuations supply them algebraically.
         starts = self.bridge.restrict_to(cylinder).source_fives
-        inherited = _transport_bands(starts, odds, time)
+        inherited = transport_bands(starts, odds, time)
         born: tuple[FiveBand, ...] = ()
         if prefix.offset + (1 << time) == prefix.gain:
-            v2 = _common_plus_one_valuation(cylinder, 2)
-            v3 = _common_plus_one_valuation(cylinder, 3)
+            v2 = common_plus_one_valuation(cylinder, 2)
+            v3 = common_plus_one_valuation(cylinder, 3)
             if v2 < time:
                 raise ArithmeticError("source narrowed beyond certified parity guard")
             k = min(v2 - time, v3 + odds)
             if k:
                 born = (FiveBand(0, k),)
-        return _merge_bands(inherited + born)
+        return merge_bands(inherited + born)
 
     def puncture(
         self,
@@ -342,10 +342,7 @@ class GuardedPortJoin:
         # not additional untracked observations after a matrix multiply.
         if request.future_border is not None:
             g = SourceCongruence(request.future_border, 10).pullback(prefix)
-            if g is None:
-                base = None
-            elif base is not None:
-                base = _restrict(base, g)
+            base = None if g is None else _restrict(self.source, g)
         if base is not None and request.numerator_f5 is not None:
             # At a 3-border, (3*x+1)/10 ≡s (mod 5) fixes x modulo 50.
             s = request.numerator_f5
@@ -589,8 +586,8 @@ class GuardedPortJoin:
         # radix-6 upper coverage at every seam used to dominate the CLI.
         first = self.bridge.restrict_to(root)
         second = after.bridge.restrict_to(seam)
-        first_tape = self._tape()
-        second_tape = after._tape()
+        first_tape = self.parity_tape_for_action()
+        second_tape = after.parity_tape_for_action()
         tape = None
         if first_tape is not None and second_tape is not None:
             from number_compiler.sequences.collatz.parity_carry_tape import (
@@ -607,7 +604,7 @@ class GuardedPortJoin:
 
     def prefix_units(self, time: int) -> UnitsCarryMatrix:
         """Demand the authenticated five-state weighted prefix of this tape."""
-        tape = self._tape()
+        tape = self.parity_tape_for_action()
         if tape is None:
             raise ValueError("source join has no certified parity prefix tape")
         if type(time) is not int or not 0 <= time <= self.port.action.steps:
@@ -667,7 +664,9 @@ class GuardedPortJoin:
             self.port.trace,
         )
         bridge = self.bridge.restrict_to(root)
-        return GuardedPortJoin(root, port, bridge, parity_tape=self._tape())
+        return GuardedPortJoin(
+            root, port, bridge, parity_tape=self.parity_tape_for_action()
+        )
 
     def require_pointed(
         self, source: int, *, check_last: bool = True
@@ -713,7 +712,7 @@ class GuardedPortJoin:
         if not self.source.contains(source):
             raise ValueError("powered carry source is outside its original guard")
         from number_compiler.sequences.collatz.guarded_radix6_bridge import (
-            _common_plus_one_valuation,
+            common_plus_one_valuation,
         )
 
         trace = self.port.trace
@@ -724,9 +723,9 @@ class GuardedPortJoin:
             return None
         if not self.bridge.centered_at_minus_one:
             return None
-        if not _trace_is_zero_tail(trace):
+        if not trace_is_zero_tail(trace):
             return None
-        if _common_plus_one_valuation(self.source, 2) < 2 * n + 2:
+        if common_plus_one_valuation(self.source, 2) < 2 * n + 2:
             return None
         # The full source class must force x mod25, or be a singleton.
         phase = self.source.forced_residue(25)
@@ -781,8 +780,8 @@ class GuardedPortJoin:
         """
         from number_compiler.sequences.collatz.guarded_radix6_bridge import (
             GuardedTemporalCarryCounts,
-            _common_plus_one_valuation,
-            _merge_bands,
+            common_plus_one_valuation,
+            merge_bands,
         )
 
         steps = self.port.action.steps
@@ -802,7 +801,7 @@ class GuardedPortJoin:
         powered = self.powered_zero_tail_carries(source)
         if powered is not None:
             tens, hundreds, odds, last, compositions, squarings = powered
-            return GuardedTemporalCarryCounts._create_checked(
+            return GuardedTemporalCarryCounts.create_checked(
                 program_guard,
                 steps,
                 odds,
@@ -834,15 +833,15 @@ class GuardedPortJoin:
             max_lower_digits=32,
         )
         bands = original_cover.source_fives
-        v2 = _common_plus_one_valuation(fiber, 2)
-        v3 = _common_plus_one_valuation(fiber, 3)
+        v2 = common_plus_one_valuation(fiber, 2)
+        v3 = common_plus_one_valuation(fiber, 3)
         for t in range(steps):
             # Detect newly born fives from the exact centered affine action,
             # then put their 6-adic congruence into the ORIGINAL source guard.
             if prefix.offset + (1 << t) == prefix.gain and v2 >= t:
                 born = min(v2 - t, v3 + odds)
                 if born:
-                    bands = _merge_bands(bands + (FiveBand(0, born),))
+                    bands = merge_bands(bands + (FiveBand(0, born),))
             odd_now = value & 1
             for band in bands:
                 if odd_now:
@@ -887,7 +886,7 @@ class GuardedPortJoin:
             tens += c1
             hundreds += c2
             value = next_value
-            bands = _merge_bands(
+            bands = merge_bands(
                 tuple(
                     carried
                     for band in bands
@@ -900,7 +899,7 @@ class GuardedPortJoin:
             or value != self.port.endpoint(source)
         ):
             raise ArithmeticError("joined matrix tape disagrees with the issued macro")
-        return GuardedTemporalCarryCounts._create_checked(
+        return GuardedTemporalCarryCounts.create_checked(
             program_guard,
             steps,
             odds,

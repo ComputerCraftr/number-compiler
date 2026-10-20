@@ -1,3 +1,5 @@
+from typing import cast
+
 from devtools.verification.quotient_synthesis import (
     ObserverFeature,
     synthesize_finite_quotient,
@@ -63,7 +65,7 @@ def test_cegar_synthesizes_exact_m7_sign_quotient_from_primary_factors() -> None
     modulus = (1 << p) - 1
     factors = cyclotomic_factors_mod_prime(p, 2)
     assert len(factors) == 2
-    columns = []
+    columns: list[ObserverFeature] = []
     for i, factor in enumerate(factors):
         values = tuple(
             CyclotomicDigitBlock.from_coefficients(
@@ -147,5 +149,6 @@ def test_unary_behavioral_block_machine_preserves_within_block_remainders() -> N
     assert report.exact_block_classes == 6
     assert machine.classes == 6
     assert all(
-        isinstance(trace, tuple) and len(trace) == 2 for trace in machine.outputs
+        isinstance(trace, tuple) and len(cast(tuple[object, ...], trace)) == 2
+        for trace in machine.outputs
     )

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import fields, is_dataclass
 from functools import partial
 from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, _effect_key
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+    object_mapping,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ArenaHandle,
     ArenaToken,
@@ -20,11 +24,9 @@ from number_compiler.arithmetic.contracts.scoped_handles import (
     TransferSummaryID,
     WordLimb,
 )
-from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 from number_compiler.arithmetic.fields.dyadic_tile import DyadicSpan, DyadicTile
 from number_compiler.resources.approved_effect_keys import (
     approved_effect_key_checker,
-    record_approved_effect_key,
 )
 from number_compiler.resources.cache_gc_metrics import cache_event_owner_audit
 from number_compiler.resources.callback_payload_audit import (
@@ -35,7 +37,7 @@ from number_compiler.resources.numeric_payload import numeric_aggregate_audit
 from number_compiler.resources.payload_containers import audit_mapping_items
 from number_compiler.resources.payload_contracts import (
     SemanticComponentAuditMemo,
-    _contract_semantic_component,
+    contract_semantic_component,
 )
 from number_compiler.resources.payload_schema import valid_semantic_record
 from number_compiler.resources.proof_payload_admission import (
@@ -62,11 +64,11 @@ def audit_registered_payloads(
     roles and are not lazy summaries. Unknown representations remain visible.
     """
     from number_compiler.resources.payload_policy import (
-        _DIGIT_FIELDS,
-        _HISTORY_FIELDS,
         AGGREGATE_EXEMPT_PAYLOAD_ROLES,
+        DIGIT_FIELDS,
+        HISTORY_FIELDS,
         PayloadAudit,
-        _role,
+        normalize_payload_role,
     )
 
     execution_roots = tuple(ledger.iter_execution_roots())
@@ -79,20 +81,20 @@ def audit_registered_payloads(
     audit_version = ledger.mutation_version
     from number_compiler.arithmetic.contracts.block_kernel import (
         BaseBlockEffect,
+        BaseLeftState,
+        BaseRightState,
         FiniteBlockEffect,
-        _BaseLeftState,
-        _BaseRightState,
     )
     from number_compiler.arithmetic.contracts.source_geometry import SourceGeometry
     from number_compiler.arithmetic.functions.finite_port_action import (
+        ChoiceIndexKey,
         PortComponent,
         PortVariable,
-        _ChoiceIndexKey,
     )
     from number_compiler.arithmetic.functions.finite_port_substitution import (
+        PortIndexComponent,
+        SubstitutionIndexKey,
         SubstitutionKey,
-        _PortIndexComponent,
-        _SubstitutionIndexKey,
     )
     from number_compiler.arithmetic.radix_division import SymbolicBinaryDivisionEffect
     from number_compiler.hashlife.actions.lazy_compiler import ProgramComposition
@@ -137,8 +139,8 @@ def audit_registered_payloads(
     )
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
     from number_compiler.projection.digit_terminal import (
+        DigitLeftState,
         DigitNormalizeBlockEffect,
-        _DigitLeftState,
     )
     from number_compiler.projection.lazy_radix import RadixProjection
     from number_compiler.projection.microblock_cache import (
@@ -167,6 +169,9 @@ def audit_registered_payloads(
     from number_compiler.resources.higher_payload_audit import audit_higher_payloads
     from number_compiler.resources.higher_primitive_payload import (
         valid_higher_primitive_table,
+    )
+    from number_compiler.resources.payload_effect_metadata import (
+        audit_effect_key_metadata,
     )
     from number_compiler.resources.radix_provider_payload_audit import (
         audit_radix_provider_payloads,
@@ -200,7 +205,9 @@ def audit_registered_payloads(
             key=lambda effect_type: (effect_type.__module__, effect_type.__qualname__),
         ),
     )
-    roles = {item.owner: _role(item.role) for item in ledger.inventory()}
+    roles = {
+        item.owner: normalize_payload_role(item.role) for item in ledger.inventory()
+    }
     seen: set[tuple[int, int]] = set()
     forbidden: set[tuple[int, int]] = set()
     forbidden.update(contract_audit.invalid)
@@ -221,13 +228,26 @@ def audit_registered_payloads(
     forbidden.update(radix_providers.invalid)
     forbidden.update(higher_payloads.invalid)
     forbidden.update(support_payloads.invalid)
+    approved_payload_members = (
+        higher_payloads.approved
+        | support_payloads.approved
+        | field_actions.approved
+        | field_images.approved
+        | radix_providers.approved
+    )
+    approved_container_members = (
+        field_images.approved | radix_providers.approved | support_payloads.approved
+    )
     forbidden.update(audit_registered_proof_payloads(ledger))
     forbidden.update(audit_callback_future_payloads(ledger))
     concrete_private_index_owners = {
         owner
         for root in execution_roots
         if type(root) is ConcretePortScheduler and root.ledger is ledger
-        for owner in (root._virtual_owner, root._virtual_key_owner)
+        for owner in (
+            ConcretePortScheduler.audit_snapshot(root).virtual_owner,
+            ConcretePortScheduler.audit_snapshot(root).virtual_key_owner,
+        )
     }
     quotient_scopes = {
         root.owner: root
@@ -242,12 +262,14 @@ def audit_registered_payloads(
             image_carrier = root
             action_owner = image_carrier.action_owner
             output_owner = image_carrier.output_owner
-            node_owner = image_carrier._node_owner
+            node_owner = RecursiveFieldImageArena.audit_snapshot(
+                image_carrier
+            ).node_owner
         elif type(root) is FieldTransferArena:
             transfer_carrier = root
             action_owner = transfer_carrier.action_owner
             output_owner = transfer_carrier.output_owner
-            node_owner = transfer_carrier._node_owner
+            node_owner = FieldTransferArena.audit_snapshot(transfer_carrier).node_owner
         else:
             continue
         if action_owner not in action_owners or output_owner not in output_owners:
@@ -281,7 +303,8 @@ def audit_registered_payloads(
     for root in execution_roots:
         if type(root) is not CompletedResultArena or root.ledger is not ledger:
             continue
-        for behavior_key, behavior_value in root._memo.items():
+        result_snapshot = CompletedResultArena.audit_snapshot(root)
+        for behavior_key, behavior_value in result_snapshot.memo.items():
             if type(behavior_key) is not BehaviorBindingKey:
                 continue
             try:
@@ -291,8 +314,8 @@ def audit_registered_payloads(
             except (TypeError, ValueError, AttributeError):
                 forbidden.update(
                     (
-                        (root._memo_owner, id(behavior_key)),
-                        (root._memo_owner, id(behavior_value)),
+                        (result_snapshot.memo_owner, id(behavior_key)),
+                        (result_snapshot.memo_owner, id(behavior_value)),
                     )
                 )
             else:
@@ -303,7 +326,7 @@ def audit_registered_payloads(
         if root.is_source_only:
             continue
         approved, invalid = audit_tile_dependency_leases(
-            root._causal_dependencies,
+            root.dependency_leases,
             actual_containers,
         )
         approved_metadata.update(approved)
@@ -316,6 +339,7 @@ def audit_registered_payloads(
     finite_index_owners = finite_audit.index_owners
     finite_choice_records = finite_audit.choices
     finite_substitution_records = finite_audit.substitutions
+    finite_substitution_components = finite_audit.substitution_components
     finite_support_records = finite_audit.support_tuples
     microblock_roots: dict[int, MicroblockCache] = {}
     primitive_table_roots: dict[int, tuple[HigherPrimitiveTables, str]] = {}
@@ -328,12 +352,28 @@ def audit_registered_payloads(
         ):
             microblock_roots[root.owner] = root
         if type(root) is HigherPrimitiveTables and root.ledger is ledger:
-            if actual_containers.get(root._interface_owner) is root._interfaces:
-                primitive_table_roots[root._interface_owner] = (root, "interface")
-            if actual_containers.get(root._step_owner) is root._steps:
-                primitive_table_roots[root._step_owner] = (root, "step")
-            if actual_containers.get(root._emit_owner) is root._outputs:
-                primitive_table_roots[root._emit_owner] = (root, "emit")
+            primitive_snapshot = HigherPrimitiveTables.audit_snapshot(root)
+            if primitive_snapshot.ledger is ledger:
+                for owner, store_identity, operation in (
+                    (
+                        primitive_snapshot.interface_owner,
+                        primitive_snapshot.interface_store_identity,
+                        "interface",
+                    ),
+                    (
+                        primitive_snapshot.step_owner,
+                        primitive_snapshot.step_store_identity,
+                        "step",
+                    ),
+                    (
+                        primitive_snapshot.emit_owner,
+                        primitive_snapshot.emit_store_identity,
+                        "emit",
+                    ),
+                ):
+                    container = actual_containers.get(owner)
+                    if container is not None and id(container) == store_identity:
+                        primitive_table_roots[owner] = (root, operation)
         if (
             type(root) is SourceGeometry
             and root.ledger is ledger
@@ -343,16 +383,21 @@ def audit_registered_payloads(
         elif type(root) is RadixProjection:
             radix_bound = max(radix_bound, root.radix)
         elif type(root) is PointResponseRegister:
+            response_snapshot = PointResponseRegister.audit_snapshot(root)
+            response_container = actual_containers.get(response_snapshot.owner)
             if (
-                root.ledger is not ledger
+                response_snapshot.ledger is not ledger
                 or root.compiler.ledger is not ledger
-                or roles.get(root.owner) != "observation_memo"
-                or actual_containers.get(root.owner) is not root._value
-                or len(root._value) > 1
+                or roles.get(response_snapshot.owner) != "observation_memo"
+                or response_container is None
+                or id(response_container) != response_snapshot.store_identity
+                or len(response_snapshot.responses) > 1
             ):
-                forbidden.add((root.owner, id(root._value)))
+                forbidden.add(
+                    (response_snapshot.owner, response_snapshot.store_identity)
+                )
                 continue
-            for response in root._value:
+            for response in response_snapshot.responses:
                 if type(response) is not PointResponse:
                     continue
                 try:
@@ -365,7 +410,7 @@ def audit_registered_payloads(
                     and type(response.value) is int
                     and 0 <= response.value <= effect.blank
                 ):
-                    response_records[id(response)] = root.owner
+                    response_records[id(response)] = response_snapshot.owner
     while definitions or definition_source is not None:
         if definitions:
             definition_owner, definition = definitions.pop()
@@ -401,32 +446,17 @@ def audit_registered_payloads(
                 state_bound = max(state_bound, effect.blank)
             key = _effect_key(effect)
             approved_key_roots.append(key)
-            metadata_nodes: list[object] = [key]
-            candidate_metadata: set[int] = set()
-            try:
-                while metadata_nodes:
-                    part = metadata_nodes.pop()
-                    if (
-                        type(part) not in (tuple, SemanticIdentity)
-                        or id(part) in approved_metadata
-                        or id(part) in candidate_metadata
-                    ):
-                        continue
-                    candidate_metadata.add(id(part))
-                    if type(part) is tuple:
-                        metadata_nodes.extend(part)
-                    elif type(part) is SemanticIdentity:
-                        behaviors.validate_identity(part)
-                        metadata_nodes.append(part.behavior)
-            except (TypeError, ValueError, AttributeError):
-                forbidden.add((definition_owner, id(definition)))
-                continue
-            record_approved_effect_key(
+            if not audit_effect_key_metadata(
                 key,
-                authorized_identity_ids=approved_key_identity_ids,
-                approved_fingerprints=approved_key_fingerprints,
-            )
-            approved_metadata.update(candidate_metadata)
+                definition_owner,
+                definition,
+                behaviors=behaviors,
+                approved_metadata=approved_metadata,
+                approved_key_identity_ids=approved_key_identity_ids,
+                approved_key_fingerprints=approved_key_fingerprints,
+                forbidden=forbidden,
+            ):
+                continue
             if type(definition) is ProgramComposition:
                 definitions.extend(
                     (
@@ -436,12 +466,13 @@ def audit_registered_payloads(
                 )
         elif type(definition) is PrimitiveKernel:
             definitions.append((definition_owner, definition.effect))
-        elif isinstance(definition, Mapping):
-            definitions.extend((definition_owner, item) for item in definition.values())
+        elif (mapping := object_mapping(definition)) is not None:
+            definitions.extend((definition_owner, item) for item in mapping.values())
         elif isinstance(definition, Sequence) and not isinstance(
             definition, (str, bytes)
         ):
-            definitions.extend((definition_owner, item) for item in definition)
+            sequence = cast(Sequence[object], definition)
+            definitions.extend((definition_owner, item) for item in sequence)
 
     approved_key = approved_effect_key_checker(
         approved_metadata, approved_key_identity_ids, approved_key_fingerprints
@@ -449,7 +480,7 @@ def audit_registered_payloads(
     semantic = SemanticPayloadRegistry(
         ledger,
         approved_key,
-        diamond._handle,
+        diamond.valid_handle,
         diamond.valid,
     )
     forbidden.update(semantic.auxiliary.invalid_bindings)
@@ -465,8 +496,8 @@ def audit_registered_payloads(
         CarryFn,
         *proof_opaque_types(),
     )
-    state_records = (_BaseLeftState, _BaseRightState, _DigitLeftState)
-    radix_fields = frozenset(
+    state_records = (BaseLeftState, BaseRightState, DigitLeftState)
+    radix_fields: frozenset[str] = frozenset(
         (
             "radix",
             "width",
@@ -502,44 +533,30 @@ def audit_registered_payloads(
             return id(value) in valid_behavior_records
         if behaviors.recognizes(value):
             return behaviors.valid(value)
-        if type(value) is _ChoiceIndexKey:
+        if type(value) is ChoiceIndexKey:
             return id(value) in finite_choice_records
-        if type(value) is _SubstitutionIndexKey:
+        if type(value) is SubstitutionIndexKey:
             return id(value) in finite_substitution_records
-        if type(value) is _PortIndexComponent:
-            return any(
-                id(value) == id(component)
-                for arena in finite_arenas.values()
-                for key in arena._substitution.memo
-                for component in key.components
-            )
-        if type(value) is tuple and id(value) in finite_support_records:
+        if type(value) is PortIndexComponent:
+            return id(value) in finite_substitution_components
+        if is_exact_object_tuple(value) and id(value) in finite_support_records:
             return True
-        if contract_audit.approves_member(higher_payloads.approved, value, owner):
-            return True
-        if contract_audit.approves_member(support_payloads.approved, value, owner):
-            return True
-        if contract_audit.approves_member(field_actions.approved, value, owner):
-            return True
-        if contract_audit.approves_member(field_images.approved, value, owner):
-            return True
-        if contract_audit.approves_member(radix_providers.approved, value, owner):
+        if contract_audit.approves_member(approved_payload_members, value, owner):
             return True
         if id(value) in semantic.auxiliary.projection_maps:
             return True  # Actual radix parameter -> owned execution context, not digit storage.
         if semantic.recognizes(value):
             return semantic.valid(value)
         if type(value) is SubstitutionKey:
-            if (
-                type(value.function) is not TransferSummaryID
-                or type(value.components) is not tuple
-            ):
+            if type(
+                value.function
+            ) is not TransferSummaryID or not is_exact_object_tuple(value.components):
                 return False
             arena = finite_arenas.get(value.function.owner)
             if arena is None:
                 return False
             try:
-                arena._resolve(value.function)
+                arena.resolve_index(value.function)
                 previous: PortVariable | None = None
                 for component in value.components:
                     if (
@@ -561,7 +578,7 @@ def audit_registered_payloads(
                         return False
                     if type(component.function) is not TransferSummaryID:
                         return False
-                    arena._resolve(component.function)
+                    arena.resolve_index(component.function)
                     previous = component.variable
             except (TypeError, ValueError, AttributeError):
                 return False
@@ -592,7 +609,7 @@ def audit_registered_payloads(
             )
             return valid_record
         if type(value) is RadixProjection:
-            return set(vars(value)) == radix_fields
+            return frozenset(vars(value)) == radix_fields
         return type(value) in record_opaque or value is ledger
 
     semantic_component = SemanticComponentAuditMemo(semantic_component_uncached)
@@ -615,16 +632,17 @@ def audit_registered_payloads(
             continue
         if role == "exact_microblock":
             cache = microblock_roots.get(owner)
+            container_mapping = object_mapping(container)
             if (
                 cache is None
                 or container is not cache.blocks
-                or not isinstance(container, Mapping)
-                or len(container) > cache.MAX_ENTRIES
+                or container_mapping is None
+                or len(container_mapping) > cache.MAX_ENTRIES
             ):
                 forbidden.add((owner, id(container)))
             else:
                 payload_bytes = 0
-                for key, value in audit_mapping_items(container):
+                for key, value in audit_mapping_items(container_mapping):
                     if (
                         type(key) is not MicroblockKey
                         or type(value) is not ExactMicroblock
@@ -644,8 +662,9 @@ def audit_registered_payloads(
                 ):
                     forbidden.add((owner, id(container)))
         scope = head_scopes.get(owner)
-        if scope is not None and isinstance(container, Mapping):
-            for request, result in audit_mapping_items(container):
+        container_mapping = object_mapping(container)
+        if scope is not None and container_mapping is not None:
+            for request, result in audit_mapping_items(container_mapping):
                 first = (
                     diamond.expressions.expression(request.expression)
                     if type(request) is ResolveExpr
@@ -676,14 +695,8 @@ def audit_registered_payloads(
                 (owner, identity) for identity in _proof_objects(container)
             )
         if (
-            not contract_audit.approves_member_in(
-                (
-                    field_images.approved,
-                    radix_providers.approved,
-                    support_payloads.approved,
-                ),
-                container,
-                owner,
+            not contract_audit.approves_member(
+                approved_container_members, container, owner
             )
             and not slp_payloads.approves(owner, container)
             and owner not in finite_index_owners
@@ -693,7 +706,7 @@ def audit_registered_payloads(
             aggregate = numeric_aggregate_audit(
                 container,
                 semantic=partial(
-                    _contract_semantic_component,
+                    contract_semantic_component,
                     owner=owner,
                     approved=contract_audit.approved,
                     owned_semantic_members=source_bound.payload_members_by_owner,
@@ -728,16 +741,7 @@ def audit_registered_payloads(
             if not family_effects.valid_compatibility(value):
                 forbidden.add(identity)
             continue
-        if any(
-            contract_audit.approves_member(audit.approved, value, owner)
-            for audit in (
-                field_actions,
-                field_images,
-                radix_providers,
-                higher_payloads,
-                support_payloads,
-            )
-        ):
+        if contract_audit.approves_member(approved_payload_members, value, owner):
             continue
         if slp_payloads.approves(owner, value):
             continue
@@ -765,10 +769,9 @@ def audit_registered_payloads(
         if type(value) is LocalInterfaceID:
             quotient_scope = quotient_scopes.get(value.owner)
             try:
-                valid_local_interface = (
-                    quotient_scope is not None
-                    and quotient_scope.resolve(value) is not None
-                )
+                valid_local_interface = quotient_scope is not None
+                if quotient_scope is not None:
+                    quotient_scope.resolve(value)
             except (TypeError, ValueError, IndexError, AttributeError):
                 valid_local_interface = False
             if not valid_local_interface:
@@ -796,7 +799,7 @@ def audit_registered_payloads(
                 continue
             forbidden.add(identity)
             continue
-        if field_name in _HISTORY_FIELDS:
+        if field_name in HISTORY_FIELDS:
             forbidden.add(identity)
         if (
             role
@@ -890,7 +893,11 @@ def audit_registered_payloads(
                 if name == "ledger" and child is ledger:
                     continue
                 if name == "_fused_actions" and isinstance(child, OwnedMemo):
-                    stack.extend((owner, item, "") for item in child.items())
+                    memo = cast(OwnedMemo[object, object], child)
+                    stack.extend(
+                        (owner, entry, "")
+                        for entry in memo.audit_payload_view().items()
+                    )
                     continue
                 stack.append(
                     (owner, child, "geometry:" + name if name in metadata else name)
@@ -944,10 +951,11 @@ def audit_registered_payloads(
             ):
                 forbidden.add(identity)
             continue
-        if field_name in _DIGIT_FIELDS:
+        if field_name in DIGIT_FIELDS:
             forbidden.add(identity)
-        if isinstance(value, Mapping):
-            for key, item in audit_mapping_items(value):
+        mapping = object_mapping(value)
+        if mapping is not None:
+            for key, item in audit_mapping_items(mapping):
                 stack.append((owner, key, ""))
                 stack.append(
                     (
@@ -957,13 +965,14 @@ def audit_registered_payloads(
                     )
                 )
         elif isinstance(value, (Sequence, set, frozenset)):
-            stack.extend((owner, item, field_name) for item in value)
+            items = cast(Sequence[object] | set[object] | frozenset[object], value)
+            stack.extend((owner, item, field_name) for item in items)
         elif is_dataclass(value) and not isinstance(value, type):
-            node_metadata = geometry_fields.get(type(value))
+            node_metadata: frozenset[str] | None = geometry_fields.get(type(value))
             recognized = node_metadata is not None
             if node_metadata is None:
                 unknown.add(identity)
-                node_metadata = frozenset()
+                node_metadata = frozenset[str]()
             stack.extend(
                 (
                     owner,
@@ -971,7 +980,7 @@ def audit_registered_payloads(
                     "geometry:" + item.name
                     if item.name in node_metadata
                     else item.name
-                    if recognized or item.name in _DIGIT_FIELDS | _HISTORY_FIELDS
+                    if recognized or item.name in DIGIT_FIELDS | HISTORY_FIELDS
                     else "",
                 )
                 for item in fields(value)

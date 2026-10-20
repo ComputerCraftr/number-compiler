@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import fields, is_dataclass
 from functools import partial
 from types import FunctionType, MethodType, ModuleType
+from typing import cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.fields.dyadic_tile import DyadicSpan, DyadicTile
@@ -88,7 +89,9 @@ def audit_callback_future_payloads(
             "future_behavior_workspace",
         }
     )
-    pending = [(root, False, False) for root in ledger.iter_execution_roots()]
+    pending: list[tuple[object, bool, bool]] = [
+        (root, False, False) for root in ledger.iter_execution_roots()
+    ]
     while pending:
         value, callback_scope, suspicious = pending.pop()
         marker = id(value), callback_scope, suspicious
@@ -154,24 +157,28 @@ def audit_callback_future_payloads(
             pending.append((value.__defaults__, True, suspicious))
             pending.append((value.__kwdefaults__, True, suspicious))
             continue
-        if suspicious and (
-            isinstance(value, Mapping)
-            and value
-            and all(type(item) is int for item in value.values())
-            or isinstance(value, (Sequence, set, frozenset))
-            and value
-            and all(type(item) is int for item in value)
-        ):
-            violations.add((-1, id(value)))
+        if suspicious:
+            if isinstance(value, Mapping) and value:
+                mapping = cast(Mapping[object, object], value)
+                if all(type(item) is int for item in mapping.values()):
+                    violations.add((-1, id(mapping)))
+            if isinstance(value, (Sequence, set, frozenset)) and value:
+                sequence = cast(
+                    Sequence[object] | set[object] | frozenset[object], value
+                )
+                if all(type(item) is int for item in sequence):
+                    violations.add((-1, id(sequence)))
         if isinstance(value, Mapping):
+            mapping = cast(Mapping[object, object], value)
             pending.extend(
                 (child, callback_scope, suspicious)
-                for pair in audit_mapping_items(value)
+                for pair in audit_mapping_items(mapping)
                 for child in pair
             )
             continue
         if isinstance(value, (Sequence, set, frozenset)):
-            pending.extend((child, callback_scope, suspicious) for child in value)
+            sequence = cast(Sequence[object] | set[object] | frozenset[object], value)
+            pending.extend((child, callback_scope, suspicious) for child in sequence)
             continue
         value_type = type(value)
         layout = dataclass_fields.get(value_type)

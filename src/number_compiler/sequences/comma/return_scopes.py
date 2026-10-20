@@ -12,6 +12,10 @@ from dataclasses import dataclass, field
 from math import gcd, lcm, prod
 from typing import TypeAlias
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+    is_object_tuple,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.sequences.comma.domain import canonical_offset_orbit
 from number_compiler.sequences.comma.semantic_continuation import (
@@ -25,22 +29,22 @@ ReturnColumn: TypeAlias = tuple[int, tuple[ReturnScope, ...]]
 WorkCharge: TypeAlias = Callable[[str, int], None]
 _Cube: TypeAlias = tuple[int, ...]
 
-_CLOCK_COMPONENTS = (("r4", 4), ("r3", 3), ("r7", 7), ("r11", 11))
-_COMPONENT_DOMAINS = (4, 3, 7, 11)
-_VALID_MASKS = tuple((1 << domain) - 1 for domain in _COMPONENT_DOMAINS)
+CLOCK_COMPONENTS = (("r4", 4), ("r3", 3), ("r7", 7), ("r11", 11))
+COMPONENT_DOMAINS = (4, 3, 7, 11)
+VALID_MASKS = tuple((1 << domain) - 1 for domain in COMPONENT_DOMAINS)
 _COMPONENT_MODULI = (4, 3, 7, 11)
-_REMAINING_CLOCK_PERIODS = tuple(
+REMAINING_CLOCK_PERIODS = tuple(
     prod(_COMPONENT_MODULI[level:]) for level in range(len(_COMPONENT_MODULI) + 1)
 )
 
 
 @dataclass(frozen=True, slots=True, order=True)
-class _MDDKey:
+class ReturnColumnKey:
     """An ordered structural key for one reduced CRT decision node."""
 
     kind: int
     level: int = 0
-    children: tuple[_MDDKey, ...] = ()
+    children: tuple[ReturnColumnKey, ...] = ()
     _cached_hash: int = field(init=False, repr=False, compare=False, hash=False)
 
     def __post_init__(self) -> None:
@@ -54,9 +58,8 @@ class _MDDKey:
         return self._cached_hash
 
 
-ReturnColumnKey: TypeAlias = _MDDKey
-_FALSE = _MDDKey(0)
-_TRUE = _MDDKey(1)
+FALSE_COLUMN = ReturnColumnKey(0)
+TRUE_COLUMN = ReturnColumnKey(1)
 _ALLOWED_CYLINDER_MASKS = (
     (0b1111, 0b0101, 0b1010, 0b0001, 0b0010, 0b0100, 0b1000),
     (0b111, 0b001, 0b010, 0b100),
@@ -120,7 +123,7 @@ class B1ReturnPartitionRecord:
             or source_id.owner is not owner
         ):
             raise ValueError("B1 partition publication has mismatched ownership")
-        _validate_cached_partition_shape(partition)
+        validate_cached_partition_shape(partition)
         object.__setattr__(self, "partition", partition)
         object.__setattr__(self, "owner", owner)
         object.__setattr__(self, "source_id", source_id)
@@ -154,7 +157,7 @@ def _cached_b1_partition(
         or type(value.partition) is not ReturnMDDPartition
     ):
         raise ValueError("comma return partition cache entry has foreign authority")
-    _validate_cached_partition_shape(value.partition)
+    validate_cached_partition_shape(value.partition)
     return value.partition
 
 
@@ -194,7 +197,7 @@ def return_partition_node_cost(
         if isinstance(current, ReturnMDDPartition):
             seen.add(id(current))
             pending.append(current.columns)
-        elif isinstance(current, tuple):
+        elif is_object_tuple(current):
             seen.add(id(current))
             pending.extend(current)
         elif isinstance(current, ReturnColumnKey):
@@ -213,7 +216,7 @@ def return_template_node_cost(
         current = pending.pop()
         if id(current) in seen:
             continue
-        if type(current) is tuple:
+        if is_exact_object_tuple(current):
             seen.add(id(current))
             pending.extend(current)
         elif isinstance(current, ReturnColumnKey):
@@ -257,7 +260,7 @@ def _validate_scope(scope: ReturnScope) -> ReturnScope:
     return scope
 
 
-def _validate_scopes(scopes: tuple[ReturnScope, ...]) -> tuple[ReturnScope, ...]:
+def validate_scopes(scopes: tuple[ReturnScope, ...]) -> tuple[ReturnScope, ...]:
     if type(scopes) is not tuple:
         raise TypeError("comma scope union must be an immutable tuple")
     return tuple(_validate_scope(scope) for scope in scopes)
@@ -278,8 +281,8 @@ def _scope_cube(scope: ReturnScope) -> _Cube:
     masks: list[int] = []
     for factor, valid_mask, domain in zip(
         factors,
-        _VALID_MASKS,
-        _COMPONENT_DOMAINS,
+        VALID_MASKS,
+        COMPONENT_DOMAINS,
         strict=True,
     ):
         if factor == 1:
@@ -313,12 +316,12 @@ def _minimal_cubes(cubes: tuple[_Cube, ...]) -> tuple[_Cube, ...]:
 
 def scope_column_key(
     scopes: tuple[ReturnScope, ...], *, charge: WorkCharge | None = None
-) -> _MDDKey:
+) -> ReturnColumnKey:
     """Canonical reduced multiway decision key for one scope union."""
-    scopes = _validate_scopes(scopes)
+    scopes = validate_scopes(scopes)
     cubes = _minimal_cubes(tuple(_scope_cube(scope) for scope in scopes))
     pending: list[tuple[int, tuple[_Cube, ...], bool]] = [(0, cubes, False)]
-    results: dict[tuple[int, tuple[_Cube, ...]], _MDDKey] = {}
+    results: dict[tuple[int, tuple[_Cube, ...]], ReturnColumnKey] = {}
     while pending:
         level, active, ready = pending.pop()
         if charge is not None:
@@ -327,12 +330,12 @@ def scope_column_key(
         if state in results:
             continue
         if not active:
-            results[state] = _FALSE
+            results[state] = FALSE_COLUMN
             continue
-        if level == len(_CLOCK_COMPONENTS):
-            results[state] = _TRUE
+        if level == len(CLOCK_COMPONENTS):
+            results[state] = TRUE_COLUMN
             continue
-        domain = _COMPONENT_DOMAINS[level]
+        domain = COMPONENT_DOMAINS[level]
         child_cubes = tuple(
             _minimal_cubes(tuple(cube[1:] for cube in active if cube[0] >> value & 1))
             for value in range(domain)
@@ -343,7 +346,7 @@ def scope_column_key(
             results[state] = (
                 children[0]
                 if all(child == children[0] for child in children)
-                else _MDDKey(2, level, children)
+                else ReturnColumnKey(2, level, children)
             )
             continue
         pending.append((level, active, True))
@@ -353,13 +356,13 @@ def scope_column_key(
     return results[(0, cubes)]
 
 
-def _mdd_child(key: _MDDKey, level: int, value: int) -> _MDDKey:
+def mdd_child(key: ReturnColumnKey, level: int, value: int) -> ReturnColumnKey:
     if key.kind in (0, 1):
         return key
     if key.kind != 2:
         raise ValueError("invalid comma clock MDD node kind")
     node_level = key.level
-    if not 0 <= node_level < len(_CLOCK_COMPONENTS):
+    if not 0 <= node_level < len(CLOCK_COMPONENTS):
         raise ValueError("invalid comma clock MDD node")
     if node_level > level:
         return key
@@ -371,23 +374,26 @@ def _mdd_child(key: _MDDKey, level: int, value: int) -> _MDDKey:
     return children[value]
 
 
-def _translated_column_key(
-    root: _MDDKey,
+def translated_column_key(
+    root: ReturnColumnKey,
     shift: int,
     charge: WorkCharge | None,
     *,
-    results: MutableMapping[tuple[int, _MDDKey, int], _MDDKey] | None = None,
+    results: MutableMapping[tuple[int, ReturnColumnKey, int], ReturnColumnKey]
+    | None = None,
     reserve: Callable[[int], None] | None = None,
-) -> tuple[_MDDKey, int]:
+) -> tuple[ReturnColumnKey, int]:
     """Translate a column by shifting its CRT characters in the reduced MDD."""
     if reserve is not None:
         reserve(1)
-    pending: list[tuple[int, _MDDKey, bool]] = [(0, root, False)]
-    memo = {} if results is None else results
+    pending: list[tuple[int, ReturnColumnKey, bool]] = [(0, root, False)]
+    memo: MutableMapping[tuple[int, ReturnColumnKey, int], ReturnColumnKey] = (
+        {} if results is None else results
+    )
     visits = 0
     while pending:
         level, key, ready = pending.pop()
-        state = level, key, shift % _REMAINING_CLOCK_PERIODS[level]
+        state = level, key, shift % REMAINING_CLOCK_PERIODS[level]
         if state in memo:
             if charge is not None:
                 charge("comma_output_template_mdd_shift_cache_hits", 1)
@@ -397,7 +403,7 @@ def _translated_column_key(
         if reserve is not None:
             reserve(1)
         visits += 1
-        if key.kind in (0, 1) or level == len(_CLOCK_COMPONENTS):
+        if key.kind in (0, 1) or level == len(CLOCK_COMPONENTS):
             memo[state] = key
             continue
         if key.kind != 2 or key.level < level:
@@ -407,7 +413,7 @@ def _translated_column_key(
             next_state = (
                 next_level,
                 key,
-                shift % _REMAINING_CLOCK_PERIODS[next_level],
+                shift % REMAINING_CLOCK_PERIODS[next_level],
             )
             if ready:
                 memo[state] = memo[next_state]
@@ -422,9 +428,9 @@ def _translated_column_key(
             continue
 
         modulus = _COMPONENT_MODULI[level]
-        domain = _COMPONENT_DOMAINS[level]
+        domain = COMPONENT_DOMAINS[level]
         valid_values = tuple(
-            value for value in range(domain) if _VALID_MASKS[level] >> value & 1
+            value for value in range(domain) if VALID_MASKS[level] >> value & 1
         )
         old_values = tuple((value + shift) % modulus for value in valid_values)
         if reserve is not None:
@@ -432,8 +438,8 @@ def _translated_column_key(
         child_states = tuple(
             (
                 level + 1,
-                _mdd_child(key, level, old_value),
-                shift % _REMAINING_CLOCK_PERIODS[level + 1],
+                mdd_child(key, level, old_value),
+                shift % REMAINING_CLOCK_PERIODS[level + 1],
             )
             for old_value in old_values
         )
@@ -446,9 +452,9 @@ def _translated_column_key(
                     valid_values, child_states, strict=True
                 )
             }
-            first_child = translated_children.get(0, _FALSE)
+            first_child = translated_children.get(0, FALSE_COLUMN)
             if all(
-                translated_children.get(value, _FALSE) == first_child
+                translated_children.get(value, FALSE_COLUMN) == first_child
                 for value in range(domain)
             ):
                 memo[state] = first_child
@@ -456,9 +462,10 @@ def _translated_column_key(
                 if reserve is not None:
                     reserve(1)
                 children = tuple(
-                    translated_children.get(value, _FALSE) for value in range(domain)
+                    translated_children.get(value, FALSE_COLUMN)
+                    for value in range(domain)
                 )
-                memo[state] = _MDDKey(2, level, children)
+                memo[state] = ReturnColumnKey(2, level, children)
             continue
 
         if reserve is not None:
@@ -470,24 +477,26 @@ def _translated_column_key(
                 if reserve is not None:
                     reserve(1)
                 pending.append((child_level, child_key, False))
-    return memo[(0, root, shift % _REMAINING_CLOCK_PERIODS[0])], visits
+    return memo[(0, root, shift % REMAINING_CLOCK_PERIODS[0])], visits
 
 
-def _mdd_pair(left: _MDDKey, right: _MDDKey) -> tuple[_MDDKey, _MDDKey]:
+def _mdd_pair(
+    left: ReturnColumnKey, right: ReturnColumnKey
+) -> tuple[ReturnColumnKey, ReturnColumnKey]:
     """Order a commutative memo key without comparing whole trees normally."""
     a, b = hash(left), hash(right)
     return (left, right) if a < b or (a == b and left <= right) else (right, left)
 
 
 def _mdd_boolean_combine(
-    left: _MDDKey,
-    right: _MDDKey,
+    left: ReturnColumnKey,
+    right: ReturnColumnKey,
     level: int,
-    cache: dict[tuple[int, _MDDKey, _MDDKey], _MDDKey],
+    cache: dict[tuple[int, ReturnColumnKey, ReturnColumnKey], ReturnColumnKey],
     charge: Callable[[str, int], None] | None,
     *,
     union: bool,
-) -> _MDDKey:
+) -> ReturnColumnKey:
     pending = [(level, left, right, False)]
     while pending:
         current_level, first, second, ready = pending.pop()
@@ -499,36 +508,36 @@ def _mdd_boolean_combine(
             operation = "union" if union else "intersection"
             charge(f"comma_output_template_mdd_{operation}_nodes", 1)
         if union:
-            if first == _TRUE or second == _TRUE:
-                cache[state] = _TRUE
+            if first == TRUE_COLUMN or second == TRUE_COLUMN:
+                cache[state] = TRUE_COLUMN
                 continue
-            if first == _FALSE:
+            if first == FALSE_COLUMN:
                 cache[state] = second
                 continue
-            if second == _FALSE:
+            if second == FALSE_COLUMN:
                 cache[state] = first
                 continue
         else:
-            if first == _FALSE or second == _FALSE:
-                cache[state] = _FALSE
+            if first == FALSE_COLUMN or second == FALSE_COLUMN:
+                cache[state] = FALSE_COLUMN
                 continue
-            if first == _TRUE:
+            if first == TRUE_COLUMN:
                 cache[state] = second
                 continue
-            if second == _TRUE:
+            if second == TRUE_COLUMN:
                 cache[state] = first
                 continue
         if first == second:
             cache[state] = first
             continue
-        if current_level == len(_CLOCK_COMPONENTS):
-            cache[state] = _TRUE if union else _FALSE
+        if current_level == len(CLOCK_COMPONENTS):
+            cache[state] = TRUE_COLUMN if union else FALSE_COLUMN
             continue
-        domain = _COMPONENT_DOMAINS[current_level]
+        domain = COMPONENT_DOMAINS[current_level]
         child_pairs = tuple(
             (
-                _mdd_child(first, current_level, value),
-                _mdd_child(second, current_level, value),
+                mdd_child(first, current_level, value),
+                mdd_child(second, current_level, value),
             )
             for value in range(domain)
         )
@@ -540,7 +549,7 @@ def _mdd_boolean_combine(
             cache[state] = (
                 children[0]
                 if all(child == children[0] for child in children)
-                else _MDDKey(2, current_level, children)
+                else ReturnColumnKey(2, current_level, children)
             )
             continue
         pending.append((current_level, first, second, True))
@@ -552,27 +561,27 @@ def _mdd_boolean_combine(
     return cache[normalized]
 
 
-def _mdd_intersection(
-    left: _MDDKey,
-    right: _MDDKey,
+def mdd_intersection(
+    left: ReturnColumnKey,
+    right: ReturnColumnKey,
     level: int,
-    cache: dict[tuple[int, _MDDKey, _MDDKey], _MDDKey],
+    cache: dict[tuple[int, ReturnColumnKey, ReturnColumnKey], ReturnColumnKey],
     charge: WorkCharge | None,
-) -> _MDDKey:
+) -> ReturnColumnKey:
     return _mdd_boolean_combine(left, right, level, cache, charge, union=False)
 
 
-def _mdd_union(
-    left: _MDDKey,
-    right: _MDDKey,
+def mdd_union(
+    left: ReturnColumnKey,
+    right: ReturnColumnKey,
     level: int,
-    cache: dict[tuple[int, _MDDKey, _MDDKey], _MDDKey],
+    cache: dict[tuple[int, ReturnColumnKey, ReturnColumnKey], ReturnColumnKey],
     charge: WorkCharge | None,
-) -> _MDDKey:
+) -> ReturnColumnKey:
     return _mdd_boolean_combine(left, right, level, cache, charge, union=True)
 
 
-def _validate_cached_partition_shape(partition: ReturnMDDPartition) -> None:
+def validate_cached_partition_shape(partition: ReturnMDDPartition) -> None:
     """Check constant-size period metadata on a sealed B1 cache hit."""
     if (
         type(partition.period) is not int
@@ -586,25 +595,25 @@ def _validate_cached_partition_shape(partition: ReturnMDDPartition) -> None:
 
 def _scope_mdd_key(
     scope: ReturnScope,
-    cache: dict[ReturnScope, _MDDKey],
+    cache: dict[ReturnScope, ReturnColumnKey],
     charge: WorkCharge | None,
-) -> _MDDKey:
+) -> ReturnColumnKey:
     found = cache.get(scope)
     if found is not None:
         if charge is not None:
             charge("comma_return_partition_selector_cache_hits", 1)
         return found
     cube = _scope_cube(scope)
-    key = _TRUE
-    for level in reversed(range(len(_CLOCK_COMPONENTS))):
+    key = TRUE_COLUMN
+    for level in reversed(range(len(CLOCK_COMPONENTS))):
         children = tuple(
-            key if cube[level] >> value & 1 else _FALSE
-            for value in range(_COMPONENT_DOMAINS[level])
+            key if cube[level] >> value & 1 else FALSE_COLUMN
+            for value in range(COMPONENT_DOMAINS[level])
         )
         key = (
             children[0]
             if all(child == children[0] for child in children)
-            else _MDDKey(2, level, children)
+            else ReturnColumnKey(2, level, children)
         )
         if charge is not None:
             charge("comma_return_partition_selector_nodes", 1)
@@ -613,21 +622,25 @@ def _scope_mdd_key(
 
 
 def _maximal_cylinder_cubes(
-    root: _MDDKey,
+    root: ReturnColumnKey,
     charge: WorkCharge | None,
 ) -> tuple[_Cube, ...]:
     """Extract maximal subgroup-coset product cubes from an extensional MDD."""
-    intersection_cache: dict[tuple[int, _MDDKey, _MDDKey], _MDDKey] = {}
-    pending: list[tuple[int, _MDDKey, bool]] = [(0, root, False)]
-    options_by_state: dict[tuple[int, _MDDKey], tuple[tuple[int, _MDDKey], ...]] = {}
-    results: dict[tuple[int, _MDDKey], tuple[_Cube, ...]] = {}
+    intersection_cache: dict[
+        tuple[int, ReturnColumnKey, ReturnColumnKey], ReturnColumnKey
+    ] = {}
+    pending: list[tuple[int, ReturnColumnKey, bool]] = [(0, root, False)]
+    options_by_state: dict[
+        tuple[int, ReturnColumnKey], tuple[tuple[int, ReturnColumnKey], ...]
+    ] = {}
+    results: dict[tuple[int, ReturnColumnKey], tuple[_Cube, ...]] = {}
     while pending:
         level, function, ready = pending.pop()
         state = level, function
         if state in results:
             continue
-        if level == len(_CLOCK_COMPONENTS):
-            results[state] = ((),) if function == _TRUE else ()
+        if level == len(CLOCK_COMPONENTS):
+            results[state] = ((),) if function == TRUE_COLUMN else ()
             continue
         if ready:
             candidates = tuple(
@@ -654,22 +667,22 @@ def _maximal_cylinder_cubes(
                 charge("comma_output_template_cylinder_dominance_checks", comparisons)
             results[state] = tuple(maximal_cubes)
             continue
-        choices: list[tuple[int, _MDDKey]] = []
-        domain = _COMPONENT_DOMAINS[level]
+        choices: list[tuple[int, ReturnColumnKey]] = []
+        domain = COMPONENT_DOMAINS[level]
         for mask in _ALLOWED_CYLINDER_MASKS[level]:
-            common = _TRUE
+            common = TRUE_COLUMN
             for value in range(domain):
                 if mask >> value & 1:
-                    common = _mdd_intersection(
+                    common = mdd_intersection(
                         common,
-                        _mdd_child(function, level, value),
+                        mdd_child(function, level, value),
                         level + 1,
                         intersection_cache,
                         charge,
                     )
-                    if common == _FALSE:
+                    if common == FALSE_COLUMN:
                         break
-            if common != _FALSE:
+            if common != FALSE_COLUMN:
                 choices.append((mask, common))
         options = tuple(choices)
         options_by_state[state] = options
@@ -685,8 +698,8 @@ def _cube_scope(cube: _Cube) -> ReturnScope:
     for level, (mask, valid_mask, domain, modulus) in enumerate(
         zip(
             cube,
-            _VALID_MASKS,
-            _COMPONENT_DOMAINS,
+            VALID_MASKS,
+            COMPONENT_DOMAINS,
             (4, 3, 7, 11),
             strict=True,
         )
@@ -709,8 +722,8 @@ def _cube_scope(cube: _Cube) -> ReturnScope:
     return scope
 
 
-def _scopes_from_key(
-    key: _MDDKey, charge: WorkCharge | None
+def scopes_from_key(
+    key: ReturnColumnKey, charge: WorkCharge | None
 ) -> tuple[ReturnScope, ...]:
     cubes = _maximal_cylinder_cubes(key, charge)
     if charge is not None:
@@ -728,7 +741,7 @@ def continuation_return_partition(
     """Compose one complete return directly in the reduced CRT-MDD algebra."""
     if charge is not None:
         charge("comma_return_partition_lookups", 1)
-    source_view._validate_id(identifier)
+    source_view.validate_id(identifier)
     found = cache.get(identifier)
     if found is not None:
         if charge is not None:
@@ -746,14 +759,18 @@ def continuation_return_partition(
             _cached_b1_partition(source_view, current, cache[current])
             active.discard(current)
             continue
-        rows = source_view.actions_by_id.get(source_view._validate_id(current))
+        rows = source_view.actions_by_id.get(source_view.validate_id(current))
         if rows is None or not rows:
             raise ValueError("comma continuation has no local action row")
         if ready:
-            by_label: dict[int, _MDDKey] = {}
-            selector_cache: dict[ReturnScope, _MDDKey] = {}
-            intersection_cache: dict[tuple[int, _MDDKey, _MDDKey], _MDDKey] = {}
-            union_cache: dict[tuple[int, _MDDKey, _MDDKey], _MDDKey] = {}
+            by_label: dict[int, ReturnColumnKey] = {}
+            selector_cache: dict[ReturnScope, ReturnColumnKey] = {}
+            intersection_cache: dict[
+                tuple[int, ReturnColumnKey, ReturnColumnKey], ReturnColumnKey
+            ] = {}
+            union_cache: dict[
+                tuple[int, ReturnColumnKey, ReturnColumnKey], ReturnColumnKey
+            ] = {}
             row_period = len(rows)
             if 924 % row_period:
                 raise ValueError("comma local action period does not divide 924")
@@ -766,7 +783,7 @@ def continuation_return_partition(
                 if action.kind == "goto":
                     if action.target is None:
                         raise ValueError("comma Goto omits its child ID")
-                    target = source_view._validate_id(action.target)
+                    target = source_view.validate_id(action.target)
                     child_entry = cache.get(target)
                     if child_entry is None:
                         raise AssertionError("comma child partition was not completed")
@@ -775,16 +792,16 @@ def continuation_return_partition(
                     for label, child_key in child.columns:
                         if charge is not None:
                             charge("comma_return_partition_mdd_meets", 1)
-                        overlap = _mdd_intersection(
+                        overlap = mdd_intersection(
                             selector,
                             child_key,
                             0,
                             intersection_cache,
                             charge,
                         )
-                        if overlap != _FALSE:
-                            previous = by_label.get(label, _FALSE)
-                            by_label[label] = _mdd_union(
+                        if overlap != FALSE_COLUMN:
+                            previous = by_label.get(label, FALSE_COLUMN)
+                            by_label[label] = mdd_union(
                                 previous,
                                 overlap,
                                 0,
@@ -793,8 +810,8 @@ def continuation_return_partition(
                             )
                 else:
                     label = return_code(action)
-                    previous = by_label.get(label, _FALSE)
-                    by_label[label] = _mdd_union(
+                    previous = by_label.get(label, FALSE_COLUMN)
+                    by_label[label] = mdd_union(
                         previous,
                         selector,
                         0,
@@ -817,7 +834,7 @@ def continuation_return_partition(
         active.add(current)
         pending.append((current, True))
         targets = tuple(
-            source_view._validate_id(action.target)
+            source_view.validate_id(action.target)
             for action in rows
             if action.kind == "goto" and action.target is not None
         )

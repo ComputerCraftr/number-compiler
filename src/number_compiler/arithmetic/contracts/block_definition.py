@@ -38,6 +38,12 @@ class CompatibilityCompositionRuntime:
             raise TypeError("compatibility composition runtime is sealed")
         CompatibilityCompositionRuntime._runtime_type = cls
 
+    @staticmethod
+    def recognizes(value: object) -> bool:
+        """Recognize the exact registered compatibility runtime without lending it."""
+        runtime_type = CompatibilityCompositionRuntime._runtime_type
+        return runtime_type is not None and type(value) is runtime_type
+
     @property
     def definition(self) -> ComposedBlockDefinition:
         raise NotImplementedError
@@ -55,8 +61,7 @@ def is_compatibility_composition(
     value: object,
 ) -> TypeGuard[CompatibilityCompositionRuntime]:
     """Recognize only the one registered legacy runtime concrete type."""
-    runtime_type = CompatibilityCompositionRuntime._runtime_type
-    return runtime_type is not None and type(value) is runtime_type
+    return CompatibilityCompositionRuntime.recognizes(value)
 
 
 class BlockDefinition(Protocol):

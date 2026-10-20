@@ -135,8 +135,9 @@ def test_result_lease_rejects_same_signature_action_rebinding_and_releases_root(
             action, source.tile, adapter.initial_ports(action), adapter.wiring(action)
         ) as result,
     ):
-        original_key = result._key
-        original_root = result._tile
+        original_binding = result.audit_snapshot()
+        original_key = original_binding.key
+        original_root = original_binding.tile
         alternate = adapter.power(action, 2)
         assert alternate != action
         assert adapter.signature_for(alternate) == adapter.signature_for(action)
@@ -144,7 +145,7 @@ def test_result_lease_rejects_same_signature_action_rebinding_and_releases_root(
         # Both actions are valid under the same authority and port signature,
         # so semantic validation of the replacement alone cannot authenticate
         # that this result lease was issued for it.
-        result._key = replace(original_key, action=alternate)
+        object.__setattr__(result, "_key", replace(original_key, action=alternate))
         with pytest.raises(ValueError, match="binding changed after issuance"):
             cached_causal_output(result)
 
@@ -153,13 +154,13 @@ def test_result_lease_rejects_same_signature_action_rebinding_and_releases_root(
         # releases it without ever trusting the alternate action.
         with pytest.raises(ValueError, match="binding changed after issuance"):
             result.close()
-        assert result._closed is False
-        assert original_root._closed is False
-        result._key = original_key
+        assert result.audit_snapshot().closed is False
+        assert original_root.audit_snapshot().closed is False
+        object.__setattr__(result, "_key", original_key)
         result.close()
-        assert result._closed is True
-        assert result._tile is original_root
-        assert original_root._closed is True
+        assert result.audit_snapshot().closed is True
+        assert result.audit_snapshot().tile is original_root
+        assert original_root.audit_snapshot().closed is True
 
 
 def test_composite_key_encodes_exact_input_prefixes_separately_from_ports() -> None:

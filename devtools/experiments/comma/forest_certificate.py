@@ -125,7 +125,7 @@ def _small_roots() -> tuple[int, ...]:
 
 def _interior_cycles(k: int, f: int, boundary: int) -> tuple[int, int]:
     """Skip only complete phase cycles whose every child stays in this sector."""
-    length, displacement = _phase_period(f, k % 10)
+    length, displacement = phase_period(f, k % 10)
     cycles = max(0, (boundary - 100 - k) // displacement)
     return cycles * length, cycles * displacement
 
@@ -148,6 +148,12 @@ def _boundary_children(k: int, f: int, scale: int) -> tuple[int, ...]:
     return ((same,) if same < boundary else ()) + (
         (next_scale,) if boundary <= next_scale < 20 * scale else ()
     )
+
+
+lead_and_scale = _lead_and_scale
+literal_children = _literal_children
+interior_cycles = _interior_cycles
+boundary_children = _boundary_children
 
 
 def _charge(ledger: ResourceLedger, max_work: int, amount: int = 1) -> None:
@@ -293,10 +299,6 @@ def main() -> None:
         "formal_prefix_checked": summary["formal_prefix_checked"],
     }
     print(json.dumps(document, indent=2))
-
-
-def _phase_period(leading: int, last_digit: int) -> tuple[int, int]:
-    return phase_period(leading, last_digit)
 
 
 if __name__ == "__main__":

@@ -184,7 +184,7 @@ def division_interface(
     assert type(adapter) is PrimitiveTileKernelAdapter
     action = adapter.admit(SymbolicBinaryDivisionEffect(257), cocycle=TemporalCocycle())
     interface = adapter.compile_interface(
-        action, projection._application.source, adapter.wiring(action)
+        action, projection.validated_application().source, adapter.wiring(action)
     )
     return adapter, action, interface, projection.scheduler.results.interfaces
 

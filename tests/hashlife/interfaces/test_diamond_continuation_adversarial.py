@@ -48,12 +48,12 @@ def test_fake_free_port_cannot_cache_a_complete_future_tape(
     normalized_requests: list[NormalizePrimitiveLambda] = []
     head_requests: list[ResolveExpr] = []
     substitutions: list[ExprSubstitutionKey] = []
-    recovered = []
+    recovered: list[int] = []
     for output in outputs:
         node = arena.node(output)
         assert node.kind == "emit" and node.action is not None
         action = node.action
-        symbol = arena._handle(node.children[1])
+        symbol = arena.scoped_handle(node.children[1])
         variable = arena.variable(arena.state_sort(action, 1), "adversarial-free-port")
         if argument_matters:
             left = arena.literal(runtime.boundaries.literal(action, 0, 0))
@@ -99,7 +99,7 @@ def test_fake_free_port_cannot_cache_a_complete_future_tape(
             )
 
             anchor = arena.variable(arena.state_sort(action, 0), "opaque-anchor")
-            captured = arena._handle(node.children[1])
+            captured = arena.scoped_handle(node.children[1])
             mixed = arena.primitive_emit(action, anchor, captured, variable)
             open_body = arena.primitive_advance(action, 1, variable, mixed)
             program = arena.closures.intern(

@@ -4,23 +4,66 @@ from __future__ import annotations
 
 import gzip
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.comma.forest_verifier import (
-    _check_forest_row,
-    _literal_children,
-    _parse_line,
-    _phase_period,
-    _prefix_to_first_fork,
-    _small_roots,
-    verify_forest_certificate,
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_dictionary,
+    is_object_list,
 )
+from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.comma import forest_verifier
+from number_compiler.sequences.comma.arithmetic import phase_period
+from number_compiler.sequences.comma.forest_verifier import verify_forest_certificate
 from tests.support.comma_oracles import assert_phase_period
+
+_check_forest_row = cast(
+    Callable[[dict[str, object], int, int, ResourceLedger, int], tuple[int, ...]],
+    object.__getattribute__(forest_verifier, "_check_forest_row"),
+)
+_literal_children = cast(
+    Callable[[int], tuple[int, ...]],
+    object.__getattribute__(forest_verifier, "_literal_children"),
+)
+_parse_line = cast(
+    Callable[[bytes], dict[str, object]],
+    object.__getattribute__(forest_verifier, "_parse_line"),
+)
+_prefix_to_first_fork = cast(
+    Callable[[ResourceLedger, int], tuple[int, int, tuple[int, ...], int]],
+    object.__getattribute__(forest_verifier, "_prefix_to_first_fork"),
+)
+_small_roots = cast(
+    Callable[[ResourceLedger, int], tuple[int, ...]],
+    object.__getattribute__(forest_verifier, "_small_roots"),
+)
+
+
+def _string_list(value: object) -> list[str]:
+    if not is_object_list(value) or not all(type(item) is str for item in value):
+        raise AssertionError("fixture field is not an exact string list")
+    return cast(list[str], value)
+
+
+def _integer_list(value: object) -> list[int]:
+    if not is_object_list(value) or not all(type(item) is int for item in value):
+        raise AssertionError("fixture field is not an exact integer list")
+    return cast(list[int], value)
+
+
+def _string_object(value: object) -> dict[str, object]:
+    if not is_object_dictionary(value):
+        raise AssertionError("fixture field is not an object dictionary")
+    result: dict[str, object] = {}
+    for raw_key, item in value.items():
+        if type(raw_key) is not str:
+            raise AssertionError("fixture object key is not a string")
+        result[raw_key] = item
+    return result
 
 
 def _canonical_line(value: object) -> bytes:
@@ -30,7 +73,7 @@ def _canonical_line(value: object) -> bytes:
     ).encode("ascii")
 
 
-def _packaged_first_rows() -> tuple[dict[str, Any], dict[str, Any]]:
+def _packaged_first_rows() -> tuple[dict[str, object], dict[str, object]]:
     path = (
         Path(__file__).parents[3]
         / "src/number_compiler/kernels/comma_prefix_v1.jsonl.gz"
@@ -39,13 +82,13 @@ def _packaged_first_rows() -> tuple[dict[str, Any], dict[str, Any]]:
         header = json.loads(stream.readline())
         row = json.loads(stream.readline())
     assert type(header) is dict and type(row) is dict
-    return header, row
+    return cast(dict[str, object], header), cast(dict[str, object], row)
 
 
 def _write_records(
     path: Path,
-    header: dict[str, Any],
-    row: dict[str, Any] | None = None,
+    header: dict[str, object],
+    row: dict[str, object] | None = None,
 ) -> None:
     with gzip.open(path, "wb") as stream:
         stream.write(_canonical_line(header))
@@ -77,12 +120,12 @@ def test_canonical_json_parser_rejects_duplicate_keys_and_noncanonical_lines() -
 
 
 def test_phase_period_matches_literal_decimal_child_recurrence() -> None:
-    assert_phase_period(_phase_period)
+    assert_phase_period(phase_period)
 
 
 def test_near_boundary_zero_cycle_row_does_not_apply_skip_guard() -> None:
     ledger = ResourceLedger()
-    row = {
+    row: dict[str, object] = {
         "source": "190",
         "entry": "190",
         "cycles": 0,
@@ -129,8 +172,8 @@ def test_header_mutations_are_rejected_before_frontier_publication(
     tmp_path: Path, mutation: str, message: str
 ) -> None:
     header, _ = _packaged_first_rows()
-    sources = list(header["sources"])
-    prefix = dict(header["prefix"])
+    sources = list(_integer_list(header["sources"]))
+    prefix = _string_object(header["prefix"])
     altered = dict(header)
     if mutation == "missing-root":
         sources.pop(0)
@@ -139,7 +182,10 @@ def test_header_mutations_are_rejected_before_frontier_publication(
         sources.pop()
         altered["sources"] = sources
     elif mutation == "wrong-prefix-index":
-        prefix["index"] += 1
+        index = prefix["index"]
+        if type(index) is not int:
+            raise AssertionError("fixture prefix index is not an exact integer")
+        prefix["index"] = index + 1
         altered["prefix"] = prefix
     else:
         prefix["children"] = ["19999999999"]
@@ -167,9 +213,12 @@ def test_forged_or_incomplete_first_row_is_rejected_and_released(
     header, row = _packaged_first_rows()
     altered = dict(row)
     if mutation == "forged-exits":
-        altered["exits"] = [*altered["exits"], "999"]
+        altered["exits"] = [*_string_list(altered["exits"]), "999"]
     elif mutation == "wrong-cycles":
-        altered["cycles"] += 1
+        cycles = altered["cycles"]
+        if type(cycles) is not int:
+            raise AssertionError("fixture cycle count is not an exact integer")
+        altered["cycles"] = cycles + 1
     else:
         altered["unbound"] = True
     path = tmp_path / f"{mutation}.jsonl.gz"

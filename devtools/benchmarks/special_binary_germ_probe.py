@@ -17,7 +17,7 @@ ROOT = repository_root()
 
 
 def main() -> None:
-    rows = []
+    rows: list[dict[str, object]] = []
     for family, parameter in (
         ("fermat", 4),
         ("fermat", 5),
@@ -43,7 +43,7 @@ def main() -> None:
                 "factor_enumeration_audit": truth.factor_enumeration,
             }
         )
-    payload = {
+    payload: dict[str, object] = {
         "theorem_status": "SOURCE_OBSERVER_UNKNOWN",
         "binary_transport_closed": True,
         "support_intersection_closed": True,

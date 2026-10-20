@@ -6,7 +6,7 @@ midpoint is an action with symbolic ports, never a tile containing its outputs.
 
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Generator, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, overload
 
@@ -89,7 +89,7 @@ from number_compiler.hashlife.interfaces.diamond_kernel import (
 )
 from number_compiler.hashlife.interfaces.diamond_output import (
     DiamondOutputFunctions,
-    _expression,
+    require_transfer_expression,
 )
 from number_compiler.hashlife.interfaces.diamond_quotient import DiamondQuotientArena
 from number_compiler.hashlife.interfaces.diamond_resets import RightResetCertificates
@@ -135,7 +135,7 @@ def _scalar(result: Result) -> int:
 
 
 @dataclass(slots=True)
-class _Frame:
+class DiamondEvaluationFrame:
     task: Task
     program: Generator[Task, Result, Result]
 
@@ -147,7 +147,7 @@ if TYPE_CHECKING:
 
 
 class DiamondRuntime:
-    _generic_higher_runtime: GenericHigherRuntime
+    generic_higher_executor: GenericHigherRuntime
 
     def __init__(self, compiler: LazyCompiler, source: SourceGeometry) -> None:
         self.family_hooks = compiler.family_hooks
@@ -290,6 +290,10 @@ class DiamondRuntime:
             self.substitutions if isinstance(task, Substitute) else self.continuations
         )
 
+    def memo_view(self, task: Task) -> Mapping[Task, BoundaryStateID]:
+        """Read a task cache without exposing its mutation interface."""
+        return self._memo(task)
+
     def kernel(self, action: ActionProgramID) -> PrimitiveKernel:
         self.actions.resolve(action)
         handle = self.primitive_ids.get(action)
@@ -298,7 +302,7 @@ class DiamondRuntime:
             self.primitive_ids[action] = handle
         return self.kernels.kernel(handle)
 
-    def _validate_state(
+    def validate_state(
         self, state: BoundaryStateID, action: ActionProgramID, side: int
     ) -> None:
         if type(side) is not int or side not in (0, 1):
@@ -308,11 +312,11 @@ class DiamondRuntime:
         if value.action != action or value.side != side:
             raise ValueError("boundary state has the wrong temporal interface")
 
-    def _validate_provider(self, provider: ImageBinding) -> int:
+    def validate_provider(self, provider: ImageBinding) -> int:
         if type(provider) is not ImageBinding:
             raise TypeError("expected a parametric image binding")
         action = self.actions.resolve(provider.action)
-        source = self.cells.source_geometry._construction.source
+        source = self.cells.source_geometry.construction.source
         if action.kind != "identity" and (action.base, action.blank) != (
             source.base,
             source.blank,
@@ -324,43 +328,43 @@ class DiamondRuntime:
         else:
             self.cells.validate_input(provider.cell)
             visits = 0
-        self._validate_state(provider.left, provider.action, 0)
-        self._validate_state(provider.right, provider.action, 1)
+        self.validate_state(provider.left, provider.action, 0)
+        self.validate_state(provider.right, provider.action, 1)
         return visits
 
-    def _validate(self, task: Task) -> int:
+    def validate_task(self, task: Task) -> int:
         from number_compiler.hashlife.execution.continuations.diamond_admission import (
-            _validate,
+            validate_diamond_task,
         )
 
-        return _validate(self, task)
+        return validate_diamond_task(self, task)
 
     def _probe(self, task: Task) -> Result | None:
-        return self._probe_admitted(self._canonical_task(task))
+        return self.probe_admitted_task(self.canonical_task(task))
 
-    def _admit_head_binding(self, expression: ExprID) -> bool:
+    def admit_head_binding(self, expression: ExprID) -> bool:
         from number_compiler.hashlife.execution.continuations.diamond_admission import (
-            _admit_head_binding,
+            admit_head_binding,
         )
 
-        return _admit_head_binding(self, expression)
+        return admit_head_binding(self, expression)
 
-    def _probe_admitted(self, task: Task) -> Result | None:
+    def probe_admitted_task(self, task: Task) -> Result | None:
         from number_compiler.hashlife.execution.continuations.diamond_admission import (
-            _probe_admitted,
+            probe_admitted_task,
         )
 
-        return _probe_admitted(self, task)
+        return probe_admitted_task(self, task)
 
-    def _canonical_task(self, task: Task) -> Task:
+    def canonical_task(self, task: Task) -> Task:
         from number_compiler.hashlife.execution.continuations.diamond_admission import (
-            _canonical_task,
+            canonical_task,
         )
 
-        return _canonical_task(self, task)
+        return canonical_task(self, task)
 
-    def _cached_transfer(self, task: Transfer) -> BoundaryStateID | None:
-        return self.transfers.get(self._canonical_task(task))
+    def cached_transfer(self, task: Transfer) -> BoundaryStateID | None:
+        return self.transfers.get(self.canonical_task(task))
 
     @overload
     def execute(
@@ -414,7 +418,7 @@ class DiamondRuntime:
 
         return execute(self, root)
 
-    def _publish(self, task: Task, result: Result) -> None:
+    def publish_task(self, task: Task, result: Result) -> None:
         if isinstance(task, (PrimitiveMacroKey, PrimitiveMacroObservation)):
             if self.primitive_macros is None:
                 raise ValueError("primitive publication has no admitted arena")
@@ -452,8 +456,8 @@ class DiamondRuntime:
                 and self.higher.expressions.node(result).free_ports
                 and self.higher.expressions.node(result).kind
                 not in ("literal", "symbol")
-                and self._admit_head_binding(task.expression)
-                and self._admit_head_binding(result)
+                and self.admit_head_binding(task.expression)
+                and self.admit_head_binding(result)
             ):
                 self.expression_heads[task] = result
             self.ledger.bump(_execution_keys.HIGHER_HEAD_EVALUATIONS)
@@ -461,18 +465,20 @@ class DiamondRuntime:
         if isinstance(task, PairSummary):
             return  # Node, semantic interner, and binding were published atomically.
         if isinstance(task, SpatialSummary):
-            self.spatial.bindings[task] = _expression(result)
+            self.spatial.bindings[task] = require_transfer_expression(result)
             self.ledger.bump(_execution_keys.PRIMITIVE_SPATIAL_EVALUATIONS)
             return
         if isinstance(task, ContextObservation):
-            self.pair_macros.contexts.observations[task] = _expression(result)
+            self.pair_macros.contexts.observations[task] = require_transfer_expression(
+                result
+            )
             self.ledger.bump(_execution_keys.CONTEXT_OBSERVATION_EVALUATIONS)
         elif isinstance(task, OutputFunction):
-            self.outputs.bindings[task] = _expression(result)
+            self.outputs.bindings[task] = require_transfer_expression(result)
         elif not isinstance(task, Output):
             self._memo(task)[task] = _state(result)
 
-    def _program(self, task: Task) -> Generator[Task, Result, Result]:
+    def task_program(self, task: Task) -> Generator[Task, Result, Result]:
         if isinstance(task, (PrimitiveMacroKey, PrimitiveMacroObservation)):
             return self._primitive_macro_arena().program(task)
         if isinstance(task, (CompileStructuredExpression, StructuredExpressionTask)):
@@ -530,24 +536,26 @@ class DiamondRuntime:
         arena = self.pair_macros
         if self.cells.node(task.cell).level:
             left, right = arena.build_children(task.cell)
-            low = _expression((yield PairSummary(task.action, left)))
-            high = _expression((yield PairSummary(task.action, right)))
-            record = arena._parent(task.action, arena.resolve(low), arena.resolve(high))
+            low = require_transfer_expression((yield PairSummary(task.action, left)))
+            high = require_transfer_expression((yield PairSummary(task.action, right)))
+            record = arena.compose_parent(
+                task.action, arena.resolve(low), arena.resolve(high)
+            )
         else:
-            record = arena._leaf(task.action, task.cell)
-        result = arena._publish(PairMacroKey(task.action, task.cell), record)
+            record = arena.leaf_record(task.action, task.cell)
+        result = arena.publish_record(PairMacroKey(task.action, task.cell), record)
         self.ledger.bump(_execution_keys.MACRO_TRANSFER_EVALUATIONS)
         return result
 
     def _context(self, request: ContextObservation) -> Generator[Task, Result, Result]:
         arena = self.pair_macros.contexts
-        aid, bid = arena._validate(request)
+        aid, bid = arena.validate_observation(request)
         node = arena.resolve(request.program)
         if node.kind == "leaf":
             symbol = self.kernels.constant(
                 self.kernels.kernel(aid).blank + 1, node.symbol
             )
-            port = arena._input_port((request.left, request.right, request.incoming))
+            port = arena.input_port((request.left, request.right, request.incoming))
             if port is None:
                 emitted = self.kernels.emit_expression(
                     aid, request.left, symbol, request.right
@@ -581,31 +589,33 @@ class DiamondRuntime:
             RIGHT_A,
         )
 
-        middle_left = arena._substitute(node.middle_left, LEFT_A, request.left)
-        middle_right = arena._substitute(node.middle_right, RIGHT_A, request.right)
+        middle_left = arena.substitute_context(node.middle_left, LEFT_A, request.left)
+        middle_right = arena.substitute_context(
+            node.middle_right, RIGHT_A, request.right
+        )
         if request.side == 0:
-            midpoint = _expression(
+            midpoint = require_transfer_expression(
                 (
                     yield ContextObservation(
                         node.left, request.left, middle_right, request.incoming, 0
                     )
                 )
             )
-            return _expression(
+            return require_transfer_expression(
                 (
                     yield ContextObservation(
                         node.right, middle_left, request.right, midpoint, 0
                     )
                 )
             )
-        midpoint = _expression(
+        midpoint = require_transfer_expression(
             (
                 yield ContextObservation(
                     node.right, middle_left, request.right, request.incoming, 1
                 )
             )
         )
-        return _expression(
+        return require_transfer_expression(
             (
                 yield ContextObservation(
                     node.left, request.left, middle_right, midpoint, 1
@@ -662,10 +672,10 @@ class DiamondRuntime:
 
     def _fold_substitution(self, step: ContinuationStep) -> ContinuationStep:
         from number_compiler.hashlife.execution.continuations.diamond_admission import (
-            _fold_substitution,
+            fold_substitution,
         )
 
-        return _fold_substitution(self, step)
+        return fold_substitution(self, step)
 
     def _transfer(self, task: Transfer) -> Generator[Task, Result, Result]:
         node = self.actions.node(task.action)
@@ -692,7 +702,7 @@ class DiamondRuntime:
             and provider.action == self.actions.identity
             and isinstance(provider.cell, CellID)
         ):
-            summary = _expression(
+            summary = require_transfer_expression(
                 (yield SpatialSummary(task.action, provider.cell, task.side))
             )
             return self.spatial.observe(task.action, task.side, summary, task.state)
@@ -713,7 +723,9 @@ class DiamondRuntime:
             and isinstance(provider.cell, CellID)
         ):
             composed = self.actions.compose(provider.action, task.action)
-            summary = _expression((yield PairSummary(composed, provider.cell)))
+            summary = require_transfer_expression(
+                (yield PairSummary(composed, provider.cell))
+            )
             return (
                 yield from self.pair_macros.apply_context_program(
                     summary, provider.left, provider.right, task.state, task.side
@@ -819,7 +831,7 @@ class DiamondRuntime:
             task.left,
             task.right,
         )
-        function = _expression((yield request))
+        function = require_transfer_expression((yield request))
         constant = self.outputs.constant(function)
         if constant is not None:
             self.ledger.bump(_execution_keys.PRIMITIVE_OUTPUT_PROVIDER_ELISIONS)
@@ -833,7 +845,7 @@ class DiamondRuntime:
             original = yield from self._identity_provider(provider.cell)
             function: TransferSummaryID | None = None
             if node.kind == "atom":
-                function = _expression(
+                function = require_transfer_expression(
                     (
                         yield OutputFunction(
                             self.actions.identity,
@@ -906,7 +918,7 @@ class DiamondRuntime:
         self.actions.resolve(action)
         if type(position) is not int or position < 0:
             raise ValueError("point coordinate must be nonnegative")
-        source = self.cells.source_geometry._read_root
+        source = self.cells.source_geometry.source_root
         if source is None or position >= source.length:
             raise IndexError(position)
         left = _state(self.execute(Initial(action, 0)))

@@ -21,6 +21,7 @@ from number_compiler.hashlife.tiles.completed_result_validation import (
     validate_spatial_key,
     validate_spatial_result,
 )
+from number_compiler.hashlife.tiles.result_memo_publication import ResultMemoPublication
 from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
     BoundaryTileView,
@@ -106,7 +107,7 @@ if TYPE_CHECKING:
 _MISSING = object()
 
 
-class CompletedResultArena:
+class CompletedResultArena(ResultMemoPublication):
     """One charged non-owning memo with exact tile retirement indexes."""
 
     def __init__(
@@ -139,13 +140,13 @@ class CompletedResultArena:
             raise ValueError("completed results require a real action authority")
         self.tiles, self.interfaces, self.ledger = tiles, interfaces, ledger
         self.action_authority = action_authority
-        self._validate_action = validate_action
-        self._signature_for = signature_for
+        self.action_validator = validate_action
+        self.signature_provider = signature_for
         from number_compiler.hashlife.tiles.completed_result_validation import (
             admit_validated_signature,
         )
 
-        self._validated_signature_for = admit_validated_signature(action_authority)
+        self.signature_validator = admit_validated_signature(action_authority)
         input_validator = getattr(action_authority, "validate_input", None)
         if input_validator is not None and (
             not callable(input_validator)
@@ -158,7 +159,7 @@ class CompletedResultArena:
             or getattr(fused_validator, "__self__", None) is not action_authority
         ):
             raise ValueError("completed results require a bound fused-action validator")
-        self._validate_input: Callable[[FieldCellActionID, TileID], object] | None = (
+        self.input_validator: Callable[[FieldCellActionID, TileID], object] | None = (
             input_validator
         )
         output_validator = getattr(action_authority, "validate_output", None)
@@ -167,10 +168,10 @@ class CompletedResultArena:
             or getattr(output_validator, "__self__", None) is not action_authority
         ):
             raise ValueError("completed results require a bound output validator")
-        self._validate_output: Callable[[FieldCellActionID, TileID], object] | None = (
+        self.output_validator: Callable[[FieldCellActionID, TileID], object] | None = (
             output_validator
         )
-        self._validate_fused_action: Callable[[FieldCellActionID], object] | None = (
+        self.fused_action_validator: Callable[[FieldCellActionID], object] | None = (
             fused_validator
         )
         fused_wiring_validator = getattr(
@@ -183,17 +184,17 @@ class CompletedResultArena:
             or getattr(fused_wiring_validator, "__self__", None) is not action_authority
         ):
             raise ValueError("completed results require a bound fused-wiring validator")
-        self._validate_fused_wiring: (
+        self.fused_wiring_validator: (
             Callable[[FieldCellActionID, ResultWiring, ResultWiring], object] | None
         ) = fused_wiring_validator
         self._admitted_validators = (
-            self._validate_action,
-            self._signature_for,
-            self._validated_signature_for,
-            self._validate_input,
-            self._validate_output,
-            self._validate_fused_action,
-            self._validate_fused_wiring,
+            self.action_validator,
+            self.signature_provider,
+            self.signature_validator,
+            self.input_validator,
+            self.output_validator,
+            self.fused_action_validator,
+            self.fused_wiring_validator,
         )
         self._causal_tasks: CausalTaskWorkspace | None = None
         self._physical_supports: object | None = None
@@ -245,6 +246,10 @@ class CompletedResultArena:
         """Check the unforgeable issuer token used by ResultLease construction."""
         return seal is self._result_lease_seal
 
+    def boundary_operand_is_leased(self, view: BoundaryTileView) -> bool:
+        count = self._leased_boundary_operands.records.get(view, 0)
+        return type(count) is int and count >= 1
+
     @property
     def causal_tasks(self) -> CausalTaskWorkspace | None:
         """Return the scheduler-owned causal workspace when one is attached."""
@@ -285,17 +290,17 @@ class CompletedResultArena:
         """Keep the mutable authority field bound to its admitted validators."""
         authority = self.action_authority
         callbacks = (
-            self._validate_action,
-            self._signature_for,
-            self._validated_signature_for,
-            self._validate_input,
-            self._validate_output,
-            self._validate_fused_action,
-            self._validate_fused_wiring,
+            self.action_validator,
+            self.signature_provider,
+            self.signature_validator,
+            self.input_validator,
+            self.output_validator,
+            self.fused_action_validator,
+            self.fused_wiring_validator,
         )
         # A combined validator replaces the two separate callbacks. Their
         # retired values are not consumer authority on that execution path.
-        active_start = 0 if self._validated_signature_for is None else 2
+        active_start = 0 if self.signature_validator is None else 2
         if any(
             callback is not admitted
             or (
@@ -327,7 +332,7 @@ class CompletedResultArena:
             ledger=self.ledger if counted else None,
         )
 
-    def _validate_boundaries(
+    def validate_boundaries(
         self,
         boundaries: BoundaryTileOperands,
         expected: TileID,
@@ -490,7 +495,7 @@ class CompletedResultArena:
         return validate_leased(self, key, result, tile, boundary_tiles, operand_views)
 
     @staticmethod
-    def _unique_tiles(values: tuple[TileID, ...]) -> tuple[TileID, ...]:
+    def unique_tiles(values: tuple[TileID, ...]) -> tuple[TileID, ...]:
         return tuple(dict.fromkeys(values))
 
     def result_tile_ids(self, result: CompletedResult) -> tuple[TileID, ...]:
@@ -512,13 +517,13 @@ class CompletedResultArena:
             self.interfaces,
             CompletedResultAuthorityAudit(
                 self.action_authority,
-                self._validate_action,
-                self._signature_for,
-                self._validated_signature_for,
-                self._validate_input,
-                self._validate_output,
-                self._validate_fused_action,
-                self._validate_fused_wiring,
+                self.action_validator,
+                self.signature_provider,
+                self.signature_validator,
+                self.input_validator,
+                self.output_validator,
+                self.fused_action_validator,
+                self.fused_wiring_validator,
             ),
             self._boundary_lease_count,
             self._leased_boundary_operands,
@@ -528,7 +533,7 @@ class CompletedResultArena:
 
     def validate_output(self, action: FieldCellActionID, output: TileID) -> None:
         """Apply the bound output validator when this arena's authority has one."""
-        validator = self._validate_output
+        validator = self.output_validator
         if validator is not None:
             validator(action, output)
 
@@ -559,7 +564,7 @@ class CompletedResultArena:
         )
         return leases[0], tuple(leases[1:])
 
-    def _retry_pending_acquisition_leases(self) -> None:
+    def retry_pending_acquisition_leases(self) -> None:
         cleanup_all(
             (
                 self._lease_acquisitions.retry,
@@ -687,10 +692,6 @@ class CompletedResultArena:
         )
 
         return add_membership(self, tile, key)
-
-    def _write_reverse(self, key: _ReverseKey, value: _ReverseValue) -> None:
-        """Single fault-injection boundary for reverse-index publication."""
-        self._reverse[key] = value
 
     def reverse_snapshot(
         self,
@@ -935,7 +936,7 @@ class CompletedResultArena:
         )
 
     def clear(self) -> None:
-        cleanup_all((self._retry_pending_acquisition_leases, self._clear_memos))
+        cleanup_all((self.retry_pending_acquisition_leases, self._clear_memos))
 
     def _clear_memos(self) -> None:
         entries, reverse_entries = len(self._memo), len(self._reverse)

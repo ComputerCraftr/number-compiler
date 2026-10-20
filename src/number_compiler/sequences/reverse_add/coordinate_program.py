@@ -226,7 +226,7 @@ class ReverseCoordinateProgramArena:
             and self._keys.get(program) == local_id
         )
 
-    def _handle(self, local_id: int) -> CoordinateOutputMorphismID:
+    def scoped_handle(self, local_id: int) -> CoordinateOutputMorphismID:
         return CoordinateOutputMorphismID(self.owner, self._KIND, local_id)
 
     def resolve(
@@ -243,12 +243,12 @@ class ReverseCoordinateProgramArena:
         program.__post_init__()
         found = self._keys.get(program)
         if found is not None:
-            return self._handle(found)
+            return self.scoped_handle(found)
         self.ledger.reserve_many(((self._node_owner, 1, 1), (self._key_owner, 1, 0)))
         local_id = len(self._nodes)
         self._nodes.append(program)
         self._keys[program] = local_id
-        return self._handle(local_id)
+        return self.scoped_handle(local_id)
 
     def atom(self, key: Hashable) -> CoordinateOutputMorphismID:
         try:

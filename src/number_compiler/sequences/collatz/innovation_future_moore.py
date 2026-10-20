@@ -44,7 +44,7 @@ def _check_memo(memo: InnovationObserverMemo | None) -> None:
     if memo is not None:
         if type(memo) is not InnovationObserverMemo:
             raise TypeError("innovation future memo must be query-owned")
-        memo._check_open()
+        memo.check_open()
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +142,7 @@ class GuardedInnovationFutureMoore:
 
         if memo is None:
             return build()
-        return memo._get_or_build(
+        return memo.get_or_build(
             "finite-partition",
             key,
             build,
@@ -199,10 +199,10 @@ class GuardedInnovationFutureMoore:
         returns = require_integer(returns, "Moore return count", 0)
         _check_memo(memo)
         from number_compiler.sequences.collatz.innovation_temporal_tape import (
-            _global_class_orbit,
+            global_class_orbit,
         )
 
-        orbit = _global_class_orbit(self.modulus, control_id, memo=memo)
+        orbit = global_class_orbit(self.modulus, control_id, memo=memo)
         if returns < len(orbit.ids):
             return orbit.ids[returns]
         return orbit.ids[orbit.prefix + (returns - orbit.prefix) % orbit.period]
@@ -323,7 +323,7 @@ def innovation_future_moore(
         # At most four unminimized phase sets enter this constructor. Refuse
         # before allocating refinement dictionaries without a linear scratch
         # envelope.
-        graph = memo._get_or_build(
+        graph = memo.get_or_build(
             "future-moore",
             (modulus,),
             build,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from typing import cast
 
@@ -11,13 +12,15 @@ from number_compiler.arithmetic.fields.consumer_pullback import PrefixSafety
 from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageDemand,
 )
+from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.comma import certificates
+from number_compiler.sequences.comma.action_arena import CommaActionID
 from number_compiler.sequences.comma.arithmetic import (
     DecimalSector,
-    _large_sector_children,
     comma_children,
     cycle_transfer,
     decimal_sector,
+    large_sector_children,
     safe_complete_cycles,
 )
 from number_compiler.sequences.comma.image_adapter import (
@@ -28,6 +31,7 @@ from number_compiler.sequences.comma.image_adapter import (
 from number_compiler.sequences.comma.power import (
     FIRST_FORK_INDEX,
     FIRST_FORK_VALUE,
+    CommaOccurrenceRecord,
     CommaTerm,
     UnresolvedCommaBranch,
 )
@@ -40,6 +44,39 @@ def _literal_term(index: int) -> int:
         children = _literal_children(value)
         assert len(children) == 1
         value = children[0]
+    return value
+
+
+def _term_source(term: CommaTerm) -> CommaSource | CommaOccurrenceID:
+    return cast(
+        CommaSource | CommaOccurrenceID,
+        object.__getattribute__(term, "_source"),
+    )
+
+
+def _publish(term: CommaTerm, action: CommaActionID) -> int:
+    publish = cast(
+        Callable[[CommaActionID], int],
+        object.__getattribute__(term, "_publish"),
+    )
+    return publish(action)
+
+
+def _occurrences(term: CommaTerm) -> tuple[CommaOccurrenceRecord, ...]:
+    return tuple(term.audit_snapshot().occurrences)
+
+
+def _occurrence_store(term: CommaTerm) -> LedgerList[CommaOccurrenceRecord]:
+    return cast(
+        LedgerList[CommaOccurrenceRecord],
+        object.__getattribute__(term, "_occurrences"),
+    )
+
+
+def _current_index(term: CommaTerm) -> int:
+    value = object.__getattribute__(term, "_current_index")
+    if type(value) is not int:
+        raise AssertionError("comma term has a non-integer current index")
     return value
 
 
@@ -175,7 +212,7 @@ def test_mixed_chronological_actions_keep_executable_children() -> None:
     )
 
     term.materialize()
-    entered = term._source
+    entered = _term_source(term)
     cycle = term.arena.one_cycle(1, 7)
     cycle_then_step = term.arena.compose(cycle, term.arena.step(1))
     after = term.scheduler.source_image(term.adapter, entered, cycle_then_step)
@@ -211,10 +248,10 @@ def test_partial_phase_uses_admitted_provider_without_scalar_children(
     def forbidden(*_args: object, **_kwargs: object) -> None:
         pytest.fail("partial orbit reopened scalar child discovery")
 
-    monkeypatch.setattr(power, "_large_sector_children", forbidden)
+    monkeypatch.setattr(power, "large_sector_children", forbidden)
     monkeypatch.setattr(power, "comma_children", forbidden)
     action = term.arena.phase_prefix(1, 7, steps)
-    assert term._publish(action) == expected
+    assert _publish(term, action) == expected
     assert term.ledger.counters["comma_phase_prefix_transitions"] >= steps
 
 
@@ -222,14 +259,14 @@ def test_partial_phase_rejects_another_source_and_seam_crossing() -> None:
     term = CommaTerm(201)
     term.materialize()
     with pytest.raises(ValueError, match="another source"):
-        term._publish(term.arena.phase_prefix(1, 8, 2))
+        _publish(term, term.arena.phase_prefix(1, 8, 2))
     for invalid in (0, 10, True):
         with pytest.raises(ValueError, match="positive partial orbit"):
             term.arena.phase_prefix(1, 7, invalid)
     edge = CommaTerm(FIRST_FORK_INDEX)
     edge.materialize()
     with pytest.raises(ValueError, match="unadmitted seam"):
-        edge._publish(edge.arena.phase_prefix(1, 8, 1))
+        _publish(edge, edge.arena.phase_prefix(1, 8, 1))
 
 
 def test_production_resolver_groups_partial_phases(
@@ -241,9 +278,9 @@ def test_production_resolver_groups_partial_phases(
         assert sector.headroom <= (
             10 * sector.digit + sector.leading + int(sector.leading < 9)
         ), "production replayed a strictly interior transition"
-        return _large_sector_children(value, sector)
+        return large_sector_children(value, sector)
 
-    monkeypatch.setattr(power, "_large_sector_children", only_boundary_children)
+    monkeypatch.setattr(power, "large_sector_children", only_boundary_children)
     term = CommaTerm(20000)
     assert term.materialize() == 1_039_404
     assert term.ledger.counters["comma_phase_prefix_transitions"] > 0
@@ -294,7 +331,7 @@ def test_fork_requires_source_bound_certificate_at_discovery_and_admission(
     source.materialize()
     with pytest.raises(ValueError, match="selected another child"):
         source.scheduler.source_image(
-            source.adapter, source._source, source.arena.step(2)
+            source.adapter, _term_source(source), source.arena.step(2)
         )
 
 
@@ -308,7 +345,7 @@ def test_equal_phase_does_not_authorize_a_cycle_across_the_fork() -> None:
     term.materialize()
     action = term.arena.one_cycle(1, 8)
     with pytest.raises(ValueError, match="unadmitted seam"):
-        term.scheduler.source_image(term.adapter, term._source, action)
+        term.scheduler.source_image(term.adapter, _term_source(term), action)
 
 
 def test_partial_term_index_inside_phase_cycle_is_exact() -> None:
@@ -327,7 +364,7 @@ def test_binary_cycle_parenthesizations_share_an_exact_action() -> None:
     left = term.arena.compose(term.arena.compose(one, one), one)
     right = term.arena.compose(one, term.arena.compose(one, one))
     assert left == right
-    image = term.scheduler.source_image(term.adapter, term._source, left)
+    image = term.scheduler.source_image(term.adapter, _term_source(term), left)
     assert (
         term.scheduler.source_projection(
             term.adapter, image, SourceImageDemand("value")
@@ -340,13 +377,14 @@ def test_refused_work_keeps_last_admitted_source() -> None:
     term = CommaTerm(1_000, max_work=100)
     with pytest.raises(ValueError, match="--max-comma-work"):
         term.materialize()
-    if term._occurrences:
-        assert isinstance(term._source, CommaOccurrenceID)
-        assert term._source.local_id == len(term._occurrences) - 1
-    assert term._current_index > 1
-    assert (
-        term._current_index - 1 == term.ledger.counters["comma_represented_transitions"]
-    )
+    occurrences = _occurrences(term)
+    if occurrences:
+        source = _term_source(term)
+        assert isinstance(source, CommaOccurrenceID)
+        assert source.local_id == len(occurrences) - 1
+    current_index = _current_index(term)
+    assert current_index > 1
+    assert current_index - 1 == term.ledger.counters["comma_represented_transitions"]
     term.max_work = term.arena.max_work = 100_000
     assert term.materialize() == _literal_term(1_000)
     assert term.ledger.counters["comma_represented_transitions"] == 999
@@ -358,11 +396,14 @@ def test_foreign_or_altered_occurrence_cannot_become_a_provider() -> None:
     first.materialize()
     second.materialize()
     with pytest.raises(ValueError):
-        second.adapter.validate_source(first._source)
-    assert isinstance(second._source, CommaOccurrenceID)
-    second._occurrences[second._source.local_id] = first._occurrences[-1]
+        second.adapter.validate_source(_term_source(first))
+    second_source = _term_source(second)
+    first_occurrences = _occurrences(first)
+    second_occurrences = _occurrence_store(second)
+    assert isinstance(second_source, CommaOccurrenceID)
+    second_occurrences[second_source.local_id] = first_occurrences[-1]
     with pytest.raises(ValueError, match="publication was altered"):
-        second.adapter.validate_source(second._source)
+        second.adapter.validate_source(second_source)
 
 
 def test_forged_numerical_types_do_not_authenticate() -> None:

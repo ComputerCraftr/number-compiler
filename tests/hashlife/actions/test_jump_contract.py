@@ -10,7 +10,7 @@ class JumpBackend:
 
 
 def test_binary_driver_has_no_scale_backend() -> None:
-    builder = StrictBinaryRootBuilder(JumpBackend())
+    builder: StrictBinaryRootBuilder[int] = StrictBinaryRootBuilder(JumpBackend())
     assert set(builder.__slots__) == {"jump_backend"}
     for n in (0, 1, 2, 3, 7, 255, 1025):
         got = builder.root_at(n)

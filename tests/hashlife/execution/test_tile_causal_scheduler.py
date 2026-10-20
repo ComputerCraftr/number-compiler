@@ -49,7 +49,7 @@ def test_scheduler_deep_point_uses_causal_tiles_without_complete_midpoint(
         monkeypatch.setattr(adapter, "temporal_after_context", forbidden)
         monkeypatch.setattr(CausalTileEngine, "output", forbidden)
         assert tuple(application.point(i) for i in range(4)) == expected
-        assert application._root is None
+        assert application.audit_snapshot().root_lease is None
         assert ledger.counters["powered_absorption_max_span"] == exponent
         assert ledger.counters["powered_absorption_successes"] == 4
         assert ledger.counters["tile_causal_frames"] > 0
@@ -66,10 +66,10 @@ def test_causal_completed_parent_agrees_with_independent_midpoint_semantics(
     from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
 
     runtimes = [make_tile_runtime(BaseBlockEffect(3)) for _ in range(2)]
-    sources = []
+    sources: list[TileLease] = []
     leases: list[TileLease | ResultLease] = []
     try:
-        results = []
+        results: list[tuple[object, ...]] = []
         for index, (_ledger, tiles, adapter, primitive, scheduler) in enumerate(
             runtimes
         ):
@@ -129,7 +129,7 @@ def test_scheduler_deep_explicit_edges_preserve_noninitial_consumer(
         BoundPorts,
         FusedBoundaryContract,
     )
-    from tests.arithmetic.contracts.test_tile_causal_private import _scan
+    from tests.arithmetic.contracts.test_tile_causal_private import scan
 
     _ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(
         BaseBlockEffect(3)
@@ -151,7 +151,7 @@ def test_scheduler_deep_explicit_edges_preserve_noninitial_consumer(
                 consumer if stage == exponent - 1 else adapter.initial_ports(primitive)
             )
         )
-        expected = _scan(adapter.primitive_law(primitive), expected, ports)
+        expected = scan(adapter.primitive_law(primitive), expected, ports)
 
     def forbidden(*_args: object, **_kwargs: object) -> Never:
         raise AssertionError("explicit causal edge reset through a midpoint executor")
@@ -218,13 +218,13 @@ def test_warm_causal_parent_reads_exact_result_without_execution(
 def test_scheduler_deep_width_uses_activity_tasks_without_endpoint(
     monkeypatch: pytest.MonkeyPatch, exponent: int
 ) -> None:
-    from tests.arithmetic.contracts.test_tile_causal_private import _scan
+    from tests.arithmetic.contracts.test_tile_causal_private import scan
 
     ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     values = (0, 0, 1, 5)
     expected: tuple[int, ...] = values
     for _ in range(exponent):
-        expected = _scan(
+        expected = scan(
             adapter.primitive_law(primitive), expected, adapter.initial_ports(primitive)
         )
     action = adapter.power(primitive, exponent)
@@ -250,5 +250,5 @@ def test_scheduler_deep_width_uses_activity_tasks_without_endpoint(
         for limit in range(5):
             width = max((i + 1 for i in range(limit) if expected[i] != 5), default=0)
             assert application.width(limit) == width
-        assert application._root is None
+        assert application.audit_snapshot().root_lease is None
         assert ledger.counters["powered_absorption_max_span"] == exponent

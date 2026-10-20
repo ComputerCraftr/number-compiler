@@ -113,6 +113,11 @@ class CertifiedCarryWord:
     def __post_init__(self) -> None:
         self.validate()
 
+    @property
+    def source_banks(self) -> tuple[ReverseAddTemporalRingBank, ...]:
+        """Read the retained issued-bank chain without exposing its field name."""
+        return self._source_banks
+
     def validate(self) -> None:
         """Recheck live issuance and exact coverage of the physical horizon."""
         from .temporal_ring_harmonics import ReverseAddTemporalRingBank

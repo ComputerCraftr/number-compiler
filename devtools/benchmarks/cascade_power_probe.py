@@ -84,7 +84,7 @@ def left_nfa(
     LT = left_interner.values
     LID = left_interner.intern
 
-    lstart = set()
+    lstart: set[int] = set()
     for r in B1.right.states:
         z = LID((B1.left.start, r, B2.left.start))
         if z is not None:
@@ -129,7 +129,7 @@ def right_nfa(
     RT = right_interner.values
     RID = right_interner.intern
 
-    rstart = set()
+    rstart: set[int] = set()
     for left_state in B1.left.states:
         z = RID((left_state, B1.right.start, B2.right.start))
         if z is not None:
@@ -179,7 +179,7 @@ def determinized_relation_metrics(
 ) -> dict[str, int]:
     arena = DependencyCascadeArena(3)
     flat = 0
-    roots = set()
+    roots: set[int] = set()
     for q in dfa.states:
         rows = [triples[i] for i in dfa.data[q]]
         flat += len(rows)

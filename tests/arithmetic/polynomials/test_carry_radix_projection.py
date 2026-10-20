@@ -16,6 +16,7 @@ from number_compiler.arithmetic.fields.projection_field import (
     reconstruct_offset_bit_planes,
 )
 from number_compiler.arithmetic.polynomials.digit_convolution import (
+    DigitSquareProjection,
     cyclic_binary_square_add_projection,
     negacyclic_binary_square_projection,
 )
@@ -150,7 +151,7 @@ def test_end_around_marker_matches_full_carry_history_without_retaining_it() -> 
         negacyclic_binary_square_projection,
     )
 
-    cases = []
+    cases: list[DigitSquareProjection] = []
     for value in range(31):
         cases.append(cyclic_binary_square_add_projection(value, 5, -2))
     for value in range(17):

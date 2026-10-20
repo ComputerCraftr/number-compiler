@@ -7,6 +7,18 @@ from math import gcd
 Congruence = tuple[int, int]
 
 
+def exact_modular_power(base: int, exponent: int, modulus: int) -> int:
+    """Return the built-in signed modular power as an exact integer.
+
+    The object boundary narrows the standard-library overload without
+    changing Python's errors for zero moduli or noninvertible negative powers.
+    """
+    result: object = pow(base, exponent, modulus)
+    if type(result) is not int:
+        raise TypeError("modular integer power returned another sort")
+    return result
+
+
 def _require_congruence(value: Congruence) -> None:
     residue, modulus = value
     if type(residue) is not int or type(modulus) is not int:

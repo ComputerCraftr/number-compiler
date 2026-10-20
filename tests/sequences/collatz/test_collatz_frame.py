@@ -280,7 +280,7 @@ def test_affine_suffix_germ_projects_many_collatz_steps_without_successor_digit_
     for n in range(1, 10000, 2):
         valuations, germ = collatz_affine_suffix_valuations_value(n, 10)
         value = n
-        expected = []
+        expected: list[int] = []
         for _ in range(10):
             step = accelerated_odd_collatz(value)
             expected.append(step.valuation)

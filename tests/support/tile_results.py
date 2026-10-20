@@ -95,7 +95,7 @@ class _ActionAuthority:
             raise ValueError("test action does not admit this fused wiring")
 
 
-def _setup(
+def setup_tile_results(
     max_entries: int | None = None,
     *,
     authority_type: type[_ActionAuthority] = _ActionAuthority,
@@ -207,7 +207,7 @@ def fused_setup(
     CompletedResult,
     FusedInterfaceKey,
 ]:
-    fixture = _setup()
+    fixture = setup_tile_results()
     results, key, result = fixture[3], fixture[6], fixture[7]
     fused = FusedInterfaceKey(key.action, key.input, key.ports, key.wiring)
     if publish:
@@ -237,8 +237,9 @@ def assert_result_stores_unchanged(
     before: tuple[int, int, object, object],
 ) -> None:
     assert (ledger.entries, ledger.nodes) == before[:2]
-    assert dict(results._memo) == before[2]
-    assert dict(results._reverse) == before[3]
+    snapshot = results.audit_snapshot()
+    assert dict(snapshot.memo) == before[2]
+    assert dict(snapshot.reverse) == before[3]
 
 
 def incoming_setup() -> tuple[
@@ -252,7 +253,9 @@ def incoming_setup() -> tuple[
     CompletedResult,
     TileLease,
 ]:
-    ledger, authority, tiles, results, input_lease, output_lease, key, result = _setup()
+    ledger, authority, tiles, results, input_lease, output_lease, key, result = (
+        setup_tile_results()
+    )
     alphabet = tiles.resolve(key.input).alphabet
     incoming = tiles.leaf(alphabet, 2)
     return (
@@ -280,7 +283,9 @@ def published_setup() -> tuple[
     ResultLease,
     LedgerSnapshot,
 ]:
-    ledger, authority, tiles, results, input_lease, output_lease, key, result = _setup()
+    ledger, authority, tiles, results, input_lease, output_lease, key, result = (
+        setup_tile_results()
+    )
     held = results.publish(key, result)
     before = ledger.snapshot()
     return (

@@ -27,11 +27,11 @@ from .mixed_periodic_bank import (
     MixedOutputArena,
     MixedPeriodicCore,
     MixedTemporalAction,
-    _controlled_bank_workspace,
+    controlled_bank_workspace,
     required_protected_halo,
 )
 from .q19_border_control import CertifiedBorderGrowth
-from .q19_periodic_cone import _periodic_guard
+from .q19_periodic_cone import periodic_guard
 from .q19_uniform_cone import UniformConeNotAuthorized
 from .temporal_bank_actions import (
     ConditionalEQGrowthExit,
@@ -98,7 +98,7 @@ class SourceGuardedGTBankAction:
             self.border_certificate.validate(self.owner, self.source)
             if self.border_certificate.growth_word != self.growth_control:
                 raise ValueError("growth certificate does not match its bank program")
-        self.owner._issuance_registry.validate_bank(self)
+        self.owner.issuance_registry.validate_bank(self)
 
     def _snapshot(self) -> tuple[object, ...]:
         action = self.action
@@ -150,7 +150,7 @@ class SourceGuardedGTBankAction:
             or binding != snapshot
         ):
             raise ValueError("issued conditional bank action was altered")
-        self.owner._issuance_registry.validate_bank(self)
+        self.owner.issuance_registry.validate_bank(self)
         self.owner.validate_issued_occurrence(self.source)
         if self.border_certificate is not None:
             self.border_certificate.validate(self.owner, self.source)
@@ -317,7 +317,7 @@ class SourceGuardedGTBankAction:
         from number_compiler.arithmetic.fields.walsh import walsh64_mod5
 
         from .q19_bank_boolean import CoupledBooleanBankFrame
-        from .q19_periodic_cone import _periodic_guard
+        from .q19_periodic_cone import periodic_guard
 
         self.validate_source_authority()
         if type(tick) is not int or not 0 <= tick < self.steps:
@@ -329,7 +329,7 @@ class SourceGuardedGTBankAction:
             raise ValueError("Walsh64 lanes lack a protected source halo")
         if self.border_certificate is None:
             raise ValueError("Walsh64 future bank needs certified border control")
-        if not _periodic_guard(self.owner, self.source, lo, hi, self.period):
+        if not periodic_guard(self.owner, self.source, lo, hi, self.period):
             raise ValueError("Walsh64 periodic word differs from the source SLP")
         current = self.period if tick == 0 else self.frame(tick - 1).target
         packet = CoupledBooleanBankFrame.from_frame(current, self.frame(tick))
@@ -352,7 +352,7 @@ class SourceGuardedGTBankAction:
 
         from .mixed_periodic_bank import MixedPeriodicCore
         from .q19_bank_boolean import CoupledBooleanBankFrame
-        from .q19_periodic_cone import _periodic_guard
+        from .q19_periodic_cone import periodic_guard
 
         self.validate_source_authority()
         if type(tick) is not int or not 0 <= tick < self.steps - 1:
@@ -364,14 +364,14 @@ class SourceGuardedGTBankAction:
         lo, hi = start - self.halo, start + 64 + self.halo
         if lo < 0 or hi > self.source.pair_width:
             raise ValueError("borrow/XOR lanes lack a protected source halo")
-        if self.border_certificate is None or not _periodic_guard(
+        if self.border_certificate is None or not periodic_guard(
             self.owner, self.source, lo, hi, self.period
         ):
             raise ValueError("borrow/XOR Walsh lacks source-certified periodic control")
         current = self.period if tick == 0 else self.frame(tick - 1).target
         packet = CoupledBooleanBankFrame.from_frame(current, self.frame(tick))
         ingresses = MixedPeriodicCore(packet.target).ingresses()
-        transformed = []
+        transformed: list[tuple[int, ...]] = []
         for initial_borrow in (0, 1):
             borrow = initial_borrow
             mask = 0
@@ -438,12 +438,12 @@ def _source_period(
             "conditional GT bank lacks a protected source halo"
         )
     anchor = coordinate - coordinate % period_size
-    period = tuple(owner._pair_value_at(source, anchor + j) for j in range(period_size))
+    period = tuple(owner.pair_value_at(source, anchor + j) for j in range(period_size))
     if all(x == 9 for x in period):
         raise UniformConeNotAuthorized(
             "all-EQ band needs two future exterior carry ports"
         )
-    if not _periodic_guard(
+    if not periodic_guard(
         owner, source, coordinate - halo, coordinate + halo + 1, period
     ):
         raise UniformConeNotAuthorized("exact LT/GT/F5 spatial bank guard mismatch")
@@ -536,7 +536,7 @@ def authorize_controlled_gt_bank(
     period, halo = _source_period(
         owner, source, steps=steps, coordinate=coordinate, period_size=period_size
     )
-    with _controlled_bank_workspace(owner.ledger, owner._scratch_owner) as reserve:
+    with controlled_bank_workspace(owner.ledger, owner.scratch_owner) as reserve:
         try:
             bank = ControlledMixedBank(
                 MixedPeriodicCore(period),
@@ -550,7 +550,7 @@ def authorize_controlled_gt_bank(
                 raise
             action = _finite_proved_action(period, word, workspace_reserve=reserve)
         record = object.__new__(SourceGuardedGTBankAction)
-        registry_key = owner._issuance_registry.allocate_bank_key()
+        registry_key = owner.issuance_registry.allocate_bank_key()
         values = {
             "owner": owner,
             "source": source,
@@ -566,11 +566,11 @@ def authorize_controlled_gt_bank(
             "_registry_key": registry_key,
         }
         issue_q19_record(record, values, _ISSUER)
-        owner._issuance_registry.retain_bank(registry_key, record)
+        owner.issuance_registry.retain_bank(registry_key, record)
         try:
             record.__post_init__()
         except BaseException:
-            owner._issuance_registry.discard_bank(registry_key, record)
+            owner.issuance_registry.discard_bank(registry_key, record)
             raise
     owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_CONDITIONAL_GT_BANK_ISSUED)
     owner.ledger.bump(

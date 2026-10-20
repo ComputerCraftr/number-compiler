@@ -9,6 +9,7 @@ from number_compiler.hashlife.observation.hashlife_projection import HashLifeBlo
 from number_compiler.projection.microblock_cache import (
     ExactMicroblock,
     MicroblockCache,
+    MicroblockCacheAuditSnapshot,
     MicroblockKey,
 )
 from number_compiler.resources.ledger import ResourceLedger
@@ -16,8 +17,9 @@ from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 
 
-def _assert_single_scoped_point(cache: object, output_radix: int) -> None:
-    assert isinstance(cache, MicroblockCache)
+def _assert_single_scoped_point(
+    cache: MicroblockCacheAuditSnapshot, output_radix: int
+) -> None:
     blocks = cache.blocks
     assert len(blocks) == 1
     key, value = next(iter(blocks.items()))
@@ -35,7 +37,7 @@ def _assert_single_scoped_point(cache: object, output_radix: int) -> None:
 def test_collatz_point_survives_query_eviction_without_transition_replay() -> None:
     term = PoweredCollatzTerm(27, 16)
     expected = term.digit(2)
-    _assert_single_scoped_point(term._microblocks, 2)
+    _assert_single_scoped_point(term.audit_snapshot().microblocks, 2)
     before = dict(term.resource_ledger.counters)
 
     term.resource_ledger.evict_query_memos()
@@ -72,7 +74,9 @@ def test_collatz_capped_microblocks_retain_distinct_observed_coordinates() -> No
     """The shared capped cache is not degraded into a one-entry register."""
     term = PoweredCollatzTerm(27, 16)
     expected = term.digit(0), term.digit(1)
-    keys = tuple(key for key in term._microblocks.blocks if key.kind == "output")
+    keys = tuple(
+        key for key in term.audit_snapshot().microblocks.blocks if key.kind == "output"
+    )
     assert {key.block for key in keys} == {0, 1}
     before = dict(term.resource_ledger.counters)
     term.resource_ledger.evict_query_memos()
@@ -87,7 +91,7 @@ def test_collatz_capped_microblocks_retain_distinct_observed_coordinates() -> No
 def test_fixed_collatz_cycle_uses_the_same_scoped_point_cache() -> None:
     term = PoweredCollatzTerm(1, 16)
     expected = term.digit(0)
-    _assert_single_scoped_point(term._microblocks, 2)
+    _assert_single_scoped_point(term.audit_snapshot().microblocks, 2)
     before = dict(term.resource_ledger.counters)
     term.resource_ledger.evict_query_memos()
     assert term.digit(0) == expected
@@ -100,8 +104,11 @@ def test_fixed_collatz_cycle_uses_the_same_scoped_point_cache() -> None:
 def test_certified_point_rejects_a_cached_symbol_from_another_alphabet() -> None:
     term = PoweredCollatzTerm(27, 16)
     term.digit(2)
-    key = next(iter(term._microblocks.blocks))
-    term._microblocks.put(key, ExactMicroblock(3, 2))
+    from tests.support.radix_projection import microblock_cache
+
+    cache = microblock_cache(term)
+    key = next(iter(cache.audit_snapshot().blocks))
+    cache.put(key, ExactMicroblock(3, 2))
     term.resource_ledger.evict_query_memos()
     with pytest.raises(ValueError, match="another alphabet"):
         term.digit(2)

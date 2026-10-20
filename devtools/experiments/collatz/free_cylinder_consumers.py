@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from devtools.experiments.collatz.physical_support import PhysicalSupport
 from number_compiler.sequences.collatz.hensel_cylinders import (
     HenselAffineBlock,
     HenselCylinder,
 )
+from number_compiler.sequences.collatz.physical_support import PhysicalSupport
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,7 +79,7 @@ class BoundCylinderAction:
 
 
 @dataclass(frozen=True, slots=True)
-class _ConsumerOutput:
+class ConsumerOutput:
     """Output after a bounded source guard has been consumed."""
 
     constant_target: int | None = None
@@ -91,10 +91,10 @@ class _ConsumerOutput:
 
 
 @dataclass(frozen=True, slots=True)
-class _ConsumerAction:
+class ConsumerAction:
     """The publisher retains ordered support after consuming its source guard."""
 
-    output: _ConsumerOutput
+    output: ConsumerOutput
     support: PhysicalSupport
 
     @property
@@ -107,38 +107,38 @@ class _ConsumerAction:
 
 
 @dataclass(frozen=True, slots=True)
-class _CylinderBranch:
+class CylinderBranch:
     domain: HenselCylinder
-    action: _ConsumerAction
+    action: ConsumerAction
 
 
 @dataclass(frozen=True, slots=True)
-class _FreeCylinderResidual:
+class FreeCylinderResidual:
     accelerated_events: int | None
     physical_ticks: int | None
     max_source_bits: int
     predicate_bits: int
     decision_root: int
-    branches: tuple[_CylinderBranch, ...]
+    branches: tuple[CylinderBranch, ...]
 
 
 @dataclass(frozen=True, slots=True)
-class _GuardTrieNode:
+class GuardTrieNode:
     """One hash-consed low-to-high cylinder-prefix decision."""
 
-    terminal: _ConsumerAction | None
+    terminal: ConsumerAction | None
     zero: int | None
     one: int | None
 
 
-def _bounded_cylinder_nonempty(cylinder: HenselCylinder, bits: int) -> bool:
+def bounded_cylinder_nonempty(cylinder: HenselCylinder, bits: int) -> bool:
     """Whether ``C(q,r)`` contains a positive integer below ``2**bits``."""
     limit = 1 << bits
     first_positive = cylinder.residue or 1 << cylinder.bits
     return bool(first_positive < limit)
 
 
-def _branch_key(branch: _CylinderBranch) -> tuple[int, ...]:
+def branch_key(branch: CylinderBranch) -> tuple[int, ...]:
     domain, action = branch.domain, branch.action
     transport = action.output.transport
     return (
@@ -154,7 +154,7 @@ def _branch_key(branch: _CylinderBranch) -> tuple[int, ...]:
     )
 
 
-def _consume_guard(branch: _CylinderBranch, source_bits: int) -> _ConsumerAction:
+def consume_guard(branch: CylinderBranch, source_bits: int) -> ConsumerAction:
     """Consume a bounded guard into its extensional output and separate weight."""
     domain, action = branch.domain, branch.action
     transport = action.output.transport
@@ -167,24 +167,24 @@ def _consume_guard(branch: _CylinderBranch, source_bits: int) -> _ConsumerAction
         denominator = 1 << transport.divisions
         if numerator % denominator:
             raise AssertionError("singleton guard lost affine integrality")
-        output = _ConsumerOutput(constant_target=numerator // denominator)
+        output = ConsumerOutput(constant_target=numerator // denominator)
     else:
-        output = _ConsumerOutput(transport=transport)
-    return _ConsumerAction(output, action.support)
+        output = ConsumerOutput(transport=transport)
+    return ConsumerAction(output, action.support)
 
 
-def _constant_target(action: _ConsumerAction) -> int:
+def constant_target(action: ConsumerAction) -> int:
     target = action.output.constant_target
     if target is None:
         raise AssertionError("consumer output is not constant")
     return target
 
 
-def _coalesce_sibling_guards(
-    branches: list[_CylinderBranch],
-) -> tuple[_CylinderBranch, ...]:
+def coalesce_sibling_guards(
+    branches: list[CylinderBranch],
+) -> tuple[CylinderBranch, ...]:
     """Merge equal consumer leaves across complete sibling cylinders."""
-    by_guard: dict[tuple[int, int], _ConsumerAction] = {}
+    by_guard: dict[tuple[int, int], ConsumerAction] = {}
     for branch in branches:
         key = branch.domain.bits, branch.domain.residue
         found = by_guard.get(key)
@@ -214,6 +214,6 @@ def _coalesce_sibling_guards(
                 raise AssertionError("coalesced cylinder conflicts with its parent")
             by_guard[parent_key] = left
     return tuple(
-        _CylinderBranch(HenselCylinder(bits, residue), action)
+        CylinderBranch(HenselCylinder(bits, residue), action)
         for (bits, residue), action in by_guard.items()
     )

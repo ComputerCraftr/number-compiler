@@ -9,7 +9,8 @@ from tests.support.assertions import assert_rejected_atomically
 if TYPE_CHECKING:
     import number_compiler.arithmetic.functions.semantic_function_transactions
 
-from typing import TYPE_CHECKING, Never
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
@@ -24,6 +25,7 @@ from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.arithmetic.functions.semantic_function_transactions import (
     _Transaction,
 )
+from number_compiler.hashlife.interfaces.boolean_composition import CompositionKey
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
     BooleanCircuit,
@@ -248,7 +250,7 @@ def test_identity_on_unaffected_support_does_not_walk_children(
             c.signature, PortVariable(0, 0, "source", bit), c.zero, tail
         )
     original = _Transaction.node
-    calls = []
+    calls: list[int] = []
 
     def observed(
         self: number_compiler.arithmetic.functions.semantic_function_transactions._Transaction,
@@ -381,14 +383,14 @@ def test_scalar_components_and_source_binding_publish_atomically(budget: str) ->
         len(arena.nodes),
         len(arena.keys),
     )
-    assert not arena._scalar_sources
+    assert not arena.scalar_source_audit_snapshot().container
 
 
 def test_conversion_memo_eviction_preserves_canonical_functions() -> None:
     arena, _, scalar = _scalar_fixture()
     result = arena.from_scalar(scalar)
     arena.ledger.evict_query_memos()
-    assert not arena._scalar_sources
+    assert not arena.scalar_source_audit_snapshot().container
     assert arena.from_scalar(scalar) == result
 
 
@@ -515,14 +517,14 @@ def test_composition_memo_and_all_function_nodes_publish_atomically(
         before.peak_nodes,
         before.peak_entries,
     )
-    assert not arena._compositions
+    assert not arena.composition_audit_snapshot().container
 
 
 def test_whole_composition_cache_is_evictable_without_invalidating_functions() -> None:
     arena, function, replacements, _ = _composition_fixture()
     result = arena.substitute(function, replacements)
     arena.ledger.evict_query_memos()
-    assert not arena._compositions
+    assert not arena.composition_audit_snapshot().container
     assert arena.substitute(function, replacements) == result
 
 
@@ -548,7 +550,10 @@ def test_fused_integer_environments_bind_each_original_support_layout() -> None:
             key.environment,
             len(target.tx.node(key.root).support),
         )
-        for key in target._fused_substitutions
+        for key in cast(
+            Mapping[CompositionKey, int],
+            object.__getattribute__(target, "_fused_substitutions"),
+        )
     )
     signature = FunctionSignature(target.inputs, AtomSort("two-bits", 4))
     result = arena.publish_circuit(
@@ -571,7 +576,10 @@ def test_fused_integer_environments_bind_each_original_support_layout() -> None:
         type(before) is int
         and type(after) is int
         and all(type(index) is int for index in indices)
-        for (before, after), indices in target._fused_projections.items()
+        for (before, after), indices in cast(
+            Mapping[tuple[int, int], tuple[int, ...]],
+            object.__getattribute__(target, "_fused_projections"),
+        ).items()
     )
 
 

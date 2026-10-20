@@ -449,7 +449,7 @@ class CarryActionQuotientArena:
         self.port_aliases = 0
         self.port_requests = 0
 
-    def _intern_port(self, zero: DyadicTile, one: DyadicTile) -> int:
+    def intern_port(self, zero: DyadicTile, one: DyadicTile) -> int:
         require_exact_oracle()
         key = zero.node_id, one.node_id
         found = self._port_keys.get(key)
@@ -471,7 +471,7 @@ class CarryActionQuotientArena:
         a, b = self._port_actions[before], self._port_actions[after]
         zero = join(a.outputs[0], b.outputs[last_symbol(a.outputs[0])])
         one = join(a.outputs[1], b.outputs[last_symbol(a.outputs[1])])
-        out = self._intern_port(zero, one)
+        out = self.intern_port(zero, one)
         self._port_compositions[key] = out
         return out
 
@@ -488,7 +488,7 @@ class CarryActionQuotientArena:
             if node.symbol is not None:
                 if not 0 <= node.symbol <= 2 * (base - 1):
                     raise ValueError(node.symbol)
-                out = self._intern_port(
+                out = self.intern_port(
                     uniform(int(node.symbol >= base), node.level),
                     uniform(int(node.symbol + 1 >= base), node.level),
                 )
@@ -538,7 +538,7 @@ class CarryActionQuotientArena:
                     raise AssertionError(
                         "affine action is outside its certified pair domain"
                     )
-                out = self._intern_port(
+                out = self.intern_port(
                     uniform(int(value >= base), x.level),
                     uniform(int(value + 1 >= base), x.level),
                 )

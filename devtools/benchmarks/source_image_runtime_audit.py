@@ -73,8 +73,8 @@ def _row(
 
 
 def run() -> dict[str, object]:
-    reverse = []
-    collatz = []
+    reverse: list[dict[str, int | float | str]] = []
+    collatz: list[dict[str, int | float | str]] = []
     for n in INDICES:
         reverse.append(_row(ReverseAddPoweredTerm(196, n), _reverse_scalar(196, n), n))
         collatz.append(

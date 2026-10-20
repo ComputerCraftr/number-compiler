@@ -148,7 +148,7 @@ def border_bilateral_port(
     low_digits = low_sum % base
     low_carry = low_sum // base
     high_without_carry = source.high + reverse_k(source.low, source.k)
-    alternatives = []
+    alternatives: list[BilateralCarryAlternative] = []
     for fn in dict.fromkeys(admitted_middle):
         ingress = apply_carry_fn(fn, low_carry)
         high_sum = high_without_carry + ingress
@@ -281,7 +281,7 @@ def border_carry_port(
     # Every high ingress is obtained from an actual middle transfer.  This
     # legacy high-bit projection keeps backwards-compatible (0,1) order;
     # use .bilateral() when a temporal action needs the correlated ports.
-    edges = []
+    edges: list[CarrySafetyEdge] = []
     for incoming in dict.fromkeys(admitted_inner):
         candidates = tuple(
             a for a in bilateral.alternatives if a.high_carry == incoming
@@ -300,7 +300,7 @@ def border_carry_port(
         if coefficient != 9:
             first, msd_ingress = i, int(coefficient > 9)
             break
-    growths = {edge.growth for edge in edges}
+    growths: set[int] = {edge.growth for edge in edges}
     return CarrySafetyPort(
         source,
         tuple(edges),
@@ -578,7 +578,7 @@ def enumerate_one_digit_cycles() -> tuple[ConditionalBorderCycle, ...]:
         by_target: dict[Border1, list[CarrySafetyEdge]] = {}
         for edge in safety.edges:
             by_target.setdefault((edge.target.high, edge.target.low), []).append(edge)
-        row = []
+        row: list[tuple[int, int | None, int]] = []
         for dst, edges in by_target.items():
             row.append(
                 (

@@ -33,7 +33,7 @@ def _materialize_event_sets(
     arena: FormulaArena,
     view: CarryEventFormulaView,
 ) -> tuple[int, ...]:
-    out = []
+    out: list[int] = []
     for i in range(view.target_width):
         hits = [
             value for value, mask in view.event_sets if arena.eval_closed_bit(mask, i)
@@ -48,8 +48,8 @@ def _orbit(
 ) -> tuple[list[tuple[int, ...]], list[tuple[int, ...]], list[tuple[int, ...]]]:
     source = tuple(seed_pair)
     states = [source]
-    carries = []
-    events = []
+    carries: list[tuple[int, ...]] = []
+    events: list[tuple[int, ...]] = []
     for _ in range(steps):
         carry = carry_field(source, base=base)
         target, growth = pair_step(source, base)

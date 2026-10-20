@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from sys import getsizeof
-from typing import TYPE_CHECKING, Generic, TypeGuard, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeGuard, TypeVar, cast
 
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
@@ -197,6 +197,11 @@ class CausalActionAdmission:
         except AttributeError:
             return False
 
+    def live_workspace(self) -> CausalTaskWorkspace:
+        if not self._workspace.owns_action_admission(self):
+            raise RuntimeError("causal action admission lease is not active")
+        return self._workspace
+
     def read_metadata(
         self,
         authority: PrimitiveTileKernelAdapter,
@@ -363,13 +368,15 @@ class CausalSpatialWorkspace(Generic[SpatialValueT]):
         first, second = self._refs[left], self._refs[right]
         self._refs[left], self._refs[right] = second, first
 
-    def owns_buffer(self, buffer: SpatialReferenceBuffer[SpatialValueT]) -> bool:
+    def owns_buffer(self, buffer: object) -> bool:
         """Authenticate a live buffer through the exact workspace issuer."""
+        if type(buffer) is not SpatialReferenceBuffer:
+            return False
+        candidate = cast(SpatialReferenceBuffer[SpatialValueT], buffer)
         return (
-            type(buffer) is SpatialReferenceBuffer
-            and buffer.workspace is self
-            and not buffer.closed
-            and self._buffers.get(buffer.identity) is buffer
+            candidate.workspace is self
+            and not candidate.closed
+            and self._buffers.get(candidate.identity) is candidate
         )
 
     def payloads(self) -> Iterator[SpatialValueT]:
@@ -663,6 +670,13 @@ class CausalTaskWorkspace:
             self._action_authority = None
             raise
         return token
+
+    def has_action_admission(self) -> bool:
+        """Whether either live admission binding still needs retirement."""
+        return (
+            self._action_admission_token is not None
+            or self._issued_action_admission_token is not None
+        )
 
     def _require_action_admission(self, token: object) -> CausalActionAdmission:
         if not self.owns_action_admission(token):

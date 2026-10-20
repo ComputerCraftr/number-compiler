@@ -27,7 +27,7 @@ from number_compiler.hashlife.execution.tile_causal_boundary_step import (
 )
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
-    _attach_bound_reverse_output,
+    attach_bound_reverse_output,
 )
 from number_compiler.hashlife.execution.tile_causal_results import (
     PrimitiveCausalPorts,
@@ -35,7 +35,7 @@ from number_compiler.hashlife.execution.tile_causal_results import (
 )
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tile_causal_interface_memo import (
-    _bind_reverse_output_request,
+    bind_reverse_output_request,
     causal_interface_key,
     publish_causal_interface,
 )
@@ -54,7 +54,8 @@ from number_compiler.resources.causal_types import CausalPrefix, CausalTaskValue
 from number_compiler.resources.result_cache_kinds import (
     REVERSE_BOUND_OUTPUT_RETAINED_NODES,
 )
-from tests.arithmetic.contracts.test_tile_causal_private import _scan
+from tests.arithmetic.contracts.test_tile_causal_private import scan
+from tests.support.causal_frames import run_causal_frame
 from tests.support.reverse_interface import reverse_interface_payload
 from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
@@ -76,11 +77,11 @@ def test_active_producer_uses_bound_transfer_before_exact_boundary(
     producer_ports = adapter.initial_ports(producer)
     produced: tuple[int, ...] = symbols
     for _ in range(producer_exponent):
-        produced = _scan(law, produced, producer_ports)
+        produced = scan(law, produced, producer_ports)
     consumer_state = adapter.initial_ports(primitive)[side]
     expected = consumer_state
-    scan = reversed(produced) if side else produced
-    for symbol in scan:
+    ordered_symbols = reversed(produced) if side else produced
+    for symbol in ordered_symbols:
         expected = law.advance(BoundarySide(side), expected, symbol)
 
     with make_tile_from_symbols(tiles, adapter, primitive, symbols) as source:
@@ -94,14 +95,15 @@ def test_active_producer_uses_bound_transfer_before_exact_boundary(
         )
         engine = CausalTileEngine(scheduler)
         if producer_exponent == 4:
-            prepared = engine._run(
+            prepared = run_causal_frame(
+                engine,
                 ReverseBoundaryFrame(
                     (
                         producer,
                         side,
                         boundary_view,
-                        engine._initial(producer, side, prefix.producer_seed),
-                        engine._initial(producer, 1 - side),
+                        engine.initial_state(producer, side, prefix.producer_seed),
+                        engine.initial_state(producer, 1 - side),
                     ),
                 ),
                 tile_result=False,
@@ -132,7 +134,7 @@ def test_active_producer_uses_bound_transfer_before_exact_boundary(
             )
 
         monkeypatch.setattr(causal, "boundary_step", guarded_boundary_step)
-        complete_direct = scheduler._complete_direct
+        complete_direct = scheduler.complete_direct
 
         def guarded_complete_direct(
             root: PoweredResultKey,
@@ -143,15 +145,16 @@ def test_active_producer_uses_bound_transfer_before_exact_boundary(
                 forbidden()
             return complete_direct(root, checked_miss=checked_miss)
 
-        monkeypatch.setattr(scheduler, "_complete_direct", guarded_complete_direct)
+        monkeypatch.setattr(scheduler, "complete_direct", guarded_complete_direct)
         try:
-            observed = engine._run(
+            observed = run_causal_frame(
+                engine,
                 ResidualFrame(
                     (
                         action,
                         side,
                         prefix,
-                        engine._initial(producer, 1 - side),
+                        engine.initial_state(producer, 1 - side),
                     ),
                 ),
                 tile_result=False,
@@ -167,16 +170,17 @@ def test_active_producer_uses_bound_transfer_before_exact_boundary(
             else:
                 assert exact_fallbacks > 0
         finally:
-            for lease in reversed(engine._leases):
+            for lease in reversed(engine.lease_workspace.tiles):
                 lease.close()
-            engine._release_workspace()
+            engine.release_workspace()
 
 
 def test_bound_output_cannot_be_replaced_on_an_issued_occurrence() -> None:
     _, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     with make_tile_from_symbols(tiles, adapter, primitive, (0, 1)) as source:
         engine = CausalTileEngine(scheduler)
-        observed = engine._run(
+        observed = run_causal_frame(
+            engine,
             ReverseInterfaceFrame(
                 (
                     primitive,
@@ -193,7 +197,7 @@ def test_bound_output_cannot_be_replaced_on_an_issued_occurrence() -> None:
                 observed,
                 bound_reverse_output=ReverseBoundOutput.leaf(3, 4),
             )
-        engine._release_workspace()
+        engine.release_workspace()
 
 
 def test_bound_output_cannot_be_published_for_another_request() -> None:
@@ -205,7 +209,8 @@ def test_bound_output_cannot_be_published_for_another_request() -> None:
         make_tile_from_symbols(tiles, adapter, primitive, (1, 0)) as other,
     ):
         engine = CausalTileEngine(scheduler)
-        observed = engine._run(
+        observed = run_causal_frame(
+            engine,
             ReverseInterfaceFrame((primitive, source.tile, *ports)),
             tile_result=False,
         )
@@ -229,7 +234,7 @@ def test_bound_output_cannot_be_published_for_another_request() -> None:
             )
         after = scheduler.ledger.snapshot()
         assert (after.entries, after.nodes) == (before.entries, before.nodes)
-        engine._release_workspace()
+        engine.release_workspace()
 
 
 @pytest.mark.parametrize("warm", (False, True))
@@ -243,7 +248,8 @@ def test_bound_output_radix_must_match_its_producer_request(warm: bool) -> None:
             if warm
             else InterfaceFrame((primitive, source.tile, *ports))
         )
-        observed = engine._run(
+        observed = run_causal_frame(
+            engine,
             observed_frame,
             tile_result=False,
         )
@@ -266,16 +272,16 @@ def test_bound_output_radix_must_match_its_producer_request(warm: bool) -> None:
             observed.event_weight,
             observed.frame_shift,
         )
-        forged = _bind_reverse_output_request(
+        forged = bind_reverse_output_request(
             key,
-            _attach_bound_reverse_output(plain, ReverseBoundOutput.leaf(4, 1)),
+            attach_bound_reverse_output(plain, ReverseBoundOutput.leaf(4, 1)),
         )
         before = ledger.entries, ledger.nodes, ledger.inventory()
         with pytest.raises(ValueError, match="another radix"):
             publish_causal_interface(scheduler.results, key, forged)
         assert (ledger.entries, ledger.nodes, ledger.inventory()) == before
-        assert (scheduler.results._memo.get(key) is not None) is warm
-        engine._release_workspace()
+        assert (scheduler.results.audit_snapshot().memo.get(key) is not None) is warm
+        engine.release_workspace()
 
 
 def test_completed_producer_builds_bound_summary_from_exact_tile(
@@ -299,17 +305,18 @@ def test_completed_producer_builds_bound_summary_from_exact_tile(
             raise AssertionError("completed producer replayed temporal descendants")
 
         monkeypatch.setattr(interface_step, "_leaf", forbidden)
-        monkeypatch.setattr(scheduler, "_complete_direct", forbidden)
+        monkeypatch.setattr(scheduler, "complete_direct", forbidden)
         observed = reverse_interface_payload(engine, producer, source.tile)
         assert ledger.counters["reverse_exact_output_summary_evaluations"] == 1
         assert (
-            engine._run(
+            run_causal_frame(
+                engine,
                 ReverseInterfaceFrame(
                     (
                         producer,
                         source.tile,
-                        engine._initial(producer, 0),
-                        engine._initial(producer, 1),
+                        engine.initial_state(producer, 0),
+                        engine.initial_state(producer, 1),
                     ),
                 ),
                 tile_result=False,
@@ -317,7 +324,7 @@ def test_completed_producer_builds_bound_summary_from_exact_tile(
             == observed
         )
         assert ledger.counters["reverse_exact_output_summary_evaluations"] == 1
-        engine._release_workspace()
+        engine.release_workspace()
 
 
 def test_exact_reverse_output_summary_reuses_canonical_tile_before_descent(
@@ -329,7 +336,7 @@ def test_exact_reverse_output_summary_reuses_canonical_tile_before_descent(
     with make_tile_from_symbols(tiles, adapter, primitive, (0, 1, 2, 3)) as source:
         engine = CausalTileEngine(scheduler)
         request = ExactReverseOutputFrame((source.tile,))
-        expected = engine._run(request, tile_result=False)
+        expected = run_causal_frame(engine, request, tile_result=False)
         assert type(expected) is ReverseBoundOutput
         evaluations = ledger.counters["reverse_bound_output_evaluations"]
         publications = ledger.counters["reverse_bound_output_publications"]
@@ -340,7 +347,8 @@ def test_exact_reverse_output_summary_reuses_canonical_tile_before_descent(
 
         monkeypatch.setattr(step, "publish_reverse_bound_output_leaf", forbidden)
         monkeypatch.setattr(step, "publish_reverse_bound_output_parent", forbidden)
-        actual = engine._run(
+        actual = run_causal_frame(
+            engine,
             ExactReverseOutputFrame((source.tile,)),
             tile_result=False,
         )
@@ -348,7 +356,10 @@ def test_exact_reverse_output_summary_reuses_canonical_tile_before_descent(
         assert ledger.counters["reverse_bound_output_evaluations"] == evaluations
         assert ledger.counters["reverse_bound_output_publications"] == publications
         assert ledger.counters["reverse_bound_output_early_hits"] > 0
-        assert ReverseBoundOutputKey(source.tile) in scheduler.results._memo
+        assert (
+            ReverseBoundOutputKey(source.tile)
+            in scheduler.results.audit_snapshot().memo
+        )
 
 
 def test_reverse_output_summary_publication_is_atomic_and_inventoried() -> None:
@@ -366,7 +377,7 @@ def test_reverse_output_summary_publication_is_atomic_and_inventoried() -> None:
             publish_reverse_bound_output_leaf(scheduler.results, key)
         after = ledger.snapshot()
         assert (after.entries, after.nodes) == (before.entries, before.nodes)
-        assert key not in scheduler.results._memo
+        assert key not in scheduler.results.audit_snapshot().memo
 
         ledger.max_cache_entries = None
         publish_reverse_bound_output_leaf(scheduler.results, key)
@@ -374,7 +385,7 @@ def test_reverse_output_summary_publication_is_atomic_and_inventoried() -> None:
         row = next(
             item
             for item in report.resource_inventory
-            if item.owner == scheduler.results._memo_owner
+            if item.owner == scheduler.results.audit_snapshot().memo_owner
         )
         assert row.observed_entries == 1
         assert row.observed_nodes == REVERSE_BOUND_OUTPUT_RETAINED_NODES
@@ -397,7 +408,7 @@ def test_reverse_output_snapshot_failure_releases_reserved_resources(
         with pytest.raises(RuntimeError, match="injected reverse snapshot failure"):
             publish_reverse_bound_output_leaf(scheduler.results, key)
         assert (ledger.entries, ledger.nodes) == before
-        assert key not in scheduler.results._memo
+        assert key not in scheduler.results.audit_snapshot().memo
 
 
 def test_reverse_output_parent_rejects_a_forged_child_summary() -> None:
@@ -424,7 +435,7 @@ def test_reverse_output_parent_rejects_a_forged_child_summary() -> None:
                 right,
             )
         assert (ledger.entries, ledger.nodes) == before
-        assert key not in scheduler.results._memo
+        assert key not in scheduler.results.audit_snapshot().memo
         assert left == ReverseBoundOutput.leaf(3, 0)
         assert ledger.counters["reverse_bound_output_failures"] == 1
 
@@ -433,21 +444,24 @@ def test_reverse_output_summaries_are_non_owning_and_retire_with_tiles() -> None
     ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     with make_tile_from_symbols(tiles, adapter, primitive, (0, 1, 2, 3)) as source:
         engine = CausalTileEngine(scheduler)
-        output = engine._run(
+        output = run_causal_frame(
+            engine,
             ExactReverseOutputFrame((source.tile,)),
             tile_result=False,
         )
         assert type(output) is ReverseBoundOutput
         keys = tuple(
-            key for key in scheduler.results._memo if type(key) is ReverseBoundOutputKey
+            key
+            for key in scheduler.results.audit_snapshot().memo
+            if type(key) is ReverseBoundOutputKey
         )
         assert len(keys) == 7
-        row = ledger.inventory()[scheduler.results._memo_owner]
+        row = ledger.inventory()[scheduler.results.audit_snapshot().memo_owner]
         charged_nodes = row.nodes
         assert charged_nodes == len(keys) * REVERSE_BOUND_OUTPUT_RETAINED_NODES
 
-    assert all(key not in scheduler.results._memo for key in keys)
-    row = ledger.inventory()[scheduler.results._memo_owner]
+    assert all(key not in scheduler.results.audit_snapshot().memo for key in keys)
+    row = ledger.inventory()[scheduler.results.audit_snapshot().memo_owner]
     assert row.nodes == (
         charged_nodes - len(keys) * REVERSE_BOUND_OUTPUT_RETAINED_NODES
     )
@@ -459,14 +473,18 @@ def test_reverse_output_recreation_after_eviction_is_charged_as_unknown() -> Non
     with make_tile_from_symbols(tiles, adapter, primitive, (0, 1, 2, 3)) as source:
         engine = CausalTileEngine(scheduler)
         request = ExactReverseOutputFrame((source.tile,))
-        first = engine._run(request, tile_result=False)
+        first = run_causal_frame(engine, request, tile_result=False)
         assert type(first) is ReverseBoundOutput
         first_publications = ledger.counters["reverse_bound_output_publications"]
         scheduler.results.clear()
-        assert ReverseBoundOutputKey(source.tile) not in scheduler.results._memo
+        assert (
+            ReverseBoundOutputKey(source.tile)
+            not in scheduler.results.audit_snapshot().memo
+        )
         assert ledger.counters["reverse_bound_output_evictions"] == first_publications
 
-        second = engine._run(
+        second = run_causal_frame(
+            engine,
             ExactReverseOutputFrame((source.tile,)),
             tile_result=False,
         )
@@ -510,13 +528,13 @@ def test_composite_consumer_reuses_cached_causal_boundary(
                 action,
                 side,
                 prefix,
-                engine._initial(pair, 1 - side),
+                engine.initial_state(pair, 1 - side),
             ),
         )
-        engine._hold_workspace = True
+        object.__setattr__(engine, "_hold_workspace", True)
         expected_lease: TileLease | None = None
         try:
-            expected = engine._run(request, tile_result=False)
+            expected = run_causal_frame(engine, request, tile_result=False)
             assert ledger.counters.get("tile_causal_boundary_output_evaluations", 0) > 0
             assert isinstance(expected, CausalPrefix)
             assert expected.view is not None
@@ -525,21 +543,22 @@ def test_composite_consumer_reuses_cached_causal_boundary(
             before_evaluations = ledger.counters[
                 "tile_causal_boundary_output_evaluations"
             ]
-            scheduler._causal_workspace.clear()
-            scheduler._causal_tasks.clear()
+            scheduler.causal_workspace.clear()
+            scheduler.causal_tasks.clear()
 
             def forbidden(*_args: object, **_kwargs: object) -> Never:
                 raise AssertionError("warm composite consumer replayed a causal child")
 
             monkeypatch.setattr(interface_step, "_leaf", forbidden)
-            monkeypatch.setattr(scheduler, "_complete_direct", forbidden)
-            observed = engine._run(
+            monkeypatch.setattr(scheduler, "complete_direct", forbidden)
+            observed = run_causal_frame(
+                engine,
                 ResidualFrame(
                     (
                         action,
                         side,
                         prefix,
-                        engine._initial(pair, 1 - side),
+                        engine.initial_state(pair, 1 - side),
                     ),
                 ),
                 tile_result=False,
@@ -553,5 +572,5 @@ def test_composite_consumer_reuses_cached_causal_boundary(
         finally:
             if expected_lease is not None:
                 expected_lease.close()
-            engine._hold_workspace = False
-            engine._release_workspace()
+            object.__setattr__(engine, "_hold_workspace", False)
+            engine.release_workspace()

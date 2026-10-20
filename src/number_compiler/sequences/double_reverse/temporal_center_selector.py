@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
+
 
 def _h(value: int) -> int:
     return int(value >= 5)
@@ -92,7 +94,7 @@ def center_return(pair: tuple[int, int], driver: CenterDriver) -> CenterReturn:
         type(pair) is not tuple
         or len(pair) != 2
         or any(type(v) is not int or not 0 <= v < 10 for v in pair)
-        or not isinstance(driver, CenterDriver)
+        or not is_runtime_instance(driver, CenterDriver)
     ):
         raise ValueError("center return requires an ordered two-digit pair and driver")
     u, v = pair
@@ -187,7 +189,7 @@ def conditional_center_moore(
     calculated by the transition graph rather than fitted to one observed
     point.  The forcing motif is a model assumption, not a source certificate.
     """
-    if not motif or any(not isinstance(v, CenterDriver) for v in motif):
+    if not motif or any(not is_runtime_instance(v, CenterDriver) for v in motif):
         raise ValueError("center Moore requires a nonempty typed inlet motif")
     if len(motif) * 100 > max_states:
         raise ValueError("center Moore state budget exceeded")

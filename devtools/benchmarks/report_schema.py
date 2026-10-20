@@ -1,15 +1,15 @@
 """Validate record shapes at developer-report serialization boundaries."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from typing import cast
 
 
 def record(value: object) -> dict[str, object]:
     if not isinstance(value, Mapping):
         raise TypeError("report component must be a record")
+    source = cast(Mapping[object, object], value)
     result: dict[str, object] = {}
-    for raw_key, raw_item in value.items():
-        key: object = raw_key
-        item: object = raw_item
+    for key, item in source.items():
         if not isinstance(key, str):
             raise TypeError("report field names must be strings")
         result[key] = item
@@ -19,10 +19,9 @@ def record(value: object) -> dict[str, object]:
 def sequence(value: object) -> tuple[object, ...]:
     if not isinstance(value, (list, tuple)):
         raise TypeError("report component must be a sequence")
+    source = cast(Sequence[object], value)
     items: list[object] = []
-    for raw_item in value:
-        item: object = raw_item
-        items.append(item)
+    items.extend(source)
     return tuple(items)
 
 

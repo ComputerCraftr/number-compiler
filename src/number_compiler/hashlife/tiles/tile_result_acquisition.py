@@ -47,7 +47,7 @@ class ResultAcquisitionLeaseOwner:
         leases: list[TileLease] = []
         try:
             for index, tile in enumerate(tile_ids):
-                lease = self.tiles._acquire_reserved(tile)
+                lease = self.tiles.acquire_reserved(tile)
                 leases.append(lease)
                 self.records[index] = lease
             result = tuple(leases)
@@ -95,16 +95,16 @@ class ResultAcquisitionLeaseOwner:
         )
 
     def _restore_leases(self, leases: list[TileLease]) -> None:
-        account = self.ledger._account(self.owner)
+        entries, nodes = self.ledger.account_usage(self.owner)
         count = len(leases)
-        if self.records or account.entries > count or account.nodes > count:
+        if self.records or entries > count or nodes > count:
             raise RuntimeError(
                 "tile acquisition cleanup reservation cannot be restored"
             )
         self.ledger.reserve(
             self.owner,
-            entries=count - account.entries,
-            nodes=count - account.nodes,
+            entries=count - entries,
+            nodes=count - nodes,
         )
         self.clear_entries = self.clear_nodes = 0
         try:
@@ -136,7 +136,7 @@ class ResultAcquisitionLeaseOwner:
             tuple(
                 lease.close
                 for lease in leases
-                if id(lease) not in recorded and not lease._closed
+                if id(lease) not in recorded and not lease.audit_snapshot().closed
             )
         )
 
@@ -144,18 +144,18 @@ class ResultAcquisitionLeaseOwner:
         try:
             lease.close()
         except BaseException:
-            if lease._closed:
+            if lease.audit_snapshot().closed:
                 self.records[index] = None
             raise
         self.records[index] = None
 
     def _release_slot(self, index: int) -> None:
         owner = self.tiles.lease_owner
-        before = self.ledger._account(owner).entries
+        before = self.ledger.account_usage(owner)[0]
         try:
             self.ledger.release(owner, entries=1)
         except BaseException as error:
-            applied = before - self.ledger._account(owner).entries
+            applied = before - self.ledger.account_usage(owner)[0]
             if applied == 1:
                 self.records[index] = None
             elif applied != 0:
@@ -169,11 +169,11 @@ class ResultAcquisitionLeaseOwner:
         if entries <= 0:
             return
         owner = self.tiles.lease_owner
-        before = self.ledger._account(owner).entries
+        before = self.ledger.account_usage(owner)[0]
         try:
             self.ledger.release(owner, entries=entries)
         except BaseException as error:
-            applied = before - self.ledger._account(owner).entries
+            applied = before - self.ledger.account_usage(owner)[0]
             if not 0 <= applied <= entries:
                 raise RuntimeError(
                     "tile lease rollback accounting changed unexpectedly"

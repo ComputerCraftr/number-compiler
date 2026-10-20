@@ -33,7 +33,7 @@ def test_shared_squaring_identity_hashes_each_tuple_once(
 ) -> None:
     from number_compiler.arithmetic.contracts import semantic_identity
 
-    original = semantic_identity._tuple_digest
+    original = semantic_identity.tuple_digest
     visits = 0
 
     def counted(value: tuple[object, ...], children: dict[int, bytes]) -> bytes:
@@ -41,7 +41,7 @@ def test_shared_squaring_identity_hashes_each_tuple_once(
         visits += 1
         return original(value, children)
 
-    monkeypatch.setattr(semantic_identity, "_tuple_digest", counted)
+    monkeypatch.setattr(semantic_identity, "tuple_digest", counted)
     behavior: tuple[object, ...] = ("primitive", 1)
     for _ in range(128):
         behavior = (behavior, behavior)
@@ -97,7 +97,7 @@ def test_audit_validator_hashes_one_shared_union_dag_once(
     for _ in range(64):
         behavior = (behavior, behavior)
     identities = tuple(SemanticIdentity("label", behavior) for _ in range(8))
-    original = semantic_identity._tuple_digest
+    original = semantic_identity.tuple_digest
     visits = 0
 
     def counted(value: tuple[object, ...], children: dict[int, bytes]) -> bytes:
@@ -105,7 +105,7 @@ def test_audit_validator_hashes_one_shared_union_dag_once(
         visits += 1
         return original(value, children)
 
-    monkeypatch.setattr(semantic_identity, "_tuple_digest", counted)
+    monkeypatch.setattr(semantic_identity, "tuple_digest", counted)
     validator = SemanticIdentityValidator()
     for identity in identities:
         validator.validate(identity)

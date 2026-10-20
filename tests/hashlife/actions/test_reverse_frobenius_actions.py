@@ -1,6 +1,6 @@
 """The public tile authority owns scoped reverse source-sector bounds."""
 
-from collections.abc import MutableMapping
+from collections.abc import Callable, MutableMapping
 from dataclasses import replace
 from typing import cast
 
@@ -22,7 +22,7 @@ from number_compiler.hashlife.execution.causal_frames import (
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.hashlife.execution.tile_kernel import PrimitiveTileKernelAdapter
 from number_compiler.hashlife.observation.tile_projection import build_tile_projection
-from number_compiler.resources.causal_workspace import _ACTION_ADMISSION_NODES
+from number_compiler.resources.causal_workspace import ACTION_ADMISSION_SNAPSHOT_SIZE
 from number_compiler.resources.field_image_payload_audit import (
     audit_field_image_payloads,
 )
@@ -44,7 +44,7 @@ def test_public_reverse_action_composes_sector_bounds_before_source_descent(
     with build_tile_projection(
         BaseBlockEffect(10), SourceGeometry(ledger, source)
     ) as p:
-        application = p._application
+        application = p.validated_application()
         adapter = _primitive_adapter(p.scheduler.adapter)
 
         def forbidden(*_args: object, **_kwargs: object) -> None:
@@ -54,7 +54,7 @@ def test_public_reverse_action_composes_sector_bounds_before_source_descent(
         primitive = application.action
         f16, f4 = adapter.power(primitive, 16), adapter.power(primitive, 4)
         f20 = adapter.compose(f16, f4)
-        plan = adapter._action(f20).reverse_frobenius
+        plan = adapter.action_record(f20).reverse_frobenius
         assert type(plan) is ReverseFrobeniusPlan
         assert plan.steps == 20
         assert tuple(sector.classes for sector in plan.sectors) == (1, 2, 4, 8)
@@ -66,7 +66,7 @@ def test_public_reverse_action_composes_sector_bounds_before_source_descent(
         assert adapter.power(primitive, 1024) == adapter.power(primitive, 1024)
         assert ledger.counters["reverse_frobenius_plan_compositions"] > 0
         assert ledger.counters.get("source_annihilations", 0) == 0
-        assert application._root is None
+        assert application.audit_snapshot().root_lease is None
 
 
 def test_warm_action_rejects_a_frobenius_plan_for_another_depth() -> None:
@@ -77,11 +77,11 @@ def test_warm_action_rejects_a_frobenius_plan_for_another_depth() -> None:
     ) as p:
         adapter = p.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
-        primitive = p._application.action
+        primitive = p.validated_application().action
         powered = adapter.power(primitive, 8)
-        record = adapter._action(powered)
+        record = adapter.action_record(powered)
         adapter._actions[powered.local_id] = replace(
-            record, reverse_frobenius=adapter._action(primitive).reverse_frobenius
+            record, reverse_frobenius=adapter.action_record(primitive).reverse_frobenius
         )
         assert_rejected_atomically(
             ledger,
@@ -102,8 +102,8 @@ def test_warm_action_rejects_mutated_frobenius_sector_without_a_validation_cache
     ) as projection:
         adapter = projection.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
-        powered = adapter.power(projection._application.action, 8)
-        plan = adapter._action(powered).reverse_frobenius
+        powered = adapter.power(projection.validated_application().action, 8)
+        plan = adapter.action_record(powered).reverse_frobenius
         assert type(plan) is ReverseFrobeniusPlan
         sector = plan.sectors[0]
         original = sector.valuation_lower_bound
@@ -127,7 +127,7 @@ def test_internal_action_reads_skip_deep_semantic_and_sector_revalidation(
     ) as projection:
         adapter = projection.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
-        powered = adapter.power(projection._application.action, 8)
+        powered = adapter.power(projection.validated_application().action, 8)
         deep_reconstructions = 0
 
         def counted_effect_key(effect: BlockEffect) -> object:
@@ -159,7 +159,7 @@ def test_post_admission_action_poison_rejects_before_source_demand(
     with build_tile_projection(
         BaseBlockEffect(10), SourceGeometry(ledger, source)
     ) as projection:
-        application = projection._application
+        application = projection.validated_application()
         adapter = application.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
         if warm:
@@ -203,7 +203,7 @@ def test_direct_adapter_methods_keep_deep_action_admission(operation: str) -> No
     ) as projection:
         adapter = projection.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
-        primitive = projection._application.action
+        primitive = projection.validated_application().action
         composite = adapter.power(primitive, 2)
         selected = composite if operation.startswith("fused-") else primitive
         wiring = adapter.wiring(primitive)
@@ -244,11 +244,11 @@ def test_causal_setup_failure_cannot_leave_structural_action_access_enabled(
     with build_tile_projection(
         BaseBlockEffect(10), SourceGeometry(ledger, source)
     ) as projection:
-        application = projection._application
+        application = projection.validated_application()
         adapter = application.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
         engine = CausalTileEngine(application.scheduler)
-        frames = application.scheduler._causal_tasks.frames
+        frames = application.scheduler.causal_tasks.frames
 
         def fail_before_loop(*_args: object) -> None:
             raise RuntimeError("injected frame setup failure")
@@ -282,11 +282,11 @@ def test_causal_action_admission_failure_releases_application_and_workspace(
     with build_tile_projection(
         BaseBlockEffect(10), SourceGeometry(ledger, source)
     ) as projection:
-        application = projection._application
+        application = projection.validated_application()
         adapter = application.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
         engine = CausalTileEngine(application.scheduler)
-        engine._application = application.identity
+        engine.application_identity = application.identity
 
         def fail_admission(_action: object) -> None:
             raise ValueError("injected action admission failure")
@@ -296,10 +296,12 @@ def test_causal_action_admission_failure_releases_application_and_workspace(
         visits_before = ledger.counters.get("tile_causal_action_admission_visits", 0)
         frame = PointFrame((application.action, application.source, 0, 0, 0))
         with pytest.raises(ValueError, match="injected action admission failure"):
-            engine._run(frame, tile_result=False)
+            cast(Callable[..., object], object.__getattribute__(engine, "_run"))(
+                frame, tile_result=False
+            )
         after = ledger.snapshot()
         assert (after.entries, after.nodes) == (before.entries, before.nodes)
-        assert engine._application is None
+        assert engine.application_identity is None
         assert engine.action_admission is None
         assert ledger.counters["tile_causal_action_admission_visits"] == (
             visits_before + 1
@@ -314,22 +316,22 @@ def test_causal_structural_access_is_limited_to_the_reachable_run_dag(
     with build_tile_projection(
         BaseBlockEffect(10), SourceGeometry(ledger, source)
     ) as projection:
-        application = projection._application
+        application = projection.validated_application()
         adapter = application.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
         unrelated = adapter.admit(BaseBlockEffect(3))
         engine = CausalTileEngine(application.scheduler)
         other_engine = CausalTileEngine(application.scheduler)
-        frames = application.scheduler._causal_tasks.frames
+        frames = application.scheduler.causal_tasks.frames
         before = ledger.snapshot()
         observed: list[tuple[int, int]] = []
 
         def inspect_admission(*_args: object) -> None:
-            admitted = application.scheduler._causal_tasks.action_admitted
+            admitted = application.scheduler.causal_tasks.action_admitted
             observed.append((len(admitted), ledger.entries - before.entries))
-            assert ledger.nodes - before.nodes == _ACTION_ADMISSION_NODES * len(
-                admitted
-            )
+            assert ledger.nodes - before.nodes == (
+                1 + ACTION_ADMISSION_SNAPSHOT_SIZE
+            ) * len(admitted)
             assert not audit_field_image_payloads(ledger).invalid
             assert all(row.accounting_delta == 0 for row in ledger.inventory())
             admitted_action = next(iter(admitted))
@@ -340,24 +342,26 @@ def test_causal_structural_access_is_limited_to_the_reachable_run_dag(
             )
             raw_admitted[admitted_action] = False
             assert (
-                application.scheduler._causal_tasks.action_admitted_owner,
+                application.scheduler.causal_tasks.action_admitted_owner,
                 id(False),
             ) in audit_field_image_payloads(ledger).invalid
             raw_admitted[admitted_action] = marker
             with pytest.raises(ValueError, match="outside this run's admitted DAG"):
-                engine._cocycle(unrelated)
+                engine.action_cocycle(unrelated)
             for invalid in (True, 0.0):
                 with pytest.raises(TypeError, match="field action ID"):
-                    engine._cocycle(cast(FieldCellActionID, invalid))
+                    engine.action_cocycle(cast(FieldCellActionID, invalid))
             with pytest.raises(RuntimeError, match="cannot reenter"):
-                engine._run(
+                cast(Callable[..., object], object.__getattribute__(engine, "_run"))(
                     PointFrame(
                         (application.action, application.source, 0, 0, 0),
                     ),
                     tile_result=False,
                 )
             with pytest.raises(RuntimeError, match="already has an active run"):
-                other_engine._run(
+                cast(
+                    Callable[..., object], object.__getattribute__(other_engine, "_run")
+                )(
                     PointFrame(
                         (application.action, application.source, 0, 0, 0),
                     ),
@@ -372,7 +376,7 @@ def test_causal_structural_access_is_limited_to_the_reachable_run_dag(
             engine.output(application.action, application.source)
         assert observed and observed[0][0] == observed[0][1]
         assert engine.action_admission is None
-        assert not engine._running
+        assert not cast(bool, object.__getattribute__(engine, "_running"))
         after = ledger.snapshot()
         assert (after.entries, after.nodes) == (before.entries, before.nodes)
 
@@ -388,6 +392,8 @@ def test_other_radices_do_not_receive_a_decimal_sector_certificate(base: int) ->
         adapter = p.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
         assert (
-            adapter._action(adapter.power(p._application.action, 20)).reverse_frobenius
+            adapter.action_record(
+                adapter.power(p.validated_application().action, 20)
+            ).reverse_frobenius
             is None
         )

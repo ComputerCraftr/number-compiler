@@ -115,7 +115,9 @@ def test_radix_registry_audits_actual_projection_and_rejects_hidden_payloads() -
         == report.retained_unbounded_future_integers
         == 0
     )
-    projection = term._radix_projections[3]
+    audit_source = term.radix_projection_audit_source(term.resource_ledger)
+    assert audit_source is not None
+    projection = audit_source.projections[3]
     assert all(value is not term for value in vars(projection).values())
     # Registry auditing must traverse the actual projection, not just a handle.
     vars(projection)["digits"] = (1, 2, 0)

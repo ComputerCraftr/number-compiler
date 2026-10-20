@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from fractions import Fraction
+from typing import cast
 
 import pytest
 
@@ -43,7 +44,7 @@ def _f(value: Q) -> Fraction:
 def test_complete_cylinder_census_against_independent_intersection(width: int) -> None:
     ledger = ResourceLedger(max_nodes=20000, max_cache_entries=40000)
     workspace = SourceSafetyWorkspace(ledger)
-    survivors = set()
+    survivors: set[int] = set()
     for r in range(1 << width):
         block = workspace.view(workspace.cylinder(width, r))
         d, lo, hi, balance, minimum = _bounds(r, width)
@@ -157,9 +158,14 @@ def test_guarded_refinement_preserves_all_families_and_does_not_certify_infinity
     None
 ):
     result = fractional_refinement(2, 1000)
-    records = result["records"]
-    assert isinstance(records, list)
-    assert [row["nonempty_cylinders"] for row in records] == [18, 201]
+    raw_records = result["records"]
+    assert isinstance(raw_records, list)
+    records: list[object] = cast(list[object], raw_records)
+    values: list[object] = []
+    for row in records:
+        assert isinstance(row, dict)
+        values.append(cast(object, row["nonempty_cylinders"]))
+    assert values == [18, 201]
     assert result["status"] == "FINITE_PREFIXES_ONLY"
     assert result["global_safety_decided"] is False
     assert result["nonhalting_certified"] is False

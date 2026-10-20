@@ -1,6 +1,8 @@
 """Authority and resource boundaries for finite temporal composition reuse."""
 
+from collections.abc import Callable, MutableMapping
 from dataclasses import replace
+from typing import TypeVar, cast
 
 import pytest
 
@@ -8,7 +10,7 @@ from devtools.experiments.reverse_add.cocycle_temporal import (
     CocycleAction,
     CocycleCompositionEntry,
     CocycleCompositionKey,
-    CocycleTemporalArena,
+    CocycleTemporalAuditSnapshot,
 )
 from devtools.experiments.reverse_add.cocycle_temporal_payload_audit import (
     audit_cocycle_temporal_payloads,
@@ -23,7 +25,9 @@ from number_compiler.resources.ledger import (
     ResourceInventory,
     ResourceLedger,
 )
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 from number_compiler.resources.payload_audit import audit_registered_payloads
+from tests.support.private_attributes import private_test_attribute
 
 
 def _work(context: BoundedReverseCocycle) -> tuple[int, ...]:
@@ -55,6 +59,19 @@ def _cache_key(before: CocycleAction, after: CocycleAction) -> CocycleCompositio
     )
 
 
+_K = TypeVar("_K")
+_V = TypeVar("_V")
+
+
+def _forensic_memo(
+    snapshot: OwnedMemoAuditSnapshot[_K, _V],
+) -> MutableMapping[_K, _V]:
+    """Write through a fixed-cost audit snapshot only in corruption cases."""
+    if snapshot.dynamic_cost:
+        raise AssertionError("forensic writes require a fixed-cost memo")
+    return cast(MutableMapping[_K, _V], snapshot.container)
+
+
 def test_warm_pair_performs_no_semantic_construction_work() -> None:
     context = BoundedReverseCocycle(2)
     primitive = context.compile_primitive()
@@ -81,7 +98,7 @@ def test_equal_actions_with_distinct_event_counts_have_distinct_cache_entries() 
     shifted_result = context.temporal.compose(shifted, primitive)
     assert ordinary.events == 2
     assert shifted_result.events == 3
-    assert len(context.temporal._composition_cache) == 2
+    assert len(context.temporal.audit_snapshot().composition_cache.container) == 2
     assert context.temporal.temporal_composition_cache_hits == 0
 
 
@@ -105,7 +122,7 @@ def test_foreign_and_stale_actions_fail_before_cache_publication() -> None:
         )
 
     after = context.bits.ledger.snapshot()
-    assert len(context.temporal._composition_cache) == 0
+    assert len(context.temporal.audit_snapshot().composition_cache.container) == 0
     assert (after.entries, after.nodes, after.inventory) == (
         before.entries,
         before.nodes,
@@ -118,12 +135,14 @@ def test_valid_shape_cache_substitution_is_rejected() -> None:
     primitive = context.compile_primitive()
     result = context.temporal.compose(primitive, primitive)
     key = _cache_key(primitive, primitive)
-    entry = context.temporal._composition_cache[key]
+    snapshot = context.temporal.audit_snapshot()
+    entry_value = snapshot.composition_cache.payload_view[key]
+    assert type(entry_value) is CocycleCompositionEntry
+    entry = entry_value
     assert entry.result is result
 
-    context.temporal._composition_cache._data[key] = CocycleCompositionEntry(
-        key, entry.entry_id, primitive
-    )
+    cache = _forensic_memo(snapshot.composition_cache)
+    cache[key] = CocycleCompositionEntry(key, entry.entry_id, primitive)
     with pytest.raises(ValueError, match="cache|publication|events"):
         context.temporal.compose(primitive, primitive)
 
@@ -132,34 +151,31 @@ def test_cache_cap_evicts_the_oldest_complete_key_and_reconciles_entries() -> No
     context = BoundedReverseCocycle(1)
     primitive = context.compile_primitive()
     temporal = context.temporal
-    assert temporal._COMPOSITION_CACHE_LIMIT == 1024
     ledger = context.bits.ledger
+    initial_snapshot = temporal.audit_snapshot()
+    limit = initial_snapshot.composition_cache_limit
+    assert limit == 1024
     keys = tuple(
         _cache_key(replace(primitive, events=event), primitive)
-        for event in range(1, temporal._COMPOSITION_CACHE_LIMIT + 1)
+        for event in range(1, limit + 1)
     )
-    for key in keys:
-        entry = CocycleCompositionEntry(
-            key,
-            temporal._next_composition_entry,
-            replace(primitive, events=key.before_events + key.after_events),
-        )
-        temporal._next_composition_entry += 1
-        temporal._composition_seals[key] = temporal._entry_seal(entry)
-        temporal._composition_cache[key] = entry
-    assert len(temporal._composition_cache) == temporal._COMPOSITION_CACHE_LIMIT
-    assert len(temporal._composition_seals) == temporal._COMPOSITION_CACHE_LIMIT
-    inventory = _assert_composition_inventory(ledger, temporal)
+    for event in range(1, limit + 1):
+        temporal.compose(replace(primitive, events=event), primitive)
+    snapshot = temporal.audit_snapshot()
+    assert len(snapshot.composition_cache.container) == limit
+    assert len(snapshot.composition_seals.container) == limit
+    inventory = _assert_composition_inventory(ledger, snapshot)
 
-    temporal.compose(replace(primitive, events=1025), primitive)
-    assert len(temporal._composition_cache) == temporal._COMPOSITION_CACHE_LIMIT
-    assert len(temporal._composition_seals) == temporal._COMPOSITION_CACHE_LIMIT
-    assert keys[0] not in temporal._composition_cache
-    assert keys[0] not in temporal._composition_seals
-    assert keys[-1] in temporal._composition_cache
-    inventory = _assert_composition_inventory(ledger, temporal)
-    assert inventory[temporal._composition_cache.owner].accounting_delta == 0
-    assert inventory[temporal._composition_seals.owner].accounting_delta == 0
+    temporal.compose(replace(primitive, events=limit + 1), primitive)
+    snapshot = temporal.audit_snapshot()
+    assert len(snapshot.composition_cache.container) == limit
+    assert len(snapshot.composition_seals.container) == limit
+    assert keys[0] not in snapshot.composition_cache.container
+    assert keys[0] not in snapshot.composition_seals.container
+    assert keys[-1] in snapshot.composition_cache.container
+    inventory = _assert_composition_inventory(ledger, snapshot)
+    assert inventory[snapshot.composition_cache.owner].accounting_delta == 0
+    assert inventory[snapshot.composition_seals.owner].accounting_delta == 0
 
 
 def test_failed_cold_composition_leaves_no_cache_or_semantic_publication() -> None:
@@ -170,8 +186,8 @@ def test_failed_cold_composition_leaves_no_cache_or_semantic_publication() -> No
     lengths = (
         len(context.bits.functions.nodes),
         len(context.bits.nodes),
-        len(context.bits._compositions),
-        len(context.temporal._composition_cache),
+        len(context.bits.composition_audit_snapshot().container),
+        len(context.temporal.audit_snapshot().composition_cache.container),
     )
     ledger.tighten_limits(max_nodes=ledger.nodes, max_cache_entries=ledger.entries)
 
@@ -187,8 +203,8 @@ def test_failed_cold_composition_leaves_no_cache_or_semantic_publication() -> No
     assert lengths == (
         len(context.bits.functions.nodes),
         len(context.bits.nodes),
-        len(context.bits._compositions),
-        len(context.temporal._composition_cache),
+        len(context.bits.composition_audit_snapshot().container),
+        len(context.temporal.audit_snapshot().composition_cache.container),
     )
 
 
@@ -196,19 +212,22 @@ def test_paired_query_memo_eviction_allows_clean_cold_recomposition() -> None:
     context = BoundedReverseCocycle(2)
     primitive = context.compile_primitive()
     first = context.temporal.compose(primitive, primitive)
-    assert len(context.temporal._composition_cache) == 1
-    assert len(context.temporal._composition_seals) == 1
+    snapshot = context.temporal.audit_snapshot()
+    assert len(snapshot.composition_cache.container) == 1
+    assert len(snapshot.composition_seals.container) == 1
 
     evicted = context.bits.ledger.evict_query_memos()
-    assert context.temporal._composition_cache.owner in evicted
-    assert context.temporal._composition_seals.owner in evicted
-    assert len(context.temporal._composition_cache) == 0
-    assert len(context.temporal._composition_seals) == 0
+    assert snapshot.composition_cache.owner in evicted
+    assert snapshot.composition_seals.owner in evicted
+    snapshot = context.temporal.audit_snapshot()
+    assert len(snapshot.composition_cache.container) == 0
+    assert len(snapshot.composition_seals.container) == 0
 
     second = context.temporal.compose(primitive, primitive)
     assert second == first
-    assert len(context.temporal._composition_cache) == 1
-    assert len(context.temporal._composition_seals) == 1
+    snapshot = context.temporal.audit_snapshot()
+    assert len(snapshot.composition_cache.container) == 1
+    assert len(snapshot.composition_seals.container) == 1
     assert all(row.accounting_delta == 0 for row in context.bits.ledger.inventory())
 
 
@@ -217,7 +236,8 @@ def test_missing_cache_counterpart_is_rejected() -> None:
     primitive = context.compile_primitive()
     context.temporal.compose(primitive, primitive)
     key = _cache_key(primitive, primitive)
-    del context.temporal._composition_seals[key]
+    snapshot = context.temporal.audit_snapshot()
+    del _forensic_memo(snapshot.composition_seals)[key]
 
     with pytest.raises(ValueError, match="incomplete"):
         context.temporal.compose(primitive, primitive)
@@ -229,8 +249,15 @@ def test_cache_insertion_failure_removes_preceding_seal(
 ) -> None:
     context = BoundedReverseCocycle(2)
     primitive = context.compile_primitive()
-    cache = context.temporal._composition_cache
-    original = OwnedMemo.__setitem__
+    snapshot = context.temporal.audit_snapshot()
+    cache = cast(
+        OwnedMemo[CocycleCompositionKey, CocycleCompositionEntry],
+        snapshot.composition_cache_identity,
+    )
+    original = cast(
+        Callable[[OwnedMemo[object, object], object, object], None],
+        private_test_attribute(OwnedMemo, "__setitem__"),
+    )
 
     def fail_cache_insert(
         memo: OwnedMemo[object, object], key: object, value: object
@@ -242,8 +269,9 @@ def test_cache_insertion_failure_removes_preceding_seal(
     monkeypatch.setattr(OwnedMemo, "__setitem__", fail_cache_insert)
     with pytest.raises(RuntimeError, match="injected"):
         context.temporal.compose(primitive, primitive)
-    assert len(context.temporal._composition_cache) == 0
-    assert len(context.temporal._composition_seals) == 0
+    snapshot = context.temporal.audit_snapshot()
+    assert len(snapshot.composition_cache.container) == 0
+    assert len(snapshot.composition_seals.container) == 0
     assert all(row.accounting_delta == 0 for row in context.bits.ledger.inventory())
 
 
@@ -273,34 +301,40 @@ def test_audit_rejects_corrupted_cache_entry_and_seal() -> None:
     primitive = context.compile_primitive()
     context.temporal.compose(primitive, primitive)
     key = _cache_key(primitive, primitive)
-    entry = context.temporal._composition_cache[key]
-    old_seal = context.temporal._composition_seals[key]
+    snapshot = context.temporal.audit_snapshot()
+    entry_value = snapshot.composition_cache.payload_view[key]
+    seal_value = snapshot.composition_seals.payload_view[key]
+    assert type(entry_value) is CocycleCompositionEntry
+    assert type(seal_value) is tuple
+    entry = entry_value
+    old_seal = cast(tuple[object, ...], seal_value)
 
-    context.temporal._composition_cache._data[key] = CocycleCompositionEntry(
-        key, entry.entry_id, primitive
-    )
+    cache = _forensic_memo(snapshot.composition_cache)
+    seals = _forensic_memo(snapshot.composition_seals)
+    cache[key] = CocycleCompositionEntry(key, entry.entry_id, primitive)
     try:
         assert audit_cocycle_temporal_payloads(context.bits.ledger).invalid
     finally:
-        context.temporal._composition_cache._data[key] = entry
+        cache[key] = entry
 
-    context.temporal._composition_seals._data[key] = (*old_seal[:-1], 0)
+    seals[key] = (*old_seal[:-1], 0)
     try:
         assert audit_cocycle_temporal_payloads(context.bits.ledger).invalid
     finally:
-        context.temporal._composition_seals._data[key] = old_seal
+        seals[key] = old_seal
 
 
 def test_cache_limit_is_an_exact_integer_policy() -> None:
-    assert type(CocycleTemporalArena._COMPOSITION_CACHE_LIMIT) is int
-    assert CocycleTemporalArena._COMPOSITION_CACHE_LIMIT == 1024
+    snapshot = BoundedReverseCocycle(1).temporal.audit_snapshot()
+    assert type(snapshot.composition_cache_limit) is int
+    assert snapshot.composition_cache_limit == 1024
 
 
 def _assert_composition_inventory(
     ledger: ResourceLedger,
-    temporal: CocycleTemporalArena,
+    snapshot: CocycleTemporalAuditSnapshot,
 ) -> dict[int, ResourceInventory]:
     inventory = {row.owner: row for row in ledger.inventory()}
-    assert inventory[temporal._composition_cache.owner].entries == 1024
-    assert inventory[temporal._composition_seals.owner].entries == 1024
+    assert inventory[snapshot.composition_cache.owner].entries == 1024
+    assert inventory[snapshot.composition_seals.owner].entries == 1024
     return inventory

@@ -71,7 +71,7 @@ def test_carry_prefix_offsets_reuse_the_composed_run_effect(
 
     runs = ((9, 2), (9, 3), (10, 2), (18, 4), (0, 3), (11, 2))
     work = temporal.PuncturedTemporalWork()
-    prefix = temporal._CarryPrefix(runs, work)
+    prefix = temporal.CarryPrefix(runs, work)
     assert prefix.runs == ((9, 5), (10, 2), (18, 4), (0, 3), (11, 2))
 
     symbols = tuple(symbol for symbol, count in runs for _ in range(count))
@@ -97,15 +97,15 @@ def test_singleton_event_interval_checks_its_only_endpoint_once(
     import number_compiler.sequences.reverse_add.punctured_temporal as temporal
 
     symbol_reads: list[int] = []
-    original_symbol_at = temporal._CarryPrefix.symbol_at
+    originalsymbol_at = temporal.CarryPrefix.symbol_at
 
-    def record_symbol_read(prefix: temporal._CarryPrefix, index: int) -> int:
+    def record_symbol_read(prefix: temporal.CarryPrefix, index: int) -> int:
         symbol_reads.append(index)
-        return original_symbol_at(prefix, index)
+        return originalsymbol_at(prefix, index)
 
-    monkeypatch.setattr(temporal._CarryPrefix, "symbol_at", record_symbol_read)
+    monkeypatch.setattr(temporal.CarryPrefix, "symbol_at", record_symbol_read)
     work = temporal.PuncturedTemporalWork()
-    result, width = temporal._one_two_step_pair(((9, 1),), work)
+    result, width = temporal.one_two_step_pair(((9, 1),), work)
     assert result
     assert width > 0
     assert work.event_regions == 1
@@ -116,7 +116,7 @@ def test_scheduler_publishes_punctured_t2_as_completed_output() -> None:
     seed = 196
     steps = 20
     term = ReverseAddPoweredTerm(seed, steps)
-    workspace = term._source_workspace()
+    workspace = term.source_workspace()
     try:
         assert term.digits() == literal_reverse_add_digits(seed, steps)
         counters = term.resource_ledger.counters
@@ -133,7 +133,7 @@ def test_larger_request_joins_punctured_children_without_source_primitive_descen
     seed = 196
     steps = 8
     term = ReverseAddPoweredTerm(seed, steps)
-    workspace = term._source_workspace()
+    workspace = term.source_workspace()
     try:
 
         def forbidden(*_args: object, **_kwargs: object) -> None:
@@ -161,7 +161,7 @@ def test_failed_postpublication_accounting_rolls_back_issued_slp(
     )
     initial = owner.initial
     original_nodes = len(owner.arena.nodes)
-    original_issued = dict(owner._issued)
+    original_issued = dict(owner.audit_snapshot().issued.payload_view)
     original_bump = ledger.bump
     failed = False
 
@@ -177,7 +177,7 @@ def test_failed_postpublication_accounting_rolls_back_issued_slp(
         with pytest.raises(RuntimeError, match="injected metric failure"):
             owner.apply_punctured_pair_block(initial, steps=2)
         assert len(owner.arena.nodes) == original_nodes
-        assert dict(owner._issued) == original_issued
+        assert dict(owner.audit_snapshot().issued.payload_view) == original_issued
         owner.validate(initial)
         assert ledger.counters["reverse_q19_punctured_failed_applications"] == 1
     finally:

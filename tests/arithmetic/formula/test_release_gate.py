@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -10,7 +11,7 @@ from number_compiler.api.release import (
     require_full_jump_release,
 )
 from number_compiler.arithmetic.formula.formula import FormulaArena, root_from_values
-from number_compiler.arithmetic.formula.types import RadixSpec
+from number_compiler.arithmetic.formula.types import Expr, RadixSpec
 from number_compiler.hashlife.actions.jump import MissingJumpBackend
 
 if TYPE_CHECKING:
@@ -63,12 +64,14 @@ class SymbolicExplosionBackend(_FormulaSeedBackend):
             register_summary,
         )
 
-        planes = []
+        planes: list[Expr] = []
         for p in root.planes:
             q = p
             # Symbolic-only blow-up: no forbidden evaluator/materializer calls.
             for i in range(2500):
-                q = self.arena._raw("EXPLODE", q.width, args=(q,), param=(i, bit))
+                q = cast(
+                    Callable[..., Expr], object.__getattribute__(self.arena, "_raw")
+                )("EXPLODE", q.width, args=(q,), param=(i, bit))
             planes.append(q)
         out = FormulaRoot(tuple(planes))
         register_summary(

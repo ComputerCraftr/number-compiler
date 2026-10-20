@@ -73,7 +73,7 @@ def cold_row(coordinate: int) -> dict[str, Any]:
 
 def run_probe() -> dict[str, Any]:
     before = git_source(ROOT)
-    rows = []
+    rows: list[dict[str, object]] = []
     for coordinate in (0, 5, 10, 15):
         process = subprocess.run(
             [

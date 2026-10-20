@@ -71,8 +71,8 @@ def test_directed_transfer_reuses_exact_exit_and_retires_with_input() -> None:
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
     assert after.counters["tile_directed_transfer_early_hits"] == 1
     source.close()
-    assert key not in results._memo
-    assert not results._reverse
+    assert key not in results.audit_snapshot().memo
+    assert not results.audit_snapshot().reverse
 
 
 def test_directed_transfer_direction_and_scan_order_are_distinct() -> None:
@@ -150,8 +150,8 @@ def test_directed_transfer_publication_rolls_back_at_budget() -> None:
             publish_directed_transfer(results, key, outgoing)
         after = ledger.snapshot()
         assert (after.entries, after.nodes) == (before.entries, before.nodes)
-        assert not results._memo
-        assert not results._reverse
+        assert not results.audit_snapshot().memo
+        assert not results.audit_snapshot().reverse
     finally:
         source.close()
 
@@ -201,8 +201,8 @@ def test_prepared_directed_transfer_rechecks_tile_liveness() -> None:
     with pytest.raises((KeyError, ValueError)):
         publish_prepared_directed_transfer(results, request, outgoing)
     assert ledger.snapshot() == before
-    assert key not in results._memo
-    assert not results._reverse
+    assert key not in results.audit_snapshot().memo
+    assert not results.audit_snapshot().reverse
 
 
 def test_prepared_directed_transfer_rejects_foreign_arena() -> None:
@@ -272,6 +272,6 @@ def test_prepared_transfer_rejects_same_object_key_mutation(
         with pytest.raises((TypeError, ValueError)):
             publish_prepared_directed_transfer(results, request, outgoing)
         assert ledger.snapshot() == before
-        assert results._memo[key] == outgoing
+        assert results.audit_snapshot().memo[key] == outgoing
     finally:
         source.close()

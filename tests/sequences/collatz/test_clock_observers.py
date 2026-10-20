@@ -16,7 +16,7 @@ def test_all_views_are_specializations_of_one_clock_polynomial() -> None:
     arena = CollatzEventArena()
     node = arena.from_valuations(depths)
     observer = CollatzClockObservers(arena)
-    points = []
+    points: list[tuple[int, int]] = []
     ksum = 0
     for j, k in enumerate(depths):
         points.append((len(depths) - 1 - j, ksum))

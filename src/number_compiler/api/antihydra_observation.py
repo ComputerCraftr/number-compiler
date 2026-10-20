@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import asdict
 from enum import StrEnum
-from typing import Literal, TypeGuard, overload
+from typing import Literal, overload
 
 from number_compiler.api.json_output import (
     is_string_object_mapping,
@@ -295,10 +295,6 @@ def observe_run(
     return json_integers(packet)
 
 
-def _is_object_mapping(value: object) -> TypeGuard[Mapping[str, object]]:
-    return is_string_object_mapping(value)
-
-
 def _required(mapping: Mapping[str, object], key: str) -> object:
     if key not in mapping:
         raise ValueError(f"observation packet is missing {key!r}")
@@ -338,7 +334,7 @@ def _source_fields(value: Mapping[str, object]) -> AntihydraSourceFields:
 
 
 def _rational_packet(value: object) -> RationalValuePacket:
-    if not _is_object_mapping(value):
+    if not is_string_object_mapping(value):
         raise TypeError("Mahler rational packet must be an object")
     return {
         "numerator": _json_integer(_required(value, "numerator")),
@@ -347,7 +343,7 @@ def _rational_packet(value: object) -> RationalValuePacket:
 
 
 def _mahler_action_packet(value: object) -> MahlerActionPacket:
-    if not _is_object_mapping(value):
+    if not is_string_object_mapping(value):
         raise TypeError("Mahler action packet must be an object")
     packet: MahlerActionPacket = {
         "source_binding": _required_string(value, "source_binding"),
@@ -389,7 +385,7 @@ def _mahler_action_packet(value: object) -> MahlerActionPacket:
 
 
 def _tangent_packet(value: object) -> AntihydraTangentPacket:
-    if not _is_object_mapping(value):
+    if not is_string_object_mapping(value):
         raise TypeError("Antihydra tangent packet must be an object")
     packet: AntihydraTangentPacket = {
         "source": _json_integer(_required(value, "source")),
@@ -554,7 +550,7 @@ def _required_bool(mapping: Mapping[str, object], key: str) -> bool:
 
 
 def _json_object(value: object) -> dict[str, JsonValue]:
-    if not _is_object_mapping(value):
+    if not is_string_object_mapping(value):
         raise TypeError("observation counters must be an object")
     result: dict[str, JsonValue] = {}
     for key, item in value.items():

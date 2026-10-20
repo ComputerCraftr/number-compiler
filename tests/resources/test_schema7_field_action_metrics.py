@@ -445,7 +445,7 @@ def test_live_quotient_records_and_independent_higher_interfaces_are_distinct() 
     higher.extend(range(3))
 
     report = collect_ledger_metrics(ledger)
-    assert len(arena._nodes) == 0
+    assert len(arena.audit_snapshot().nodes) == 0
     # Retained node charge includes the synthetic quotient slots as well as
     # the independent higher interfaces.  Semantic interface population is a
     # separate record-count unit and excludes the synthetic charged slots

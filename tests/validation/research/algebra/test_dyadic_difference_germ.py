@@ -402,7 +402,7 @@ def test_four_auxiliary_quartic_phase_fit_fails_on_generalized_holdout_controls(
         N = t**4 + 1
         factors = holdout_factors[t]
         product = 1
-        bits = []
+        bits: list[bool] = []
         for q in factors:
             product *= q
             r1 = (t + pow(t, -1, q)) % q

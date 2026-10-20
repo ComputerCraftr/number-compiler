@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Generator
 from dataclasses import replace
 from itertools import product
 from typing import TYPE_CHECKING, Literal, Never
@@ -18,8 +19,6 @@ from number_compiler.resources.metric_collection import collect_ledger_metrics
 from tests.support.assertions import assert_rejected_atomically
 
 if TYPE_CHECKING:
-    import typing
-
     from devtools.verification.lazy_reverse import ReverseRangeRequest
     from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
 
@@ -40,7 +39,7 @@ def test_joint_composition_alias_hits_before_child_evaluation_or_output_internin
     expected = arena.compose_intervals(first, after, port)
     before = arena.ledger.snapshot()
     monkeypatch.setattr(arena, "compose", forbidden)
-    monkeypatch.setattr(arena, "_interval", forbidden)
+    monkeypatch.setattr(arena, "intern_interval", forbidden)
     assert arena.compose_intervals(alias, after, port) == expected
     observed = arena.ledger.snapshot()
     assert (observed.entries, observed.nodes) == (before.entries, before.nodes)
@@ -84,7 +83,7 @@ def test_each_pair_of_canonical_interval_ids_is_evaluated_at_most_once() -> None
         after["joint_interval_composition_cache_hits"]
         + after["joint_interval_composition_evaluations"]
     )
-    assert len(arena._interval_compositions) == 49
+    assert arena.interval_cache_sizes()[0] == 49
     assert collect_ledger_metrics(arena.ledger).resource_accounting_mismatch == 0
 
 
@@ -96,12 +95,12 @@ def test_scan_canonicalizes_reflected_intervals_before_coefficient_work(
     | tuple[int, int, int],
 ) -> None:
     application = LazyReverseApplication(10, -1, 0, pair)
-    coefficient = application._coefficient
-    calls = []
+    coefficient = application.coefficient
+    calls: list[tuple[int, int]] = []
 
     def observe(
         generation: int, position: int, bits: int | None = None
-    ) -> typing.Generator[
+    ) -> Generator[
         tuple[Literal["coefficient", "carry"] | int, int, int] | ReverseRangeRequest,
         int | TransferSummaryID,
         int | TransferSummaryID,
@@ -109,34 +108,34 @@ def test_scan_canonicalizes_reflected_intervals_before_coefficient_work(
         calls.append((generation, position))
         return coefficient(generation, position, bits)
 
-    monkeypatch.setattr(application, "_coefficient", observe)
+    monkeypatch.setattr(application, "coefficient", observe)
     expected = 0
     for value in pair:
         expected = int(value + expected >= 10)
-    assert application._scan(0, OrderedDict()) == expected
+    assert application.scan(0, OrderedDict()) == expected
     if len(pair) % 2 == 0:
         assert all(position < (len(pair) + 2) // 2 for _generation, position in calls)
         assert len(calls) == 2  # The terminal reset avoids every earlier interval.
         assert application.ledger.counters["interval_reflection_requests"] > 0
         assert all(
             key.stop <= len(pair) + (1 << key.level) - key.stop
-            for key in application._ranges
+            for key, _summary in application.range_snapshot()
             if len(pair) % (1 << key.level) == 0
         )
     else:
         assert len(calls) == 1  # Only the unpaired terminal reset is needed.
-    assert all(key.stop % 2 == 0 for key in application._ranges)
+    assert all(key.stop % 2 == 0 for key, _summary in application.range_snapshot())
 
 
 def test_warm_interval_scan_checks_ids_before_any_coefficient_evaluation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     application = LazyReverseApplication(10, -1, 0, (0, 10, 10, 0))
-    expected = application._scan(0, OrderedDict())
+    expected = application.scan(0, OrderedDict())
     before = application.ledger.snapshot()
-    monkeypatch.setattr(application, "_evaluate", forbidden)
+    monkeypatch.setattr(application, "evaluate_range", forbidden)
     monkeypatch.setattr(application.port_actions, "compose_intervals", forbidden)
-    assert application._scan(0, OrderedDict()) == expected
+    assert application.scan(0, OrderedDict()) == expected
     after = application.ledger.snapshot()
     assert (
         after.counters["summary_evaluations"] == before.counters["summary_evaluations"]
@@ -176,7 +175,7 @@ def test_known_reflection_and_literal_ids_bypass_descriptor_construction(
     zero = arena.interval_symbol(0, base=10, port=port)
     identity = arena.interval_identity(port)
     before = arena.ledger.snapshot()
-    monkeypatch.setattr(arena, "_interval", forbidden)
+    monkeypatch.setattr(arena, "intern_interval", forbidden)
     assert arena.reflect_interval(action) == reflected
     assert arena.interval_symbol(8, base=10, port=port) == zero
     assert arena.interval_identity(port) == identity
@@ -197,14 +196,14 @@ def test_eviction_releases_early_composition_memos_without_invalidating_ids() ->
     a = arena.interval_word((0, 10), base=10, port=port)
     b = arena.interval_word((9, 10), base=10, port=port)
     expected = arena.compose_intervals(a, b, port)
-    assert len(arena._interval_compositions) > 0
+    assert arena.interval_cache_sizes()[0] > 0
     arena.reflect_interval(a)
     nodes = arena.ledger.nodes
-    assert len(arena._interval_literals) > 0
-    assert len(arena._interval_reflections) > 0
+    _, literal_entries, reflection_entries = arena.interval_cache_sizes()
+    assert literal_entries > 0
+    assert reflection_entries > 0
     arena.ledger.evict_query_memos()
-    assert len(arena._interval_compositions) == 0
-    assert len(arena._interval_literals) == len(arena._interval_reflections) == 0
+    assert arena.interval_cache_sizes() == (0, 0, 0)
     assert arena.ledger.nodes == nodes
     assert arena.compose_intervals(a, b, port) == expected
     report = collect_ledger_metrics(arena.ledger)
@@ -218,7 +217,7 @@ def test_collatz_source_mul3_summary_uses_identity_before_any_stream_work(
     view = application.initial
     expected = application.mul3_summary(view)
     before = application.ledger.snapshot()
-    monkeypatch.setattr(application, "_stream", forbidden)
+    monkeypatch.setattr(application, "stream", forbidden)
     assert application.mul3_summary(replace(view)) == expected
     after = application.ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
@@ -241,9 +240,9 @@ def test_collatz_summary_validates_foreign_view_before_warm_lookup_and_releases_
     b = LazyCollatzApplication(2, 0, (1, 1))
     expected = a.mul3_summary(a.initial)
     assert_rejected_atomically(a.ledger, lambda: a.mul3_summary(b.initial), ValueError)
-    assert len(a._mul3_summaries) == 1
+    assert len(a.payload_audit_snapshot().mul3_payloads) == 1
     a.ledger.evict_query_memos()
-    assert len(a._mul3_summaries) == 0
+    assert len(a.payload_audit_snapshot().mul3_payloads) == 0
     assert a.mul3_summary(a.initial) == expected
     report = collect_ledger_metrics(a.ledger)
     assert report.resource_accounting_mismatch == report.forbidden_future_payloads == 0

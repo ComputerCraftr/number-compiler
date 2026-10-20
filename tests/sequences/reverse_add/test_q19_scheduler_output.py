@@ -52,11 +52,11 @@ def test_decimal_q19_output_is_the_completed_scheduler_payload(
     try:
         assert_exact_digit_observers(term, expected)
 
-        workspace = term._workspace
+        workspace = term.published_workspace
         assert workspace is not None
-        image = workspace._image
+        image = workspace.audit_snapshot().image
         assert image is not None
-        payload = workspace.scheduler._source_image_core().view(image).payload
+        payload = workspace.scheduler.source_image_core().view(image).payload
         assert isinstance(payload, ReverseImagePayload)
         assert payload.pair_output is not None
         assert payload.pair_output.temporal_steps == steps
@@ -72,7 +72,7 @@ def test_decimal_q19_output_is_the_completed_scheduler_payload(
         assert counters.get("reverse_q19_punctured_emitted_grammar_nodes", 0) > 0
         assert counters.get("reverse_q19_pair_output_nodes_visited", 0) > 0
     finally:
-        workspace = term._workspace
+        workspace = term.published_workspace
         if workspace is not None:
             workspace.dispose()
             assert workspace.ledger.entries == workspace.ledger.nodes == 0
@@ -82,12 +82,12 @@ def test_nondecimal_source_keeps_the_existing_image_path() -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 41, 2, base=3)
     expected = literal_reverse_add_digits(41, 2, 3)
     assert tuple(workspace.iter_digits()) == expected
-    image = workspace._image
+    image = workspace.audit_snapshot().image
     assert image is not None
-    payload = workspace.scheduler._source_image_core().view(image).payload
+    payload = workspace.scheduler.source_image_core().view(image).payload
     assert isinstance(payload, ReverseImagePayload)
     assert payload.pair_output is None
-    assert workspace.adapter._q19_owner is None
+    assert workspace.adapter.audit_snapshot().q19_owner is None
     workspace.dispose()
     assert workspace.ledger.entries == workspace.ledger.nodes == 0
 
@@ -97,11 +97,11 @@ def test_width_demand_publishes_completed_q19_output_without_rendering() -> None
     expected = literal_reverse_add_digits(196, 3)
 
     assert workspace.width() == len(expected)
-    image = workspace._image
+    image = workspace.audit_snapshot().image
     assert image is not None
-    owner = workspace.adapter._q19_owner
+    owner = workspace.adapter.audit_snapshot().q19_owner
     assert owner is not None
-    payload = workspace.scheduler._source_image_core().view(image).payload
+    payload = workspace.scheduler.source_image_core().view(image).payload
     assert isinstance(payload, ReverseImagePayload)
     assert payload.pair_output is not None
     assert payload.pair_output.output_width == len(expected)
@@ -118,8 +118,8 @@ def test_width_demand_publishes_completed_q19_output_without_rendering() -> None
     assert counters.get("recursive_output_stream_emitted_digits", 0) == 0
 
     assert tuple(workspace.iter_digits()) == expected
-    assert workspace._image is not None
-    assert workspace.adapter._q19_owner is not None
+    assert workspace.audit_snapshot().image is not None
+    assert workspace.adapter.audit_snapshot().q19_owner is not None
     assert workspace.width() == len(expected)
     assert counters.get("reverse_successor_tape_width_compilations", 0) == 0
     assert counters.get("reverse_q19_primitive_pair_applications", 0) == 0
@@ -132,20 +132,20 @@ def test_source_image_reset_releases_the_invalidated_q19_owner() -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 20)
     expected = literal_reverse_add_digits(196, 20)
     assert workspace.width() == len(expected)
-    old_owner = workspace.adapter._q19_owner
+    old_owner = workspace.adapter.audit_snapshot().q19_owner
     assert old_owner is not None
-    old_image = workspace._image
+    old_image = workspace.audit_snapshot().image
     assert old_image is not None
-    old_payload = workspace.scheduler._source_image_core().view(old_image).payload
+    old_payload = workspace.scheduler.source_image_core().view(old_image).payload
     assert isinstance(old_payload, ReverseImagePayload)
     old_occurrence = old_payload.pair_output
     assert old_occurrence is not None
 
     workspace.scheduler.clear_source_images()
     assert workspace.width() == len(expected)
-    new_owner = workspace.adapter._q19_owner
+    new_owner = workspace.adapter.audit_snapshot().q19_owner
     assert new_owner is not None and new_owner is not old_owner
-    assert old_owner._disposed
+    assert old_owner.audit_snapshot().disposed
     assert len(old_owner.arena.nodes) == 0
     with pytest.raises(ValueError, match="disposed"):
         old_owner.validate(old_occurrence)
@@ -159,9 +159,9 @@ def test_completed_output_first_reuses_its_width_without_reconstruction() -> Non
     expected = literal_reverse_add_digits(196, 20)
 
     assert tuple(workspace.iter_digits()) == expected
-    image = workspace._image
+    image = workspace.audit_snapshot().image
     assert image is not None
-    owner = workspace.adapter._q19_owner
+    owner = workspace.adapter.audit_snapshot().q19_owner
     assert owner is not None
     t2_applications = workspace.ledger.counters.get(
         "reverse_q19_punctured_t2_applications", 0
@@ -175,8 +175,8 @@ def test_completed_output_first_reuses_its_width_without_reconstruction() -> Non
     assert 2 * t2_applications + 4 * t4_applications + primitive_applications > 0
     assert workspace.width() == len(expected)
     assert workspace.width() == len(expected)
-    assert workspace._image == image
-    assert workspace.adapter._q19_owner is owner
+    assert workspace.audit_snapshot().image == image
+    assert workspace.adapter.audit_snapshot().q19_owner is owner
     assert (
         workspace.ledger.counters.get("reverse_successor_tape_width_compilations", 0)
         == 0
@@ -201,12 +201,14 @@ def test_q19_rejects_foreign_occurrence_and_rebound_source() -> None:
     right = ReverseSourceImageWorkspace(ResourceLedger(), 196, 20)
     try:
         assert left.width() == right.width()
-        assert left._image is not None and right._image is not None
+        left_image = left.audit_snapshot().image
+        right_image = right.audit_snapshot().image
+        assert left_image is not None and right_image is not None
         assert tuple(left.iter_digits()) == literal_reverse_add_digits(196, 20)
         assert tuple(right.iter_digits()) == literal_reverse_add_digits(196, 20)
-        assert left._image is not None and right._image is not None
-        left_view = left.scheduler._source_image_core().view(left._image)
-        right_view = right.scheduler._source_image_core().view(right._image)
+        assert left_image is not None and right_image is not None
+        left_view = left.scheduler.source_image_core().view(left_image)
+        right_view = right.scheduler.source_image_core().view(right_image)
         left_payload = left_view.payload
         right_payload = right_view.payload
         assert isinstance(left_payload, ReverseImagePayload)
@@ -258,9 +260,10 @@ def test_partial_q19_stream_releases_scratch_and_disposes_cleanly() -> None:
     term = ReverseAddPoweredTerm(196, 20)
     stream = term.iter_digits()
     assert isinstance(stream, Generator)
-    assert next(stream) == literal_reverse_add_digits(196, 20)[0]
-    stream.close()
-    workspace = term._workspace
+    typed_stream = cast(Generator[int, None, None], stream)
+    assert next(typed_stream) == literal_reverse_add_digits(196, 20)[0]
+    typed_stream.close()
+    workspace = term.published_workspace
     assert workspace is not None
     assert (
         term.resource_ledger.counters.get("reverse_output_stream_cancellations", 0) == 1
@@ -290,7 +293,7 @@ def test_q19_stream_resumed_after_owner_disposal_releases_walk_tasks() -> None:
     term = ReverseAddPoweredTerm(196, 20)
     stream = term.iter_digits()
     next(stream)
-    workspace = term._workspace
+    workspace = term.published_workspace
     assert workspace is not None
 
     workspace.dispose()
@@ -305,12 +308,12 @@ def test_q19_audit_rejects_numeric_alias_keys(store_name: str) -> None:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 3)
     try:
         tuple(workspace.iter_digits())
-        owner = workspace.adapter._q19_owner
+        owner = workspace.adapter.audit_snapshot().q19_owner
         assert owner is not None
         stores = {
-            "terminal": owner.arena._term,
-            "concat": owner.arena._cat,
-            "issued": owner._issued,
+            "terminal": object.__getattribute__(owner.arena, "_term"),
+            "concat": object.__getattribute__(owner.arena, "_cat"),
+            "issued": object.__getattribute__(owner, "_issued"),
         }
         store = cast(MutableMapping[object, object], stores[store_name])
         key = next(iter(store))

@@ -13,13 +13,29 @@ from dataclasses import dataclass
 
 from number_compiler.arithmetic.formula.construction import FormulaBuildMixin
 from number_compiler.arithmetic.formula.evaluation import FormulaEvalMixin
-from number_compiler.arithmetic.formula.types import Expr, RadixSpec, _bits
+from number_compiler.arithmetic.formula.types import Expr, RadixSpec, bits
 
 
 class FormulaArena(FormulaBuildMixin, FormulaEvalMixin):
     """Hash-consed formula IR with canonical Boolean set algebra."""
 
     __slots__ = ()
+
+    def cache_snapshot(
+        self,
+    ) -> tuple[int, dict[tuple[object, ...], object], dict[tuple[object, ...], Expr]]:
+        """Copy cache contents for an audit without publishing mutable owner stores."""
+        return self.node_count, self._metadata.copy(), self._derived.copy()
+
+    @property
+    def metadata_entries(self) -> int:
+        """Number of retained compiler metadata entries for benchmark accounting."""
+        return len(self._metadata)
+
+    @property
+    def derived_cache_entries(self) -> int:
+        """Number of retained derived-operation results."""
+        return len(self._derived)
 
     @property
     def node_count(self) -> int:
@@ -131,7 +147,7 @@ def reachable(roots: Iterable[Expr]) -> dict[int, Expr]:
 def formula_metrics(root: FormulaRoot) -> dict[str, int]:
     seen = reachable(root.planes)
     refs = sum(len(n.args) for n in seen.values())
-    id_bits = _bits(max(1, len(seen)))
+    id_bits = bits(max(1, len(seen)))
     param_bits = sum(n.local_param_bits for n in seen.values())
     # Long-lived formulas can be deep.  Compute depth iteratively.
     depth: dict[int, int] = {}

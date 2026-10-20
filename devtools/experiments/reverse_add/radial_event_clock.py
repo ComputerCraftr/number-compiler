@@ -13,8 +13,8 @@ from dataclasses import dataclass
 from math import comb
 
 from number_compiler.arithmetic.fields.event_innovation import (
-    _children,
-    _Context,
+    EventContext,
+    event_children,
     normalize_event_sum,
 )
 from number_compiler.arithmetic.fields.radial_innovation import (
@@ -104,11 +104,11 @@ def expression_packets(
     extracted packets and subsequent arithmetic, not that earlier transaction.
     """
     normal = normalize_event_sum(arena, expression)
-    pending = [(1, _Context(normal))]
+    pending = [(1, EventContext(normal))]
     packets: list[RadialEventPacket] = []
     while pending:
         weight, state = pending.pop()
-        edges = _children(arena, state)
+        edges = event_children(arena, state)
         if edges:
             pending.extend((weight * c, child) for c, child in edges)
             continue

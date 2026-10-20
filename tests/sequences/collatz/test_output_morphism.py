@@ -39,7 +39,7 @@ from tests.support.reference_arithmetic import literal_events as _oracle
 
 
 def _digits(n: int) -> tuple[int, ...]:
-    result = []
+    result: list[int] = []
     while n:
         n, d = divmod(n, 64)
         result.append(d)
@@ -98,10 +98,10 @@ def test_different_domain_geometries_share_complete_carry_correction_morphisms()
     actions = tuple(
         bits.constant(FunctionSignature((port,), DOMAIN), d) for d in range(5)
     )
-    outputs = []
+    outputs: list[tuple[FactoredFunctionID, tuple[FactoredFunctionID, ...]]] = []
     for geometry in ((0, 2, 1), (0, 3, 1), (0, 2, 3), (0, 3, 3)):
         carry = incoming
-        corrections = []
+        corrections: list[FactoredFunctionID] = []
         for domain in geometry:
             next_carry = morphism.carry_apply(actions[domain], carry)
             corrections.append(morphism.correction(carry, next_carry))
@@ -209,10 +209,10 @@ def test_free_future_consumer_defers_carry_and_root_shift_without_raw_midpoint(
         tuple(radix64_free_directional_row(phase, incoming) for incoming in range(3))
         for phase in range(6)
     )
-    fixed_counts = []
-    free_rows = []
+    fixed_counts: list[int] = []
+    free_rows: list[tuple[tuple[int | None, int | None], ...]] = []
     for value in range(64):
-        row = []
+        row: list[tuple[int | None, int | None]] = []
         for phase, incoming in product(range(6), range(3)):
             binding = {
                 ports[0].variable: value,
@@ -247,7 +247,9 @@ def test_free_future_consumer_defers_carry_and_root_shift_without_raw_midpoint(
     assert len(set(free_rows)) == 64
 
 
-def test_exact_shift_uses_adjacent_directional_value_views() -> None:
+def _assert_exact_shift_uses_adjacent_directional_value_views(
+    samples: tuple[int, ...],
+) -> None:
     bits = BitFunctionArena(ResourceLedger(max_nodes=200000))
     morphism, ports, raw, adjacent = _adjacent_raw_variables(bits)
     for shift in range(6):
@@ -256,7 +258,7 @@ def test_exact_shift_uses_adjacent_directional_value_views() -> None:
         target = morphism.shift(raw, adjacent, shift)
         target_domain = morphism.shift_domain(raw, adjacent, shift)
         assert morphism.join_directional(left, right, shift) == target
-        for a, b in product(range(64), repeat=2):
+        for a, b in product(samples, repeat=2):
             binding = {ports[0].variable: a, ports[1].variable: b}
             assert bits.evaluate(left, binding) == a >> shift
             assert bits.evaluate(right, binding) == b % (1 << shift)
@@ -264,6 +266,15 @@ def test_exact_shift_uses_adjacent_directional_value_views() -> None:
             assert bits.evaluate(target_domain, binding) == radix64_domain(
                 (a + 64 * b) >> shift & 63
             )
+
+
+def test_exact_shift_uses_adjacent_directional_value_views() -> None:
+    _assert_exact_shift_uses_adjacent_directional_value_views((0, 1, 2, 31, 32, 62, 63))
+
+
+@pytest.mark.validation
+def test_validation_exact_shift_checks_every_radix64_digit_pair() -> None:
+    _assert_exact_shift_uses_adjacent_directional_value_views(tuple(range(64)))
 
 
 def test_live_radix64_path_avoids_redundant_field_construction(
@@ -326,7 +337,7 @@ def test_1152_frame_translation_preserves_target_and_exact_weight_difference() -
 
 
 def test_two_event_stream_exhausts_small_sources_and_boundary_phases() -> None:
-    phases = set()
+    phases: set[int] = set()
     for n in range(1, 4096, 2):
         result = compose_radix64_events(iter(_digits(n)), 2)
         expected, k = _oracle(n, 2)

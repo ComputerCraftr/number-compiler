@@ -31,12 +31,10 @@ from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.actions.tile_action_algebra import (
     ActionSemanticKey,
     PrimitiveTileAction,
+    TileActionAlgebra,
     blank_context_metadata,
     retained_action_nodes,
     retained_reverse_plan_nodes,
-)
-from number_compiler.hashlife.actions.tile_action_algebra import (
-    compose_actions as _compose_actions,
 )
 from number_compiler.hashlife.execution.tile_boundary_transfer import (
     bind_boundaries as _bind_boundaries,
@@ -45,7 +43,7 @@ from number_compiler.hashlife.execution.tile_boundary_transfer import (
     transfer_view as _transfer_view,
 )
 from number_compiler.hashlife.execution.tile_boundary_transfer import (
-    validate_boundaries as _validate_boundaries,
+    validate_boundaries as validate_boundaries,
 )
 from number_compiler.hashlife.execution.tile_execution_adapter import (
     FamilyTileHooks,
@@ -53,6 +51,7 @@ from number_compiler.hashlife.execution.tile_execution_adapter import (
     is_finite_pair_transfer,
 )
 from number_compiler.hashlife.execution.tile_fused_kernel import (
+    FusedKernelAlgorithms,
     LeafProductKey,
 )
 from number_compiler.hashlife.execution.tile_fused_kernel import (
@@ -80,13 +79,13 @@ from number_compiler.hashlife.execution.tile_kernel_validation import (
     admitted_action_record as _admitted_action_record,
 )
 from number_compiler.hashlife.execution.tile_kernel_validation import (
-    validate_fused_action as _validate_fused_action,
+    validate_fused_action as fused_action_validator,
 )
 from number_compiler.hashlife.execution.tile_kernel_validation import (
-    validate_fused_wiring as _validate_fused_wiring,
+    validate_fused_wiring as fused_wiring_validator,
 )
 from number_compiler.hashlife.execution.tile_kernel_validation import (
-    validate_input as _validate_input,
+    validate_input as input_validator,
 )
 from number_compiler.hashlife.interfaces.diamond_kernel import (
     DiamondKernelArena,
@@ -145,7 +144,7 @@ if TYPE_CHECKING:
     )
 
 
-class PrimitiveTileKernelAdapter:
+class PrimitiveTileKernelAdapter(TileActionAlgebra, FusedKernelAlgorithms):
     """Action authority and scheduler adapter for immutable primitive kernels."""
 
     complete_via_midpoint_tiles = True
@@ -279,7 +278,7 @@ class PrimitiveTileKernelAdapter:
         if found is not None:
             if type(found) is not int:
                 raise TypeError("primitive action interner contains an integer alias")
-            result = self._handle(found)
+            result = self.scoped_handle(found)
             record = self._action(result)
             if (
                 record.kernel != kernel
@@ -288,7 +287,7 @@ class PrimitiveTileKernelAdapter:
                 or record.cocycle != action_cocycle
                 or record.repetitions != 1
                 or not record.homogeneous
-                or record.spatial_events_add != self._spatial_events_add(effect)
+                or record.spatial_events_add != self.spatial_events_add(effect)
                 or blank_context_metadata(record)
                 != (
                     effect.blank_left_tail,
@@ -317,7 +316,7 @@ class PrimitiveTileKernelAdapter:
                 None,
                 action_cocycle,
                 1,
-                spatial_events_add=self._spatial_events_add(effect),
+                spatial_events_add=self.spatial_events_add(effect),
                 blank_left_tail=effect.blank_left_tail,
                 blank_right_tail=effect.blank_right_tail,
                 stable_blank_output=effect.stable_blank_output,
@@ -335,15 +334,15 @@ class PrimitiveTileKernelAdapter:
                 self.ledger.release(owner, entries, nodes)
             raise
         self.ledger.bump(_shared_keys.TILE_TEMPORAL_ACTION_PUBLICATIONS)
-        return self._handle(local_id)
+        return self.scoped_handle(local_id)
 
-    def _spatial_events_add(self, effect: BlockEffect) -> bool:
+    def spatial_events_add(self, effect: BlockEffect) -> bool:
         hooks = self.family_hooks
         return (
             hooks is not None and hooks.owns_effect(effect) and hooks.spatial_events_add
         )
 
-    def _handle(self, local_id: int) -> FieldCellActionID:
+    def scoped_handle(self, local_id: int) -> FieldCellActionID:
         return FieldCellActionID(self.owner, "field-cell-action", local_id)
 
     def validate_action(self, action: FieldCellActionID) -> None:
@@ -369,10 +368,10 @@ class PrimitiveTileKernelAdapter:
         )
 
     def validate_input(self, action: FieldCellActionID, source: TileID) -> None:
-        _validate_input(self, action, source)
+        input_validator(self, action, source)
 
     def validate_output(self, action: FieldCellActionID, output: TileID) -> None:
-        _validate_input(self, action, output, output=True)
+        input_validator(self, action, output, output=True)
 
     def validate_boundaries(
         self,
@@ -380,7 +379,7 @@ class PrimitiveTileKernelAdapter:
         boundaries: BoundaryTileOperands,
         wiring: ResultWiring,
     ) -> None:
-        _validate_boundaries(self, action, boundaries, wiring)
+        validate_boundaries(self, action, boundaries, wiring)
 
     def bind_boundaries(
         self, action: FieldCellActionID, context: BoundPorts
@@ -397,7 +396,7 @@ class PrimitiveTileKernelAdapter:
         return _transfer_view(self, action, view, context, side)
 
     def validate_fused_action(self, action: FieldCellActionID) -> None:
-        _validate_fused_action(self, action)
+        fused_action_validator(self, action)
 
     def validate_fused_wiring(
         self,
@@ -405,7 +404,7 @@ class PrimitiveTileKernelAdapter:
         producer: ResultWiring,
         result: ResultWiring,
     ) -> None:
-        _validate_fused_wiring(self, action, producer, result)
+        fused_wiring_validator(self, action, producer, result)
 
     def _action(self, action: FieldCellActionID) -> PrimitiveTileAction:
         self.validate_action(action)
@@ -464,7 +463,7 @@ class PrimitiveTileKernelAdapter:
         before: FieldCellActionID,
         after: FieldCellActionID,
     ) -> FieldCellActionID:
-        self.validate_action(result := _compose_actions(self, before, after))
+        self.validate_action(result := self.compose_action_records(before, after))
         return result
 
     def power(
@@ -876,7 +875,7 @@ class PrimitiveTileKernelAdapter:
         kernel = self.kernels.kernel(self._action(action).kernel)
         if left.physical_ticks != right.physical_ticks:
             raise ValueError("spatial children represent different temporal actions")
-        if self._spatial_events_add(kernel.effect):
+        if self.spatial_events_add(kernel.effect):
             event_weight = left.event_weight + right.event_weight
             if event_weight not in (0, 1) or left.frame_shift or right.frame_shift:
                 raise ValueError("additive-event children have invalid observations")

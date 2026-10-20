@@ -25,6 +25,7 @@ from number_compiler.hashlife.actions.tile_action_algebra import (
 from number_compiler.hashlife.actions.tile_action_algebra import (
     PrimitiveTileAction as _Action,
 )
+from number_compiler.hashlife.execution.tile_application import TileApplication
 from number_compiler.hashlife.execution.tile_fused_kernel import LeafProductKey
 from number_compiler.hashlife.execution.tile_kernel import (
     PrimitiveTileKernelAdapter,
@@ -33,7 +34,6 @@ from number_compiler.hashlife.execution.tile_kernel_contract import (
     TILE_KERNEL_CONTRACT,
 )
 from number_compiler.hashlife.execution.tile_scheduler import (
-    TileApplication,
     TileScheduler,
 )
 from number_compiler.hashlife.interfaces.diamond_kernel import PrimitiveKernel

@@ -4,7 +4,7 @@ from typing import cast
 
 import pytest
 
-from tests.hashlife.tiles.test_tile_dependency_leases import _request
+from tests.hashlife.tiles.test_tile_dependency_leases import tile_dependency_request
 from tests.support.assertions import assert_rejected_atomically
 
 
@@ -14,16 +14,18 @@ def test_result_pin_rejects_application_alias_before_mutation(
     alias: object, warm: bool
 ) -> None:
     ledger, _tiles, scheduler, source, dependency, boundary, app, key, result = (
-        _request()
+        tile_dependency_request()
     )
     try:
         if warm:
-            scheduler._pin(app.identity, key, result)
+            scheduler.pin_result(app.identity, key, result)
             fresh = scheduler.results.lookup(key)
             assert fresh is not None
             result = fresh
         assert_rejected_atomically(
-            ledger, lambda: scheduler._pin(cast(int, alias), key, result), ValueError
+            ledger,
+            lambda: scheduler.pin_result(cast(int, alias), key, result),
+            ValueError,
         )
         assert result.result.output is not None
     finally:
@@ -36,13 +38,13 @@ def test_result_pin_rejects_application_alias_before_mutation(
 
 def test_result_pin_rejects_retired_application_and_preserves_borrowed_lease() -> None:
     ledger, _tiles, scheduler, source, dependency, boundary, app, key, result = (
-        _request()
+        tile_dependency_request()
     )
     app.close()
     before = ledger.snapshot()
     try:
         with pytest.raises(ValueError):
-            scheduler._pin(app.identity, key, result)
+            scheduler.pin_result(app.identity, key, result)
         assert ledger.snapshot() == before
         assert result.result.output is not None
     finally:
@@ -63,24 +65,26 @@ def test_warm_causal_pin_does_not_enumerate_the_dependency_store(
     key_type = TypeVar("key_type")
     value_type = TypeVar("value_type")
     _ledger, _tiles, scheduler, source, dependency, boundary, app, key, result = (
-        _request()
+        tile_dependency_request()
     )
-    scheduler._pin_causal(app.identity, key, result)
+    scheduler.pin_causal(app.identity, key, result)
     fresh = scheduler.results.lookup(key)
     assert fresh is not None
-    original = LedgerDict.__iter__
+
+    def original(store: LedgerDict[key_type, value_type]) -> Iterator[key_type]:
+        return iter(store.backing_store)
 
     def bounded_iteration(
         store: LedgerDict[key_type, value_type],
     ) -> Iterator[key_type]:
-        if store is scheduler._causal_dependencies.records:
+        if store is scheduler.dependency_leases.records:
             raise AssertionError("warm pin enumerated all retained dependencies")
         return original(store)
 
     try:
         with monkeypatch.context() as patch:
             patch.setattr(LedgerDict, "__iter__", bounded_iteration)
-            scheduler._pin_causal(app.identity, key, fresh)
+            scheduler.pin_causal(app.identity, key, fresh)
     finally:
         fresh.close()
         app.close()
@@ -91,11 +95,11 @@ def test_warm_causal_pin_does_not_enumerate_the_dependency_store(
 
 def test_repinning_the_owned_causal_lease_does_not_close_it() -> None:
     _ledger, _tiles, scheduler, source, dependency, boundary, app, key, result = (
-        _request()
+        tile_dependency_request()
     )
     try:
-        scheduler._pin_causal(app.identity, key, result)
-        scheduler._pin_causal(app.identity, key, result)
+        scheduler.pin_causal(app.identity, key, result)
+        scheduler.pin_causal(app.identity, key, result)
         assert result.result.output is not None
     finally:
         app.close()

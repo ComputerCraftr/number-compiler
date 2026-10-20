@@ -10,7 +10,6 @@ from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
 from number_compiler.resources.ledger import (
-    OwnedMemo,
     ResourceLedger,
     ResourceScope,
 )
@@ -18,20 +17,39 @@ from number_compiler.sequences.reverse_add.q19_output import (
     ReversePairOutputOccurrence,
     ReversePairQ19OutputOwner,
 )
+from number_compiler.sequences.reverse_add.q19_output_contracts import (
+    ReversePairQ19OutputAuditSnapshot,
+)
 from number_compiler.sequences.reverse_add.source_images import (
     ReverseSourceImageWorkspace,
 )
 from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
+from tests.support.owned_memo_failures import fail_owned_memo_dispose_once
 from tests.support.payload_audit_failures import (
     assert_payload_publication_released,
     fail_after_payload_audit_publication,
 )
 
 
+def _assert_subordinate_cleanup(state: ReversePairQ19OutputAuditSnapshot) -> None:
+    assert state.summaries.disposed
+    assert all(
+        memo.disposed
+        for memo in (
+            state.projector_forward,
+            state.projector_reverse,
+            state.projector_block,
+            state.projector_forward_power,
+            state.projector_reverse_power,
+        )
+    )
+    assert state.arena.audit_snapshot().cleanup_complete is True
+
+
 def _q19_workspace() -> tuple[ReverseSourceImageWorkspace, ReversePairQ19OutputOwner]:
     workspace = ReverseSourceImageWorkspace(ResourceLedger(), 196, 3)
     tuple(workspace.iter_digits())
-    owner = workspace.adapter._q19_owner
+    owner = workspace.adapter.audit_snapshot().q19_owner
     assert owner is not None
     return workspace, owner
 
@@ -57,17 +75,21 @@ def _fail_port_disposal_once(
 def test_successful_q19_construction_keeps_its_owners_open() -> None:
     ledger = ResourceLedger()
     owner = ReversePairQ19OutputOwner(ledger, (6, 9, 1), base=10)
-    contract_key = (id(owner), "reverse_add")
     try:
-        assert not owner._disposed
-        assert not owner._cleanup_complete
-        assert not owner._issued._disposed
-        assert contract_key in ledger._payload_audit_contracts
+        state = owner.audit_snapshot()
+        assert not state.disposed
+        assert not state.cleanup_complete
+        assert not state.issued.disposed
+        assert ledger.audit_payload_contracts().owns_root(
+            "reverse_add", owner, ledger=ledger
+        )
         assert ledger.entries > 0 and ledger.nodes > 0
     finally:
         owner.dispose()
-    assert owner._cleanup_complete
-    assert contract_key not in ledger._payload_audit_contracts
+    assert owner.audit_snapshot().cleanup_complete
+    assert not ledger.audit_payload_contracts().owns_root(
+        "reverse_add", owner, ledger=ledger
+    )
     assert ledger.audit_payload_contracts().invalid == frozenset()
     assert ledger.entries == ledger.nodes == 0
 
@@ -121,21 +143,21 @@ def test_deferred_q19_scratch_disposal_can_be_retried_after_failure(
 
     def fail_scratch_once(resource_owner: int) -> None:
         nonlocal failed_once
-        if resource_owner == owner._scratch_owner and not failed_once:
+        if resource_owner == owner.scratch_owner and not failed_once:
             failed_once = True
             raise RuntimeError("injected deferred scratch disposal failure")
         original_mark_disposed(resource_owner)
 
     monkeypatch.setattr(ledger, "mark_disposed", fail_scratch_once)
     owner.dispose()
-    assert not owner._cleanup_complete
+    assert not owner.audit_snapshot().cleanup_complete
     with pytest.raises(RuntimeError, match="deferred scratch disposal"):
         next(stream)
-    assert not owner._cleanup_complete
+    assert not owner.audit_snapshot().cleanup_complete
 
     monkeypatch.setattr(ledger, "mark_disposed", original_mark_disposed)
     owner.dispose()
-    assert owner._cleanup_complete
+    assert owner.audit_snapshot().cleanup_complete
     assert ledger.entries == ledger.nodes == 0
 
 
@@ -144,8 +166,8 @@ def test_failed_growth_admission_does_not_publish_candidate(
 ) -> None:
     workspace, owner = _q19_workspace()
     try:
-        before = set(owner._issued)
-        exact_candidate = owner._candidate
+        before = set(owner.audit_snapshot().issued.payload_view)
+        exact_candidate = owner.candidate
 
         def overstate_growth(
             root: int, temporal_steps: int
@@ -157,11 +179,11 @@ def test_failed_growth_admission_does_not_publish_candidate(
                 growth=candidate.growth + 2,
             )
 
-        monkeypatch.setattr(owner, "_candidate", overstate_growth)
+        monkeypatch.setattr(owner, "candidate", overstate_growth)
         with pytest.raises(AssertionError, match="one reverse/add step changed width"):
             owner.apply_pair_step(owner.initial)
 
-        assert set(owner._issued) == before
+        assert set(owner.audit_snapshot().issued.payload_view) == before
     finally:
         workspace.dispose()
         assert workspace.ledger.entries == workspace.ledger.nodes == 0
@@ -172,34 +194,27 @@ def test_q19_disposal_attempts_all_owners_and_retries_failed_release(
 ) -> None:
     workspace, owner = _q19_workspace()
     try:
-        target = owner._issued
-        original_dispose = OwnedMemo.dispose
+        before = owner.audit_snapshot()
+        target_owner = before.issued_owner
         failure = OSError("injected occurrence-store disposal failure")
-        failed_once = False
-
-        def fail_once(memo: OwnedMemo[object, object]) -> None:
-            nonlocal failed_once
-            if memo is target and not failed_once:
-                failed_once = True
-                raise failure
-            original_dispose(memo)
-
-        monkeypatch.setattr(OwnedMemo, "dispose", fail_once)
+        injected = fail_owned_memo_dispose_once(
+            monkeypatch, lambda memo: memo.owner == target_owner, failure
+        )
         with pytest.raises(OSError) as caught:
             owner.dispose()
         assert caught.value is failure
-        assert owner._disposed
-        assert not owner._cleanup_complete
-        assert not target._disposed
-        assert owner._summaries._disposed
-        assert all(memo._disposed for memo in owner._projector_memos)
-        assert owner.arena._cleanup_complete
+        assert injected.triggered
+        after_first_state = owner.audit_snapshot()
+        assert after_first_state.disposed
+        assert not after_first_state.cleanup_complete
+        assert not after_first_state.issued.disposed
+        _assert_subordinate_cleanup(after_first_state)
 
         owned_accounts = (
-            {target.owner, owner._summaries.owner}
-            | {memo.owner for memo in owner._projector_memos}
-            | set(owner.arena.owners)
-            | {owner._scratch_owner}
+            {after_first_state.issued_owner, after_first_state.summary_owner}
+            | set(after_first_state.projector_owners)
+            | set(after_first_state.arena.owners)
+            | {owner.scratch_owner}
         )
         after_first = {
             account.owner: account for account in workspace.ledger.inventory()
@@ -208,12 +223,13 @@ def test_q19_disposal_attempts_all_owners_and_retries_failed_release(
             after_first[account].disposed
             and after_first[account].entries == 0
             and after_first[account].nodes == 0
-            for account in owned_accounts - {target.owner}
+            for account in owned_accounts - {target_owner}
         )
 
         owner.dispose()
-        assert owner._cleanup_complete
-        assert target._disposed
+        after_retry_state = owner.audit_snapshot()
+        assert after_retry_state.cleanup_complete
+        assert after_retry_state.issued.disposed
         after_retry = {
             account.owner: account for account in workspace.ledger.inventory()
         }
@@ -240,13 +256,14 @@ def test_adapter_disposal_releases_q19_after_an_independent_port_failure(
         with pytest.raises(OSError) as caught:
             adapter.dispose()
         assert caught.value is failure
-        assert adapter._ports is ports
-        assert adapter._q19_owner is None
-        assert owner._cleanup_complete
-        assert adapter._recursive_occurrences._disposed
+        adapter_state = adapter.audit_snapshot()
+        assert adapter_state.ports is ports
+        assert adapter_state.q19_owner is None
+        assert owner.audit_snapshot().cleanup_complete
+        assert adapter_state.recursive_occurrences.disposed
 
         adapter.dispose()
-        assert adapter._ports is None
+        assert adapter.audit_snapshot().ports is None
     finally:
         workspace.dispose()
     assert workspace.ledger.entries == workspace.ledger.nodes == 0
@@ -264,18 +281,20 @@ def test_workspace_disposal_retries_failed_adapter_release(
         with pytest.raises(OSError) as caught:
             workspace.dispose()
         assert caught.value is failure
-        assert workspace._disposed and not workspace._cleanup_complete
-        assert adapter._ports is ports
-        assert adapter._q19_owner is None
-        assert owner._cleanup_complete
+        workspace_state = workspace.audit_snapshot()
+        adapter_state = adapter.audit_snapshot()
+        assert workspace_state.disposed and not workspace_state.cleanup_complete
+        assert adapter_state.ports is ports
+        assert adapter_state.q19_owner is None
+        assert owner.audit_snapshot().cleanup_complete
         with pytest.raises(ValueError, match="disposed reverse source workspace"):
             workspace.width()
 
         workspace.dispose()
-        assert workspace._cleanup_complete
-        assert adapter._ports is None
+        assert workspace.audit_snapshot().cleanup_complete
+        assert adapter.audit_snapshot().ports is None
     finally:
-        if not workspace._cleanup_complete:
+        if not workspace.audit_snapshot().cleanup_complete:
             workspace.dispose()
     assert workspace.ledger.entries == workspace.ledger.nodes == 0
 
@@ -287,38 +306,39 @@ def test_q19_constructor_keeps_construction_error_in_cleanup_chain(
     owners: list[ReversePairQ19OutputOwner] = []
     construction_error = RuntimeError("injected initial construction failure")
     cleanup_error = OSError("injected rollback release failure")
-    failed_once = False
 
     def fail_initial(owner: ReversePairQ19OutputOwner) -> ReversePairOutputOccurrence:
         owners.append(owner)
         raise construction_error
 
-    original_dispose = OwnedMemo.dispose
-
-    def fail_once(memo: OwnedMemo[object, object]) -> None:
-        nonlocal failed_once
-        if owners and memo is owners[0]._issued and not failed_once:
-            failed_once = True
-            raise cleanup_error
-        original_dispose(memo)
+    injected = fail_owned_memo_dispose_once(
+        monkeypatch,
+        lambda memo: (
+            bool(owners)
+            and memo.ledger is ledger
+            and ledger.account_status(memo.owner).role
+            == "reverse_pair_output_occurrence"
+        ),
+        cleanup_error,
+    )
 
     monkeypatch.setattr(ReversePairQ19OutputOwner, "_make_initial", fail_initial)
-    monkeypatch.setattr(OwnedMemo, "dispose", fail_once)
     with pytest.raises(OSError) as caught:
         ReversePairQ19OutputOwner(ledger, (6, 9, 1), base=10)
 
     assert caught.value is cleanup_error
+    assert injected.triggered
     assert caught.value.__cause__ is construction_error
     assert len(owners) == 1
     owner = owners[0]
-    assert owner._disposed and not owner._cleanup_complete
-    assert owner._summaries._disposed
-    assert all(memo._disposed for memo in owner._projector_memos)
-    assert owner.arena._cleanup_complete
+    state = owner.audit_snapshot()
+    assert state.initial is None
+    assert state.disposed and not state.cleanup_complete
+    _assert_subordinate_cleanup(state)
 
     owner.dispose()
-    assert owner._cleanup_complete
-    assert owner._issued._disposed
+    assert owner.audit_snapshot().cleanup_complete
+    assert owner.audit_snapshot().issued.disposed
     assert ledger.entries == ledger.nodes == 0
 
 
@@ -370,5 +390,6 @@ def test_q19_constructor_rolls_back_if_audit_publication_fails_after_binding(
     assert len(owners) == 1
     owner = owners[0]
     assert isinstance(owner, ReversePairQ19OutputOwner)
-    assert owner._disposed and owner._cleanup_complete
+    assert owner.audit_snapshot().disposed
+    assert owner.audit_snapshot().cleanup_complete
     assert_payload_publication_released(ledger, owner, "reverse_add")

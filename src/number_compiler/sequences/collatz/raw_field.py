@@ -38,6 +38,7 @@ from number_compiler.arithmetic.carry.carry_symmetry import (
     collatz_mul3_carry_action_arena,
     collatz_mul3_carry_word_action,
 )
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.arithmetic.contracts.iterative_queries import defer_dependencies
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.fields.two_adic import v2_positive
@@ -190,7 +191,7 @@ def summarize_collatz_sentinel_word(
     """Summarize a canonical RLE/SLP digit word without expanding run lengths."""
     from number_compiler.arithmetic.automata.program_word import CanonicalWord
 
-    if not isinstance(word, CanonicalWord):
+    if not is_runtime_instance(word, CanonicalWord):
         raise TypeError(type(word))
     sentinel = affine_sentinel_digit(base)
     memo: dict[int, CollatzSentinelBoundarySummary] = {}

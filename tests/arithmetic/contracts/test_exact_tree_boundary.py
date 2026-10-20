@@ -95,12 +95,12 @@ def test_public_point_and_width_reject_discarded_exact_future_tree(
         return 1
 
     if isinstance(term, ReverseAddPoweredTerm):
-        reverse_workspace = term._source_workspace()
+        reverse_workspace = term.source_workspace()
         monkeypatch.setattr(
             type(reverse_workspace.adapter), "admit_source", eager_callback
         )
     else:
-        collatz_workspace = term._source_image()
+        collatz_workspace = term.source_image()
         monkeypatch.setattr(type(collatz_workspace), "image_node", eager_callback)
     with pytest.raises(ExactTreeConstructionForbidden):
         if observer == "digit":
@@ -117,7 +117,7 @@ def test_public_radix_queries_reject_transient_construction_in_callback(
     result = NumberCompiler().project(CollatzTermQuery(4, seed=27, radix=radix))
     assert isinstance(result.payload, PoweredCollatzTermPayload)
     term = result.payload.term
-    workspace = term._source_image()
+    workspace = term.source_image()
 
     def eager_callback(*args: object) -> int:
         DyadicSpan(0, 0, ())
@@ -233,7 +233,7 @@ owner = workspace.adapter._q19_owner
 assert owner is not None
 image = workspace._image
 assert image is not None
-payload = workspace.scheduler._source_image_core().view(image).payload
+payload = workspace.scheduler.source_image_core().view(image).payload
 assert isinstance(payload, ReverseImagePayload)
 assert payload.pair_output is not None
 owner.validate(payload.pair_output)
@@ -290,6 +290,11 @@ def test_private_source_allocator_rejects_before_reserving_without_source_scope(
     geometry = SourceGeometry(ledger, ExactSource((1,), 2, blank=2, extent=4))
     assert_rejected_atomically(
         ledger,
-        lambda: source_reads_only(lambda: geometry._leaf(1))(),
+        lambda: source_reads_only(
+            lambda: cast(
+                "Callable[[int], DyadicTile]",
+                object.__getattribute__(geometry, "_leaf"),
+            )(1)
+        )(),
         ExactTreeConstructionForbidden,
     )

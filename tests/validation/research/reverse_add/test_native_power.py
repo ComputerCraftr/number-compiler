@@ -28,7 +28,7 @@ __all__ = ("symmetric_word",)
 
 def normalize_pair_digits(full: tuple[int, ...], base: int) -> tuple[int, ...]:
     carry = 0
-    out = []
+    out: list[int] = []
     for s in full:
         z = s + carry
         out.append(z % base)
@@ -125,12 +125,14 @@ def test_native_two_step_does_not_construct_or_cache_first_successor(
     )
     # The only native-T2 metadata entry retains the completed result, not tau/K.
     native_keys = [
-        key for key in arena._metadata if key and key[0] == "native-two-step"
+        key for key in arena.cache_snapshot()[1] if key and key[0] == "native-two-step"
     ]
     assert len(native_keys) == 1
-    assert arena._metadata[native_keys[0]] is compiled
-    assert not any(key and str(key[0]).startswith("tau") for key in arena._metadata)
-    assert arena._derived == {}  # no source/tau carry identity is installed
+    assert arena.cache_snapshot()[1][native_keys[0]] is compiled
+    assert not any(
+        key and str(key[0]).startswith("tau") for key in arena.cache_snapshot()[1]
+    )
+    assert arena.cache_snapshot()[2] == {}  # no source/tau carry identity is installed
 
 
 def test_native_two_step_and_composed_reference_are_extensionally_identical() -> None:
@@ -192,11 +194,13 @@ def test_native_four_step_is_not_composed_from_native_t2_or_successor(
         expected = reference_successor(expected, 10)
     assert materialize_values(actual) == expected
     native_keys = [
-        key for key in arena._metadata if key and key[0] == "native-four-step"
+        key for key in arena.cache_snapshot()[1] if key and key[0] == "native-four-step"
     ]
     assert len(native_keys) == 1
-    assert not any(key and key[0] == "native-two-step" for key in arena._metadata)
-    assert arena._derived == {}
+    assert not any(
+        key and key[0] == "native-two-step" for key in arena.cache_snapshot()[1]
+    )
+    assert arena.cache_snapshot()[2] == {}
 
 
 def test_native_four_step_matches_t2_squared_but_uses_no_intermediate_root_cache() -> (
@@ -221,9 +225,11 @@ def test_native_four_step_matches_t2_squared_but_uses_no_intermediate_root_cache
     assert materialize_values(direct) == materialize_values(squared)
     assert formula_metrics(direct) == formula_metrics(squared)
     direct_keys = [
-        k for k in direct_arena._metadata if k and k[0] == "native-four-step"
+        k for k in direct_arena.cache_snapshot()[1] if k and k[0] == "native-four-step"
     ]
-    square_keys = [k for k in square_arena._metadata if k and k[0] == "native-two-step"]
+    square_keys = [
+        k for k in square_arena.cache_snapshot()[1] if k and k[0] == "native-two-step"
+    ]
     assert len(direct_keys) == 1
     assert len(square_keys) == 2
 
@@ -278,13 +284,15 @@ def test_general_native_power_matches_reference_without_semantic_intermediate_ro
             assert compiled.growths == tuple(growths)
             assert compiled.widths == tuple(widths)
             if steps:
-                keys = [k for k in arena._metadata if k and k[0] == "native-power"]
+                keys = [
+                    k for k in arena.cache_snapshot()[1] if k and k[0] == "native-power"
+                ]
                 assert len(keys) == 1
                 assert not any(
                     k and k[0] in {"native-two-step", "native-four-step"}
-                    for k in arena._metadata
+                    for k in arena.cache_snapshot()[1]
                 )
-                assert arena._derived == {}
+                assert arena.cache_snapshot()[2] == {}
 
 
 def test_general_native_power_digit_projector() -> None:

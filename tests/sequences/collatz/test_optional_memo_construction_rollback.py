@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sized
+from typing import cast
 
 import pytest
 
@@ -21,6 +22,43 @@ from number_compiler.sequences.collatz.physical_images import (
     CollatzPhysicalImageWorkspace,
 )
 from tests.support.ledger_failures import assert_constructor_rollback
+
+
+def _boundary_memo(
+    workspace: CollatzPhysicalImageWorkspace,
+) -> OwnedMemo[str, CollatzBoundaryMacro | BorderReturnMacro] | None:
+    return cast(
+        OwnedMemo[str, CollatzBoundaryMacro | BorderReturnMacro] | None,
+        object.__getattribute__(workspace, "_boundary_macro_memo"),
+    )
+
+
+def _innovation_memo(
+    workspace: CollatzPhysicalImageWorkspace,
+) -> OwnedMemo[str, InnovationTapeObservation] | None:
+    return cast(
+        OwnedMemo[str, InnovationTapeObservation] | None,
+        object.__getattribute__(workspace, "_innovation_observation_memo"),
+    )
+
+
+def _is_closed(workspace: CollatzPhysicalImageWorkspace) -> bool:
+    return cast(bool, object.__getattribute__(workspace, "_closed"))
+
+
+def _rollback_construction(workspace: CollatzPhysicalImageWorkspace) -> None:
+    cleanup = cast(
+        Callable[[], None],
+        object.__getattribute__(workspace, "_rollback_construction"),
+    )
+    cleanup()
+
+
+def _memo_dispose() -> Callable[[OwnedMemo[object, object]], None]:
+    return cast(
+        Callable[[OwnedMemo[object, object]], None],
+        object.__getattribute__(OwnedMemo, "dispose"),
+    )
 
 
 @pytest.mark.parametrize(
@@ -123,7 +161,7 @@ def test_failed_boundary_template_memo_construction_can_retry(
     assert len(registrations) == 1
     assert tuple(registrations.values()) == (2,)
     assert_constructor_rollback(ledger, initial_inventory)
-    assert memo._templates is None
+    assert object.__getattribute__(memo, "_templates") is None
 
     monkeypatch.setattr(ledger, "register_container", original)
     try:
@@ -149,8 +187,8 @@ def _workspace_with_optional_memos() -> tuple[
         include_innovation_tape=True,
         innovation_modulus=49,
     )
-    boundary = workspace._boundary_macro_memo
-    innovation = workspace._innovation_observation_memo
+    boundary = _boundary_memo(workspace)
+    innovation = _innovation_memo(workspace)
     assert boundary is not None and innovation is not None
     return ledger, workspace, boundary, innovation
 
@@ -159,7 +197,7 @@ def test_workspace_cleanup_retains_failed_owner_for_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ledger, workspace, boundary, innovation = _workspace_with_optional_memos()
-    original = OwnedMemo.dispose
+    original = _memo_dispose()
     failed = False
 
     def fail_boundary_once(memo: OwnedMemo[object, object]) -> None:
@@ -174,15 +212,15 @@ def test_workspace_cleanup_retains_failed_owner_for_retry(
         workspace.dispose()
 
     assert failed
-    assert workspace._closed
-    assert workspace._boundary_macro_memo is boundary
-    assert workspace._innovation_observation_memo is None
+    assert _is_closed(workspace)
+    assert _boundary_memo(workspace) is boundary
+    assert _innovation_memo(workspace) is None
     assert ledger.inventory_owner(boundary.owner).entries > 0
     assert ledger.inventory_owner(innovation.owner).disposed
 
     monkeypatch.setattr(OwnedMemo, "dispose", original)
     workspace.dispose()
-    assert workspace._boundary_macro_memo is None
+    assert _boundary_memo(workspace) is None
     assert ledger.inventory_owner(boundary.owner).disposed
     assert ledger.entries == ledger.nodes == 0
 
@@ -191,7 +229,7 @@ def test_construction_rollback_attempts_all_cleanup_and_preserves_cause(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ledger, workspace, boundary, innovation = _workspace_with_optional_memos()
-    original = OwnedMemo.dispose
+    original = _memo_dispose()
     events: list[str] = []
 
     def fail_both_memos(memo: OwnedMemo[object, object]) -> None:
@@ -212,7 +250,7 @@ def test_construction_rollback_attempts_all_cleanup_and_preserves_cause(
             with pytest.raises(
                 ValueError, match="innovation cleanup failed"
             ) as failure:
-                workspace._rollback_construction()
+                _rollback_construction(workspace)
             assert failure.value.__cause__ is active
 
         assert events == ["boundary", "innovation"]
@@ -220,9 +258,9 @@ def test_construction_rollback_attempts_all_cleanup_and_preserves_cause(
         assert isinstance(boundary_failure, RuntimeError)
         assert str(boundary_failure) == "boundary cleanup failed"
         assert failure.value.__cause__ is construction_error
-        assert workspace._closed
-        assert workspace._boundary_macro_memo is boundary
-        assert workspace._innovation_observation_memo is innovation
+        assert _is_closed(workspace)
+        assert _boundary_memo(workspace) is boundary
+        assert _innovation_memo(workspace) is innovation
     finally:
         monkeypatch.setattr(OwnedMemo, "dispose", original)
         workspace.dispose()

@@ -220,7 +220,7 @@ def _reverse_domain(
         event_rows = tuple(events)
         growth_rows = tuple(growths)
         for index in range(1, len(pairs)):
-            factors = []
+            factors: list[tuple[int, tuple[int, ...]]] = []
             live = 0
             for order in orders:
                 result = _live_reverse_innovation(
@@ -294,7 +294,7 @@ def reverse_radial_audits() -> tuple[ReverseInnovationAudit, ...]:
 
 @cache
 @exact_oracle()
-def _symmetry_innovation_atom(
+def symmetry_innovation_atom(
     event: tuple[int, ...],
     growth: int,
     source_width: int,
@@ -311,7 +311,7 @@ def _symmetry_innovation_atom(
 
 
 @exact_oracle()
-def _live_reverse_symmetry_innovations_aligned(
+def live_reverse_symmetry_innovations_aligned(
     events: tuple[tuple[int, ...], ...],
     growths: tuple[int, ...],
     widths: tuple[int, ...],
@@ -341,7 +341,7 @@ def _live_reverse_symmetry_innovations_aligned(
     }
     for start in range(int(end) - 1, -1, -1):
         for order in orders:
-            atom = _symmetry_innovation_atom(
+            atom = symmetry_innovation_atom(
                 events[start],
                 growths[start],
                 widths[start],
@@ -389,7 +389,7 @@ def _reverse_symmetry_domain(
         growth_rows = tuple(growths)
         width_rows = tuple(widths)
         for index in range(1, len(pairs)):
-            aligned = _live_reverse_symmetry_innovations_aligned(
+            aligned = live_reverse_symmetry_innovations_aligned(
                 event_rows,
                 growth_rows,
                 width_rows,

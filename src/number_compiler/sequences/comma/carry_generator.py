@@ -17,16 +17,16 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from .arithmetic import (
-    _phase_prefix_displacement_from_transfer,
     cycle_transfer,
     decimal_sector,
+    phase_prefix_displacement_from_transfer,
 )
 
 WorkCharge = Callable[[int], None]
 BitsCharge = Callable[[int], None]
 
 
-def _charge(
+def charge_carry_work(
     charge_work: WorkCharge | None,
     charge_bits: BitsCharge | None,
     work: int,
@@ -107,7 +107,7 @@ class C1Phase:
         if type(steps) is not int or steps < 0:
             raise ValueError("comma c1 duration must be a nonnegative integer")
         _validate_phase(self)
-        _charge(charge_work, charge_bits, 4, steps, self.mod4, self.mod25)
+        charge_carry_work(charge_work, charge_bits, 4, steps, self.mod4, self.mod25)
         residue = steps % 50
         q4 = (self.sector - self.mod4) % 4 if residue % 2 else self.mod4
         q25 = _advance_mod25(self.mod25, self.sector, residue % 25)
@@ -202,7 +202,7 @@ def _fixed_sector_displacement(
     """
     entering_digit = phase.ones
     transfer = cycle_transfer(phase.sector, entering_digit)
-    _charge(
+    charge_carry_work(
         charge_work,
         charge_bits,
         12 + transfer.period,
@@ -210,7 +210,7 @@ def _fixed_sector_displacement(
         phase.suffix,
         extra_bits=4 * steps.bit_length() + 160,
     )
-    return _phase_prefix_displacement_from_transfer(transfer, steps)
+    return phase_prefix_displacement_from_transfer(transfer, steps)
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -242,7 +242,7 @@ class C1Return:
         _validate_phase(start)
         if type(steps) is not int or steps < 0:
             raise ValueError("comma c1 duration must be a nonnegative integer")
-        _charge(
+        charge_carry_work(
             charge_work,
             charge_bits,
             8,
@@ -257,7 +257,7 @@ class C1Return:
             charge_work=charge_work,
             charge_bits=charge_bits,
         )
-        _charge(
+        charge_carry_work(
             charge_work,
             charge_bits,
             1,
@@ -270,7 +270,7 @@ class C1Return:
         if numerator < 0 or numerator % 100:
             raise ArithmeticError("powered comma c1 displacement has a bad endpoint")
         count = numerator // 100
-        _charge(
+        charge_carry_work(
             charge_work,
             charge_bits,
             1,
@@ -282,7 +282,7 @@ class C1Return:
         )
         _initialize_return(self, start, target, steps, count)
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
         if getattr(self, "_seal", None) is not _RETURN_SEAL:
             raise ValueError("invalid or uninitialized comma c1 return")
         signature = _return_signature(
@@ -291,24 +291,29 @@ class C1Return:
         if getattr(self, "_witness", None) != signature:
             raise ValueError("comma c1 return fields disagree with their snapshot")
 
+    def structural_snapshot(self) -> tuple[C1Phase, C1Phase, int, int]:
+        """Return validated chronological fields for the bound-return owner."""
+        self.validate()
+        return self._start, self._target, self._steps, self._count
+
     @property
     def start(self) -> C1Phase:
-        self._validate()
+        self.validate()
         return self._start
 
     @property
     def target(self) -> C1Phase:
-        self._validate()
+        self.validate()
         return self._target
 
     @property
     def steps(self) -> int:
-        self._validate()
+        self.validate()
         return self._steps
 
     @property
     def count(self) -> int:
-        self._validate()
+        self.validate()
         return self._count
 
     def displacement(
@@ -318,8 +323,8 @@ class C1Return:
         charge_bits: BitsCharge | None = None,
     ) -> int:
         """Recover total fixed-sector displacement from the exact return."""
-        self._validate()
-        _charge(
+        self.validate()
+        charge_carry_work(
             charge_work,
             charge_bits,
             1,
@@ -340,11 +345,11 @@ class C1Return:
         """Compose chronological returns after checking their shared phase."""
         if type(after) is not C1Return:
             raise ValueError("comma c1 returns have different chronological endpoints")
-        self._validate()
-        after._validate()
+        self.validate()
+        after.validate()
         if self._target != after._start:
             raise ValueError("comma c1 returns have different chronological endpoints")
-        _charge(
+        charge_carry_work(
             charge_work,
             charge_bits,
             1,
@@ -356,7 +361,7 @@ class C1Return:
         )
         steps = self._steps + after._steps
         count = self._count + after._count
-        _charge(charge_work, charge_bits, 1, steps, count)
+        charge_carry_work(charge_work, charge_bits, 1, steps, count)
         # These children were derived at construction.  Composition is the
         # cocycle law, so no cycle displacement is recomputed here.
         return _completed_return(
@@ -386,7 +391,7 @@ def _completed_return(
     """
     if type(start) is not C1Phase or type(target) is not C1Phase:
         raise TypeError("completed c1 return requires exact phases")
-    _charge(charge_work, charge_bits, 1, steps, count)
+    charge_carry_work(charge_work, charge_bits, 1, steps, count)
     expected_target = start.advance(
         steps,
         charge_work=charge_work,
@@ -412,7 +417,7 @@ class BoundC1Return:
     def __init__(self) -> None:
         raise TypeError("construct BoundC1Return with source_bound_return")
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
         if getattr(self, "_seal", None) is not _BOUND_RETURN_SEAL:
             raise ValueError("invalid or uninitialized source-bound c1 return")
         if (
@@ -423,54 +428,54 @@ class BoundC1Return:
             or type(self._action) is not C1Return
         ):
             raise ValueError("invalid source-bound c1 return fields")
-        self._action._validate()
+        start, target, steps, count = self._action.structural_snapshot()
         signature = (
             self._source_high,
             self._target_high,
-            *_return_signature(
-                self._action._start,
-                self._action._target,
-                self._action._steps,
-                self._action._count,
-            ),
+            *_return_signature(start, target, steps, count),
         )
         if getattr(self, "_witness", None) != signature:
             raise ValueError("source-bound c1 fields disagree with their snapshot")
 
+    def structural_snapshot(self) -> tuple[int, C1Return, int]:
+        """Return validated physical and local-return fields to owner collaborators."""
+        self.validate()
+        return self._source_high, self._action, self._target_high
+
     @property
     def source_high(self) -> int:
-        self._validate()
+        self.validate()
         return self._source_high
 
     @property
     def action(self) -> C1Return:
-        self._validate()
+        self.validate()
         return self._action
 
     @property
     def target_high(self) -> int:
-        self._validate()
+        self.validate()
         return self._target_high
 
     @property
     def start(self) -> C1Phase:
-        self._validate()
-        return self._action._start
+        self.validate()
+        return self._action.start
 
     @property
     def target(self) -> C1Phase:
-        self._validate()
-        return self._action._target
+        self.validate()
+        return self._action.target
 
     @property
     def steps(self) -> int:
-        self._validate()
-        return self._action._steps
+        self.validate()
+        return self._action.steps
 
     @property
     def count(self) -> int:
-        self._validate()
-        return self._action._count
+        self.validate()
+        return self._action.count
 
     def then(
         self,
@@ -482,14 +487,13 @@ class BoundC1Return:
         """Compose only when both the low phase and high prefix are adjacent."""
         if type(after) is not BoundC1Return:
             raise ValueError("source-bound c1 returns are not chronologically adjacent")
-        self._validate()
-        after._validate()
-        if (
-            self._action._target != after._action._start
-            or self._target_high != after._source_high
-        ):
+        self.validate()
+        after.validate()
+        self_target = self._action.structural_snapshot()[1]
+        after_start = after._action.structural_snapshot()[0]
+        if self_target != after_start or self._target_high != after._source_high:
             raise ValueError("source-bound c1 returns are not chronologically adjacent")
-        _charge(
+        charge_carry_work(
             charge_work,
             charge_bits,
             1,
@@ -519,7 +523,7 @@ class BoundC1Return:
         charge_bits: BitsCharge | None = None,
     ) -> int:
         """Project the powered target prefix to ``Z / 10**precision``."""
-        self._validate()
+        self.validate()
         return high_prefix_cylinder(
             self._target_high,
             precision,
@@ -540,9 +544,9 @@ class BoundC1Return:
         observation describes the next fixed-sector arithmetic step; it does
         not admit that next Comma child or resolve a seam/fork.
         """
-        self._validate()
+        self.validate()
         return carry_wire(
-            self._action._target,
+            self._action.target,
             self._target_high,
             wire,
             charge_work=charge_work,
@@ -558,7 +562,7 @@ def _completed_bound_return(
     charge_work: WorkCharge | None = None,
     charge_bits: BitsCharge | None = None,
 ) -> BoundC1Return:
-    action._validate()
+    start, target, steps, count = action.structural_snapshot()
     if (
         type(source_high) is not int
         or source_high < 0
@@ -566,16 +570,16 @@ def _completed_bound_return(
         or target_high < 0
     ):
         raise ValueError("invalid source-bound c1 high prefix")
-    _charge(
+    charge_carry_work(
         charge_work,
         charge_bits,
         1,
         source_high,
-        action._count,
+        count,
         target_high,
         extra_bits=1,
     )
-    if target_high != source_high + action._count:
+    if target_high != source_high + count:
         raise ValueError("source-bound c1 high prefix disagrees with its count")
     result = object.__new__(BoundC1Return)
     object.__setattr__(result, "_source_high", source_high)
@@ -587,12 +591,7 @@ def _completed_bound_return(
         (
             source_high,
             target_high,
-            *_return_signature(
-                action._start,
-                action._target,
-                action._steps,
-                action._count,
-            ),
+            *_return_signature(start, target, steps, count),
         ),
     )
     object.__setattr__(result, "_seal", _BOUND_RETURN_SEAL)
@@ -622,7 +621,7 @@ def source_bound_return(
     _validate_phase(start)
     if type(steps) is not int or steps < 0:
         raise ValueError("comma c1 duration must be a nonnegative integer")
-    _charge(
+    charge_carry_work(
         charge_work,
         charge_bits,
         20 + source_value.bit_length(),
@@ -648,7 +647,7 @@ def source_bound_return(
         charge_work=charge_work,
         charge_bits=charge_bits,
     )
-    _charge(
+    charge_carry_work(
         charge_work,
         charge_bits,
         2,
@@ -662,7 +661,7 @@ def source_bound_return(
         raise ValueError("powered c1 return crosses its fixed decimal sector")
 
     source_high = source_value // 100
-    _charge(
+    charge_carry_work(
         charge_work,
         charge_bits,
         1,
@@ -671,7 +670,9 @@ def source_bound_return(
         extra_bits=1,
     )
     target_high = source_high + action.count
-    _charge(charge_work, charge_bits, 1, source_high, action.count, target_high)
+    charge_carry_work(
+        charge_work, charge_bits, 1, source_high, action.count, target_high
+    )
     return _completed_bound_return(
         source_high,
         action,
@@ -689,7 +690,7 @@ def _decimal_power_mod(
     charge_bits: BitsCharge | None,
 ) -> int:
     """Return ``value mod 10**precision`` after a pre-allocation budget check."""
-    _charge(
+    charge_carry_work(
         charge_work,
         charge_bits,
         1,
@@ -704,7 +705,7 @@ def _decimal_power_mod(
     if precision >= (value.bit_length() + 2) // 3:
         return value
     estimated_modulus_bits = 4 * precision + 1
-    _charge(
+    charge_carry_work(
         charge_work,
         charge_bits,
         8 + 4 * precision,
@@ -728,7 +729,7 @@ def high_prefix_cylinder(
         raise ValueError("high prefix must be a nonnegative exact integer")
     if type(precision) is not int or precision < 0:
         raise ValueError("cylinder precision must be a nonnegative exact integer")
-    _charge(charge_work, charge_bits, 1, high_prefix, precision)
+    charge_carry_work(charge_work, charge_bits, 1, high_prefix, precision)
     return _decimal_power_mod(
         high_prefix,
         precision,
@@ -752,10 +753,10 @@ def apply_high_prefix_cylinder(
         raise ValueError("c1 count must be a nonnegative exact integer")
     if type(precision) is not int or precision < 0:
         raise ValueError("cylinder precision must be a nonnegative exact integer")
-    _charge(charge_work, charge_bits, 2, high_prefix, count, precision)
-    _charge(charge_work, charge_bits, 1, high_prefix, count, extra_bits=1)
+    charge_carry_work(charge_work, charge_bits, 2, high_prefix, count, precision)
+    charge_carry_work(charge_work, charge_bits, 1, high_prefix, count, extra_bits=1)
     target = high_prefix + count
-    _charge(charge_work, charge_bits, 1, high_prefix, count, target)
+    charge_carry_work(charge_work, charge_bits, 1, high_prefix, count, target)
     return _decimal_power_mod(
         target,
         precision,
@@ -788,16 +789,16 @@ def carry_wire(
         raise ValueError("high prefix must be a nonnegative exact integer")
     if type(wire) is not int or wire < 0:
         raise ValueError("carry wire index must be a nonnegative exact integer")
-    _charge(charge_work, charge_bits, 1, high_prefix, wire)
+    charge_carry_work(charge_work, charge_bits, 1, high_prefix, wire)
     if wire == 0:
         return phase.c0
     if wire == 1:
         return phase.c1
     if not phase.c1:
         return False
-    _charge(charge_work, charge_bits, 1, high_prefix, extra_bits=1)
+    charge_carry_work(charge_work, charge_bits, 1, high_prefix, extra_bits=1)
     successor_prefix = high_prefix + 1
-    _charge(charge_work, charge_bits, 1, high_prefix, successor_prefix)
+    charge_carry_work(charge_work, charge_bits, 1, high_prefix, successor_prefix)
     precision = wire - 1
     # 10**precision cannot divide this positive value when its lower bound is
     # already at least the value's bit length; avoid constructing that power.

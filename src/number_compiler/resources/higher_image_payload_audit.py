@@ -65,7 +65,7 @@ def audit_temporal_image_owner(
         except (TypeError, ValueError, KeyError, IndexError, AttributeError):
             valid = False
         if valid:
-            seal = root._seals[index]
+            seal = snapshot.seals[index]
             approved.update((id(record), id(record.macro), id(seal)))
             approved.update(id(field) for field in seal)
         else:

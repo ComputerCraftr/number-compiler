@@ -75,7 +75,7 @@ def _raw_borrow_low2(source: Edge, target: Edge) -> int:
     return mask
 
 
-def _step(
+def border_step(
     edge: Edge, ingress: int, *, ledger: ResourceLedger | None = None
 ) -> tuple[Edge, int]:
     if edge not in _EDGE_IDS:
@@ -99,7 +99,7 @@ def _step(
     return matches[0].target, matches[0].width_delta
 
 
-def _output(
+def observer_output(
     edge: Edge,
     ingress: int,
     observer: TemporalObserver,
@@ -112,7 +112,7 @@ def _output(
             _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MOORE_OUTPUT_EVALUATIONS
         )
     target, growth = (
-        _step(edge, ingress, ledger=ledger) if transition is None else transition
+        border_step(edge, ingress, ledger=ledger) if transition is None else transition
     )
     gt_high, carry, rxor = _edge_mask(edge)
     borrow = _raw_borrow_low2(edge, target)
@@ -185,19 +185,19 @@ def minimize_temporal_border(
             _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MOORE_CONSTRUCTIONS
         )
     transition_rows = tuple(
-        tuple(_step(edge, ingress, ledger=ledger) for ingress in (0, 1))
+        tuple(border_step(edge, ingress, ledger=ledger) for ingress in (0, 1))
         for edge in EDGE_STATES
     )
     emissions_raw = tuple(
         (
-            _output(
+            observer_output(
                 edge,
                 0,
                 observer,
                 transition=transition_rows[index][0],
                 ledger=ledger,
             ),
-            _output(
+            observer_output(
                 edge,
                 1,
                 observer,
@@ -332,7 +332,7 @@ def _compose_cost(
     for i in range(n):
         out: list[int | None] = []
         for j in range(n):
-            values = []
+            values: list[int] = []
             for k in range(n):
                 before, after = a[i][k], b[k][j]
                 if before is not None and after is not None:
@@ -409,7 +409,7 @@ def _powered_envelope(
     )
 
 
-def _power_temporal_border_with_prefix(
+def power_temporal_border_with_prefix(
     edge: Edge,
     steps: int,
     observer: TemporalObserver = "gt_high",
@@ -503,7 +503,7 @@ def power_temporal_border(
     Source-derived forced carry ports are intentionally accepted only by the
     family term's internal path after its owner validates an issued prefix.
     """
-    return _power_temporal_border_with_prefix(
+    return power_temporal_border_with_prefix(
         edge,
         steps,
         observer,

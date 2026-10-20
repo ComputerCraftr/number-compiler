@@ -140,12 +140,12 @@ class GuardedPairStencil:
         if boundary == 0:
             return 0
         root = self.source.root
-        half = owner._summaries[root].symbols
+        half = owner.published_word_summary(root).symbols
         if boundary <= half:
-            summary = owner._range_summary(root, 0, boundary)
+            summary = owner.range_summary(root, 0, boundary)
         else:
-            summary = owner._range_summary(root, 0, half).then(
-                owner._range_summary(root, w - boundary, w - half, reverse=True)
+            summary = owner.range_summary(root, 0, half).then(
+                owner.range_summary(root, w - boundary, w - half, reverse=True)
             )
         return int(summary.domain == 1)
 
@@ -158,7 +158,7 @@ class GuardedPairStencil:
         if type(coordinate) is not int or not 0 <= coordinate < w + g:
             raise IndexError(coordinate)
         if g and coordinate in (0, w):
-            s0 = owner._pair_value_at(self.source, 0)
+            s0 = owner.pair_value_at(self.source, 0)
             c1 = self.carry_at(owner, 1)
             target = s0 + 1 - 10 * c1
             # The growth border is an extra leading 1 on normalized X;
@@ -172,12 +172,12 @@ class GuardedPairStencil:
                 target == 9,
                 border_birth=True,
             )
-        s = owner._pair_value_at(self.source, coordinate)
+        s = owner.pair_value_at(self.source, coordinate)
         c0 = self.carry_at(owner, coordinate)
         c1 = self.carry_at(owner, coordinate + 1)
         if g:
             # Growth shifts one reflected index and creates an outer pair.
-            prior = owner._pair_value_at(self.source, coordinate - 1)
+            prior = owner.pair_value_at(self.source, coordinate - 1)
             reflected = self.carry_at(owner, w - coordinate)
             reflected_after = self.carry_at(owner, w - coordinate + 1)
             target = s + prior + c0 + reflected - 10 * (c1 + reflected_after)
@@ -225,7 +225,7 @@ class GuardedPairStencil:
             width=self.source_width,
             coordinate=coordinate,
             growth=self.source_growth,
-            pair_at=lambda i: owner._pair_value_at(self.source, i),
+            pair_at=lambda i: owner.pair_value_at(self.source, i),
             low_carry=self.carry_at(owner, coordinate),
             high_border_carries=(self.carry_at(owner, self.source_width - 1),),
             inward_lookahead=inward_lookahead,
@@ -298,7 +298,7 @@ class GuardedPairStencil:
         if target.pair_width != self.target_pair_width:
             raise ValueError("conditional stencil growth width seam mismatch")
         cell = self.cell_at(owner, coordinate)
-        if owner._pair_value_at(target, coordinate) != cell.coefficient:
+        if owner.pair_value_at(target, coordinate) != cell.coefficient:
             raise ValueError("issued Q19 output conflicts with conditional stencil")
         return cell
 

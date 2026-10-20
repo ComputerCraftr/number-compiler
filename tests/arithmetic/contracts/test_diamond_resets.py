@@ -23,7 +23,7 @@ from tests.support.diamond_runtime import build
 def test_verified_four_step_reset_covers_every_original_state_and_every_word() -> None:
     kernel = PhysicalCollatzFourBlockEffect()
     for word in product(range(3), repeat=4):
-        targets = set()
+        targets: set[object] = set()
         for initial in range(90):
             state = initial
             for symbol in word:
@@ -31,7 +31,7 @@ def test_verified_four_step_reset_covers_every_original_state_and_every_word() -
             targets.add(state)
         assert len(targets) == 1
     # The certificate cannot be tightened merely because some words reset early.
-    states = set()
+    states: set[int] = set()
     for initial in range(90):
         state = initial
         for symbol in (0, 0, 0):
@@ -78,7 +78,7 @@ def test_composed_reset_erases_every_reachable_and_an_arbitrary_nonconstant_stat
     )
     states.append(arbitrary)
     for word in product(range(3), repeat=2):
-        targets = set()
+        targets: set[object] = set()
         for state in states:
             for symbol in word:
                 provider = ImageBinding(

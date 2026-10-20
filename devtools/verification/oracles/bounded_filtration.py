@@ -9,9 +9,9 @@ from __future__ import annotations
 from collections import Counter
 
 from devtools.verification.oracles.special_binary_jump import (
-    _fermat_carrier_proof,
-    _mersenne_carrier_proof,
-    _SpecialCarrierProof,
+    SpecialCarrierProof,
+    fermat_carrier_proof,
+    mersenne_carrier_proof,
 )
 from number_compiler.arithmetic.functions.finite_unary import (
     minimize_unary_moore,
@@ -42,7 +42,7 @@ def _source_hitting_time(
 
 
 def _candidate_filtration_from_proof(
-    proof: _SpecialCarrierProof, *, expected_raw_step: int
+    proof: SpecialCarrierProof, *, expected_raw_step: int
 ) -> TwoPrimaryImageFiltration:
     filtration = unary_image_filtration(proof.transition)
     moore = minimize_unary_moore(proof.transition, proof.outputs)
@@ -118,10 +118,10 @@ def bounded_candidate_image_filtration(
     parameter = int(parameter)
     if family == "fermat":
         width = 1 << parameter
-        proof = _fermat_carrier_proof(parameter, max_width=max_fermat_width)
+        proof = fermat_carrier_proof(parameter, max_width=max_fermat_width)
         return _candidate_filtration_from_proof(proof, expected_raw_step=width - 1)
     if family == "mersenne":
-        proof = _mersenne_carrier_proof(parameter, max_exponent=max_mersenne_exponent)
+        proof = mersenne_carrier_proof(parameter, max_exponent=max_mersenne_exponent)
         return _candidate_filtration_from_proof(proof, expected_raw_step=parameter - 2)
     raise ValueError(family)
 

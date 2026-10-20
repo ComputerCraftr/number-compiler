@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
+from typing import cast
 
 
 class CarryFn(Enum):
@@ -125,7 +126,9 @@ def scan_carry_automaton(
     representation.  Each coefficient maps to one of the same three
     ``CarryFn`` monoid elements already consumed by block composition.
     """
-    if not isinstance(values, Sequence) or isinstance(values, (str, bytes, bytearray)):
+    if not isinstance(cast(object, values), Sequence) or isinstance(
+        cast(object, values), (str, bytes, bytearray)
+    ):
         raise TypeError("carry scan values require an integer sequence")
     vals = tuple(_exact_integer(value, "pair symbol") for value in values)
     base = _exact_integer(base, "carry radix")

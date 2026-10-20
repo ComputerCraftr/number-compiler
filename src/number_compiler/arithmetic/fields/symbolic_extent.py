@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.arithmetic.fields.radix import bit_width
 
 
@@ -189,7 +190,7 @@ def extent_expression(
         if coordinate is not None and parameter == coordinate[0]
         else integer_text(parameter)
     )
-    if isinstance(value, DyadicExtent):
+    if is_runtime_instance(value, DyadicExtent):
         suffix = (
             ("+" if value.offset > 0 else "-") + integer_text(abs(value.offset))
             if value.offset

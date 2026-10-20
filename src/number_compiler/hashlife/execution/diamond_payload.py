@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from number_compiler.arithmetic.contracts.block_effect import BoundarySide
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_integer_in_range,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaHandle,
@@ -13,6 +16,7 @@ from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.actions.diamond_actions import (
     BoundedCellAction,
     CellID,
+    CellIndexKey,
     CellNode,
     FormalSymbolID,
     ImageCellArena,
@@ -21,7 +25,6 @@ from number_compiler.hashlife.actions.diamond_actions import (
     PortSignatureID,
     TemporalActionArena,
     TemporalActionNode,
-    _CellKey,
 )
 from number_compiler.hashlife.execution.continuations.diamond_context_program import (
     ContextNode,
@@ -84,10 +87,10 @@ from number_compiler.hashlife.interfaces.diamond_interface_payload import (
 from number_compiler.hashlife.interfaces.diamond_kernel import (
     DiamondKernelArena,
     FiniteExpression,
+    KernelApplication,
+    KernelTemplate,
+    KernelTemplateKey,
     PrimitiveKernel,
-    _KernelApplication,
-    _KernelTemplate,
-    _KernelTemplateKey,
 )
 from number_compiler.hashlife.interfaces.diamond_resets import (
     RightResetCertificate,
@@ -101,10 +104,6 @@ from number_compiler.hashlife.interfaces.diamond_unary import (
 from number_compiler.resources.ledger import ResourceLedger
 
 
-def _integer(value: object, lower: int = 0, upper: int | None = None) -> bool:
-    return type(value) is int and value >= lower and (upper is None or value < upper)
-
-
 class DiamondPayloadRegistry:
     """Inspect actual arena roots; roles and familiar field names grant no trust.
 
@@ -115,12 +114,12 @@ class DiamondPayloadRegistry:
     record_types = (
         PrimitiveKernel,
         FiniteExpression,
-        _KernelApplication,
-        _KernelTemplate,
-        _KernelTemplateKey,
+        KernelApplication,
+        KernelTemplate,
+        KernelTemplateKey,
         TemporalActionNode,
         CellNode,
-        _CellKey,
+        CellIndexKey,
         PortSignature,
         BoundedCellAction,
         CellID,
@@ -171,25 +170,26 @@ class DiamondPayloadRegistry:
             for root in roots
             if type(root) is DiamondKernelArena
             and root.ledger is ledger
-            and actual.get(root._kernel_owner) is root._kernels
-            and actual.get(root._expression_owner) is root._expressions
+            and root.storage_is_registered(actual)
         )
         self.temporal = tuple(
             root
             for root in roots
             if type(root) is TemporalActionArena
             and root.ledger is ledger
-            and actual.get(root._node_owner) is root._nodes
+            and root.storage_is_registered(actual)
         )
         self.cells = tuple(
             root
             for root in roots
             if type(root) is ImageCellArena
             and root.ledger is ledger
-            and actual.get(root._node_owner) is root._nodes
+            and root.storage_is_registered(actual)
         )
         self._cell_owners = {
-            id(node): arena for arena in self.cells for node in arena._nodes
+            id(node): arena
+            for arena in self.cells
+            for node in arena.audit_snapshot().nodes
         }
         self.boundaries = tuple(
             root
@@ -204,40 +204,40 @@ class DiamondPayloadRegistry:
             for root in roots
             if type(root) is PrimitivePairMacros
             and root.ledger is ledger
-            and actual.get(root._node_owner) is root._nodes
+            and root.storage_is_registered(actual)
         )
         self.halos = tuple(
             root
             for root in roots
             if type(root) is CausalHaloArena
             and root.ledger is ledger
-            and actual.get(root.owner) is root._radii._data
+            and actual.get(root.owner) is root.audit_snapshot().container
         )
         self.resets = tuple(
             root
             for root in roots
             if type(root) is RightResetCertificates
             and root.ledger is ledger
-            and actual.get(root.certificates.owner) is root.certificates._data
+            and actual.get(root.certificates.owner) is root.certificates.audit_container
         )
         self.contexts = tuple(
             root
             for root in roots
             if type(root) is ContextProgramArena
             and root.ledger is ledger
-            and actual.get(root.node_owner) is root._nodes
+            and root.storage_is_registered(actual)
         )
         self.unary = tuple(
             root
             for root in roots
             if type(root) is PrimitiveUnaryFunctions
             and root.ledger is ledger
-            and actual.get(root.owner) is root._memo._data
+            and actual.get(root.owner) is root.audit_snapshot().container
         )
         self.domain_ids = {
             id(domain): kernel
             for arena in self.kernels
-            for kernel in arena._kernels
+            for kernel in arena.audit_snapshot().kernels
             for domain in (kernel.left, kernel.right)
             if any(container is domain for container in actual.values())
         }
@@ -251,17 +251,25 @@ class DiamondPayloadRegistry:
             for root in roots
             if type(root) is DiamondApplication
             and root.ledger is ledger
-            and any(container is root._certificates for container in actual.values())
+            and any(
+                id(container) == root.audit_snapshot().certificate_store_identity
+                for container in actual.values()
+            )
         )
         self.cycle_records = {
             id(record)
             for application in self.applications
-            if any(container is application._cycles for container in actual.values())
-            for record in application._cycles
+            if any(
+                id(container) == application.audit_snapshot().cycle_store_identity
+                for container in actual.values()
+            )
+            for record in application.audit_snapshot().cycles
         }
 
-        self.expressions = ExpressionPayloadRegistry(ledger, self._handle, self._handle)
-        self.higher = HigherPayloadRegistry(ledger, self.expressions, self._handle)
+        self.expressions = ExpressionPayloadRegistry(
+            ledger, self.valid_handle, self.valid_handle
+        )
+        self.higher = HigherPayloadRegistry(ledger, self.expressions, self.valid_handle)
         self.demands = DemandPayloadRegistry(ledger, self.kernels)
         self.continuations = ContinuationPayloadRegistry(ledger, self.expressions)
         self.interfaces = InterfacePayloadRegistry(ledger, self.expressions)
@@ -281,32 +289,37 @@ class DiamondPayloadRegistry:
             for application in self.applications
         )
 
-    def _handle(self, value: object) -> bool:
-        if not isinstance(value, ArenaHandle) or not _integer(value.local_id):
+    def valid_handle(self, value: object) -> bool:
+        if not isinstance(value, ArenaHandle) or not is_exact_integer_in_range(
+            value.local_id
+        ):
             return False
         if type(value) is ExprID:
             return self.expressions.handle(value)
         if type(value) is ActionProgramID:
             if value.kind == "diamond-action":
                 return any(
-                    value.owner is arena.token and value.local_id < len(arena._nodes)
+                    value.owner is arena.token
+                    and value.local_id < len(arena.audit_snapshot().nodes)
                     for arena in self.temporal
                 )
             if value.kind == "diamond-kernel":
                 return any(
-                    value.owner is arena.owner and value.local_id < len(arena._kernels)
+                    value.owner is arena.owner
+                    and value.local_id < len(arena.audit_snapshot().kernels)
                     for arena in self.kernels
                 )
         if type(value) is CellID and value.kind == "diamond-cell":
             return any(
-                value.owner is arena.token and value.local_id < len(arena._nodes)
+                value.owner is arena.token
+                and value.local_id < len(arena.audit_snapshot().nodes)
                 for arena in self.cells
             )
         if type(value) is FormalSymbolID and value.kind == "diamond-formal-symbol":
             return any(
                 value.owner is arena.formal_token
                 and value.local_id
-                <= arena.source_geometry._construction.source.blank
+                <= arena.source_geometry.construction.source.blank
                 < (1 << 64)
                 for arena in self.cells
             )
@@ -322,7 +335,7 @@ class DiamondPayloadRegistry:
             )
         if type(value) is ContextProgramID and value.kind == "diamond-context-program":
             return any(
-                value.owner is arena.token and value.local_id < len(arena._nodes)
+                value.owner is arena.token and value.local_id < len(arena.node_view)
                 for arena in self.contexts
             )
         if type(value) is TransferSummaryID:
@@ -330,22 +343,26 @@ class DiamondPayloadRegistry:
                 return self.higher.handle(value)
             if value.kind == "diamond-pair-macro":
                 return any(
-                    value.owner is arena.token and value.local_id < len(arena._nodes)
+                    value.owner is arena.token and value.local_id < len(arena.node_view)
                     for arena in self.pair_macros
                 )
             if value.kind == "diamond-finite-expression":
                 return any(
                     value.owner is arena.owner
-                    and value.local_id < len(arena._expressions)
+                    and value.local_id < len(arena.audit_snapshot().expressions)
                     for arena in self.kernels
                 )
             if value.kind == "finite-port-function":
                 return any(
                     value.owner is arena.functions.owner
-                    and value.local_id < len(arena.functions._nodes)
+                    and value.local_id < arena.functions.node_count
                     for arena in self.kernels
                 )
         return False
+
+    def owns_cell_record(self, value: CellNode, arena: ImageCellArena) -> bool:
+        """Check the exact cell node identity against its issuing arena."""
+        return self._cell_owners.get(id(value)) is arena
 
     def domain(self, value: object) -> bool:
         """Only the actual original primitive domain tuple is a semantic root."""
@@ -369,18 +386,18 @@ class DiamondPayloadRegistry:
         return valid
 
     def _kernel_fields(self, value: PrimitiveKernel) -> bool:
-        from number_compiler.resources.diamond_boundary_validation import _kernel_fields
+        from number_compiler.resources.diamond_boundary_validation import kernel_fields
 
-        return _kernel_fields(self, value)
+        return kernel_fields(self, value)
 
-    def _original_action_cell(self, action: object, cell: object) -> bool:
+    def valid_original_action_cell(self, action: object, cell: object) -> bool:
         return (
             type(action) is ActionProgramID
             and action.kind == "diamond-action"
-            and self._handle(action)
+            and self.valid_handle(action)
             and type(cell) is CellID
-            and self._handle(cell)
-            and self._original_cell(cell)
+            and self.valid_handle(cell)
+            and self.validate_original_cell(cell)
         )
 
     def valid(self, value: object) -> bool:
@@ -395,13 +412,13 @@ class DiamondPayloadRegistry:
         if type(value) in ExpressionPayloadRegistry.record_types:
             return self.expressions.valid(value)
         if isinstance(value, ArenaHandle):
-            return self._handle(value)
+            return self.valid_handle(value)
         if type(value) is PrimitiveKernel:
             return self._kernel(value)
         if type(value) is RightHalo:
             return self._halo(value)
         if type(value) is RightResetCertificate:
-            return self._right_reset(value)
+            return self.validate_right_reset(value)
         if self._cycle_projection(value):
             return self._family_cycle(value)
         if type(value) is DiamondCompositionCertificate:
@@ -410,7 +427,7 @@ class DiamondPayloadRegistry:
                 or type(value.law) is not str
                 or value.law != BIMACHINE_TWO_SIDED_SUBSTITUTION_LAW
                 or type(value.root) is not ActionProgramID
-                or not self._handle(value.root)
+                or not self.valid_handle(value.root)
             ):
                 return False
             for pair in value.kernels:
@@ -421,13 +438,16 @@ class DiamondPayloadRegistry:
                     or pair[0].kind != "diamond-action"
                     or type(pair[1]) is not ActionProgramID
                     or pair[1].kind != "diamond-kernel"
-                    or not self._handle(pair[0])
-                    or not self._handle(pair[1])
+                    or not self.valid_handle(pair[0])
+                    or not self.valid_handle(pair[1])
                 ):
                     return False
             try:
                 return any(
-                    any(record is value for record in application._certificates)
+                    any(
+                        record is value
+                        for record in application.audit_snapshot().certificates
+                    )
                     and value.validate(application.runtime, application.root)
                     for application in self.applications
                 )
@@ -435,48 +455,48 @@ class DiamondPayloadRegistry:
                 return False
         if type(value) is FiniteExpression:
             return (
-                _integer(value.domain, 1, (1 << 64) + 1)
+                is_exact_integer_in_range(value.domain, 1, (1 << 64) + 1)
                 and type(value.bits) is tuple
                 and len(value.bits) == (value.domain - 1).bit_length()
                 and all(
                     type(bit) is TransferSummaryID
                     and bit.kind == "finite-port-function"
-                    and self._handle(bit)
+                    and self.valid_handle(bit)
                     for bit in value.bits
                 )
                 and len({bit.owner for bit in value.bits}) <= 1
             )
-        if type(value) is _KernelApplication:
+        if type(value) is KernelApplication:
             return (
                 type(value.kernel) is ActionProgramID
                 and value.kernel.kind == "diamond-kernel"
-                and self._handle(value.kernel)
+                and self.valid_handle(value.kernel)
                 and value.operation in ("advance", "emit")
-                and _integer(value.side, 0, 2)
+                and is_exact_integer_in_range(value.side, 0, 2)
                 and type(value.arguments) is tuple
                 and len(value.arguments) == (2 if value.operation == "advance" else 3)
                 and all(
                     type(item) is TransferSummaryID
                     and item.kind == "diamond-finite-expression"
                     and item.owner is value.kernel.owner
-                    and self._handle(item)
+                    and self.valid_handle(item)
                     for item in value.arguments
                 )
             )
-        if type(value) is _KernelTemplateKey:
+        if type(value) is KernelTemplateKey:
             if not (
                 type(value.kernel) is ActionProgramID
                 and value.kernel.kind == "diamond-kernel"
-                and self._handle(value.kernel)
+                and self.valid_handle(value.kernel)
                 and value.operation in ("advance", "emit")
-                and _integer(value.side, 0, 2)
+                and is_exact_integer_in_range(value.side, 0, 2)
                 and type(value.constants) is tuple
             ):
                 return False
             arena = next(
                 arena for arena in self.kernels if arena.owner is value.kernel.owner
             )
-            primitive = arena._kernels[value.kernel.local_id]
+            primitive = arena.audit_snapshot().kernels[value.kernel.local_id]
             domains = (
                 (
                     len(primitive.left if value.side == 0 else primitive.right),
@@ -486,30 +506,30 @@ class DiamondPayloadRegistry:
                 else (primitive.left_count, primitive.blank + 1, primitive.right_count)
             )
             return len(value.constants) == len(domains) and all(
-                item is None or _integer(item, 0, domain)
+                item is None or is_exact_integer_in_range(item, 0, domain)
                 for item, domain in zip(value.constants, domains, strict=True)
             )
-        if type(value) is _KernelTemplate:
+        if type(value) is KernelTemplate:
             return (
                 type(value.function) is TransferSummaryID
                 and value.function.kind == "diamond-finite-expression"
-                and self._handle(value.function)
+                and self.valid_handle(value.function)
                 and type(value.parameters) is tuple
                 and len(value.parameters) in (2, 3)
                 and all(
                     type(item) is TransferSummaryID
                     and item.kind == "diamond-finite-expression"
                     and item.owner is value.function.owner
-                    and self._handle(item)
+                    and self.valid_handle(item)
                     for item in value.parameters
                 )
             )
         if type(value) is TemporalActionNode:
-            return self._temporal(value)
-        if type(value) in (CellNode, _CellKey) and isinstance(
-            value, (CellNode, _CellKey)
+            return self.validate_temporal_node(value)
+        if type(value) in (CellNode, CellIndexKey) and isinstance(
+            value, (CellNode, CellIndexKey)
         ):
-            return self._cell(value)
+            return self.validate_cell_node(value)
         if type(value) in (
             BoundaryStateNode,
             BoundaryFunctionSignature,
@@ -517,9 +537,9 @@ class DiamondPayloadRegistry:
             ContinuationStep,
             ImageBinding,
         ):
-            return self._boundary(value)
+            return self.validate_boundary_value(value)
         if type(value) is PortSignature:
-            return self._port_signature(value)
+            return self.validate_port_signature(value)
         if type(value) in (
             Initial,
             Transfer,
@@ -532,32 +552,34 @@ class DiamondPayloadRegistry:
             PairSummary,
             SpatialSummary,
         ):
-            return self._task(value)
+            return self.validate_task(value)
         if type(value) is PrimitivePairKey:
             if (
                 type(value.action) is not ActionProgramID
                 or value.action.kind != "diamond-action"
-                or not self._handle(value.action)
+                or not self.valid_handle(value.action)
                 or type(value.state) is not BoundaryStateID
-                or not self._handle(value.state)
-                or not _integer(value.side, 0, 2)
+                or not self.valid_handle(value.state)
+                or not is_exact_integer_in_range(value.side, 0, 2)
             ):
                 return False
-            state = self._state_node(value.state)
+            state = self.state_node(value.state)
             return (
                 state is not None
                 and state.action == value.action
                 and state.side == value.side
                 and any(
                     value.action.owner is arena.token
-                    and _integer(
-                        value.symbol, 0, arena._nodes[value.action.local_id].blank + 1
+                    and is_exact_integer_in_range(
+                        value.symbol,
+                        0,
+                        arena.audit_snapshot().nodes[value.action.local_id].blank + 1,
                     )
                     for arena in self.temporal
                 )
             )
         if type(value) is PairMacroKey:
-            return self._original_action_cell(value.action, value.cell)
+            return self.valid_original_action_cell(value.action, value.cell)
         if type(value) is PairMacroRecord:
             return self._pair_macro(value)
         if type(value) in (
@@ -566,7 +588,7 @@ class DiamondPayloadRegistry:
             UnaryComposition,
             UnaryKernelApplication,
         ):
-            return self._context(value)
+            return self.validate_context(value)
         # Port records become admissible only when their executable arenas are
         # available for owner membership checks. Unbound declarations fail.
         return False
@@ -575,7 +597,7 @@ class DiamondPayloadRegistry:
         if (
             type(value.action) is not ActionProgramID
             or value.action.kind != "diamond-action"
-            or not self._handle(value.action)
+            or not self.valid_handle(value.action)
         ):
             return False
         functions = (value.left_transfer, value.right_transfer)
@@ -583,21 +605,24 @@ class DiamondPayloadRegistry:
             type(function) is TransferSummaryID
             and function.kind == "diamond-finite-expression"
             and function.owner is functions[0].owner
-            and self._handle(function)
+            and self.valid_handle(function)
             for function in functions
         ):
             return False
         for temporal in self.temporal:
             if value.action.owner is not temporal.token:
                 continue
-            node = temporal._nodes[value.action.local_id]
+            node = temporal.audit_snapshot().nodes[value.action.local_id]
             if node.kind != "compose":
                 return False
-            children = temporal._nodes[node.left], temporal._nodes[node.right]
+            children = (
+                temporal.audit_snapshot().nodes[node.left],
+                temporal.audit_snapshot().nodes[node.right],
+            )
             if any(child.kind != "atom" for child in children):
                 return False
             definitions = tuple(
-                temporal.compiler._nodes[child.compiler_id] for child in children
+                temporal.compiler.definition_at(child.compiler_id) for child in children
             )
             for kernel_arena in self.kernels:
                 if functions[0].owner is not kernel_arena.owner:
@@ -605,7 +630,7 @@ class DiamondPayloadRegistry:
                 first = next(
                     (
                         kernel
-                        for kernel in kernel_arena._kernels
+                        for kernel in kernel_arena.audit_snapshot().kernels
                         if kernel.effect is definitions[0]
                     ),
                     None,
@@ -613,7 +638,7 @@ class DiamondPayloadRegistry:
                 second = next(
                     (
                         kernel
-                        for kernel in kernel_arena._kernels
+                        for kernel in kernel_arena.audit_snapshot().kernels
                         if kernel.effect is definitions[1]
                     ),
                     None,
@@ -622,68 +647,73 @@ class DiamondPayloadRegistry:
                     return False
                 domains = (first.left_count, first.right_count)
                 return all(
-                    kernel_arena._expressions[function.local_id].domain == domain
+                    kernel_arena.audit_snapshot().expressions[function.local_id].domain
+                    == domain
                     for function, domain in zip(functions, domains, strict=True)
                 ) and all(
                     type(context) is ContextProgramID
-                    and self._handle(context)
+                    and self.valid_handle(context)
                     and any(
                         context.owner is arena.token
                         and arena.kernels is kernel_arena
-                        and arena._nodes[context.local_id].action == value.action
+                        and arena.node_view[context.local_id].action == value.action
                         for arena in self.contexts
                     )
                     for context in (value.left_context, value.right_context)
                 )
         return False
 
-    def _context(self, value: object) -> bool:
-        from number_compiler.resources.diamond_task_validation import _context
+    def validate_context(self, value: object) -> bool:
+        from number_compiler.resources.diamond_task_validation import validate_context
 
-        return _context(self, value)
+        return validate_context(self, value)
 
-    def _unary_support(
+    def validate_unary_support(
         self,
         arena: PrimitiveUnaryFunctions,
         domain: int,
         port: PortVariable,
         arguments: tuple[TransferSummaryID, ...],
     ) -> bool:
-        from number_compiler.resources.diamond_task_validation import _unary_support
+        from number_compiler.resources.diamond_task_validation import (
+            validate_unary_support,
+        )
 
-        return _unary_support(self, arena, domain, port, arguments)
+        return validate_unary_support(self, arena, domain, port, arguments)
 
-    def _task(self, value: object) -> bool:
-        from number_compiler.resources.diamond_task_validation import _task
+    def validate_task(self, value: object) -> bool:
+        from number_compiler.resources.diamond_task_validation import validate_task
 
-        return _task(self, value)
+        return validate_task(self, value)
 
-    def _binding(self, value: ImageBinding) -> bool:
-        from number_compiler.resources.diamond_task_validation import _binding
+    def validate_binding(self, value: ImageBinding) -> bool:
+        from number_compiler.resources.diamond_task_validation import validate_binding
 
-        return _binding(self, value)
+        return validate_binding(self, value)
 
-    def _source_interface(
+    def validate_source_interface(
         self, action: ActionProgramID, boundary_owner: ArenaToken
     ) -> bool:
-        from number_compiler.resources.diamond_task_validation import _source_interface
+        from number_compiler.resources.diamond_task_validation import (
+            validate_source_interface,
+        )
 
-        return _source_interface(self, action, boundary_owner)
+        return validate_source_interface(self, action, boundary_owner)
 
     def _halo(self, value: RightHalo) -> bool:
         if (
             type(value.action) is not ActionProgramID
             or value.action.kind != "diamond-action"
-            or not self._handle(value.action)
+            or not self.valid_handle(value.action)
             or value.radius is not None
-            and not _integer(value.radius)
+            and not is_exact_integer_in_range(value.radius)
         ):
             return False
         for arena in self.halos:
             actions = arena.runtime.actions
             if (
                 value.action.owner is not actions.token
-                or arena._radii.get(value.action) is not value
+                or arena.cached_halo(value.action) is not value
             ):
                 continue
             node = actions.node(value.action)
@@ -695,28 +725,28 @@ class DiamondPayloadRegistry:
                 if hooks is not None and hooks.owns_compatibility(effect):
                     return value.radius == hooks.compatibility_halo(effect)
                 return value.radius in (None, 0, 1)
-            first = arena._radii.get(actions.reference(node.first))
-            second = arena._radii.get(actions.reference(node.second))
+            first = arena.cached_halo(actions.reference(node.first))
+            second = arena.cached_halo(actions.reference(node.second))
             if first is None or second is None:
                 return False
             if first.radius is None or second.radius is None:
                 return value.radius is None
             return (
-                _integer(first.radius)
-                and _integer(second.radius)
+                is_exact_integer_in_range(first.radius)
+                and is_exact_integer_in_range(second.radius)
                 and value.radius == first.radius + second.radius
             )
         return False
 
-    def _right_reset(self, value: RightResetCertificate) -> bool:
+    def validate_right_reset(self, value: RightResetCertificate) -> bool:
         if (
             type(value.action) is not ActionProgramID
             or value.action.kind != "diamond-action"
-            or not self._handle(value.action)
+            or not self.valid_handle(value.action)
             or value.law != COMPLETE_RIGHT_BOUNDARY_SYNCHRONIZATION_LAW
             or type(value.law) is not str
             or value.radius is not None
-            and not _integer(value.radius)
+            and not is_exact_integer_in_range(value.radius)
         ):
             return False
         for arena in self.resets:
@@ -737,8 +767,8 @@ class DiamondPayloadRegistry:
                 return (
                     value.radius is None
                     if left.radius is None or right.radius is None
-                    else _integer(left.radius)
-                    and _integer(right.radius)
+                    else is_exact_integer_in_range(left.radius)
+                    and is_exact_integer_in_range(right.radius)
                     and value.radius == left.radius + right.radius
                 )
             effect = actions.primitive(value.action)
@@ -748,7 +778,7 @@ class DiamondPayloadRegistry:
             primitive = next(
                 (
                     kernel
-                    for kernel in arena.runtime.kernels._kernels
+                    for kernel in arena.runtime.kernels.audit_snapshot().kernels
                     if kernel.effect is effect
                 ),
                 None,
@@ -774,74 +804,72 @@ class DiamondPayloadRegistry:
             hooks = application.runtime.family_hooks
             if hooks is None or not hooks.is_cycle_projection(value):
                 continue
-            if value is not application._issued_cycle or not any(
-                record is value for record in application._cycles
-            ):
+            if not application.owns_issued_cycle(value):
                 continue
             return hooks.validate_cycle(application.runtime, application.root, value)
         return False
 
-    def _original_cell(self, handle: CellID | FormalSymbolID) -> bool:
-        from number_compiler.resources.diamond_boundary_validation import _original_cell
+    def validate_original_cell(self, handle: CellID | FormalSymbolID) -> bool:
+        from number_compiler.resources.diamond_boundary_validation import original_cell
 
-        return _original_cell(self, handle)
+        return original_cell(self, handle)
 
-    def _state_node(self, handle: BoundaryStateID) -> BoundaryStateNode | None:
+    def state_node(self, handle: BoundaryStateID) -> BoundaryStateNode | None:
         for arena in self.boundaries:
-            if handle.owner is arena.token and _integer(
+            if handle.owner is arena.token and is_exact_integer_in_range(
                 handle.local_id, 0, len(arena.states)
             ):
                 return arena.states[handle.local_id]
         return None
 
-    def _function_node(self, handle: BoundaryActionID) -> ContinuationNode | None:
+    def function_node(self, handle: BoundaryActionID) -> ContinuationNode | None:
         for arena in self.boundaries:
-            if handle.owner is arena.token and _integer(
+            if handle.owner is arena.token and is_exact_integer_in_range(
                 handle.local_id, 0, len(arena.actions)
             ):
                 return arena.actions[handle.local_id]
         return None
 
-    def _boundary(self, value: object) -> bool:
-        from number_compiler.resources.diamond_boundary_validation import _boundary
+    def validate_boundary_value(self, value: object) -> bool:
+        from number_compiler.resources.diamond_boundary_validation import boundary_value
 
-        return _boundary(self, value)
+        return boundary_value(self, value)
 
-    def _function_signature(self, value: BoundaryFunctionSignature) -> bool:
+    def validate_function_signature(self, value: BoundaryFunctionSignature) -> bool:
         from number_compiler.resources.diamond_boundary_validation import (
-            _function_signature,
+            function_signature,
         )
 
-        return _function_signature(self, value)
+        return function_signature(self, value)
 
-    def _port_signature(self, value: PortSignature) -> bool:
+    def validate_port_signature(self, value: PortSignature) -> bool:
         from number_compiler.resources.diamond_boundary_validation import (
-            _port_signature,
+            port_signature,
         )
 
-        return _port_signature(self, value)
+        return port_signature(self, value)
 
-    def _step(self, value: ContinuationStep) -> bool:
+    def validate_step(self, value: ContinuationStep) -> bool:
         if not (
             type(value.first) is ActionProgramID
             and type(value.second) is ActionProgramID
             and value.first.kind == value.second.kind == "diamond-action"
-            and self._handle(value.first)
-            and self._handle(value.second)
+            and self.valid_handle(value.first)
+            and self.valid_handle(value.second)
             and value.first.owner is value.second.owner
-            and _integer(value.side, 0, 2)
+            and is_exact_integer_in_range(value.side, 0, 2)
             and type(value.previous) is BoundaryActionID
-            and self._handle(value.previous)
+            and self.valid_handle(value.previous)
             and type(value.anchor) is BoundaryStateID
-            and self._handle(value.anchor)
+            and self.valid_handle(value.anchor)
             and value.previous.owner is value.anchor.owner
             and type(value.provider) is ImageBinding
-            and self._binding(value.provider)
+            and self.validate_binding(value.provider)
         ):
             return False
         anchor, previous = (
-            self._state_node(value.anchor),
-            self._function_node(value.previous),
+            self.state_node(value.anchor),
+            self.function_node(value.previous),
         )
         return (
             anchor is not None
@@ -855,12 +883,12 @@ class DiamondPayloadRegistry:
             and previous.signature.output_side == value.side
         )
 
-    def _temporal(self, value: TemporalActionNode) -> bool:
-        from number_compiler.resources.diamond_boundary_validation import _temporal
+    def validate_temporal_node(self, value: TemporalActionNode) -> bool:
+        from number_compiler.resources.diamond_boundary_validation import temporal_node
 
-        return _temporal(self, value)
+        return temporal_node(self, value)
 
-    def _cell(self, value: CellNode | _CellKey) -> bool:
-        from number_compiler.resources.diamond_boundary_validation import _cell
+    def validate_cell_node(self, value: CellNode | CellIndexKey) -> bool:
+        from number_compiler.resources.diamond_boundary_validation import cell_node
 
-        return _cell(self, value)
+        return cell_node(self, value)

@@ -8,6 +8,7 @@ coordinates; it is not an equivalence between different exact outputs.
 from __future__ import annotations
 
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 
 
 def _pair_symbol(value: object) -> int:
@@ -27,7 +28,7 @@ def _carry_bit(value: object) -> int:
 
 
 def _normalized_coordinate(value: object) -> tuple[int, int]:
-    if type(value) is not tuple or len(value) != 2:
+    if not is_exact_object_tuple(value) or len(value) != 2:
         raise TypeError("normalized decimal coordinates require an immutable pair")
     alpha, beta = value
     if (
@@ -60,14 +61,14 @@ def decimal_factored_coordinates(symbol: int) -> tuple[CarryFn, int, int]:
     therefore derived rather than retained.
     """
     value = _pair_symbol(symbol)
-    return _decimal_kernel_carry_action(value), value % 5, value % 10 // 5
+    return decimal_kernel_carry_action(value), value % 5, value % 10 // 5
 
 
 def decimal_cocycle_coordinates(symbol: int) -> tuple[CarryFn, int, int]:
     """Return ``(domain, alpha, epsilon)`` with the low-digit parity cocycle."""
     value = _pair_symbol(symbol)
     digit = value % 10
-    return _decimal_kernel_carry_action(value), digit % 5, digit % 2
+    return decimal_kernel_carry_action(value), digit % 5, digit % 2
 
 
 def decimal_crt_digit(alpha: int, epsilon: int) -> int:
@@ -83,7 +84,7 @@ def decimal_cocycle_domain(alpha: int, epsilon: int, kappa: int) -> CarryFn:
     value = digit + 10 * high
     if value > 18:
         raise ValueError("cocycle coordinates lie outside the decimal pair image")
-    return _decimal_kernel_carry_action(value)
+    return decimal_kernel_carry_action(value)
 
 
 def decimal_cocycle_value(domain: CarryFn, alpha: int, epsilon: int) -> int:
@@ -135,7 +136,7 @@ def decimal_pair_value(coordinates: tuple[int, int, int]) -> int:
 
 def decimal_pair_carry_action(symbol: int) -> CarryFn:
     """Project one exact pair symbol onto its three-element carry action."""
-    return _decimal_kernel_carry_action(_pair_symbol(symbol))
+    return decimal_kernel_carry_action(_pair_symbol(symbol))
 
 
 def decimal_q95(symbol: int, forcing: int) -> int:
@@ -157,7 +158,7 @@ def decimal_q95_coordinates(value: int) -> tuple[int, int]:
     return divmod(value, 5)
 
 
-def _decimal_kernel_carry_action(symbol: int) -> CarryFn:
+def decimal_kernel_carry_action(symbol: int) -> CarryFn:
     """Carry projection after the primitive kernel has admitted ``symbol``."""
     if symbol == 9:
         return CarryFn.ID
@@ -242,7 +243,7 @@ def decimal_normalized_pair_sum(
     right_carry: int,
 ) -> int:
     """Return the exact pair sum of two normalized pair coefficients."""
-    return _decimal_kernel_pair_sum(
+    return decimal_kernel_pair_sum(
         _pair_symbol(left_symbol),
         _carry_bit(left_carry),
         _pair_symbol(right_symbol),
@@ -250,7 +251,7 @@ def decimal_normalized_pair_sum(
     )
 
 
-def _decimal_kernel_pair_sum(
+def decimal_kernel_pair_sum(
     left_symbol: int,
     left_carry: int,
     right_symbol: int,

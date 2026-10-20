@@ -181,6 +181,26 @@ def compose_suffix_outputs(
     }
 
 
+def compose_product_graph(
+    left_initials: Sequence[int],
+    right_initials: Sequence[int],
+    left_arcs: Mapping[int, Sequence[_Arc]],
+    right_arcs: Mapping[int, Sequence[_Arc]],
+    make_arc: Callable[[tuple[int, int, int]], E],
+) -> tuple[
+    list[tuple[int, int]],
+    tuple[int, ...],
+    dict[int, dict[int, list[_Arc]]],
+    dict[int, list[E]],
+]:
+    """Intern the reachable product and return its indexed composed graph."""
+    pairs, initials, intern = product_states(left_initials, right_initials)
+    indexed, arcs = compose_arc_table(
+        initials, pairs, left_arcs, right_arcs, intern, make_arc
+    )
+    return pairs, initials, indexed, arcs
+
+
 def quotient_graph(
     part: Mapping[int, int],
     representatives: Mapping[int, int],

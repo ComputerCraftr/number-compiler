@@ -98,7 +98,7 @@ def next_digit_formula(
     # Append terminal digit 1 using one symbolic zero-extension + final range bit.
     out_width = width + 1
     edge = arena.range_mask(width, out_width, out_width)
-    out = []
+    out: list[Expr] = []
     for bit, plane in enumerate(root.planes):
         p = arena.resize(plane, out_width)
         if bit == 0:

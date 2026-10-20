@@ -1,5 +1,9 @@
 """Exact normalized cylinders and measured production cross-source reuse."""
 
+from collections.abc import Callable
+from types import ModuleType
+from typing import cast
+
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -22,6 +26,20 @@ from number_compiler.sequences.collatz.temporal_run_quotient import (
 from tests.support.reference_arithmetic import literal_dyadic_orbit
 
 pytestmark = pytest.mark.usefixtures("isolated_process_cache")
+
+
+def _publisher_capability(module: ModuleType, name: str) -> object:
+    """Read an issuer only at a deliberate forged-record test boundary."""
+    return object.__getattribute__(module, name)
+
+
+def _inject_memo_value(memo: object, key: object, value: object) -> None:
+    """Inject a malformed entry through the owner so resource accounting runs."""
+    setter = cast(
+        Callable[[object, object], None],
+        object.__getattribute__(memo, "__setitem__"),
+    )
+    setter(key, value)
 
 
 @pytest.mark.parametrize("endpoint", [1, 2])
@@ -128,7 +146,7 @@ def test_warm_complete_germ_skips_discovery_for_another_high_fiber(
 
 def test_production_cross_seed_reuse_reduces_observed_source_work() -> None:
     clear_process_cache()
-    observations = []
+    observations: list[dict[str, int]] = []
     for high in (1, 3):
         seed = (high << 200) + 931386509544713451
         term = PoweredCollatzTerm(seed, 1000, shared_cache=True)
@@ -298,7 +316,7 @@ def test_malformed_shared_occurrence_is_rejected(payload: tuple[object, ...]) ->
         lease.put_issued(
             ("effect",),
             cast(ImmutableValue, payload),
-            source_cylinder_cache._OCCURRENCE_PUBLISHER,
+            _publisher_capability(source_cylinder_cache, "_OCCURRENCE_PUBLISHER"),
         )
     with CollatzDyadicMacros(ResourceLedger(), shared_cache=True) as macros:
         with pytest.raises((TypeError, ValueError)):
@@ -541,10 +559,15 @@ def test_poisoned_shared_occurrence_gain_is_rejected(coordinate: str) -> None:
     with get_process_cache().acquire(
         "collatz-dyadic-occurrence", CollatzDyadicMacros.VERSION, (128, residue)
     ) as lease:
-        payload = lease.get_issued(
-            ("effect",), source_cylinder_cache._OCCURRENCE_PUBLISHER
+        from number_compiler.arithmetic.contracts.input_validation import (
+            is_exact_object_tuple,
         )
-        assert type(payload) is tuple and len(payload) == 4
+
+        payload = lease.get_issued(
+            ("effect",),
+            _publisher_capability(source_cylinder_cache, "_OCCURRENCE_PUBLISHER"),
+        )
+        assert is_exact_object_tuple(payload) and len(payload) == 4
         assert all(type(value) is int for value in payload)
         poisoned = list(cast(tuple[int, int, int, int], payload))
         if coordinate == "gain":
@@ -554,7 +577,7 @@ def test_poisoned_shared_occurrence_gain_is_rejected(coordinate: str) -> None:
         assert lease.put_issued(
             ("effect",),
             cast(ImmutableValue, tuple(poisoned)),
-            source_cylinder_cache._OCCURRENCE_PUBLISHER,
+            _publisher_capability(source_cylinder_cache, "_OCCURRENCE_PUBLISHER"),
         )
 
     with CollatzDyadicMacros(ResourceLedger(), shared_cache=True) as macros:
@@ -666,24 +689,24 @@ def test_public_occurrence_has_no_gain_evidence_bypass() -> None:
 
 def test_local_gain_and_occurrence_memos_reject_malformed_records() -> None:
     from number_compiler.sequences.collatz.source_cylinder_cache import (
-        _CanonicalGain,
+        CanonicalGain,
     )
 
     with CollatzDyadicMacros(ResourceLedger()) as macros:
-        macros.gains[0] = 1  # type: ignore[assignment]
+        _inject_memo_value(macros.gains, 0, 1)
         with pytest.raises(ValueError, match="local canonical gain"):
-            macros._gain(0)
-        macros.gains[0] = _CanonicalGain(0)
-        assert macros._gain(0).multiplier == 1
+            macros.canonical_gain(0)
+        macros.gains[0] = CanonicalGain(0)
+        assert macros.canonical_gain(0).multiplier == 1
 
         gain = macros.gains[0]
         object.__setattr__(gain, "multiplier", 2)
         with pytest.raises(ValueError, match="local canonical gain"):
-            macros._gain(0)
+            macros.canonical_gain(0)
         object.__setattr__(gain, "multiplier", 1)
-        assert macros._gain(0).multiplier == 1
+        assert macros.canonical_gain(0).multiplier == 1
 
-        macros.occurrences[8, 27] = ("not-an-occurrence", 0)  # type: ignore[assignment]
+        _inject_memo_value(macros.occurrences, (8, 27), ("not-an-occurrence", 0))
         with pytest.raises(ValueError, match="local occurrence"):
             macros.lookup(27, 8)
         assert macros.ledger.counters["collatz_hashlife_occurrence_local_hits"] == 0
@@ -697,7 +720,7 @@ def test_local_gain_and_occurrence_memos_reject_malformed_records() -> None:
 def test_local_gain_seal_obeys_node_budget_and_cleanup(node_budget: int) -> None:
     ledger = ResourceLedger(max_nodes=node_budget)
     with CollatzDyadicMacros(ledger) as macros:
-        assert macros._gain(7).multiplier == 2187
+        assert macros.canonical_gain(7).multiplier == 2187
         assert len(macros.gains) == node_budget
         assert ledger.nodes == node_budget
         assert ledger.counters["collatz_hashlife_gain_bypasses"] == 1 - node_budget
@@ -742,11 +765,11 @@ def test_gain_process_payload_is_bound_to_its_exponent() -> None:
         assert lease.put_issued(
             ("gain",),
             cast(ImmutableValue, (1, 1)),
-            source_cylinder_cache._GAIN_PUBLISHER,
+            _publisher_capability(source_cylinder_cache, "_GAIN_PUBLISHER"),
         )
     with CollatzDyadicMacros(ResourceLedger(), shared_cache=True) as macros:
         with pytest.raises(ValueError, match="cache is malformed"):
-            macros._gain(0)
+            macros.canonical_gain(0)
         assert macros.ledger.counters["collatz_hashlife_gain_process_hits"] == 0
     clear_process_cache()
 
@@ -774,7 +797,7 @@ def test_remember_counts_canonical_gain_admission_failure(
             assert lease.put_issued(
                 ("gain",),
                 cast(ImmutableValue, (1, 3)),
-                source_cylinder_cache._GAIN_PUBLISHER,
+                _publisher_capability(source_cylinder_cache, "_GAIN_PUBLISHER"),
             )
 
     expected_error = (
@@ -824,14 +847,15 @@ def test_dyadic_macro_close_attempts_every_store_and_retries_failed_owner(
     monkeypatch.setattr(macros.occurrences, "dispose", fail_once)
     with pytest.raises(RuntimeError, match="occurrence disposal failure"):
         macros.close()
-    assert macros._closed
-    assert not macros.occurrences._disposed
-    assert macros.width_spines._disposed
-    assert macros.gains._disposed
-    assert macros.frontier._disposed
+    failed_cleanup = macros.audit_snapshot()
+    assert failed_cleanup.closed
+    assert not failed_cleanup.occurrences_disposed
+    assert failed_cleanup.width_spines_disposed
+    assert failed_cleanup.gains_disposed
+    assert failed_cleanup.frontier_disposed
 
     macros.close()
-    assert macros.occurrences._disposed
+    assert macros.audit_snapshot().occurrences_disposed
     assert ledger.entries == ledger.nodes == 0
 
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest
 
 from devtools.benchmarks import antihydra_odd_macro_ablation as benchmark
@@ -46,6 +48,7 @@ def test_fixed_seed_cli_reports_no_macro_hits_without_failing(
     assert len(queries) == 12
     samples = payload["samples"]
     assert isinstance(samples, list)
+    samples = cast(list[dict[str, object]], samples)
     assert len(samples) == 6
     assert {row["mode"] for row in samples} == {
         "enabled",
@@ -54,6 +57,7 @@ def test_fixed_seed_cli_reports_no_macro_hits_without_failing(
     }
     summaries = payload["summaries"]
     assert isinstance(summaries, list)
+    summaries = cast(list[dict[str, object]], summaries)
     assert [row["consumer"] for row in summaries] == ["antihydra", "mahler"]
     assert all(row["enabled_macro_hit"] is False for row in summaries)
     assert all(row["enabled_macro_evaluations"] == [None] for row in summaries)

@@ -83,9 +83,9 @@ class CollatzSymbolicActionArena:
 
     @property
     def identity(self) -> ActionProgramID:
-        return self._handle(0)
+        return self.scoped_handle(0)
 
-    def _handle(self, local_id: int) -> ActionProgramID:
+    def scoped_handle(self, local_id: int) -> ActionProgramID:
         return ActionProgramID(self._owner, "collatz-affine-program", local_id)
 
     def validate(self, handle: ActionProgramID) -> int:
@@ -105,11 +105,11 @@ class CollatzSymbolicActionArena:
             raise ValueError(valuation)
         found = self._atoms.get(valuation)
         if found is not None:
-            return self._handle(found)
+            return self.scoped_handle(found)
         action_id = len(self._nodes)
         self._nodes.append(CollatzSymbolicAction(action_id, 1, valuation))
         self._atoms[valuation] = action_id
-        return self._handle(action_id)
+        return self.scoped_handle(action_id)
 
     def _join(self, first: int, second: int) -> int:
         key = (first, second)
@@ -128,7 +128,7 @@ class CollatzSymbolicActionArena:
         self, first: ActionProgramID, second: ActionProgramID
     ) -> ActionProgramID:
         first_id, second_id = self.validate(first), self.validate(second)
-        return self._handle(self._compose_ids(first_id, second_id))
+        return self.scoped_handle(self._compose_ids(first_id, second_id))
 
     def _compose_ids(self, first: int, second: int) -> int:
         """Return second after first, normalized without recursive evaluation."""

@@ -38,6 +38,7 @@ def test_leader_success_with_background_worker_is_not_completion(
             ),
         ),
         output=tmp_path / "worker.log",
+        timeout=2,
         lock_path=tmp_path / "lock",
     )
     assert result.outcome == "descendants_retired"

@@ -161,7 +161,7 @@ def harmonic_probe(steps: int, seed: int) -> dict[str, object]:
             germ = FixedRealCyclotomicGerm.from_fixed_views(
                 {o: block[o].fixed_innovation for o in orders}, bits=5
             )
-            row = {
+            row: dict[str, object] = {
                 "events": number,
                 "growths": block[2].growth,
                 "harmonic": (

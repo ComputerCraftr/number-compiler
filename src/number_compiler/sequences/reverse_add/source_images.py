@@ -303,7 +303,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
             or authority.base != source.base
         ):
             raise ValueError("reverse recursive fallback source changed")
-        found = self._recursive_for_steps(steps)
+        found = self.recursive_for_steps(steps)
         if found is not None:
             self.ledger.bump(_reverse_add_keys.REVERSE_SOURCE_RECURSIVE_OCCURRENCE_HITS)
             return found[1]
@@ -356,7 +356,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
         )
         return occurrence
 
-    def _recursive_for_steps(
+    def recursive_for_steps(
         self, steps: int
     ) -> tuple[ReverseRecursiveTemporalCutover, ReverseRecursiveOccurrence] | None:
         if type(steps) is not int or steps < 1:
@@ -393,7 +393,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
         if payload.occurrence is not None:
             if type(payload.occurrence) is not FieldImageID:
                 raise TypeError("reverse completed payload requires a field image")
-            completed = self._recursive_for_steps(steps)
+            completed = self.recursive_for_steps(steps)
             if completed is None or completed[1].image != payload.occurrence:
                 raise ValueError("reverse payload differs from its issued occurrence")
         if payload.pair_output is not None:
@@ -416,7 +416,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
         """Check published reverse bindings without discovering new images."""
         self._validate_binding(binding, payload, failure_prefix)
 
-    def _validate_view(self, view: SourceImageView) -> ReverseImagePayload:
+    def validate_view(self, view: SourceImageView) -> ReverseImagePayload:
         self._validate_binding(view.binding, view.payload, view.failure_prefix)
         return cast(ReverseImagePayload, view.payload)
 
@@ -470,10 +470,10 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
         self, action: ReverseActionID, source: SourceImageView
     ) -> SourceImageCandidate:
         """Apply a later block to the published provider, never to its seed."""
-        payload = self._validate_view(source)
+        payload = self.validate_view(source)
         before_steps = self.actions.node(payload.action).steps
         additional = self.actions.node(action).steps
-        completed = self._recursive_for_steps(before_steps)
+        completed = self.recursive_for_steps(before_steps)
         if payload.occurrence is None or completed is None:
             raise ReverseCylinderConstructionUnavailable(
                 "reverse/add source cylinder has no completed provider occurrence"
@@ -485,7 +485,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
                 "reverse/add completed provider exceeds its admitted temporal horizon"
             )
         cumulative = self.actions.compose(payload.action, action)
-        cached = self._recursive_for_steps(total)
+        cached = self.recursive_for_steps(total)
         if cached is None:
             target = cutover.apply_to_occurrence(occurrence, additional)
             self._recursive_occurrences[total] = target
@@ -536,7 +536,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
         self, action: Hashable, source: SourceImageView
     ) -> SourceImageCandidate:
         self.validate_action(action)
-        payload = self._validate_view(source)
+        payload = self.validate_view(source)
         exact = cast(ReverseActionID, action)
         node = self.actions.node(exact)
         if node.steps not in (0, 1):
@@ -556,7 +556,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
                     raise ReverseCylinderConstructionUnavailable(
                         "decimal pair output lost its completed source occurrence"
                     )
-                owner = self._q19_output_owner(exact_source)
+                owner = self.q19_output_owner(exact_source)
                 pair_output = owner.initial
             else:
                 if self._q19_source is not exact_source or self._q19_owner is None:
@@ -593,7 +593,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
             precision=width,
         )
 
-    def _q19_output_owner(self, source: ExactSource) -> ReversePairQ19OutputOwner:
+    def q19_output_owner(self, source: ExactSource) -> ReversePairQ19OutputOwner:
         owner = self._q19_owner
         if owner is None:
             owner = ReversePairQ19OutputOwner(
@@ -616,7 +616,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
         """Publish only the bounded Q19 prefix needed to enter T2 scheduling."""
         if steps < 2 or steps > 4 or self.actions.node(payload.action).steps != 0:
             return None
-        owner = self._q19_output_owner(origin)
+        owner = self.q19_output_owner(origin)
         occurrence = owner.initial
         remaining = steps - 1
         if remaining >= 2:
@@ -652,7 +652,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
         demand: SourceImageDemand | None,
     ) -> SourceImageCandidate | None:
         self.validate_action(action)
-        self._validate_view(source)
+        self.validate_view(source)
         if demand is not None:
             demand.__post_init__()
         origin = self.actions.source(cast(ReverseSource, source.binding.source))
@@ -781,9 +781,9 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
         after: SourceImageView,
     ) -> SourceImageCandidate:
         self.validate_action(action)
-        original = self._validate_view(source)
-        middle = self._validate_view(before)
-        final = self._validate_view(after)
+        original = self.validate_view(source)
+        middle = self.validate_view(before)
+        final = self.validate_view(after)
         children = self.action_children(action)
         if (
             children is None
@@ -808,7 +808,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
         self, action: Hashable, source: SourceImageView
     ) -> Hashable | None:
         self.validate_action(action)
-        payload = self._validate_view(source)
+        payload = self.validate_view(source)
         action_steps = self.actions.node(cast(ReverseActionID, action)).steps
         source_steps = self.actions.node(
             cast(ReverseImagePayload, source.payload).action
@@ -892,7 +892,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
     def project(
         self, image: SourceImageView, demand: SourceImageDemand
     ) -> SourceImageProjection:
-        payload = self._validate_view(image)
+        payload = self.validate_view(image)
         source = self.actions.source(cast(ReverseSource, image.binding.source))
         source_width = len(source.digits)
         steps = self.actions.node(payload.action).steps
@@ -917,7 +917,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
                 )
                 return SourceImageProjection(self.ports(source).second_width())
             if steps >= 3:
-                recursive = self._recursive_for_steps(steps)
+                recursive = self.recursive_for_steps(steps)
                 if recursive is not None:
                     cutover, occurrence = recursive
                     self.ledger.bump(
@@ -937,7 +937,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
         if position < 0:
             raise IndexError(position)
         if steps >= 3:
-            recursive = self._recursive_for_steps(steps)
+            recursive = self.recursive_for_steps(steps)
             if recursive is not None:
                 cutover, occurrence = recursive
                 self.ledger.bump(
@@ -984,7 +984,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
             yield 1
 
     def first_failure(self, image: SourceImageView) -> None:
-        self._validate_view(image)
+        self.validate_view(image)
 
 
 __all__ = [

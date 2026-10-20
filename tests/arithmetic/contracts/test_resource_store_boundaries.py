@@ -32,12 +32,12 @@ def test_builtin_mutation_descriptors_cannot_bypass_zero_reservations_or_recycle
     mapping = ledger.make_dict(ledger.register("keys", "action_interner"))
     before = ledger.snapshot()
     operations: tuple[Callable[[], object], ...] = (
-        lambda: list.append(cast("list[int]", sequence), 42),
-        lambda: list.clear(cast("list[int]", sequence)),
-        lambda: list.__init__(cast("list[int]", sequence), [42]),
-        lambda: dict.__setitem__(cast("dict[int, int]", mapping), 0, 42),
-        lambda: dict.update(cast("dict[int, int]", mapping), {0: 42}),
-        lambda: dict.__init__(cast("dict[int, int]", mapping), {0: 42}),
+        lambda: list[int].append(cast("list[int]", sequence), 42),
+        lambda: list[int].clear(cast("list[int]", sequence)),
+        lambda: list[int].__init__(cast("list[int]", sequence), [42]),
+        lambda: dict[int, int].__setitem__(cast("dict[int, int]", mapping), 0, 42),
+        lambda: dict[int, int].update(cast("dict[int, int]", mapping), {0: 42}),
+        lambda: dict[int, int].__init__(cast("dict[int, int]", mapping), {0: 42}),
     )
     for operation in operations:
         with pytest.raises(TypeError):
@@ -59,8 +59,8 @@ def test_canonical_wrappers_preserve_ids_and_ownership_after_failed_mutation() -
         lambda: nodes.pop(),
         lambda: nodes.reverse(),
         lambda: nodes.__setitem__(0, "replacement"),
-        lambda: list.__setitem__(cast("list[str]", nodes), 0, "replacement"),
-        lambda: LedgerList.__init__(nodes, ledger, owner, 1, True),
+        lambda: list[str].__setitem__(cast("list[str]", nodes), 0, "replacement"),
+        lambda: LedgerList[object].__init__(nodes, ledger, owner, 1, True),
         lambda: delattr(nodes, "_sealed"),
         lambda: setattr(nodes, "append_only", False),
     )
@@ -143,7 +143,7 @@ def test_immutable_snapshot_is_detached_without_using_public_iteration(
     assert type(snapshot) is tuple and snapshot == (2, 3)
     assert ledger.snapshot() == before
     with pytest.raises(TypeError):
-        list.__setitem__(cast("list[int]", snapshot), 0, 97)
+        list[int].__setitem__(cast("list[int]", snapshot), 0, 97)
     nodes.append(5)
     assert snapshot == (2, 3)
     assert nodes.snapshot() == (2, 3, 5)

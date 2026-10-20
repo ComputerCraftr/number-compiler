@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from devtools.verification.reverse_spacetime import ReverseAddCarrySlab
 from devtools.verification.temporal_quotient import ReverseAddCarryCutState
@@ -9,7 +9,12 @@ from number_compiler.arithmetic.carry.event_memory import (
     event_memory_horizon,
     pair_step,
 )
-from number_compiler.arithmetic.fields.dyadic_tile import iter_symbols, source_span
+from number_compiler.arithmetic.fields.dyadic_tile import (
+    DyadicSpan,
+    DyadicTile,
+    iter_symbols,
+    source_span,
+)
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.fields.dyadic_tile import DyadicSpan
@@ -19,7 +24,7 @@ def _bootstrap_rows(
     seed_pair: tuple[int, int, int] = (7, 10, 7), base: int = 10
 ) -> tuple[DyadicSpan, ...]:
     pair = tuple(seed_pair)
-    rows = []
+    rows: list[DyadicSpan] = []
     for _ in range(event_memory_horizon(base)):
         carry = carry_field(pair, base=base)
         rows.append(source_span(carry, blank=0, logical_length=len(carry)))
@@ -38,9 +43,9 @@ def test_reverse_cut_state_roundtrips_rows_without_row_lengths_in_identity() -> 
     )
     # Geometry is represented by the dyadic tiles themselves, not a separate
     # row-width vector or source-length scalar.
-    geometry = cut.canonical_key[3]
+    geometry = cast(tuple[object, ...], cut.canonical_key[3])
     assert isinstance(geometry, tuple)
-    assert all(hasattr(tile, "width") for tile in geometry)
+    assert all(isinstance(tile, DyadicTile) and tile.width > 0 for tile in geometry)
 
 
 def test_reverse_slab_and_forcing_source_use_packed_cut_identity() -> None:

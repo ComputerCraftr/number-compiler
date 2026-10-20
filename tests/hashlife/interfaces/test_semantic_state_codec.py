@@ -60,7 +60,7 @@ def test_every_small_arbitrary_continuation_and_anchor_are_preserved(side: int) 
         )
         for q in range(codec.argument_port.cardinality)
     )
-    observed = set()
+    observed: set[object] = set()
     assert codec.continuation_cardinality is not None
     for initial in range(codec.anchor_cardinality):
         for values in product(

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Hashable
 
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
 
@@ -28,7 +29,7 @@ def validate_bounded_semantic_key(key: Hashable, *, max_units: int) -> None:
             raise ValueError("semantic key exceeds the bounded canonical record limit")
         if isinstance(value, ArenaHandle):
             raise TypeError("semantic keys cannot contain scoped handles")
-        if type(value) is tuple:
+        if is_exact_object_tuple(value):
             pending.extend(value)
         elif isinstance(value, SemanticIdentity):
             value.__post_init__()

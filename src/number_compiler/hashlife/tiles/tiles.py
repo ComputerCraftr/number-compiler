@@ -155,7 +155,7 @@ class TileArena:
         self._retirement_occurred = False
         self._results: CompletedResultArena | None = None
         prefix = f"canonical-tiles-{len(ledger.inventory())}"
-        self._cache_metrics = CacheEventMetrics(ledger, prefix)
+        self.cache_metrics = CacheEventMetrics(ledger, prefix)
         self._alphabet_owner = ledger.register(prefix + "-alphabets", "tile_alphabet")
         self._alphabet_key_owner = ledger.register(
             prefix + "-alphabet-keys", "tile_alphabet_interner"
@@ -309,12 +309,12 @@ class TileArena:
         self.resolve(tile)
         self.ledger.reserve(self._lease_owner, entries=1)
         try:
-            return self._acquire_reserved(tile)
+            return self.acquire_reserved(tile)
         except BaseException:
             self.ledger.release(self._lease_owner, entries=1)
             raise
 
-    def _acquire_reserved(self, tile: TileID) -> TileLease:
+    def acquire_reserved(self, tile: TileID) -> TileLease:
         """Publish a lease within an already reserved multi-store transaction.
 
         The caller owns the reservation and releases it if publication fails.
@@ -376,7 +376,9 @@ class TileArena:
         if not 0 <= symbol < interpretation.symbol_count:
             raise ValueError("tile symbol is outside its alphabet")
         active = None if symbol == interpretation.blank else 0
-        return self._intern(TileRecord(alphabet, 0, symbol, None, None, active, active))
+        return self.intern_record(
+            TileRecord(alphabet, 0, symbol, None, None, active, active)
+        )
 
     def join(self, left: TileID, right: TileID) -> TileLease:
         before, after = self.resolve(left), self.resolve(right)
@@ -389,7 +391,7 @@ class TileArena:
         last = before.last_active
         if after.last_active is not None:
             last = offset + after.last_active
-        return self._intern(
+        return self.intern_record(
             TileRecord(
                 before.alphabet,
                 before.level + 1,
@@ -519,8 +521,8 @@ class TileArena:
                 value.close()
             raise
 
-    def _intern(self, record: TileRecord) -> TileLease:
-        self._validate_record(record)
+    def intern_record(self, record: TileRecord) -> TileLease:
+        self.validate_record(record)
         key = self._key(record)
         self.ledger.bump(_tiles_keys.TILE_INTERN_REQUESTS)
         found = self._keys.get(key)
@@ -529,7 +531,7 @@ class TileArena:
             self.resolve(tile)
             result = self._acquire(tile)
             self.ledger.bump(_tiles_keys.TILE_INTERN_EARLY_HITS)
-            self._cache_metrics.record(
+            self.cache_metrics.record(
                 "tile",
                 "early_hit",
                 spatial_level=record.level,
@@ -578,13 +580,13 @@ class TileArena:
                 self.ledger.release(owner, entries, nodes)
             raise
         self.ledger.bump(_tiles_keys.TILE_PUBLICATIONS)
-        self._cache_metrics.prepare(
+        self.cache_metrics.prepare(
             "tile",
             "early_hit",
             spatial_level=record.level,
             temporal_span=None,
         )
-        self._cache_metrics.record(
+        self.cache_metrics.record(
             "tile",
             "publication",
             spatial_level=record.level,
@@ -600,7 +602,7 @@ class TileArena:
             raise ValueError("stale or unpublished tile lease")
         return self._leases[lease_id]
 
-    def _validate_record(self, record: TileRecord) -> None:
+    def validate_record(self, record: TileRecord) -> None:
         if type(record) is not TileRecord or type(record.level) is not int:
             raise TypeError("tile publication requires a canonical record")
         alphabet = self.alphabet(record.alphabet)

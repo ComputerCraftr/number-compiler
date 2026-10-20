@@ -13,7 +13,7 @@ import statistics
 from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager, nullcontext
 from importlib import import_module
-from typing import Literal, TypedDict
+from typing import Literal, TypedDict, cast
 from unittest.mock import patch
 
 from devtools.benchmarks.public_query_comparison import (
@@ -22,6 +22,7 @@ from devtools.benchmarks.public_query_comparison import (
     named_counter_lane,
     run_jsonl_report,
 )
+from devtools.benchmarks.report_schema import record
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.api.registry_cli import option_argv
 
@@ -108,9 +109,10 @@ def _sample(
             elapsed, packet = cli_sample(arguments, fresh=False)
     finally:
         NumberCompiler.clear_shared_cache()
-    info = packet.get("info")
-    if not isinstance(info, dict):
+    info_value = packet.get("info")
+    if not isinstance(info_value, dict):
         raise TypeError("Antihydra CLI omitted the information object")
+    info = record(cast(object, info_value))
     expected_info = (
         {"metrics"} if consumer == "antihydra" else {"arithmetic.mahler", "metrics"}
     )
@@ -197,7 +199,7 @@ def compare(
                 row["value"] != enabled[0]["value"] for row in disabled
             ):
                 raise AssertionError("Antihydra endpoint changed under macro ablation")
-    summaries = []
+    summaries: list[dict[str, object]] = []
     for consumer in consumers:
         for horizon in horizons:
             enabled = [

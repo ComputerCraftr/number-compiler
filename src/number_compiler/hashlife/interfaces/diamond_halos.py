@@ -16,6 +16,7 @@ from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.resources.metric_keys import (
     hashlife_interfaces as _interfaces_keys,
 )
+from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.continuations.diamond_runtime import (
@@ -39,6 +40,12 @@ class CausalHaloArena:
         self._radii: OwnedMemo[ActionProgramID, RightHalo] = OwnedMemo(
             self.ledger, self.owner, nodes_per_entry=1
         )
+
+    def audit_snapshot(self) -> OwnedMemoAuditSnapshot[ActionProgramID, RightHalo]:
+        return self._radii.audit_snapshot()
+
+    def cached_halo(self, action: ActionProgramID) -> RightHalo | None:
+        return self._radii.get(action)
 
     def right(self, action: ActionProgramID) -> int | None:
         actions = self.runtime.actions

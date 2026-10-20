@@ -12,10 +12,11 @@ The high fiber k in D = residue + 2**L*k is persistent across CONCAT/REPEAT.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Final
+from typing import Final, cast
 from weakref import ReferenceType, ref
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.fields.boolean_counter import (
     BinaryBooleanCarryAction,
 )
@@ -25,6 +26,7 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
 from number_compiler.arithmetic.fields.consumer_pullback import (
     HalfOpenInterval as Interval,
 )
+from number_compiler.arithmetic.fields.integer_congruence import exact_modular_power
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.arithmetic.fields.walsh import WalshH5
 from number_compiler.sequences.antihydra.mahler_source_actions import (
@@ -82,7 +84,7 @@ class MahlerJointInteriorWindow:
         raise TypeError("Mahler interior windows require checked source issuance")
 
     @classmethod
-    def _issue(
+    def from_checked_source_window(
         cls,
         source: int,
         source_endpoint: int,
@@ -107,6 +109,11 @@ class MahlerJointInteriorWindow:
         next_fraction: Q | None,
         next_branch_safe: bool | None,
     ) -> MahlerJointInteriorWindow:
+        """Issue the immutable output of the checked source-window builder.
+
+        The caller must first authenticate the integer source and establish
+        each radix/carry equation represented by these fields.
+        """
         result = object.__new__(cls)
         values = (
             source,
@@ -176,7 +183,7 @@ class MahlerJointInteriorWindow:
             return type(value), value
 
         def scalar_tuple(value: object) -> tuple[object, ...]:
-            if type(value) is not tuple:
+            if not is_exact_object_tuple(value):
                 return (type(value),)
             return type(value), tuple(scalar(item) for item in value)
 
@@ -208,6 +215,7 @@ class MahlerJointInteriorWindow:
         if type(counter) is not BinaryBooleanCarryAction:
             counter_snapshot = (type(counter),)
         else:
+            counter_structure = counter.structural_snapshot()
             harmonics = counter.harmonics
             harmonic_snapshot = (
                 (type(harmonics), tuple(harmonic(item) for item in harmonics))
@@ -221,8 +229,8 @@ class MahlerJointInteriorWindow:
                 scalar_tuple(counter.next_carries),
                 scalar_tuple(counter.deltas),
                 harmonic_snapshot,
-                scalar_tuple(counter._output_words),
-                scalar_tuple(counter._xor_masks),
+                scalar_tuple(counter_structure[5]),
+                scalar_tuple(counter_structure[6]),
             )
         return (
             type(self),
@@ -377,7 +385,7 @@ class MahlerJointFutureAction:
     def bit(cls, epsilon: int) -> MahlerJointFutureAction:
         if type(epsilon) is not int or epsilon not in (0, 1):
             raise ValueError("Mahler next branch is exactly one Boolean bit")
-        return cls._with_gain(
+        return cls.with_gain(
             1,
             epsilon,
             epsilon,
@@ -387,7 +395,7 @@ class MahlerJointFutureAction:
         )
 
     @classmethod
-    def _with_gain(
+    def with_gain(
         cls,
         extent: int,
         residue: int,
@@ -475,7 +483,7 @@ class MahlerJointFutureAction:
         return result
 
     @classmethod
-    def _from_admitted_root_workspace(
+    def from_admitted_root_workspace(
         cls,
         workspace: object,
         endpoint_h: int,
@@ -484,7 +492,7 @@ class MahlerJointFutureAction:
     ) -> MahlerJointFutureAction:
         """Reuse the exact gain from an already authenticated source image.
 
-        This private producer path is called only after the owning arithmetic
+        This collaborator path is called only after the owning arithmetic
         result validates its workspace. The transfer must be the exact root
         summary object, so an arbitrary integer gain cannot issue a selector.
         """
@@ -505,30 +513,34 @@ class MahlerJointFutureAction:
             or workspace.returns > MAX_MAHLER_SOURCE_EXTENT
         ):
             raise ValueError("root future action requires an admitted arithmetic owner")
+        admitted_transfer = cast(SkewTransfer[int], transfer)
         extent = workspace.returns
         if type(safety) is not MahlerSourceBoundSafetyAction or safety.extent != extent:
             raise ValueError("root safety belongs to another arithmetic extent")
         safety.__post_init__()
         workspace.validate_payload(workspace.root_payload)
         root_summary = workspace.image_node(workspace.root_payload).summary
-        if transfer is not root_summary.transfer or root_summary.width != extent:
+        if (
+            admitted_transfer is not root_summary.transfer
+            or root_summary.width != extent
+        ):
             raise ValueError("root gain is detached from the admitted image")
         endpoint_limit_bits = (
             max(
-                transfer.upper.bit_length() + 4,
-                abs(transfer.offset).bit_length(),
+                admitted_transfer.upper.bit_length() + 4,
+                abs(admitted_transfer.offset).bit_length(),
             )
             + 1
         )
         if endpoint_h.bit_length() > endpoint_limit_bits:
             raise ValueError("root endpoint exceeds its admitted transfer bound")
-        q, p = 1 << extent, transfer.upper
-        if transfer.lower != q or p < q:
+        q, p = 1 << extent, admitted_transfer.upper
+        if admitted_transfer.lower != q or p < q:
             raise ValueError("admitted root transfer has another dyadic extent")
-        endpoint, remainder = divmod(8 * p + transfer.offset, q)
+        endpoint, remainder = divmod(8 * p + admitted_transfer.offset, q)
         if remainder or endpoint != endpoint_h:
             raise ValueError("root endpoint differs from its admitted transfer")
-        innovation = p + transfer.offset - q
+        innovation = p + admitted_transfer.offset - q
         if extent == 0:
             if safety != MahlerSourceBoundSafetyAction():
                 raise ValueError("zero-extent root action is not the identity")
@@ -542,7 +554,7 @@ class MahlerJointFutureAction:
         if residue != 7 % q or innovation < 0:
             raise ValueError("admitted root action contradicts centered source seven")
         guard = cls.bit(1).guard if extent == 1 else Interval(_ZERO, _ZERO)
-        result = cls._with_gain(
+        result = cls.with_gain(
             extent,
             residue,
             innovation,
@@ -586,12 +598,12 @@ class MahlerJointFutureAction:
             else Interval(_ZERO, _ZERO)
         )
         guard = self.guard.intersect(pullback)
-        return MahlerJointFutureAction._with_gain(
+        return MahlerJointFutureAction.with_gain(
             self.extent + after.extent,
             residue,
             innovation,
             guard,
-            self.safety._then_with_authenticated_gain(after.safety, after.gain),
+            self.safety.then_with_authenticated_gain(after.safety, after.gain),
             self.gain * after.gain,
         )
 
@@ -653,7 +665,7 @@ class MahlerJointFutureAction:
         so the next epsilon is (endpoint_residue+k) mod 2. Only fractions
         in each returned child's exact half-open guard are admitted.
         """
-        result = []
+        result: list[MahlerJointSuccessor] = []
         for epsilon in (0, 1):
             child = self.then(self.bit(epsilon))
             if not child.guard.empty:
@@ -701,7 +713,7 @@ class MahlerJointFutureAction:
         if type(places) is not int or not 1 <= places <= 4096:
             raise ValueError("5-adic demand must have positive bounded precision")
         modulus = 5**places
-        inverse = pow(2, -self.extent, modulus)
+        inverse = exact_modular_power(2, -self.extent, modulus)
         return (
             (self.gain * inverse) % modulus,
             (self.innovation * inverse) % modulus,
@@ -744,15 +756,17 @@ class MahlerJointFutureAction:
         if next_binary != next_source % (1 << bits):
             raise ArithmeticError("two-carry binary output contradicts source shift")
         modulus_5 = 5**decimal_places
-        next_five = (
-            (3 * (current % modulus_5) + epsilon) * pow(2, -1, modulus_5)
+        next_five: int = (
+            (3 * (current % modulus_5) + epsilon)
+            * exact_modular_power(2, -1, modulus_5)
         ) % modulus_5
         if next_five != next_source % modulus_5:
             raise ArithmeticError("5-adic affine arm disagrees with source")
         modulus_2 = 1 << decimal_places
         r2 = next_binary % modulus_2
-        next_decimal = r2 + modulus_2 * (
-            ((next_five - r2) * pow(modulus_2, -1, modulus_5)) % modulus_5
+        next_decimal: int = r2 + modulus_2 * (
+            ((next_five - r2) * exact_modular_power(modulus_2, -1, modulus_5))
+            % modulus_5
         )
         if next_decimal != next_source % (10**decimal_places):
             raise ArithmeticError("joint CRT reconstruction disagrees with source")
@@ -771,14 +785,16 @@ class MahlerJointFutureAction:
             carry = int(out_bit < in_bit + carry)
             binary_borrows |= carry << i
         carry = 0
-        decimal_in, decimal_out = source_decimal, next_decimal
+        decimal_in: int = source_decimal
+        decimal_out: int = next_decimal
         for i in range(decimal_places):
-            old_digit, new_digit = decimal_in % 10, decimal_out % 10
+            old_digit: int = decimal_in % 10
+            new_digit: int = decimal_out % 10
             carry = int(new_digit < old_digit + carry)
             decimal_borrows |= carry << i
             decimal_in //= 10
             decimal_out //= 10
-        return MahlerJointInteriorWindow._issue(
+        return MahlerJointInteriorWindow.from_checked_source_window(
             source,
             current,
             epsilon,

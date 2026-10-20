@@ -153,8 +153,8 @@ def test_nonblank_interval_interface_alias_is_not_temporally_closed() -> None:
                 engine.interface(
                     action,
                     lease.tile,
-                    engine._initial(action, 0),
-                    engine._initial(action, 1),
+                    engine.initial_state(action, 0),
+                    engine.initial_state(action, 1),
                 ).interface.local_id
                 for lease in leases
             ]

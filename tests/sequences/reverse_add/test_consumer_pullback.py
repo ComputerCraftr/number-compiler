@@ -7,8 +7,11 @@ import pytest
 
 from devtools.verification.reverse_geometry_context import ReverseGeometryContext
 from devtools.verification.reverse_growth_attribution import attribute_growth
-from devtools.verification.reverse_successor_image_audit import _sources
-from devtools.verification.threshold_expressions import ThresholdExpressions
+from devtools.verification.reverse_successor_image_audit import symmetric_sources
+from devtools.verification.threshold_expressions import (
+    ConsumerSchema,
+    ThresholdExpressions,
+)
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 
 pytestmark = pytest.mark.validation
@@ -64,7 +67,7 @@ def test_consumer_pullback_associativity_on_complete_small_interface() -> None:
     direct = context.pullback(context.compose(first, second), consumer)
     e = context.expressions
     for width in range(1, 5):
-        for source in _sources(width):
+        for source in symmetric_sources(width):
             binding = context.binding(source)
             left = e.evaluate((nested.admitted, *nested.outputs), binding)
             right = e.evaluate((direct.admitted, *direct.outputs), binding)
@@ -77,16 +80,22 @@ def test_failed_pullback_rolls_back_unpublished_ids_but_charges_work() -> None:
     context = ReverseGeometryContext(4, value_quotient="mod9")
     first = context.primitive()
     e = context.expressions
+    schema_key_store = cast(
+        dict[ConsumerSchema, int], object.__getattribute__(e, "_schema_keys")
+    )
     nodes, schemas, keys, schema_keys = (
         list(e.nodes),
         list(e.schemas),
         dict(e.keys),
-        dict(e._schema_keys),
+        dict(schema_key_store),
     )
     e.max_nodes = len(nodes) + len(schemas) + e.auxiliary_nodes + 4
     with pytest.raises(BlockContextBudgetExceeded):
         context.compose(first, first)
-    assert (e.nodes, e.schemas, e.keys, e._schema_keys) == (
+    schema_keys_after = cast(
+        dict[ConsumerSchema, int], object.__getattribute__(e, "_schema_keys")
+    )
+    assert (e.nodes, e.schemas, e.keys, schema_keys_after) == (
         nodes,
         schemas,
         keys,

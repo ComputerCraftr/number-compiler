@@ -350,7 +350,10 @@ def main() -> None:
         if len(rows) > 1
         else {}
     )
-    for name in sorted(set().union(*(row.resource_work_counters for row in rows))):
+    work_names: set[str] = set()
+    for row in rows:
+        work_names.update(row.resource_work_counters)
+    for name in sorted(work_names):
         if len(rows) > 1:
             measured["work." + name] = assess_series(
                 generations, [row.resource_work_counters.get(name, 0) for row in rows]

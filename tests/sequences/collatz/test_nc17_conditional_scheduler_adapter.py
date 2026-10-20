@@ -387,8 +387,9 @@ def test_public_root_term_consumes_complete_conditional_parent(shared: bool) -> 
             == 1
         )
     finally:
-        if term._workspace is not None:
-            term._workspace.dispose()
+        workspace = term.audit_snapshot().workspace
+        if workspace is not None:
+            workspace.dispose()
 
 
 def test_shared_root_falls_through_to_conditional_when_legacy_parent_misses() -> None:
@@ -429,8 +430,9 @@ def test_public_joint_root_is_issued_from_the_same_admitted_parent() -> None:
         assert root.port_action is not None
         root.validate()
     finally:
-        if term._workspace is not None:
-            term._workspace.dispose()
+        workspace = term.audit_snapshot().workspace
+        if workspace is not None:
+            workspace.dispose()
 
 
 @pytest.mark.parametrize("motif", ((0, 1), (1, 2)))
@@ -489,8 +491,9 @@ def test_shared_root_skips_unhelpful_partial_compilation() -> None:
             == 0
         )
     finally:
-        if term._workspace is not None:
-            term._workspace.dispose()
+        workspace = term.audit_snapshot().workspace
+        if workspace is not None:
+            workspace.dispose()
 
 
 def test_guarded_source_port_reuses_other_admitted_fiber() -> None:

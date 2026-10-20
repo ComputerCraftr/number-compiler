@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.execution.tile_causal_interfaces import (
     CausalInterfacePayload,
@@ -64,7 +65,7 @@ def causal_width(
     outside ``limit`` cannot affect the answer.  No scalar point loop or exact
     final-output tile participates in this operation.
     """
-    if not isinstance(engine.tiles, TileArena) or not isinstance(
+    if not is_runtime_instance(engine.tiles, TileArena) or not is_runtime_instance(
         engine.ledger, ResourceLedger
     ):
         raise TypeError("causal width requires the shared tile runtime")

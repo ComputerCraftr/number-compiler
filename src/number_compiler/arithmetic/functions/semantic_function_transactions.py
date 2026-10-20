@@ -14,8 +14,8 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     SemanticNode,
     SemanticRequest,
     SemanticTerminal,
-    _base,
-    _union_inputs,
+    base_port_variable,
+    union_inputs,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.resources.metric_keys import (
@@ -57,6 +57,11 @@ class _Transaction:
         self._staged_entries = 0
         self._staged_nodes = 0
         self._closed = False
+
+    @property
+    def is_open(self) -> bool:
+        """Whether the transaction still owns its construction workspace."""
+        return not self._closed
 
     def __enter__(self) -> Self:
         if self._closed:
@@ -368,7 +373,12 @@ class _Transaction:
         ):
             request = SemanticRequest(
                 "construction-ite",
-                tuple(self.arena._handle(identity) for identity in root),
+                tuple(
+                    self.arena.candidate_handle(
+                        identity, base=self.base, candidate_count=0
+                    )
+                    for identity in root
+                ),
             )
             self.arena.ledger.bump(_functions_keys.SEMANTIC_ITE_CANONICAL_REQUESTS)
             cached = self.arena.memo.get(request)
@@ -657,7 +667,7 @@ class _Transaction:
     ) -> int:
         original = self.node(root).signature
         removed = {port.variable for port, _ in replacements}
-        inputs = _union_inputs(
+        inputs = union_inputs(
             tuple(port for port in original.inputs if port.variable not in removed),
             *(self.node(item).signature.inputs for _, item in replacements),
         )
@@ -678,7 +688,7 @@ class _Transaction:
                 assert variable is not None
                 condition = bits.get(variable)
                 if condition is None:
-                    replacement = replacement_by_name.get(_base(variable))
+                    replacement = replacement_by_name.get(base_port_variable(variable))
                     if replacement is None:
                         condition = self.bit(inputs, variable)
                     else:

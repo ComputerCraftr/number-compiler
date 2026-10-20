@@ -13,13 +13,18 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, cast
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_dictionary,
+    is_object_list,
+    is_runtime_instance,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.comma.arithmetic import phase_period
-from number_compiler.sequences.comma.certificates import _charge
+from number_compiler.sequences.comma.certificates import charge_certificate_work
 
 _SCHEMA: Final[str] = "a367620-closed-sector-forest-v1"
 _MAX_LINE_BYTES = 8192
@@ -111,7 +116,7 @@ def _literal_children(parent: int) -> tuple[int, ...]:
 def _small_roots(ledger: ResourceLedger, max_work: int) -> tuple[int, ...]:
     roots: list[int] = []
     for value in range(1, 100):
-        _charge(ledger, max_work)
+        charge_certificate_work(ledger, max_work)
         lead, _ = _leading_digit_scale(value)
         defect = (value - lead) % 10
         predecessor = value - 10 * defect - lead
@@ -130,7 +135,7 @@ def _sector_upper(leading: int, scale: int) -> int:
 
 
 def _max_safe_cycles(value: int, leading: int, upper: int) -> tuple[int, int, int]:
-    period, displacement = _phase_period(leading, value % 10)
+    period, displacement = phase_period(leading, value % 10)
     cycles = max(0, (upper - 100 - value) // displacement)
     return cycles, period, displacement
 
@@ -142,7 +147,7 @@ def _prefix_to_first_fork(
     index = 1
     skipped_periods = 0
     while True:
-        _charge(ledger, max_work)
+        charge_certificate_work(ledger, max_work)
         lead, scale = _leading_digit_scale(value)
         upper = _sector_upper(lead, scale)
         if value >= 100:
@@ -154,9 +159,9 @@ def _prefix_to_first_fork(
                 value += gain
                 index += cycles * period
                 skipped_periods += cycles
-                _charge(ledger, max_work)
+                charge_certificate_work(ledger, max_work)
                 _charge_bits(ledger, value, gain, cycles, period)
-        _charge(ledger, max_work)
+        charge_certificate_work(ledger, max_work)
         ledger.bump(
             _comma_keys.COMMA_CERTIFICATE_CANDIDATE_OPERAND_BIT_WORK,
             18 * value.bit_length(),
@@ -179,16 +184,19 @@ def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def _parse_line(line: bytes) -> dict[str, Any]:
+def _parse_line(line: bytes) -> dict[str, object]:
     if len(line) > _MAX_LINE_BYTES or not line.endswith(b"\n"):
         raise ValueError("truncated or oversized comma certificate record")
     try:
         decoded = line.decode("ascii")
-        obj = json.loads(decoded, object_pairs_hook=_strict_object)
+        raw: object = json.loads(decoded, object_pairs_hook=_strict_object)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("malformed comma certificate JSON") from error
-    if type(obj) is not dict:
+    if type(raw) is not dict:
         raise ValueError("comma certificate records must be JSON objects")
+    # JSON object keys arrive as strings through _strict_object; values remain
+    # untrusted and are kept as object until each field is checked.
+    obj = cast(dict[str, object], raw)
     canonical = (
         json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n"
     ).encode("ascii")
@@ -209,7 +217,7 @@ def _positive_decimal(value: object, field: str) -> int:
 
 
 def _check_header(
-    header: dict[str, Any],
+    header: dict[str, object],
     roots: tuple[int, ...],
     prefix: tuple[int, int, tuple[int, ...], int],
 ) -> tuple[int, ...]:
@@ -222,28 +230,32 @@ def _check_header(
     expected_sources = tuple(root for root in roots if root != 20) + (
         _PREFIX_RIGHT_CHILD,
     )
-    if (
-        type(sources) is not list
-        or any(type(source) is not int for source in sources)
-        or tuple(sources) != expected_sources
+    if not is_object_list(sources) or any(
+        type(source) is not int for source in sources
     ):
         raise ValueError(
             "comma certificate source partition differs from recomputation"
         )
+    typed_sources = cast(list[int], sources)
+    if tuple(typed_sources) != expected_sources:
+        raise ValueError(
+            "comma certificate source partition differs from recomputation"
+        )
     supplied_prefix = header.get("prefix")
-    if type(supplied_prefix) is not dict or set(supplied_prefix) != {
+    if not is_object_dictionary(supplied_prefix) or set(supplied_prefix) != {
         "index",
         "value",
         "children",
     }:
         raise ValueError("malformed comma first-fork prefix header")
+    typed_prefix = cast(dict[str, object], supplied_prefix)
     index, value, children, _ = prefix
     if (
-        type(supplied_prefix["index"]) is not int
-        or supplied_prefix["index"] != index
-        or supplied_prefix["value"] != str(value)
-        or type(supplied_prefix["children"]) is not list
-        or supplied_prefix["children"] != [str(child) for child in children]
+        type(typed_prefix["index"]) is not int
+        or typed_prefix["index"] != index
+        or typed_prefix["value"] != str(value)
+        or not is_object_list(typed_prefix["children"])
+        or typed_prefix["children"] != [str(child) for child in children]
     ):
         raise ValueError(
             "comma first-fork prefix differs from independent recomputation"
@@ -266,7 +278,7 @@ def _append_frontier(
         raise
 
 
-def _verified_record(record: dict[str, Any], source: int, entry: int) -> None:
+def _verified_record(record: dict[str, object], source: int, entry: int) -> None:
     if set(record) != {"source", "entry", "cycles", "boundary_steps", "exits"}:
         raise ValueError("malformed comma forest row")
     if _positive_decimal(record.get("source"), "source") != source:
@@ -276,14 +288,14 @@ def _verified_record(record: dict[str, Any], source: int, entry: int) -> None:
 
 
 def _check_forest_row(
-    record: dict[str, Any],
+    record: dict[str, object],
     source: int,
     entry: int,
     ledger: ResourceLedger,
     max_work: int,
 ) -> tuple[int, ...]:
     _verified_record(record, source, entry)
-    _charge(ledger, max_work)
+    charge_certificate_work(ledger, max_work)
     lead, scale = _leading_digit_scale(entry)
     upper = _sector_upper(lead, scale)
     cycles = 0
@@ -298,12 +310,12 @@ def _check_forest_row(
         value = entry
 
     if entry < 100:
-        _charge(ledger, max_work)
+        charge_certificate_work(ledger, max_work)
         ledger.bump(
             _comma_keys.COMMA_CERTIFICATE_CANDIDATE_OPERAND_BIT_WORK,
             18 * entry.bit_length(),
         )
-        exits = list(_literal_children(entry))
+        exits: list[int] = list(_literal_children(entry))
         ledger.bump(_comma_keys.COMMA_CERTIFICATE_CANDIDATE_DIGIT_TRIALS, 9)
         ledger.bump(_comma_keys.COMMA_CERTIFICATE_BOUNDARY_CLASSIFICATIONS)
         boundary_steps = 1
@@ -316,7 +328,7 @@ def _check_forest_row(
         boundary_steps = 0
         exits = []
         while True:
-            _charge(ledger, max_work)
+            charge_certificate_work(ledger, max_work)
             ledger.bump(
                 _comma_keys.COMMA_CERTIFICATE_CANDIDATE_OPERAND_BIT_WORK,
                 18 * value.bit_length(),
@@ -346,11 +358,10 @@ def _check_forest_row(
     row_cycles = record.get("cycles")
     row_steps = record.get("boundary_steps")
     row_exits = record.get("exits")
-    parsed_exits = (
-        tuple(_positive_decimal(child, "exit") for child in row_exits)
-        if type(row_exits) is list
-        else ()
-    )
+    if is_object_list(row_exits):
+        parsed_exits = tuple(_positive_decimal(child, "exit") for child in row_exits)
+    else:
+        parsed_exits = ()
     if (
         type(row_cycles) is not int
         or row_cycles != cycles
@@ -375,7 +386,7 @@ def verify_forest_certificate(
     Certificate bytes are streamed.  Only one bounded line and two ledger-
     owned BFS layers are retained at once.
     """
-    if not isinstance(ledger, ResourceLedger):
+    if not is_runtime_instance(ledger, ResourceLedger):
         raise TypeError("ledger must be a ResourceLedger")
     if type(max_work) is not int or max_work < 1:
         raise ValueError("max_work must be a positive integer")
@@ -397,7 +408,7 @@ def verify_forest_certificate(
         compressed_bytes = 0
         with certificate_path.open("rb") as compressed:
             while True:
-                _charge(ledger, max_work)
+                charge_certificate_work(ledger, max_work)
                 chunk = compressed.read(16 * 1024)
                 if not chunk:
                     break
@@ -488,12 +499,12 @@ def verify_forest_certificate(
                     ledger.bump(
                         _comma_keys.COMMA_CERTIFICATE_UNCOMPRESSED_BYTES, len(line)
                     )
-                    _charge(ledger, max_work)
+                    charge_certificate_work(ledger, max_work)
                     record = _parse_line(line)
                     exits = _check_forest_row(record, source, entry, ledger, max_work)
                     sector_entries += 1
-                    boundary_steps += int(record["boundary_steps"])
-                    phase_cycles += int(record["cycles"])
+                    boundary_steps += cast(int, record["boundary_steps"])
+                    phase_cycles += cast(int, record["cycles"])
                     for child in exits:
                         append(following_owner, following, source, child)
 
@@ -556,7 +567,3 @@ def verify_forest_certificate(
             if reserved:
                 ledger.release(owner, entries=reserved, nodes=reserved)
             ledger.mark_disposed(owner)
-
-
-def _phase_period(leading: int, last_digit: int) -> tuple[int, int]:
-    return phase_period(leading, last_digit)

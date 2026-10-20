@@ -16,7 +16,6 @@ forbidden = {
     "number_compiler.hashlife.execution.tile_causal_interfaces",
     "number_compiler.hashlife.execution.tile_clock_dispatch",
     "number_compiler.hashlife.execution.tile_execution_adapter",
-    "number_compiler.hashlife.execution.tile_scheduler_physical_imports",
     "number_compiler.hashlife.interfaces.diamond_quotient",
     "number_compiler.hashlife.tiles.tile_context",
     "number_compiler.hashlife.tiles.tile_results",

@@ -1,5 +1,8 @@
 """Finite D8 coefficients, physical clocks, and ledger-owned cold discovery."""
 
+from collections.abc import MutableMapping
+from typing import cast
+
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -66,12 +69,12 @@ def test_d8_rows_live_until_the_last_interleaved_workspace_disposes() -> None:
 
     derived_lease = object.__new__(DerivedWorkspace)
     derived_lease.ledger = ledger
-    derived_lease._closed = False
+    object.__setattr__(derived_lease, "_closed", False)
     ledger.register_execution_root(derived_lease)
     second.dispose()
     assert len(table.rows) == initial_rows
 
-    derived_lease._closed = True
+    object.__setattr__(derived_lease, "_closed", True)
     from number_compiler.sequences.collatz.physical_boundary_route import (
         release_d8_rows_if_unleased,
     )
@@ -153,9 +156,9 @@ def test_unobserved_frame_creation_and_advance_skip_f5_residue(
         staticmethod(forbidden),
     )
     frame = D8CylinderFrame((1 << 4096) + 0xA5)
-    assert frame._high_fiber_mod5 is None
+    assert object.__getattribute__(frame, "_high_fiber_mod5") is None
     advanced, _ones, _residue, _origin = table.transition(frame)
-    assert advanced._high_fiber_mod5 is None
+    assert object.__getattribute__(advanced, "_high_fiber_mod5") is None
 
 
 @pytest.mark.validation
@@ -295,7 +298,11 @@ def test_d8_payload_audit_reconstructs_rows_and_rejects_corruption() -> None:
     assert compile_collatz_temporal_run_quotient(27, 64, ledger=ledger).endpoint == 1619
     # Deliberate private-store corruption remains visible to the independent
     # audit, while supported mapping mutation cannot change canonical rows.
-    table.rows._data[residue] = (ones, target_origin + 1)
+    raw_rows = cast(
+        MutableMapping[int, tuple[int, int]],
+        object.__getattribute__(table.rows, "_data"),
+    )
+    raw_rows[residue] = (ones, target_origin + 1)
     corrupted = audit_registered_payloads(ledger)
     assert corrupted.forbidden_future_payloads > 0
 

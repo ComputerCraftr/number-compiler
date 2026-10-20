@@ -15,10 +15,12 @@ from collections.abc import (
     Mapping,
     MutableMapping,
     MutableSequence,
+    Sequence,
     ValuesView,
 )
 from operator import index as as_index
 from sys import getsizeof
+from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
     Generic,
@@ -391,6 +393,10 @@ class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
         """Expose the exact backing identity through a read-only mapping view."""
         return self._data
 
+    def audit_view(self) -> Mapping[K, V]:
+        """Return a live read-only view that preserves stored object identities."""
+        return MappingProxyType(self._data)
+
     @property
     def backing_bytes(self) -> int:
         """Return the backing map's measured capacity from its owning wrapper."""
@@ -499,6 +505,12 @@ class LedgerDict(_StoreSerializationBoundary, MutableMapping[K, V]):
         if self.write_once:
             raise TypeError("canonical mapping entries cannot be deleted")
         self._check(len(self))
+        self._data.clear()
+
+    def clear_unpublished_storage(self) -> None:
+        """Clear a factory store while its owning construction is rolling back."""
+        if not self.ledger.is_factory_container(self):
+            raise RuntimeError("retained stores require their ledger factory")
         self._data.clear()
 
     @overload
@@ -613,6 +625,19 @@ class LedgerList(_StoreSerializationBoundary, MutableSequence[T]):
         """Report the exact backing-list allocation without exposing it."""
         return getsizeof(self._data)
 
+    @property
+    def sealed(self) -> bool:
+        """Expose immutable initialization state to read-only auditors."""
+        return self._sealed
+
+    @property
+    def has_tracked_backing_store(self) -> bool:
+        """Check the exact owner and ledger binding of this list's backing."""
+        return (
+            type(self._data) is _TrackedList
+            and self._data.resource_ledger is self.ledger
+        )
+
     def __iter__(self) -> Iterator[T]:
         # A native list_iterator exposes its backing list through __reduce__.
         # Iterate public indices so no iterator can hand out the identity store.
@@ -629,6 +654,10 @@ class LedgerList(_StoreSerializationBoundary, MutableSequence[T]):
         ordinary public iteration keeps its non-serializable boundary above.
         """
         return tuple(self._data)
+
+    def audit_view(self) -> Sequence[T]:
+        """Return a live read-only sequence without copying retained values."""
+        return _LedgerListAuditView(self)
 
     @property
     def backing_bytes(self) -> int:
@@ -723,6 +752,12 @@ class LedgerList(_StoreSerializationBoundary, MutableSequence[T]):
         self._check(len(self))
         self._data.clear()
 
+    def clear_unpublished_storage(self) -> None:
+        """Clear a factory store while its owning construction is rolling back."""
+        if not self.ledger.is_factory_container(self):
+            raise RuntimeError("retained stores require their ledger factory")
+        self._data.clear()
+
     def reverse(self) -> None:
         self._editable()
         self._check(len(self))
@@ -731,6 +766,29 @@ class LedgerList(_StoreSerializationBoundary, MutableSequence[T]):
     def sort(self, *, key: object = None, reverse: bool = False) -> None:
         self._editable()
         raise TypeError("sorting retained identity stores is unsupported")
+
+
+class _LedgerListAuditView(Sequence[T], Generic[T]):
+    """Read-only live sequence view over one retained list wrapper."""
+
+    __slots__ = ("_store",)
+
+    def __init__(self, store: LedgerList[T]) -> None:
+        self._store = store
+
+    @overload
+    def __getitem__(self, index: SupportsIndex, /) -> T: ...
+
+    @overload
+    def __getitem__(self, index: slice, /) -> tuple[T, ...]: ...
+
+    def __getitem__(self, index: SupportsIndex | slice, /) -> T | tuple[T, ...]:
+        if isinstance(index, slice):
+            return tuple(self._store[index])
+        return self._store[index]
+
+    def __len__(self) -> int:
+        return len(self._store)
 
 
 def append_indexed_node(

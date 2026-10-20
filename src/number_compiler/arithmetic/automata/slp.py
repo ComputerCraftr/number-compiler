@@ -22,7 +22,7 @@ from collections.abc import (
 )
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Generic, Protocol, TypeVar
+from typing import Generic, Protocol, TypeVar, cast
 
 from number_compiler.arithmetic.automata.guard import record_slp_metrics
 from number_compiler.arithmetic.automata.transducer import (
@@ -72,7 +72,7 @@ def _slp_cache_audit_view(
 
     values: Mapping[_CacheKey, object]
     if type(store) is OwnedMemo:
-        values = store.audit_payload_view()
+        values = cast(OwnedMemo[_CacheKey, _CacheValue], store).audit_payload_view()
         backing_store = values.backing_store_identity
     else:
         values = MappingProxyType(store)
@@ -149,6 +149,25 @@ class SLPArena:
         self._cat: MutableMapping[tuple[int, int], int] = {}
         self._rep: MutableMapping[tuple[int, int], int] = {}
         self.empty_id = self._add("EMPTY", 0)
+
+    def find_terminal(self, symbol: int) -> int | None:
+        """Look up a canonical terminal without allocating it."""
+        return self._term.get(symbol)
+
+    def find_concat(self, left: int, right: int) -> int | None:
+        """Look up an existing ordered concatenation without allocating it."""
+        return self._cat.get((left, right))
+
+    def find_repeat(self, child: int, count: int) -> int | None:
+        """Look up an existing canonical repeat without allocating it."""
+        return self._rep.get((child, count))
+
+    def clear(self) -> None:
+        """Release the grammar and its canonical lookup tables together."""
+        self._term.clear()
+        self._cat.clear()
+        self._rep.clear()
+        self.nodes.clear()
 
     def _add(self, kind: str, length: int, **kw: int) -> int:
         q = len(self.nodes)

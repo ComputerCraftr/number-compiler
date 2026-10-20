@@ -27,7 +27,7 @@ def test_warm_context_parent_answers_with_all_child_and_primitive_evaluators_poi
     def forbidden(*args: object) -> Never:
         raise AssertionError("a warm parent evaluated a descendant")
 
-    monkeypatch.setattr(contexts, "_substitute", forbidden)
+    monkeypatch.setattr(contexts, "substitute_context", forbidden)
     monkeypatch.setattr(runtime.kernels, "emit_expression", forbidden)
     monkeypatch.setattr(runtime.kernels, "advance_expression", forbidden)
     assert (
@@ -99,13 +99,13 @@ def test_actual_context_graph_and_unary_observations_are_accounted_independently
     runtime, _, contexts, _ = collatz_context_program_case()
     report = collect_ledger_metrics(runtime.ledger)
     assert report.representation_boundary_complete == 1
-    assert report.context_program_nodes == len(contexts._nodes)
+    assert report.context_program_nodes == len(contexts.node_view)
     assert_context_inventory(contexts, report)
     assert report.resource_accounting_mismatch == 0
     registry = DiamondPayloadRegistry(runtime.ledger)
-    assert all(registry.valid(node) for node in contexts._nodes)
+    assert all(registry.valid(node) for node in contexts.node_view)
     assert all(
         type(key) is ContextObservation and registry.valid(key)
         for key in contexts.observations
     )
-    assert not registry.valid(replace(contexts._nodes[0], symbol=1 << 1000))
+    assert not registry.valid(replace(contexts.node_view[0], symbol=1 << 1000))

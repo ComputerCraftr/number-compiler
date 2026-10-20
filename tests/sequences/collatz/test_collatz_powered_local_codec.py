@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import fields
 from itertools import product
 from typing import TYPE_CHECKING, Never, cast
@@ -9,6 +10,9 @@ from typing import TYPE_CHECKING, Never, cast
 import pytest
 
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
+from number_compiler.arithmetic.contracts.block_effect import (
+    BlockContextBudgetExceeded,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
     ArenaHandle,
@@ -65,7 +69,6 @@ from number_compiler.sequences.collatz.powered_local_codec import (
     CollatzLocalActionID,
     CollatzPoweredLocalCodec,
 )
-from tests.support.local_codec_assertions import assert_publication_refused
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.field_transfer import (
@@ -198,10 +201,11 @@ def test_collatz_source_forest_action_covers_every_root_without_id_aliasing() ->
     # payloads may coincide, so the occurrence cache must include the sort.
     cell = sources.intern(0, 2)
     codec.source_action(cell)
-    assert cell in codec._source_actions
-    assert forest in codec._source_actions
+    snapshot = codec.audit_snapshot()
+    assert cell in snapshot.source_actions
+    assert forest in snapshot.source_actions
     assert all(
-        type(key) in (SourceCellID, SourceForestID) for key in codec._source_actions
+        type(key) in (SourceCellID, SourceForestID) for key in snapshot.source_actions
     )
 
 
@@ -211,8 +215,9 @@ def test_collatz_binary_source_morphism_pairs_aligned_radix4_symbols() -> None:
     result = codec.radix4_source_action(forest)
     expected = _word_action(codec, (1, 2, 1))
     assert result == expected
-    assert forest in codec._binary_source_actions
-    assert forest not in codec._source_actions
+    snapshot = codec.audit_snapshot()
+    assert forest in snapshot.binary_source_actions
+    assert forest not in snapshot.source_actions
 
 
 def test_collatz_binary_source_morphism_maps_padding_blank_to_zero() -> None:
@@ -241,12 +246,13 @@ def test_collatz_spatial_cache_keys_retain_scoped_action_handles() -> None:
     codec, _ = _codec()
     left, right = codec.leaf(1), codec.leaf(2)
     codec.compose(left, right)
-    assert codec._compose
+    compositions = codec.audit_snapshot().compositions
+    assert compositions
     assert all(
         type(key) is tuple
         and len(key) == 2
         and all(type(item) is CollatzLocalActionID for item in key)
-        for key in codec._compose
+        for key in compositions
     )
 
 
@@ -339,22 +345,35 @@ def test_collatz_local_public_inputs_require_exact_types() -> None:
 
 @pytest.mark.accounting
 def test_collatz_local_codec_rejects_leaf_and_parent_publication_atomically() -> None:
-    codec, _ = _codec((1, 2))
-    ledger = codec.ledger
-    assert_publication_refused(
-        ledger,
-        (codec._nodes, codec._keys, codec._leaf_actions, codec._compose),
-        lambda: codec.leaf(3),
-    )
+    def store_sizes(codec: CollatzPoweredLocalCodec) -> tuple[int, ...]:
+        snapshot = codec.audit_snapshot()
+        return (
+            len(snapshot.nodes),
+            len(snapshot.keys),
+            len(snapshot.compositions),
+            len(snapshot.leaves),
+            len(snapshot.source_actions),
+            len(snapshot.binary_source_actions),
+        )
+
+    def refused(
+        codec: CollatzPoweredLocalCodec, operation: Callable[[], object]
+    ) -> None:
+        ledger = codec.ledger
+        before_entries, before_nodes = ledger.entries, ledger.nodes
+        before_sizes = store_sizes(codec)
+        ledger.tighten_limits(before_nodes, before_entries)
+        with pytest.raises(BlockContextBudgetExceeded):
+            operation()
+        assert (ledger.entries, ledger.nodes) == (before_entries, before_nodes)
+        assert store_sizes(codec) == before_sizes
 
     codec, _ = _codec((1, 2))
-    ledger = codec.ledger
+    refused(codec, lambda: codec.leaf(3))
+
+    codec, _ = _codec((1, 2))
     left, right = codec.leaf(1), codec.leaf(2)
-    assert_publication_refused(
-        ledger,
-        (codec._nodes, codec._keys, codec._compose),
-        lambda: codec.compose(left, right),
-    )
+    refused(codec, lambda: codec.compose(left, right))
 
 
 class _SymbolicPrograms:
@@ -558,7 +577,7 @@ def test_collatz_local_codec_drives_full_source_forest_transfer() -> None:
     assert application.point(3) == 1
     assert application.active_width() == 4
     assert len(compile_calls) == 1
-    assert application.source in codec._source_actions
+    assert application.source in codec.audit_snapshot().source_actions
 
 
 def test_collatz_transfer_path_never_calls_proof_generic_or_whole_word_routes(

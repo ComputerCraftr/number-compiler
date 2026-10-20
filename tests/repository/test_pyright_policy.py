@@ -27,7 +27,7 @@ from devtools.checks.pyright_policy import (
 from devtools.checks.pyright_runner import capture_batch_diagnostics
 from devtools.checks.source_discovery import authored_files
 from devtools.checks.toolchain_policy import python_toolchain_violations
-from devtools.report_values import string_keyed_mapping
+from number_compiler.arithmetic.contracts.input_validation import string_keyed_mapping
 from tests.support.git_repositories import commit_fixture
 
 

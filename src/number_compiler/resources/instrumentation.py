@@ -55,7 +55,7 @@ def residue_bundle(
 
 
 def prime_power_moduli(primes: Iterable[int], max_power: int = 3) -> tuple[int, ...]:
-    out = []
+    out: list[int] = []
     for p in primes:
         p = int(p)
         if p < 2:

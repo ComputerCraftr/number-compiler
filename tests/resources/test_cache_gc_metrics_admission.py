@@ -17,7 +17,7 @@ def test_admitted_cache_event_does_not_reenter_action_cocycle(
 ) -> None:
     ledger, tiles, adapter, action, scheduler = make_tile_runtime(BaseBlockEffect(3))
     source = tiles.leaf(adapter.alphabet(action), 0)
-    tasks = scheduler._causal_tasks
+    tasks = scheduler.causal_tasks
     run = tasks.begin_run()
     token = admit_run_actions(adapter, tasks, ledger, action)
     try:
@@ -47,7 +47,7 @@ def test_foreign_admission_is_rejected_before_metric_mutation() -> None:
     other_ledger, _other_tiles, other_adapter, other_action, other_scheduler = (
         make_tile_runtime(BaseBlockEffect(3))
     )
-    tasks = other_scheduler._causal_tasks
+    tasks = other_scheduler.causal_tasks
     run = tasks.begin_run()
     token = admit_run_actions(other_adapter, tasks, other_ledger, other_action)
     before = ledger.snapshot()

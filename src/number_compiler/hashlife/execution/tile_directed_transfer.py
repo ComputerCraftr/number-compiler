@@ -9,12 +9,12 @@ from number_compiler.arithmetic.contracts.block_effect import BoundarySide
 from number_compiler.hashlife.actions.field_actions import FieldCellActionID
 from number_compiler.hashlife.interfaces.semantic_structures import LocalInterfaceID
 from number_compiler.hashlife.tiles.tile_directed_transfer_memo import (
+    DirectedTransferAdmission,
     DirectedTransferRequest,
-    _DirectedTransferAdmission,
-    _prepare_admission,
-    _prepare_canonical_admission,
-    _prepare_directed_transfer_with_admission,
     lookup_prepared_directed_transfer,
+    prepare_canonical_admission,
+    prepare_directed_admission,
+    prepare_directed_transfer_with_admission,
     publish_prepared_directed_transfer,
 )
 from number_compiler.hashlife.tiles.tile_ports import ResultWiring
@@ -77,7 +77,7 @@ def directed_transfer(
     """Apply one primitive transfer, caching concrete canonical parents first."""
     results = host.require_results()
     frames, values = _directed_workspace(results)
-    admission = _prepare_admission(results, action, wiring, side)
+    admission = prepare_directed_admission(results, action, wiring, side)
     try:
         return _run_directed(
             host,
@@ -105,7 +105,7 @@ def canonical_directed_transfer(
     """Apply canonical primitive wiring after one action validation."""
     results = host.require_results()
     frames, values = _directed_workspace(results)
-    admission = _prepare_canonical_admission(
+    admission = prepare_canonical_admission(
         results,
         action,
         side,
@@ -136,7 +136,7 @@ def _run_directed(
     values: CausalValueStack,
     tile: TileID,
     incoming: int,
-    admission: _DirectedTransferAdmission,
+    admission: DirectedTransferAdmission,
 ) -> int:
     action, side, wiring = admission.action, admission.side, admission.wiring
     law = admission.kernel
@@ -159,7 +159,7 @@ def _run_directed(
             wiring,
         )
         if frame.stage == 0:
-            frame.request = _prepare_directed_transfer_with_admission(
+            frame.request = prepare_directed_transfer_with_admission(
                 results,
                 key,
                 admission,
@@ -173,7 +173,7 @@ def _run_directed(
             # state. Probe it before specializing this request through children.
             # The membership probe avoids repeating full interface admission on
             # misses; hits still use the validating public lookup.
-            if interface_key in results._memo:
+            if interface_key in results.memo_view:
                 interface = results.lookup_interface(interface_key)
                 if interface is None:
                     raise AssertionError("directed interface disappeared during lookup")
@@ -242,7 +242,7 @@ __all__ = ["canonical_directed_transfer", "directed_transfer"]
 def _directed_workspace(
     results: CompletedResultArena,
 ) -> tuple[CausalFrameStack[DirectedTransferFrame], CausalValueStack]:
-    tasks = results._causal_tasks
+    tasks = results.causal_tasks
     if tasks is None:
         raise ValueError("directed transfer requires its scheduler task workspace")
     frames, values = tasks.directed_frames, tasks.directed_values

@@ -26,11 +26,11 @@ def main(argv: list[str] | None = None) -> int:
         carry_temporal_automaton_audits,
     )
     from devtools.experiments.power_numbers.special_successor_generators import (
-        _ordinary_special_successor_parts,
+        ordinary_special_successor_parts,
     )
 
     dispatch: dict[str, Callable[[], object]] = {
-        "ordinary": _ordinary_special_successor_parts,
+        "ordinary": ordinary_special_successor_parts,
         "hensel": carry_hensel_cyclotomic_audits,
         "temporal": carry_temporal_automaton_audits,
         "phase": carry_phase_refinement_audits,

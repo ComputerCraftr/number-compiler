@@ -120,7 +120,7 @@ def _event_weight(cycle_ticks: int) -> int:
 def _cycle_support(scheduler: TileScheduler, entry: int, cycle: int) -> PhysicalSupport:
     """Construct the proved E**entry (O E E)**q prefix in temporal order."""
     arena = cast(PhysicalSupportArena, scheduler.physical_supports)
-    return arena._proved_collatz_power_two_tail(entry, cycle)
+    return arena.proved_collatz_power_two_tail(entry, cycle)
 
 
 def _compact_cycle_tile(
@@ -215,7 +215,7 @@ def complete_collatz_cycle(
     )
     if type(primitive_index) is not int:
         raise ValueError("Collatz cycle action has no canonical primitive")
-    primitive = adapter._handle(primitive_index)
+    primitive = adapter.scoped_handle(primitive_index)
     cycle_ticks = ticks - entry_ticks
     reduced_ticks = cycle_ticks % 3 or 3
     reduced = adapter.power(primitive, reduced_ticks)

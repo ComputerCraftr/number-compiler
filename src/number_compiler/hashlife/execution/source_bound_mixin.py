@@ -28,7 +28,7 @@ class SourceBoundImageMixin:
         """Return an already-published source-image core without creating one."""
         return self._source_images
 
-    def _source_image_core(self) -> SourceBoundSchedulerCore:
+    def source_image_core(self) -> SourceBoundSchedulerCore:
         found = self._source_images
         if found is None:
             found = SourceBoundSchedulerCore(self.ledger)
@@ -36,19 +36,19 @@ class SourceBoundImageMixin:
         return found
 
     def register_source_image_adapter(self, adapter: SourceBoundImageAdapter) -> None:
-        self._source_image_core().register(adapter)
+        self.source_image_core().register(adapter)
 
     def source_image_origin(
         self, adapter: SourceBoundImageAdapter, source: Hashable
     ) -> SourceImageID:
         """Admit an original source without executing an identity action."""
-        return self._source_image_core().origin(adapter, source)
+        return self.source_image_core().origin(adapter, source)
 
     def source_image_view(
         self, adapter: SourceBoundImageAdapter, image: SourceImageID
     ) -> SourceImageView:
         """Inspect a published image after checking its issuing adapter."""
-        return self._source_image_core().view_for_adapter(adapter, image)
+        return self.source_image_core().view_for_adapter(adapter, image)
 
     def source_image(
         self,
@@ -56,7 +56,7 @@ class SourceBoundImageMixin:
         source: Hashable,
         action: Hashable,
     ) -> SourceImageID:
-        return self._source_image_core().apply(adapter, source, action)
+        return self.source_image_core().apply(adapter, source, action)
 
     def source_image_demanded(
         self,
@@ -65,7 +65,7 @@ class SourceBoundImageMixin:
         action: Hashable,
         demand: SourceImageDemand,
     ) -> SourceImageID:
-        return self._source_image_core().apply_demanded(adapter, source, action, demand)
+        return self.source_image_core().apply_demanded(adapter, source, action, demand)
 
     def source_projection(
         self,
@@ -73,7 +73,7 @@ class SourceBoundImageMixin:
         image: SourceImageID,
         demand: SourceImageDemand,
     ) -> SourceImageProjection:
-        return self._source_image_core().projection(adapter, image, demand)
+        return self.source_image_core().projection(adapter, image, demand)
 
     def cached_source_projection(
         self,
@@ -81,14 +81,14 @@ class SourceBoundImageMixin:
         image: SourceImageID,
         demand: SourceImageDemand,
     ) -> SourceImageProjection | None:
-        return self._source_image_core().cached_projection(adapter, image, demand)
+        return self.source_image_core().cached_projection(adapter, image, demand)
 
     def source_first_failure(
         self,
         adapter: SourceBoundImageAdapter,
         image: SourceImageID,
     ) -> Hashable | None:
-        return self._source_image_core().first_failure(adapter, image)
+        return self.source_image_core().first_failure(adapter, image)
 
     def clear_source_images(self) -> None:
         if self._source_images is not None:

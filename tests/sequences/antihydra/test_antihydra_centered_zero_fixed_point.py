@@ -1,5 +1,6 @@
 """The centered-zero Antihydra source is an exact fixed-point run."""
 
+from number_compiler.hashlife.execution.dyadic_return_actions import append_source
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnSourceRecord,
 )
@@ -20,8 +21,9 @@ def test_centered_zero_fixed_point_preserves_literal_bits_and_prefix_safety() ->
     try:
         assert workspace.law is ANTIHYDRA_ARITHMETIC_LAW
         for width in (1, 4, 16, 32, 64):
-            source = workspace._append_source(
-                DyadicReturnSourceRecord(1, width, 0, None, None, None, 0, True)
+            source = append_source(
+                workspace,
+                DyadicReturnSourceRecord(1, width, 0, None, None, None, 0, True),
             )
             action = workspace.action_for_extent(width)
             image = workspace.scheduler.source_image_demanded(
@@ -30,7 +32,7 @@ def test_centered_zero_fixed_point_preserves_literal_bits_and_prefix_safety() ->
                 action,
                 SourceImageDemand("physical-summary"),
             )
-            view = workspace.scheduler._source_image_core().view(image)
+            view = workspace.scheduler.source_image_core().view(image)
             summary = dyadic_image_summary(workspace, view)
 
             h = 1

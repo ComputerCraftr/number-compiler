@@ -227,7 +227,7 @@ def test_balanced_sector_composition_matches_independent_ring_evolution() -> Non
             (tuple(random.randrange(-8, 9) for _ in range(8)), random.randrange(2))
             for _ in range(8)
         )
-        blocks = [
+        blocks: list[ReverseFrobeniusSectorProduct] = [
             ReverseFrobeniusSectorProduct.atom(event, growth, maximum_classes=8, bits=5)
             for event, growth in events
         ]
@@ -243,7 +243,7 @@ def test_balanced_sector_composition_matches_independent_ring_evolution() -> Non
                     value + shift if growth else 2 * value
                     for value, shift in zip(expected, shifted, strict=True)
                 )
-                forcing = [0] * width
+                forcing: list[int] = [0] * width
                 for degree, value in enumerate(event):
                     forcing[degree % width] += value * (
                         -1 if degree // width % 2 else 1

@@ -5,6 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_integer_tuple,
+    is_exact_object_tuple,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.formula.summary import BlockSummary
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
@@ -267,13 +271,13 @@ def audit_tile_results(
     def valid_ports(signature: object, values: object) -> bool:
         if type(signature) is not PortSignatureID:
             return False
-        if type(values) is not tuple or any(type(value) is not int for value in values):
+        if not is_exact_integer_tuple(values):
             return False
         try:
             declaration = arena.interfaces.interface(signature)
             if len(values) != len(declaration.inputs):
                 return False
-            assignment = {}
+            assignment: dict[PortVariable, int] = {}
             for port, value in zip(declaration.inputs, values, strict=True):
                 if not 0 <= value < port.cardinality:
                     return False
@@ -351,7 +355,8 @@ def audit_tile_results(
         try:
             value.__post_init__()
             children_hook = getattr(arena.action_authority, "action_children", None)
-            before = after = None
+            before_action: FieldCellActionID | None = None
+            after_action: FieldCellActionID | None = None
             if children_hook is not None:
                 if (
                     getattr(children_hook, "__self__", None)
@@ -359,7 +364,7 @@ def audit_tile_results(
                 ):
                     return False
                 children = children_hook(action)
-                if type(children) is not tuple or len(children) != 2:
+                if not is_exact_object_tuple(children) or len(children) != 2:
                     return False
                 before, after = children
                 if (
@@ -367,17 +372,23 @@ def audit_tile_results(
                     or type(after) is not FieldCellActionID
                 ):
                     return False
-                state.validate_action(before)
-                state.validate_action(after)
+                before_action = before
+                after_action = after
+                state.validate_action(before_action)
+                state.validate_action(after_action)
                 if (
-                    state.signature_for(before) != value.producer.signature
-                    or state.signature_for(after) != value.consumer.signature
+                    state.signature_for(before_action) != value.producer.signature
+                    or state.signature_for(after_action) != value.consumer.signature
                 ):
                     return False
             valid = (
                 value.consumer == consumer
-                and valid_bound_ports(value.producer, expected, before, output=output)
-                and valid_bound_ports(value.consumer, expected, after, output=output)
+                and valid_bound_ports(
+                    value.producer, expected, before_action, output=output
+                )
+                and valid_bound_ports(
+                    value.consumer, expected, after_action, output=output
+                )
                 and state.validate_fused_action is not None
             )
             if not valid or state.validate_fused_action is None:
@@ -679,7 +690,7 @@ def audit_tile_results(
                         "directed transfer has a malformed primitive context"
                     )
                 initial = initial_hook(directed.action)
-                if type(initial) is not tuple or len(initial) != 2:
+                if not is_exact_integer_tuple(initial) or len(initial) != 2:
                     raise ValueError("directed transfer has malformed initial ports")
                 directed_ports = (
                     (directed.incoming_state, initial[1])

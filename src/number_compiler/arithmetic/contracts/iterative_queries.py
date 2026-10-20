@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Container, MutableMapping, Sequence
 from typing import TypeVar
 
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
+
 T = TypeVar("T")
 K = TypeVar("K")
 V = TypeVar("V")
@@ -88,7 +90,7 @@ def enter_tuple_node(
     """Enter a checked immutable node and schedule tuple members if applicable."""
     active.add(id(value))
     stack.append((value, True))
-    if type(value) is tuple:
+    if is_exact_object_tuple(value):
         stack.extend((item, False) for item in value)
         return True
     return False

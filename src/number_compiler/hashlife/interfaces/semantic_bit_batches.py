@@ -9,7 +9,7 @@ from number_compiler.arithmetic.functions.finite_function_types import (
     AtomSort,
     FinitePort,
     FunctionSignature,
-    _union_inputs,
+    union_inputs,
 )
 from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.boolean_composition import (
@@ -17,9 +17,11 @@ from number_compiler.hashlife.interfaces.boolean_composition import (
 )
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
+    BitSubstitutionKey,
     BooleanCircuit,
     FactoredFunction,
     FactoredFunctionID,
+    PendingFunction,
     substitute_boolean,
 )
 from number_compiler.resources.metric_keys import (
@@ -51,7 +53,7 @@ def divmod_atoms(
     bits, valid = circuit.imported(source)
     width = (divisor - 1).bit_length()
     remainder = (circuit.zero,) * width
-    quotient = []
+    quotient: list[int] = []
     for bit in reversed(bits):
         doubled = (bit, *remainder)
         difference, borrow = circuit.subtract_constant(doubled, divisor)
@@ -99,16 +101,11 @@ def substitute_many(
     items, references = admitted_replacements(arena, source_inputs, replacements)
     if not items:
         return functions
-    from number_compiler.hashlife.interfaces.semantic_bits import BitSubstitutionKey
-
     ordered_references = tuple(sorted(references))
     keys = tuple(
         BitSubstitutionKey(function, ordered_references) for function in functions
     )
-    cached = tuple(arena._compositions.get(key) for key in keys)
-    for result in cached:
-        if result is not None:
-            arena.resolve(result)
+    cached = tuple(arena.lookup_composition(key) for key in keys)
     hit_count = sum(result is not None for result in cached)
     arena.ledger.bump(
         _interfaces_keys.SEMANTIC_BIT_COMPOSITION_REQUESTS, len(functions)
@@ -118,15 +115,15 @@ def substitute_many(
         resolved = tuple(result for result in cached if result is not None)
         arena.ledger.bump(_interfaces_keys.SEMANTIC_BIT_BATCH_COMPOSITION_HITS)
         return resolved
-    seen = set()
-    missing_list = []
+    seen: set[BitSubstitutionKey] = set()
+    missing_list: list[int] = []
     for index, (key, result) in enumerate(zip(keys, cached, strict=True)):
         if result is None and key not in seen:
             seen.add(key)
             missing_list.append(index)
     missing = tuple(missing_list)
     removed = {port.variable for port, _ in items}
-    inputs = _union_inputs(
+    inputs = union_inputs(
         tuple(port for port in source_inputs if port.variable not in removed),
         *(value.signature.inputs for _, value in items),
     )
@@ -135,7 +132,7 @@ def substitute_many(
         mapping, replacement_valid, transform = substitution_environment(
             circuit, items, joint
         )
-        pending = []
+        pending: list[PendingFunction] = []
         for index in missing:
             original = originals[index]
             bits = tuple(
@@ -182,13 +179,13 @@ def restrict_many(
     if guard.signature.output != BOOL:
         raise ValueError("function restriction requires a Boolean predicate")
     inputs = guard.signature.inputs
-    allowed = set(inputs)
+    allowed: set[FinitePort] = set(inputs)
     if any(not set(value.signature.inputs) <= allowed for value in values):
         raise ValueError("batch restriction has an undeclared input port")
     circuit = BooleanCircuit(arena.functions, inputs)
     try:
         condition, admitted = circuit.imported(guard)
-        pending = []
+        pending: list[PendingFunction] = []
         for value in values:
             bits, valid = circuit.imported(value)
             pending.append(
@@ -221,8 +218,8 @@ def admitted_replacements(
 ]:
     """Validate the same complete finite domain for scalar and batch substitution."""
     admitted = {port.variable: port for port in source_inputs}
-    items = []
-    references = []
+    items: list[tuple[FinitePort, FactoredFunction]] = []
+    references: list[tuple[PortVariable, FactoredFunctionID]] = []
     for variable, reference in replacements.items():
         if type(variable) is not PortVariable:
             raise ValueError("substitution needs typed finite port names")

@@ -5,17 +5,19 @@ from dataclasses import replace
 import pytest
 
 from number_compiler.hashlife.tiles.tile_result_records import PoweredResultKey
-from tests.hashlife.tiles.test_tile_scheduler import _runtime
-from tests.support.tile_results import _setup
+from tests.hashlife.tiles.test_tile_scheduler import tile_scheduler_runtime
+from tests.support.tile_results import setup_tile_results
 
 
 def test_scheduler_lookup_admits_key_once_on_cold_and_warm_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime = _runtime()
+    runtime = tile_scheduler_runtime()
     try:
         action = runtime.actions.action(0)
-        key = runtime.scheduler._key(action, runtime.root.tile, (0,), runtime.wiring)
+        key = runtime.scheduler.request_key(
+            action, runtime.root.tile, (0,), runtime.wiring
+        )
         original = runtime.scheduler.results.validate_key
         calls: list[PoweredResultKey] = []
 
@@ -45,7 +47,7 @@ def test_scheduler_lookup_admits_key_once_on_cold_and_warm_paths(
 
 
 def test_context_rejection_precedes_warm_cache_access() -> None:
-    ledger, _, _, results, source, target, key, result = _setup()
+    ledger, _, _, results, source, target, key, result = setup_tile_results()
     held = results.publish(key, result)
     try:
         before = ledger.snapshot()
@@ -71,7 +73,7 @@ def test_context_rejection_precedes_warm_cache_access() -> None:
 
 
 def test_context_hook_cannot_bypass_key_admission() -> None:
-    _, _, _, results, source, target, key, _ = _setup()
+    _, _, _, results, source, target, key, _ = setup_tile_results()
     calls: list[PoweredResultKey] = []
     try:
         with pytest.raises(ValueError, match="finite domain"):
@@ -85,7 +87,7 @@ def test_context_hook_cannot_bypass_key_admission() -> None:
 def test_public_application_rejects_context_before_using_a_warm_root(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime = _runtime()
+    runtime = tile_scheduler_runtime()
     action = runtime.actions.action(0)
     held = runtime.scheduler.complete(action, runtime.root.tile, (0,), runtime.wiring)
     application = runtime.scheduler.application(
@@ -103,7 +105,7 @@ def test_public_application_rejects_context_before_using_a_warm_root(
                     action, runtime.root.tile, (0,), runtime.wiring
                 )
             with pytest.raises(ValueError, match="execution wiring revoked"):
-                application._cached_root()
+                application.cached_execution_root()
     finally:
         application.close()
         held.close()

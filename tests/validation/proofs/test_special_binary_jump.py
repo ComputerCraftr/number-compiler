@@ -1,8 +1,8 @@
 from devtools.verification.oracles.special_binary_jump import (
-    _fermat_carrier_proof,
     build_fermat_binary_jump,
     build_fermat_carrier_proof_uncached,
     build_mersenne_binary_jump,
+    fermat_carrier_proof,
     fermat_radix_orbit_representative,
     mersenne_sign_representative,
 )
@@ -44,8 +44,8 @@ def test_finite_unary_power_is_extensional_and_binary() -> None:
 
 def test_carrier_artifact_reuses_frozen_semantics_and_retains_a_cold_builder() -> None:
     cold = build_fermat_carrier_proof_uncached(3)
-    first = _fermat_carrier_proof(3)
-    second = _fermat_carrier_proof(3, max_width=32)
+    first = fermat_carrier_proof(3)
+    second = fermat_carrier_proof(3, max_width=32)
     assert cold == first == second
     assert first is second
     assert cold is not first
@@ -100,7 +100,7 @@ def test_fermat_radix_orbit_is_exact_negacyclic_root_action() -> None:
         for source in (1, 3, 5, modulus - 1):
             rep = fermat_radix_orbit_representative(source, n)
             value = source % modulus
-            orbit = []
+            orbit: list[int] = []
             for _ in range(order):
                 orbit.append(value)
                 value = 2 * value % modulus

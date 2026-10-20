@@ -1,9 +1,14 @@
 import json
 import random
 from pathlib import Path
+from typing import TypeGuard
 
 from devtools.paths import report_output
-from devtools.verification.builders.bimachine_lazy_power import compose, lazy_from_eager
+from devtools.verification.builders.bimachine_lazy_power import (
+    ScanAutomaton,
+    compose,
+    lazy_from_eager,
+)
 from devtools.verification.builders.bimachine_power import (
     DFA,
     Bimachine,
@@ -24,17 +29,21 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 
 
+def _is_eager_dfa(value: ScanAutomaton) -> TypeGuard[DFA[object]]:
+    return isinstance(value, DFA)
+
+
 def main() -> None:
     B1 = minimize_eager(build_step(10))
     T2L = compose(lazy_from_eager(B1), lazy_from_eager(B1), verbose=False)
-    out = {}
+    out: dict[tuple[int, int, int], tuple[int, ...]] = {}
     for left_state in T2L.left.states:
         for a in T2L.alphabet:
             for r in T2L.right.states:
                 z = T2L.emit(left_state, a, r)
                 if z is not None:
                     out[(left_state, a, r)] = z
-    assert isinstance(T2L.left, DFA) and isinstance(T2L.right, DFA)
+    assert _is_eager_dfa(T2L.left) and _is_eager_dfa(T2L.right)
     T2M = minimize_eager(Bimachine(T2L.base, T2L.alphabet, T2L.left, T2L.right, out))
     rng = random.Random(196)
     for _ in range(100):

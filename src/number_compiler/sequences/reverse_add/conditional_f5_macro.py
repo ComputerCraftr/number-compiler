@@ -84,7 +84,7 @@ class SourceCertifiedF5Macro:
     homogeneous_multiplier: int
 
     def __post_init__(self) -> None:
-        self._validate()
+        self.validate()
 
     @classmethod
     def from_certificate(
@@ -148,7 +148,7 @@ class SourceCertifiedF5Macro:
     def conditional_only(self) -> bool:
         return True
 
-    def _validate(self) -> None:
+    def validate(self) -> None:
         certificate = self.certificate
         certificate.validate(certificate.owner, certificate.source)
         if (
@@ -202,7 +202,7 @@ class SourceCertifiedF5Macro:
 
     def affine_action(self, forcing: tuple[int | None, ...]) -> F5AffineAction | None:
         """Return the exact affine map when every live forcing port is known."""
-        self._validate()
+        self.validate()
         if type(forcing) is not tuple or len(forcing) != self.duration:
             raise ValueError("one optional correction is required per physical tick")
         if any(value is not None and type(value) is not int for value in forcing):
@@ -243,7 +243,7 @@ class SourceCertifiedF5Macro:
         composes its affine F5 action algebraically; it does not validate a
         second source return or establish that future forcing repeats.
         """
-        self._validate()
+        self.validate()
         if type(count) is not int or count < 0:
             raise ValueError("conditional repeat count must be nonnegative")
         if initial is not None and type(initial) is not int:

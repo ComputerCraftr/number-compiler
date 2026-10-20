@@ -27,8 +27,7 @@ def program_block(
     ``Mul3Carry`` value while scanning them.  It never rebuilds the full
     earlier pipeline and never allocates a future word.
     """
-    root_key = self._microblock_key(program, block)
-    found = self._microblocks.get(root_key)
+    found = self.cached_microblock(program, block)
     if found is not None:
         return found.encoded
     pending: list[tuple[ActionProgramID, int, bool]] = [(program, block, False)]
@@ -40,32 +39,31 @@ def program_block(
         current, current_block, _ready = pending.pop()
         local = current.local_id, current_block
         if local in built:
-            retained = self._microblocks.get(
-                self._microblock_key(current, current_block)
-            )
+            retained = self.cached_microblock(current, current_block)
             if retained is not None:
                 continue
             built.remove(local)
-        key = self._microblock_key(current, current_block)
-        cached = self._microblocks.get(key)
+        cached = self.cached_microblock(current, current_block)
         if cached is not None:
             built.add(local)
             continue
-        node = self._programs[current.local_id]
+        node = self.program_record(current)
         if node.kind == "identity":
-            value = self._source_block(current_block)
+            value = self.source_block(current_block)
         else:
             before = ActionProgramID(self.token, "program", 0)
             operation = node
             if node.kind == "compose":
                 before = ActionProgramID(self.token, "program", node.left)
-                operation = self._programs[node.right]
+                operation = self.program_record(
+                    ActionProgramID(self.token, "program", node.right)
+                )
                 if operation.kind == "compose":
                     raise ValueError("Collatz programs require an atomic right action")
             shift = operation.shift
             first_input = current_block * 64 + shift
             final_input = first_input + 63
-            exact_before_width = self._known_program_width(before)
+            exact_before_width = self.known_program_width(before)
             dependency_last = (
                 final_input
                 if exact_before_width is None
@@ -85,9 +83,7 @@ def program_block(
             missing: list[int] = []
             for dependency in dependencies:
                 dependency_key = before.local_id, dependency
-                retained = self._microblocks.get(
-                    self._microblock_key(before, dependency)
-                )
+                retained = self.cached_microblock(before, dependency)
                 if retained is None:
                     missing.append(dependency)
                 else:
@@ -107,9 +103,7 @@ def program_block(
                 if exact_before_width is not None and position >= exact_before_width:
                     return 0
                 provider_block = position // 64
-                retained = self._microblocks.get(
-                    self._microblock_key(before, provider_block)
-                )
+                retained = self.cached_microblock(before, provider_block)
                 if retained is None:
                     raise AssertionError("Collatz provider block was not built")
                 provider = retained.encoded
@@ -128,11 +122,7 @@ def program_block(
                 ):
                     carry = Mul3Carry.ZERO
                 else:
-                    prefix = self._range_evaluator.range_effect(
-                        before,
-                        0,
-                        first_input,
-                    )
+                    prefix = self.range_evaluator.range_effect(before, 0, first_input)
                     carry = Mul3Carry(prefix.transfer.rows[1].exit_carry)
                     self.ledger.bump("collatz_microblock_prefix_summaries")
                 output = 0
@@ -148,10 +138,10 @@ def program_block(
                 value = output
             else:
                 raise AssertionError(operation.kind)
-        self._microblocks.put(key, ExactMicroblock(value, 64))
+        self.publish_microblock(current, current_block, ExactMicroblock(value, 64))
         self.ledger.bump("collatz_program_microblock_evaluations")
         built.add(local)
-    result = self._microblocks.get(root_key)
+    result = self.cached_microblock(program, block)
     if result is None:
         raise AssertionError("Collatz root microblock was evicted during evaluation")
     return result.encoded

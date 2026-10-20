@@ -162,7 +162,7 @@ def build_step(base: int = 10) -> Bimachine:
     sL = L(("S",))
     done = L(("D",))
     dq = deque([sL])
-    seen = set()
+    seen: set[int] = set()
     while dq:
         q = dq.popleft()
         if q in seen:
@@ -187,7 +187,7 @@ def build_step(base: int = 10) -> Bimachine:
     # ('D',) after parity.
     right_interner = _StateInterner[RightState]()
     rdata = right_interner.data
-    rt = {}
+    rt: dict[tuple[int, int], int] = {}
 
     R = right_interner.intern
 
@@ -261,7 +261,7 @@ def build_step(base: int = 10) -> Bimachine:
             continue
         _, p, first, last, prev = ld
         g = int(first == R1)
-        extra = []
+        extra: list[int] = []
         if p == 0 and g:
             Lh = carry_label(last)
             nextc = 0 if prev < b - 1 else (Lh if prev == b - 1 else 1)
@@ -558,7 +558,7 @@ def compose_bimachine(B1: Bimachine, B2: Bimachine) -> Bimachine:
     )
 
     # Output function. Search compatible witnesses; theorem guarantees uniqueness.
-    out = {}
+    out: dict[tuple[int, int, int], tuple[int, ...]] = {}
     for Ls in left.states:
         LA = left.data[Ls]
         for a in A:
@@ -567,7 +567,7 @@ def compose_bimachine(B1: Bimachine, B2: Bimachine) -> Bimachine:
                 continue
             for Rs in right.states:
                 RB = right.data[Rs]  # right state after current symbol
-                candidates = set()
+                candidates: set[tuple[int, ...]] = set()
                 for xid in LA:
                     l1, r1, l2 = LT[xid]
                     l1n = B1.left.step(l1, a)
@@ -586,7 +586,7 @@ def compose_bimachine(B1: Bimachine, B2: Bimachine) -> Bimachine:
                             continue
                         # l2 before output is in LA; r2 after output is r2b
                         w = eval_bimachine_fragment(
-                            cast(_FragmentMachine, B2), l2, v, r2b
+                            cast(FragmentMachine, B2), l2, v, r2b
                         )
                         if w is not None:
                             candidates.add(w)
@@ -604,14 +604,14 @@ class _FragmentAutomaton(Protocol):
     def step(self, q: int, a: int) -> int | None: ...
 
 
-class _FragmentMachine(Protocol):
+class FragmentMachine(Protocol):
     left: _FragmentAutomaton
     right: _FragmentAutomaton
     out: Mapping[tuple[int, int, int], tuple[int, ...]]
 
 
 def fragment_states(
-    B: _FragmentMachine, left_state: int, word: Sequence[int], r_after: int
+    B: FragmentMachine, left_state: int, word: Sequence[int], r_after: int
 ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
     w = tuple(word)
     ls = [left_state]
@@ -631,7 +631,7 @@ def fragment_states(
 
 
 def eval_bimachine_fragment(
-    B: _FragmentMachine, left_state: int, word: Sequence[int], r_after: int
+    B: FragmentMachine, left_state: int, word: Sequence[int], r_after: int
 ) -> tuple[int, ...] | None:
     w = tuple(word)
     states = fragment_states(B, left_state, w, r_after)
@@ -666,7 +666,7 @@ def minimize_colored(
         signature,
     )
     reps, cmap = partition_representatives(part)
-    trans = {}
+    trans: dict[tuple[int, int], int] = {}
     for c, q in reps.items():
         nq = cmap[c]
         for a in alphabet:
@@ -680,83 +680,95 @@ def minimize_colored(
     ), {q: part[q] for q in qs}
 
 
-def pseudo_minimize(B: Bimachine) -> Bimachine:
+def pseudo_minimize(machine: Bimachine) -> Bimachine:
     # Alternate coloured minimization to a fixed point. Colors encode the entire
     # currently fixed opposite-side output row/column, preserving the function.
     changed = True
     while changed:
         changed = False
-        Rstates = B.right.states
+        Rstates = machine.right.states
 
         def lc(
-            left_state: int, B: Bimachine = B, Rstates: tuple[int, ...] = Rstates
+            left_state: int,
+            machine: Bimachine = machine,
+            Rstates: tuple[int, ...] = Rstates,
         ) -> tuple[tuple[int, ...] | None, ...]:
             return tuple(
-                B.out.get((left_state, a, r), None) for a in B.alphabet for r in Rstates
+                machine.out.get((left_state, a, r), None)
+                for a in machine.alphabet
+                for r in Rstates
             )
 
-        Lnew, _lpart = minimize_colored(B.left, lc)
-        if len(Lnew.states) < len(B.left.states):
+        Lnew, _lpart = minimize_colored(machine.left, lc)
+        if len(Lnew.states) < len(machine.left.states):
             # representative old state per new class
             rep = {new: members[0] for new, members in Lnew.data.items()}
             out = {
-                (nl, a, r): B.out[(old, a, r)]
+                (nl, a, r): machine.out[(old, a, r)]
                 for nl, old in rep.items()
-                for a in B.alphabet
+                for a in machine.alphabet
                 for r in Rstates
-                if (old, a, r) in B.out
+                if (old, a, r) in machine.out
             }
-            B = Bimachine(B.base, B.alphabet, Lnew, B.right, out)
+            machine = Bimachine(
+                machine.base, machine.alphabet, Lnew, machine.right, out
+            )
             changed = True
-        Lstates = B.left.states
+        Lstates = machine.left.states
 
         def rc(
-            r: int, B: Bimachine = B, Lstates: tuple[int, ...] = Lstates
+            r: int, machine: Bimachine = machine, Lstates: tuple[int, ...] = Lstates
         ) -> tuple[tuple[int, ...] | None, ...]:
             return tuple(
-                B.out.get((left_state, a, r), None)
+                machine.out.get((left_state, a, r), None)
                 for left_state in Lstates
-                for a in B.alphabet
+                for a in machine.alphabet
             )
 
-        Rnew, _rpart = minimize_colored(B.right, rc)
-        if len(Rnew.states) < len(B.right.states):
+        Rnew, _rpart = minimize_colored(machine.right, rc)
+        if len(Rnew.states) < len(machine.right.states):
             rep = {new: members[0] for new, members in Rnew.data.items()}
             out = {
-                (left_state, a, nr): B.out[(left_state, a, old)]
+                (left_state, a, nr): machine.out[(left_state, a, old)]
                 for nr, old in rep.items()
                 for left_state in Lstates
-                for a in B.alphabet
-                if (left_state, a, old) in B.out
+                for a in machine.alphabet
+                if (left_state, a, old) in machine.out
             }
-            B = Bimachine(B.base, B.alphabet, B.left, Rnew, out)
+            machine = Bimachine(machine.base, machine.alphabet, machine.left, Rnew, out)
             changed = True
-    return B
+    return machine
 
 
 def selftest() -> None:
     b = 10
-    B = build_step(b)
-    print("B1 L/R/out", len(B.left.states), len(B.right.states), len(B.out), flush=True)
+    machine = build_step(b)
+    print(
+        "B1 L/R/out",
+        len(machine.left.states),
+        len(machine.right.states),
+        len(machine.out),
+        flush=True,
+    )
     rng = random.Random(196)
     for _ in range(1000):
         p = rng.randrange(2)
         h = random_half(rng, 7)
-        got = decode(B.output(encode(p, h, b)), b)
+        got = decode(machine.output(encode(p, h, b)), b)
         exp = ref(p, h, b)
         assert got == exp, (p, h, got, exp)
-    P = B
+    powered = machine
     for e in range(1, 5):
         t = time.perf_counter()
-        P = compose_bimachine(P, P)
+        powered = compose_bimachine(powered, powered)
         dt = time.perf_counter() - t
         print(
             "pow",
             2**e,
             "L/R/out",
-            len(P.left.states),
-            len(P.right.states),
-            len(P.out),
+            len(powered.left.states),
+            len(powered.right.states),
+            len(powered.out),
             "sec",
             dt,
             flush=True,
@@ -767,7 +779,7 @@ def selftest() -> None:
             pp, hh = p, tuple(h)
             for __ in range(2**e):
                 pp, hh = ref(pp, hh, b)
-            got = decode(P.output(encode(p, h, b)), b)
+            got = decode(powered.output(encode(p, h, b)), b)
             assert got == (pp, hh), (e, p, h, got, (pp, hh))
 
 

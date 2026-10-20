@@ -1,26 +1,32 @@
 from __future__ import annotations
 
+import pytest
+
 from number_compiler.arithmetic.automata.symmetry_powering import BinaryLiftEngine
 
 
-def test_binary_lift_is_iterative_exact_and_bounded() -> None:
-    engine = BinaryLiftEngine(
+@pytest.mark.parametrize(
+    "steps",
+    (1_005, pytest.param(1_000_003, marks=pytest.mark.validation)),
+)
+def test_binary_lift_is_iterative_exact_and_bounded(steps: int) -> None:
+    engine = BinaryLiftEngine[int, int](
         step=lambda state: ((state + 1) % 7, 1),
         key=int,
         identity_weight=0,
         combine_weight=lambda a, b: int(a) + int(b),
         jump_cache_limit=8,
     )
-    target, weight = engine.advance(0, 1_000_003)
-    assert target == 1_000_003 % 7
-    assert weight == 1_000_003
+    target, weight = engine.advance(0, steps)
+    assert target == steps % 7
+    assert weight == steps
     metrics = engine.metrics()
     assert metrics.jump_entries <= 8
     assert metrics.jump_evictions > 0
 
 
 def test_binary_lift_reuses_a_fixed_semantic_state_at_huge_power() -> None:
-    engine = BinaryLiftEngine(
+    engine = BinaryLiftEngine[str, int](
         step=lambda state: (state, 3),
         key=lambda state: state,
         identity_weight=0,

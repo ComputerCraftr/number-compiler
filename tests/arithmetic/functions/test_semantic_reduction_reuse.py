@@ -119,10 +119,10 @@ def test_total_circuit_choice_cannot_poison_public_padding_semantics() -> None:
     raw = _Transaction(arena)
     output = raw.finish(raw.choose(c.local_id, zero, one))
     assert arena.evaluate(output, {port.variable: 3}).kind == "atom"
-    public = arena.ite(c, arena._handle(zero), arena._handle(one))
+    public = arena.ite(c, arena.scoped_handle(zero), arena.scoped_handle(one))
     assert arena.evaluate(public, {port.variable: 3}).kind == "invalid"
     assert any(key.operation == "construction-ite" for key in arena.memo)
     assert (
-        SemanticRequest("ite", (c, arena._handle(zero), arena._handle(one)))
+        SemanticRequest("ite", (c, arena.scoped_handle(zero), arena.scoped_handle(one)))
         in arena.memo
     )

@@ -145,8 +145,8 @@ def test_directional_domain_views_are_noninjective_and_cross_source_domains() ->
         assert len(right) == 1 << shift
         assert left == tuple(sorted(left))
         assert right == tuple(sorted(right))
-    mixed_counts = []
-    value_counts = []
+    mixed_counts: list[int] = []
+    value_counts: list[int] = []
     for shift in range(6):
         # The current domain has already supplied the carry.  It is deliberately
         # absent from the resulting value-view identity.

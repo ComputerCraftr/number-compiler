@@ -311,9 +311,9 @@ def project_q19_numeric(
         occurrence.root,
         modulus=modulus,
         ledger=owner.ledger,
-        workspace_owner=owner._scratch_owner,
+        workspace_owner=owner.scratch_owner,
     )
-    with owner.ledger.reservation(owner._scratch_owner, entries=32, nodes=32):
+    with owner.ledger.reservation(owner.scratch_owner, entries=32, nodes=32):
         full = half.forward.then(
             half.prefix_backward if parity else half.backward,
             ledger=owner.ledger,

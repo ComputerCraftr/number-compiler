@@ -12,8 +12,8 @@ from typing import Never
 import pytest
 
 from devtools.experiments.power_numbers.square_consumer_congruence import (
-    _class_ids,
-    _terminal_deck_key,
+    class_ids,
+    terminal_deck_key,
 )
 from number_compiler.arithmetic.functions.finite_unary import (
     UnaryPowerArena,
@@ -40,8 +40,8 @@ def test_precompiled_terminal_deck_jumps_without_primitive_occurrences(
     modulus = 2**width + (1 if family == "fermat" else -1)
     addend = 0 if family == "fermat" else -2
     transition = tuple((x * x + addend) % modulus for x in range(modulus))
-    keys = tuple(_terminal_deck_key(family, x, modulus) for x in range(modulus))
-    ids = _class_ids(keys)
+    keys = tuple(terminal_deck_key(family, x, modulus) for x in range(modulus))
+    ids = class_ids(keys)
     target = modulus - 1 if family == "fermat" else 0
     machine = quotient_machine_from_moore(
         transition, tuple(x == target for x in range(modulus)), ids
@@ -51,7 +51,7 @@ def test_precompiled_terminal_deck_jumps_without_primitive_occurrences(
     # Build exact reference outputs before poisoning. This work is validation,
     # not hidden inside the jump evaluator or its measured composition count.
     expected: dict[int, tuple[int, ...]] = {}
-    points = tuple(range(modulus))
+    points: tuple[int, ...] = tuple(range(modulus))
     for duration in range(1, 1025):
         points = tuple(transition[x] for x in points)
         if duration & (duration - 1) == 0:

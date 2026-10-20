@@ -33,6 +33,7 @@ from number_compiler.resources.process_cache import (
     CacheLease,
     ImmutableValue,
     ProcessCache,
+    temporary_process_cache,
 )
 from tests.support.isabelle_proof_graph import RepositoryProofGraph
 
@@ -88,25 +89,19 @@ def publication_blocked_cache(monkeypatch: pytest.MonkeyPatch) -> ProcessCache:
 
 
 @pytest.fixture
-def isolated_process_cache(monkeypatch: pytest.MonkeyPatch) -> Iterator[ProcessCache]:
+def isolated_process_cache() -> Iterator[ProcessCache]:
     """Give cache-reset tests a fresh global without clearing other tests' state.
 
     The fixture scope is one test, so requests within a test still share the
     same process cache. The prior process cache is restored even when the test
     fails, and the isolated instance is invalidated before it is detached.
     """
-    from number_compiler.resources import process_cache
-
     isolated = ProcessCache()
-    with monkeypatch.context() as scoped:
-        with process_cache._PROCESS_CACHE_LOCK:
-            scoped.setattr(process_cache, "_PROCESS_CACHE", isolated)
+    with temporary_process_cache(isolated):
         try:
             yield isolated
         finally:
             isolated.reset()
-            with process_cache._PROCESS_CACHE_LOCK:
-                scoped.undo()
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:

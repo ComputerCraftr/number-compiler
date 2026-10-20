@@ -233,9 +233,9 @@ def _observe_primitive(
     symbol: int,
     right_state: int,
 ) -> tuple[int, ...]:
-    kernel._check(left_state, kernel.left_count)
-    kernel._check(right_state, kernel.right_count)
-    kernel._check(symbol, kernel.blank + 1)
+    kernel.validate_atom_index(left_state, kernel.left_count)
+    kernel.validate_atom_index(right_state, kernel.right_count)
+    kernel.validate_atom_index(symbol, kernel.blank + 1)
     behavior = kernel.behavior
     if behavior is not None:
         return behavior.observation(
@@ -271,8 +271,8 @@ def _observe_source_tile(
     kernel = adapter.kernels.kernel(record.kernel)
     if type(kernel.effect) is not CollatzPhysicalBlockEffect:
         raise ValueError("physical source observation received another law")
-    kernel._check(left_state, kernel.left_count)
-    kernel._check(right_state, kernel.right_count)
+    kernel.validate_atom_index(left_state, kernel.left_count)
+    kernel.validate_atom_index(right_state, kernel.right_count)
     arena = _physical_support_arena(scheduler)
     if left_state != kernel.initial(BoundarySide.LEFT):
         scheduler.ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_EVENT_SOURCE_READS_ELIDED)
@@ -392,8 +392,8 @@ _COLLATZ_TILE_HOOKS = FamilyTileHooks(
     observe_symbol=_observe_symbol,
     compile_leaf_output=_compile_leaf_output,
 )
-_COLLATZ_COMPATIBILITY_HOOKS: FamilyTileHooks | None = None
-_COLLATZ_COMPATIBILITY_HOOKS_LOCK = Lock()
+_collatz_compatibility_hooks: FamilyTileHooks | None = None
+_collatz_compatibility_hooks_LOCK = Lock()
 
 
 def collatz_runtime_tile_hooks() -> FamilyTileHooks:
@@ -404,13 +404,13 @@ def collatz_runtime_tile_hooks() -> FamilyTileHooks:
 def is_collatz_tile_hooks(hooks: object) -> bool:
     """Recognize only the canonical primitive or compatibility hook instance."""
     return hooks is _COLLATZ_TILE_HOOKS or (
-        _COLLATZ_COMPATIBILITY_HOOKS is not None
-        and hooks is _COLLATZ_COMPATIBILITY_HOOKS
+        _collatz_compatibility_hooks is not None
+        and hooks is _collatz_compatibility_hooks
     )
 
 
 def _compatibility_tile_hooks() -> FamilyTileHooks:
-    global _COLLATZ_COMPATIBILITY_HOOKS
+    global _collatz_compatibility_hooks
 
     from number_compiler.sequences.collatz.physical_kernel import (
         PhysicalCollatzFourBlockEffect,
@@ -419,10 +419,10 @@ def _compatibility_tile_hooks() -> FamilyTileHooks:
         C4PairLeftCertificate,
     )
 
-    if _COLLATZ_COMPATIBILITY_HOOKS is None:
-        with _COLLATZ_COMPATIBILITY_HOOKS_LOCK:
-            if _COLLATZ_COMPATIBILITY_HOOKS is None:
-                _COLLATZ_COMPATIBILITY_HOOKS = replace(
+    if _collatz_compatibility_hooks is None:
+        with _collatz_compatibility_hooks_LOCK:
+            if _collatz_compatibility_hooks is None:
+                _collatz_compatibility_hooks = replace(
                     _COLLATZ_TILE_HOOKS,
                     compatibility_type=PhysicalCollatzFourBlockEffect,
                     lower_compatibility_effect=_lower_compatibility,
@@ -439,7 +439,7 @@ def _compatibility_tile_hooks() -> FamilyTileHooks:
                     make_source_profile=_make_source_profile,
                     certified_program_leaf=_certified_compatibility_program_leaf,
                 )
-    return _COLLATZ_COMPATIBILITY_HOOKS
+    return _collatz_compatibility_hooks
 
 
 def collatz_compatibility_tile_hooks(effect: object) -> FamilyTileHooks:

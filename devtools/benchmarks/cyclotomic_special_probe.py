@@ -72,9 +72,9 @@ def reverse_growth_trace(steps: int = 512) -> list[int]:
 
 def reverse_cyclotomic_metrics() -> dict[str, object]:
     growths = reverse_growth_trace(512)
-    rows = []
+    rows: list[dict[str, object]] = []
     for classes in (1, 2, 4, 8, 16):
-        horizons = []
+        horizons: list[int] = []
         for endpoint in range(32, 513):
             horizon = adaptive_negacyclic_memory_horizon(
                 growths, endpoint, classes=classes, bits=5
@@ -99,7 +99,7 @@ def reverse_cyclotomic_metrics() -> dict[str, object]:
             }
         )
 
-    norm_rows = []
+    norm_rows: list[dict[str, object]] = []
     for order in (1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 18, 20, 32):
         norm_rows.append(
             {
@@ -116,7 +116,7 @@ def reverse_cyclotomic_metrics() -> dict[str, object]:
 
 
 def collatz_inverse_metrics() -> dict[str, object]:
-    rows = []
+    rows: list[dict[str, object]] = []
     for width in (12, 16, 20, 22, 24, 26, 28, 30, 32):
         metrics = collatz_inverse_symbolic_decision_metrics(width)
         scale = sqrt(width) * (2 ** (width / 2))
@@ -147,7 +147,7 @@ def _fermat_square_field_rows() -> list[dict[str, object]]:
         value = 3 % modulus
         alphabet: set[int] = set()
         fields: set[tuple[int, ...]] = set()
-        nonzero = []
+        nonzero: list[int] = []
         low = high = 0
         for _ in range(spec.exponent - 1):
             projection = negacyclic_binary_square_projection(value, spec.exponent)
@@ -181,7 +181,7 @@ def _mersenne_square_field_rows() -> list[dict[str, object]]:
         value = 4 % modulus
         alphabet: set[int] = set()
         fields: set[tuple[int, ...]] = set()
-        nonzero = []
+        nonzero: list[int] = []
         high = 0
         for _ in range(max(0, exponent - 2)):
             projection = cyclic_binary_square_projection(value, exponent)
@@ -211,10 +211,10 @@ def _mersenne_square_field_rows() -> list[dict[str, object]]:
 
 
 def special_number_metrics() -> dict[str, object]:
-    fermat = []
+    fermat: list[dict[str, object]] = []
     for index in range(7):
         spec = FermatNumberSpec(index)
-        row = {
+        row: dict[str, object] = {
             "index": index,
             "cyclotomic_order": spec.cyclotomic_order,
             "bit_length": spec.bit_length,
@@ -244,7 +244,7 @@ def special_number_metrics() -> dict[str, object]:
         ],
     }
 
-    mersenne = []
+    mersenne: list[dict[str, object]] = []
     for exponent in (3, 5, 7, 11, 13, 17, 19, 23, 31):
         mersenne_spec = MersenneNumberSpec(exponent)
         ll = lucas_lehmer_test(exponent)
@@ -263,7 +263,7 @@ def special_number_metrics() -> dict[str, object]:
             }
         )
 
-    gcd_examples = []
+    gcd_examples: list[dict[str, object]] = []
     for a, b in ((12, 18), (15, 25), (31, 62)):
         g = mersenne_gcd_spec(a, b)
         gcd_examples.append({"a": a, "b": b, "gcd_exponent": g.exponent})
@@ -291,7 +291,7 @@ def special_number_metrics() -> dict[str, object]:
 
 
 def prime_automaton_metrics() -> dict[str, object]:
-    residuals = []
+    residuals: list[dict[str, object]] = []
     for prefix_bits in range(1, 11):
         metrics = prime_lsb_residual_kernel(prefix_bits, 8)
         residuals.append(
@@ -306,7 +306,7 @@ def prime_automaton_metrics() -> dict[str, object]:
             }
         )
 
-    anf = []
+    anf: list[dict[str, object]] = []
     start = 9_999_993
     for length in (64, 128, 256, 512, 1024, 2048, 4096):
         projection = project_odd_prime_block(start, length)

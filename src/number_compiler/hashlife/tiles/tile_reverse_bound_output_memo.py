@@ -44,7 +44,7 @@ def lookup_reverse_bound_output(
     """Probe one exact tile summary before visiting its descendants."""
     base, _level = _validate_key(results, key)
     results.ledger.bump(_tiles_keys.REVERSE_BOUND_OUTPUT_REQUESTS)
-    found = results._memo.get(key)
+    found = results.memo_view.get(key)
     if found is None:
         record_unattributed_post_eviction_miss(
             results.ledger, ResultCacheKind.INTERFACE
@@ -77,7 +77,7 @@ def _publish(
     if value.left.base != base:
         raise ValueError("reverse output publication has another radix")
     results.ledger.bump(_tiles_keys.REVERSE_BOUND_OUTPUT_PUBLICATION_REQUESTS)
-    found = results._memo.get(key)
+    found = results.memo_view.get(key)
     if found is not None:
         if type(found) is not ReverseBoundOutput or found != value:
             raise ValueError("reverse output tile already has another summary")
@@ -86,18 +86,18 @@ def _publish(
     referenced = results.tiles_for(key, value)
     reverse_entries = results.index_entries(referenced)
     reservations = (
-        (results._memo_owner, 1, REVERSE_BOUND_OUTPUT_RETAINED_NODES),
-        (results._reverse_owner, reverse_entries, 0),
+        (results.memo_owner, 1, REVERSE_BOUND_OUTPUT_RETAINED_NODES),
+        (results.reverse_owner, reverse_entries, 0),
     )
     results.ledger.reserve_many(reservations)
     reverse_snapshot = None
     try:
         reverse_snapshot = results.reverse_snapshot(referenced, key)
-        results._memo[key] = value
+        results.write_memo_reserved(key, value)
         for tile in referenced:
             results.add_membership(tile, key)
     except BaseException:
-        results._memo.pop(key, None)
+        results.discard_memo(key)
         if reverse_snapshot is not None:
             results.restore_reverse(reverse_snapshot)
         for owner, entries, nodes in reservations:

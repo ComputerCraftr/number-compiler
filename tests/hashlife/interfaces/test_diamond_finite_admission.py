@@ -76,7 +76,7 @@ def test_invalid_admissible_output_code_is_not_certified() -> None:
     sort = StateSort(action, 1)
     assert runtime.kernel(action).right_count == 3
     true = runtime.kernels.functions.constant(True)
-    invalid = runtime.kernels._intern_expression(FiniteExpression(3, (true, true)))
+    invalid = runtime.kernels.intern_expression(FiniteExpression(3, (true, true)))
     assert_rejected_atomically(
         runtime.ledger, lambda: admission.validate(sort, sort, invalid), ValueError
     )

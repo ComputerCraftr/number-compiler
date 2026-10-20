@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TypeAlias
 
+from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.arithmetic.contracts.semantic_identity import (
     SemanticIdentity,
@@ -55,19 +56,23 @@ def valid_radial_memo(
     size: int,
 ) -> bool:
     """Validate a warm record against immutable issued-object authority."""
-    if record is not issued_record or type(record) is not tuple or len(record) != 6:
+    if (
+        record is not issued_record
+        or not is_exact_object_tuple(record)
+        or len(record) != 6
+    ):
         return False
     source, action_seal, radial_seal, identity, digest, behavior = record
     if (
         type(source) is not FieldCellActionID
         or type(action_seal) is not int
-        or type(radial_seal) is not tuple
+        or not is_exact_object_tuple(radial_seal)
         or len(radial_seal) != 2
         or type(radial_seal[0]) is not int
         or type(radial_seal[1]) is not int
         or type(identity) is not SemanticIdentity
         or type(digest) is not str
-        or type(behavior) is not tuple
+        or not is_exact_object_tuple(behavior)
     ):
         return False
     try:

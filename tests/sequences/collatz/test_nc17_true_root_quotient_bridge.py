@@ -1,6 +1,8 @@
 """Collatz root morphology consumes the scheduler's existing run quotient."""
 
+from collections.abc import Callable
 from copy import copy
+from typing import cast
 
 import pytest
 
@@ -41,8 +43,9 @@ def test_detailed_scheduler_publishes_carrier_without_recompiling(
         assert audit.forbidden_future_payloads == 0
         assert audit.unbounded_future_integers == 0
     finally:
-        if term._workspace is not None:
-            term._workspace.dispose()
+        workspace = term.audit_snapshot().workspace
+        if workspace is not None:
+            workspace.dispose()
     # The root record owns exact scalar/action authority; it does not retain a
     # lookup into the disposed image workspace.
     root.validate()
@@ -57,22 +60,23 @@ def test_root_issuance_rejects_shallow_copies() -> None:
     try:
         root = term.true_root_morphism()
         with pytest.raises(ValueError, match="unchanged factory result"):
-            copy(owner)._verify_issued()
+            copy(owner).verify_issued()
         with pytest.raises(ValueError, match="lost issued authority"):
             copy(root).validate()
     finally:
-        if term._workspace is not None:
-            term._workspace.dispose()
+        workspace = term.audit_snapshot().workspace
+        if workspace is not None:
+            workspace.dispose()
 
 
 def test_tampered_scheduler_root_port_is_rejected() -> None:
     term = PoweredCollatzTerm(27, 16, shared_cache=False)
     term.prepare_joint_cocycle()
     term.accumulator(97)
-    workspace = term._workspace
+    workspace = term.audit_snapshot().workspace
     assert workspace is not None
     try:
-        core = workspace.scheduler._source_image_core()
+        core = workspace.scheduler.source_image_core()
         binding = core.view(workspace.root_image).binding
         object.__setattr__(binding, "boundary_ports", ())
         with pytest.raises(ValueError, match="publication record was altered"):
@@ -88,8 +92,8 @@ def test_morphism_from_another_scheduler_owner_is_not_a_valid_midpoint() -> None
     foreign.prepare_joint_cocycle()
     first.accumulator(97)
     foreign.accumulator(97)
-    first_workspace = first._workspace
-    foreign_workspace = foreign._workspace
+    first_workspace = first.audit_snapshot().workspace
+    foreign_workspace = foreign.audit_snapshot().workspace
     assert first_workspace is not None and foreign_workspace is not None
     try:
         first_root = first.true_root_morphism()
@@ -118,8 +122,15 @@ def test_joint_snapshot_is_released_with_workspace(cleanup: str) -> None:
     term = PoweredCollatzTerm(27, 16, shared_cache=False)
     term.prepare_joint_cocycle()
     term.accumulator(97)
-    workspace = term._workspace
+    workspace = term.audit_snapshot().workspace
     assert workspace is not None
-    assert workspace._joint_action_snapshot is not None
-    getattr(workspace, cleanup)()
-    assert workspace._joint_action_snapshot is None
+    assert not workspace.closed
+    if cleanup == "_rollback_construction":
+        rollback = cast(
+            Callable[[], None],
+            object.__getattribute__(workspace, "_rollback_construction"),
+        )
+        rollback()
+    else:
+        workspace.dispose()
+    assert workspace.closed

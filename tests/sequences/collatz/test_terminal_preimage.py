@@ -93,7 +93,7 @@ def test_validator_rejects_rebound_issued_field_payload(
     # Rehydration gives the altered action a valid producer seal, so terminal
     # admission must authenticate its complete field summary against the
     # source-bound 1,0,0,0 word, not merely trust issuance or endpoint.
-    altered_fields = DyadicTerminalFieldAction._restore_issued(4, coefficients)
+    altered_fields = DyadicTerminalFieldAction.restore_cache_payload(4, coefficients)
     assert altered_fields.producer_issued
     assert altered_fields.certifies(5)
     assert altered_fields.endpoint(5) == expected_endpoint

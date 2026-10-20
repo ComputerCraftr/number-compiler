@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass
 from itertools import product
 from types import FrameType
@@ -32,11 +32,23 @@ from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
 def carry_history(word: Iterable[int], incoming: int = 0) -> tuple[int, ...]:
-    history = []
+    history: list[int] = []
     for coefficient in word:
         incoming = int(coefficient + incoming >= 10)
         history.append(incoming)
     return tuple(history)
+
+
+def _integer_pair(value: object) -> tuple[int, int] | None:
+    if type(value) is not tuple:
+        return None
+    pair = cast(tuple[object, ...], value)
+    if len(pair) != 2:
+        return None
+    first, second = pair
+    if type(first) is not int or type(second) is not int:
+        return None
+    return first, second
 
 
 def test_distinct_histories_have_the_same_extensional_action_without_a_row_inverse() -> (
@@ -66,7 +78,7 @@ def test_distinct_histories_have_the_same_extensional_action_without_a_row_inver
 def test_production_disjoint_summaries_alias_different_carry_histories() -> None:
     application = LazyReverseApplication(10, 19, 7, (7, 18, 7))
     application.active_width()
-    histories = {}
+    histories: dict[int, tuple[int, ...]] = {}
     value = 196
     for generation in range(8):
         digits = tuple(map(int, reversed(str(value))))
@@ -75,12 +87,17 @@ def test_production_disjoint_summaries_alias_different_carry_histories() -> None
             histories[2] = carry_history(pair[:2])
             histories[6] = carry_history(pair[4:6])
         value += int(str(value)[::-1])
-    summaries = {stop: application._range_action(7, stop) for stop in histories}
+    summaries: dict[int, TransferSummaryID | None] = {
+        stop: application.range_action(7, stop) for stop in histories
+    }
     assert histories[2] != histories[6]
     assert summaries[2] == summaries[6]
     assert summaries[2] is not None
     assert summaries[2].kind == "carry-interval-effect"
-    assert all(key.stop >= 2 and key.stop % 2 == 0 for key in application._ranges)
+    assert all(
+        key.stop >= 2 and key.stop % 2 == 0
+        for key, _summary in application.range_snapshot()
+    )
     # Exact source+program remains reconstructible; only this shared boundary
     # function has no inverse to the two distinct interior output rows.
 
@@ -124,7 +141,7 @@ def test_all_disjoint_block_actions_together_still_forget_the_interior_row() -> 
 def test_two_direction_pair_interface_has_five_classes_for_nine_histories() -> None:
     arena = CarryActionQuotientArena()
     port = PortVariable(0, 0, "carry", 0)
-    images = {
+    images: set[tuple[TransferSummaryID, TransferSummaryID]] = {
         (arena.word((a, b), base=10, port=port), arena.word((b, a), base=10, port=port))
         for a in (0, 9, 10)
         for b in (0, 9, 10)
@@ -135,7 +152,7 @@ def test_two_direction_pair_interface_has_five_classes_for_nine_histories() -> N
 def test_complete_pair_interface_has_seven_canonical_ids_for_nine_histories() -> None:
     arena = CarryActionQuotientArena()
     port = PortVariable(0, 0, "carry", 0)
-    images = set()
+    images: set[TransferSummaryID] = set()
     for word in product((0, 9, 10), repeat=2):
         action = arena.interval_word(word, base=10, port=port)
         images.add(action)
@@ -280,13 +297,22 @@ def test_diamond_summary_ids_are_checked_against_their_actual_state_arena() -> N
         ledger=ledger,
     )
     assert application.direct_powered_point(10) == 2
-    projection = application._lazy_application
+    projection = application.audit_snapshot().lazy_application
     assert type(projection) is LazyProjection
     runtime = projection.scheduler.results
     assert runtime.retained_interfaces > 0
     assert collect_ledger_metrics(ledger).forbidden_future_payloads == 0
-    key = next(key for key in runtime._memo if type(key) is PoweredInterfaceKey)
-    runtime._memo[key] = LocalInterfaceID(
+    result_snapshot = runtime.audit_snapshot()
+    key = next(key for key in result_snapshot.memo if type(key) is PoweredInterfaceKey)
+    assert type(key) is PoweredInterfaceKey
+    memo_value = vars(runtime).get("_memo")
+    if (
+        not isinstance(memo_value, MutableMapping)
+        or id(cast(object, memo_value)) != result_snapshot.memo_store_identity
+    ):
+        raise AssertionError("forensic write requires the audited result store")
+    memo = cast(MutableMapping[object, object], memo_value)
+    memo[key] = LocalInterfaceID(
         ArenaToken("foreign-boundary"),
         "diamond-quotient",
         0,
@@ -344,41 +370,43 @@ def test_production_workspace_never_memoizes_a_complete_future_carry_row() -> No
             or frame.f_globals.get("__name__") != "devtools.verification.lazy_reverse"
         ):
             return
-        for value in frame.f_locals.values():
-            if not isinstance(value, Mapping) or len(value) < 8:
+        for value in cast(Mapping[str, object], frame.f_locals).values():
+            if not isinstance(value, Mapping):
+                continue
+            mapping = cast(Mapping[object, object], value)
+            if len(mapping) < 8:
                 continue
             # A folded scan may keep one cursor for each of two fixed edge
             # ports per stage. Coordinates are values, never additional keys.
+            cursor_pairs = tuple(
+                (_integer_pair(key), _integer_pair(cursor))
+                for key, cursor in mapping.items()
+            )
             if all(
-                type(key) is tuple
-                and len(key) == 2
-                and all(type(part) is int for part in key)
-                and type(cursor) is tuple
-                and len(cursor) == 2
-                and all(type(part) is int for part in cursor)
-                and cursor[1] in (0, 1)
-                for key, cursor in value.items()
+                key is not None and cursor is not None and cursor[1] in (0, 1)
+                for key, cursor in cursor_pairs
             ):
-                assert all(key[1] in (0, 1) for key in value)
-                assert len(value) <= 2 * application.horizon
+                assert all(
+                    key is not None and key[1] in (0, 1) for key, _ in cursor_pairs
+                )
+                assert len(mapping) <= 2 * application.horizon
             # A complete spatial row indexed by (generation, position) is a
             # lossless output tape regardless of the workspace variable's name.
-            cells = {
-                key: bit
-                for key, bit in value.items()
-                if type(key) is tuple
-                and len(key) == 2
-                and all(type(part) is int for part in key)
-                and (
+            cells: dict[tuple[int, int], object] = {}
+            for key, bit in mapping.items():
+                coordinates = _integer_pair(key)
+                if coordinates is None:
+                    continue
+                if (
                     (type(bit) is int and bit in (0, 1))
                     or type(bit) is CarryBit
                     or type(bit) is TransferSummaryID
-                )
-            }
+                ):
+                    cells[coordinates] = bit
             for generation in {key[0] for key in cells}:
-                if not 0 < generation < len(application._programs):
+                width = application.program_width(generation)
+                if generation == 0 or width is None:
                     continue
-                width = application._programs[generation].width
                 if width >= 8 and all(
                     (generation, position) in cells for position in range(1, width + 1)
                 ):

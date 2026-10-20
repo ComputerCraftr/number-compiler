@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Literal
+from collections.abc import Callable
+from typing import Literal, cast
 
 import pytest
 
@@ -23,6 +24,7 @@ from number_compiler.sequences.reverse_add.boundary_window_store import (
     BoundaryOperation,
 )
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from tests.support.private_attributes import private_test_attribute
 
 
 def _engine(
@@ -106,8 +108,8 @@ def test_term_boundary_observer_reuses_authenticated_source_carry_ports() -> Non
     term = ReverseAddPoweredTerm(12_345, 3)
     term.observe_boundary_macro()
 
-    observer = term._boundary_observer
-    workspace = term._workspace
+    observer = object.__getattribute__(term, "_boundary_observer")
+    workspace = term.published_workspace
     assert isinstance(observer, ReverseBoundaryWindowObserver)
     assert workspace is not None
     assert observer.source_workspace is workspace
@@ -213,7 +215,10 @@ def test_boundary_frontier_append_failure_after_mutation_rolls_back(
         (2, operation, 12, 34, 1),
         False,
     )
-    original = LedgerList.append
+    original = cast(
+        Callable[[LedgerList[object], object], None],
+        private_test_attribute(LedgerList, "append"),
+    )
 
     def fail_after_append(self: LedgerList[object], value: object) -> None:
         original(self, value)
@@ -229,7 +234,7 @@ def test_boundary_frontier_append_failure_after_mutation_rolls_back(
             frontier.push(frame)
 
     assert not store.worklist
-    account = ledger.inventory_owner(store._workspace_owner)
+    account = ledger.inventory_owner(store.workspace_owner)
     assert account.entries == account.nodes == account.observed_entries == 0
 
     with store.charged_frontier() as frontier:
@@ -343,15 +348,25 @@ def test_observer_does_not_reuse_action_or_occurrence_identity_across_terms() ->
 
     assert left_observer.steps == 4
     assert right_observer.steps == 5
-    assert left._boundary_observer is not right._boundary_observer
+    assert object.__getattribute__(
+        left, "_boundary_observer"
+    ) is not object.__getattribute__(right, "_boundary_observer")
 
 
 def test_same_binding_observer_from_another_term_ledger_is_rejected() -> None:
     owner = ReverseAddPoweredTerm(19_999, 6)
     foreign = ReverseAddPoweredTerm(19_999, 6)
     owner.observe_boundary_macro()
-    foreign._boundary_observer = owner._boundary_observer
-    foreign._boundary_observer_identity = owner._boundary_observer_identity
+    object.__setattr__(
+        foreign,
+        "_boundary_observer",
+        object.__getattribute__(owner, "_boundary_observer"),
+    )
+    object.__setattr__(
+        foreign,
+        "_boundary_observer_identity",
+        object.__getattribute__(owner, "_boundary_observer_identity"),
+    )
 
     with pytest.raises(ValueError, match="binding or budget changed"):
         foreign.observe_boundary_macro()

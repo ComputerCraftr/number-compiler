@@ -58,7 +58,7 @@ def _reference_scope() -> Iterator[None]:
         yield
 
 
-def _crop(digits: tuple[int, ...]) -> tuple[tuple[int, ...], int]:
+def crop_source(digits: tuple[int, ...]) -> tuple[tuple[int, ...], int]:
     boundary = summarize_collatz_sentinel_boundaries(digits, base=64)
     count = boundary.length if boundary.all_sentinel else boundary.low_first_mismatch
     assert count is not None
@@ -75,14 +75,14 @@ def _hensel(m: int, e: int) -> tuple[int, int, int]:
 
 def _directional_next_domains(source: tuple[int, ...]) -> tuple[int, ...]:
     """Compile one domain output using only derived carries and L/R views."""
-    _normalized, frame = _crop(source)
+    _normalized, frame = crop_source(source)
     active = source[frame:]
     if not active:
         return (radix64_domain(1),)
     shift = v2_positive(3 * active[0] + 1)
     assert shift < 6
     carry = 1
-    raws = []
+    raws: list[int] = []
     for digit in active:
         carry, raw = radix64_raw_emit(*radix64_split(digit), carry)
         raws.append(raw)
@@ -122,24 +122,24 @@ class _Observation:
         return (self.domain, self.hensel) if refined else self.domain
 
 
-def _observe(n: int) -> _Observation:
+def observe_source(n: int) -> _Observation:
     source = digits_lsd(n, 64)
-    normalized, q = _crop(source)
+    normalized, q = crop_source(source)
     m = value_from_lsd_digits(normalized, 64)
     event = radix64_transducer.compose_radix64_events(source)
     e = event.source_shift
     assert event.source_frame == q
     assert event.valuation == 6 * q + e
     assert e == v2_positive(3 * m + 1) < 6
-    ports = []
+    ports: list[tuple[tuple[int, ...], int]] = []
     for incoming in range(3):
         carry = incoming
-        output_domains = []
+        output_domains: list[int] = []
         for digit in normalized:
             carry, raw = radix64_raw_emit(*radix64_split(digit), carry)
             output_domains.append(radix64_domain(raw))
         ports.append((tuple(output_domains), carry))
-    successor, next_frame = _crop(event.target_digits)
+    successor, next_frame = crop_source(event.target_digits)
     assert next_frame == event.exit_frame
     domain: DomainKey = (
         e,
@@ -166,7 +166,7 @@ def test_radix64_five_way_carry_domain_quotient() -> None:
 
 
 def test_adjacent_division_domain_factorization_all_six_phases() -> None:
-    counts = []
+    counts: list[tuple[int, int]] = []
     for e in range(6):
         table = tuple(
             tuple(radix64_domain(radix64_shift(a, b, e)) for b in range(64))
@@ -211,7 +211,7 @@ def test_directional_views_reconstruct_complete_next_geometry() -> None:
 
 
 def test_eq_survives_complete_acceleration_and_next_frame_crop() -> None:
-    state = _observe(58723)
+    state = observe_source(58723)
     event = radix64_transducer.compose_radix64_events(digits_lsd(58723, 64))
     assert digits_lsd(58723, 64) == (35, 21, 14)
     assert event.target_digits == (21, 32, 21)
@@ -223,10 +223,10 @@ def test_eq_survives_complete_acceleration_and_next_frame_crop() -> None:
 
 def test_growth_is_ordinary_lt_output_over_sixteen_bit_odd_domain() -> None:
     grown: dict[int, set[int]] = defaultdict(set)
-    phases = set()
+    phases: set[int] = set()
     for n in range(1, 1 << 16, 2):
         original = digits_lsd(n, 64)
-        normalized, q = _crop(original)
+        normalized, q = crop_source(original)
         # An all-sentinel input has an empty normalized active field. The
         # implicit zero used in observation keys is not an active source cell.
         ds = original[q:]
@@ -273,15 +273,17 @@ def test_hensel_pullback_uses_source_without_successor_word(
 
 
 def test_hensel_splits_fifteen_nineteen_but_is_not_successor_complete() -> None:
-    fifteen, nineteen = _observe(15), _observe(19)
+    fifteen, nineteen = observe_source(15), observe_source(19)
     assert fifteen.domain == nineteen.domain
     assert (fifteen.hensel[0], nineteen.hensel[0]) == (1, 3)
     assert fifteen.key(True) != nineteen.key(True)
-    first, second = _observe(129), _observe(385)
+    first, second = observe_source(129), observe_source(385)
     assert first.key(True) == second.key(True)
     assert first.hensel == second.hensel == (2, 36, 1)
     assert (first.target, second.target) == (97, 289)
-    assert _observe(first.target).key(True) != _observe(second.target).key(True)
+    assert observe_source(first.target).key(True) != observe_source(second.target).key(
+        True
+    )
 
 
 def test_seven_workbook_collisions_split_on_next_leaf_consumer_action() -> None:
@@ -336,10 +338,10 @@ def test_seven_workbook_collisions_split_on_next_leaf_consumer_action() -> None:
 
 def test_semantic_quotient_counts_with_frame_gauge_disabled() -> None:
     sources = tuple(n for n in range(1, 4096, 2) if n % 64 != 21)
-    current = {n: _observe(n) for n in sources}
+    current = {n: observe_source(n) for n in sources}
     assert len(current) == 1984 and all(s.frame == 0 for s in current.values())
-    following = {s.target: _observe(s.target) for s in current.values()}
-    measurements = []
+    following = {s.target: observe_source(s.target) for s in current.values()}
+    measurements: list[tuple[int, int, int]] = []
     for refined in (False, True):
         fibers: dict[Hashable, list[_Observation]] = defaultdict(list)
         for state in current.values():
@@ -361,11 +363,11 @@ def test_1152_frame_translation_all_phases_preserves_semantic_keys_and_target() 
         for e in range(6)
     }
     for e, m in tails.items():
-        states = []
-        weights = []
+        states: list[_Observation] = []
+        weights: list[int] = []
         for q in (1, 193, 385):
             n = 64**q * m + (64**q - 1) // 3
-            state = _observe(n)
+            state = observe_source(n)
             assert state.frame == q and state.domain[0] == e
             assert state.target == (3 * m + 1) >> e
             states.append(state)

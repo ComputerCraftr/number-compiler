@@ -4,6 +4,7 @@ import subprocess
 import sys
 from dataclasses import fields
 from fractions import Fraction
+from typing import cast
 
 import pytest
 
@@ -532,7 +533,7 @@ def test_independent_audit_rejects_resealed_saturated_run_forgery(
         object.__setattr__(source, "exact", False)
         raw_snapshot = workspace.source_snapshots[workspace.root_source.local_id]
         assert isinstance(raw_snapshot, tuple)
-        snapshot: list[object] = list(raw_snapshot)
+        snapshot: list[object] = list(cast(tuple[object, ...], raw_snapshot))
         snapshot[7] = False
         workspace.source_snapshots[workspace.root_source.local_id] = tuple(snapshot)
     else:
@@ -540,8 +541,12 @@ def test_independent_audit_rejects_resealed_saturated_run_forgery(
         raw_image_snapshot = workspace.image_snapshots[workspace.root_payload.local_id]
         assert isinstance(raw_support_snapshot, tuple)
         assert isinstance(raw_image_snapshot, tuple)
-        support_snapshot: list[object] = list(raw_support_snapshot)
-        image_snapshot: list[object] = list(raw_image_snapshot)
+        support_snapshot: list[object] = list(
+            cast(tuple[object, ...], raw_support_snapshot)
+        )
+        image_snapshot: list[object] = list(
+            cast(tuple[object, ...], raw_image_snapshot)
+        )
         if field == "offset":
             replacement = support.transfer.offset + 1
             object.__setattr__(support.transfer, "offset", replacement)
@@ -596,7 +601,7 @@ def test_audit_rejects_negative_demanded_transfer_with_matching_exact_endpoint()
     )
     raw_snapshot = workspace.support_snapshots[expanded_id.local_id]
     assert isinstance(raw_snapshot, tuple)
-    snapshot: list[object] = list(raw_snapshot)
+    snapshot: list[object] = list(cast(tuple[object, ...], raw_snapshot))
     snapshot[2], snapshot[3] = -1, offset
     workspace.support_snapshots[expanded_id.local_id] = tuple(snapshot)
     assert audit_dyadic_return_payloads(ledger).invalid

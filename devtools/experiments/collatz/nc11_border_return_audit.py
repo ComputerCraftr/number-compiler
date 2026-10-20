@@ -90,7 +90,7 @@ def audit(output: Path) -> dict[str, object]:
         # The signed second innovation samples *normalized* sources, not
         # physical odd half-steps.  Derive that orbit independently.
         x = source
-        normalized_sources = []
+        normalized_sources: list[int] = []
         for _ in range(normalized):
             normalized_sources.append(x)
             x = (3 * x + 1) // 2 if x & 1 else x // 2
@@ -124,7 +124,7 @@ def audit(output: Path) -> dict[str, object]:
             if x % 10 != 8 or x % 20 != 18:
                 raise AssertionError(("unproven 8->9", x, y))
             nine_transitions += 1
-    report = {
+    report: dict[str, object] = {
         "randomized_physical_trajectories_checked": passed,
         "complete_interior_nine_transition_checks": 10000,
         "nine_transitions_all_from_eight": nine_transitions,

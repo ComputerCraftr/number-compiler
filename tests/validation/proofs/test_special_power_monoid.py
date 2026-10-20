@@ -87,7 +87,7 @@ def test_mersenne_prime_norm_one_trace_powered_image_rank_matches_exhaustive_sub
     for exponent in (5, 7):
         modulus = (1 << exponent) - 1
         generator = (2, 1)
-        units = []
+        units: list[tuple[int, int]] = []
         value = (1, 0)
         for _ in range(1 << exponent):
             units.append(value)

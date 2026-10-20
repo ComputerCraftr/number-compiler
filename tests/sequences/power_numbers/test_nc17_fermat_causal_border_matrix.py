@@ -6,6 +6,7 @@ from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
 from number_compiler.sequences.power_numbers.numbers import FermatNumberSpec
+from tests.support.exact_integer_power import exact_integer_power
 
 
 @pytest.mark.parametrize("base,position", ((2, 6), (5, 3), (7, 1), (10, 2)))
@@ -15,8 +16,8 @@ def test_causal_matrix_selects_actual_source_row_and_keeps_conditional_rows(
     level = 2
     physical_steps = 9
     source = 3 ** (1 << level)
-    modulus = base ** (position + 1)
-    low_modulus = base**position
+    modulus = exact_integer_power(base, position + 1)
+    low_modulus = exact_integer_power(base, position)
     actual_residue = source % modulus
 
     matrix = FermatNumberSpec(3).demand_three_power_causal_border_matrix(

@@ -22,6 +22,7 @@ from number_compiler.sequences.double_reverse.stencil_moore import (
     stencil_from_ports,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
+    IssuedDoubleReverseSourcePrefix,
     source_prefix_binding,
 )
 from number_compiler.sequences.double_reverse.temporal_square import (
@@ -89,11 +90,11 @@ def test_every_pointed_digit_matches_literally_powered_endpoint(
 ) -> None:
     expected = str(_literal(seed, 2 * f_steps))
     with DoubleReverseTerm(seed, 2 * f_steps, max_steps=128) as term:
-        engine = term._adapter.temporal_hashlife
-        phase = engine.certify(term._source.root)
+        engine = term.temporal_engine
+        phase = engine.certify(term.source_root)
         assert phase is not None
         for index, character in enumerate(expected):
-            point = engine.pointed_stencil(term._source.root, f_steps, phase, index)
+            point = engine.pointed_stencil(term.source_root, f_steps, phase, index)
             digit = int(character)
             assert point.width == len(expected)
             assert point.msd_index == index
@@ -101,7 +102,7 @@ def test_every_pointed_digit_matches_literally_powered_endpoint(
             assert point.ltgt == (digit >= 5)
             assert point.f5 == digit % 5
             assert point.moore_state == DIGIT_STENCIL_MOORE["joint"].classes[digit]
-        assert term._image is None  # no full endpoint constructed
+        assert term.published_image is None  # no full endpoint constructed
 
 
 def test_public_digit_is_pointed_and_does_not_prepare_endpoint(
@@ -116,7 +117,7 @@ def test_public_digit_is_pointed_and_does_not_prepare_endpoint(
         actual = _literal(173488, 128)
         for pos in (0, 1, 5, 20, len(str(actual)) - 1):
             assert term.digit(pos) == int(str(actual)[-pos - 1])
-        assert term._image is None
+        assert term.published_image is None
         counters = term.metrics()
         assert counters["double_reverse_pointed_stencil_publications"] == 5
         assert counters.get("double_reverse_temporal_hashlife_publications", 0) == 0
@@ -150,7 +151,7 @@ def test_direct_and_projected_digits_reject_invalid_coordinates_before_work(
         for read_digit in (term.digit, projected.digit):
             with pytest.raises(exception):
                 read_digit(cast("int", coordinate))
-        assert term._image is None
+        assert term.published_image is None
 
 
 def test_pointed_source_rejects_unknown_border_and_invalid_coordinate() -> None:
@@ -185,7 +186,7 @@ def test_exact_transient_prefix_powers_196_and_other_cylinders(
         assert point.prefix_steps in (entry, entry + 1)
         assert point.digit == _literal(seed, 64) % 10
         assert term.digit(0) == point.digit
-        assert term._image is None
+        assert term.published_image is None
 
 
 @pytest.mark.parametrize("horizon", (16, 32, 64, 128))
@@ -208,7 +209,7 @@ def test_bounded_pointed_demands_share_prefix_without_endpoint(
             assert term.digit(term.width() - 1) == int(str(expected)[0])
         after = term.metrics()["double_reverse_pointed_border_entry_steps"]
         assert before == after == 16
-        assert term._image is None
+        assert term.published_image is None
 
 
 @pytest.mark.validation
@@ -226,7 +227,7 @@ def test_seed196_generation64_pointed_and_full_work_counters(
             assert pointed.width() == len(str(expected))
             assert pointed.digit(3) == (expected // 1_000) % 10
         pointed_metrics = pointed.metrics()
-        assert pointed._image is None
+        assert pointed.published_image is None
         assert pointed_metrics["double_reverse_pointed_border_entry_steps"] == 16
         assert pointed_metrics["double_reverse_binary_shift_primitives"] == 16
         assert pointed_metrics["double_reverse_spatial_transducer_applications"] == 0
@@ -236,7 +237,7 @@ def test_seed196_generation64_pointed_and_full_work_counters(
     with DoubleReverseTerm(196, 64, max_steps=128) as materialized:
         assert materialized.materialize(max_bits=4096) == expected
         materialized_metrics = materialized.metrics()
-        assert materialized._image is not None
+        assert materialized.published_image is not None
         assert materialized_metrics["double_reverse_temporal_hashlife_publications"] > 0
         assert materialized_metrics["double_reverse_hashlife_tile_selections"] > 0
 
@@ -244,9 +245,12 @@ def test_seed196_generation64_pointed_and_full_work_counters(
 def test_source_prefix_seal_rejects_rewritten_cursor_and_binding() -> None:
     with DoubleReverseTerm(196, 64, max_steps=128) as term:
         term.temporal_border_bank()
-        engine = term._adapter.temporal_hashlife
+        engine = term.temporal_engine
         entry = engine.source_prefix()
-        issued = engine._prefix_issued
+        issued = cast(
+            IssuedDoubleReverseSourcePrefix | None,
+            object.__getattribute__(engine, "_prefix_issued"),
+        )
         assert entry is not None and issued is not None
         original_steps = entry.physical_steps
         original_binding = issued.binding
@@ -264,7 +268,7 @@ def test_source_prefix_seal_rejects_rewritten_cursor_and_binding() -> None:
 def test_source_prefix_has_no_public_raw_integer_issuer() -> None:
     with DoubleReverseTerm(196, 64, max_steps=128) as term:
         term.temporal_border_bank()
-        engine = term._adapter.temporal_hashlife
+        engine = term.temporal_engine
         entry = engine.source_prefix()
         assert entry is not None and entry.certified_phase is not None
         assert not hasattr(engine, "publish_source_prefix")
@@ -278,13 +282,13 @@ def test_source_prefix_has_no_public_raw_integer_issuer() -> None:
             engine.validate_source_prefix(forged_source)
 
         with pytest.raises(TypeError):
-            signature(engine._advance_source_prefix).bind(term._source.root)
+            signature(engine.advance_source_prefix).bind(term.source_root)
 
 
 def test_completed_endpoint_keeps_precedence_over_new_pointed_work() -> None:
     with DoubleReverseTerm(173488, 32) as term:
         term.materialize(max_bits=256)
-        assert term._image is not None
+        assert term.published_image is not None
         before = term.metrics()
         assert term.width() == len(str(_literal(173488, 32)))
         assert term.digit(0) == _literal(173488, 32) % 10

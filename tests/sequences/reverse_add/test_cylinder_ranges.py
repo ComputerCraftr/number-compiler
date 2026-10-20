@@ -12,10 +12,10 @@ from number_compiler.arithmetic.contracts.cylinder_chart import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.source_ports import SourceCarryPorts
-from tests.sequences.reverse_add.test_source_ports import (
-    _pairs,
-    _source,
-    _step_digits,
+from tests.support.reverse_source_ports import (
+    pair_sums,
+    source_from_value,
+    successor_digits,
 )
 
 
@@ -63,10 +63,10 @@ def test_dyadic_restriction_cover_is_exact_aligned_and_bounded() -> None:
 
 @pytest.mark.parametrize("seed", (0, 1, 19, 89, 196, 1001, 12003))
 def test_both_layers_oriented_ranges_match_independent_literal_folds(seed: int) -> None:
-    source = _source(seed, 10)
+    source = source_from_value(seed, 10)
     ports = SourceCarryPorts(source, ResourceLedger())
-    for layer, digits in ((1, source.digits), (2, _step_digits(source.digits, 10))):
-        pairs = _pairs(digits)
+    for layer, digits in ((1, source.digits), (2, successor_digits(source.digits, 10))):
+        pairs = pair_sums(digits)
         extent = len(pairs)
         for start in range(extent + 1):
             for stop in range(start, extent + 1):
@@ -91,7 +91,7 @@ def test_both_layers_oriented_ranges_match_independent_literal_folds(seed: int) 
 
 
 def test_translated_reflected_subrange_preserves_orientation() -> None:
-    ports = SourceCarryPorts(_source(4590, 10), ResourceLedger())
+    ports = SourceCarryPorts(source_from_value(4590, 10), ResourceLedger())
     # Pair field (4,14,14,4): forward [0,2) resets to 1; its reverse resets to 0.
     assert ports.range_transfer(1, 0, 2) is CarryFn.CONST1
     assert ports.range_transfer(1, 0, 2, CylinderChart(-1, 1)) is CarryFn.CONST0
@@ -101,7 +101,7 @@ def test_translated_reflected_subrange_preserves_orientation() -> None:
 def test_whole_admitted_child_and_reflection_reuse_its_summary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = _source(int("4" * 256 + "5" * 256), 10)
+    source = source_from_value(int("4" * 256 + "5" * 256), 10)
     ledger = ResourceLedger()
     ports = SourceCarryPorts(source, ledger)
     assert ports.range_transfer(1, 0, 512) is CarryFn.ID
@@ -125,7 +125,7 @@ def test_ranges_reject_invalid_geometry_and_unadmitted_time_before_source_work()
     None
 ):
     ledger = ResourceLedger()
-    ports = SourceCarryPorts(_source(196, 10), ledger)
+    ports = SourceCarryPorts(source_from_value(196, 10), ledger)
     before = ledger.counters.get("reverse_source_ports_source_reads", 0)
     with pytest.raises(ValueError, match="layers"):
         ports.range_transfer(4, 0, 1)

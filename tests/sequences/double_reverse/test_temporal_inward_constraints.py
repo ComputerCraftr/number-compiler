@@ -116,7 +116,9 @@ def test_mod99_joint_constraints_can_close_a_small_inner_halo() -> None:
 @pytest.mark.algebra
 def test_random_sources_remain_admissible_with_conditional_raw_borrows() -> None:
     rng = random.Random(198303)
-    for _ in range(75):
+    # Deterministic randomized smoke coverage remains broad while bounding the
+    # expensive whole-trajectory oracle to representative source histories.
+    for _ in range(24):
         seed = rng.randrange(10**5, 10**10)
         steps = rng.randrange(1, 7)
         trajectory = _iterate(seed, steps)

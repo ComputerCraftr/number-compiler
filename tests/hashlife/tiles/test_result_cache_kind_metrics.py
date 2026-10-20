@@ -29,7 +29,7 @@ def test_eviction_and_unknown_recreation_are_attributed_by_cache_kind() -> None:
     )
     engine = CausalTileEngine(scheduler)
     with make_tile_from_symbols(tiles, adapter, primitive, (blank,) * 4) as source:
-        left, right = engine._initial(action, 0), engine._initial(action, 1)
+        left, right = engine.initial_state(action, 0), engine.initial_state(action, 1)
         ports = adapter.initial_ports(action)
         with scheduler.complete(
             action,
@@ -51,7 +51,7 @@ def test_eviction_and_unknown_recreation_are_attributed_by_cache_kind() -> None:
             raw = BoundaryTileView(source.tile, 7, 2, 0, 1)
             _normalized, region_lease = normalize_cached_region(scheduler.results, raw)
             try:
-                keys = tuple(scheduler.results._memo)
+                keys = tuple(scheduler.results.audit_snapshot().memo)
                 result_key = next(
                     key
                     for key in keys
@@ -118,7 +118,7 @@ def test_retirement_removals_keep_behavior_and_region_distinct() -> None:
     )
     engine = CausalTileEngine(scheduler)
     source = make_tile_from_symbols(tiles, adapter, primitive, (blank,) * 4)
-    left, right = engine._initial(action, 0), engine._initial(action, 1)
+    left, right = engine.initial_state(action, 0), engine.initial_state(action, 1)
     assert (
         quiescent_boundary(
             engine,

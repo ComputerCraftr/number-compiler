@@ -87,6 +87,16 @@ def _quadratic_mul_pair(
     )
 
 
+def quadratic_mul_pair(
+    left: tuple[int, int],
+    right: tuple[int, int],
+    radicand: int,
+    modulus: int,
+) -> tuple[int, int]:
+    """Multiply two quadratic residues in ``(a, b)`` representation."""
+    return _quadratic_mul_pair(left, right, radicand, modulus)
+
+
 def _quadratic_power_pair(
     base: tuple[int, int],
     exponent: int,
@@ -99,11 +109,11 @@ def _quadratic_power_pair(
     products = 0
     while e:
         if e & 1:
-            result = _quadratic_mul_pair(result, current, radicand, modulus)
+            result = quadratic_mul_pair(result, current, radicand, modulus)
             products += 1
         e >>= 1
         if e:
-            current = _quadratic_mul_pair(current, current, radicand, modulus)
+            current = quadratic_mul_pair(current, current, radicand, modulus)
             products += 1
     return result, products
 

@@ -27,7 +27,7 @@ from devtools.experiments.reverse_add.cascade import (
     GroupedDependencyCascadeArena,
     group_left_behavior,
 )
-from devtools.experiments.reverse_add.power import _fragment
+from devtools.experiments.reverse_add.power import bimachine_fragment
 from number_compiler.arithmetic.automata.transducer import DFA, LazyBimachine
 
 _Word = tuple[int, ...]
@@ -205,7 +205,7 @@ class _Behavior:
                     w = self.E(left_state, a, r)
                     if w is not None:
                         by_word[w].append((left_state, r))
-            regions = []
+            regions: list[tuple[_Word, int, int]] = []
             for w, pairs in by_word.items():
                 # singleton boxes preserve exactness without attempting biclique cover.
                 for left_state, r in pairs:
@@ -282,7 +282,7 @@ class _Behavior:
         self.left_classes[k] = out
         return out
 
-    def _preimage_left_mask(self, a: int, target_mask: int) -> int:
+    def preimage_left_mask(self, a: int, target_mask: int) -> int:
         inv = self.left_preimage[a]
         out = 0
         x = int(target_mask)
@@ -325,7 +325,7 @@ class _Behavior:
     def right_behavior(
         self, a: int, right_after: int, left_after_mask: int
     ) -> tuple[tuple[_Word, int], ...]:
-        allowed = self._preimage_left_mask(a, left_after_mask)
+        allowed = self.preimage_left_mask(a, left_after_mask)
         return tuple(
             (v, mask & allowed)
             for v, mask in self._right_classes(a, right_after)
@@ -379,11 +379,11 @@ def _walk_context(
         seen.add(q)
         boxes = tuple(S.boxes(q))
         for a in alphabet:
-            out = []
+            out: list[tuple[int, int, int]] = []
             regions = C.canonical_output_regions(a)
             if right:
                 for l_after_mask, r2_after_mask, r_after_mask in boxes:
-                    pre_l = C._preimage_left_mask(a, l_after_mask)
+                    pre_l = C.preimage_left_mask(a, l_after_mask)
                     if not pre_l:
                         continue
                     for v, emit_lmask, emit_rmask in regions:
@@ -533,7 +533,7 @@ class _CascadeOutput:
                             continue
                         for l2 in _values(l2mask):
                             for r2_after in _values(r2_after_mask):
-                                w = _fragment(self.second, l2, v, r2_after)
+                                w = bimachine_fragment(self.second, l2, v, r2_after)
                                 if w is not None:
                                     if self.cache_enabled:
                                         self.cache[key] = w

@@ -14,8 +14,10 @@ from devtools.verification.comma_b1_quotient import (
     offset_representatives,
 )
 from number_compiler.resources.fused_traversal_workspace import (
+    FusedTraversalWorkspace,
     fused_traversal_workspace_owner_names,
 )
+from number_compiler.resources.ledger import OwnedMemo
 from number_compiler.sequences.comma.boundary_chart import BoundaryChart
 from number_compiler.sequences.comma.cyclotomic_clock import CyclotomicClock
 from number_compiler.sequences.comma.semantic_continuation import (
@@ -203,23 +205,25 @@ def test_powered_convenience_reuses_one_owner_and_rebinds_each_callback() -> Non
         return _root(representatives[offset_orbit(root)], 137)
 
     view.apply_decades_powered(source, phase, 1, source_for_live_root=first_resolver)
-    application = view._convenience_application
+    application = view.powered_audit_snapshot().application
     assert application is not None
     first_binding = application.binding
     assert first_calls
     assert view.ledger.owner_count == owner_count + 5
-    assert len(application._memo) == 0
-    assert len(application._root_bindings) == 0
-    assert application._workspace.nodes == 0
+    assert application.memo_entries == 0
+    assert application.root_binding_entries == 0
+    assert application.workspace.nodes == 0
 
     view.apply_decades_powered(source, phase, 1, source_for_live_root=second_resolver)
     assert second_calls
+    application = view.powered_audit_snapshot().application
+    assert application is not None
     assert application.binding != first_binding
-    assert application._source_for_live_root is None
+    assert not application.resolver_retained
     assert view.ledger.owner_count == owner_count + 5
-    assert len(application._memo) == 0
-    assert len(application._root_bindings) == 0
-    assert application._workspace.nodes == 0
+    assert application.memo_entries == 0
+    assert application.root_binding_entries == 0
+    assert application.workspace.nodes == 0
 
 
 def test_powered_convenience_rejects_reentry_and_active_close() -> None:
@@ -241,12 +245,12 @@ def test_powered_convenience_rejects_reentry_and_active_close() -> None:
         return _root(representatives[offset_orbit(root)])
 
     view.apply_decades_powered(source, phase, 1, source_for_live_root=resolver)
-    application = view._convenience_application
+    application = view.powered_audit_snapshot().application
     assert application is not None
     assert refused == ["reentry", "close"]
-    assert not application._active
-    assert not application._closed
-    assert not view._convenience_closed
+    assert not application.active
+    assert not application.closed
+    assert not view.powered_audit_snapshot().closed
 
 
 def test_powered_convenience_drops_callback_closure_after_request() -> None:
@@ -274,9 +278,9 @@ def test_powered_convenience_drops_callback_closure_after_request() -> None:
     resolver, payload_ref = make_resolver(CapturedPayload())
 
     view.apply_decades_powered(source, phase, 1, source_for_live_root=resolver)
-    application = view._convenience_application
+    application = view.powered_audit_snapshot().application
     assert application is not None
-    assert application._source_for_live_root is None
+    assert not application.resolver_retained
     del resolver
     # This payload has no reference cycle: request cleanup must release the
     # callback immediately, without relying on a whole-process GC sweep.
@@ -307,11 +311,11 @@ def test_manual_powered_application_releases_resolver_when_closed() -> None:
     resolver, payload_ref = make_resolver(CapturedPayload())
 
     application = view.powered_application(source_for_live_root=resolver)
-    assert application._source_for_live_root is resolver
+    assert application.audit_snapshot().resolver_retained
     del resolver
     assert payload_ref() is not None
     application.close()
-    assert application._source_for_live_root is None
+    assert not application.audit_snapshot().resolver_retained
     assert payload_ref() is None
 
 
@@ -327,24 +331,30 @@ def test_failed_powered_close_is_fail_closed_and_retryable(
         return source
 
     application = view.powered_application(source_for_live_root=resolver)
+    initial_state = application.audit_snapshot()
     owners = (
-        application._memo.owner,
-        application._root_bindings.owner,
-        application._workspace.owner,
+        initial_state.memo_owner,
+        initial_state.root_binding_owner,
+        initial_state.workspace.owner,
     )
+    original_memo_dispose = OwnedMemo[object, object].dispose
 
-    def fail_memo_dispose() -> None:
-        raise RuntimeError("memo cleanup failed")
+    def fail_owned_memo_dispose(memo: OwnedMemo[object, object]) -> None:
+        if memo.owner == initial_state.memo_owner:
+            raise RuntimeError("memo cleanup failed")
+        if memo.owner == initial_state.root_binding_owner:
+            raise ValueError("root cleanup failed")
+        original_memo_dispose(memo)
 
-    def fail_roots_dispose() -> None:
-        raise ValueError("root cleanup failed")
+    original_workspace_dispose = FusedTraversalWorkspace.dispose
 
-    def fail_workspace_dispose() -> None:
-        raise OSError("workspace cleanup failed")
+    def fail_workspace_dispose(workspace: FusedTraversalWorkspace) -> None:
+        if workspace.owner == initial_state.workspace.owner:
+            raise OSError("workspace cleanup failed")
+        original_workspace_dispose(workspace)
 
-    monkeypatch.setattr(application._memo, "dispose", fail_memo_dispose)
-    monkeypatch.setattr(application._root_bindings, "dispose", fail_roots_dispose)
-    monkeypatch.setattr(application._workspace, "dispose", fail_workspace_dispose)
+    monkeypatch.setattr(OwnedMemo, "dispose", fail_owned_memo_dispose)
+    monkeypatch.setattr(FusedTraversalWorkspace, "dispose", fail_workspace_dispose)
 
     with pytest.raises(OSError, match="workspace cleanup failed") as failure:
         application.close()
@@ -355,17 +365,19 @@ def test_failed_powered_close_is_fail_closed_and_retryable(
         context_messages.append(str(context))
         context = context.__context__
     assert context_messages == ["root cleanup failed", "memo cleanup failed"]
-    assert application._closing
-    assert not application._closed
-    assert application._source_for_live_root is None
+    failed_state = application.audit_snapshot()
+    assert failed_state.closing
+    assert not failed_state.closed
+    assert not failed_state.resolver_retained
     assert all(not view.ledger.inventory_owner(owner).disposed for owner in owners)
     with pytest.raises(RuntimeError, match="closing or closed"):
         application.apply(source, 0, 0)
 
     monkeypatch.undo()
     application.close()
-    assert application._closed
-    assert not application._closing
+    retried_state = application.audit_snapshot()
+    assert retried_state.closed
+    assert not retried_state.closing
     assert all(view.ledger.inventory_owner(owner).disposed for owner in owners)
 
 
@@ -385,12 +397,12 @@ def test_powered_convenience_clears_failed_request_and_closes_only_its_owner() -
             source, phase, 1, source_for_live_root=failing_resolver
         )
 
-    application = view._convenience_application
+    application = view.powered_audit_snapshot().application
     assert application is not None
-    workspace = application._workspace
-    assert not application._active
-    assert len(application._memo) == 0
-    assert len(application._root_bindings) == 0
+    workspace = application.workspace
+    assert not application.active
+    assert application.memo_entries == 0
+    assert application.root_binding_entries == 0
     assert not workspace.active
     assert workspace.nodes == 0
     assert not workspace.frames
@@ -402,14 +414,14 @@ def test_powered_convenience_clears_failed_request_and_closes_only_its_owner() -
     view.apply_decades_powered(source, phase, 1, source_for_live_root=valid_resolver)
     manual = view.powered_application(source_for_live_root=valid_resolver)
     helper_owners = (
-        application._memo.owner,
-        application._root_bindings.owner,
+        application.memo_owner,
+        application.root_binding_owner,
         workspace.owner,
         workspace.frame_owner,
         workspace.value_owner,
     )
     view.close()
-    assert application._closed
+    assert view.powered_audit_snapshot().closed
     assert all(view.ledger.inventory_owner(owner).disposed for owner in helper_owners)
     with pytest.raises(RuntimeError, match="convenience owner is closed"):
         view.apply_decades_powered(

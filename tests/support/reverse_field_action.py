@@ -44,7 +44,7 @@ def source_cells(
     return ledger, cells, cells.intern(0, width.bit_length() - 1)
 
 
-def _concatenate(before: object, after: object) -> object:
+def concatenate(before: object, after: object) -> object:
     assert isinstance(before, str) and isinstance(after, str)
     return before + after
 
@@ -57,8 +57,8 @@ def reverse_action_arena(
         order=8,
         residual_identity="",
         output_identity="",
-        residual_compose=_concatenate,
-        output_compose=_concatenate,
+        residual_compose=concatenate,
+        output_compose=concatenate,
         automorphisms=ReverseActionAutomorphisms.trivial(),
         ledger=ledger,
     )

@@ -278,10 +278,10 @@ def assert_candidate_data_theory_matches(
         raise ValueError("candidate table definitions differ")
 
 
-def _runtime_candidate_sha256_after_hol_match(
+def runtime_candidate_sha256_after_hol_match(
     record: Mapping[str, object],
     generated_text: str,
-    checked_path: Path,
+    checked_path: object,
 ) -> str:
     """Hash canonical v2 bytes only after their generated HOL tables match.
 
@@ -319,7 +319,7 @@ def runtime_candidate_record(record: Mapping[str, object]) -> dict[str, object]:
     """Version an existing candidate record for the bounded runtime consumer."""
     if record.get("format") != _V1_FORMAT:
         raise ValueError("runtime candidate conversion requires a v1 candidate")
-    if set(record) != _V1_RUNTIME_FIELDS | _V1_DIAGNOSTIC_FIELDS:
+    if set(record) != set(_V1_RUNTIME_FIELDS | _V1_DIAGNOSTIC_FIELDS):
         raise ValueError("v1 candidate fields differ from the supported schema")
     return {
         **{field: record[field] for field in _V1_RUNTIME_FIELDS if field != "format"},

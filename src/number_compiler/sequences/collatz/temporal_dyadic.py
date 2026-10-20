@@ -28,7 +28,7 @@ from number_compiler.sequences.collatz.tape_width import (
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.innovation_input_tape import (
-        _D8ParityTransition,
+        D8ParityTransition,
     )
 
 # Odd symbols and target origin: nine centered actions, 127 translated effects.
@@ -91,7 +91,7 @@ class D8CylinderFrame:
     def _compute_high_fiber_mod5(source: int, consumed: int) -> int:
         return (source >> consumed) % 5
 
-    def _after_eight(self, *, origin: int, gain: int) -> D8CylinderFrame:
+    def advance_eight(self, *, origin: int, gain: int) -> D8CylinderFrame:
         """Advance one byte while transporting the high fiber's F5 residue."""
         if type(self) is not D8CylinderFrame:
             raise TypeError("D8 residue transport requires an exact cylinder frame")
@@ -313,8 +313,9 @@ class D8TemporalTable:
                 or not store.write_once
             ):
                 raise ValueError("D8 lifecycle found another retained store")
-            for key, value in tuple(store.items()):
-                if not store.rollback_unpublished(key, value):
+            erased_store = cast(LedgerDict[object, object], store)
+            for key, value in tuple(erased_store.items()):
+                if not erased_store.rollback_unpublished(key, value):
                     raise ValueError("D8 lifecycle lost a reserved row")
 
     def _select_row(self, source: int) -> D8Row:
@@ -524,7 +525,7 @@ class D8TemporalTable:
         int,
         int,
         CollatzTapeWidthSummary | None,
-        _D8ParityTransition,
+        D8ParityTransition,
     ]:
         """Issue the exact eight-bit word with the same admitted D8 action."""
         if type(frame) is not D8CylinderFrame:
@@ -550,13 +551,13 @@ class D8TemporalTable:
         ):
             raise ValueError("D8 parity word differs from the admitted transition")
         from number_compiler.sequences.collatz.innovation_input_tape import (
-            _D8ParityTransition,
+            D8ParityTransition,
         )
 
         self.ledger.bump(
             _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_D8_WORD_VALIDATION_STEPS, 8
         )
-        transition = _D8ParityTransition._issue(
+        transition = D8ParityTransition.issue_from_d8_table(
             local, endpoint_local, odd_mask, checked_action, frame, advanced
         )
         return advanced, ones, residue, origin, width, transition
@@ -582,7 +583,7 @@ class D8TemporalTable:
         residue = local & 255
         row = self._select_row(residue + 256)
         multiplier = 3 ** row[0]
-        expected = frame._after_eight(
+        expected = frame.advance_eight(
             origin=row[1] + multiplier * (local >> 8),
             gain=multiplier * frame.gain,
         )
@@ -618,7 +619,7 @@ class D8TemporalTable:
         row = self._select_row(residue + 256)
         ones, target_origin = row
         multiplier = 3**ones
-        result = frame._after_eight(
+        result = frame.advance_eight(
             origin=target_origin + multiplier * (local >> 8),
             gain=multiplier * frame.gain,
         )

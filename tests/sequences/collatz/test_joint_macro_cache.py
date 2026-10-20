@@ -5,6 +5,9 @@ from typing import cast
 
 import pytest
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_tuple,
+)
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
@@ -145,12 +148,13 @@ def test_joint_cache_close_retries_failed_store_after_closing_its_peer(
     monkeypatch.setattr(cache.actions, "dispose", fail_once)
     with pytest.raises(RuntimeError, match="action disposal failure"):
         cache.close()
-    assert cache._closed
-    assert not cache.actions._disposed
-    assert cache.frontier._disposed
+    with pytest.raises(RuntimeError, match="closed"):
+        cache.check_open()
+    assert not cache.actions.audit_snapshot().disposed
+    assert cache.frontier.audit_snapshot().disposed
 
     cache.close()
-    assert cache.actions._disposed
+    assert cache.actions.audit_snapshot().disposed
     assert ledger.entries == ledger.nodes == 0
 
 
@@ -247,7 +251,7 @@ def test_failed_batch_publication_clears_the_completed_frontier(
         monkeypatch.setattr(builder.cache, "remember", fail_publication)
         with pytest.raises(RuntimeError, match="injected joint cache publication"):
             builder.finish_d8_batch(None, frame)
-        assert builder._d8_batch_source is None
+        assert object.__getattribute__(builder, "_d8_batch_source") is None
         with pytest.raises(ValueError, match="no active frame batch"):
             builder.append_d8_transition(action, ones, residue)
 
@@ -305,15 +309,17 @@ def test_accumulator_requires_prepared_source_image_and_matches_literal_run() ->
     assert observation.normalized_accumulator_residue == expected % modulus
     assert observation.source_included
     assert observation.physical_ticks == ticks
-    root = term._source_image()
-    view = root.scheduler._source_image_core().view(root.root_image)
-    joint_ports = tuple(
-        cast(tuple[object, ...], port)
-        for port in view.binding.boundary_ports
-        if isinstance(port, tuple)
-        and len(port) > 0
-        and port[0] == "collatz-joint-temporal-action-v1"
-    )
+    root = term.source_image()
+    view = root.scheduler.source_image_core().view(root.root_image)
+    joint_port_rows: list[tuple[object, ...]] = []
+    for port in view.binding.boundary_ports:
+        if (
+            is_object_tuple(port)
+            and port
+            and port[0] == "collatz-joint-temporal-action-v1"
+        ):
+            joint_port_rows.append(port)
+    joint_ports = tuple(joint_port_rows)
     assert len(joint_ports) == 1
     joint_port = joint_ports[0]
     assert len(joint_port) > 1

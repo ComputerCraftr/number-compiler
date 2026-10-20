@@ -204,6 +204,14 @@ class LazyCompiler:
     def nodes(self) -> tuple[BlockEffect, ...]:
         return tuple(self._nodes)
 
+    @property
+    def node_count(self) -> int:
+        return len(self._nodes)
+
+    def definition_at(self, index: int) -> BlockEffect:
+        """Read an already admitted compiler definition for independent audits."""
+        return self._nodes[index]
+
     def _composition_count(self) -> int:
         return sum(isinstance(node, ProgramComposition) for node in self._nodes)
 

@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_runtime_instance,
+)
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.payload_containers import audit_mapping_items
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,40 +32,49 @@ def audit_physical_support_payloads(
     for root in ledger.iter_execution_roots():
         if not isinstance(root, OrderedBooleanSupportArena):
             continue
-        raw_owners = root._node_owner, root._join_owner, root._concat_owner
+        snapshot = root.audit_snapshot()
+        raw_owners = snapshot.node_owner, snapshot.join_owner, snapshot.concat_owner
         if any(type(owner) is not int for owner in raw_owners):
             invalid.add((-1, id(root)))
             continue
         node_owner, join_owner, concat_owner = raw_owners
         stores = (
-            (node_owner, root._nodes, "ordered_boolean_support"),
+            (
+                node_owner,
+                snapshot.node_store_identity,
+                snapshot.nodes,
+                "ordered_boolean_support",
+            ),
             (
                 join_owner,
-                root._joins,
+                snapshot.join_store_identity,
+                snapshot.joins,
                 "ordered_boolean_support_composition",
             ),
             (
                 concat_owner,
-                root._concats,
+                snapshot.concat_store_identity,
+                snapshot.concats,
                 "ordered_boolean_support_composition",
             ),
         )
         valid = (
             root.ledger is ledger
-            and root._store_ledger is ledger
+            and snapshot.storage_ledger is ledger
             and all(
                 type(owner) is int
-                and containers.get(owner) is store
+                and (container := containers.get(owner)) is not None
+                and id(container) == store_identity
                 and inventory[owner].role == role
                 and inventory[owner].entries == len(store)
-                for owner, store, role in stores
+                for owner, store_identity, store, role in stores
             )
         )
-        for index, node in enumerate(root._nodes):
+        for index, node in enumerate(snapshot.nodes):
             try:
                 valid &= (
-                    isinstance(node, OrderedBooleanSupport)
-                    and type(node) is root._support_node_type
+                    is_runtime_instance(node, OrderedBooleanSupport)
+                    and type(node) is snapshot.node_type
                     and node.node_id == index
                 )
                 root.validate(node)
@@ -71,17 +84,17 @@ def audit_physical_support_payloads(
             else:
                 approved.add(id(node))
         for owner, store in (
-            (join_owner, root._joins),
-            (concat_owner, root._concats),
+            (join_owner, snapshot.joins),
+            (concat_owner, snapshot.concats),
         ):
-            for key, node in store.items():
+            for key, node in audit_mapping_items(store):
                 try:
                     valid &= (
                         type(key) is tuple
                         and len(key) == 2
                         and all(type(part) is int for part in key)
-                        and isinstance(node, OrderedBooleanSupport)
-                        and type(node) is root._support_node_type
+                        and is_runtime_instance(node, OrderedBooleanSupport)
+                        and type(node) is snapshot.node_type
                     )
                     root.validate(node)
                 except (TypeError, ValueError, AttributeError, IndexError):
@@ -90,7 +103,9 @@ def audit_physical_support_payloads(
                 else:
                     approved.update((id(key), id(node)))
         if valid:
-            approved.update((id(root), *(id(store) for _, store, _ in stores)))
+            approved.update(
+                (id(root), *(store_identity for _, store_identity, _, _ in stores))
+            )
         else:
             invalid.add((node_owner, id(root)))
     return PhysicalSupportPayloadAudit(frozenset(approved), frozenset(invalid))

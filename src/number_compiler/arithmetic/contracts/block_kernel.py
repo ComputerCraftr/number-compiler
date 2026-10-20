@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from array import array
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, cast
 
 from number_compiler.arithmetic.carry.carry_monoid import (
     CarryFn,
@@ -13,8 +13,8 @@ from number_compiler.arithmetic.carry.carry_monoid import (
 from number_compiler.arithmetic.contracts.block_effect import (
     BoundarySide,
     BoundaryState,
-    _normalized_digit,
     next_operator_id,
+    normalized_digit,
 )
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.semantic_identity import (
@@ -22,8 +22,8 @@ from number_compiler.arithmetic.contracts.semantic_identity import (
     SemanticIdentityDomain,
 )
 from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
-    _decimal_kernel_carry_action,
-    _decimal_kernel_pair_sum,
+    decimal_kernel_carry_action,
+    decimal_kernel_pair_sum,
 )
 
 FINITE_KERNEL_BEHAVIOR_TAG: Final[str] = "finite-kernel-v2"
@@ -33,13 +33,13 @@ FINITE_BLOCK_CANONICAL_KEY_TAG: Final[str] = "finite-block-v3"
 def _pair_carry_action(symbol: int, base: int) -> CarryFn:
     """Return the live primitive carry action in its proved local coordinates."""
     return (
-        _decimal_kernel_carry_action(symbol)
+        decimal_kernel_carry_action(symbol)
         if base == 10
         else value_carry_fn(symbol, base)
     )
 
 
-def _normalized_pair_sum(
+def normalized_pair_sum(
     left_symbol: int,
     left_carry: int,
     right_symbol: int,
@@ -48,19 +48,19 @@ def _normalized_pair_sum(
 ) -> int:
     """Add two normalized digits, using the decimal factored primitive law."""
     if base == 10:
-        return _decimal_kernel_pair_sum(
+        return decimal_kernel_pair_sum(
             left_symbol,
             left_carry,
             right_symbol,
             right_carry,
         )
-    return _normalized_digit(left_symbol, left_carry, base) + _normalized_digit(
+    return normalized_digit(left_symbol, left_carry, base) + normalized_digit(
         right_symbol, right_carry, base
     )
 
 
 @dataclass(frozen=True, slots=True)
-class _BaseLeftState:
+class BaseLeftState:
     carry: int
     previous_pair: int
     blank_seen: bool
@@ -68,13 +68,13 @@ class _BaseLeftState:
 
 
 @dataclass(frozen=True, slots=True)
-class _BaseRightState:
+class BaseRightState:
     forward_suffix: CarryFn
     backward_suffix: CarryFn
 
 
-def _reverse_output_operands(
-    base: int, left: _BaseLeftState, symbol: int, right: _BaseRightState
+def reverse_output_operands(
+    base: int, left: BaseLeftState, symbol: int, right: BaseRightState
 ) -> tuple[int, int, int, int] | None:
     """Consume producer geometry and select the two demanded digit views.
 
@@ -98,11 +98,11 @@ def _reverse_output_operands(
     return symbol, left.carry, left.previous_pair, apply_carry_fn(including, 0)
 
 
-def _reverse_output_carry(
-    base: int, left: _BaseLeftState, symbol: int, right: _BaseRightState
+def reverse_output_carry(
+    base: int, left: BaseLeftState, symbol: int, right: BaseRightState
 ) -> CarryFn:
     """Observe only the next carry domain, without emitting a pair symbol."""
-    operands = _reverse_output_operands(base, left, symbol, right)
+    operands = reverse_output_operands(base, left, symbol, right)
     if operands is None:
         return CarryFn.ID
     a, c, b, d = operands
@@ -115,7 +115,7 @@ def _reverse_output_carry(
         x = skew_normalized_digit(actions.index(_pair_carry_action(a, 10)), a % 9, c)
         y = skew_normalized_digit(actions.index(_pair_carry_action(b, 10)), b % 9, d)
     else:
-        x, y = _normalized_digit(a, c, base), _normalized_digit(b, d, base)
+        x, y = normalized_digit(a, c, base), normalized_digit(b, d, base)
     threshold = base - 1 - y
     return (
         CarryFn.ID
@@ -160,8 +160,8 @@ class BaseBlockEffect:
         self.exponent = 1
         self.node_id = next_operator_id()
         self._initial = (
-            _BaseLeftState(0, -1, False, False),
-            _BaseRightState(CarryFn.ID, CarryFn.ID),
+            BaseLeftState(0, -1, False, False),
+            BaseRightState(CarryFn.ID, CarryFn.ID),
         )
         # For the padding blank, one left transition sets blank_seen and the
         # right transition is already the identity.  Any blank-fixed left/right
@@ -188,22 +188,22 @@ class BaseBlockEffect:
             raise TypeError("kernel side must be BoundarySide")
         require_integer(symbol, "kernel symbol", 0, self.blank)
         if side is BoundarySide.LEFT:
-            if type(state) is not _BaseLeftState:
+            if type(state) is not BaseLeftState:
                 raise TypeError("kernel state has another boundary sort")
             return self._advance_left(state, symbol)
-        if type(state) is not _BaseRightState:
+        if type(state) is not BaseRightState:
             raise TypeError("kernel state has another boundary sort")
         return self._advance_right(state, symbol)
 
-    def _advance_left(self, state: _BaseLeftState, symbol: int) -> _BaseLeftState:
+    def _advance_left(self, state: BaseLeftState, symbol: int) -> BaseLeftState:
         if state.sink:
             out = state
         elif symbol == self.blank:
-            out = _BaseLeftState(state.carry, state.previous_pair, True, False)
+            out = BaseLeftState(state.carry, state.previous_pair, True, False)
         elif state.blank_seen:
-            out = _BaseLeftState(0, -1, True, True)
+            out = BaseLeftState(0, -1, True, True)
         else:
-            out = _BaseLeftState(
+            out = BaseLeftState(
                 apply_carry_fn(_pair_carry_action(symbol, self.base), state.carry),
                 symbol,
                 False,
@@ -211,12 +211,12 @@ class BaseBlockEffect:
             )
         return out
 
-    def _advance_right(self, state: _BaseRightState, symbol: int) -> _BaseRightState:
+    def _advance_right(self, state: BaseRightState, symbol: int) -> BaseRightState:
         if symbol == self.blank:
             out = state
         else:
             phi = _pair_carry_action(symbol, self.base)
-            out = _BaseRightState(
+            out = BaseRightState(
                 compose_carry_fn(state.forward_suffix, phi),
                 compose_carry_fn(phi, state.backward_suffix),
             )
@@ -244,7 +244,7 @@ class BaseBlockEffect:
                 return None
         if side is BoundarySide.RIGHT:
             return tuple(
-                _BaseRightState(first, second)
+                BaseRightState(first, second)
                 for first, second in (
                     (CarryFn.ID, CarryFn.ID),
                     (CarryFn.CONST0, CarryFn.CONST0),
@@ -255,26 +255,26 @@ class BaseBlockEffect:
             )
         base = self.base
         return (
-            _BaseLeftState(0, -1, False),
-            *(_BaseLeftState(0, value, False) for value in range(base)),
-            *(_BaseLeftState(1, value, False) for value in range(base, 2 * base - 1)),
-            _BaseLeftState(0, -1, True),
-            *(_BaseLeftState(0, value, True) for value in range(base)),
-            _BaseLeftState(1, base - 1, False),
-            *(_BaseLeftState(1, value, True) for value in range(base, 2 * base - 1)),
-            _BaseLeftState(0, -1, True, True),
-            _BaseLeftState(1, base - 1, True),
+            BaseLeftState(0, -1, False),
+            *(BaseLeftState(0, value, False) for value in range(base)),
+            *(BaseLeftState(1, value, False) for value in range(base, 2 * base - 1)),
+            BaseLeftState(0, -1, True),
+            *(BaseLeftState(0, value, True) for value in range(base)),
+            BaseLeftState(1, base - 1, False),
+            *(BaseLeftState(1, value, True) for value in range(base, 2 * base - 1)),
+            BaseLeftState(0, -1, True, True),
+            BaseLeftState(1, base - 1, True),
         )
 
     def emit(self, left: BoundaryState, symbol: int, right: BoundaryState) -> int:
         require_integer(symbol, "kernel symbol", 0, self.blank)
-        if type(left) is not _BaseLeftState or type(right) is not _BaseRightState:
+        if type(left) is not BaseLeftState or type(right) is not BaseRightState:
             raise TypeError((type(left), type(right)))
-        operands = _reverse_output_operands(self.base, left, symbol, right)
+        operands = reverse_output_operands(self.base, left, symbol, right)
         out = (
             self.blank
             if operands is None
-            else _normalized_pair_sum(*operands, self.base)
+            else normalized_pair_sum(*operands, self.base)
         )
         if out != self.blank and not 0 <= out <= 2 * (self.base - 1):
             raise AssertionError((out, self.base, left, symbol, right))
@@ -398,7 +398,7 @@ class FiniteBlockEffect:
             raise TypeError("stable_blank_output must be Boolean")
         if type(kernel_name) is not str:
             raise TypeError("kernel_name must be a string")
-        if not isinstance(outputs, (bytes, bytearray, memoryview)):
+        if not isinstance(cast(object, outputs), (bytes, bytearray, memoryview)):
             raise TypeError("finite outputs require a byte buffer")
         self.base = base
         self.blank = resolved_blank

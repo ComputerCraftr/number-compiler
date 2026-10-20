@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from dataclasses import replace
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
@@ -83,7 +84,9 @@ def test_shared_macro_inventory_and_warm_reuse_do_not_execute_the_producer(
     report = collect_ledger_metrics(runtime.ledger)
     assert runtime.ledger.snapshot() == observed
     assert report.representation_boundary_complete == 1
-    assert report.diamond_quotient_nodes == len(arena.quotients._nodes) > 0
+    assert (
+        report.diamond_quotient_nodes == len(arena.quotients.audit_snapshot().nodes) > 0
+    )
     assert report.spatial_parent_cache_entries >= len(arena.bindings) > 0
     assert report.primitive_macro_cache_entries == len(arena.bindings)
     for name in (
@@ -112,22 +115,35 @@ def test_macro_binding_requires_actual_source_kernel_quotient_and_extent(
     key = PrimitiveMacroKey(kernel, source)
     binding = arena.bindings[key]
     if fault == "extent":
-        arena.bindings._data[key] = replace(binding, original_extent=2)
+        cast(
+            MutableMapping[object, object],
+            object.__getattribute__(arena.bindings, "_data"),
+        )[key] = replace(binding, original_extent=2)
     elif fault == "boolean-extent":
-        arena.bindings._data[key] = replace(binding, original_extent=True)
+        cast(
+            MutableMapping[object, object],
+            object.__getattribute__(arena.bindings, "_data"),
+        )[key] = replace(binding, original_extent=True)
     elif fault in ("foreign-source", "foreign-quotient"):
         other, _, _, other_source, other_quotient = setup()
         if fault == "foreign-source":
             runtime.ledger.reserve(arena.bindings.owner, entries=1)
-            arena.bindings._data[PrimitiveMacroKey(kernel, other_source)] = binding
+            cast(
+                MutableMapping[object, object],
+                object.__getattribute__(arena.bindings, "_data"),
+            )[PrimitiveMacroKey(kernel, other_source)] = binding
         else:
-            arena.bindings._data[key] = replace(binding, quotient=other_quotient)
+            cast(
+                MutableMapping[object, object],
+                object.__getattribute__(arena.bindings, "_data"),
+            )[key] = replace(binding, quotient=other_quotient)
         assert other.ledger is not runtime.ledger
     else:
         runtime.ledger.reserve(arena.bindings.owner, entries=1)
-        arena.bindings._data[
-            PrimitiveMacroKey(replace(kernel, kind="diamond-action"), source)
-        ] = binding
+        cast(
+            MutableMapping[object, object],
+            object.__getattribute__(arena.bindings, "_data"),
+        )[PrimitiveMacroKey(replace(kernel, kind="diamond-action"), source)] = binding
     before = runtime.ledger.snapshot()
     assert collect_ledger_metrics(runtime.ledger).forbidden_future_payloads > 0
     assert runtime.ledger.snapshot() == before
@@ -153,8 +169,8 @@ def test_original_extent_is_reconstructed_from_original_dag_not_trusted_record()
         quotient, 3
     )
     # A valid QID with a changed geometry record is still not an admitted source binding.
-    arena.bindings._data[PrimitiveMacroKey(kernel, source)] = PrimitiveMacroBinding(
-        quotient, 4
-    )
+    cast(
+        MutableMapping[object, object], object.__getattribute__(arena.bindings, "_data")
+    )[PrimitiveMacroKey(kernel, source)] = PrimitiveMacroBinding(quotient, 4)
     report = collect_ledger_metrics(runtime.ledger)
     assert report.forbidden_future_payloads > 0

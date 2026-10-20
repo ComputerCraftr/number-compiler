@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Protocol, cast
+
 import pytest
 
 from number_compiler.arithmetic.fields.radix import radix_width
@@ -22,10 +24,30 @@ from number_compiler.sequences.collatz.source_closed_port_action import (
     SourceCongruence,
 )
 from number_compiler.sequences.collatz.temporal_source_morphism import (
+    CertifiedCollatzRootMorphism,
     PointedCollatzSource,
     certified_collatz_root_from_port,
 )
 from tests.support.reference_arithmetic import collatz_literal
+
+
+class _GuardedRepetition(Protocol):
+    def __call__(
+        self, copies: int, *, max_coefficient_bits: int
+    ) -> CertifiedCollatzRootMorphism | None: ...
+
+
+def _guarded_repetition(
+    root: CertifiedCollatzRootMorphism,
+    copies: int,
+    *,
+    max_coefficient_bits: int,
+) -> CertifiedCollatzRootMorphism | None:
+    repeat = cast(
+        _GuardedRepetition,
+        object.__getattribute__(root, "_guarded_repetition"),
+    )
+    return repeat(copies, max_coefficient_bits=max_coefficient_bits)
 
 
 def _changing_tail_source(motif: tuple[int, ...]) -> int:
@@ -122,7 +144,7 @@ def test_true_root_square_uses_forced_cylinder_before_old_compiler(
 
     owner = PointedCollatzSource.issue(source, 2 * ticks, ledger=ResourceLedger())
     first = certified_collatz_root_from_port(owner, port)
-    assert first._guarded_repetition(2, max_coefficient_bits=8192) is None
+    assert _guarded_repetition(first, 2, max_coefficient_bits=8192) is None
 
     def reject_reconstruction(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("source-forced second half reached the old compiler")

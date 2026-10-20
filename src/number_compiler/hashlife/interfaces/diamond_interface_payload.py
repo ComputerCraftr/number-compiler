@@ -32,7 +32,7 @@ class InterfacePayloadRegistry:
             and root.ledger is ledger
             and root.arena in expressions.arenas
             and root.kernels is root.arena.boundaries.kernels
-            and actual.get(root.owner) is root.memo._data
+            and actual.get(root.owner) is root.memo.audit_container
         )
         self.valid_records: set[int] = set()
         self.invalid_response_objects: set[tuple[int, int]] = set()
@@ -55,7 +55,7 @@ class InterfacePayloadRegistry:
             or type(key.target) not in (StateSort, SymbolSort)
             or type(result.input_size) is not int
             or type(result.output_size) is not int
-            or not self.expressions._finite_function(
+            or not self.expressions.finite_function(
                 helper.arena, key.target, key.function, source=key.source
             )
         ):

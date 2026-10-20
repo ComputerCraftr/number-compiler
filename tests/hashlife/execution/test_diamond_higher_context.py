@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
 from typing import TYPE_CHECKING, Never, cast
 
@@ -38,6 +39,7 @@ from number_compiler.hashlife.execution.continuations.diamond_tasks import Task
 from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryActionArena
 from number_compiler.hashlife.interfaces.diamond_boundary_expr import (
     BoundaryExpressionArena,
+    ExprID,
 )
 from tests.support.assertions import assert_rejected_atomically
 from tests.support.collatz_diamond_fixtures import collatz_higher_context_runtime
@@ -174,7 +176,11 @@ def test_higher_admission_rejects_foreign_and_wrong_side_before_warm_mutation() 
 def test_summary_program_and_binding_reservations_are_atomic() -> None:
     runtime, primitive = collatz_higher_context_runtime()
     arena = runtime.higher
-    variable = arena._unary_variable(primitive, 0)
+    unary_variable = cast(
+        Callable[[ActionProgramID, int], ExprID],
+        object.__getattribute__(arena, "_unary_variable"),
+    )
+    variable = unary_variable(primitive, 0)
     record = HigherUnaryRecord(
         primitive, 0, arena.expressions.closures.intern((variable,), variable)
     )
@@ -182,9 +188,16 @@ def test_summary_program_and_binding_reservations_are_atomic() -> None:
     before = runtime.ledger.snapshot()
     runtime.ledger.max_cache_entries = before.entries + 2
     with pytest.raises(BlockContextBudgetExceeded):
-        arena._publish_summary(key, record)
+        publish_summary = cast(
+            Callable[[HigherUnarySummary, HigherUnaryRecord], TransferSummaryID],
+            object.__getattribute__(arena, "_publish_summary"),
+        )
+        publish_summary(key, record)
     assert runtime.ledger.snapshot() == before
-    assert not arena._nodes and not arena._ids and not arena.bindings
+    inventory = runtime.ledger.inventory()
+    assert not arena.node_view and not arena.bindings
+    assert inventory[arena.node_owner].entries == 0
+    assert inventory[arena.id_owner].entries == 0
 
 
 def test_summary_records_reject_numeric_payload_disguises() -> None:
@@ -299,8 +312,8 @@ def test_complete_right_reset_specializes_before_opposite_transfer_dependency(
     cell = runtime.cells.source(0, 3)
     target = HigherUnarySummary(paired, cell, 1)
     forbidden = HigherUnarySummary(primitive, cell, 0)
-    original = runtime._program
-    observed = []
+    original = runtime.task_program
+    observed: list[Task] = []
 
     def trace(
         task: Task,
@@ -349,13 +362,13 @@ def test_complete_right_reset_specializes_before_opposite_transfer_dependency(
         )
         return original(task)
 
-    monkeypatch.setattr(runtime, "_program", trace)
+    monkeypatch.setattr(runtime, "task_program", trace)
     compiled = summary(runtime, target)
     assert runtime.ledger.counters["higher_right_reset_specializations"] > 0
     assert forbidden not in observed
     arena, boundaries = runtime.higher.expressions, runtime.boundaries
     formal = arena.variable(arena.state_sort(primitive, 0), "reset-arbitrary-input")
-    outputs = set()
+    outputs: set[ExprID] = set()
     for anchor_value in range(runtime.kernel(primitive).right_count):
         for function_value in range(runtime.kernel(primitive).right_count):
             anchor = arena.literal(boundaries.literal(primitive, 1, anchor_value))

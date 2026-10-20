@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import ast
 import hashlib
+from collections.abc import Sized
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -25,7 +27,7 @@ def calculate(values, scale):
 
 def clones(tmp_path: Path, left: str, right: str) -> int:
     paths = (tmp_path / "left.py", tmp_path / "right.py")
-    trees = {}
+    trees: dict[Path, ast.Module] = {}
     for path, content in zip(paths, (left, right), strict=True):
         path.write_text(content)
         trees[path] = ast.parse(content)
@@ -38,7 +40,7 @@ def test_duplicate_body_sizes_are_computed_in_one_module_walk(
     path = tmp_path / "nested.py"
     path.write_text(SOURCE)
     tree = ast.parse(SOURCE)
-    original_inventory = python_clones._module_ast_inventory
+    original_inventory = python_clones.module_ast_inventory
     inventoried: list[ast.AST] = []
 
     def count_inventory(
@@ -53,7 +55,7 @@ def test_duplicate_body_sizes_are_computed_in_one_module_walk(
         inventoried.append(node)
         return original_inventory(node)
 
-    monkeypatch.setattr(python_clones, "_module_ast_inventory", count_inventory)
+    monkeypatch.setattr(python_clones, "module_ast_inventory", count_inventory)
     duplicate_bodies(tmp_path, {path: tree})
     assert inventoried == [tree]
 
@@ -76,20 +78,20 @@ def test_plain_token_events_skip_identifier_rendering(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def unexpected_render(
-        _event: python_clones._IdentifierToken,
-        _names: dict[python_clones._TokenBinding, int],
+        _event: python_clones.IdentifierToken,
+        _names: dict[python_clones.TokenBinding, int],
     ) -> str:
         raise AssertionError("plain string tokens need no identifier rendering")
 
     monkeypatch.setattr(python_clones, "_render_token_event", unexpected_render)
     tokens: list[str] = []
-    names: dict[python_clones._TokenBinding, int] = {}
+    names: dict[python_clones.TokenBinding, int] = {}
     binding = (None, "sample")
 
-    python_clones._consume_token_events(
+    python_clones.consume_token_events(
         (
             "Constant:int:3:None",
-            python_clones._IdentifierReservation(binding),
+            python_clones.IdentifierReservation(binding),
             "BinOp",
         ),
         names,
@@ -153,7 +155,7 @@ def outer(values, scale):
             lexical_children,
             statement_suites,
             statement_children,
-        ) = python_clones._module_ast_inventory(tree)
+        ) = python_clones.module_ast_inventory(tree)
         assert nodes == list(ast.walk(tree))
         subtree_sizes: dict[ast.AST, tuple[int, int, int]] = {}
         for node in reversed(nodes):
@@ -163,25 +165,25 @@ def outer(values, scale):
                 + sum(size for size, _, _ in children),
                 int(isinstance(node, ast.stmt))
                 + sum(count for _, count, _ in children),
-                int(isinstance(node, python_clones._OPERATIONS))
+                int(isinstance(node, python_clones.OPERATIONS))
                 + sum(count for _, _, count in children),
             )
-        bindings = python_clones._Bindings(tree, lexical_children=lexical_children)
+        bindings = python_clones.Bindings(tree, lexical_children=lexical_children)
         for function in nodes:
-            if not isinstance(function, python_clones._FUNCTIONS):
+            if not isinstance(function, python_clones.FUNCTIONS):
                 continue
-            projection = python_clones._FunctionTokenProjection(
+            projection = python_clones.FunctionTokenProjection(
                 bindings, function, statement_children
             )
-            for body in python_clones._substantial_bodies(
+            for body in python_clones.substantial_bodies(
                 function,
                 subtree_sizes,
                 lexical_children=lexical_children,
                 statement_suites=statement_suites,
             ):
-                expected = python_clones._tokens(body, bindings, function)
+                expected = python_clones.function_tokens(body, bindings, function)
                 assert projection.tokenize(body) == expected
-                canonical = python_clones._canonical_tokens(expected[0])
+                canonical = python_clones.canonical_tokens(expected[0])
                 reference_digest.update(len(canonical).to_bytes(8, "big"))
                 reference_digest.update(canonical)
                 reference_digest.update(
@@ -190,7 +192,7 @@ def outer(values, scale):
     # The production projection has cached nested statements rather than
     # rebuilding each nested suite for every containing candidate.
     nested_tree = ast.parse("def nested():\n if flag:\n  first = 1\n  second = 2\n")
-    nested_nodes, _, _, _, statement_children = python_clones._module_ast_inventory(
+    nested_nodes, _, _, _, statement_children = python_clones.module_ast_inventory(
         nested_tree
     )
     function = next(node for node in nested_nodes if isinstance(node, ast.FunctionDef))
@@ -227,10 +229,10 @@ def sample(factor):
         tree = ast.parse(text)
         function = tree.body[0]
         assert isinstance(function, ast.FunctionDef)
-        tokens = python_clones._tokens(
-            function.body, python_clones._Bindings(tree), function
+        tokens = python_clones.function_tokens(
+            function.body, python_clones.Bindings(tree), function
         )[0]
-        return hashlib.sha256(python_clones._canonical_tokens(tokens)).hexdigest()
+        return hashlib.sha256(python_clones.canonical_tokens(tokens)).hexdigest()
 
     alpha_renamed = (
         source.replace("sample", "process")
@@ -260,7 +262,7 @@ def test_binding_resolution_is_cached_per_ast_node_and_analysis() -> None:
         "  return state + argument\n"
         " return inner\n"
     )
-    bindings = python_clones._Bindings(tree)
+    bindings = python_clones.Bindings(tree)
     outer = next(
         node
         for node in ast.walk(tree)
@@ -275,12 +277,17 @@ def test_binding_resolution_is_cached_per_ast_node_and_analysis() -> None:
     )
 
     first = bindings.resolve(reference, "state")
-    cached_entry_count = len(bindings._resolved)
+    cached_entry_count = len(
+        cast(Sized, object.__getattribute__(bindings, "_resolved"))
+    )
     assert first == (bindings.inner[outer], "state")
     assert bindings.resolve(reference, "state") is first
-    assert len(bindings._resolved) == cached_entry_count
+    assert (
+        len(cast(Sized, object.__getattribute__(bindings, "_resolved")))
+        == cached_entry_count
+    )
 
-    other_analysis = python_clones._Bindings(tree)
+    other_analysis = python_clones.Bindings(tree)
     other = other_analysis.resolve(reference, "state")
     assert other[0] is other_analysis.inner[outer]
     assert other[0] is not first[0]
@@ -395,7 +402,10 @@ def test_digest_collisions_are_not_clone_evidence(
         def digest(self) -> bytes:
             return b"same"
 
-    monkeypatch.setattr(hashlib, "sha256", lambda _: Collision())
+    def digest(_data: object) -> Collision:
+        return Collision()
+
+    monkeypatch.setattr(hashlib, "sha256", digest)
     assert clones(tmp_path, SOURCE, renamed(SOURCE.replace("+ 3", "+ 4"))) == 0
 
 

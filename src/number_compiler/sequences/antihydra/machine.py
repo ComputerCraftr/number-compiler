@@ -49,7 +49,7 @@ class LiteralMachine:
     right: int = 0
     visited_min: int = 0
     visited_max: int = 0
-    ones: set[int] = field(default_factory=set)
+    ones: set[int] = field(default_factory=set[int])
     halted: bool = False
 
     @property

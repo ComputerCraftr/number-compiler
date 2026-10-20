@@ -501,7 +501,7 @@ def test_symbolic_metrics_do_not_execute_points_or_width(
     for cls in (PoweredCollatzTerm, ReverseAddPoweredTerm):
         monkeypatch.setattr(
             cls,
-            "_source_image" if cls is PoweredCollatzTerm else "_source_workspace",
+            "source_image" if cls is PoweredCollatzTerm else "source_workspace",
             forbidden,
         )
         monkeypatch.setattr(cls, "digit", forbidden)

@@ -53,7 +53,7 @@ class ProviderLayerArena:
     ) -> None:
         self.ledger = ledger
         self.owner = ArenaToken("concrete-provider-layers")
-        self._validate_action = validate_action
+        self.action_validator = validate_action
         self._validate_atom = validate_atom
         self._node_owner = ledger.register(name + "-nodes", "query_memo")
         self._key_owner = ledger.register(name + "-keys", "query_memo")
@@ -78,7 +78,7 @@ class ProviderLayerArena:
         )
         self._next_id = 0
 
-    def _handle(self, local_id: int) -> ProviderLayerID:
+    def scoped_handle(self, local_id: int) -> ProviderLayerID:
         return ProviderLayerID(self.owner, self._KIND, local_id)
 
     def audit_snapshot(self) -> ProviderLayerArenaAuditSnapshot:
@@ -121,20 +121,20 @@ class ProviderLayerArena:
         if type(layer) is not ProviderLayer:
             raise TypeError("expected one provider layer")
         self.validate_optional(previous)
-        self._validate_action(layer.action)
+        self.action_validator(layer.action)
         self._validate_atom(layer.left)
         self._validate_atom(layer.right)
         node = ProviderLayerNode(previous, layer)
         found = self._keys.get(node)
         if found is not None:
             self.ledger.bump(_execution_keys.CONCRETE_PROVIDER_LAYER_ALIAS_HITS)
-            return self._handle(found)
+            return self.scoped_handle(found)
         local_id, self._next_id = reserve_indexed_id(
             self.ledger, self._node_owner, self._key_owner, self._next_id
         )
         record_indexed_node(self._nodes, self._keys, local_id, node)
         self.ledger.bump(_execution_keys.CONCRETE_PROVIDER_LAYER_PUBLICATIONS)
-        return self._handle(local_id)
+        return self.scoped_handle(local_id)
 
     def clear(self) -> None:
         for owner, container, nodes in (

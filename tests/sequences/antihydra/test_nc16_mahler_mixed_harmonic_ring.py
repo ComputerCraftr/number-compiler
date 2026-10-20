@@ -22,6 +22,7 @@ from number_compiler.sequences.antihydra.mahler_odd_macro import (
     odd_seam_step,
 )
 from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+from tests.support.exact_integer_power import exact_integer_power
 from tests.support.mahler_harmonic_reference import (
     literal_q_harmonic_counts,
     source_for_motif,
@@ -41,7 +42,7 @@ def _scalar_events(
     x = source
     q = (1 << clock) * (3 * x + 1)
     n = clock
-    out = []
+    out: list[tuple[int, int, int, int, int, int]] = []
     for i in range(copies * len(word)):
         a = word[i % len(word)]
         assert ((3 * x + 1) & -(3 * x + 1)).bit_length() - 1 == a
@@ -115,7 +116,7 @@ def test_six_radix_q_carry_borrow_harmonics_match_literal_events(
             mask = 0
             for t, (_, _, q, qnext, n, a) in enumerate(reference[:64]):
                 product = (3**a * (q % m)) % m
-                addend = pow(2, n + a, m)
+                addend = exact_integer_power(2, n + a, m)
                 carry = int(product + addend >= m)
                 borrow = int((qnext % m) < (q % m))
                 mask |= (carry ^ borrow) << t
@@ -171,7 +172,7 @@ def test_source_factory_does_not_recompile_its_authenticated_motif(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = source_for_motif((1, 2), 8, extra_bits=6)
-    compile_motif = mixed_ring_module._compiled_motif
+    compile_motif = mixed_ring_module.compiled_motif
     calls = 0
 
     def counted(exponents: tuple[int, ...]) -> MahlerOddToOddAction:
@@ -179,7 +180,7 @@ def test_source_factory_does_not_recompile_its_authenticated_motif(
         calls += 1
         return compile_motif(exponents)
 
-    monkeypatch.setattr(mixed_ring_module, "_compiled_motif", counted)
+    monkeypatch.setattr(mixed_ring_module, "compiled_motif", counted)
     _ring(source, (1, 2))
     assert calls == 1
 
@@ -248,4 +249,4 @@ def test_authenticated_public_root_demand_is_lazy_and_nested_without_memo_replac
     for key, value in ordinary.items():
         assert demanded[key] == value
     assert term.mahler_workspace is not None
-    assert term.mahler_workspace._window_memo is None
+    assert term.mahler_workspace.window_memo_container is None

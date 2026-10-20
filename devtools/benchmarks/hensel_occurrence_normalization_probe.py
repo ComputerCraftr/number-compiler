@@ -9,14 +9,15 @@ from number_compiler.arithmetic.automata.program_word import from_values
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.sequences.collatz.hensel_occurrence import (
     CollatzHenselAction,
+    CollatzHenselOccurrence,
     CollatzHenselOccurrenceCarrier,
 )
 
 
 def report() -> dict[str, int | bool]:
     carrier = CollatzHenselOccurrenceCarrier()
-    raw = set()
-    values = set()
+    raw: set[tuple[int, int, int, int]] = set()
+    values: set[int] = set()
     for h in range(4):
         coefficient = 2 * 3**h
         for b in range(1, coefficient, 2):
@@ -27,7 +28,7 @@ def report() -> dict[str, int | bool]:
                 if m:
                     representations.append((1, b + coefficient, m - 1))
                 expected = coefficient * m + b
-                occurrences = []
+                occurrences: list[CollatzHenselOccurrence] = []
                 for a, offset, suffix in representations:
                     raw.add((a, h, offset, suffix))
                     occurrence = carrier.reimage(
@@ -41,7 +42,7 @@ def report() -> dict[str, int | bool]:
                 assert all(row is occurrences[0] for row in occurrences)
     return {
         "raw_representations": len(raw),
-        "canonical_occurrences": len(carrier._occurrences),
+        "canonical_occurrences": carrier.occurrence_count,
         "distinct_values": len(values),
         "carrier_hits": carrier.hits,
         "requests": carrier.requests,

@@ -9,15 +9,25 @@ import pytest
 
 from number_compiler.arithmetic.fields.walsh import walsh64, walsh64_mod5
 from number_compiler.sequences.power_numbers import source_matrix
+from number_compiler.sequences.power_numbers import (
+    three_power_joint_quotient as joint_owner,
+)
 from number_compiler.sequences.power_numbers.numbers import FermatNumberSpec
 from number_compiler.sequences.power_numbers.source_matrix import SmallModulusWork
 from number_compiler.sequences.power_numbers.three_power_joint_quotient import (
     DEFAULT_RADIX_DEMANDS,
     SourceWalsh64,
     WalshH5,
-    _join_crt,
-    _normalized_unit_residue,
     demand_three_power_joint_quotient,
+)
+
+join_crt = cast(
+    Callable[[tuple[int, int], tuple[int, int]], tuple[int, int]],
+    object.__getattribute__(joint_owner, "_join_crt"),
+)
+normalized_unit_residue = cast(
+    Callable[[int, int, int], int],
+    object.__getattribute__(joint_owner, "_normalized_unit_residue"),
 )
 
 
@@ -50,7 +60,7 @@ def test_normalized_unit_matches_integer_division_and_odd_inverse() -> None:
         x = 3 ** (1 << level)
         u = (x - 1) >> (level + 2)
         for modulus in (2, 4, 8, 16, 32, 64, 3, 9, 27, 5, 125, 7, 49, 10, 100, 1000):
-            assert _normalized_unit_residue(level, modulus, x % modulus) == u % modulus
+            assert normalized_unit_residue(level, modulus, x % modulus) == u % modulus
 
 
 def test_joined_crt_matches_complete_integer_source_bounded() -> None:
@@ -118,7 +128,9 @@ def test_walsh_source_resolves_one_level_then_squares(
     )
 
     calls: list[int] = []
-    original = joint._binary_source_low
+    original = cast(
+        Callable[..., int], object.__getattribute__(joint, "_binary_source_low")
+    )
 
     def spy(level: int, width: int = 64) -> int:
         calls.append(level)
@@ -177,9 +189,9 @@ def test_long_level_fixed_precision_is_bounded_and_stationary() -> None:
 
 
 def test_guards_and_generalized_crt() -> None:
-    assert _join_crt((1, 4), (5, 6)) == (5, 12)
+    assert join_crt((1, 4), (5, 6)) == (5, 12)
     with pytest.raises(ValueError, match="inconsistent"):
-        _join_crt((0, 4), (1, 2))
+        join_crt((0, 4), (1, 2))
     spec = FermatNumberSpec(4)
     with pytest.raises(ValueError, match="duplicate"):
         spec.demand_joint_three_power_quotient(15, ((10, 3), (10, 3)))

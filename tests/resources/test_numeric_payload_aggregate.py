@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator, Iterator
 from dataclasses import dataclass
 from inspect import isgenerator
 from typing import cast
@@ -15,7 +15,8 @@ from devtools.verification.collatz_carry_ranges import (
 )
 from devtools.verification.lazy_collatz import (
     Mul3Carry,
-    _Mul3Port,
+    Mul3Port,
+    ShiftPort,
 )
 from number_compiler.arithmetic.contracts.scoped_handles import (
     ActionProgramID,
@@ -133,12 +134,12 @@ def test_collatz_carry_records_enforce_the_actual_three_state_machine() -> None:
     program = ActionProgramID(ArenaToken("mul3"), "program", 0)
     for incoming in Mul3Carry:
         for bit in (0, 1):
-            port = _Mul3Port(program, incoming)
+            port = Mul3Port(program, incoming)
             total = 3 * bit + int(incoming)
             assert port.advance(bit, ResourceLedger()) == total & 1
             assert port.state == Mul3Carry(total >> 1)
     with pytest.raises(ValueError, match="finite carry"):
-        _Mul3Port(program, cast("Mul3Carry", limbs()[0]))
+        Mul3Port(program, cast("Mul3Carry", limbs()[0]))
     with pytest.raises(ValueError, match="finite carry"):
         CarryRangeSummary(20, cast("int", limbs()[0]), 0, 19)
     with pytest.raises(ValueError, match="exactly three"):
@@ -165,7 +166,6 @@ def test_transient_collatz_cut_contains_valid_machine_ports_not_numeric_words() 
     from devtools.verification.lazy_collatz import (
         CollatzLazyView,
         LazyCollatzApplication,
-        _ShiftPort,
     )
 
     source = (1 << 253) + 127
@@ -173,23 +173,27 @@ def test_transient_collatz_cut_contains_valid_machine_ports_not_numeric_words() 
         2, 0, tuple((source >> i) & 1 for i in range(source.bit_length()))
     )
     result = app.advance_events(20)
-    stream = app._stream(result.view)
+    stream_factory = cast(
+        Callable[[CollatzLazyView], Iterator[int]],
+        object.__getattribute__(app, "stream"),
+    )
+    stream = stream_factory(result.view)
     next(stream)
     assert isgenerator(stream) and stream.gi_frame is not None
-    ports = cast(tuple[_Mul3Port | _ShiftPort, ...], stream.gi_frame.f_locals["ports"])
+    ports = cast(tuple[Mul3Port | ShiftPort, ...], stream.gi_frame.f_locals["ports"])
     assert len(ports) > 4
     for port in ports:
-        assert type(port) in (_Mul3Port, _ShiftPort)
+        assert type(port) in (Mul3Port, ShiftPort)
         assert isinstance(port.program, ActionProgramID)
         port.program.validate(app.token, "program")
-        if isinstance(port, _Mul3Port):
+        if isinstance(port, Mul3Port):
             assert type(port.state) is Mul3Carry
     semantic_types = (
         LazyCollatzApplication,
         CollatzLazyView,
         ActionProgramID,
-        _Mul3Port,
-        _ShiftPort,
+        Mul3Port,
+        ShiftPort,
     )
     audit = numeric_aggregate_audit(
         stream, semantic=lambda value: type(value) in semantic_types

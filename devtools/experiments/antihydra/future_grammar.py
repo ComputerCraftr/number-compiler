@@ -211,7 +211,7 @@ class ReachableFutureGrammar:
                 raise ArithmeticError("predicate cap cannot be source normalized")
             cap_hat = scaled.numerator
         safety = MahlerSourceBoundSafetyAction(block.width, -12 * innovation, cap_hat)
-        joint = MahlerJointFutureAction._with_gain(
+        joint = MahlerJointFutureAction.with_gain(
             block.width,
             block.residue,
             innovation,
@@ -601,7 +601,7 @@ class ReachableFutureGrammar:
             raise ValueError("cyclotomic repetition requires positive width")
         action = self.telescoping(handle)
         fixed_u = Q(2 * action.innovation, action.gain - action.denominator)
-        rows = []
+        rows: list[CyclotomicLane] = []
         for p in PRIME_BANK:
             inverse = pow(action.denominator, -1, p)
             multiplier = action.gain * inverse % p

@@ -46,7 +46,7 @@ def oracle(
         if operation == "advance"
         else (primitive.left_count, primitive.blank + 1, primitive.right_count)
     )
-    outputs = set()
+    outputs: set[int] = set()
     for arguments in product(
         *(
             range(size) if value is None else (value,)

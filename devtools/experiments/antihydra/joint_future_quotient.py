@@ -7,6 +7,7 @@ does not identify source occurrences or prove an infinite safety invariant.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from math import prod
 
@@ -64,6 +65,10 @@ def _collatz_gap(odd_source: int) -> int:
         raise ValueError("Collatz accelerated gap requires a positive odd source")
     value = 3 * odd_source + 1
     return (value & -value).bit_length() - 1
+
+
+def _partition_value(table: Sequence[int], index: int) -> int:
+    return table[index]
 
 
 def _legal_menu(
@@ -133,7 +138,7 @@ def _fraction_witnesses(
     return tuple((label, fraction) for fraction, label in distinct.items())
 
 
-def _row(
+def joint_future_row(
     grammar: ReachableFutureGrammar,
     parent: SourceBlockID,
     child: SourceBlockID,
@@ -143,8 +148,8 @@ def _row(
     previous_suffix: BranchChoiceSuffix,
     suffix: BranchChoiceSuffix,
     depth: int,
-    mahler_partitions: dict[int, tuple[int, ...]],
-    collatz_partitions: dict[int, tuple[int, ...]],
+    mahler_partitions: Mapping[int, Sequence[int]],
+    collatz_partitions: Mapping[int, Sequence[int]],
     *,
     source_override: int | None = None,
     high_fiber_probe: int = 0,
@@ -186,14 +191,17 @@ def _row(
     if middle % 2:
         collatz_q = _collatz_gap(middle)
         next_odd = (3 * middle + 1) >> collatz_q
-        collatz = tuple(
-            (
-                p,
-                collatz_partitions[p][(-3 * middle - 1) % p],
-                collatz_partitions[p][(-3 * next_odd - 1) % p],
+        collatz_rows: list[tuple[int, int, int]] = []
+        for collatz_prime in collatz_partitions:
+            collatz_table: Sequence[int] = collatz_partitions[collatz_prime]
+            collatz_before = _partition_value(
+                collatz_table, (-3 * middle - 1) % collatz_prime
             )
-            for p in collatz_partitions
-        )
+            collatz_after = _partition_value(
+                collatz_table, (-3 * next_odd - 1) % collatz_prime
+            )
+            collatz_rows.append((collatz_prime, collatz_before, collatz_after))
+        collatz = tuple(collatz_rows)
     # Finite chart precision is explicit.  A matching residue is an observer
     # collision, never a complete source identity or a pumping certificate.
     key: tuple[object, ...] = (
@@ -395,7 +403,7 @@ def audit_joint_future(
                             ledger.bump(
                                 "joint_high_fiber_integer_bits", source.bit_length()
                             )
-                            row = _row(
+                            row = joint_future_row(
                                 grammar,
                                 parent,
                                 edge.child,

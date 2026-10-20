@@ -62,7 +62,7 @@ def test_distinct_carry_geometries_share_successor_and_completed_consumer(
 
             monkeypatch.setattr(adapter, "leaf_interface_symbol", forbidden)
             monkeypatch.setattr(adapter, "child_context", forbidden)
-            monkeypatch.setattr(scheduler, "_complete_direct", forbidden)
+            monkeypatch.setattr(scheduler, "complete_direct", forbidden)
             with scheduler.complete(
                 later,
                 output_b.output,

@@ -146,7 +146,7 @@ class ReverseAddMacroActionArena:
         self.compose_hits = 0
         self.applications = 0
 
-    def _intern(self, q: int, r: int, event: DyadicSpan) -> int:
+    def intern_record(self, q: int, r: int, event: DyadicSpan) -> int:
         require_exact_oracle()
         q = min(q, self.bits)
         event = align_span(event, 0)
@@ -160,7 +160,7 @@ class ReverseAddMacroActionArena:
         self._keys[key] = index
         return index
 
-    def _handle(self, local_id: int) -> ActionProgramID:
+    def scoped_handle(self, local_id: int) -> ActionProgramID:
         require_exact_oracle()
         return ActionProgramID(self._owner, "reverse-macro-program", local_id)
 
@@ -176,8 +176,8 @@ class ReverseAddMacroActionArena:
         require_exact_oracle()
         if action.base != self.base:
             raise ValueError("reverse macro action has a different radix")
-        return self._handle(
-            self._intern(1 - action.growth, action.growth, action.event_span)
+        return self.scoped_handle(
+            self.intern_record(1 - action.growth, action.growth, action.event_span)
         )
 
     def compose(
@@ -190,15 +190,15 @@ class ReverseAddMacroActionArena:
         cached = self._compose.get(key)
         if cached is not None:
             self.compose_hits += 1
-            return self._handle(cached)
+            return self.scoped_handle(cached)
         a, b = self._actions[before_id], self._actions[after_id]
         if a.event.length != b.input_width:
             raise ValueError("affine action interfaces do not match")
         transported = transport_span(a.event, b.q, b.r, self.bits)
         event = linear_span(transported, b.event, 1, 1 << self.bits)
-        out = self._intern(a.q + b.q, a.r + b.r, event)
+        out = self.intern_record(a.q + b.q, a.r + b.r, event)
         self._compose[key] = out
-        return self._handle(out)
+        return self.scoped_handle(out)
 
     def apply(self, action_id: ActionProgramID, source: DyadicSpan) -> DyadicSpan:
         require_exact_oracle()

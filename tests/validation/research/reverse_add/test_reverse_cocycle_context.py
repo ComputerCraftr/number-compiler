@@ -193,7 +193,7 @@ def test_complete_interface_batch_budget_failure_publishes_nothing() -> None:
         len(context.bits.functions.keys),
         len(context.bits.nodes),
         len(context.bits.keys),
-        len(context.bits._compositions),
+        len(context.bits.composition_audit_snapshot().container),
     )
     ledger.tighten_limits(
         max_nodes=ledger.nodes,
@@ -212,7 +212,7 @@ def test_complete_interface_batch_budget_failure_publishes_nothing() -> None:
         len(context.bits.functions.keys),
         len(context.bits.nodes),
         len(context.bits.keys),
-        len(context.bits._compositions),
+        len(context.bits.composition_audit_snapshot().container),
     )
 
 

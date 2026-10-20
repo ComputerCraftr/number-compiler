@@ -1,6 +1,6 @@
 """A completed required dyadic boundary is consumed before producer scans."""
 
-from collections.abc import Callable
+from collections.abc import Callable, MutableMapping
 from dataclasses import replace
 from typing import Never, cast
 
@@ -20,6 +20,12 @@ from number_compiler.hashlife.execution.tile_causal_tasks import (
 from number_compiler.hashlife.tiles.tile_boundaries import BoundaryTileView
 from number_compiler.hashlife.tiles.tiles import TileArena, TileID
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.causal_frames import (
+    hold_causal_workspace,
+    initial_causal_state,
+    release_causal_workspace,
+    run_causal_frame,
+)
 from tests.support.tile_kernel import make_tile_from_symbols, make_tile_runtime
 
 
@@ -60,7 +66,8 @@ def test_cold_literal_transition_does_not_construct_a_tile(
     engine = CausalTileEngine(scheduler)
     for (state, symbol), outgoing in expected.items():
         assert (
-            engine._run(
+            run_causal_frame(
+                engine,
                 AdvanceSymbolFrame((action, side, state, symbol)),
                 tile_result=False,
             )
@@ -77,7 +84,7 @@ def test_parametric_parent_transfer_serves_all_states_before_descending(
     law = adapter.primitive_law(action)
     symbols = (0, 2, 3, 4)
     count = law.right_count if side else law.left_count
-    expected = []
+    expected: list[int] = []
     for incoming in range(count):
         state = incoming
         for symbol in reversed(symbols) if side else symbols:
@@ -148,8 +155,10 @@ def test_direct_parent_warm_hit_revalidates_action_metadata() -> None:
     with make_tile_from_symbols(tiles, adapter, action, (0, 1, 2, 3)) as source:
         view = BoundaryTileView(source.tile, 0, 4)
         primitive_advance(adapter, action, 0, 0, view)
-        record = adapter._actions[action.local_id]
-        adapter._actions[action.local_id] = replace(record, repetitions=2)
+        record = adapter.action_record(action)
+        cast(
+            MutableMapping[object, object], object.__getattribute__(adapter, "_actions")
+        )[action.local_id] = replace(record, repetitions=2)
         before = ledger.snapshot()
         try:
             with pytest.raises(ValueError, match="inconsistent metadata"):
@@ -157,7 +166,10 @@ def test_direct_parent_warm_hit_revalidates_action_metadata() -> None:
             after = ledger.snapshot()
             assert (after.entries, after.nodes) == (before.entries, before.nodes)
         finally:
-            adapter._actions[action.local_id] = record
+            cast(
+                MutableMapping[object, object],
+                object.__getattribute__(adapter, "_actions"),
+            )[action.local_id] = record
 
 
 def test_direct_parent_keeps_concrete_opposite_port_admission(
@@ -184,15 +196,16 @@ def test_transfer_task_identity_ignores_nonsemantic_relative_origin(
     ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     with make_tile_from_symbols(tiles, adapter, primitive, (0, 1, 2, 3)) as source:
         engine = CausalTileEngine(scheduler)
-        engine._hold_workspace = True
+        hold_causal_workspace(engine, True)
 
         def advance(origin: int) -> object:
-            return engine._run(
+            return run_causal_frame(
+                engine,
                 AdvanceFrame(
                     (
                         primitive,
                         0,
-                        engine._initial(primitive, 0),
+                        initial_causal_state(engine, primitive, 0),
                         BoundaryTileView(source.tile, origin, 4),
                     ),
                 ),
@@ -211,8 +224,8 @@ def test_transfer_task_identity_ignores_nonsemantic_relative_origin(
             assert ledger.counters["tile_causal_advance_evaluations"] == evaluations
             assert ledger.counters["tile_causal_advance_hits"] >= 1
         finally:
-            engine._hold_workspace = False
-            engine._release_workspace()
+            hold_causal_workspace(engine, False)
+            release_causal_workspace(engine)
 
 
 @pytest.mark.parametrize("alias", (False, 0.0, True, 1.0))
@@ -222,12 +235,13 @@ def test_transfer_origin_numeric_alias_rejects_before_warm_memo_hit(
     ledger, tiles, adapter, primitive, scheduler = make_tile_runtime(BaseBlockEffect(3))
     with make_tile_from_symbols(tiles, adapter, primitive, (0, 1)) as source:
         engine = CausalTileEngine(scheduler)
-        engine._hold_workspace = True
+        hold_causal_workspace(engine, True)
         valid = BoundaryTileView(source.tile, 0, 2)
         try:
-            engine._run(
+            run_causal_frame(
+                engine,
                 AdvanceFrame(
-                    (primitive, 0, engine._initial(primitive, 0), valid),
+                    (primitive, 0, initial_causal_state(engine, primitive, 0), valid),
                 ),
                 tile_result=False,
             )
@@ -236,17 +250,23 @@ def test_transfer_origin_numeric_alias_rejects_before_warm_memo_hit(
             forged = BoundaryTileView(source.tile, 0, 2)
             object.__setattr__(forged, "relative_origin", alias)
             with pytest.raises(TypeError, match="origin"):
-                engine._run(
+                run_causal_frame(
+                    engine,
                     AdvanceFrame(
-                        (primitive, 0, engine._initial(primitive, 0), forged),
+                        (
+                            primitive,
+                            0,
+                            initial_causal_state(engine, primitive, 0),
+                            forged,
+                        ),
                     ),
                     tile_result=False,
                 )
             assert ledger.counters.get("tile_causal_advance_hits", 0) == hits
             assert ledger.counters["tile_causal_advance_evaluations"] == evaluations
         finally:
-            engine._hold_workspace = False
-            engine._release_workspace()
+            hold_causal_workspace(engine, False)
+            release_causal_workspace(engine)
 
 
 @pytest.mark.parametrize("exponent", (4, 8))
@@ -269,15 +289,16 @@ def test_repeated_boundary_hits_completed_region_before_descendants(
         engine = CausalTileEngine(scheduler)
 
         def request() -> BoundaryTileView:
-            engine._application = application.identity
-            result: object = engine._run(
+            engine.application_identity = application.identity
+            result: object = run_causal_frame(
+                engine,
                 OutputBoundaryFrame(
                     (
                         action,
                         0,
                         BoundaryTileView(source.tile, 0, 4),
-                        engine._initial(action, 0),
-                        engine._initial(action, 1),
+                        initial_causal_state(engine, action, 0),
+                        initial_causal_state(engine, action, 1),
                     ),
                 ),
                 tile_result=False,
@@ -305,7 +326,7 @@ def test_repeated_boundary_hits_completed_region_before_descendants(
             ledger.counters["tile_causal_boundary_output_evaluations"]
             == before["tile_causal_boundary_output_evaluations"]
         )
-        assert application._root is None
+        assert application.audit_snapshot().root_lease is None
 
 
 def test_clipped_equal_regions_normalize_before_transient_task_lookup(
@@ -323,17 +344,18 @@ def test_clipped_equal_regions_normalize_before_transient_task_lookup(
         make_tile_from_symbols(tiles, adapter, primitive, second_symbols) as second,
     ):
         engine = CausalTileEngine(scheduler)
-        engine._hold_workspace = True
+        hold_causal_workspace(engine, True)
 
         def request(tile: TileID, offset: int) -> BoundaryTileView:
-            result: object = engine._run(
+            result: object = run_causal_frame(
+                engine,
                 OutputBoundaryFrame(
                     (
                         action,
                         0,
                         BoundaryTileView(tile, -7, 3, 0, offset),
-                        engine._initial(action, 0),
-                        engine._initial(action, 1),
+                        initial_causal_state(engine, action, 0),
+                        initial_causal_state(engine, action, 1),
                     ),
                 ),
                 tile_result=False,
@@ -362,8 +384,8 @@ def test_clipped_equal_regions_normalize_before_transient_task_lookup(
             assert ledger.counters["tile_causal_task_memo_hits"] >= 1
             assert ledger.counters["tile_boundary_region_normalization_aliases"] >= 2
         finally:
-            engine._hold_workspace = False
-            engine._release_workspace()
+            hold_causal_workspace(engine, False)
+            release_causal_workspace(engine)
 
 
 def test_clipped_region_memo_hits_before_cross_observation_construction(
@@ -392,15 +414,16 @@ def test_clipped_region_memo_hits_before_cross_observation_construction(
         engine = CausalTileEngine(scheduler)
 
         def request() -> BoundaryTileView:
-            engine._application = application.identity
-            result: object = engine._run(
+            engine.application_identity = application.identity
+            result: object = run_causal_frame(
+                engine,
                 OutputBoundaryFrame(
                     (
                         action,
                         0,
                         BoundaryTileView(source.tile, -9, 4, 0, 2),
-                        engine._initial(action, 0),
-                        engine._initial(action, 1),
+                        initial_causal_state(engine, action, 0),
+                        initial_causal_state(engine, action, 1),
                     ),
                 ),
                 tile_result=False,

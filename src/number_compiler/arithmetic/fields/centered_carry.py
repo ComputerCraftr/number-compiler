@@ -22,14 +22,14 @@ from number_compiler.resources.metric_keys import (
 )
 
 
-def _extent(extent: int) -> None:
+def validate_extent(extent: int) -> None:
     if type(extent) is not int:
         raise TypeError("centered clock extent must be an exact integer")
     if extent < 1:
         raise ValueError("centered clock extent must be positive")
 
 
-def _growth(growth: int) -> None:
+def validate_growth(growth: int) -> None:
     if type(growth) is not int:
         raise TypeError("centered clock growth must be an exact integer")
     if growth not in (0, 1):
@@ -40,7 +40,7 @@ def center_pair_field(
     arena: SymbolicInnovationArena, pair: InnovationID, *, extent: int
 ) -> InnovationID:
     """Construct P - 9 E_m, with zero coefficients outside the finite window."""
-    _extent(extent)
+    validate_extent(extent)
     arena.resolve(pair)
     return arena.linear_combination(((1, pair), (-9, arena.interval(extent))))
 
@@ -49,7 +49,7 @@ def uncenter_pair_field(
     arena: SymbolicInnovationArena, residual: InnovationID, *, extent: int
 ) -> InnovationID:
     """Construct Delta + 9 E_m; this does not establish digit-pair admission."""
-    _extent(extent)
+    validate_extent(extent)
     arena.resolve(residual)
     return arena.linear_combination(((1, residual), (9, arena.interval(extent))))
 
@@ -78,8 +78,8 @@ def reflected_innovation(
 
     Reflection uses the output extent; it is not a reversed physical carry.
     """
-    _extent(extent)
-    _growth(growth)
+    validate_extent(extent)
+    validate_growth(growth)
     arena.resolve(correction)
     reflected = arena.chart(correction, CylinderChart(-1, extent + growth - 1))
     return arena.add(correction, reflected)
@@ -100,8 +100,8 @@ def advance_centered_residual(
     caller must establish their source-bound relationship before publishing
     any successor; this function cannot turn supplied evidence into admission.
     """
-    _extent(extent)
-    _growth(growth)
+    validate_extent(extent)
+    validate_growth(growth)
     # Reject foreign/stale operands before allocating any new arithmetic node.
     arena.resolve(residual)
     arena.resolve(innovation)

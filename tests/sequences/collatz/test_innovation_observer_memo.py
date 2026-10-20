@@ -50,8 +50,11 @@ def test_observer_memo_reuses_only_within_its_ledger_scope() -> None:
 
     assert ledger.entries == 0
     assert ledger.nodes == 0
-    assert ledger.inventory_owner(memo._owner).disposed
-    assert ledger.inventory_owner(memo._scratch_owner).disposed
+    memo_owner = next(
+        row.owner for row in ledger.inventory() if row.role == "query_memo"
+    )
+    assert ledger.inventory_owner(memo_owner).disposed
+    assert memo.scratch_disposed
     with pytest.raises(RuntimeError, match="closed"):
         innovation_macro_tape(_macro(), 49, memo=memo)
 

@@ -227,7 +227,7 @@ class SpaceTimeProjection:
             time,
         )
 
-    def _fragment_key(
+    def fragment_key(
         self,
         block: ArithmeticCylinder,
         start: int,
@@ -270,11 +270,11 @@ class SpaceTimeProjection:
         )
 
         families = 0
-        cache = result._engine.projection_fragments
-        driver = result._engine.projection_fragment_driver
+        cache = result.source_term.engine.projection_fragments
+        driver = result.source_term.engine.projection_fragment_driver
         if driver is None:
             driver = AntihydraProjectionDriver(result.ledger)
-            result._engine.projection_fragment_driver = driver
+            result.source_term.engine.projection_fragment_driver = driver
         if type(driver) is not AntihydraProjectionDriver:
             raise ValueError("Antihydra projection driver owner was changed")
         try:
@@ -373,7 +373,7 @@ class SpaceTimeProjection:
         area = self.width * self.time_width
         ledger = self.result.ledger
         owner = ledger.register("antihydra.spacetime.workspace", "workspace")
-        engine = self.result._engine
+        engine = self.result.source_term.engine
         if engine.projection_workspace is None:
             engine.projection_workspace = SectionImageWorkspace(ledger)
         cache = engine.projection_workspace

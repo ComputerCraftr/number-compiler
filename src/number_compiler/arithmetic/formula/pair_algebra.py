@@ -165,7 +165,7 @@ def branch_coefficient_planes(
     internal = cur + prev + (Li, carry_p, Ri, Rim1)
     edge = cur + (carry_p,)
     interior_mask = arena.range_mask(1, width, out_width)
-    result = []
+    result: list[Expr] = []
     for bit in range(nplanes):
         core = arena.and_(
             arena.coeffmap("GROWTH_INTERNAL", bit, spec.base, nplanes, internal),

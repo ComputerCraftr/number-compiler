@@ -58,6 +58,9 @@ from number_compiler.sequences.collatz.physical_image_publication import (
 )
 
 if TYPE_CHECKING:
+    from number_compiler.projection.microblock_cache import (
+        MicroblockCacheAuditSnapshot,
+    )
     from number_compiler.sequences.collatz.temporal_source_morphism import (
         CertifiedCollatzRootMorphism,
     )
@@ -129,6 +132,7 @@ class CollatzTermAuditSnapshot(NamedTuple):
 
     ledger: ResourceLedger
     workspace: CollatzPhysicalImageWorkspace | None
+    microblocks: MicroblockCacheAuditSnapshot
 
 
 class CollatzPhysicalImageWorkspace(
@@ -197,14 +201,14 @@ class CollatzPhysicalImageWorkspace(
 
     def validate_publication_configuration(self) -> None:
         """Validate the family law and demanded ports without constructing a query."""
-        self._validate_law()
+        self.validate_law()
         if (
             self.law.descriptor != COLLATZ_PHYSICAL_LAW.descriptor
             or type(self.seed) is not int
             or self.seed < 0
             or type(self.steps) is not int
             or self.steps < 0
-            or self._law_snapshot != self.law.descriptor
+            or self.law_snapshot != self.law.descriptor
             or type(self._closed) is not bool
             or (
                 self._innovation_modulus is not None
@@ -287,7 +291,7 @@ class CollatzPhysicalImageWorkspace(
         view = self.scheduler.source_image_view(self, self.root_image)
         payload = self._joint_action_payload(view)
         try:
-            return CollatzJointRunAction._from_admitted_root_payload(payload)
+            return CollatzJointRunAction.from_admitted_root_payload(payload)
         except (TypeError, ValueError) as error:
             raise BlockContextBudgetExceeded(
                 "the admitted Collatz image has an invalid joint action"
@@ -431,14 +435,14 @@ class CollatzPhysicalImageWorkspace(
             raise ValueError("Collatz root morphism belongs to another image")
         payload = self._joint_action_payload(view)
         try:
-            joint = CollatzJointRunAction._from_admitted_root_payload(payload)
+            joint = CollatzJointRunAction.from_admitted_root_payload(payload)
         except (TypeError, ValueError) as error:
             raise BlockContextBudgetExceeded(
                 "the admitted Collatz image has an invalid joint action"
             ) from error
         from number_compiler.sequences.collatz.temporal_source_morphism import (
             PointedCollatzSource,
-            _root_from_admitted_joint_action,
+            root_from_admitted_joint_action,
         )
 
         root_owner = self._root_source_owner
@@ -449,7 +453,7 @@ class CollatzPhysicalImageWorkspace(
             self._root_source_owner = root_owner
         if type(root_owner) is not PointedCollatzSource:
             raise ValueError("Collatz root source owner has another authority")
-        return _root_from_admitted_joint_action(root_owner, joint)
+        return root_from_admitted_joint_action(root_owner, joint)
 
     def admitted_input_key(
         self, action: Hashable, source: SourceImageView
@@ -725,7 +729,7 @@ class CollatzPhysicalImageWorkspace(
                 # would materialize an equivalent wide integer.
                 source_value = self.seed
             else:
-                source_value = self._source_value(admitted)
+                source_value = self.source_value(admitted)
         demand_width = self._include_width_spine and is_root_action
         demand_joint = self._include_joint_cocycle and is_root_action
         demand_innovation = self._include_innovation_tape and is_root_action

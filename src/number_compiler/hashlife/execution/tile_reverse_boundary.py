@@ -70,15 +70,15 @@ def supports_reverse_boundary(
         adapter.action_children(child) is None for child in children
     ):
         return True
-    pieces = engine._covered_chunks(view)
+    pieces = engine.boundary_chunks(view)
     if len(pieces) != 1:
         return False
     tile = pieces[0]
     left, right = anchor, argument
     if side:
-        tile = engine._keep(engine.tiles.mirror(tile))
+        tile = engine.retain_tile(engine.tiles.mirror(tile))
         left, right = right, left
-    key = engine._composite_key(before, tile, left, right)
+    key = engine.composite_key(before, tile, left, right)
     if key is None:
         return False
     completed = lookup_causal_result(engine.scheduler.results, key)
@@ -102,7 +102,7 @@ def reverse_boundary_step(
 ) -> bool:
     """Compose required dyadic interface observations in physical order."""
     action, side, view, anchor, argument = frame.args
-    workspace = engine.scheduler._causal_workspace
+    workspace = engine.scheduler.causal_workspace
     if frame.stage == 4:
         payload = pop_interface_payload(values)
         summary = payload.bound_reverse_output
@@ -113,10 +113,11 @@ def reverse_boundary_step(
         values.append(summary)
         return True
     if frame.stage == 0:
-        pieces = engine._covered_chunks(view)
+        pieces = engine.boundary_chunks(view)
         if side:
             pieces = tuple(
-                engine._keep(engine.tiles.mirror(tile)) for tile in reversed(pieces)
+                engine.retain_tile(engine.tiles.mirror(tile))
+                for tile in reversed(pieces)
             )
             anchor, argument = argument, anchor
         if not pieces:

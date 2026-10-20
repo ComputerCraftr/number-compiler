@@ -3,6 +3,7 @@
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.hashlife.execution.dyadic_return_actions import append_source
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnSourceRecord,
 )
@@ -26,16 +27,17 @@ def test_punctured_leaf_and_partial_zero_prefix_match_literal(
     width = q + tail
     h = (5 << (q - 1)) + 1
     term = AntihydraArithmeticTerm(0)
-    workspace = term._arithmetic_image()
-    source = workspace._append_source(
+    workspace = term.arithmetic_image()
+    source = append_source(
+        workspace,
         DyadicReturnSourceRecord(
             h % (1 << width), width, h >> width, None, None, None, 0, True
-        )
+        ),
     )
     image = workspace.scheduler.source_image(
         workspace, source, workspace.action_for_extent(width)
     )
-    view = workspace.scheduler._source_image_core().view(image)
+    view = workspace.scheduler.source_image_core().view(image)
     summary = dyadic_image_summary(workspace, view)
     expected_h, delta, minimum, _odd_steps, failure = literal_antihydra_summary(
         h, width
@@ -69,7 +71,7 @@ def test_public_source_and_lazy_mahler_share_closed_leaf_publication(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     term = AntihydraArithmeticTerm(64)
-    workspace = term._arithmetic_image()
+    workspace = term.arithmetic_image()
     event_actions = term.ledger.counters[
         "antihydra_arithmetic_temporal_punctured_event_actions"
     ]
@@ -80,7 +82,7 @@ def test_public_source_and_lazy_mahler_share_closed_leaf_publication(
     # The scheduler has already published the complete source image. Results
     # and the later Mahler projection must consume that publication instead of
     # reopening the arithmetic event constructor.
-    monkeypatch.setattr(workspace, "_punctured_steps", forbidden_event_replay)
+    monkeypatch.setattr(workspace, "punctured_steps", forbidden_event_replay)
     assert event_actions > 0
     with monkeypatch.context() as optional:
         optional.setattr(mahler_cache, "ExactRational", forbidden_event_replay)
@@ -93,7 +95,7 @@ def test_public_source_and_lazy_mahler_share_closed_leaf_publication(
         expected[2],
         expected[4],
     )
-    assert not term.mahler_workspace and not term._segments_ready
+    assert not term.mahler_workspace and not term.audit_snapshot().segments_ready
     assert (
         term.ledger.counters["antihydra_arithmetic_temporal_punctured_event_actions"]
         == event_actions
@@ -115,34 +117,34 @@ def test_punctured_leaf_preserves_late_first_failure_without_event_replay(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     width = 64
-    workspace = AntihydraArithmeticTerm(0)._arithmetic_image()
-    source = workspace._append_source(
-        DyadicReturnSourceRecord(h, width, 0, None, None, None, 0, True)
+    workspace = AntihydraArithmeticTerm(0).arithmetic_image()
+    source = append_source(
+        workspace, DyadicReturnSourceRecord(h, width, 0, None, None, None, 0, True)
     )
     image = workspace.scheduler.source_image(
         workspace, source, workspace.action_for_extent(width)
     )
-    view = workspace.scheduler._source_image_core().view(image)
+    view = workspace.scheduler.source_image_core().view(image)
     expected = literal_antihydra_summary(h, width)[4]
     assert expected is not None and expected > 0
 
     def forbidden(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("first-failure consumer replayed punctured events")
 
-    monkeypatch.setattr(workspace, "_punctured_steps", forbidden)
-    monkeypatch.setattr(workspace, "_source_value", forbidden)
+    monkeypatch.setattr(workspace, "punctured_steps", forbidden)
+    monkeypatch.setattr(workspace, "source_value", forbidden)
     assert workspace.first_failure(view) == expected
     assert not workspace.demanded_support
 
 
 def test_punctured_power_budget_releases_transient_workspace() -> None:
     term = AntihydraArithmeticTerm(0)
-    workspace = term._arithmetic_image()
+    workspace = term.arithmetic_image()
     ledger = term.ledger
     scratch = RunArithmeticWorkspace.for_ledger(ledger, workspace.counter_prefix)
     before = ledger.entries, ledger.nodes
     ledger.max_nodes = ledger.nodes + 23
     with pytest.raises(BlockContextBudgetExceeded), scratch.scope():
-        tuple(workspace._punctured_steps((5 << 31) + 1, 32, scratch))
+        tuple(workspace.punctured_steps((5 << 31) + 1, 32, scratch))
     assert (ledger.entries, ledger.nodes) == before
     assert scratch.nodes == 0 and not scratch.active

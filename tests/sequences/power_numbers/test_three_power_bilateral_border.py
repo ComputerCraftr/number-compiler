@@ -24,7 +24,7 @@ from number_compiler.sequences.power_numbers.three_power_bilateral_border import
 
 
 def _digits_lsd(value: int, base: int) -> list[int]:
-    digits = []
+    digits: list[int] = []
     while value:
         digits.append(value % base)
         value //= base
@@ -46,7 +46,7 @@ def _true_middle_transfer(
 def test_exact_middle_set_powers_without_enumerating_digits() -> None:
     for base in (2, 10):
         for length in range(4):
-            brute = set()
+            brute: set[tuple[int, int, int]] = set()
             for digits in product(range(base), repeat=length):
                 result = IDENTITY
                 for digit in digits:
@@ -117,7 +117,7 @@ def test_h5_from_both_sides_filters_short_missing_middle() -> None:
     for border in (packet.binary, packet.decimal):
         digits = _digits_lsd(source, border.base)
         carry = 0
-        carries = []
+        carries: list[int] = []
         for digit in digits:
             carry = (3 * digit + carry) // border.base
             carries.append(carry)

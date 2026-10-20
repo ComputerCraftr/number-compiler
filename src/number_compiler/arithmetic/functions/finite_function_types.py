@@ -27,7 +27,7 @@ class FinitePort:
     cardinality: int
 
     def __post_init__(self) -> None:
-        _ports((self,))
+        validate_ports((self,))
 
     @property
     def bits(self) -> int:
@@ -40,7 +40,7 @@ class AtomSort:
     cardinality: int
 
     def __post_init__(self) -> None:
-        _sort(self)
+        validate_sort(self)
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -48,7 +48,7 @@ class ProductSort:
     items: tuple[SemanticSort, ...]
 
     def __post_init__(self) -> None:
-        _sort(self)
+        validate_sort(self)
 
     def __hash__(self) -> int:
         return _sort_hash(self)
@@ -63,7 +63,7 @@ class FunctionSort:
     output: SemanticSort
 
     def __post_init__(self) -> None:
-        _sort(self)
+        validate_sort(self)
 
     def __hash__(self) -> int:
         return _sort_hash(self)
@@ -82,7 +82,7 @@ class FunctionSignature:
     _hash: int = field(init=False, compare=False, repr=False)
 
     def __post_init__(self) -> None:
-        _ports(self.inputs)
+        validate_ports(self.inputs)
         output_hash = _sort_hash(self.output)
         object.__setattr__(self, "_hash", hash((self.inputs, output_hash)))
 
@@ -91,8 +91,17 @@ class FunctionSignature:
         # compares the complete port/sort structure; this is not a semantic ID.
         return self._hash
 
+    def validate(self) -> None:
+        """Audit both the declared sorts and the retained cached hash."""
+        validate_ports(self.inputs)
+        output_hash = _sort_hash(self.output)
+        if type(self._hash) is not int or self._hash != hash(
+            (self.inputs, output_hash)
+        ):
+            raise ValueError("semantic signature has a forged or stale cached hash")
 
-def _ports(ports: tuple[FinitePort, ...]) -> None:
+
+def validate_ports(ports: tuple[FinitePort, ...]) -> None:
     if type(ports) is not tuple:
         raise TypeError("finite inputs must be an immutable tuple")
     previous: PortVariable | None = None
@@ -113,7 +122,7 @@ def _ports(ports: tuple[FinitePort, ...]) -> None:
         previous = port.variable
 
 
-def _sort(sort: SemanticSort) -> None:
+def validate_sort(sort: SemanticSort) -> None:
     pending = [(sort, False)]
     active: set[int] = set()
     finished: set[int] = set()
@@ -142,7 +151,7 @@ def _sort(sort: SemanticSort) -> None:
                 raise ValueError("product sorts require immutable nonempty components")
             pending.extend((child, False) for child in item.items)
         elif type(item) is FunctionSort:
-            _ports(item.inputs)
+            validate_ports(item.inputs)
             pending.append((item.output, False))
         else:
             raise TypeError("unknown finite semantic sort")
@@ -190,7 +199,7 @@ def _sort_hash(sort: SemanticSort) -> int:
             pending.append((item, True))
             pending.extend((child, False) for child in item.items)
         elif type(item) is FunctionSort:
-            _ports(item.inputs)
+            validate_ports(item.inputs)
             pending.extend(((item, True), (item.output, False)))
         else:
             raise TypeError("unknown finite semantic sort")
@@ -199,8 +208,8 @@ def _sort_hash(sort: SemanticSort) -> int:
 
 def _sort_equal(left: SemanticSort, right: SemanticSort) -> bool:
     """Exact structural equality; a matching hash never substitutes for it."""
-    _sort(left)
-    _sort(right)
+    validate_sort(left)
+    validate_sort(right)
     pending = [(left, right)]
     visited: set[tuple[int, int]] = set()
     while pending:
@@ -225,15 +234,10 @@ def _sort_equal(left: SemanticSort, right: SemanticSort) -> bool:
     return True
 
 
-def _signature(signature: FunctionSignature) -> None:
+def validate_function_signature(signature: FunctionSignature) -> None:
     if type(signature) is not FunctionSignature:
         raise TypeError("functions require an explicit semantic signature")
-    _ports(signature.inputs)
-    output_hash = _sort_hash(signature.output)
-    if type(signature._hash) is not int or signature._hash != hash(
-        (signature.inputs, output_hash)
-    ):
-        raise ValueError("semantic signature has a forged or stale cached hash")
+    signature.validate()
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,7 +271,7 @@ BOOL = AtomSort("boolean", 2)
 MAX_PRIMITIVE_ATOMS = 1024
 
 
-def _union_inputs(*groups: tuple[FinitePort, ...]) -> tuple[FinitePort, ...]:
+def union_inputs(*groups: tuple[FinitePort, ...]) -> tuple[FinitePort, ...]:
     found: dict[PortVariable, FinitePort] = {}
     for group in groups:
         for port in group:
@@ -278,5 +282,5 @@ def _union_inputs(*groups: tuple[FinitePort, ...]) -> tuple[FinitePort, ...]:
     return tuple(found[key] for key in sorted(found))
 
 
-def _base(variable: PortVariable) -> PortVariable:
+def base_port_variable(variable: PortVariable) -> PortVariable:
     return PortVariable(variable.time, variable.side, variable.role, 0)

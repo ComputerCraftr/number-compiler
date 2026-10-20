@@ -33,41 +33,44 @@ def _has_registered_tile_application(index: HashLifeBlockIndex) -> bool:
     """
     from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
     from number_compiler.hashlife.actions.field_actions import FieldCellActionID
+    from number_compiler.hashlife.execution.tile_application import TileApplication
     from number_compiler.hashlife.execution.tile_kernel import (
         PrimitiveTileKernelAdapter,
     )
-    from number_compiler.hashlife.execution.tile_scheduler import (
-        TileApplication,
-        TileScheduler,
-    )
+    from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
     from number_compiler.hashlife.observation.tile_projection import LazyProjection
     from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
     from number_compiler.hashlife.tiles.tiles import TileArena, TileID, TileLease
 
     def issued(value: object) -> bool:
-        reference = index.resource_ledger._execution_roots.get(id(value))
-        return reference is not None and reference() is value
+        return index.resource_ledger.owns_execution_root(value)
 
-    projection = index._lazy_application
+    projection = index.audit_snapshot().lazy_application
     if (
         type(projection) is not LazyProjection
         or projection.ledger is not index.resource_ledger
-        or projection._closed is not False
+        or projection.audit_snapshot().closed is not False
         or not issued(projection)
     ):
         return False
-    scheduler, application = projection.scheduler, projection._application
+    projection_snapshot = projection.audit_snapshot()
+    scheduler, application = (
+        projection_snapshot.scheduler,
+        projection_snapshot.application,
+    )
     if (
         type(scheduler) is not TileScheduler
         or scheduler.ledger is not index.resource_ledger
         or not issued(scheduler)
         or type(application) is not TileApplication
-        or application.scheduler is not scheduler
-        or application._closed is not False
+        or application.audit_snapshot().scheduler is not scheduler
+        or application.audit_snapshot().closed is not False
         or not issued(application)
     ):
         return False
     tiles, results, adapter = scheduler.tiles, scheduler.results, scheduler.adapter
+    result_snapshot = results.audit_snapshot()
+    scheduler_snapshot = scheduler.audit_snapshot()
     if (
         type(tiles) is not TileArena
         or tiles.ledger is not index.resource_ledger
@@ -76,36 +79,40 @@ def _has_registered_tile_application(index: HashLifeBlockIndex) -> bool:
         or results.ledger is not index.resource_ledger
         or results.tiles is not tiles
         or results.action_authority is not adapter
+        or result_snapshot.ledger is not index.resource_ledger
         or not issued(results)
         or type(adapter) is not PrimitiveTileKernelAdapter
         or adapter.ledger is not index.resource_ledger
         or not issued(adapter)
         or type(adapter.owner) is not ArenaToken
+        or scheduler_snapshot.ledger is not index.resource_ledger
     ):
         return False
+    adapter_snapshot = adapter.audit_snapshot()
+    application_snapshot = application.audit_snapshot()
     action, identity, lease = (
-        application.action,
-        application.identity,
-        application._input,
+        application_snapshot.action,
+        application_snapshot.identity,
+        application_snapshot.input_lease,
     )
     if (
         type(action) is not FieldCellActionID
         or action.owner is not adapter.owner
         or action.kind != "field-cell-action"
         or type(action.local_id) is not int
-        or action.local_id not in adapter._actions
+        or action.local_id not in adapter_snapshot.actions
         or type(identity) is not int
-        or not 0 <= identity < scheduler._next_application
+        or scheduler_snapshot.next_application is None
+        or not 0 <= identity < scheduler_snapshot.next_application
         or type(lease) is not TileLease
-        or lease._arena is not tiles
-        or lease._closed is not False
+        or lease.audit_snapshot().arena is not tiles
+        or lease.audit_snapshot().closed is not False
     ):
         return False
     try:
         source = lease.tile
-        if (
-            type(source) is not TileID
-            or scheduler._applications.application(identity) is not application
+        if type(source) is not TileID or not scheduler.application_is_registered(
+            application
         ):
             return False
     except (AttributeError, KeyError, TypeError, ValueError):
@@ -124,9 +131,10 @@ def collect_projection_metrics(index: HashLifeBlockIndex) -> HashLifeProjectionM
     )
 
     ledger = collect_ledger_metrics(index.resource_ledger, audit_payloads=False)
-    baseline = dict(index._effect_metric_baseline)
+    index_snapshot = index.audit_snapshot()
+    baseline = dict(index_snapshot.effect_metric_baseline)
     geometry = tile_metrics(index.evaluation_root)
-    tile_nodes = index._retained_tile_node_count()
+    tile_nodes = index_snapshot.retained_spatial_tile_nodes
     values = ledger_fields_from(ledger)
     compiler_entries = sum(
         item.entries
@@ -150,9 +158,9 @@ def collect_projection_metrics(index: HashLifeBlockIndex) -> HashLifeProjectionM
         ):
             values[item.name] = baseline.get(item.name, 0)
     values.update(
-        point_queries=index._point_queries,
-        direct_powered_point_queries=index._direct_powered_point_queries,
-        canonical_tile_roots=len(index._tile_roots),
+        point_queries=index_snapshot.point_queries,
+        direct_powered_point_queries=index_snapshot.direct_powered_point_queries,
+        canonical_tile_roots=index_snapshot.canonical_tile_roots,
         retained_execution_nodes=ledger.resource_ledger_nodes
         - ledger.source_payload_nodes,
         compiler_retained_execution_nodes=ledger.compiler_program_nodes,
@@ -184,7 +192,7 @@ def collect_projection_metrics(index: HashLifeBlockIndex) -> HashLifeProjectionM
         total_hashlife_retained_entries=ledger.cache_slots,
         source_index_cache_entries=source_entries,
     )
-    application_view: object = index._lazy_application
+    application_view: object = index_snapshot.lazy_application
     if type(application_view) is TileProjection:
         from number_compiler.resources.application_metrics import (
             tile_application_compatibility_values,

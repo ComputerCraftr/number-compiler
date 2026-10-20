@@ -8,6 +8,7 @@ from typing import Never
 
 import pytest
 
+import devtools.verification.oracles.special_classical_ceiling as classical_ceiling
 from number_compiler.api.cli import main
 from number_compiler.arithmetic.polynomials.arithmetic_tile import (
     ArithmeticTile,
@@ -28,10 +29,6 @@ def forbidden(*args: object, **kwargs: object) -> Never:
 def test_no_factor_cli_does_not_collect_classical_gcd(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from devtools.verification.oracles import (
-        special_classical_ceiling as classical_ceiling,
-    )
-
     monkeypatch.setattr(classical_ceiling, "_proper_gcd_packet", forbidden)
     assert (
         main(
@@ -110,7 +107,7 @@ def test_large_exponent_gate_is_bounded(
 def test_large_unresolved_candidate_has_no_classical_fallback(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    from devtools.verification.oracles import classical_ceiling
+    import devtools.verification.oracles.special_classical_ceiling as classical_ceiling
 
     monkeypatch.setattr(classical_ceiling, "mersenne_classical_ceiling", forbidden)
     assert (

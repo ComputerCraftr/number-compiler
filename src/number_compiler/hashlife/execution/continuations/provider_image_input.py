@@ -109,7 +109,7 @@ class ProviderImageInputArena:
         self.ledger.register_execution_root(self)
         self._next_id = 0
 
-    def _handle(self, local_id: int) -> ProviderImageInputID:
+    def scoped_handle(self, local_id: int) -> ProviderImageInputID:
         return ProviderImageInputID(self.owner, self._KIND, local_id)
 
     def audit_snapshot(self) -> ProviderImageInputAuditSnapshot:
@@ -199,7 +199,7 @@ class ProviderImageInputArena:
         )
         found = self._keys.get(key)
         if found is not None:
-            return self._handle(found)
+            return self.scoped_handle(found)
         self.ledger.reserve_many(((self._node_owner, 1, 1), (self._key_owner, 1, 0)))
         return self._publish_prepared_input(key, record)
 
@@ -259,7 +259,7 @@ class ProviderImageInputArena:
         self._nodes[local_id] = record
         self._keys[key] = local_id
         self.ledger.bump(_execution_keys.PROVIDER_IMAGE_INPUT_PUBLICATIONS)
-        return self._handle(local_id)
+        return self.scoped_handle(local_id)
 
     def children(
         self,
@@ -317,7 +317,7 @@ class ProviderImageInputArena:
         right_scope = right_extent if record.binding.active_extent is not None else None
         # Both provider bindings, both input nodes/keys, and the child edge
         # must fit before the first retained occurrence is published.
-        prepared_bindings = self.providers._prepare_bindings(
+        prepared_bindings = self.providers.prepare_bindings(
             (
                 (
                     provider_id,
@@ -356,20 +356,20 @@ class ProviderImageInputArena:
             dict.fromkeys(
                 item
                 for item in prepared_bindings
-                if item not in self.providers._bindings
+                if not self.providers.has_binding(item)
             )
         )
         new_inputs = tuple(dict.fromkeys((left_key, right_key)))
         missing_inputs = tuple(key for key in new_inputs if key not in self._keys)
         self.ledger.reserve_many(
             (
-                (self.providers._binding_owner, len(missing_bindings), 0),
+                (self.providers.binding_owner, len(missing_bindings), 0),
                 (self._node_owner, len(missing_inputs), len(missing_inputs)),
                 (self._key_owner, len(missing_inputs), 0),
                 (self._child_owner, 1, 0),
             )
         )
-        self.providers._publish_prepared_bindings(missing_bindings)
+        self.providers.publish_prepared_bindings(missing_bindings)
         records = {left_key: left_record, right_key: right_record}
         published: dict[
             tuple[ProviderBindingKey, ImageRequestKey, int],
@@ -378,7 +378,7 @@ class ProviderImageInputArena:
         for key in (left_key, right_key):
             existing = self._keys.get(key)
             published[key] = (
-                self._handle(existing)
+                self.scoped_handle(existing)
                 if existing is not None
                 else self._publish_prepared_input(key, records[key])
             )

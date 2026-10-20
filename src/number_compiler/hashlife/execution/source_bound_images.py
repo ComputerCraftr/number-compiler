@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import Hashable
+from collections.abc import Hashable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_object_tuple,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.execution.source_bound_image_audit import (
     SourceBoundSchedulerCoreAuditSnapshot,
-    SourceImageApplyFrameAuditRecord,
-    SourceImageWorkspaceAuditSnapshot,
 )
 from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageBinding,
@@ -28,9 +29,16 @@ from number_compiler.hashlife.execution.source_image_seals import (
     PublicationSeals,
     TypedPayloadKey,
     publication_matches,
+    publication_matches_readonly,
     publication_seal,
     require_immutable_key,
     typed_payload_equal,
+)
+from number_compiler.hashlife.execution.source_image_workspace import (
+    SourceImageApplyFrame as SourceImageApplyFrame,
+)
+from number_compiler.hashlife.execution.source_image_workspace import (
+    SourceImageWorkspace,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
@@ -92,7 +100,7 @@ class SourceBoundImageAdapter(Protocol):
         self, image: SourceImageView, demand: SourceImageDemand
     ) -> SourceImageProjection: ...
 
-    def first_failure(self, image: SourceImageView) -> Hashable | None: ...
+    def first_failure(self, image: SourceImageView) -> object | None: ...
 
 
 @runtime_checkable
@@ -252,139 +260,6 @@ class SourceImageRelativeApplication:
     result: SourceImageID
 
 
-@dataclass(slots=True)
-class SourceImageApplyFrame:
-    source: SourceImageID
-    action: Hashable
-    stage: int = 0
-    children: tuple[Hashable, Hashable] | None = None
-    before: SourceImageID | None = None
-    relative_key: SourceImageRelativeKey | None = None
-    before_source: SourceImageID | None = None
-    after_source: SourceImageID | None = None
-
-
-class _SourceImageWorkspace:
-    """Actual charged postorder storage, empty between source-image calls."""
-
-    def __init__(self, ledger: ResourceLedger, owner: int) -> None:
-        self._storage: LedgerDict[tuple[str, object], object] = ledger.make_dict(
-            owner, nodes_per_entry=1
-        )
-        self._frame_count = 0
-        self._value_count = 0
-        self.running = False
-
-    def __len__(self) -> int:
-        return len(self._storage)
-
-    @property
-    def frames(self) -> tuple[SourceImageApplyFrame, ...]:
-        return tuple(self._frame(index) for index in range(self._frame_count))
-
-    @property
-    def values(self) -> tuple[SourceImageID, ...]:
-        return tuple(self._value(index) for index in range(self._value_count))
-
-    def _frame(self, index: int) -> SourceImageApplyFrame:
-        frame = self._storage["frame", index]
-        if type(frame) is not SourceImageApplyFrame:
-            raise AssertionError("source image workspace contains another frame sort")
-        return frame
-
-    def _value(self, index: int) -> SourceImageID:
-        value = self._storage["value", index]
-        if type(value) is not SourceImageID:
-            raise AssertionError("source image workspace contains another value sort")
-        return value
-
-    def push_frame(self, frame: SourceImageApplyFrame) -> None:
-        self._storage["frame", self._frame_count] = frame
-        self._frame_count += 1
-
-    def pop_frame(self) -> SourceImageApplyFrame:
-        if not self._frame_count:
-            raise IndexError("pop from empty source image frame stack")
-        index = self._frame_count - 1
-        frame = self._frame(index)
-        del self._storage["frame", index]
-        self._frame_count = index
-        return frame
-
-    def has_frames(self) -> bool:
-        return self._frame_count > 0
-
-    def push_value(self, value: SourceImageID) -> None:
-        self._storage["value", self._value_count] = value
-        self._value_count += 1
-
-    def pop_value(self) -> SourceImageID:
-        if not self._value_count:
-            raise IndexError("pop from empty source image value stack")
-        index = self._value_count - 1
-        value = self._value(index)
-        del self._storage["value", index]
-        self._value_count = index
-        return value
-
-    def has_values(self) -> bool:
-        return self._value_count > 0
-
-    def value_count(self) -> int:
-        return self._value_count
-
-    @staticmethod
-    def _active_key(action: tuple[str, str, Hashable]) -> tuple[str, object]:
-        return "active", (action[0], action[1], TypedPayloadKey(action[2]))
-
-    def audit_snapshot(self) -> SourceImageWorkspaceAuditSnapshot:
-        """Return typed retained state without counters or cache mutation."""
-        return SourceImageWorkspaceAuditSnapshot(
-            owner=self._storage.owner,
-            running=self.running,
-            frame_count=self._frame_count,
-            value_count=self._value_count,
-            frames=tuple(
-                SourceImageApplyFrameAuditRecord(
-                    identity=id(frame),
-                    source=frame.source,
-                    action=frame.action,
-                    stage=frame.stage,
-                    children=frame.children,
-                    before=frame.before,
-                    relative_key=frame.relative_key,
-                    before_source=frame.before_source,
-                    after_source=frame.after_source,
-                )
-                for frame in self.frames
-            ),
-            values=self.values,
-            entries=MappingProxyType(self._storage.backing_store),
-            store_identity=self._storage,
-        )
-
-    def contains_active(self, action: tuple[str, str, Hashable]) -> bool:
-        return self._active_key(action) in self._storage
-
-    def add_active(self, action: tuple[str, str, Hashable]) -> None:
-        key = self._active_key(action)
-        if key in self._storage:
-            raise ValueError("source image action is already active")
-        self._storage[key] = None
-
-    def remove_active(self, action: tuple[str, str, Hashable]) -> None:
-        key = self._active_key(action)
-        if key not in self._storage:
-            raise KeyError(action)
-        del self._storage[key]
-
-    def clear(self) -> None:
-        self._storage.clear()
-        self._frame_count = 0
-        self._value_count = 0
-        self.running = False
-
-
 class SourceBoundSchedulerCore(
     SourceImageInventoryMixin[SourceImageRecord, SourceBoundImageAdapter]
 ):
@@ -438,7 +313,7 @@ class SourceBoundSchedulerCore(
         self._workspace_owner = self.ledger.register(
             prefix + "-workspace", "source_image_workspace"
         )
-        self._workspace = _SourceImageWorkspace(self.ledger, self._workspace_owner)
+        self._workspace = SourceImageWorkspace(self.ledger, self._workspace_owner)
         self._adapters: LedgerDict[tuple[str, str], SourceBoundImageAdapter] = (
             self.ledger.make_dict(self._adapter_owner)
         )
@@ -489,7 +364,9 @@ class SourceBoundSchedulerCore(
             raise
         self.ledger.bump(_execution_keys.SOURCE_IMAGE_ADAPTER_REGISTRATIONS)
 
-    def _registered(self, adapter: SourceBoundImageAdapter) -> tuple[str, str]:
+    def registered_adapter_key(
+        self, adapter: SourceBoundImageAdapter
+    ) -> tuple[str, str]:
         if self._closed:
             raise ValueError("disposed source image scheduler")
         key = self._adapter_key(adapter)
@@ -498,6 +375,24 @@ class SourceBoundSchedulerCore(
         if adapter.ledger is not self.ledger:
             raise ValueError("source image adapter belongs to another ledger")
         return key
+
+    @property
+    def application_workspace(self) -> SourceImageWorkspace:
+        return self._workspace
+
+    @property
+    def application_workspace_owner(self) -> int:
+        return self._workspace_owner
+
+    @property
+    def application_results(self) -> Mapping[SourceImageApplyKey, SourceImageID]:
+        return MappingProxyType(self._applications)
+
+    @property
+    def relative_applications(
+        self,
+    ) -> Mapping[SourceImageRelativeKey, SourceImageRelativeApplication]:
+        return MappingProxyType(self._relative)
 
     def audit_snapshot(
         self,
@@ -580,15 +475,18 @@ class SourceBoundSchedulerCore(
         self._closed = True
         self.ledger.bump(_execution_keys.SOURCE_IMAGE_SCHEDULER_DISPOSALS)
 
-    def _validate_key(self, value: object, label: str) -> None:
+    def validate_key(self, value: object, label: str) -> None:
         work = require_immutable_key(value, label)
         self.ledger.bump(_execution_keys.SOURCE_IMAGE_KEY_VALIDATION_WORK, work)
 
-    def resolve(self, image: SourceImageID) -> SourceImageRecord:
+    def _issued_record(self, image: SourceImageID) -> SourceImageRecord:
         if type(image) is not SourceImageID:
             raise TypeError("expected a source-bound image ID")
         image.validate(self.owner, self._KIND, size=len(self._nodes))
-        record = self._nodes[image.local_id]
+        return self._nodes[image.local_id]
+
+    def resolve(self, image: SourceImageID) -> SourceImageRecord:
+        record = self._issued_record(image)
         if (
             type(record) is not SourceImageRecord
             or record.publication_owner is not _IMAGE_RECORD_SEAL
@@ -620,6 +518,64 @@ class SourceBoundSchedulerCore(
         ) != record.adapter_key:
             raise ValueError("source image binding has another semantic adapter")
         return record
+
+    def resolve_readonly(self, image: SourceImageID) -> SourceImageRecord:
+        """Authenticate a retained image without charging runtime seal work."""
+        record = self._issued_record(image)
+        if (
+            type(record) is not SourceImageRecord
+            or record.publication_owner is not _IMAGE_RECORD_SEAL
+            or record.publication_snapshot
+            is not self._publication_seals.images[image.local_id]
+            or not publication_matches_readonly(
+                (
+                    record.binding,
+                    record.payload,
+                    record.failure_prefix,
+                    record.publication_provenance,
+                    id(record.adapter),
+                    record.binding_audit_required,
+                ),
+                record.publication_snapshot,
+            )
+        ):
+            raise ValueError("source image publication record was altered")
+        if self._adapters.get(record.adapter_key) is not record.adapter:
+            raise ValueError("source image lost its semantic adapter")
+        if record.binding_audit_required is not callable(
+            getattr(record.adapter, "audit_image_binding", None)
+        ):
+            raise ValueError("source image lost its semantic adapter")
+        if (
+            record.binding.family,
+            record.binding.semantic_version,
+        ) != record.adapter_key:
+            raise ValueError("source image binding has another semantic adapter")
+        return record
+
+    def resolve_projection_readonly(
+        self, key: object, candidate: object
+    ) -> SourceImageProjectionRecord:
+        """Authenticate a retained projection without charging seal work."""
+        if (
+            not is_exact_object_tuple(key)
+            or len(key) != 2
+            or type(candidate) is not SourceImageProjectionRecord
+            or key[0] is not candidate.image
+            or key[1] is not candidate.demand
+            or candidate.publication_owner is not _IMAGE_RECORD_SEAL
+            or candidate.publication_snapshot
+            is not self._publication_seals.projections.get(
+                (candidate.image, candidate.demand)
+            )
+            or not publication_matches_readonly(
+                (candidate.image, candidate.demand, candidate.projection),
+                candidate.publication_snapshot,
+            )
+        ):
+            raise ValueError("source projection publication was altered")
+        self.resolve_readonly(candidate.image)
+        return candidate
 
     def view(self, image: SourceImageID) -> SourceImageView:
         record = self.resolve(image)
@@ -724,8 +680,8 @@ class SourceBoundSchedulerCore(
     def origin(
         self, adapter: SourceBoundImageAdapter, source: Hashable
     ) -> SourceImageID:
-        key = self._registered(adapter)
-        self._validate_key(source, "source image source")
+        key = self.registered_adapter_key(adapter)
+        self.validate_key(source, "source image source")
         adapter.validate_source(source)
         origin_key = key, TypedPayloadKey(source)
         found = self._origins.get(origin_key)
@@ -804,7 +760,7 @@ class SourceBoundSchedulerCore(
 
         return apply_source_image(self, adapter, source, action, demand=demand)
 
-    def _publish_application_result(
+    def publish_application_result(
         self,
         key: SourceImageApplyKey,
         source: Hashable,
@@ -888,7 +844,7 @@ class SourceBoundSchedulerCore(
         demand: SourceImageDemand,
     ) -> SourceImageProjection | None:
         """Authenticate a retained projection without constructing on a miss."""
-        adapter_key = self._registered(adapter)
+        adapter_key = self.registered_adapter_key(adapter)
         record = self.resolve(image)
         if record.adapter_key != adapter_key:
             raise ValueError("source image belongs to another family adapter")
@@ -964,7 +920,7 @@ class SourceBoundSchedulerCore(
         adapter: SourceBoundImageAdapter,
         image: SourceImageID,
     ) -> Hashable | None:
-        adapter_key = self._registered(adapter)
+        adapter_key = self.registered_adapter_key(adapter)
         view = self.view(image)
         if self.resolve(image).adapter_key != adapter_key:
             raise ValueError("source image belongs to another family adapter")
@@ -973,7 +929,8 @@ class SourceBoundSchedulerCore(
             raise ValueError("adapter fabricated failure outside the image ledger")
         if view.failure_prefix is not None and failure is None:
             raise ValueError("adapter failed to descend its recorded failure")
-        if failure is not None and not isinstance(failure, Hashable):
-            raise TypeError("source image failure witness must be immutable")
+        if failure is not None:
+            if not isinstance(failure, Hashable):
+                raise TypeError("source image failure witness must be immutable")
         self.ledger.bump(_execution_keys.SOURCE_IMAGE_FAILURE_DESCENTS)
         return failure

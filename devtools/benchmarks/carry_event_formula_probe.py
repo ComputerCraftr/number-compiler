@@ -44,9 +44,9 @@ def _orbit(
 ]:
     source: tuple[int, ...] = (7, 18, 7)
     states: list[tuple[int, ...]] = [source]
-    carries = []
-    events = []
-    growths = []
+    carries: list[tuple[int, ...]] = []
+    events: list[tuple[int, ...]] = []
+    growths: list[int] = []
     event_values: set[int] = set()
     max_growth_run = run = 0
     for _ in range(steps):

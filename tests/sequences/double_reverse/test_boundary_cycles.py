@@ -84,7 +84,7 @@ def test_exact_9000_state_boundary_graph_has_four_cyclic_components() -> None:
     for index, component in enumerate(CANDIDATE_COMPONENTS):
         for edge in component:
             assert candidate_component(edge) == index
-    exits = []
+    exits: list[int] = []
     for component in CANDIDATE_COMPONENTS:
         exits.append(
             sum(
@@ -113,7 +113,7 @@ def test_every_five_digit_source_agrees_with_relation_and_width_law(
             )
         )
     )
-    outcomes = set()
+    outcomes: set[tuple[bool, bool]] = set()
     for number in sources:
         source = str(number)
         successor = 2 * int(source[::-1])
@@ -150,9 +150,7 @@ def test_normalized_square_handles_shrinking_source_examples() -> None:
 def test_candidate_sccs_are_explicit_diagnostics_never_temporal_authority() -> None:
     for seed, component in ((16488, 1), (1697542, 2), (16922, 3)):
         with DoubleReverseTerm(seed, 2, max_state_bits=512) as term:
-            candidate = term._adapter.temporal_hashlife.candidate_cycle(
-                term._source.root
-            )
+            candidate = term.temporal_engine.candidate_cycle(term.source_root)
             assert candidate == component
             expected = 2 * int(str(2 * int(str(seed)[::-1]))[::-1])
             assert term.materialize(max_bits=512) == expected
@@ -170,11 +168,9 @@ def test_shrinking_candidate_uses_the_guarded_exact_square() -> None:
 
 def test_trailing_zero_count_powers_slp_repeats_without_expansion() -> None:
     with DoubleReverseTerm(2, 2, max_state_bits=256) as term:
-        arena = term._arena
+        arena = term.source_arena
         source = arena.concat(
             arena.word((1, 2, 3)), arena.repeat(arena.terminal(0), 10**12)
         )
-        assert term._adapter._trailing_zero_count(source) == 10**12
-        assert term._adapter.temporal_hashlife.part(source, 0, 3) == arena.word(
-            (1, 2, 3)
-        )
+        assert term.source_adapter.trailing_zero_count(source) == 10**12
+        assert term.temporal_engine.part(source, 0, 3) == arena.word((1, 2, 3))

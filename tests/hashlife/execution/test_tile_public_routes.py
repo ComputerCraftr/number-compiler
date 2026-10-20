@@ -8,8 +8,8 @@ import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
+from number_compiler.hashlife.execution.tile_application import TileApplication
 from number_compiler.hashlife.execution.tile_scheduler import (
-    TileApplication,
     TileScheduler,
 )
 from number_compiler.hashlife.observation.diamond_query import DiamondApplication
@@ -27,6 +27,12 @@ from tests.support.diamond_runtime import oracle
 
 def _forbidden(*_args: object, **_kwargs: object) -> Never:
     raise AssertionError("retired execution or scalar endpoint replay")
+
+
+def _lazy_projection(index: HashLifeBlockIndex) -> LazyProjection:
+    projection = index.audit_snapshot().lazy_application
+    assert type(projection) is LazyProjection
+    return projection
 
 
 @pytest.mark.parametrize(
@@ -60,7 +66,7 @@ def test_public_primitive_square_fuses_points_and_width_without_midpoint(
         (i + 1 for i, value in enumerate(expected) if value != effect.blank), default=0
     )
     index = HashLifeBlockIndex(square, source, logical_length=16, family_hooks=hooks)
-    assert type(index._lazy_application) is LazyProjection
+    assert type(index.audit_snapshot().lazy_application) is LazyProjection
     source_tiles = index.resource_ledger.counters.get("tile_publications", 0)
     with monkeypatch.context() as poison:
         poison.setattr(temporal, "complete_temporal", _forbidden)
@@ -106,7 +112,7 @@ def test_public_reverse_terminal_pair_fuses_without_midpoint(
         default=0,
     )
     index = HashLifeBlockIndex(composed, source, logical_length=8)
-    assert type(index._lazy_application) is LazyProjection
+    assert type(index.audit_snapshot().lazy_application) is LazyProjection
     source_tiles = index.resource_ledger.counters.get("tile_publications", 0)
 
     with monkeypatch.context() as poison:
@@ -141,7 +147,7 @@ def test_public_primitive_point_width_and_endpoint_use_tile_executor(
     extent = max(i + 1 for i, value in enumerate(expected) if value != effect.blank)
     hooks = collatz_tile_hooks() if type(effect) is CollatzPhysicalBlockEffect else None
     index = HashLifeBlockIndex(effect, source, logical_length=8, family_hooks=hooks)
-    assert type(index._lazy_application) is LazyProjection
+    assert type(index.audit_snapshot().lazy_application) is LazyProjection
     monkeypatch.setattr(DiamondApplication, "point", _forbidden)
     monkeypatch.setattr(DiamondApplication, "active_width", _forbidden)
     assert index.direct_powered_point(0) == expected[0]
@@ -158,7 +164,7 @@ def test_public_completed_root_bypasses_constructors_and_execution(
 ) -> None:
     index = HashLifeBlockIndex(BaseBlockEffect(2), (1, 2, 1), logical_length=8)
     expected = tuple(index.iter_direct_active())
-    application = index._lazy_application
+    application = index.audit_snapshot().lazy_application
     assert type(application) is LazyProjection
     before = application.scheduler.ledger.counters.copy()
     monkeypatch.setattr(TileScheduler, "point", _forbidden)
@@ -179,8 +185,7 @@ def test_public_completed_root_bypasses_constructors_and_execution(
 
 def test_public_metrics_forward_canonical_tile_runtime_inventory() -> None:
     index = HashLifeBlockIndex(BaseBlockEffect(2), (1, 2, 1), logical_length=8)
-    projection = index._lazy_application
-    assert type(projection) is LazyProjection
+    projection = _lazy_projection(index)
     index.direct_powered_point(0)
     index.direct_active_width()
     tuple(index.iter_direct_active())
@@ -241,7 +246,7 @@ def test_public_metrics_forward_canonical_tile_runtime_inventory() -> None:
     # records.
     assert metrics.tile_execution_memo_entries >= classified_execution_entries
     assert metrics.tile_execution_memo_entries == len(
-        projection.scheduler.results._memo
+        projection.scheduler.results.audit_snapshot().memo
     )
     assert metrics.finite_action_retained_entries == (
         metrics.canonical_transfer_nodes
@@ -258,9 +263,8 @@ def test_public_metrics_forward_canonical_tile_runtime_inventory() -> None:
 
 def test_application_rejects_other_request_root_before_warm_hit() -> None:
     index = HashLifeBlockIndex(BaseBlockEffect(2), (1, 2, 1), logical_length=8)
-    projection = index._lazy_application
-    assert type(projection) is LazyProjection
-    application = projection._application
+    projection = _lazy_projection(index)
+    application = projection.validated_application()
     application.complete()
     scheduler = projection.scheduler
     source = scheduler.tiles.leaf(
@@ -271,8 +275,8 @@ def test_application_rejects_other_request_root_before_warm_hit() -> None:
     )
     source.close()
     other.complete()
-    original = application._root
-    application._root = other._root
+    original = application.audit_snapshot().root_lease
+    object.__setattr__(application, "_root", other.audit_snapshot().root_lease)
     before = scheduler.ledger.snapshot()
     try:
         with pytest.raises(
@@ -289,7 +293,7 @@ def test_application_rejects_other_request_root_before_warm_hit() -> None:
             application.close()
         assert scheduler.ledger.snapshot() == before
     finally:
-        application._root = original
+        object.__setattr__(application, "_root", original)
         other.close()
         projection.close()
 
@@ -299,9 +303,8 @@ def test_warm_application_rejects_aliased_identity_before_mutation(
     alias: bool | float,
 ) -> None:
     index = HashLifeBlockIndex(BaseBlockEffect(2), (1, 2, 1), logical_length=8)
-    projection = index._lazy_application
-    assert type(projection) is LazyProjection
-    application = projection._application
+    projection = _lazy_projection(index)
+    application = projection.validated_application()
     application.complete()
     identity = application.identity
     object.__setattr__(application, "identity", alias)
@@ -319,9 +322,8 @@ def test_warm_application_rejects_aliased_identity_before_mutation(
 
 def test_application_constructor_cannot_forge_scheduler_identity() -> None:
     index = HashLifeBlockIndex(BaseBlockEffect(2), (1, 2, 1), logical_length=8)
-    projection = index._lazy_application
-    assert type(projection) is LazyProjection
-    application = projection._application
+    projection = _lazy_projection(index)
+    application = projection.validated_application()
     assert_rejected_atomically(
         projection.ledger,
         lambda: TileApplication(

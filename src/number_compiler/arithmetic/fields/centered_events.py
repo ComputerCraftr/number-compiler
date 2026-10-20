@@ -13,9 +13,9 @@ from number_compiler.arithmetic.carry.carry_monoid import (
 )
 from number_compiler.arithmetic.contracts.cylinder_chart import CylinderChart
 from number_compiler.arithmetic.fields.centered_carry import (
-    _extent,
-    _growth,
     carry_coboundary,
+    validate_extent,
+    validate_growth,
 )
 from number_compiler.arithmetic.fields.event_innovation import normalize_event_sum
 from number_compiler.arithmetic.fields.radial_innovation import (
@@ -92,7 +92,7 @@ def clock_event_tail(
     would lose the +d compensation and can change the next carry reset.
     This arithmetic identity does not certify the supplied h or d.
     """
-    _extent(extent)
+    validate_extent(extent)
     _nonnegative(prefix)
     if prefix >= extent:
         raise ValueError("first reset must lie inside the active extent")
@@ -117,8 +117,8 @@ def advance_centered_events(
     growth: int,
 ) -> InnovationID:
     """Construct H+ directly from H and C_Q, without integrating either field."""
-    _extent(extent)
-    _growth(growth)
+    validate_extent(extent)
+    validate_growth(growth)
     arena.resolve(events)
     arena.resolve(carry_events)
     correction = carry_coboundary(arena, carry_events, base=10)

@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from number_compiler.arithmetic.contracts.block_effect import BlockEffect, _effect_key
+from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
 from number_compiler.hashlife.tiles.ordered_boolean_support import (
     OrderedBooleanSupport,
     OrderedBooleanSupportArena,
@@ -174,10 +175,13 @@ class FamilyTileHooks:
     )
 
     def __post_init__(self) -> None:
-        if not isinstance(self.effect_type, type) or self.effect_type is BlockEffect:
+        if (
+            not is_runtime_instance(self.effect_type, type)
+            or self.effect_type is BlockEffect
+        ):
             raise TypeError("family tile hook requires an exact effect type")
         if self.compatibility_type is not None and (
-            not isinstance(self.compatibility_type, type)
+            not is_runtime_instance(self.compatibility_type, type)
             or self.compatibility_type is BlockEffect
             or self.compatibility_type is self.effect_type
         ):
@@ -208,7 +212,7 @@ class FamilyTileHooks:
                 raise TypeError(
                     "source profile callbacks require an exact profile type"
                 )
-        elif not isinstance(self.source_profile_type, type) or any(
+        elif not is_runtime_instance(self.source_profile_type, type) or any(
             not callable(callback) for callback in profile_callbacks
         ):
             raise TypeError("source profile hook requires exact typed callbacks")
@@ -229,7 +233,7 @@ class FamilyTileHooks:
         if self.cycle_projection_type is None:
             if any(callback is not None for callback in cycle_callbacks):
                 raise TypeError("cycle projection type and callbacks must be paired")
-        elif not isinstance(self.cycle_projection_type, type) or any(
+        elif not is_runtime_instance(self.cycle_projection_type, type) or any(
             not callable(callback) for callback in cycle_callbacks
         ):
             raise TypeError("cycle projection requires an exact type and callbacks")
@@ -437,7 +441,7 @@ class FamilyTileHooks:
     ) -> OrderedBooleanSupportArena:
         arena = self.make_support_arena(max_nodes, ledger)
         if (
-            not isinstance(arena, OrderedBooleanSupportArena)
+            not is_runtime_instance(arena, OrderedBooleanSupportArena)
             or arena.ledger is not ledger
         ):
             raise ValueError("family support arena has another resource owner")
@@ -452,7 +456,7 @@ class FamilyTileHooks:
     ) -> OrderedBooleanSupport | None:
         support = self.primitive_support(scheduler, action, source, ports)
         if support is not None:
-            if not isinstance(support, OrderedBooleanSupport):
+            if not is_runtime_instance(support, OrderedBooleanSupport):
                 raise TypeError("family hook returned an invalid support node")
             support.owner.validate(support)
         return support
@@ -471,7 +475,7 @@ class FamilyTileHooks:
         if type(observation) is not TemporalCocycle:
             raise TypeError("family source observer returned another cocycle")
         if support is not None:
-            if not isinstance(support, OrderedBooleanSupport):
+            if not is_runtime_instance(support, OrderedBooleanSupport):
                 raise TypeError("family source observer returned an invalid support")
             support.owner.validate(support)
         return observation, support
@@ -485,7 +489,7 @@ class FamilyTileHooks:
     ) -> OrderedBooleanSupport | None:
         support = self.support_symbol(scheduler, action, symbol, ports)
         if support is not None:
-            if not isinstance(support, OrderedBooleanSupport):
+            if not is_runtime_instance(support, OrderedBooleanSupport):
                 raise TypeError("family symbol observer returned an invalid support")
             support.owner.validate(support)
         return support
@@ -504,7 +508,10 @@ class FamilyTileHooks:
             return None
         if type(result) is not ResultLease:
             raise TypeError("family clock completion returned another lease type")
-        if result._issuer is not scheduler.results or result._key != key:
+        if (
+            result.audit_snapshot().issuer is not scheduler.results
+            or result.audit_snapshot().key != key
+        ):
             raise ValueError("family clock completion returned a foreign result")
         _ = result.result
         return result

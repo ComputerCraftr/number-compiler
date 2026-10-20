@@ -1,14 +1,17 @@
 """Production diamonds use the shared scheduler, not standalone scan drivers."""
 
-from typing import Never
+from collections.abc import Mapping
+from typing import Never, cast
 
 import pytest
 
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
+from number_compiler.arithmetic.contracts.scoped_handles import TransferSummaryID
 from number_compiler.hashlife.execution.continuations.diamond_context_program import (
     ContextObservation,
 )
 from number_compiler.hashlife.execution.continuations.diamond_tasks import PairSummary
+from number_compiler.hashlife.execution.diamond_pair_macros import PairMacroKey
 from number_compiler.hashlife.observation.diamond_query import DiamondApplication
 from number_compiler.sequences.collatz.block_power import CollatzPhysicalBlockEffect
 from number_compiler.sequences.collatz.tile_family_hooks import (
@@ -63,7 +66,12 @@ def test_warm_pair_and_context_parents_are_probed_before_any_program_dispatch(
     application = DiamondApplication(runtime, action)
     application.point(5)
     arena = runtime.pair_macros
-    binding = next(key for key in arena._bindings if runtime.cells.node(key.cell).level)
+    binding_owner = cast(int, object.__getattribute__(arena, "_binding_owner"))
+    bindings = cast(
+        Mapping[PairMacroKey, TransferSummaryID],
+        runtime.ledger.registered_container(binding_owner),
+    )
+    binding = next(key for key in bindings if runtime.cells.node(key.cell).level)
     pair = PairSummary(binding.action, binding.cell)
     context = next(
         key
@@ -72,7 +80,7 @@ def test_warm_pair_and_context_parents_are_probed_before_any_program_dispatch(
     )
     assert type(context) is ContextObservation
     expected_pair, expected_context = (
-        arena._bindings[binding],
+        bindings[binding],
         arena.contexts.observations[context],
     )
     before = runtime.ledger.snapshot()
@@ -80,7 +88,7 @@ def test_warm_pair_and_context_parents_are_probed_before_any_program_dispatch(
     def forbidden(*args: object) -> Never:
         raise AssertionError("a warm parent dispatched a descendant")
 
-    monkeypatch.setattr(runtime, "_program", forbidden)
+    monkeypatch.setattr(runtime, "task_program", forbidden)
     assert runtime.execute(pair) == expected_pair
     assert runtime.execute(context) == expected_context
     after = runtime.ledger.snapshot()

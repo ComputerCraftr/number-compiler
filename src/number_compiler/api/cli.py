@@ -71,14 +71,12 @@ def main(argv: list[str] | None = None) -> int:
         context.admit_observation_extents()
         value = None
         if request.selector is SelectorId.NTH and not request.presentation.no_value:
-            from number_compiler.api.symbolic_terms import render_symbolic
-
             value = (
                 (
                     context.term.symbolic
                     if request.presentation.index.exponent is None
-                    else render_symbolic(
-                        context.term, f"10^{request.presentation.index.exponent}"
+                    else context.term.symbolic_expression.render(
+                        f"10^{request.presentation.index.exponent}"
                     )
                 )
                 if request.presentation.format is OutputFormat.SYMBOLIC

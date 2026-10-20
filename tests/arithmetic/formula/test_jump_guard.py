@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -12,7 +11,11 @@ from number_compiler.arithmetic.formula.derived import (
     growth_bit,
     successor,
 )
-from number_compiler.arithmetic.formula.formula import FormulaArena, root_from_values
+from number_compiler.arithmetic.formula.formula import (
+    FormulaArena,
+    FormulaRoot,
+    root_from_values,
+)
 from number_compiler.arithmetic.formula.summary import get_summary
 from number_compiler.arithmetic.formula.types import RadixSpec
 from number_compiler.hashlife.actions.jump import (
@@ -20,9 +23,6 @@ from number_compiler.hashlife.actions.jump import (
     StrictBinaryRootBuilder,
 )
 from number_compiler.hashlife.execution.evaluator import materialize_values, value_at
-
-if TYPE_CHECKING:
-    from number_compiler.arithmetic.formula.formula import FormulaRoot
 
 
 class _BaseBackend:
@@ -118,7 +118,7 @@ class SummaryOnlyBackend(_BaseBackend):
 
 
 def test_cached_summary_is_allowed_and_audited() -> None:
-    got = StrictBinaryRootBuilder(SummaryOnlyBackend()).root_at(7)
+    got = StrictBinaryRootBuilder[FormulaRoot](SummaryOnlyBackend()).root_at(7)
     assert got.jump_calls == 3
     assert got.audit.clean
     assert got.audit.summary_queries == 3

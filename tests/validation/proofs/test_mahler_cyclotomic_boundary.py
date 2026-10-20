@@ -2,6 +2,7 @@
 
 from fractions import Fraction
 from itertools import pairwise, product
+from typing import cast
 
 import pytest
 
@@ -17,7 +18,7 @@ from number_compiler.resources.ledger import ResourceLedger
 
 
 def _reference(source: int, width: int) -> tuple[tuple[int, ...], int, bool]:
-    word = []
+    word: list[int] = []
     initial = source
     lo, hi = Fraction(0), Fraction(1, 2)
     for i in range(width):
@@ -63,7 +64,8 @@ def test_source_census_preserves_original_guard_and_refines_tail(
 
 
 def test_six_bit_no_adjacent_ones_boundary_is_exact() -> None:
-    raw, admissible = [], []
+    raw: list[tuple[int, ...]] = []
+    admissible: list[str] = []
     for word in product((0, 1), repeat=6):
         signed = sum((1 - 2 * e) * 3 ** (5 - j) * 2**j for j, e in enumerate(word))
         if -64 < signed <= 64:
@@ -78,7 +80,7 @@ def test_boundary_only_refinement_reproduces_depth_census() -> None:
     ledger = ResourceLedger(max_nodes=10000, max_cache_entries=20000)
     workspace = SourceSafetyWorkspace(ledger, max_width=18)
     frontier: tuple[SourceBlockID, ...] = (workspace.cylinder(0, 0),)
-    counts = []
+    counts: list[int] = []
     for depth in range(1, 19):
         children = tuple(
             child for parent in frontier for child in workspace.refine_tail(parent)
@@ -159,10 +161,21 @@ def test_threshold_equality_and_source_authority() -> None:
 def test_research_driver_keeps_sign_and_global_safety_separate() -> None:
     report = tail_refinement(12, 2000)
     assert report["status"] == "FINITE_CURRENT_TAIL_BOUNDARIES"
-    records = report["records"]
-    assert isinstance(records, list)
-    assert {entry["residue"] for entry in records[-1]["boundaries"]} == {521, 777, 2569}
-    assert {entry["width"] for entry in records[-1]["boundaries"]} == {12}
+    raw_records = report["records"]
+    assert isinstance(raw_records, list)
+    records = cast(list[object], raw_records)
+    assert records
+    final = records[-1]
+    assert isinstance(final, dict)
+    raw_boundaries = cast(object, final["boundaries"])
+    assert isinstance(raw_boundaries, list)
+    boundaries: list[object] = cast(list[object], raw_boundaries)
+    rows: list[dict[str, object]] = []
+    for entry in boundaries:
+        assert isinstance(entry, dict)
+        rows.append(cast(dict[str, object], entry))
+    assert {entry["residue"] for entry in rows} == {521, 777, 2569}
+    assert {entry["width"] for entry in rows} == {12}
     assert report["scope"] == "all_residues_current_tail"
     assert report["retained_nodes_after_close"] == 0
     assert report["global_safety_decided"] is False

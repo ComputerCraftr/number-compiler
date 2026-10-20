@@ -38,7 +38,7 @@ def test_reverse_width_consumes_current_threshold_summary(
         BaseBlockEffect(3),
         SourceGeometry(ledger, source),
     ) as projection:
-        application = projection._application
+        application = projection.validated_application()
         summary = projection.scheduler.results.reverse_threshold_summary(
             application.source,
             3,
@@ -62,7 +62,7 @@ def test_reverse_interface_uses_closed_arithmetic_without_boolean_mask_rewrite()
     with build_tile_projection(
         BaseBlockEffect(3), SourceGeometry(ledger, source)
     ) as projection:
-        projection._application.interface()
+        projection.validated_application().interface()
         assert ledger.counters.get("quotient_arithmetic_normalizations", 0) > 0
         assert ledger.counters.get("quotient_atomic_mask_elisions", 0) == 0
         assert ledger.counters.get("quotient_atomic_mask_validation_nodes", 0) == 0
@@ -76,14 +76,19 @@ def test_reverse_threshold_summary_is_radix_scoped_before_lookup() -> None:
         SourceGeometry(ledger, source),
     ) as projection:
         results = projection.scheduler.results
-        tile = projection._application.source
+        tile = projection.validated_application().source
         before = ledger.counters.get("reverse_threshold_summary_requests", 0)
         with pytest.raises(ValueError, match="canonical reverse pair"):
             results.reverse_threshold_summary(tile, 4)
         assert ledger.counters.get("reverse_threshold_summary_requests", 0) == before
         results.reverse_threshold_summary(tile, 3)
-        assert any(type(key) is ReverseThresholdSummaryKey for key in results._memo)
-    assert not any(type(key) is ReverseThresholdSummaryKey for key in results._memo)
+        assert any(
+            type(key) is ReverseThresholdSummaryKey
+            for key in results.audit_snapshot().memo
+        )
+    assert not any(
+        type(key) is ReverseThresholdSummaryKey for key in results.audit_snapshot().memo
+    )
 
 
 def test_reverse_threshold_summary_elides_only_proved_missing_reprobes() -> None:
@@ -94,7 +99,7 @@ def test_reverse_threshold_summary_elides_only_proved_missing_reprobes() -> None
         SourceGeometry(ledger, source),
     ) as projection:
         results = projection.scheduler.results
-        tile = projection._application.source
+        tile = projection.validated_application().source
         pending = [tile]
         seen: set[TileID] = set()
         active_internal_nodes = 0
@@ -148,7 +153,7 @@ def test_reverse_growth_shortcut_declines_noncontiguous_active_prefixes(
         BaseBlockEffect(3),
         SourceGeometry(ledger, source),
     ) as projection:
-        application = projection._application
+        application = projection.validated_application()
         before = ledger.counters.get("reverse_current_growth_width_shortcuts", 0)
         adapter = projection.scheduler.adapter
         assert type(adapter) is PrimitiveTileKernelAdapter
@@ -167,7 +172,7 @@ def test_reverse_growth_shortcut_declines_noncontiguous_active_prefixes(
         )
         assert not any(
             type(key) is ReverseThresholdSummaryKey and key.input == application.source
-            for key in projection.scheduler.results._memo
+            for key in projection.scheduler.results.audit_snapshot().memo
         )
         expected = oracle(BaseBlockEffect(3), pair, 4, 1)
         assert projection.active_width() == max(

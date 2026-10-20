@@ -10,6 +10,10 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from tests.support.performance_assertions import performance_bound
+from tests.support.radix_projection import (
+    microblock_cache,
+    radix_projections,
+)
 from tests.support.reference_arithmetic import collatz_literal as _collatz
 
 
@@ -55,9 +59,9 @@ def test_radix_microblocks_are_one_capped_index_owned_leaf_cache() -> None:
     expected = _collatz(term.seed, term.steps)
     digits = digits_lsd(expected, 3)
     projection = RadixProjection(3, term.width(), term.resource_ledger)
-    assert projection._microblocks is term._microblocks
+    assert object.__getattribute__(projection, "_microblocks") is microblock_cache(term)
     assert tuple(projection.digit(term, i) for i in range(len(digits))) == tuple(digits)
-    cache = term._microblocks
+    cache = microblock_cache(term)
     assert len(cache) <= cache.MAX_ENTRIES
     assert cache.payload_bytes <= cache.MAX_PAYLOAD_BYTES
     assert all(block.bit_count <= 64 for block in cache.blocks.values())
@@ -77,14 +81,14 @@ def test_radix_registry_reuses_projection_and_microblocks_without_replay_state()
     term = PoweredCollatzTerm(12345, 7)
     expected = _collatz(term.seed, term.steps) % 3
     assert collatz_radix_digit(term, 3, 0) == expected
-    projection = term._radix_projections[3]
+    projection = radix_projections(term)[3]
     entries = term.resource_ledger.snapshot().entries
     assert collatz_radix_digit(term, 3, 0) == expected
-    assert term._radix_projections[3] is projection
-    assert projection._microblocks is term._microblocks
+    assert radix_projections(term)[3] is projection
+    assert object.__getattribute__(projection, "_microblocks") is microblock_cache(term)
     assert term.resource_ledger.snapshot().entries == entries
     term.resource_ledger.evict_query_memos()
-    assert not projection._fused_actions
+    assert not projection.fused_action_audit_snapshot().container
     assert collatz_radix_digit(term, 3, 0) == expected
     assert term.metrics().retained_cache_accounting_delta == 0
 
@@ -99,7 +103,7 @@ def test_wide_radix_point_fails_before_registry_growth_but_explicit_digits_work(
     with pytest.raises(UnsupportedInterfaceError, match="2\\*\\*63"):
         collatz_radix_digit(term, (1 << 63) + 1, 0)
     assert term.resource_ledger.snapshot().entries == entries
-    assert term._radix_projections == {}
+    assert radix_projections(term) == {}
     assert tuple(PoweredCollatzTermPayload(term, 1 << 100).digits()) == (82,)
 
 
@@ -116,7 +120,9 @@ def test_radix_block_arithmetic_tracks_exact_operand_width() -> None:
     with pytest.raises(IndexError):
         projection.digit(term, len(digits))
     assert term.resource_ledger.counters["collatz_image_projection_operand_bits"] > 64
-    assert term._microblocks.payload_bytes <= term._microblocks.MAX_PAYLOAD_BYTES
+    assert (
+        microblock_cache(term).payload_bytes <= microblock_cache(term).MAX_PAYLOAD_BYTES
+    )
 
 
 def test_projection_constructor_rejects_invalid_dimensions_before_registration() -> (

@@ -20,12 +20,12 @@ ROOT = repository_root()
 
 
 def collatz_metrics() -> dict[str, object]:
-    even_powers = []
-    oe_powers = []
+    even_powers: list[dict[str, object]] = []
+    oe_powers: list[dict[str, object]] = []
     for exponent in (1, 4, 16, 64, 256, 1024, 4096):
         arena = CollatzPowerArena()
         root = arena.power(arena.atom("E"), exponent)
-        row = {"repetitions": exponent, **arena.metrics(root)}
+        row: dict[str, object] = {"repetitions": exponent, **arena.metrics(root)}
         even_powers.append(row)
 
         arena = CollatzPowerArena()
@@ -34,7 +34,7 @@ def collatz_metrics() -> dict[str, object]:
         row = {"repetitions": exponent, **arena.metrics(root)}
         oe_powers.append(row)
 
-    seed27 = []
+    seed27: list[dict[str, object]] = []
     word = collatz_branch_word(27, 111)
     for steps in (8, 16, 32, 64, 96, 111):
         arena = CollatzPowerArena()
@@ -51,7 +51,7 @@ def collatz_metrics() -> dict[str, object]:
 
 def prime_metrics() -> dict[str, object]:
     p = 9_999_991
-    lanes = []
+    lanes: list[dict[str, object]] = []
     for length in (16, 64, 256, 1024, 4096):
         projection = project_odd_prime_block(p + 2, length)
         lanes.append(

@@ -60,7 +60,7 @@ def test_scheduler_applies_mixed_odd_macro_with_bounded_partial_suffix(
             raise AssertionError("powered admitted macro fell back to child discovery")
 
         monkeypatch.setattr(workspace, "complete_composite_candidate", forbidden)
-        monkeypatch.setattr(workspace, "_source_value", forbidden)
+        monkeypatch.setattr(workspace, "source_value", forbidden)
         before = dict(ledger.counters)
         summary = _requested_summary(workspace, source)
         transfer = summary.transfer
@@ -153,7 +153,7 @@ def test_warm_parent_hit_bypasses_odd_macro_reconstruction(
             forbidden,
         )
         monkeypatch.setattr(MahlerMixedOddHarmonicRing, "power", forbidden)
-        monkeypatch.setattr(type(workspace), "_punctured_steps", forbidden)
+        monkeypatch.setattr(type(workspace), "punctured_steps", forbidden)
         second = workspace.scheduler.source_image_demanded(
             workspace, source, workspace.root_action, demand
         )
@@ -215,7 +215,7 @@ def test_failed_odd_macro_publication_releases_scratch_and_rolls_back(
         def fail_target_image(_node: object) -> None:
             raise RuntimeError("injected odd macro publication failure")
 
-        monkeypatch.setattr(workspace, "_append_image", fail_target_image)
+        monkeypatch.setattr(workspace, "append_image", fail_target_image)
         demand = SourceImageDemand("physical-summary")
         with pytest.raises(RuntimeError, match="injected odd macro publication"):
             workspace.scheduler.source_image_demanded(

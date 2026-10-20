@@ -30,7 +30,7 @@ def test_all_finite_residues_match_every_branch_and_high_fiber(
     def forbidden(*args: object) -> int:
         raise AssertionError("finite arithmetic read a source endpoint")
 
-    monkeypatch.setattr(workspace, "_source_value", forbidden)
+    monkeypatch.setattr(workspace, "source_value", forbidden)
     for width in range(1, 9):
         for residue in range(1 << width):
             transient = workspace.finite_residue_effect(width, residue)

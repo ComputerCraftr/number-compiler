@@ -1,6 +1,7 @@
 """Independent audit of primitive source-bound cylinder authority."""
 
-from typing import Never
+from collections.abc import Callable
+from typing import Never, cast
 
 import pytest
 
@@ -29,8 +30,12 @@ def _clause() -> tuple[ResourceLedger, SourceCarryPorts, PrimitiveSuccessorClaus
 
 
 def _reforge(clause: PrimitiveSuccessorClause) -> None:
-    authority = clause._record_authority()
-    object.__setattr__(clause._record, "authority", authority)
+    record = clause.audit_snapshot().record
+    authority_for_test = cast(
+        Callable[[], object],
+        object.__getattribute__(clause, "_record_authority"),
+    )
+    object.__setattr__(record, "authority", authority_for_test())
 
 
 def test_live_clause_is_audited_without_executing_runtime_callbacks(
@@ -54,13 +59,15 @@ def test_live_clause_is_audited_without_executing_runtime_callbacks(
 @pytest.mark.parametrize("tamper", ("growth", "expressions", "foreign-source"))
 def test_coordinated_reforged_authority_is_still_forbidden(tamper: str) -> None:
     ledger, _ports, clause = _clause()
+    record = clause.audit_snapshot().record
     if tamper == "growth":
         growth = 1 - clause.growth
         forge_growth(clause, growth)
-        object.__setattr__(clause._record, "growth", growth)
-        object.__setattr__(clause._record, "output_extent", clause.output_extent)
-        object.__setattr__(clause._record, "action", clause.action)
+        object.__setattr__(record, "growth", growth)
+        object.__setattr__(record, "output_extent", clause.output_extent)
+        object.__setattr__(record, "action", clause.action)
     elif tamper == "expressions":
+        snapshot = clause.audit_snapshot()
         object.__setattr__(clause, "_correction", clause.arena.zero)
         object.__setattr__(clause, "_beta", clause.arena.zero)
         object.__setattr__(
@@ -68,15 +75,17 @@ def test_coordinated_reforged_authority_is_still_forbidden(tamper: str) -> None:
             "action",
             SymbolicRadialInnovation(clause.action.multiplier, clause.arena.zero),
         )
-        object.__setattr__(clause._record, "correction", clause._correction)
-        object.__setattr__(clause._record, "beta", clause._beta)
-        object.__setattr__(clause._record, "action", clause.action)
+        object.__setattr__(record, "correction", snapshot.arena.zero)
+        object.__setattr__(record, "beta", snapshot.arena.zero)
+        object.__setattr__(record, "action", clause.action)
     else:
         foreign = SourceCarryPorts(
             ExactSource((9, 7, 8), 10, orbit="reverse-add"), ledger
         )
         object.__setattr__(clause.carry_atom, "_ports", foreign)
-        object.__setattr__(clause.carry_atom, "_source", foreign._source)
+        object.__setattr__(
+            clause.carry_atom, "_source", foreign.audit_snapshot().source
+        )
     _reforge(clause)
 
     assert audit_registered_payloads(ledger).forbidden_future_payloads > 0

@@ -41,7 +41,7 @@ class ActionPowerArena:
         composition_cache: dict[tuple[int, int], int] | None = None,
     ) -> None:
         self._identity = identity
-        self._resolve = validate
+        self.resolve_index = validate
         self._validate(identity)
         self._compose = compose
         # An interner may also need these entries during canonicalization.
@@ -61,12 +61,12 @@ class ActionPowerArena:
         if type(handle) is not ActionProgramID:
             raise TypeError("action powering requires a scoped program ID")
         ArenaHandle.validate(handle, self.identity.owner, self.identity.kind)
-        result = self._resolve(handle)
+        result = self.resolve_index(handle)
         if type(result) is not int or result != handle.local_id:
             raise ValueError("action resolver returned a different local identity")
         return result
 
-    def _handle(self, local_id: int) -> ActionProgramID:
+    def scoped_handle(self, local_id: int) -> ActionProgramID:
         result = ActionProgramID(self.identity.owner, self.identity.kind, local_id)
         self._validate(result)
         return result
@@ -84,7 +84,7 @@ class ActionPowerArena:
         found = self._compositions.get(key)
         if found is not None:
             self.composition_hits += 1
-            return self._handle(found)
+            return self.scoped_handle(found)
         result = self._compose(before, after)
         self._compositions[key] = self._validate(result)
         return result
@@ -98,7 +98,7 @@ class ActionPowerArena:
         found = self._powers.get(key)
         if found is not None:
             self.power_hits += 1
-            return self._handle(found)
+            return self.scoped_handle(found)
         result = self.identity
         factor = action_id
         remaining = exponent
@@ -120,6 +120,10 @@ class ActionPowerArena:
             self.power_hits,
             len(self._powers),
         )
+
+    def composition_keys_snapshot(self) -> tuple[tuple[int, int], ...]:
+        """Return immutable integer IDs retained by the composition cache."""
+        return tuple(self._compositions)
 
 
 __all__ = ["ActionPowerArena", "ActionPowerMetrics"]

@@ -36,7 +36,7 @@ from number_compiler.arithmetic.carry.event_memory import (
 
 
 def _reverse_int(value: int, base: int = 10) -> int:
-    digits = []
+    digits: list[int] = []
     n = value
     while n:
         digits.append(n % base)
@@ -78,7 +78,7 @@ def test_additive_digit_hyperbolic_fibers_are_already_quotiented_by_pair_field()
     # All seven fixed-width choices of end digits summing to seven have the same pair field
     # and therefore the same canonical pair successor; retaining a/b lanes would
     # reintroduce information the pair quotient has already eliminated.
-    successors = set()
+    successors: set[tuple[int, ...]] = set()
     for a in range(1, 8):
         b = 7 - a
         n = 100 * a + 90 + b
@@ -106,7 +106,7 @@ def test_z2_cyclic_pair_channels_advance_exactly_with_event_recurrence() -> None
 
 def test_mod99_coordinate_enters_exact_six_cycle_for_decimal_196() -> None:
     n = 196
-    residues = []
+    residues: list[int] = []
     plus_zero_at = None
     for step in range(15):
         width = len(str(n))
@@ -219,7 +219,7 @@ def test_adaptive_cyclic_memory_is_far_shorter_than_fixed_20_on_196_trace() -> N
 
 def test_growth_run_itinerary_is_base4_weighted_time_coordinate_on_196_trace() -> None:
     pair = _pair_from_int(196)
-    growths = []
+    growths: list[int] = []
     for _ in range(512):
         pair, growth = pair_step(pair, 10)
         growths.append(growth)
@@ -239,8 +239,8 @@ def test_fixed20_event_window_has_exact_dead_prefix_on_closed_196_schedule() -> 
     from number_compiler.arithmetic.carry.event_memory import forcing_event_from_carry
 
     pair = _pair_from_int(196)
-    events = []
-    lengths = []
+    events: list[tuple[int, ...]] = []
+    lengths: list[int] = []
     for _ in range(320):
         c = carry_field(pair, base=10)
         events.append(forcing_event_from_carry(c, base=10))
@@ -257,7 +257,7 @@ def test_live_carry_itinerary_self_prunes_and_advances_without_discarded_rows() 
     pair = _pair_from_int(196)
     pair, seed_carries = carry_seed_rows(pair, 20)
     live = LiveCarryItinerary.seed(seed_carries, base=10)
-    rows = []
+    rows: list[int] = []
     for _ in range(300):
         assert live.pair == pair
         rows.append(live.row_count)
@@ -274,7 +274,7 @@ def test_live_carry_itinerary_generalizes_across_bases_3_through_16() -> None:
     for base in range(3, 17):
         value = 2 * base**2 + (base - 1) * base + 1
         pair = _pair_from_int(value, base)
-        carries = []
+        carries: list[tuple[int, ...]] = []
         for _ in range(event_memory_horizon(base)):
             carries.append(carry_field(pair, base=base))
             pair, _ = pair_step(pair, base)
@@ -287,7 +287,7 @@ def test_live_carry_itinerary_generalizes_across_bases_3_through_16() -> None:
 
 def _decimal_growth_trace() -> list[int]:
     pair = _pair_from_int(196)
-    growths = []
+    growths: list[int] = []
     for _ in range(256):
         pair, growth = pair_step(pair, 10)
         growths.append(growth)

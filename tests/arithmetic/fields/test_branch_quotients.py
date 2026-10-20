@@ -10,12 +10,13 @@ from number_compiler.arithmetic.fields.branch_quotients import (
     prime_lane_after,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.exact_integer_power import exact_integer_power
 
 
 def test_phase_partitions_share_workspace_without_cross_family_aliasing() -> None:
     ledger = ResourceLedger()
     workspace = PrimeBucketWorkspace(ledger)
-    totals = []
+    totals: list[int] = []
     for family in ("mahler", "collatz"):
         total = 0
         for p in PRIME_BANK:
@@ -39,8 +40,8 @@ def test_compact_phase_signatures_keep_reference_class_ids() -> None:
     for family in ("mahler", "collatz"):
         for prime in PRIME_BANK:
             phases = {
-                (pow(3, q, prime) if family == "mahler" else 3)
-                * pow(2, -q, prime)
+                (exact_integer_power(3, q, prime) if family == "mahler" else 3)
+                * exact_integer_power(2, -q, prime)
                 % prime
                 for q in range(1, prime)
             }
@@ -48,7 +49,7 @@ def test_compact_phase_signatures_keep_reference_class_ids() -> None:
             result = labels
             for _ in range(prime + 1):
                 classes: dict[tuple[int, tuple[tuple[int, bool, bool], ...]], int] = {}
-                refined = []
+                refined: list[int] = []
                 for u in range(prime):
                     outcomes = {
                         (
@@ -105,11 +106,15 @@ def test_distinct_phase_actions_use_same_explicit_q_without_identification() -> 
             for u in range(p):
                 assert (
                     prime_lane_after("mahler", p, u, q)
-                    == (pow(3, q, p) * pow(2, -q, p) * u - 1) % p
+                    == (
+                        exact_integer_power(3, q, p) * exact_integer_power(2, -q, p) * u
+                        - 1
+                    )
+                    % p
                 )
                 assert (
                     prime_lane_after("collatz", p, u, q)
-                    == (3 * pow(2, -q, p) * u - 1) % p
+                    == (3 * exact_integer_power(2, -q, p) * u - 1) % p
                 )
     assert prime_lane_after("mahler", 5, 1, 2) == 0
     assert prime_lane_after("collatz", 5, 1, 2) == 1

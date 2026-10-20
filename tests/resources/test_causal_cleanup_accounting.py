@@ -51,14 +51,14 @@ def test_causal_action_store_clear_retries_exact_entry_and_node_delta(
         with pytest.raises(RuntimeError, match="injected .* release failure"):
             workspace.clear()
 
-    account = ledger._account(owner)
+    account = ledger.account_status(owner)
     expected_entries = int(failure_timing == "before")
     expected_nodes = nodes if expected_entries else 0
     assert not workspace.action_admitted
     assert (account.entries, account.nodes) == (expected_entries, expected_nodes)
 
     workspace.clear()
-    account = ledger._account(owner)
+    account = ledger.account_status(owner)
     assert (account.entries, account.nodes) == (0, 0)
     assert ledger.entries == ledger.nodes == 0
 
@@ -72,7 +72,7 @@ def test_causal_action_store_clear_rejects_unexplained_owner_reservation() -> No
     ):
         workspace.clear()
 
-    account = ledger._account(owner)
+    account = ledger.account_status(owner)
     assert not workspace.action_admitted
     assert (account.entries, account.nodes) == (2, nodes)
 
@@ -80,6 +80,6 @@ def test_causal_action_store_clear_rejects_unexplained_owner_reservation() -> No
     # delta can then be retried exactly, without reconciling the whole account.
     ledger.release(owner, entries=1)
     workspace.clear()
-    account = ledger._account(owner)
+    account = ledger.account_status(owner)
     assert (account.entries, account.nodes) == (0, 0)
     assert ledger.entries == ledger.nodes == 0

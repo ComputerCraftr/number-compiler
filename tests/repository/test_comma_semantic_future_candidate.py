@@ -27,15 +27,15 @@ from devtools.verification.comma_semantic_future_artifact import (
 )
 from devtools.verification.comma_semantic_future_candidate import (
     Control,
-    _class_rank_candidate,
-    _decode_unsigned_varints,
-    _reencode_candidate,
-    _refine_with_witnesses,
-    _render_candidate_data_theory,
-    _validate_class_rows,
-    _write_new,
     build_semantic_future_candidate,
+    class_rank_candidate,
+    decode_unsigned_varints,
+    reencode_candidate,
+    refine_with_witnesses,
+    render_candidate_data_theory,
+    validate_class_rows,
     verify_runtime_candidate_hol_data_binding,
+    write_new,
 )
 from devtools.verification.comma_semantic_future_candidate import (
     main as candidate_main,
@@ -86,18 +86,18 @@ def test_candidate_table_comparison_ignores_masked_ml_audit_suffix() -> None:
 def test_candidate_varint_map_round_trips_and_rejects_forged_values() -> None:
     ids = (0, 127, 128, 4715)
     packed = encode_unsigned_varints(ids, max_value=14783)
-    assert _decode_unsigned_varints(packed, max_values=4, max_value=14783) == ids
+    assert decode_unsigned_varints(packed, max_values=4, max_value=14783) == ids
 
     with pytest.raises(ValueError):
         encode_unsigned_varints((True,), max_value=14783)
     with pytest.raises(ValueError):
-        _decode_unsigned_varints(b"\x80\x80\x00", max_values=1, max_value=14783)
+        decode_unsigned_varints(b"\x80\x80\x00", max_values=1, max_value=14783)
 
 
 def test_candidate_class_rows_reject_missing_or_unknown_ordered_slots() -> None:
     controls: tuple[Control, ...] = (("fork", 2), ("landmine", None))
     rows = ((0, 1), (None, None))
-    assert _validate_class_rows(controls, rows) == (controls, rows)
+    assert validate_class_rows(controls, rows) == (controls, rows)
 
     for bad_controls, bad_rows in (
         (controls, ((None, 1), (None, None))),
@@ -105,7 +105,7 @@ def test_candidate_class_rows_reject_missing_or_unknown_ordered_slots() -> None:
         ((("unknown", None),), ((None, None),)),
     ):
         with pytest.raises(ValueError):
-            _validate_class_rows(bad_controls, bad_rows)
+            validate_class_rows(bad_controls, bad_rows)
 
 
 def test_refinement_retains_control_and_rejects_child_order_collision() -> None:
@@ -118,7 +118,7 @@ def test_refinement_retains_control_and_rejects_child_order_collision() -> None:
     )
     rows = ((2, 3), (3, 2), (None, None), (0, 1))
 
-    class_ids, collisions, _ = _refine_with_witnesses(rows, controls, states)
+    class_ids, collisions, _ = refine_with_witnesses(rows, controls, states)
 
     assert class_ids[0] != class_ids[1]
     witness = next(item for item in collisions if item.round_index == 0)
@@ -132,10 +132,10 @@ def test_candidate_rank_check_has_unique_unranked_child_and_rejects_forged_row()
 ):
     controls: tuple[Control, ...] = (("fork", 2), ("landmine", None))
     rows = ((0, 1), (None, None))
-    assert _class_rank_candidate(controls, rows) == (None, 0)
+    assert class_rank_candidate(controls, rows) == (None, 0)
 
     with pytest.raises(ValueError):
-        _class_rank_candidate((("fork", 2),), ((None, None),))
+        class_rank_candidate((("fork", 2),), ((None, None),))
 
 
 @pytest.mark.parametrize("payload", [b"\x80", b"\x80\x00", b"\xff\x7f", b"\x00\x00"])
@@ -143,14 +143,14 @@ def test_candidate_decoder_rejects_truncation_aliases_and_excess(
     payload: bytes,
 ) -> None:
     with pytest.raises(ValueError):
-        _decode_unsigned_varints(payload, max_values=1, max_value=14783)
+        decode_unsigned_varints(payload, max_values=1, max_value=14783)
 
 
 def test_candidate_artifact_write_preserves_existing_evidence(tmp_path: Path) -> None:
     artifact = tmp_path / "candidate.json"
-    _write_new(artifact, "original")
+    write_new(artifact, "original")
     with pytest.raises(FileExistsError):
-        _write_new(artifact, "replacement")
+        write_new(artifact, "replacement")
     assert artifact.read_text(encoding="utf-8") == "original"
 
 
@@ -183,7 +183,7 @@ def test_runtime_candidate_bytes_use_the_consumer_digest_contract() -> None:
     assert decoded["authority"] == "untrusted-source-derived-candidate"
     assert runtime_candidate_sha256(record) == sha256(payload).hexdigest()
     assert (
-        future_provider._future_candidate_sha256(decoded) == sha256(payload).hexdigest()
+        future_provider.future_candidate_sha256(decoded) == sha256(payload).hexdigest()
     )
     with pytest.raises(ValueError, match="requires a v1"):
         runtime_candidate_bytes(
@@ -212,12 +212,12 @@ def test_runtime_candidate_hol_binding_checks_complete_source_map(
     }
     checked_path = tmp_path / "Comma_Semantic_Future_Candidate_Data.thy"
     checked_path.write_text(
-        _render_candidate_data_theory(source_classes, controls, children, ranks),
+        render_candidate_data_theory(source_classes, controls, children, ranks),
         encoding="utf-8",
     )
 
     digest = verify_runtime_candidate_hol_data_binding(record, checked_path)
-    assert digest == future_provider._future_candidate_sha256(record)
+    assert digest == future_provider.future_candidate_sha256(record)
 
     changed = deepcopy(record)
     changed["controls"] = [["fork", 2]]
@@ -285,18 +285,18 @@ def test_reencoded_runtime_bytes_bind_to_the_checked_hol_candidate(
         "seam_projection_collision": v1["seam_projection_collision"],
     }
     raw_path = tmp_path / "raw-v1.json"
-    _write_new(raw_path, json.dumps(raw, sort_keys=True, separators=(",", ":")))
+    write_new(raw_path, json.dumps(raw, sort_keys=True, separators=(",", ":")))
     runtime_path = tmp_path / "runtime-v2.json"
     occurrence_path = tmp_path / "occurrence.json"
     hol_path = tmp_path / "Comma_Semantic_Future_Candidate_Data.thy"
-    result = _reencode_candidate(raw_path, runtime_path, occurrence_path, hol_path)
+    result = reencode_candidate(raw_path, runtime_path, occurrence_path, hol_path)
 
     runtime_bytes = candidate.runtime_candidate_bytes()
     runtime_record = json.loads(runtime_bytes)
     assert runtime_path.read_bytes() == runtime_bytes
     assert runtime_bytes == candidate.runtime_candidate_bytes()
     assert candidate.runtime_candidate_sha256() == sha256(runtime_bytes).hexdigest()
-    assert result["candidate_sha256"] == future_provider._future_candidate_sha256(
+    assert result["candidate_sha256"] == future_provider.future_candidate_sha256(
         runtime_record
     )
     assert runtime_record["format"] == future_provider.FUTURE_CANDIDATE_FORMAT
@@ -356,7 +356,7 @@ def test_reencoded_runtime_bytes_bind_to_the_checked_hol_candidate(
     changed_raw = deepcopy(raw)
     changed_raw["controls"] = deepcopy(changed_record["controls"])
     changed_raw_path = tmp_path / "changed-raw-v1.json"
-    _write_new(
+    write_new(
         changed_raw_path,
         json.dumps(changed_raw, sort_keys=True, separators=(",", ":")),
     )
@@ -409,7 +409,7 @@ def test_reencoded_runtime_bytes_bind_to_the_checked_hol_candidate(
     changed_controls[0] = (
         ("fork", 2) if first_control[0] == "landmine" else ("landmine", None)
     )
-    altered_hol = _render_candidate_data_theory(
+    altered_hol = render_candidate_data_theory(
         candidate.class_ids,
         tuple(changed_controls),
         candidate.class_children,

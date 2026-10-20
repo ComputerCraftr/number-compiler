@@ -179,7 +179,7 @@ class Arena:
         return core, g
 
     def materialize(self, q: int) -> tuple[int, ...]:
-        out = []
+        out: list[int] = []
         st = [q]
         while st:
             z = st.pop()
@@ -193,7 +193,7 @@ class Arena:
         return tuple(out)
 
     def reachable(self, q: int) -> set[int]:
-        seen = set()
+        seen: set[int] = set()
         st = [q]
         while st:
             z = st.pop()
@@ -216,7 +216,7 @@ def main() -> None:
     A = Arena()
     q = A.build((7, 18, 7))
     vals: tuple[int, ...] = (7, 18, 7)
-    rows = []
+    rows: list[dict[str, int | float]] = []
     t0 = time.perf_counter()
     for n in range(1, 2049):
         q, g = A.successor(q)

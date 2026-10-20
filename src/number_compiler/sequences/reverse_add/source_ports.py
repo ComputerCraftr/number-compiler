@@ -221,7 +221,7 @@ class SourceCarryPorts:
         )
         self._cache = cache
         self._cache_owner = cache_owner
-        self._audit_cache = cache._data
+        self._audit_cache = cache.audit_container
         self._workspace_owner = workspace_owner
         self._workspace_authority = workspace_owner
         self._closed = False
@@ -248,12 +248,12 @@ class SourceCarryPorts:
 
     @property
     def source(self) -> ExactSource:
-        self._check_open()
+        self.check_open()
         return self._source
 
     @property
     def ledger(self) -> ResourceLedger:
-        self._check_open()
+        self.check_open()
         return self._ledger
 
     @property
@@ -263,7 +263,7 @@ class SourceCarryPorts:
 
     @property
     def width(self) -> int:
-        self._check_open()
+        self.check_open()
         return self._width
 
     def audit_snapshot(self) -> SourceCarryPortsAuditSnapshot:
@@ -282,7 +282,7 @@ class SourceCarryPorts:
             self._closed,
         )
 
-    def _check_open(self) -> None:
+    def check_open(self) -> None:
         if self._closed:
             raise ValueError("disposed source carry ports")
         self.check_source(self._source)
@@ -320,7 +320,7 @@ class SourceCarryPorts:
         return digits[position] + digits[self._width - 1 - position]
 
     def first_pair(self, position: int) -> int:
-        self._check_open()
+        self.check_open()
         if type(position) is not int or not 0 <= position < self._width:
             raise IndexError(position)
         return self._raw_first_pair(position)
@@ -501,12 +501,12 @@ class SourceCarryPorts:
         return apply_carry_fn(effect, 0)
 
     def carry(self, boundary: int) -> int:
-        self._check_open()
+        self.check_open()
         return self._first_prefix(boundary)
 
     @property
     def terminal(self) -> int:
-        self._check_open()
+        self.check_open()
         return self._first_prefix(self._width)
 
     def iter_first_ports(
@@ -518,7 +518,7 @@ class SourceCarryPorts:
         left child's forward carry effect; no reverse carry law is introduced.
         The charged stack retains logarithmically many region contexts, not rows.
         """
-        self._check_open()
+        self.check_open()
         stack: list[tuple[int, int, int, bool]] = []
 
         def push(start: int, span: int, incoming: int, neutral: bool) -> None:
@@ -537,7 +537,7 @@ class SourceCarryPorts:
         push(0, root_span, 0, root_neutral)
         try:
             while stack:
-                self._check_open()
+                self.check_open()
                 start, span, incoming, neutral = stack.pop()
                 self._ledger.release(self._workspace_owner, nodes=1)
                 if start >= self._width:
@@ -632,7 +632,7 @@ class SourceCarryPorts:
         )
 
     def second_pair(self, position: int) -> int:
-        self._check_open()
+        self.check_open()
         if type(position) is not int:
             raise IndexError(position)
         growth = self._first_prefix(self._width)
@@ -651,7 +651,7 @@ class SourceCarryPorts:
             if growth and reflected:
                 yield 1, 1
             for index, (incoming, _) in enumerate(physical):
-                self._check_open()
+                self.check_open()
                 position = self._width - 1 - index if reflected else index
                 pair = self._raw_first_pair(position)
                 yield decimal_normalize_cocycle(pair % 5, pair % 2, incoming)
@@ -664,11 +664,11 @@ class SourceCarryPorts:
         Decimal streams share regional physical carry contexts in forward and
         reflected coordinates. They retain neither a midpoint nor carry rows.
         """
-        self._check_open()
+        self.check_open()
         growth = self._first_prefix(self._width)
         if self._source.base != 10:
             for position in range(self._width + growth):
-                self._check_open()
+                self.check_open()
                 yield self._raw_second_pair(position, growth)
             return
         with (
@@ -678,7 +678,7 @@ class SourceCarryPorts:
             ) as reflected,
         ):
             for left, right in zip(forward, reflected, strict=True):
-                self._check_open()
+                self.check_open()
                 domain, alpha, epsilon, _ = decimal_add_cocycle(left, right)
                 self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_LENGTH_PAIR_READS)
                 self._ledger.bump(
@@ -735,7 +735,7 @@ class SourceCarryPorts:
         reverse scan or second copy of the carry tree is needed. This range
         operation does not admit additional temporal layers.
         """
-        self._check_open()
+        self.check_open()
         if type(layer) is not int or layer not in (1, 2):
             raise ValueError("source carry ranges support only admitted layers 1 and 2")
         if chart is None:
@@ -757,12 +757,12 @@ class SourceCarryPorts:
         return self._second_range(low, high, extent)
 
     def second_carry(self, boundary: int) -> int:
-        self._check_open()
+        self.check_open()
         extent = self._width + self._first_prefix(self._width)
         return self._second_prefix(boundary, extent)
 
     def second_width(self) -> int:
-        self._check_open()
+        self.check_open()
         first_width = self._width + self._first_prefix(self._width)
         result = first_width + self._second_prefix(first_width, first_width)
         self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_SECOND_WIDTH_QUERIES)

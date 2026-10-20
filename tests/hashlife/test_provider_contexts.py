@@ -99,7 +99,7 @@ def test_provider_context_is_qualified_and_passed_to_cold_child_composition() ->
         root, child_pair, complete=action, geometry=alternate_geometry
     )
     assert (alternate_left, alternate_right) == (left_input, right_input)
-    assert len(inputs._children) == 2
+    assert len(inputs.audit_snapshot().children) == 2
 
     # A distinct request context cannot reuse a context-qualified root image.
     other_context = ArenaHandle(context_owner, "provider-test-context", 3)
@@ -413,4 +413,4 @@ def test_provider_child_context_pair_key_distinguishes_true_from_one() -> None:
     one_children = inputs.children(root, (1, None), complete=action, geometry=geometry)
     assert true_children[0] != one_children[0]
     assert true_children[1] == one_children[1]
-    assert len(inputs._children) == 2
+    assert len(inputs.audit_snapshot().children) == 2

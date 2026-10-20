@@ -167,12 +167,12 @@ def test_authenticated_term_matrix_uses_production_q19_and_budget() -> None:
             assert bank.width == len(str(values[index]))
             assert bank.masks_partition()
         finally:
-            if term._workspace is not None:
-                term._workspace.dispose()
+            if term.published_workspace is not None:
+                term.published_workspace.dispose()
     term = ReverseAddPoweredTerm(196, 64)
     with pytest.raises(ValueError):
         term.temporal_matrix(max_bits=16)
-    assert term._workspace is None
+    assert term.published_workspace is None
 
 
 def test_reject_incomplete_bad_clock_and_wrong_banks() -> None:
@@ -240,16 +240,18 @@ def test_modular_projection_from_q19_compressed_carry_ports() -> None:
                 assert source_mod == vals[index] % modulus
                 assert reverse_mod == reverse10(vals[index]) % modulus
             if index > 0:
-                workspace = term._workspace
-                assert workspace is not None and workspace._image is not None
-                view = workspace.scheduler._source_image_core().view(workspace._image)
+                workspace = term.published_workspace
+                assert workspace is not None
+                image = workspace.audit_snapshot().image
+                assert image is not None
+                view = workspace.scheduler.source_image_core().view(image)
                 from number_compiler.sequences.reverse_add.source_images import (
                     ReverseImagePayload,
                 )
 
                 payload = cast(ReverseImagePayload, view.payload)
                 occurrence = payload.pair_output
-                owner = workspace.adapter._q19_owner
+                owner = workspace.adapter.audit_snapshot().q19_owner
                 assert occurrence is not None and owner is not None
                 result = project_q19_numeric(owner, occurrence, modulus=1009)
                 assert result.output_width == len(str(vals[index]))
@@ -262,8 +264,8 @@ def test_modular_projection_from_q19_compressed_carry_ports() -> None:
                     == 0
                 )
         finally:
-            if term._workspace is not None:
-                term._workspace.dispose()
+            if term.published_workspace is not None:
+                term.published_workspace.dispose()
 
 
 def test_q19_million_cell_repeat_numeric_ports_no_expansion() -> None:
@@ -342,4 +344,4 @@ def test_zero_is_a_source_certified_fixed_point_without_q19() -> None:
     for depth in (0, 1, 4, 31, 1_000_000):
         term = ReverseAddPoweredTerm(0, depth)
         assert term.temporal_moments(modulus=1009).apply(0, 0) == (0, 0)
-        assert term._workspace is None
+        assert term.published_workspace is None

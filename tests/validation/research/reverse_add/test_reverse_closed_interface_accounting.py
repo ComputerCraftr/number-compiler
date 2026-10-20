@@ -41,21 +41,21 @@ def test_reverse_closed_interface_slots_are_actual_and_reporting_is_read_only(
     with build_tile_projection(
         BaseBlockEffect(10), SourceGeometry(ledger, source)
     ) as projection:
-        projection._application.interface()
-        product = observe_reverse_sector_product(projection._application)
+        projection.validated_application().interface()
+        product = observe_reverse_sector_product(projection.validated_application())
         assert product.steps == 1
         roots = tuple(ledger.iter_execution_roots())
         arenas = tuple(root for root in roots if type(root) is DiamondQuotientArena)
         shared_fixture = False
         for arena in arenas:
-            for record in tuple(arena._nodes.values()):
+            for record in tuple(arena.audit_snapshot().nodes.values()):
                 if record.components.reverse_sectors is None:
                     continue
                 stripped = QuotientRecord(
                     record.signature,
                     replace(record.components, reverse_sectors=None),
                 )
-                if stripped not in arena._keys:
+                if stripped not in arena.audit_snapshot().keys:
                     arena.intern(stripped.signature, stripped.components)
                     shared_fixture = True
                     break
@@ -64,7 +64,7 @@ def test_reverse_closed_interface_slots_are_actual_and_reporting_is_read_only(
         assert shared_fixture
         functions: list[ReversePortFunction] = []
         for arena in arenas:
-            for record in arena._nodes.values():
+            for record in arena.audit_snapshot().nodes.values():
                 seen: set[int] = set()
                 for component in record.components.functions():
                     if (
@@ -76,7 +76,7 @@ def test_reverse_closed_interface_slots_are_actual_and_reporting_is_read_only(
         sectors = tuple(
             record.components.reverse_sectors
             for arena in arenas
-            for record in arena._nodes.values()
+            for record in arena.audit_snapshot().nodes.values()
             if type(record.components.reverse_sectors) is ReverseCarrySectorTransfer
         )
         assert functions and sectors

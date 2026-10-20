@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import replace
 from pathlib import Path
+from typing import Protocol, cast
 
 import pytest
 
@@ -18,6 +19,42 @@ from number_compiler.sequences.comma.boundary_chart import (
     BoundaryChart,
     ChartMove,
     chart_step,
+)
+
+
+class _WriteDecadeRank(Protocol):
+    def __call__(self, path: Path, *, check: bool) -> None: ...
+
+
+class _WriteRoundPhase(Protocol):
+    def __call__(self, path: Path, phase: int, *, check: bool) -> None: ...
+
+
+round_close_candidate = cast(
+    Callable[[int, BoundaryChart], generator.RoundClosure],
+    object.__getattribute__(generator, "_round_close_candidate"),
+)
+decade_round_graph = cast(
+    Callable[[], list[generator.DecadeRoundCandidate]],
+    object.__getattribute__(generator, "_decade_round_graph"),
+)
+decade_rank_candidates = cast(
+    Callable[[list[generator.DecadeRoundCandidate]], list[int]],
+    object.__getattribute__(generator, "_decade_rank_candidates"),
+)
+decade_rank_lines = cast(
+    Callable[[list[generator.DecadeRoundCandidate], list[int]], Iterator[str]],
+    object.__getattribute__(generator, "_decade_rank_lines"),
+)
+write_decade_rank = cast(
+    _WriteDecadeRank, object.__getattribute__(generator, "_write_decade_rank")
+)
+write_round_phase = cast(
+    _WriteRoundPhase, object.__getattribute__(generator, "_write_round_phase")
+)
+round_phase_lines = cast(
+    Callable[[int], Iterator[str]],
+    object.__getattribute__(generator, "_round_phase_lines"),
 )
 
 
@@ -40,7 +77,7 @@ def test_source_round_uses_canonical_chart_and_normalizes_phase() -> None:
 
 
 def test_cross_witness_checks_pre_cross_terminal_and_rejects_target() -> None:
-    witness = generator._round_close_candidate(5, BoundaryChart("entry", 1, 0, 3))
+    witness = round_close_candidate(5, BoundaryChart("entry", 1, 0, 3))
     target = witness.successor_chart
     assert target is not None
     assert target == BoundaryChart("entry", 1, 1, 68)
@@ -100,8 +137,8 @@ def test_round_rejects_non_decreasing_or_unexpected_seam(
 
 
 def test_internal_decade_graph_has_27_round_evaluations_and_no_cycle() -> None:
-    graph = generator._decade_round_graph()
-    ranks = generator._decade_rank_candidates(graph)
+    graph = decade_round_graph()
+    ranks = decade_rank_candidates(graph)
     assert len(graph) == len(ranks) == 924 * 91 == 84_084
     # Compare all checked-in candidate cells with independently recomputed edges.
     # Render the deliberately tiny data format; no second ML parser is needed.
@@ -131,7 +168,7 @@ def test_internal_decade_graph_has_27_round_evaluations_and_no_cycle() -> None:
             break
         longest = successor[0] * 91 + successor[1]
     assert evaluations == 27
-    rows = generator._decade_rank_lines(graph, ranks)
+    rows = decade_rank_lines(graph, ranks)
     header = json.loads(next(rows))
     assert header["rank_meaning"] == "continuing_round_edges_not_boundary_safety"
     assert header["terminal_rank"] == 0
@@ -157,7 +194,11 @@ def test_decade_candidate_streams_and_check_rejects_changed_line(
 ) -> None:
     graph = [generator.decade_round_candidate(5, 3)]
     monkeypatch.setattr(generator, "_decade_round_graph", lambda: graph)
-    monkeypatch.setattr(generator, "_decade_rank_candidates", lambda _: [1])
+
+    def ranks(_candidates: list[generator.DecadeRoundCandidate]) -> list[int]:
+        return [1]
+
+    monkeypatch.setattr(generator, "_decade_rank_candidates", ranks)
 
     def lines(
         candidates: list[generator.DecadeRoundCandidate], ranks: list[int]
@@ -168,17 +209,17 @@ def test_decade_candidate_streams_and_check_rejects_changed_line(
 
     monkeypatch.setattr(generator, "_decade_rank_lines", lines)
     path = tmp_path / "decade.jsonl"
-    generator._write_decade_rank(path, check=False)
-    generator._write_decade_rank(path, check=True)
+    write_decade_rank(path, check=False)
+    write_decade_rank(path, check=True)
     path.write_text('{"candidate_only": true}\n{"rank": 2}\n')
     with pytest.raises(SystemExit, match="differs"):
-        generator._write_decade_rank(path, check=True)
+        write_decade_rank(path, check=True)
 
 
 def test_round_phase_ml_reproduces_and_rejects_corruption(tmp_path: Path) -> None:
     path = tmp_path / "phase-five.ML"
-    generator._write_round_phase(path, 5, check=False)
-    generator._write_round_phase(path, 5, check=True)
+    write_round_phase(path, 5, check=False)
+    write_round_phase(path, 5, check=True)
     text = path.read_text()
     equations = [line for line in text.splitlines() if "@{prop" in line]
     assert len(equations) == 91
@@ -187,9 +228,9 @@ def test_round_phase_ml_reproduces_and_rejects_corruption(tmp_path: Path) -> Non
     assert "val comma_round_candidate_phase = 5;" in text
     path.write_text(text.replace("Comma_Near", "Comma_Entry", 1))
     with pytest.raises(SystemExit, match="round phase candidate differs"):
-        generator._write_round_phase(path, 5, check=True)
+        write_round_phase(path, 5, check=True)
     with pytest.raises(ValueError, match="round phase"):
-        list(generator._round_phase_lines(924))
+        list(round_phase_lines(924))
 
 
 def test_decade_rank_data_does_not_import_transition_checker() -> None:

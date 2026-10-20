@@ -153,6 +153,10 @@ class ReverseRecursiveFieldAdapter:
             blank=self.blank,
         )
 
+    @property
+    def image_arena(self) -> RecursiveFieldImageArena | None:
+        return self._images
+
     def validate_action(self, action: FieldCellActionID) -> None:
         self.actions.validate_action(action)
 
@@ -165,7 +169,7 @@ class ReverseRecursiveFieldAdapter:
         self, action: FieldCellActionID, geometry: FieldGeometryID
     ) -> PortSignatureID:
         self.validate_action(action)
-        self._validate_geometry(action, geometry)
+        self.validate_geometry(action, geometry)
         level = self._geometries.resolve(geometry).spatial_level
         key = action, level
         found = self._signatures.get(key)
@@ -183,7 +187,7 @@ class ReverseRecursiveFieldAdapter:
         self.validate_action(action)
         return self.actions.action_children(action)
 
-    def _validate_geometry(
+    def validate_geometry(
         self, action: FieldCellActionID, geometry: FieldGeometryID
     ) -> None:
         record = self._geometries.resolve(geometry)
@@ -211,7 +215,7 @@ class ReverseRecursiveFieldAdapter:
             raise ValueError("reverse recursive adapter image arena changed")
         self._images = images
 
-    def _source_extent(self, source: SourceCellID) -> int:
+    def source_extent(self, source: SourceCellID) -> int:
         """Return the active prefix extent from the immutable source tree."""
         found = self._source_extents.get(source)
         if found is not None:
@@ -258,7 +262,7 @@ class ReverseRecursiveFieldAdapter:
             raise AssertionError("reverse source extent was not published")
         return found
 
-    def _macro_from_completed(
+    def macro_from_completed(
         self,
         image: FieldImageID,
         source: SourceCellID,
@@ -289,7 +293,7 @@ class ReverseRecursiveFieldAdapter:
             image_record.interface,
             image_record.output,
             source_record.width,
-            self._source_extent(source),
+            self.source_extent(source),
             range_summary.activity,
             range_summary.first_active,
             range_summary.last_active,
@@ -297,7 +301,7 @@ class ReverseRecursiveFieldAdapter:
             range_summary.growth,
         )
 
-    def _join_completed(
+    def join_completed(
         self,
         action: FieldCellActionID,
         source: SourceCellID,
@@ -309,7 +313,7 @@ class ReverseRecursiveFieldAdapter:
     ) -> FieldImageCandidate:
         """Publish a parent extensionally from the two completed child images."""
         self.validate_action(action)
-        self._validate_geometry(action, geometry)
+        self.validate_geometry(action, geometry)
         if type(left) is not FieldImageID or type(right) is not FieldImageID:
             raise TypeError("reverse recursive join requires canonical child images")
         source_record = self.sources.resolve(source)
@@ -318,17 +322,17 @@ class ReverseRecursiveFieldAdapter:
         left_source, right_source = self.sources.children(source)
         left_geometry = self._geometries.child(geometry, 0)
         right_geometry = self._geometries.child(geometry, 1)
-        left_macro = self._macro_from_completed(
+        left_macro = self.macro_from_completed(
             left, left_source, action, left_geometry, left_extent
         )
-        right_macro = self._macro_from_completed(
+        right_macro = self.macro_from_completed(
             right, right_source, action, right_geometry, right_extent
         )
         self.signature(action, geometry)
         macro = self._composer(action).combine(left_macro, right_macro)
         if macro.width != source_record.width:
             raise AssertionError("reverse completed-child parent width mismatch")
-        if macro.source_extent != self._source_extent(source):
+        if macro.source_extent != self.source_extent(source):
             raise AssertionError("reverse completed-child source extent mismatch")
         self.ledger.bump(_reverse_add_keys.REVERSE_RECURSIVE_COMPLETED_CHILD_JOINS)
         return self._candidate(macro)
@@ -373,7 +377,7 @@ class ReverseRecursiveFieldAdapter:
             summary,
         )
 
-    def _compile(
+    def compile_completed(
         self, action: FieldCellActionID, source: SourceCellID
     ) -> FieldImageCandidate:
         macro = self._composer(action).compile(source)
@@ -383,7 +387,7 @@ class ReverseRecursiveFieldAdapter:
         self, action: FieldCellActionID, source: SourceCellID, geometry: FieldGeometryID
     ) -> FieldImageCandidate:
         self.signature(action, geometry)
-        return self._compile(action, source)
+        return self.compile_completed(action, source)
 
     def join(
         self,
@@ -393,7 +397,7 @@ class ReverseRecursiveFieldAdapter:
         right: FieldImageID,
         geometry: FieldGeometryID,
     ) -> FieldImageCandidate:
-        return self._join_completed(action, source, left, right, geometry)
+        return self.join_completed(action, source, left, right, geometry)
 
     def temporal(
         self,
@@ -429,7 +433,7 @@ class ReverseRecursiveFieldAdapter:
         self._source_extents.dispose()
 
 
-class _ReverseProviderAdapter:
+class ReverseProviderAdapter:
     """Substitute providers without observing midpoint symbols."""
 
     def __init__(
@@ -446,7 +450,7 @@ class _ReverseProviderAdapter:
         geometry: FieldGeometryID,
     ) -> tuple[SourceCellID, SourceCellID] | None:
         core = self.core
-        images = core._images
+        images = core.image_arena
         if images is None:
             raise RuntimeError("reverse provider adapter has no bound image arena")
         bound = self.providers.validate_occurrence(provider.binding)
@@ -475,7 +479,7 @@ class _ReverseProviderAdapter:
             or provider.active_extent > source_record.width
         ):
             raise ValueError("reverse provider parent has another geometry/extent")
-        core._validate_geometry(complete, geometry)
+        core.validate_geometry(complete, geometry)
         if not provider.level:
             return None
         return core.sources.children(provider.source)
@@ -508,7 +512,7 @@ class _ReverseProviderAdapter:
         if self.signature(complete, geometry) != signature:
             raise ValueError("reverse provider leaf has another complete signature")
         self.core.ledger.bump(_reverse_add_keys.REVERSE_PROVIDER_LEAF_SUBSTITUTIONS)
-        return self.core._compile(complete, provider.source)
+        return self.core.compile_completed(complete, provider.source)
 
     def join(
         self,
@@ -531,7 +535,7 @@ class _ReverseProviderAdapter:
         left_extent = min(provider.active_extent, left_width)
         right_extent = max(0, provider.active_extent - left_width)
         self.core.ledger.bump(_reverse_add_keys.REVERSE_PROVIDER_PARENT_SUBSTITUTIONS)
-        return self.core._join_completed(
+        return self.core.join_completed(
             complete,
             provider.source,
             left,

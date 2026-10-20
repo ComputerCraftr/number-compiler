@@ -10,6 +10,9 @@ from number_compiler.hashlife.tiles.tile_boundaries import (
     BoundaryTileOperands,
     BoundaryTileView,
 )
+from number_compiler.hashlife.tiles.tile_result_lease_inventory import (
+    BoundaryOperandLeaseInventory,
+)
 from number_compiler.hashlife.tiles.tile_result_leases import ResultLease
 from number_compiler.hashlife.tiles.tile_results import CompletedResultArena
 from number_compiler.hashlife.tiles.tiles import TileArena, TileLease
@@ -17,6 +20,22 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerDict
 from tests.support.ledger_failures import inject_release_failure
 from tests.support.tile_results import incoming_setup
+
+
+def _lease_inventory(
+    results: CompletedResultArena,
+) -> BoundaryOperandLeaseInventory:
+    value: object = object.__getattribute__(results, "_leased_boundary_operands")
+    if type(value) is not BoundaryOperandLeaseInventory:
+        raise TypeError("completed result operand inventory has an unexpected type")
+    return value
+
+
+def _lease_flag(lease: ResultLease, field: str) -> bool:
+    value = object.__getattribute__(lease, field)
+    if type(value) is not bool:
+        raise AssertionError(f"result lease field {field} is not boolean")
+    return value
 
 
 def _publish_with_operand() -> tuple[
@@ -46,7 +65,7 @@ def test_result_lease_retries_exact_operand_release(
 ) -> None:
     ledger, _tiles, results, source, output, payload = _publish_with_operand()
     boundary, _view, lease = payload
-    inventory = results._leased_boundary_operands
+    inventory = _lease_inventory(results)
     owner = inventory.owner
     with monkeypatch.context() as patch:
         inject_release_failure(
@@ -55,7 +74,7 @@ def test_result_lease_retries_exact_operand_release(
         with pytest.raises(RuntimeError, match="injected ledger release failure"):
             lease.close()
 
-    assert lease._operand_map_released is True
+    assert _lease_flag(lease, "_operand_map_released") is True
     assert not inventory.records
     expected_pending = int(failure_timing == "before")
     assert inventory.pending_release_entries == expected_pending
@@ -67,9 +86,9 @@ def test_result_lease_retries_exact_operand_release(
         results.clear()
         assert inventory.pending_release_entries == 0
     lease.close()
-    assert lease._closed is True
+    assert lease.audit_snapshot().closed is True
     assert inventory.pending_release_entries == 0
-    assert ledger._account(owner).entries == 0
+    assert ledger.account_status(owner).entries == 0
     boundary.close()
     output.close()
     source.close()
@@ -80,7 +99,7 @@ def test_retrying_one_operand_release_does_not_consume_another_lease(
 ) -> None:
     ledger, tiles, results, source, output, payload = _publish_with_operand()
     boundary, view, first = payload
-    inventory = results._leased_boundary_operands
+    inventory = _lease_inventory(results)
     first.close()
     other_boundary, other_view = _additional_operand(tiles, output)
     inventory.acquire((view, other_view))
@@ -106,7 +125,7 @@ def test_retrying_one_operand_release_does_not_consume_another_lease(
     inventory.release((view,))
     assert not inventory.records
     inventory.retry_release()
-    assert ledger._account(owner).entries == 0
+    assert ledger.account_status(owner).entries == 0
     other_boundary.close()
     boundary.close()
     output.close()
@@ -120,9 +139,9 @@ def test_failed_operand_acquire_retries_its_reserved_ledger_entries(
     boundary, first_view, lease = payload
     lease.close()
     other_boundary, second_view = _additional_operand(_tiles, output)
-    inventory = results._leased_boundary_operands
+    inventory = _lease_inventory(results)
     owner = inventory.owner
-    set_item = LedgerDict.__setitem__
+    set_item = inventory.records.__setitem__
     fail_once = True
 
     def fail_second_insert(
@@ -134,7 +153,9 @@ def test_failed_operand_acquire_retries_its_reserved_ledger_entries(
         if records is inventory.records and view is second_view and fail_once:
             fail_once = False
             raise RuntimeError("injected operand insert failure")
-        set_item(records, view, count)
+        if records is not inventory.records:
+            raise AssertionError("injected write targeted a different store")
+        set_item(view, count)
 
     release = ledger.release
     fail_release = True
@@ -158,9 +179,9 @@ def test_failed_operand_acquire_retries_its_reserved_ledger_entries(
 
     assert not inventory.records
     assert inventory.pending_release_entries == 2
-    assert ledger._account(owner).entries == 2
+    assert ledger.account_status(owner).entries == 2
     inventory.retry_release()
-    assert ledger._account(owner).entries == 0
+    assert ledger.account_status(owner).entries == 0
     assert inventory.pending_release_entries == 0
     other_boundary.close()
     boundary.close()

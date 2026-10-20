@@ -11,6 +11,9 @@ from number_compiler.sequences.comma.boundary_chart import (
     BoundaryChart,
     chart_step,
 )
+from tests.validation.research.test_comma_decade_rank_candidate import (
+    round_close_candidate,
+)
 
 
 def _normalized_chart(
@@ -29,12 +32,10 @@ def _normalized_chart(
 @pytest.mark.parametrize("phase", [0, 5, 42, 923])
 def test_round_control_preserves_rebased_history(phase: int) -> None:
     for offset in range(91):
-        base = candidates._round_close_candidate(
-            phase, BoundaryChart("entry", 1, 0, offset)
-        )
+        base = round_close_candidate(phase, BoundaryChart("entry", 1, 0, offset))
         for delta in (1, 923, 924, 1848):
             residue = (phase - delta) % PERIOD
-            lifted = candidates._round_close_candidate(
+            lifted = round_close_candidate(
                 residue, BoundaryChart("entry", 1, delta, offset)
             )
             assert (lifted.kind, lifted.fork_a, lifted.positions) == (
@@ -52,8 +53,8 @@ def test_round_control_preserves_rebased_history(phase: int) -> None:
 
 
 def test_equal_control_does_not_erase_terminal_gain_or_literal_weight() -> None:
-    base = candidates._round_close_candidate(5, BoundaryChart("entry", 1, 0, 27))
-    lifted = candidates._round_close_candidate(5, BoundaryChart("entry", 1, 924, 27))
+    base = round_close_candidate(5, BoundaryChart("entry", 1, 0, 27))
+    lifted = round_close_candidate(5, BoundaryChart("entry", 1, 924, 27))
     assert base.kind == lifted.kind == "fork"
     assert base.fork_a == lifted.fork_a == 2
     assert base.terminal_chart.delta == 0

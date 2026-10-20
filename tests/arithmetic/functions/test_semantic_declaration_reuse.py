@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
 from dataclasses import replace
 from itertools import product
-from typing import TYPE_CHECKING, Never
+from typing import TYPE_CHECKING, Never, cast
 
 import pytest
 
@@ -127,7 +128,10 @@ def test_declaration_budget_rejection_is_atomic_and_eviction_preserves_ids(
     )
     ledger.max_nodes = None
     result = structures.declare(value, inputs)
-    structures._declarations.clear()
+    cast(
+        MutableMapping[object, object],
+        object.__getattribute__(structures, "_declarations"),
+    ).clear()
     assert structures.resolve(result).signature.inputs == inputs
     assert structures.declare(value, inputs) == result
 

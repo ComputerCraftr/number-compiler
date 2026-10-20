@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import fields, is_dataclass
 from types import UnionType
-from typing import Literal, Union, get_args, get_origin, get_type_hints
+from typing import Literal, Union, cast, get_args, get_origin, get_type_hints
 
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 
@@ -59,7 +59,8 @@ def valid_semantic_record(
             if not source_handle_valid(value):
                 return False
             continue
-        origin, arguments = get_origin(expected), get_args(expected)
+        origin = get_origin(expected)
+        arguments = cast(tuple[object, ...], get_args(expected))
         if origin in (UnionType, Union):
             selected: object | None = None
             for choice in arguments:
@@ -114,10 +115,14 @@ def valid_semantic_record(
                 if not -1 <= value <= bound:
                     return False
             continue
-        if expected in (bool, str):
-            if type(value) is not expected:
+        if expected is bool:
+            if type(value) is not bool:
                 return False
-            if expected is str and parent is not None and name == "kind":
+            continue
+        if expected is str:
+            if type(value) is not str:
+                return False
+            if parent is not None and name == "kind":
                 domains = {
                     "_Program": ("identity", "compose", "shift", "mul3"),
                     "_ResultKey": ("events", "physical"),
@@ -149,12 +154,15 @@ def valid_semantic_record(
         if origin is tuple:
             if type(value) is not tuple:
                 return False
+            children = cast(tuple[object, ...], value)
             if len(arguments) == 2 and arguments[1] is Ellipsis:
-                pending.extend((child, arguments[0], parent, name) for child in value)
-            elif len(arguments) == len(value):
+                pending.extend(
+                    (child, arguments[0], parent, name) for child in children
+                )
+            elif len(arguments) == len(children):
                 pending.extend(
                     (child, annotation, parent, name)
-                    for child, annotation in zip(value, arguments, strict=True)
+                    for child, annotation in zip(children, arguments, strict=True)
                 )
             else:
                 return False

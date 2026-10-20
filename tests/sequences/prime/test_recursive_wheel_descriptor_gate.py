@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from math import gcd
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
@@ -42,7 +43,12 @@ def test_eleven_stage_rank_select_uses_only_the_prime_descriptor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _forbid_parent_gap_construction(monkeypatch)
-    wheels._wheel_count_leq.cache_clear()
+    cast(
+        Callable[[], None],
+        object.__getattribute__(
+            object.__getattribute__(wheels, "_wheel_count_leq"), "cache_clear"
+        ),
+    )()
     try:
         index = _index_for_primes((3, 5, 7, 11, 13, 17, 19, 23, 29, 31))
         assert index.modulus == 200_560_490_130
@@ -70,7 +76,12 @@ def test_eleven_stage_rank_select_uses_only_the_prime_descriptor(
             index.length + 152_840
         )
     finally:
-        wheels._wheel_count_leq.cache_clear()
+        cast(
+            Callable[[], None],
+            object.__getattribute__(
+                object.__getattribute__(wheels, "_wheel_count_leq"), "cache_clear"
+            ),
+        )()
 
 
 @pytest.mark.validation  # Exhaustive 10,000-coordinate differential on the full wheel.
@@ -78,7 +89,12 @@ def test_eleven_stage_rank_matches_the_exhaustive_prefix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _forbid_parent_gap_construction(monkeypatch)
-    wheels._wheel_count_leq.cache_clear()
+    cast(
+        Callable[[], None],
+        object.__getattribute__(
+            object.__getattribute__(wheels, "_wheel_count_leq"), "cache_clear"
+        ),
+    )()
     try:
         index = _index_for_primes((3, 5, 7, 11, 13, 17, 19, 23, 29, 31))
         prefix = _checked_prefix(index, 10_001)
@@ -87,4 +103,9 @@ def test_eleven_stage_rank_matches_the_exhaustive_prefix(
             assert index.residue_at(rank) == prefix[rank]
             assert index.rank_before(prefix[rank]) == rank
     finally:
-        wheels._wheel_count_leq.cache_clear()
+        cast(
+            Callable[[], None],
+            object.__getattribute__(
+                object.__getattribute__(wheels, "_wheel_count_leq"), "cache_clear"
+            ),
+        )()

@@ -41,7 +41,7 @@ from number_compiler.sequences.antihydra.mahler_source_actions import (
 )
 
 
-def _compiled_motif(exponents: tuple[int, ...]) -> MahlerOddToOddAction:
+def compiled_motif(exponents: tuple[int, ...]) -> MahlerOddToOddAction:
     if (
         type(exponents) is not tuple
         or not 1 <= len(exponents) <= 8
@@ -163,7 +163,7 @@ class MahlerMixedOddHarmonicRing:
         if type(self.action) is not MahlerOddToOddAction:
             raise TypeError("a mixed ring needs a typed source-issued motif action")
         signature = checked_mahler_odd_motif(self.macro_identity)
-        if self.action.semantic_id != _compiled_motif(signature.exponents).semantic_id:
+        if self.action.semantic_id != compiled_motif(signature.exponents).semantic_id:
             raise ValueError(
                 "mixed ring action is not the authenticated parity program"
             )
@@ -215,7 +215,7 @@ class MahlerMixedOddHarmonicRing:
     ) -> MahlerMixedOddHarmonicRing:
         if type(signature) is not MahlerOddMotifSignature:
             raise TypeError("authenticated Mahler motif must use its typed signature")
-        action = _compiled_motif(signature.exponents)
+        action = compiled_motif(signature.exponents)
         ring = cls._issue_from_action(source, signature, action)
         if ring.capacity < 1:
             raise ArithmeticError(

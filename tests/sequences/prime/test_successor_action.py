@@ -22,6 +22,11 @@ from number_compiler.sequences.prime.successor_action_contracts import (
 from number_compiler.sequences.prime.successor_image_adapter import (
     PrimeSuccessorImageAdapter,
 )
+from tests.support.prime_actions import (
+    partial_prime_arena,
+    prime_factor_store,
+    prime_inverse_workspace,
+)
 
 
 def _direct_progression(
@@ -60,12 +65,12 @@ def test_progression_reuses_each_inverse_across_the_query_dag(
         )
         assert dag.count_progression(511, 11, residue) == result
         assert calls == expected_calls
-        assert not dag._progression_inverses
+        assert not prime_inverse_workspace(dag)
         assert dag.count_progression(511, 13, residue) == _direct_progression(
             511, factors, 13, residue
         )
         assert calls == 2 * expected_calls
-        assert not dag._progression_inverses
+        assert not prime_inverse_workspace(dag)
         assert dag.pending_frames == 0
     finally:
         dag.close()
@@ -77,7 +82,7 @@ def test_progression_inverse_workspace_is_charged_and_cleared_after_refusal() ->
     try:
         with pytest.raises(ValueError, match="prime state budget"):
             dag.count_progression(511, 11, 4)
-        assert not dag._progression_inverses
+        assert not prime_inverse_workspace(dag)
         assert dag.pending_frames == 0
         assert dag.ledger.entries == dag.factor_count
         assert all(row.accounting_delta == 0 for row in dag.ledger.inventory())
@@ -224,13 +229,13 @@ def test_contained_descent_reuses_issued_stage_but_revalidates_image(
     monkeypatch.setattr(PrimeSuccessorImageAdapter, "validate_payload", traced_payload)
     try:
         assert query.count_primes(11, 48, 4) == 11
-        arena = query._arena
+        arena = partial_prime_arena(query)
         publications = dag.ledger.counters.get(
             "prime_partial_successor_stage_publications", 0
         )
         before = payload_checks
         assert query.count_primes(11, 30, 4) == 6
-        assert query._arena is arena
+        assert partial_prime_arena(query) is arena
         assert (
             dag.ledger.counters.get("prime_partial_successor_stage_publications", 0)
             == publications
@@ -247,7 +252,7 @@ def test_issued_prime_prefix_is_append_only_after_stage_authentication() -> None
     arena = PrimeSuccessorActionArena(dag, 7, parent_depth=3)
     try:
         with pytest.raises(TypeError, match="append-only"):
-            dag._primes[0] = 3
+            prime_factor_store(dag)[0] = 3
         dag.append_consecutive_factor(11)
         assert arena.descriptor.parent_factors == (2, 3, 5)
         assert arena.node(arena.base).primitive
@@ -261,14 +266,14 @@ def test_partial_stage_rejects_foreign_rank_and_factor_store_authorities() -> No
     dag = CoprimeRankDAG((2, 3, 5, 7), max_states=100, max_work=100_000)
     foreign = CoprimeRankDAG((2, 3, 5, 7), max_states=100, max_work=100_000)
     arena = PrimeSuccessorActionArena(dag, 7, parent_depth=3)
-    original_store = dag._primes
+    original_store = prime_factor_store(dag)
     try:
         arena.rank = foreign
         with pytest.raises(ValueError, match="source authority"):
             arena.node(arena.base)
         arena.rank = dag
 
-        object.__setattr__(dag, "_primes", foreign._primes)
+        object.__setattr__(dag, "_primes", prime_factor_store(foreign))
         with pytest.raises(ValueError, match="source authority"):
             arena.node(arena.base)
     finally:

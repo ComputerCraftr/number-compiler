@@ -50,7 +50,9 @@ def test_interface_record_cannot_self_certify_its_domain_or_owner(failure: str) 
     elif failure == "boolean-size":
         admission.memo[key] = replace(certificate, output_size=True)
     elif failure == "unallocated-function":
-        function = replace(key.function, local_id=len(runtime.kernels._expressions))
+        function = replace(
+            key.function, local_id=len(runtime.kernels.audit_snapshot().expressions)
+        )
         admission.memo[replace(key, function=function)] = certificate
     else:
         owner = runtime.ledger.register("fake-interface-certificate", "query_memo")

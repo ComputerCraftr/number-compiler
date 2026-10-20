@@ -192,7 +192,7 @@ def test_factor_reuse_respects_terminal_policy(monkeypatch: pytest.MonkeyPatch) 
 
     compiler = CanonicalSequenceCompiler()
     compiler.resolve_special_theorem("mersenne", 13, use_terminal_certificate=False)
-    called = []
+    called: list[bool] = []
     original = theorem_query.resolve_special_theorem
 
     def observed(*args: object, **kwargs: object) -> None:

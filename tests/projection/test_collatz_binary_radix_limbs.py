@@ -6,6 +6,7 @@ from typing import Never
 import pytest
 
 from number_compiler.api.number_api import PoweredCollatzTermPayload
+from number_compiler.hashlife.execution.dyadic_return_actions import append_source
 from number_compiler.hashlife.execution.dyadic_return_images import DyadicReturnImageID
 from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageDemand,
@@ -51,7 +52,7 @@ def test_limb_does_not_swallow_an_internal_point_failure(
     def broken(_term: PoweredCollatzTerm, _radix: int, _position: int) -> int:
         raise IndexError("internal point failure")
 
-    monkeypatch.setattr(PoweredCollatzTerm, "_admitted_radix_digit", broken)
+    monkeypatch.setattr(PoweredCollatzTerm, "admitted_radix_digit", broken)
     with pytest.raises(IndexError, match="internal point failure"):
         PoweredCollatzTerm(27, 3).radix_digit(2, 0)
     with pytest.raises(IndexError, match="internal point failure"):
@@ -61,11 +62,10 @@ def test_limb_does_not_swallow_an_internal_point_failure(
 
 
 def test_limb_rejects_an_invalid_kernel_symbol(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        PoweredCollatzTerm,
-        "_admitted_radix_digit",
-        lambda _self, _radix, _position: 64,
-    )
+    def invalid(_self: PoweredCollatzTerm, _radix: int, _position: int) -> int:
+        return 64
+
+    monkeypatch.setattr(PoweredCollatzTerm, "admitted_radix_digit", invalid)
     with pytest.raises(AssertionError):
         PoweredCollatzTermPayload(PoweredCollatzTerm(27, 3), 64).digit(0)
 
@@ -103,7 +103,7 @@ def test_warm_point_rejects_disposed_source_image(radix: int) -> None:
     term = PoweredCollatzTerm(27, 16)
     payload = PoweredCollatzTermPayload(term, radix)
     payload.digit(0)
-    term._source_image().dispose()
+    term.source_image().dispose()
     with pytest.raises(ValueError, match="disposed"):
         payload.digit(0)
 
@@ -113,7 +113,7 @@ def test_warm_limb_rejects_valid_but_wrong_root_image() -> None:
     payload = PoweredCollatzTermPayload(term, 64)
     expected = payload.digit(0)
     term.width()
-    workspace = term._source_image()
+    workspace = term.source_image()
     previous = workspace.root_payload
     identity = workspace.admit_source(workspace.root_source)
     object.__setattr__(workspace, "root_payload", identity.payload)
@@ -132,14 +132,14 @@ def test_warm_limb_rejects_valid_but_wrong_root_image() -> None:
 def test_cached_width_rejects_disposed_image() -> None:
     term = PoweredCollatzTerm(27, 16)
     assert term.width() > 0
-    term._source_image().dispose()
+    term.source_image().dispose()
     with pytest.raises(ValueError, match="disposed"):
         term.width()
 
 
 def test_width_bound_cannot_change_original_source_extent() -> None:
     term = PoweredCollatzTerm(27, 0)
-    term._width_bound = (27, 0, 1)
+    object.__setattr__(term, "_width_bound", (27, 0, 1))
     with pytest.raises(ValueError, match="another source/action"):
         term.digit(0)
 
@@ -148,10 +148,10 @@ def test_warm_limb_rejects_coherent_replacement_root_handles() -> None:
     term = PoweredCollatzTerm(27, 16)
     payload = PoweredCollatzTermPayload(term, 64)
     expected = payload.digit(0)
-    workspace = term._source_image()
+    workspace = term.source_image()
     original = (workspace.root_source, workspace.root_action, workspace.root_payload)
-    other_source = workspace._append_source(
-        replace(workspace.source_node(workspace.root_source), residue=28)
+    other_source = append_source(
+        workspace, replace(workspace.source_node(workspace.root_source), residue=28)
     )
     other_image = workspace.scheduler.source_image_demanded(
         workspace,
@@ -196,7 +196,7 @@ def test_warm_limb_revalidates_source_image_and_action(field: str) -> None:
     term = PoweredCollatzTerm(27, 16)
     payload = PoweredCollatzTermPayload(term, 64)
     expected = payload.digit(0)
-    workspace = term._source_image()
+    workspace = term.source_image()
     node: object
     if field == "source":
         source = workspace.source_node(workspace.root_source)

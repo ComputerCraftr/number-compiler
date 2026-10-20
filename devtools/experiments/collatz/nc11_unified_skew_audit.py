@@ -11,7 +11,7 @@ import json
 import random
 import statistics
 import time
-from typing import Any
+from typing import TypedDict
 from unittest.mock import patch
 
 from number_compiler.resources.ledger import ResourceLedger
@@ -158,9 +158,21 @@ def _measured_counters(ledger: ResourceLedger) -> dict[str, int]:
     }
 
 
+class _ComparisonObservation(TypedDict):
+    endpoint: int
+    normalized_symbols: int
+    phase: int
+    odd_ticks: int
+    division_ticks: int
+    run_actions: int
+    joined_prefix_ticks: int
+    joined_segments: int
+    counters: dict[str, int]
+
+
 def _compile_comparison_case(
     source: int, ticks: int, *, enabled: bool
-) -> tuple[dict[str, Any], float]:
+) -> tuple[_ComparisonObservation, float]:
     ledger = ResourceLedger()
     start = time.perf_counter()
     if enabled:
@@ -212,13 +224,13 @@ def _compile_comparison_case(
     )
 
 
-def compare_enabled_bypassed(trials: int = 5) -> dict[str, Any]:
+def compare_enabled_bypassed(trials: int = 5) -> dict[str, object]:
     if type(trials) is not int or trials < 1:
         raise ValueError("comparison trials must be positive")
-    cases: list[dict[str, Any]] = []
+    cases: list[dict[str, object]] = []
     for source in _FIXED_SOURCES:
         for ticks in _FIXED_HORIZONS:
-            observations: dict[str, list[dict[str, Any]]] = {
+            observations: dict[str, list[_ComparisonObservation]] = {
                 "enabled": [],
                 "bypassed": [],
             }
@@ -259,15 +271,14 @@ def compare_enabled_bypassed(trials: int = 5) -> dict[str, Any]:
                     actual == expected,
                     (source, ticks, "mode semantic mismatch", actual, expected),
                 )
-            counter_names = sorted(
-                set().union(
-                    *(
-                        set(observed["counters"])
-                        for observed in (*enabled_results, *bypassed_results)
-                    )
-                )
+            counter_names: list[str] = sorted(
+                {
+                    name
+                    for observed in (*enabled_results, *bypassed_results)
+                    for name in observed["counters"]
+                }
             )
-            median_counters = {
+            median_counters: dict[str, dict[str, int]] = {
                 mode: {
                     name: int(
                         statistics.median(
@@ -326,7 +337,7 @@ def main() -> int:
     parser.add_argument("--compare", action="store_true")
     parser.add_argument("--comparison-trials", type=int, default=5)
     args = parser.parse_args()
-    output: dict[str, Any] = {}
+    output: dict[str, object] = {}
     if args.samples:
         output["finite_audit"] = audit(args.samples, args.seed)
     if args.compare:

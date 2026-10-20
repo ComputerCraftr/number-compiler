@@ -106,7 +106,7 @@ def main() -> None:
         _frobenius_row("mersenne", 11),
         _frobenius_row("mersenne", 13),
     ]
-    data = {
+    data: dict[str, object] = {
         "shared_handler": {
             "generic": handler.canonical_key,
             "collatz": COLLATZ_BINARY_HANDLER.canonical_key,

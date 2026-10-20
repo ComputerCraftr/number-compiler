@@ -97,9 +97,9 @@ def validate_normalized_region_value(
     ):
         raise ValueError("normalized region changed its logical geometry")
     if published:
-        if value._publication_owner is not arena._interface_publication_seal:
+        if not arena.issued_result(value):
             raise ValueError("normalized region was not issued by this arena")
-        if value._publication_snapshot != _snapshot(key, value):
+        if not value.publication_matches(_snapshot(key, value)):
             raise ValueError("normalized region publication metadata was modified")
 
 
@@ -109,11 +109,7 @@ def _sealed(
     view: BoundaryTileView,
 ) -> NormalizedRegionResult:
     plain = NormalizedRegionResult(view)
-    return NormalizedRegionResult(
-        view,
-        arena._interface_publication_seal,
-        _snapshot(key, plain),
-    )
+    return arena.seal_result(plain, _snapshot(key, plain))
 
 
 def lookup_normalized_region(
@@ -123,7 +119,7 @@ def lookup_normalized_region(
     """Probe a validated raw clip before any spatial decomposition occurs."""
     _validate_key(arena, key)
     arena.ledger.bump(_tiles_keys.TILE_REGION_NORMALIZATION_REQUESTS)
-    found = arena._memo.get(key)
+    found = arena.memo_view.get(key)
     if found is None:
         arena.ledger.bump(_tiles_keys.TILE_REGION_NORMALIZATION_MISSES)
         record_unattributed_post_eviction_miss(arena.ledger, ResultCacheKind.REGION)
@@ -142,7 +138,7 @@ def _publish(
 ) -> tuple[NormalizedRegionResult, bool]:
     _validate_key(arena, key)
     validate_normalized_region_value(arena, key, value, published=True)
-    found = arena._memo.get(key)
+    found = arena.memo_view.get(key)
     arena.ledger.bump(_tiles_keys.TILE_REGION_NORMALIZATION_PUBLICATION_REQUESTS)
     if found is not None:
         if type(found) is not NormalizedRegionResult:

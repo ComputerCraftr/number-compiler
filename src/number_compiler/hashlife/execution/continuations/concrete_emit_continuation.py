@@ -62,12 +62,12 @@ def cached_residual(
     children = scheduler.adapter.children(action)
     if children is None:
         raise ValueError("cached residual lookup requires a composed action")
-    scheduler._validate_action_state(children[0], 1 - side, argument)
+    scheduler.validate_action_state(children[0], 1 - side, argument)
     key = normalize_request(
         scheduler,
         ("RES", action, side, residual, argument),
     )
-    result = scheduler._memo.get(key)
+    result = scheduler.cached_result(key)
     if result is not None:
         scheduler.ledger.bump(_execution_keys.CONCRETE_PORT_TASK_EARLY_HITS)
     return result

@@ -101,7 +101,7 @@ def retained_result_profile(
     )
 
     entries: list[tuple[PoweredResultKey, CompletedResult]] = []
-    for key, value in results._memo.items():
+    for key, value in results.audit_snapshot().memo.items():
         if type(key) is PoweredResultKey and type(value) is CompletedResult:
             if len(entries) >= max_entries:
                 raise ValueError("completed-result profile exceeds entry budget")

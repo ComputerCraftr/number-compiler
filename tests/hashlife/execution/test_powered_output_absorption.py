@@ -7,11 +7,13 @@ published output behavior without returning to the higher temporal interpreter.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from importlib.util import find_spec
-from typing import Never
+from typing import Never, cast
 
 import pytest
 
+from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
 from number_compiler.hashlife.execution.continuations.higher_summaries import (
     HigherSummaryArena,
 )
@@ -20,6 +22,7 @@ from number_compiler.hashlife.execution.continuations.higher_values import (
 )
 from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageDemand,
+    SourceImageID,
 )
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.projection.microblock_cache import MicroblockCache
@@ -44,27 +47,35 @@ def test_reverse_compiled_parent_absorbs_powered_output(
 ) -> None:
     assert find_spec("number_compiler.hashlife.execution.temporal_leaf_diamond") is None
 
-    monkeypatch.setattr(MicroblockCache, "get", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(MicroblockCache, "put", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(
-        PointResponseRegister,
-        "query",
-        lambda _self, _program, coordinate, evaluate: evaluate(coordinate),
-    )
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        raise AssertionError("compiled parent replayed the temporal output interpreter")
+
+    def direct_response(
+        _self: PointResponseRegister,
+        _program: ActionProgramID,
+        coordinate: int,
+        evaluate: Callable[[int], int],
+    ) -> int:
+        return evaluate(coordinate)
+
+    monkeypatch.setattr(MicroblockCache, "get", forbidden)
+    monkeypatch.setattr(MicroblockCache, "put", forbidden)
+    monkeypatch.setattr(PointResponseRegister, "query", direct_response)
     expected = _reverse_digits(steps)
     term = ReverseAddPoweredTerm(196, steps)
-    application = term._source_workspace()
-    image = application._demanded_image(SourceImageDemand("width"))
-    view = application.scheduler._source_image_core().view(image)
+    application = term.source_workspace()
+    demand_image = cast(
+        Callable[[SourceImageDemand], SourceImageID],
+        object.__getattribute__(application, "_demanded_image"),
+    )
+    image = demand_image(SourceImageDemand("width"))
+    view = application.scheduler.source_image_core().view(image)
     assert view.binding.source == application.source
     assert view.binding.action == application.root_action
     # Admission must publish support, not retain an intermediate endpoint.
     audit = audit_registered_payloads(term.resource_ledger)
     assert audit.forbidden_future_payloads == audit.unknown_payloads == 0
     before = term.resource_ledger.snapshot()
-
-    def forbidden(*_args: object, **_kwargs: object) -> Never:
-        raise AssertionError("compiled parent replayed the temporal output interpreter")
 
     monkeypatch.setattr(CausalTileEngine, "_run", forbidden)
     monkeypatch.setattr(type(application.adapter), "apply_composite", forbidden)

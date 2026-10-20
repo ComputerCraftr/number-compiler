@@ -1,3 +1,4 @@
+from dataclasses import replace
 from typing import Never, cast
 
 import pytest
@@ -19,6 +20,7 @@ from number_compiler.arithmetic.contracts.block_effect import (
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.fields.live_forcing import LiveForcingProjection
 from number_compiler.resources.ledger import ResourceLedger
+from tests.support.reference_carry import decimal_pair_carries
 
 
 def _reference(seed: int, steps: int) -> tuple[int, ...]:
@@ -132,7 +134,7 @@ def test_centered_future_rejects_foreign_state() -> None:
     with pytest.raises(TypeError, match="scoped state ID"):
         left.advance(cast(CenteredFutureStateID, forged))
     with pytest.raises(ValueError, match="allocated range"):
-        left.advance(CenteredFutureStateID(left._owner, left._KIND, 999))
+        left.advance(replace(left.initial, local_id=999))
     left.close()
     right.close()
 
@@ -185,11 +187,7 @@ def test_carry_slp_polynomial_preserves_asymmetric_word_order() -> None:
     source_word = (10, 9, 8, 10, 9, 8, 10, 9, 8)
     word = SLPArena()
     root = word.repeat(word.word(source_word[:3]), 3)
-    carry = 0
-    expected = []
-    for pair in source_word:
-        carry = int(pair + carry >= 10)
-        expected.append(carry)
+    expected, carry = decimal_pair_carries(source_word)
 
     ledger = ResourceLedger()
     grammar = CenteredFutureGrammar(ledger, ExactSource((1,), 10, "reverse-add"))
