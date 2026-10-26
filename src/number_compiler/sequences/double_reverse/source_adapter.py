@@ -19,10 +19,19 @@ from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageProjection,
     SourceImageView,
 )
-from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.ledger import (
+    LedgerReservation,
+    OwnedMemo,
+    ResourceLedger,
+)
 from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.metric_keys import (
     double_reverse as _double_reverse_keys,
+)
+from number_compiler.sequences.double_reverse.temporal_alternating_carry import (
+    FourPortCarryRow,
+    FourPortSLPProjection,
+    fold_two_step_slp,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife import (
     DoubleReversePortAction,
@@ -120,7 +129,6 @@ class DoubleReverseSourceAdapter:
         ledger: ResourceLedger,
         arena: LedgerSLPArena,
         projector: BimachineSLPProjector,
-        two_step_projector: BimachineSLPProjector,
         source: DoubleReverseSource,
         issuer: ArenaToken,
         max_steps: int,
@@ -135,7 +143,6 @@ class DoubleReverseSourceAdapter:
         self.ledger = ledger
         self.arena = arena
         self.projector = projector
-        self.two_step_projector = two_step_projector
         self.source = source
         self.issuer = issuer
         self.max_steps = max_steps
@@ -405,23 +412,74 @@ class DoubleReverseSourceAdapter:
             )
             return None
 
-        bound = max(16, 4 * len(self.arena.nodes))
-        before = self.two_step_projector.section_calls
-        with self.ledger.reservation(self.scratch_owner, entries=bound, nodes=bound):
-            interior = self.two_step_projector.apply(trimmed)
-            result = self.arena.concat_many(
-                (
-                    self.arena.terminal(1) if left_birth else self.arena.empty_id,
-                    interior,
-                    self.arena.terminal(2) if right_birth else self.arena.empty_id,
+        fold_checkpoint = len(self.arena.nodes)
+        with LedgerReservation(self.ledger, self.scratch_owner) as workspace:
+            # The fixed allowance covers the identity and small local lists.
+            # Reachable task slots and retained rows are charged incrementally;
+            # the fold reserves its constant binary-power workspace only when
+            # it encounters a REPEAT action.
+            workspace.reserve(entries=16, nodes=16)
+
+            def reserve_fold_scratch(entries: int, nodes: int) -> None:
+                workspace.reserve(entries=entries, nodes=nodes)
+
+            def record_fold_work(amount: int) -> None:
+                self.ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_SQUARE_REGION_VISITS,
+                    amount,
                 )
-            )
-            if leading_trim:
-                if self.symbol_at(result, 0) != 0:
+
+            projection: FourPortSLPProjection | None = None
+            row: FourPortCarryRow | None = None
+            try:
+                projection = fold_two_step_slp(
+                    self.arena,
+                    trimmed,
+                    reserve_scratch=reserve_fold_scratch,
+                    on_region_visit=record_fold_work,
+                )
+                projection.validate_for(self.arena, trimmed)
+                row = projection.action.row(0, 0)
+                if row.forward_out != right_birth or row.reverse_out != left_birth:
+                    raise AssertionError(
+                        "four-port T² carries disagree with source seams"
+                    )
+                interior = row.output_in(self.arena)
+                result = self.arena.concat_many(
+                    (
+                        self.arena.terminal(1)
+                        if row.reverse_out
+                        else self.arena.empty_id,
+                        interior,
+                        self.arena.terminal(2)
+                        if row.forward_out
+                        else self.arena.empty_id,
+                    )
+                )
+                untrimmed_width = new_width + left_birth + right_birth
+                if self.arena.nodes[result].length != untrimmed_width:
+                    raise AssertionError("four-port T² changed its certified width")
+                if leading_trim and self.symbol_at(result, 0) != 0:
                     raise AssertionError("2rev10 normalized leading digit was not zero")
-                result = self.temporal_hashlife.part(
-                    result, 1, self.arena.nodes[result].length
-                )
+            except BaseException as error:
+                try:
+                    self.arena.rollback_unpublished_suffix(fold_checkpoint)
+                except BaseException as rollback_error:
+                    raise error from rollback_error
+                raise
+            finally:
+                # A propagated traceback must not retain the projection's
+                # four output roots or its temporary action rows.
+                projection = None
+                row = None
+
+        # `part` owns memoized slices. Keep it outside the rollback region so
+        # an exception cannot leave a live temporal slice pointing at removed
+        # fold nodes.
+        if leading_trim:
+            result = self.temporal_hashlife.part(
+                result, 1, self.arena.nodes[result].length
+            )
         if self.arena.nodes[result].length != final_width:
             raise AssertionError("2rev10 normalized square changed its certified width")
         if self.symbol_at(result, 0) == 0:
@@ -446,10 +504,6 @@ class DoubleReverseSourceAdapter:
                 _double_reverse_keys.DOUBLE_REVERSE_REPRESENTED_GROWTH_CELLS,
                 final_width - width,
             )
-        self.ledger.bump(
-            _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_SQUARE_REGION_VISITS,
-            self.two_step_projector.section_calls - before,
-        )
         return result
 
     def _fits_state_bits(self, root: int, width: int) -> bool:

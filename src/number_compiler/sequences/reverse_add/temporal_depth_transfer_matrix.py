@@ -574,6 +574,13 @@ class ConditionalQ19DepthWindow:
                 expected_rows
             ):
                 raise ValueError("source pair path was not guarded before composition")
+            expected_action, expected_affine = _pointed_path_actions(
+                self.source_pair_path
+            )
+            if self.action.rows != expected_action.rows:
+                raise ValueError("pointed relation differs from its issued path")
+            if self.affine_action != expected_affine:
+                raise ValueError("pointed affine action differs from its issued path")
 
     @property
     def physical_interval(self) -> tuple[int, int]:
@@ -716,11 +723,14 @@ def conditional_depth_window(
             _phase_matrix(phase, source_domains[index], domains[index + 1])
             for index, phase in enumerate(phases)
         )
-    action = BooleanPairMatrix.identity()
-    affine_action = Q19AffinePairMatrix.identity()
-    for matrix in matrices:
-        action = action.then(matrix)
-        affine_action = affine_action.then(Q19AffinePairMatrix.from_boolean(matrix))
+    if source_pair_path is None:
+        action = BooleanPairMatrix.identity()
+        affine_action = Q19AffinePairMatrix.identity()
+        for matrix in matrices:
+            action = action.then(matrix)
+            affine_action = affine_action.then(Q19AffinePairMatrix.from_boolean(matrix))
+    else:
+        action, affine_action = _pointed_path_actions(source_pair_path)
     record = ConditionalQ19DepthWindow(
         source_word,
         position,
@@ -736,6 +746,33 @@ def conditional_depth_window(
     issued = issue_q19_record(record, {"_issued_self": ref(record)}, _ISSUER)
     issued.validate()
     return issued
+
+
+def _pointed_path_actions(
+    path: tuple[tuple[int, int], ...],
+) -> tuple[BooleanPairMatrix, Q19AffinePairMatrix]:
+    """Build the exact relation and affine cocycle for one checked finite path.
+
+    Per-phase source guards are checked before this projection. The result is
+    only the finite endpoint action; it carries no authority to repeat the
+    path or extend it beyond the supplied roots.
+    """
+    if type(path) is not tuple or len(path) < 2:
+        raise ValueError("pointed Q19 path needs at least one adjacent edge")
+    source_index = pair_index(path[0])
+    target_index = pair_index(path[-1])
+    steps = len(path) - 1
+    rows = [0] * PAIR_COUNT
+    rows[source_index] = 1 << target_index
+    action = BooleanPairMatrix(tuple(rows))
+
+    source_sum = sum(path[0])
+    target_sum = sum(path[-1])
+    offset = (target_sum - pow(2, steps, 5) * source_sum) % 5
+    affine_rows: list[tuple[tuple[int, int], ...]] = [()] * PAIR_COUNT
+    affine_rows[source_index] = ((target_index, 1 << offset),)
+    affine = Q19AffinePairMatrix(steps, tuple(affine_rows))
+    return action, affine
 
 
 __all__ = [

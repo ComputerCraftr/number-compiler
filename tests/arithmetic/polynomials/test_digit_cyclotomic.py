@@ -4,6 +4,7 @@ from typing import TypedDict
 
 import pytest
 
+import number_compiler.arithmetic.polynomials.digit_cyclotomic as digit_cyclotomic_module
 from number_compiler.arithmetic.carry.carry_normalization import (
     RadixCarryBlock,
     end_around_normalization_defect,
@@ -29,6 +30,8 @@ from number_compiler.arithmetic.polynomials.cyclotomic_family import (
 )
 from number_compiler.arithmetic.polynomials.digit_cyclotomic import CyclotomicDigitBlock
 from number_compiler.arithmetic.polynomials.polynomial import (
+    evaluate_polynomial,
+    polynomial_divide_exact,
     polynomial_multiply,
     polynomial_remainder_monic,
 )
@@ -168,6 +171,64 @@ def test_base_minus_z_unit_recovers_carry_component_without_retaining_carry_stat
         component = normalization_component(defect, order=order, modulus=32)
         assert component.normalization_factor_is_unit
         assert component.carry_recovered_exactly
+
+
+def test_radix10_mod32_linear_inverse_uses_modular_synthetic_division(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected_by_order: dict[int, tuple[int, ...]] = {}
+    for order in range(1, 25):
+        block = CyclotomicDigitBlock.identity(order=order, modulus=32)
+        divisor_value = evaluate_polynomial(block.divisor, 10)
+        numerator = list(block.divisor)
+        numerator[0] -= divisor_value
+        quotient = polynomial_divide_exact(tuple(numerator), (-10, 1))
+        assert quotient is not None
+        scalar_inverse = pow(divisor_value % 32, -1, 32)
+        expected_by_order[order] = block.ring.reduce(
+            tuple(scalar_inverse * coefficient for coefficient in quotient)
+        )
+
+    evaluate = evaluate_polynomial
+
+    def forbid_large_divisor_evaluation(
+        coefficients: tuple[int, ...], point: int
+    ) -> int:
+        if point == 10:
+            raise AssertionError("mod-32 inverse materialized F(10)")
+        return evaluate(coefficients, point)
+
+    monkeypatch.setattr(
+        digit_cyclotomic_module,
+        "evaluate_polynomial",
+        forbid_large_divisor_evaluation,
+    )
+    for order in range(1, 25):
+        block = CyclotomicDigitBlock.identity(order=order, modulus=32)
+        assert block.linear_factor_is_unit(10)
+        inverse = block.linear_factor_inverse_residue(10)
+        assert inverse == expected_by_order[order]
+        factor = block.ring.reduce((10, -1))
+        assert block.ring.multiply(factor, inverse) == block.ring.one
+
+    # The existing normalization consumer must take this route too, including
+    # nonzero outgoing boundaries and jets where z**order need not be one.
+    defect = linear_normalization_defect((7, 12, 8, 15, 3, 30), base=10)
+    for order, power in ((1, 3), (3, 2), (11, 1)):
+        component = normalization_component(
+            defect, order=order, modulus=32, power=power
+        )
+        assert component.identity_holds
+        assert component.carry_recovered_exactly
+
+    # The formula depends on z being a unit. A non-cyclotomic quotient with
+    # an even constant term must reject without evaluating the large F(10).
+    singular = CyclotomicDigitBlock.from_coefficients(
+        (1,), order=1, modulus=32, factor=(2, 1)
+    )
+    assert not singular.linear_factor_is_unit(10)
+    with pytest.raises(ValueError, match="nonunit-linear-normalization"):
+        singular.linear_factor_inverse_residue(10)
 
 
 @pytest.mark.parametrize("sign", [0, 1, -1])

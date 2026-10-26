@@ -89,10 +89,10 @@ def identity(
     (
         identity(),
         BaseBlockEffect(2),
-        DigitNormalizeBlockEffect(2),
-        NonblankBlockEffect(2, 2),
         CollatzPhysicalBlockEffect(),
-        PhysicalCollatzFourBlockEffect(),
+        pytest.param(DigitNormalizeBlockEffect(2), marks=pytest.mark.validation),
+        pytest.param(NonblankBlockEffect(2, 2), marks=pytest.mark.validation),
+        pytest.param(PhysicalCollatzFourBlockEffect(), marks=pytest.mark.validation),
     ),
 )
 def test_primitive_functions_exhaust_every_admitted_state_and_symbol(

@@ -42,7 +42,9 @@ def test_mismatched_cli_sample_is_retained_before_rejection(
 ) -> None:
     from devtools.benchmarks import public_query_comparison as module
 
-    def wrong(arguments: list[str], *, fresh: bool) -> tuple[float, dict[str, object]]:
+    def wrong(
+        arguments: list[str], *, fresh: bool, shared_cache: bool = True
+    ) -> tuple[float, dict[str, object]]:
         return 0.01, {"value": "0", "info": {"metrics": None}}
 
     monkeypatch.setattr(module, "cli_sample", wrong)
@@ -64,7 +66,7 @@ def test_info_only_comparison_skips_value_reference_and_point_demand(
     calls: list[list[str]] = []
 
     def observe(
-        arguments: list[str], *, fresh: bool
+        arguments: list[str], *, fresh: bool, shared_cache: bool = True
     ) -> tuple[float, dict[str, object]]:
         calls.append(arguments)
         assert "--no-value" in arguments
@@ -97,7 +99,7 @@ def test_mismatched_observation_sample_is_retained_before_rejection(
     calls = 0
 
     def changing(
-        _arguments: list[str], *, fresh: bool
+        _arguments: list[str], *, fresh: bool, shared_cache: bool = True
     ) -> tuple[float, dict[str, object]]:
         nonlocal calls
         calls += 1

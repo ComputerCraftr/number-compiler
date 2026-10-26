@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import pytest
 
+from number_compiler.sequences.comma import (
+    boundary_occurrence_chart as occurrence_chart_module,
+)
 from number_compiler.sequences.comma import occurrence as occurrence_module
 from number_compiler.sequences.comma.arithmetic import comma_children, decimal_sector
 from number_compiler.sequences.comma.boundary_quotient import (
@@ -150,9 +153,57 @@ def test_terminal_coordinates_reuse_the_validated_exact_width_and_phase(
     def poisoned_sector(*_args: object, **_kwargs: object) -> object:
         pytest.fail("terminal projection rescanned the large literal")
 
-    monkeypatch.setattr(occurrence_module, "decimal_sector", poisoned_sector)
+    monkeypatch.setattr(
+        occurrence_module, "decimal_sector", poisoned_sector, raising=False
+    )
     assert prefix.terminal_exponent == source.exponent + prefix.width_delta
     assert prefix.terminal_c1_phase.suffix == prefix.terminal_low_suffix
+
+
+def test_chart_c1_consumer_avoids_reopening_each_large_source_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = BoundaryState("N", 2, 5)
+    source = BoundaryOccurrence(state, 5)
+    template = construct_macro(state, grouped_near=True)
+    current = source.value()
+    source_value = current
+    steps = template.weight.evaluate(source.exponent)
+    for _ in range(steps):
+        children = comma_children(current)
+        assert len(children) == 1
+        current = children[0]
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("chart C1 consumer reopened an already selected source path")
+
+    for module in (occurrence_module, occurrence_chart_module):
+        monkeypatch.setattr(module, "decimal_sector", forbidden, raising=False)
+        monkeypatch.setattr(module, "source_bound_return", forbidden, raising=False)
+    prefix = OccurrencePrefixReturn(source, template)
+    assert prefix.transition_count == steps
+    assert prefix.terminal_value == current
+    assert prefix.c1_count == current // 100 - source_value // 100
+
+
+def test_macro_occurrence_rejects_a_changed_chart_segment() -> None:
+    source = BoundaryOccurrence(BoundaryState("N", 2, 5), 5)
+    template = construct_macro(source.state, grouped_near=True)
+    segment = template.chart_segments[0]
+    duration = segment.duration
+    object.__setattr__(
+        segment,
+        "duration",
+        type(duration)(
+            duration.scale,
+            duration.exponent_delta,
+            duration.offset + 1,
+            duration.denominator,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="snapshot"):
+        OccurrencePrefixReturn(source, template)
 
 
 def test_published_prefix_rejects_changed_macro_weight() -> None:

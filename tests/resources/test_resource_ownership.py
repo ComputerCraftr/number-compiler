@@ -7,7 +7,7 @@ import gc
 import weakref
 from collections.abc import Callable, Iterator, Mapping, MutableSequence
 from types import MappingProxyType, SimpleNamespace
-from typing import ClassVar
+from typing import ClassVar, NamedTuple
 
 import pytest
 
@@ -112,6 +112,34 @@ def test_cached_callable_and_class_level_store_are_not_ownership_exceptions() ->
     ledger = ResourceLedger()
     ledger.register_execution_root(root)
     assert audit_execution_ownership(ledger).unregistered_containers == 3
+
+
+def test_ownership_audit_only_allows_empty_namedtuple_default_metadata() -> None:
+    class NoDefaults(NamedTuple):
+        value: int
+
+    class HasDefault(NamedTuple):
+        value: int = 1
+
+    class Root:
+        def __init__(self, payload: object) -> None:
+            self.payload = payload
+
+    class OrdinaryCache:
+        cache: dict[str, int] = {}
+
+    ledger = ResourceLedger()
+    root = Root(NoDefaults(2))
+    ledger.register_execution_root(root)
+    assert audit_execution_ownership(ledger).violations == ()
+
+    root.payload = HasDefault()
+    cache_owner = OrdinaryCache()
+    ledger.register_execution_root(cache_owner)
+    violations = audit_execution_ownership(ledger).violations
+    paths = {violation.path for violation in violations}
+    assert any("._field_defaults" in path for path in paths)
+    assert any(".class.cache" in path for path in paths)
 
 
 def test_execution_root_registry_is_weak_and_factory_writes_are_seen() -> None:

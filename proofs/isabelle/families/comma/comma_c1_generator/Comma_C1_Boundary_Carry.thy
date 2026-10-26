@@ -7,6 +7,133 @@ leading boundary. After stripping two digits, its precision is p-2. Thus the
 simplified carry-wire formula applies for j<p, not j\<le>p. The top wire must
 retain the actual high-prefix residue through comma_carry_wire.\<close>
 
+fun comma_c1_carry_wire_total ::
+  "nat \<Rightarrow> comma_c1_phase \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat" where
+  "comma_c1_carry_wire_total j C H 0 = 0"
+| "comma_c1_carry_wire_total j C H (Suc n) =
+    comma_c1_carry_wire_total j C H n +
+      (if comma_carry_wire j C H n then 1 else 0)"
+
+lemma comma_c1_carry_quotient_suc:
+  fixes H K M :: nat
+  assumes modulus: "2 \<le> M"
+  shows "(H mod M + (K + 1)) div M =
+      (H mod M + K) div M +
+        (if (H + K + 1) mod M = 0 then 1 else 0)"
+proof -
+  let ?x = "H mod M + K"
+  let ?q = "?x div M"
+  let ?r = "?x mod M"
+  have decomposition: "?q * M + ?r = ?x"
+    by (rule div_mult_mod_eq)
+  have positive_modulus: "M > 0" using modulus by arith
+  have remainder: "?r < M" by (simp add: positive_modulus)
+  have remainder_suc: "?r + 1 \<le> M" using remainder by arith
+  have x_suc: "?x + 1 = ?q * M + (?r + 1)"
+    using decomposition by arith
+  have phase: "(H + K + 1) mod M = (?x + 1) mod M"
+    by (simp only: add.assoc; rule mod_add_left_eq[symmetric])
+  have phase_suc: "(?x + 1) mod M = (?r + 1) mod M"
+  proof -
+    have qmod: "(?q * M) mod M = 0"
+      by (simp add: mult.commute)
+    have "(?x + 1) mod M = (?q * M + (?r + 1)) mod M"
+      using x_suc by simp
+    also have "... = ((?q * M) mod M + (?r + 1) mod M) mod M"
+      by (rule mod_add_eq[symmetric])
+    also have "... = (?r + 1) mod M" using qmod by simp
+    finally show ?thesis .
+  qed
+  have phase_zero: "((H + K + 1) mod M = 0) \<longleftrightarrow> ?r + 1 = M"
+  proof -
+    have remainder_zero: "(?r + 1) mod M = 0 \<longleftrightarrow> ?r + 1 = M"
+    proof
+      assume zero: "(?r + 1) mod M = 0"
+      have not_less: "\<not> ?r + 1 < M"
+      proof
+        assume less: "?r + 1 < M"
+        have "(?r + 1) mod M = ?r + 1"
+          using less modulus by simp
+        with zero have "?r + 1 = 0" by simp
+        then show False by simp
+      qed
+      show "?r + 1 = M"
+        using not_less remainder_suc by arith
+    next
+      assume equal: "?r + 1 = M"
+      then show "(?r + 1) mod M = 0" by simp
+    qed
+    have "(H + K + 1) mod M = (?r + 1) mod M"
+      using phase phase_suc by simp
+    then show ?thesis using remainder_zero by simp
+  qed
+  have quotient_suc: "(?x + 1) div M = ?q + (?r + 1) div M"
+    using div_add1_eq[of ?x 1 M] modulus by simp
+  have remainder_suc_div:
+    "(?r + 1) div M = (if ?r + 1 = M then 1 else 0)"
+  proof (cases "?r + 1 = M")
+    case True
+    then show ?thesis by simp
+  next
+    case False
+    have less: "?r + 1 < M"
+      using remainder_suc False by arith
+    then show ?thesis by simp
+  qed
+  show ?thesis
+    using quotient_suc remainder_suc_div phase_zero
+    by (simp add: add.assoc)
+qed
+
+lemma comma_c1_carry_wire_total_exact:
+  fixes j :: nat
+  assumes wire: "2 \<le> j"
+  shows "comma_c1_carry_wire_total j C H n =
+    (H mod 10^(j-1) + comma_c1_count C n) div 10^(j-1)"
+proof (induction n)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  let ?M = "(10::nat)^(j-1)"
+  have modulus: "2 \<le> ?M"
+  proof -
+    have exponent: "1 \<le> j-1" using wire by arith
+    have "2 \<le> (10::nat)^1" by simp
+    also have "... \<le> 10^(j-1)"
+      by (rule power_increasing) (use exponent in auto)
+    finally show ?thesis .
+  qed
+  have carry:
+    "comma_carry_wire j C H n =
+      (comma_c1 (comma_c1_iter n C) \<and>
+        (H + comma_c1_count C n + 1) mod ?M = 0)"
+    using wire by (simp add: comma_carry_wire_def comma_c1_return_def)
+  have count:
+    "comma_c1_count C (Suc n) = comma_c1_count C n +
+      (if comma_c1 (comma_c1_iter n C) then 1 else 0)"
+    by simp
+  have quotient_step:
+    "(H mod ?M + (comma_c1_count C n + 1)) div ?M =
+      (H mod ?M + comma_c1_count C n) div ?M +
+        (if (H + comma_c1_count C n + 1) mod ?M = 0 then 1 else 0)"
+    using comma_c1_carry_quotient_suc
+      [where H=H and K="comma_c1_count C n" and M="?M", OF modulus]
+    by simp
+  show ?case
+  proof (cases "comma_c1 (comma_c1_iter n C)")
+    case True
+    then show ?thesis
+      using Suc.IH carry count quotient_step
+      by (simp add: comma_c1_carry_wire_total.simps)
+  next
+    case False
+    then show ?thesis
+      using Suc.IH carry count
+      by (simp add: comma_c1_carry_wire_total.simps)
+  qed
+qed
+
 lemma comma_c1_zero_tail_wire:
   assumes wire: "2 \<le> j" and zero: "H mod 10^(j-1) = 0"
   shows "comma_carry_wire j C H n =
@@ -74,7 +201,7 @@ qed
 
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles @{thms
-    comma_c1_zero_tail_wire comma_c1_nine_tail_wire
+    comma_c1_carry_wire_total_exact comma_c1_zero_tail_wire comma_c1_nine_tail_wire
     comma_c1_boundary_Z_wire comma_c1_boundary_N_wire})
     then () else error "C1 boundary carry proof depends on an oracle";
 \<close>

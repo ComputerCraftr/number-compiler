@@ -409,7 +409,7 @@ class MahlerOddToOddAction:
             raise ValueError("odd-to-odd run length must be positive")
         if type(max_extent) is not int or max_extent < 1 or exponent > max_extent:
             raise BlockContextBudgetExceeded("odd macro exceeds temporal bit budget")
-        zero_tail = MahlerJointFutureAction.bit(0).power(
+        zero_tail = MahlerJointFutureAction.zero_run(
             exponent - 1, max_extent=max_extent
         )
         joint = MahlerJointFutureAction.bit(1).then(zero_tail)

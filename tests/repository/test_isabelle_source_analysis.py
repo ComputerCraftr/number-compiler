@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from pathlib import Path
 
 import pytest
 
+from devtools.checks.isabelle_references import ReferenceEvidence
 from devtools.checks.isabelle_source_analysis import (
     analyze_isabelle_source,
     analyze_isabelle_tree,
@@ -124,6 +124,133 @@ def test_unused_is_review_only_and_attributes_and_antiquotes_are_roots() -> None
     }
 
 
+def test_unused_functions_and_theorems_ignore_ml_strings_but_keep_roots() -> None:
+    source = r"""
+ definition unused_function where "unused_function x = x * 2 + 1"
+ definition ml_only_function where "ml_only_function x = x + 2"
+ definition used_function where "used_function x = unused_function x"
+ definition simp_root[simp] where "simp_root x = x + 1"
+ lemma referenced_fact: "True" by simp
+ lemma ml_only_fact: "True" by simp
+ lemma proof_root: "True" by (rule referenced_fact)
+ lemma antiquote_root: "True" by (insert @{thm referenced_fact}; simp)
+ ML \<open>
+   val diagnostic = "unused_function ml_only_function referenced_fact"
+   val quoted_fact = @{thm referenced_fact}
+   val only_ml_fact = @{thm ml_only_fact}
+ \<close>
+"""
+    analysis = analyze_isabelle_source(source)
+    candidates = {item.declaration.name: item for item in analysis.unused_candidates}
+
+    assert "unused_function" not in candidates
+    assert "ml_only_function" in candidates
+    assert "used_function" in candidates
+    assert "simp_root" not in candidates
+    assert "referenced_fact" not in candidates
+    assert "ml_only_fact" not in candidates
+    assert "proof_root" in candidates
+    assert "antiquote_root" in candidates
+    assert {item.confidence for item in candidates.values()} == {
+        "dynamic-review",
+        "exported-review",
+    }
+
+
+def test_ml_string_is_not_a_cross_file_reference(tmp_path: Path) -> None:
+    (tmp_path / "A.thy").write_text('definition helper where "helper x = x * 2 + 1"\n')
+    (tmp_path / "B.thy").write_text(
+        r'ML \<open> val message = "helper" \<close>' + "\n"
+    )
+    analysis = analyze_isabelle_tree(tmp_path)
+    candidate = next(
+        item for item in analysis.unused_candidates if item.declaration.name == "helper"
+    )
+
+    assert candidate.declaration.name == "helper"
+
+
+def test_ml_antiquotation_is_a_cross_file_reference(tmp_path: Path) -> None:
+    (tmp_path / "A.thy").write_text('lemma cited_fact: "True" by simp\n')
+    (tmp_path / "B.thy").write_text(
+        r"ML \<open> val fact = @{thm cited_fact} \<close>" + "\n"
+    )
+    analysis = analyze_isabelle_tree(tmp_path)
+
+    assert "cited_fact" not in {
+        item.declaration.name for item in analysis.unused_candidates
+    }
+
+
+def test_dynamic_theorem_lookup_is_reported_across_files_as_review_only(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "Facts.thy").write_text('lemma looked_up: "True" by simp\n')
+    (tmp_path / "Lookup.thy").write_text(
+        r'ML \<open> val fact = Proof_Context.get_thm ctxt "looked_up" \<close>' + "\n"
+    )
+    from devtools.checks.isabelle_source_analysis import analysis_report
+
+    report = analysis_report(tmp_path)
+    candidate = next(
+        item for item in report["unused_candidates"] if item["name"] == "looked_up"
+    )
+
+    assert candidate["confidence"] == "dynamic-review"
+    assert "dynamic theorem lookup" in candidate["reason"]
+    assert any(
+        "dynamic theorem lookup may reference 'looked_up'" in item["reason"]
+        for item in report["unknown_references"]
+    )
+
+
+def test_nonliteral_dynamic_theorem_lookup_downgrades_tree_theorem_candidates(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "Facts.thy").write_text('lemma maybe_used: "True" by simp\n')
+    (tmp_path / "Lookup.thy").write_text(
+        r"ML \<open> val fact = Proof_Context.get_thm ctxt theorem_name \<close>" + "\n"
+    )
+    analysis = analyze_isabelle_tree(tmp_path)
+    candidate = next(
+        item
+        for item in analysis.unused_candidates
+        if item.declaration.name == "maybe_used"
+    )
+
+    assert candidate.confidence == "dynamic-review"
+    assert any(
+        item.reason == "dynamic theorem lookup has a nonliteral name"
+        for item in analysis.unknown_references
+    )
+
+
+def test_mutually_recursive_ml_fun_and_groups_are_inventoried_as_uncertain() -> None:
+    source = r"""
+ML \<open>
+  fun first x = x * 2 + 1
+  and second y = y * 2 + 1
+  fun third a = a * 2 + 1
+  and fourth b = b * 2 + 1
+\<close>
+"""
+    analysis = analyze_isabelle_source(source)
+    functions = [item for item in analysis.declarations if item.ml]
+
+    assert [item.name for item in functions] == [
+        "first",
+        "second",
+        "third",
+        "fourth",
+    ]
+    assert {item.command for item in functions} == {"ML mutual fun"}
+    assert not analysis.duplicates
+    assert any(
+        "group-level equivalence is not modeled" in item.reason
+        for item in analysis.unsupported_constructs
+    )
+
+
 def test_dynamic_references_are_reported_unknown_not_declared_dead() -> None:
     source = r"""
  definition private_one where "private_one x = x * 2 + 1"
@@ -139,7 +266,8 @@ def test_report_is_json_ready_and_preserves_paths(tmp_path: Path) -> None:
     path = tmp_path / "Example.thy"
     path.write_text('definition one where "one x = x * 2 + 1"\n')
     report = analyze_isabelle_tree(tmp_path).as_dict()
-    assert isinstance(asdict(analyze_isabelle_tree(tmp_path)), dict)
+    assert isinstance(report, dict)
+    assert "reference_evidence" not in report
     assert report["declarations"][0]["path"] == str(path)
     assert report["declarations"][0]["line"] == 1
 
@@ -344,9 +472,77 @@ ML \<open>
     assert analysis.unsupported_constructs
 
 
+def test_ml_leading_whitespace_preserves_nested_scope() -> None:
+    for indent in ("", "    ", "\t"):
+        source = (
+            f"{indent}fun outer x =\n"
+            f"{indent}  let\n"
+            f"{indent}    fun nested y = y\n"
+            f"{indent}  in nested x end\n"
+            f"{indent}fun sibling z = z + 1\n"
+        )
+        analysis = analyze_isabelle_source(source, "fixture.ML")
+        assert [item.name for item in analysis.declarations] == ["outer", "sibling"]
+        assert "fun nested" in analysis.declarations[0].body
+
+
+def test_ml_nested_let_bindings_stay_in_outer_body_and_siblings_are_analyzed() -> None:
+    source = r"""
+ML \<open>
+  fun outer x =
+    let
+      fun inner y = y * 2 + 1
+      val intermediate = inner x
+    in
+      intermediate + 3
+    end
+  fun sibling z = z * 2 + 1
+  fun duplicate q = q * 2 + 1
+\<close>
+"""
+    analysis = analyze_isabelle_source(source)
+    ml_declarations = [item for item in analysis.declarations if item.ml]
+
+    assert [item.name for item in ml_declarations] == [
+        "outer",
+        "sibling",
+        "duplicate",
+    ]
+    outer = ml_declarations[0].body
+    assert "fun inner y = y * 2 + 1" in outer
+    assert "val intermediate = inner x" in outer
+    assert "intermediate + 3" in outer
+    assert "end" in outer
+
+    duplicate_names = {
+        declaration.name
+        for group in analysis.duplicates
+        for declaration in group.declarations
+    }
+    assert duplicate_names == {"sibling", "duplicate"}
+
+
 def test_unused_parameter_positions_remain_semantically_distinct() -> None:
     source = """
  definition first where "first x y = x * 2 + 1"
  definition second where "second x y = y * 2 + 1"
 """
     assert _duplicate_names(source) == set()
+
+
+def test_dynamic_lookup_summary_is_computed_once_per_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[None] = []
+
+    def lookup_names(_evidence: ReferenceEvidence) -> frozenset[str]:
+        calls.append(None)
+        return frozenset()
+
+    monkeypatch.setattr(
+        ReferenceEvidence, "dynamic_lookup_names", property(lookup_names)
+    )
+    source = "\n".join(f'lemma unused_{index}: "True" by simp' for index in range(12))
+    analysis = analyze_isabelle_source(source, Path("Summary.thy"))
+    assert len(analysis.unused_candidates) == 12
+    assert len(calls) == 1

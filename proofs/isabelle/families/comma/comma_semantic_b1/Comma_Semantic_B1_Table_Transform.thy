@@ -348,16 +348,6 @@ proof -
       comma_semantic_b1_source_slot_scope_def)
 qed
 
-lemma comma_semantic_b1_round_output_root_exact:
-  assumes clock: "clock < 924" and root: "root < 46"
-  shows "comma_semantic_b1_round_output clock
-      (Comma_Entry 1 0 (comma_offset_representatives ! root)) =
-    comma_semantic_b1 clock root"
-  using clock root
-  by (simp add: comma_semantic_b1_round_output_def
-      comma_semantic_b1_def comma_decisive_B1_def
-      comma_decisive_B1_source_def)
-
 text \<open>
 The recursive provider follows normalized Goto children under strict sector
 decrease. A Goto intersects the current slot cylinder with its completed
@@ -405,7 +395,6 @@ lemma comma_semantic_b1_source_slot_round_output:
       "source=comma_source_continuation_base source"
     and admitted: "comma_round_admitted source"
     and slot: "slot < comma_decisive_sector_period source"
-    and phase: "phase<924"
     and selected: "phase mod comma_decisive_sector_period source=slot"
   shows "comma_semantic_b1_source_slot_output phase
       (comma_semantic_b1_source_slot_action source slot) =
@@ -415,19 +404,11 @@ proof -
   let ?action = "comma_semantic_b1_source_slot_action source slot"
   obtain target move where packet: "?packet=(target,move)"
     by (cases ?packet) auto
-  have base_shift: "comma_source_continuation_shift source=0"
-    using normalized by (cases source) simp_all
-  have transport_zero:
-      "comma_source_continuation_transport 0
-        (comma_source_continuation_action_at source phase) =
-        comma_source_continuation_action_at source phase"
-    by (cases "comma_source_continuation_action_at source phase") simp_all
-  have apply_exact:
+  have action_at_packet:
     "comma_source_continuation_action_at source phase =
         comma_source_continuation_action_of_packet ?packet"
-    using comma_source_continuation_apply_exact[OF admitted, of phase]
-      normalized base_shift phase transport_zero
-    by simp
+    using comma_source_continuation_signature_slot[OF admitted, of phase]
+      normalized by simp
   have action_periodic:
     "comma_source_continuation_action_at source slot =
         comma_source_continuation_action_at source phase"
@@ -438,12 +419,12 @@ proof -
       "?action=comma_source_continuation_action_at source slot"
     using comma_semantic_b1_source_slot_action_refines[OF admitted, of slot]
     by simp
-  have action_packet:
+  have slot_action_packet:
       "?action=comma_source_continuation_action_of_packet ?packet"
-    using action_slot action_periodic apply_exact by simp
+    using action_slot action_periodic action_at_packet by simp
   have action_move:
       "?action=comma_source_continuation_action_of_packet (target,move)"
-    using action_packet packet by simp
+    using slot_action_packet packet by simp
   have target_admitted: "comma_round_admitted target"
     using comma_decisive_packet_target_admitted[OF admitted, of phase] packet
     by simp
@@ -625,8 +606,8 @@ ML \<open>
     comma_semantic_b1_source_slot_action_code
     comma_semantic_b1_source_slot_actions_refines
     comma_semantic_b1_source_slot_action_shape
-    comma_semantic_b1_source_period_admitted
-    comma_semantic_b1_round_output_root_exact};
+    comma_semantic_b1_source_slot_round_output
+    comma_semantic_b1_source_period_admitted};
   val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}
     "B1 table-transform foundations" checked;
 \<close>

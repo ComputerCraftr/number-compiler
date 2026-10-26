@@ -1,11 +1,11 @@
 """Bounded runtime access to an admitted semantic FutureCID table.
 
-This module decodes a compact source-to-class map and one ordered transition
-row per class.  It never constructs the semantic graph or derives a
-classification from arithmetic.  Candidate JSON is untrusted input: a
-private immutable registry must bind the exact canonical artifact digest to
-the accepted kernel theorem before a provider is returned.  That registry is
-deliberately empty today.
+The codec owns bounded candidate parsing and this module owns admitted runtime
+providers, selection seals, and their ledger-scoped lifecycle. It never
+constructs the semantic graph or derives a classification from arithmetic.
+Candidate JSON is untrusted input: a private immutable registry must bind the
+exact canonical artifact digest to the accepted kernel theorem before a
+provider is returned. That registry is deliberately empty today.
 
 The required kernel contract is the producer-level release theorem: it joins
 the decade writer and prefix-selection model with the semantic global-safety
@@ -24,29 +24,18 @@ loading its exact artifact.
 
 from __future__ import annotations
 
-import base64
-import binascii
-import json
-from collections.abc import Callable, Mapping
-from contextlib import ExitStack
+from collections.abc import Callable, Generator, Mapping
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from functools import partial
-from hashlib import sha256
 from pathlib import Path
 from threading import RLock
 from types import MappingProxyType
-from typing import Final, Literal, Self, TypeVar, cast
+from typing import Final, Literal, Self, TypeVar
+from weakref import ReferenceType, ref
 
-from number_compiler.arithmetic.contracts.input_validation import (
-    is_mapping_instance,
-    is_object_list_instance,
-    is_runtime_instance,
-)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
-from number_compiler.resources.bounded_json import (
-    NodeReserver,
-    snapshot_canonical_json,
-)
+from number_compiler.resources.bounded_json import NodeReserver
 from number_compiler.resources.immutable_signature import (
     ScalarSignature,
     matches_scalar_signature,
@@ -57,11 +46,12 @@ from number_compiler.resources.ledger import (
     ResourceLedger,
 )
 from number_compiler.resources.metric_keys import comma as _comma_keys
+from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
 from number_compiler.sequences.comma import future_authority as _future_authority
-from number_compiler.sequences.comma.boundary_chart import PERIOD
 from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
     boundary_source_index,
+    boundary_state_signature,
 )
 from number_compiler.sequences.comma.future_authority import (
     FutureClass,
@@ -73,40 +63,70 @@ from number_compiler.sequences.comma.future_authority import (
     valid_artifact_digest,
 )
 from number_compiler.sequences.comma.future_provider_codec import (
-    decode_class_map,
-    decode_class_rows,
+    FUTURE_CANDIDATE_AUTHORITY,
+    FUTURE_CANDIDATE_FORMAT,
+    FUTURE_SOURCE_UNIVERSE,
+    MAX_CANDIDATE_BYTES,
+    MAX_CANDIDATE_JSON_DEPTH,
+    MAX_CANDIDATE_JSON_NODES,
+    MAX_CID_VARINT_BYTES,
+    SOURCE_COUNT,
+    ParsedFutureCandidate,
+    future_candidate_sha256,
+    parse_future_candidate,
+    preflight_future_candidate,
+    validate_record,
+)
+from number_compiler.sequences.comma.future_provider_codec import (
+    charge_work_amount as _charge_work,
+)
+from number_compiler.sequences.comma.future_provider_codec import (
+    parse_future_candidate_file as _parse_future_candidate_file,
+)
+from number_compiler.sequences.comma.future_provider_codec import (
+    parse_preflighted_future_candidate as _parse_preflighted_future_candidate,
 )
 from number_compiler.sequences.comma.future_provider_memory import (
+    RetainedSemanticFutureProvider,
+    SemanticFutureProviderAuditSnapshot,
+    SemanticFutureProviderLease,
+    SemanticFutureProviderStoreAuditSnapshot,
+    admission_metadata_matches,
+    audit_semantic_future_provider_store,
+    candidate_admission_matches,
     candidate_workspace_cost,
+    close_provider_store,
+    copy_admission_metadata,
+    make_retained_provider_entry,
+    provider_audit_snapshot,
     provider_node_cost,
+    provider_store_audit_snapshot,
+    provider_table_bindings_match,
+    resolve_provider_lease_locked,
+    retained_provider_entry_matches,
 )
 
-SOURCE_COUNT = 2 * 8 * PERIOD
-FUTURE_CANDIDATE_FORMAT: Final[str] = "comma-semantic-future-candidate-v2"
-FUTURE_CANDIDATE_AUTHORITY = "untrusted-source-derived-candidate"
-FUTURE_PROVIDER_ASSET = "comma_semantic_future_v2.json"
-FUTURE_SOURCE_UNIVERSE = "kind=N,Z; a=2..9; residue=0..923; nested-order"
+FUTURE_PROVIDER_ASSET: Final[str] = "comma_semantic_future_v2.json"
 FUTURE_PROVIDER_CONTRACT: Final[str] = "comma-semantic-future-provider-exact-v1"
-MAX_CANDIDATE_BYTES = 2 * 1024 * 1024
-MAX_CANDIDATE_JSON_DEPTH = 16
-MAX_CANDIDATE_JSON_NODES = 1_048_576
-MAX_CID_VARINT_BYTES = 2
-_RECORD_FIELDS = frozenset(
-    {
-        "format",
-        "authority",
-        "state_universe",
-        "class_of_state_varint_base64",
-        "controls",
-        "ordered_children",
-        "class_rank_candidate",
-    }
-)
+FUTURE_PROVIDER_AUDIT_FAMILY: Final[str] = "comma"
+FUTURE_PROVIDER_STORE_ROLE: Final[str] = "semantic_future_provider"
+FUTURE_PROVIDER_WORKSPACE_ROLE: Final[str] = "semantic_future_provider_workspace"
 # Deliberately empty until the FutureCID instance has passed the Isabelle
 # kernel gate and its exact artifact/theorem binding is reviewed for release.
 _ADMITTED_KERNEL_INSTANCES: Mapping[str, KernelInstanceAdmission] = MappingProxyType(
     dict[str, KernelInstanceAdmission]()
 )
+
+
+def registered_admission_metadata_matches(candidate: object, digest: str) -> bool:
+    """Match copied metadata against the private kernel registry entry."""
+    if type(candidate) is not KernelInstanceAdmission or not valid_artifact_digest(
+        digest
+    ):
+        return False
+    return admission_metadata_matches(
+        candidate, _ADMITTED_KERNEL_INSTANCES.get(digest), digest
+    )
 
 
 registered_global_release_artifact_sha256 = partial(
@@ -116,17 +136,8 @@ registered_global_release_artifact_sha256 = partial(
 
 
 _PROVIDER_SEAL = object()
+_SELECTION_SEAL = object()
 WorkCharger = Callable[[int], None]
-_STORE_LOCK_TYPE = type(RLock())
-
-
-@dataclass(frozen=True, slots=True)
-class ParsedFutureCandidate:
-    """Structurally checked candidate data with no runtime authority."""
-
-    source_classes: tuple[int, ...]
-    classes: tuple[FutureClass, ...]
-    artifact_sha256: str
 
 
 _Literal = TypeVar("_Literal")
@@ -134,7 +145,7 @@ _BeforeFutureParse = Callable[[Mapping[str, object]], None]
 _ReserveDecodedShape = Callable[[Mapping[str, object]], None]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class UnrankedChildSelection:
     """Unique unranked quotient edge, without occurrence reconstruction."""
 
@@ -143,8 +154,47 @@ class UnrankedChildSelection:
     fork_coefficient: int
     ordered_child_classes: tuple[int, int]
     selected_slot: Literal[0, 1]
+    _provider_authority: object = field(repr=False, compare=False, hash=False)
+    _provider_authority_snapshot: object = field(repr=False, compare=False, hash=False)
+    _fields_snapshot: tuple[object, ...] = field(repr=False, compare=False, hash=False)
+    _seal: object = field(repr=False, compare=False, hash=False)
 
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        source: BoundaryState,
+        source_class: int,
+        fork_coefficient: int,
+        ordered_child_classes: tuple[int, int],
+        selected_slot: Literal[0, 1],
+        *,
+        _provider_authority: object | None = None,
+        _seal: object | None = None,
+    ) -> None:
+        if _seal is not _SELECTION_SEAL or _provider_authority is None:
+            raise TypeError("use the checked provider selection issuer")
+        object.__setattr__(self, "source", source)
+        object.__setattr__(self, "source_class", source_class)
+        object.__setattr__(self, "fork_coefficient", fork_coefficient)
+        object.__setattr__(self, "ordered_child_classes", ordered_child_classes)
+        object.__setattr__(self, "selected_slot", selected_slot)
+        object.__setattr__(self, "_provider_authority", _provider_authority)
+        object.__setattr__(self, "_provider_authority_snapshot", _provider_authority)
+        object.__setattr__(self, "_fields_snapshot", self._current_fields_snapshot())
+        object.__setattr__(self, "_seal", _seal)
+        self._validate_fields()
+
+    def _current_fields_snapshot(self) -> tuple[object, ...]:
+        return (
+            boundary_state_signature(self.source),
+            self.source_class,
+            self.fork_coefficient,
+            self.ordered_child_classes,
+            self.selected_slot,
+        )
+
+    def _validate_fields(self) -> None:
+        if type(self.source) is not BoundaryState:
+            raise ValueError("future selection needs an exact source state")
         boundary_source_index(self.source)
         if type(self.source_class) is not int or self.source_class < 0:
             raise ValueError("future selection needs an exact source CID")
@@ -164,12 +214,47 @@ class UnrankedChildSelection:
         if type(self.selected_slot) is not int or self.selected_slot not in (0, 1):
             raise ValueError("future selection needs an exact ordered child slot")
 
+    def is_issued(self) -> bool:
+        """Check the immutable issuer seal before using this selection."""
+        if (
+            self._seal is not _SELECTION_SEAL
+            or self._provider_authority is not self._provider_authority_snapshot
+        ):
+            return False
+        try:
+            self._validate_fields()
+            return self._current_fields_snapshot() == self._fields_snapshot
+        except (AttributeError, TypeError, ValueError):
+            return False
+
+    def matches_provider(self, provider: object) -> bool:
+        """Require this selection to be issued by the exact provider instance."""
+        if not self.is_issued():
+            return False
+        if type(provider) is SemanticFutureProvider:
+            resolved = provider
+        elif type(provider) is SemanticFutureProviderLease:
+            try:
+                resolved = provider.resolve_provider(record_metrics=False)
+            except (PermissionError, RuntimeError, TypeError):
+                return False
+        else:
+            return False
+        try:
+            return resolved.matches_selection_authority(self._provider_authority)
+        except (PermissionError, RuntimeError, TypeError):
+            return False
+
     @property
     def selected_class(self) -> int:
+        if not self.is_issued():
+            raise ValueError("future selection fields changed after issuance")
         return self.ordered_child_classes[self.selected_slot]
 
     def select_literal(self, ordered_literals: tuple[_Literal, _Literal]) -> _Literal:
         """Select the exact caller-provided child at the checked N/Z slot."""
+        if not self.is_issued():
+            raise ValueError("future selection fields changed after issuance")
         if type(ordered_literals) is not tuple or len(ordered_literals) != 2:
             raise ValueError("future selection needs both ordered literal children")
         return ordered_literals[self.selected_slot]
@@ -177,7 +262,7 @@ class UnrankedChildSelection:
 
 @dataclass(frozen=True, slots=True, init=False)
 class SemanticFutureProvider:
-    """Immutable O(1) lookups over an admitted compact FutureCID artifact."""
+    """Bounded FutureCID data with execution authority only while store-retained."""
 
     _source_classes: tuple[int, ...]
     _classes: tuple[FutureClass, ...]
@@ -195,6 +280,40 @@ class SemanticFutureProvider:
     _class_signatures_binding: tuple[ScalarSignature, ...] = field(
         repr=False, compare=False, hash=False
     )
+    _selection_authority: object = field(repr=False, compare=False, hash=False)
+    _selection_authority_binding: object = field(repr=False, compare=False, hash=False)
+    _runtime_store_ref: ReferenceType[SemanticFutureProviderStore] | None = field(
+        repr=False, compare=False, hash=False
+    )
+
+    def matches_selection_authority(self, authority: object) -> bool:
+        """Check an issuer token against this currently admitted provider."""
+        self.require_runtime_admission()
+        return authority is self._selection_authority
+
+    def is_bound_to_store(self, store: object) -> bool:
+        store_ref = self._runtime_store_ref
+        return type(store_ref) is ReferenceType and store_ref() is store
+
+    def matches_retained_entry(
+        self,
+        retained: object,
+        store_binding_matches: bool,
+    ) -> bool:
+        """Validate the store's issuer record against this provider's exact rows."""
+        digest = self._digest
+        return (
+            type(retained) is RetainedSemanticFutureProvider
+            and retained.provider is self
+            and retained.artifact_sha256 == digest
+            and retained.source_classes is self._source_classes
+            and retained.classes is self._classes
+            and retained.row_signatures is self._class_signatures
+            and retained.admission is self._admission
+            and retained.selection_authority is self._selection_authority
+            and store_binding_matches
+            and registered_admission_metadata_matches(self._admission, digest)
+        )
 
     def __init__(
         self,
@@ -216,6 +335,10 @@ class SemanticFutureProvider:
         object.__setattr__(self, "_classes_binding", classes)
         object.__setattr__(self, "_class_signatures", signatures)
         object.__setattr__(self, "_class_signatures_binding", signatures)
+        selection_authority = object()
+        object.__setattr__(self, "_selection_authority", selection_authority)
+        object.__setattr__(self, "_selection_authority_binding", selection_authority)
+        object.__setattr__(self, "_runtime_store_ref", None)
 
     @classmethod
     def from_record(
@@ -227,7 +350,7 @@ class SemanticFutureProvider:
         _reserve_nodes: NodeReserver | None = None,
         _reserve_decoded_shape: _ReserveDecodedShape | None = None,
     ) -> SemanticFutureProvider:
-        """Load only an artifact already registered to an accepted kernel theorem."""
+        """Read a registered candidate; the ledger store issues runtime authority."""
         snapshot = preflight_future_candidate(
             record,
             charge_work=charge_work,
@@ -245,11 +368,12 @@ class SemanticFutureProvider:
 
     @classmethod
     def _from_parsed(cls, parsed: ParsedFutureCandidate) -> SemanticFutureProvider:
-        admission = _ADMITTED_KERNEL_INSTANCES.get(parsed.artifact_sha256)
-        if admission is None or not _admission_matches(admission, parsed):
+        registered = _ADMITTED_KERNEL_INSTANCES.get(parsed.artifact_sha256)
+        if registered is None or not _admission_matches(registered, parsed):
             raise PermissionError(
                 "no kernel-admitted semantic future artifact is registered"
             )
+        admission = copy_admission_metadata(registered)
         return cls(
             parsed.source_classes,
             parsed.classes,
@@ -269,47 +393,12 @@ class SemanticFutureProvider:
         _reserve_decoded_shape: _ReserveDecodedShape | None = None,
     ) -> SemanticFutureProvider:
         """Load a bounded canonical artifact and require registry admission."""
-        if not is_runtime_instance(path, Path):
-            raise TypeError("future candidate path must be a pathlib Path")
-        size = path.stat().st_size
-        if size > MAX_CANDIDATE_BYTES:
-            raise ValueError("future candidate exceeds the bounded input size")
-        estimated_work = max(1, (size + 65_535) // 65_536)
-        _charge_work(charge_work, estimated_work)
-        with path.open("rb") as stream:
-            payload = stream.read(MAX_CANDIDATE_BYTES + 1)
-        actual_work = max(1, (len(payload) + 65_535) // 65_536)
-        if actual_work > estimated_work:
-            _charge_work(charge_work, actual_work - estimated_work)
-        if len(payload) > MAX_CANDIDATE_BYTES:
-            raise ValueError("future candidate exceeds the bounded input size")
-        try:
-            text = payload.decode("utf-8")
-            raw: object = json.loads(text, object_pairs_hook=_reject_duplicate_keys)
-        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError("future candidate is not valid UTF-8 JSON") from exc
-        except RecursionError as exc:
-            raise ValueError(
-                "future candidate JSON exceeds the parser nesting bound"
-            ) from exc
-        if type(raw) is not dict:
-            raise ValueError("future candidate JSON root must be an object")
-        raw_record = cast(dict[str, object], raw)
-        snapshot = preflight_future_candidate(
-            raw_record,
+        parsed = _parse_future_candidate_file(
+            path,
             charge_work=charge_work,
+            before_parse=_before_parse,
             reserve_nodes=_reserve_nodes,
-        )
-        if payload != _canonical_json_bytes(snapshot):
-            raise ValueError("future candidate JSON is not in canonical form")
-        if _before_parse is not None:
-            _before_parse(raw_record)
-        if _reserve_decoded_shape is not None:
-            _reserve_decoded_shape(snapshot)
-        parsed = _parse_preflighted_future_candidate(
-            snapshot,
-            charge_work=charge_work,
-            artifact_sha256=sha256(payload).hexdigest(),
+            reserve_decoded_shape=_reserve_decoded_shape,
         )
         return cls._from_parsed(parsed)
 
@@ -319,18 +408,15 @@ class SemanticFutureProvider:
 
     @property
     def runtime_admitted(self) -> bool:
-        if (
-            not valid_artifact_digest(self._digest)
-            or type(self._admission) is not KernelInstanceAdmission
-        ):
+        if not self._candidate_admission_matches():
             return False
-        admission = _ADMITTED_KERNEL_INSTANCES.get(self._digest)
-        return (
-            self._tables_bound()
-            and type(admission) is KernelInstanceAdmission
-            and admission is self._admission
-            and registered_admission_matches(admission, self._digest)
-        )
+        store_ref = self._runtime_store_ref
+        if type(store_ref) is not ReferenceType:
+            return False
+        store = store_ref()
+        return type(
+            store
+        ) is SemanticFutureProviderStore and store.retained_provider_matches(self)
 
     @property
     def global_release_admitted(self) -> bool:
@@ -350,15 +436,69 @@ class SemanticFutureProvider:
         self._require_table_bindings()
         return len(self._source_classes)
 
-    def _tables_bound(self) -> bool:
-        return (
-            type(self._source_classes) is tuple
-            and self._source_classes is self._source_classes_binding
-            and type(self._classes) is tuple
-            and self._classes is self._classes_binding
-            and type(self._class_signatures) is tuple
-            and self._class_signatures is self._class_signatures_binding
-            and len(self._classes) == len(self._class_signatures)
+    def _tables_bound(self, *, allow_closing: bool = False) -> bool:
+        if not self._tables_bound_without_store():
+            return False
+        store_ref = self._runtime_store_ref
+        if store_ref is None:
+            return not allow_closing
+        if type(store_ref) is not ReferenceType:
+            return False
+        store = store_ref()
+        return type(
+            store
+        ) is SemanticFutureProviderStore and store.retained_provider_matches(
+            self, allow_closing=allow_closing
+        )
+
+    def _candidate_admission_matches(self) -> bool:
+        return candidate_admission_matches(
+            self._digest,
+            self._admission,
+            self._tables_bound_without_store(),
+            registered_admission_metadata_matches,
+        )
+
+    def _tables_bound_without_store(self) -> bool:
+        return provider_table_bindings_match(
+            self._source_classes,
+            self._source_classes_binding,
+            self._classes,
+            self._classes_binding,
+            self._class_signatures,
+            self._class_signatures_binding,
+            self._selection_authority,
+            self._selection_authority_binding,
+        )
+
+    def retained_record_for_store(self) -> RetainedSemanticFutureProvider:
+        if self._runtime_store_ref is not None:
+            raise PermissionError("semantic future provider is already store-issued")
+        if not self._candidate_admission_matches():
+            raise PermissionError("semantic future candidate tables were altered")
+        return make_retained_provider_entry(
+            self,
+            self._digest,
+            self._source_classes,
+            self._classes,
+            self._class_signatures,
+            self._admission,
+            self._selection_authority,
+        )
+
+    def audit_snapshot(self) -> SemanticFutureProviderAuditSnapshot:
+        """Expose immutable rows and their issuer binding for forensic validation."""
+        return provider_audit_snapshot(
+            self._digest,
+            self._source_classes,
+            self._classes,
+            self._class_signatures,
+            self._admission,
+            self._selection_authority,
+            self._tables_bound(allow_closing=True),
+            self._tables_bound(),
+            self.runtime_admitted,
+            self._selection_authority is self._selection_authority_binding,
         )
 
     def _require_table_bindings(self) -> None:
@@ -435,6 +575,8 @@ class SemanticFutureProvider:
             row.control.fork_coefficient,
             (left, right),
             slot,
+            _provider_authority=self._selection_authority,
+            _seal=_SELECTION_SEAL,
         )
 
 
@@ -460,22 +602,144 @@ class SemanticFutureProviderStore:
         owner_name = f"comma-semantic-future-provider-{next_owner}"
         workspace_name = f"comma-semantic-future-provider-workspace-{next_owner + 1}"
         ledger.require_fresh_owner_names((owner_name, workspace_name))
-        self.owner = ledger.register(owner_name, "semantic_future_provider")
+        self.owner = ledger.register(owner_name, FUTURE_PROVIDER_STORE_ROLE)
         self._workspace_owner = ledger.register(
             workspace_name,
-            "semantic_future_provider_workspace",
+            FUTURE_PROVIDER_WORKSPACE_ROLE,
         )
-        self._providers: OwnedMemo[str, SemanticFutureProvider] = OwnedMemo(
+        self._providers: OwnedMemo[str, RetainedSemanticFutureProvider] = OwnedMemo(
             ledger, self.owner, node_cost=provider_node_cost
         )
         self._token = ArenaToken("comma-semantic-future-provider")
         self._closed = False
+        self._closing = False
         self._lock = RLock()
         ledger.register_execution_root(self)
+        self._register_payload_audit_contract()
+
+    @property
+    def _audit_provider_payloads(self) -> Mapping[str, object]:
+        return self._providers.audit_snapshot().container
+
+    def audit_snapshot(self) -> SemanticFutureProviderStoreAuditSnapshot:
+        """Return exact store shape and ledger memo metadata without traversal."""
+        lock = self._lock
+        lock_valid = self.ledger.payload_audit_contract_matches_root(
+            self, FUTURE_PROVIDER_AUDIT_FAMILY
+        )
+        if lock_valid:
+            with lock:
+                memo = self._providers.audit_snapshot()
+                return provider_store_audit_snapshot(
+                    self.ledger,
+                    self.owner,
+                    self._workspace_owner,
+                    memo,
+                    self._closed,
+                    self._closing,
+                    frozenset(vars(self)),
+                    frozenset(vars(self._providers)),
+                    self._lock is lock
+                    and self.ledger.payload_audit_contract_matches_root(
+                        self, FUTURE_PROVIDER_AUDIT_FAMILY
+                    ),
+                    self._providers.node_cost is provider_node_cost,
+                )
+        memo = self._providers.audit_snapshot()
+        return provider_store_audit_snapshot(
+            self.ledger,
+            self.owner,
+            self._workspace_owner,
+            memo,
+            self._closed,
+            self._closing,
+            frozenset(vars(self)),
+            frozenset(vars(self._providers)),
+            False,
+            self._providers.node_cost is provider_node_cost,
+        )
+
+    def _register_payload_audit_contract(self) -> None:
+        self.ledger.register_payload_audit_contract(
+            self,
+            FUTURE_PROVIDER_AUDIT_FAMILY,
+            (
+                PayloadAuditStoreBinding(
+                    self.owner,
+                    "_audit_provider_payloads",
+                    FUTURE_PROVIDER_STORE_ROLE,
+                    identity_attributes=("_lock", "_providers"),
+                    scalar_attributes=("_workspace_owner",),
+                ),
+            ),
+            audit_semantic_future_provider_store,
+        )
 
     def check_open(self) -> None:
-        if self._closed:
-            raise RuntimeError("future provider store has been closed")
+        if type(self._closed) is not bool or type(self._closing) is not bool:
+            raise RuntimeError("malformed future provider store lifecycle")
+        if self._closed or self._closing:
+            raise RuntimeError("future provider store is closing or closed")
+        self._check_pinned_root()
+
+    def retained_provider_matches(
+        self, provider: object, *, allow_closing: bool = False
+    ) -> bool:
+        if type(provider) is not SemanticFutureProvider:
+            return False
+        if type(allow_closing) is not bool:
+            return False
+        lock = self._lock
+        try:
+            self._check_pinned_root()
+            with lock:
+                self._check_pinned_root()
+                if (
+                    self._lock is not lock
+                    or type(self._closed) is not bool
+                    or self._closed
+                    or type(self._closing) is not bool
+                    or (self._closing and not allow_closing)
+                ):
+                    return False
+                digest = provider.artifact_sha256
+                if type(digest) is not str or not valid_artifact_digest(digest):
+                    return False
+                store_binding_matches = provider.is_bound_to_store(self)
+                return retained_provider_entry_matches(
+                    self.ledger,
+                    self.owner,
+                    self._providers,
+                    FUTURE_PROVIDER_STORE_ROLE,
+                    provider,
+                    digest,
+                    store_binding_matches,
+                )
+        except (KeyError, RuntimeError, TypeError, ValueError):
+            return False
+
+    def _check_pinned_root(self) -> None:
+        if not self.ledger.payload_audit_contract_matches_attribute(
+            self, FUTURE_PROVIDER_AUDIT_FAMILY, "_lock"
+        ):
+            raise RuntimeError("future provider store lock binding changed")
+        if not self.ledger.payload_audit_contract_matches_attribute(
+            self, FUTURE_PROVIDER_AUDIT_FAMILY, "_workspace_owner"
+        ):
+            raise RuntimeError("future provider store workspace owner binding changed")
+        if not self.ledger.payload_audit_contract_matches_root(
+            self, FUTURE_PROVIDER_AUDIT_FAMILY
+        ):
+            raise RuntimeError("future provider store authority binding changed")
+
+    @contextmanager
+    def _open_store_scope(self) -> Generator[None, None, None]:
+        """Capture, validate and acquire the ledger-pinned store lock once."""
+        lock = self._lock
+        self.check_open()
+        with lock:
+            self.check_open()
+            yield
 
     def _retain(
         self,
@@ -483,21 +747,32 @@ class SemanticFutureProviderStore:
         reservation: LedgerReservation,
     ) -> SemanticFutureProviderLease:
         self.check_open()
-        provider.require_runtime_admission()
+        retained_entry = provider.retained_record_for_store()
         digest = provider.artifact_sha256
         retained = self._providers.get(digest)
         if retained is None:
             # The retained key becomes one live cache entry. Reserve that
             # exact entry only after the absent-digest branch is known.
             reservation.reserve(entries=1)
-            self._providers.adopt_reserved(digest, provider, reservation)
+            object.__setattr__(provider, "_runtime_store_ref", ref(self))
+            try:
+                self._providers.adopt_reserved(digest, retained_entry, reservation)
+            except BaseException:
+                object.__setattr__(provider, "_runtime_store_ref", None)
+                raise
             try:
                 self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_PUBLICATIONS)
             except BaseException:
                 del self._providers[digest]
+                object.__setattr__(provider, "_runtime_store_ref", None)
                 raise
         else:
-            retained.require_runtime_admission()
+            if (
+                type(retained) is not RetainedSemanticFutureProvider
+                or retained.artifact_sha256 != digest
+            ):
+                raise PermissionError("future provider store retained an invalid entry")
+            retained.provider.require_runtime_admission()
             self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_SEMANTIC_REUSES)
         return SemanticFutureProviderLease(self, digest, self._token)
 
@@ -506,8 +781,7 @@ class SemanticFutureProviderStore:
         loader: _FutureProviderLoader,
         charge_work: WorkCharger,
     ) -> SemanticFutureProviderLease:
-        with self._lock:
-            self.check_open()
+        with self._open_store_scope():
             self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_LOAD_REQUESTS)
             self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_VALIDATION_REQUESTS)
             try:
@@ -547,16 +821,21 @@ class SemanticFutureProviderStore:
 
     def get(self, artifact_sha256: str) -> SemanticFutureProviderLease:
         """Retrieve an already verified registry admission without reading input."""
-        with self._lock:
-            self.check_open()
+        with self._open_store_scope():
             self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_LOOKUPS)
             if not valid_artifact_digest(artifact_sha256):
                 self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_LOOKUP_REFUSALS)
                 raise ValueError("future artifact lookup needs a lowercase SHA-256")
-            provider = self._providers.get(artifact_sha256)
-            if provider is None:
+            retained = self._providers.get(artifact_sha256)
+            if retained is None:
                 self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_LOOKUP_MISSES)
                 raise KeyError("future artifact has not been loaded into this ledger")
+            if (
+                type(retained) is not RetainedSemanticFutureProvider
+                or retained.artifact_sha256 != artifact_sha256
+            ):
+                raise RuntimeError("future provider store retained an invalid entry")
+            provider = retained.provider
             provider.require_runtime_admission()
             self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_LOOKUP_HITS)
             return SemanticFutureProviderLease(self, artifact_sha256, self._token)
@@ -610,265 +889,80 @@ class SemanticFutureProviderStore:
             raise TypeError("future provider lease needs its exact provider store")
         if type(record_metrics) is not bool:
             raise TypeError("future provider resolution mode must be Boolean")
-        lock = getattr(self, "_lock", None)
-        if lock is None or type(lock) is not _STORE_LOCK_TYPE:
+        ledger = getattr(self, "ledger", None)
+        closed = getattr(self, "_closed", None)
+        closing = getattr(self, "_closing", None)
+        if (
+            type(ledger) is not ResourceLedger
+            or type(closed) is not bool
+            or type(closing) is not bool
+        ):
             raise RuntimeError("malformed future provider store")
-        with lock:
-            ledger = getattr(self, "ledger", None)
-            closed = getattr(self, "_closed", None)
-            current_token = getattr(self, "_token", None)
-            if (
-                type(ledger) is not ResourceLedger
-                or type(closed) is not bool
-                or type(current_token) is not ArenaToken
-            ):
-                raise RuntimeError("malformed future provider store")
-            if (
-                closed
-                or type(digest) is not str
-                or not valid_artifact_digest(digest)
-                or type(token) is not ArenaToken
-                or token is not current_token
-            ):
-                if record_metrics:
-                    ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_STALE_LEASE_REFUSALS)
-                raise RuntimeError("future provider lease is stale")
-            memo_value = getattr(self, "_providers", None)
-            owner = getattr(self, "owner", None)
-            if (
-                type(memo_value) is not OwnedMemo
-                or memo_value.ledger is not ledger
-                or memo_value.owner != owner
-            ):
-                raise RuntimeError("future provider store has a foreign retained table")
-            memo = cast(OwnedMemo[str, SemanticFutureProvider], memo_value)
-            provider = memo.get(digest)
-            if provider is None:
-                if record_metrics:
-                    ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_LEASE_MISSES)
-                raise RuntimeError("future provider is no longer retained")
-            if type(provider) is not SemanticFutureProvider:
-                raise RuntimeError("future provider store retained a foreign provider")
-            provider.require_runtime_admission()
+        if closed or closing:
             if record_metrics:
-                ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_LEASE_RESOLUTIONS)
-            return provider
+                ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_STALE_LEASE_REFUSALS)
+            raise RuntimeError("future provider lease is stale")
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            raise RuntimeError("malformed future provider store")
+        self._check_pinned_root()
+        with lock:
+            self._check_pinned_root()
+            return resolve_provider_lease_locked(
+                ledger,
+                self,
+                FUTURE_PROVIDER_AUDIT_FAMILY,
+                FUTURE_PROVIDER_STORE_ROLE,
+                digest,
+                token,
+                record_metrics,
+                getattr(self, "_closed", None),
+                getattr(self, "_closing", None),
+                getattr(self, "_token", None),
+                getattr(self, "_providers", None),
+                getattr(self, "owner", None),
+            )
 
     def reset(self) -> None:
         """Release retained candidates and revoke leases without closing owner."""
-        with self._lock:
-            self.check_open()
+        with self._open_store_scope():
             self._providers.clear()
             self._token = ArenaToken("comma-semantic-future-provider")
             self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_RESETS)
 
     def close(self) -> None:
         """Drop retained tables and invalidate every lease; safe to call twice."""
-        with self._lock:
+        if self._closed:
+            return
+        lock = self._lock
+        self._check_pinned_root()
+        with lock:
             if self._closed:
                 return
-            self._providers.dispose()
-            self._token = ArenaToken("comma-semantic-future-provider")
-            self._closed = True
-            self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_CLOSES)
+            self._check_pinned_root()
+            self._closing = True
+            close_provider_store(
+                self.ledger,
+                self,
+                self.owner,
+                self._providers,
+                FUTURE_PROVIDER_AUDIT_FAMILY,
+                self._register_payload_audit_contract,
+                self._finish_close,
+            )
+
+    def _finish_close(self) -> None:
+        self._token = ArenaToken("comma-semantic-future-provider")
+        self._closed = True
+        self._closing = False
+        self.ledger.bump(_comma_keys.COMMA_FUTURE_PROVIDER_CLOSES)
 
     def __enter__(self) -> Self:
-        with self._lock:
-            self.check_open()
+        with self._open_store_scope():
             return self
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         self.close()
-
-
-@dataclass(frozen=True, slots=True)
-class SemanticFutureProviderLease:
-    """Generation-checked access to one provider retained by a ledger store."""
-
-    _store: SemanticFutureProviderStore
-    _digest: str
-    _token: ArenaToken
-
-    def __post_init__(self) -> None:
-        if type(self._store) is not SemanticFutureProviderStore:
-            raise TypeError("future provider lease needs its exact provider store")
-        if not valid_artifact_digest(self._digest):
-            raise ValueError("future provider lease needs a lowercase SHA-256")
-        if type(self._token) is not ArenaToken:
-            raise TypeError("future provider lease needs an exact store token")
-
-    def resolve_provider(
-        self, *, record_metrics: bool = True
-    ) -> SemanticFutureProvider:
-        store = getattr(self, "_store", None)
-        digest = getattr(self, "_digest", None)
-        token = getattr(self, "_token", None)
-        if (
-            type(store) is not SemanticFutureProviderStore
-            or type(digest) is not str
-            or not valid_artifact_digest(digest)
-            or type(token) is not ArenaToken
-        ):
-            raise TypeError("malformed future provider lease binding")
-        return SemanticFutureProviderStore.resolve_checked(
-            store,
-            digest,
-            token,
-            record_metrics=record_metrics,
-        )
-
-    @property
-    def resource_ledger(self) -> ResourceLedger:
-        """Inspect the exact store owner without resolving or charging a lookup."""
-        store = getattr(self, "_store", None)
-        if type(store) is not SemanticFutureProviderStore:
-            raise TypeError("malformed future provider lease binding")
-        return store.ledger
-
-    @property
-    def artifact_sha256(self) -> str:
-        return self.resolve_provider().artifact_sha256
-
-    def status_provider(self) -> SemanticFutureProvider | None:
-        """Validate an already retained provider without changing work counters."""
-        try:
-            return self.resolve_provider(record_metrics=False)
-        except (PermissionError, RuntimeError, TypeError):
-            return None
-
-    @property
-    def runtime_admitted(self) -> bool:
-        provider = self.status_provider()
-        return provider is not None and provider.runtime_admitted
-
-    @property
-    def global_release_admitted(self) -> bool:
-        provider = self.status_provider()
-        return provider is not None and provider.global_release_admitted
-
-    def matches_global_release_binding(
-        self, ledger: ResourceLedger, artifact_sha256: str
-    ) -> bool:
-        provider = self.status_provider()
-        return (
-            type(ledger) is ResourceLedger
-            and valid_artifact_digest(artifact_sha256)
-            and provider is not None
-            and provider.global_release_admitted
-            and self._store.ledger is ledger
-            and provider.artifact_sha256 == artifact_sha256
-        )
-
-    @property
-    def class_count(self) -> int:
-        return self.resolve_provider().class_count
-
-    def require_runtime_admission(self) -> None:
-        self.resolve_provider().require_runtime_admission()
-
-    def require_global_release_admission(self) -> None:
-        self.resolve_provider().require_global_release_admission()
-
-    def source_class(self, source: BoundaryState, *, charge_work: WorkCharger) -> int:
-        return self.resolve_provider().source_class(source, charge_work=charge_work)
-
-    def class_row(self, cid: int, *, charge_work: WorkCharger) -> FutureClass:
-        return self.resolve_provider().class_row(cid, charge_work=charge_work)
-
-    def select_unique_unranked_child(
-        self, source: BoundaryState, *, charge_work: WorkCharger
-    ) -> UnrankedChildSelection:
-        return self.resolve_provider().select_unique_unranked_child(
-            source, charge_work=charge_work
-        )
-
-
-def parse_future_candidate(
-    record: Mapping[str, object], *, charge_work: WorkCharger
-) -> ParsedFutureCandidate:
-    """Check bounded JSON structure without granting provider authority."""
-    snapshot = preflight_future_candidate(record, charge_work=charge_work)
-    return _parse_preflighted_future_candidate(snapshot, charge_work=charge_work)
-
-
-def _parse_preflighted_future_candidate(
-    record: Mapping[str, object],
-    *,
-    charge_work: WorkCharger,
-    artifact_sha256: str | None = None,
-) -> ParsedFutureCandidate:
-    """Decode a record after its JSON shape and serialized size were bounded."""
-    source_classes, classes = validate_record(record, charge_work=charge_work)
-    digest = (
-        future_candidate_sha256(record) if artifact_sha256 is None else artifact_sha256
-    )
-    return ParsedFutureCandidate(
-        source_classes,
-        classes,
-        digest,
-    )
-
-
-def preflight_future_candidate(
-    record: Mapping[str, object],
-    *,
-    charge_work: WorkCharger,
-    reserve_nodes: NodeReserver | None = None,
-) -> dict[str, object]:
-    """Snapshot the input under the FutureCID JSON and resource limits."""
-    return snapshot_canonical_json(
-        record,
-        max_bytes=MAX_CANDIDATE_BYTES,
-        max_depth=MAX_CANDIDATE_JSON_DEPTH,
-        max_nodes=MAX_CANDIDATE_JSON_NODES,
-        charge_work=charge_work,
-        reserve_nodes=reserve_nodes,
-    )
-
-
-def future_candidate_sha256(record: Mapping[str, object]) -> str:
-    """Hash a record after its caller has charged bounded structural parsing."""
-    if type(record) not in (dict, MappingProxyType) or any(
-        type(key) is not str for key in record
-    ):
-        raise TypeError("future candidate must be a string-keyed mapping")
-    canonical_record = (
-        dict(cast(Mapping[str, object], record))
-        if type(record) is MappingProxyType
-        else record
-    )
-    return sha256(_canonical_json_bytes(canonical_record)).hexdigest()
-
-
-def _canonical_json_bytes(record: Mapping[str, object]) -> bytes:
-    try:
-        text = json.dumps(
-            record,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=True,
-            allow_nan=False,
-        )
-    except (TypeError, ValueError) as exc:
-        raise ValueError("future candidate contains non-JSON data") from exc
-    return (text + "\n").encode("ascii")
-
-
-def _charge_work(charge_work: WorkCharger, amount: int) -> None:
-    if not callable(charge_work):
-        raise TypeError("future provider operation requires a work charger")
-    if type(amount) is not int or amount <= 0:
-        raise ValueError("future provider work charge must be positive")
-    charge_work(amount)
-
-
-def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate future candidate JSON key")
-        result[key] = value
-    return result
 
 
 def _admission_matches(
@@ -877,69 +971,19 @@ def _admission_matches(
     return registered_admission_matches(admission, parsed.artifact_sha256)
 
 
-def validate_record(
-    record: Mapping[str, object],
-    *,
-    charge_work: WorkCharger,
-) -> tuple[tuple[int, ...], tuple[FutureClass, ...]]:
-    if not is_mapping_instance(record) or any(type(key) is not str for key in record):
-        raise TypeError("future candidate must be a string-keyed object")
-    if frozenset(record) != _RECORD_FIELDS:
-        raise ValueError("future candidate fields differ from the supported schema")
-    if record.get("format") != FUTURE_CANDIDATE_FORMAT:
-        raise ValueError("unsupported semantic future candidate version")
-    if record.get("authority") != FUTURE_CANDIDATE_AUTHORITY:
-        raise ValueError("future candidate producer authority marker is unsupported")
-    if record.get("state_universe") != FUTURE_SOURCE_UNIVERSE:
-        raise ValueError("future candidate source universe differs from the contract")
-
-    encoded_map = record.get("class_of_state_varint_base64")
-    if type(encoded_map) is not str or len(encoded_map) > 4 * (
-        (SOURCE_COUNT * 2 + 2) // 3
-    ):
-        raise ValueError("future source map has an invalid bounded encoding")
-    try:
-        encoded_bytes = encoded_map.encode("ascii")
-        decoded = base64.b64decode(encoded_bytes, validate=True)
-    except (UnicodeEncodeError, binascii.Error) as exc:
-        raise ValueError("future source map is not valid base64") from exc
-    if base64.b64encode(decoded).decode("ascii") != encoded_map:
-        raise ValueError("future source map base64 is not canonical")
-
-    raw_controls = record.get("controls")
-    raw_children = record.get("ordered_children")
-    raw_ranks = record.get("class_rank_candidate")
-    if not is_object_list_instance(raw_controls) or not is_object_list_instance(
-        raw_children
-    ):
-        raise TypeError("future controls and ordered children must be arrays")
-    if not is_object_list_instance(raw_ranks):
-        raise TypeError("future candidate ranks must be an array")
-    class_count = len(raw_controls)
-    if not 0 < class_count <= SOURCE_COUNT:
-        raise ValueError("future class table has an invalid bounded size")
-    if len(raw_children) != class_count or len(raw_ranks) != class_count:
-        raise ValueError("future class controls, children, and ranks differ in size")
-    _charge_work(charge_work, SOURCE_COUNT + 3 * class_count)
-    class_ids = decode_class_map(
-        decoded,
-        class_count,
-        source_count=SOURCE_COUNT,
-        max_varint_bytes=MAX_CID_VARINT_BYTES,
-    )
-    classes = decode_class_rows(raw_controls, raw_children, raw_ranks, class_count)
-    if set(class_ids) != set(range(class_count)):
-        raise ValueError("future source map has missing or unused class identifiers")
-
-    return class_ids, classes
-
-
 __all__ = [
+    "FUTURE_CANDIDATE_AUTHORITY",
     "FUTURE_CANDIDATE_FORMAT",
     "FUTURE_PROVIDER_CONTRACT",
+    "FUTURE_SOURCE_UNIVERSE",
     "FutureClass",
     "FutureControl",
+    "MAX_CANDIDATE_BYTES",
+    "MAX_CANDIDATE_JSON_DEPTH",
+    "MAX_CANDIDATE_JSON_NODES",
+    "MAX_CID_VARINT_BYTES",
     "ParsedFutureCandidate",
+    "registered_admission_metadata_matches",
     "SemanticFutureProvider",
     "SemanticFutureProviderLease",
     "SemanticFutureProviderStore",

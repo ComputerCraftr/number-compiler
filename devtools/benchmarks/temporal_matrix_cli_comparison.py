@@ -12,8 +12,11 @@ from devtools.benchmarks.public_query_comparison import (
     cli_invocation,
     run_jsonl_report,
 )
+from number_compiler.api.family_registry import CAPABILITIES, family_spec
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.observation_types import ObservationId
 from number_compiler.api.registry_cli import option_argv
+from number_compiler.arithmetic.contracts.family_identity import family_id
 
 Mode = Literal["cold", "warm", "bypass"]
 
@@ -22,8 +25,9 @@ class MatrixSample(TypedDict):
     family: str
     seed: int
     selected_term_index: int
-    physical_steps: int
+    horizon_ticks: int
     mode: Mode
+    clock_unit: str
     trace: bool
     trial: int
     seconds: float
@@ -38,6 +42,7 @@ class MatrixSample(TypedDict):
     future_q19_roots_constructed: object
     chronological_future_roots_constructed: object
     trace_present: bool
+    packet: dict[str, object]
 
 
 def _is_object_dict(value: object) -> TypeGuard[dict[str, object]]:
@@ -52,9 +57,11 @@ def _is_object_sequence(value: object) -> TypeGuard[tuple[object, ...] | list[ob
 
 
 def _sample(
-    arguments: list[str], *, fresh: bool
+    arguments: list[str], *, fresh: bool, shared_cache: bool = True
 ) -> tuple[float, dict[str, object], int]:
-    elapsed, code, output, error = cli_invocation(arguments, fresh=fresh)
+    elapsed, code, output, error = cli_invocation(
+        arguments, fresh=fresh, shared_cache=shared_cache
+    )
     try:
         packet: object = json.loads(output)
     except json.JSONDecodeError as error_json:
@@ -71,6 +78,33 @@ def _endpoint_facts(
 ) -> tuple[object, object, object]:
     """Select stable public endpoint facts, excluding arena-local root IDs."""
     source_pair = matrix.get("source_pair")
+    if family not in {"reverse-add", "2rev10"}:
+        # Compare actual semantic fields; retain the complete packet separately
+        # so work measurements and refusal evidence are never discarded.
+        keys = (
+            "endpoint",
+            "physical_ticks",
+            "normalized_steps",
+            "odd_events",
+            "units_carry_transfer",
+            "forced_tens_carries",
+            "pointed_first_center",
+            "pointed_last_center",
+            "source_certified_physical_ticks",
+            "arithmetic_relation",
+            "safety_relation",
+            "target_source",
+            "pointed_endpoint",
+            "primality_authority",
+            "physical_repeat_certified",
+            "temporal_repeat_certified",
+            "source_guard_admitted",
+        )
+        return (
+            matrix.get("source"),
+            matrix.get("endpoint"),
+            {key: matrix[key] for key in keys if key in matrix},
+        )
     if family == "reverse-add":
         relation_endpoints = matrix.get("conditional_endpoint_pairs")
         trace_packet = matrix.get("trace")
@@ -129,8 +163,10 @@ def compare_matrix_routes(
     save_sample: Callable[[MatrixSample], None] | None = None,
 ) -> list[MatrixSample]:
     """Retain refusals and timings; do not equate projected with exact rows."""
-    if family not in {"reverse-add", "2rev10"}:
-        raise ValueError("matrix comparison supports reverse-add and 2rev10")
+    spec = family_spec(family_id(family))
+    capability = spec.matrix
+    if capability is None:
+        raise ValueError("family has no source matrix observation")
     if type(seed) is not int or seed < 0:
         raise ValueError("seed must be a nonnegative integer")
     if type(selected_term_index) is not int or selected_term_index < 0:
@@ -146,12 +182,21 @@ def compare_matrix_routes(
 
     retained: list[MatrixSample] = []
     semantic_results: dict[tuple[int, bool, int], dict[Mode, tuple[object, ...]]] = {}
-    source_args = option_argv("seed", seed)
+    source_args = option_argv("seed", seed) if "seed" in spec.parameters else []
+    coordinate_args = (
+        option_argv(capability.coordinate_option, capability.default_coordinate)
+        if capability.default_coordinate is not None
+        else []
+    )
     for horizon in horizons:
-        if family == "2rev10" and horizon % 2:
-            raise ValueError("2rev10 physical transfer horizon must be even")
+        if horizon > capability.max_steps or horizon % capability.step_multiple:
+            raise ValueError("matrix horizon is outside the family admission")
         for trace in (False, True):
-            if trace and horizon > trace_max:
+            if trace and (
+                ObservationId.TEMPORAL_MATRIX_TRACE not in spec.nth_info
+                or horizon
+                > min(trace_max, capability.max_trace_steps or capability.max_steps)
+            ):
                 continue
             observation = "temporal.matrix.trace" if trace else "temporal.matrix"
             arguments = [
@@ -160,7 +205,7 @@ def compare_matrix_routes(
                 *source_args,
                 *option_argv("info", observation),
                 *option_argv("temporal_matrix_steps", horizon),
-                *option_argv("temporal_matrix_pair_depth", 1),
+                *coordinate_args,
                 *option_argv("no_value", True),
                 *option_argv("format", "json"),
             ]
@@ -172,7 +217,7 @@ def compare_matrix_routes(
                     if mode == "bypass":
                         NumberCompiler.clear_shared_cache()
                     seconds, packet, exit_code = _sample(
-                        arguments, fresh=mode == "cold"
+                        arguments, fresh=mode == "cold", shared_cache=mode != "bypass"
                     )
                     info = packet.get("info")
                     if not _is_object_dict(info) or set(info) != {observation}:
@@ -194,8 +239,9 @@ def compare_matrix_routes(
                         "family": family,
                         "seed": seed,
                         "selected_term_index": selected_term_index,
-                        "physical_steps": horizon,
+                        "horizon_ticks": horizon,
                         "mode": mode,
+                        "clock_unit": capability.clock.value,
                         "trace": trace,
                         "trial": trial,
                         "seconds": seconds,
@@ -207,7 +253,7 @@ def compare_matrix_routes(
                         "pointed_endpoint": pointed_endpoint,
                         "endpoint_facts": endpoint_facts,
                         "shared_cache_policy": (
-                            "bypass clears process-shared caches before each request; "
+                            "bypass disables process-cache retrieval and publication; "
                             "request-local memoization remains enabled"
                         ),
                         "future_q19_roots_constructed": matrix.get(
@@ -217,6 +263,7 @@ def compare_matrix_routes(
                             "chronological_future_roots_constructed"
                         ),
                         "trace_present": isinstance(matrix.get("trace"), dict),
+                        "packet": matrix,
                     }
                     semantic_key = (horizon, trace, trial)
                     by_mode = semantic_results.setdefault(semantic_key, {})
@@ -236,7 +283,11 @@ def compare_matrix_routes(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--family", choices=("reverse-add", "2rev10"), required=True)
+    parser.add_argument(
+        "--family",
+        choices=tuple(name.value for name, spec in CAPABILITIES.items() if spec.matrix),
+        required=True,
+    )
     parser.add_argument("--seed", type=int, default=196)
     parser.add_argument("--term-index", type=int, required=True)
     parser.add_argument("--horizons", type=int, nargs="+", required=True)
@@ -244,21 +295,24 @@ def main() -> int:
     parser.add_argument("--trace-max", type=int, default=128)
     options = parser.parse_args()
     rows: list[MatrixSample] = []
+    capability = family_spec(family_id(options.family)).matrix
+    assert capability is not None
 
     horizons = cast(tuple[int, ...], tuple(options.horizons))
     configuration: dict[str, object] = {
         "family": cast(str, options.family),
         "seed": cast(int, options.seed),
         "selected_term_index": cast(int, options.term_index),
-        "horizons_physical_ticks": horizons,
-        "trace_max_physical_ticks": cast(int, options.trace_max),
+        "horizons_ticks": horizons,
+        "trace_max_ticks": cast(int, options.trace_max),
         "trials": cast(int, options.trials),
         "modes": ("cold", "warm", "bypass"),
         "bypass_policy": (
-            "clear process-shared caches before each request; request-local "
+            "disable process-cache retrieval and publication; request-local "
             "memoization remains enabled"
         ),
         "output_rendering": False,
+        "clock_unit": capability.clock.value,
         "reverse_default_relation_scope": "projected source-word overapproximation; not an exact full matrix",
     }
 
@@ -278,19 +332,19 @@ def main() -> int:
         )
         summary: list[dict[str, object]] = []
         keys = sorted(
-            {(row["physical_steps"], row["trace"], row["mode"]) for row in rows}
+            {(row["horizon_ticks"], row["trace"], row["mode"]) for row in rows}
         )
         for horizon, trace, mode in keys:
             selected = [
                 row
                 for row in rows
-                if (row["physical_steps"], row["trace"], row["mode"])
+                if (row["horizon_ticks"], row["trace"], row["mode"])
                 == (horizon, trace, mode)
             ]
             durations = [row["seconds"] for row in selected]
             summary.append(
                 {
-                    "physical_steps": horizon,
+                    "horizon_ticks": horizon,
                     "trace": trace,
                     "mode": mode,
                     "trials": len(selected),

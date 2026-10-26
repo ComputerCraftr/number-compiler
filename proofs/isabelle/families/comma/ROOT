@@ -30,6 +30,7 @@ session Comma_Interior_Cache in comma_interior_cache = Comma_Arithmetic +
     Comma_Normalized_Cycle
 session Comma_C1_Carry_Generator in comma_c1_generator = Comma_Arithmetic +
   options [document = false, quick_and_dirty = false]
+  sessions Shared_Carry_Dynamics
   theories
     Comma_C1_Phase
     Comma_C1_Return
@@ -88,8 +89,10 @@ session Comma_Literal_Bridge in comma_literal = Comma_Chart_Bridge +
     Comma_Unique_Path
 session Comma_Trace_Regression in comma_regression = Comma_Cylinder +
   options [document = false, quick_and_dirty = false]
+  sessions Shared_S_Arithmetic
   theories
     Comma_Trace_Regression
+    Comma_Padic_Event_Transport
 session Comma_Quotient_Totality in comma_totality = Comma_Cylinder +
   options [document = false, quick_and_dirty = false]
   theories
@@ -200,6 +203,7 @@ session Comma_Decade_Orbit in comma_decade_orbit = Comma_Decade_Blocks +
     Comma_Decade_Orbit_Arithmetic
     Comma_Decade_Orbit_Quotient
     Comma_Decade_Masks
+    Comma_Phase_Mask_Arithmetic
     Comma_Endpoint_Orbit_Interface
 session Comma_Decade_Residual_Core in comma_decade_residual_core = Comma_Fast_Control +
   options [document = false, quick_and_dirty = false]
@@ -257,64 +261,55 @@ session Comma_Semantic_Future in comma_semantic_future = Comma_Semantic_B1 +
     Comma_Semantic_Boundary
 session Comma_Semantic_B1 in comma_semantic_b1 = Comma_Terminal_Weight +
   options [document = false, quick_and_dirty = false]
-  sessions Shared_S_Arithmetic "HOL-Library" "HOL-Combinatorics"
+  sessions Shared_S_Arithmetic Comma_C1_Occurrence Comma_Decade_Orbit
+    Comma_Terminal_Event "HOL-Library"
   theories
     Comma_Semantic_B1
+    Comma_Semantic_Weighted_Action
+    Comma_Semantic_Graph_Core
     Comma_Semantic_Graph
+    Comma_Semantic_Graph_Congruence
+    Comma_Semantic_Graph_Phase_Fold
+    Comma_Indexed_Mask_Quotient
+    Comma_Symbolic_Phase_Masks
+    Comma_Phase_Class_Rank
+    Comma_Phase_Class_Rank_Masks
+    Comma_CRT_Phase_Clock
+    Comma_Semantic_Graph_Weighted_CRT_DAG
+    Comma_Weighted_CRT_Cofactor
+    Comma_CRT_Cofactor_Selection
+    Comma_CRT_Selector_Projection
+    Comma_Semantic_Graph_Pointwise_Binding_Row
     Comma_Semantic_B1_Rebase
     Comma_Semantic_B1_Columns
     Comma_Semantic_B1_Power
+    Comma_Semantic_Action_Power
     Comma_CRT_Columns
-    Comma_Semantic_B1_CRT_Column_DAG
-    Comma_Semantic_B1_CRT_Column_Lookup
     Comma_CRT_Apply
     Comma_CRT_Apply_Right_Quotient
     Comma_CRT_Support
     Comma_CRT_Power
     Comma_CRT_Equivalence
-    Comma_CRT_Split_Power
-    Comma_CRT_Split_Power_Admission
-    Comma_CRT_Split_Power_Composition
     Comma_Semantic_B1_Publication
     Comma_Semantic_B1_Table_Transform
+    Comma_C1_B1_Source_Action
+    Comma_Near_Symbolic_Operator
+    Comma_Semantic_B1_Guarded_Port_Action
+    Comma_Semantic_B1_Entry_Near_Ports
+    Comma_Guarded_Source_Right_Transport
+    Comma_Guarded_Source_Row_Transport
+    Comma_Guarded_Source_Mask_Evaluator
     Comma_Semantic_B1_CRT_Source_Binding
-    Comma_Semantic_B1_CRT_Occurrence_Fold
-    Comma_Semantic_B1_CRT_Structural_Partition
-    Comma_Semantic_B1_CRT_Split_Occurrence
-    Comma_Semantic_B1_CRT_Split_Bindings
-    Comma_Semantic_B1_CRT_Lift_Bindings
-    Comma_Semantic_B1_CRT_Local_Cover
-    Comma_Semantic_B1_CRT_Local_Cover_Candidate
-    Comma_Semantic_B1_CRT_Partition_Coverage
-    Comma_Semantic_B1_CRT_Parent_Partition
-    Comma_Semantic_B1_CRT_Labelled_Selector
-    Comma_Semantic_B1_CRT_Indexed_Labels
-    Comma_Semantic_B1_CRT_Partition_Completeness
-    Comma_Semantic_B1_CRT_Cardinality
-    Comma_Semantic_B1_CRT_Mass_Transport
-    Comma_Semantic_B1_CRT_Mass_Annotations
-    Comma_Semantic_B1_CRT_Mass_Layout
-    Comma_Semantic_B1_CRT_Mass_Annotation_Regression
-    Comma_Semantic_B1_CRT_Embedding_Construction
-    Comma_Semantic_B1_CRT_Permutation
-    Comma_Semantic_B1_CRT_Multiset
-    Comma_Semantic_B1_CRT_Construction_Binding
-    Comma_Semantic_B1_CRT_Partition_Composition
-    Comma_Semantic_B1_CRT_Slot_Certificates
-    Comma_Semantic_B1_CRT_Occurrence_Bounds
-    Comma_Semantic_B1_CRT_Constructed_Occurrence
-    Comma_Semantic_B1_CRT_Constructor_Mass
-    Comma_Semantic_B1_CRT_Constructed_Refinement
-    Comma_Semantic_B1_CRT_Cover_Mass
-    Comma_Semantic_B1_CRT_Compact_Refinement
-    Comma_Semantic_B1_CRT_Compact_Mass
-    Comma_Semantic_B1_CRT_Construction_Regression
-session Comma_Semantic_B1_Instance in comma_semantic_b1_instance = Comma_Semantic_Future +
+session Comma_Semantic_B1_Instance in comma_semantic_b1_instance = Comma_Semantic_Graph_Instance +
   options [document = false, quick_and_dirty = false]
   theories
-    Comma_Semantic_B1_Occurrence_Arithmetic
-    Comma_Semantic_B1_Occurrence_Publication
-    Comma_Semantic_B1_Occurrence_Rows
+    Comma_Semantic_Graph_Action_Power
+    Comma_Semantic_Graph_Stop_Transport
+    Comma_Semantic_Weighted_CRT_Selector_Laws
+    Comma_Semantic_Graph_CRT_Compilation
+    Comma_Semantic_Graph_CRT_Local_Node_Compilation
+    Comma_Semantic_Predecessor_Action
+    Comma_Semantic_Predecessor_Certificate
     Comma_Semantic_B1_Instance
     Comma_Semantic_Summary_Instance
 session Comma_Semantic_Future_Instance in comma_semantic_future_instance = Comma_Semantic_B1_Instance +
@@ -322,7 +317,17 @@ session Comma_Semantic_Future_Instance in comma_semantic_future_instance = Comma
   sessions Comma_Source_Entry Comma_Source_Uniqueness Comma_C1_Occurrence
   theories
     Comma_Semantic_Future_Candidate_Data
+    Comma_Semantic_Future_Candidate_Integrity
+    Comma_Semantic_Future_Candidate_Selector
+    Comma_Semantic_Future_Weighted_Transport
+    Comma_Semantic_Future_Prefix_Transport
+    Comma_Semantic_Future_Prefix_Boundary
+    Comma_Semantic_Future_Action_Compare
+    Comma_Semantic_Future_Candidate_Provider_NF
+    Comma_Semantic_Future_Source_NF_Bridge
     Comma_Semantic_Future_Instance
+    Comma_Semantic_Future_Candidate_Provider_Closure
+    Comma_Semantic_Future_Path_Results
     Comma_Semantic_Entry_Open
     Comma_Semantic_Global_Root_Bridge
     Comma_Semantic_Global_Safety
@@ -341,9 +346,15 @@ session Comma_Semantic_Future_Instance in comma_semantic_future_instance = Comma
     Comma_Semantic_Producer_Weight_Cuts
     Comma_Semantic_Producer_Partial_Selection
     Comma_Semantic_Release
-session Comma_Semantic_Graph_Instance in comma_semantic_graph_instance = Comma_Decisive_Endpoint_Quotient +
+session Comma_Semantic_Graph_Instance in comma_semantic_graph_instance = Comma_Semantic_Future +
   options [document = false, quick_and_dirty = false]
   theories
+    Comma_Phase_Class_Rank_Source_Bridge
+    Comma_Phase_Class_Rank_Local_Coverage
+    Comma_Phase_Class_Rank_Linear_WF
+    Comma_Phase_Class_Rank_Rotation
+    Comma_Phase_Class_Rank_Source_Family_Adapter
+    Comma_Phase_Class_Rank_Local_B32_Bridge
     Comma_Semantic_Graph_Instance
 session Comma_Compact_Decade_Classifier in comma_compact_classifier = Comma_Decade_Residual_Core +
   options [document = false, quick_and_dirty = false]
@@ -579,10 +590,14 @@ session Comma_Decade_Occurrence_Lift in comma_decade_occurrence_lift = Comma_Dec
     Comma_Decade_Occurrence_Lift
 session Comma_C1_Occurrence in comma_c1_occurrence = Comma_C1_Borrow_Cocycle +
   options [document = false, quick_and_dirty = false]
-  sessions Comma_Chart_Bridge
+  sessions Comma_Chart_Bridge Comma_Near_Period Shared_Carry_Dynamics
   theories
     Comma_C1_Occurrence
+    Comma_C1_Source_Coefficients
     Comma_C1_Entry_Chart_Refinement
+    Comma_C1_2Primary_Saturation
+    Comma_C1_Normalization_Morphism
+    Comma_C1_Near_Chart_Refinement
 session Comma_Native_Summary in comma_native_summary = Comma_Decade_Occurrence_Lift +
   options [document = false, quick_and_dirty = false]
   sessions Comma_Sparse_Core Comma_Terminal_Weight

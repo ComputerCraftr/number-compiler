@@ -27,9 +27,14 @@ from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.contracts.local_action_codec import (
     LocalCodec,
     compile_source_cell,
+    compile_source_forest,
+    compose_finite_lookup_maps,
     initialize_local_stores,
     local_cache_hit,
     publish_oriented_action,
+    validate_finite_lookup_map,
+    validate_local_handle,
+    validate_mirror_transform,
 )
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.execution.field_images import (
@@ -38,6 +43,7 @@ from number_compiler.hashlife.execution.field_images import (
     SourceForestID,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import LedgerDict
 
 if TYPE_CHECKING:
     from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
@@ -51,8 +57,10 @@ class ReverseLocalActionID(ArenaHandle):
 
     def __post_init__(self) -> None:
         super(ReverseLocalActionID, self).__post_init__()
-        if type(self.transform) is not ActionTransform or int(self.transform) & ~1:
-            raise ValueError("reverse local actions support only proved reflection")
+        validate_mirror_transform(
+            self.transform,
+            message="reverse local actions support only proved reflection",
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,7 +199,7 @@ class ReversePoweredLocalCodec(LocalCodec[ReverseLocalAction, ReverseLocalAction
             tuple[ReverseLocalActionID, ReverseLocalActionID], ReverseLocalActionID
         ]
         self._leaf_actions: MutableMapping[int, ReverseLocalActionID]
-        self._source_actions: MutableMapping[
+        self._source_actions: LedgerDict[
             SourceCellID | SourceForestID, ReverseLocalActionID
         ]
         initialize_local_stores(self)
@@ -332,10 +340,10 @@ class ReversePoweredLocalCodec(LocalCodec[ReverseLocalAction, ReverseLocalAction
                 self.resolve(result),
             )
             expected = ReverseLocalAction(
-                self._then(before.left_forward, after.left_forward),
-                self._then(after.left_reverse, before.left_reverse),
-                self._then(before.right_forward, after.right_forward),
-                self._then(after.right_reverse, before.right_reverse),
+                compose_finite_lookup_maps(before.left_forward, after.left_forward),
+                compose_finite_lookup_maps(after.left_reverse, before.left_reverse),
+                compose_finite_lookup_maps(before.right_forward, after.right_forward),
+                compose_finite_lookup_maps(after.right_reverse, before.right_reverse),
             )
             return actual == expected and self._compose.get((left, right)) == result
         except (TypeError, ValueError, IndexError, KeyError, AttributeError):
@@ -382,17 +390,43 @@ class ReversePoweredLocalCodec(LocalCodec[ReverseLocalAction, ReverseLocalAction
         return ReverseLocalActionID(self.owner, self._KIND, local_id, transform)
 
     def resolve(self, reference: ReverseLocalActionID) -> ReverseLocalAction:
-        if type(reference) is not ReverseLocalActionID:
-            raise TypeError("expected a reverse powered local action ID")
-        reference.validate(self.owner, self._KIND, size=len(self._nodes))
+        reference = validate_local_handle(
+            reference,
+            ReverseLocalActionID,
+            self.owner,
+            self._KIND,
+            size=len(self._nodes),
+        )
+        transform = validate_mirror_transform(
+            reference.transform,
+            message="malformed reverse local action transform",
+        )
         raw = self._nodes[reference.local_id]
-        return raw.mirrored() if reference.transform is ActionTransform.MIRROR else raw
+        return raw.mirrored() if transform is ActionTransform.MIRROR else raw
 
     def intern_record(
         self,
         action: ReverseLocalAction,
         reservations: tuple[tuple[int, int, int], ...] = (),
     ) -> ReverseLocalActionID:
+        if type(action) is not ReverseLocalAction:
+            raise TypeError("reverse local interning requires an extensional action")
+        left_size, right_size = len(self._states[0]), len(self._states[1])
+        for mapping, expected_size in (
+            (action.left_forward, left_size),
+            (action.left_reverse, left_size),
+            (action.right_forward, right_size),
+            (action.right_reverse, right_size),
+        ):
+            validate_finite_lookup_map(mapping, expected_size=expected_size)
+        return self._publish_admitted_record(action, reservations)
+
+    def _publish_admitted_record(
+        self,
+        action: ReverseLocalAction,
+        reservations: tuple[tuple[int, int, int], ...],
+    ) -> ReverseLocalActionID:
+        """Intern a result built from actions admitted to the exact port domains."""
         mirrored = action.mirrored()
         canonical, transform = min(
             ((action, ActionTransform.IDENTITY), (mirrored, ActionTransform.MIRROR)),
@@ -436,10 +470,6 @@ class ReversePoweredLocalCodec(LocalCodec[ReverseLocalAction, ReverseLocalAction
     def leaf(self, symbol: int) -> ReverseLocalActionID:
         return self._leaf(symbol)
 
-    @staticmethod
-    def _then(before: tuple[int, ...], after: tuple[int, ...]) -> tuple[int, ...]:
-        return tuple(after[value] for value in before)
-
     def _compose_actions(
         self,
         left: ReverseLocalActionID,
@@ -457,12 +487,12 @@ class ReversePoweredLocalCodec(LocalCodec[ReverseLocalAction, ReverseLocalAction
         )
         if found is not None:
             return found
-        result = self.intern_record(
+        result = self._publish_admitted_record(
             ReverseLocalAction(
-                self._then(a.left_forward, b.left_forward),
-                self._then(b.left_reverse, a.left_reverse),
-                self._then(a.right_forward, b.right_forward),
-                self._then(b.right_reverse, a.right_reverse),
+                compose_finite_lookup_maps(a.left_forward, b.left_forward),
+                compose_finite_lookup_maps(b.left_reverse, a.left_reverse),
+                compose_finite_lookup_maps(a.right_forward, b.right_forward),
+                compose_finite_lookup_maps(b.right_reverse, a.right_reverse),
             ),
             ((self._compose_owner, 1, 0), *reservations),
         )
@@ -482,10 +512,10 @@ class ReversePoweredLocalCodec(LocalCodec[ReverseLocalAction, ReverseLocalAction
         transform: ActionTransform,
     ) -> ReverseLocalActionID:
         self.resolve(action)
-        if type(transform) is not ActionTransform or int(transform) & ~1:
-            raise ValueError(
-                "reverse local codec has only the proved mirror automorphism"
-            )
+        transform = validate_mirror_transform(
+            transform,
+            message="reverse local codec has only the proved mirror automorphism",
+        )
         return self.scoped_handle(action.local_id, action.transform ^ transform)
 
     def apply(
@@ -558,18 +588,7 @@ class ReversePoweredLocalCodec(LocalCodec[ReverseLocalAction, ReverseLocalAction
         if type(source) is not SourceForestID:
             raise TypeError("reverse local source requires a scoped cell or forest ID")
         # Validate the forest before probing the retained binding cache.
-        forest = self.sources.resolve_forest(source)
-        source_key = self._source_key(source)
-        found = self._source_actions.get(source_key)
-        if found is not None:
-            return found
-        first, *following = forest.cells
-        result = self._source_cell_action(first)
-        for cell in following:
-            result = self._compose_actions(result, self._source_cell_action(cell))
-        self.ledger.reserve(self._source_owner, entries=1, nodes=0)
-        self._source_actions[source_key] = result
-        return result
+        return compile_source_forest(self, source)
 
     def metrics(self) -> ReversePoweredLocalCodecMetrics:
         return ReversePoweredLocalCodecMetrics(

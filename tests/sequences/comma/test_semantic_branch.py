@@ -7,7 +7,12 @@ from typing import cast
 
 import pytest
 
-from number_compiler.sequences.comma import future_authority, future_provider
+from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.comma import (
+    future_authority,
+    future_provider,
+    future_provider_codec,
+)
 from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
     boundary_source_index,
@@ -58,7 +63,7 @@ def _candidate_for_prefix(
     if reverse_child_classes:
         child_classes = (child_classes[1], child_classes[0])
 
-    source_classes = bytearray(future_provider.SOURCE_COUNT)
+    source_classes = bytearray(future_provider_codec.SOURCE_COUNT)
     source_classes[boundary_source_index(prefix.source.state)] = 2
     source_classes[boundary_source_index(children[0].state)] = n_class
     source_classes[boundary_source_index(children[1].state)] = z_class
@@ -86,7 +91,8 @@ def _admitted_provider(
     monkeypatch: pytest.MonkeyPatch,
     record: dict[str, object],
     charge_work: Callable[[int], None],
-) -> future_provider.SemanticFutureProvider:
+    request: pytest.FixtureRequest,
+) -> future_provider.SemanticFutureProviderLease:
     parsed = future_provider.parse_future_candidate(record, charge_work=charge_work)
     admission = future_authority.KernelInstanceAdmission(
         artifact_sha256=parsed.artifact_sha256,
@@ -101,9 +107,9 @@ def _admitted_provider(
         "_ADMITTED_KERNEL_INSTANCES",
         MappingProxyType({parsed.artifact_sha256: admission}),
     )
-    return future_provider.SemanticFutureProvider.from_record(
-        record, charge_work=charge_work
-    )
+    store = future_provider.SemanticFutureProviderStore(ResourceLedger())
+    request.addfinalizer(store.close)
+    return store.load_record(record, charge_work=charge_work)
 
 
 def _source_prefix() -> tuple[BoundaryOccurrence, OccurrencePrefixReturn]:
@@ -124,10 +130,14 @@ def _literal_children(prefix: OccurrencePrefixReturn) -> tuple[int, int]:
 
 def test_production_branch_rejects_fixture_before_observation(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     source, prefix = _source_prefix()
     provider = _admitted_provider(
-        monkeypatch, _candidate_for_prefix(prefix, selected_slot=0), _work_log()
+        monkeypatch,
+        _candidate_for_prefix(prefix, selected_slot=0),
+        _work_log(),
+        request,
     )
 
     def forbid_observation(*_args: object, **_kwargs: object) -> None:
@@ -149,10 +159,11 @@ def test_production_branch_rejects_fixture_before_observation(
 
 def test_source20_entry_requires_exact_order_and_global_authority(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     _source, prefix = _source_prefix()
     record = _candidate_for_prefix(prefix, selected_slot=0)
-    provider = _admitted_provider(monkeypatch, record, _work_log())
+    provider = _admitted_provider(monkeypatch, record, _work_log(), request)
     assert provider.runtime_admitted
     assert not provider.global_release_admitted
 
@@ -191,6 +202,7 @@ def test_source20_entry_requires_exact_order_and_global_authority(
 
 def _selected_child_for_mutation(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> SemanticMacroChild:
     source, prefix = _source_prefix()
     charge_work = _work_log()
@@ -198,6 +210,7 @@ def _selected_child_for_mutation(
         monkeypatch,
         _candidate_for_prefix(prefix, selected_slot=1),
         charge_work,
+        request,
     )
     return select_semantic_macro_child(
         source,
@@ -211,11 +224,12 @@ def _selected_child_for_mutation(
 
 def test_semantic_branch_binds_ordered_literal_choice_and_weighted_event(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     source, prefix = _source_prefix()
     charge_work = _work_log()
     record = _candidate_for_prefix(prefix, selected_slot=1)
-    provider = _admitted_provider(monkeypatch, record, charge_work)
+    provider = _admitted_provider(monkeypatch, record, charge_work, request)
     literal_children = _literal_children(prefix)
     expected_action = WeightedBoundaryAction.from_selected_fork(
         prefix.template,
@@ -269,6 +283,7 @@ def test_semantic_branch_binds_ordered_literal_choice_and_weighted_event(
 
 def test_semantic_branch_rejects_wrong_fork_value_children_and_source(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     source, prefix = _source_prefix()
     charge_work = _work_log()
@@ -276,6 +291,7 @@ def test_semantic_branch_rejects_wrong_fork_value_children_and_source(
         monkeypatch,
         _candidate_for_prefix(prefix, selected_slot=1),
         charge_work,
+        request,
     )
     children = _literal_children(prefix)
 
@@ -310,6 +326,7 @@ def test_semantic_branch_rejects_wrong_fork_value_children_and_source(
 
 def test_semantic_branch_charges_large_caller_integers_before_comparison(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     source, prefix = _source_prefix()
     charge_work = _work_log()
@@ -317,6 +334,7 @@ def test_semantic_branch_charges_large_caller_integers_before_comparison(
         monkeypatch,
         _candidate_for_prefix(prefix, selected_slot=1),
         charge_work,
+        request,
     )
     children = _literal_children(prefix)
     large_value = -(1 << 4096)
@@ -353,6 +371,7 @@ def test_semantic_branch_charges_large_caller_integers_before_comparison(
 
 def test_semantic_branch_rejects_provider_child_class_slot_mismatch(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     source, prefix = _source_prefix()
     charge_work = _work_log()
@@ -364,6 +383,7 @@ def test_semantic_branch_rejects_provider_child_class_slot_mismatch(
             reverse_child_classes=True,
         ),
         charge_work,
+        request,
     )
     children = _literal_children(prefix)
 
@@ -381,47 +401,155 @@ def test_semantic_branch_rejects_provider_child_class_slot_mismatch(
 def test_comma_term_rejects_child_cid_mismatch_before_boundary_return(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from number_compiler.sequences.comma.action_arena import CommaActionID
     from number_compiler.sequences.comma.image_adapter import CommaOccurrenceID
     from number_compiler.sequences.comma.power import CommaTerm
 
-    source, prefix = _source_prefix()
     charge_work = _work_log()
-    provider = _admitted_provider(
-        monkeypatch,
-        _candidate_for_prefix(
-            prefix,
-            selected_slot=1,
-            reverse_child_classes=True,
-        ),
-        charge_work,
+    source = BoundaryOccurrence(BoundaryState("N", 2, 10), 10)
+    prefix = OccurrencePrefixReturn(
+        source,
+        construct_macro(source.state),
     )
+    record = _candidate_for_prefix(prefix, selected_slot=1)
+    parsed = future_provider.parse_future_candidate(record, charge_work=charge_work)
+    digest = parsed.artifact_sha256
+    admission = future_authority.KernelInstanceAdmission(
+        artifact_sha256=digest,
+        instance_id=future_authority.GLOBAL_RELEASE_SESSION_ID,
+        theorem_id=future_authority.GLOBAL_RELEASE_THEOREM_ID,
+        contract_id=future_authority.GLOBAL_RELEASE_CONTRACT_ID,
+        claims=future_authority.GLOBAL_RELEASE_CLAIMS,
+        scope=future_authority.KERNEL_RELEASE_SCOPE,
+    )
+    monkeypatch.setattr(
+        future_provider,
+        "_ADMITTED_KERNEL_INSTANCES",
+        MappingProxyType({digest: admission}),
+    )
+
     with CommaTerm(1) as term:
+        store = future_provider.SemanticFutureProviderStore(term.ledger)
+        object.__setattr__(term, "_future_provider_store", store)
+        lease = store.load_record(record, charge_work=charge_work)
+        object.__setattr__(term, "_future_provider_lease", lease)
+
+        # Reach the real source-20 fork, then issue its authenticated first
+        # child so the later global return starts from an owned occurrence.
+        term.index = SOURCE20_FIRST_FORK_INDEX
+        assert term.materialize() == SOURCE20_FIRST_FORK_VALUE
+        object.__setattr__(term, "_value", None)
+        source20_action = term.arena.source20_first_child(digest)
+        publish = cast(
+            Callable[[CommaActionID], int],
+            object.__getattribute__(term, "_publish"),
+        )
+        publish(source20_action)
+        source_occurrence = object.__getattribute__(term, "_boundary_occurrence")
+        assert type(source_occurrence) is BoundaryOccurrence
+        assert source_occurrence == source
+
+        provider = lease.resolve_provider(record_metrics=False)
+        original_source_class = future_provider.SemanticFutureProvider.source_class
+        boundary_children, _literal_children = (
+            prefix.ordered_literal_children().validated_parts()
+        )
+        child_states = (boundary_children[0].state, boundary_children[1].state)
+        child_classes = (
+            original_source_class(provider, child_states[0], charge_work=charge_work),
+            original_source_class(provider, child_states[1], charge_work=charge_work),
+        )
+        source_class = original_source_class(
+            provider, source.state, charge_work=charge_work
+        )
+        row = provider.class_row(source_class, charge_work=charge_work)
+        assert row.ordered_children == child_classes
+        assert child_classes[0] != child_classes[1]
+
+        # The provider's issued selection still sees its authentic row. Only
+        # the source-state CID lookup is corrupted, so the consumer must reject
+        # the disagreement between that row's ordered child slots and the
+        # exact boundary children before publishing the returned image.
+        def swapped_child_lookup(
+            checked_provider: future_provider.SemanticFutureProvider,
+            state: BoundaryState,
+            *,
+            charge_work: Callable[[int], None],
+        ) -> int:
+            class_id = original_source_class(
+                checked_provider, state, charge_work=charge_work
+            )
+            if checked_provider is provider:
+                if state == child_states[0]:
+                    return child_classes[1]
+                if state == child_states[1]:
+                    return child_classes[0]
+            return class_id
+
+        monkeypatch.setattr(
+            future_provider.SemanticFutureProvider,
+            "source_class",
+            swapped_child_lookup,
+        )
+
         template = term.arena.boundary_template(source.state)
         prefix_steps = template.weight.evaluate(
             source.exponent,
             charge_bits=term.arena.charge_bits,
         )
-        term.index = term.index + prefix_steps + 1
-        source_occurrence = cast(
+        term.index = object.__getattribute__(term, "_current_index") + prefix_steps + 1
+        global_action = term.arena.global_boundary_return(source.state, digest)
+        source_image_core = term.scheduler.source_image_core()
+        current_source = cast(
             CommaOccurrenceID,
             object.__getattribute__(term, "_source"),
         )
-        object.__setattr__(term, "_boundary_occurrence", source)
-        object.__setattr__(term, "_boundary_occurrence_owner", source_occurrence)
-        monkeypatch.setattr(term, "require_global_future_provider", lambda: provider)
-
-        def reject_boundary_publication(*_args: object, **_kwargs: object) -> None:
-            pytest.fail("mismatched child CIDs reached the boundary-return publisher")
-
-        monkeypatch.setattr(
-            term.arena, "global_boundary_return", reject_boundary_publication
+        # Publish the exact receiving origin before taking the rollback
+        # snapshot; a failed action may legitimately reuse that origin.
+        source_image_core.origin(term.adapter, current_source)
+        before_core = source_image_core.audit_snapshot()
+        before_audit = term.audit_snapshot()
+        before_term = (
+            object.__getattribute__(term, "_source"),
+            object.__getattribute__(term, "_image"),
+            object.__getattribute__(term, "_current_index"),
+            object.__getattribute__(term, "_current_value"),
+            object.__getattribute__(term, "_value"),
+            object.__getattribute__(term, "_boundary_occurrence"),
+            object.__getattribute__(term, "_boundary_occurrence_owner"),
+            len(before_audit.occurrences),
+            len(before_audit.boundary_receipts),
         )
         with pytest.raises(ValueError, match="child slots differ"):
-            term.resolve_index()
+            publish(global_action)
+        after_core = source_image_core.audit_snapshot()
+        assert (
+            len(after_core.nodes),
+            len(after_core.origins),
+            len(after_core.applications),
+            len(after_core.relative),
+        ) == (
+            len(before_core.nodes),
+            len(before_core.origins),
+            len(before_core.applications),
+            len(before_core.relative),
+        )
+        assert before_term == (
+            object.__getattribute__(term, "_source"),
+            object.__getattribute__(term, "_image"),
+            object.__getattribute__(term, "_current_index"),
+            object.__getattribute__(term, "_current_value"),
+            object.__getattribute__(term, "_value"),
+            object.__getattribute__(term, "_boundary_occurrence"),
+            object.__getattribute__(term, "_boundary_occurrence_owner"),
+            len(term.audit_snapshot().occurrences),
+            len(term.audit_snapshot().boundary_receipts),
+        )
 
 
 def test_semantic_branch_rejects_total_fake_selection_sentinel(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     source, prefix = _source_prefix()
     charge_work = _work_log()
@@ -429,6 +557,7 @@ def test_semantic_branch_rejects_total_fake_selection_sentinel(
         monkeypatch,
         _candidate_for_prefix(prefix, selected_slot=1),
         charge_work,
+        request,
     )
 
     def return_none(
@@ -457,6 +586,7 @@ def test_semantic_branch_rejects_total_fake_selection_sentinel(
 
 def test_semantic_branch_rejects_boolean_alias_from_source_lookup(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     source, prefix = _source_prefix()
     charge_work = _work_log()
@@ -464,14 +594,8 @@ def test_semantic_branch_rejects_boolean_alias_from_source_lookup(
         monkeypatch,
         _candidate_for_prefix(prefix, selected_slot=1),
         charge_work,
+        request,
     )
-    selection = provider.select_unique_unranked_child(
-        source.state,
-        charge_work=charge_work,
-    )
-    # Construct a valid-looking selection with the wrong integral source CID.
-    # The forged bool result below aliases it under Python equality.
-    object.__setattr__(selection, "source_class", 1)
     actual_source_class = future_provider.SemanticFutureProvider.source_class
 
     def bool_alias_for_source(
@@ -485,24 +609,10 @@ def test_semantic_branch_rejects_boolean_alias_from_source_lookup(
             return True
         return actual_source_class(self, state, charge_work=charge_work)
 
-    def return_forged_selection(
-        _self: future_provider.SemanticFutureProvider,
-        _state: BoundaryState,
-        *,
-        charge_work: Callable[[int], None],
-    ) -> future_provider.UnrankedChildSelection:
-        charge_work(1)
-        return selection
-
     monkeypatch.setattr(
         future_provider.SemanticFutureProvider,
         "source_class",
         bool_alias_for_source,
-    )
-    monkeypatch.setattr(
-        future_provider.SemanticFutureProvider,
-        "select_unique_unranked_child",
-        return_forged_selection,
     )
     with pytest.raises(ValueError, match="malformed source CID"):
         select_semantic_macro_child(
@@ -517,6 +627,7 @@ def test_semantic_branch_rejects_boolean_alias_from_source_lookup(
 
 def test_semantic_branch_rejects_mutated_source_kind_alias(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
     source, prefix = _source_prefix()
     charge_work = _work_log()
@@ -524,35 +635,15 @@ def test_semantic_branch_rejects_mutated_source_kind_alias(
         monkeypatch,
         _candidate_for_prefix(prefix, selected_slot=1),
         charge_work,
-    )
-    selection = provider.select_unique_unranked_child(
-        source.state,
-        charge_work=charge_work,
+        request,
     )
 
     class NKindAlias:
         def __eq__(self, other: object) -> bool:
             return other == "N"
 
-    forged_source = BoundaryState("N", 9, 5)
-    object.__setattr__(forged_source, "kind", NKindAlias())
-    object.__setattr__(selection, "source", forged_source)
-
-    def return_forged_selection(
-        _self: future_provider.SemanticFutureProvider,
-        _state: BoundaryState,
-        *,
-        charge_work: Callable[[int], None],
-    ) -> future_provider.UnrankedChildSelection:
-        charge_work(1)
-        return selection
-
-    monkeypatch.setattr(
-        future_provider.SemanticFutureProvider,
-        "select_unique_unranked_child",
-        return_forged_selection,
-    )
-    with pytest.raises(ValueError, match="malformed comma boundary source state"):
+    object.__setattr__(source.state, "kind", NKindAlias())
+    with pytest.raises(ValueError, match="boundary occurrence differs"):
         select_semantic_macro_child(
             source,
             prefix,
@@ -565,10 +656,31 @@ def test_semantic_branch_rejects_mutated_source_kind_alias(
 
 def test_semantic_macro_child_detects_selection_handle_mutation(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
 ) -> None:
-    selected = _selected_child_for_mutation(monkeypatch)
+    selected = _selected_child_for_mutation(monkeypatch, request)
     object.__setattr__(selected.selection, "selected_slot", 0)
     with pytest.raises(ValueError, match="FutureCID snapshot changed"):
+        _ = selected.target
+
+
+def test_semantic_macro_child_rejects_issued_selection_swap(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    selected = _selected_child_for_mutation(monkeypatch, request)
+    replacement = _selected_child_for_mutation(monkeypatch, request)
+    assert selected.selection is not replacement.selection
+    assert selected.selection.selected_slot == replacement.selection.selected_slot
+    assert (
+        selected.selection.ordered_child_classes
+        == replacement.selection.ordered_child_classes
+    )
+
+    # The replacement has the same checked scalar payload but a different
+    # provider authority.  Scalar snapshots alone must not authorize it.
+    object.__setattr__(selected, "selection", replacement.selection)
+    with pytest.raises(ValueError, match="selection binding changed"):
         _ = selected.target
 
 
@@ -578,9 +690,10 @@ def test_semantic_macro_child_detects_selection_handle_mutation(
 )
 def test_semantic_macro_child_detects_numeric_payload_mutation(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
     payload_field: str,
 ) -> None:
-    selected = _selected_child_for_mutation(monkeypatch)
+    selected = _selected_child_for_mutation(monkeypatch, request)
 
     if payload_field == "literal_value":
         object.__setattr__(selected, payload_field, selected.literal_value + 1)
@@ -595,6 +708,7 @@ def test_semantic_macro_child_detects_numeric_payload_mutation(
 @pytest.mark.parametrize("endpoint", ("start", "end"))
 def test_semantic_macro_child_rejects_equality_alias_in_action_binding(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
     endpoint: str,
 ) -> None:
     class EqualityTrap:
@@ -604,7 +718,7 @@ def test_semantic_macro_child_rejects_equality_alias_in_action_binding(
             self.calls += 1
             raise AssertionError("untrusted boundary equality was evaluated")
 
-    selected = _selected_child_for_mutation(monkeypatch)
+    selected = _selected_child_for_mutation(monkeypatch, request)
     exact_state = (
         selected.source.state if endpoint == "start" else selected.target.state
     )

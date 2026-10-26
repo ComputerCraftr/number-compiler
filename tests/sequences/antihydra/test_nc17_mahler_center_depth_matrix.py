@@ -21,6 +21,7 @@ from number_compiler.sequences.antihydra.mahler_center_depth_matrix import (
     conditional_center_moore,
 )
 from number_compiler.sequences.antihydra.mahler_center_exterior_join import (
+    MahlerCenterExteriorEvidence,
     MahlerCenterExteriorJoin,
 )
 from number_compiler.sequences.antihydra.mahler_odd_program import (
@@ -31,6 +32,46 @@ from number_compiler.sequences.antihydra.mahler_odd_program import (
 
 def scalar(d: int) -> int:
     return (3 * d + (d & 1)) // 2
+
+
+def _literal_conditional(sources: tuple[int, ...]) -> M:
+    """Independent dense Boolean-semiring reference for source candidate rows."""
+    positions = tuple(max(1, (len(str(source)) - 2) // 2) for source in sources)
+    candidates: list[set[int]] = []
+    for source, position in zip(sources, positions, strict=True):
+        if len(str(source)) < 4:
+            candidates.append({source})
+            continue
+        join = MahlerCenterExteriorEvidence.from_source(
+            source, center_places=2, center_start=position
+        ).join
+        candidates.append(
+            {
+                source + (item.center - join.pointed_center) * 10**position
+                for item in join.candidates
+                if item.center in join.source_admitted_centers
+            }
+        )
+
+    relation_rows = tuple(1 << center for center in range(100))
+    for index, old_candidates in enumerate(candidates[:-1]):
+        rows = [0] * 100
+        for source in old_candidates:
+            endpoint = scalar(source)
+            if endpoint in candidates[index + 1]:
+                source_center = (source // 10 ** positions[index]) % 100
+                endpoint_center = (endpoint // 10 ** positions[index + 1]) % 100
+                rows[source_center] |= 1 << endpoint_center
+        step_rows = tuple(rows)
+        dense_product: list[int] = []
+        for source_mask in relation_rows:
+            destinations = 0
+            for middle in range(100):
+                if (source_mask >> middle) & 1:
+                    destinations |= step_rows[middle]
+            dense_product.append(destinations)
+        relation_rows = tuple(dense_product)
+    return M(relation_rows)
 
 
 def test_all_six_100_state_matrices_agree_with_full_source() -> None:
@@ -113,6 +154,47 @@ def test_real_source_certification_and_width_birth() -> None:
     assert certificate.conditional_composition.edges >= certificate.matrix.edges
 
 
+def test_sparse_cold_relation_matches_full_dense_composition() -> None:
+    # Covers zero-padded roots, a small complete source fiber, and a width
+    # birth while comparing every public relation row to the old dense product.
+    for source, steps in ((7, 8), (100007, 7), (6667, 4)):
+        sources = [source]
+        for _ in range(steps):
+            sources.append(scalar(sources[-1]))
+        certified = T.from_source(source, steps)
+        dense = _literal_conditional(tuple(sources))
+        assert certified.conditional_composition == dense
+        packet = certified.packet(include_rows=True)
+        assert packet["conditional_matrix"] == dense.compact_packet(include_rows=True)
+
+
+def test_sparse_source_transfer_avoids_dense_matrix_products(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def reject_dense_product(_self: M, _after: M) -> M:
+        raise AssertionError("cold source relation used a dense matrix product")
+
+    def reject_driver_materialization(
+        _cls: type[M], /, *_args: object, **_kwargs: object
+    ) -> M:
+        raise AssertionError("candidate validation materialized a full driver matrix")
+
+    monkeypatch.setattr(M, "then", reject_dense_product)
+    monkeypatch.setattr(M, "from_driver", classmethod(reject_driver_materialization))
+    transfer = T.from_source(100007, 7)
+    work = transfer.relation_work
+    assert work.candidate_transitions_evaluated > 0
+    assert work.full_driver_matrices_avoided == work.candidate_transitions_evaluated
+    assert work.sparse_edges_emitted > 0
+    assert work.sparse_intermediate_edges_visited > 0
+    assert work.sparse_row_joins == work.sparse_intermediate_edges_visited
+    assert work.sparse_joined_target_edges >= work.sparse_row_joins
+    assert work.sparse_compositions == transfer.steps - 1
+    assert work.full_row_products_avoided == transfer.steps
+    assert work.full_row_products_performed == 0
+    assert work.canonical_rows_materialized == 100
+
+
 def test_powered_source_reuses_admitted_pointed_successor_actions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -125,15 +207,23 @@ def test_powered_source_reuses_admitted_pointed_successor_actions(
     ) -> object:
         raise AssertionError("pointed powered leaves must reuse selected actions")
 
+    def forbidden_dense_product(_self: M, _after: M) -> M:
+        raise AssertionError("powered source join used dense matrix composition")
+
     monkeypatch.setattr(
         MahlerJointFutureAction,
         "from_source_prefix",
         classmethod(forbidden_prefix_discovery),
     )
+    monkeypatch.setattr(M, "then", forbidden_dense_product)
     certificate = T.powered_from_source(7, 3, leaf_steps=2)
     assert certificate.pointed_sources == (7, 11, 17, 26)
     assert certificate.steps == 3
     assert certificate.packet()["source_authority"] == "source-finite-trace"
+    work = certificate.relation_work
+    assert work.full_row_products_avoided == certificate.steps + 1
+    assert work.full_row_products_performed == 0
+    assert work.sparse_compositions == certificate.steps - 1
 
 
 def test_short_sources_use_a_fixed_zero_padded_pair() -> None:
@@ -171,6 +261,7 @@ def test_source_authority_cannot_be_forged_through_public_dataclass_fields() -> 
             certificate.low_border_carries,
             certificate.source_port_punctures,
             certificate.source_fiber_edges,
+            certificate.relation_work,
         )
     copied = copy(certificate)
     with pytest.raises(ValueError, match="source-issued"):
@@ -214,6 +305,7 @@ def test_join_packet_counts_compositions_without_claiming_cache_hits() -> None:
     assert packet["temporal_matrix_join_mode"] == "source-fiber-action-composition"
 
 
+@pytest.mark.validation  # Seeded 160-source CRT and source-trace grid.
 def test_randomized_full_source_and_crt_transport() -> None:
     rng = Random(29)
     for _ in range(160):

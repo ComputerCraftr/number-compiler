@@ -12,6 +12,8 @@ from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.q19_output import ReversePairQ19OutputOwner
 from number_compiler.sequences.reverse_add.temporal_depth_transfer_matrix import (
+    BooleanPairMatrix,
+    Q19AffinePairMatrix,
     conditional_depth_window,
     pair_index,
 )
@@ -170,6 +172,38 @@ def test_source_issued_ring_joins_cyclotomic_and_middle_carry() -> None:
             assert (
                 matrix.phase_matrices[tick].rows[pair_index(source_pair)] & target_bit
             )
+
+        exact_path = tuple(
+            (digits_lsd(value, 10)[1], digits_lsd(value, 10)[-2])
+            for value in values[:5]
+        )
+
+        def forbid_matrix_product(*_args: object, **_kwargs: object) -> object:
+            raise AssertionError("a source-pointed path must not run dense products")
+
+        with (
+            patch.object(BooleanPairMatrix, "then", forbid_matrix_product),
+            patch.object(Q19AffinePairMatrix, "then", forbid_matrix_product),
+        ):
+            exact = conditional_depth_window(
+                matrix_word,
+                position=1,
+                steps=4,
+                source_pair_path=exact_path,
+            )
+
+        # The optimized finite endpoint action must equal the independent
+        # chronological product of all guarded single-phase rows.
+        expected_action = BooleanPairMatrix.identity()
+        expected_affine = Q19AffinePairMatrix.identity()
+        for phase_matrix in exact.phase_matrices:
+            expected_action = expected_action.then(phase_matrix)
+            expected_affine = expected_affine.then(
+                Q19AffinePairMatrix.from_boolean(phase_matrix)
+            )
+        assert exact.action.rows == expected_action.rows
+        assert exact.affine_action == expected_affine
+        assert exact.action.endpoints(exact_path[0]) == (exact_path[-1],)
         correlated_phases = ring.diagnostic()["correlated_carry_phases"]
         assert isinstance(correlated_phases, int)
         assert correlated_phases >= 9

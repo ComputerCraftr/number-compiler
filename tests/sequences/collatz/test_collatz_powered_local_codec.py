@@ -54,6 +54,7 @@ from number_compiler.hashlife.interfaces.semantic_structures import (
     MacroInterface,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.collatz.defect_arena import CollatzDefectArena
 from number_compiler.sequences.collatz.field_action import (
     CollatzCocyclePrograms,
@@ -232,6 +233,62 @@ def test_collatz_binary_source_morphism_maps_padding_blank_to_zero() -> None:
     with pytest.raises(ValueError):
         codec.radix4_source_action(foreign)
     assert sources.binding_extent(forest) == 4
+
+
+def test_collatz_single_binary_cell_binding_matches_ledger_inventory() -> None:
+    codec, sources, _forest = _binary_codec((1,))
+    cell = sources.intern(0, 0)
+
+    action = codec.radix4_source_action(cell)
+
+    snapshot = codec.audit_snapshot()
+    assert action == _word_action(codec, (1,))
+    assert snapshot.source_actions == {}
+    assert snapshot.binary_source_actions == {cell: action}
+    source_rows = tuple(
+        row
+        for row in codec.ledger.inventory()
+        if row.role == "collatz_local_source_binding"
+    )
+    assert sum(row.entries for row in source_rows) == (
+        len(snapshot.source_actions) + len(snapshot.binary_source_actions)
+    )
+    assert all(row.accounting_delta == 0 for row in source_rows)
+
+
+@pytest.mark.parametrize("after_insert", (False, True))
+def test_collatz_binary_source_binding_rolls_back_failed_publication(
+    monkeypatch: pytest.MonkeyPatch,
+    after_insert: bool,
+) -> None:
+    codec, sources, _forest = _binary_codec((1,))
+    cell = sources.intern(0, 0)
+    binary_store = object.__getattribute__(codec, "_binary_source_actions")
+    original_setitem = LedgerDict[object, object].__setitem__
+
+    def fail_binary_binding(
+        store: LedgerDict[object, object], key: object, value: object
+    ) -> None:
+        if store is binary_store:
+            if after_insert:
+                original_setitem(store, key, value)
+            raise RuntimeError("injected binary-source publication failure")
+        original_setitem(store, key, value)
+
+    monkeypatch.setattr(LedgerDict, "__setitem__", fail_binary_binding)
+
+    with pytest.raises(
+        RuntimeError, match="injected binary-source publication failure"
+    ):
+        codec.radix4_source_action(cell)
+
+    assert codec.audit_snapshot().binary_source_actions == {}
+    source_rows = tuple(
+        row
+        for row in codec.ledger.inventory()
+        if row.role == "collatz_local_source_binding"
+    )
+    assert all(row.entries == 0 and row.accounting_delta == 0 for row in source_rows)
 
 
 def test_collatz_binary_source_morphism_skips_canonical_blank_subtrees() -> None:

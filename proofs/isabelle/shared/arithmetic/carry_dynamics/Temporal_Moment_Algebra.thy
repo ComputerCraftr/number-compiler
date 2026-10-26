@@ -128,6 +128,46 @@ theorem last_increment_moments_apply_then:
   by (cases state) (simp add: last_increment_moments_apply_def
       last_increment_moments_then_def algebra_simps)
 
+text \<open>A finite rooted path can be collapsed to its direct binary-affine
+offset after each adjacent edge has already been admitted.  The endpoint
+identity below is an algebraic composition theorem; it does not issue any
+source path, certify an edge, or authorize repetition.\<close>
+
+fun binary_affine_path_offset :: "(nat \<Rightarrow> int) \<Rightarrow> nat \<Rightarrow> int" where
+  "binary_affine_path_offset edge_offset 0 = 0"
+| "binary_affine_path_offset edge_offset (Suc n) =
+    2 * binary_affine_path_offset edge_offset n + edge_offset n"
+
+theorem binary_affine_endpoint_offset_telescope:
+  "(\<forall>i<n. edge_offset i = endpoint (Suc i) - 2 * endpoint i) \<Longrightarrow>
+    binary_affine_path_offset edge_offset n =
+      endpoint n - 2^n * endpoint 0"
+proof (induction n)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  have prefix: "\<forall>i<n. edge_offset i = endpoint (Suc i) - 2 * endpoint i"
+    using Suc.prems by auto
+  have last: "edge_offset n = endpoint (Suc n) - 2 * endpoint n"
+    using Suc.prems by auto
+  show ?case
+    using Suc.IH[OF prefix] last
+    by (simp add: power_Suc algebra_simps)
+qed
+
+corollary binary_affine_endpoint_offset_telescope_mod5:
+  "(\<forall>i<n. edge_offset i = endpoint (Suc i) - 2 * endpoint i) \<Longrightarrow>
+    binary_affine_path_offset edge_offset n mod 5 =
+      (endpoint n - 2^n * endpoint 0) mod 5"
+proof -
+  assume path: "\<forall>i<n. edge_offset i = endpoint (Suc i) - 2 * endpoint i"
+  have exact:
+    "binary_affine_path_offset edge_offset n = endpoint n - 2^n * endpoint 0"
+    by (rule binary_affine_endpoint_offset_telescope[OF path])
+  show ?thesis using exact by simp
+qed
+
 text \<open>The two moment families deliberately have different composition
 laws.  This prevents the reverse/add skew term from being reused as the
 \(2rev10\) shortened endpoint moment.\<close>
@@ -137,7 +177,9 @@ ML \<open>
     increment_moments_weighted_exponent_then
     increment_moments_then_associative increment_moments_power_closed
     last_increment_moments_then_associative
-    last_increment_moments_apply_then};
+    last_increment_moments_apply_then
+    binary_affine_endpoint_offset_telescope
+    binary_affine_endpoint_offset_telescope_mod5};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Temporal moment algebra depends on an oracle";
 \<close>

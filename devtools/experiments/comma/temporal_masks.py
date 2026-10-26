@@ -15,9 +15,6 @@ from math import gcd
 from time import perf_counter
 from typing import Literal
 
-from devtools.experiments.comma.generate_rank_candidate import (
-    decade_round_candidate,
-)
 from number_compiler.sequences.comma.arithmetic import (
     cycle_residue_period,
     cycle_transfer,
@@ -270,6 +267,10 @@ def _word(parts: dict[WordOutput, int]) -> PhaseWord:
 
 def reference_base_words() -> tuple[PhaseWord, ...]:
     """Measured reference construction, not quotient-first proof generation."""
+    from devtools.experiments.comma.generate_rank_candidate import (
+        decade_round_candidate,
+    )
+
     words: list[PhaseWord] = []
     for representative in orbit_representatives():
         parts: dict[WordOutput, int] = {}

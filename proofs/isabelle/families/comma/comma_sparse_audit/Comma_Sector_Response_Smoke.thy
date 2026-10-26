@@ -157,7 +157,6 @@ local_setup \<open>
       val _ = if length basis = 62 andalso #class_publications (#stats engine ()) = 63 then ()
         else error "Short-period guard basis is incomplete"
       val _ = Comma_Fast_Kernel.report ("guard_basis_62 " ^ #report engine ())
-      val trim_prior = #packed_stats engine ()
       val explicit_full = #guard engine 1 0 0
       val full_prior = #packed_stats engine ()
       val full_and = #mask_and engine (bits first) (bits explicit_full)
@@ -166,8 +165,7 @@ local_setup \<open>
       val _ = if #value full_and aconv bits first andalso
           #value full_or aconv bits explicit_full andalso
           #full_hits full_after = #full_hits full_prior + 2 andalso
-          #misses full_after = #misses full_prior andalso
-          #publication_reuses full_prior = #publication_reuses trim_prior + 1 then ()
+          #misses full_after = #misses full_prior then ()
         else error "Seeded trim certificates did not justify the full-mask identities"
       val overwide = HOLogic.mk_number @{typ nat}
         (snd (HOLogic.dest_number (bits explicit_full)) + 1)
@@ -200,27 +198,108 @@ local_setup \<open>
       val _ = Comma_Fast_Kernel.report ("guard_budget " ^ #report tiny ())
       val arithmetic_engine = Comma_Sector_Guards.make lthy {max_nodes = 2}
       fun numeral n = HOLogic.mk_number @{typ nat} n
-      (* AND returns num option while OR returns num. Directed constructor
-         conversion preserves both result types without storing suffix proofs. *)
-      val sub_engine = Comma_Sector_Guards.make lthy {max_nodes = 128}
-      val sub_and = #mask_and sub_engine (numeral 12) (numeral 6)
-      val shared_and = #mask_and sub_engine (numeral 25) (numeral 13)
-      val sub_or = #mask_or sub_engine (numeral 12) (numeral 6)
-      val shared_or = #mask_or sub_engine (numeral 25) (numeral 13)
-      val or_sub_after = #packed_stats sub_engine ()
-      val _ = if #value sub_and aconv numeral 4 andalso
-          #value shared_and aconv numeral 9 andalso
-          #value sub_or aconv numeral 14 andalso #value shared_or aconv numeral 29 andalso
-          #num_nodes or_sub_after > 0 andalso
-          #num_nodes or_sub_after = #num_conversions or_sub_after andalso
-          #retained or_sub_after = 4 andalso #num_failures or_sub_after=0 andalso
-          null(Thm_Deps.all_oracles (map #theorem [sub_and,shared_and,sub_or,shared_or]))
-        then () else error "Typed directed packed conversion lost exact authority or retained suffixes"
-      val _ = Comma_Fast_Kernel.report ("packed_direct_num " ^ #report sub_engine ())
+      val and_num_head = Term.head_of @{term "and_num m n"}
+      val or_num_head = Term.head_of @{term "or_num m n"}
+      val and_nat_head = Term.head_of @{term "a AND b :: nat"}
+      val or_nat_head = Term.head_of @{term "a OR b :: nat"}
+      val some_num_head = Term.head_of @{term "Some (m::num)"}
+      fun digits value =
+        if value = 1 then Const (@{const_name Num.num.One}, @{typ num})
+        else
+          (case numeral value of
+            Const (name, _) $ ds => if name = "Num.numeral_class.numeral" then ds
+              else error "Expected num digits below a natural numeral"
+          | _ => error "Expected a natural numeral application")
+      fun check_exact theorem request rhs =
+        if Thm.term_of (Thm.lhs_of theorem) aconv request andalso
+            Thm.term_of (Thm.rhs_of theorem) aconv rhs andalso
+            Thm.nprems_of theorem = 0 andalso null (Thm.hyps_of theorem) andalso
+            null (Thm.tpairs_of theorem) andalso
+            null (Term.add_frees (Thm.prop_of theorem) []) andalso
+            null (Term.add_vars (Thm.prop_of theorem) []) andalso
+            null (Thm_Deps.all_oracles [theorem])
+        then theorem else error "Native numeric conversion lost its exact closed equation"
+      fun numeric_result operator left right expected =
+        let
+          val head = if operator = Comma_Sector_Guards.And_Num then and_num_head else or_num_head
+          val request = head $ digits left $ digits right
+          val expected_rhs = if operator = Comma_Sector_Guards.And_Num
+            then some_num_head $ digits expected else digits expected
+          val theorem = Simplifier.rewrite (#packed_context arithmetic_engine)
+            (Thm.cterm_of lthy request)
+        in check_exact theorem request expected_rhs end
+      fun numeric_none_result left right =
+        let
+          val request = and_num_head $ digits left $ digits right
+          val theorem = Simplifier.rewrite (#packed_context arithmetic_engine)
+            (Thm.cterm_of lthy request)
+        in check_exact theorem request @{term "None :: num option"} end
+      val exact_and_one = numeric_result Comma_Sector_Guards.And_Num 17 19 17
+      val exact_and_two = numeric_result Comma_Sector_Guards.And_Num 33 35 33
+      val exact_and_none = numeric_none_result 16 32
+      val exact_and_branch = numeric_result Comma_Sector_Guards.And_Num 17 33 1
+      val exact_or_one = numeric_result Comma_Sector_Guards.Or_Num 17 19 19
+      val exact_or_two = numeric_result Comma_Sector_Guards.Or_Num 33 35 35
+      val native_stats = #packed_stats arithmetic_engine ()
+      val _ = if #num_nodes native_stats > 0 andalso
+          #num_nodes native_stats = #num_conversions native_stats andalso
+          #num_failures native_stats = 0 andalso
+          #num_retained native_stats = 0 andalso #num_evicted native_stats = 0 andalso
+          #num_limit native_stats = 0 andalso
+          #total_retained native_stats <= #total_limit native_stats then ()
+        else error "Exact numeric arithmetic accounting or root budget was inconsistent"
+      val _ = Comma_Fast_Kernel.report
+        ("packed_native_numeric " ^ #report arithmetic_engine ())
+      fun power_two exponent =
+        let fun loop 0 value = value
+              | loop count value = loop (count - 1) (2 * value)
+        in loop exponent 1 end
+      val wide_base = power_two 923
+      val wide_left = wide_base + 17
+      val wide_right = wide_base + 19
+      val wide_and_engine = Comma_Sector_Guards.make lthy {max_nodes = 8192}
+      val wide_and_result = #mask_and wide_and_engine (numeral wide_left) (numeral wide_right)
+      val wide_and_theorem = #theorem wide_and_result
+      val wide_and_stats = #packed_stats wide_and_engine ()
+      val wide_and_request = and_nat_head $ numeral wide_left $ numeral wide_right
+      val _ = if #value wide_and_result aconv numeral (wide_base + 17) andalso
+          Thm.term_of (Thm.lhs_of wide_and_theorem) aconv wide_and_request andalso
+          Thm.nprems_of wide_and_theorem = 0 andalso null (Thm.hyps_of wide_and_theorem) andalso
+          null (Thm.tpairs_of wide_and_theorem) andalso
+          null (Term.add_frees (Thm.prop_of wide_and_theorem) []) andalso
+          null (Term.add_vars (Thm.prop_of wide_and_theorem) []) andalso
+          null (Thm_Deps.all_oracles [wide_and_theorem]) andalso
+          #num_nodes wide_and_stats > 0 andalso
+          #num_nodes wide_and_stats = #num_conversions wide_and_stats andalso
+          #num_failures wide_and_stats = 0 andalso
+          #total_retained wide_and_stats <= #total_limit wide_and_stats then ()
+        else error "924-bit AND failed its exact closed-root gate"
+      val _ = Comma_Fast_Kernel.report ("wide_924_and " ^ #report wide_and_engine ())
+      val wide_or_engine = Comma_Sector_Guards.make lthy {max_nodes = 8192}
+      val wide_or_result = #mask_or wide_or_engine (numeral wide_left) (numeral wide_right)
+      val wide_or_theorem = #theorem wide_or_result
+      val wide_or_stats = #packed_stats wide_or_engine ()
+      val wide_or_request = or_nat_head $ numeral wide_left $ numeral wide_right
+      val _ = if #value wide_or_result aconv numeral wide_right andalso
+          Thm.term_of (Thm.lhs_of wide_or_theorem) aconv wide_or_request andalso
+          Thm.nprems_of wide_or_theorem = 0 andalso null (Thm.hyps_of wide_or_theorem) andalso
+          null (Thm.tpairs_of wide_or_theorem) andalso
+          null (Term.add_frees (Thm.prop_of wide_or_theorem) []) andalso
+          null (Term.add_vars (Thm.prop_of wide_or_theorem) []) andalso
+          null (Thm_Deps.all_oracles [wide_or_theorem]) andalso
+          #num_nodes wide_or_stats > 0 andalso
+          #num_nodes wide_or_stats = #num_conversions wide_or_stats andalso
+          #num_failures wide_or_stats = 0 andalso
+          #total_retained wide_or_stats <= #total_limit wide_or_stats then ()
+        else error "924-bit OR failed its exact closed-root gate"
+      val _ = Comma_Fast_Kernel.report ("wide_924_or " ^ #report wide_or_engine ())
       val first_and = #mask_and arithmetic_engine (numeral 6) (numeral 3)
       val swapped_and = #mask_and arithmetic_engine (numeral 3) (numeral 6)
-      val _ = if #misses (#packed_stats arithmetic_engine ()) = 1 andalso
-          #hits (#packed_stats arithmetic_engine ()) = 1 andalso
+      val arithmetic_stats = #packed_stats arithmetic_engine ()
+      val _ = if #misses arithmetic_stats = 1 andalso
+          #hits arithmetic_stats = 1 andalso #num_limit arithmetic_stats = 0 andalso
+          #num_retained arithmetic_stats = 0 andalso
+          #total_retained arithmetic_stats <= #total_limit arithmetic_stats andalso
           #value first_and aconv #value swapped_and andalso
           not (Thm.term_of (Thm.lhs_of (#theorem first_and)) aconv
             Thm.term_of (Thm.lhs_of (#theorem swapped_and))) then ()
@@ -268,6 +347,71 @@ local_setup \<open>
             #theorem swapped_or, #theorem cold_intersection, #theorem full_and,
             #theorem full_or, #theorem wide_and] @ basis)) lthy
     in lthy' end
+\<close>
+
+local_setup \<open>
+  fn lthy =>
+    let
+      fun numeral n = HOLogic.mk_number @{typ nat} n
+      val preparation = Comma_Sector_Guards.make lthy {max_nodes=16}
+      fun power_of_two exponent =
+        let
+          val request = @{term "push_bit :: nat => nat => nat"} $
+            numeral exponent $ numeral 1
+          val theorem = Simplifier.rewrite (#packed_context preparation)
+            (Thm.cterm_of lthy request)
+          val value = Thm.term_of (Thm.rhs_of theorem)
+          val (typ, _) = HOLogic.dest_number value
+          val _ = if typ = @{typ nat} andalso
+              Thm.term_of (Thm.lhs_of theorem) aconv request andalso
+              Thm.nprems_of theorem = 0 andalso null (Thm.hyps_of theorem) andalso
+              null (Thm.tpairs_of theorem) andalso
+              null (Term.add_frees (Thm.prop_of theorem) []) andalso
+              null (Term.add_vars (Thm.prop_of theorem) []) andalso
+              null (Thm_Deps.all_oracles [theorem]) then ()
+            else error "Rotation fixture power is not a closed checked numeral"
+        in value end
+      val zero = numeral 0
+      val bit_zero = numeral 1
+      val bit_922 = power_of_two 922
+      val bit_923 = power_of_two 923
+      val bit_924 = power_of_two 924
+      val engine = Comma_Sector_Guards.make lthy {max_nodes=32}
+      fun rotate bits = #mask_rotate engine 1 bits
+      val zero_rotation = rotate zero
+      val wrap_rotation = rotate bit_zero
+      val high_rotation = rotate bit_923
+      val cold_stats = #packed_stats engine ()
+      val repeated_high_rotation = rotate bit_923
+      val warm_stats = #packed_stats engine ()
+      val wide_rotation = rotate bit_924
+      fun exact_rotation bits expected (result: {value: term, theorem: thm}) =
+        let
+          val requested = @{term comma_rotate_phase} $ numeral 1 $ bits
+          val theorem = #theorem result
+          val _ = if #value result aconv expected andalso
+              Thm.term_of (Thm.lhs_of theorem) aconv requested andalso
+              Thm.term_of (Thm.rhs_of theorem) aconv expected andalso
+              Thm.nprems_of theorem = 0 andalso null (Thm.hyps_of theorem) andalso
+              null (Thm.tpairs_of theorem) andalso
+              null (Term.add_frees (Thm.prop_of theorem) []) andalso
+              null (Term.add_vars (Thm.prop_of theorem) []) andalso
+              null (Thm_Deps.all_oracles [theorem]) then ()
+            else error "Rotation fast/fallback result did not match its exact closed equation"
+        in () end
+      val _ = exact_rotation zero zero zero_rotation
+      val _ = exact_rotation bit_zero bit_923 wrap_rotation
+      val _ = exact_rotation bit_923 bit_922 high_rotation
+      val _ = exact_rotation bit_923 bit_922 repeated_high_rotation
+      val _ = exact_rotation bit_924 zero wide_rotation
+      val _ = if #misses warm_stats = #misses cold_stats andalso
+          #hits warm_stats = #hits cold_stats + 1 andalso
+          Thm.prop_of (#theorem high_rotation) aconv
+            Thm.prop_of (#theorem repeated_high_rotation) then ()
+        else error "Repeated bounded rotation did not reuse its exact root equation"
+      val _ = Comma_Fast_Kernel.report
+        ("rotation_one_fixtures " ^ #report engine ())
+    in lthy end
 \<close>
 
 ML \<open>

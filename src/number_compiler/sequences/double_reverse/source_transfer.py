@@ -22,6 +22,7 @@ from number_compiler.sequences.double_reverse.temporal_depth_transfer_matrix imp
     SourceConditionedDepthWindow,
     pair_index,
     source_conditioned_depth_window,
+    source_issued_root_path,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife import growth_ports
 from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
@@ -60,6 +61,15 @@ def _root_pair(term: DoubleReverseTerm, root: int, pair_depth: int) -> tuple[int
         symbol_at(term.source_arena, root, pair_depth),
         symbol_at(term.source_arena, root, width - 1 - pair_depth),
     )
+
+
+def _path_matrix(path: tuple[tuple[int, int], ...]) -> BooleanPairMatrix:
+    """Publish the exact pointed finite path without dense temporal products."""
+    if not path:
+        raise ValueError("source pair path must contain an endpoint")
+    rows = [0] * len(ALL_PAIRS)
+    rows[pair_index(path[0])] = 1 << pair_index(path[-1])
+    return BooleanPairMatrix(tuple(rows))
 
 
 def same_word(term: DoubleReverseTerm, left: int, right: int) -> bool:
@@ -225,7 +235,52 @@ def chronological_source_transfer_packet(
     except BlockContextBudgetExceeded as exc:
         return _unavailable(str(exc), steps=steps, pair_depth=pair_depth)
 
-    roots = [action_root]
+    window_f_step_limit = min(MAX_F_STEPS_PER_WINDOW, 17 - pair_depth)
+    window_count = (
+        (future_f_steps + window_f_step_limit - 1) // window_f_step_limit
+        if include_trace
+        else 0
+    )
+    # The action list and tuple coexist while the issuer builds its root list
+    # and tuple: 4*n+2 slots. Explicit trace also retains bounded window slices.
+    scratch_units = 4 * future_f_steps + 2
+    if include_trace:
+        scratch_units += 2 * future_f_steps + window_count
+    try:
+        with future.ledger.reservation(
+            future.scratch_owner, entries=scratch_units, nodes=scratch_units
+        ):
+            return _chronological_source_transfer_reserved(
+                term,
+                future=future,
+                action_root=action_root,
+                endpoint_phase=endpoint_phase,
+                future_f_steps=future_f_steps,
+                steps=steps,
+                pair_depth=pair_depth,
+                include_trace=include_trace,
+            )
+    except (
+        UncertifiedPointedStencilError,
+        BlockContextBudgetExceeded,
+        SourceConditionedDepthWindowUnavailable,
+    ) as exc:
+        return _unavailable(str(exc), steps=steps, pair_depth=pair_depth)
+
+
+def _chronological_source_transfer_reserved(
+    term: DoubleReverseTerm,
+    *,
+    future: PointedBankSource,
+    action_root: int,
+    endpoint_phase: int,
+    future_f_steps: int,
+    steps: int,
+    pair_depth: int,
+    include_trace: bool,
+) -> dict[str, object]:
+    """Build one bounded transfer while its path scratch is reserved."""
+    engine = future.engine
     actions: list[DoubleReversePortAction] = []
     current_root = action_root
     current_phase = endpoint_phase
@@ -238,9 +293,11 @@ def chronological_source_transfer_packet(
             current_root = engine.root_of(action.target)
             current_phase = action.phase_out
             actions.append(action)
-            roots.append(current_root)
-        root_path = tuple(roots)
         action_path = tuple(actions)
+        issued_path = source_issued_root_path(future, action_path)
+        del actions
+        root_path = issued_path.roots
+        action_path = issued_path.actions
         from .border_occurrences import (
             DoubleReverseBorderTrace,
             trace_double_reverse_border_occurrences,
@@ -260,69 +317,99 @@ def chronological_source_transfer_packet(
         return _unavailable(str(exc), steps=steps, pair_depth=pair_depth)
 
     try:
-        actual_pairs = tuple(_root_pair(term, root, pair_depth) for root in root_path)
+        if include_trace:
+            actual_pairs = tuple(
+                _root_pair(term, root, pair_depth) for root in root_path
+            )
+        else:
+            actual_pairs = (
+                _root_pair(term, root_path[0], pair_depth),
+                _root_pair(term, root_path[-1], pair_depth),
+            )
     except UncertifiedPointedStencilError as exc:
         return _unavailable(str(exc), steps=steps, pair_depth=pair_depth)
-    # A depth window is intentionally bounded to four F steps. Split longer
-    # admitted horizons into contiguous windows from this same prepared
-    # source, then join their full relations in chronological order. Each
-    # seam is checked against the already completed exact child path before
-    # it can participate in matrix composition.
+    # Detailed depth relations are only built for explicit trace demand. A
+    # summary already has the exact owner-issued child path and border joins;
+    # constructing every 100-state window here would be an unrequested matrix
+    # observer. Trace windows reuse slices of the same authenticated roots.
     window_f_step_limit = min(MAX_F_STEPS_PER_WINDOW, 17 - pair_depth)
     depth_windows: list[SourceConditionedDepthWindow] = []
-    joined_depth_action = BooleanPairMatrix.identity()
-    try:
-        for start_f_step in range(0, future_f_steps, window_f_step_limit):
-            window_f_steps = min(window_f_step_limit, future_f_steps - start_f_step)
-            depth_window = source_conditioned_depth_window(
-                future,
-                outer_pairs=pair_depth,
-                start_f_steps=start_f_step,
-                f_steps=window_f_steps,
+    joined_depth_action: BooleanPairMatrix | None = None
+    if include_trace:
+        window_ranges = tuple(
+            (
+                start_f_step,
+                min(window_f_step_limit, future_f_steps - start_f_step),
             )
-            if type(depth_window) is not SourceConditionedDepthWindow:
-                raise TypeError(
-                    "source-conditioned owner returned an invalid depth window"
-                )
-            depth_window.validate_source_authority()
-            end_f_step = start_f_step + window_f_steps
-            if (
-                depth_window.source_root != action_root
-                or depth_window.start_generation != term.generation + 2 * start_f_step
-                or depth_window.end_generation != term.generation + 2 * end_f_step
-                or depth_window.transfer.pointed_trace
-                != actual_pairs[start_f_step : end_f_step + 1]
-                or depth_window.initial_pair != actual_pairs[start_f_step]
-            ):
-                raise ValueError(
-                    "finite depth relation does not match its exact completed child path"
-                )
-            if depth_windows and (
-                depth_windows[-1].end_generation != depth_window.start_generation
-                or depth_windows[-1].transfer.pointed_trace[-1]
-                != depth_window.transfer.pointed_trace[0]
-            ):
-                raise ValueError("source-conditioned depth windows have a broken seam")
-            depth_windows.append(depth_window)
-            joined_depth_action = joined_depth_action.then(depth_window.transfer.action)
-    except (
-        SourceConditionedDepthWindowUnavailable,
-        UncertifiedPointedStencilError,
-        BlockContextBudgetExceeded,
-    ) as exc:
-        return _unavailable(str(exc), steps=steps, pair_depth=pair_depth)
-    if (
-        not depth_windows
-        or depth_windows[0].start_generation != term.generation
-        or depth_windows[-1].end_generation != term.generation + steps
-        or joined_depth_action.endpoints(actual_pairs[0]) != (actual_pairs[-1],)
-    ):
-        raise ValueError(
-            "chronological depth-window join differs from its exact endpoint path"
+            for start_f_step in range(0, future_f_steps, window_f_step_limit)
         )
+        window_paths = issued_path.windows(future, window_ranges)
+        joined_depth_action = BooleanPairMatrix.identity()
+        try:
+            for (start_f_step, window_f_steps), window_path in zip(
+                window_ranges, window_paths, strict=True
+            ):
+                depth_window = source_conditioned_depth_window(
+                    future,
+                    outer_pairs=pair_depth,
+                    start_f_steps=start_f_step,
+                    f_steps=window_f_steps,
+                    issued_path=window_path,
+                )
+                if type(depth_window) is not SourceConditionedDepthWindow:
+                    raise TypeError(
+                        "source-conditioned owner returned an invalid depth window"
+                    )
+                depth_window.validate_source_authority()
+                end_f_step = start_f_step + window_f_steps
+                if (
+                    depth_window.source_root != action_root
+                    or depth_window.start_generation
+                    != term.generation + 2 * start_f_step
+                    or depth_window.end_generation != term.generation + 2 * end_f_step
+                    or depth_window.transfer.pointed_trace
+                    != actual_pairs[start_f_step : end_f_step + 1]
+                    or depth_window.initial_pair != actual_pairs[start_f_step]
+                ):
+                    raise ValueError(
+                        "finite depth relation does not match its exact completed child path"
+                    )
+                if depth_windows and (
+                    depth_windows[-1].end_generation != depth_window.start_generation
+                    or depth_windows[-1].transfer.pointed_trace[-1]
+                    != depth_window.transfer.pointed_trace[0]
+                ):
+                    raise ValueError(
+                        "source-conditioned depth windows have a broken seam"
+                    )
+                depth_windows.append(depth_window)
+                joined_depth_action = joined_depth_action.then(
+                    depth_window.transfer.action
+                )
+        except (
+            SourceConditionedDepthWindowUnavailable,
+            UncertifiedPointedStencilError,
+            BlockContextBudgetExceeded,
+        ) as exc:
+            return _unavailable(str(exc), steps=steps, pair_depth=pair_depth)
+        if (
+            not depth_windows
+            or depth_windows[0].start_generation != term.generation
+            or depth_windows[-1].end_generation != term.generation + steps
+            or joined_depth_action.endpoints(actual_pairs[0]) != (actual_pairs[-1],)
+        ):
+            raise ValueError(
+                "chronological depth-window join differs from its exact endpoint path"
+            )
 
-    source_action = BooleanPairMatrix.identity()
+    source_action: BooleanPairMatrix | None = None
     source_matrices: list[BooleanPairMatrix] = []
+    if include_trace:
+        source_action = _path_matrix(actual_pairs)
+        if source_action.endpoints(actual_pairs[0]) != (actual_pairs[-1],):
+            raise AssertionError(
+                "source-scoped matrix lost its exact completed child path"
+            )
 
     for ordinal, (source_root, target_root) in enumerate(pairwise(root_path)):
         phase = border_occurrences.phases[ordinal]
@@ -338,18 +425,13 @@ def chronological_source_transfer_packet(
                 "typed border cursor does not name the exact completed child"
             )
 
-        source_pair, target_pair = actual_pairs[ordinal : ordinal + 2]
-        source_index = pair_index(source_pair)
-        target_index = pair_index(target_pair)
-        rows = [0] * len(ALL_PAIRS)
-        rows[source_index] = 1 << target_index
-        guarded = BooleanPairMatrix(tuple(rows))
         if include_trace:
-            source_matrices.append(guarded)
-        source_action = source_action.then(guarded)
-
-    if source_action.endpoints(actual_pairs[0]) != (actual_pairs[-1],):
-        raise AssertionError("source-scoped matrix lost its exact completed child path")
+            source_pair, target_pair = actual_pairs[ordinal : ordinal + 2]
+            source_index = pair_index(source_pair)
+            target_index = pair_index(target_pair)
+            rows = [0] * len(ALL_PAIRS)
+            rows[source_index] = 1 << target_index
+            source_matrices.append(BooleanPairMatrix(tuple(rows)))
 
     summary = _chronological_summary(
         family="2rev10",
@@ -364,6 +446,8 @@ def chronological_source_transfer_packet(
     )
     if not include_trace:
         return summary
+    if source_action is None or joined_depth_action is None:
+        raise AssertionError("trace demand did not publish its matrices")
 
     border_phases = tuple(
         {

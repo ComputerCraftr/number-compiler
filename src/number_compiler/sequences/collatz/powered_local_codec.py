@@ -22,9 +22,15 @@ from number_compiler.arithmetic.contracts.iterative_queries import defer_binary_
 from number_compiler.arithmetic.contracts.local_action_codec import (
     LocalCodec,
     compile_source_cell,
+    compile_source_forest,
+    compose_finite_lookup_maps,
     initialize_local_stores,
     local_cache_hit,
     publish_oriented_action,
+    publish_source_binding,
+    validate_finite_lookup_map,
+    validate_local_handle,
+    validate_mirror_transform,
 )
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle, ArenaToken
 from number_compiler.hashlife.execution.field_images import (
@@ -40,6 +46,7 @@ from number_compiler.resources.payload_contracts import (
     PayloadAuditStoreBinding,
     register_payload_audit_contract,
 )
+from number_compiler.resources.stores import LedgerDict
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,8 +57,10 @@ class CollatzLocalActionID(ArenaHandle):
 
     def __post_init__(self) -> None:
         super(CollatzLocalActionID, self).__post_init__()
-        if type(self.transform) is not ActionTransform or int(self.transform) & ~1:
-            raise ValueError("Collatz local actions support only geometric reflection")
+        validate_mirror_transform(
+            self.transform,
+            message="Collatz local actions support only geometric reflection",
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,16 +72,7 @@ class CollatzLocalAction:
 
     def __post_init__(self) -> None:
         for mapping in (self.forward, self.reverse):
-            if (
-                type(mapping) is not tuple
-                or len(mapping) != 3
-                or any(
-                    type(value) is not int or not 0 <= value < 3 for value in mapping
-                )
-            ):
-                raise ValueError(
-                    "Collatz local actions require two three-state mappings"
-                )
+            validate_finite_lookup_map(mapping, expected_size=3)
 
     def mirrored(self) -> CollatzLocalAction:
         return CollatzLocalAction(self.reverse, self.forward)
@@ -155,11 +155,11 @@ class CollatzPoweredLocalCodec(LocalCodec[CollatzLocalAction, CollatzLocalAction
             tuple[CollatzLocalActionID, CollatzLocalActionID], CollatzLocalActionID
         ]
         self._leaf_actions: MutableMapping[int, CollatzLocalActionID]
-        self._source_actions: MutableMapping[
+        self._source_actions: LedgerDict[
             SourceCellID | SourceForestID, CollatzLocalActionID
         ]
         initialize_local_stores(self)
-        self._binary_source_actions: MutableMapping[
+        self._binary_source_actions: LedgerDict[
             SourceCellID | SourceForestID, CollatzLocalActionID
         ] = self.ledger.make_dict(self._binary_source_owner)
         self.ledger.register_container(
@@ -211,20 +211,18 @@ class CollatzPoweredLocalCodec(LocalCodec[CollatzLocalAction, CollatzLocalAction
         return CollatzLocalActionID(self.owner, self._KIND, local_id, transform)
 
     def resolve(self, reference: CollatzLocalActionID) -> CollatzLocalAction:
-        if type(reference) is not CollatzLocalActionID:
-            raise TypeError("expected a Collatz powered local action ID")
-        reference.validate(self.owner, self._KIND, size=len(self._nodes))
-        if (
-            type(reference.transform) is not ActionTransform
-            or int(reference.transform) & ~1
-        ):
-            raise ValueError("malformed Collatz local action transform")
-        action = self._nodes[reference.local_id]
-        return (
-            action.mirrored()
-            if reference.transform is ActionTransform.MIRROR
-            else action
+        reference = validate_local_handle(
+            reference,
+            CollatzLocalActionID,
+            self.owner,
+            self._KIND,
+            size=len(self._nodes),
         )
+        transform = validate_mirror_transform(
+            reference.transform, message="malformed Collatz local action transform"
+        )
+        action = self._nodes[reference.local_id]
+        return action.mirrored() if transform is ActionTransform.MIRROR else action
 
     def intern_record(
         self,
@@ -233,7 +231,16 @@ class CollatzPoweredLocalCodec(LocalCodec[CollatzLocalAction, CollatzLocalAction
     ) -> CollatzLocalActionID:
         if type(action) is not CollatzLocalAction:
             raise TypeError("Collatz local interning requires an extensional action")
-        action.__post_init__()
+        for mapping in (action.forward, action.reverse):
+            validate_finite_lookup_map(mapping, expected_size=3)
+        return self._publish_admitted_record(action, reservations)
+
+    def _publish_admitted_record(
+        self,
+        action: CollatzLocalAction,
+        reservations: tuple[tuple[int, int, int], ...],
+    ) -> CollatzLocalActionID:
+        """Intern a result built from already admitted three-state actions."""
         mirrored = action.mirrored()
         canonical, transform = min(
             ((action, ActionTransform.IDENTITY), (mirrored, ActionTransform.MIRROR)),
@@ -269,13 +276,6 @@ class CollatzPoweredLocalCodec(LocalCodec[CollatzLocalAction, CollatzLocalAction
     def leaf(self, symbol: int) -> CollatzLocalActionID:
         return self._leaf(symbol)
 
-    @staticmethod
-    def _then(
-        before: tuple[int, int, int],
-        after: tuple[int, int, int],
-    ) -> tuple[int, int, int]:
-        return after[before[0]], after[before[1]], after[before[2]]
-
     def _compose_actions(
         self,
         left: CollatzLocalActionID,
@@ -294,10 +294,10 @@ class CollatzPoweredLocalCodec(LocalCodec[CollatzLocalAction, CollatzLocalAction
         )
         if found is not None:
             return found
-        result = self.intern_record(
+        result = self._publish_admitted_record(
             CollatzLocalAction(
-                self._then(a.forward, b.forward),
-                self._then(b.reverse, a.reverse),
+                compose_finite_lookup_maps(a.forward, b.forward),
+                compose_finite_lookup_maps(b.reverse, a.reverse),
             ),
             ((self._compose_owner, 1, 0), *reservations),
         )
@@ -317,10 +317,10 @@ class CollatzPoweredLocalCodec(LocalCodec[CollatzLocalAction, CollatzLocalAction
         transform: ActionTransform,
     ) -> CollatzLocalActionID:
         self.resolve(action)
-        if type(transform) is not ActionTransform or int(transform) & ~1:
-            raise ValueError(
-                "Collatz local codec has only the proved mirror automorphism"
-            )
+        transform = validate_mirror_transform(
+            transform,
+            message="Collatz local codec has only the proved mirror automorphism",
+        )
         return self.scoped_handle(action.local_id, action.transform ^ transform)
 
     def apply(
@@ -361,18 +361,7 @@ class CollatzPoweredLocalCodec(LocalCodec[CollatzLocalAction, CollatzLocalAction
             return self._cell_action(source)
         if type(source) is not SourceForestID:
             raise TypeError("Collatz local source requires a scoped cell or forest ID")
-        forest = self.sources.resolve_forest(source)
-        key = self._source_key(source)
-        found = self._source_actions.get(key)
-        if found is not None:
-            return found
-        first, *following = forest.cells
-        result = self._cell_action(first)
-        for cell in following:
-            result = self._compose_actions(result, self._cell_action(cell))
-        self.ledger.reserve(self._source_owner, entries=1)
-        self._source_actions[key] = result
-        return result
+        return compile_source_forest(self, source)
 
     def radix4_source_action(
         self,
@@ -398,22 +387,28 @@ class CollatzPoweredLocalCodec(LocalCodec[CollatzLocalAction, CollatzLocalAction
         found = self._binary_source_actions.get(key)
         if found is not None:
             return found
-        result: CollatzLocalActionID | None
         if type(source) is SourceCellID:
             result = self._binary_cell_action(source, blank)
         else:
             assert type(source) is SourceForestID
             cells = self.sources.resolve_forest(source).cells
-            result = None
+            composed: CollatzLocalActionID | None = None
             for cell in cells:
                 action = self._binary_cell_action(cell, blank)
-                result = (
-                    action if result is None else self._compose_actions(result, action)
+                composed = (
+                    action
+                    if composed is None
+                    else self._compose_actions(composed, action)
                 )
-            if result is None:
+            if composed is None:
                 raise AssertionError("source forests always contain a cell")
-        self.ledger.reserve(self._binary_source_owner, entries=1)
-        self._binary_source_actions[key] = result
+            result = publish_source_binding(
+                self.ledger,
+                self._binary_source_owner,
+                self._binary_source_actions,
+                key,
+                composed,
+            )
         self.ledger.bump(_collatz_keys.COLLATZ_RADIX4_SOURCE_MORPHISM_COMPILATIONS)
         return result
 
@@ -458,8 +453,13 @@ class CollatzPoweredLocalCodec(LocalCodec[CollatzLocalAction, CollatzLocalAction
                     self._binary_source_actions[self._source_key(left)],
                     self._binary_source_actions[self._source_key(right)],
                 )
-            self.ledger.reserve(self._binary_source_owner, entries=1)
-            self._binary_source_actions[current_key] = result
+            publish_source_binding(
+                self.ledger,
+                self._binary_source_owner,
+                self._binary_source_actions,
+                current_key,
+                result,
+            )
         return self._binary_source_actions[key]
 
     def metrics(self) -> CollatzPoweredLocalCodecMetrics:
@@ -599,7 +599,8 @@ class CollatzPoweredLocalCodec(LocalCodec[CollatzLocalAction, CollatzLocalAction
             try:
                 if type(action) is not CollatzLocalAction:
                     raise TypeError("invalid Collatz local action type")
-                action.__post_init__()
+                for action_mapping in (action.forward, action.reverse):
+                    validate_finite_lookup_map(action_mapping, expected_size=3)
                 reference = CollatzLocalActionID(arena.owner, arena._KIND, index)
                 valid = arena.resolve(reference) is action
                 valid &= arena._keys.get(action) == index
@@ -625,8 +626,8 @@ class CollatzPoweredLocalCodec(LocalCodec[CollatzLocalAction, CollatzLocalAction
                 left_id, right_id = operands
                 left, right = arena.resolve(left_id), arena.resolve(right_id)
                 expected = CollatzLocalAction(
-                    arena._then(left.forward, right.forward),
-                    arena._then(right.reverse, left.reverse),
+                    compose_finite_lookup_maps(left.forward, right.forward),
+                    compose_finite_lookup_maps(right.reverse, left.reverse),
                 )
                 valid &= arena.resolve(result) == expected
             except (TypeError, ValueError, IndexError, AttributeError):

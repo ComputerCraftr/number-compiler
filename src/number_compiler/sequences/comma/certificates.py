@@ -13,7 +13,7 @@ from hmac import compare_digest
 from importlib.resources import as_file, files
 from pathlib import Path
 from secrets import token_bytes
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import (
@@ -33,6 +33,10 @@ from number_compiler.sequences.comma.future_authority import (
 from number_compiler.sequences.comma.future_authority import (
     SOURCE20_FIRST_FORK_VALUE as FIRST_FORK_VALUE,
 )
+from number_compiler.sequences.comma.image_adapter import UnresolvedCommaBranch
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.comma.power import CommaTerm
 
 CERTIFICATE_ID: Final[str] = "a367620-closed-regions-v1"
 CERTIFICATE_ASSET = "comma_prefix_v1.jsonl.gz"
@@ -376,6 +380,24 @@ def require_certified_index(
     _verify(ledger, max_work, shared_cache, memo)
 
 
+def require_certified_public_prefix(term: CommaTerm) -> None:
+    """Admit a public term prefix through its exact provider or certificate."""
+    term.require_open()
+    provider = term.global_future_provider_for_prefix_admission()
+    if term.certificate_version != CERTIFICATE_ID and provider is None:
+        raise UnresolvedCommaTerm(
+            term.index, 0, CERTIFICATE_ID, "stale comma certificate binding"
+        )
+    require_certified_index(
+        term.index,
+        term.ledger,
+        term.max_work,
+        shared_cache=term.shared_cache,
+        memo=term.certificate_memo,
+        global_provider=provider,
+    )
+
+
 def require_selected_child(
     *,
     source_index: int,
@@ -387,6 +409,10 @@ def require_selected_child(
     shared_cache: bool = True,
     memo: CertificateMemo | None = None,
 ) -> int:
+    if certificate_version == "uncertified-arithmetic":
+        raise UnresolvedCommaBranch(
+            f"comma branch at index {source_index} requires a certificate"
+        )
     if (
         certificate_version != CERTIFICATE_ID
         or type(source_index) is not int

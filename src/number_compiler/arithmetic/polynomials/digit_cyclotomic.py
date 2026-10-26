@@ -661,6 +661,13 @@ class CyclotomicDigitBlock:
 
     def linear_factor_is_unit(self, base: int) -> bool:
         """Whether multiplication by ``base-z`` is invertible in this quotient."""
+        base = int(base)
+        # In every quotient where z is a unit, the five-term Laurent
+        # polynomial below is an inverse of 10-z over Z/32Z.  Check z's unit
+        # condition from the constant coefficient instead of evaluating the
+        # full divisor at ten (which grows with the cyclotomic order).
+        if base == 10 and self.modulus == 32:
+            return gcd(self.divisor[0], self.modulus) == 1
         value = evaluate_polynomial(self.divisor, int(base))
         return gcd(value, self.modulus) == 1
 
@@ -672,6 +679,34 @@ class CyclotomicDigitBlock:
         inverse of ``F(base)`` gives the whole polynomial inverse.
         """
         base = int(base)
+        if base == 10 and self.modulus == 32:
+            # Synthetic division evaluates F(10) and constructs H in O(degree)
+            # modular operations.  This is the coefficient form of the fixed
+            # Laurent inverse modulo 32; unlike generic polynomial evaluation,
+            # it never constructs the large integer F(10), and unlike dense
+            # multiplication by z^-1 it stays linear in the ring dimension.
+            coefficients = tuple(value % self.modulus for value in self.divisor)
+            degree = len(coefficients) - 1
+            modular_quotient = [0] * degree
+            modular_quotient[-1] = coefficients[-1]
+            for index in range(degree - 1, 0, -1):
+                modular_quotient[index - 1] = (
+                    coefficients[index] + base * modular_quotient[index]
+                ) % self.modulus
+            value = (coefficients[0] + base * modular_quotient[0]) % self.modulus
+            if gcd(value, self.modulus) != 1:
+                raise ValueError(
+                    (
+                        "nonunit-linear-normalization",
+                        base,
+                        value,
+                        self.modulus,
+                    )
+                )
+            inverse_value = pow(value, -1, self.modulus)
+            return self.ring.reduce(
+                tuple(inverse_value * coefficient for coefficient in modular_quotient)
+            )
         value = evaluate_polynomial(self.divisor, base)
         if gcd(value, self.modulus) != 1:
             raise ValueError(

@@ -120,7 +120,7 @@ def runtime_candidate_record_from_isabelle_data(
     This parses authored literals only. It does not rebuild the boundary graph,
     infer diagnostics, or confer kernel/runtime authority.
     """
-    from number_compiler.sequences.comma import future_provider
+    from number_compiler.sequences.comma import future_provider_codec
 
     if (
         type(text) is not str
@@ -132,7 +132,7 @@ def runtime_candidate_record_from_isabelle_data(
         raise ValueError("candidate source has the wrong Isabelle theory name")
     if any(command != "definition" for command, _body in declarations.values()):
         raise ValueError("candidate data tables must be literal definitions")
-    source_count = future_provider.SOURCE_COUNT
+    source_count = future_provider_codec.SOURCE_COUNT
 
     ids = tuple(
         _parse_natural(item, name=CANDIDATE_TABLE_NAMES[0])
@@ -188,15 +188,17 @@ def runtime_candidate_record_from_isabelle_data(
 
     encoded_ids = encode_unsigned_varints(ids, max_value=class_count - 1)
     record: dict[str, object] = {
-        "format": future_provider.FUTURE_CANDIDATE_FORMAT,
-        "authority": future_provider.FUTURE_CANDIDATE_AUTHORITY,
-        "state_universe": future_provider.FUTURE_SOURCE_UNIVERSE,
+        "format": future_provider_codec.FUTURE_CANDIDATE_FORMAT,
+        "authority": future_provider_codec.FUTURE_CANDIDATE_AUTHORITY,
+        "state_universe": future_provider_codec.FUTURE_SOURCE_UNIVERSE,
         "class_of_state_varint_base64": base64.b64encode(encoded_ids).decode("ascii"),
         "controls": controls,
         "ordered_children": children,
         "class_rank_candidate": ranks,
     }
-    future_provider.parse_future_candidate(record, charge_work=lambda _amount: None)
+    future_provider_codec.parse_future_candidate(
+        record, charge_work=lambda _amount: None
+    )
     return record
 
 

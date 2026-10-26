@@ -1,5 +1,10 @@
 theory Comma_Semantic_Future_Instance
   imports Comma_Semantic_Future_Candidate_Data
+    Comma_Semantic_Future_Candidate_Integrity
+    Comma_Semantic_Future_Candidate_Selector
+    Comma_Semantic_Future_Action_Compare
+    Comma_Semantic_Future_Candidate_Provider_NF
+    Comma_Semantic_Future_Source_NF_Bridge
 begin
 
 text \<open>
@@ -10,102 +15,18 @@ The source map is a compact binding; controls, ordered children, and ranks
 are stored once per class.  Exponent weights remain occurrence data.
 \<close>
 
-definition comma_semantic_future_candidate_class_index ::
-    "comma_boundary_state \<Rightarrow> nat" where
-  "comma_semantic_future_candidate_class_index q =
-    (case q of (kind,a,r) \<Rightarrow>
-      (if kind=Comma_N then 0 else 8*924) + (a-2)*924 + r)"
-
-definition comma_semantic_future_candidate_class_of ::
-    "comma_boundary_state \<Rightarrow> nat" where
-  "comma_semantic_future_candidate_class_of q =
-    (let index = comma_semantic_future_candidate_class_index q in
-      if comma_boundary_valid q \<and>
-          index < length comma_semantic_future_candidate_class_ids
-      then comma_semantic_future_candidate_class_ids ! index
-      else length comma_semantic_future_candidate_class_ids +
-        length comma_semantic_future_candidate_controls +
-        length comma_semantic_future_candidate_children +
-        length comma_semantic_future_candidate_ranks + 1)"
-
-definition comma_semantic_future_candidate_class_valid :: "nat \<Rightarrow> bool" where
-  "comma_semantic_future_candidate_class_valid c \<longleftrightarrow>
-    c < length comma_semantic_future_candidate_controls"
-
-definition comma_semantic_future_candidate_class_step ::
-    "nat \<Rightarrow> comma_future_control option" where
-  "comma_semantic_future_candidate_class_step c =
-    (if comma_semantic_future_candidate_class_valid c then
-       Some (comma_semantic_future_candidate_controls ! c)
-     else None)"
-
-definition comma_semantic_future_candidate_class_rank ::
-    "nat \<Rightarrow> nat option" where
-  "comma_semantic_future_candidate_class_rank c =
-    (if c < length comma_semantic_future_candidate_ranks
-     then comma_semantic_future_candidate_ranks ! c else None)"
-
-definition comma_semantic_future_candidate_class_children ::
-    "nat \<Rightarrow> comma_future_control \<Rightarrow> nat list" where
-  "comma_semantic_future_candidate_class_children c control =
-    (if comma_semantic_future_candidate_class_step c = Some control then
-       (if c < length comma_semantic_future_candidate_children then
-         (case control of
-            Comma_Future_Fork a \<Rightarrow>
-              (case comma_semantic_future_candidate_children ! c of
-                 (left,right) \<Rightarrow> map_filter id [left,right])
-          | Comma_Future_Landmine \<Rightarrow> [])
-        else [])
-     else [])"
-
-definition comma_semantic_future_candidate_class_row_shape ::
-    "nat \<Rightarrow> bool" where
-  "comma_semantic_future_candidate_class_row_shape c =
-    (case comma_semantic_future_candidate_class_step c of
-       None \<Rightarrow> False
-     | Some control \<Rightarrow>
-         (if c < length comma_semantic_future_candidate_children then
-            (case (control, comma_semantic_future_candidate_children ! c) of
-              (Comma_Future_Fork a, (Some left, Some right)) \<Rightarrow>
-                2 \<le> a \<and> a \<le> 9 \<and>
-                comma_semantic_future_candidate_class_valid left \<and>
-                comma_semantic_future_candidate_class_valid right
-            | (Comma_Future_Landmine, (None, None)) \<Rightarrow> True
-            | _ \<Rightarrow> False)
-          else False))"
-
-definition comma_semantic_future_candidate_class_row_checked ::
-    "nat \<Rightarrow> bool" where
-  "comma_semantic_future_candidate_class_row_checked c =
-    (comma_semantic_future_candidate_class_row_shape c \<and>
-     comma_semantic_rank_row_checked
-       comma_semantic_future_candidate_class_rank
-       comma_semantic_future_candidate_class_children
-       comma_semantic_future_candidate_class_step c)"
-
-definition comma_semantic_future_candidate_class_table_check :: bool where
-  "comma_semantic_future_candidate_class_table_check \<longleftrightarrow>
-    length comma_semantic_future_candidate_class_ids =
-      length comma_boundary_states \<and>
-    length comma_semantic_future_candidate_controls =
-      length comma_semantic_future_candidate_children \<and>
-    length comma_semantic_future_candidate_controls =
-      length comma_semantic_future_candidate_ranks \<and>
-    list_all comma_semantic_future_candidate_class_row_checked
-      [0..<length comma_semantic_future_candidate_controls]"
-
 definition comma_semantic_future_candidate_provider_row ::
     "comma_boundary_state \<Rightarrow> bool" where
   "comma_semantic_future_candidate_provider_row q =
-    (let c = comma_semantic_future_candidate_class_of q in
-      (case comma_semantic_future_candidate_class_step c of
+    (case comma_semantic_future_candidate_class_output
+        (comma_semantic_future_candidate_class_of q) of
          None \<Rightarrow> False
-       | Some control \<Rightarrow>
+       | Some (control,children) \<Rightarrow>
            comma_semantic_boundary_control_step comma_semantic_decade_summary q =
              Some control \<and>
            map comma_semantic_future_candidate_class_of
              (comma_semantic_boundary_children comma_semantic_decade_summary q control) =
-             comma_semantic_future_candidate_class_children c control))"
+             children)"
 
 definition comma_semantic_future_candidate_provider_cell ::
     "comma_boundary_kind \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> bool" where
@@ -253,10 +174,18 @@ local
               SOME (left, right) => conjuncts left @ conjuncts right
             | NONE => [term])
           val pieces = conjuncts rhs
-          val _ = if length pieces = 4 andalso List.last pieces aconv class_rows then ()
+          val _ = if length pieces = 5 andalso List.last pieces aconv class_rows then ()
             else error "Candidate class-table definition changed shape"
           val length_equation = prove_true (HOLogic.mk_eq
             (length_term control_list, numeral class_count))
+          val source_ids_range = prove_true_in
+            (proof_context addsimps
+              ([@{thm comma_semantic_future_candidate_class_ids_range_check_def},
+                @{thm comma_semantic_future_candidate_id_vector_in_range_def},
+                @{thm comma_semantic_future_candidate_class_ids_def}] @
+               @{thms comma_semantic_future_nat_list_max.simps} @
+               [length_equation]))
+            @{term comma_semantic_future_candidate_class_ids_range_check}
           val indexed_rows =
             Comma_Selected_List_Conversion.prove_indexed_list_all
               {ctxt = ctxt,
@@ -280,140 +209,23 @@ local
             (case try (HOLogic.dest_bin @{const_name HOL.conj} @{typ bool}) term of
               SOME (left, right) => @{thm conjI} OF
                 [prove_rhs left, prove_rhs right]
-            | NONE => if term aconv class_rows then rows else prove_true term)
+            | NONE => if term aconv class_rows then rows
+                else if term aconv
+                    @{term comma_semantic_future_candidate_class_ids_range_check}
+                  then source_ids_range
+                  else prove_true term)
           val rhs_proof = prove_rhs rhs
         in Thm.equal_elim (Thm.symmetric unfolded) rhs_proof end
 
-      fun construct_provider_check () =
-        let
-          val projector = Comma_Semantic_B1_B32_Projection.make_projector ctxt
-          val fast_kernel = Comma_Fast_Kernel.make ctxt
-          val endpoint_kernel = Comma_Decisive_Endpoint_Kernel.make ctxt
-            (#context fast_kernel)
-          fun dest_nat_at_most bound term =
-            (case try HOLogic.dest_number term of
-              SOME (typ, value) =>
-                if typ = @{typ nat} andalso value >= 0 andalso
-                    value <= IntInf.fromInt bound
-                then SOME (IntInf.toInt value) else NONE
-            | NONE => NONE)
-          fun power_projection cterm =
-            (case strip_comb (Thm.term_of cterm) of
-              (Const (name, _), [base, root, phase]) =>
-                if name <> @{const_name comma_semantic_b1_crt_power_result} then NONE
-                else
-                  (case (dest_nat_at_most 5 base,
-                      dest_nat_at_most 45 root,
-                      dest_nat_at_most 923 phase) of
-                    (SOME 5, SOME root_index, SOME phase_index) =>
-                      let
-                        val query = #query (projector root_index phase_index)
-                        val (lhs, _) = HOLogic.dest_eq
-                          (HOLogic.dest_Trueprop (Thm.prop_of query))
-                        val _ = if lhs aconv Thm.term_of cterm andalso
-                            Thm.nprems_of query = 0 andalso null (Thm.hyps_of query) andalso
-                            null (Thm.tpairs_of query)
-                          then () else error "B32 projection returned a mismatched query"
-                      in SOME (query RS @{thm eq_reflection}) end
-                  | _ => NONE)
-            | _ => NONE)
-          val projection_proc = Simplifier.make_simproc ctxt
-            {name = "semantic_future_cached_b32_projection",
-             kind = Simplifier.Simproc,
-             lhss = [Comma_Selected_List_Conversion.schematize
-               @{term "comma_semantic_b1_crt_power_result 5 root phase"}],
-             proc = fn _ => fn _ => power_projection, identifier = []}
-          val provider_rules = @{thms
-            comma_semantic_future_candidate_provider_row_def
-            comma_semantic_future_candidate_provider_cell_def
-            comma_semantic_future_candidate_provider_index_check_def
-            comma_semantic_future_candidate_provider_kind_check_def
-            comma_semantic_future_candidate_provider_check_def
-            comma_semantic_future_candidate_class_index_def
-            comma_semantic_future_candidate_class_of_def
-            comma_semantic_future_candidate_class_valid_def
-            comma_semantic_future_candidate_class_step_def
-            comma_semantic_future_candidate_class_children_def
-            comma_semantic_decade_summary_def comma_decade_admitted.simps
-            comma_terminal_weight_decode_def comma_terminal_weight_terminal_def
-            comma_semantic_boundary_control_step_def
-            comma_semantic_boundary_step_decisive_round
-            comma_semantic_boundary_event_outcome.simps
-            comma_semantic_boundary_control_of.simps
-            comma_semantic_boundary_children_def
-            comma_native_boundary_children_def comma_boundary_valid_def
-            comma_finite_initial_def comma_decisive_endpoint_round.simps
-            comma_offset_orbit_def
-            comma_digit_orbit_sum_def}
-          val selector_procs =
-            [#procedure ids, #procedure controls, #procedure children, #procedure ranks]
-          val provider_context = #context endpoint_kernel
-            |> fold Simplifier.add_proc selector_procs
-            |> Simplifier.add_proc projection_proc
-            |> Simplifier.add_simps simps
-            |> Simplifier.add_simps provider_rules
-          val cell = @{term comma_semantic_future_candidate_provider_cell}
-          val index_check =
-            @{term comma_semantic_future_candidate_provider_index_check}
-          val kind_check =
-            @{term comma_semantic_future_candidate_provider_kind_check}
-          val provider_check =
-            @{term comma_semantic_future_candidate_provider_check}
-          fun prove_index kind a_index =
-            let
-              val cell_predicate = cell $ kind $ numeral a_index
-              val rows =
-                Comma_Selected_List_Conversion.prove_indexed_list_all
-                  {ctxt = ctxt, predicate = cell_predicate, bound = 924,
-                   zero_fact = @{thm comma_indexed_all_zero},
-                   step_fact = @{thm comma_indexed_all_Suc},
-                   successor_equation = #equation successor_cache,
-                   prove_item = fn r => prove_true_in provider_context
-                     (cell $ kind $ numeral a_index $ numeral r)}
-              val goal = HOLogic.mk_Trueprop
-                (index_check $ kind $ numeral a_index)
-            in Goal.prove ctxt [] [] goal
-              (fn _ => Simplifier.asm_full_simp_tac
-                (provider_context addsimps [rows]) 1) end
-          fun prove_kind kind =
-            let
-              val indices = index_check $ kind
-              val checked =
-                Comma_Selected_List_Conversion.prove_indexed_list_all
-                  {ctxt = ctxt, predicate = indices, bound = 8,
-                   zero_fact = @{thm comma_indexed_all_zero},
-                   step_fact = @{thm comma_indexed_all_Suc},
-                   successor_equation = #equation successor_cache,
-                   prove_item = prove_index kind}
-              val goal = HOLogic.mk_Trueprop (kind_check $ kind)
-            in Goal.prove ctxt [] [] goal
-              (fn _ => Simplifier.asm_full_simp_tac
-                (provider_context addsimps [checked]) 1) end
-          val checked_n = prove_kind @{term Comma_N}
-          val checked_z = prove_kind @{term Comma_Z}
-          val goal = HOLogic.mk_Trueprop provider_check
-        in Goal.prove ctxt [] [] goal
-          (fn _ => Simplifier.asm_full_simp_tac
-            (provider_context addsimps [checked_n, checked_z]) 1) end
-      val provider_check_theorem_cache = Unsynchronized.ref (NONE: thm option)
-      fun prove_provider_check () =
-        (case !provider_check_theorem_cache of
-          SOME theorem => theorem
-        | NONE =>
-            let
-              val theorem = construct_provider_check ()
-              val _ = provider_check_theorem_cache := SOME theorem
-            in theorem end)
     in {prove_table = prove_table, prove_true = prove_true,
-        proof_context = proof_context,
-        prove_provider_check = prove_provider_check} end
+        proof_context = proof_context} end
 
-  (* This checker owns selectors, the bounded successor cache, and the B32 /
-     endpoint projection machinery for this exact theory. Rebuilding it for
-     every theorem tactic discarded those tables and contexts. Keep the
+  (* This checker owns selectors and the bounded successor cache for this
+     exact theory. Rebuilding it for every theorem tactic discarded those
+     tables and contexts. Keep the
      captured context private to this theory-local closure, reject callers
      from another theory, and serialize access because the selected-list and
-     projection owners contain mutable per-checker memo tables. *)
+     selector owners contain mutable per-checker memo tables. *)
   val owner_context = @{context}
   val owner_theory = Proof_Context.theory_of owner_context
   val owner_theory_id = Context.theory_id owner_theory
@@ -421,8 +233,7 @@ local
   type checker =
     {prove_table: unit -> thm,
      prove_true: term -> thm,
-     proof_context: Proof.context,
-     prove_provider_check: unit -> thm}
+     proof_context: Proof.context}
   val checker_cache = Synchronized.var
     "comma semantic future candidate checker" (NONE: checker option)
 
@@ -481,18 +292,177 @@ in
         (fn checker => #prove_true checker proposition)
     in resolve_tac ctxt [theorem] i end
 
-  fun provider_check_tac ctxt i =
-    let
-      val theorem = with_checker ctxt
-        (fn checker => #prove_provider_check checker ())
-    in resolve_tac ctxt [theorem] i end
 end
 end
 \<close>
 
+
 lemma comma_semantic_future_candidate_class_table_checked:
   "comma_semantic_future_candidate_class_table_check"
   by (tactic \<open>Comma_Semantic_Future_Candidate_Check.class_table_tac @{context} 1\<close>)
+
+lemma comma_semantic_future_candidate_class_row_checked_on_valid:
+  assumes table: "comma_semantic_future_candidate_class_table_check"
+    and valid: "comma_semantic_future_candidate_class_valid c"
+  shows "comma_semantic_future_candidate_class_row_checked c"
+proof -
+  have rows:
+      "list_all comma_semantic_future_candidate_class_row_checked
+        [0..<length comma_semantic_future_candidate_controls]"
+    using table
+    by (simp add: comma_semantic_future_candidate_class_table_check_def)
+  have member: "c\<in>set [0..<length comma_semantic_future_candidate_controls]"
+    using valid by (simp add: comma_semantic_future_candidate_class_valid_def)
+  show ?thesis using rows member by (simp add: list_all_iff)
+qed
+
+lemma comma_semantic_future_candidate_class_fork_children_ordered:
+  assumes table: "comma_semantic_future_candidate_class_table_check"
+    and valid: "comma_semantic_future_candidate_class_valid c"
+    and fork: "comma_semantic_future_candidate_class_step c =
+      Some (Comma_Future_Fork a)"
+  obtains left right where
+    "comma_semantic_future_candidate_children ! c =
+      (Some left,Some right)"
+    "comma_semantic_future_candidate_class_valid left"
+    "comma_semantic_future_candidate_class_valid right"
+    "comma_semantic_future_candidate_class_children c
+      (Comma_Future_Fork a) = [left,right]"
+    "comma_semantic_future_candidate_class_output c =
+      Some (Comma_Future_Fork a,[left,right])"
+proof -
+  have checked_row:
+      "comma_semantic_future_candidate_class_row_checked c"
+    by (rule comma_semantic_future_candidate_class_row_checked_on_valid
+      [OF table valid])
+  have shape:
+      "comma_semantic_future_candidate_class_row_shape c"
+    using checked_row
+    by (simp add: comma_semantic_future_candidate_class_row_checked_def)
+  have children_bound:
+      "c < length comma_semantic_future_candidate_children"
+    using shape fork
+    by (auto simp: comma_semantic_future_candidate_class_row_shape_def
+        split: option.splits prod.splits)
+  obtain left right where pair:
+      "comma_semantic_future_candidate_children ! c =
+        (Some left,Some right)"
+    and left_valid:
+      "comma_semantic_future_candidate_class_valid left"
+    and right_valid:
+      "comma_semantic_future_candidate_class_valid right"
+    using shape fork children_bound
+    by (cases "comma_semantic_future_candidate_children ! c")
+      (auto simp: comma_semantic_future_candidate_class_row_shape_def
+        split: option.splits prod.splits)
+  have ordered:
+      "comma_semantic_future_candidate_class_children c
+        (Comma_Future_Fork a) = [left,right]"
+    using fork pair children_bound
+    by (simp add: comma_semantic_future_candidate_class_children_def)
+  have fork_output_fact:
+      "comma_semantic_future_candidate_class_output c =
+        Some (Comma_Future_Fork a,[left,right])"
+    using fork ordered
+    by (simp add: comma_semantic_future_candidate_class_output_def)
+  show thesis
+    by (rule that[OF pair left_valid right_valid ordered fork_output_fact])
+qed
+
+lemma comma_semantic_future_candidate_class_landmine_children_empty:
+  assumes table: "comma_semantic_future_candidate_class_table_check"
+    and valid: "comma_semantic_future_candidate_class_valid c"
+    and landmine: "comma_semantic_future_candidate_class_step c =
+      Some Comma_Future_Landmine"
+  shows "comma_semantic_future_candidate_class_children c
+      Comma_Future_Landmine = []"
+    "comma_semantic_future_candidate_class_output c =
+      Some (Comma_Future_Landmine,[])"
+proof -
+  have checked_row:
+      "comma_semantic_future_candidate_class_row_checked c"
+    by (rule comma_semantic_future_candidate_class_row_checked_on_valid
+      [OF table valid])
+  have shape:
+      "comma_semantic_future_candidate_class_row_shape c"
+    using checked_row
+    by (simp add: comma_semantic_future_candidate_class_row_checked_def)
+  have children_bound:
+      "c < length comma_semantic_future_candidate_children"
+    using shape landmine
+    by (auto simp: comma_semantic_future_candidate_class_row_shape_def
+        split: option.splits prod.splits)
+  have children:
+      "comma_semantic_future_candidate_class_children c
+        Comma_Future_Landmine = []"
+    using landmine children_bound
+    by (simp add: comma_semantic_future_candidate_class_children_def)
+  show "comma_semantic_future_candidate_class_children c
+      Comma_Future_Landmine = []"
+    by (rule children)
+  show "comma_semantic_future_candidate_class_output c =
+      Some (Comma_Future_Landmine,[])"
+    using landmine children
+    by (simp add: comma_semantic_future_candidate_class_output_def)
+qed
+
+lemma comma_semantic_future_candidate_weighted_phase_binding:
+  fixes action :: "nat \<times> (('a \<times> nat) comma_semantic_weighted_crt_dag)"
+    and receiver :: "'a \<Rightarrow> nat comma_semantic_weighted_crt_dag"
+  assumes phase: "r<924"
+    and source_shape: "comma_weighted_crt_shape 0 (snd action)"
+    and receiver_shape:
+      "\<And>control. comma_weighted_crt_shape 0 (receiver control)"
+    and source:
+      "comma_weighted_crt_apply action r = Some ((control,d),height)"
+    and candidate_lookup:
+      "comma_weighted_crt_eval (receiver control)
+        ((r+d+height) mod 924) = Some (class_id,0)"
+    and table: "comma_semantic_future_candidate_class_table_check"
+    and class_id_valid:
+      "comma_semantic_future_candidate_class_valid class_id"
+  obtains key where
+    "comma_semantic_future_candidate_class_row_checked class_id"
+    "comma_semantic_future_candidate_class_output class_id = Some key"
+    "comma_weighted_crt_apply
+      (comma_semantic_future_crt_phase_bind action
+        (\<lambda>(selected,delta). comma_weighted_crt_shift delta
+          (comma_semantic_future_candidate_output_tree
+            (receiver selected)))) r =
+      Some (((control,d),Some key),height)"
+proof -
+  have row:
+      "comma_semantic_future_candidate_class_row_checked class_id"
+    by (rule comma_semantic_future_candidate_class_row_checked_on_valid
+      [OF table class_id_valid])
+  obtain selected children where selected_output_fact:
+      "comma_semantic_future_candidate_class_output class_id =
+        Some (selected,children)"
+    using comma_semantic_future_candidate_class_output_on_valid
+      [OF class_id_valid] by blast
+  let ?future_key = "(selected,children)"
+  have mapped_shape:
+      "\<And>selected. comma_weighted_crt_shape 0
+        (comma_semantic_future_candidate_output_tree (receiver selected))"
+    using receiver_shape
+    by (simp add: comma_semantic_future_candidate_output_tree_shape)
+  have mapped_lookup:
+      "comma_weighted_crt_eval
+        (comma_semantic_future_candidate_output_tree (receiver control))
+        ((r+d+height) mod 924) = Some (Some future_key,0)"
+    using candidate_lookup selected_output_fact
+    by (simp add: comma_semantic_future_candidate_output_tree_exact)
+  have bound:
+      "comma_weighted_crt_apply
+        (comma_semantic_future_crt_phase_bind action
+          (\<lambda>(selected,delta). comma_weighted_crt_shift delta
+            (comma_semantic_future_candidate_output_tree
+              (receiver selected)))) r =
+        Some (((control,d),Some ?future_key),height)"
+    by (rule comma_semantic_future_crt_phase_bind_apply_selected_delta
+      [OF phase source_shape mapped_shape source mapped_lookup])
+  show thesis by (rule that[OF row output bound])
+qed
 
 lemma comma_semantic_future_candidate_class_rank_check:
   "comma_semantic_rank_check
@@ -539,6 +509,22 @@ proof -
     by (cases q) (auto simp: comma_semantic_future_candidate_class_index_def
         comma_boundary_valid_def)
   qed
+
+lemma comma_semantic_future_candidate_class_of_index_exact:
+  assumes table: "comma_semantic_future_candidate_class_table_check"
+    and valid: "comma_boundary_valid q"
+  shows "comma_semantic_future_candidate_class_of q =
+    comma_semantic_future_candidate_class_ids !
+      comma_semantic_future_candidate_class_index q"
+proof -
+  have index:
+    "comma_semantic_future_candidate_class_index q <
+      length comma_semantic_future_candidate_class_ids"
+    by (rule comma_semantic_future_candidate_index_on_valid[OF table valid])
+  show ?thesis
+    using valid index
+    by (simp add: comma_semantic_future_candidate_class_of_def)
+qed
 
 lemma comma_semantic_future_candidate_children_off_control:
   assumes selected: "comma_semantic_future_candidate_class_step c = Some selected"
@@ -599,11 +585,6 @@ proof -
   show ?thesis using selected_row selected_state by simp
 qed
 
-lemma comma_semantic_future_candidate_provider_check_checked:
-  "comma_semantic_future_candidate_provider_check"
-  by (tactic \<open>Comma_Semantic_Future_Candidate_Check.provider_check_tac
-    @{context} 1\<close>)
-
 lemma comma_semantic_future_candidate_class_map_row:
   assumes table: "comma_semantic_future_candidate_class_table_check"
     and checked: "comma_semantic_future_candidate_provider_check"
@@ -638,7 +619,8 @@ proof -
         (comma_semantic_boundary_children comma_semantic_decade_summary q selected) =
       comma_semantic_future_candidate_class_children
         (comma_semantic_future_candidate_class_of q) selected"
-    using row by (auto simp: comma_semantic_future_candidate_provider_row_def Let_def
+    using row by (auto simp: comma_semantic_future_candidate_provider_row_def
+        comma_semantic_future_candidate_class_output_def Let_def
         split: option.splits)
   show "comma_semantic_future_candidate_class_index q <
       length comma_semantic_future_candidate_class_ids"
@@ -735,14 +717,6 @@ proof -
       [OF class_check maps_valid maps_step maps_children])
 qed
 
-lemma comma_semantic_concrete_future_rank_check:
-  "comma_semantic_rank_check comma_boundary_valid
-    comma_semantic_concrete_future_rank
-    (comma_semantic_boundary_children comma_semantic_decade_summary)
-    (comma_semantic_boundary_control_step comma_semantic_decade_summary)"
-  by (rule comma_semantic_future_provider_check_lifts_rank
-      [OF comma_semantic_future_candidate_provider_check_checked])
-
 lemma comma_semantic_concrete_source20_unranked:
   "comma_semantic_concrete_future_rank (Comma_N,2,10) = None"
   by (tactic \<open>Comma_Semantic_Future_Candidate_Check.source_rank_tac
@@ -759,184 +733,47 @@ lemma comma_semantic_concrete_source20_z_ranked:
   "\<exists>rank. comma_semantic_concrete_future_rank (Comma_Z,2,10) = Some rank"
   using comma_semantic_concrete_source20_z_ranked_exact by blast
 
-lemma comma_semantic_concrete_future_paths_agree_if_provider_checked:
-  assumes provider_check: "comma_semantic_future_candidate_provider_check"
-  shows "\<forall>q p left right. comma_boundary_valid q \<longrightarrow>
-    5 \<le> p \<longrightarrow> p mod 924 = snd (snd q) \<longrightarrow>
-    comma_semantic_infinite_path comma_boundary_value q p left \<longrightarrow>
-    comma_semantic_infinite_path comma_boundary_value q p right \<longrightarrow>
-    (\<forall>n. left n = right n)"
-proof -
-  have rank_check:
-    "comma_semantic_rank_check comma_boundary_valid
-      comma_semantic_concrete_future_rank
-      (comma_semantic_boundary_children comma_semantic_decade_summary)
-      (comma_semantic_boundary_control_step comma_semantic_decade_summary)"
-    by (rule comma_semantic_future_provider_check_lifts_rank[OF provider_check])
-  show ?thesis
-    by (rule comma_semantic_infinite_paths_agree
-      [OF comma_semantic_concrete_boundary_strong_occurrence_bridge rank_check])
-qed
-
-lemma comma_semantic_concrete_source20_infinite_path_if_provider_checked:
-  assumes provider_check: "comma_semantic_future_candidate_provider_check"
-  shows "\<exists>stream. comma_semantic_infinite_path comma_boundary_value
-    (Comma_N,2,10) 10 stream"
-proof -
-  have rank_check:
-    "comma_semantic_rank_check comma_boundary_valid
-      comma_semantic_concrete_future_rank
-      (comma_semantic_boundary_children comma_semantic_decade_summary)
-      (comma_semantic_boundary_control_step comma_semantic_decade_summary)"
-    by (rule comma_semantic_future_provider_check_lifts_rank[OF provider_check])
-  have source_valid: "comma_boundary_valid (Comma_N,2,10)"
-    by (simp add: comma_boundary_valid_def)
-  have phase_match: "10 mod 924 = snd (snd (Comma_N,2,10))"
-    by simp
-  show ?thesis
-  proof (rule comma_semantic_unranked_state_has_infinite_path
-      [where q="(Comma_N,2,10)" and p=10,
-       OF comma_semantic_concrete_boundary_occurrence_bridge rank_check])
-    show "comma_boundary_valid (Comma_N,2,10)" by (rule source_valid)
-    show "5 \<le> 10" by simp
-    show "10 mod 924 = snd (snd (Comma_N,2,10))" by (rule phase_match)
-    show "comma_semantic_concrete_future_rank (Comma_N,2,10) = None"
-      by (rule comma_semantic_concrete_source20_unranked)
-  qed
-qed
-
-theorem comma_semantic_concrete_source20_infinite_path:
-  "\<exists>stream. comma_semantic_infinite_path comma_boundary_value
-    (Comma_N,2,10) 10 stream"
-  by (rule comma_semantic_concrete_source20_infinite_path_if_provider_checked
-      [OF comma_semantic_future_candidate_provider_check_checked])
-
-theorem comma_semantic_concrete_future_paths_agree:
-  "\<forall>q p left right. comma_boundary_valid q \<longrightarrow>
-    5 \<le> p \<longrightarrow> p mod 924 = snd (snd q) \<longrightarrow>
-    comma_semantic_infinite_path comma_boundary_value q p left \<longrightarrow>
-    comma_semantic_infinite_path comma_boundary_value q p right \<longrightarrow>
-    (\<forall>n. left n = right n)"
-  by (rule comma_semantic_concrete_future_paths_agree_if_provider_checked
-      [OF comma_semantic_future_candidate_provider_check_checked])
-
-lemma comma_semantic_concrete_source20_path_has_unique_unranked_child_if_provider_checked:
-  assumes provider_check: "comma_semantic_future_candidate_provider_check"
-    and path: "comma_semantic_infinite_path comma_boundary_value
-      (Comma_N,2,10) 10 stream"
-  obtains control endpoint weight child tail where
-    "comma_semantic_boundary_control_step comma_semantic_decade_summary
-      (Comma_N,2,10) = Some control"
-    "comma_literal_path weight
-      (comma_boundary_value (Comma_N,2,10) 10) endpoint"
-    "child \<in> set (comma_semantic_boundary_children comma_semantic_decade_summary
-      (Comma_N,2,10) control)"
-    "stream (Suc weight) =
-      comma_boundary_value child
-        (10 + comma_semantic_boundary_exponent_delta comma_semantic_decade_summary
-          (Comma_N,2,10) control)"
-    "comma_boundary_valid child"
-    "5 \<le> 10 + comma_semantic_boundary_exponent_delta
-      comma_semantic_decade_summary (Comma_N,2,10) control"
-    "(10 + comma_semantic_boundary_exponent_delta comma_semantic_decade_summary
-      (Comma_N,2,10) control) mod 924 = snd (snd child)"
-    "comma_semantic_infinite_path comma_boundary_value child
-      (10 + comma_semantic_boundary_exponent_delta comma_semantic_decade_summary
-        (Comma_N,2,10) control) tail"
-    "comma_semantic_concrete_future_rank (Comma_N,2,10) = None"
-    "comma_semantic_concrete_future_rank child = None"
-    "\<forall>other\<in>set (comma_semantic_boundary_children comma_semantic_decade_summary
-      (Comma_N,2,10) control).
-        other \<noteq> child \<longrightarrow>
-        comma_semantic_concrete_future_rank other \<noteq> None"
-proof -
-  have rank_check:
-    "comma_semantic_rank_check comma_boundary_valid
-      comma_semantic_concrete_future_rank
-      (comma_semantic_boundary_children comma_semantic_decade_summary)
-      (comma_semantic_boundary_control_step comma_semantic_decade_summary)"
-    by (rule comma_semantic_future_provider_check_lifts_rank[OF provider_check])
-  have source_valid: "comma_boundary_valid (Comma_N,2,10)"
-    by (simp add: comma_boundary_valid_def)
-  have phase_match: "10 mod 924 = snd (snd (Comma_N,2,10))"
-    by simp
-  show thesis
-    by (rule comma_semantic_infinite_path_forces_unique_unranked_child
-      [where q="(Comma_N,2,10)" and p=10,
-       OF comma_semantic_concrete_boundary_occurrence_bridge rank_check
-         source_valid])
-      (use path phase_match in simp_all;
-       simp_all add: comma_semantic_concrete_source20_unranked)
-qed
-
-theorem comma_semantic_concrete_source20_path_has_unique_unranked_child:
-  assumes path: "comma_semantic_infinite_path comma_boundary_value
-      (Comma_N,2,10) 10 stream"
-  obtains control endpoint weight child tail where
-    "comma_semantic_boundary_control_step comma_semantic_decade_summary
-      (Comma_N,2,10) = Some control"
-    "comma_literal_path weight
-      (comma_boundary_value (Comma_N,2,10) 10) endpoint"
-    "child \<in> set (comma_semantic_boundary_children comma_semantic_decade_summary
-      (Comma_N,2,10) control)"
-    "stream (Suc weight) =
-      comma_boundary_value child
-        (10 + comma_semantic_boundary_exponent_delta comma_semantic_decade_summary
-          (Comma_N,2,10) control)"
-    "comma_boundary_valid child"
-    "5 \<le> 10 + comma_semantic_boundary_exponent_delta
-      comma_semantic_decade_summary (Comma_N,2,10) control"
-    "(10 + comma_semantic_boundary_exponent_delta comma_semantic_decade_summary
-      (Comma_N,2,10) control) mod 924 = snd (snd child)"
-    "comma_semantic_infinite_path comma_boundary_value child
-      (10 + comma_semantic_boundary_exponent_delta comma_semantic_decade_summary
-        (Comma_N,2,10) control) tail"
-    "comma_semantic_concrete_future_rank (Comma_N,2,10) = None"
-    "comma_semantic_concrete_future_rank child = None"
-    "\<forall>other\<in>set (comma_semantic_boundary_children comma_semantic_decade_summary
-      (Comma_N,2,10) control).
-        other \<noteq> child \<longrightarrow>
-        comma_semantic_concrete_future_rank other \<noteq> None"
-  using comma_semantic_concrete_source20_path_has_unique_unranked_child_if_provider_checked
-    [OF comma_semantic_future_candidate_provider_check_checked path] .
-
-theorem comma_semantic_concrete_source20_z_no_infinite_path:
-  "\<not> comma_semantic_infinite_path comma_boundary_value
-    (Comma_Z,2,10) 10 stream"
-proof -
-  have state_valid: "comma_boundary_valid (Comma_Z,2,10)"
-    by (simp add: comma_boundary_valid_def)
-  have exponent: "5 \<le> 10" by simp
-  have phase_match: "10 mod 924 = snd (snd (Comma_Z,2,10))" by simp
-  obtain k where ranked:
-      "comma_semantic_concrete_future_rank (Comma_Z,2,10) = Some k"
-    using comma_semantic_concrete_source20_z_ranked by blast
-  show ?thesis
-    by (rule comma_semantic_ranked_state_no_infinite_path
-      [OF comma_semantic_concrete_boundary_occurrence_bridge
-        comma_semantic_concrete_future_rank_check state_valid exponent
-        phase_match ranked])
-qed
-
 ML \<open>
-  val checked = @{thms
+  val published = @{thms
+    comma_semantic_future_candidate_class_index_def
+    comma_semantic_future_candidate_class_of_def
+    comma_semantic_future_candidate_class_valid_def
+    comma_semantic_future_candidate_class_step_def
+    comma_semantic_future_candidate_class_rank_def
+    comma_semantic_future_candidate_class_children_def
+    comma_semantic_future_candidate_class_output_on_valid
+    comma_semantic_future_candidate_output_tree_exact
+    comma_semantic_future_candidate_output_tree_shape
+    comma_semantic_future_candidate_class_output_def
+    comma_semantic_future_candidate_class_row_shape_def
+    comma_semantic_future_candidate_class_row_checked_def
+    comma_semantic_future_candidate_class_ids_range_check_def
+    comma_semantic_future_candidate_class_table_check_def
+    comma_semantic_future_candidate_provider_cell_def
+    comma_semantic_future_candidate_provider_index_check_def
+    comma_semantic_future_candidate_provider_kind_check_def
+    comma_semantic_future_candidate_provider_row_def
+    comma_semantic_future_candidate_provider_check_def
+    comma_semantic_concrete_future_rank_def
     comma_semantic_future_candidate_class_table_checked
-    comma_semantic_future_candidate_provider_check_checked
+    comma_semantic_future_candidate_class_row_checked_on_valid
+    comma_semantic_future_candidate_class_fork_children_ordered
+    comma_semantic_future_candidate_class_landmine_children_empty
+    comma_semantic_future_candidate_weighted_phase_binding
     comma_semantic_future_candidate_class_rank_check
+    comma_semantic_future_candidate_index_on_valid
+    comma_semantic_future_candidate_class_of_index_exact
+    comma_semantic_future_candidate_provider_row_on_valid
+    comma_semantic_future_candidate_class_map_row
     comma_semantic_future_provider_check_lifts_rank
     comma_semantic_concrete_future_rank_check
+    comma_semantic_boundary_step_decisive_round
     comma_semantic_concrete_source20_unranked
     comma_semantic_concrete_source20_z_ranked_exact
-    comma_semantic_concrete_future_paths_agree_if_provider_checked
-    comma_semantic_concrete_source20_infinite_path_if_provider_checked
-    comma_semantic_concrete_source20_path_has_unique_unranked_child_if_provider_checked
-    comma_semantic_concrete_future_paths_agree
-    comma_semantic_concrete_source20_infinite_path
-    comma_semantic_concrete_source20_path_has_unique_unranked_child
-    comma_semantic_concrete_source20_z_no_infinite_path
-    comma_semantic_boundary_step_decisive_round};
+    comma_semantic_concrete_source20_z_ranked}
+  val _ = Thm.consolidate published
   val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}
-    "semantic FutureCID candidate checker and path lift" checked;
+    "Future candidate class certificate and concrete provider rank" published
 \<close>
 
 end

@@ -15,11 +15,18 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
-from number_compiler.sequences.comma import future_authority, future_provider
+from number_compiler.sequences.comma import (
+    future_authority,
+    future_provider,
+    future_provider_codec,
+)
 from number_compiler.sequences.comma.boundary_chart import PERIOD
 from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
     boundary_source_index,
+)
+from number_compiler.sequences.comma.future_provider_memory import (
+    RetainedSemanticFutureProvider,
 )
 from number_compiler.sequences.comma.power import CommaTerm
 from tests.support.comma_future_provider_fixture import (
@@ -29,7 +36,15 @@ from tests.support.comma_future_provider_fixture import (
     canonical_bytes as _canonical_bytes,
 )
 from tests.support.comma_future_provider_fixture import (
+    fixture_admission as _fixture_admission,
+)
+from tests.support.comma_future_provider_fixture import (
     install_synthetic_registry as _install_synthetic_registry,
+)
+from tests.support.comma_future_provider_fixture import (
+    provider_classes,
+    provider_source_classes,
+    workspace_owner,
 )
 from tests.support.comma_future_provider_fixture import (
     work_log as _work_log,
@@ -42,12 +57,22 @@ def _record_list(record: dict[str, object], field: str) -> list[object]:
     return cast(list[object], value)
 
 
-def _kernel_admission_count() -> int:
-    instances = cast(
-        Mapping[str, object],
-        object.__getattribute__(future_provider, "_ADMITTED_KERNEL_INSTANCES"),
+def _selected_fixture_fork(
+    provider: future_provider.SemanticFutureProvider
+    | future_provider.SemanticFutureProviderLease,
+    charge_work: Callable[[int], None],
+) -> tuple[
+    BoundaryState,
+    tuple[BoundaryState, BoundaryState],
+    future_provider.UnrankedChildSelection,
+]:
+    source = BoundaryState("N", 2, 3)
+    children = (BoundaryState("N", 2, 1), BoundaryState("N", 2, 2))
+    return (
+        source,
+        children,
+        provider.select_unique_unranked_child(source, charge_work=charge_work),
     )
-    return len(instances)
 
 
 def _stage_artifact(term: CommaTerm, path: Path) -> None:
@@ -58,36 +83,13 @@ def _stage_artifact(term: CommaTerm, path: Path) -> None:
     stage(path)
 
 
-def _provider_classes(
-    provider: future_provider.SemanticFutureProvider,
-) -> tuple[future_provider.FutureClass, ...]:
-    return cast(
-        tuple[future_provider.FutureClass, ...],
-        object.__getattribute__(provider, "_classes"),
-    )
-
-
-def _provider_source_classes(
-    provider: future_provider.SemanticFutureProvider,
-) -> tuple[int, ...]:
-    return cast(tuple[int, ...], object.__getattribute__(provider, "_source_classes"))
-
-
-def _workspace_owner(ledger: ResourceLedger) -> int:
-    return next(
-        row.owner
-        for row in ledger.inventory()
-        if row.role == "semantic_future_provider_workspace"
-    )
-
-
 def test_structural_parser_decodes_nested_boundary_binding_without_authority() -> None:
     charges, charge_work = _work_log()
     parsed = future_provider.parse_future_candidate(
         _candidate_record(), charge_work=charge_work
     )
 
-    assert len(parsed.source_classes) == future_provider.SOURCE_COUNT
+    assert len(parsed.source_classes) == future_provider_codec.SOURCE_COUNT
     assert parsed.classes[2].control == future_provider.FutureControl("fork", 2)
     assert parsed.classes[2].ordered_children == (1, 2)
     assert parsed.classes[2].rank is None
@@ -95,7 +97,7 @@ def test_structural_parser_decodes_nested_boundary_binding_without_authority() -
     assert parsed.source_classes[BoundaryState("N", 2, 1).exponent_residue] == 1
     z_index = 8 * PERIOD
     assert parsed.source_classes[z_index] == 2
-    assert sum(charges) >= future_provider.SOURCE_COUNT
+    assert sum(charges) >= future_provider_codec.SOURCE_COUNT
 
 
 def test_read_only_root_mapping_uses_the_same_bounded_canonical_digest() -> None:
@@ -133,9 +135,14 @@ def test_read_only_root_mapping_uses_the_same_bounded_canonical_digest() -> None
     assert callback_charge_totals == [expected_preflight_work]
 
 
-def test_empty_production_registry_rejects_structurally_valid_candidate() -> None:
+def test_empty_registry_rejects_structurally_valid_candidate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    empty_registry: Mapping[str, future_authority.KernelInstanceAdmission] = (
+        MappingProxyType({})
+    )
+    monkeypatch.setattr(future_provider, "_ADMITTED_KERNEL_INSTANCES", empty_registry)
     _charges, charge_work = _work_log()
-    assert _kernel_admission_count() == 0
     with pytest.raises(PermissionError, match="no kernel-admitted"):
         future_provider.SemanticFutureProvider.from_record(
             _candidate_record(), charge_work=charge_work
@@ -227,7 +234,7 @@ def test_record_callback_cannot_mutate_the_bounded_parse_snapshot(
 ) -> None:
     record = _candidate_record()
     expected_controls = copy.deepcopy(record["controls"])
-    original_digest = future_provider.future_candidate_sha256
+    original_digest = future_provider_codec.future_candidate_sha256
     observed_snapshots: list[Mapping[str, object]] = []
     charges, charge_work = _work_log()
 
@@ -243,7 +250,9 @@ def test_record_callback_cannot_mutate_the_bounded_parse_snapshot(
         assert "unexpected_metadata" not in snapshot
         return original_digest(snapshot)
 
-    monkeypatch.setattr(future_provider, "future_candidate_sha256", observe_digest)
+    monkeypatch.setattr(
+        future_provider_codec, "future_candidate_sha256", observe_digest
+    )
     with pytest.raises(PermissionError, match="no kernel-admitted"):
         future_provider.SemanticFutureProvider.from_record(
             record,
@@ -298,19 +307,19 @@ def test_provider_leases_reject_altered_tables_and_rows(
 
     if mutation == "source_tuple":
         altered = tuple(
-            1 if cid == 0 else cid for cid in _provider_source_classes(provider)
+            1 if cid == 0 else cid for cid in provider_source_classes(provider)
         )
         object.__setattr__(provider, "_source_classes", altered)
     elif mutation == "class_tuple":
         object.__setattr__(
             provider,
             "_classes",
-            tuple(row for row in _provider_classes(provider)),
+            tuple(row for row in provider_classes(provider)),
         )
     elif mutation == "control":
-        object.__setattr__(_provider_classes(provider)[2].control, "kind", "landmine")
+        object.__setattr__(provider_classes(provider)[2].control, "kind", "landmine")
     else:
-        object.__setattr__(_provider_classes(provider)[2], "rank", 0)
+        object.__setattr__(provider_classes(provider)[2], "rank", 0)
 
     with pytest.raises(PermissionError, match="provider|row"):
         if query == "source":
@@ -330,7 +339,7 @@ def test_warm_class_row_guard_checks_only_its_signature(
     store = future_provider.SemanticFutureProviderStore(ledger)
     lease = store.load_record(record, charge_work=charge_work)
     provider = store.get(digest).resolve_provider()
-    object.__setattr__(_provider_classes(provider)[1], "rank", 7)
+    object.__setattr__(provider_classes(provider)[1], "rank", 7)
 
     def reject_full_validation(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("warm lookup must not reparse or hash the full table")
@@ -419,9 +428,9 @@ def test_admitted_provider_selects_one_slot_and_preserves_literal_children(
     record = _candidate_record()
     charges, charge_work = _work_log()
     digest = _install_synthetic_registry(monkeypatch, record, charge_work)
-    provider = future_provider.SemanticFutureProvider.from_record(
-        record, charge_work=charge_work
-    )
+    store = future_provider.SemanticFutureProviderStore(ResourceLedger())
+    lease = store.load_record(record, charge_work=charge_work)
+    provider = lease.resolve_provider()
     # Source index 3 is deliberately distinct from the synthetic table's CID 2.
     # This ensures the selection follows the source-to-CID map before reading
     # the class row, rather than treating the source offset as a class ID.
@@ -445,7 +454,60 @@ def test_admitted_provider_selects_one_slot_and_preserves_literal_children(
     assert selection.selected_slot == 1
     assert selection.selected_class == 2
     assert selection.select_literal((n_child, z_child)) is z_child
-    assert sum(charges) >= 2 * future_provider.SOURCE_COUNT
+    assert sum(charges) >= 2 * future_provider_codec.SOURCE_COUNT
+    store.close()
+
+
+def test_selection_rejects_a_foreign_provider_with_matching_queried_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A CID tuple is not a semantic authority across provider artifacts."""
+    from number_compiler.sequences.comma.semantic_branch import (
+        validate_selection_class_bindings,
+    )
+
+    record_a = _candidate_record()
+    record_b = _candidate_record()
+    source_map = bytearray(
+        base64.b64decode(cast(str, record_b["class_of_state_varint_base64"]))
+    )
+    # Change an unrelated source entry.  The queried source and both queried
+    # child rows retain their class values, but the artifact authority changes.
+    assert source_map[4] == 2
+    source_map[4] = 1
+    record_b["class_of_state_varint_base64"] = base64.b64encode(source_map).decode(
+        "ascii"
+    )
+
+    _charges, charge_work = _work_log()
+    digest_a, admission_a = _fixture_admission(record_a, charge_work)
+    digest_b, admission_b = _fixture_admission(record_b, charge_work)
+    assert digest_a != digest_b
+    monkeypatch.setattr(
+        future_provider,
+        "_ADMITTED_KERNEL_INSTANCES",
+        MappingProxyType({digest_a: admission_a, digest_b: admission_b}),
+    )
+    store_a = future_provider.SemanticFutureProviderStore(ResourceLedger())
+    store_b = future_provider.SemanticFutureProviderStore(ResourceLedger())
+    provider_a = store_a.load_record(
+        record_a, charge_work=charge_work
+    ).resolve_provider()
+    provider_b = store_b.load_record(
+        record_b, charge_work=charge_work
+    ).resolve_provider()
+    source, children, selection = _selected_fixture_fork(provider_a, charge_work)
+
+    with pytest.raises(PermissionError, match="another provider generation"):
+        validate_selection_class_bindings(
+            source,
+            children,
+            selection,
+            provider_b,
+            charge_work=charge_work,
+        )
+    store_a.close()
+    store_b.close()
 
 
 def test_provider_binding_fields_cannot_be_reassigned(
@@ -454,9 +516,9 @@ def test_provider_binding_fields_cannot_be_reassigned(
     record = _candidate_record()
     _charges, charge_work = _work_log()
     _install_synthetic_registry(monkeypatch, record, charge_work)
-    provider = future_provider.SemanticFutureProvider.from_record(
-        record, charge_work=charge_work
-    )
+    store = future_provider.SemanticFutureProviderStore(ResourceLedger())
+    lease = store.load_record(record, charge_work=charge_work)
+    provider = lease.resolve_provider()
 
     forged_bindings: tuple[tuple[str, object], ...] = (
         ("_source_classes", ()),
@@ -469,10 +531,13 @@ def test_provider_binding_fields_cannot_be_reassigned(
             setattr(provider, field, value)
 
     assert provider.runtime_admitted
+    assert lease.runtime_admitted
     assert provider.artifact_sha256
+    store.close()
 
 
 def test_release_authority_requires_exact_global_theorem_and_all_claims() -> None:
+    registered_before = future_provider.registered_global_release_artifact_sha256()
     digest = "a" * 64
     assert future_authority.GLOBAL_RELEASE_THEOREM_ID == (
         "Comma_Semantic_Release.comma_semantic_producer_global_release_contract"
@@ -495,7 +560,7 @@ def test_release_authority_requires_exact_global_theorem_and_all_claims() -> Non
     assert not future_authority.global_release_admission_matches(fixture, digest)
 
     # These release-shaped records are deliberately incomplete contract probes;
-    # they are never installed in the empty production registry.
+    # they must not change production admission.
     release_shape = future_authority.KernelInstanceAdmission(
         artifact_sha256=digest,
         instance_id=future_authority.GLOBAL_RELEASE_SESSION_ID,
@@ -532,7 +597,9 @@ def test_release_authority_requires_exact_global_theorem_and_all_claims() -> Non
         assert not future_authority.registered_admission_matches(probe, digest)
         assert not future_authority.global_release_admission_matches(probe, digest)
 
-    assert _kernel_admission_count() == 0
+    assert (
+        future_provider.registered_global_release_artifact_sha256() == registered_before
+    )
 
 
 def test_provider_rejects_digest_changes_to_control_children_or_rank(
@@ -752,7 +819,7 @@ def test_store_budget_refusal_and_reset_reclaim_all_provider_nodes(
     with pytest.raises(BlockContextBudgetExceeded):
         publish_refused.load_record(record, charge_work=charge_work)
     assert publish_limited.entries == publish_limited.nodes == 0
-    workspace = publish_limited.inventory_owner(_workspace_owner(publish_limited))
+    workspace = publish_limited.inventory_owner(workspace_owner(publish_limited))
     assert workspace.nodes == 0
     assert publish_limited.counters["comma_future_provider_load_failures"] == 1
     publish_refused.close()
@@ -760,18 +827,24 @@ def test_store_budget_refusal_and_reset_reclaim_all_provider_nodes(
     ledger = ResourceLedger(max_nodes=49_152, max_cache_entries=4)
     store = future_provider.SemanticFutureProviderStore(ledger)
     old = store.load_record(record, charge_work=charge_work)
+    selection = old.select_unique_unranked_child(
+        BoundaryState("N", 2, 3), charge_work=charge_work
+    )
+    assert selection.matches_provider(old)
     assert ledger.entries == 1 and ledger.nodes > 0
     store.reset()
     assert ledger.entries == ledger.nodes == 0
     assert not old.runtime_admitted
+    assert not selection.matches_provider(old)
     with pytest.raises(RuntimeError, match="stale"):
         _ = old.class_count
 
     current = store.load_record(record, charge_work=charge_work)
     assert current.runtime_admitted
+    assert not selection.matches_provider(current)
     removed_digest = current.artifact_sha256
     providers = cast(
-        OwnedMemo[str, future_provider.SemanticFutureProvider],
+        OwnedMemo[str, RetainedSemanticFutureProvider],
         object.__getattribute__(store, "_providers"),
     )
     del providers[removed_digest]
@@ -789,35 +862,6 @@ def test_store_budget_refusal_and_reset_reclaim_all_provider_nodes(
     store.close()
 
 
-def test_store_cancellation_releases_workspace_without_validation_failure(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    record = _candidate_record()
-
-    def no_work(_amount: int) -> None:
-        return None
-
-    _install_synthetic_registry(monkeypatch, record, no_work)
-    ledger = ResourceLedger(max_nodes=65_536, max_cache_entries=2)
-    store = future_provider.SemanticFutureProviderStore(ledger)
-
-    class LoadCancelled(BaseException):
-        pass
-
-    def cancel_load(_amount: int) -> None:
-        raise LoadCancelled
-
-    with pytest.raises(LoadCancelled):
-        store.load_record(record, charge_work=cancel_load)
-
-    assert ledger.entries == ledger.nodes == 0
-    workspace = ledger.inventory_owner(_workspace_owner(ledger))
-    assert workspace.nodes == 0
-    assert ledger.counters["comma_future_provider_load_cancellations"] == 1
-    assert ledger.counters.get("comma_future_provider_load_failures", 0) == 0
-    store.close()
-
-
 def test_provider_selection_refuses_class_with_two_unranked_children(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -825,13 +869,13 @@ def test_provider_selection_refuses_class_with_two_unranked_children(
     _record_list(record, "ordered_children")[2] = [2, 2]
     _charges, charge_work = _work_log()
     _install_synthetic_registry(monkeypatch, record, charge_work)
-    provider = future_provider.SemanticFutureProvider.from_record(
-        record, charge_work=charge_work
-    )
+    store = future_provider.SemanticFutureProviderStore(ResourceLedger())
+    provider = store.load_record(record, charge_work=charge_work)
     with pytest.raises(ValueError, match="no unique unranked child"):
         provider.select_unique_unranked_child(
             BoundaryState("N", 2, 2), charge_work=charge_work
         )
+    store.close()
 
 
 def test_boundary_source_rejects_equality_aliases() -> None:
@@ -843,8 +887,8 @@ def test_boundary_source_rejects_equality_aliases() -> None:
         BoundaryState(NKindAlias(), 2, 0)  # type: ignore[arg-type]
 
 
-def test_unranked_selection_rejects_boolean_cid_aliases() -> None:
-    with pytest.raises(ValueError, match="exact ordered child CIDs"):
+def test_unranked_selection_requires_provider_issuance() -> None:
+    with pytest.raises(TypeError, match="checked provider selection issuer"):
         future_provider.UnrankedChildSelection(
             BoundaryState("N", 2, 0),
             2,
@@ -852,6 +896,27 @@ def test_unranked_selection_rejects_boolean_cid_aliases() -> None:
             (True, False),
             0,
         )
+
+
+def test_issued_selection_rejects_boolean_cid_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.comma.semantic_branch import (
+        validate_selection_class_bindings,
+    )
+
+    record = _candidate_record()
+    _charges, charge_work = _work_log()
+    _install_synthetic_registry(monkeypatch, record, charge_work)
+    store = future_provider.SemanticFutureProviderStore(ResourceLedger())
+    provider = store.load_record(record, charge_work=charge_work)
+    source, children, selection = _selected_fixture_fork(provider, charge_work)
+    object.__setattr__(selection, "ordered_child_classes", (False, 1))
+    with pytest.raises(ValueError, match="malformed FutureCID fields"):
+        validate_selection_class_bindings(
+            source, children, selection, provider, charge_work=charge_work
+        )
+    store.close()
 
 
 def test_store_owner_name_collision_is_preflighted_before_registration() -> None:

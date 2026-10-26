@@ -7,6 +7,11 @@ session Double_Reverse_Temporal_Refinement in temporal_double_reverse = Shared_C
     Double_Reverse_Periodic_Ring_Action
     Double_Reverse_Bitplane_Refinement
     Double_Reverse_Source_Window_Refinement
+    Double_Reverse_Group_Ring_Carry_Cut
+    Double_Reverse_Group_Ring_Four_Port
+    Double_Reverse_Four_Port_Numeric_Refinement
+    Double_Reverse_Four_Port_SLP_Repeat
+    Double_Reverse_Spacetime_Carry_Square
     Double_Reverse_Source_Slice_Refinement
     Double_Reverse_Packed_Request_Refinement
     Double_Reverse_Periodic_Worklist_Refinement
@@ -17,3 +22,4 @@ session Double_Reverse_Temporal_Refinement in temporal_double_reverse = Shared_C
     Double_Reverse_Joint_Lineage_Endpoint
     Double_Reverse_Birth_Layer_Refinement
     Double_Reverse_Birth_Seam_Quotient
+    Double_Reverse_Outer_Port_Quotient

@@ -19,6 +19,9 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.fields.adic_morphism import (
+    bounded_prime_valuation,
+)
 from number_compiler.sequences.collatz.border_pair_temporal_matrix import (
     WeightedPairMatrix,
 )
@@ -124,19 +127,6 @@ def _coverage_fives(coverage: Radix6DigitCoverage | None) -> tuple[FiveBand, ...
     return tuple(consecutive)
 
 
-def _vp(value: int, prime: int) -> int:
-    """Finite valuation of a strictly positive integer (at most 2k-bit budget)."""
-    if value <= 0:
-        raise ValueError("valuation needs a positive argument")
-    if prime == 2:
-        return (value & -value).bit_length() - 1
-    count = 0
-    while value % prime == 0:
-        value //= prime
-        count += 1
-    return count
-
-
 def common_plus_one_valuation(cylinder: CollatzTwoSidedCylinder, prime: int) -> int:
     """Exact *lower bound* on v_p(x+1) for every x in the cylinder.
 
@@ -144,8 +134,16 @@ def common_plus_one_valuation(cylinder: CollatzTwoSidedCylinder, prime: int) -> 
     v_p of the stride; for one source the pointed valuation is exact.
     """
     if cylinder.count == 1:
-        return _vp(cylinder.first + 1, prime)
-    return min(_vp(cylinder.residue + 1, prime), _vp(cylinder.modulus, prime))
+        value = cylinder.first + 1
+        return bounded_prime_valuation(value, prime, value.bit_length())
+    residue_plus_one = cylinder.residue + 1
+    residue_valuation = bounded_prime_valuation(
+        residue_plus_one, prime, residue_plus_one.bit_length()
+    )
+    modulus_valuation = bounded_prime_valuation(
+        cylinder.modulus, prime, cylinder.modulus.bit_length()
+    )
+    return min(residue_valuation, modulus_valuation)
 
 
 def trace_is_zero_tail(trace: MacroTraceGrammar) -> bool:

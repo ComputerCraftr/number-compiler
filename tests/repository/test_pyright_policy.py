@@ -313,6 +313,40 @@ transitive==2.3.4
         )
     )
 
+    linux_lock = root / "devtools/typing/constraints-py314-linux.txt"
+    linux_lock.write_text(
+        (root / "devtools/typing/constraints-py314-macos.txt")
+        .read_text(encoding="utf-8")
+        .replace("macOS arm64", "Linux aarch64"),
+        encoding="utf-8",
+    )
+    installed["beta"] = "4.5.6"
+    assert (
+        python_toolchain_violations(
+            root,
+            version_reader=installed.__getitem__,
+            python_version="3.14.8",
+            implementation="CPython",
+            system="Linux",
+            machine="arm64",
+        )
+        == ()
+    )
+    (root / "devtools/typing/constraints-duplicate.txt").write_text(
+        linux_lock.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    assert any(
+        "exactly one target" in violation
+        for violation in python_toolchain_violations(
+            root,
+            version_reader=installed.__getitem__,
+            python_version="3.14.8",
+            implementation="CPython",
+            system="Linux",
+            machine="aarch64",
+        )
+    )
+
 
 def test_shared_toolchain_settings_are_strict_and_pinned() -> None:
     root = Path(__file__).resolve().parents[2]

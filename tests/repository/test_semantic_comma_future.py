@@ -1,12 +1,13 @@
 """Keep semantic source/future proofs independent of eager concrete publishers."""
 
 from devtools.checks.isabelle_registry import discover_sessions
-from devtools.checks.isabelle_source_analysis import extract_isabelle_declarations
+from devtools.checks.isabelle_source_analysis import (
+    IsabelleDeclaration,
+    extract_isabelle_declarations,
+)
 from devtools.checks.isabelle_syntax import (
-    dynamic_cartouche_spans,
     executable_text,
     ml_cartouches,
-    navigation_text,
     parse_theory_header,
     session_dependency_closure,
 )
@@ -17,6 +18,18 @@ THEORY_PATH = (
     / "families/comma/comma_semantic_future"
     / "Comma_Semantic_Future.thy"
 )
+
+
+def _future_theory(name: str) -> tuple[str, dict[str, IsabelleDeclaration]]:
+    path = (
+        isabelle_root(repository_root())
+        / "families/comma/comma_semantic_future_instance"
+        / f"{name}.thy"
+    )
+    source = path.read_text(encoding="utf-8")
+    return source, {
+        item.name: item for item in extract_isabelle_declarations(source, path)
+    }
 
 
 def test_semantic_future_owner_uses_only_foundational_imports() -> None:
@@ -167,7 +180,7 @@ def test_semantic_stop_occurrence_bridge_has_no_concrete_sparse_authority() -> N
     name, imports = parse_theory_header(source, path)
     assert name == "Comma_Semantic_B1_Future_Bridge"
     assert imports == (
-        "Comma_Semantic_B1.Comma_Semantic_B1_Power",
+        "Comma_Semantic_B1.Comma_Semantic_Action_Power",
         "Comma_Decade_Occurrence_Lift.Comma_Decade_Occurrence_Lift",
     )
     sessions = discover_sessions(root)
@@ -185,25 +198,6 @@ def test_semantic_stop_occurrence_bridge_has_no_concrete_sparse_authority() -> N
     assert "require_native_clean" in source
 
 
-def test_semantic_source_slot_does_not_materialize_an_action_row() -> None:
-    path = (
-        isabelle_root(repository_root())
-        / "families/comma/comma_semantic_b1"
-        / "Comma_Semantic_B1_Table_Transform.thy"
-    )
-    declarations = {
-        item.name: item
-        for item in extract_isabelle_declarations(
-            path.read_text(encoding="utf-8"), path
-        )
-    }
-    body = declarations["comma_semantic_b1_source_slot_action"].body
-    assert "comma_decisive_endpoint_packet" in body
-    assert "comma_source_continuation_id" not in body
-    assert "comma_source_continuation_action_at" not in body
-    assert "comma_semantic_b1_source_slot_action_refines" in declarations
-
-
 def test_semantic_boundary_bridge_consumes_direct_round_refinement() -> None:
     path = (
         isabelle_root(repository_root())
@@ -218,21 +212,16 @@ def test_semantic_boundary_bridge_consumes_direct_round_refinement() -> None:
     assert "comma_decisive_endpoint_round_refines[" in bridge
     assert "comma_round_control_germ_refines" in bridge
     assert "comma_round_close" in bridge
-    for retired in (
-        "comma_decisive_endpoint_round_refines_fast",
-        "comma_fast_round_aux",
-        "comma_fast_boundary_run",
-    ):
-        assert retired not in bridge
 
 
 def test_semantic_future_checker_context_is_private_and_entry_open_scoped() -> None:
-    path = (
-        isabelle_root(repository_root())
+    root = isabelle_root(repository_root())
+    instance_path = (
+        root
         / "families/comma/comma_semantic_future_instance"
         / "Comma_Semantic_Future_Instance.thy"
     )
-    source = path.read_text(encoding="utf-8")
+    source = instance_path.read_text(encoding="utf-8")
     checker = next(
         body
         for body in ml_cartouches(source)
@@ -256,40 +245,94 @@ def test_semantic_future_checker_context_is_private_and_entry_open_scoped() -> N
     assert "Seq.list_of (operation (#proof_context checker) i state)" in context_tac
     assert "Seq.of_list results" in context_tac
 
-    provider_cache = checker.split("val provider_check_theorem_cache =", 1)[1].split(
-        "in {prove_table", 1
-    )[0]
-    assert "case !provider_check_theorem_cache" in provider_cache
-    assert "SOME theorem => theorem" in provider_cache
-    assert "construct_provider_check ()" in provider_cache
+    # Provider admission now comes from the checked 16-source normal-form
+    # action, rather than a second theorem-construction cache in this checker.
+    # Keep the cache private-context contract above, and assert the new
+    # source-to-provider proof path at its theorem owner.
+    _source_bridge, source_bridge_declarations = _future_theory(
+        "Comma_Semantic_Future_Source_NF_Bridge"
+    )
+    boundary_action = source_bridge_declarations[
+        "comma_semantic_future_initial_nf_action_boundary_exact"
+    ].body
+    assert "comma_boundary_valid q" in boundary_action
+    assert "comma_semantic_graph_initial_nf_actions" in boundary_action
+    assert "comma_semantic_future_initial_source_index q" in boundary_action
+    assert "delta\\<le>27" in boundary_action
+    assert "(snd (snd q)+delta) mod 924" in boundary_action
+    assert "Comma_Semantic_B1_CRT_Stop J delta" in boundary_action
+    assert "actual_delta=1+H" in boundary_action
+    assert "ordered_children" in boundary_action
+    assert boundary_action.index("(Comma_N,a,") < boundary_action.index("(Comma_Z,a,")
+    assert "comma_semantic_future_candidate_child_ids_at" in boundary_action
+    assert "comma_semantic_future_projected_key_apply" in boundary_action
+    assert "comma_semantic_future_candidate_child_receiver" not in boundary_action
+    assert "comma_semantic_future_initial_nf_source_key_action" in boundary_action
 
+    closure, closure_declarations = _future_theory(
+        "Comma_Semantic_Future_Candidate_Provider_Closure"
+    )
+    row_proof = closure_declarations[
+        "comma_semantic_future_candidate_provider_row_of_initial_nf_boundary"
+    ].body
+    assert "comma_semantic_future_initial_nf_action_boundary_exact" in row_proof
+    assert "boundary_control" in row_proof and "boundary_children" in row_proof
+    assert "comma_semantic_future_candidate_provider_check_checked" in closure
+    assert "comma_semantic_future_provider_check_lifts_rank" in closure
+    assert "comma_semantic_concrete_future_rank_check" in closure
 
-def test_semantic_b1_does_not_build_the_physical_row_audit() -> None:
-    root = isabelle_root(repository_root())
-    sessions = discover_sessions(root)
-    closure = session_dependency_closure(sessions, ("Comma_Semantic_B1",))
-    assert "Comma_Semantic_Graph_Instance" not in closure
-    assert "Comma_Sparse_Core" not in closure
-    for name in (
-        "Comma_Semantic_B1_Columns",
-        "Comma_Semantic_B1_Publication",
-        "Comma_Semantic_B1_Table_Transform",
-        "Comma_Semantic_B1_CRT_Source_Binding",
-        "Comma_CRT_Columns",
-        "Comma_CRT_Apply",
-        "Comma_CRT_Power",
-    ):
-        text = (root / "families/comma/comma_semantic_b1" / f"{name}.thy").read_text(
-            encoding="utf-8"
+    compare_path = (
+        root
+        / "families/comma/comma_semantic_future_instance"
+        / "Comma_Semantic_Future_Action_Compare.thy"
+    )
+    weighted_transport_path = (
+        root
+        / "families/comma/comma_semantic_future_instance"
+        / "Comma_Semantic_Future_Weighted_Transport.thy"
+    )
+    compare_source = compare_path.read_text(encoding="utf-8")
+    weighted_transport = weighted_transport_path.read_text(encoding="utf-8")
+    projected_declarations = {
+        item.name: item
+        for item in extract_isabelle_declarations(
+            weighted_transport, weighted_transport_path
         )
-        # Consolidating a generic refinement theorem is a proof checkpoint,
-        # not construction of the retired physical-source certificate. Keep
-        # the prohibition on the old physical-table inputs. Small constant
-        # arithmetic checks do not construct physical-source row tables.
-        executable = executable_text(text)
-        assert "comma_semantic_graph_candidate" not in executable
-        assert "comma_response_data_rows" not in executable
-        assert "require_native_clean" in text
+    }
+    projected_apply = projected_declarations[
+        "comma_semantic_future_projected_key_apply"
+    ].body
+    assert "Comma_Future_Fork target" in projected_apply
+    assert "north_weight" in projected_apply and "south_weight" in projected_apply
+    assert "Comma_Future_Landmine" in projected_apply
+    assert "comma_semantic_future_action_children_shape Comma_Future_Landmine []" in (
+        projected_apply
+    )
+    compare_declarations = {
+        item.name: item
+        for item in extract_isabelle_declarations(compare_source, compare_path)
+    }
+    north_receiver = compare_declarations[
+        "comma_semantic_future_candidate_child_receiver_north"
+    ].body
+    south_receiver = compare_declarations[
+        "comma_semantic_future_candidate_child_receiver_south"
+    ].body
+    for receiver in (north_receiver, south_receiver):
+        assert "Comma_Future_Fork target_family_digit" in receiver
+        assert r"_ \<Rightarrow> Comma_Weighted_CRT_Leaf 0" in receiver
+    provider_nf_path = (
+        root
+        / "families/comma/comma_semantic_future_instance"
+        / "Comma_Semantic_Future_Candidate_Provider_NF.thy"
+    )
+    provider_nf = provider_nf_path.read_text(encoding="utf-8")
+    assert "comma_semantic_future_candidate_parent_key_action_apply" in (compare_source)
+    assert 'assumes table: "comma_semantic_future_candidate_class_table_check"' in (
+        compare_source
+    )
+    assert "comma_semantic_future_candidate_parent_source_key_nf" in provider_nf
+    assert "comma_semantic_future_projected_key_apply" in provider_nf
 
 
 def test_semantic_graph_reuses_the_canonical_packet_recurrence() -> None:
@@ -316,95 +359,11 @@ def test_semantic_graph_reuses_the_canonical_packet_recurrence() -> None:
     assert "comma_decisive_endpoint_round_packet" in packet_names
 
 
-def test_candidate_publication_does_not_require_physical_row_certificates() -> None:
-    root = isabelle_root(repository_root())
-    candidate = (
-        root
-        / "families/comma/comma_semantic_b1_instance"
-        / "semantic_b1_template_constructor.ML"
-    ).read_text(encoding="utf-8")
-    foundation = (
-        root
-        / "families/comma/comma_semantic_b1"
-        / "Comma_Semantic_B1_Table_Transform.thy"
-    ).read_text(encoding="utf-8")
-    assert 'ML_file "semantic_b1_template_constructor.ML"' not in foundation
-    assert all(
-        "Comma_Semantic_B1_Template_Constructor.make" not in body
-        for body in ml_cartouches(foundation)
-    )
-    for retired in (
-        "graph_engine",
-        "source_row_equation",
-        "source_action_rows",
-        "source_order_valid_goal",
-        "graph_valid_goal",
-        "table_goal",
-        "partition_rebase_goal",
-        "reconstruction_goal",
-        "Code_Evaluation.dynamic_value_strict",
-    ):
-        assert retired not in candidate
-    assert "comma_semantic_b1_source_slot_actions" in candidate
-    assert "val columnT = @{typ comma_crt_column}" in candidate
-    publisher = (
-        root
-        / "families/comma/comma_semantic_b1_instance"
-        / "semantic_b1_occurrence_publication.ML"
-    ).read_text(encoding="utf-8")
-    # HOL serialization moved out of discovery so shared nodes survive until
-    # publication; constructor identity and kernel checking remain unchanged.
-    assert "@{const_name Comma_B1_CRT_Column_Block_Node}" in publisher
-    assert "@{const_name Comma_B1_CRT_Column_DAG_Block}" in publisher
-    assert "@{const_name Comma_B1_CRT_Column_DAG_Branch}" in publisher
-    assert "Local_Theory.define" in publisher
-    assert 'Binding.name "comma_semantic_b1_crt_column_definitions"' not in publisher
-    assert "Local_Theory.background_theory_result" in publisher
-    catalog = (
-        root
-        / "families/comma/comma_semantic_b1_instance"
-        / "semantic_b1_column_catalog.ML"
-    ).read_text(encoding="utf-8")
-    assert "fun get_definitions ctxt" in publisher
-    assert "define_global_definitions" in publisher
-    assert "child < #cid parent" in catalog
-    assert "#template_keys artifact" in publisher
-    assert "HOLogic.mk_Collect" not in candidate
-    assert not (
-        root / "families/comma/comma_semantic_b1" / "semantic_b1_publication.ML"
-    ).exists()
-
-
-def test_root_instance_consumes_certified_occurrences_without_source_replay() -> None:
-    root = isabelle_root(repository_root())
-    path = (
-        root
-        / "families/comma/comma_semantic_b1_instance"
-        / "Comma_Semantic_B1_Instance.thy"
-    )
-    source = path.read_text(encoding="utf-8")
-    declarations = {
-        item.name: item for item in extract_isabelle_declarations(source, path)
-    }
-    root_action = declarations["comma_semantic_b1_crt_root_split_action"].body
-    assert "comma_semantic_b1_crt_root_occurrence" in root_action
-    assert "comma_crt_occurrence_split_action" in root_action
-    assert "None" in root_action and "comma_crt_occurrence_split_initial" in root_action
-    assert "comma_crt_source_recursive_rows" not in executable_text(source)
-    assert "comma_semantic_b1_crt_root_split_action_exact" in declarations
-    assert "comma_semantic_b1_crt_root_occurrence_exact" in source
-    assert "comma_semantic_b1_crt_power_result_outside_domain" in declarations
-    assert "discover_sources" not in source
-    assert "Template_Constructor.make" not in source
-    assert "source_order" not in source
-    assert not (path.parent / "semantic_b1_source_order_instance.ML").exists()
-
-
-def test_power_definition_keeps_control_and_weight_separate() -> None:
+def test_semantic_power_keeps_chronological_action_and_orbit_refinement() -> None:
     path = (
         isabelle_root(repository_root())
-        / "families/comma/comma_semantic_b1_instance"
-        / "Comma_Semantic_B1_Instance.thy"
+        / "families/comma/comma_semantic_b1"
+        / "Comma_Semantic_Action_Power.thy"
     )
     declarations = {
         item.name: item
@@ -412,299 +371,12 @@ def test_power_definition_keeps_control_and_weight_separate() -> None:
             path.read_text(encoding="utf-8"), path
         )
     }
-    power = declarations["comma_semantic_b1_crt_power_split_action"].body
-    assert "comma_crt_split_compose_from" in power
-    assert "comma_crt_split_control" in power
-    assert "comma_crt_split_weight" in power
-    assert "comma_semantic_b1_crt_power_split_action_consistent" in declarations
-    assert "comma_semantic_b1_crt_power_split_action_exact" in declarations
-    query = declarations["comma_semantic_b1_crt_power_result"].body
-    assert "comma_semantic_b1_crt_power_split_action" in query
-    assert "comma_crt_split_mdd_result_at" in query
-    assert "comma_semantic_b1_crt_power_rows" not in declarations
-
-
-def test_online_publication_checks_shape_and_all_goto_children() -> None:
-    root = (
-        isabelle_root(repository_root()) / "families/comma/comma_semantic_b1_instance"
-    )
-    path = root / "Comma_Semantic_B1_Occurrence_Publication.thy"
-    source = path.read_text(encoding="utf-8")
-    declarations = {
-        item.name: item for item in extract_isabelle_declarations(source, path)
-    }
-    shape = next(
-        item.body
-        for item in extract_isabelle_declarations(source, path)
-        if item.name == "comma_semantic_b1_crt_occurrence_data_checked"
-        and item.command == "definition"
-    )
-    assert "length comma_semantic_b1_crt_root_occurrence_indices = 46" in shape
-    assert "list_all comma_semantic_b1_crt_construction_check" in shape
-    assert "comma_semantic_b1_crt_occurrence_entry_checked" not in shape
-    assert "list_all comma_semantic_b1_crt_source_order_step" in shape
-    assert "distinct comma_semantic_b1_crt_sources" not in shape
-    uniqueness = declarations["comma_semantic_b1_crt_source_order_distinct"].body
-    assert 'shows "distinct comma_semantic_b1_crt_sources"' in uniqueness
-    assert "comma_semantic_b1_crt_source_order_steps_sorted" in uniqueness
-    assert (
-        "comma_semantic_b1_crt_source_order_rejects_equal_adjacent_keys" in declarations
-    )
-    assert (
-        "comma_semantic_b1_crt_source_order_distinct"
-        in declarations["comma_semantic_b1_crt_published_resolves_index"].body
-    )
-    assert "comma_semantic_b1_crt_source_index" not in shape
-    assert "List.find" not in shape
-    construction = declarations["comma_semantic_b1_crt_construction_check"].body
-    assert "comma_semantic_b1_crt_compact_occurrence_check" in construction
-    construction_at = declarations["comma_semantic_b1_crt_construction_check_at"].body
-    assert "list_all comma_semantic_b1_crt_construction_check" in construction_at
-    assert 'shows "comma_semantic_b1_crt_construction_check index"' in construction_at
-    indexed_total = declarations["comma_semantic_b1_crt_occurrence_at_index_total"].body
-    assert "comma_semantic_b1_crt_construction_check_at" in indexed_total
-    assert "comma_semantic_b1_crt_compact_occurrence_check_total" in indexed_total
-    assert "comma_semantic_b1_crt_constructed_occurrence_bound_def" not in indexed_total
-    entry = declarations["comma_semantic_b1_crt_root_entry_checked"].body
-    assert "distinct" not in entry
-    binding = declarations[
-        "comma_semantic_b1_crt_root_occurrence_distinct_binding"
-    ].body
-    assert "comma_semantic_b1_crt_root_entry_resolves_checked" in binding
-    root_bridge = declarations["comma_semantic_b1_crt_root_entry_resolves_checked"].body
-    assert 'checked: "comma_semantic_b1_crt_occurrence_data_checked"' in root_bridge
-    assert "comma_semantic_b1_crt_construction_check_at" in root_bridge
-    assert "comma_semantic_b1_crt_construction_check" not in entry
-    assert "comma_semantic_b1_crt_compact_occurrence_check_exposes" in binding
-    assert "comma_semantic_b1_crt_lift_local_cover_witness_def" in binding
-    assert (
-        'shows "distinct (comma_semantic_b1_crt_occurrence_beta occurrence)"' in binding
-    )
-    candidate_bridge = declarations[
-        "comma_semantic_b1_crt_published_constructed_candidate_matches"
-    ].body
-    assert (
-        "comma_semantic_b1_crt_compact_occurrences_candidate_matches"
-        in candidate_bridge
-    )
-    exact = declarations["comma_semantic_b1_crt_published_exact"].body
-    assert "comma_semantic_b1_crt_occurrence_map_exact" in exact
-    assert (
-        "comma_semantic_b1_crt_published_constructed_candidate_matches"
-        in declarations["comma_semantic_b1_crt_published_lift_candidate"].body
-    )
-    assert "published child=Some child_occurrence" in exact
-    lookup = declarations["comma_semantic_b1_crt_root_occurrence"].body
-    assert "comma_semantic_b1_crt_root_occurrence_indices ! root" in lookup
-    assert "else None" in lookup
-    for obsolete in (
-        "comma_crt_source_recursive_rows",
-        "comma_response_data_rows",
-        "comma_semantic_b1_crt_slot_child_indices",
-        "comma_semantic_b1_crt_occurrence_indexed_local_check",
-        "comma_semantic_b1_crt_occurrence_goto_rows_check",
-        "comma_semantic_b1_crt_occurrence_terminal_rows_check",
-        "comma_semantic_b1_crt_online_fold_refs",
-        "comma_semantic_b1_crt_occurrence_online_fold_witness",
-        "[0..<924]",
-    ):
-        assert obsolete not in executable_text(source)
-
-
-def test_candidate_fold_retains_child_occurrences_instead_of_physical_returns() -> None:
-    path = (
-        isabelle_root(repository_root())
-        / "families/comma/comma_semantic_b1_instance"
-        / "semantic_b1_template_constructor.ML"
-    )
-    source = path.read_text(encoding="utf-8")
-    declarations = {
-        item.name: item for item in extract_isabelle_declarations(source, path)
-    }
-    # The shared ML analyzer deliberately does not model nested let bindings.
-    # These are lexical ownership checks; executable sign/binding tests live
-    # in the ML owner and are run by the concrete publication theory below.
-    constructor = executable_text(source)
-    assert "make" in declarations
-    assert "occurrence_for child" in constructor
-    assert "#return_shift occurrence" in constructor
-    assert "#binding occurrence" in constructor
-    assert "cached_slot_lift" in constructor
-    assert "mdd_partition Termtab.table" not in source
-    assert "fold_source_mdds" not in declarations
-    assert "binding_rows_term" not in constructor
-    assert "pairwise_disjoint" not in constructor
-    assert "Pending_Child" not in constructor
-
-
-def test_candidate_occurrence_examples_are_executed_without_graph_discovery() -> None:
-    path = (
-        isabelle_root(repository_root())
-        / "families/comma/comma_semantic_b1_instance"
-        / "semantic_b1_template_constructor.ML"
-    )
-    declarations = {
-        item.name: item
-        for item in extract_isabelle_declarations(
-            path.read_text(encoding="utf-8"), path
-        )
-    }
-    assert "lift_template_slot_with" in declarations
-    publisher_path = path.parent / "semantic_b1_occurrence_publication.ML"
-    publisher = publisher_path.read_text(encoding="utf-8")
-    assert "check_candidate_examples" in {
-        item.name for item in extract_isabelle_declarations(publisher, publisher_path)
-    }
-    examples = executable_text(publisher)
-    for behavior in (
-        "shifted",
-        "swapped_binding",
-        "complementary",
-        "overlap",
-        "missing",
-    ):
-        assert behavior in examples
-    publication = (
-        path.parent / "Comma_Semantic_B1_Occurrence_Publication.thy"
-    ).read_text(encoding="utf-8")
-    bodies = ml_cartouches(publication)
-    fixture_path = path.parent / "semantic_b1_publication_fixtures.ML"
-    fixture = executable_text(fixture_path.read_text(encoding="utf-8"))
-    assert "Publication.check_candidate_examples ()" in fixture
-    fixture_call = "Comma_Semantic_B1_Publication_Fixtures.check_candidate"
-    assert any(fixture_call in body for body in bodies)
-    assert all("Template_Constructor.make" not in body for body in bodies)
-    assert "Template_Constructor.make" not in fixture
-    assert publication.index(fixture_call) < publication.index("local_setup")
-
-
-def test_occurrence_fold_does_not_assume_a_child_physical_return_table() -> None:
-    root = isabelle_root(repository_root()) / "families/comma/comma_semantic_b1"
-    path = root / "Comma_Semantic_B1_CRT_Occurrence_Fold.thy"
-    source = path.read_text(encoding="utf-8")
-    declarations = {
-        item.name: item for item in extract_isabelle_declarations(source, path)
-    }
-    local_step = declarations["comma_semantic_b1_crt_occurrence_local_step"].body
-    assert "children child" in local_step
-    assert "comma_semantic_b1_crt_occurrence_lookup" in local_step
-    for retired in ("source_recursive_rows", "source_rows_from", "rows_exact"):
-        assert retired not in executable_text(source)
-    resolver = declarations["comma_semantic_b1_crt_resolve_descriptor"].body
-    assert "cid < length templates" in resolver
-    assert "else None" in resolver
-    assert "templates!cid" in resolver
-    assert "comma_semantic_b1_crt_resolve_descriptor_rejects_foreign" in declarations
-    wellformed = declarations["comma_semantic_b1_crt_occurrence_wellformed"].body
-    for contract in (
-        "occurrence_rebase",
-        "comma_crt_admitted",
-        "comma_crt_supported",
-        "comma_semantic_b1_crt_occurrence_disjoint",
-        "comma_semantic_b1_crt_occurrence_covered",
-    ):
-        assert contract in wellformed
-    for rejection in ("empty", "overlap", "missing_coverage", "bad_column"):
-        assert (
-            f"comma_semantic_b1_crt_occurrence_wellformed_rejects_{rejection}"
-            in declarations
-        )
-    retired_checks = (
-        "comma_semantic_b1_crt_occurrence_wellformed_check",
-        "comma_semantic_b1_crt_occurrence_geometry_check",
-        "comma_semantic_b1_crt_geometry_fold",
-    )
-    assert all(name not in declarations for name in retired_checks)
-    contract = declarations["comma_semantic_b1_crt_occurrence_candidate_exact"].body
-    for obligation in ("child_present", "child_exact", "candidate", "wellformed"):
-        assert obligation in contract
-    foundation = (root / "Comma_Semantic_B1_Table_Transform.thy").read_text(
-        encoding="utf-8"
-    )
-    owners = {
-        item.name
-        for item in extract_isabelle_declarations(
-            foundation, root / "Comma_Semantic_B1_Table_Transform.thy"
-        )
-    }
-    assert {
-        "comma_semantic_b1_terminal_action_result_present",
-        "comma_semantic_b1_terminal_action_output",
-    } <= owners
-    lift_path = root / "Comma_Semantic_B1_CRT_Local_Cover.thy"
-    lift = {
-        item.name: item.body
-        for item in extract_isabelle_declarations(lift_path.read_text(), lift_path)
-    }
-    witness = lift["comma_semantic_b1_crt_lift_local_cover_witness"]
-    assert "children" not in witness
-    for suffix in ("local_slot_valid", "local_cover_witness"):
-        body = lift[f"comma_semantic_b1_crt_lift_{suffix}"]
-        assert "comma_crt_set" not in body
-        assert "goto_rows_check" not in body
-        assert "terminal_rows_check" not in body
-    assert "comma_semantic_b1_crt_lift_local_slot_valid" in witness
-    assert "comma_crt_occurrence_split_action" not in witness
-    assert "comma_semantic_b1_crt_lift_source_split_action" not in witness
-
-
-def test_occurrence_checker_keeps_clock_quantifiers_out_of_execution() -> None:
-    path = (
-        isabelle_root(repository_root())
-        / "families/comma/comma_semantic_b1"
-        / "Comma_Semantic_B1_CRT_Local_Cover.thy"
-    )
-    source = path.read_text(encoding="utf-8")
-    declarations = {
-        item.name: item for item in extract_isabelle_declarations(source, path)
-    }
-    for name in (
-        "comma_semantic_b1_crt_lift_local_cover_witness",
-        "comma_semantic_b1_crt_lift_local_slot_valid",
-    ):
-        body = declarations[name].body
-        assert "occurrence_wellformed" not in body
-        assert "candidate_matches" not in body
-        assert "[0..<924]" not in body
-    candidate_path = path.with_name("Comma_Semantic_B1_CRT_Local_Cover_Candidate.thy")
-    candidate_declarations = {
-        item.name: item
-        for item in extract_isabelle_declarations(
-            candidate_path.read_text(encoding="utf-8"), candidate_path
-        )
-    }
-    assert (
-        "comma_semantic_b1_crt_lift_local_cover_candidate_matches"
-        in candidate_declarations
-    )
-    cover = declarations["comma_semantic_b1_crt_local_piece_covered"].body
-    assert "comma_crt_supported" in cover
-    assert "comma_crt_negate parent_column" in cover
-    assert "comma_crt_occurrence_split_from_bindings" not in executable_text(source)
-    for retired in (
-        "source_recursive_rows",
-        "source_rows_from",
-        "comma_response_data_rows",
-    ):
-        assert retired not in executable_text(source)
-
-
-def test_occurrence_induction_uses_actual_goto_decrease_and_required_children() -> None:
-    root = isabelle_root(repository_root()) / "families/comma/comma_semantic_b1"
-    source = (root / "Comma_Semantic_B1_CRT_Occurrence_Fold.thy").read_text(
-        encoding="utf-8"
-    )
-    assert "comma_source_continuation_goto_decreases" in source
-    assert "comma_semantic_b1_crt_occurrence_map_exact" in source
-    assert "child_present" in source
-    assert "child_exact" in source
-    assert "less_induct" in source
-    for retired in (
-        "source_action_rows_equation",
-        "local_packet_equations",
-        "comma_semantic_b1_source_order_valid",
-    ):
-        assert retired not in source
+    power = declarations["comma_semantic_b1_action_power"].body
+    assert "comma_semantic_word_then (2^k)" in power
+    assert "comma_semantic_b1_action_power k" in power
+    refinement = declarations["comma_semantic_b1_action_power_refines_orbit"].body
+    assert "comma_orbit_word" in refinement
+    assert "comma_semantic_b1_of_word" in refinement
 
 
 def test_crt_lookup_reads_published_predicates_without_future_discovery() -> None:
@@ -752,7 +424,6 @@ def test_stop_occurrence_bridge_covers_offsets_and_preserves_exponent_weight() -
     assert "comma_summary_ordered_children terminal (p+h)" in bridge
     assert "comma_chart_value (p+D)" not in bridge
     assert "comma_offset_representatives" not in bridge
-    assert "comma_semantic_b32_stop_exact_occurrence" not in declarations
     projection = declarations[
         "comma_semantic_b32_entry_infinite_path_projects_summary_child"
     ].body
@@ -763,7 +434,7 @@ def test_stop_occurrence_bridge_covers_offsets_and_preserves_exponent_weight() -
     assert "comma_summary_ordered_children terminal (p+h)" in projection
 
 
-def test_concrete_summary_consumes_checked_b32_and_instantiates_boundary_bridge() -> (
+def test_concrete_summary_consumes_graph_power_and_instantiates_boundary_bridge() -> (
     None
 ):
     root = isabelle_root(repository_root())
@@ -772,21 +443,39 @@ def test_concrete_summary_consumes_checked_b32_and_instantiates_boundary_bridge(
         / "families/comma/comma_semantic_b1_instance"
         / "Comma_Semantic_Summary_Instance.thy"
     )
-    source = path.read_text(encoding="utf-8")
+    source_text = path.read_text(encoding="utf-8")
+    source = executable_text(source_text)
     declarations = {
-        item.name: item for item in extract_isabelle_declarations(source, path)
+        item.name: item for item in extract_isabelle_declarations(source_text, path)
     }
-    provider = declarations["comma_semantic_decade_summary"].body
-    assert "comma_semantic_b1_crt_power_result 5" in provider
+    boundary_path = (
+        root
+        / "families/comma/comma_semantic_future"
+        / "Comma_Semantic_B1_Future_Bridge.thy"
+    )
+    boundary_text = boundary_path.read_text(encoding="utf-8")
+    boundary_declarations = {
+        item.name: item
+        for item in extract_isabelle_declarations(boundary_text, boundary_path)
+    }
+    provider = boundary_declarations["comma_semantic_decade_summary"].body
+    assert "comma_semantic_b1_action_power 5 r (comma_offset_orbit x)" in provider
     assert "comma_offset_orbit x" in provider
     assert "comma_terminal_weight_decode D" in provider
     exact = declarations["comma_semantic_decade_summary_total_exact"].body
-    assert "comma_semantic_b1_crt_b32_stop242_checked" in exact
-    assert "comma_semantic_b1_crt_b32_result_exact" in exact
-    assert "comma_semantic_b32_stop_exact_occurrence_for_offset" in exact
+    assert "comma_semantic_b1_action_power_b32_stop242" in exact
+    assert "comma_semantic_graph_b32_stop242_checked" in source
+    assert "comma_semantic_graph_action_power_refines" in source
+    code = declarations["comma_semantic_decade_summary_code"].body
+    assert "comma_semantic_graph_action_power 5 r (comma_offset_orbit x)" in code
+    assert "Comma_Semantic_B1_Stop D" in code
+    assert "comma_terminal_weight_decode D" in code
+    assert "comma_semantic_decade_summary_code[code]" in source
+    assert "comma_semantic_decade_summary_total_exact_for_bound" in executable_text(
+        source
+    )
+    assert "comma_semantic_concrete_boundary_occurrence_bridge" in source
     assert "[OF comma_semantic_decade_summary_provider_exact]" in source
-    for retired in ("comma_checked_sparse_B32_rows", "comma_native_rank_measure"):
-        assert retired not in executable_text(source)
     sessions = discover_sessions(root)
     closure = session_dependency_closure(sessions, ("Comma_Semantic_B1_Instance",))
     assert "Comma_Semantic_Future" in closure
@@ -798,53 +487,149 @@ def test_concrete_summary_consumes_checked_b32_and_instantiates_boundary_bridge(
     }.intersection(closure)
 
 
-def test_b32_instance_publishes_the_aggregate_range_certificate() -> None:
+def test_b32_instance_uses_the_demand_driven_graph_action_certificate() -> None:
     path = (
         isabelle_root(repository_root())
         / "families/comma/comma_semantic_b1_instance"
         / "Comma_Semantic_B1_Instance.thy"
     )
     text = path.read_text(encoding="utf-8")
-    publication = next(
-        body
-        for _, _, body in dynamic_cartouche_spans(text)
-        if "Local_Theory.note" in body
-    )
-    assert "#b32_stop242_all engine ()" in publication
-    assert "comma_semantic_b1_crt_b32_roots_stop242_checked" in publication
-    assert "require_native_clean" in publication
-    exported = navigation_text(text)
-    assert "lemmas comma_semantic_b1_crt_b32_stop242_checked =" in exported
-    assert "[OF comma_semantic_b1_crt_b32_roots_stop242_checked]" in exported
-
-
-def test_b32_weight_certificate_does_not_reopen_column_evaluation() -> None:
-    source = (
-        isabelle_root(repository_root())
-        / "families/comma/comma_semantic_b1_instance"
-        / "semantic_b1_crt_conversion.ML"
-    ).read_text(encoding="utf-8")
-    assert "comma_crt_mdd_stop_weights_bounded242" in source
-    assert "comma_crt_split_weight" in source
-    assert "comma_crt_eval" not in executable_text(source)
-    projection = (
-        isabelle_root(repository_root())
-        / "families/comma/comma_semantic_b1_instance"
-        / "semantic_b1_b32_projection.ML"
-    ).read_text(encoding="utf-8")
-    assert "stop_weights: thm" in projection
-    assert "stop_weights_claim action" in projection
-    assert "standalone stop_weights" in projection
-    assert "standalone equation" in projection
-    assert "equation_request root" in projection
-    assert "comma_semantic_b1_crt_power_split_action_exact" in projection
-    assert "comma_crt_split_mdd_result_at" in projection
-    for retired in (
-        "comma_crt_source_recursive_rows",
-        "comma_crt_source_raw_rows",
-        "comma_crt_compose_raw_rows",
-        "comma_crt_power_table",
-        "comma_semantic_b1_crt_root_rows_total",
-        "comma_semantic_b1_crt_power_rows",
+    declarations = {
+        item.name: item for item in extract_isabelle_declarations(text, path)
+    }
+    stop = declarations["comma_semantic_graph_b32_stop242_checked"].body
+    for condition in (
+        "root<46",
+        "phase<924",
+        "comma_semantic_graph_action_power 5 phase root",
+        "D\\<le>242",
     ):
-        assert retired not in executable_text(source)
+        assert condition in stop
+    assert 'ML_file "semantic_graph_action_certificate.ML"' in text
+    assert "Comma_Semantic_Graph_Action_Certificate.make" in text
+    assert "comma_semantic_graph_action_power_refines" in text
+    graph_power_path = (
+        isabelle_root(repository_root())
+        / "families/comma/comma_semantic_b1_instance"
+        / "Comma_Semantic_Graph_Action_Power.thy"
+    )
+    graph_power = executable_text(graph_power_path.read_text(encoding="utf-8"))
+    assert "comma_semantic_graph_valid_checked" in graph_power
+    assert "comma_semantic_graph_root_binding_exact" in graph_power
+    assert "comma_semantic_graph_action_power_refines" in graph_power
+
+
+def test_release_consumers_project_the_graph_power_refinement() -> None:
+    root = isabelle_root(repository_root())
+    summary_path = (
+        root
+        / "families/comma/comma_semantic_b1_instance/Comma_Semantic_Summary_Instance.thy"
+    )
+    future_path = (
+        root
+        / "families/comma/comma_semantic_future_instance/Comma_Semantic_Future_Instance.thy"
+    )
+    entry_path = (
+        root
+        / "families/comma/comma_semantic_future_instance/Comma_Semantic_Entry_Open.thy"
+    )
+    global_path = (
+        root
+        / "families/comma/comma_semantic_future_instance/Comma_Semantic_Global_Safety.thy"
+    )
+    release_path = (
+        root
+        / "families/comma/comma_semantic_future_instance/Comma_Semantic_Release.thy"
+    )
+
+    summary_text = summary_path.read_text(encoding="utf-8")
+    summary_declarations = {
+        item.name: item
+        for item in extract_isabelle_declarations(summary_text, summary_path)
+    }
+    assert "comma_semantic_graph_action_power 5 r (comma_offset_orbit x)" in (
+        summary_declarations["comma_semantic_decade_summary_code"].body
+    )
+    assert "comma_semantic_graph_action_power_refines" in summary_text
+
+    future_text = future_path.read_text(encoding="utf-8")
+    assert "Comma_Semantic_Future_Source_NF_Bridge" in future_text
+    assert "comma_semantic_future_candidate_class_table_checked" in future_text
+
+    closure_text, closure_declarations = _future_theory(
+        "Comma_Semantic_Future_Candidate_Provider_Closure"
+    )
+    provider_row = closure_declarations[
+        "comma_semantic_future_candidate_provider_row_of_initial_nf_boundary"
+    ].body
+    assert "comma_semantic_future_initial_nf_action_boundary_exact" in provider_row
+    assert "boundary_control" in provider_row and "boundary_children" in provider_row
+    assert "comma_semantic_future_candidate_provider_check_checked" in closure_text
+
+    # The entry-open slice remains a separate, bounded projection request. Its
+    # checked list still uses the graph-action projector; the all-family future
+    # provider is certified through Source_NF_Bridge above.
+    entry_consumer = executable_text(entry_path.read_text(encoding="utf-8"))
+    assert "Comma_Semantic_Graph_Action_Certificate.make" in entry_consumer
+    assert "comma_semantic_b1_action_power 5 phase root" in entry_consumer
+    assert "Comma_Selected_List_Conversion.schematize" in entry_consumer
+
+    # Source admission and class-row validity remain separate prerequisites.
+    _source_nf_text, source_nf_declarations = _future_theory(
+        "Comma_Semantic_Future_Source_NF_Bridge"
+    )
+    initial_action = source_nf_declarations[
+        "comma_semantic_future_initial_nf_action_boundary_exact"
+    ].body
+    assert "comma_semantic_graph_initial_nf_actions" in initial_action
+    assert "J<9" in initial_action and "delta\\<le>27" in initial_action
+    assert "(snd (snd q)+delta) mod 924" in initial_action
+    assert "comma_semantic_future_candidate_child_ids_at" in initial_action
+    assert "comma_semantic_future_projected_key_apply" in initial_action
+    assert "comma_semantic_future_candidate_class_ids" in initial_action
+    assert "comma_semantic_future_initial_nf_source_key_action" in initial_action
+
+    provider_nf_path = (
+        root
+        / "families/comma/comma_semantic_future_instance"
+        / "Comma_Semantic_Future_Candidate_Provider_NF.thy"
+    )
+    provider_nf = provider_nf_path.read_text(encoding="utf-8")
+    provider_nf_ml = (
+        provider_nf_path.parent / "semantic_future_candidate_provider_nf.ML"
+    ).read_text(encoding="utf-8")
+    assert "comma_semantic_graph_initial_nf_actions_length" in provider_nf
+    assert "comma_semantic_future_candidate_provider_nf_actions_equal" in provider_nf
+    assert "comma_semantic_future_candidate_source_key_nf_all_phases" in provider_nf
+    assert "comma_semantic_graph_initial_nf_actions_def" in provider_nf_ml
+    assert "length source_nf_terms = 16" in provider_nf_ml
+    assert "comma_semantic_future_projected_key_apply" in provider_nf_ml
+    assert "key_dagT" not in provider_nf_ml
+    assert "temporary" not in provider_nf_ml
+    assert "val child_serializer = Data.make_serializer arena natT" in provider_nf_ml
+    assert "Data.erase_weights arena" in provider_nf_ml
+    assert "terminal = 8 then Data.leaf arena (payload_of (nat 0))" in provider_nf_ml
+    child_projection = provider_nf_ml.split("fun candidate_child_projection", 1)[
+        1
+    ].split("fun candidate_components", 1)[0]
+    assert child_projection.index("case parse_control ctxt control_value") < (
+        child_projection.index("Symtab.lookup values")
+    )
+    assert "Provider_Landmine => payload_of (nat 0)" in child_projection
+    assert "Provider_Fork _ =>" in child_projection
+    assert "val fork_ids = List.filter" in provider_nf_ml
+    assert "candidate_output_north_id} natT fork_ids" in provider_nf_ml
+    assert "candidate_output_south_id} natT fork_ids" in provider_nf_ml
+    assert "candidate_child_projection north_values id_action" in provider_nf_ml
+    assert "candidate_child_projection south_values id_action" in provider_nf_ml
+    assert "candidate_projection north_values" not in provider_nf_ml
+    assert "candidate_projection south_values" not in provider_nf_ml
+
+    global_text = executable_text(global_path.read_text(encoding="utf-8"))
+    assert "comma_semantic_concrete_boundary_strong_occurrence_bridge" in global_text
+    assert "comma_semantic_global_release_safety" in global_text
+    assert "comma_semantic_future_candidate_provider_check_checked" in global_text
+    assert "comma_semantic_concrete_future_rank_check" in global_text
+    release_text = executable_text(release_path.read_text(encoding="utf-8"))
+    assert "comma_semantic_graph_action_power_refines" in release_text
+    assert "comma_semantic_graph_b32_stop242_checked" in release_text

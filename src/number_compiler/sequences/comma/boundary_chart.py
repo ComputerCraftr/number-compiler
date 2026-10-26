@@ -48,6 +48,22 @@ class ChartWeight:
     denominator: int
 
 
+@dataclass(frozen=True, slots=True)
+class ChartSegment:
+    """One emitted fragment's source/target chart and exact action weights.
+
+    This is constructor output, not an independently issued path handle. The
+    macro template seals the ordered segment chain together with its indexed
+    fragments, and occurrence execution checks each segment against its exact
+    receiving source before applying it.
+    """
+
+    source: BoundaryChart
+    target: BoundaryChart
+    duration: ChartWeight
+    displacement: ChartWeight
+
+
 ZERO_WEIGHT = ChartWeight(0, 0, 0, 1)
 UNIT_WEIGHT = ChartWeight(0, 0, 1, 1)
 
@@ -81,7 +97,8 @@ def initial_chart(kind: Literal["N", "Z"], a: int) -> BoundaryChart:
     )
 
 
-def _validate_chart(residue: int | CyclotomicClock, chart: BoundaryChart) -> None:
+def validate_chart(residue: int | CyclotomicClock, chart: BoundaryChart) -> None:
+    """Validate the canonical finite chart coordinates at an owner boundary."""
     if (
         not (
             type(residue) is CyclotomicClock
@@ -105,7 +122,7 @@ def _validate_chart(residue: int | CyclotomicClock, chart: BoundaryChart) -> Non
 
 def near_chart_target(chart: BoundaryChart) -> NearChartTarget:
     """Select a Near child without constructing weights or cycle metadata."""
-    _validate_chart(0, chart)
+    validate_chart(0, chart)
     if chart.kind != "near":
         raise ValueError("Near target selection requires a Near chart")
     return _near_chart_target_validated(chart)
@@ -123,7 +140,7 @@ def chart_step(
     it consumes zero. Entry cycle weights are evaluated at the receiving
     exponent, not at the residue's representative exponent.
     """
-    _validate_chart(residue, chart)
+    validate_chart(residue, chart)
     f, delta, x = chart.leading, chart.delta, chart.coordinate
     if charge_bits is not None and chart.kind == "near":
         phase_bits = (
@@ -213,7 +230,7 @@ def chart_moves(
     for _ in range(MAX_CHART_MOVES):
         if charge is not None:
             charge(1)
-        _validate_chart(residue, chart)
+        validate_chart(residue, chart)
         if (
             grouped_near
             and chart.kind == "near"

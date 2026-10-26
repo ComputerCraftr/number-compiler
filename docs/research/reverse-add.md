@@ -17,6 +17,56 @@ in one place so a component theorem cannot be mistaken for the final result.
 - **Implemented construction:** authenticated primitive publication and restricted clauses are available; carry moves only from LSD to MSD.
 - **Open obligation:** construct the source-derived compressed residue grammar and its complete temporal return with successful work and storage bounds.
 
+### 2rev10 four-port successor and the mod-32 cut
+
+For `2rev10`, the physical action is `2R`, not reverse/add's `I+R`.
+The two-step action has four incoming carry-port combinations.
+Concatenation transports
+the first carry left to right and the second right to left; a repeated spatial
+block uses binary action composition. Exact output also requires the source's
+zero-suffix contraction, boundary births and output normalization. Spatial
+REPEAT closure does not prove an all-depth temporal period.
+
+The finite interior cone now uses a separate exact temporal square. If `U_t`
+returns the middle `2t` digits after `t` two-step updates from a complete
+`4t`-digit halo, then for four equal quarters `A,B,C,D`, compute
+`u=U_s(AB)`, `v=U_s(BC)`, `w=U_s(CD)` and publish
+`U_(2s)(ABCD)=U_s(uv) ++ U_s(vw)`. The temporary perfect-binary tiles are
+interned by exact digit content, independently of source SLP grammar.
+Source-issued growth ports authorize border births and phase. The
+`Double_Reverse_Spacetime_Carry_Square` theory states the finite-window law
+with its complete halo, rather than assuming a future period.
+
+Production bounds, reservation and rollback behavior, and fresh-process CLI
+measurements belong to the
+[dated integration record](../sprints/week-of-2026-10-18/strict-toolchain-macro-identities.md#2rev10-four-port-and-outer-port-integration--2026-10-26).
+
+The base-`z` inverse modulo 32 was already present in
+`Shared_Decimal_Cocycle_Core` and `Decimal_Normalization_Morphism`. The family
+bridge is `Double_Reverse_Group_Ring_Carry_Cut`, consumed by
+`Double_Reverse_Group_Ring_Four_Port`: it specializes the finite normalization
+cut to source-selected doubling carries and connects the two-pass row to the
+existing decimal stencil. The escaping carry term must remain in
+the finite-cut equation. Reconstructing a carry polynomial in a finite quotient
+does not reconstruct an unread decimal tape or certify a future inlet word.
+Kernel acceptance is recorded in the release evidence, separately from these
+theorem interfaces.
+
+The source-conditioned matrix constructor also uses the exact two-bit outer
+port quotient before copying or advancing candidate halos. A birth shields the
+corresponding port; the other ports use canonical representatives `0/3` and
+`0/5`. This avoids rejected-candidate work while preserving the full halo,
+odd-generation and pointed-source checks. The quotient checks outer admission;
+candidate-specific inner output digits remain exact.
+
+The existing `temporal.residue99` CLI demand publishes a source-bound return
+period for the joint border phase and mod-99/mod-198 projection. One bounded
+mod-198 orbit supplies both residue lassos; it does not construct the future
+digit word. Four physical ticks restore the border phase and add two digits
+of width, so width drift is reported separately. The transient is an aligned
+upper bound in physical ticks, while the period is exact for this projection.
+Neither this descriptor nor a cyclotomic residue supplies full-word authority.
+
 ### Spatial run responses versus temporal actions
 
 For a supplied domain run `d^(n+1)`, let `e = carry_apply(d, c)`.
@@ -718,15 +768,11 @@ retaining more leaf data establishes neither this substitution nor its cost
 bound. `Decimal_Publisher_Constructor` explicitly excludes recursive occurrence
 substitution and first-use DAG bounds from its 25-slot theorem.
 
-Do not replace the existing symbolic pair operation merely because it uses a
-local decimal-digit sort: that finite function is not a materialized digit
-word. A rejected native-channel rewrite produced the same local function but
-raised cold four-port construction from 489 to 1,198 ledger nodes. It was
-removed. Neither that rewrite nor the original local implementation establishes
-generic D4/D8 temporal closure; those acceptance assertions remain active.
-
-The bounded audit retained the twelve generic-range and fourteen CLI cutover
-failures. Its local arithmetic successes are separate from temporal closure.
+The symbolic pair operation's local decimal-digit sort is a finite function,
+not a materialized digit word. Local arithmetic equivalence does not establish
+generic D4/D8 temporal closure. Rejected implementation experiments and their
+historical test results belong to the dated audit, not the current research
+contract.
 
 [Dated evidence](../sprints/week-of-2026-09-20/reverse-add.md#archived-output-quotient-audit-validation).
 

@@ -574,6 +574,34 @@ class DoubleReverseTemporalHashlife(TemporalHashlifeAuditBase):
             raise ValueError("hashlife cone requires a positive power of two")
         if self.arena.nodes[root].length != 4 * steps:
             raise ValueError("hashlife cone requires a complete causal halo")
+        key = (root, steps)
+        cached = self._cone.get(key)
+        if cached is not None:
+            self.ledger.bump(_double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_CONE_HITS)
+            return cached
+
+        from number_compiler.sequences.double_reverse.temporal_carry_spacetime import (
+            try_source_bound_square_cone,
+        )
+
+        publication_checkpoint = len(self.arena.nodes)
+        powered = try_source_bound_square_cone(
+            self.arena,
+            root,
+            steps,
+            self.scratch_owner,
+        )
+        if powered is not None:
+            try:
+                self._cone[key] = powered
+            except BaseException as error:
+                try:
+                    self.arena.rollback_unpublished_suffix(publication_checkpoint)
+                except BaseException as cleanup_error:
+                    raise error from cleanup_error
+                raise
+            return powered
+
         # Depth-first ternary subdivision keeps the work stack logarithmic.
         # Charge a conservative fixed multiple of that depth before allocating
         # either Python list; all grammar nodes remain charged by the arena.

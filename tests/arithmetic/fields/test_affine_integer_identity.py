@@ -10,6 +10,7 @@ from number_compiler.arithmetic.fields.adic_morphism import (
     PadicAffineMorphism,
     PadicRadialQuotient,
     ValuationSensitivityMorphism,
+    bounded_prime_valuation,
     mersenne_successor_padic2,
     prime_translation_sensitivity,
 )
@@ -116,3 +117,21 @@ def test_padic_runtime_payload_rejects_moduli_wider_than_one_limb(
 ) -> None:
     with pytest.raises(ValueError, match="64-bit runtime limb"):
         factory()
+
+
+@pytest.mark.parametrize(
+    ("value", "factor", "cap", "expected"),
+    ((0, 2, 5, 5), (96, 2, 10, 5), (125, 5, 8, 3), (-100, 5, 8, 2), (10, 2, 0, 0)),
+)
+def test_bounded_prime_valuation_respects_its_cap(
+    value: int, factor: int, cap: int, expected: int
+) -> None:
+    assert bounded_prime_valuation(value, factor, cap) == expected
+
+
+def test_bounded_prime_valuation_rejects_invalid_factor_and_numeric_aliases() -> None:
+    for args in ((1, 1, 2), (1, 2, -1)):
+        with pytest.raises(ValueError, match="factor or cap"):
+            bounded_prime_valuation(*args)
+    with pytest.raises(TypeError, match="exact integers"):
+        bounded_prime_valuation(True, 2, 3)

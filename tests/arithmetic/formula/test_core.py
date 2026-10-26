@@ -40,6 +40,7 @@ def test_synthesized_growth_and_successor_real_orbit() -> None:
         values = target
 
 
+@pytest.mark.validation  # Broad seeded fuzzing across bases and digit lengths.
 def test_random_bases() -> None:
     rng = random.Random(0x196)
     for base in range(2, 17):

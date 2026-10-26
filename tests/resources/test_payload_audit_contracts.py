@@ -39,6 +39,15 @@ class _MemoFamilyRoot:
         self.proposal = PayloadAuditContribution()
 
 
+class _PinnedFamilyRoot(_FamilyRoot):
+    __module__ = _FAMILY_MODULE
+
+    def __init__(self, ledger: ResourceLedger, owner: int) -> None:
+        super().__init__(ledger, owner)
+        self.lock = object()
+        self.workspace_owner = owner
+
+
 def _fixture_validator(ledger: object, root: object) -> PayloadAuditContribution:
     del ledger
     return cast(_FamilyRoot, root).proposal
@@ -116,6 +125,54 @@ def test_contract_approves_only_concrete_members_of_its_bound_store() -> None:
         for key, count in before_counters.items()
         if key != "payload_audit_contract_member_visits"
     }
+
+
+def test_contract_pins_identity_and_typed_scalar_root_authority() -> None:
+    ledger = ResourceLedger()
+    owner = ledger.register("pinned-family-records", "family_payload")
+    root = _PinnedFamilyRoot(ledger, owner)
+    ledger.register_execution_root(root)
+    value = object()
+    ledger.reserve(owner, entries=1, nodes=1)
+    root.records.append(value)
+    root.proposal = PayloadAuditContribution(
+        approved=(PayloadAuditEntry(owner, value),)
+    )
+    ledger.register_payload_audit_contract(
+        root,
+        "antihydra",
+        (
+            PayloadAuditStoreBinding(
+                owner,
+                "records",
+                "family_payload",
+                identity_attributes=("lock",),
+                scalar_attributes=("workspace_owner",),
+            ),
+        ),
+        _fixture_validator,
+    )
+
+    assert ledger.payload_audit_contract_matches_root(root, "antihydra")
+    assert ledger.audit_payload_contracts().approved == frozenset(((owner, id(value)),))
+
+    original_lock = root.lock
+    object.__setattr__(root, "lock", object())
+    assert not ledger.payload_audit_contract_matches_root(root, "antihydra")
+    assert not ledger.payload_audit_contract_matches_attribute(
+        root, "antihydra", "lock"
+    )
+    assert (owner, id(root)) in ledger.audit_payload_contracts().invalid
+    object.__setattr__(root, "lock", original_lock)
+
+    object.__setattr__(root, "workspace_owner", bool(owner))
+    assert not ledger.payload_audit_contract_matches_root(root, "antihydra")
+    assert not ledger.payload_audit_contract_matches_attribute(
+        root, "antihydra", "workspace_owner"
+    )
+    assert (owner, id(root)) in ledger.audit_payload_contracts().invalid
+    object.__setattr__(root, "workspace_owner", owner)
+    assert ledger.payload_audit_contract_matches_root(root, "antihydra")
 
 
 def test_payload_audit_consumes_owner_qualified_contract_results() -> None:

@@ -1,5 +1,6 @@
 theory Comma_Semantic_Producer_Cut_Refinement
   imports Comma_Semantic_Producer_Prefix_Refinement
+    Comma_Near_Period.Comma_Near_Period
 begin
 
 text \<open>The pending Near record is tied to the last published cut.  This
@@ -14,49 +15,8 @@ lemma comma_python_near_prefix_displacement_exact:
     and digit: "d = (10 - h mod 10) mod 10"
     and path: "comma_near_prefix n f h t"
   shows "h = t + comma_period_displacement f d n"
-  using path f initial digit
-proof (induction n arbitrary: h t d)
-  case "0"
-  then show ?case by simp
-next
-  case (Suc n)
-  then obtain j where step:
-      "comma_finite_step 0 (Comma_Near f 0 h) =
-        Comma_Next (Comma_Near f 0 j)"
-    and tail: "comma_near_prefix n f j t"
-    by auto
-  have d_bound: "d < 10" using digit by simp
-  have aligned: "(h + d) mod 10 = 0"
-    using digit by (simp add: mod_add_eq)
-  have step_formula:
-      "10 * d + f + (if f < 9 then 1 else 0) < h"
-      "j = h - (10 * d + f)"
-    using step f initial
-    by (auto simp: comma_near_internal_iff[OF f(1) f(2) initial(1) initial(2)])
-  have j_positive: "1 \<le> j"
-    using step_formula f(1) by (cases "f < 9") arith+
-  have j_bound: "j \<le> 540"
-    using step_formula initial(2) by arith
-  have fits: "10 * d + f \<le> h"
-    using step_formula by arith
-  have tail_digit: "(10 - j mod 10) mod 10 = (d + f) mod 10"
-  proof -
-    have phase:
-      "(10 - j mod 10) mod 10 = comma_phase_digit f d 1"
-      by (rule comma_near_phase_headroom_digit
-        [OF d_bound aligned fits])
-    show ?thesis using phase by (simp add: comma_phase_digit_def)
-  qed
-  have tail_exact:
-      "j = t + comma_period_displacement f ((d + f) mod 10) n"
-    by (rule Suc.IH[OF f(1) f(2) j_positive j_bound tail_digit tail])
-  have displacement:
-      "comma_period_displacement f d (Suc n) =
-        10 * d + f + comma_period_displacement f ((d + f) mod 10) n"
-    using comma_near_displacement_tail[OF d_bound, of f n]
-    by (simp add: comma_phase_digit_def)
-  show ?case using step_formula(2) tail_exact displacement by arith
-qed
+  by (rule comma_near_prefix_displacement_refines
+      [OF f(1) f(2) initial(1) initial(2) digit path])
 
 definition comma_python_fragment_near_cut ::
   "nat \<Rightarrow> comma_python_sector_fragment \<Rightarrow>

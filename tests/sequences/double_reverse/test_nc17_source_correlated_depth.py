@@ -7,6 +7,7 @@ from typing import cast
 import pytest
 
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
+from number_compiler.sequences.double_reverse.source_bound_bank import source_suffix
 from number_compiler.sequences.double_reverse.temporal_birth_ring import (
     BirthRingPorts,
     BirthRingState,
@@ -21,7 +22,15 @@ from number_compiler.sequences.double_reverse.temporal_depth_transfer_matrix imp
     conditional_depth_return,
     rooted_finite_depth_trace,
     source_conditioned_depth_return,
+    source_conditioned_depth_window,
     source_conditioned_depth_window_packet,
+    source_issued_root_path,
+)
+from number_compiler.sequences.double_reverse.temporal_hashlife import (
+    DoubleReverseTemporalHashlife,
+)
+from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
+    DoubleReversePortAction,
 )
 from tests.support.reverse_add_source_data import double_reverse_orbit
 
@@ -266,3 +275,50 @@ def test_prepared_source_depth_matrix_is_a_finite_exact_window(
             )
         assert type(failure.value) is ValueError
         assert_released(failed_publication_reservations)
+
+
+def test_issued_adjacent_roots_supply_depth_halo_without_reopening_cones(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with DoubleReverseTerm(196, 128, max_state_bits=16384) as term:
+        _, source = term.prepare_bank_source(max_prefix=16)
+        source = source_suffix(source, 4)
+        baseline = source_conditioned_depth_window(
+            source, outer_pairs=1, start_f_steps=0, f_steps=4
+        )
+
+        root = source.root
+        phase = source.phase
+        actions: list[DoubleReversePortAction] = []
+        for _ in range(source.f_steps):
+            action = source.engine.advance_action(root, 1, phase)
+            actions.append(action)
+            root = source.engine.root_of(action.target)
+            phase = action.phase_out
+        issued = source_issued_root_path(source, tuple(actions))
+        window_path = issued.windows(source, ((0, 4),))[0]
+
+        nonadjacent = source.engine.advance_action(source.root, 2, source.phase)
+        with pytest.raises(ValueError, match="nonadjacent"):
+            source_issued_root_path(source, (nonadjacent,))
+
+        def forbid_reopening(*_args: object, **_kwargs: object) -> tuple[int, ...]:
+            raise AssertionError("issued adjacent roots already contain this halo")
+
+        monkeypatch.setattr(
+            DoubleReverseTemporalHashlife, "pointed_window", forbid_reopening
+        )
+        reused = source_conditioned_depth_window(
+            source,
+            outer_pairs=1,
+            start_f_steps=0,
+            f_steps=4,
+            issued_path=window_path,
+        )
+
+        assert reused.source_halo == baseline.source_halo
+        assert reused.initial_pair == baseline.initial_pair
+        assert reused.outer_trace == baseline.outer_trace
+        assert reused.odd_outer == baseline.odd_outer
+        assert reused.transfer.pointed_trace == baseline.transfer.pointed_trace
+        assert reused.transfer.action.rows == baseline.transfer.action.rows

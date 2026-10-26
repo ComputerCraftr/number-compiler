@@ -130,3 +130,14 @@ MAHLER_RADIX_PORT_DEMANDS: Final = "mahler_radix_port_demands"
 MAHLER_CENTER_MATRIX_DEMANDS: Final = "mahler_center_matrix_demands"
 
 MAHLER_CENTER_MATRIX_PHYSICAL_STEPS: Final = "mahler_center_matrix_physical_steps"
+MAHLER_CENTER_MATRIX_CANDIDATE_TRANSITIONS: Final = (
+    "mahler_center_matrix_candidate_transitions"
+)
+MAHLER_CENTER_MATRIX_SPARSE_EDGE_VISITS: Final = (
+    "mahler_center_matrix_sparse_edge_visits"
+)
+MAHLER_CENTER_MATRIX_ROW_MATERIALIZATIONS: Final = (
+    "mahler_center_matrix_row_materializations"
+)
+MAHLER_CENTER_MATRIX_DENSE_PRODUCTS: Final = "mahler_center_matrix_dense_products"
+MAHLER_CENTER_MATRIX_SPARSE_PRODUCTS: Final = "mahler_center_matrix_sparse_products"

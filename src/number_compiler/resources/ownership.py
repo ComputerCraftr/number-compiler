@@ -68,6 +68,35 @@ def _mutable(value: object) -> bool:
     return isinstance(value, (MutableMapping, MutableSequence, MutableSet))
 
 
+def _is_empty_namedtuple_defaults(
+    class_type: type[object],
+    namespace: Mapping[object, object],
+    class_name: str,
+    class_child: object,
+) -> bool:
+    """Recognize only standard empty defaults metadata on a valid NamedTuple."""
+    if (
+        class_name != "_field_defaults"
+        or type(class_child) is not dict
+        or class_child
+        or not issubclass(class_type, tuple)
+    ):
+        return False
+    fields = namespace.get("_fields")
+    match_args = namespace.get("__match_args__")
+    if (
+        not is_object_tuple(fields)
+        or any(type(name) is not str for name in fields)
+        or not is_object_tuple(match_args)
+        or match_args != fields
+        or namespace.get("_field_defaults") is not class_child
+    ):
+        return False
+    return all(
+        hasattr(namespace.get(name), "__get__") for name in fields if type(name) is str
+    )
+
+
 def audit_execution_ownership(
     ledger: ResourceLedger,
     *,
@@ -300,6 +329,10 @@ def audit_execution_ownership(
                     continue
                 for class_name, class_child in namespace.items():
                     if type(class_name) is not str:
+                        continue
+                    if _is_empty_namedtuple_defaults(
+                        value_type, namespace, class_name, class_child
+                    ):
                         continue
                     class_child_value: object = class_child
                     if not class_name.startswith("__") and (

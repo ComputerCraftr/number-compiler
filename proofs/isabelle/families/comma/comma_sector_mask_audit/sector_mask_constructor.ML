@@ -18,7 +18,10 @@ struct
           1 <= max_operations then () else error "Invalid sector constructor budgets"
       val clauses = Comma_Sector_Response_Check.make ctxt {max_clauses=max_clauses}
       val guards = Comma_Sector_Guards.make ctxt {max_nodes=max_guard_nodes}
-      val row_simp = Comma_Entry_Arithmetic.numeral_context ctxt addsimps
+      (* Comparator callbacks decide only scalar, closed Boolean terms.  Use
+         the arithmetic/HOL context so list and datatype comparisons finish
+         at True/False instead of returning a residual Boolean expression. *)
+      val row_simp = Comma_Entry_Arithmetic.natural_context ctxt addsimps
         @{thms comma_sector_round_key.simps comma_round_result.inject
           comma_round_result.distinct comma_finite_position.inject
           comma_finite_position.distinct list.inject list.distinct
@@ -382,7 +385,8 @@ struct
               val {value=_,theorem=mask} = #mask_or guards (#scope left) (#scope right)
               val theorem = admit (@{thm comma_sector_rows_join_checked} OF
                 [#theorem left,#theorem right,object mask])
-            in branch_result theorem end
+              val (_,scope,rows) = shape theorem
+            in {scope=scope,rows=rows,count=input_count,theorem=theorem}: branch_result end
           fun pairs (left::right::rest) = join left right :: pairs rest | pairs rest = rest
           fun assemble [piece] = piece
             | assemble [] = error "Empty sector phase partition"
@@ -398,10 +402,13 @@ struct
             [("F",flat_source),("scope",flat_scope),
              ("label_key",@{term comma_sector_round_key}),("rows",flat_rows)]
             @{thm comma_mask_rows_normalize_refines}
+            RS @{thm eq_reflection}
           val normalized_refinement = certify
-            (Thm.equal_elim (Thm.symmetric normalize_equation) flattened)
-          val normalize_request = @{term comma_mask_rows_normalize} $
-            @{term comma_sector_round_key} $ flat_rows
+            (Conv.fconv_rule
+              (Conv.arg_conv (Conv.rewr_conv (Thm.symmetric normalize_equation))) flattened)
+          (* Reuse the instantiated row expression: the polymorphic normalizer
+             constant alone retains an unrelated type variable. *)
+          val (_,_,normalize_request) = shape normalized_refinement
           val normalized_rows = timed merge_elapsed (fn () =>
             normalize_rows_conv (Thm.cterm_of ctxt normalize_request))
           val normalized_formula = certify (Conv.fconv_rule

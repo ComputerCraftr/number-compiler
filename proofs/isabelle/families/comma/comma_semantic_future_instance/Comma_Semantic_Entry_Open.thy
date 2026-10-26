@@ -1,5 +1,5 @@
 theory Comma_Semantic_Entry_Open
-  imports Comma_Semantic_Future_Instance
+  imports Comma_Semantic_Future_Candidate_Provider_Closure
 begin
 
 text \<open>
@@ -7,7 +7,7 @@ The 91 exponent-5 entry states are classified from the checked semantic B32
 provider and its checked class-rank map.  This theory keeps the entry
 occurrence data (the exact terminal height and ordered children) separate
 from the future-control class.  The list check below projects only the
-requested B32 phases from the already published root rows.
+requested B32 phases through shared exact graph-power equations.
 \<close>
 
 definition comma_semantic_p5_entry_future_open :: "nat \<Rightarrow> bool" where
@@ -25,46 +25,16 @@ definition comma_semantic_p5_entry_future_open :: "nat \<Rightarrow> bool" where
 ML \<open>
 structure Comma_Semantic_Entry_Open_Check =
 struct
-  fun numeral_limit bound term =
-    (case try HOLogic.dest_number term of
-      SOME (typ, value) =>
-        if typ = @{typ nat} andalso value >= 0 andalso
-            value <= IntInf.fromInt bound
-        then SOME (IntInf.toInt value) else NONE
-    | NONE => NONE)
-
   fun projection_proc ctxt =
     let
-      val projector = Comma_Semantic_B1_B32_Projection.make_projector ctxt
-
-      fun project cterm =
-        (case strip_comb (Thm.term_of cterm) of
-          (Const (name, _), [base, root, phase]) =>
-            if name <> @{const_name comma_semantic_b1_crt_power_result} then NONE
-            else
-              (case (numeral_limit 5 base, numeral_limit 45 root,
-                  numeral_limit 923 phase) of
-                (SOME 5, SOME root_index, SOME phase_index) =>
-                  let
-                    val query = #query (projector root_index phase_index)
-                    val (lhs, _) = HOLogic.dest_eq
-                      (HOLogic.dest_Trueprop (Thm.prop_of query))
-                    val _ =
-                      if lhs aconv Thm.term_of cterm andalso
-                          Thm.nprems_of query = 0 andalso
-                          null (Thm.hyps_of query) andalso
-                          null (Thm.tpairs_of query)
-                      then ()
-                      else error "Entry-open projection returned a mismatched B32 query"
-                  in SOME (query RS @{thm eq_reflection}) end
-              | _ => NONE)
-        | _ => NONE)
+      val projector = Comma_Semantic_Graph_Action_Certificate.make ctxt
+      val project = #convert projector
     in
       Simplifier.make_simproc ctxt
         {name = "semantic_p5_entry_b32_projection",
          kind = Simplifier.Simproc,
          lhss = [Comma_Selected_List_Conversion.schematize
-           @{term "comma_semantic_b1_crt_power_result 5 root phase"}],
+           @{term "comma_semantic_b1_action_power 5 phase root"}],
          proc = fn _ => fn _ => project, identifier = []}
     end
 
@@ -123,22 +93,21 @@ proof -
   have exponent: "5 \<le> 5" by simp
   have exact_orbit:
     "\<And>r i. r < 924 \<Longrightarrow> i < 46 \<Longrightarrow>
-      (\<lambda>q j. the (comma_semantic_b1_crt_power_result 5 j q)) r i =
+      (\<lambda>q j. comma_semantic_b1_action_power 5 q j) r i =
         comma_semantic_b1_of_word (comma_orbit_word 5 r i)"
   proof -
     fix r i
     assume r_bound: "r < 924" and i_bound: "i < 46"
-    show "(\<lambda>q j. the (comma_semantic_b1_crt_power_result 5 j q)) r i =
+    show "(\<lambda>q j. comma_semantic_b1_action_power 5 q j) r i =
         comma_semantic_b1_of_word (comma_orbit_word 5 r i)"
-      using comma_semantic_b1_crt_b32_result_exact[OF i_bound r_bound]
-      by simp
+      by (rule comma_semantic_b1_action_power_refines_orbit[OF r_bound i_bound])
   qed
   obtain d where stop:
-      "comma_semantic_b1_crt_power_result 5 (comma_offset_orbit x) 5 =
-        Some (Comma_Semantic_B1_Stop d)"
+      "comma_semantic_b1_action_power 5 5 (comma_offset_orbit x) =
+        Comma_Semantic_B1_Stop d"
     and d_bound: "d \<le> 242"
-    by (rule comma_semantic_b1_crt_b32_stop242_checked[OF root r_bound])
-  let ?provider = "\<lambda>q i. the (comma_semantic_b1_crt_power_result 5 i q)"
+    by (rule comma_semantic_b1_action_power_b32_stop242[OF root r_bound])
+  let ?provider = "\<lambda>q i. comma_semantic_b1_action_power 5 q i"
   have stopped: "?provider 5 (comma_offset_orbit x) =
       Comma_Semantic_B1_Stop d"
     using stop by simp

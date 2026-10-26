@@ -3,22 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Hashable, Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
-from number_compiler.hashlife.execution.source_image_inventory import SourceImageBinding
-from number_compiler.resources.metric_keys import comma as _comma_keys
-
-if TYPE_CHECKING:
-    from number_compiler.sequences.comma.image_adapter import CommaImageAdapter
-    from number_compiler.sequences.comma.power import CommaTerm
-
-from typing import cast
-
+from number_compiler.hashlife.execution.source_image_inventory import (
+    SourceImageBinding,
+)
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.resources.payload_contracts import (
     PayloadAuditContribution,
     PayloadAuditEntry,
 )
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.comma.image_adapter import CommaImageAdapter
+    from number_compiler.sequences.comma.power import CommaTerm
 
 
 def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
@@ -40,17 +39,18 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
         BoundaryState,
         MacroTemplate,
         boundary_state_signature,
+        macro_template_retained_components,
         validate_macro_component_header,
         validate_macro_component_read,
     )
-    from number_compiler.sequences.comma.image_adapter import (
+    from number_compiler.sequences.comma.boundary_receipt import (
         SOURCE,
         BoundaryPrefixCursor,
-    )
-    from number_compiler.sequences.comma.power import (
+        BoundarySelectionReceipt,
+        BoundarySelectionReceiptID,
         CommaOccurrenceRecord,
-        CommaTerm,
     )
+    from number_compiler.sequences.comma.power import CommaTerm
 
     if type(ledger) is not ResourceLedger or type(root) is not CommaTerm:
         raise TypeError("comma payload audit requires its exact term root")
@@ -93,6 +93,11 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
         (arena.boundary_node_owner, arena.boundary_nodes),
         (term_snapshot.occurrence_owner, term_snapshot.occurrences),
         (term_snapshot.occurrence_seal_owner, term_snapshot.occurrence_seals),
+        (term_snapshot.boundary_receipt_owner, term_snapshot.boundary_receipts),
+        (
+            term_snapshot.boundary_receipt_seal_owner,
+            term_snapshot.boundary_receipt_seals,
+        ),
     )
     canonical: dict[int, CommaActionID] = {}
     action_valid = len(nodes) == len(snapshots)
@@ -181,21 +186,16 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                     valid_artifact_digest,
                 )
 
-                state, target = node.boundary_source, node.boundary_target
-                if (
-                    type(state) is not BoundaryState
-                    or type(target) is not BoundaryState
-                ):
+                state = node.boundary_source
+                if type(state) is not BoundaryState or node.boundary_target is not None:
                     raise ValueError("global return has another boundary state sort")
                 boundary_state_signature(state)
-                boundary_state_signature(target)
                 valid_node = node.steps == 0 and valid_artifact_digest(
                     node.future_digest
                 )
                 expected_key = (
                     "global-boundary-return",
                     state,
-                    target,
                     node.future_digest,
                 )
             elif node.kind == "source20-first-child":
@@ -269,18 +269,17 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                         "comma receiver-bound action lost its admitted template"
                     )
             elif node.kind == "global-boundary-return":
-                state, target = node.boundary_source, node.boundary_target
+                state = node.boundary_source
                 template = (
                     None if state is None else arena.boundary_templates.get(state)
                 )
                 if (
                     state is None
-                    or target is None
+                    or node.boundary_target is not None
                     or template is None
                     or template.outcome != "fork"
-                    or target not in template.ordered_children
                 ):
-                    raise ValueError("comma global return lost its exact macro target")
+                    raise ValueError("comma global return lost its guarded source")
             elif node.kind == "source20-first-child":
                 if node.future_digest == "":
                     raise ValueError("source-20 action lost global artifact binding")
@@ -326,6 +325,7 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                 ("fragment", template.sector_fragments),
                 ("weight", template.prefix_weights),
                 ("displacement", template.prefix_displacements),
+                ("chart_segment", template.chart_segments),
             ):
                 for index in range(len(components)):
                     charge_boundary_audit_component()
@@ -364,17 +364,11 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                     raise ValueError("comma fork template has wrong ordered children")
             elif template.destination_a is not None or template.ordered_children:
                 raise ValueError("comma landmine template has fabricated children")
-            expected_nodes.extend(
-                (
-                    template,
-                    *template.sector_fragments,
-                    *template.prefix_weights,
-                    *template.prefix_displacements,
-                )
-            )
+            expected_nodes.extend(macro_template_retained_components(template))
             expected_seal_nodes.extend(cast(tuple[object, ...], template_seal[1]))
             expected_seal_nodes.extend(cast(tuple[object, ...], template_seal[2]))
             expected_seal_nodes.extend(cast(tuple[object, ...], template_seal[3]))
+            expected_seal_nodes.extend(cast(tuple[object, ...], template_seal[4]))
         except (AttributeError, IndexError, KeyError, TypeError, ValueError):
             boundary_valid = False
             reject(arena.boundary_owner, template)
@@ -441,11 +435,39 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                 ):
                     raise ValueError("invalid occurrence cursor")
                 boundary_state_signature(cursor.state)
+                if cursor.selection_receipt is not None:
+                    term.resolve_boundary_selection_receipt(cursor.selection_receipt)
             except (AttributeError, TypeError, ValueError):
                 occurrence_valid = False
                 reject(term_snapshot.occurrence_owner, occurrence)
     if not action_valid or not boundary_valid or not occurrence_valid:
         return PayloadAuditContribution((), tuple(invalid))
+
+    receipt_valid = len(term_snapshot.boundary_receipts) == len(
+        term_snapshot.boundary_receipt_seals
+    )
+    for receipt_id, receipt in term_snapshot.boundary_receipts.items():
+        try:
+            if (
+                type(receipt_id) is not BoundarySelectionReceiptID
+                or type(receipt) is not BoundarySelectionReceipt
+                or term_snapshot.boundary_receipt_seals.get(receipt_id) is not receipt
+            ):
+                raise ValueError("comma receipt store lost its paired seal")
+            receipt_id.validate(
+                term_snapshot.boundary_receipt_token,
+                term_snapshot.boundary_receipt_kind,
+            )
+            receipt.validate_shape()
+        except (AttributeError, TypeError, ValueError):
+            receipt_valid = False
+            reject(term_snapshot.boundary_receipt_owner, receipt_id)
+            reject(term_snapshot.boundary_receipt_owner, receipt)
+    if not receipt_valid:
+        for receipt_id, seal in term_snapshot.boundary_receipt_seals.items():
+            if term_snapshot.boundary_receipts.get(receipt_id) is not seal:
+                reject(term_snapshot.boundary_receipt_seal_owner, receipt_id)
+                reject(term_snapshot.boundary_receipt_seal_owner, seal)
 
     approved: list[PayloadAuditEntry] = []
     for owner, store in aliases:
@@ -474,15 +496,21 @@ def audit_comma_image_binding(
         CommaActionID,
         CommaActionRecord,
     )
-    from number_compiler.sequences.comma.image_adapter import (
+    from number_compiler.sequences.comma.boundary_quotient import (
+        BoundaryState,
+        MacroTemplate,
+        validate_macro_component_header,
+    )
+    from number_compiler.sequences.comma.boundary_receipt import (
         SOURCE,
         BoundaryPrefixCursor,
+        BoundarySelectionReceiptID,
         CommaImagePayload,
+        CommaOccurrenceRecord,
+    )
+    from number_compiler.sequences.comma.image_adapter import (
         CommaOccurrenceID,
         CommaSource,
-    )
-    from number_compiler.sequences.comma.power import (
-        CommaOccurrenceRecord,
     )
 
     if failure_prefix is not None:
@@ -553,6 +581,19 @@ def audit_comma_image_binding(
     if type(node) is not CommaActionRecord:
         raise ValueError("comma image action has another node sort")
 
+    def require_audited_template(state: BoundaryState) -> MacroTemplate:
+        template = action_arena.boundary_templates.get(state)
+        seal = action_arena.boundary_seals.get(state)
+        if (
+            type(template) is not MacroTemplate
+            or template.source != state
+            or type(seal) is not tuple
+            or not template.owns_component_seal(seal)
+        ):
+            raise ValueError("comma image lost its sealed boundary template")
+        validate_macro_component_header(template, seal)
+        return template
+
     source_value: int
     source_index: int
     source_payload: CommaImagePayload
@@ -565,6 +606,7 @@ def audit_comma_image_binding(
         ):
             raise ValueError("comma image has a foreign literal source")
         source_value, source_index = SOURCE, 1
+        source_extent = 0
         source_payload = CommaImagePayload(SOURCE, 1, term.certificate_version)
     elif type(source) is CommaOccurrenceID:
         source.validate(
@@ -574,20 +616,47 @@ def audit_comma_image_binding(
         )
         if source.local_id >= len(term_snapshot.occurrence_seals):
             raise ValueError("comma image source occurrence has no seal")
-        occurrence = term_snapshot.occurrences[source.local_id]
+        source_occurrence_record = term_snapshot.occurrences[source.local_id]
         if (
-            type(occurrence) is not CommaOccurrenceRecord
-            or occurrence is not term_snapshot.occurrence_seals[source.local_id]
-            or occurrence.certificate_version != term.certificate_version
+            type(source_occurrence_record) is not CommaOccurrenceRecord
+            or source_occurrence_record
+            is not term_snapshot.occurrence_seals[source.local_id]
+            or source_occurrence_record.certificate_version != term.certificate_version
         ):
             raise ValueError("comma image source occurrence is unauthenticated")
-        source_value = occurrence.value
-        source_index = occurrence.absolute_index
+        source_core = adapter.scheduler.published_source_image_core
+        if source_core is None:
+            raise ValueError(
+                "comma image audit requires an existing source-image owner"
+            )
+        source_image = source_core.resolve_readonly(source_occurrence_record.image)
+        if (
+            source_image.binding.family != adapter.family
+            or source_image.binding.semantic_version != adapter.semantic_version
+            or type(source_image.binding.extent) is not int
+            or source_image.binding.extent < 0
+            or type(source_image.payload) is not CommaImagePayload
+            or source_image.payload.value != source_occurrence_record.value
+            or source_image.payload.absolute_index
+            != source_occurrence_record.absolute_index
+            or source_image.payload.certificate_version
+            != source_occurrence_record.certificate_version
+            or source_image.payload.boundary_cursor
+            != source_occurrence_record.boundary_cursor
+        ):
+            raise ValueError("comma occurrence source image has another binding")
+        source_value = source_occurrence_record.value
+        source_index = source_occurrence_record.absolute_index
+        # Every external source is admitted as a fresh image origin with
+        # extent zero.  The occurrence's backing image authenticates its
+        # payload and cursor, while its historical action extent belongs to a
+        # prior publication and is not the base of this cumulative action.
+        source_extent = 0
         source_payload = CommaImagePayload(
-            occurrence.value,
-            occurrence.absolute_index,
-            occurrence.certificate_version,
-            occurrence.boundary_cursor,
+            source_occurrence_record.value,
+            source_occurrence_record.absolute_index,
+            source_occurrence_record.certificate_version,
+            source_occurrence_record.boundary_cursor,
         )
     elif type(source) is SourceImageID:
         core = adapter.scheduler.published_source_image_core
@@ -604,42 +673,87 @@ def audit_comma_image_binding(
             type(parent) is not SourceImageRecord
             or parent.binding.family != adapter.family
             or parent.binding.semantic_version != adapter.semantic_version
+            or type(parent.binding.extent) is not int
+            or parent.binding.extent < 0
             or type(parent.payload) is not CommaImagePayload
             or parent.payload.certificate_version != term.certificate_version
         ):
             raise ValueError("comma image source belongs to another family")
         source_value = parent.payload.value
         source_index = parent.payload.absolute_index
+        # SourceImageID is also re-admitted as a fresh origin before an action
+        # is applied.  Keep validating the parent binding and payload above;
+        # only the new origin's extent starts at zero.
+        source_extent = 0
         source_payload = parent.payload
         source_ports = cast(tuple[int, int, int], parent.binding.boundary_ports)
     else:
         raise ValueError("comma image has an unsupported source authority")
 
-    # Admission starts a new relative extent even when its source is an image.
-    # The absolute literal index remains transported from that source payload.
-    if (
-        binding.extent != node.steps
-        or payload.absolute_index != source_index + node.steps
-    ):
-        raise ValueError("comma image extent differs from its admitted action")
-    if source_ports is not None and node.kind in ("cycle", "phase-prefix"):
-        leading, digit, headroom = source_ports
+    source_cursor = source_payload.boundary_cursor
+    if source_cursor is not None and type(source_cursor) is not BoundaryPrefixCursor:
+        raise ValueError("comma source has another boundary cursor sort")
+    if source_cursor is not None:
+        source_receipt = source_cursor.selection_receipt
+        if source_receipt is not None:
+            if type(source_receipt) is not BoundarySelectionReceiptID:
+                raise ValueError("comma source cursor has another receipt handle")
+            resolved_source_receipt = term.resolve_boundary_selection_receipt(
+                source_receipt
+            )
+            source_provider = term.require_global_future_provider(
+                resolved_source_receipt.artifact_sha256
+            )
+            resolved_source_receipt.validate_provider(source_provider)
+            resolved_source_receipt.validate_output(
+                value=source_payload.value,
+                absolute_index=source_payload.absolute_index,
+                cursor=source_cursor,
+                receipt_id=source_receipt,
+            )
+
+    expected_transitions = node.steps
+    global_provider: object | None = None
+    if node.kind == "source20-first-child":
+        from number_compiler.sequences.comma.future_authority import (
+            SOURCE20_FIRST_FORK_INDEX,
+            SOURCE20_FIRST_FORK_VALUE,
+        )
+
         if (
-            output_ports != (leading, digit, headroom - node.displacement)
-            or payload.value != source_value + node.displacement
+            source_index != SOURCE20_FIRST_FORK_INDEX
+            or source_value != SOURCE20_FIRST_FORK_VALUE
+            or source_payload.boundary_cursor is not None
         ):
-            raise ValueError("comma image lost its powered port transport")
-    elif node.kind == "identity":
+            raise ValueError("comma source-20 action has another exact source")
+        term.require_global_future_provider(node.future_digest)
+        expected_transitions = 1
+    elif node.kind == "global-boundary-return":
+        from number_compiler.sequences.comma.arithmetic import decimal_sector
+        from number_compiler.sequences.comma.occurrence import BoundaryOccurrence
+
+        state = node.boundary_source
+        global_provider = term.require_global_future_provider(node.future_digest)
         if (
-            payload.value != source_value
-            or payload.boundary_cursor is not source_payload.boundary_cursor
+            type(state) is not BoundaryState
+            or type(source_cursor) is not BoundaryPrefixCursor
+            or source_cursor.state != state
+            or source_cursor.transitions != 0
         ):
-            raise ValueError("comma identity changed its source payload")
-    elif node.kind == "step" and payload.value != (
-        source_value + 10 * (source_value % 10) + node.child_digit
-    ):
-        raise ValueError("comma primitive image changed its selected child")
-    elif node.kind == "boundary-prefix-occurrence":
+            raise ValueError("comma global return lost its source cursor")
+        exponent = decimal_sector(source_value).exponent
+        source_boundary_occurrence = BoundaryOccurrence(state, exponent)
+        if (
+            source_cursor.exponent != exponent
+            or source_boundary_occurrence.value() != source_value
+        ):
+            raise ValueError("comma global return has another exact source occurrence")
+        template = require_audited_template(state)
+        if template.outcome != "fork":
+            raise ValueError("comma global return source is not a fork")
+        expected_transitions = template.weight.evaluate(exponent) + 1
+
+    if node.kind == "boundary-prefix-occurrence":
         from number_compiler.sequences.comma.boundary_quotient import (
             PERIOD,
             BoundaryState,
@@ -674,7 +788,106 @@ def audit_comma_image_binding(
                 raise ValueError("comma receiver prefix has an invalid cursor origin")
         if payload.absolute_index != source_index + node.steps:
             raise ValueError("comma receiver prefix has an invalid cursor transport")
-    elif payload.boundary_cursor is not None:
+
+    # Extent is cumulative along the action chain from its freshly admitted
+    # origin, whose extent is zero regardless of the source's prior history.
+    if (
+        binding.extent != source_extent + expected_transitions
+        or payload.absolute_index != source_index + expected_transitions
+    ):
+        raise ValueError("comma image extent differs from its admitted action")
+    if source_ports is not None and node.kind in ("cycle", "phase-prefix"):
+        leading, digit, headroom = source_ports
+        if (
+            output_ports != (leading, digit, headroom - node.displacement)
+            or payload.value != source_value + node.displacement
+        ):
+            raise ValueError("comma image lost its powered port transport")
+    elif node.kind == "identity":
+        if (
+            payload.value != source_value
+            or payload.boundary_cursor is not source_payload.boundary_cursor
+        ):
+            raise ValueError("comma identity changed its source payload")
+    elif node.kind == "step" and payload.value != (
+        source_value + 10 * (source_value % 10) + node.child_digit
+    ):
+        raise ValueError("comma primitive image changed its selected child")
+    elif node.kind == "source20-first-child":
+        from number_compiler.sequences.comma.future_authority import (
+            SOURCE20_SELECTED_CHILD,
+        )
+
+        result_cursor = payload.boundary_cursor
+        expected_state = BoundaryState("N", 2, 10)
+        if (
+            type(result_cursor) is not BoundaryPrefixCursor
+            or result_cursor.selection_receipt is not None
+            or result_cursor.state != expected_state
+            or result_cursor.exponent != 10
+            or result_cursor.transitions != 0
+            or payload.value != SOURCE20_SELECTED_CHILD
+            or payload.value != result_cursor.state.value(result_cursor.exponent)
+        ):
+            raise ValueError("comma source-20 action changed its issued child")
+    elif node.kind == "global-boundary-return":
+        from number_compiler.sequences.comma.arithmetic import decimal_sector
+
+        state = node.boundary_source
+        result_cursor = payload.boundary_cursor
+        if type(state) is not BoundaryState:
+            raise ValueError("comma global return has another boundary source sort")
+        template = require_audited_template(state)
+        source_exponent = decimal_sector(source_value).exponent
+        output_sector = decimal_sector(payload.value)
+        if (
+            type(result_cursor) is not BoundaryPrefixCursor
+            or type(result_cursor.selection_receipt) is not BoundarySelectionReceiptID
+        ):
+            raise ValueError("comma global return omitted its issued selection handle")
+        result_receipt_id = result_cursor.selection_receipt
+        result_receipt = term.resolve_boundary_selection_receipt(result_receipt_id)
+        if global_provider is None:
+            raise ValueError("comma global return lost its checked provider")
+        result_receipt.validate_provider(global_provider)
+        result_receipt.validate_source(
+            source_state=state,
+            source_exponent=source_exponent,
+            source_value=source_value,
+            source_index=source_index,
+            source_extent=source_extent,
+        )
+        selected_slot = result_receipt.selection.selected_slot
+        if (
+            result_receipt.selection.fork_coefficient != template.destination_a
+            or selected_slot not in (0, 1)
+            or result_receipt.target_state != template.ordered_children[selected_slot]
+            or result_receipt.target_exponent
+            != source_exponent + template.exponent_delta
+            or result_receipt.transitions != expected_transitions
+            or result_cursor.transitions != 0
+            or result_cursor.state != result_receipt.target_state
+            or result_cursor.exponent != result_receipt.target_exponent
+            or payload.value != result_receipt.target_value
+            or payload.value != result_cursor.state.value(result_cursor.exponent)
+            or output_ports
+            != (
+                output_sector.leading,
+                output_sector.digit,
+                output_sector.headroom,
+            )
+        ):
+            raise ValueError("comma global return changed its issued child cursor")
+        result_receipt.validate_output(
+            value=payload.value,
+            absolute_index=payload.absolute_index,
+            cursor=result_cursor,
+            receipt_id=result_receipt_id,
+        )
+    elif (
+        node.kind != "boundary-prefix-occurrence"
+        and payload.boundary_cursor is not None
+    ):
         raise ValueError("comma non-boundary action retained a stale cursor")
     if payload.boundary_cursor is not None:
         return (payload.boundary_cursor,)
@@ -737,6 +950,16 @@ def register_comma_term_audit(term: CommaTerm) -> None:
                 term_snapshot.occurrence_seal_owner,
                 "_audit_occurrence_seals",
                 "source_occurrence_seal",
+            ),
+            PayloadAuditStoreBinding(
+                term_snapshot.boundary_receipt_owner,
+                "_audit_boundary_receipts",
+                "boundary_selection_receipt",
+            ),
+            PayloadAuditStoreBinding(
+                term_snapshot.boundary_receipt_seal_owner,
+                "_audit_boundary_receipt_seals",
+                "boundary_selection_receipt_seal",
             ),
         ),
         audit_comma_term,

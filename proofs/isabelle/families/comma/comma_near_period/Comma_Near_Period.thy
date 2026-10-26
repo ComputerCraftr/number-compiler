@@ -231,6 +231,78 @@ next
 qed
 
 
+text \<open>The Near prefix relation is an exact restriction of the fixed-sector
+displacement. This generic chart fact is shared by the source producer and
+the C1 carry-clock refinement; it does not infer a sector crossing or a
+terminal event from the endpoint alone.\<close>
+lemma comma_near_prefix_displacement_refines:
+  fixes n f h t d :: nat
+  assumes f: "1 \<le> f" "f \<le> 9"
+    and initial: "1 \<le> h" "h \<le> 540"
+    and digit: "d = (10 - h mod 10) mod 10"
+    and path: "comma_near_prefix n f h t"
+  shows "h = t + comma_period_displacement f d n"
+  using path f initial digit
+proof (induction n arbitrary: h t d)
+  case 0
+  then show ?case by (simp add: comma_period_displacement_def)
+next
+  case (Suc n)
+  have f_bounds: "1 \<le> f" "f \<le> 9"
+    using Suc.prems by auto
+  have h_bounds: "1 \<le> h" "h \<le> 540"
+    using Suc.prems by auto
+  have digit_local: "d = (10 - h mod 10) mod 10"
+    using Suc.prems by auto
+  obtain j where step:
+      "comma_finite_step 0 (Comma_Near f 0 h) =
+        Comma_Next (Comma_Near f 0 j)"
+    and tail: "comma_near_prefix n f j t"
+    using Suc.prems by auto
+  have d_bound: "d < 10" using digit_local by simp
+  have aligned: "(h + d) mod 10 = 0"
+    using comma_near_initial_digit_aligned[of h] by (simp only: digit_local)
+  have step_iff:
+      "comma_finite_step 0 (Comma_Near f 0 h) =
+        Comma_Next (Comma_Near f 0 j) \<longleftrightarrow>
+       10 * d + f + (if f < 9 then 1 else 0) < h \<and>
+        j = h - (10 * d + f)"
+    using comma_near_internal_iff[OF f_bounds h_bounds, of j]
+    by (simp only: digit_local)
+  have step_formula:
+      "10 * d + f + (if f < 9 then 1 else 0) < h"
+      "j = h - (10 * d + f)"
+    using step step_iff by blast+
+  have j_positive: "1 \<le> j"
+    using step_formula f_bounds(1) by (cases "f < 9") arith+
+  have j_bound: "j \<le> 540"
+    using step_formula h_bounds(2) by arith
+  have fits: "10 * d + f \<le> h"
+    using step_formula by arith
+  have tail_digit:
+    "(10 - j mod 10) mod 10 = (d + f) mod 10"
+  proof -
+    have one: "comma_period_displacement f d 1 = 10*d+f"
+      using comma_near_displacement_tail[OF d_bound, of f 0]
+      by (simp add: comma_period_displacement_def)
+    have phase:
+      "(10 - j mod 10) mod 10 = comma_phase_digit f d 1"
+      using comma_near_phase_headroom_digit[OF d_bound aligned, of f 1]
+        fits step_formula(2) by (simp only: one)
+    show ?thesis using phase by (simp add: comma_phase_digit_def)
+  qed
+  have tail_exact:
+      "j = t + comma_period_displacement f ((d + f) mod 10) n"
+    by (rule Suc.IH[OF tail f_bounds j_positive j_bound tail_digit[symmetric]])
+  have displacement:
+      "comma_period_displacement f d (Suc n) =
+        10 * d + f + comma_period_displacement f ((d + f) mod 10) n"
+    using comma_near_displacement_tail[OF d_bound, of f n]
+    by (simp add: comma_phase_digit_def)
+  show ?case using step_formula(2) tail_exact displacement fits by arith
+qed
+
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms comma_near_internal_iff comma_near_prefix_append
@@ -238,7 +310,8 @@ ML \<open>
       comma_near_phase_headroom_digit comma_near_prefix_from_displacement
       comma_near_complete_cycles_prefix comma_near_initial_digit_aligned
       comma_near_decisive_iff comma_near_germ_from_maximal_displacement
-      comma_near_germ_from_period_residual comma_near_phase_tail
+      comma_near_germ_from_period_residual
+      comma_near_prefix_displacement_refines comma_near_phase_tail
       comma_near_displacement_tail}) then ()
     else error "Near period bridge depends on an oracle";
 \<close>

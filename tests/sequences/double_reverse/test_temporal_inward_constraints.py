@@ -50,21 +50,31 @@ def _assert_sound(trajectory: tuple[int, ...], solver: InwardCarryConstraints) -
             assert bit in solver.borrow(t, i + 1)
 
 
+def _assert_single_step_reversal_is_exact(x: int) -> None:
+    nxt = 2 * int(str(x)[::-1])
+    grammar = InwardCarryConstraints((len(str(x)), len(str(nxt))))
+    grammar.constrain_prefix(0, str(x))
+    answer = grammar.propagate()
+    assert answer.known_digit_counts[-1] == len(str(nxt))
+    assert "".join(str(grammar.digits(1, i)[0]) for i in range(len(str(nxt)))) == str(
+        nxt
+    )
+    _assert_sound((x, nxt), grammar)
+
+
 @pytest.mark.algebra
 def test_exact_reversal_cell_arithmetic_growth_and_contraction() -> None:
+    for x in (196, 173488, 174388, 1768742, 123400, 50000, 900):
+        _assert_single_step_reversal_is_exact(x)
+
+
+@pytest.mark.algebra
+@pytest.mark.validation  # Seeded 200-source differential fuzz grid.
+def test_randomized_reversal_cell_arithmetic_growth_and_contraction() -> None:
     rng = random.Random(20261016)
-    values = [196, 173488, 174388, 1768742, 123400, 50000, 900]
-    values += [rng.randrange(1, 10**7) for _ in range(200)]
-    for x in values:
-        nxt = 2 * int(str(x)[::-1])
-        grammar = InwardCarryConstraints((len(str(x)), len(str(nxt))))
-        grammar.constrain_prefix(0, str(x))
-        answer = grammar.propagate()
-        assert answer.known_digit_counts[-1] == len(str(nxt))
-        assert "".join(
-            str(grammar.digits(1, i)[0]) for i in range(len(str(nxt)))
-        ) == str(nxt)
-        _assert_sound((x, nxt), grammar)
+    for _ in range(200):
+        x = rng.randrange(1, 10**7)
+        _assert_single_step_reversal_is_exact(x)
 
 
 @pytest.mark.algebra
@@ -114,6 +124,7 @@ def test_mod99_joint_constraints_can_close_a_small_inner_halo() -> None:
 
 
 @pytest.mark.algebra
+@pytest.mark.validation  # Seeded multi-trajectory carry-domain fuzz grid.
 def test_random_sources_remain_admissible_with_conditional_raw_borrows() -> None:
     rng = random.Random(198303)
     # Deterministic randomized smoke coverage remains broad while bounding the

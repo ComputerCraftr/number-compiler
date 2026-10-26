@@ -134,6 +134,18 @@ def test_bounded_fallback_summary_keeps_chronology_only_in_explicit_trace(
     monkeypatch.setattr(
         temporal_predictive_border, "predictive_source_transfer", unavailable
     )
+
+    def forbid_unrequested_depth_matrix(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("a summary-only fallback must not build trace matrices")
+
+    def forbid_any_matrix(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("a summary-only fallback must not build matrices")
+
+    monkeypatch.setattr(
+        owner, "source_conditioned_depth_window", forbid_unrequested_depth_matrix
+    )
+    monkeypatch.setattr(owner, "_path_matrix", forbid_any_matrix)
+    monkeypatch.setattr(owner, "BooleanPairMatrix", forbid_any_matrix)
     chronological = owner.chronological_source_transfer_packet
     requested_trace_flags: list[bool] = []
 
@@ -157,6 +169,12 @@ def test_bounded_fallback_summary_keeps_chronology_only_in_explicit_trace(
     )
     with DoubleReverseTerm(196, generation, max_state_bits=16384) as term:
         packet = source_transfer_packet(term, steps=steps, pair_depth=1)
+        scratch = next(
+            account
+            for account in term.resource_ledger.inventory()
+            if account.owner == term.scratch_owner
+        )
+        assert (scratch.entries, scratch.nodes) == (0, 0)
 
     assert packet["status"] == "available"
     assert packet["construction"] == "bounded_exact_source_fallback"
@@ -177,6 +195,28 @@ def test_bounded_fallback_summary_keeps_chronology_only_in_explicit_trace(
         "source_horizon_physical_ticks",
     }.intersection(packet)
     assert requested_trace_flags == [False]
+
+
+def test_chronological_path_reservation_is_released_on_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.double_reverse import source_transfer as owner
+
+    def fail_while_issuing_path(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("injected path publication failure")
+
+    monkeypatch.setattr(owner, "source_issued_root_path", fail_while_issuing_path)
+    with DoubleReverseTerm(196, 32, max_state_bits=16384) as term:
+        with pytest.raises(RuntimeError, match="injected path publication failure"):
+            owner.chronological_source_transfer_packet(
+                term, steps=8, pair_depth=1, include_trace=False
+            )
+        scratch = next(
+            account
+            for account in term.resource_ledger.inventory()
+            if account.owner == term.scratch_owner
+        )
+        assert (scratch.entries, scratch.nodes) == (0, 0)
 
 
 def test_endpoint_rebase_streams_exact_words_and_cleans_up_early_exits(

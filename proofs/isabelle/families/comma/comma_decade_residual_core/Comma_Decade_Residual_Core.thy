@@ -32,12 +32,13 @@ fun comma_summary_outcome :: "nat \<Rightarrow> comma_decade_terminal \<Rightarr
   "comma_summary_outcome n (Comma_Terminal_Fork a)=Comma_Fork_At a n"
 | "comma_summary_outcome n Comma_Terminal_Landmine=Comma_Landmine_At n"
 
-definition comma_fast_decade_summary_step ::
-  "(comma_decade_state \<Rightarrow> nat) \<Rightarrow>
+definition comma_decade_summary_step_for ::
+  "(comma_decade_state \<Rightarrow> comma_decade_outcome) \<Rightarrow>
+   (comma_decade_state \<Rightarrow> nat) \<Rightarrow>
    (comma_decade_state \<Rightarrow> comma_decade_terminal) \<Rightarrow>
    comma_decade_state \<Rightarrow> bool" where
-  "comma_fast_decade_summary_step height terminal s =
-    (case comma_fast_decade_control s of
+  "comma_decade_summary_step_for control height terminal s =
+    (case control s of
        Comma_Decade_Continue t \<Rightarrow>
          comma_decade_admitted t \<and> height s = Suc (height t) \<and> terminal s = terminal t
      | Comma_Decade_Fork a d \<Rightarrow>
@@ -45,6 +46,34 @@ definition comma_fast_decade_summary_step ::
      | Comma_Decade_Landmine d \<Rightarrow>
          d=0 \<and> height s=0 \<and> terminal s=Comma_Terminal_Landmine
      | Comma_Decade_Invalid \<Rightarrow> False)"
+
+definition comma_fast_decade_summary_step ::
+  "(comma_decade_state \<Rightarrow> nat) \<Rightarrow>
+   (comma_decade_state \<Rightarrow> comma_decade_terminal) \<Rightarrow>
+   comma_decade_state \<Rightarrow> bool" where
+  "comma_fast_decade_summary_step height terminal s =
+    comma_decade_summary_step_for comma_fast_decade_control height terminal s"
+
+definition comma_decade_summary_step ::
+  "(comma_decade_state \<Rightarrow> nat) \<Rightarrow>
+   (comma_decade_state \<Rightarrow> comma_decade_terminal) \<Rightarrow>
+   comma_decade_state \<Rightarrow> bool" where
+  "comma_decade_summary_step height terminal s =
+    comma_decade_summary_step_for comma_decade_control height terminal s"
+
+lemma comma_fast_decade_summary_step_correct:
+  assumes admitted: "comma_decade_admitted s"
+  shows "comma_fast_decade_summary_step height terminal s =
+    comma_decade_summary_step height terminal s"
+  using comma_fast_decade_control_correct[OF admitted]
+  by (simp add: comma_fast_decade_summary_step_def comma_decade_summary_step_def
+      comma_decade_summary_step_for_def)
+
+lemma comma_fast_decade_summary_step_to_canonical:
+  assumes admitted: "comma_decade_admitted s"
+    and fast: "comma_fast_decade_summary_step height terminal s"
+  shows "comma_decade_summary_step height terminal s"
+  using comma_fast_decade_summary_step_correct[OF admitted] fast by simp
 
 definition comma_decade_summary_checked ::
   "(comma_decade_state \<Rightarrow> nat) \<Rightarrow>
@@ -149,21 +178,20 @@ is only one optional way of establishing it. No rank premise is needed.\<close>
 
 theorem comma_decade_summary_recurrence_sound:
   assumes recurrence: "\<And>s. comma_decade_admitted s \<Longrightarrow>
-      comma_fast_decade_summary_step height terminal s"
+      comma_decade_summary_step height terminal s"
     and valid: "comma_decade_admitted s"
   shows "comma_decade_exact_summary s (height s) (terminal s)"
   using valid
 proof (induction "height s" arbitrary: s rule: less_induct)
   case less
-  have row: "comma_fast_decade_summary_step height terminal s"
+  have row: "comma_decade_summary_step height terminal s"
     by (rule recurrence[OF less.prems])
-  have control: "comma_fast_decade_control s=comma_decade_control s"
-    by (rule comma_fast_decade_control_correct[OF less.prems])
   show ?case
   proof (cases "comma_decade_control s")
     case (Comma_Decade_Continue t)
     have t: "comma_decade_admitted t" "height s=Suc (height t)" "terminal s=terminal t"
-      using row by (simp_all add: comma_fast_decade_summary_step_def control Comma_Decade_Continue)
+      using row by (simp_all add: comma_decade_summary_step_def
+          comma_decade_summary_step_for_def Comma_Decade_Continue)
     have decrease: "height t<height s" using t by simp
     have ih: "comma_decade_exact_summary t (height t) (terminal t)"
       by (rule less.hyps[OF decrease t(1)])
@@ -171,7 +199,8 @@ proof (induction "height s" arbitrary: s rule: less_induct)
   next
     case (Comma_Decade_Fork a d)
     have d: "d=0" and h: "height s=0" and label: "terminal s=Comma_Terminal_Fork a"
-      using row by (simp_all add: comma_fast_decade_summary_step_def control Comma_Decade_Fork)
+      using row by (simp_all add: comma_decade_summary_step_def
+          comma_decade_summary_step_for_def Comma_Decade_Fork)
     have actual: "comma_decade_control s=Comma_Decade_Fork a 0"
       using Comma_Decade_Fork d by simp
     have "comma_decade_exact_summary s 0 (Comma_Terminal_Fork a)"
@@ -180,7 +209,8 @@ proof (induction "height s" arbitrary: s rule: less_induct)
   next
     case (Comma_Decade_Landmine d)
     have d: "d=0" and h: "height s=0" and label: "terminal s=Comma_Terminal_Landmine"
-      using row by (simp_all add: comma_fast_decade_summary_step_def control Comma_Decade_Landmine)
+      using row by (simp_all add: comma_decade_summary_step_def
+          comma_decade_summary_step_for_def Comma_Decade_Landmine)
     have actual: "comma_decade_control s=Comma_Decade_Landmine 0"
       using Comma_Decade_Landmine d by simp
     have "comma_decade_exact_summary s 0 Comma_Terminal_Landmine"
@@ -188,15 +218,39 @@ proof (induction "height s" arbitrary: s rule: less_induct)
     then show ?thesis by (simp only: h label)
   next
     case Comma_Decade_Invalid
-    then show ?thesis using row by (simp add: comma_fast_decade_summary_step_def control)
+    then show ?thesis using row
+      by (simp add: comma_decade_summary_step_def comma_decade_summary_step_for_def)
   qed
+qed
+
+theorem comma_fast_decade_summary_recurrence_sound:
+  assumes recurrence: "\<And>s. comma_decade_admitted s \<Longrightarrow>
+      comma_fast_decade_summary_step height terminal s"
+    and valid: "comma_decade_admitted s"
+  shows "comma_decade_exact_summary s (height s) (terminal s)"
+proof -
+  have canonical: "\<And>q. comma_decade_admitted q \<Longrightarrow>
+      comma_decade_summary_step height terminal q"
+  proof -
+    fix q assume q_valid: "comma_decade_admitted q"
+    have fast: "comma_fast_decade_summary_step height terminal q"
+      by (rule recurrence[OF q_valid])
+    show "comma_decade_summary_step height terminal q"
+      by (rule comma_fast_decade_summary_step_to_canonical[OF q_valid fast])
+  qed
+  show ?thesis by (rule comma_decade_summary_recurrence_sound[OF canonical valid])
 qed
 
 theorem comma_decade_summary_checked_sound:
   assumes "comma_decade_summary_checked height terminal" "comma_decade_admitted s"
   shows "comma_decade_exact_summary s (height s) (terminal s)"
-  by (rule comma_decade_summary_recurrence_sound[OF _ assms(2)])
-    (rule comma_decade_summary_row[OF assms(1)])
+proof (rule comma_decade_summary_recurrence_sound)
+  fix q assume q_valid: "comma_decade_admitted q"
+  have fast: "comma_fast_decade_summary_step height terminal q"
+    by (rule comma_decade_summary_row[OF assms(1) q_valid])
+  show "comma_decade_summary_step height terminal q"
+    by (rule comma_fast_decade_summary_step_to_canonical[OF q_valid fast])
+qed (rule assms(2))
 
 lemma comma_decade_exact_summary_finishes:
   "comma_decade_exact_summary s n terminal \<Longrightarrow> comma_decade_finishes s (Suc n)"
@@ -555,7 +609,7 @@ definition comma_decade_residual_classifier_ok ::
   "(comma_decade_state \<Rightarrow> comma_decade_residual) \<Rightarrow> bool" where
   "comma_decade_residual_classifier_ok C =
     (\<forall>s. comma_decade_admitted s \<longrightarrow>
-      comma_fast_decade_summary_step (\<lambda>s. fst (C s)) (\<lambda>s. snd (C s)) s)"
+      comma_decade_summary_step (\<lambda>s. fst (C s)) (\<lambda>s. snd (C s)) s)"
 
 theorem comma_residual_classifier_sound:
   assumes classifier: "comma_decade_residual_classifier_ok C"
@@ -610,6 +664,33 @@ next
   then show ?case using count by auto
 qed
 
+theorem comma_decade_checked_rank_residual:
+  assumes checked: "comma_decade_rank_check rank" and valid: "comma_decade_admitted s"
+  shows "\<exists>h tau. h\<le>rank s \<and> comma_decade_exact_summary s h tau"
+proof -
+  obtain n where finish: "comma_decade_finishes s n" and bound: "n\<le>Suc (rank s)"
+    using comma_decade_checked_rank_totality[OF checked valid] by blast
+  obtain h tau where count: "n=Suc h" and summary: "comma_decade_exact_summary s h tau"
+    using comma_decade_finishes_exact_summary[OF finish valid] by blast
+  show ?thesis using bound count summary by auto
+qed
+
+corollary comma_decade_checked_rank_B32:
+  assumes "comma_decade_rank_check rank" "comma_decade_admitted s" "rank s\<le>26"
+  shows "\<exists>h tau. h\<le>26 \<and>
+    comma_decade_block_power 5 s=Comma_Block_Stop h tau \<and>
+    comma_residual_block 32 (h,tau)=Comma_Residual_Stop h tau \<and>
+    comma_decade_exact_summary s h tau"
+proof -
+  obtain h tau where bound: "h\<le>rank s" and summary: "comma_decade_exact_summary s h tau"
+    using comma_decade_checked_rank_residual[OF assms(1,2)] by blast
+  have h: "h\<le>26" using bound assms(3) by arith
+  have stop: "comma_decade_block_run 32 s=Comma_Block_Stop h tau"
+    by (rule comma_decade_exact_summary_block_stop[OF summary assms(2)]) (use h in arith)
+  show ?thesis using h stop comma_residual_B32_totality[OF h, of tau] summary
+    by (auto simp: comma_decade_block_square_refines)
+qed
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms comma_decade_rectangle comma_decade_summary_recurrence_sound
@@ -620,7 +701,8 @@ ML \<open>
       comma_residual_block_add comma_residual_block_square comma_residual_B32_totality
       comma_decade_exact_summary_block_stop comma_decade_exact_summary_block_live
       comma_decade_exact_summary_block comma_decade_finishes_exact_summary
+      comma_decade_checked_rank_residual comma_decade_checked_rank_B32
       comma_residual_classifier_sound comma_residual_classifier_B32})
-    then () else error "Rank-free decade residual core depends on an oracle";
+    then () else error "Canonical decade residual core depends on an oracle";
 \<close>
 end

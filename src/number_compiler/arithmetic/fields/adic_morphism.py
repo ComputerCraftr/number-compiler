@@ -43,11 +43,21 @@ def _bounded_prime_power(prime: int, exponent: int) -> int:
     return value
 
 
-def _vp(value: int, prime: int, cap: int) -> int:
+def bounded_prime_valuation(value: int, prime: int, cap: int) -> int:
+    """Return ``min(v_prime(value), cap)`` without exceeding the requested cap.
+
+    Zero maps to ``cap``. This is a bounded divisibility observation, not a
+    primality check for ``prime``; callers supply a prime factor at the
+    arithmetic boundary where that fact is already known.
+    """
     if any(type(item) is not int for item in (value, prime, cap)):
         raise TypeError("p-adic valuation requires exact integers")
+    if prime < 2 or cap < 0:
+        raise ValueError("invalid p-adic valuation factor or cap")
     if value == 0:
         return cap
+    if prime == 2:
+        return min((abs(value) & -abs(value)).bit_length() - 1, cap)
     out = 0
     while out < cap and value % prime == 0:
         value //= prime
@@ -110,7 +120,7 @@ class PadicAffineMorphism:
 
     @property
     def source_valuation(self) -> int:
-        return _vp(self.multiplier, self.prime, self.precision)
+        return bounded_prime_valuation(self.multiplier, self.prime, self.precision)
 
     @property
     def source_annihilated(self) -> bool:
@@ -460,6 +470,7 @@ __all__ = [
     "PadicAffineMorphism",
     "PadicRadialQuotient",
     "ValuationSensitivityMorphism",
+    "bounded_prime_valuation",
     "fermat_shifted_square_sensitivity",
     "mersenne_successor_2adic_sensitivity",
     "mersenne_successor_padic2",

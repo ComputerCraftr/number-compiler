@@ -17,13 +17,14 @@ from number_compiler.sequences.comma.action_arena import (
     CommaActionArena,
     CommaActionRecord,
 )
+from number_compiler.sequences.comma.boundary_receipt import CommaImagePayload
 from number_compiler.sequences.comma.image_adapter import (
-    CommaImagePayload,
     CommaOccurrenceID,
     CommaSource,
 )
 from number_compiler.sequences.comma.power import CommaTerm
 from tests.support.comma_oracles import literal_children
+from tests.support.comma_source_image_payload import source_image_payload
 
 
 def _issued_source(term: CommaTerm) -> CommaSource | CommaOccurrenceID:
@@ -256,9 +257,7 @@ def test_cycle_occurrence_reuse_rebinds_another_phase_in_the_same_coset() -> Non
     # all proper prefixes against independent literal children.
     for prefix_steps in range(1, 10):
         prefix = term.arena.phase_prefix(1, 5, prefix_steps)
-        prefix_image = term.scheduler.source_image(term.adapter, shifted_source, prefix)
-        prefix_payload = term.scheduler.source_image_core().view(prefix_image).payload
-        assert type(prefix_payload) is CommaImagePayload
+        prefix_payload = source_image_payload(term, shifted_source, prefix)
         literal = shifted_payload.value
         for _ in range(prefix_steps):
             children = literal_children(literal)

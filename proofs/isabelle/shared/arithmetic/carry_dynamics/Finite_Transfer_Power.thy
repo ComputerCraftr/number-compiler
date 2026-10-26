@@ -487,6 +487,110 @@ lemma typed_bitset_then_exact:
   by (auto simp: bitset_image_exact
       dest: distinct_state_nth_index_eq)
 
+text \<open>Sparse Boolean rows omit zero rows. This recursion models the
+finite union performed by a sparse join: each retained later row contributes
+its target bitset exactly when its source is selected by the incoming row.
+It preserves all branches and treats a missing later row as the empty set.\<close>
+
+fun sparse_bitset_row_join :: "nat \<Rightarrow> (nat \<times> nat) list \<Rightarrow> nat" where
+  "sparse_bitset_row_join incoming [] = 0"
+| "sparse_bitset_row_join incoming ((middle,targets) # later) =
+    (if bit incoming middle then targets else 0) OR
+      sparse_bitset_row_join incoming later"
+
+lemma bit_sparse_bitset_row_join_exact:
+  "bit (sparse_bitset_row_join incoming rows) target =
+    (\<exists>middle targets. (middle,targets) \<in> set rows \<and>
+      bit incoming middle \<and> bit targets target)"
+proof (induction rows)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons entry later)
+  obtain middle targets where entry:
+    "entry = (middle,targets)"
+    by (cases entry)
+  have step:
+    "bit (sparse_bitset_row_join incoming (entry # later)) target =
+      ((bit incoming middle \<and> bit targets target) \<or>
+        bit (sparse_bitset_row_join incoming later) target)"
+    using entry by (cases "bit incoming middle") (simp_all add: bit_simps)
+  show ?case
+    using step entry Cons.IH by auto
+qed
+
+lemma sparse_bitset_row_join_matches_dense:
+  assumes distinct: "distinct (map fst rows)"
+      and in_bounds: "\<And>middle targets. (middle,targets) \<in> set rows
+        \<Longrightarrow> middle < width"
+      and representation: "\<And>middle. middle < width \<Longrightarrow>
+        map_of rows middle = (if dense middle = 0 then None
+          else Some (dense middle))"
+  shows
+    "bit (sparse_bitset_row_join incoming rows) target =
+      bit (bitset_image width dense incoming) target"
+proof -
+  have sparse_fold:
+    "bit (sparse_bitset_row_join incoming rows) target =
+      (\<exists>middle targets. (middle,targets) \<in> set rows \<and>
+        bit incoming middle \<and> bit targets target)"
+    by (rule bit_sparse_bitset_row_join_exact)
+  have dense_image:
+    "bit (bitset_image width dense incoming) target =
+      (\<exists>middle<width. bit incoming middle \<and>
+        bit (dense middle) target)"
+    by (rule bitset_image_exact)
+  have witnesses:
+    "(\<exists>middle targets. (middle,targets) \<in> set rows \<and>
+        bit incoming middle \<and> bit targets target) \<longleftrightarrow>
+      (\<exists>middle<width. bit incoming middle \<and>
+        bit (dense middle) target)"
+  proof
+    assume sparse_witness:
+      "\<exists>middle targets. (middle,targets) \<in> set rows \<and>
+        bit incoming middle \<and> bit targets target"
+    then obtain middle targets where row:
+      "(middle,targets) \<in> set rows"
+      and selected: "bit incoming middle"
+      and target: "bit targets target"
+      by blast
+    have middle_bound: "middle < width"
+      using in_bounds row by blast
+    have lookup: "map_of rows middle = Some targets"
+      using distinct row by (simp add: map_of_eq_Some_iff)
+    have "map_of rows middle =
+        (if dense middle = 0 then None else Some (dense middle))"
+      by (rule representation[OF middle_bound])
+    with lookup have row_value: "targets = dense middle"
+      by (cases "dense middle = 0") auto
+    show "\<exists>middle<width. bit incoming middle \<and>
+        bit (dense middle) target"
+      using middle_bound selected target row_value by blast
+  next
+    assume dense_witness:
+      "\<exists>middle<width. bit incoming middle \<and>
+        bit (dense middle) target"
+    then obtain middle where middle_bound: "middle < width"
+      and selected: "bit incoming middle"
+      and target: "bit (dense middle) target"
+      by blast
+    have nonzero: "dense middle \<noteq> 0"
+    proof (rule notI)
+      assume zero: "dense middle = 0"
+      with target show False by simp
+    qed
+    have lookup: "map_of rows middle = Some (dense middle)"
+      using representation[OF middle_bound] nonzero by simp
+    have row: "(middle,dense middle) \<in> set rows"
+      using distinct lookup by (simp add: map_of_eq_Some_iff)
+    show "\<exists>middle targets. (middle,targets) \<in> set rows \<and>
+        bit incoming middle \<and> bit targets target"
+      using row selected target by blast
+  qed
+  show ?thesis
+    using sparse_fold dense_image witnesses by blast
+qed
+
 lemma typed_bitset_foreign_seam_empty:
   assumes "first_owner \<noteq> after_owner"
   shows "typed_bitset_relation first_owner first_states first O
@@ -501,6 +605,8 @@ ML \<open>
     transfer_binary_loop_accumulator_exact transfer_binary_loop_terminates_exactly
     partial_weighted_relation_then_exact bit_fold_mask
     bitset_image_exact typed_bitset_then_exact
+    bit_sparse_bitset_row_join_exact
+    sparse_bitset_row_join_matches_dense
     typed_bitset_foreign_seam_empty};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Finite transfer algebra depends on an oracle";

@@ -7,7 +7,9 @@ This theory supplies a bounded, option-valued residual evaluator parameterized
 by a one-decade control function.  It is an interface only: it neither
 constructs a Native19/core/reset action nor proves 27-step totality for any
 particular control function.  A separate theorem relates every successful
-run to the existing inductive residual semantics and block runner.
+run to the exact inductive residual semantics and block runner.  The control
+parameter is compared with `comma_decade_control`; optimized controls are
+adapted to it separately and do not define classifier correctness.
 \<close>
 
 fun comma_compact_residual_run ::
@@ -95,7 +97,7 @@ global totality bound.
 
 theorem comma_compact_residual_run_exact:
   assumes refines: "\<And>q. comma_decade_admitted q \<Longrightarrow>
-      K q = comma_fast_decade_control q"
+      K q = comma_decade_control q"
     and valid: "comma_decade_admitted s"
     and hit: "comma_compact_residual_run K n s = Some (h,tau)"
   shows "comma_decade_exact_summary s h tau"
@@ -112,11 +114,10 @@ next
       "comma_compact_residual_run K n t = Some (h0,tau)"
       and h: "h=Suc h0"
       using Suc.prems(2) by (cases "comma_compact_residual_run K n t") auto
-    have k_control: "K s=comma_fast_decade_control s"
+    have selected_control: "K s=comma_decade_control s"
       by (rule refines[OF Suc.prems(1)])
     have physical: "comma_decade_control s=Comma_Decade_Continue t"
-      using comma_fast_decade_control_correct[OF Suc.prems(1)]
-        k_control Comma_Decade_Continue by simp
+      using selected_control Comma_Decade_Continue by simp
     have target_valid: "comma_decade_admitted t"
       by (rule comma_decade_control_closed(2)[OF Suc.prems(1) physical])
         (rule refl)
@@ -130,11 +131,10 @@ next
     have result: "d=0 \<and> h=0 \<and> tau=Comma_Terminal_Fork a"
       using Suc.prems(2) Comma_Decade_Fork by (cases "d=0") auto
     then have d: "d=0" and fields: "h=0" "tau=Comma_Terminal_Fork a" by auto
-    have k_control: "K s=comma_fast_decade_control s"
+    have selected_control: "K s=comma_decade_control s"
       by (rule refines[OF Suc.prems(1)])
     have physical: "comma_decade_control s=Comma_Decade_Fork a 0"
-      using comma_fast_decade_control_correct[OF Suc.prems(1)]
-        k_control Comma_Decade_Fork d by simp
+      using selected_control Comma_Decade_Fork d by simp
     have "comma_decade_exact_summary s 0 (Comma_Terminal_Fork a)"
       by (rule comma_decade_exact_summary.fork[OF physical])
     then show ?thesis using fields by simp
@@ -143,11 +143,10 @@ next
     have result: "d=0 \<and> h=0 \<and> tau=Comma_Terminal_Landmine"
       using Suc.prems(2) Comma_Decade_Landmine by (cases "d=0") auto
     then have d: "d=0" and fields: "h=0" "tau=Comma_Terminal_Landmine" by auto
-    have k_control: "K s=comma_fast_decade_control s"
+    have selected_control: "K s=comma_decade_control s"
       by (rule refines[OF Suc.prems(1)])
     have physical: "comma_decade_control s=Comma_Decade_Landmine 0"
-      using comma_fast_decade_control_correct[OF Suc.prems(1)]
-        k_control Comma_Decade_Landmine d by simp
+      using selected_control Comma_Decade_Landmine d by simp
     have "comma_decade_exact_summary s 0 Comma_Terminal_Landmine"
       by (rule comma_decade_exact_summary.landmine[OF physical])
     then show ?thesis using fields by simp
@@ -159,7 +158,7 @@ qed
 
 corollary comma_compact_residual_run_block_stop:
   assumes refines: "\<And>q. comma_decade_admitted q \<Longrightarrow>
-      K q = comma_fast_decade_control q"
+      K q = comma_decade_control q"
     and valid: "comma_decade_admitted s"
     and hit: "comma_compact_residual_run K n s = Some (h,tau)"
   shows "comma_decade_block_run n s = Comma_Block_Stop h tau"
@@ -192,7 +191,7 @@ lemma comma_compact_classifier_from_hit:
 
 theorem comma_compact_classifier_from_ok:
   assumes refines: "\<And>s. comma_decade_admitted s \<Longrightarrow>
-      K s = comma_fast_decade_control s"
+      K s = comma_decade_control s"
     and total: "\<And>s. comma_decade_admitted s \<Longrightarrow>
       \<exists>residual. comma_compact_residual_run K 27 s = Some residual"
   shows "comma_decade_residual_classifier_ok (comma_compact_classifier_from K)"
@@ -206,9 +205,9 @@ proof (unfold comma_decade_residual_classifier_ok_def, intro allI impI)
   note step_hit = hit[unfolded unroll]
   have source: "comma_compact_classifier_from K s = residual"
     by (rule comma_compact_classifier_from_hit[OF hit])
-  have control: "K s = comma_fast_decade_control s"
+  have control: "K s = comma_decade_control s"
     by (rule refines[OF valid])
-  show "comma_fast_decade_summary_step
+  show "comma_decade_summary_step
       (\<lambda>s. fst (comma_compact_classifier_from K s))
       (\<lambda>s. snd (comma_compact_classifier_from K s)) s"
   proof (cases "K s")
@@ -224,14 +223,14 @@ proof (unfold comma_decade_residual_classifier_ok_def, intro allI impI)
       "comma_compact_classifier_from K t=(h,tau)"
       by (rule comma_compact_classifier_from_hit[OF tail27])
     have physical: "comma_decade_control s=Comma_Decade_Continue t"
-      using comma_fast_decade_control_correct[OF valid] control Comma_Decade_Continue
-      by simp
+      using control Comma_Decade_Continue by simp
     have target_valid: "comma_decade_admitted t"
       by (rule comma_decade_control_closed(2)[OF valid physical])
         (rule refl)
     show ?thesis
       using source residual target_classifier target_valid
-      by (simp add: comma_fast_decade_summary_step_def control[symmetric]
+      by (simp add: comma_decade_summary_step_def comma_decade_summary_step_for_def
+        control[symmetric]
         Comma_Decade_Continue)
   next
     case (Comma_Decade_Fork a d)
@@ -240,7 +239,8 @@ proof (unfold comma_decade_residual_classifier_ok_def, intro allI impI)
     then have d: "d=0" and residual: "residual=(0,Comma_Terminal_Fork a)" by auto
     show ?thesis
       using source residual d
-      by (simp add: comma_fast_decade_summary_step_def control[symmetric]
+      by (simp add: comma_decade_summary_step_def comma_decade_summary_step_for_def
+        control[symmetric]
         Comma_Decade_Fork)
   next
     case (Comma_Decade_Landmine d)
@@ -249,11 +249,13 @@ proof (unfold comma_decade_residual_classifier_ok_def, intro allI impI)
     then have d: "d=0" and residual: "residual=(0,Comma_Terminal_Landmine)" by auto
     show ?thesis
       using source residual d
-      by (simp add: comma_fast_decade_summary_step_def control[symmetric]
+      by (simp add: comma_decade_summary_step_def comma_decade_summary_step_for_def
+        control[symmetric]
         Comma_Decade_Landmine)
   next
     case Comma_Decade_Invalid
-    then show ?thesis using step_hit by simp
+    then show ?thesis using step_hit control
+      by (simp add: comma_decade_summary_step_def comma_decade_summary_step_for_def)
   qed
 qed
 

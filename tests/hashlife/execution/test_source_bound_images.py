@@ -27,13 +27,17 @@ from number_compiler.hashlife.execution.source_image_seals import (
     TypedPayloadKey,
     publication_seal,
 )
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import LedgerSnapshot, ResourceLedger
+from number_compiler.resources.metric_keys import (
+    hashlife_execution as _execution_keys,
+)
 from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.stores import LedgerDict, LedgerList
 from tests.support.source_bound_images import (
     DecimalImageAction,
     DecimalImageAdapter,
     assert_budget_refusal,
+    assert_publication_retry_committed,
     one_image,
     source_audit,
     source_image_runtime,
@@ -406,6 +410,104 @@ class _TransactionalDecimal(DecimalImageAdapter):
     ) -> SourceImageCandidate:
         self.records.append("relative")
         return super().transport_reuse(action, cached_source, cached_result, source)
+
+
+def _raise_after_counter_bump(
+    monkeypatch: pytest.MonkeyPatch, ledger: ResourceLedger, failing_counter: str
+) -> None:
+    original_bump = ledger.bump
+
+    def bump_then_fail(counter: str, amount: int = 1) -> None:
+        original_bump(counter, amount)
+        if counter == failing_counter and amount:
+            raise RuntimeError("injected source-image publication metric failure")
+
+    monkeypatch.setattr(ledger, "bump", bump_then_fail)
+
+
+def _assert_publication_rollback(
+    ledger: ResourceLedger, before: LedgerSnapshot, counters: tuple[str, ...]
+) -> None:
+    after = ledger.snapshot()
+    assert after.inventory == before.inventory
+    assert (after.entries, after.nodes) == (before.entries, before.nodes)
+    for counter in counters:
+        assert after.counters.get(counter, 0) == before.counters.get(counter, 0)
+
+
+def test_origin_metric_failure_restores_only_the_incomplete_origin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger, core, adapter = source_image_runtime()
+    completed = core.origin(adapter, 0)
+    origins_before = tuple(core.audit_snapshot().origins.items())
+    nodes_before = tuple(core.audit_snapshot().nodes)
+    before = ledger.snapshot()
+    counters = (
+        _execution_keys.SOURCE_IMAGE_PUBLICATIONS,
+        _execution_keys.SOURCE_IMAGE_ORIGIN_PUBLICATIONS,
+    )
+
+    with monkeypatch.context() as patch:
+        _raise_after_counter_bump(
+            patch, ledger, _execution_keys.SOURCE_IMAGE_ORIGIN_PUBLICATIONS
+        )
+        with pytest.raises(RuntimeError, match="injected source-image publication"):
+            core.origin(adapter, 7)
+
+    _assert_publication_rollback(ledger, before, counters)
+    assert tuple(core.audit_snapshot().origins.items()) == origins_before
+    assert tuple(core.audit_snapshot().nodes) == nodes_before
+    assert core.view(completed).payload == 0
+
+    retried = core.origin(adapter, 7)
+    assert core.view(retried).payload == 7
+    assert core.view(completed).payload == 0
+    assert_publication_retry_committed(ledger, before, counters, core)
+
+
+@pytest.mark.parametrize(
+    "failing_counter",
+    (
+        _execution_keys.SOURCE_IMAGE_PUBLICATIONS,
+        _execution_keys.SOURCE_IMAGE_APPLICATION_PUBLICATIONS,
+        _execution_keys.SOURCE_IMAGE_RELATIVE_TRANSFER_PUBLICATIONS,
+    ),
+)
+def test_application_metric_failure_restores_node_and_relative_publication(
+    monkeypatch: pytest.MonkeyPatch,
+    failing_counter: str,
+) -> None:
+    ledger, core, adapter = source_image_runtime()
+    origin = core.origin(adapter, 0)
+    applications_before = tuple(core.application_results.items())
+    relatives_before = tuple(core.relative_applications.items())
+    nodes_before = tuple(core.audit_snapshot().nodes)
+    before = ledger.snapshot()
+    counters = (
+        _execution_keys.SOURCE_IMAGE_PUBLICATIONS,
+        _execution_keys.SOURCE_IMAGE_APPLICATION_PUBLICATIONS,
+        _execution_keys.SOURCE_IMAGE_RELATIVE_TRANSFER_PUBLICATIONS,
+    )
+    action = DecimalImageAction((8,))
+
+    with monkeypatch.context() as patch:
+        _raise_after_counter_bump(patch, ledger, failing_counter)
+        with pytest.raises(RuntimeError, match="injected source-image publication"):
+            core.apply(adapter, 0, action)
+
+    _assert_publication_rollback(ledger, before, counters)
+    assert tuple(core.application_results.items()) == applications_before
+    assert tuple(core.relative_applications.items()) == relatives_before
+    assert tuple(core.audit_snapshot().nodes) == nodes_before
+    assert core.view(origin).payload == 0
+    assert not source_audit(ledger, core).invalid
+
+    result = core.apply(adapter, 0, action)
+    assert core.view(result).payload == 8
+    assert len(core.application_results) == len(applications_before) + 1
+    assert len(core.relative_applications) == len(relatives_before) + 1
+    assert_publication_retry_committed(ledger, before, counters, core)
 
 
 def test_primitive_adapter_records_roll_back_when_scheduler_publication_fails(

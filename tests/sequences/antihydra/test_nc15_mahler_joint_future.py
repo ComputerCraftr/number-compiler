@@ -137,6 +137,56 @@ def test_pumped_event_grammar_no_fixed_max_event() -> None:
         M.event(9000)
 
 
+def test_zero_run_closed_form_matches_binary_composition_and_source_prefixes() -> None:
+    for length in (0, 1, 2, 3, 7, 16, 64, 128):
+        direct = M.zero_run(length)
+        composed = M.bit(0).power(length)
+        assert direct == composed
+        if length:
+            assert direct.guard.lower == Q(0)
+            assert direct.guard.upper == Q(1 << (length - 1), 3**length)
+            assert direct.safety.cap_hat == 9 * (1 << length)
+
+    # The accelerated source builder is compared to a separately assembled
+    # one-bit action for every physical parity, including a clipped final run.
+    for source in range(64):
+        for length in range(17):
+            accelerated = M.from_source_prefix(source, length)
+            literal = M()
+            current = source
+            for _ in range(length):
+                bit = current & 1
+                literal = literal.then(M.bit(bit))
+                current = (3 * current + bit) // 2
+            assert accelerated == literal
+            assert accelerated.endpoint(source) == current
+
+    with pytest.raises(ValueError):
+        M.zero_run(True)
+    with pytest.raises(ValueError):
+        M.zero_run(1, max_extent=0)
+    with pytest.raises(ValueError):
+        M.from_source_prefix(0, True)
+
+
+def test_source_prefix_uses_one_composition_for_a_maximal_zero_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compositions = 0
+    original = M.then
+
+    def counted(self: M, after: M) -> M:
+        nonlocal compositions
+        compositions += 1
+        return original(self, after)
+
+    monkeypatch.setattr(M, "then", counted)
+    action = M.from_source_prefix(0, 128)
+    assert action.endpoint(0) == 0
+    assert action.extent == 128
+    assert compositions == 1
+
+
 def test_repeat_source_obstruction_and_fractional_guard() -> None:
     word = M.bit(0).then(M.bit(0)).then(M.bit(1))
     assert word.residue == 4

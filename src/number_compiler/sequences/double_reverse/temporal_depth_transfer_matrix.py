@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import TYPE_CHECKING, TypeVar, overload
 
+from number_compiler.arithmetic.automata.slp_walks import symbol_at
 from number_compiler.arithmetic.fields.boolean_transfer import (
     BooleanMatrix,
     BooleanStateSpace,
@@ -24,6 +25,7 @@ from ._temporal_bank_authority import (
     issue_source_record,
     validate_source_record,
 )
+from .stencil_moore import stencil_cell
 from .temporal_birth_ring import BirthRingPorts, BirthRingState, odd_boundary_pairs
 from .temporal_certified_halo import (
     CertifiedHalo,
@@ -36,6 +38,10 @@ from .temporal_certified_halo import (
     source_continued_halo_trace_packet_from_source,
 )
 from .temporal_hashlife import growth_ports
+from .temporal_issued_root_path import (
+    SourceIssuedRootPath,
+    source_issued_root_path,
+)
 
 if TYPE_CHECKING:
     from .source_bound_bank import PointedBankSource
@@ -59,6 +65,58 @@ def pair_index(pair: tuple[int, int]) -> int:
     ):
         raise ValueError("inward pair must consist of two decimal digits")
     return 10 * pair[0] + pair[1]
+
+
+def outer_port_class(current: BirthRingState, left: int, right: int) -> tuple[int, int]:
+    """Return the two exact Boolean inlet observations of an outer F-step.
+
+    The left inlet is a right-neighbour of the left strip's last stencil cell,
+    so that cell observes the carry bit after doubling the inlet with the
+    current boundary's incoming carry. The right inlet is a left-neighbour of
+    the right strip's first stencil cell, so it observes its threshold bit.
+    A birth punctures the corresponding inlet from the outer ring.
+    """
+    if type(current) is not BirthRingState:
+        raise TypeError("outer port classes require a BirthRingState")
+    if any(type(digit) is not int or not 0 <= digit <= 9 for digit in (left, right)):
+        raise ValueError("outer inlet ports must be decimal digits")
+    birth_left, birth_right = growth_ports(current.phase, 1)
+    left_response = (
+        0 if birth_left else int((2 * left + int(current.left[-1] >= 5)) % 10 >= 5)
+    )
+    right_response = 0 if birth_right else int(right >= 5)
+    return left_response, right_response
+
+
+def admitted_outer_port_classes(
+    current: BirthRingState, following: BirthRingState
+) -> frozenset[tuple[int, int]]:
+    """Compute accepted inlet classes with at most four ring advances.
+
+    This is only a necessary outer-successor test for a source-conditioned
+    halo. The halo, odd-generation guards and pointed source path remain
+    independently checked by their existing owners.
+    """
+    if (
+        type(current) is not BirthRingState
+        or type(following) is not BirthRingState
+        or current.pairs != following.pairs
+        or following.phase != (current.phase + 2) % 4
+    ):
+        raise ValueError("outer step requires compatible moving-boundary rings")
+    birth_left, birth_right = growth_ports(current.phase, 1)
+    left_classes = (0,) if birth_left else (0, 1)
+    right_classes = (0,) if birth_right else (0, 1)
+    accepted: set[tuple[int, int]] = set()
+    for left_response in left_classes:
+        for right_response in right_classes:
+            representative = BirthRingPorts(
+                3 if left_response else 0,
+                5 if right_response else 0,
+            )
+            if current.advance(representative)[0] == following:
+                accepted.add((left_response, right_response))
+    return frozenset(accepted)
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -127,7 +185,15 @@ class BooleanPairMatrix:
 def outer_step_matrix(
     current: BirthRingState, following: BirthRingState
 ) -> BooleanPairMatrix:
-    """Eliminate all next-depth inlet digits for one exact outer F-step."""
+    """Eliminate all next-depth inlet digits for one exact outer F-step.
+
+    The outer ring only observes two Boolean responses from an inlet pair:
+    the left cell's outgoing high bit and the right cell's high bit.  Quotient
+    inlet pairs by those guards before checking the supplied outer successor.
+    Once a guard class is admitted, compute only the two pointed stencil cells
+    for each of the four inward guard ports; the full ring successor is not
+    rebuilt for every pair.
+    """
     if (
         type(current) is not BirthRingState
         or type(following) is not BirthRingState
@@ -135,26 +201,57 @@ def outer_step_matrix(
         or following.phase != (current.phase + 2) % 4
     ):
         raise ValueError("outer step requires compatible moving-boundary rings")
+    birth_left, birth_right = growth_ports(current.phase, 1)
+    accepted = admitted_outer_port_classes(current, following)
+    row_guards = tuple(
+        outer_port_class(current, left, right) for left, right in ALL_PAIRS
+    )
+
+    pair_count = current.pairs
+
+    def extended_left(index: int, candidate: int, inward: int) -> int:
+        if index < 0:
+            return 0
+        if index < pair_count:
+            return current.left[index]
+        if index == pair_count:
+            return candidate
+        if index == pair_count + 1:
+            return inward
+        raise AssertionError("upper pointed stencil escaped its one-cell halo")
+
+    def extended_right(index: int, candidate: int, inward: int) -> int:
+        if index == -1:
+            return inward
+        if index == 0:
+            return candidate
+        if 1 <= index <= pair_count:
+            return current.right[index - 1]
+        if index == pair_count + 1:
+            return 0
+        raise AssertionError("lower pointed stencil escaped its one-cell halo")
+
+    left_center = pair_count - birth_left
+    right_center = birth_right
     rows: list[int] = []
-    for left, right in ALL_PAIRS:
-        inlet = BirthRingPorts(left, right)
-        if current.advance(inlet)[0] != following:
+    for (left, right), guard in zip(ALL_PAIRS, row_guards, strict=True):
+        if guard not in accepted:
             rows.append(0)
             continue
-        extended = BirthRingState(
-            current.left + (left,), (right,) + current.right, current.phase
-        )
         targets = 0
-        for next_left in (0, 3):
-            for next_right in (0, 5):
-                evolved = extended.advance(BirthRingPorts(next_left, next_right))[0]
-                if (evolved.left[:-1], evolved.right[1:], evolved.phase) != (
-                    following.left,
-                    following.right,
-                    following.phase,
-                ):
-                    raise AssertionError("depth projection failed to commute")
-                targets |= 1 << pair_index((evolved.left[-1], evolved.right[0]))
+        for inward_left in (0, 3):
+            left_output = stencil_cell(
+                extended_left(left_center - 1, left, inward_left),
+                extended_left(left_center, left, inward_left),
+                extended_left(left_center + 1, left, inward_left),
+            )
+            for inward_right in (0, 5):
+                right_output = stencil_cell(
+                    extended_right(right_center - 1, right, inward_right),
+                    extended_right(right_center, right, inward_right),
+                    extended_right(right_center + 1, right, inward_right),
+                )
+                targets |= 1 << pair_index((left_output, right_output))
         rows.append(targets)
     matrix = BooleanPairMatrix(tuple(rows))
     if matrix.maximum_successors > 4:
@@ -241,7 +338,10 @@ def source_conditioned_depth_return(
     source owner. The finite algorithm verifies that the halo contains at
     least K+1+m pairs; outside digits then cannot enter the requested K+1
     output during ``m`` F ticks. Candidate pairs vary once at the initial
-    seam, while all deeper halo digits remain jointly fixed.
+    seam, while all deeper halo digits remain jointly fixed. The exact
+    outer-port quotient rejects impossible rows before copying the halo and
+    before each subsequent halo advance; it does not replace the full-halo,
+    odd-generation, or pointed-source checks.
     """
     if (
         type(source_halo) is not BirthRingState
@@ -281,9 +381,20 @@ def source_conditioned_depth_return(
 
     pair_index(initial_pair)
     halo_size = source_halo.pairs
+    # Compute the exact outer-successor guard quotient before allocating any
+    # candidate halo copies. This only removes candidates that cannot match
+    # the supplied outer trace; survivors still undergo the full halo and
+    # odd-generation checks below.
+    admitted_classes = tuple(
+        admitted_outer_port_classes(outer[tick], outer[tick + 1])
+        for tick in range(steps)
+    )
     rows: list[int] = []
     pointed_trace: tuple[tuple[int, int], ...] = ()
     for initial in ALL_PAIRS:
+        if outer_port_class(outer[0], *initial) not in admitted_classes[0]:
+            rows.append(0)
+            continue
         left = list(source_halo.left)
         right = list(source_halo.right)
         left[pairs], right[halo_size - pairs - 1] = initial
@@ -304,6 +415,9 @@ def source_conditioned_depth_return(
                 and odd_boundary_pairs(outer[tick], BirthRingPorts(*next_pair))
                 != odd_outer[tick]
             ):
+                admitted = False
+                break
+            if outer_port_class(outer[tick], *next_pair) not in admitted_classes[tick]:
                 admitted = False
                 break
             current_halo = current_halo.step()
@@ -455,14 +569,16 @@ def source_conditioned_depth_window(
     outer_pairs: int,
     start_f_steps: int = 0,
     f_steps: int | None = None,
+    issued_path: SourceIssuedRootPath | None = None,
 ) -> SourceConditionedDepthWindow:
     """Return a bounded causal-halo action from an already prepared source.
 
     At most four T-squared ticks are admitted. The requested initial halo is
-    sampled directly from the existing source root through shared pointed
-    windows; this does not issue a future source or assume repetition. The
-    ledger reservation covers construction scratch only; the returned action
-    is caller-retained Python data, not a ledger-retained cache entry. Use
+    sampled from an already prepared source root, either through pointed
+    windows or an authenticated adjacent-root path. This does not issue a
+    future source or assume repetition. The ledger reservation covers
+    construction scratch only; the returned action is caller-retained Python
+    data, not a ledger-retained cache entry. Use
     :func:`source_conditioned_depth_window_packet` to publish its packet while
     the same reservation covers construction and serialization.
     """
@@ -471,6 +587,7 @@ def source_conditioned_depth_window(
         outer_pairs=outer_pairs,
         start_f_steps=start_f_steps,
         f_steps=f_steps,
+        issued_path=issued_path,
     )
 
 
@@ -533,6 +650,7 @@ def _build_source_conditioned_depth_window(
     outer_pairs: int,
     start_f_steps: int,
     f_steps: int | None,
+    issued_path: SourceIssuedRootPath | None = None,
     publish: None = None,
 ) -> SourceConditionedDepthWindow: ...
 
@@ -544,6 +662,7 @@ def _build_source_conditioned_depth_window(
     outer_pairs: int,
     start_f_steps: int,
     f_steps: int | None,
+    issued_path: SourceIssuedRootPath | None = None,
     publish: Callable[[SourceConditionedDepthWindow], _Published],
 ) -> _Published: ...
 
@@ -554,6 +673,7 @@ def _build_source_conditioned_depth_window(
     outer_pairs: int,
     start_f_steps: int,
     f_steps: int | None,
+    issued_path: SourceIssuedRootPath | None = None,
     publish: Callable[[SourceConditionedDepthWindow], _Published] | None = None,
 ) -> SourceConditionedDepthWindow | _Published:
     """Build an issued window and optionally publish it before release."""
@@ -592,16 +712,38 @@ def _build_source_conditioned_depth_window(
         raise SourceConditionedDepthWindowUnavailable(
             "prepared source is too narrow for the full causal halo"
         )
-    left = source.engine.pointed_window(
-        source.root, start_f_steps, source.phase, 0, halo_pairs
-    )
-    right = source.engine.pointed_window(
-        source.root,
-        start_f_steps,
-        source.phase,
-        start_width - halo_pairs,
-        halo_pairs,
-    )
+    path_start: int | None = None
+    if issued_path is None:
+        left = source.engine.pointed_window(
+            source.root, start_f_steps, source.phase, 0, halo_pairs
+        )
+        right = source.engine.pointed_window(
+            source.root,
+            start_f_steps,
+            source.phase,
+            start_width - halo_pairs,
+            halo_pairs,
+        )
+        path_root: int | None = None
+    else:
+        if type(issued_path) is not SourceIssuedRootPath:
+            raise TypeError("depth puncture needs an issued root path")
+        issued_path.validate_for_source(source)
+        path_start = start_f_steps - issued_path.root_offset
+        if path_start < 0 or path_start + f_steps >= len(issued_path.roots):
+            raise SourceConditionedDepthWindowUnavailable(
+                "issued root path does not cover the requested window"
+            )
+        path_root = issued_path.roots[path_start]
+        if source.arena.nodes[path_root].length != start_width:
+            raise ArithmeticError("issued root and temporal growth disagree")
+        left = tuple(
+            symbol_at(source.arena, path_root, index) for index in range(halo_pairs)
+        )
+        right = tuple(
+            symbol_at(source.arena, path_root, start_width - halo_pairs + index)
+            for index in range(halo_pairs)
+        )
     phase = (source.phase + 2 * start_f_steps) % 4
     halo = BirthRingState(left, right, phase)
     initial_pair = ring_next_pair(halo, outer_pairs)
@@ -612,6 +754,33 @@ def _build_source_conditioned_depth_window(
         rooted_states, rooted_odd = rooted_finite_depth_trace(
             halo, outer_pairs=outer_pairs, f_steps=f_steps
         )
+        if issued_path is not None:
+            if path_start is None:
+                raise AssertionError("issued root path start was not resolved")
+            retained = outer_pairs + 1
+            for offset, predicted in enumerate(rooted_states):
+                root = issued_path.roots[path_start + offset]
+                width = source.arena.nodes[root].length
+                expected_width = source.width_in + sum(
+                    growth_ports(source.phase, start_f_steps + offset)
+                )
+                if width != expected_width:
+                    raise ArithmeticError("issued depth root has incorrect birth width")
+                actual = BirthRingState(
+                    tuple(
+                        symbol_at(source.arena, root, index)
+                        for index in range(retained)
+                    ),
+                    tuple(
+                        symbol_at(source.arena, root, width - retained + index)
+                        for index in range(retained)
+                    ),
+                    (source.phase + 2 * (start_f_steps + offset)) % 4,
+                )
+                if actual != predicted:
+                    raise ArithmeticError(
+                        "source-issued depth root violates the complete port halo"
+                    )
         outer = tuple(ring_outer(state, outer_pairs) for state in rooted_states)
         odd_rows: list[tuple[tuple[int, int], ...]] = []
         for row in rooted_odd:
@@ -655,14 +824,18 @@ __all__ = [
     "ConditionalDepthReturn",
     "SourceConditionedDepthReturn",
     "SourceConditionedDepthWindow",
+    "SourceIssuedRootPath",
     "SourceConditionedDepthWindowUnavailable",
     "SourceContinuedHaloTrace",
+    "admitted_outer_port_classes",
     "conditional_depth_return",
+    "outer_port_class",
     "outer_step_matrix",
     "pair_index",
     "rooted_finite_depth_trace",
     "source_conditioned_depth_return",
     "source_conditioned_depth_window",
+    "source_issued_root_path",
     "source_conditioned_depth_window_packet",
     "source_continued_halo_trace_packet_from_source",
 ]

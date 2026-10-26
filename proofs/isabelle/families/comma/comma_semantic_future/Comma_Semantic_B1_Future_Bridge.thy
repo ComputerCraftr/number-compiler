@@ -1,5 +1,5 @@
 theory Comma_Semantic_B1_Future_Bridge
-  imports Comma_Semantic_B1.Comma_Semantic_B1_Power
+  imports Comma_Semantic_B1.Comma_Semantic_Action_Power
     Comma_Decade_Occurrence_Lift.Comma_Decade_Occurrence_Lift
 begin
 
@@ -13,6 +13,16 @@ rank tables, or a concrete forest publisher.
 \<close>
 
 lemmas comma_semantic_block_stop_summary = comma_decade_block_power_stop(2)
+
+definition comma_semantic_decade_summary ::
+  "comma_decade_state \<Rightarrow> comma_decade_residual option" where
+  "comma_semantic_decade_summary s =
+    (case s of Comma_Decade r x \<Rightarrow>
+      if comma_decade_admitted s then
+        (case comma_semantic_b1_action_power 5 r (comma_offset_orbit x) of
+          Comma_Semantic_B1_Stop D \<Rightarrow> Some (comma_terminal_weight_decode D)
+        | _ \<Rightarrow> None)
+      else None)"
 
 theorem comma_semantic_b32_stop_exact_occurrence_for_offset:
   fixes provider :: "nat \<Rightarrow> nat \<Rightarrow> comma_semantic_b1_result"
@@ -121,6 +131,51 @@ proof -
   show thesis
     by (rule that[OF decoded height_bound summary occurrence refl round_valid
           round_zero round_move children])
+qed
+
+text \<open>
+The summary is generic once its powered semantic action has a bounded Stop
+certificate.  The concrete CRT publisher supplies that certificate in the
+instance session; this bridge does not import or inspect CRT rows.
+\<close>
+
+theorem comma_semantic_decade_summary_total_exact_for_bound:
+  assumes stop_bound:
+      "\<And>r i. r<924 \<Longrightarrow> i<46 \<Longrightarrow>
+        \<exists>D. comma_semantic_b1_action_power 5 r i =
+          Comma_Semantic_B1_Stop D \<and> D\<le>242"
+    and admitted: "comma_decade_admitted s"
+  shows "\<exists>h terminal.
+    comma_semantic_decade_summary s=Some (h,terminal) \<and>
+    h\<le>26 \<and> comma_decade_exact_summary s h terminal"
+proof (cases s)
+  case (Comma_Decade r x)
+  have phase: "r<924" and offset: "x\<le>90"
+    using admitted Comma_Decade by simp_all
+  have root: "comma_offset_orbit x<46"
+    by (rule comma_offset_orbit_bound)
+  obtain D where action_result:
+      "comma_semantic_b1_action_power 5 r (comma_offset_orbit x) =
+        Comma_Semantic_B1_Stop D"
+    and bound: "D\<le>242"
+    using stop_bound phase root by blast
+  let ?provider = "\<lambda>q i. comma_semantic_b1_action_power 5 q i"
+  have exact: "\<And>q i. q<924 \<Longrightarrow> i<46 \<Longrightarrow>
+      ?provider q i=comma_semantic_b1_of_word (comma_orbit_word 5 q i)"
+    using comma_semantic_b1_action_power_refines_orbit by simp
+  have stopped: "?provider r (comma_offset_orbit x)=Comma_Semantic_B1_Stop D"
+    using action_result by simp
+  have exponent: "5\<le>r+924" by simp
+  have phase_match: "(r+924) mod 924=r" using phase by simp
+  obtain h terminal where decode: "comma_terminal_weight_decode D=(h,terminal)"
+    and height: "h\<le>26"
+    and summary: "comma_decade_exact_summary (Comma_Decade r x) h terminal"
+    using comma_semantic_b32_stop_exact_occurrence_for_offset
+      [OF exact phase offset exponent phase_match stopped bound] by blast
+  have lookup: "comma_semantic_decade_summary s=Some (h,terminal)"
+    using admitted Comma_Decade action_result decode
+    by (simp add: comma_semantic_decade_summary_def)
+  show ?thesis using lookup height summary Comma_Decade by blast
 qed
 
 theorem comma_semantic_b32_entry_infinite_path_projects_summary_child:

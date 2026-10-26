@@ -68,7 +68,7 @@ def test_balanced_arithmetic_and_mahler_do_not_assemble_an_intermediate_source(
         expected += expected // 2
     assert result.h == expected
     assert associated_action(result)["extent"] == 128
-    assert term.ledger.counters["antihydra_arithmetic_temporal_balanced_routes"] == 1
+    assert term.ledger.counters["antihydra_arithmetic_balanced_effect_requests"] == 1
     assert not term.audit_snapshot().segments_ready
     assert not term.physical_publications
 

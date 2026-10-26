@@ -15,6 +15,9 @@ if TYPE_CHECKING:
         MahlerCenterBooleanMatrix,
         MahlerCertifiedCenterDepthTransfer,
     )
+    from number_compiler.sequences.antihydra.mahler_center_relation_work import (
+        MahlerCenterRelationWork,
+    )
     from number_compiler.sequences.antihydra.mahler_low_border_carry import (
         MahlerLowBorderCarryCertificate,
     )
@@ -44,6 +47,7 @@ class MahlerComposedCenterTransferFields:
     low_border_carries: tuple[MahlerLowBorderCarryCertificate | None, ...]
     source_port_punctures: tuple[tuple[MahlerCenterPortPuncture, ...], ...]
     source_fiber_edges: tuple[MahlerCenterFiberEdge, ...]
+    relation_work: MahlerCenterRelationWork
     composition_joins: int
     equal_span_joins: int
 
@@ -73,6 +77,7 @@ def allocate_transfer_fields(
         "low_border_carries",
         "source_port_punctures",
         "source_fiber_edges",
+        "relation_work",
         "composition_joins",
         "equal_span_joins",
     )
@@ -189,7 +194,14 @@ def compose_transfers(
         if not edge.future.guard.empty and edge.ledger_safe(first.initial_ledger):
             safety[src_center] |= 1 << dst_center
 
-    conditional = first.conditional_composition.then(second.conditional_composition)
+    conditional, conditional_work = first.conditional_composition.then_with_work(
+        second.conditional_composition
+    )
+    relation_work = first.relation_work.then(
+        second.relation_work,
+        conditional_work,
+        canonical_rows_materialized=len(conditional.rows),
+    )
     if any(row & ~conditional.rows[i] for i, row in enumerate(arithmetic)):
         raise ArithmeticError("source-fiber join violates conditional center matrix")
     first_center = first.pointed_centers[0]
@@ -219,6 +231,7 @@ def compose_transfers(
         source_port_punctures=first.source_port_punctures
         + second.source_port_punctures,
         source_fiber_edges=joined_edges,
+        relation_work=relation_work,
         composition_joins=first.composition_joins + second.composition_joins + 1,
         equal_span_joins=(
             first.equal_span_joins

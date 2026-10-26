@@ -144,12 +144,12 @@ def test_total_arithmetic_uses_balanced_scheduler_images_without_endpoint_replay
     assert term.ledger.counters.get("source_image_first_child_contexts", 0) == 0
     assert term.ledger.counters.get("source_image_second_child_contexts", 0) == 0
     assert (
-        term.ledger.counters["antihydra_arithmetic_composite_cutover_publications"] == 1
+        term.ledger.counters["antihydra_arithmetic_run_contraction_publications"] == 1
     )
-    operand_work = (
-        term.ledger.counters["antihydra_arithmetic_transport_operand_bits"]
-        + term.ledger.counters["antihydra_arithmetic_composition_operand_bits"]
-    )
+    assert term.ledger.counters["antihydra_arithmetic_balanced_effect_requests"] == 1
+    operand_work = term.ledger.counters[
+        "antihydra_arithmetic_transport_operand_bits"
+    ] + term.ledger.counters.get("antihydra_arithmetic_composition_operand_bits", 0)
     assert operand_work < 24 * result.returns
     assert term.ledger.counters.get("antihydra_arithmetic_temporal_run_actions", 0) == 0
     support_id = workspace.summary().support

@@ -14,8 +14,17 @@ fun comma_sector_round_key :: "comma_round_result \<Rightarrow> nat list" where
 | "comma_sector_round_key Comma_Round_Invalid = [0]"
 
 lemma comma_sector_round_key_injective:
-  "comma_sector_round_key left = comma_sector_round_key right \<Longrightarrow> left=right"
-  by (cases left; cases right; auto split: comma_finite_position.splits)
+  assumes equal: "comma_sector_round_key left = comma_sector_round_key right"
+  shows "left=right"
+proof -
+  have cross: "comma_sector_round_key (Comma_Round_Cross p) =
+    3 # (case p of Comma_Entry f d x \<Rightarrow> [0,f,d,x]
+      | Comma_Near f d h \<Rightarrow> [1,f,d,h])" for p
+    by (cases p) simp_all
+  show ?thesis
+    using equal
+    by (cases left; cases right; auto simp: cross split: comma_finite_position.splits)
+qed
 
 
 lemma comma_sector_mask_depth:

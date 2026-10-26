@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Never, cast
 
 import pytest
@@ -15,6 +15,7 @@ from number_compiler.hashlife.execution.source_image_inventory import (
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.payload_audit import audit_registered_payloads
+from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.comma import action_arena, certificates
 from number_compiler.sequences.comma.action_arena import (
     CommaActionArena,
@@ -22,13 +23,17 @@ from number_compiler.sequences.comma.action_arena import (
     CommaActionRecord,
 )
 from number_compiler.sequences.comma.arithmetic import cycle_transfer
+from number_compiler.sequences.comma.boundary_chart import BoundaryChart
 from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
     construct_macro,
+    macro_template_retained_components,
 )
-from number_compiler.sequences.comma.image_adapter import (
+from number_compiler.sequences.comma.boundary_receipt import (
     BoundaryPrefixCursor,
     CommaImagePayload,
+)
+from number_compiler.sequences.comma.image_adapter import (
     CommaOccurrenceID,
     CommaSource,
 )
@@ -329,6 +334,97 @@ def test_seal_construction_failure_releases_reserved_storage(
     with pytest.raises(RuntimeError, match="injected seal failure"):
         term.arena.boundary_template(BoundaryState("N", 2, 10))
     _assert_empty_boundary_publication(term)
+
+
+def test_partial_chart_component_append_failure_rolls_back_all_reservations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    term = CommaTerm(1)
+    boundary_node_owner = term.arena.audit_snapshot().boundary_node_owner
+    original_extend = LedgerList[object].extend
+
+    def fail_after_partial_component_append(
+        store: LedgerList[object], values: Iterable[object]
+    ) -> None:
+        pending = tuple(values)
+        if store.owner == boundary_node_owner:
+            if pending:
+                original_extend(store, pending[:1])
+            raise RuntimeError("injected partial chart component append failure")
+        original_extend(store, pending)
+
+    monkeypatch.setattr(LedgerList, "extend", fail_after_partial_component_append)
+    with pytest.raises(RuntimeError, match="partial chart component append"):
+        term.arena.boundary_template(BoundaryState("N", 2, 10))
+    _assert_empty_boundary_publication(term)
+
+
+def test_boundary_chart_components_are_owned_and_forensically_sealed() -> None:
+    term = CommaTerm(1)
+    template = term.arena.boundary_template(BoundaryState("N", 2, 10))
+    snapshot = term.arena.audit_snapshot()
+    seal = template.component_seal_snapshot()
+    expected_nodes = macro_template_retained_components(template)
+    expected_seal_nodes = tuple(
+        row
+        for component_rows in seal[1:]
+        for row in cast(tuple[object, ...], component_rows)
+    )
+    assert len(snapshot.boundary_nodes) == len(expected_nodes)
+    assert all(
+        actual is expected
+        for actual, expected in zip(
+            snapshot.boundary_nodes, expected_nodes, strict=True
+        )
+    )
+    assert len(snapshot.boundary_seal_nodes) == len(expected_seal_nodes)
+    assert all(
+        actual is expected
+        for actual, expected in zip(
+            snapshot.boundary_seal_nodes, expected_seal_nodes, strict=True
+        )
+    )
+    assert term.ledger.counters["comma_boundary_template_retained_nodes"] == len(
+        expected_nodes
+    )
+    assert len({id(component) for component in expected_nodes}) == len(expected_nodes)
+    assert term.ledger.counters["comma_boundary_seal_retained_slots"] == len(
+        expected_seal_nodes
+    ) + len(snapshot.boundary_seals)
+    assert audit_registered_payloads(term.ledger).forbidden_future_payloads == 0
+
+    chart_segment = template.chart_segments[0]
+    old_offset = chart_segment.displacement.offset
+    object.__setattr__(chart_segment.displacement, "offset", old_offset + 1)
+    try:
+        assert audit_registered_payloads(term.ledger).forbidden_future_payloads > 0
+    finally:
+        object.__setattr__(chart_segment.displacement, "offset", old_offset)
+
+    terminal_chart = template.terminal_chart
+    old_coordinate = terminal_chart.coordinate
+    object.__setattr__(terminal_chart, "coordinate", old_coordinate + 1)
+    try:
+        assert audit_registered_payloads(term.ledger).forbidden_future_payloads > 0
+    finally:
+        object.__setattr__(terminal_chart, "coordinate", old_coordinate)
+
+    segment = template.chart_segments[0]
+    old_source = segment.source
+    object.__setattr__(
+        segment,
+        "source",
+        BoundaryChart(
+            old_source.kind,
+            old_source.leading,
+            old_source.delta,
+            old_source.coordinate,
+        ),
+    )
+    try:
+        assert audit_registered_payloads(term.ledger).forbidden_future_payloads > 0
+    finally:
+        object.__setattr__(segment, "source", old_source)
 
 
 def test_mutatedboundary_template_and_action_fail_closed() -> None:

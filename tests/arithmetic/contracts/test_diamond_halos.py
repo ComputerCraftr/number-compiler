@@ -58,6 +58,7 @@ def test_unknown_suffix_memory_keeps_the_distant_original_context() -> None:
         assert runtime.point(action, 31) == final
 
 
+@pytest.mark.validation  # Seeded random effect/count/source/distant-position grid.
 def test_random_distant_queries_preserve_composed_midpoint_contexts() -> None:
     random = Random(913)
     for effect in (CollatzPhysicalBlockEffect(), BaseBlockEffect(3), suffix_parity()):

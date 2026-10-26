@@ -3,6 +3,87 @@
 [Current release gates](../release-status.md) own validation status; this page
 records mathematical scope and source connections.
 
+## Carry normalization and source-action authority
+
+The nine-core, Add/Sub Entry and Frobenius arithmetic is already transitively
+connected to the B1 session through `Comma_Decisive_Endpoint_Quotient`; it is
+not a missing session-registration edge. The remaining integration is concrete
+guarded action publication and consumption: spatial carry normalization,
+symbolic C1 admission and the independent 924-phase selector must retain their
+source, clock and seam authority through the new certificate owner.
+
+The C1 coefficient carrier and characteristic-32/`z`-inverse normalization
+morphism now separate the phase-only arithmetic from physical path admission.
+The generic operator takes an admitted finite C1 phase, symbolic high prefix
+and duration; its telescope retains the explicit outgoing cut-boundary term.
+The existing source-admitted statements are thin physical refinements. The
+carry-first Entry packet derives its bounded border output from a Euclidean
+cycle quotient rather than taking selected headroom as an arithmetic premise.
+The symbolic rank probe is untrusted discovery: checking candidate ranks
+against generated chart words does not prove source-action equivalence or
+Moore minimality. Full CRT structural normalization alone is not that source
+equivalence. Constructor changes, kernel acceptance and outstanding release
+gates are recorded in the
+[integration record](../sprints/week-of-2026-10-18/strict-toolchain-macro-identities.md#current-status--2026-10-26).
+
+Mathematically, in a coefficient ring with `32 = 0` where `z` is a unit,
+`10^5 z^-5 = 0`, so
+
+```text
+(10 - z)^-1 = -z^-1 (1 + 10z^-1 + 4z^-2 + 8z^-3 + 16z^-4).
+```
+
+Equivalently, from `A-D=(10-z)Q+B`, the carry residue `Q` is the five-term
+projection of `A-D-B` modulo 32.  The `z`-unit and characteristic assumptions
+are part of this identity; it is not a general inverse in an arbitrary quotient.
+The source-bound carrier now supplies `(A,D,Q,B)` from the admitted C1 action;
+the remaining obligation is to transport that result into the guarded B1
+selector without rebuilding the phase action.
+
+Forest/fuel retirement requires kernel acceptance of the connected
+source/C1/924 refinement and its B1/B32/global consumers. Neither available
+source code nor finite weighted composition establishes global authority or
+consumption of the characteristic-32 morphism. The release record owns the
+current disposition of that gate and its prepared patch.
+
+Local-step prime-adic gain/loss is a parameterized, derived consistency observer. For an
+increment of valuation `s`, its sign depends on the source modulo `p^(s+1)`;
+the sign does not determine valuation magnitude. Fixed-sector cycle clocks
+can have periods outside 924: increment 87 and cycle displacement 520 give a
+29-adic period bound of 841. These events do not select current B1 transitions
+and are not additional B1 semantic-ID fields. The shared event algebra and
+guarded comma transport are checked separately from the missing future-action
+and rank certificate; no sector period authorizes a crossing seam. They are
+not an event-height transport. That optional observer contract must derive
+physical inspection time, completed crossing time, the terminal integer and
+ordered children from the source's exact affine occurrence cocycle. A crossing
+adds one literal edge; a Fork or Landmine inspection adds none. Exact widths,
+times, integers and their derived valuation thresholds are occurrence data,
+while finite control retains typed events, symbolic guards, successor order
+and receiving-clock transport. The bounded B32 decade rank is a different
+quantity from physical first-event time. Event-height and prime-adic observers
+are downstream of source binding, not prerequisites for B1 identity allocation.
+
+Near operator identity now contains the sector-indexed function, with headroom
+bound separately in the exact source application. Classification, transition
+lookup and publication use that distinction together. The conservative physical
+row relation is unchanged: headrooms 82 and 92 at sector 1 share the operator,
+but the former forks immediately and the latter takes one physical step before
+crossing. Their bound results cannot share an application cache entry. The
+consumer transports the generic operator theorem rather than invoking the
+literal Near source-port evaluator or reproving its projected result.
+
+The phase-only C1 laws also supply the exact 50-step carry count `P/(2L)` and
+the derived modulo-32 return period `50 * (32 / gcd(32,K50))`. The Entry return's
+target and carry residue are unchanged by a 924-width shift for widths at least
+7. Widths 5 and 6 retain the respective carry-residue changes 24 and 16. These
+are arithmetic reductions, not extra semantic clocks: neither the derived
+`(beta, suffix)` packet nor intermediate time/count residues are semantic IDs.
+Coefficient annihilation keeps the explicit outgoing cut carry and exact guards;
+its generic law alone does not establish preallocation erasure in every consumer.
+Concrete rank publication and the B32/global consumer cutover remain separate
+unaccepted gates, as recorded in the topic status table.
+
 - **Definition:** A367620 is the lexicographically earliest infinite path in the
   decimal comma-child graph, with OEIS index one at 20. A smallest-child rule
   alone does not define it. [OEIS definition](https://oeis.org/A367620)

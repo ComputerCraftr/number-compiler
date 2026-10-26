@@ -19,6 +19,7 @@ session Mahler_Source_Transport in mahler_transport = Mahler_Safety_Cylinders +
     Mahler_Punctured_Valuation_Run_Refinement
     Mahler_Bounded_Source_Cylinder_Image
     Mahler_Source_Event_Safety
+    Mahler_Exact_Even_Event_Threshold
     Mahler_Joint_Quotient_Algebra
     Mahler_Reachable_Repetition
     Mahler_Spatial_Carry_Pump

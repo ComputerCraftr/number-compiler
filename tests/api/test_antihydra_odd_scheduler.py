@@ -18,7 +18,6 @@ from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageDemand,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.antihydra import arithmetic_images
 from number_compiler.sequences.antihydra.arithmetic_images import (
     AntihydraArithmeticImageWorkspace,
 )
@@ -147,8 +146,10 @@ def test_warm_parent_hit_bypasses_odd_macro_reconstruction(
         def forbidden(*_args: object, **_kwargs: object) -> None:
             raise AssertionError("warm parent hit reconstructed its odd macro")
 
+        from number_compiler.sequences.antihydra import mahler_odd_source_transfer
+
         monkeypatch.setattr(
-            arithmetic_images,
+            mahler_odd_source_transfer,
             "select_source_certified_odd_macro",
             forbidden,
         )

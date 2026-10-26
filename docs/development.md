@@ -2,13 +2,22 @@
 
 Create a virtual environment in `.venv` and install the exact development tools
 from `pyproject.toml`. The reproducible validation environment targets CPython
-3.14 on macOS arm64:
+3.14 on macOS arm64 or Linux aarch64:
 
 ```bash
 .venv/bin/python -m pip install -c devtools/typing/constraints-py314-macos.txt -e '.[dev,profile]'
 npm ci --prefix devtools/typing --ignore-scripts
 .venv/bin/python -m pip check
 ```
+
+On Linux aarch64 (including Colima), use
+`devtools/typing/constraints-py314-linux.txt` instead. The quality runner selects
+exactly one lock by its declared interpreter and platform target; ambiguous or
+missing targets fail validation. Container runs need Git, `ps`, and an init
+process that reaps orphaned children (`docker run --init`). Copy authored sources
+and Git metadata onto the VM filesystem, use a Linux virtual environment, and run
+the same `python -m devtools.checks.release --suite unit` command. Preserve its
+evidence directory; do not substitute direct pytest or increase its deadlines.
 
 The constraints file includes transitive dependencies; it is generated from a
 clean resolution of the declared extras. Other validation platforms need their
@@ -253,6 +262,9 @@ Scaffold a Sunday-start topic with `python -m devtools.checks.sprint_scaffold --
   Unsupported syntax is reported explicitly. The adversarial parser tests cover
   scope, shadowing, quoted fake commands and cross-file references; a shared
   `by simp` proof script alone is not duplicate mathematical logic.
+  ML diagnostic strings do not count as declaration uses. HOL quoted terms
+  and executable ML antiquotations do. Dynamic lookup and exported facts
+  remain review candidates, never permission for automatic deletion.
 - F2 and F5 transports share the radix-exponent decomposition in
   [`affine_transport.py`](../src/number_compiler/arithmetic/polynomials/affine_transport.py).
   Their annihilation, coefficient and coordinate laws remain distinct.
@@ -295,6 +307,14 @@ Audit sessions live under their owner's `audit/` directory. Release theories,
 sessions and ML resources cannot depend on those audit-only implementations.
 The shared inventory checks those edges across all registrations discovered by
 the top-level `ROOTS`.
+
+Research pages retain definitions, theorem assumptions, counterexamples and
+links to their source owners. Put implementation changes, cache/accounting
+mechanics, benchmark receipts and dated failed or passing tests in the owning
+sprint record. The release page summarizes current gates by linking to that
+record; research prose must not maintain another current-status table. Preserve
+historical evidence in its dated record instead of presenting it as a current
+failure or silently relabeling it as current acceptance.
 
 ## Resource-controlled diagnostics
 

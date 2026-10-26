@@ -32,7 +32,10 @@ def _seed(digits: tuple[int, ...]) -> int:
 
 
 @pytest.mark.parametrize("steps", [1, 2])
-@pytest.mark.parametrize("width", [16, 64, 256, 1024])
+@pytest.mark.parametrize(
+    "width",
+    [16, 64, 256, pytest.param(1024, marks=pytest.mark.validation)],
+)
 def test_all_point_demands_normalize_each_output_once(steps: int, width: int) -> None:
     original = tuple((7 * i + 3) % 10 for i in range(width - 1)) + (1,)
     expected = original

@@ -28,6 +28,7 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
 )
 from number_compiler.arithmetic.fields.integer_congruence import exact_modular_power
 from number_compiler.arithmetic.fields.morphism_core import binary_power
+from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.arithmetic.fields.walsh import WalshH5
 from number_compiler.sequences.antihydra.mahler_source_actions import (
     MAX_MAHLER_SOURCE_EXTENT,
@@ -395,6 +396,38 @@ class MahlerJointFutureAction:
         )
 
     @classmethod
+    def zero_run(
+        cls,
+        length: int,
+        *,
+        max_extent: int = MAX_MAHLER_SOURCE_EXTENT,
+    ) -> MahlerJointFutureAction:
+        """Issue the closed form for ``length`` consecutive zero parities.
+
+        A zero run has source residue 0 modulo ``2**length``, innovation 0,
+        and fractional guard ``[0, 2**(length-1)/3**length)``.  The repeated
+        safety cap remains 9/4, so its normalized numerator is ``9*2**length``.
+        This is the same source, fractional and min-plus action as binary
+        composition of ``bit(0)``; it avoids rebuilding each intermediate
+        prefix when a valuation has already selected a long run.
+        """
+        if type(length) is not int or length < 0:
+            raise ValueError("Mahler zero-run length must be a natural integer")
+        if type(max_extent) is not int or max_extent < 1:
+            raise ValueError("positive Mahler width budget required")
+        if length > min(max_extent, MAX_MAHLER_SOURCE_EXTENT):
+            raise BlockContextBudgetExceeded(
+                "Mahler zero run exceeds the source width budget"
+            )
+        if length == 0:
+            return cls()
+        gain = 3**length
+        modulus = 1 << length
+        guard = Interval(_ZERO, Q(1 << (length - 1), gain))
+        safety = MahlerSourceBoundSafetyAction(length, 0, 9 * modulus)
+        return cls.with_gain(length, 0, 0, guard, safety, gain)
+
+    @classmethod
     def with_gain(
         cls,
         extent: int,
@@ -421,8 +454,9 @@ class MahlerJointFutureAction:
     ) -> MahlerJointFutureAction:
         """Build the exact finite future cylinder for a *supplied* source.
 
-        Bounded literal discovery is intentionally separate from powered
-        CONCAT/REPEAT and does not claim a globally compressed selector.
+        Exact source-selected parity runs are composed in closed form. This
+        stays separate from generic CONCAT/REPEAT because each run is admitted
+        by the supplied source; it does not define a global selector.
         """
         if type(source) is not int or source < 0:
             raise ValueError("a nonnegative exact integer source is required")
@@ -437,10 +471,27 @@ class MahlerJointFutureAction:
             raise BlockContextBudgetExceeded("source prefix discovery exceeds budget")
         result = cls()
         current = source
-        for _ in range(length):
-            epsilon = current & 1
-            result = result.then(cls.bit(epsilon))
-            current = (3 * current + epsilon) // 2
+        remaining = length
+        # The source selects maximal even runs and odd-to-odd event blocks.
+        # Consecutive odd symbols remain separate events. Each block is
+        # clipped to the requested horizon; no next parity is inferred.
+        while remaining:
+            if current & 1:
+                exponent = v2_positive(3 * current + 1)
+                run_length = min(exponent, remaining)
+                step = cls.bit(1).then(
+                    cls.zero_run(run_length - 1, max_extent=max_steps)
+                )
+            else:
+                run_length = (
+                    remaining if current == 0 else min(v2_positive(current), remaining)
+                )
+                step = cls.zero_run(run_length, max_extent=max_steps)
+            if not step.integer_admits(current):
+                raise ArithmeticError("source-selected parity run lost its inlet")
+            result = result.then(step)
+            current = step.endpoint(current)
+            remaining -= run_length
         if not result.integer_admits(source) or result.endpoint(source) != current:
             raise ArithmeticError("source prefix and future cylinder disagree")
         return result
@@ -454,8 +505,8 @@ class MahlerJointFutureAction:
     ) -> MahlerJointFutureAction:
         """Build the bounded canonical h=8/centered-D=7 finite word.
 
-        This utility checks the supplied endpoint and safety against literal
-        bounded source discovery. Production observers use the admitted
+        This utility checks the supplied endpoint and safety against bounded
+        source-selected discovery. Production observers use the admitted
         workspace transfer below and do not call this constructor.
         """
         if (
@@ -642,7 +693,7 @@ class MahlerJointFutureAction:
             raise BlockContextBudgetExceeded(
                 "Mahler event exceeds the source width budget"
             )
-        return cls.bit(0).power(exponent - 1, max_extent=max_extent).then(cls.bit(1))
+        return cls.zero_run(exponent - 1, max_extent=max_extent).then(cls.bit(1))
 
     def then_event(
         self,

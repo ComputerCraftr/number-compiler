@@ -38,6 +38,7 @@ from number_compiler.sequences.comma.occurrence import (
     BoundaryOccurrence,
     MacroChildOccurrence,
     OccurrencePrefixReturn,
+    OrderedMacroChildren,
 )
 from number_compiler.sequences.comma.weighted_return import WeightedBoundaryAction
 
@@ -111,6 +112,12 @@ def validate_selection_class_bindings(
         or selection.selected_slot not in (0, 1)
     ):
         raise ValueError("semantic provider returned malformed FutureCID fields")
+    if not selection.is_issued():
+        raise ValueError("semantic provider selection changed after issuance")
+    if not selection.matches_provider(provider):
+        raise PermissionError(
+            "semantic provider selection belongs to another provider generation"
+        )
     if (
         type(source) is not BoundaryState
         or type(ordered_children) is not tuple
@@ -159,6 +166,11 @@ class SemanticMacroChild:
     occurrence: MacroChildOccurrence
     literal_value: int
     weighted_action: WeightedBoundaryAction
+    _selection_binding: UnrankedChildSelection = field(
+        repr=False,
+        compare=False,
+        hash=False,
+    )
     _selection_snapshot: tuple[object, ...] = field(
         repr=False,
         compare=False,
@@ -190,6 +202,7 @@ class SemanticMacroChild:
         object.__setattr__(self, "occurrence", occurrence)
         object.__setattr__(self, "literal_value", literal_value)
         object.__setattr__(self, "weighted_action", weighted_action)
+        object.__setattr__(self, "_selection_binding", selection)
         object.__setattr__(
             self,
             "_selection_snapshot",
@@ -221,6 +234,8 @@ class SemanticMacroChild:
             or type(self.weighted_action) is not WeightedBoundaryAction
         ):
             raise ValueError("invalid semantic macro child fields")
+        if getattr(self, "_selection_binding", None) is not self.selection:
+            raise ValueError("semantic macro child selection binding changed")
         self.source.validate()
         selected_classes = self.selection.ordered_child_classes
         if (
@@ -244,6 +259,8 @@ class SemanticMacroChild:
             self.selection.selected_slot,
         ):
             raise ValueError("semantic macro child FutureCID snapshot changed")
+        if not self.selection.is_issued():
+            raise ValueError("semantic macro child selection issuer changed")
         if getattr(self, "_numeric_payload_snapshot", None) != (
             _numeric_payload_signature(self.literal_value, self.weighted_action)
         ):
@@ -434,6 +451,12 @@ class Source20FirstChildEntry:
             raise PermissionError("source-20 child is not an admitted infinite source")
         return self._occurrence
 
+    @property
+    def selected_occurrence(self) -> BoundaryOccurrence:
+        """Return the sealed exact occurrence already checked by the issuer."""
+        self.validate()
+        return self._occurrence
+
 
 def bind_source20_first_child_entry(
     *,
@@ -509,6 +532,7 @@ def select_semantic_macro_child(
     provider: FutureProvider,
     charge_work: WorkCharger,
     charge_bits: BitsCharge | None = None,
+    _ordered_children: OrderedMacroChildren | None = None,
 ) -> SemanticMacroChild:
     """Select the admitted unique unranked child for one exact macro fork.
 
@@ -551,10 +575,17 @@ def select_semantic_macro_child(
     ):
         raise TypeError("semantic branch needs both ordered literal integer children")
 
-    ordered_children = prefix.ordered_literal_children(
-        charge_work=charge_work,
-        charge_bits=charge_bits,
-    )
+    ordered_children = _ordered_children
+    if ordered_children is None:
+        ordered_children = prefix.ordered_literal_children(
+            charge_work=charge_work,
+            charge_bits=charge_bits,
+        )
+    elif (
+        type(ordered_children) is not OrderedMacroChildren
+        or ordered_children.prefix is not prefix
+    ):
+        raise ValueError("semantic branch has another ordered child occurrence")
     boundary_children, expected_literals = ordered_children.validated_parts()
     if len(boundary_children) != 2:
         raise ValueError("semantic branch prefix lost its ordered N/Z children")
@@ -644,10 +675,48 @@ def select_global_semantic_macro_child(
     )
 
 
+def select_global_semantic_macro_child_from_prefix(
+    source: BoundaryOccurrence,
+    prefix: OccurrencePrefixReturn,
+    *,
+    provider: FutureProvider,
+    charge_work: WorkCharger,
+    charge_bits: BitsCharge | None = None,
+) -> SemanticMacroChild:
+    """Select and bind one global child while retaining one exact prefix view.
+
+    The returned sealed occurrence is passed to the image adapter for this
+    application only. It is not part of the reusable action identity.
+    """
+    if type(provider) not in (SemanticFutureProvider, SemanticFutureProviderLease):
+        raise TypeError("semantic branch needs a kernel-admitted future provider")
+    provider.require_global_release_admission()
+    if type(prefix) is not OccurrencePrefixReturn or prefix.outcome != "fork":
+        raise ValueError("semantic branch source does not reach a fork")
+    ordered_children = prefix.ordered_literal_children(
+        charge_work=charge_work,
+        charge_bits=charge_bits,
+    )
+    _children, literals = ordered_children.validated_parts()
+    if len(literals) != 2:
+        raise ValueError("comma fork must publish both ordered children")
+    return select_semantic_macro_child(
+        source,
+        prefix,
+        fork_value=prefix.terminal_value,
+        ordered_literal_children=(literals[0], literals[1]),
+        provider=provider,
+        charge_work=charge_work,
+        charge_bits=charge_bits,
+        _ordered_children=ordered_children,
+    )
+
+
 __all__ = [
     "SemanticMacroChild",
     "Source20FirstChildEntry",
     "bind_source20_first_child_entry",
     "select_global_semantic_macro_child",
+    "select_global_semantic_macro_child_from_prefix",
     "select_semantic_macro_child",
 ]

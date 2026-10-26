@@ -44,10 +44,16 @@ class Sample(TypedDict):
     info: object
 
 
-def cli_invocation(arguments: list[str], *, fresh: bool) -> tuple[float, int, str, str]:
+def cli_invocation(
+    arguments: list[str], *, fresh: bool, shared_cache: bool = True
+) -> tuple[float, int, str, str]:
     """Run one CLI request and return elapsed time plus its raw process result."""
     started = perf_counter()
     if fresh:
+        if not shared_cache:
+            raise ValueError(
+                "cache-bypassed CLI measurement requires embedded execution"
+            )
         process = subprocess.run(
             [sys.executable, "-m", "number_compiler", *arguments],
             capture_output=True,
@@ -58,15 +64,19 @@ def cli_invocation(arguments: list[str], *, fresh: bool) -> tuple[float, int, st
     else:
         stdout, stderr = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            code = cli_main(arguments)
+            code = cli_main(arguments, shared_cache=shared_cache)
         output, error = stdout.getvalue(), stderr.getvalue()
     elapsed = perf_counter() - started
     return elapsed, code, output, error
 
 
-def cli_sample(arguments: list[str], *, fresh: bool) -> tuple[float, dict[str, object]]:
+def cli_sample(
+    arguments: list[str], *, fresh: bool, shared_cache: bool = True
+) -> tuple[float, dict[str, object]]:
     """Time a successful CLI route and retain its actual metrics packet."""
-    elapsed, code, output, error = cli_invocation(arguments, fresh=fresh)
+    elapsed, code, output, error = cli_invocation(
+        arguments, fresh=fresh, shared_cache=shared_cache
+    )
     if code:
         raise ValueError(f"CLI refused comparison: exit {code}: {error or output}")
     decoded: object = json.loads(output)
@@ -281,7 +291,9 @@ def compare(
                     ]
                     if no_value:
                         arguments.extend(option_argv("no_value", True))
-                    elapsed, packet = cli_sample(arguments, fresh=mode == "cold")
+                    elapsed, packet = cli_sample(
+                        arguments, fresh=mode == "cold", shared_cache=mode != "bypass"
+                    )
                     raw_value = packet.get("value")
                     value = raw_value if isinstance(raw_value, str) else None
                     raw_info = packet.get("info")
@@ -407,7 +419,7 @@ def main() -> int:
         "point_timings_include_project": True,
         "warm_priming_samples_retained": True,
         "configuration": configuration,
-        "bypass_cli_policy": "clear process caches before each query; within-query memoization remains enabled",
+        "bypass_cli_policy": "disable process-cache retrieval and publication; within-query memoization remains enabled",
         "bypass_point_shared_cache": False,
         "information": tuple(dict.fromkeys(information)),
         "no_value": options.no_value,

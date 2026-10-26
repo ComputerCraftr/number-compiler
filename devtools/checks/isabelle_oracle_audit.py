@@ -22,6 +22,52 @@ _COMMAND_START = re.compile(
 _LEMMAS_START = re.compile(r"(?m)^[ \t]*lemmas\b")
 
 
+def _executed_ml_structure(
+    source: str,
+) -> tuple[tuple[tuple[int, int], ...], frozenset[int]]:
+    """Return ML source segments separated by executed top-level semicolons.
+
+    Delimiter and ML block tracking keeps separators inside lists, calls, and
+    ``let``/``local``/``struct``/``sig`` bodies from looking like top-level
+    evaluation. This intentionally recognizes only the small structural
+    subset needed to distinguish unit calls from delayed expressions.
+    """
+    segments: list[tuple[int, int]] = []
+    bindings: set[int] = set()
+    start = 0
+    delimiters: list[str] = []
+    blocks: list[str] = []
+    matching = {")": "(", "]": "[", "}": "{"}
+    offset = 0
+    while offset < len(source):
+        char = source[offset]
+        if char.isalpha() or char == "_":
+            end = offset + 1
+            while end < len(source) and (source[end].isalnum() or source[end] in "_.'"):
+                end += 1
+            word = source[offset:end]
+            if not delimiters:
+                if word == "val" and not blocks:
+                    bindings.add(offset)
+                if word in {"let", "local", "struct", "sig"}:
+                    blocks.append(word)
+                elif word == "end" and blocks:
+                    blocks.pop()
+            offset = end
+            continue
+        if char in "([{":
+            delimiters.append(char)
+        elif char in matching:
+            if delimiters and delimiters[-1] == matching[char]:
+                delimiters.pop()
+        elif char == ";" and not delimiters and not blocks:
+            segments.append((start, offset))
+            start = offset + 1
+        offset += 1
+    segments.append((start, len(source)))
+    return tuple(segments), frozenset(bindings)
+
+
 def audited_theorems(
     text: str,
     *,
@@ -108,8 +154,13 @@ def audited_theorems(
                     return tuple(resolved_names)
             raise ValueError("unsupported require_native_clean theorem argument")
 
+        top_level_segments, executed_bindings = _executed_ml_structure(block)
         binding_assignment = re.compile(r"\bval\s+([A-Za-z_][A-Za-z0-9_']*|_)\s*=")
-        binding_assignments = tuple(binding_assignment.finditer(block))
+        binding_assignments = tuple(
+            match
+            for match in binding_assignment.finditer(block)
+            if match.start() in executed_bindings
+        )
 
         def theorem_bindings_before(
             offset: int,
@@ -134,7 +185,7 @@ def audited_theorems(
                 if antiquotation is None:
                     continue
                 trailing = source[assignment.end() + antiquotation.end() :]
-                if re.match(r"\s*(?:;\s*)?(?:val\b|$)", trailing):
+                if re.match(r"\s*(?:;|(?=val\b)|$)", trailing):
                     bound_theorems[binding] = antiquotation.group(1)
             return bound_theorems
 
@@ -143,6 +194,8 @@ def audited_theorems(
             r"(@\{thms?\s+.*?\}|[A-Za-z]\w*)\s*\)\s*then\s*\(\s*\)\s*else\s+error\b"
         )
         for audit in re.finditer(pattern, block, re.DOTALL):
+            if audit.start() not in executed_bindings:
+                continue
             argument = audit.group(1)
             direct = re.fullmatch(r"@\{thms?\s+(.*?)\}", argument, re.DOTALL)
             if direct is not None:
@@ -188,7 +241,72 @@ def audited_theorems(
             r"Comma_Proof_Dependency_Audit\s*\.\s*"
             r"([A-Za-z][A-Za-z0-9_']*)\b"
         )
-        direct_calls = tuple(direct_call.finditer(block))
+        direct_calls = tuple(
+            match
+            for match in direct_call.finditer(block)
+            if match.start() in executed_bindings
+        )
+        bare_call = re.compile(
+            r"^\s*Comma_Proof_Dependency_Audit\s*\.\s*"
+            r"([A-Za-z][A-Za-z0-9_']*)\b"
+        )
+
+        def executed_argument(
+            method: str,
+            rest: str,
+            offset: int,
+            *,
+            bare: bool,
+            path_methods: frozenset[str] = frozenset(authority_methods),
+        ) -> tuple[str, ...] | None:
+            context_and_label = re.match(r'\s+@\{context\}\s+""\s+', rest)
+            tail = r"\s*\Z" if bare else r"\s*(?:;\s*)?(?=val\b|$)"
+            if context_and_label is None:
+                # Merely retaining a function reference executes no audit.
+                if re.match(tail, rest):
+                    return None
+                raise ValueError(f"unsupported {method} invocation syntax or arguments")
+            argument_text = rest[context_and_label.end() :]
+            if method in path_methods:
+                authorities = re.match(r'\[\s*""(?:\s*,\s*"")*\s*\]\s+', argument_text)
+                if authorities is None:
+                    raise ValueError(f"unsupported {method} authority list")
+                argument_text = argument_text[authorities.end() :]
+            argument = re.match(
+                r"(?:@\{thms?\s+.*?\}|\[[^\]]*\]|"
+                r"[A-Za-z][A-Za-z0-9_']*)",
+                argument_text,
+                re.DOTALL,
+            )
+            if argument is None:
+                raise ValueError(f"unsupported {method} theorem argument")
+            if re.match(tail, argument_text[argument.end() :]) is None:
+                raise ValueError(f"unsupported trailing arguments to {method}")
+            return resolve_native_argument(
+                argument.group(0), theorem_bindings_before(offset)
+            )
+
+        bare_call_offsets: set[int] = set()
+        for start, end in top_level_segments:
+            segment = block[start:end]
+            call = bare_call.match(segment)
+            if call is None:
+                continue
+            method = call.group(1)
+            reference_offset = (
+                start
+                + call.start()
+                + call.group(0).find("Comma_Proof_Dependency_Audit")
+            )
+            bare_call_offsets.add(reference_offset)
+            if method in query_methods:
+                continue
+            resolved = executed_argument(
+                method, segment[call.end() :], start + call.start(), bare=True
+            )
+            if resolved is not None:
+                names.extend(resolved)
+
         captured_call = re.compile(
             r"Exn\.capture\s*\(\s*fn\s*\(\s*\)\s*=>\s*"
             r"Comma_Proof_Dependency_Audit\.(?:require_native_clean|"
@@ -202,6 +320,7 @@ def audited_theorems(
             match.start(0) + match.group(0).find("Comma_Proof_Dependency_Audit")
             for match in direct_calls
         }
+        direct_reference_offsets.update(bare_call_offsets)
         for reference in audit_references:
             if reference.start() in direct_reference_offsets:
                 continue
@@ -213,39 +332,16 @@ def audited_theorems(
             binding, method = call.groups()
             if method in query_methods:
                 continue
-            rest = block[call.end() :]
-            context_and_label = re.match(r'\s+@\{context\}\s+""\s+', rest)
-            if context_and_label is None:
-                # A bare function reference is not an executed dependency audit.
-                if re.match(r"\s*(?:;\s*)?(?=val\b|$)", rest):
-                    continue
-                raise ValueError(f"unsupported {method} invocation syntax or arguments")
+            resolved = executed_argument(
+                method, block[call.end() :], call.start(), bare=False
+            )
+            if resolved is None:
+                continue
             if binding != "_":
                 raise ValueError(
                     f"executed {method} call is not a release audit binding"
                 )
-            argument_text = rest[context_and_label.end() :]
-            if method in authority_methods:
-                authorities = re.match(r'\[\s*""(?:\s*,\s*"")*\s*\]\s+', argument_text)
-                if authorities is None:
-                    raise ValueError(f"unsupported {method} authority list")
-                argument_text = argument_text[authorities.end() :]
-            argument = re.match(
-                r"(?:@\{thms?\s+.*?\}|\[[^\]]*\]|"
-                r"[A-Za-z][A-Za-z0-9_']*)",
-                argument_text,
-                re.DOTALL,
-            )
-            if argument is None:
-                raise ValueError(f"unsupported {method} theorem argument")
-            trailing = argument_text[argument.end() :]
-            if re.match(r"\s*(?:;\s*)?(?=val\b|$)", trailing) is None:
-                raise ValueError(f"unsupported trailing arguments to {method}")
-            resolved = resolve_native_argument(
-                argument.group(0), theorem_bindings_before(call.start())
-            )
-            if method in audit_methods - query_methods:
-                names.extend(resolved)
+            names.extend(resolved)
     expanded: list[str] = []
     bundles = bundle_members or {}
     for name in names:

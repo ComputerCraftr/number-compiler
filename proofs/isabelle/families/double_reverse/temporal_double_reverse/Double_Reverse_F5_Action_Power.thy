@@ -1,6 +1,7 @@
 theory Double_Reverse_F5_Action_Power
   imports Double_Reverse_Digit_Carry_Affine
     "Shared_Carry_Dynamics.Finite_Transfer_Power"
+    "Shared_Carry_Dynamics.Temporal_Moment_Algebra"
 begin
 
 fun double_reverse_f5_action_power ::
@@ -32,6 +33,159 @@ next
     by (simp only: double_reverse_f5_action_power.simps
         double_reverse_f5_repeated_residue.simps
         double_reverse_f5_apply_then Suc.IH)
+qed
+
+text \<open>The following path is the concrete physical-tick expansion of an
+admitted finite open stencil path.  Each port contributes its actual first
+pass digit and its actual second-pass digit; it is not a caller-supplied
+endpoint sequence.  This lets the shared binary-affine telescope consume the
+same finite path as the F5 action without granting any repetition authority.\<close>
+
+fun double_reverse_f5_physical_digit_path ::
+    "nat \<Rightarrow> (nat \<times> nat) list \<Rightarrow> nat list" where
+  "double_reverse_f5_physical_digit_path center [] = [center]"
+| "double_reverse_f5_physical_digit_path center ((left,right)#ports) =
+    center # double_reverse_first_pass_cell left center #
+      double_reverse_f5_physical_digit_path
+        (double_reverse_t2_digit left center right) ports"
+
+lemma double_reverse_f5_physical_digit_path_length:
+  "length (double_reverse_f5_physical_digit_path center ports) =
+    2 * length ports + 1"
+proof (induction ports arbitrary: center)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons port ports)
+  obtain left right where port: "port = (left,right)"
+    by (cases port) auto
+  have tail:
+    "length (double_reverse_f5_physical_digit_path
+        (double_reverse_t2_digit left center right) ports) =
+      2 * length ports + 1"
+    by (rule Cons.IH)
+  show ?case using tail port by (simp add: algebra_simps)
+qed
+
+lemma double_reverse_f5_physical_digit_path_nonempty:
+  "double_reverse_f5_physical_digit_path center ports \<noteq> []"
+  using double_reverse_f5_physical_digit_path_length[of center ports]
+  by (cases "double_reverse_f5_physical_digit_path center ports") auto
+
+lemma double_reverse_f5_physical_digit_path_first:
+  "double_reverse_f5_physical_digit_path center ports ! 0 = center"
+proof (cases ports)
+  case Nil
+  then show ?thesis by simp
+next
+  case (Cons port ports)
+  obtain left right where port_pair: "port = (left,right)"
+    by (cases port) auto
+  show ?thesis using Cons port_pair by simp
+qed
+
+lemma double_reverse_f5_physical_digit_path_last:
+  "last (double_reverse_f5_physical_digit_path center ports) =
+    double_reverse_open_stencil_trace center ports"
+proof (induction ports arbitrary: center)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons port ports)
+  obtain left right where port: "port = (left,right)"
+    by (cases port) auto
+  have tail_nonempty:
+    "double_reverse_f5_physical_digit_path
+        (double_reverse_t2_digit left center right) ports \<noteq> []"
+    by (rule double_reverse_f5_physical_digit_path_nonempty)
+  have tail:
+    "last (double_reverse_f5_physical_digit_path
+        (double_reverse_t2_digit left center right) ports) =
+      double_reverse_open_stencil_trace
+        (double_reverse_t2_digit left center right) ports"
+    by (rule Cons.IH)
+  show ?case
+    using tail tail_nonempty
+    by (simp add: port)
+qed
+
+definition double_reverse_f5_physical_path_offset ::
+    "nat \<Rightarrow> (nat \<times> nat) list \<Rightarrow> int" where
+  "double_reverse_f5_physical_path_offset center ports =
+    binary_affine_path_offset
+      (\<lambda>i. int (double_reverse_f5_physical_digit_path center ports ! Suc i) -
+        2 * int (double_reverse_f5_physical_digit_path center ports ! i))
+      (2 * length ports)"
+
+theorem double_reverse_f5_admitted_path_offset_telescope:
+  assumes center: "center < 10"
+      and ports: "double_reverse_open_inputs_valid ports"
+  shows "double_reverse_f5_physical_path_offset center ports =
+    int (double_reverse_open_stencil_trace center ports) -
+      2 ^ (2 * length ports) * int center"
+proof -
+  let ?path = "double_reverse_f5_physical_digit_path center ports"
+  let ?endpoint = "\<lambda>i. int (?path ! i)"
+  let ?edge = "\<lambda>i. ?endpoint (Suc i) - 2 * ?endpoint i"
+  have length: "length ?path = 2 * length ports + 1"
+    by (rule double_reverse_f5_physical_digit_path_length)
+  have path_nonempty: "?path \<noteq> []"
+    by (rule double_reverse_f5_physical_digit_path_nonempty)
+  have start: "?endpoint 0 = int center"
+    by (simp add: double_reverse_f5_physical_digit_path_first)
+  have final_digit:
+    "last ?path = double_reverse_open_stencil_trace center ports"
+    by (rule double_reverse_f5_physical_digit_path_last)
+  have last_nth: "last ?path = ?path ! (length ?path - 1)"
+    by (rule last_conv_nth[OF path_nonempty])
+  have endpoint_at_ticks:
+    "?endpoint (2 * length ports) =
+      int (double_reverse_open_stencil_trace center ports)"
+    using length final_digit last_nth by simp
+  have telescope:
+    "binary_affine_path_offset ?edge (2 * length ports) =
+      ?endpoint (2 * length ports) -
+        2 ^ (2 * length ports) * ?endpoint 0"
+  proof (rule binary_affine_endpoint_offset_telescope)
+    show "\<forall>i<2 * length ports. ?edge i =
+        ?endpoint (Suc i) - 2 * ?endpoint i"
+      by simp
+  qed
+  show ?thesis
+    unfolding double_reverse_f5_physical_path_offset_def
+    using telescope endpoint_at_ticks start by simp
+qed
+
+theorem double_reverse_f5_admitted_path_action_telescope:
+  assumes center: "center < 10"
+      and ports: "double_reverse_open_inputs_valid ports"
+  shows "int (double_reverse_f5_apply
+      (double_reverse_f5_open_trace_action center ports) (center mod 5)) mod 5 =
+    (2 ^ (double_reverse_f5_ticks
+        (double_reverse_f5_open_trace_action center ports)) * int center +
+      double_reverse_f5_physical_path_offset center ports) mod 5"
+proof -
+  have center_mod:
+    "int (center mod 5) = int center mod 5"
+    by (simp only: of_nat_mod of_nat_numeral)
+  have action:
+    "double_reverse_f5_apply
+        (double_reverse_f5_open_trace_action center ports) (center mod 5) =
+      double_reverse_open_stencil_trace center ports mod 5"
+    by (rule double_reverse_f5_open_trace_action_refines_trace[OF center ports])
+  have offset:
+    "double_reverse_f5_physical_path_offset center ports =
+      int (double_reverse_open_stencil_trace center ports) -
+        2 ^ (2 * length ports) * int center"
+    by (rule double_reverse_f5_admitted_path_offset_telescope[OF center ports])
+  have ticks:
+    "double_reverse_f5_ticks
+        (double_reverse_f5_open_trace_action center ports) = 2 * length ports"
+    by (rule double_reverse_f5_open_trace_action_ticks)
+  show ?thesis
+    using action offset ticks center_mod
+    by (simp add: double_reverse_f5_apply_def double_reverse_f5_multiplier_def
+        algebra_simps of_nat_mod)
 qed
 
 text \<open>The binary transfer bridge below keeps the complete carried action

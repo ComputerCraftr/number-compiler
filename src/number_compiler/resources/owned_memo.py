@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Mapping, MutableMapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generic, Self, TypeVar, cast
+from typing import TYPE_CHECKING, Generic, NamedTuple, Self, TypeVar, cast
 
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.resources.lifecycle import clear_accounted_store
@@ -105,6 +105,11 @@ class LedgerReservation:
         self._check_open()
         self._ledger.transfer_reservation_to(self, owner, entries=entries, nodes=nodes)
 
+    def release(self, *, entries: int = 0, nodes: int = 0) -> None:
+        """Return temporary capacity without touching another scope's charges."""
+        self._check_open()
+        self._ledger.release_for_reservation(self, entries=entries, nodes=nodes)
+
     def transfer_from(self, owner: int, *, entries: int = 0, nodes: int = 0) -> None:
         self._check_open()
         self._ledger.transfer_reservation_from(
@@ -122,8 +127,7 @@ class LedgerReservation:
         self.close()
 
 
-@dataclass(frozen=True, slots=True)
-class DynamicMemoValue(Generic[_V]):
+class DynamicMemoValue(NamedTuple, Generic[_V]):
     """Payload and its retained cost stored together in the owned mapping."""
 
     value: _V

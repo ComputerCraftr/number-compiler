@@ -4,10 +4,12 @@ import pytest
 
 from number_compiler.arithmetic.fields.boolean_transfer import (
     BooleanMatrix,
+    BooleanSparseRows,
     BooleanStateSpace,
     boolean_rows_image,
     boolean_rows_power,
     boolean_rows_then,
+    boolean_sparse_rows_then,
 )
 
 
@@ -63,8 +65,12 @@ def test_boolean_transfer_rejects_outside_states_and_boolean_counts() -> None:
 
 
 def test_typed_boolean_matrices_require_the_same_state_space_owner() -> None:
-    first_space = BooleanStateSpace("decimal-pair", ((0, 0), (0, 1)))
-    same_shape_space = BooleanStateSpace("decimal-pair", ((0, 0), (0, 1)))
+    first_space: BooleanStateSpace[tuple[int, int]] = BooleanStateSpace(
+        "decimal-pair", ((0, 0), (0, 1))
+    )
+    same_shape_space: BooleanStateSpace[tuple[int, int]] = BooleanStateSpace(
+        "decimal-pair", ((0, 0), (0, 1))
+    )
     first = BooleanMatrix(first_space, (0b10, 0b01))
     after = BooleanMatrix(first_space, (0b01, 0b10))
     foreign = BooleanMatrix(same_shape_space, (0b01, 0b10))
@@ -80,9 +86,56 @@ def test_typed_boolean_matrices_require_the_same_state_space_owner() -> None:
 
 def test_typed_boolean_matrix_rejects_malformed_state_owners_and_rows() -> None:
     with pytest.raises(ValueError, match="unique ordered states"):
-        BooleanStateSpace("duplicate", (0, 0))
-    space = BooleanStateSpace("two-state", (0, 1))
+        BooleanStateSpace[int]("duplicate", (0, 0))
+    space: BooleanStateSpace[int] = BooleanStateSpace("two-state", (0, 1))
     with pytest.raises(ValueError, match="do not match"):
         BooleanMatrix(space, (0b01,))
     with pytest.raises(ValueError, match="do not match"):
         BooleanMatrix(space, (0b100, 0))
+
+
+def test_sparse_boolean_composition_preserves_branches_and_dead_ends() -> None:
+    space: BooleanStateSpace[int] = BooleanStateSpace("sparse-branching", (0, 1, 2))
+    first = BooleanSparseRows[int].from_mapping(
+        space,
+        {
+            0: 0b110,
+            1: 0b001,
+            2: 0b010,
+        },
+    )
+    # State 2 has no later row. Its branch terminates without invalidating
+    # the other path from source 0.
+    later = BooleanSparseRows[int].from_mapping(space, {0: 0b010, 1: 0b100})
+
+    result = boolean_sparse_rows_then(first, later)
+
+    assert dict(result.rows.as_mapping()) == {0: 0b100, 1: 0b010, 2: 0b100}
+    assert result.intermediate_edges_visited == 4
+    assert result.row_joins == 4
+    assert result.joined_target_edges == 3
+    assert result.result_edges == 3
+
+
+def test_sparse_boolean_composition_allows_only_dead_end_intermediates() -> None:
+    space: BooleanStateSpace[int] = BooleanStateSpace("sparse-dead-end", (0, 1))
+    first = BooleanSparseRows[int].from_mapping(space, {0: 0b10, 1: 0b01})
+    later = BooleanSparseRows[int].from_mapping(space, {})
+
+    result = boolean_sparse_rows_then(first, later)
+
+    assert dict(result.rows.as_mapping()) == {}
+    assert result.intermediate_edges_visited == 2
+    assert result.row_joins == 2
+    assert result.joined_target_edges == 0
+    assert result.result_edges == 0
+
+
+def test_sparse_boolean_composition_rejects_same_shape_foreign_space() -> None:
+    first_space: BooleanStateSpace[int] = BooleanStateSpace("family-a", (0, 1))
+    foreign_space: BooleanStateSpace[int] = BooleanStateSpace("family-b", (0, 1))
+    first = BooleanSparseRows[int].from_mapping(first_space, {0: 0b10})
+    foreign = BooleanSparseRows[int].from_mapping(foreign_space, {1: 0b01})
+
+    with pytest.raises(ValueError, match="different state spaces"):
+        boolean_sparse_rows_then(first, foreign)

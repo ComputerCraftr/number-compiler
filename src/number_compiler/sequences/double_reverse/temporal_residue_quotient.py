@@ -17,9 +17,10 @@ of two in 2*(reverse10(x) - 10**(w-1)*x), which is divisible by 198.
 
 from __future__ import annotations
 
-from contextlib import nullcontext
+from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import Literal, Protocol, cast
 
 from number_compiler.arithmetic.automata.slp import SLPArena
 from number_compiler.arithmetic.automata.slp_interval import fold_slp_dag
@@ -27,11 +28,15 @@ from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.arithmetic.fields.skew_moments import SkewMoment
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import (
+    arithmetic_fields as _arithmetic_field_keys,
+)
+from number_compiler.resources.metric_keys import (
     double_reverse as _double_reverse_keys,
 )
 from number_compiler.sequences.double_reverse._temporal_bank_authority import (
     SourceAuthorizedRecord,
     issue_source_record,
+    require_source_arena,
     validate_source_record,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife import (
@@ -51,6 +56,7 @@ PHYSICAL_GROWTH_CYCLES: tuple[tuple[int, int, int, int], ...] = (
     (0, 1, 1, 0),
     (1, 1, 0, 0),
 )
+_PHYSICAL_RETURN_TICKS = 4
 
 
 def _growth_moment(word: tuple[int, ...]) -> SkewMoment:
@@ -72,7 +78,7 @@ def certified_width_moments(phase: int, steps: int) -> SkewMoment:
     if type(steps) is not int or steps < 0:
         raise ValueError("temporal duration must be nonnegative")
     word = PHYSICAL_GROWTH_CYCLES[phase]
-    repeat, remainder = divmod(steps, 4)
+    repeat, remainder = divmod(steps, _PHYSICAL_RETURN_TICKS)
     return (
         _growth_moment(word).power_formal(repeat).then(_growth_moment(word[:remainder]))
     )
@@ -188,6 +194,7 @@ def source_residue_quotient(
         duration=generation - prefix,
         source_mod99=source_mod99,
         source_mod198=source_mod198,
+        ledger=ledger,
     )
     return prefix, issue_source_record(action, arena, root, source_generation=prefix)
 
@@ -218,6 +225,261 @@ class CertifiedResidueTemporalAction(SourceAuthorizedRecord):
         validate_source_record(self)
 
 
+@dataclass(frozen=True, slots=True)
+class ResidueReturnOrbit:
+    """Exact lasso for one residue projection sampled every four T steps."""
+
+    modulus: int
+    initial_residue: int
+    multiplier_per_return: int
+    transient_returns: int
+    period_returns: int
+    transient_ticks_upper_bound: int
+    period_ticks: int
+    width_drift_over_period: int
+
+
+ResiduePeriodScope = Literal["certified border phase and mod-99/mod-198 residues only"]
+_RESIDUE_PERIOD_SCOPE: ResiduePeriodScope = (
+    "certified border phase and mod-99/mod-198 residues only"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectedResidueTemporalQuotient(SourceAuthorizedRecord):
+    """Source-bound projected return; it never claims width or digit periodicity."""
+
+    source_action: CertifiedResidueTemporalAction
+    source_generation: int
+    target_generation: int
+    target_phase: int
+    target_width: int
+    width_growth_per_four_ticks: int
+    modulo99: ResidueReturnOrbit
+    modulo198: ResidueReturnOrbit
+    return_states_visited: int
+    scope: ResiduePeriodScope
+
+    def validate_source_authority(self) -> None:
+        """Validate this descriptor and the exact source action it projects."""
+        authority = validate_source_record(self)
+        self.source_action.validate_source_authority()
+        action_authority = validate_source_record(self.source_action)
+        if (
+            authority.arena is not action_authority.arena
+            or authority.root != action_authority.root
+            or authority.source_generation != action_authority.source_generation
+            or self.source_generation != authority.source_generation
+            or self.target_generation
+            != self.source_generation + self.source_action.duration
+            or self.target_phase
+            != (self.source_action.phase + self.source_action.duration) % 4
+            or self.target_width != self.source_action.width_out
+            or self.scope != _RESIDUE_PERIOD_SCOPE
+        ):
+            raise ValueError("projected residue return authority is inconsistent")
+
+    def packet(self) -> dict[str, object]:
+        """Return only the finite border/residue projection and affine width drift."""
+        self.validate_source_authority()
+        return {
+            "scope": self.scope,
+            "source_generation": self.source_generation,
+            "target_generation": self.target_generation,
+            "target_phase": self.target_phase,
+            "target_width": self.target_width,
+            "physical_ticks_per_return": _PHYSICAL_RETURN_TICKS,
+            "width_growth_per_four_ticks": self.width_growth_per_four_ticks,
+            "width_is_periodic": False,
+            "modulo99": {
+                **_residue_return_packet(self.modulo99),
+                "cycle_width_drift": self.modulo99.width_drift_over_period,
+            },
+            "modulo198": {
+                **_residue_return_packet(self.modulo198),
+                "cycle_width_drift": self.modulo198.width_drift_over_period,
+            },
+            "return_states_visited": self.return_states_visited,
+            "full_digit_word_authority": False,
+        }
+
+
+def _residue_return_packet(orbit: ResidueReturnOrbit) -> dict[str, int]:
+    return {
+        "initial_residue": orbit.initial_residue,
+        "multiplier_per_return": orbit.multiplier_per_return,
+        "transient_returns": orbit.transient_returns,
+        "period_returns": orbit.period_returns,
+        "transient_ticks_upper_bound": orbit.transient_ticks_upper_bound,
+        "period_ticks": orbit.period_ticks,
+    }
+
+
+def projected_residue_return_lassos(
+    initial_mod198: int,
+    multiplier_mod99: int,
+    multiplier_mod198: int,
+    *,
+    on_state_visit: Callable[[int], None] | None = None,
+) -> tuple[ResidueReturnOrbit, ResidueReturnOrbit, int]:
+    """Find exact mod-99/mod-198 lassos in one at-most-198-state walk.
+
+    The callback runs before each state is inspected or its successor is
+    computed, so ledger work accounting includes partial walks on failure.
+    """
+    if (
+        type(initial_mod198) is not int
+        or not 0 <= initial_mod198 < 198
+        or type(multiplier_mod99) is not int
+        or not 0 <= multiplier_mod99 < 99
+        or type(multiplier_mod198) is not int
+        or not 0 <= multiplier_mod198 < 198
+        or multiplier_mod198 % 99 != multiplier_mod99
+    ):
+        raise ValueError("projected residue return has incompatible modular ports")
+
+    first_mod198 = [-1] * 198
+    mod99_lasso: tuple[int, int] | None = None
+    state = initial_mod198
+    visits = 0
+    while first_mod198[state] < 0:
+        if on_state_visit is not None:
+            on_state_visit(state)
+        first_mod198[state] = visits
+        projected99 = state % 99
+        opposite_mod198 = projected99 + 99 if state == projected99 else projected99
+        opposite_first = first_mod198[opposite_mod198]
+        if opposite_first >= 0 and mod99_lasso is None:
+            mod99_lasso = (opposite_first, visits - opposite_first)
+        visits += 1
+        state = state * multiplier_mod198 % 198
+
+    transient198 = first_mod198[state]
+    period198 = visits - transient198
+    if mod99_lasso is None:
+        mod99_lasso = (transient198, period198)
+    transient99, period99 = mod99_lasso
+    mod99 = ResidueReturnOrbit(
+        99,
+        initial_mod198 % 99,
+        multiplier_mod99,
+        transient99,
+        period99,
+        _PHYSICAL_RETURN_TICKS * transient99,
+        _PHYSICAL_RETURN_TICKS * period99,
+        2 * period99,
+    )
+    mod198 = ResidueReturnOrbit(
+        198,
+        initial_mod198,
+        multiplier_mod198,
+        transient198,
+        period198,
+        _PHYSICAL_RETURN_TICKS * transient198,
+        _PHYSICAL_RETURN_TICKS * period198,
+        2 * period198,
+    )
+    return mod99, mod198, visits
+
+
+def projected_residue_temporal_quotient(
+    action: CertifiedResidueTemporalAction,
+    *,
+    ledger: ResourceLedger | None = None,
+    scratch_owner: int | None = None,
+) -> ProjectedResidueTemporalQuotient:
+    """Power the certified border/residue projection, never the full integer.
+
+    A four-physical-step return has a source-phase-derived width increment of
+    two. Its modular multiplier is evaluated by ``certified_residue_action``.
+    Since each partial return's exponent is positive, adding two to its width
+    shifts that exponent by an even number; powers of ten repeat every two
+    positive exponents modulo 99 and 198. The return lasso is scoped to border
+    phase and residues. Width keeps its affine drift and the interior digit
+    word remains unspecified.
+    """
+    if type(action) is not CertifiedResidueTemporalAction:
+        raise TypeError("projected residue return needs its exact action record")
+    action.validate_source_authority()
+    if (ledger is None) != (scratch_owner is None):
+        raise ValueError("projected return resource handles are incomplete")
+    authority = validate_source_record(action)
+    arena = require_source_arena(authority)
+    target_phase = (action.phase + action.duration) % 4
+    target_width = action.width_out
+    workspace: AbstractContextManager[None]
+    if ledger is None:
+        if scratch_owner is not None:
+            raise ValueError("projected return scratch owner has no ledger")
+        workspace = nullcontext()
+    else:
+        if scratch_owner is None:
+            raise ValueError("projected return needs its ledger scratch owner")
+        workspace = ledger.reservation(scratch_owner, entries=198, nodes=198)
+
+    with workspace:
+        if ledger is not None:
+            _charge_residue_arithmetic(ledger, (target_phase, _PHYSICAL_RETURN_TICKS))
+        moments = certified_width_moments(target_phase, _PHYSICAL_RETURN_TICKS)
+        if (
+            moments.duration != _PHYSICAL_RETURN_TICKS
+            or moments.U != 2
+            or target_width < 5
+        ):
+            raise AssertionError("certified four-step width return changed")
+
+        if action.target_mod198 % 99 != action.target_mod99:
+            raise AssertionError("residue action lost its mod-99 projection")
+        block = certified_residue_action(
+            phase=target_phase,
+            width=target_width,
+            duration=_PHYSICAL_RETURN_TICKS,
+            source_mod99=action.target_mod99,
+            source_mod198=action.target_mod198,
+            ledger=ledger,
+        )
+        on_visit: Callable[[int], None] | None
+        if ledger is None:
+            on_visit = None
+        else:
+
+            def charge_visit(state: int) -> None:
+                _charge_residue_arithmetic(
+                    ledger,
+                    (state, 99, state, block.multiplier_mod198, 198),
+                )
+
+            on_visit = charge_visit
+
+        modulo99, modulo198, visits = projected_residue_return_lassos(
+            action.target_mod198,
+            block.multiplier_mod99,
+            block.multiplier_mod198,
+            on_state_visit=on_visit,
+        )
+    record = ProjectedResidueTemporalQuotient(
+        action,
+        authority.source_generation,
+        authority.source_generation + action.duration,
+        target_phase,
+        target_width,
+        moments.U,
+        modulo99,
+        modulo198,
+        visits,
+        _RESIDUE_PERIOD_SCOPE,
+    )
+    issue_source_record(
+        record,
+        arena,
+        authority.root,
+        parent=authority,
+        source_generation=authority.source_generation,
+    )
+    record.validate_source_authority()
+    return record
+
+
 def certified_residue_action(
     *,
     phase: int,
@@ -225,6 +487,7 @@ def certified_residue_action(
     duration: int,
     source_mod99: int,
     source_mod198: int,
+    ledger: ResourceLedger | None = None,
 ) -> CertifiedResidueTemporalAction:
     """Power only the finite four-phase width clock and modular reversal action.
 
@@ -242,13 +505,23 @@ def certified_residue_action(
         or source_mod198 % 99 != source_mod99
     ):
         raise ValueError("incompatible source residue ports")
+    if ledger is not None:
+        _charge_residue_arithmetic(ledger, (phase, duration))
     moments = certified_width_moments(phase, duration)
+    if ledger is not None:
+        _charge_residue_arithmetic(ledger, (duration, width, moments.V))
     exponent = moments.duration * (width - 1) + moments.V
     # This is the exact width-dependent temporal action, not an endpoint
     # arithmetic check.  10**2 = 1 modulo 99; the modulo-198 formula retains
     # the doubled reversal congruence for all positive durations.
-    mul99 = pow(2, duration, 99) * pow(10, exponent, 99) % 99
-    mul198 = pow(2, duration, 198) * pow(10, exponent, 198) % 198
+    power2_99 = _residue_power(2, duration, 99, ledger)
+    power10_99 = _residue_power(10, exponent, 99, ledger)
+    mul99 = _residue_product_mod(power2_99, power10_99, 99, ledger)
+    power2_198 = _residue_power(2, duration, 198, ledger)
+    power10_198 = _residue_power(10, exponent, 198, ledger)
+    mul198 = _residue_product_mod(power2_198, power10_198, 198, ledger)
+    target_mod99 = _residue_product_mod(source_mod99, mul99, 99, ledger)
+    target_mod198 = _residue_product_mod(source_mod198, mul198, 198, ledger)
     return CertifiedResidueTemporalAction(
         phase,
         width,
@@ -260,9 +533,36 @@ def certified_residue_action(
         mul198,
         source_mod99,
         source_mod198,
-        source_mod99 * mul99 % 99,
-        source_mod198 * mul198 % 198,
+        target_mod99,
+        target_mod198,
     )
+
+
+def _charge_residue_arithmetic(
+    ledger: ResourceLedger, operands: tuple[int, ...]
+) -> None:
+    """Charge one exact modular arithmetic unit before it is performed."""
+    ledger.bump(_arithmetic_field_keys.GROWTH_ARITHMETIC_WORK)
+    ledger.bump(
+        _arithmetic_field_keys.GROWTH_ARITHMETIC_OPERAND_BITS,
+        sum(value.bit_length() for value in operands),
+    )
+
+
+def _residue_power(
+    base: int, exponent: int, modulus: int, ledger: ResourceLedger | None
+) -> int:
+    if ledger is not None:
+        _charge_residue_arithmetic(ledger, (base, exponent, modulus))
+    return pow(base, exponent, modulus)
+
+
+def _residue_product_mod(
+    first: int, second: int, modulus: int, ledger: ResourceLedger | None
+) -> int:
+    if ledger is not None:
+        _charge_residue_arithmetic(ledger, (first, second, modulus))
+    return first * second % modulus
 
 
 def residue_clock_class_count(modulus: int = 99) -> int:

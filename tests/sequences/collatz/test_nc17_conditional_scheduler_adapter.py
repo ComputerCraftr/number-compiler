@@ -44,6 +44,14 @@ def sample(motif: tuple[int, ...], count: int = 64) -> tuple[int, int]:
     return residue + 5 * modulus * (1 << 48), count * sum(j + 4 for j in motif)
 
 
+def long_guarded_6305_source(returns: int) -> tuple[int, int]:
+    """Build the same authenticated long 6305 source for cache regressions."""
+    residue, modulus = ConstantTail6305Ring.guard_residue(0, returns)
+    # The odd lift adds one factor of 2 to x+1 and makes x == 3 mod 5.
+    lift = 5 * (1 << 172) + 1
+    return residue + modulus * lift, 4 * returns
+
+
 def scalar_physical(x: int, ticks: int) -> int:
     for _ in range(ticks):
         x = 3 * x + 1 if x & 1 else x >> 1
@@ -549,11 +557,7 @@ def test_same_source_memo_hit_uses_issued_observer_payload_without_rebuilding() 
     )
 
     returns = 64
-    residue, modulus = ConstantTail6305Ring.guard_residue(0, returns)
-    # The odd lift adds one factor of 2 to x+1 and makes x == 3 mod 5.
-    lift = 5 * (1 << 172) + 1
-    source = residue + modulus * lift
-    ticks = 4 * returns
+    source, ticks = long_guarded_6305_source(returns)
     zero_tail = ConstantTail6305Ring.from_source(source)
     assert source % 10 == 3
     assert source.bit_length() >= 256
@@ -609,6 +613,58 @@ def test_same_source_memo_hit_uses_issued_observer_payload_without_rebuilding() 
             assert (
                 ledger.counters["collatz_conditional_scheduler_guarded_cache_hits"] == 1
             )
+    assert ledger.entries == ledger.nodes == 0
+
+
+def test_translated_memo_hit_reuses_carry_program_without_matrix_recomposition() -> (
+    None
+):
+    from number_compiler.sequences.collatz.guarded_port_join import GuardedPortJoin
+    from number_compiler.sequences.collatz.source_cylinder_cache import (
+        CollatzDyadicMacros,
+    )
+
+    returns = 64
+    source, ticks = long_guarded_6305_source(returns)
+    assert source % 10 == 3
+    ledger = ResourceLedger()
+    with CollatzDyadicMacros(ledger, shared_cache=True) as macros:
+        scratch = RunArithmeticWorkspace.for_ledger(ledger, "translated-carry-cache")
+        with scratch.scope():
+            first = issue_conditional_scheduler_candidate(
+                source,
+                ticks,
+                scratch=scratch,
+                ledger=ledger,
+                macros=macros,
+                include_joint=True,
+            )
+            assert first is not None
+            assert first.joined_port is not None
+            assert first.carry_program is not None
+            translated_source = source + first.port.guard.modulus
+            assert first.port.admits(translated_source)
+            assert first.carry_program.guard.admits(translated_source)
+
+            def forbidden(*_args: object, **_kwargs: object) -> object:
+                raise AssertionError("guarded carry summary was recomposed on a hit")
+
+            with (
+                patch.object(GuardedPortJoin, "authenticate_weighted_ports", forbidden),
+            ):
+                translated = issue_conditional_scheduler_candidate(
+                    translated_source,
+                    ticks,
+                    scratch=scratch,
+                    ledger=ledger,
+                    macros=macros,
+                    include_joint=True,
+                )
+            assert translated is not None
+            assert translated.source == translated_source
+            assert translated.endpoint == scalar_physical(translated_source, ticks)
+            assert translated.joined_port is not first.joined_port
+            assert translated.carry_program is first.carry_program
     assert ledger.entries == ledger.nodes == 0
 
 

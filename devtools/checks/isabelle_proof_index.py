@@ -172,11 +172,14 @@ def build_index() -> dict[str, object]:
     executed_bundle_refs: dict[str, set[str]] = {}
     for theory, (path, imports, scope, _, references) in tuple(declared.items()):
         bundle_refs: set[str] = set()
-        audit = audited_theorems(
-            source_texts[theory],
-            bundle_members=bundle_members,
-            executed_bundles=bundle_refs,
-        )
+        try:
+            audit = audited_theorems(
+                source_texts[theory],
+                bundle_members=bundle_members,
+                executed_bundles=bundle_refs,
+            )
+        except ValueError as error:
+            raise ValueError(f"{path}: {error}") from error
         declared[theory] = (path, imports, scope, audit, references)
         if bundle_refs:
             executed_bundle_refs[theory] = bundle_refs

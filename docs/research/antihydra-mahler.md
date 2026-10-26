@@ -38,13 +38,35 @@ to replace that support or prove future safety. The
 [integration record](../sprints/week-of-2026-09-20/shared.md#affine-point-germ-consumers)
 separates these demand savings from unchanged cold source discovery.
 
-The public aggregate omits support handles. The scheduler retains one saturated
-image and expands chronology only for a demanded physical consumer. Short or
-homogeneous centered runs use exact affine powers; long mixed horizons use the
-shared balanced constructor to avoid growing-integer run replay. The Mahler
-packet exposes its centered carry `C`, source residue, and rational real guard
-from this same image. The pinned source's Mahler margin fails at return
+Physical chronology and Mahler's centered carry `C`, source residue and
+rational real guard are different observations of an admitted image. The
+pinned source's Mahler margin fails at return
 two, where its Antihydra ledger remains safe. These predicates are distinct.
+
+The cold carry action retains weighted innovation `J`, physical odd-step
+count, ledger delta and ordered prefix minimum. Adjacent blocks compose as
+`J_AB = 3^|B| J_A + 2^|A| J_B`. Translating centered `D` to physical `H=D+1`
+gives the intercept `J + 2^n - 3^n` directly. Repeated growing-coefficient
+arithmetic must count intermediate operand work; measuring only final
+coefficients cannot establish a construction bound. Arithmetic values alone
+do not issue cache or source authority. Current scheduler admission ranges,
+fallbacks and the rejected flat-scan experiment are recorded in the
+[cold-scheduler integration](../sprints/week-of-2026-10-18/strict-toolchain-macro-identities.md#antihydra-and-mahler-cold-integration--2026-10-26).
+
+Mahler's bounded source-prefix constructor uses exact valuations to select
+maximal even runs and odd-to-odd event blocks. Even runs retain the guard
+`[0, 2^(k-1)/3^k)` and complete min-plus action. Odd-to-odd consumers use the
+same even-run constructor. Consecutive odd symbols remain separate events. This
+replaces repeated action composition within a known run, without assuming
+that a future parity program repeats. The downloaded mod-101 and graph/remainder
+packets are separate observer proposals; they are not automatically added to
+ordinary queries or substituted for the current 32-tick matrix contract.
+
+[Mahler_Exact_Even_Event_Threshold](../../proofs/isabelle/integration/antihydra_mahler/mahler_transport/Mahler_Exact_Even_Event_Threshold.thy)
+proves chronological carry composition, the centered-to-physical offset,
+high-fiber invariance, and the exact half-open even-run guard. The integer
+failure predicate is `2*num*3^k ≥ den*2^k`; equality fails the guard. The current
+runtime selects runs by exact valuations, without floating logarithms.
 
 **Proof scope:** finite associated-action laws are checked in
 `Associated_Action_Core` and `Antihydra_Mahler_Integration`. The downstream

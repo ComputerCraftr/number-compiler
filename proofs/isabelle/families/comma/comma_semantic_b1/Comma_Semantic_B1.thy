@@ -101,6 +101,18 @@ definition comma_semantic_word_then ::
           | result \<Rightarrow> result)
      | result \<Rightarrow> result)"
 
+lemma comma_semantic_word_then_stop:
+  assumes "first phase root = Comma_Semantic_B1_Stop height"
+  shows "comma_semantic_word_then amount first second phase root =
+    Comma_Semantic_B1_Stop height"
+  using assms by (simp add: comma_semantic_word_then_def)
+
+lemma comma_semantic_word_then_invalid:
+  assumes "first phase root = Comma_Semantic_B1_Invalid"
+  shows "comma_semantic_word_then amount first second phase root =
+    Comma_Semantic_B1_Invalid"
+  using assms by (simp add: comma_semantic_word_then_def)
+
 lemma comma_semantic_b1_of_word_then:
   "comma_semantic_b1_of_word (comma_word_then n A B r root) =
     comma_semantic_word_then n
@@ -169,7 +181,8 @@ ML \<open>Thm.consolidate [@{thm comma_semantic_b1_stop_decode}];
   Comma_Proof_Profile.report "Semantic B1 root claim=stop-decode checked"\<close>
 
 ML \<open>
-  val checked = @{thms comma_semantic_b1_of_word_then
+  val checked = @{thms comma_semantic_word_then_stop comma_semantic_word_then_invalid
+    comma_semantic_b1_of_word_then
     comma_semantic_b1_id_apply comma_semantic_b1_id_extensional
     comma_semantic_b1_exact_orbit comma_semantic_b1_source_exact_atom
     comma_semantic_b1_square comma_semantic_b1_stop_decode};

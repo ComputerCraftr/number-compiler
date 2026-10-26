@@ -17,7 +17,7 @@ from devtools.verification.comma_semantic_future_artifact import (
     runtime_candidate_record_from_isabelle_data,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.comma import future_provider
+from number_compiler.sequences.comma import future_provider, future_provider_codec
 from number_compiler.sequences.comma.boundary_quotient import BoundaryState
 from tests.support.comma_future_provider_fixture import (
     candidate_record,
@@ -54,7 +54,9 @@ def test_file_loader_preflights_nested_metadata_before_canonical_dump(
     def reject_canonical_dump(_record: Mapping[str, object]) -> bytes:
         raise AssertionError("deep metadata reached canonical serialization")
 
-    monkeypatch.setattr(future_provider, "_canonical_json_bytes", reject_canonical_dump)
+    monkeypatch.setattr(
+        future_provider_codec, "canonical_json_bytes", reject_canonical_dump
+    )
     with pytest.raises(ValueError, match="nesting exceeds its bound"):
         future_provider.SemanticFutureProvider.load_file(
             candidate_path, charge_work=charge_work
@@ -89,7 +91,7 @@ def test_file_loader_charges_bytes_read_when_stat_underreports(
 ) -> None:
     class_count = 2_048
     encoded_classes = bytearray()
-    for source_index in range(future_provider.SOURCE_COUNT):
+    for source_index in range(future_provider_codec.SOURCE_COUNT):
         value = min(source_index, class_count - 1)
         while value >= 0x80:
             encoded_classes.append((value & 0x7F) | 0x80)
@@ -124,9 +126,7 @@ def test_file_loader_charges_bytes_read_when_stat_underreports(
         parse_charge_totals: list[int] = []
         actual_parser = cast(
             _PreflightParser,
-            object.__getattribute__(
-                future_provider, "_parse_preflighted_future_candidate"
-            ),
+            future_provider_codec.parse_preflighted_future_candidate,
         )
 
         def observe_parser(
@@ -143,8 +143,8 @@ def test_file_loader_charges_bytes_read_when_stat_underreports(
             )
 
         monkeypatch.setattr(
-            future_provider,
-            "_parse_preflighted_future_candidate",
+            future_provider_codec,
+            "parse_preflighted_future_candidate",
             observe_parser,
         )
         path_type = type(candidate_path)

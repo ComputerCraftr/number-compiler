@@ -925,6 +925,7 @@ lemma comma_decade_summary_step_orbit_transport:
   shows "comma_fast_decade_summary_step h t (Comma_Decade r x)=
     comma_fast_decade_summary_step h t (Comma_Decade r (comma_offset_representative x))"
   by (simp only: comma_fast_decade_summary_step_def
+    comma_decade_summary_step_for_def
     comma_fast_decade_control_orbit_representative[OF offset] height terminal)
 
 ML \<open>

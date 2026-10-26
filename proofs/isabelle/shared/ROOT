@@ -6,6 +6,8 @@ session Shared_S_Arithmetic in "arithmetic/s_arithmetic" = HOL +
   options [document = false, quick_and_dirty = false]
   sessions Prefix_Effect_Core "HOL-Number_Theory"
   theories
+    Padic_Event_Action
+    Padic_Affine_Height_Quotient
     CRT_Predicate
     S_Arithmetic_Skew
     Integer_Cylinder_Transport
@@ -26,15 +28,17 @@ session Cylinder_Radial_Algebra in "cylinder_algebra/radial" = HOL +
   theories
     Cylinder_Radial_Event_Clock
     Cylinder_Radial_Hypergeometric_Elimination
-session Shared_Carry_Dynamics in "arithmetic/carry_dynamics" = HOL +
+session Shared_Carry_Dynamics in "arithmetic/carry_dynamics" = "HOL-Number_Theory" +
   options [document = false, quick_and_dirty = false]
   theories
     Shared_Carry_Domain
     Shared_Decimal_Cocycle_Core
+    Decimal_Normalization_Morphism
     Shared_Carry_Tape
     Shared_Affine_Birth_Tape
     Port_Valued_Mealy
     Temporal_Moment_Algebra
+    Fifteen_Raw_Carry_Period
     Temporal_Decimal_Carry_Monoid
     Finite_Transfer_Power
     Ordered_Tripling_Carry

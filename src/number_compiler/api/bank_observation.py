@@ -25,12 +25,18 @@ _PAIR_CHANNELS = (*_PAIR_DOMAINS, "carry_xor")
 
 def double_reverse_residue_packet(term: DoubleReverseTerm) -> dict[str, object]:
     from number_compiler.sequences.double_reverse.temporal_residue_quotient import (
+        projected_residue_temporal_quotient,
         residue_clock_class_count,
         residue_clock_class_of,
     )
 
     prefix, action = term.temporal_residue_quotient()
     action.validate_source_authority()
+    projected = projected_residue_temporal_quotient(
+        action,
+        ledger=term.resource_ledger,
+        scratch_owner=term.scratch_owner,
+    )
     packet: dict[str, object] = asdict(action)
     packet.update(
         moore_class99=residue_clock_class_of(
@@ -44,6 +50,7 @@ def double_reverse_residue_packet(term: DoubleReverseTerm) -> dict[str, object]:
         prefix_steps=prefix,
         source_generation=prefix,
         target_generation=prefix + action.duration,
+        projected_period=projected.packet(),
         scope="source-bound mod-99/198 width quotient; not full digit-word authority",
     )
     return packet

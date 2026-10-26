@@ -85,6 +85,11 @@ class TemporalObservations:
     mahler_root_shell_operand_bits: int | None = None
     mahler_center_matrix_demands: int | None = None
     mahler_center_matrix_physical_steps: int | None = None
+    mahler_center_matrix_candidate_transitions: int | None = None
+    mahler_center_matrix_sparse_edge_visits: int | None = None
+    mahler_center_matrix_row_materializations: int | None = None
+    mahler_center_matrix_dense_products: int | None = None
+    mahler_center_matrix_sparse_products: int | None = None
     physical_roof_evaluations: int | None = None
     query_observer_reuses: int | None = None
     higher_concrete_operation_evaluations: int | None = None

@@ -30,6 +30,9 @@ def center_transfer_packet(
         raise ArithmeticError("Mahler transfer lost its pointed source-fiber edge")
     packet: dict[str, object] = {
         **transfer.matrix.compact_packet(include_rows=include_rows),
+        "conditional_matrix": transfer.conditional_composition.compact_packet(
+            include_rows=include_rows
+        ),
         "source_authority": "source-finite-trace",
         "safety_nonempty_rows": transfer.safety_matrix.nonempty_rows,
         "source_certified_physical_ticks": transfer.steps,
@@ -46,6 +49,7 @@ def center_transfer_packet(
         "pointed_last_center": transfer.pointed_centers[-1],
         "candidate_source_roots_refused_by_join": transfer.rejected_source_paths,
         "conditional_matrix_nonzero_entries": transfer.conditional_composition.edges,
+        "conditional_relation_work": transfer.relation_work.packet(),
         "source_witness_pruned_relation_entries": sum(
             (a & ~b).bit_count()
             for a, b in zip(

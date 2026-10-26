@@ -90,7 +90,6 @@ from number_compiler.sequences.double_reverse.temporal_ports import (
     decimal_carry_port,
 )
 from number_compiler.sequences.double_reverse.temporal_square import (
-    DoubleReverseTwoStepMachine,
     attach_projector_memos,
 )
 
@@ -313,20 +312,12 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         prefix = f"double-reverse-{ledger.owner_count}"
         machine = DoubleReverseMachine()
         projector = BimachineSLPProjector(machine, self._arena)
-        square_projector = BimachineSLPProjector(
-            DoubleReverseTwoStepMachine(), self._arena
-        )
         owner_names = (
             "forward",
             "reverse",
             "block",
             "forward-power",
             "reverse-power",
-            "square-forward",
-            "square-reverse",
-            "square-block",
-            "square-forward-power",
-            "square-reverse-power",
             "grammar-reversal",
         )
         owners = tuple(
@@ -343,17 +334,16 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
             )
         )
         memo_rows: list[OwnedMemo[object, object]] = []
-        for owner in owners[:10]:
+        for owner in owners[:5]:
             memo: OwnedMemo[object, object] = OwnedMemo(
                 ledger, owner, nodes_per_entry=1
             )
             memo_rows.append(memo)
             rollback.enter_context(cleanup_on_error(memo.dispose))
         memos = tuple(memo_rows)
-        attach_projector_memos(projector, memos[:5])
-        attach_projector_memos(square_projector, memos[5:10])
+        attach_projector_memos(projector, memos)
         reverse_memo: OwnedMemo[int, int] = OwnedMemo(
-            ledger, owners[10], nodes_per_entry=1
+            ledger, owners[5], nodes_per_entry=1
         )
         rollback.enter_context(cleanup_on_error(reverse_memo.dispose))
         threshold_owner = ledger.register(
@@ -412,7 +402,6 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
             ledger,
             self._arena,
             projector,
-            square_projector,
             self._source,
             self._issuer,
             self.max_steps,

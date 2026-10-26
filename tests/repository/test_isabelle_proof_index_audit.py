@@ -84,6 +84,87 @@ def test_captured_native_dependency_audit_is_not_release_evidence() -> None:
     assert isabelle_oracle_audit.audited_theorems(source) == ("executed_endpoint",)
 
 
+def test_bare_top_level_audit_calls_after_semicolon_are_release_evidence() -> None:
+    source = (
+        "ML \\<open>"
+        "val checked = @{thms first_endpoint second_endpoint};"
+        "Thm.consolidate checked;"
+        "Comma_Proof_Dependency_Audit.require_native_clean @{context} "
+        '"bare sequence" checked;'
+        "Comma_Proof_Dependency_Audit.require_expected_paths @{context} "
+        '"closed authority" ["path"] @{thms third_endpoint};'
+        "if null (Thm_Deps.all_oracles checked) then () "
+        'else error "oracle"\\<close>'
+    )
+    assert isabelle_oracle_audit.audited_theorems(source) == (
+        "first_endpoint",
+        "second_endpoint",
+        "third_endpoint",
+    )
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        (
+            "val delayed = fn () => "
+            "Comma_Proof_Dependency_Audit.require_native_clean @{context} "
+            '"delayed lambda" @{thms hidden}'
+        ),
+        (
+            "val delayed = let val action = fn () => "
+            "Comma_Proof_Dependency_Audit.require_native_clean @{context} "
+            '"let-bound lambda" @{thms hidden} in action end'
+        ),
+        (
+            "fun delayed () = let val _ = "
+            "Comma_Proof_Dependency_Audit.require_native_clean @{context} "
+            '"nested unit binding" @{thms hidden} in () end'
+        ),
+        (
+            "val delayed = fn () => (let val _ = "
+            "Comma_Proof_Dependency_Audit.require_native_clean @{context} "
+            '"parenthesized block" @{thms hidden} in () end)'
+        ),
+        (
+            "List.app (fn theorem => "
+            "Comma_Proof_Dependency_Audit.require_native_clean @{context} "
+            '"higher order" @{thms hidden}) []'
+        ),
+    ],
+)
+def test_nested_or_delayed_audit_calls_are_rejected_not_counted(
+    expression: str,
+) -> None:
+    source = f"ML \\<open>{expression}\\<close>"
+    with pytest.raises(
+        ValueError,
+        match="unsupported Comma_Proof_Dependency_Audit invocation form",
+    ):
+        isabelle_oracle_audit.audited_theorems(source)
+
+
+def test_top_level_audit_function_reference_is_not_release_evidence() -> None:
+    source = (
+        "ML \\<open>"
+        "Comma_Proof_Dependency_Audit.require_native_clean;"
+        "Comma_Proof_Dependency_Audit.checked_names"
+        "\\<close>"
+    )
+    assert isabelle_oracle_audit.audited_theorems(source) == ()
+
+
+def test_nested_theorem_binding_cannot_supply_a_top_level_audit() -> None:
+    source = (
+        "ML \\<open>"
+        "fun delayed () = let val hidden = @{thms forged} in hidden end;"
+        "Comma_Proof_Dependency_Audit.require_native_clean @{context} "
+        '"out of scope" hidden\\<close>'
+    )
+    with pytest.raises(ValueError, match="not a closed thm/thms antiquotation"):
+        isabelle_oracle_audit.audited_theorems(source)
+
+
 def test_native_dependency_audit_rejects_unknown_executed_authorities() -> None:
     source = (
         "ML \\<open>val _ = Comma_Proof_Dependency_Audit.require_future_clean "

@@ -52,7 +52,15 @@ struct
      "comma_source20_structural_infinite_path",
      "comma_source20_structural_first_choice_unique"]
 
-  val native_paths = fuel_forest_paths @ candidate_paths @ structural_paths
+  (* Compiled CRT diagrams cannot supply semantic B32 release authority.
+     Representation-only refinements are outside the native endpoint gate. *)
+  val representation_paths =
+    ["comma_semantic_graph_split",
+     "comma_semantic_b1_crt_power_split_action",
+     "comma_semantic_b1_crt_power_result"]
+
+  val native_paths =
+    fuel_forest_paths @ candidate_paths @ structural_paths @ representation_paths
 
   fun retired paths name =
     exists (fn path => String.isSubstring path name) paths

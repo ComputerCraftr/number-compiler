@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Hashable
+from collections.abc import Generator, Hashable
+from contextlib import contextmanager
 from dataclasses import dataclass
 from math import gcd
 from typing import TYPE_CHECKING, Final, cast
@@ -36,14 +37,22 @@ from number_compiler.sequences.comma.arithmetic import (
 from number_compiler.sequences.comma.boundary_quotient import (
     PERIOD,
     BoundaryState,
+    MacroTemplate,
+)
+from number_compiler.sequences.comma.boundary_receipt import (
+    SOURCE,
+    BoundaryPrefixCursor,
+    BoundarySelectionReceipt,
+    BoundarySelectionReceiptID,
+    CommaImagePayload,
+    validate_action_result,
 )
 
 if TYPE_CHECKING:
     from number_compiler.sequences.comma.power import CommaTerm
 
-SEMANTIC_VERSION: Final[str] = "comma-source-cylinder-v4-cycle-phase-coset"
+SEMANTIC_VERSION: Final[str] = "comma-source-cylinder-v6-ledger-issued-receipt-handle"
 STRICT_INTERIOR_CYCLE_CONSUMER_TAG: Final[str] = "strict-interior-cycle-v2-phase-coset"
-SOURCE = 20
 
 
 class UnresolvedCommaBranch(ValueError):
@@ -59,23 +68,6 @@ class CommaOccurrenceID(ArenaHandle):
 class CommaSource:
     value: int
     certificate_version: str = "uncertified-arithmetic"
-
-
-@dataclass(frozen=True, slots=True)
-class BoundaryPrefixCursor:
-    """Fixed-size occurrence cursor for one exact boundary prefix."""
-
-    state: BoundaryState
-    exponent: int
-    transitions: int
-
-
-@dataclass(frozen=True, slots=True)
-class CommaImagePayload:
-    value: int
-    absolute_index: int
-    certificate_version: str = "uncertified-arithmetic"
-    boundary_cursor: BoundaryPrefixCursor | None = None
 
 
 class CommaImageAdapter(SourceBoundImageAdapter):
@@ -96,6 +88,24 @@ class CommaImageAdapter(SourceBoundImageAdapter):
             raise ValueError("comma adapter already has another owner")
         self._term = owner
 
+    def _require_open_owner(self) -> CommaTerm:
+        owner = self._term
+        if owner is None:
+            raise ValueError("comma adapter has no source owner")
+        owner.require_open()
+        return owner
+        return owner
+
+    @contextmanager
+    def composite_transaction(self) -> Generator[None, None, None]:
+        """Scope receipt issuance through primitive validation and publication."""
+        owner = self._term
+        if owner is None:
+            raise ValueError("comma receipt transaction has no term owner")
+        owner.require_open()
+        with owner.boundary_receipt_transaction():
+            yield
+
     @property
     def bound_term(self) -> CommaTerm | None:
         """Return the owner binding for read-only cross-module verification."""
@@ -114,12 +124,11 @@ class CommaImageAdapter(SourceBoundImageAdapter):
         return audit_comma_image_binding(self, binding, payload, failure_prefix)
 
     def validate_source(self, source: Hashable) -> None:
+        owner = self._require_open_owner()
         self.arena.charge()
         if type(source) is CommaSource:
-            owner = self._term
             if (
-                owner is None
-                or type(source.value) is not int
+                type(source.value) is not int
                 or source.value != SOURCE
                 or source.certificate_version != owner.certificate_version
             ):
@@ -140,10 +149,12 @@ class CommaImageAdapter(SourceBoundImageAdapter):
         raise TypeError("comma source requires root 20 or an admitted image")
 
     def validate_action(self, action: Hashable) -> None:
+        self._require_open_owner()
         self.arena.charge()
         self.arena.node(cast(CommaActionID, action))
 
     def validate_payload(self, payload: Hashable) -> None:
+        self._require_open_owner()
         self.arena.charge()
         if type(payload) is not CommaImagePayload:
             raise TypeError("comma image has another payload sort")
@@ -183,20 +194,89 @@ class CommaImageAdapter(SourceBoundImageAdapter):
                 + cursor.state.a.bit_length()
                 + cursor.state.exponent_residue.bit_length()
             )
+            receipt = cursor.selection_receipt
+            if receipt is not None:
+                if type(receipt) is not BoundarySelectionReceiptID:
+                    raise ValueError(
+                        "comma cursor has another selection receipt handle"
+                    )
+                owner = self._term
+                if owner is None:
+                    raise ValueError("comma selection receipt has no source owner")
+                issued_receipt = owner.resolve_boundary_selection_receipt(receipt)
+                provider = owner.require_global_future_provider(
+                    issued_receipt.artifact_sha256
+                )
+                issued_receipt.validate_provider(provider)
+                issued_receipt.validate_output(
+                    value=payload.value,
+                    absolute_index=payload.absolute_index,
+                    cursor=cursor,
+                    receipt_id=receipt,
+                )
+                selection = issued_receipt.selection
+                self.arena.charge()
+                self.arena.charge_bits(
+                    len(issued_receipt.artifact_sha256) * 8
+                    + issued_receipt.source_state.a.bit_length()
+                    + issued_receipt.source_state.exponent_residue.bit_length()
+                    + issued_receipt.source_exponent.bit_length()
+                    + issued_receipt.source_value.bit_length()
+                    + issued_receipt.source_index.bit_length()
+                    + issued_receipt.source_extent.bit_length()
+                    + issued_receipt.target_state.a.bit_length()
+                    + issued_receipt.target_state.exponent_residue.bit_length()
+                    + issued_receipt.target_exponent.bit_length()
+                    + issued_receipt.target_value.bit_length()
+                    + issued_receipt.transitions.bit_length()
+                    + selection.source_class.bit_length()
+                    + selection.fork_coefficient.bit_length()
+                    + sum(cid.bit_length() for cid in selection.ordered_child_classes)
+                    + selection.selected_slot.bit_length()
+                )
+
+    def validate_action_result(
+        self,
+        action: CommaActionRecord,
+        source_payload: CommaImagePayload,
+        source_extent: int,
+        result_payload: CommaImagePayload,
+        result_extent: int,
+        result_ports: tuple[Hashable, ...],
+        *,
+        expected_transitions: int | None = None,
+        template: MacroTemplate | None = None,
+    ) -> None:
+        self._require_open_owner()
+        validate_action_result(
+            self.arena,
+            self._term,
+            action,
+            source_payload,
+            source_extent,
+            result_payload,
+            result_extent,
+            result_ports,
+            expected_transitions=expected_transitions,
+            template=template,
+        )
 
     def identity_action(self, source: Hashable) -> CommaActionID:
+        self._require_open_owner()
         self.validate_source(source)
         return self.arena.identity
 
     def action_children(
         self, action: Hashable
     ) -> tuple[CommaActionID, CommaActionID] | None:
+        self._require_open_owner()
         node = self.arena.node(cast(CommaActionID, action))
         if node.before is None or node.after is None:
             return None
         return node.before, node.after
 
     def compose_actions(self, before: Hashable, after: Hashable) -> CommaActionID:
+        self._require_open_owner()
         return self.arena.compose(
             cast(CommaActionID, before), cast(CommaActionID, after)
         )
@@ -227,6 +307,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
             or image.payload.boundary_cursor != record.boundary_cursor
         ):
             raise ValueError("comma occurrence lost its completed provider image")
+        self.validate_payload(image.payload)
         return image.payload
 
     def _candidate(self, value: int, index: int, extent: int) -> SourceImageCandidate:
@@ -259,6 +340,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
         return leading, digit, headroom
 
     def admit_source(self, source: Hashable) -> SourceImageCandidate:
+        self._require_open_owner()
         payload = self.source_payload(source)
         if type(source) is CommaSource:
             return self._candidate(payload.value, payload.absolute_index, 0)
@@ -288,7 +370,11 @@ class CommaImageAdapter(SourceBoundImageAdapter):
         )
 
     def _apply(
-        self, node: CommaActionRecord, source: SourceImageView
+        self,
+        node: CommaActionRecord,
+        source: SourceImageView,
+        *,
+        boundary_template: MacroTemplate | None = None,
     ) -> SourceImageCandidate:
         payload = cast(CommaImagePayload, source.payload)
         output_ports: tuple[int, int, int] | None = None
@@ -347,7 +433,13 @@ class CommaImageAdapter(SourceBoundImageAdapter):
                         )
                     exponent = cursor.exponent
                     prior_steps = cursor.transitions
-            template = self.arena.boundary_template(state)
+            template = (
+                self.arena.boundary_template(state)
+                if boundary_template is None
+                else boundary_template
+            )
+            if type(template) is not MacroTemplate or template.source != state:
+                raise ValueError("comma global action has another boundary template")
             if node.kind == "boundary-prefix-occurrence":
                 if node.boundary_exponent != 0:
                     raise ValueError("comma receiver-bound prefix has a fixed exponent")
@@ -453,12 +545,28 @@ class CommaImageAdapter(SourceBoundImageAdapter):
                 charge_bits=self.arena.charge_bits,
             )
             value = entry.child_value
+            target = entry.selected_occurrence
+            sector = decimal_sector(value)
             self.ledger.bump(_comma_keys.COMMA_GLOBAL_BRANCH_ACTION_APPLICATIONS)
+            self.ledger.bump(_comma_keys.COMMA_OPERAND_BIT_WORK, value.bit_length())
+            self.arena.charge_bits(
+                value.bit_length() + payload.absolute_index.bit_length() + 1
+            )
+            return SourceImageCandidate(
+                CommaImagePayload(
+                    value,
+                    payload.absolute_index + 1,
+                    payload.certificate_version,
+                    BoundaryPrefixCursor(target.state, target.exponent, 0),
+                ),
+                source.binding.extent + 1,
+                (sector.leading, sector.digit, sector.headroom),
+                radix=10,
+            )
         elif node.kind == "global-boundary-return":
             state = node.boundary_source
-            target = node.boundary_target
             owner = self._term
-            if owner is None or state is None or target is None:
+            if owner is None or state is None or node.boundary_target is not None:
                 raise ValueError("comma global boundary action is incomplete")
             provider = owner.require_global_future_provider(node.future_digest)
             exponent = decimal_sector(payload.value).exponent
@@ -467,7 +575,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
                 OccurrencePrefixReturn,
             )
             from number_compiler.sequences.comma.semantic_branch import (
-                select_global_semantic_macro_child,
+                select_global_semantic_macro_child_from_prefix,
             )
 
             source_occurrence = BoundaryOccurrence(state, exponent)
@@ -488,33 +596,33 @@ class CommaImageAdapter(SourceBoundImageAdapter):
             )
             if prefix.outcome != "fork":
                 raise ValueError("comma global boundary action reached a landmine")
-            ordered = prefix.ordered_literal_children(
-                charge_work=self.arena.charge,
-                charge_bits=self.arena.charge_bits,
-            )
-            _children, literals = ordered.validated_parts()
-            if len(literals) != 2:
-                raise ValueError("comma fork must publish both ordered children")
-            selected = select_global_semantic_macro_child(
+            selected = select_global_semantic_macro_child_from_prefix(
                 source_occurrence,
                 prefix,
-                fork_value=prefix.terminal_value,
-                ordered_literal_children=(literals[0], literals[1]),
                 provider=provider,
                 charge_work=self.arena.charge,
                 charge_bits=self.arena.charge_bits,
             )
-            if selected.target.state != target:
-                raise ValueError("comma global boundary action selected another child")
             value = selected.literal_value
             steps = selected.total_transition_count
             weighted_steps = selected.weighted_action.weight.evaluate(
-                exponent, charge_bits=self.arena.charge_bits
+                selected.source.exponent, charge_bits=self.arena.charge_bits
             )
             if weighted_steps != steps:
                 raise ValueError(
                     "comma weighted return differs from its exact endpoint"
                 )
+            receipt = BoundarySelectionReceipt.from_semantic_child(
+                selected,
+                provider,
+                source_value=payload.value,
+                source_index=payload.absolute_index,
+                source_extent=source.binding.extent,
+            )
+            owner = self._term
+            if owner is None:
+                raise ValueError("comma selection receipt has no term owner")
+            receipt_id = owner.issue_boundary_selection_receipt(receipt)
             sector = decimal_sector(value)
             self.ledger.bump(_comma_keys.COMMA_GLOBAL_BRANCH_ACTION_APPLICATIONS)
             self.ledger.bump(_comma_keys.COMMA_BOUNDARY_WEIGHTED_APPLICATIONS)
@@ -530,6 +638,12 @@ class CommaImageAdapter(SourceBoundImageAdapter):
                     value,
                     payload.absolute_index + steps,
                     payload.certificate_version,
+                    BoundaryPrefixCursor(
+                        selected.target.state,
+                        selected.target.exponent,
+                        0,
+                        receipt_id,
+                    ),
                 ),
                 source.binding.extent + steps,
                 (sector.leading, sector.digit, sector.headroom),
@@ -555,13 +669,23 @@ class CommaImageAdapter(SourceBoundImageAdapter):
             owner = self._term
             if owner is None:
                 raise ValueError("comma adapter has no source owner")
-            value = (
-                children[0]
-                if len(children) == 1
-                else owner.certified_fork_child(
-                    payload.absolute_index, payload.value, children
+            if len(children) == 1:
+                value = children[0]
+            else:
+                from number_compiler.sequences.comma.certificates import (
+                    require_selected_child,
                 )
-            )
+
+                value = require_selected_child(
+                    source_index=payload.absolute_index,
+                    source_value=payload.value,
+                    children=children,
+                    certificate_version=owner.certificate_version,
+                    ledger=owner.ledger,
+                    max_work=owner.max_work,
+                    shared_cache=owner.shared_cache,
+                    memo=owner.certificate_memo,
+                )
             if value - payload.value != 10 * (payload.value % 10) + node.child_digit:
                 raise ValueError("comma action selected another child")
             self.ledger.bump(_comma_keys.COMMA_SCALAR_SEAM_STEPS)
@@ -655,7 +779,25 @@ class CommaImageAdapter(SourceBoundImageAdapter):
     def apply_primitive(
         self, action: Hashable, source: SourceImageView
     ) -> SourceImageCandidate:
-        return self._apply(self.arena.node(cast(CommaActionID, action)), source)
+        self._require_open_owner()
+        node = self.arena.node(cast(CommaActionID, action))
+        boundary_template = (
+            self.arena.boundary_template(node.boundary_source)
+            if node.kind == "global-boundary-return"
+            and node.boundary_source is not None
+            else None
+        )
+        candidate = self._apply(node, source, boundary_template=boundary_template)
+        self.validate_action_result(
+            node,
+            cast(CommaImagePayload, source.payload),
+            source.binding.extent,
+            cast(CommaImagePayload, candidate.payload),
+            candidate.extent,
+            candidate.boundary_ports,
+            template=boundary_template,
+        )
+        return candidate
 
     def apply_composite(
         self,
@@ -663,6 +805,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
         source: SourceImageView,
         demand: SourceImageDemand | None,
     ) -> SourceImageCandidate | None:
+        self._require_open_owner()
         del demand
         node = self.arena.node(cast(CommaActionID, action))
         return self._apply(node, source) if node.kind == "cycle" else None
@@ -674,6 +817,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
         before: SourceImageView,
         after: SourceImageView,
     ) -> SourceImageCandidate:
+        self._require_open_owner()
         node = self.arena.node(cast(CommaActionID, action))
         if node.kind == "sequence":
             initial = cast(CommaImagePayload, source.payload)
@@ -710,6 +854,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
         certificate binding.  A different headroom is admitted only after the
         complete cycle's strict seam guard has been checked at that source.
         """
+        self._require_open_owner()
         node = self.arena.node(cast(CommaActionID, action))
         if node.kind != "cycle":
             return None
@@ -751,6 +896,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
         cached_result: SourceImageView,
         source: SourceImageView,
     ) -> SourceImageCandidate:
+        self._require_open_owner()
         node = self.arena.node(cast(CommaActionID, action))
         if node.kind != "cycle":
             raise ValueError("comma relative transport requires an interior cycle")
@@ -815,6 +961,7 @@ class CommaImageAdapter(SourceBoundImageAdapter):
     def project(
         self, image: SourceImageView, demand: SourceImageDemand
     ) -> SourceImageProjection:
+        self._require_open_owner()
         payload = cast(CommaImagePayload, image.payload)
         if demand.name == "value" and not demand.parameters:
             return SourceImageProjection(payload.value)

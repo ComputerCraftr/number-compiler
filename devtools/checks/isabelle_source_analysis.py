@@ -12,12 +12,19 @@ from __future__ import annotations
 import hashlib
 import re
 from bisect import bisect_right
-from collections import Counter, defaultdict
+from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from devtools.checks.isabelle_references import (
+    ReferenceEvidence,
+    analyze_references,
+    combine_reference_evidence,
+    has_unsupported_antiquotation,
+    mask_ml_strings,
+)
 from devtools.checks.isabelle_syntax import (
     executable_text,
     mask_comments,
@@ -53,18 +60,14 @@ _NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_'.]*")
 _ATTR_RE = re.compile(r"\[([^\]]*)\]")
 _QUOTED_RE = re.compile(r'"(?:\\.|[^"\\])*"')
 _ML_FUN_RE = re.compile(
-    r"(?m)^[ \t]*fun\s+(?P<name>[A-Za-z_][A-Za-z0-9_']*)\s*(?P<args>[^=]*)="
+    r"(?m)^[ \t]*(?P<keyword>fun|and)\s+"
+    r"(?P<name>[A-Za-z_][A-Za-z0-9_']*)\s*(?P<args>[^=]*)="
 )
 _ML_BOUNDARY_RE = re.compile(
-    r"(?m)^[ \t]*(?:fun|val|structure|signature|datatype|end|local|in)\b"
+    r"(?m)^[ \t]*(?:fun|and|val|structure|signature|datatype|end|local|in)\b"
 )
-_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_'.]*")
 _ML_DYNAMIC_RE = re.compile(
     r"(?m)^\s*(?:ML(?:_val|_prf)?|ML_file|local_setup|setup|declaration|syntax)\b"
-)
-_ANTIQUOTE_RE = re.compile(
-    r"@\{\s*(?:thm|lemma|term|const|prop|attribute|fact)\s+"
-    r"([A-Za-z_][A-Za-z0-9_'.]*)"
 )
 _TOKEN_RE = re.compile(
     r"\\<[A-Za-z_][A-Za-z0-9_]*>|"
@@ -137,9 +140,20 @@ class IsabelleAnalysis:
     unused_candidates: tuple[IsabelleUnusedCandidate, ...]
     unknown_references: tuple[IsabelleUnknown, ...]
     unsupported_constructs: tuple[IsabelleUnknown, ...]
+    reference_evidence: ReferenceEvidence
 
     def as_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {
+            "declarations": tuple(asdict(item) for item in self.declarations),
+            "duplicates": tuple(asdict(item) for item in self.duplicates),
+            "unused_candidates": tuple(asdict(item) for item in self.unused_candidates),
+            "unknown_references": tuple(
+                asdict(item) for item in self.unknown_references
+            ),
+            "unsupported_constructs": tuple(
+                asdict(item) for item in self.unsupported_constructs
+            ),
+        }
 
 
 def _line(text: str, offset: int) -> int:
@@ -311,35 +325,18 @@ def _definition_declarations(text: str, path: Path) -> tuple[IsabelleDeclaration
     return tuple(declarations)
 
 
-def _mask_ml_strings(text: str) -> str:
-    output = list(text)
-    quoted = False
-    escaped = False
-    for index, char in enumerate(text):
-        if quoted:
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == '"':
-                quoted = False
-            elif char != "\n":
-                output[index] = " "
-        elif char == '"':
-            quoted = True
-    if quoted:
-        raise ValueError("unterminated ML string")
-    return "".join(output)
-
-
 def _line_indent(text: str, offset: int) -> int:
     line_start = text.rfind("\n", 0, offset) + 1
-    return len(text[line_start:offset]) - len(text[line_start:offset].lstrip(" \t"))
+    line_end = line_start
+    text_length = len(text)
+    while line_end < text_length and text[line_end] in " \t":
+        line_end += 1
+    return line_end - line_start
 
 
 def _ml_code(body: str) -> tuple[str, str]:
     comments = mask_comments(body)
-    return comments, _mask_ml_strings(comments)
+    return comments, mask_ml_strings(comments)
 
 
 def _ml_declarations(text: str, path: Path) -> tuple[IsabelleDeclaration, ...]:
@@ -350,7 +347,11 @@ def _ml_declarations(text: str, path: Path) -> tuple[IsabelleDeclaration, ...]:
         blocks = ((0, len(text), text),)
     for start, _end, body in blocks:
         code, locator = _ml_code(body)
-        all_matches = tuple(_ML_FUN_RE.finditer(locator))
+        all_matches = tuple(
+            match
+            for match in _ML_FUN_RE.finditer(locator)
+            if match.group("keyword") == "fun" or match.group("args").strip()
+        )
         if not all_matches:
             continue
         base_indent = min(_line_indent(locator, match.start()) for match in all_matches)
@@ -365,7 +366,7 @@ def _ml_declarations(text: str, path: Path) -> tuple[IsabelleDeclaration, ...]:
             if _line_indent(locator, match.start()) == base_indent
         )
         boundary_positions = tuple(boundary.start() for boundary in boundaries)
-        for match in matches:
+        for index, match in enumerate(matches):
             boundary_index = bisect_right(boundary_positions, match.start())
             body_end = (
                 boundary_positions[boundary_index]
@@ -373,11 +374,16 @@ def _ml_declarations(text: str, path: Path) -> tuple[IsabelleDeclaration, ...]:
                 else len(code)
             )
             block = code[match.end() : body_end]
+            mutual_group = match.group("keyword") == "and" or (
+                match.group("keyword") == "fun"
+                and index + 1 < len(matches)
+                and matches[index + 1].group("keyword") == "and"
+            )
             declarations.append(
                 IsabelleDeclaration(
                     path=str(path),
                     line=_line(text, start + match.start()),
-                    command="ML fun",
+                    command="ML mutual fun" if mutual_group else "ML fun",
                     name=match.group("name"),
                     body=match.group("args") + "=" + block,
                     attributes=(),
@@ -419,6 +425,8 @@ def _definition_equations(
 
 def _normalized_body(declaration: IsabelleDeclaration) -> tuple[str, ...] | None:
     if declaration.ml:
+        if declaration.command != "ML fun":
+            return None
         # ML functions use the same token alpha-normalizer after making a
         # synthetic equation.  The function name is the self symbol.
         term = f"{declaration.name} {declaration.body}"
@@ -456,38 +464,11 @@ def _normalized_body(declaration: IsabelleDeclaration) -> tuple[str, ...] | None
     return result if _nontrivial(result) else None
 
 
-def _reference_counts(text: str) -> Counter[str]:
-    counts: Counter[str] = Counter()
-    for token in _IDENTIFIER_RE.findall(text):
-        counts[token] += 1
-        if "." in token:
-            counts[token.rsplit(".", 1)[-1]] += 1
-    return counts
-
-
-def _references(text: str, declarations: Iterable[IsabelleDeclaration]) -> set[str]:
-    clean = executable_text(text)
-    counts = _reference_counts(clean)
-    references: set[str] = set()
-    for declaration in declarations:
-        own = max(
-            1,
-            _reference_counts(declaration.body).get(declaration.name, 0),
-        )
-        if counts[declaration.name] > own:
-            references.add(declaration.name)
-    references.update(
-        match.group(1) for match in _ANTIQUOTE_RE.finditer(executable_text(text))
-    )
-    for match in re.finditer(
-        r"(?m)^\s*(?:declare|lemmas|export_code|code_thms)\b([^\n]*)",
-        clean,
-    ):
-        references.update(_NAME_RE.findall(match.group(1)))
-    return references
-
-
-def _unknowns(text: str, path: Path) -> tuple[IsabelleUnknown, ...]:
+def _unknowns(
+    text: str,
+    path: Path,
+    reference_evidence: ReferenceEvidence,
+) -> tuple[IsabelleUnknown, ...]:
     unknowns: list[IsabelleUnknown] = []
     clean = executable_text(text)
     for match in unquoted_matches(_ML_DYNAMIC_RE, clean):
@@ -498,9 +479,19 @@ def _unknowns(text: str, path: Path) -> tuple[IsabelleUnknown, ...]:
                 reason="dynamic Isabelle/ML command; lexical references are incomplete",
             )
         )
-    if re.search(r"@\{\s*thms\b", clean) or (
-        "@{" in clean and not _ANTIQUOTE_RE.search(clean)
-    ):
+    unknowns.extend(
+        IsabelleUnknown(
+            path=lookup.path,
+            line=lookup.line,
+            reason=(
+                f"dynamic theorem lookup may reference {lookup.name!r}"
+                if lookup.name is not None
+                else "dynamic theorem lookup has a nonliteral name"
+            ),
+        )
+        for lookup in reference_evidence.dynamic_lookups
+    )
+    if has_unsupported_antiquotation(clean):
         unknowns.append(
             IsabelleUnknown(
                 path=str(path),
@@ -564,6 +555,18 @@ def _unsupported(
             )
     for declaration in declarations:
         if not declaration.ml:
+            continue
+        if declaration.command == "ML mutual fun":
+            findings.append(
+                IsabelleUnknown(
+                    path=str(path),
+                    line=declaration.line,
+                    reason=(
+                        "mutually recursive ML function group is inventoried, "
+                        "but group-level equivalence is not modeled"
+                    ),
+                )
+            )
             continue
         if (
             any(
@@ -637,31 +640,61 @@ def duplicate_groups(
     return tuple(result)
 
 
+def _unused_candidate_review(
+    declaration: IsabelleDeclaration,
+    dynamic_names: frozenset[str],
+    unresolved_dynamic_name: bool,
+    uncertain_context: bool,
+) -> tuple[str, str]:
+    theorem = declaration.command in {
+        "lemma",
+        "theorem",
+        "corollary",
+        "proposition",
+    }
+    if declaration.name in dynamic_names or (unresolved_dynamic_name and theorem):
+        return "dynamic theorem lookup may reference this declaration", "dynamic-review"
+    if declaration.exported:
+        return "exported theorem has no lexical incoming reference", "exported-review"
+    if declaration.ml or uncertain_context:
+        return (
+            "dynamic or unknown context; no lexical incoming reference",
+            "dynamic-review",
+        )
+    return "no lexical reference outside its declaration", "review"
+
+
+def _unused_candidate(
+    declaration: IsabelleDeclaration,
+    dynamic_names: frozenset[str],
+    unresolved_dynamic_name: bool,
+    uncertain_context: bool,
+) -> IsabelleUnusedCandidate:
+    reason, confidence = _unused_candidate_review(
+        declaration, dynamic_names, unresolved_dynamic_name, uncertain_context
+    )
+    return IsabelleUnusedCandidate(declaration, reason, confidence)
+
+
 def analyze_isabelle_source(
     text: str, path: Path | str = "<memory>", *, include_duplicates: bool = True
 ) -> IsabelleAnalysis:
     source_path = Path(path)
     declarations = extract_isabelle_declarations(text, source_path)
-    refs = _references(text, declarations)
-    unknowns = _unknowns(text, source_path)
+    reference_evidence = analyze_references(text, source_path, declarations)
+    refs = reference_evidence.referenced_names(
+        declaration.name for declaration in declarations
+    )
+    unknowns = _unknowns(text, source_path, reference_evidence)
     unsupported = _unsupported(text, source_path, declarations)
+    dynamic_names = reference_evidence.dynamic_lookup_names
+    unresolved_dynamic_name = reference_evidence.unresolved_dynamic_lookup
     candidates = tuple(
-        IsabelleUnusedCandidate(
-            declaration=declaration,
-            reason=(
-                "exported theorem has no lexical incoming reference"
-                if declaration.exported
-                else "dynamic or unknown context; no lexical incoming reference"
-                if declaration.ml or unknowns
-                else "no lexical reference outside its declaration"
-            ),
-            confidence=(
-                "exported-review"
-                if declaration.exported
-                else "dynamic-review"
-                if declaration.ml or unknowns
-                else "review"
-            ),
+        _unused_candidate(
+            declaration,
+            dynamic_names,
+            unresolved_dynamic_name,
+            bool(unknowns),
         )
         for declaration in declarations
         if declaration.name not in refs
@@ -679,30 +712,8 @@ def analyze_isabelle_source(
         unused_candidates=candidates,
         unknown_references=unknowns,
         unsupported_constructs=unsupported,
+        reference_evidence=reference_evidence,
     )
-
-
-def _global_references(
-    source_records: Iterable[tuple[Path, str, IsabelleAnalysis]],
-    names: set[str],
-) -> set[str]:
-    references: set[str] = set()
-    for _, text, analysis in source_records:
-        clean = executable_text(text)
-        counts = _reference_counts(clean)
-        own_counts: Counter[str] = Counter()
-        for declaration in analysis.declarations:
-            own_counts[declaration.name] += max(
-                1,
-                _reference_counts(declaration.body).get(declaration.name, 0),
-            )
-        references.update(
-            name for name in counts.keys() & names if counts[name] > own_counts[name]
-        )
-        references.update(
-            match.group(1) for match in _ANTIQUOTE_RE.finditer(executable_text(text))
-        )
-    return references
 
 
 def analyze_isabelle_tree(
@@ -718,7 +729,7 @@ def analyze_isabelle_tree(
     assembling a larger inventory; no analysis survives this call.
     """
     declarations: list[IsabelleDeclaration] = []
-    source_records: list[tuple[Path, str, IsabelleAnalysis]] = []
+    source_analyses_for_tree: list[IsabelleAnalysis] = []
     root = root.resolve()
     paths = authored_files(root) if source_paths is None else source_paths
     for path in sorted(
@@ -747,41 +758,35 @@ def analyze_isabelle_tree(
             if cached is not None
             else analyze_isabelle_source(text, path, include_duplicates=False)
         )
-        source_records.append((path, text, analysis))
+        source_analyses_for_tree.append(analysis)
         declarations.extend(analysis.declarations)
     all_duplicates = duplicate_groups(declarations)
     names: dict[str, list[IsabelleDeclaration]] = defaultdict(list)
     for declaration in declarations:
         names[declaration.name].append(declaration)
-    references = _global_references(source_records, set(names))
+    reference_evidence = combine_reference_evidence(
+        analysis.reference_evidence for analysis in source_analyses_for_tree
+    )
+    references = reference_evidence.referenced_names(names)
     unknowns = [
         unknown
-        for _, _, analysis in source_records
+        for analysis in source_analyses_for_tree
         for unknown in analysis.unknown_references
     ]
     unsupported = [
         unknown
-        for _, _, analysis in source_records
+        for analysis in source_analyses_for_tree
         for unknown in analysis.unsupported_constructs
     ]
     unknown_paths = {item.path for item in (*unknowns, *unsupported)}
+    dynamic_names = reference_evidence.dynamic_lookup_names
+    unresolved_dynamic_name = reference_evidence.unresolved_dynamic_lookup
     candidates = tuple(
-        IsabelleUnusedCandidate(
-            declaration=declaration,
-            reason=(
-                "exported theorem has no lexical incoming reference"
-                if declaration.exported
-                else "dynamic or unknown context; no lexical incoming reference"
-                if declaration.ml or str(declaration.path) in unknown_paths
-                else "no lexical reference outside its declaration"
-            ),
-            confidence=(
-                "exported-review"
-                if declaration.exported
-                else "dynamic-review"
-                if declaration.ml or str(declaration.path) in unknown_paths
-                else "review"
-            ),
+        _unused_candidate(
+            declaration,
+            dynamic_names,
+            unresolved_dynamic_name,
+            str(declaration.path) in unknown_paths,
         )
         for declaration in declarations
         if declaration.name not in references
@@ -800,6 +805,7 @@ def analyze_isabelle_tree(
         unused_candidates=candidates,
         unknown_references=tuple(unknowns),
         unsupported_constructs=tuple(unsupported),
+        reference_evidence=reference_evidence,
     )
 
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import replace
+from pathlib import Path
+from threading import Event, Thread
 from typing import cast
 
 import pytest
@@ -13,7 +15,7 @@ from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageDemand,
 )
 from number_compiler.resources.stores import LedgerList
-from number_compiler.sequences.comma import certificates
+from number_compiler.sequences.comma import certificates, future_provider
 from number_compiler.sequences.comma.action_arena import CommaActionID
 from number_compiler.sequences.comma.arithmetic import (
     DecimalSector,
@@ -23,15 +25,17 @@ from number_compiler.sequences.comma.arithmetic import (
     large_sector_children,
     safe_complete_cycles,
 )
-from number_compiler.sequences.comma.image_adapter import (
+from number_compiler.sequences.comma.boundary_receipt import (
     CommaImagePayload,
+    CommaOccurrenceRecord,
+)
+from number_compiler.sequences.comma.image_adapter import (
     CommaOccurrenceID,
     CommaSource,
 )
 from number_compiler.sequences.comma.power import (
     FIRST_FORK_INDEX,
     FIRST_FORK_VALUE,
-    CommaOccurrenceRecord,
     CommaTerm,
     UnresolvedCommaBranch,
 )
@@ -494,3 +498,126 @@ def test_certificate_budget_refusal_is_not_a_failed_certificate() -> None:
     assert report.comma.certificate_budget_refusals == 1
     assert report.comma.budget_refusals == 1
     assert "comma_certificate_failed_work" not in term.ledger.counters
+
+
+def test_closed_term_queries_and_provider_staging_refuse_without_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cached = CommaTerm(1)
+    assert cached.materialize() == 20
+    cached_step = cached.arena.step(1)
+    cached.close()
+    assert object.__getattribute__(cached, "_value") is None
+    cached_snapshot = cached.ledger.snapshot()
+    cached_source = CommaSource(20, cached.certificate_version)
+    stage_provider = cast(
+        Callable[[Path], None],
+        object.__getattribute__(cached, "_stage_global_future_provider_artifact"),
+    )
+
+    def assert_cached_refusal(operation: Callable[[], object]) -> None:
+        with pytest.raises(RuntimeError, match="comma term is closing or closed"):
+            operation()
+        assert cached.ledger.snapshot() == cached_snapshot
+        assert cached.scheduler.published_source_image_core is None
+
+    for operation in (
+        cached.resolve_index,
+        cached.materialize,
+        cached.width,
+        lambda: cached.digit(0),
+        cached.clock,
+        cached.tropical,
+        lambda: _publish(cached, cached_step),
+        lambda: cached.adapter.validate_source(cached_source),
+        lambda: cached.adapter.admit_source(cached_source),
+        lambda: stage_provider(Path("closed-comma-provider.json")),
+    ):
+        assert_cached_refusal(operation)
+
+    uncached = CommaTerm(2)
+    uncached.close()
+    assert object.__getattribute__(uncached, "_value") is None
+    uncached_snapshot = uncached.ledger.snapshot()
+    monkeypatch.setattr(
+        future_provider,
+        "registered_global_release_artifact_sha256",
+        lambda: "a" * 64,
+    )
+
+    def assert_uncached_refusal(operation: Callable[[], object]) -> None:
+        with pytest.raises(RuntimeError, match="comma term is closing or closed"):
+            operation()
+        assert uncached.ledger.snapshot() == uncached_snapshot
+        assert uncached.scheduler.published_source_image_core is None
+
+    assert_uncached_refusal(uncached.resolve_index)
+    assert_uncached_refusal(uncached.materialize)
+    assert_uncached_refusal(uncached.width)
+    assert_uncached_refusal(lambda: uncached.digit(0))
+    assert_uncached_refusal(uncached.global_future_provider_for_prefix_admission)
+    assert_uncached_refusal(uncached.require_certified_public_prefix)
+
+
+def test_close_on_another_thread_refuses_during_suspended_digit_stream() -> None:
+    term = CommaTerm(2)
+    digits = term.iter_digits()
+    next(digits)
+    attempted = Event()
+    completed = Event()
+    errors: list[RuntimeError] = []
+
+    def close_during_stream() -> None:
+        attempted.set()
+        try:
+            term.close()
+        except RuntimeError as error:
+            errors.append(error)
+        finally:
+            completed.set()
+
+    closer = Thread(target=close_during_stream, daemon=True)
+    closer.start()
+    completed_while_suspended = False
+    try:
+        assert attempted.wait(1)
+        completed_while_suspended = completed.wait(1)
+    finally:
+        digits.close()
+        closer.join(timeout=1)
+
+    assert not closer.is_alive(), "close worker remained blocked after stream cleanup"
+    assert completed_while_suspended, "close blocked on a suspended digit stream"
+    assert len(errors) == 1
+    assert str(errors[0]) == "cannot close comma during a digit stream"
+    assert term.materialize() > 0
+    term.close()
+
+
+def test_failed_comma_close_quarantines_queries_until_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    term = CommaTerm(2)
+
+    def fail_disposal_once(_scheduler: object) -> None:
+        raise RuntimeError("injected comma scheduler disposal failure")
+
+    with monkeypatch.context() as patcher:
+        patcher.setattr(
+            type(term.scheduler), "dispose_source_images", fail_disposal_once
+        )
+        with pytest.raises(
+            RuntimeError, match="injected comma scheduler disposal failure"
+        ):
+            term.close()
+        snapshot = term.ledger.snapshot()
+        with pytest.raises(RuntimeError, match="comma term is closing or closed"):
+            term.resolve_index()
+        with pytest.raises(RuntimeError, match="comma term is closing or closed"):
+            term.global_future_provider_for_prefix_admission()
+        assert term.ledger.snapshot() == snapshot
+
+    term.close()
+    assert term.scheduler.published_source_image_core is None
+    with pytest.raises(RuntimeError, match="comma term is closing or closed"):
+        term.materialize()

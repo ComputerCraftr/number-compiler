@@ -30,7 +30,12 @@ from number_compiler.sequences.comma.arithmetic import (
 from number_compiler.sequences.comma.boundary_chart import (
     PERIOD,
     ZERO_WEIGHT,
+    BoundaryChart,
+    ChartSegment,
+    ChartWeight,
     chart_moves,
+    chart_step,
+    validate_chart,
 )
 from number_compiler.sequences.comma.boundary_quotient import (
     ZERO_AFFINE_WEIGHT,
@@ -41,6 +46,7 @@ from number_compiler.sequences.comma.boundary_quotient import (
     SectorFragment,
     affine_component_signature,
     boundary_state_signature,
+    chart_segment_signature,
     macro_template_header,
     sector_fragment_signature,
 )
@@ -164,17 +170,39 @@ def _indexed_macro(
     endpoint: _Affine,
     children: tuple[BoundaryState, ...],
     fragments: list[SectorFragment],
+    chart_segments: list[ChartSegment],
+    terminal_chart: BoundaryChart,
     charge: Callable[[int], None] | None,
     charge_bits: Callable[[int], None] | None,
 ) -> MacroTemplate:
+    if terminal_chart.kind != "near" or terminal_chart.delta != delta or delta < 0:
+        raise AssertionError("comma issuer received a malformed terminal chart")
+    validate_chart(source.exponent_residue, terminal_chart)
+    if charge is not None:
+        charge(1)
+    terminal_move = chart_step(
+        source.exponent_residue,
+        terminal_chart,
+        charge_bits=charge_bits,
+    )
+    if (
+        terminal_move.next_chart is not None
+        or terminal_move.terminal_chart != terminal_chart
+        or terminal_move.fork_a != destination_a
+        or (outcome == "fork") != (terminal_move.fork_a is not None)
+    ):
+        raise AssertionError("comma issuer terminal chart disagrees with its outcome")
     prefix_weights = [ZERO_AFFINE_WEIGHT]
     prefix_displacements = [ZERO_AFFINE_WEIGHT]
     fragment_signatures: list[tuple[object, ...]] = []
     weight_signatures = [affine_component_signature(ZERO_AFFINE_WEIGHT)]
     displacement_signatures = [affine_component_signature(ZERO_AFFINE_WEIGHT)]
+    chart_segment_signatures: list[tuple[object, ...]] = []
     total_weight = _ZERO_AFFINE
     total_displacement = _ZERO_AFFINE
-    for fragment in fragments:
+    if len(chart_segments) != len(fragments):
+        raise AssertionError("comma chart and sector fragments are misaligned")
+    for fragment, chart_segment in zip(fragments, chart_segments, strict=True):
         if charge is not None:
             charge(1)
         if charge_bits is not None:
@@ -224,6 +252,7 @@ def _indexed_macro(
         prefix_weights.append(next_weight)
         prefix_displacements.append(next_displacement)
         fragment_signatures.append(fragment_signature)
+        chart_segment_signatures.append(chart_segment_signature(chart_segment))
         weight_signatures.append(affine_component_signature(next_weight))
         displacement_signatures.append(affine_component_signature(next_displacement))
         if charge_bits is not None:
@@ -269,12 +298,15 @@ def _indexed_macro(
         tuple(fragments),
         tuple(prefix_weights),
         tuple(prefix_displacements),
+        tuple(chart_segments),
+        terminal_chart,
     )
     seal = (
         macro_template_header(template),
         tuple(fragment_signatures),
         tuple(weight_signatures),
         tuple(displacement_signatures),
+        tuple(chart_segment_signatures),
     )
     object.__setattr__(template, "_component_seal", seal)
     return template
@@ -296,6 +328,8 @@ class _MacroPublisher(Protocol[_MacroResult_co]):
         endpoint: _Affine,
         children: tuple[BoundaryState, ...],
         fragments: list[SectorFragment],
+        chart_segments: list[ChartSegment],
+        terminal_chart: BoundaryChart,
         charge: Callable[[int], None] | None,
         charge_bits: Callable[[int], None] | None,
     ) -> _MacroResult_co: ...
@@ -397,6 +431,8 @@ class _IndexedMacroPublisher:
         endpoint: _Affine,
         children: tuple[BoundaryState, ...],
         fragments: list[SectorFragment],
+        chart_segments: list[ChartSegment],
+        terminal_chart: BoundaryChart,
         charge: Callable[[int], None] | None,
         charge_bits: Callable[[int], None] | None,
     ) -> MacroTemplate:
@@ -409,6 +445,8 @@ class _IndexedMacroPublisher:
             endpoint,
             children,
             fragments,
+            chart_segments,
+            terminal_chart,
             charge,
             charge_bits,
         )
@@ -427,11 +465,14 @@ class _CompletedReturnPublisher:
         endpoint: _Affine,
         children: tuple[BoundaryState, ...],
         fragments: list[SectorFragment],
+        chart_segments: list[ChartSegment],
+        terminal_chart: BoundaryChart,
         charge: Callable[[int], None] | None,
         charge_bits: Callable[[int], None] | None,
     ) -> CompletedMacroReturn:
-        if fragments:
+        if fragments or chart_segments:
             raise AssertionError("compact macro publication retained path fragments")
+        del terminal_chart
         return _publish_completed_return(
             source, outcome, delta, destination_a, weight, endpoint, children
         )
@@ -459,20 +500,21 @@ def _construct_macro_with_publisher(
     weight = _constant(0)
     displacement = _ZERO_AFFINE
     fragments: list[SectorFragment] = []
+    chart_segments: list[ChartSegment] = []
     relative_scale = 1
     previous_delta = 0
-    near_run: tuple[int, int, int, int] | None = None
+    near_run: tuple[BoundaryChart, int, int, int, BoundaryChart] | None = None
 
     def flush_near() -> None:
         nonlocal near_run, weight, displacement
         if near_run is not None:
-            leading, digit, steps, increment = near_run
+            source_chart, digit, steps, increment, target_chart = near_run
             weight = weight.plus(_constant(steps))
             displacement = displacement.plus(_constant(increment))
             if publisher.retain_fragments:
                 fragments.append(
                     SectorFragment(
-                        leading,
+                        source_chart.leading,
                         digit,
                         AffineWeight(0, 0, 1),
                         0,
@@ -480,6 +522,14 @@ def _construct_macro_with_publisher(
                         0,
                         steps,
                         increment,
+                    )
+                )
+                chart_segments.append(
+                    ChartSegment(
+                        source_chart,
+                        target_chart,
+                        ChartWeight(0, 0, steps, 1),
+                        ChartWeight(0, 0, increment, 1),
                     )
                 )
             near_run = None
@@ -547,6 +597,8 @@ def _construct_macro_with_publisher(
             ).plus(displacement)
             if endpoint_displacement != endpoint:
                 raise AssertionError("comma macro endpoint differs from construction")
+            if publisher.retain_fragments and len(chart_segments) != len(fragments):
+                raise AssertionError("comma terminal chart lost fragment alignment")
             return publisher.publish(
                 source,
                 "landmine" if a is None else "fork",
@@ -556,6 +608,8 @@ def _construct_macro_with_publisher(
                 endpoint,
                 children,
                 fragments,
+                chart_segments,
+                chart,
                 charge,
                 charge_bits,
             )
@@ -588,16 +642,33 @@ def _construct_macro_with_publisher(
                     "comma Near run weight differs from phase semantics"
                 )
             if near_run is None:
-                near_run = (f, digit, steps_added, move.literal_increment)
+                near_run = (
+                    chart,
+                    digit,
+                    steps_added,
+                    move.literal_increment,
+                    move.next_chart,
+                )
             else:
-                leading, entering_digit, steps, increment = near_run
-                if leading != f or (entering_digit + steps * f) % 10 != digit:
+                (
+                    source_chart,
+                    entering_digit,
+                    steps,
+                    increment,
+                    previous_target,
+                ) = near_run
+                if (
+                    source_chart.leading != f
+                    or previous_target != chart
+                    or (entering_digit + steps * f) % 10 != digit
+                ):
                     raise AssertionError("comma Near run lost its phase binding")
                 near_run = (
-                    leading,
+                    source_chart,
                     entering_digit,
                     steps + steps_added,
                     increment + move.literal_increment,
+                    move.next_chart,
                 )
             continue
         flush_near()
@@ -626,6 +697,19 @@ def _construct_macro_with_publisher(
                         0,
                     )
                 )
+                chart_segments.append(
+                    ChartSegment(
+                        chart,
+                        move.next_chart,
+                        move.weight,
+                        ChartWeight(
+                            1,
+                            chart.delta,
+                            -chart.coordinate - move.next_chart.coordinate,
+                            1,
+                        ),
+                    )
+                )
         else:
             digit = (-x) % 10
             displacement = displacement.plus(_constant(move.literal_increment))
@@ -640,6 +724,14 @@ def _construct_macro_with_publisher(
                         0,
                         1,
                         move.literal_increment,
+                    )
+                )
+                chart_segments.append(
+                    ChartSegment(
+                        chart,
+                        move.next_chart,
+                        move.weight,
+                        ChartWeight(0, 0, move.literal_increment, 1),
                     )
                 )
     raise AssertionError("comma chart returned without a terminal outcome")

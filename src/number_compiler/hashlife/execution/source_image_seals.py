@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Hashable
 from dataclasses import dataclass, fields, is_dataclass
-from typing import Self, cast
+from typing import Generic, Protocol, Self, TypeVar, cast
 
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
 from number_compiler.arithmetic.contracts.exact_equality import (
@@ -23,6 +23,11 @@ from number_compiler.resources.stores import LedgerDict, LedgerList
 
 _FieldAnchor = tuple[type[object], object | None]
 _Guard = tuple[object, type[object], tuple[str, ...], tuple[object, ...]]
+NodeT = TypeVar("NodeT")
+
+
+class SourceImageIndexRollback(Protocol):
+    def __call__(self) -> None: ...
 
 
 def _primitive(value: object) -> bool:
@@ -394,6 +399,68 @@ class PublicationSeals:
         )
 
 
+class SourceImagePublicationTransaction(Generic[NodeT]):
+    """Rollback one provisional source-image node, seal, and index reservation.
+
+    The scheduler supplies its typed stores and index cleanup operation; this
+    owner coordinates only the common seal/node/resource and metric lifecycle.
+    """
+
+    def __init__(
+        self,
+        ledger: ResourceLedger,
+        nodes: LedgerList[NodeT],
+        seals: PublicationSeals,
+        node_count_before: int,
+        seal_count_before: int,
+        reservations: tuple[tuple[int, int, int], ...],
+        rollback_indexes: SourceImageIndexRollback,
+    ) -> None:
+        self._ledger = ledger
+        self._nodes = nodes
+        self._seals = seals
+        self._node_count_before = node_count_before
+        self._seal_count_before = seal_count_before
+        self._reservations = reservations
+        self._rollback_indexes = rollback_indexes
+        self._finished = False
+
+    def commit_metrics(self, counters: tuple[str, ...]) -> None:
+        if self._finished:
+            raise RuntimeError("source image publication is already finished")
+        before = {counter: self._ledger.counters.get(counter) for counter in counters}
+        try:
+            for counter in counters:
+                self._ledger.bump(counter)
+        except BaseException:
+            for counter, value in before.items():
+                if value is None:
+                    self._ledger.counters.pop(counter, None)
+                else:
+                    self._ledger.counters[counter] = value
+            raise
+        self._finished = True
+
+    def rollback(self) -> None:
+        if self._finished:
+            return
+        if len(self._nodes) not in (
+            self._node_count_before,
+            self._node_count_before + 1,
+        ) or len(self._seals.images) not in (
+            self._seal_count_before,
+            self._seal_count_before + 1,
+        ):
+            raise RuntimeError("source image rollback found an unexpected suffix")
+        self._rollback_indexes()
+        if len(self._seals.images) > self._seal_count_before:
+            self._seals.pop_image()
+        self._nodes.rollback_unpublished(self._node_count_before)
+        for owner, entries, nodes in self._reservations:
+            self._ledger.release(owner, entries=entries, nodes=nodes)
+        self._finished = True
+
+
 def publication_seal(value: object, ledger: ResourceLedger) -> PublicationSeal:
     """Capture every mutable-via-reflection object once, without hash authority.
 
@@ -509,6 +576,8 @@ def publication_matches_readonly(value: object, seal: PublicationSeal) -> bool:
 
 __all__ = [
     "PublicationSeal",
+    "SourceImageIndexRollback",
+    "SourceImagePublicationTransaction",
     "TypedPayloadKey",
     "require_immutable_key",
     "typed_payload_equal",

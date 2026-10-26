@@ -21,12 +21,12 @@ from number_compiler.sequences.double_reverse.stencil_moore import (
     stencil_cell,
     stencil_from_ports,
 )
+from number_compiler.sequences.double_reverse.temporal_alternating_carry import (
+    TwoStepCarryCell,
+)
 from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
     IssuedDoubleReverseSourcePrefix,
     source_prefix_binding,
-)
-from number_compiler.sequences.double_reverse.temporal_square import (
-    DoubleReverseTwoStepMachine,
 )
 
 
@@ -73,13 +73,14 @@ def test_all_cell_and_two_step_transducer_ports_are_identical() -> None:
         ) % 10
         assert stencil_cell(left, center, right) == expected
         assert stencil_from_ports(int(left >= 5), center, right % 5) == expected
-        assert DoubleReverseTwoStepMachine.emit(int(left >= 5), center, right % 5) == (
-            expected,
+        right_carry = int((2 * (right % 5) + int(center >= 5)) % 10 >= 5)
+        assert (
+            TwoStepCarryCell.apply(center, int(left >= 5), right_carry).digit
+            == expected
         )
     for high, center in product((0, 1), range(10)):
-        assert DoubleReverseTwoStepMachine.emit(high, center, 10) == (
-            stencil_from_ports(high, center, 0),
-        )
+        sentinel_zero = TwoStepCarryCell.apply(center, high, 0).digit
+        assert sentinel_zero == stencil_from_ports(high, center, 0)
 
 
 @pytest.mark.parametrize("seed", (173488, 1768742, 4957342, 174388, 1763388))

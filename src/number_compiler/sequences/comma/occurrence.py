@@ -18,8 +18,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from .arithmetic import comma_children, cycle_transfer, decimal_sector
-from .boundary_chart import PERIOD
+from .arithmetic import comma_children
+from .boundary_carry_clock import SymbolicEntryCarryClock, symbolic_entry_carry_clock
+from .boundary_chart import (
+    PERIOD,
+    initial_chart,
+)
+from .boundary_occurrence_chart import (
+    macro_prefix_arithmetic,
+    source_coordinates,
+    sum_exact,
+)
 from .boundary_quotient import (
     BoundaryState,
     MacroTemplate,
@@ -29,29 +38,15 @@ from .boundary_quotient import (
 )
 from .carry_generator import (
     BitsCharge,
-    BoundC1Return,
     C1Phase,
     WorkCharge,
-    source_bound_return,
+    charge_carry_work,
 )
 from .weighted_return import WeightedBoundaryAction
 
 _PREFIX_RETURN_SEAL = object()
 _ORDERED_MACRO_CHILDREN_SEAL = object()
 _MACRO_CHILD_OCCURRENCE_SEAL = object()
-
-
-def _charge(
-    charge_work: WorkCharge | None,
-    charge_bits: BitsCharge | None,
-    work: int,
-    *operands: int,
-    extra_bits: int = 0,
-) -> None:
-    if charge_work is not None:
-        charge_work(work)
-    if charge_bits is not None:
-        charge_bits(sum(abs(value).bit_length() for value in operands) + extra_bits)
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,7 +124,7 @@ class BoundaryOccurrence:
     ) -> int:
         """Derive the exact literal value from the authenticated occurrence."""
         self.validate()
-        _charge(charge_work, charge_bits, 1, self.exponent)
+        charge_carry_work(charge_work, charge_bits, 1, self.exponent)
         return self.state.value(self.exponent, charge_bits=charge_bits)
 
     def c1_phase(
@@ -139,7 +134,7 @@ class BoundaryOccurrence:
         charge_bits: BitsCharge | None = None,
     ) -> C1Phase:
         self.validate()
-        _charge(charge_work, charge_bits, 1, self.state.a, self.exponent)
+        charge_carry_work(charge_work, charge_bits, 1, self.state.a, self.exponent)
         sector = self.state.a - int(self.state.kind == "N")
         suffix = 99 if self.state.kind == "N" else 0
         return C1Phase.from_suffix(sector, suffix)
@@ -152,7 +147,7 @@ class BoundaryOccurrence:
     ) -> int:
         self.validate()
         scale_exponent = self.exponent - 2
-        _charge(
+        charge_carry_work(
             charge_work,
             charge_bits,
             1,
@@ -170,203 +165,27 @@ class BoundaryOccurrence:
         charge_bits: BitsCharge | None = None,
     ) -> int:
         self.validate()
-        _charge(charge_work, charge_bits, 1, self.state.a)
+        charge_carry_work(charge_work, charge_bits, 1, self.state.a)
         return 99 if self.state.kind == "N" else 0
 
-
-def _source_coordinates(
-    source: BoundaryOccurrence,
-    *,
-    charge_work: WorkCharge | None,
-    charge_bits: BitsCharge | None,
-) -> tuple[int, int, int, int, C1Phase]:
-    """Return transient ``value, scale, high, low, phase`` projections."""
-    value = source.value(charge_work=charge_work, charge_bits=charge_bits)
-    _charge(charge_work, charge_bits, 1, value, source.state.a, extra_bits=1)
-    scaled_value = value + int(source.state.kind == "N")
-    scale, remainder = divmod(scaled_value, source.state.a)
-    if remainder or scale <= 0:
-        raise AssertionError("boundary occurrence has no exact decimal scale")
-    sector = source.state.a - int(source.state.kind == "N")
-    phase = C1Phase.from_suffix(sector, value % 100)
-    return value, scale, value // 100, value % 100, phase
-
-
-def _next_fragment_value(
-    value: int,
-    fragment_leading: int,
-    entering_digit: int,
-    increment: int,
-    *,
-    charge_work: WorkCharge | None,
-    charge_bits: BitsCharge | None,
-) -> tuple[int, int]:
-    """Authenticate and apply one literal chart edge, including its c1 carry."""
-    _charge(charge_work, charge_bits, 1, value, increment, extra_bits=1)
-    sector = decimal_sector(value)
-    if sector.leading != fragment_leading or sector.digit != entering_digit:
-        raise ValueError("literal macro seam has another physical source phase")
-    if type(increment) is not int or increment <= 0:
-        raise ValueError("literal macro seam needs a positive increment")
-    target = value + increment
-    _charge(charge_work, charge_bits, 1, target, value, extra_bits=1)
-    if comma_children(value) != (target,):
-        raise ValueError("literal macro seam is not the unique comma child")
-    carry = target // 100 - value // 100
-    if carry not in (0, 1):
-        raise AssertionError("one literal comma edge has an invalid c1 carry")
-    return target, carry
-
-
-def _macro_prefix_arithmetic(
-    source: BoundaryOccurrence,
-    template: MacroTemplate,
-    *,
-    check_endpoint: bool,
-    charge_work: WorkCharge | None,
-    charge_bits: BitsCharge | None,
-) -> tuple[int, int, int, int, int]:
-    """Accumulate exact fixed-sector returns and literal chart seams."""
-    value, scale, source_high, _source_low, _source_phase = _source_coordinates(
-        source, charge_work=charge_work, charge_bits=charge_bits
-    )
-    if boundary_state_signature(template.source) != boundary_state_signature(
-        source.state
-    ):
-        raise ValueError("macro template is bound to another boundary occurrence")
-
-    total_steps = 0
-    total_c1 = 0
-    for fragment in template.sector_fragments:
-        if type(fragment.period) is not int or fragment.period < 0:
-            raise ValueError("macro fragment has an invalid C1 period")
-        _charge(charge_work, charge_bits, 1, value, scale)
-        physical_sector = decimal_sector(value)
-        if (
-            physical_sector.leading != fragment.leading
-            or physical_sector.digit != fragment.entering_digit
-        ):
-            raise ValueError("macro fragment is not bound to its physical phase")
-
-        phase = C1Phase.from_suffix(fragment.leading, value % 100)
-        if fragment.period:
-            transfer = cycle_transfer(fragment.leading, fragment.entering_digit)
-            if (
-                fragment.period != transfer.period
-                or fragment.displacement != transfer.displacement
-                or fragment.maximum_guard != transfer.maximum_guard
-            ):
-                raise AssertionError("macro cycle fragment differs from its owner")
-            cycles = fragment.complete_cycles.evaluate_at_scale(
-                scale, charge_bits=charge_bits
-            )
-            if cycles < 0:
-                raise AssertionError("macro cycle fragment has negative duration")
-            _charge(
-                charge_work,
-                charge_bits,
-                1,
-                cycles,
-                transfer.period,
-                extra_bits=1,
-            )
-            steps = cycles * transfer.period
-            bound = source_bound_return(
-                value,
-                phase,
-                steps,
-                charge_work=charge_work,
-                charge_bits=charge_bits,
-            )
-            displacement = bound.action.displacement(
-                charge_work=charge_work,
-                charge_bits=charge_bits,
-            )
-            _charge(
-                charge_work,
-                charge_bits,
-                1,
-                cycles,
-                transfer.displacement,
-                extra_bits=1,
-            )
-            if displacement != cycles * transfer.displacement:
-                raise AssertionError("powered C1 return changed its cycle displacement")
-            value = _bound_target_value(bound, charge_work, charge_bits)
-            total_c1 = _sum_exact(total_c1, bound.count, charge_work, charge_bits)
-        elif fragment.literal_steps > 1:
-            if fragment.literal_increment < 0:
-                raise AssertionError("literal macro fragment has negative displacement")
-            bound = source_bound_return(
-                value,
-                phase,
-                fragment.literal_steps,
-                charge_work=charge_work,
-                charge_bits=charge_bits,
-            )
-            displacement = bound.action.displacement(
-                charge_work=charge_work,
-                charge_bits=charge_bits,
-            )
-            if displacement != fragment.literal_increment:
-                raise AssertionError("powered Near fragment changed its displacement")
-            value = _bound_target_value(bound, charge_work, charge_bits)
-            total_c1 = _sum_exact(total_c1, bound.count, charge_work, charge_bits)
-            steps = fragment.literal_steps
-        elif fragment.literal_steps == 1:
-            value, carry = _next_fragment_value(
-                value,
-                fragment.leading,
-                fragment.entering_digit,
-                fragment.literal_increment,
-                charge_work=charge_work,
-                charge_bits=charge_bits,
-            )
-            total_c1 = _sum_exact(total_c1, carry, charge_work, charge_bits)
-            steps = 1
-        else:
-            raise AssertionError("macro fragment has no physical transitions")
-        total_steps = _sum_exact(total_steps, steps, charge_work, charge_bits)
-
-    expected_steps = template.weight.evaluate_at_scale(scale, charge_bits=charge_bits)
-    if total_steps != expected_steps:
-        raise AssertionError("powered occurrence prefix differs from its exact weight")
-    if check_endpoint:
-        expected_endpoint = template.endpoint.evaluate_at_scale(
-            scale, charge_bits=charge_bits
+    def symbolic_entry_carry(
+        self,
+        *,
+        charge_work: WorkCharge | None = None,
+        charge_bits: BitsCharge | None = None,
+    ) -> SymbolicEntryCarryClock:
+        """Return the source occurrence's first Entry-to-Near carry clock."""
+        self.validate()
+        if self.state.kind != "Z":
+            raise ValueError("only a Z boundary begins at an Entry chart")
+        chart = initial_chart(self.state.kind, self.state.a)
+        return symbolic_entry_carry_clock(
+            self.state.exponent_residue,
+            chart,
+            self.exponent,
+            charge_work=charge_work,
+            charge_bits=charge_bits,
         )
-        if value != expected_endpoint:
-            raise AssertionError("occurrence prefix differs from its chart endpoint")
-
-    _charge(charge_work, charge_bits, 1, value, source.exponent)
-    terminal_sector = decimal_sector(value)
-    width_delta = terminal_sector.exponent - source.exponent
-    if width_delta < 0 or width_delta != template.exponent_delta:
-        raise AssertionError("exact terminal exponent differs from chart width")
-    if value // 100 != source_high + total_c1:
-        raise AssertionError("C1 count does not bind source and terminal high prefixes")
-    return value, total_steps, total_c1, width_delta, terminal_sector.leading
-
-
-def _bound_target_value(
-    result: BoundC1Return,
-    charge_work: WorkCharge | None,
-    charge_bits: BitsCharge | None,
-) -> int:
-    high = result.target_high
-    low = result.target.suffix
-    _charge(charge_work, charge_bits, 1, high, low, extra_bits=7)
-    return 100 * high + low
-
-
-def _sum_exact(
-    left: int,
-    right: int,
-    charge_work: WorkCharge | None,
-    charge_bits: BitsCharge | None,
-) -> int:
-    _charge(charge_work, charge_bits, 1, left, right, extra_bits=1)
-    return left + right
 
 
 def _prefix_signature(
@@ -377,10 +196,11 @@ def _prefix_signature(
     c1_count: int,
     width_delta: int,
     terminal_leading: int,
+    component_seal: tuple[object, ...] | None = None,
 ) -> tuple[object, ...]:
     source.validate()
     return (
-        _template_signature(template),
+        _template_signature(template, component_seal=component_seal),
         source.state.kind,
         source.state.a,
         source.state.exponent_residue,
@@ -393,11 +213,16 @@ def _prefix_signature(
     )
 
 
-def _template_signature(template: MacroTemplate) -> tuple[object, ...]:
+def _template_signature(
+    template: MacroTemplate,
+    *,
+    component_seal: tuple[object, ...] | None = None,
+) -> tuple[object, ...]:
     """Snapshot only the shallow macro fields consumed after publication."""
     if type(template) is not MacroTemplate:
         raise ValueError("macro template changed after construction")
-    component_seal = macro_template_component_seal(template)
+    if component_seal is None:
+        component_seal = macro_template_component_seal(template)
     source = boundary_state_signature(template.source)
     if (
         type(template.outcome) is not str
@@ -468,7 +293,12 @@ class OccurrencePrefixReturn:
             raise TypeError("macro occurrence return requires a boundary occurrence")
         if type(template) is not MacroTemplate:
             raise TypeError("macro occurrence return requires a chart template")
-        _template_signature(template)
+        component_seal = macro_template_component_seal(
+            template,
+            charge_work=charge_work,
+            charge_bits=charge_bits,
+        )
+        _template_signature(template, component_seal=component_seal)
         if type(check_endpoint) is not bool:
             raise TypeError("endpoint check flag must be bool")
         if template.outcome not in ("fork", "landmine"):
@@ -489,9 +319,10 @@ class OccurrencePrefixReturn:
         elif template.destination_a is not None or template.ordered_children:
             raise ValueError("landmine template unexpectedly has fork children")
 
-        terminal, steps, count, width, terminal_leading = _macro_prefix_arithmetic(
+        terminal, steps, count, width, terminal_leading = macro_prefix_arithmetic(
             source,
             template,
+            component_seal,
             check_endpoint=check_endpoint,
             charge_work=charge_work,
             charge_bits=charge_bits,
@@ -507,7 +338,14 @@ class OccurrencePrefixReturn:
             self,
             "_witness",
             _prefix_signature(
-                source, template, terminal, steps, count, width, terminal_leading
+                source,
+                template,
+                terminal,
+                steps,
+                count,
+                width,
+                terminal_leading,
+                component_seal,
             ),
         )
         object.__setattr__(self, "_seal", _PREFIX_RETURN_SEAL)
@@ -621,7 +459,7 @@ class OccurrencePrefixReturn:
     ) -> OrderedMacroChildren:
         """Validate literal N/Z values once and retain their boundary bindings."""
         self.validate()
-        _charge(
+        charge_carry_work(
             charge_work,
             charge_bits,
             1,
@@ -810,7 +648,7 @@ class MacroChildOccurrence:
         charge_bits: BitsCharge | None = None,
     ) -> int:
         """Return the exact high-prefix change through prefix plus fork edge."""
-        source_value, _scale, source_high, _low, _phase = _source_coordinates(
+        source_value, _scale, source_high, _low = source_coordinates(
             self.source, charge_work=charge_work, charge_bits=charge_bits
         )
         del source_value
@@ -824,7 +662,7 @@ class MacroChildOccurrence:
         branch_c1 = target_value // 100 - terminal_high
         if branch_c1 not in (0, 1):
             raise AssertionError("one literal fork edge has an invalid c1 carry")
-        total = _sum_exact(source_prefix_count, branch_c1, charge_work, charge_bits)
+        total = sum_exact(source_prefix_count, branch_c1, charge_work, charge_bits)
         if target_value // 100 != source_high + total:
             raise AssertionError("macro child return lost its high-prefix binding")
         return total
@@ -843,7 +681,7 @@ class MacroChildOccurrence:
             )
         if self.target != after.source:
             raise ValueError("macro child returns are not physically adjacent")
-        _charge(
+        charge_carry_work(
             charge_work,
             charge_bits,
             1,
@@ -864,7 +702,7 @@ class MacroChildOccurrence:
         final_high = after.target.high_prefix(
             charge_work=charge_work, charge_bits=charge_bits
         )
-        expected_c1 = _sum_exact(
+        expected_c1 = sum_exact(
             self.c1_count(charge_work=charge_work, charge_bits=charge_bits),
             after.c1_count(charge_work=charge_work, charge_bits=charge_bits),
             charge_work,

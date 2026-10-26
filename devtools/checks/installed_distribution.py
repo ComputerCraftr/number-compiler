@@ -168,11 +168,11 @@ from number_compiler.sequences.reverse_add.recursive_cutover import (
     ReverseRecursiveTemporalCutover,
 )
 from number_compiler.sequences.reverse_add.recursive_adapters import ReverseRecursiveFieldAdapter
-leaf_compile = ReverseRecursiveFieldAdapter._compile
+leaf_compile = ReverseRecursiveFieldAdapter.compile_completed
 def require_completed_children(self, action, source):
     assert self.sources.resolve(source).level == 0, 'parent recompiled original source'
     return leaf_compile(self, action, source)
-with patch.object(ReverseRecursiveFieldAdapter, '_compile', require_completed_children):
+with patch.object(ReverseRecursiveFieldAdapter, 'compile_completed', require_completed_children):
     with patch.object(ReverseRecursiveTemporalCutover, 'digit_image', side_effect=AssertionError('terminal image rebuilt')):
         reverse = api.ReverseAddPoweredTerm(196, 20)
         assert ''.join(map(str, reversed(reverse.digits()))) == '70446464506'

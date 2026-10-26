@@ -538,25 +538,40 @@ def issue_conditional_scheduler_candidate(
                         certify_guarded_radix6_bridge,
                     )
 
-                    # Re-certify only the translated point under the cached
-                    # affine guard. Do not replay discovery or the SLP trace.
-                    singleton = CollatzTwoSidedCylinder(source, source, 0, 1)
-                    bridge = certify_guarded_radix6_bridge(
-                        singleton,
-                        cached.port.action,
-                        cached.odd_ticks,
-                        max_upper_digits=0,
-                        max_lower_digits=0,
-                        ledger=ledger,
-                    )
-                    rebuilt_join = GuardedPortJoin(singleton, cached.port, bridge)
-                    carried = (
-                        rebuilt_join.authenticate_weighted_ports(source)
-                        if cached.carry_program is not None
-                        else None
-                    )
+                    # A cached carry program is an issued summary over its
+                    # complete source guard. Reuse it when that guard admits
+                    # this translated point; rebuilding its 100x100 temporal
+                    # composition would repeat authenticated work. The join
+                    # itself is source-cylinder scoped, so retain it when its
+                    # cylinder also admits the point and reconstruct only the
+                    # narrow bridge otherwise.
+                    cached_join = cached.joined_port
+                    carry_program = cached.carry_program
+                    if cached_join.source.contains(source) and (
+                        carry_program is None or carry_program.guard.admits(source)
+                    ):
+                        rebuilt_join = cached_join
+                        carried = carry_program
+                    else:
+                        singleton = CollatzTwoSidedCylinder(source, source, 0, 1)
+                        bridge = certify_guarded_radix6_bridge(
+                            singleton,
+                            cached.port.action,
+                            cached.odd_ticks,
+                            max_upper_digits=0,
+                            max_lower_digits=0,
+                            ledger=ledger,
+                        )
+                        rebuilt_join = GuardedPortJoin(singleton, cached.port, bridge)
+                        carried = None
+                        if carry_program is not None:
+                            carried = (
+                                carry_program
+                                if carry_program.guard.admits(source)
+                                else rebuilt_join.authenticate_weighted_ports(source)
+                            )
                     upper = (
-                        bridge.demanded_zero_tail_sturmian_factor(
+                        rebuilt_join.bridge.demanded_zero_tail_sturmian_factor(
                             source, cached.tail_trace
                         )
                         if cached.upper_sturmian is not None

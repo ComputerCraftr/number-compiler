@@ -445,6 +445,18 @@ class ResourceLedger(PayloadContractRegistry):
         self.reserve(owner, entries=entries, nodes=nodes)
         self._reservations[reservation] = next_state
 
+    def release_for_reservation(
+        self, reservation: object, *, entries: int = 0, nodes: int = 0
+    ) -> None:
+        """Release only charges held by this authenticated live reservation."""
+        owner, held_entries, held_nodes = self._reservation_state(reservation)
+        self._validate_quantities(entries, nodes)
+        if entries > held_entries or nodes > held_nodes:
+            raise ValueError("release exceeds this reservation's live charges")
+        next_state = (owner, held_entries - entries, held_nodes - nodes)
+        self.release(owner, entries=entries, nodes=nodes)
+        self._reservations[reservation] = next_state
+
     def transfer_reservation_to(
         self,
         reservation: object,

@@ -29,6 +29,7 @@ class ConditionalSchedulerMemo:
         self.ledger = ledger
         self._ports: OwnedMemo[tuple[int, ...], object] | None = None
         self._misses: OwnedMemo[tuple[int, ...], bool] | None = None
+        self._lookup_workspace_owner: int | None = None
         self._closed = False
         self._cleanup_complete = False
 
@@ -61,6 +62,19 @@ class ConditionalSchedulerMemo:
                 self.ledger.mark_disposed(owner)
                 raise
         return self._ports
+
+    def _ensure_lookup_workspace_owner(self) -> int:
+        """Return this memo's private owner for temporary hit validation."""
+        self.check_open()
+        if self._lookup_workspace_owner is None:
+            # The current owner count makes the name unique among memos that
+            # share a ledger. Keep one scratch account per memo; each lookup
+            # still registers and closes its own reservation against it.
+            self._lookup_workspace_owner = self.ledger.register(
+                f"collatz-dyadic-{self.ledger.owner_count}-conditional-port-lookup",
+                "conditional_cache_lookup_workspace",
+            )
+        return self._lookup_workspace_owner
 
     def lookup_port(
         self,
@@ -104,9 +118,7 @@ class ConditionalSchedulerMemo:
         if not candidates:
             return None
 
-        owner = self.ledger.register(
-            "collatz-conditional-port-lookup", "conditional_cache_lookup_workspace"
-        )
+        owner = self._ensure_lookup_workspace_owner()
         reservation = LedgerReservation(self.ledger, owner)
         try:
             with reservation:
@@ -204,9 +216,13 @@ class ConditionalSchedulerMemo:
             disposals.append(self._misses.dispose)
         if self._ports is not None:
             disposals.append(self._ports.dispose)
+        if self._lookup_workspace_owner is not None:
+            owner = self._lookup_workspace_owner
+            disposals.append(lambda: self.ledger.mark_disposed(owner))
         cleanup_all(disposals)
         self._misses = None
         self._ports = None
+        self._lookup_workspace_owner = None
         self._cleanup_complete = True
 
 

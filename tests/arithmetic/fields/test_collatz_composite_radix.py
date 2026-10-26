@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import itertools
 
+import pytest
+
 from number_compiler.arithmetic.fields.digit_formula import (
     DigitSpec,
     digit_root_from_int,
@@ -18,19 +20,34 @@ def _step(n: int) -> int:
     return n // 2 if n % 2 == 0 else 3 * n + 1
 
 
-def test_local_composite_radix_collatz_exact_in_base6_and12() -> None:
-    for base in (6, 12):
-        for seed in (1, 3, 7, 27, 97):
-            _arena, rows = collatz_orbit_formulas_local_composite_radix(
-                seed, radix=base, max_steps=160, materialize_values=True
-            )
-            values: list[int] = []
-            for row in rows:
-                assert row.value is not None
-                values.append(row.value)
-            for a, b in itertools.pairwise(values):
-                assert b == _step(a)
-            assert values[-1] == 1
+@pytest.mark.parametrize(
+    ("base", "seed"),
+    (
+        (6, 27),
+        (12, 27),
+        pytest.param(6, 1, marks=pytest.mark.validation),
+        pytest.param(6, 3, marks=pytest.mark.validation),
+        pytest.param(6, 7, marks=pytest.mark.validation),
+        pytest.param(6, 97, marks=pytest.mark.validation),
+        pytest.param(12, 1, marks=pytest.mark.validation),
+        pytest.param(12, 3, marks=pytest.mark.validation),
+        pytest.param(12, 7, marks=pytest.mark.validation),
+        pytest.param(12, 97, marks=pytest.mark.validation),
+    ),
+)
+def test_local_composite_radix_collatz_exact_in_base6_and12(
+    base: int, seed: int
+) -> None:
+    _arena, rows = collatz_orbit_formulas_local_composite_radix(
+        seed, radix=base, max_steps=160, materialize_values=True
+    )
+    values: list[int] = []
+    for row in rows:
+        assert row.value is not None
+        values.append(row.value)
+    for a, b in itertools.pairwise(values):
+        assert b == _step(a)
+    assert values[-1] == 1
 
 
 def test_local_base6_step_uses_no_prefix_transducer_state() -> None:

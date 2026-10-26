@@ -1,5 +1,6 @@
 theory Comma_C1_Carry_Cylinder
   imports Comma_C1_Return
+    Shared_Carry_Dynamics.Shared_Decimal_Cocycle_Core
 begin
 
 text \<open>Only a finite high-prefix residue is retained at any requested
@@ -151,12 +152,6 @@ definition comma_literal_carry_wire ::
         else if j = 1 then c1
         else c1 \<and> comma_literal_prefix_nines (j - 1) H)"
 
-definition comma_literal_column_sum_carry ::
-  "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> bool" where
-  "comma_literal_column_sum_carry j source increment =
-    ((source mod 10 ^ Suc j + increment mod 10 ^ Suc j) div
-      10 ^ Suc j = 1)"
-
 lemma comma_literal_carry_wire_phase:
   assumes admitted: "comma_c1_phase_admitted C"
   shows "comma_literal_carry_wire j C H =
@@ -207,7 +202,7 @@ qed
 lemma comma_literal_carry_wire_column_sum:
   assumes admitted: "comma_c1_phase_admitted C"
   shows "comma_literal_carry_wire j C H =
-    comma_literal_column_sum_carry j
+    decimal_base10_column_carry j
       (100 * H + comma_c1_decode (c1_mod4 C) (c1_mod25 C))
       (10 * ((100 * H + comma_c1_decode (c1_mod4 C) (c1_mod25 C)) mod 10) +
         c1_sector C)"
@@ -260,7 +255,7 @@ proof -
     show ?thesis
       using zero c0_exact q0
       by (simp add: comma_literal_carry_wire_def
-          comma_literal_column_sum_carry_def Let_def)
+          decimal_base10_column_carry_def Let_def)
   next
     case not_zero: False
     show ?thesis
@@ -288,9 +283,9 @@ proof -
       have a_low2: "?a mod 100 = ?a"
         by (rule mod_less[OF increment_bound])
       have column_one:
-        "comma_literal_column_sum_carry 1 ?k ?a = comma_c1 C"
+        "decimal_base10_column_carry 1 ?k ?a = comma_c1 C"
         using quotient k_low2 a_low2
-        by (simp add: comma_literal_column_sum_carry_def)
+        by (simp add: decimal_base10_column_carry_def)
       have phase_projection:
         "comma_literal_carry_wire 1 C H = comma_c1 C"
         using comma_literal_carry_wire_phase[OF admitted, of 1 H]
@@ -396,7 +391,7 @@ proof -
       show ?thesis
         using j_value modulus sum_split sum_quotient high_quotient
           literal_formula
-        by (simp add: comma_literal_column_sum_carry_def)
+        by (simp add: decimal_base10_column_carry_def)
     qed
   qed
 qed
@@ -422,7 +417,7 @@ qed
 lemma comma_carry_wire_column_sum_return:
   assumes admitted: "comma_c1_phase_admitted C"
   shows "comma_carry_wire j C H n =
-    comma_literal_column_sum_carry j
+    decimal_base10_column_carry j
       (100 * (H + c1_count (comma_c1_return C n)) +
         comma_c1_decode
           (c1_mod4 (c1_target (comma_c1_return C n)))

@@ -14,6 +14,9 @@ def center_matrix_packet(
     from number_compiler.sequences.antihydra.mahler_center_depth_matrix import (
         MahlerCertifiedCenterDepthTransfer,
     )
+    from number_compiler.sequences.antihydra.mahler_center_relation_work import (
+        MahlerCenterWorkEvent,
+    )
 
     require_integer(steps, "center matrix physical ticks", 1, 32)
     result.require_source()
@@ -36,11 +39,24 @@ def center_matrix_packet(
     scratch = 2048 + 2 * (steps + 1) * (16 + (source.bit_length() + steps + 63) // 64)
     with ledger.reservation(owner, nodes=scratch):
         ledger.bump(keys.MAHLER_CENTER_MATRIX_DEMANDS)
+        work_counters = {
+            MahlerCenterWorkEvent.POINTED_SUCCESSOR_STEP: keys.MAHLER_CENTER_MATRIX_PHYSICAL_STEPS,
+            MahlerCenterWorkEvent.CANDIDATE_TRANSITION_VISIT: keys.MAHLER_CENTER_MATRIX_CANDIDATE_TRANSITIONS,
+            MahlerCenterWorkEvent.SPARSE_INTERMEDIATE_EDGE_VISIT: keys.MAHLER_CENTER_MATRIX_SPARSE_EDGE_VISITS,
+            MahlerCenterWorkEvent.SPARSE_COMPOSITION: keys.MAHLER_CENTER_MATRIX_SPARSE_PRODUCTS,
+            MahlerCenterWorkEvent.CANONICAL_ROW_MATERIALIZATION: keys.MAHLER_CENTER_MATRIX_ROW_MATERIALIZATIONS,
+        }
+        for counter in work_counters.values():
+            ledger.bump(counter, 0)
+        ledger.bump(keys.MAHLER_CENTER_MATRIX_DENSE_PRODUCTS, 0)
+
+        def record_work(event: MahlerCenterWorkEvent, amount: int) -> None:
+            ledger.bump(work_counters[event], amount)
+
         certificate = MahlerCertifiedCenterDepthTransfer.from_source(
-            source, steps, initial_ledger=result.balance
+            source, steps, initial_ledger=result.balance, work_sink=record_work
         )
         packet = certificate.packet(trace=trace)
-        ledger.bump(keys.MAHLER_CENTER_MATRIX_PHYSICAL_STEPS, steps)
         del certificate
     packet["source_prefix_ledger_safe"] = result.first_failure_index is None
     packet["source_first_failure_index"] = result.first_failure_index

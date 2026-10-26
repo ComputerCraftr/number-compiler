@@ -6,14 +6,20 @@ import base64
 import json
 from collections.abc import Callable, Mapping
 from types import MappingProxyType
+from typing import cast
 
 import pytest
 
-from number_compiler.sequences.comma import future_authority, future_provider
+from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.comma import (
+    future_authority,
+    future_provider,
+    future_provider_codec,
+)
 
 
 def candidate_record() -> dict[str, object]:
-    class_ids = bytearray([2]) * future_provider.SOURCE_COUNT
+    class_ids = bytearray([2]) * future_provider_codec.SOURCE_COUNT
     class_ids[0] = 0
     class_ids[1] = 1
     return {
@@ -70,3 +76,26 @@ def canonical_bytes(record: Mapping[str, object]) -> bytes:
         json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
         + "\n"
     ).encode("ascii")
+
+
+def provider_classes(
+    provider: future_provider.SemanticFutureProvider,
+) -> tuple[future_provider.FutureClass, ...]:
+    return cast(
+        tuple[future_provider.FutureClass, ...],
+        object.__getattribute__(provider, "_classes"),
+    )
+
+
+def provider_source_classes(
+    provider: future_provider.SemanticFutureProvider,
+) -> tuple[int, ...]:
+    return cast(tuple[int, ...], object.__getattribute__(provider, "_source_classes"))
+
+
+def workspace_owner(ledger: ResourceLedger) -> int:
+    return next(
+        row.owner
+        for row in ledger.inventory()
+        if row.role == "semantic_future_provider_workspace"
+    )

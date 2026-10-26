@@ -240,6 +240,81 @@ fun partial_count_word :: "('c \<Rightarrow> 'c \<Rightarrow> 'c) \<Rightarrow> 
 | "partial_count_word add zero (letter # rest) =
     partial_count_then add letter (partial_count_word add zero rest)"
 
+fun partial_count_repeat_input :: "nat \<Rightarrow> 'a list \<Rightarrow> 'a list" where
+  "partial_count_repeat_input 0 word = []"
+| "partial_count_repeat_input (Suc n) word =
+    word @ partial_count_repeat_input n word"
+
+lemma partial_count_repeat_input_length:
+  "length (partial_count_repeat_input n word) = n * length word"
+  by (induction n) (simp_all add: algebra_simps)
+
+lemma partial_count_repeat_input_append:
+  "partial_count_repeat_input (m+n) word =
+    partial_count_repeat_input m word @ partial_count_repeat_input n word"
+proof (induction m)
+  case 0
+  then show ?case by simp
+next
+  case (Suc m)
+  then show ?case
+    by (simp add: append_assoc add_Suc)
+qed
+
+fun partial_count_power :: "('c \<Rightarrow> 'c \<Rightarrow> 'c) \<Rightarrow> 'c \<Rightarrow> nat \<Rightarrow>
+    ('s, 'c) partial_count_action \<Rightarrow> ('s, 'c) partial_count_action" where
+  "partial_count_power add zero 0 action = partial_count_identity zero"
+| "partial_count_power add zero (Suc n) action =
+    partial_count_then add action (partial_count_power add zero n action)"
+
+lemma partial_count_repeat_input_short_prefix:
+  assumes positive: "0 < n" and short: "k < length word"
+  shows "take k (partial_count_repeat_input n word) = take k word"
+proof (cases n)
+  case 0
+  then show ?thesis using positive by simp
+next
+  case (Suc m)
+  then show ?thesis using short by simp
+qed
+
+lemma partial_count_repeat_input_prefix_qr:
+  assumes within: "q \<le> n"
+      and remainder: "r < length word"
+      and covered: "q < n \<or> r = 0"
+  shows "take (q * length word + r) (partial_count_repeat_input n word) =
+    partial_count_repeat_input q word @ take r word"
+proof -
+  have split:
+    "partial_count_repeat_input n word =
+      partial_count_repeat_input q word @
+        partial_count_repeat_input (n-q) word"
+    using partial_count_repeat_input_append[of q "n-q" word] within by simp
+  have prefix_length:
+    "length (partial_count_repeat_input q word) = q * length word"
+    by (rule partial_count_repeat_input_length)
+  have prefix_take:
+    "take (q * length word + r) (partial_count_repeat_input q word) =
+      partial_count_repeat_input q word"
+    using prefix_length by simp
+  have remainder_take:
+    "take r (partial_count_repeat_input (n-q) word) = take r word"
+  proof (cases "q < n")
+    case True
+    then have "0 < n-q" by simp
+    then show ?thesis
+      by (rule partial_count_repeat_input_short_prefix[OF _ remainder])
+  next
+    case False
+    with within have q_eq: "q=n" by simp
+    with covered have r_zero: "r=0" by simp
+    then show ?thesis using q_eq by simp
+  qed
+  show ?thesis
+    using split prefix_length prefix_take remainder_take
+    by simp
+qed
+
 theorem partial_count_word_append:
   assumes add_assoc: "\<And>x y z. add (add x y) z = add x (add y z)"
       and left_zero: "\<And>x. add zero x = x"
@@ -260,6 +335,56 @@ next
   show ?case
     using Cons.IH
     by (simp add: partial_count_then_associative[OF add_assoc])
+qed
+
+text \<open>Emission values need only form a monoid, not a commutative one.  In
+particular, instantiating the emission with lists preserves the order in
+which output symbols are produced.  Repeating a block powers the complete
+block action; it does not split \( (AB)^q \) into \( A^qB^q \).\<close>
+
+theorem partial_count_word_repeat:
+  assumes add_assoc: "\<And>x y z. add (add x y) z = add x (add y z)"
+      and left_zero: "\<And>x. add zero x = x"
+  shows "partial_count_word add zero (partial_count_repeat_input n word) =
+    partial_count_power add zero n (partial_count_word add zero word)"
+proof (induction n)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  have split:
+    "partial_count_word add zero
+        (word @ partial_count_repeat_input n word) =
+      partial_count_then add (partial_count_word add zero word)
+        (partial_count_word add zero (partial_count_repeat_input n word))"
+    by (rule partial_count_word_append[OF add_assoc left_zero])
+  show ?case
+    using split Suc.IH by simp
+qed
+
+theorem partial_count_word_repeat_prefix:
+  assumes add_assoc: "\<And>x y z. add (add x y) z = add x (add y z)"
+      and left_zero: "\<And>x. add zero x = x"
+      and within: "q \<le> n"
+      and remainder: "r < length word"
+      and covered: "q < n \<or> r = 0"
+  shows "partial_count_word add zero
+      (take (q * length word + r) (partial_count_repeat_input n word)) =
+    partial_count_then add
+      (partial_count_power add zero q (partial_count_word add zero word))
+      (partial_count_word add zero (take r word))"
+proof -
+  have letters:
+    "take (q * length word + r) (partial_count_repeat_input n word) =
+      partial_count_repeat_input q word @ take r word"
+    by (rule partial_count_repeat_input_prefix_qr[OF within remainder covered])
+  have action:
+    "partial_count_word add zero (partial_count_repeat_input q word) =
+      partial_count_power add zero q (partial_count_word add zero word)"
+    by (rule partial_count_word_repeat[OF add_assoc left_zero])
+  show ?thesis
+    using letters action
+    by (simp add: partial_count_word_append[OF add_assoc left_zero])
 qed
 
 theorem partial_count_word_append_admitted:
@@ -338,6 +463,9 @@ ML \<open>
     partial_count_run_then_refuses_first partial_count_run_then_refuses_after
     partial_count_then_associative partial_count_identity_left
     partial_count_identity_right partial_count_then_chronological_counts
+    partial_count_repeat_input_length partial_count_repeat_input_append
+    partial_count_word_repeat partial_count_repeat_input_short_prefix
+    partial_count_repeat_input_prefix_qr partial_count_word_repeat_prefix
     partial_count_word_append partial_count_word_append_admitted
     partial_count_word_append_refuses_prefix partial_count_word_append_refuses_suffix
     monotone_bool_has_three_rows three_bool_rows_are_realized};

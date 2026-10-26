@@ -87,7 +87,7 @@ def test_real_antihydra_128_does_not_call_expensive_selector() -> None:
     # prefilter rejects before it runs, while preserving the public CLI.
     NumberCompiler.clear_shared_cache()
     with patch(
-        "number_compiler.sequences.antihydra.arithmetic_images.select_source_certified_odd_macro",
+        "number_compiler.sequences.antihydra.mahler_odd_source_transfer.select_source_certified_odd_macro",
         side_effect=AssertionError("cold speculative odd selector must not run"),
     ):
         _, result = cli_sample(

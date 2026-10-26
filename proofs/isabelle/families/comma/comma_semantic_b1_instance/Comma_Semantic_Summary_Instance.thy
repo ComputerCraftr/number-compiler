@@ -3,55 +3,91 @@ theory Comma_Semantic_Summary_Instance
     Comma_Semantic_Future.Comma_Semantic_Boundary
 begin
 
-text \<open>The concrete decade provider consumes the checked semantic B32
-result.  It does not construct a sparse table or consult a rank witness.
-The terminal weight is decoded only after the checked Stop result has been
-selected for the receiving phase and source orbit.\<close>
+text \<open>The foundational summary is defined using representation-independent
+semantic action power. Its executable code equation consumes the checked graph action directly and
+decodes its terminal weight; no scalar terminal-height table enters the
+provider.\<close>
 
-definition comma_semantic_decade_summary ::
-  "comma_decade_state \<Rightarrow> comma_decade_residual option" where
+lemma comma_semantic_b1_action_power_b32_stop242:
+  assumes root: "root<46" and phase: "phase<924"
+  obtains D where
+    "comma_semantic_b1_action_power 5 phase root =
+      Comma_Semantic_B1_Stop D" and "D\<le>242"
+proof -
+  have certified:
+      "\<exists>D. comma_semantic_graph_action_power 5 phase root =
+          Comma_Semantic_B1_Stop D \<and> D\<le>242"
+    using comma_semantic_graph_b32_stop242_checked root phase by blast
+  obtain D where graph_result:
+      "comma_semantic_graph_action_power 5 phase root =
+        Comma_Semantic_B1_Stop D"
+    and bound: "D\<le>242"
+    using certified by blast
+  have action_result:
+    "comma_semantic_b1_action_power 5 phase root =
+      Comma_Semantic_B1_Stop D"
+  proof -
+    have refine:
+      "comma_semantic_graph_action_power 5 phase root =
+        comma_semantic_b1_action_power 5 phase root"
+      by (rule comma_semantic_graph_action_power_refines[OF phase root])
+    show ?thesis using refine graph_result by simp
+  qed
+  show thesis by (rule that[OF action_result bound])
+qed
+
+lemma comma_semantic_decade_summary_code:
   "comma_semantic_decade_summary s =
     (case s of Comma_Decade r x \<Rightarrow>
       if comma_decade_admitted s then
-        (case comma_semantic_b1_crt_power_result 5 (comma_offset_orbit x) r of
-          Some (Comma_Semantic_B1_Stop D) \<Rightarrow>
-            Some (comma_terminal_weight_decode D)
+        (case comma_semantic_graph_action_power 5 r (comma_offset_orbit x) of
+          Comma_Semantic_B1_Stop D \<Rightarrow> Some (comma_terminal_weight_decode D)
         | _ \<Rightarrow> None)
       else None)"
+proof (cases s)
+  case (Comma_Decade r x)
+  show ?thesis
+  proof (cases "comma_decade_admitted s")
+    case False
+    then show ?thesis by (simp add: comma_semantic_decade_summary_def)
+  next
+    case True
+    have phase: "r<924" using True Comma_Decade by simp
+    have root: "comma_offset_orbit x<46" by (rule comma_offset_orbit_bound)
+    have refine:
+      "comma_semantic_graph_action_power 5 r (comma_offset_orbit x) =
+        comma_semantic_b1_action_power 5 r (comma_offset_orbit x)"
+      by (rule comma_semantic_graph_action_power_refines[OF phase root])
+    show ?thesis using True Comma_Decade refine
+      by (simp add: comma_semantic_decade_summary_def)
+  qed
+qed
 
-lemma comma_semantic_decade_summary_total_exact:
+declare comma_semantic_decade_summary_def[code del]
+declare comma_semantic_decade_summary_code[code]
+
+theorem comma_semantic_decade_summary_total_exact:
   assumes admitted: "comma_decade_admitted s"
   shows "\<exists>h terminal.
     comma_semantic_decade_summary s=Some (h,terminal) \<and>
     h\<le>26 \<and> comma_decade_exact_summary s h terminal"
-proof (cases s)
-  case (Comma_Decade r x)
-  have phase: "r<924" and offset: "x\<le>90"
-    using admitted Comma_Decade by simp_all
-  have root: "comma_offset_orbit x<46"
-    by (rule comma_offset_orbit_bound)
-  obtain D where result:
-      "comma_semantic_b1_crt_power_result 5 (comma_offset_orbit x) r =
-        Some (Comma_Semantic_B1_Stop D)"
-    and bound: "D\<le>242"
-    using comma_semantic_b1_crt_b32_stop242_checked[OF root phase] by blast
-  let ?provider = "\<lambda>q i. the (comma_semantic_b1_crt_power_result 5 i q)"
-  have exact: "\<And>q i. q<924 \<Longrightarrow> i<46 \<Longrightarrow>
-      ?provider q i=comma_semantic_b1_of_word (comma_orbit_word 5 q i)"
-    using comma_semantic_b1_crt_b32_result_exact by simp
-  have stopped: "?provider r (comma_offset_orbit x)=Comma_Semantic_B1_Stop D"
-    using result by simp
-  have exponent: "5\<le>r+924" by simp
-  have phase_match: "(r+924) mod 924=r" using phase by simp
-  obtain h terminal where decode: "comma_terminal_weight_decode D=(h,terminal)"
-    and height: "h\<le>26"
-    and summary: "comma_decade_exact_summary (Comma_Decade r x) h terminal"
-    using comma_semantic_b32_stop_exact_occurrence_for_offset
-      [OF exact phase offset exponent phase_match stopped bound] by blast
-  have lookup: "comma_semantic_decade_summary s=Some (h,terminal)"
-    using admitted Comma_Decade result decode
-    by (simp add: comma_semantic_decade_summary_def)
-  show ?thesis using lookup height summary Comma_Decade by blast
+proof (rule comma_semantic_decade_summary_total_exact_for_bound)
+  show "\<And>r i. r<924 \<Longrightarrow> i<46 \<Longrightarrow>
+      \<exists>D. comma_semantic_b1_action_power 5 r i =
+        Comma_Semantic_B1_Stop D \<and> D\<le>242"
+  proof -
+    fix r i :: nat
+    assume phase: "r<924" and root: "i<46"
+    obtain D where action:
+        "comma_semantic_b1_action_power 5 r i =
+          Comma_Semantic_B1_Stop D"
+      and bound: "D\<le>242"
+      by (rule comma_semantic_b1_action_power_b32_stop242[OF root phase])
+    show "\<exists>D. comma_semantic_b1_action_power 5 r i =
+        Comma_Semantic_B1_Stop D \<and> D\<le>242"
+      by (rule exI[of _ D]) (rule conjI[OF action bound])
+  qed
+  show "comma_decade_admitted s" by (rule admitted)
 qed
 
 theorem comma_semantic_decade_summary_provider_exact:

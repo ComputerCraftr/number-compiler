@@ -15,7 +15,7 @@ from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageProjection,
     SourceImageView,
 )
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import LedgerSnapshot, ResourceLedger
 from number_compiler.resources.source_bound_payload_audit import (
     SourceBoundPayloadAudit,
     audit_source_bound_payloads,
@@ -207,3 +207,15 @@ def assert_budget_refusal(
         core.apply(adapter, 0, DecimalImageAction((1,)))
     after = ledger.snapshot()
     assert (after.entries, after.nodes) == (before.entries, before.nodes)
+
+
+def assert_publication_retry_committed(
+    ledger: ResourceLedger,
+    before: LedgerSnapshot,
+    counters: tuple[str, ...],
+    core: SourceBoundSchedulerCore,
+) -> None:
+    after_retry = ledger.snapshot()
+    for counter in counters:
+        assert after_retry.counters[counter] == before.counters[counter] + 1
+    assert not source_audit(ledger, core).invalid

@@ -628,6 +628,21 @@ def collect_temporal_diagnostics(
             mahler_center_matrix_physical_steps=_count(
                 counters, _antihydra_keys.MAHLER_CENTER_MATRIX_PHYSICAL_STEPS
             ),
+            mahler_center_matrix_candidate_transitions=_count(
+                counters, _antihydra_keys.MAHLER_CENTER_MATRIX_CANDIDATE_TRANSITIONS
+            ),
+            mahler_center_matrix_sparse_edge_visits=_count(
+                counters, _antihydra_keys.MAHLER_CENTER_MATRIX_SPARSE_EDGE_VISITS
+            ),
+            mahler_center_matrix_row_materializations=_count(
+                counters, _antihydra_keys.MAHLER_CENTER_MATRIX_ROW_MATERIALIZATIONS
+            ),
+            mahler_center_matrix_dense_products=_count(
+                counters, _antihydra_keys.MAHLER_CENTER_MATRIX_DENSE_PRODUCTS
+            ),
+            mahler_center_matrix_sparse_products=_count(
+                counters, _antihydra_keys.MAHLER_CENTER_MATRIX_SPARSE_PRODUCTS
+            ),
             physical_roof_evaluations=_count(counters, "physical_roof_evaluations"),
             query_observer_reuses=_count(counters, "query_observer_reuses"),
             higher_concrete_operation_evaluations=_count(

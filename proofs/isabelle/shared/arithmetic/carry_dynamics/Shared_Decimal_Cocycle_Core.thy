@@ -353,6 +353,309 @@ definition encode_cocycle :: "nat \<Rightarrow> native_cocycle" where
 definition digit_channels :: "nat \<Rightarrow> nat * nat" where
   "digit_channels d = (d mod 5, d mod 2)"
 
+definition decimal_base10_digit :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
+  "decimal_base10_digit j n = (n div 10 ^ j) mod 10"
+
+definition decimal_base10_column_carry ::
+    "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> bool" where
+  "decimal_base10_column_carry j a b \<longleftrightarrow>
+    ((a mod 10 ^ Suc j + b mod 10 ^ Suc j) div 10 ^ Suc j = 1)"
+
+lemma decimal_base10_digit_quotient_expansion:
+  "n div 10 ^ j =
+    10 * (n div 10 ^ Suc j) + decimal_base10_digit j n"
+proof -
+  have power: "(10::nat) ^ Suc j = 10 ^ j * 10"
+    by (simp add: power_Suc mult.commute)
+  have nested: "n div 10 ^ Suc j = (n div 10 ^ j) div 10"
+    by (simp only: power div_mult2_eq)
+  have split: "n div 10 ^ j =
+      10 * ((n div 10 ^ j) div 10) + (n div 10 ^ j) mod 10"
+    by (simp add: div_mult_mod_eq mult.commute)
+  show ?thesis
+    unfolding decimal_base10_digit_def
+    using nested split by arith
+qed
+
+lemma decimal_base10_column_carry_value:
+  fixes j a b :: nat
+  shows "(if decimal_base10_column_carry j a b then 1 else 0) =
+    (a mod 10 ^ Suc j + b mod 10 ^ Suc j) div 10 ^ Suc j"
+proof -
+  let ?M = "(10::nat) ^ Suc j"
+  have positive: "0 < ?M" by simp
+  have remainders: "a mod ?M < ?M" "b mod ?M < ?M" by simp_all
+  have sum_bound: "a mod ?M + b mod ?M < 2 * ?M"
+    using remainders by arith
+  have q_bound: "(a mod ?M + b mod ?M) div ?M < 2"
+    using sum_bound positive by (simp add: div_less_iff_less_mult)
+  then have q_cases:
+    "(a mod ?M + b mod ?M) div ?M = 0 \<or>
+     (a mod ?M + b mod ?M) div ?M = 1"
+    by arith
+  show ?thesis
+    unfolding decimal_base10_column_carry_def
+    using q_cases by auto
+qed
+
+lemma decimal_base10_column_addition_defect:
+  fixes j a b :: nat
+  shows "int (decimal_base10_digit j a) +
+      int (decimal_base10_digit j b) -
+      int (decimal_base10_digit j (a+b)) =
+    10 * int (if decimal_base10_column_carry j a b then 1 else 0) -
+      int (if j=0 then 0 else
+        if decimal_base10_column_carry (j-1) a b then 1 else 0)"
+proof -
+  let ?M = "(10::nat) ^ Suc j"
+  let ?m = "(10::nat) ^ j"
+  let ?q = "(a mod ?M + b mod ?M) div ?M"
+  let ?r = "(a mod ?m + b mod ?m) div ?m"
+  have power: "?M = 10 * ?m"
+    by (simp add: power_Suc)
+  have digit_a:
+    "a div ?m = 10 * (a div ?M) + decimal_base10_digit j a"
+    by (rule decimal_base10_digit_quotient_expansion)
+  have digit_b:
+    "b div ?m = 10 * (b div ?M) + decimal_base10_digit j b"
+    by (rule decimal_base10_digit_quotient_expansion)
+  have digit_sum:
+    "(a+b) div ?m =
+      10 * ((a+b) div ?M) + decimal_base10_digit j (a+b)"
+    by (rule decimal_base10_digit_quotient_expansion)
+  have quotient_M:
+    "(a+b) div ?M = a div ?M + b div ?M + ?q"
+    by (rule div_add1_eq)
+  have quotient_m:
+    "(a+b) div ?m = a div ?m + b div ?m + ?r"
+    by (rule div_add1_eq)
+  have prior:
+    "?r = (if j=0 then 0 else
+      (if decimal_base10_column_carry (j-1) a b then 1 else 0))"
+  proof (cases j)
+    case 0
+    then show ?thesis by simp
+  next
+    case (Suc k)
+    have carry_fact:
+      "(if decimal_base10_column_carry k a b then 1 else 0) =
+        (a mod 10 ^ Suc k + b mod 10 ^ Suc k) div 10 ^ Suc k"
+      by (rule decimal_base10_column_carry_value)
+    show ?thesis using Suc carry_fact by simp
+  qed
+  have current:
+    "(if decimal_base10_column_carry j a b then 1 else 0) = ?q"
+    by (rule decimal_base10_column_carry_value)
+  have natural:
+    "decimal_base10_digit j a + decimal_base10_digit j b + ?r =
+      decimal_base10_digit j (a+b) + 10 * ?q"
+    using digit_a digit_b digit_sum quotient_M quotient_m
+    by arith
+  show ?thesis using natural current prior
+    by (simp only: of_nat_add of_nat_mult of_nat_numeral; linarith)
+qed
+
+lemma decimal_base10_column_defect_telescope:
+  fixes j n :: nat and k increment :: "nat \<Rightarrow> nat"
+  assumes step: "\<And>t. t<n \<Longrightarrow> k (Suc t) = k t + increment t"
+  shows "int (decimal_base10_digit j (k 0)) +
+      (\<Sum>t<n. int (decimal_base10_digit j (increment t))) -
+      int (decimal_base10_digit j (k n)) =
+    10 * (\<Sum>t<n. int (if decimal_base10_column_carry j (k t) (increment t)
+      then 1 else 0)) -
+      (if j=0 then 0 else
+        (\<Sum>t<n. int (if decimal_base10_column_carry (j-1) (k t)
+          (increment t) then 1 else 0)))"
+  using step
+proof (induction n)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  have priorstep: "\<And>t. t<n \<Longrightarrow> k (Suc t) = k t + increment t"
+    using Suc.prems by auto
+  have induction_hypothesis:
+    "int (decimal_base10_digit j (k 0)) +
+      (\<Sum>t<n. int (decimal_base10_digit j (increment t))) -
+      int (decimal_base10_digit j (k n)) =
+    10 * (\<Sum>t<n. int (if decimal_base10_column_carry j (k t) (increment t)
+      then 1 else 0)) -
+      (if j=0 then 0 else
+        (\<Sum>t<n. int (if decimal_base10_column_carry (j-1) (k t)
+          (increment t) then 1 else 0)))"
+    by (rule Suc.IH[OF priorstep])
+  have step_eq: "k (Suc n) = k n + increment n"
+    using Suc.prems by simp
+  have local:
+    "int (decimal_base10_digit j (k n)) +
+      int (decimal_base10_digit j (increment n)) -
+      int (decimal_base10_digit j (k n + increment n)) =
+      10 * int (if decimal_base10_column_carry j (k n) (increment n)
+        then 1 else 0) -
+      int (if j=0 then 0 else
+        if decimal_base10_column_carry (j-1) (k n) (increment n)
+          then 1 else 0)"
+    by (rule decimal_base10_column_addition_defect)
+  have prior_distribute:
+    "(if j=0 then (0::int) else
+       (\<Sum>t<n. int (if decimal_base10_column_carry (j-1) (k t)
+         (increment t) then 1 else 0)) +
+       int (if decimal_base10_column_carry (j-1) (k n) (increment n)
+         then 1 else 0)) =
+     (if j=0 then 0 else
+       (\<Sum>t<n. int (if decimal_base10_column_carry (j-1) (k t)
+         (increment t) then 1 else 0))) +
+       int (if j=0 then 0 else
+         if decimal_base10_column_carry (j-1) (k n) (increment n)
+           then 1 else 0)"
+    by (cases "j=0") simp_all
+  note combined = arg_cong2[where f="(+) :: int \<Rightarrow> int \<Rightarrow> int",
+    OF induction_hypothesis local]
+  show ?case
+    using combined
+    unfolding sum.lessThan_Suc step_eq prior_distribute
+    by (simp add: algebra_simps)
+qed
+
+text \<open>
+In a cyclic spatial coefficient quotient of positive period, a root z with
+z^period congruent to 1 modulo 32 has inverse z^(period-1). The following
+fixed five-term polynomial then inverts 10-z modulo 32. This coordinate is
+spatial: it does not identify a C1 physical-time count or the separate
+modulo-924 selector clock. The carry reconstruction below is only a
+projection of an already supplied boundary-aware normalization identity; it
+does not infer an output or branch from a residue.
+\<close>
+
+definition decimal_base_z_inverse_kernel :: "'a::comm_ring_1 \<Rightarrow> 'a" where
+  "decimal_base_z_inverse_kernel w =
+    -(w + 10*w^2 + 100*w^3 + 1000*w^4 + 10000*w^5)"
+
+definition decimal_base_z_mod32_inverse ::
+    "nat \<Rightarrow> 'a::comm_ring_1 \<Rightarrow> 'a" where
+  "decimal_base_z_mod32_inverse period z =
+    decimal_base_z_inverse_kernel (z^(period-1))"
+
+lemma decimal_base_z_inverse_kernel_product:
+  fixes z w :: "'a::comm_ring_1"
+  shows "(10-z) * decimal_base_z_inverse_kernel w =
+    1 - 100000*w^5 + (z*w-1) *
+      (1 + 10*w + 100*w^2 + 1000*w^3 + 10000*w^4)"
+  unfolding decimal_base_z_inverse_kernel_def
+  by (simp add: power_numeral_even power_numeral_odd power2_eq_square algebra_simps)
+
+lemma decimal_mod32_binary_nilpotent:
+  assumes characteristic: "(32::'a::comm_ring_1)=0"
+  shows "(2::'a)^5=0"
+  using characteristic
+  by (simp add: power_numeral_even power_numeral_odd power2_eq_square)
+
+lemma decimal_mod32_coefficient_annihilator:
+  fixes a b :: "'a::comm_ring_1"
+  assumes characteristic: "(32::'a)=0"
+    and factor: "a=2^s*b" and enough: "5 \<le> s+j"
+  shows "a*10^j=0"
+proof -
+  have binary_zero: "(2::'a)^5=0"
+    by (rule decimal_mod32_binary_nilpotent[OF characteristic])
+  have exponent: "s+j=5+(s+j-5)" using enough by arith
+  have binary: "(2::'a)^(s+j)=0"
+    by (subst exponent) (simp only: power_add binary_zero mult_zero_left)
+  have radix: "(10::'a)^j=2^j*5^j"
+    using power_mult_distrib[of "2::'a" 5 j] by simp
+  have factored: "a*10^j=2^(s+j)*(b*5^j)"
+    by (simp add: factor radix power_add algebra_simps)
+  show ?thesis using factored binary by simp
+qed
+
+lemma decimal_mod32_integer_coefficient_annihilator:
+  fixes coefficient :: int
+  assumes characteristic: "(32::'a::comm_ring_1)=0"
+    and divisible: "(2::int)^s dvd coefficient"
+    and enough: "5 \<le> s+j"
+  shows "(of_int coefficient::'a)*10^j=0"
+proof -
+  obtain b where coefficient: "coefficient=2^s*b"
+    using divisible by (auto simp: dvd_def)
+  have factor: "(of_int coefficient::'a)=2^s*of_int b"
+    by (simp only: coefficient of_int_mult of_int_power of_int_numeral)
+  show ?thesis
+    by (rule decimal_mod32_coefficient_annihilator[OF characteristic factor enough])
+qed
+
+lemma decimal_mod32_radix_nilpotent:
+  assumes characteristic: "(32::'a::comm_ring_1)=0"
+  shows "(10::'a)^5=0"
+  using decimal_mod32_coefficient_annihilator[OF characteristic,
+    where a=1 and b=1 and s=0 and j=5] by simp
+
+lemma decimal_base_z_mod32_inverse_is_unit:
+  fixes z w :: "'a::comm_ring_1"
+  assumes characteristic: "(32::'a) = 0"
+    and inverse_root: "z*w=1"
+  shows "(10-z) * decimal_base_z_inverse_kernel w = 1"
+proof -
+  have nilpotent: "(100000::'a) = 0"
+    using decimal_mod32_radix_nilpotent[OF characteristic]
+    by (simp add: power_numeral_even power_numeral_odd power2_eq_square)
+  have identity:
+      "(10-z) * decimal_base_z_inverse_kernel w =
+        1 - 100000*w^5 + (z*w-1) *
+          (1 + 10*w + 100*w^2 + 1000*w^3 + 10000*w^4)"
+    by (rule decimal_base_z_inverse_kernel_product)
+  show ?thesis using identity inverse_root nilpotent by simp
+qed
+
+lemma decimal_base_z_cyclic_inverse_root:
+  fixes period :: nat and z :: "'a::comm_ring_1"
+  assumes positive: "0 < period" and cyclic: "z^period=1"
+  shows "z * z^(period-1)=1"
+proof -
+  have exponent: "Suc (period-1)=period" using positive by arith
+  have "z * z^(period-1) = z^(Suc (period-1))" by (simp only: power_Suc)
+  also have "... = z^period" by (simp only: exponent)
+  finally show ?thesis using cyclic by simp
+qed
+
+theorem decimal_base_z_mod32_carry_reconstruction_from_inverse:
+  fixes z w raw normalized carry boundary :: "'a::comm_ring_1"
+  assumes characteristic: "(32::'a) = 0"
+    and inverse_root: "z*w=1"
+    and defect: "raw-normalized = (10-z)*carry + boundary"
+  shows "carry = decimal_base_z_inverse_kernel w *
+      (raw-normalized-boundary)"
+proof -
+  have unit:
+      "decimal_base_z_inverse_kernel w * (10-z) = 1"
+    using decimal_base_z_mod32_inverse_is_unit
+      [OF characteristic inverse_root]
+    by (simp add: mult.commute)
+  have defect_only: "raw-normalized-boundary = (10-z)*carry"
+    using defect by simp
+  show ?thesis using defect_only unit
+    by (simp add: mult.assoc[symmetric])
+qed
+
+theorem decimal_base_z_mod32_carry_reconstruction:
+  fixes period :: nat and z raw normalized carry boundary :: "'a::comm_ring_1"
+  assumes positive: "0 < period"
+    and characteristic: "(32::'a) = 0"
+    and cyclic: "z^period=1"
+    and defect: "raw-normalized = (10-z)*carry + boundary"
+  shows "carry = decimal_base_z_mod32_inverse period z *
+      (raw-normalized-boundary)"
+proof -
+  have inverse_root: "z * z^(period-1)=1"
+    by (rule decimal_base_z_cyclic_inverse_root[OF positive cyclic])
+  have reconstructed:
+      "carry = decimal_base_z_inverse_kernel (z^(period-1)) *
+        (raw-normalized-boundary)"
+    by (rule decimal_base_z_mod32_carry_reconstruction_from_inverse
+      [OF characteristic inverse_root defect])
+  show ?thesis using reconstructed
+    by (simp add: decimal_base_z_mod32_inverse_def)
+qed
+
 
 ML \<open>
   val checked = @{thms normalization_gate_exact xor3_is_boolean_xor
@@ -360,7 +663,17 @@ ML \<open>
     crt_digit_coordinates_exact crt_digit_inverse parity_addition_coordinates
     parity_normalization_exact decimal_sum_digit_mod kappa_and_eq_domain_exact
     output_crt_threshold_exact normalized_output_crt_threshold_exact
-    decimal_kappa_cocycle encode_cocycle_def};
+    decimal_base10_digit_quotient_expansion
+    decimal_base10_column_carry_value
+    decimal_base10_column_addition_defect
+    decimal_base10_column_defect_telescope
+    decimal_kappa_cocycle decimal_base_z_inverse_kernel_product
+    decimal_mod32_binary_nilpotent decimal_mod32_coefficient_annihilator
+    decimal_mod32_integer_coefficient_annihilator decimal_mod32_radix_nilpotent
+    decimal_base_z_cyclic_inverse_root
+    decimal_base_z_mod32_inverse_is_unit
+    decimal_base_z_mod32_carry_reconstruction_from_inverse
+    decimal_base_z_mod32_carry_reconstruction encode_cocycle_def};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Shared decimal-cocycle proof depends on an oracle";
 \<close>

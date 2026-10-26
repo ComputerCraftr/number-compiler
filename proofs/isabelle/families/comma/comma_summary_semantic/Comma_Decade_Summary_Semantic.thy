@@ -107,7 +107,7 @@ proof -
     let ?s="Comma_Decade ((r+1) mod 924) x"
     have state: "comma_decade_admitted ?s" using x by simp
     have summary: "comma_decade_exact_summary ?s (height ?s) (terminal ?s)"
-      by (rule comma_decade_summary_recurrence_sound[OF recurrence state])
+      by (rule comma_fast_decade_summary_recurrence_sound[OF recurrence state])
     let ?outcome="comma_summary_outcome (height ?s+1) (terminal ?s)"
     have computed:
       "comma_fast_total_boundary height terminal q=Some ?outcome"

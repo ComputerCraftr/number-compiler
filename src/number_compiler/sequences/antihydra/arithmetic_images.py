@@ -31,6 +31,9 @@ from number_compiler.hashlife.execution.dyadic_return_runs import (
     RunArithmeticWorkspace,
     publish_exact_run_candidate,
 )
+from number_compiler.hashlife.execution.dyadic_return_transport import (
+    balanced_residue_effect,
+)
 from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageDemand,
@@ -42,19 +45,14 @@ from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
 from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.antihydra.blocks import ArithmeticCylinder
-from number_compiler.sequences.antihydra.mahler_odd_prefilter import (
-    PREFILTER_BITS,
-    might_have_odd_macro_low_suffix,
-)
-from number_compiler.sequences.antihydra.mahler_odd_source_transfer import (
-    MahlerOddMacroSelection,
-    select_source_certified_odd_macro,
-)
 from number_compiler.sequences.antihydra.mahler_source_actions import (
     MAX_MAHLER_SOURCE_EXTENT,
 )
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.antihydra.mahler_odd_source_transfer import (
+        MahlerOddMacroSelection,
+    )
     from number_compiler.sequences.antihydra.mahler_source_actions import (
         MahlerOccurrenceConsumer,
     )
@@ -396,10 +394,46 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             self, action, source, transfer, odd_steps, delta, minimum
         )
 
+    def _balanced_root_candidate(
+        self, action: DyadicReturnActionID, source: SourceImageView
+    ) -> SourceImageCandidate:
+        """Publish one shared balanced effect for the admitted root source."""
+        source_id = source.binding.source
+        if type(source_id) is not DyadicReturnSourceID:
+            raise TypeError("Antihydra source has another sort")
+        admitted = self.source_node(source_id)
+        width = self.action_node(action).width
+        if (
+            not admitted.exact
+            or admitted.precision != width
+            or source.binding.action != self.identity
+            or width <= self.MAX_LEAF_STEPS
+        ):
+            raise ValueError("balanced root requires its complete admitted source")
+        # The exact source precision is checked above. The shared balanced
+        # worklist constructs its affine action from the low cylinder, while
+        # the publisher binds the resulting summary to this authenticated
+        # source occurrence.
+        effect = balanced_residue_effect(self, width, admitted.residue)
+        return publish_exact_run_candidate(
+            self,
+            action,
+            source,
+            effect.transfer,
+            effect.odd_steps,
+            effect.delta,
+            effect.minimum,
+        )
+
     def _try_odd_macro_candidate(
         self, action: DyadicReturnActionID, source: SourceImageView
     ) -> SourceImageCandidate | None:
         """Power a source-witnessed odd motif before the scheduler opens children."""
+        from number_compiler.sequences.antihydra.mahler_odd_prefilter import (
+            PREFILTER_BITS,
+            might_have_odd_macro_low_suffix,
+        )
+
         source_id = source.binding.source
         if type(source_id) is not DyadicReturnSourceID:
             raise TypeError("Antihydra macro source has another sort")
@@ -457,6 +491,10 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             if centered <= 0:
                 self.bump_metric("temporal_odd_macro_selector_misses")
                 return None
+            from number_compiler.sequences.antihydra.mahler_odd_source_transfer import (
+                select_source_certified_odd_macro,
+            )
+
             selection = select_source_certified_odd_macro(
                 centered,
                 width,
@@ -620,20 +658,26 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             candidate = self._run_candidate(action, source)
         elif self.source_node(source_id).exact:
             macro_candidate = self._try_odd_macro_candidate(action, source)
-            if macro_candidate is None:
-                # For this bounded high-cost span, the exact admitted integer
-                # lets the existing punctured carry/run constructor avoid the
-                # balanced residue tree. This is an occurrence constructor,
-                # not authority borrowed from a matrix observer. Keep smaller
-                # exact-source clients on their established saturated path.
-                if 1536 <= width <= 2048:
-                    self.bump_metric("temporal_run_routes")
-                    candidate = self._run_candidate(action, source)
-                else:
-                    self.bump_metric("temporal_balanced_routes")
-                    candidate = self.complete_composite_candidate(action, source)
-            else:
+            if macro_candidate is not None:
                 candidate = macro_candidate
+            elif (
+                source_id == self.root_source
+                and action == self.root_action
+                and width <= MAX_MAHLER_SOURCE_EXTENT
+            ):
+                # A source-certified odd motif has priority when present. The
+                # direct root path is the exact shared-worklist fallback after
+                # that selector has exhausted its bounded proof route.
+                candidate = self._balanced_root_candidate(action, source)
+            elif 1536 <= width <= 2048:
+                # For this bounded high-cost non-root span, the exact admitted
+                # integer lets the existing punctured carry/run constructor
+                # avoid the balanced residue tree.
+                self.bump_metric("temporal_run_routes")
+                candidate = self._run_candidate(action, source)
+            else:
+                self.bump_metric("temporal_balanced_routes")
+                candidate = self.complete_composite_candidate(action, source)
         else:
             self.bump_metric("temporal_balanced_routes")
             candidate = self.complete_composite_candidate(action, source)

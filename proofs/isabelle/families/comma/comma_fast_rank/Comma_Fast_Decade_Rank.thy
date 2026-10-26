@@ -118,7 +118,8 @@ corollary comma_fast_decade_bounded_rank_range_totality:
 lemma comma_fast_decade_summary_rank:
   "comma_fast_decade_summary_step height terminal s \<Longrightarrow>
     comma_fast_decade_rank_step height s"
-  unfolding comma_fast_decade_summary_step_def comma_fast_decade_rank_step_def
+  unfolding comma_fast_decade_summary_step_def comma_decade_summary_step_for_def
+    comma_fast_decade_rank_step_def
   by (cases "comma_fast_decade_control s") auto
 
 theorem comma_decade_summary_checked_rank:
@@ -129,41 +130,29 @@ theorem comma_decade_summary_checked_rank:
   using comma_fast_decade_summary_rank comma_decade_summary_row[OF assms] by blast
 
 corollary comma_residual_classifier_rank:
-  assumes "comma_decade_residual_classifier_ok C"
+  assumes classifier: "comma_decade_residual_classifier_ok C"
   shows "comma_decade_rank_check (\<lambda>s. fst (C s))"
 proof -
-  have "comma_fast_decade_rank_check (\<lambda>s. fst (C s))"
+  have canonical:
+    "\<And>s. comma_decade_admitted s \<Longrightarrow>
+      comma_decade_summary_step (\<lambda>s. fst (C s)) (\<lambda>s. snd (C s)) s"
+    using classifier by (auto simp: comma_decade_residual_classifier_ok_def)
+  have fast:
+    "\<And>s. comma_decade_admitted s \<Longrightarrow>
+      comma_fast_decade_summary_step (\<lambda>s. fst (C s)) (\<lambda>s. snd (C s)) s"
+  proof -
+    fix s assume admitted: "comma_decade_admitted s"
+    have equal:
+      "comma_fast_decade_summary_step (\<lambda>s. fst (C s)) (\<lambda>s. snd (C s)) s =
+       comma_decade_summary_step (\<lambda>s. fst (C s)) (\<lambda>s. snd (C s)) s"
+      by (rule comma_fast_decade_summary_step_correct[OF admitted])
+    show "comma_fast_decade_summary_step (\<lambda>s. fst (C s)) (\<lambda>s. snd (C s)) s"
+      using canonical[OF admitted] equal by simp
+  qed
+  have fast_check: "comma_fast_decade_rank_check (\<lambda>s. fst (C s))"
     unfolding comma_fast_decade_rank_check_def comma_decade_rectangle
-    using assms comma_fast_decade_summary_rank
-    by (auto simp: comma_decade_residual_classifier_ok_def)
-  then show ?thesis by (rule comma_fast_decade_rank_check_sound)
-qed
-
-theorem comma_decade_checked_rank_residual:
-  assumes checked: "comma_decade_rank_check rank" and valid: "comma_decade_admitted s"
-  shows "\<exists>h tau. h\<le>rank s \<and> comma_decade_exact_summary s h tau"
-proof -
-  obtain n where finish: "comma_decade_finishes s n" and bound: "n\<le>Suc (rank s)"
-    using comma_decade_checked_rank_totality[OF checked valid] by blast
-  obtain h tau where count: "n=Suc h" and summary: "comma_decade_exact_summary s h tau"
-    using comma_decade_finishes_exact_summary[OF finish valid] by blast
-  show ?thesis using bound count summary by auto
-qed
-
-corollary comma_decade_checked_rank_B32:
-  assumes "comma_decade_rank_check rank" "comma_decade_admitted s" "rank s\<le>26"
-  shows "\<exists>h tau. h\<le>26 \<and>
-    comma_decade_block_power 5 s=Comma_Block_Stop h tau \<and>
-    comma_residual_block 32 (h,tau)=Comma_Residual_Stop h tau \<and>
-    comma_decade_exact_summary s h tau"
-proof -
-  obtain h tau where bound: "h\<le>rank s" and summary: "comma_decade_exact_summary s h tau"
-    using comma_decade_checked_rank_residual[OF assms(1,2)] by blast
-  have h: "h\<le>26" using bound assms(3) by arith
-  have stop: "comma_decade_block_run 32 s=Comma_Block_Stop h tau"
-    by (rule comma_decade_exact_summary_block_stop[OF summary assms(2)]) (use h in arith)
-  show ?thesis using h stop comma_residual_B32_totality[OF h, of tau] summary
-    by (auto simp: comma_decade_block_square_refines)
+    using fast comma_fast_decade_summary_rank by blast
+  show ?thesis by (rule comma_fast_decade_rank_check_sound[OF fast_check])
 qed
 
 corollary comma_boundary_macro_exists_from_checked_rank:

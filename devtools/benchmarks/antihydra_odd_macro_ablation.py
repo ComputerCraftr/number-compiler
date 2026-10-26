@@ -98,7 +98,7 @@ def _sample(
         _odd_macro_disabled()
         if mode == "odd_macro_disabled"
         else patch(
-            "number_compiler.sequences.antihydra.arithmetic_images.might_have_odd_macro_low_suffix",
+            "number_compiler.sequences.antihydra.mahler_odd_prefilter.might_have_odd_macro_low_suffix",
             return_value=True,
         )
         if mode == "prefilter_disabled"

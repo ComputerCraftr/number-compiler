@@ -18,6 +18,11 @@ from number_compiler.sequences.comma.arithmetic import (
     phase_prefix_displacement,
     safe_complete_cycles,
 )
+from number_compiler.sequences.comma.boundary_chart import (
+    BoundaryChart,
+    ChartSegment,
+    ChartWeight,
+)
 from number_compiler.sequences.comma.boundary_quotient import (
     AffineWeight,
     BoundaryState,
@@ -67,6 +72,8 @@ _indexed_macro = cast(
             _AffineValue,
             tuple[BoundaryState, ...],
             list[SectorFragment],
+            list[ChartSegment],
+            BoundaryChart,
             Callable[[int], None] | None,
             Callable[[int], None] | None,
         ],
@@ -206,6 +213,15 @@ def test_indexed_macro_zero_period_preserves_nonzero_cycle_displacement() -> Non
         source_value.plus(_constant(5)),
         (),
         [fragment],
+        [
+            ChartSegment(
+                BoundaryChart("entry", 2, 0, 0),
+                BoundaryChart("near", 2, 0, 5),
+                ChartWeight(0, 0, 1, 1),
+                ChartWeight(0, 0, 5, 1),
+            )
+        ],
+        BoundaryChart("near", 9, 0, 19),
         None,
         None,
     )

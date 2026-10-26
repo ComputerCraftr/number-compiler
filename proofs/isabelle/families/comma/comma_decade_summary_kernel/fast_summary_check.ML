@@ -117,7 +117,8 @@ struct
       val evaluation = (#context core
         |> Simplifier.add_proc rank_proc
         |> Simplifier.add_proc terminal_proc) addsimps
-        @{thms comma_fast_decade_summary_step_def comma_fast_decade_summary_range_def
+        @{thms comma_fast_decade_summary_step_def comma_decade_summary_step_for_def
+          comma_fast_decade_summary_range_def
           comma_decade_admitted.simps comma_decade_terminal_candidate_on_valid_def
           comma_terminal_from_code_eval}
       fun stats () =

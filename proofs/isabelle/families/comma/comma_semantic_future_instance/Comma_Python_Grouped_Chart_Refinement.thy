@@ -1,5 +1,6 @@
 theory Comma_Python_Grouped_Chart_Refinement
   imports Comma_Python_Grouped_Near_Refinement
+    Comma_C1_Occurrence.Comma_C1_Near_Chart_Refinement
 begin
 
 text \<open>
@@ -18,6 +19,50 @@ definition comma_python_grouped_near_interior ::
      | Comma_Near f delta h \<Rightarrow>
          10 * ((10 - h mod 10) mod 10) + f +
            (if f < 9 then 1 else 0) < h)"
+
+text \<open>The C1 summary certifies the physical-time action of the exact
+grouped Near prefix.  The independent weighted prefix still selects the
+chart action at its exponent phase; neither clock is substituted for the
+other.  Requiring a decisive Near endpoint keeps fork, landmine, and
+sector-crossing outcomes outside this fixed-sector certificate.\<close>
+
+definition comma_python_grouped_near_round_close_c1_matches ::
+  "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow>
+    nat \<Rightarrow> bool" where
+  "comma_python_grouped_near_round_close_c1_matches p f delta h t n \<longleftrightarrow>
+    comma_round_close (p mod 924) (Comma_Near f delta h) =
+      comma_c1_near_terminal_round_close p f delta t n \<and>
+    (\<exists>suffix_steps terminal event suffix_weight.
+      comma_round_close (p mod 924) (Comma_Near f delta t) =
+        (suffix_steps, terminal, event) \<and>
+      comma_round_weighted_prefix p (p mod 924) suffix_steps
+        (Comma_Near f delta t) terminal suffix_weight \<and>
+      comma_round_weighted_prefix p (p mod 924) (n + suffix_steps)
+        (Comma_Near f delta h) terminal (n + suffix_weight))"
+
+definition comma_python_grouped_near_c1_matches ::
+  "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> bool" where
+  "comma_python_grouped_near_c1_matches p f delta h t n \<longleftrightarrow>
+    (let q = p + delta;
+         source = Comma_Near f delta h;
+         target = Comma_Near f delta t;
+         k = comma_chart_value p source;
+         prefix = k div 100;
+         C = comma_c1_phase_of f (k mod 100);
+         R = comma_c1_powered_return C n
+     in comma_near_decisive f t \<and>
+        comma_c1_source_admitted C prefix q n \<and>
+        comma_chart_value p target =
+          100 * (prefix + c1_count R) +
+            comma_c1_decode (c1_mod4 (c1_target R))
+              (c1_mod25 (c1_target R)) \<and>
+        comma_literal_path n k (comma_chart_value p target) \<and>
+        comma_c1_physical_occurrence (c1_target R)
+          (prefix + c1_count R) q (comma_chart_value p target) \<and>
+        (\<forall>j. 2 \<le> j \<longrightarrow>
+          comma_c1_carry_wire_total j C prefix n =
+            (prefix mod 10^(j - 1) + c1_count R) div 10^(j - 1)) \<and>
+        comma_python_grouped_near_round_close_c1_matches p f delta h t n)"
 
 definition comma_python_grouped_chart_step ::
   "nat \<Rightarrow> comma_finite_position \<Rightarrow>
@@ -110,6 +155,93 @@ proof -
   show ?thesis
     using step chart_contract(4) target_admitted
     by (intro exI[of _ ?move]) (simp add: ?move_def)
+qed
+
+lemma comma_python_grouped_chart_step_interior_c1:
+  fixes residue f delta h p :: nat
+  assumes residue: "residue < 924"
+    and phase: "residue = p mod 924"
+    and exponent: "5 \<le> p"
+    and leading: "1 \<le> f" "f \<le> 9"
+    and headroom: "1 \<le> h" "h \<le> 540"
+    and interior:
+      "10 * ((10 - h mod 10) mod 10) + f +
+        (if f < 9 then 1 else 0) < h"
+  defines "result \<equiv> comma_python_classify_near_port_summary f h"
+  shows "\<exists>move. comma_python_grouped_chart_step residue
+      (Comma_Near f delta h) = Some move \<and>
+    comma_python_chart_next move = Some
+      (Comma_Near f delta (comma_python_near_port_terminal result)) \<and>
+    comma_python_chart_weight move = Comma_Chart_Weight 0 0
+      (int (comma_python_near_port_steps result)) 1 \<and>
+    comma_python_chart_fork_a move = None \<and>
+    comma_python_chart_cycle move = None \<and>
+    comma_python_chart_terminal move = None \<and>
+    comma_python_chart_literal_increment move = h -
+      comma_python_near_port_terminal result \<and>
+    comma_round_weighted_prefix p (p mod 924)
+      (comma_python_near_port_steps result)
+      (Comma_Near f delta h)
+      (Comma_Near f delta (comma_python_near_port_terminal result))
+      (comma_python_near_port_steps result) \<and>
+    comma_python_grouped_near_c1_matches p f delta h
+      (comma_python_near_port_terminal result)
+      (comma_python_near_port_steps result) \<and>
+    comma_python_chart_position_admitted
+      (Comma_Near f delta (comma_python_near_port_terminal result))"
+proof -
+  note old_step = comma_python_grouped_chart_step_interior
+    [of residue f delta h p,
+      OF residue leading(1) leading(2) headroom(2) interior,
+      folded result_def]
+  note chart_contract = comma_python_grouped_near_chart_contract
+    [of f h delta p residue, OF leading interior headroom(2),
+      folded result_def]
+  obtain move where fields:
+    "comma_python_grouped_chart_step residue
+      (Comma_Near f delta h) = Some move"
+    "comma_python_chart_next move = Some
+      (Comma_Near f delta (comma_python_near_port_terminal result))"
+    "comma_python_chart_weight move = Comma_Chart_Weight 0 0
+      (int (comma_python_near_port_steps result)) 1"
+    "comma_python_chart_fork_a move = None"
+    "comma_python_chart_cycle move = None"
+    "comma_python_chart_terminal move = None"
+    "comma_python_chart_literal_increment move = h -
+      comma_python_near_port_terminal result"
+    "comma_round_weighted_prefix p (p mod 924)
+      (comma_python_near_port_steps result)
+      (Comma_Near f delta h)
+      (Comma_Near f delta (comma_python_near_port_terminal result))
+      (comma_python_near_port_steps result)"
+    "comma_python_chart_position_admitted
+      (Comma_Near f delta (comma_python_near_port_terminal result))"
+    using old_step phase by auto
+  have c1_matches:
+    "comma_python_grouped_near_c1_matches p f delta h
+      (comma_python_near_port_terminal result)
+      (comma_python_near_port_steps result)"
+  proof -
+    note near_c1 = comma_c1_near_chart_prefix_refinement
+      [OF leading(1) leading(2) exponent headroom(1) headroom(2)
+        chart_contract(2)]
+    have round_close_c1:
+      "comma_python_grouped_near_round_close_c1_matches p f delta h
+        (comma_python_near_port_terminal result)
+        (comma_python_near_port_steps result)"
+      using comma_c1_near_prefix_round_close_composition
+        [where p=p and f=f and delta=delta
+          and h=h
+          and t="comma_python_near_port_terminal result"
+          and n="comma_python_near_port_steps result"]
+        chart_contract(2)
+      by (simp add: comma_python_grouped_near_round_close_c1_matches_def)
+    show ?thesis
+      using near_c1 chart_contract(3) round_close_c1
+      by (simp add: comma_python_grouped_near_c1_matches_def Let_def
+          result_def)
+  qed
+  show ?thesis using fields c1_matches by blast
 qed
 
 lemma comma_near_prefix_step_weighted:
@@ -313,6 +445,9 @@ inductive comma_python_grouped_chart_walk ::
        (comma_python_near_port_steps result) source
        (Comma_Near f delta (comma_python_near_port_terminal result))
        (comma_python_near_port_steps result) \<Longrightarrow>
+     comma_python_grouped_near_c1_matches p f delta h
+       (comma_python_near_port_terminal result)
+       (comma_python_near_port_steps result) \<Longrightarrow>
      comma_python_grouped_chart_walk p
        (Comma_Near f delta (comma_python_near_port_terminal result))
        moves outcome terminal \<Longrightarrow>
@@ -474,6 +609,7 @@ proof (induction "length scalar_moves"
           shorter suffix_walk exponent target_admitted
         by blast
       have residue_bound: "p mod 924 < 924" by simp
+      have residue_phase: "p mod 924 = p mod 924" by simp
       obtain macro where macro_step:
         "comma_python_grouped_chart_step (p mod 924) source = Some macro"
         and macro_target:
@@ -488,9 +624,12 @@ proof (induction "length scalar_moves"
         and macro_prefix:
         "comma_round_weighted_prefix p (p mod 924) ?n
           source (Comma_Near f delta ?t) ?n"
-        using comma_python_grouped_chart_step_interior
+        and macro_c1:
+        "comma_python_grouped_near_c1_matches p f delta h ?t ?n"
+        using comma_python_grouped_chart_step_interior_c1
           [of "p mod 924" f delta h p,
-            OF residue_bound leading(1) leading(2) headroom(2) interior,
+            OF residue_bound residue_phase exponent leading(1) leading(2)
+              headroom(1) headroom(2) interior,
             folded source result_def]
         by blast
       have grouped:
@@ -500,6 +639,7 @@ proof (induction "length scalar_moves"
       show ?thesis
         using source True macro_step macro_target macro_weight macro_fork
           macro_cycle macro_terminal macro_increment macro_prefix grouped
+          macro_c1
         by (intro exI[of _ "macro # grouped_tail"]
             comma_python_grouped_chart_walk.grouped_near)
           (simp_all add: source True)
@@ -510,6 +650,7 @@ qed
 lemmas comma_python_grouped_chart_refinement_oracle_audit_bundle =
   comma_python_grouped_chart_step_scalar
   comma_python_grouped_chart_step_interior
+  comma_python_grouped_chart_step_interior_c1
   comma_python_scalar_chart_walk_cut_near_prefix
   comma_python_scalar_terminal_near_not_interior
   comma_python_grouped_chart_walk_of_scalar

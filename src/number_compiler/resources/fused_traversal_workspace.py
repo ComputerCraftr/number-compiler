@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from contextlib import contextmanager
+from functools import partial
 from typing import TYPE_CHECKING
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.metric_keys import resources as _resources_keys
 from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.stores import LedgerList
@@ -50,6 +52,7 @@ class FusedTraversalWorkspace:
         )
         self.nodes = 0
         self.active = False
+        self._closing = False
         self._disposed = False
         self.max_frames = 0
         self.max_values = 0
@@ -87,8 +90,8 @@ class FusedTraversalWorkspace:
         )
 
     def _check_open(self) -> None:
-        if self._disposed:
-            raise RuntimeError("fused traversal workspace has been disposed")
+        if self._closing or self._disposed:
+            raise RuntimeError("fused traversal workspace is closing or disposed")
 
     def _append(self, owner: int, store: LedgerList[object], value: object) -> None:
         prior_size = len(store)
@@ -132,15 +135,26 @@ class FusedTraversalWorkspace:
 
     def _pop(self, owner: int, store: LedgerList[object]) -> object:
         self._check_open()
+        if not self.active:
+            raise RuntimeError("fused traversal pop requires an active scope")
         prior_size = len(store)
         value = store[-1]
         try:
             store.pop()
+            self.ledger.release(owner, entries=1)
         except BaseException:
-            if len(store) != prior_size:
-                store.append(value)
+            try:
+                if len(store) != prior_size:
+                    charged = self.ledger.account_status(owner).entries
+                    if charged == prior_size:
+                        store.append(value)
+                    elif charged != len(store):
+                        raise RuntimeError(
+                            "failed fused pop changed unrelated accounting"
+                        )
+            finally:
+                value = None
             raise
-        self.ledger.release(owner, entries=1)
         return value
 
     def pop_frame(self) -> object:
@@ -148,6 +162,49 @@ class FusedTraversalWorkspace:
 
     def pop_value(self) -> object:
         return self._pop(self.value_owner, self.values)
+
+    def _clear_stack(self, owner: int, store: LedgerList[object]) -> None:
+        """Release removed entries, including a previous interrupted release.
+
+        Each stack has an exclusive ledger owner. Its remaining charge is the
+        retry record when clearing or release fails; no parallel counter is
+        needed, and surviving entries remain charged after a partial clear.
+        """
+        try:
+            if store:
+                store.clear()
+        finally:
+            charged = self.ledger.account_status(owner).entries
+            retained = len(store)
+            if charged < retained:
+                raise RuntimeError("fused stack exceeds its owner reservation")
+            if charged > retained:
+                self.ledger.release(owner, entries=charged - retained)
+
+    def _cleanup(self) -> None:
+        try:
+            cleanup_all(
+                (
+                    partial(self._clear_stack, self.frame_owner, self.frames),
+                    partial(self._clear_stack, self.value_owner, self.values),
+                )
+            )
+        finally:
+            self.active = False
+            self.max_frames = self.max_values = 0
+            # Retain the workspace charge until both stacks are gone and
+            # their entry charges released. A failed cleanup blocks reuse;
+            # dispose can retry it without releasing any charge twice.
+            if (
+                not self.frames
+                and not self.values
+                and not self.ledger.account_status(self.frame_owner).entries
+                and not self.ledger.account_status(self.value_owner).entries
+            ):
+                try:
+                    self.ledger.release(self.owner, nodes=self.nodes)
+                finally:
+                    self.nodes = self.ledger.account_status(self.owner).nodes
 
     @contextmanager
     def scope(self, level: int, port_count: int) -> Generator[None, None, None]:
@@ -181,31 +238,16 @@ class FusedTraversalWorkspace:
                 )
             yield
         finally:
-            frame_count = len(self.frames)
-            self.frames.clear()
-            self.ledger.release(self.frame_owner, entries=frame_count)
-
-            value_count = len(self.values)
-            self.values.clear()
-            self.ledger.release(self.value_owner, entries=value_count)
-            self.active = False
-            self.nodes = 0
-            self.max_frames = self.max_values = 0
-            self.ledger.release(self.owner, nodes=nodes)
+            self._cleanup()
 
     def dispose(self) -> None:
         """Close the three auditable owners after all scoped work is cleared."""
         if self._disposed:
             return
-        if self.active or self.nodes:
+        if self.active:
             raise RuntimeError("cannot dispose an active fused traversal workspace")
-        frame_count = len(self.frames)
-        self.frames.clear()
-        self.ledger.release(self.frame_owner, entries=frame_count)
-
-        value_count = len(self.values)
-        self.values.clear()
-        self.ledger.release(self.value_owner, entries=value_count)
+        self._closing = True
+        self._cleanup()
         self.ledger.mark_disposed(self.frame_owner)
         self.ledger.mark_disposed(self.value_owner)
         self.ledger.mark_disposed(self.owner)

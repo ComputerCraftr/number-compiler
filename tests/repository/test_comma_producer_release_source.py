@@ -35,6 +35,14 @@ def test_concrete_decade_summary_producer_bridge_is_registered(
         ISABELLE
         / "families/comma/comma_semantic_future_instance/Comma_Semantic_Release.thy"
     ).read_text()
+    summary = (
+        ISABELLE
+        / "families/comma/comma_semantic_b1_instance/Comma_Semantic_Summary_Instance.thy"
+    ).read_text()
+
+    assert "comma_semantic_graph_action_power 5 r (comma_offset_orbit x)" in summary
+    assert "comma_semantic_graph_action_power_refines" in summary
+    assert "comma_semantic_graph_b32_stop242_checked" in summary
 
     assert "comma_semantic_decade_summary_writer_release" in release
     summary_result_start = release.index(
@@ -166,7 +174,14 @@ def test_concrete_decade_summary_producer_bridge_is_registered(
         "comma_semantic_future_candidate_provider_check_checked",
         "comma_semantic_concrete_future_rank_check",
         "comma_semantic_concrete_boundary_strong_occurrence_bridge",
-        "comma_semantic_b1_crt_b32_stop242_checked",
+        "comma_semantic_graph_valid_checked",
+        "comma_semantic_graph_root_binding_exact",
+        "comma_semantic_graph_root_action_exact",
+        "comma_semantic_graph_action_power_refines",
+        "comma_semantic_b1_action_power_refines_orbit",
+        "comma_semantic_graph_stop242_from_weighted_crt_power_all",
+        "comma_semantic_decade_summary_provider_exact",
+        "comma_semantic_graph_b32_stop242_checked",
         "comma_semantic_p5_entry_future_open_checked",
         "comma_semantic_p5_entry_infinite_imp_open",
         "comma_semantic_unique_infinite_decimal_root",
@@ -223,7 +238,7 @@ def test_b32_bridge_covers_the_concrete_ungrouped_boundary_chart_loop() -> None:
         ISABELLE.parent.parent / "src/number_compiler/sequences/comma/boundary_chart.py"
     ).read_text()
     initial_start = chart_source.index("def initial_chart(")
-    initial_end = chart_source.index("\n\ndef _validate_chart", initial_start)
+    initial_end = chart_source.index("\n\ndef validate_chart", initial_start)
     initial = chart_source[initial_start:initial_end]
     assert 'BoundaryChart("near", a - 1, 0, 1)' in initial
     assert 'BoundaryChart("entry", a, 0, 0)' in initial

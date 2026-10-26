@@ -364,6 +364,211 @@ proof -
 qed
 
 
+lemma comma_c1_count_multiple50:
+  assumes admitted: "comma_c1_phase_admitted C"
+  shows "comma_c1_count C (50 * k) = k * comma_c1_count C 50"
+proof (induction k)
+  case 0
+  then show ?case by simp
+next
+  case (Suc k)
+  have period: "comma_c1_iter 50 C = C"
+    by (rule comma_c1_iter_period50[OF admitted])
+  have iterate: "comma_c1_iter (50 * k) C = C"
+    by (rule comma_c1_iter_multiple50[OF period])
+  have split: "50 * Suc k = 50 * k + 50" by arith
+  have cocycle:
+    "comma_c1_count C (50 * k + 50) =
+      comma_c1_count C (50 * k) +
+        comma_c1_count (comma_c1_iter (50 * k) C) 50"
+    by (rule comma_c1_count_add)
+  show ?case using Suc.IH iterate split cocycle
+    by (simp add: algebra_simps)
+qed
+
+
+lemma comma_c1_iter_period1600:
+  assumes admitted: "comma_c1_phase_admitted C"
+  shows "comma_c1_iter (n + 1600) C = comma_c1_iter n C"
+proof -
+  have D_admitted: "comma_c1_phase_admitted (comma_c1_iter n C)"
+    by (rule comma_c1_iter_closed[OF admitted])
+  have period50: "comma_c1_iter 50 (comma_c1_iter n C) =
+      comma_c1_iter n C"
+    by (rule comma_c1_iter_period50[OF D_admitted])
+  have period_blocks:
+    "comma_c1_iter (50 * 32) (comma_c1_iter n C) = comma_c1_iter n C"
+    by (rule comma_c1_iter_multiple50[OF period50])
+  have period1600: "comma_c1_iter 1600 (comma_c1_iter n C) =
+      comma_c1_iter n C"
+    using period_blocks by simp
+  have composition:
+    "comma_c1_iter (n + 1600) C =
+      comma_c1_iter 1600 (comma_c1_iter n C)"
+    by (rule comma_c1_iter_add)
+  show ?thesis using composition period1600 by simp
+qed
+
+
+lemma comma_c1_count_mod32_period1600:
+  assumes admitted: "comma_c1_phase_admitted C"
+  shows "comma_c1_count C (n + 1600) mod 32 =
+    comma_c1_count C n mod 32"
+proof -
+  let ?D = "comma_c1_iter n C"
+  have D_admitted: "comma_c1_phase_admitted ?D"
+    by (rule comma_c1_iter_closed[OF admitted])
+  have blocks:
+    "comma_c1_count ?D (50 * 32) = 32 * comma_c1_count ?D 50"
+    by (rule comma_c1_count_multiple50[OF D_admitted])
+  have split: "(1600::nat) = 50 * 32" by simp
+  have cocycle:
+    "comma_c1_count C (n + 1600) =
+      comma_c1_count C n + comma_c1_count ?D 1600"
+    by (rule comma_c1_count_add)
+  have blocks1600:
+    "comma_c1_count ?D 1600 = 32 * comma_c1_count ?D 50"
+    using blocks by (simp only: split[symmetric])
+  have total: "comma_c1_count C (n + 1600) =
+      comma_c1_count C n + 32 * comma_c1_count ?D 50"
+    by (simp only: cocycle blocks1600)
+  show ?thesis by (simp only: total mod_mult_self2)
+qed
+
+
+lemma comma_c1_return_pair_period1600:
+  assumes admitted: "comma_c1_phase_admitted C"
+  shows "c1_target (comma_c1_return C (n + 1600)) =
+      c1_target (comma_c1_return C n) \<and>
+    c1_count (comma_c1_return C (n + 1600)) mod 32 =
+      c1_count (comma_c1_return C n) mod 32"
+proof -
+  have target:
+    "c1_target (comma_c1_return C (n + 1600)) =
+      c1_target (comma_c1_return C n)"
+    using comma_c1_iter_period1600[OF admitted, of n]
+    by (simp add: comma_c1_return_def)
+  have count:
+    "c1_count (comma_c1_return C (n + 1600)) mod 32 =
+      c1_count (comma_c1_return C n) mod 32"
+    using comma_c1_count_mod32_period1600[OF admitted, of n]
+    by (simp add: comma_c1_return_def)
+  show ?thesis using target count by simp
+qed
+
+
+lemma comma_c1_quotient_modulus:
+  fixes A P M :: nat
+  assumes P_positive: "0 < P"
+  shows "(A div P) mod M = (A mod (P * M)) div P"
+proof -
+  have remainder:
+    "A mod (P * M) = P * ((A div P) mod M) + A mod P"
+    by (rule mod_mult2_eq)
+  show ?thesis using remainder P_positive
+    by (simp add: div_add1_eq mult.commute)
+qed
+
+lemma comma_c1_count_phase50_decomposition:
+  assumes admitted: "comma_c1_phase_admitted C"
+  shows "comma_c1_count C n =
+    (n div 50) * comma_c1_count C 50 + comma_c1_count C (n mod 50)"
+proof -
+  have period: "comma_c1_iter 50 C = C"
+    by (rule comma_c1_iter_period50[OF admitted])
+  have cycle_iter: "comma_c1_iter (50 * (n div 50)) C = C"
+    by (rule comma_c1_iter_multiple50[OF period])
+  have cycle_count:
+    "comma_c1_count C (50 * (n div 50)) =
+      (n div 50) * comma_c1_count C 50"
+    by (rule comma_c1_count_multiple50[OF admitted])
+  have split: "n = 50 * (n div 50) + n mod 50"
+    by (simp add: mult.commute)
+  have cocycle:
+    "comma_c1_count C (50 * (n div 50) + n mod 50) =
+      comma_c1_count C (50 * (n div 50)) +
+        comma_c1_count (comma_c1_iter (50 * (n div 50)) C) (n mod 50)"
+    by (rule comma_c1_count_add)
+  have blocks:
+    "comma_c1_count C (50 * (n div 50) + n mod 50) =
+      (n div 50) * comma_c1_count C 50 + comma_c1_count C (n mod 50)"
+    by (simp only: cocycle cycle_iter cycle_count)
+  show ?thesis using split blocks by metis
+qed
+
+lemma comma_c1_iter_mod1600:
+  assumes admitted: "comma_c1_phase_admitted C"
+  shows "comma_c1_iter n C = comma_c1_iter (n mod 1600) C"
+proof -
+  have residue: "(n mod 1600) mod 50 = n mod 50"
+    by (rule mod_mod_cancel) simp
+  show ?thesis
+    using comma_c1_iter_mod50[OF admitted, of n]
+      comma_c1_iter_mod50[OF admitted, of "n mod 1600"] residue by metis
+qed
+
+lemma comma_c1_count_mod32_mod1600:
+  assumes admitted: "comma_c1_phase_admitted C"
+  shows "comma_c1_count C n mod 32 =
+    comma_c1_count C (n mod 1600) mod 32"
+proof -
+  have remainder: "(n mod 1600) mod 50 = n mod 50"
+    by (rule mod_mod_cancel) simp
+  have quotient: "(n div 50) mod 32 = (n mod 1600) div 50"
+    using comma_c1_quotient_modulus[where A=n and P=50 and M=32] by simp
+  have product:
+    "((n div 50) * comma_c1_count C 50) mod 32 =
+      (((n mod 1600) div 50) * comma_c1_count C 50) mod 32"
+  proof -
+    have "((n div 50) * comma_c1_count C 50) mod 32 =
+        (((n div 50) mod 32) * comma_c1_count C 50) mod 32"
+      by (rule mod_mult_left_eq[symmetric])
+    also have "... =
+        (((n mod 1600) div 50) * comma_c1_count C 50) mod 32"
+      by (simp only: quotient)
+    finally show ?thesis .
+  qed
+  have original:
+    "comma_c1_count C n =
+      (n div 50) * comma_c1_count C 50 + comma_c1_count C (n mod 50)"
+    by (rule comma_c1_count_phase50_decomposition[OF admitted])
+  have reduced:
+    "comma_c1_count C (n mod 1600) =
+      ((n mod 1600) div 50) * comma_c1_count C 50 +
+        comma_c1_count C ((n mod 1600) mod 50)"
+    by (rule comma_c1_count_phase50_decomposition[OF admitted])
+  have "comma_c1_count C n mod 32 =
+      ((n div 50) * comma_c1_count C 50 +
+        comma_c1_count C (n mod 50)) mod 32"
+    by (rule arg_cong[OF original])
+  also have "... =
+      (((n div 50) * comma_c1_count C 50) mod 32 +
+        comma_c1_count C (n mod 50) mod 32) mod 32"
+    by (rule mod_add_eq[symmetric])
+  also have "... =
+      ((((n mod 1600) div 50) * comma_c1_count C 50) mod 32 +
+        comma_c1_count C ((n mod 1600) mod 50) mod 32) mod 32"
+    by (simp only: product remainder)
+  also have "... =
+      (((n mod 1600) div 50) * comma_c1_count C 50 +
+        comma_c1_count C ((n mod 1600) mod 50)) mod 32"
+    by (rule mod_add_eq)
+  also have "... = comma_c1_count C (n mod 1600) mod 32"
+    by (rule arg_cong[OF reduced[symmetric]])
+  finally show ?thesis .
+qed
+
+lemma comma_c1_return_mod1600:
+  assumes admitted: "comma_c1_phase_admitted C"
+  shows "c1_target (comma_c1_return C n) =
+      c1_target (comma_c1_return C (n mod 1600)) \<and>
+    c1_count (comma_c1_return C n) mod 32 =
+      c1_count (comma_c1_return C (n mod 1600)) mod 32"
+  using comma_c1_iter_mod1600[OF admitted, of n]
+    comma_c1_count_mod32_mod1600[OF admitted, of n]
+  by (simp add: comma_c1_return_def)
+
+
 lemma comma_c1_advance_refines_iter:
   assumes admitted: "comma_c1_phase_admitted C"
   shows "comma_c1_advance C n = comma_c1_iter n C"
@@ -419,7 +624,11 @@ ML \<open>
     comma_c1_mod4_first comma_c1_mod4_second comma_c1_mod4_iter_parity
     comma_c1_advance_refines_residue comma_c1_mod25_raw50
     comma_c1_iter_period50 comma_c1_iter_commute comma_c1_iter_multiple50
-    comma_c1_iter_mod50 comma_c1_advance_refines_iter
+    comma_c1_iter_mod50 comma_c1_count_multiple50 comma_c1_iter_period1600
+    comma_c1_count_mod32_period1600 comma_c1_return_pair_period1600
+    comma_c1_quotient_modulus comma_c1_count_phase50_decomposition
+    comma_c1_iter_mod1600 comma_c1_count_mod32_mod1600
+    comma_c1_return_mod1600 comma_c1_advance_refines_iter
     comma_c1_powered_return_exact comma_c1_advance_remainder};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "C1 phase power proof depends on an oracle";

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator, Sequence
-from dataclasses import dataclass
+from collections.abc import Generator
+from contextlib import contextmanager
 from importlib.resources import as_file, files
 from pathlib import Path
 from threading import RLock
@@ -23,10 +23,9 @@ from number_compiler.resources.output_stream_metrics import (
     initialize_output_stream_metrics,
     measured_output_stream,
 )
-from number_compiler.resources.stores import LedgerList
+from number_compiler.resources.stores import LedgerDict, LedgerList
 from number_compiler.sequences.comma.action_arena import (
     CommaActionArena,
-    CommaActionArenaAuditSnapshot,
     CommaActionID,
 )
 from number_compiler.sequences.comma.arithmetic import (
@@ -36,6 +35,21 @@ from number_compiler.sequences.comma.arithmetic import (
     large_sector_children,
     safe_complete_cycles_from_sector,
 )
+from number_compiler.sequences.comma.boundary_quotient import MacroTemplate
+from number_compiler.sequences.comma.boundary_receipt import (
+    SOURCE,
+    BoundaryPrefixCursor,
+    BoundarySelectionReceipt,
+    BoundarySelectionReceiptID,
+    CommaImagePayload,
+    CommaOccurrenceRecord,
+    CommaTermPayloadAuditSnapshot,
+    clear_boundary_occurrence_stores,
+    clear_boundary_selection_receipt_stores,
+    issue_boundary_selection_receipt_entry,
+    resolve_boundary_selection_receipt_entry,
+    rollback_boundary_selection_receipt_entry,
+)
 from number_compiler.sequences.comma.future_authority import (
     SOURCE20_FIRST_FORK_INDEX as FIRST_FORK_INDEX,
 )
@@ -44,10 +58,7 @@ from number_compiler.sequences.comma.future_authority import (
 )
 from number_compiler.sequences.comma.image_adapter import (
     SEMANTIC_VERSION,
-    SOURCE,
-    BoundaryPrefixCursor,
     CommaImageAdapter,
-    CommaImagePayload,
     CommaOccurrenceID,
     CommaSource,
     UnresolvedCommaBranch,
@@ -58,29 +69,6 @@ if TYPE_CHECKING:
         SemanticFutureProviderLease,
         SemanticFutureProviderStore,
     )
-
-
-@dataclass(frozen=True, slots=True)
-class CommaOccurrenceRecord:
-    image: SourceImageID
-    value: int
-    absolute_index: int
-    certificate_version: str
-    boundary_cursor: BoundaryPrefixCursor | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class CommaTermPayloadAuditSnapshot:
-    """Read-only occurrence and action payload views owned by one term."""
-
-    arena: CommaActionArenaAuditSnapshot
-    occurrence_token: ArenaToken
-    occurrence_kind: str
-    occurrence_owner: int
-    occurrence_seal_owner: int
-    occurrences: Sequence[CommaOccurrenceRecord]
-    occurrence_seals: Sequence[CommaOccurrenceRecord]
-    stores_owned: bool
 
 
 class CommaTerm:
@@ -155,6 +143,11 @@ class CommaTerm:
         self._future_provider_store: SemanticFutureProviderStore | None = None
         self._future_provider_lease: SemanticFutureProviderLease | None = None
         self._future_provider_lock = RLock()
+        self._boundary_receipt_lock = RLock()
+        self._boundary_receipt_transaction_depth = 0
+        self._boundary_receipts_closing = False
+        self._boundary_receipts_closed = False
+        self._next_boundary_receipt_id = 0
         self.scheduler = TileScheduler.source_only(self.ledger)
         self.adapter = CommaImageAdapter(self.arena, self.scheduler)
         self.adapter.bind_owner(self)
@@ -177,9 +170,38 @@ class CommaTerm:
         self._occurrence_seals: LedgerList[CommaOccurrenceRecord] = (
             self.ledger.make_list(self._occurrence_seal_owner, append_only=False)
         )
+        self._boundary_receipt_token = ArenaToken("comma-boundary-selection-receipts")
+        self._boundary_receipt_kind = "comma-boundary-selection-receipt"
+        self._boundary_receipt_owner = self.ledger.register(
+            "comma-boundary-selection-receipts", "boundary_selection_receipt"
+        )
+        self._boundary_receipt_seal_owner = self.ledger.register(
+            "comma-boundary-selection-receipt-seals",
+            "boundary_selection_receipt_seal",
+        )
+        self._boundary_receipts: LedgerDict[
+            BoundarySelectionReceiptID, BoundarySelectionReceipt
+        ] = self.ledger.make_dict(
+            self._boundary_receipt_owner,
+            nodes_per_entry=1,
+            write_once=True,
+            key_type=BoundarySelectionReceiptID,
+            value_type=BoundarySelectionReceipt,
+        )
+        self._boundary_receipt_seals: LedgerDict[
+            BoundarySelectionReceiptID, BoundarySelectionReceipt
+        ] = self.ledger.make_dict(
+            self._boundary_receipt_seal_owner,
+            nodes_per_entry=1,
+            write_once=True,
+            key_type=BoundarySelectionReceiptID,
+            value_type=BoundarySelectionReceipt,
+        )
         self.arena.bind_payload_audit_root(self)
         self._audit_occurrences = self._occurrences
         self._audit_occurrence_seals = self._occurrence_seals
+        self._audit_boundary_receipts = self._boundary_receipts
+        self._audit_boundary_receipt_seals = self._boundary_receipt_seals
         from number_compiler.sequences.comma.payload_audit import (
             register_comma_term_audit,
         )
@@ -190,6 +212,13 @@ class CommaTerm:
         self._current_index = 1
         self._boundary_occurrence: object | None = None
         self._boundary_occurrence_owner: CommaOccurrenceID | None = None
+        self._active_digit_streams = 0
+
+    def require_open(self) -> None:
+        """Refuse new work once this term begins releasing its resources."""
+        with self._boundary_receipt_lock:
+            if self._boundary_receipts_closing or self._boundary_receipts_closed:
+                raise RuntimeError("comma term is closing or closed")
 
     def occurrence_record(self, source: CommaOccurrenceID) -> CommaOccurrenceRecord:
         """Return one occurrence only after its arena authority and seal agree."""
@@ -205,12 +234,101 @@ class CommaTerm:
             raise ValueError("comma occurrence publication was altered")
         return record
 
+    def issue_boundary_selection_receipt(
+        self, receipt: BoundarySelectionReceipt
+    ) -> BoundarySelectionReceiptID:
+        """Retain one exact receipt and return only its scoped handle."""
+        if type(receipt) is not BoundarySelectionReceipt:
+            raise TypeError("comma receipt issuance requires its exact receipt sort")
+        with self._boundary_receipt_lock:
+            if self._boundary_receipts_closing or self._boundary_receipts_closed:
+                raise RuntimeError("comma boundary receipt owner is closing or closed")
+            if self._boundary_receipt_transaction_depth < 1:
+                raise RuntimeError(
+                    "comma receipt issuance requires a publication scope"
+                )
+            local_id = self._next_boundary_receipt_id
+            identifier = issue_boundary_selection_receipt_entry(
+                self.ledger,
+                receipt,
+                self._boundary_receipt_token,
+                self._boundary_receipt_kind,
+                local_id,
+                self._boundary_receipts,
+                self._boundary_receipt_seals,
+                self._boundary_receipt_owner,
+                self._boundary_receipt_seal_owner,
+            )
+            self._next_boundary_receipt_id += 1
+            return identifier
+
+    def resolve_boundary_selection_receipt(
+        self, identifier: BoundarySelectionReceiptID
+    ) -> BoundarySelectionReceipt:
+        """Resolve a compact receipt handle through its issuing term owner."""
+        with self._boundary_receipt_lock:
+            if self._boundary_receipts_closing or self._boundary_receipts_closed:
+                raise ValueError("comma boundary receipt owner is closing or closed")
+            return resolve_boundary_selection_receipt_entry(
+                identifier,
+                self._boundary_receipt_token,
+                self._boundary_receipt_kind,
+                self._boundary_receipts,
+                self._boundary_receipt_seals,
+            )
+
+    @contextmanager
+    def boundary_receipt_transaction(self) -> Generator[None, None, None]:
+        """Rollback receipts from one failed primitive publication scope.
+
+        The scheduler enters this scope around a primitive candidate and its
+        core image publication. Comma boundary actions are primitive leaves;
+        composite actions finish their own candidate scope before the scheduler
+        visits either child. Reject nesting so a failed outer scope can never
+        roll back a receipt already referenced by a completed inner image.
+        """
+        with self._boundary_receipt_lock:
+            if self._boundary_receipts_closed or self._boundary_receipts_closing:
+                raise RuntimeError("comma receipt owner is closing or closed")
+            if self._boundary_receipt_transaction_depth != 0:
+                raise RuntimeError("comma receipt publication scopes cannot nest")
+            start_id = self._next_boundary_receipt_id
+            self._boundary_receipt_transaction_depth = 1
+            try:
+                yield
+            except BaseException as error:
+                try:
+                    for local_id in range(start_id, self._next_boundary_receipt_id):
+                        identifier = BoundarySelectionReceiptID(
+                            self._boundary_receipt_token,
+                            self._boundary_receipt_kind,
+                            local_id,
+                        )
+                        receipt = self._boundary_receipts.get(identifier)
+                        if receipt is not None:
+                            rollback_boundary_selection_receipt_entry(
+                                self.ledger,
+                                identifier,
+                                receipt,
+                                self._boundary_receipts,
+                                self._boundary_receipt_seals,
+                                self._boundary_receipt_owner,
+                                self._boundary_receipt_seal_owner,
+                            )
+                except BaseException as rollback_error:
+                    raise rollback_error from error
+                raise
+            finally:
+                self._boundary_receipt_transaction_depth = 0
+
     def audit_snapshot(self) -> CommaTermPayloadAuditSnapshot:
         """Expose exact retained stores through read-only audit views."""
         stores_owned = (
             self.arena.payload_audit_root_is_bound(self)
             and self._audit_occurrences is self._occurrences
             and self._audit_occurrence_seals is self._occurrence_seals
+            and self._audit_boundary_receipts is self._boundary_receipts
+            and self._audit_boundary_receipt_seals is self._boundary_receipt_seals
         )
         return CommaTermPayloadAuditSnapshot(
             arena=self.arena.audit_snapshot(),
@@ -220,6 +338,12 @@ class CommaTerm:
             occurrence_seal_owner=self._occurrence_seal_owner,
             occurrences=self._occurrences.audit_view(),
             occurrence_seals=self._occurrence_seals.audit_view(),
+            boundary_receipt_token=self._boundary_receipt_token,
+            boundary_receipt_kind=self._boundary_receipt_kind,
+            boundary_receipt_owner=self._boundary_receipt_owner,
+            boundary_receipt_seal_owner=self._boundary_receipt_seal_owner,
+            boundary_receipts=self._boundary_receipts.audit_view(),
+            boundary_receipt_seals=self._boundary_receipt_seals.audit_view(),
             stores_owned=stores_owned,
         )
 
@@ -230,10 +354,13 @@ class CommaTerm:
         exact global-release contract. With no registered release artifact, the
         public path keeps using its finite forest/prefix certificate.
         """
-        with self._future_provider_lock:
-            self._stage_global_future_provider_artifact_locked(artifact)
+        with self._boundary_receipt_lock:
+            self.require_open()
+            with self._future_provider_lock:
+                self._stage_global_future_provider_artifact_locked(artifact)
 
     def _stage_global_future_provider_artifact_locked(self, artifact: Path) -> None:
+        self.require_open()
         if not is_runtime_instance(artifact, Path):
             raise TypeError("comma future artifact must be a pathlib Path")
         if (
@@ -265,6 +392,7 @@ class CommaTerm:
         resources, leaving the finite-prefix forest path untouched. A
         registered digest with missing or mismatched bytes fails closed.
         """
+        self.require_open()
         from number_compiler.sequences.comma.future_provider import (
             FUTURE_PROVIDER_ASSET,
             registered_global_release_artifact_sha256,
@@ -307,35 +435,25 @@ class CommaTerm:
         self,
     ) -> SemanticFutureProviderLease | None:
         """Return only this term's lease after rechecking global authority."""
-        with self._future_provider_lock:
-            if (
-                self._future_provider_lease is None
-                and not self._stage_registered_global_future_provider_locked()
-            ):
-                return None
-            return self.require_global_future_provider()
+        with self._boundary_receipt_lock:
+            self.require_open()
+            with self._future_provider_lock:
+                if (
+                    self._future_provider_lease is None
+                    and not self._stage_registered_global_future_provider_locked()
+                ):
+                    return None
+                return self.require_global_future_provider()
 
     def require_certified_public_prefix(self) -> None:
         """Authenticate the current public index against its release authority."""
-        from number_compiler.sequences.comma.certificates import (
-            CERTIFICATE_ID,
-            UnresolvedCommaTerm,
-            require_certified_index,
-        )
-
-        provider = self.global_future_provider_for_prefix_admission()
-        if self.certificate_version != CERTIFICATE_ID and provider is None:
-            raise UnresolvedCommaTerm(
-                self.index, 0, CERTIFICATE_ID, "stale comma certificate binding"
+        with self._boundary_receipt_lock:
+            self.require_open()
+            from number_compiler.sequences.comma.certificates import (
+                require_certified_public_prefix,
             )
-        require_certified_index(
-            self.index,
-            self.ledger,
-            self.max_work,
-            shared_cache=self.shared_cache,
-            memo=self.certificate_memo,
-            global_provider=provider,
-        )
+
+            require_certified_public_prefix(self)
 
     @property
     def retained_global_future_provider(self) -> SemanticFutureProviderLease | None:
@@ -344,18 +462,19 @@ class CommaTerm:
             registered_global_release_artifact_sha256,
         )
 
-        with self._future_provider_lock:
-            lease = self._future_provider_lease
-            expected_digest = registered_global_release_artifact_sha256()
-            if (
-                lease is None
-                or expected_digest is None
-                or not lease.matches_global_release_binding(
-                    self.ledger, expected_digest
-                )
-            ):
-                return None
-            return lease
+        with self._boundary_receipt_lock:
+            with self._future_provider_lock:
+                lease = self._future_provider_lease
+                expected_digest = registered_global_release_artifact_sha256()
+                if (
+                    lease is None
+                    or expected_digest is None
+                    or not lease.matches_global_release_binding(
+                        self.ledger, expected_digest
+                    )
+                ):
+                    return None
+                return lease
 
     def require_global_future_provider(
         self, artifact_sha256: str | None = None
@@ -365,36 +484,77 @@ class CommaTerm:
             SemanticFutureProviderStore,
         )
 
-        lease = self._future_provider_lease
-        if type(lease) is not SemanticFutureProviderLease:
-            raise PermissionError("comma global future provider is not configured")
-        store = self._future_provider_store
-        if (
-            type(store) is not SemanticFutureProviderStore
-            or getattr(lease, "_store", None) is not store
-            or getattr(store, "ledger", None) is not self.ledger
-        ):
-            raise PermissionError(
-                "comma global future provider is not owned by this term"
-            )
-        lease.require_global_release_admission()
-        if artifact_sha256 is not None and lease.artifact_sha256 != artifact_sha256:
-            raise PermissionError("comma action belongs to another global artifact")
-        return lease
+        with self._boundary_receipt_lock:
+            self.require_open()
+            lease = self._future_provider_lease
+            if type(lease) is not SemanticFutureProviderLease:
+                raise PermissionError("comma global future provider is not configured")
+            store = self._future_provider_store
+            if (
+                type(store) is not SemanticFutureProviderStore
+                or getattr(lease, "_store", None) is not store
+                or getattr(store, "ledger", None) is not self.ledger
+            ):
+                raise PermissionError(
+                    "comma global future provider is not owned by this term"
+                )
+            lease.require_global_release_admission()
+            if artifact_sha256 is not None and lease.artifact_sha256 != artifact_sha256:
+                raise PermissionError("comma action belongs to another global artifact")
+            return lease
 
     def close(self) -> None:
-        """Release only the privately staged future-provider resources."""
-        with self._future_provider_lock:
-            store = self._future_provider_store
-            if store is None:
+        """Release term-scoped images and their boundary authority."""
+        with self._boundary_receipt_lock:
+            if self._boundary_receipts_closed:
                 return
-            store.close()
-            self._future_provider_store = None
-            self._future_provider_lease = None
-            self._boundary_occurrence = None
-            self._boundary_occurrence_owner = None
+            if self._boundary_receipt_transaction_depth != 0:
+                raise RuntimeError("cannot close comma during receipt publication")
+            if self._active_digit_streams != 0:
+                raise RuntimeError("cannot close comma during a digit stream")
+            core = self.scheduler.published_source_image_core
+            if core is not None and (
+                core.application_workspace.running or len(core.application_workspace)
+            ):
+                raise RuntimeError("cannot close comma during image application")
+            self._boundary_receipts_closing = True
+            with self._future_provider_lock:
+                self.scheduler.dispose_source_images()
+                clear_boundary_occurrence_stores(
+                    self.ledger,
+                    self._occurrences,
+                    self._occurrence_seals,
+                    self._occurrence_owner,
+                    self._occurrence_seal_owner,
+                )
+                self._occurrence_token = ArenaToken("comma-occurrences-closed")
+                self._source = CommaSource(SOURCE, self.certificate_version)
+                self._image = None
+                self._value = None
+                self._current_value = SOURCE
+                self._current_index = 1
+                self._boundary_occurrence = None
+                self._boundary_occurrence_owner = None
+                store = self._future_provider_store
+                if store is not None:
+                    store.close()
+                self._future_provider_store = None
+                self._future_provider_lease = None
+                clear_boundary_selection_receipt_stores(
+                    self.ledger,
+                    self._boundary_receipts,
+                    self._boundary_receipt_seals,
+                    self._boundary_receipt_owner,
+                    self._boundary_receipt_seal_owner,
+                )
+                self._boundary_receipt_token = ArenaToken(
+                    "comma-boundary-selection-receipts-closed"
+                )
+                self._boundary_receipts_closed = True
+                self._boundary_receipts_closing = False
 
     def __enter__(self) -> Self:
+        self.require_open()
         return self
 
     def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
@@ -408,82 +568,14 @@ class CommaTerm:
     def estimated_bit_length(self) -> int:
         return self.maximum_value.bit_length()
 
-    def _charge(self, amount: int = 1) -> None:
-        self.arena.charge(amount)
+    def _publish(self, action: CommaActionID) -> int:
+        with self._boundary_receipt_lock:
+            self.require_open()
+            return self._publish_open(action)
 
-    def certified_fork_child(
-        self, source_index: int, source_value: int, children: tuple[int, ...]
-    ) -> int:
-        """Demand an independently checked, source-bound branch choice.
-
-        Arithmetic never treats the smallest child, fixture data, or a
-        caller-provided selector as evidence of an infinite continuation.
-        """
-        if self.certificate_version == "uncertified-arithmetic":
-            raise UnresolvedCommaBranch(
-                f"comma branch at index {source_index} requires a certificate"
-            )
-        from number_compiler.sequences.comma.certificates import (
-            require_selected_child,
-        )
-
-        child = require_selected_child(
-            source_index=source_index,
-            source_value=source_value,
-            children=children,
-            certificate_version=self.certificate_version,
-            ledger=self.ledger,
-            max_work=self.max_work,
-            shared_cache=self.shared_cache,
-            memo=self.certificate_memo,
-        )
-        if type(child) is not int or child not in children:
-            raise ValueError("comma certificate selected a non-child")
-        return child
-
-    def _publish(
-        self,
-        action: CommaActionID,
-        *,
-        next_boundary: object | None = None,
-    ) -> int:
-        self._charge()
+    def _publish_open(self, action: CommaActionID) -> int:
+        self.arena.charge()
         action_node = self.arena.node(action)
-        if next_boundary is not None:
-            from number_compiler.sequences.comma.occurrence import (
-                BoundaryOccurrence,
-            )
-
-            if type(
-                next_boundary
-            ) is not BoundaryOccurrence or action_node.kind not in {
-                "source20-first-child",
-                "global-boundary-return",
-            }:
-                raise TypeError("only an admitted comma return can publish a boundary")
-            next_boundary.validate()
-            if action_node.kind == "global-boundary-return":
-                source = self._boundary_occurrence
-                if (
-                    type(source) is not BoundaryOccurrence
-                    or self._boundary_occurrence_owner is not self._source
-                    or action_node.boundary_source != source.state
-                    or action_node.boundary_target != next_boundary.state
-                ):
-                    raise ValueError("comma action and target occurrence disagree")
-                template = self.arena.boundary_template(source.state)
-                if next_boundary.exponent != source.exponent + template.exponent_delta:
-                    raise ValueError("comma action changed its occurrence exponent")
-            else:
-                from number_compiler.sequences.comma.boundary_quotient import (
-                    BoundaryState,
-                )
-
-                if (
-                    next_boundary.state != BoundaryState("N", 2, 10)
-                    or next_boundary.exponent != 10
-                ):
-                    raise ValueError("source-20 action has another boundary target")
         query_source = self.adapter.source_payload(self._source)
         if (
             query_source.value != self._current_value
@@ -491,18 +583,92 @@ class CommaTerm:
             or query_source.certificate_version != self.certificate_version
         ):
             raise ValueError("comma query source differs from its admitted occurrence")
+        expected_transitions = action_node.steps
+        boundary_template: MacroTemplate | None = None
+        if action_node.kind == "global-boundary-return":
+            from number_compiler.sequences.comma.occurrence import (
+                BoundaryOccurrence,
+            )
+
+            source = self._boundary_occurrence
+            source_cursor = query_source.boundary_cursor
+            if (
+                type(source) is not BoundaryOccurrence
+                or self._boundary_occurrence_owner is not self._source
+                or action_node.boundary_source != source.state
+                or action_node.boundary_target is not None
+                or type(source_cursor) is not BoundaryPrefixCursor
+                or source_cursor.state != source.state
+                or source_cursor.exponent != source.exponent
+                or source_cursor.transitions != 0
+            ):
+                raise ValueError("comma global action lost its source occurrence")
+            self.require_global_future_provider(action_node.future_digest)
+            boundary_template = self.arena.boundary_template(source.state)
+            if boundary_template.outcome != "fork":
+                raise ValueError("comma global action source is not a fork")
+            expected_transitions = (
+                boundary_template.weight.evaluate(
+                    source.exponent,
+                    charge_bits=self.arena.charge_bits,
+                )
+                + 1
+            )
+        elif action_node.kind == "source20-first-child":
+            from number_compiler.sequences.comma.future_authority import (
+                SOURCE20_FIRST_FORK_INDEX,
+                SOURCE20_FIRST_FORK_VALUE,
+            )
+
+            if (
+                self._current_index != SOURCE20_FIRST_FORK_INDEX
+                or self._current_value != SOURCE20_FIRST_FORK_VALUE
+                or query_source.boundary_cursor is not None
+                or action_node.boundary_source is not None
+                or action_node.boundary_target is not None
+            ):
+                raise ValueError("comma source-20 action has another source")
+            self.require_global_future_provider(action_node.future_digest)
+            expected_transitions = 1
+        # Each admitted occurrence starts a new image action at extent zero.
+        # Its absolute index remains cumulative; the previous result's extent
+        # belongs to the preceding action, not this newly admitted source.
+        source_extent = 0
         self.ledger.reserve_many(
             (
                 (self._occurrence_owner, 1, 1),
                 (self._occurrence_seal_owner, 1, 1),
             )
         )
+        next_boundary = None
         try:
             image = self.scheduler.source_image(self.adapter, self._source, action)
-            payload = cast(
-                CommaImagePayload,
-                self.scheduler.source_image_core().view(image).payload,
-            )
+            image_view = self.scheduler.source_image_core().view(image)
+            payload = cast(CommaImagePayload, image_view.payload)
+            if (
+                payload.absolute_index != self._current_index + expected_transitions
+                or image_view.binding.extent != source_extent + expected_transitions
+            ):
+                raise ValueError("comma image changed its admitted action extent")
+            if action_node.kind in {"source20-first-child", "global-boundary-return"}:
+                from number_compiler.sequences.comma.occurrence import (
+                    BoundaryOccurrence,
+                )
+
+                cursor = payload.boundary_cursor
+                if type(cursor) is not BoundaryPrefixCursor:
+                    raise ValueError("comma future return omitted its target cursor")
+                self.adapter.validate_action_result(
+                    action_node,
+                    query_source,
+                    source_extent,
+                    payload,
+                    image_view.binding.extent,
+                    image_view.binding.boundary_ports,
+                    expected_transitions=expected_transitions,
+                    template=boundary_template,
+                )
+                next_boundary = BoundaryOccurrence(cursor.state, cursor.exponent)
             next_source = CommaOccurrenceID(
                 self._occurrence_token,
                 self._occurrence_kind,
@@ -563,60 +729,25 @@ class CommaTerm:
         self.ledger.bump(_comma_keys.COMMA_BOUNDARY_WEIGHTED_LOCATOR_REQUESTS)
         if remaining <= prefix_steps:
             action = self.arena.boundary_prefix_occurrence(source, remaining)
-            prior_index = self._current_index
             value = self._publish(action)
-            consumed = self._current_index - prior_index
-            if consumed != remaining:
-                raise ValueError("comma partial boundary locator changed its weight")
             return value, 0
         if template.outcome != "fork":
             raise UnresolvedCommaBranch(
                 f"comma boundary at index {self._current_index} is a landmine"
             )
-        selection = provider.select_unique_unranked_child(
-            source.state,
-            charge_work=self.arena.charge,
-        )
-        from number_compiler.sequences.comma.future_provider import (
-            UnrankedChildSelection,
-        )
-        from number_compiler.sequences.comma.semantic_branch import (
-            validate_selection_class_bindings,
-        )
-
-        if type(selection) is not UnrankedChildSelection:
-            raise ValueError("comma provider returned a malformed child selection")
-        validate_selection_class_bindings(
-            source.state,
-            template.ordered_children,
-            selection,
-            provider,
-            charge_work=self.arena.charge,
-        )
-        if (
-            selection.source != source.state
-            or selection.selected_slot not in (0, 1)
-            or selection.fork_coefficient != template.destination_a
-        ):
-            raise ValueError("comma provider selected another macro control")
-        target_state = template.ordered_children[selection.selected_slot]
-        target = BoundaryOccurrence(
-            target_state,
-            source.exponent + template.exponent_delta,
-        )
         action = self.arena.global_boundary_return(
             source.state,
-            target_state,
             provider.artifact_sha256,
         )
-        prior_index = self._current_index
-        value = self._publish(action, next_boundary=target)
-        consumed = self._current_index - prior_index
-        if consumed != prefix_steps + 1 or consumed > remaining:
-            raise ValueError("comma completed weighted return changed its extent")
-        return value, remaining - consumed
+        value = self._publish(action)
+        return value, remaining - (prefix_steps + 1)
 
     def resolve_index(self) -> int:
+        with self._boundary_receipt_lock:
+            self.require_open()
+            return self._resolve_index_open()
+
+    def _resolve_index_open(self) -> int:
         if self._value is not None:
             return self._value
         value = self._current_value
@@ -625,7 +756,7 @@ class CommaTerm:
             if self._boundary_occurrence is not None:
                 value, remaining = self._continue_boundary_occurrence(remaining)
                 continue
-            self._charge()
+            self.arena.charge()
             self.arena.charge_bits(8 * value.bit_length() + 4 * remaining.bit_length())
             sector = decimal_sector(value)
             transfer = self.arena.transfer(sector.leading, sector.digit)
@@ -675,13 +806,28 @@ class CommaTerm:
                     value = self._publish(action)
                     remaining -= steps
                     continue
+            if self._future_provider_lease is not None:
+                from number_compiler.sequences.comma.future_authority import (
+                    SOURCE20_FIRST_FORK_INDEX,
+                    SOURCE20_FIRST_FORK_VALUE,
+                )
+
+                if (
+                    self._current_index == SOURCE20_FIRST_FORK_INDEX
+                    and value == SOURCE20_FIRST_FORK_VALUE
+                ):
+                    provider = self.require_global_future_provider()
+                    action = self.arena.source20_first_child(provider.artifact_sha256)
+                    value = self._publish(action)
+                    remaining -= 1
+                    continue
             if sector.exponent < 2:
-                self._charge(9)
+                self.arena.charge(9)
                 self.arena.charge_bits(18 * value.bit_length())
                 children = comma_children(value)
                 self.ledger.bump(_comma_keys.COMMA_CHILD_CANDIDATE_CHECKS, 9)
             else:
-                self._charge(2)
+                self.arena.charge(2)
                 self.arena.charge_bits(4 * value.bit_length())
                 children = large_sector_children(value, sector)
                 self.ledger.bump(_comma_keys.COMMA_SEAM_PREDICATE_CHECKS, 2)
@@ -693,50 +839,27 @@ class CommaTerm:
             if len(children) == 1:
                 child = children[0]
             elif self._future_provider_lease is not None:
-                from number_compiler.sequences.comma.boundary_quotient import (
-                    BoundaryState,
+                self.require_global_future_provider()
+                raise UnresolvedCommaBranch(
+                    "global comma provider has no admitted occurrence for this fork"
                 )
-                from number_compiler.sequences.comma.future_authority import (
-                    SOURCE20_FIRST_FORK_CHILDREN,
-                    SOURCE20_FIRST_FORK_INDEX,
-                    SOURCE20_FIRST_FORK_VALUE,
-                    SOURCE20_SELECTED_CHILD_INDEX,
-                )
-                from number_compiler.sequences.comma.semantic_branch import (
-                    bind_source20_first_child_entry,
+            else:
+                from number_compiler.sequences.comma.certificates import (
+                    require_selected_child,
                 )
 
-                provider = self.require_global_future_provider()
-                if (
-                    self._current_index != SOURCE20_FIRST_FORK_INDEX
-                    or value != SOURCE20_FIRST_FORK_VALUE
-                    or children != SOURCE20_FIRST_FORK_CHILDREN
-                ):
-                    raise UnresolvedCommaBranch(
-                        "global comma provider has no admitted occurrence for this fork"
-                    )
-                entry = bind_source20_first_child_entry(
-                    parent_index=self._current_index,
-                    parent_value=value,
-                    ordered_children=(children[0], children[1]),
-                    child_index=SOURCE20_SELECTED_CHILD_INDEX,
-                    provider=provider,
-                    charge_work=self.arena.charge,
-                    charge_bits=self.arena.charge_bits,
+                child = require_selected_child(
+                    source_index=self._current_index,
+                    source_value=value,
+                    children=children,
+                    certificate_version=self.certificate_version,
+                    ledger=self.ledger,
+                    max_work=self.max_work,
+                    shared_cache=self.shared_cache,
+                    memo=self.certificate_memo,
                 )
-                target = entry.weighted_source(
-                    provider,
-                    charge_work=self.arena.charge,
-                )
-                if target.state != BoundaryState("N", 2, 10) or target.exponent != 10:
-                    raise ValueError("source-20 theorem returned another boundary")
-                action = self.arena.source20_first_child(provider.artifact_sha256)
-                prior_index = self._current_index
-                value = self._publish(action, next_boundary=target)
-                remaining -= self._current_index - prior_index
-                continue
-            else:
-                child = self.certified_fork_child(self._current_index, value, children)
+                if type(child) is not int or child not in children:
+                    raise ValueError("comma certificate selected a non-child")
             action = self.arena.step(child - value - 10 * sector.digit)
             value = self._publish(action)
             remaining -= 1
@@ -744,95 +867,126 @@ class CommaTerm:
         return value
 
     def materialize(self, *, max_bits: int | None = None) -> int:
-        value = self.resolve_index()
-        if max_bits is not None and value.bit_length() > max_bits:
-            raise ValueError(f"output exceeds --max-output-bits ({max_bits})")
-        return value
+        with self._boundary_receipt_lock:
+            self.require_open()
+            value = self.resolve_index()
+            if max_bits is not None and value.bit_length() > max_bits:
+                raise ValueError(f"output exceeds --max-output-bits ({max_bits})")
+            return value
 
     def width(self) -> int:
-        value = self.resolve_index()
-        self.arena.charge_bits(3 * value.bit_length())
-        return decimal_sector(value).exponent + 1
+        with self._boundary_receipt_lock:
+            self.require_open()
+            value = self.resolve_index()
+            self.arena.charge_bits(3 * value.bit_length())
+            return decimal_sector(value).exponent + 1
 
     def digit(self, position: int) -> int:
-        if type(position) is not int or position < 0:
-            raise ValueError("comma digit position must be nonnegative")
-        value = self.resolve_index()
-        self.arena.charge_bits(3 * value.bit_length())
-        if position > decimal_sector(value).exponent:
-            return 0
-        if self._image is None:
-            divisor: int = pow(10, position)
-            return SOURCE // divisor % 10
-        return cast(
-            int,
-            self.scheduler.source_projection(
-                self.adapter, self._image, SourceImageDemand("digit", (position,))
-            ).value,
-        )
+        with self._boundary_receipt_lock:
+            self.require_open()
+            if type(position) is not int or position < 0:
+                raise ValueError("comma digit position must be nonnegative")
+            value = self.resolve_index()
+            self.arena.charge_bits(3 * value.bit_length())
+            if position > decimal_sector(value).exponent:
+                return 0
+            if self._image is None:
+                divisor: int = pow(10, position)
+                return SOURCE // divisor % 10
+            return cast(
+                int,
+                self.scheduler.source_projection(
+                    self.adapter, self._image, SourceImageDemand("digit", (position,))
+                ).value,
+            )
 
     def iter_digits(self) -> Generator[int, None, None]:
+        self.require_open()
+
         def source() -> Generator[int, None, None]:
-            value = self.resolve_index()
+            with self._boundary_receipt_lock:
+                self.require_open()
+                self._active_digit_streams += 1
+                try:
+                    value = self.resolve_index()
 
-            def workspace(slots: int, bits: int) -> None:
-                for name, current in (
-                    ("comma_stream_workspace_peak_slots", slots),
-                    ("comma_stream_workspace_peak_integer_bits", bits),
-                ):
-                    peak = self.ledger.counters.get(name, 0)
-                    if current > peak:
-                        self.ledger.bump(name, current - peak)
+                    def workspace(slots: int, bits: int) -> None:
+                        for name, current in (
+                            ("comma_stream_workspace_peak_slots", slots),
+                            ("comma_stream_workspace_peak_integer_bits", bits),
+                        ):
+                            peak = self.ledger.counters.get(name, 0)
+                            if current > peak:
+                                self.ledger.bump(name, current - peak)
 
-            stream = iter_digits_lsd(
-                value,
-                10,
-                charge=self.arena.charge,
-                charge_bits=self.arena.charge_bits,
-                observe_workspace=workspace,
-            )
+                    stream = iter_digits_lsd(
+                        value,
+                        10,
+                        charge=self.arena.charge,
+                        charge_bits=self.arena.charge_bits,
+                        observe_workspace=workspace,
+                    )
+                except BaseException:
+                    self._active_digit_streams -= 1
+                    raise
             try:
-                yield from stream
+                while True:
+                    with self._boundary_receipt_lock:
+                        try:
+                            digit = next(stream)
+                        except StopIteration:
+                            break
+                    yield digit
             finally:
-                stream.close()
+                with self._boundary_receipt_lock:
+                    try:
+                        stream.close()
+                    finally:
+                        self._active_digit_streams -= 1
 
         return measured_output_stream(self.ledger, "comma_stream", source)
 
     def clock(self) -> dict[str, int]:
-        value = self.resolve_index()
-        self.arena.charge_bits(3 * value.bit_length())
-        sector = decimal_sector(value)
-        return {
-            "represented_transitions": self.index - 1,
-            "phase_cycles": self.ledger.counters.get(_comma_keys.COMMA_PHASE_CYCLES, 0),
-            "phase_prefix_transitions": self.ledger.counters.get(
-                _comma_keys.COMMA_PHASE_PREFIX_TRANSITIONS, 0
-            ),
-            "seam_steps": self.ledger.counters.get(
-                _comma_keys.COMMA_SCALAR_SEAM_STEPS, 0
-            ),
-            "leading_digit": sector.leading,
-            "digit_phase": sector.digit,
-            "headroom": sector.headroom,
-        }
+        with self._boundary_receipt_lock:
+            self.require_open()
+            value = self.resolve_index()
+            self.arena.charge_bits(3 * value.bit_length())
+            sector = decimal_sector(value)
+            return {
+                "represented_transitions": self.index - 1,
+                "phase_cycles": self.ledger.counters.get(
+                    _comma_keys.COMMA_PHASE_CYCLES, 0
+                ),
+                "phase_prefix_transitions": self.ledger.counters.get(
+                    _comma_keys.COMMA_PHASE_PREFIX_TRANSITIONS, 0
+                ),
+                "seam_steps": self.ledger.counters.get(
+                    _comma_keys.COMMA_SCALAR_SEAM_STEPS, 0
+                ),
+                "leading_digit": sector.leading,
+                "digit_phase": sector.digit,
+                "headroom": sector.headroom,
+            }
 
     def tropical(self) -> dict[str, int | str]:
-        value = self.resolve_index()
-        self.arena.charge_bits(3 * value.bit_length())
-        sector = decimal_sector(value)
-        digit = sector.digit
-        if sector.leading == 9:
+        with self._boundary_receipt_lock:
+            self.require_open()
+            value = self.resolve_index()
+            self.arena.charge_bits(3 * value.bit_length())
+            sector = decimal_sector(value)
+            digit = sector.digit
+            if sector.leading == 9:
+                return {
+                    "seam_kind": "power_of_ten_landmine",
+                    "headroom": sector.headroom,
+                    "lower_margin": sector.headroom - (10 * digit + 1),
+                    "upper_margin": sector.headroom - (10 * digit + 9),
+                }
             return {
-                "seam_kind": "power_of_ten_landmine",
+                "seam_kind": "next_leading_digit_fork",
                 "headroom": sector.headroom,
-                "lower_margin": sector.headroom - (10 * digit + 1),
-                "upper_margin": sector.headroom - (10 * digit + 9),
+                "margin": sector.headroom - (10 * digit + sector.leading + 1),
             }
-        return {
-            "seam_kind": "next_leading_digit_fork",
-            "headroom": sector.headroom,
-            "margin": sector.headroom - (10 * digit + sector.leading + 1),
-        }
 
 
 __all__ = [

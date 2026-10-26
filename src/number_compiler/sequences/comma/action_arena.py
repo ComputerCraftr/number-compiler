@@ -30,6 +30,7 @@ from number_compiler.sequences.comma.boundary_quotient import (
     MacroTemplate,
     boundary_state_signature,
     construct_macro,
+    macro_template_retained_components,
 )
 from number_compiler.sequences.comma.boundary_quotient import (
     macro_template_component_seal as _template_seal,
@@ -525,12 +526,18 @@ class CommaActionArena:
         template = construct_macro(
             state, charge=self.charge, charge_bits=self.charge_bits
         )
-        components: tuple[object, ...] = (
-            template,
-            *template.sector_fragments,
-            *template.prefix_weights,
-            *template.prefix_displacements,
+        # Charge graph inspection before allocating its flattened owner list.
+        # Each segment contributes its wrapper and four retained children;
+        # adjacent edges may share child identities, but still require reading
+        # each reference before the later identity de-duplication.
+        self.charge(
+            2
+            + len(template.sector_fragments)
+            + len(template.prefix_weights)
+            + len(template.prefix_displacements)
+            + 5 * len(template.chart_segments)
         )
+        components = macro_template_retained_components(template)
         retained = len(components)
         self.charge(retained)
         self.charge_bits(
@@ -553,8 +560,13 @@ class CommaActionArena:
                 template.endpoint.numerator_offset.bit_length(),
             )
         )
-        self.charge(retained)
-        seal_node_count = retained - 1
+        seal_node_count = (
+            len(template.sector_fragments)
+            + len(template.prefix_weights)
+            + len(template.prefix_displacements)
+            + len(template.chart_segments)
+        )
+        self.charge(seal_node_count + 1)
         self.ledger.reserve_many(
             (
                 (self._boundary_owner, 1, 0),
@@ -571,6 +583,7 @@ class CommaActionArena:
                 *cast(tuple[object, ...], seal[1]),
                 *cast(tuple[object, ...], seal[2]),
                 *cast(tuple[object, ...], seal[3]),
+                *cast(tuple[object, ...], seal[4]),
             )
             if len(seal_nodes) != seal_node_count:
                 raise ValueError("comma boundary seal has another component count")
@@ -633,6 +646,8 @@ class CommaActionArena:
                 expected = cast(tuple[object, ...], seal[2])[index]
             elif kind == "displacement":
                 expected = cast(tuple[object, ...], seal[3])[index]
+            elif kind == "chart_segment":
+                expected = cast(tuple[object, ...], seal[4])[index]
             else:
                 raise ValueError("unknown comma boundary component")
             self.charge_bits(_seal_integer_bits(expected))
@@ -721,19 +736,17 @@ class CommaActionArena:
     def global_boundary_return(
         self,
         source: BoundaryState,
-        target: BoundaryState,
         artifact_sha256: str,
     ) -> CommaActionID:
-        """Intern one complete selected return under its admitted provider.
+        """Intern one source-guarded return under its admitted provider.
 
-        The semantic action contains only the finite source/target chart and
-        proof-artifact binding. Its exact temporal weight is evaluated when
-        applied to the receiving occurrence.
+        The selected target belongs to the application result, not the
+        reusable action identity. The immutable artifact and source state
+        determine its guarded outcome.
         """
-        if type(source) is not BoundaryState or type(target) is not BoundaryState:
-            raise TypeError("comma future return needs exact boundary states")
+        if type(source) is not BoundaryState:
+            raise TypeError("comma future return needs an exact boundary source")
         boundary_state_signature(source)
-        boundary_state_signature(target)
         from number_compiler.sequences.comma.future_authority import (
             valid_artifact_digest,
         )
@@ -741,22 +754,15 @@ class CommaActionArena:
         if not valid_artifact_digest(artifact_sha256):
             raise ValueError("comma future return needs an admitted artifact digest")
         template = self.boundary_template(source)
-        if (
-            template.outcome != "fork"
-            or target not in template.ordered_children
-            or target.a != template.destination_a
-            or target.exponent_residue
-            != (source.exponent_residue + template.exponent_delta) % PERIOD
-        ):
-            raise ValueError("comma future return target is not an exact macro child")
-        key = ("global-boundary-return", source, target, artifact_sha256)
+        if template.outcome != "fork":
+            raise ValueError("comma future return source is not a macro fork")
+        key = ("global-boundary-return", source, artifact_sha256)
         return self.intern_record(
             key,
             CommaActionRecord(
                 "global-boundary-return",
                 0,
                 boundary_source=source,
-                boundary_target=target,
                 future_digest=artifact_sha256,
             ),
         )

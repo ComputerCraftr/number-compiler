@@ -1,5 +1,5 @@
 theory Comma_Sector_Response
-  imports Comma_Decade_Masks Comma_Fast_Control.Comma_Fast_Kernel
+  imports Comma_Decade_Orbit.Comma_Decade_Masks Comma_Fast_Control.Comma_Fast_Kernel
 begin
 
 text \<open>A sector response branches on the short cyclotomic phase, never on

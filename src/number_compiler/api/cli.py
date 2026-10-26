@@ -45,7 +45,8 @@ def _unresolved_packet(
     }
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, *, shared_cache: bool = True) -> int:
+    """Execute the CLI; embedded validation may disable process-cache reuse."""
     if argv is not None and (
         type(argv) is not list or any(type(v) is not str for v in argv)
     ):
@@ -63,9 +64,17 @@ def main(argv: list[str] | None = None) -> int:
         from number_compiler.api.json_output import json_integers
 
         compiler = (
-            NumberCompiler(max_context_nodes=10000, max_cache_entries=20000)
+            NumberCompiler(
+                max_context_nodes=10000,
+                max_cache_entries=20000,
+                shared_cache=shared_cache,
+            )
             if request.requires_bounded_observer
-            else NumberCompiler()
+            else (
+                NumberCompiler()
+                if shared_cache is True
+                else NumberCompiler(shared_cache=shared_cache)
+            )
         )
         context = QueryContext(request, compiler)
         context.admit_observation_extents()

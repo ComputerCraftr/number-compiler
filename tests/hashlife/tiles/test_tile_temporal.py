@@ -240,7 +240,18 @@ def test_cached_composite_prefix_dispatches_composite_suffix_iteratively() -> No
         source.close()
 
 
-@pytest.mark.parametrize("seed", (1, 2, 3, 6, 7, 15, 31))
+@pytest.mark.parametrize(
+    "seed",
+    (
+        1,
+        2,
+        pytest.param(3, marks=pytest.mark.validation),
+        pytest.param(6, marks=pytest.mark.validation),
+        7,
+        pytest.param(15, marks=pytest.mark.validation),
+        31,
+    ),
+)
 def test_collatz_temporal_results_preserve_branch_dependent_odd_weight(
     seed: int,
 ) -> None:

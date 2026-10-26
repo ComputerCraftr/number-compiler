@@ -219,6 +219,81 @@ proof -
       trace by simp
 qed
 
+lemma double_reverse_ring_inward_ports_length:
+  "length (double_reverse_ring_inward_ports steps word position) = steps"
+  by (induction steps arbitrary: word position) simp_all
+
+theorem double_reverse_f5_ring_lineage_path_telescope:
+  assumes word_nonempty: "word \<noteq> []"
+      and row_decimal:
+        "double_reverse_ring_decimal
+          (double_reverse_ring_inward_run start word)"
+  shows "int (double_reverse_ring_digit
+      (double_reverse_ring_inward_run steps
+        (double_reverse_ring_inward_run start word)) position mod 5) mod 5 =
+    (2 ^ (2 * steps) *
+        int (double_reverse_ring_digit
+          (double_reverse_ring_inward_run start word) (position + steps)) +
+      double_reverse_f5_physical_path_offset
+        (double_reverse_ring_digit
+          (double_reverse_ring_inward_run start word) (position + steps))
+        (double_reverse_ring_inward_ports steps
+          (double_reverse_ring_inward_run start word) position)) mod 5"
+proof -
+  let ?row = "double_reverse_ring_inward_run start word"
+  let ?center = "double_reverse_ring_digit ?row (position + steps)"
+  let ?ports = "double_reverse_ring_inward_ports steps ?row position"
+  have ports_length: "length ?ports = steps"
+    by (rule double_reverse_ring_inward_ports_length)
+  have row_nonempty: "?row \<noteq> []"
+    by (rule double_reverse_ring_inward_run_nonempty[OF word_nonempty])
+  have center_decimal: "?center < 10"
+    by (rule double_reverse_ring_digit_decimal[OF row_nonempty row_decimal])
+  have ports_valid: "double_reverse_open_inputs_valid ?ports"
+    by (rule double_reverse_ring_inward_ports_valid[OF row_nonempty row_decimal])
+  have ring_trace:
+    "double_reverse_open_stencil_trace ?center ?ports =
+      double_reverse_ring_digit
+        (double_reverse_ring_inward_run steps ?row) position"
+    by (rule double_reverse_ring_inward_trace_exact[OF row_nonempty])
+  have action_endpoint:
+    "double_reverse_f5_apply
+        (double_reverse_f5_open_trace_action ?center ?ports) (?center mod 5) =
+      double_reverse_ring_digit
+        (double_reverse_ring_inward_run steps ?row) position mod 5"
+  proof -
+    have action_trace:
+      "double_reverse_f5_apply
+          (double_reverse_f5_open_trace_action ?center ?ports) (?center mod 5) =
+        double_reverse_open_stencil_trace ?center ?ports mod 5"
+      by (rule double_reverse_f5_open_trace_action_refines_trace
+        [OF center_decimal ports_valid])
+    show ?thesis using action_trace ring_trace by simp
+  qed
+  have action_telescope:
+    "int (double_reverse_f5_apply
+        (double_reverse_f5_open_trace_action ?center ?ports) (?center mod 5)) mod 5 =
+      (2 ^ (2 * steps) * int ?center +
+        double_reverse_f5_physical_path_offset ?center ?ports) mod 5"
+  proof -
+    have exact:
+      "int (double_reverse_f5_apply
+          (double_reverse_f5_open_trace_action ?center ?ports) (?center mod 5)) mod 5 =
+        (2 ^ (double_reverse_f5_ticks
+            (double_reverse_f5_open_trace_action ?center ?ports)) * int ?center +
+          double_reverse_f5_physical_path_offset ?center ?ports) mod 5"
+      by (rule double_reverse_f5_admitted_path_action_telescope
+        [OF center_decimal ports_valid])
+    have ticks:
+      "double_reverse_f5_ticks
+          (double_reverse_f5_open_trace_action ?center ?ports) = 2 * steps"
+      by (simp add: double_reverse_f5_open_trace_action_ticks
+          ports_length)
+    show ?thesis using exact ticks by simp
+  qed
+  show ?thesis using action_endpoint action_telescope by simp
+qed
+
 definition double_reverse_ring_eventual_cycle ::
     "nat \<Rightarrow> nat \<Rightarrow> nat list \<Rightarrow> bool" where
   "double_reverse_ring_eventual_cycle start period word \<longleftrightarrow>

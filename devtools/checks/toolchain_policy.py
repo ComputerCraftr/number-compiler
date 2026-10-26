@@ -17,7 +17,6 @@ from number_compiler.arithmetic.contracts.input_validation import (
     string_keyed_mapping,
 )
 
-_CONSTRAINTS = Path("devtools/typing/constraints-py314-macos.txt")
 _TARGET_PATTERN = re.compile(
     r"^# Target: CPython (?P<python>[0-9]+\.[0-9]+\.[0-9]+) / "
     r"(?P<system>[A-Za-z]+) (?P<machine>[A-Za-z0-9_]+)$"
@@ -150,20 +149,22 @@ def python_toolchain_violations(
     """Compare declared exact pins, the target lock and installed distributions."""
     resolved_root = root.resolve()
     declared, errors = _declared_tool_pins(resolved_root)
-    locked, target, lock_errors = _constraint_pins(resolved_root / _CONSTRAINTS)
-    errors.extend(lock_errors)
-    for name, version in declared.items():
-        if locked.get(name) != version:
-            errors.append(
-                f"constraints pin for {name} does not match pyproject.toml ({version})"
-            )
-    target_match = _TARGET_PATTERN.fullmatch(target or "")
-    if target_match is not None:
-        current_python = python_version or platform.python_version()
-        current_implementation = implementation or platform.python_implementation()
-        current_system, current_machine = _normalized_platform(
-            system or platform.system(), machine or platform.machine()
-        )
+    current_system, current_machine = _normalized_platform(
+        system or platform.system(), machine or platform.machine()
+    )
+    actual_runtime = (
+        python_version or platform.python_version(),
+        implementation or platform.python_implementation(),
+        current_system,
+        current_machine,
+    )
+    matching: list[dict[str, str]] = []
+    for path in sorted((resolved_root / "devtools/typing").glob("constraints-*.txt")):
+        pins, target, lock_errors = _constraint_pins(path)
+        errors.extend(f"{path.name}: {error}" for error in lock_errors)
+        target_match = _TARGET_PATTERN.fullmatch(target or "")
+        if target_match is None:
+            continue
         expected_system, expected_machine = _normalized_platform(
             target_match.group("system"), target_match.group("machine")
         )
@@ -173,16 +174,19 @@ def python_toolchain_violations(
             expected_system,
             expected_machine,
         )
-        actual_runtime = (
-            current_python,
-            current_implementation,
-            current_system,
-            current_machine,
+        if actual_runtime == expected_runtime:
+            matching.append(pins)
+    if len(matching) != 1:
+        errors.append(
+            "validation locks must select exactly one target for runtime "
+            f"{actual_runtime!r}; found {len(matching)}"
         )
-        if actual_runtime != expected_runtime:
+        return tuple(errors)
+    locked = matching[0]
+    for name, version in declared.items():
+        if locked.get(name) != version:
             errors.append(
-                "validation lock target does not match runtime: "
-                f"expected {expected_runtime!r}, found {actual_runtime!r}"
+                f"constraints pin for {name} does not match pyproject.toml ({version})"
             )
 
     for name, expected in sorted(locked.items()):

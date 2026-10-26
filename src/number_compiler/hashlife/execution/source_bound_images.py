@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Hashable, Mapping
+from collections.abc import Generator, Hashable, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
+from threading import RLock
 from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
@@ -27,6 +29,7 @@ from number_compiler.hashlife.execution.source_image_inventory import (
 from number_compiler.hashlife.execution.source_image_seals import (
     PublicationSeal,
     PublicationSeals,
+    SourceImagePublicationTransaction,
     TypedPayloadKey,
     publication_matches,
     publication_matches_readonly,
@@ -269,6 +272,8 @@ class SourceBoundSchedulerCore(
         if type(ledger) is not ResourceLedger:
             raise TypeError("source image authority requires a resource ledger")
         self.ledger = ledger
+        self._publication_lock = RLock()
+        self._publication_active = False
         # Declare exact instruments before the first origin or application.
         # An absent key after this point is missing evidence, not zero work.
         for counter in (
@@ -280,6 +285,7 @@ class SourceBoundSchedulerCore(
             _execution_keys.SOURCE_IMAGE_APPLICATION_PUBLICATIONS,
             _execution_keys.SOURCE_IMAGE_ORIGIN_PUBLICATIONS,
             _execution_keys.SOURCE_IMAGE_PUBLICATIONS,
+            _execution_keys.SOURCE_IMAGE_RELATIVE_TRANSFER_PUBLICATIONS,
             _execution_keys.SOURCE_IMAGE_PROJECTION_REQUESTS,
             _execution_keys.SOURCE_IMAGE_PROJECTION_HITS,
             _execution_keys.SOURCE_IMAGE_PROJECTION_MISSES,
@@ -334,6 +340,17 @@ class SourceBoundSchedulerCore(
         ] = self.ledger.make_dict(self._projection_owner, nodes_per_entry=1)
         self._publication_seals = PublicationSeals(self.ledger, prefix)
         self.ledger.register_execution_root(self)
+
+    @contextmanager
+    def _publication_scope(self) -> Generator[None, None, None]:
+        with self._publication_lock:
+            if self._publication_active:
+                raise RuntimeError("nested source image publication")
+            self._publication_active = True
+            try:
+                yield
+            finally:
+                self._publication_active = False
 
     @staticmethod
     def _adapter_key(adapter: SourceBoundImageAdapter) -> tuple[str, str]:
@@ -617,8 +634,6 @@ class SourceBoundSchedulerCore(
         cumulative_action: Hashable,
         candidate: SourceImageCandidate,
         publication_provenance: tuple[str, object, object | None],
-        *,
-        reserved: bool = False,
     ) -> SourceImageID:
         if type(candidate) is not SourceImageCandidate:
             raise TypeError("source image adapter returned another candidate sort")
@@ -660,67 +675,76 @@ class SourceBoundSchedulerCore(
             snapshot,
             publication_provenance,
         )
-        if not reserved:
-            self.ledger.reserve(self._node_owner, entries=1, nodes=1)
         local_id = len(self._nodes)
-        try:
-            self._nodes.append(record)
-            self._publication_seals.append_image(snapshot)
-        except BaseException:
-            if len(self._publication_seals.images) > local_id:
-                self._publication_seals.pop_image()
-            if len(self._nodes) > local_id:
-                self._nodes.pop()
-            if not reserved:
-                self.ledger.release(self._node_owner, entries=1, nodes=1)
-            raise
-        self.ledger.bump(_execution_keys.SOURCE_IMAGE_PUBLICATIONS)
+        self._nodes.append(record)
+        self._publication_seals.append_image(snapshot)
         return SourceImageID(self.owner, self._KIND, local_id)
 
     def origin(
         self, adapter: SourceBoundImageAdapter, source: Hashable
     ) -> SourceImageID:
-        key = self.registered_adapter_key(adapter)
-        self.validate_key(source, "source image source")
-        adapter.validate_source(source)
-        origin_key = key, TypedPayloadKey(source)
-        found = self._origins.get(origin_key)
-        if found is not None:
-            found_view = self.view(found)
-            if not typed_payload_equal(
-                found_view.binding.source, source
-            ) or not typed_payload_equal(
-                found_view.binding.action, adapter.identity_action(source)
-            ):
-                raise ValueError("source image origin binding was altered")
-            self.ledger.bump(_execution_keys.SOURCE_IMAGE_ORIGIN_HITS)
-            return found
-        identity = adapter.identity_action(source)
-        adapter.validate_action(identity)
-        candidate = adapter.admit_source(source)
-        candidate.__post_init__()
-        self.ledger.reserve_many(((self._node_owner, 1, 1), (self._origin_owner, 1, 0)))
-        image: SourceImageID | None = None
-        try:
-            image = self._publish(
-                key,
-                source,
-                identity,
-                candidate,
-                ("origin", (key, source), None),
-                reserved=True,
+        with self._publication_scope():
+            key = self.registered_adapter_key(adapter)
+            self.validate_key(source, "source image source")
+            adapter.validate_source(source)
+            origin_key = key, TypedPayloadKey(source)
+            found = self._origins.get(origin_key)
+            if found is not None:
+                found_view = self.view(found)
+                if not typed_payload_equal(
+                    found_view.binding.source, source
+                ) or not typed_payload_equal(
+                    found_view.binding.action, adapter.identity_action(source)
+                ):
+                    raise ValueError("source image origin binding was altered")
+                self.ledger.bump(_execution_keys.SOURCE_IMAGE_ORIGIN_HITS)
+                return found
+            identity = adapter.identity_action(source)
+            adapter.validate_action(identity)
+            candidate = adapter.admit_source(source)
+            candidate.__post_init__()
+            node_count_before = len(self._nodes)
+            seal_count_before = len(self._publication_seals.images)
+            image: SourceImageID | None = None
+            reservations = (
+                (self._node_owner, 1, 1),
+                (self._origin_owner, 1, 0),
             )
-            self._origins[origin_key] = image
-        except BaseException:
-            self._origins.pop(origin_key, None)
-            if image is not None and image.local_id == len(self._nodes) - 1:
-                self._nodes.pop()
-                self._publication_seals.pop_image()
-            self.ledger.release(self._node_owner, entries=1, nodes=1)
-            self.ledger.release(self._origin_owner, entries=1)
-            raise
-        self.ledger.bump(_execution_keys.SOURCE_IMAGE_ORIGIN_PUBLICATIONS)
-        return image
+
+            def rollback_origin_index() -> None:
+                if image is not None and self._origins.get(origin_key) is image:
+                    del self._origins[origin_key]
+
+            transaction = SourceImagePublicationTransaction(
+                self.ledger,
+                self._nodes,
+                self._publication_seals,
+                node_count_before,
+                seal_count_before,
+                reservations,
+                rollback_origin_index,
+            )
+            self.ledger.reserve_many(reservations)
+            try:
+                image = self._publish(
+                    key,
+                    source,
+                    identity,
+                    candidate,
+                    ("origin", (key, source), None),
+                )
+                self._origins[origin_key] = image
+                transaction.commit_metrics(
+                    (
+                        _execution_keys.SOURCE_IMAGE_PUBLICATIONS,
+                        _execution_keys.SOURCE_IMAGE_ORIGIN_PUBLICATIONS,
+                    )
+                )
+            except BaseException:
+                transaction.rollback()
+                raise
+            assert image is not None
+            return image
 
     def apply(
         self,
@@ -769,56 +793,74 @@ class SourceBoundSchedulerCore(
         *,
         relative_key: SourceImageRelativeKey | None,
     ) -> SourceImageID:
-        if key in self._applications:
-            raise ValueError("source image application was concurrently published")
-        candidate.__post_init__()
-        source_failure = self.view(key.source).failure_prefix
-        if source_failure is not None and candidate.failure_prefix != source_failure:
-            raise ValueError("source image application discarded its first failure")
-        publish_relative = (
-            relative_key is not None and relative_key not in self._relative
-        )
-        reservations = [
-            (self._node_owner, 1, 1),
-            (self._apply_owner, 1, 0),
-        ]
-        if publish_relative:
-            reservations.append((self._relative_owner, 1, 0))
-        self.ledger.reserve_many(reservations)
-        image: SourceImageID | None = None
-        try:
-            image = self._publish(
-                key.adapter_key,
-                source,
-                cumulative_action,
-                candidate,
-                ("application", key, relative_key if publish_relative else None),
-                reserved=True,
+        with self._publication_scope():
+            if key in self._applications:
+                raise ValueError("source image application was concurrently published")
+            candidate.__post_init__()
+            failure = self.view(key.source).failure_prefix
+            if failure is not None and candidate.failure_prefix != failure:
+                raise ValueError("source image application discarded its first failure")
+            publish_relative = (
+                relative_key is not None and relative_key not in self._relative
             )
-            self._applications[key] = image
+            reservations = [
+                (self._node_owner, 1, 1),
+                (self._apply_owner, 1, 0),
+            ]
             if publish_relative:
-                assert relative_key is not None
-                self._relative[relative_key] = SourceImageRelativeApplication(
-                    key.source, image
+                reservations.append((self._relative_owner, 1, 0))
+            node_count_before = len(self._nodes)
+            seal_count_before = len(self._publication_seals.images)
+            image: SourceImageID | None = None
+            relative_application: SourceImageRelativeApplication | None = None
+
+            def rollback_application_indexes() -> None:
+                if image is not None and self._applications.get(key) is image:
+                    del self._applications[key]
+                if (
+                    relative_key is not None
+                    and relative_application is not None
+                    and self._relative.get(relative_key) is relative_application
+                ):
+                    del self._relative[relative_key]
+
+            transaction = SourceImagePublicationTransaction(
+                self.ledger,
+                self._nodes,
+                self._publication_seals,
+                node_count_before,
+                seal_count_before,
+                tuple(reservations),
+                rollback_application_indexes,
+            )
+            self.ledger.reserve_many(reservations)
+            try:
+                image = self._publish(
+                    key.adapter_key,
+                    source,
+                    cumulative_action,
+                    candidate,
+                    ("application", key, relative_key if publish_relative else None),
                 )
-        except BaseException:
-            self._applications.pop(key, None)
-            if image is not None and image.local_id == len(self._nodes) - 1:
-                self._nodes.pop()
-                self._publication_seals.pop_image()
-            self.ledger.release(self._node_owner, entries=1, nodes=1)
-            self.ledger.release(self._apply_owner, entries=1)
-            if publish_relative:
-                assert relative_key is not None
-                self._relative.pop(relative_key, None)
-                self.ledger.release(self._relative_owner, entries=1)
-            raise
-        if publish_relative:
-            self.ledger.bump(
-                _execution_keys.SOURCE_IMAGE_RELATIVE_TRANSFER_PUBLICATIONS
-            )
-        self.ledger.bump(_execution_keys.SOURCE_IMAGE_APPLICATION_PUBLICATIONS)
-        return image
+                self._applications[key] = image
+                if publish_relative:
+                    assert relative_key is not None
+                    relative_application = SourceImageRelativeApplication(
+                        key.source, image
+                    )
+                    self._relative[relative_key] = relative_application
+                counters = [_execution_keys.SOURCE_IMAGE_PUBLICATIONS]
+                if publish_relative:
+                    counters.append(
+                        _execution_keys.SOURCE_IMAGE_RELATIVE_TRANSFER_PUBLICATIONS
+                    )
+                counters.append(_execution_keys.SOURCE_IMAGE_APPLICATION_PUBLICATIONS)
+                transaction.commit_metrics(tuple(counters))
+            except BaseException:
+                transaction.rollback()
+                raise
+            assert image is not None
+            return image
 
     def validate_application_binding(
         self,

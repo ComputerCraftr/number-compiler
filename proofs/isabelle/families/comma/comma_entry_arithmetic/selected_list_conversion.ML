@@ -131,14 +131,22 @@ struct
       fun numeral value = HOLogic.mk_number natT value
       val list_all = Const (@{const_name list_all},
         fastype_of predicate --> list_type --> @{typ bool}) $ predicate
-      val zero_rule = Drule.infer_instantiate ctxt
-        [(("P", 0), Thm.cterm_of ctxt predicate)]
-        zero_fact
+      fun named_variable name theorem =
+        (case filter (fn ((variable_name, _), _) => variable_name = name)
+            (Term.add_vars (Thm.prop_of theorem) []) of
+          [key] => key
+        | _ => error ("Indexed list_all theorem variable is missing or duplicated: " ^ name))
+      val zero_rule = Thm.instantiate (TVars.empty,
+        Vars.make [(named_variable "P" zero_fact,
+          Thm.cterm_of ctxt predicate)]) zero_fact
       val zero_endpoint = Const (@{const_name upt}, natT --> natT --> list_type) $
         numeral 0 $ numeral 0
       val _ = if Thm.prop_of zero_rule aconv
           HOLogic.mk_Trueprop (list_all $ zero_endpoint)
         then () else error "Indexed list_all zero theorem has the wrong interval"
+      val step_index_variable = named_variable "n" step_fact
+      val step_template = Thm.instantiate (TVars.empty,
+        Vars.make [(named_variable "P" step_fact, Thm.cterm_of ctxt predicate)]) step_fact
       fun advance index prefix =
         if index = bound then prefix
         else
@@ -150,16 +158,16 @@ struct
                 Thm.nprems_of head_proof = 0 andalso null (Thm.hyps_of head_proof) andalso
                 null (Thm.tpairs_of head_proof)
               then () else error "Indexed list_all item proof has the wrong proposition"
-            val step_rule = Drule.infer_instantiate ctxt
-              [(("P", 0), Thm.cterm_of ctxt predicate),
-               (("n", 0), Thm.cterm_of ctxt index_term)]
-              step_fact
-            val raw_step = step_rule OF [prefix, head_proof]
+            val step_rule = Thm.instantiate (TVars.empty,
+              Vars.make [(step_index_variable, Thm.cterm_of ctxt index_term)])
+              step_template
+            val raw_step = Thm.implies_elim
+              (Thm.implies_elim step_rule prefix) head_proof
             val successor_equation = checked_successor_equation successor_equation index
             val successor_conversion = Conv.arg_conv
               (Conv.arg_conv (Conv.arg_conv
                 (Conv.rewr_conv successor_equation)))
-              (Thm.cterm_of ctxt (Thm.prop_of raw_step))
+              (Thm.cprop_of raw_step)
             val step = Thm.equal_elim successor_conversion raw_step
             val expected = HOLogic.mk_Trueprop
               (list_all $ (Const (@{const_name upt}, natT --> natT --> list_type) $
@@ -168,6 +176,26 @@ struct
               else error "Indexed list_all recurrence produced the wrong interval"
           in advance (index + 1) step end
     in advance 0 zero_rule end
+
+  (* Prepare only the Boolean variables of conjI.  Recursive proof assembly
+     must not re-unify or inspect the complete operand propositions at each
+     enclosing conjunction; callers retain their exact final-root checks. *)
+  val conjunction_variables =
+    let
+      val variables = Term.add_vars (Thm.prop_of @{thm conjI}) []
+      fun named name =
+        (case filter (fn ((variable_name, _), _) => variable_name = name) variables of
+          [key] => key
+        | _ => error "Selected-list conjunction rule has unexpected variables")
+    in (named "P", named "Q") end
+
+  fun conjoin left right =
+    let
+      val (left_key, right_key) = conjunction_variables
+      val rule = Thm.instantiate (TVars.empty,
+        Vars.make [(left_key, Thm.dest_arg (Thm.cprop_of left)),
+          (right_key, Thm.dest_arg (Thm.cprop_of right))]) @{thm conjI}
+    in Thm.implies_elim (Thm.implies_elim rule left) right end
 
   fun literal_list_length term =
     let
@@ -181,6 +209,31 @@ struct
             else error "Selected-list extent requires a literal list spine"
         | _ => error "Selected-list extent requires a literal list spine")
     in count term 0 end
+
+  (* Kernel list-size conversion shared by catalogue and occurrence metadata.
+     Only the Cons/Nil spine is visited; list heads remain opaque. *)
+  fun literal_length_conversion note_cell cterm =
+    let
+      val (head, arguments) = strip_comb (Thm.term_of cterm)
+      val contents = (case (head, arguments) of
+          (Const (name, _), [value]) =>
+            if name = @{const_name size} then value
+            else error "Selected-list size expected a length request"
+        | _ => error "Selected-list size expected one list argument")
+      val constructor = (case Term.head_of contents of
+          Const (name, _) => name
+        | _ => error "Selected-list size encountered an open list spine")
+      val _ = note_cell ()
+      val rule =
+        if constructor = @{const_name Nil} then @{thm comma_selected_length_nil}
+        else if constructor = @{const_name Cons} then @{thm comma_selected_length_cons}
+        else error "Selected-list size expected a literal Cons/Nil cell"
+      val step = Conv.rewr_conv (rule RS @{thm eq_reflection}) cterm
+    in
+      if constructor = @{const_name Nil} then step
+      else Thm.transitive step
+        (Conv.arg_conv (literal_length_conversion note_cell) (Thm.rhs_of step))
+    end
 
   fun literal_nested_extents depth root_body =
     let
@@ -554,49 +607,8 @@ struct
           else error "selected-list suffix proof is open or has the wrong key"
         end
 
-      (* Reduce list size by following only the outer Cons/Nil spine.  The
-         generic simplifier descends into each head first, which expands the
-         retained Let-DAG payload of every template.  These kernel rewrites
-         leave each head opaque and visit exactly one spine constructor. *)
-      fun rewrite_size_cell cterm =
-        let
-          val term = Thm.term_of cterm
-          val (_, arguments) = strip_comb term
-          val list_term =
-            (case arguments of
-              [value] => value
-            | _ => error "Selected-list size expected one list argument")
-          val rule =
-            (case Term.head_of list_term of
-              Const (constructor, _) =>
-                if constructor = @{const_name Nil} then
-                  @{thm comma_selected_length_nil}
-                else if constructor = @{const_name Cons} then
-                  @{thm comma_selected_length_cons}
-                else error "Selected-list size expected a literal Cons/Nil cell"
-            | _ => error "Selected-list size encountered an open list spine")
-        in Conv.rewr_conv (rule RS @{thm eq_reflection}) cterm end
-      fun list_size_spine cterm =
-        let
-          val term = Thm.term_of cterm
-          val (_, arguments) = strip_comb term
-          val list_term =
-            (case arguments of
-              [value] => value
-            | _ => error "Selected-list size expected one list argument")
-          val _ = length_spine_nodes := !length_spine_nodes + 1
-          val cell = Term.head_of list_term
-          val one_cell = rewrite_size_cell cterm
-        in
-          (case cell of
-            Const (constructor, _) =>
-              if constructor = @{const_name Nil} then one_cell
-              else if constructor = @{const_name Cons} then
-                Thm.transitive one_cell
-                  (Conv.arg_conv list_size_spine (Thm.rhs_of one_cell))
-              else error "Selected-list size encountered a non-list constructor"
-          | _ => error "Selected-list size encountered an open list spine")
-        end
+      val list_size_spine = literal_length_conversion
+        (fn () => length_spine_nodes := !length_spine_nodes + 1)
 
       fun suffix table index =
         let

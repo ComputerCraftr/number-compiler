@@ -25,7 +25,10 @@ from number_compiler.arithmetic.contracts.block_effect import BlockContextBudget
 from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.fields.boolean_transfer import (
     BooleanMatrix,
+    BooleanSparseComposition,
+    BooleanSparseRows,
     BooleanStateSpace,
+    boolean_sparse_rows_then,
 )
 from number_compiler.sequences.antihydra.mahler_center_algebra import (
     STATES,
@@ -34,6 +37,14 @@ from number_compiler.sequences.antihydra.mahler_center_algebra import (
 )
 from number_compiler.sequences.antihydra.mahler_center_fiber_join import (
     MahlerCenterFiberEdge,
+)
+from number_compiler.sequences.antihydra.mahler_center_relation_work import (
+    MahlerCenterRelationWork,
+    MahlerCenterWorkEvent,
+    MahlerCenterWorkSink,
+)
+from number_compiler.sequences.antihydra.mahler_center_sparse_relation import (
+    compose_source_conditional_relation,
 )
 from number_compiler.sequences.antihydra.mahler_joint_future import (
     MahlerJointFutureAction,
@@ -56,6 +67,15 @@ MAX_CERTIFIED_TICKS = 32
 MAX_POINTED_DIGITS = 256
 _MAX_POINTED_SOURCE = 10**MAX_POINTED_DIGITS
 _SOURCE_MATRIX_ISSUER = object()
+
+
+def _report_work(
+    work_sink: MahlerCenterWorkSink | None,
+    event: MahlerCenterWorkEvent,
+    amount: int = 1,
+) -> None:
+    if work_sink is not None and amount:
+        work_sink(event, amount)
 
 
 def _word_bits(row: int) -> tuple[int, ...]:
@@ -203,11 +223,30 @@ class MahlerCenterBooleanMatrix:
     def apply_set(self, sources: int) -> int:
         return self._relation.image(sources)
 
-    def then(self, after: MahlerCenterBooleanMatrix) -> MahlerCenterBooleanMatrix:
-        """Boolean relational composition; source authority does NOT transfer."""
+    def then_with_work(
+        self, after: MahlerCenterBooleanMatrix
+    ) -> tuple[MahlerCenterBooleanMatrix, BooleanSparseComposition[int]]:
+        """Compose sparse indexed rows and expose the executed join work."""
         if type(after) is not MahlerCenterBooleanMatrix:
             raise TypeError("center matrix requires a matching 100-state action")
-        return self._from_relation(self._relation.then(after._relation))
+        first = BooleanSparseRows[int].from_mapping(
+            _MAHLER_CENTER_STATE_SPACE,
+            {index: row for index, row in enumerate(self.rows) if row},
+        )
+        later = BooleanSparseRows[int].from_mapping(
+            _MAHLER_CENTER_STATE_SPACE,
+            {index: row for index, row in enumerate(after.rows) if row},
+        )
+        composition = boolean_sparse_rows_then(first, later)
+        sparse_rows = composition.rows.as_mapping()
+        result = MahlerCenterBooleanMatrix(
+            tuple(sparse_rows.get(index, 0) for index in range(STATES))
+        )
+        return result, composition
+
+    def then(self, after: MahlerCenterBooleanMatrix) -> MahlerCenterBooleanMatrix:
+        """Boolean relational composition; source authority does NOT transfer."""
+        return self.then_with_work(after)[0]
 
     def power(self, repetitions: int) -> MahlerCenterBooleanMatrix:
         """Binary square a *hypothetical* repeated input letter program."""
@@ -253,6 +292,7 @@ class MahlerCertifiedCenterDepthTransfer:
     low_border_carries: tuple[MahlerLowBorderCarryCertificate | None, ...]
     source_port_punctures: tuple[tuple[MahlerCenterPortPuncture, ...], ...]
     source_fiber_edges: tuple[MahlerCenterFiberEdge, ...]
+    relation_work: MahlerCenterRelationWork
     composition_joins: int = 0
     equal_span_joins: int = 0
     _issuer: object = field(default=None, init=False, repr=False, compare=False)
@@ -285,6 +325,7 @@ class MahlerCertifiedCenterDepthTransfer:
         low_border_carries: tuple[MahlerLowBorderCarryCertificate | None, ...],
         source_port_punctures: tuple[tuple[MahlerCenterPortPuncture, ...], ...],
         source_fiber_edges: tuple[MahlerCenterFiberEdge, ...],
+        relation_work: MahlerCenterRelationWork,
         composition_joins: int = 0,
         equal_span_joins: int = 0,
     ) -> MahlerCertifiedCenterDepthTransfer:
@@ -309,6 +350,7 @@ class MahlerCertifiedCenterDepthTransfer:
             "low_border_carries": low_border_carries,
             "source_port_punctures": source_port_punctures,
             "source_fiber_edges": source_fiber_edges,
+            "relation_work": relation_work,
             "composition_joins": composition_joins,
             "equal_span_joins": equal_span_joins,
         }
@@ -476,6 +518,7 @@ class MahlerCertifiedCenterDepthTransfer:
                     self.source_port_punctures, "source_port_punctures"
                 ),
                 self._snapshot_value(self.source_fiber_edges, "source_fiber_edges"),
+                self._snapshot_value(self.relation_work),
                 self._snapshot_value(self.composition_joins),
                 self._snapshot_value(self.equal_span_joins),
             ),
@@ -489,6 +532,7 @@ class MahlerCertifiedCenterDepthTransfer:
         *,
         initial_ledger: int | None = None,
         pointed_futures: tuple[MahlerJointFutureAction, ...] | None = None,
+        work_sink: MahlerCenterWorkSink | None = None,
     ) -> MahlerCertifiedCenterDepthTransfer:
         if (
             type(sources) is not tuple
@@ -506,6 +550,8 @@ class MahlerCertifiedCenterDepthTransfer:
             )
         if initial_ledger is not None and type(initial_ledger) is not int:
             raise TypeError("ledger guard must be an exact integer or omitted")
+        if work_sink is not None and not callable(work_sink):
+            raise TypeError("center transfer work sink must be callable")
         if pointed_futures is not None and (
             type(pointed_futures) is not tuple
             or len(pointed_futures) != len(sources) - 1
@@ -605,59 +651,18 @@ class MahlerCertifiedCenterDepthTransfer:
                 raise ArithmeticError(
                     "pointed center is missing its bilateral port witness"
                 )
-        # Each conditional step uses the 100x100 Mahler center transfer,
-        # followed by a source-checked re-centering when the width changes.
-        # Boolean composition is a *necessary* relation. It may contain
-        # spliced aliases; full-source witnesses below remove those paths.
-        conditional = MahlerCenterBooleanMatrix.identity()
-        for index in range(len(sources) - 1):
-            current_s = positions[index]
-            next_s = positions[index + 1]
-            step_rows = [0] * STATES
-            for candidate in candidate_sets[index]:
-                c = (candidate // 10**current_s) % 100
-                low_base = 10**current_s
-                upper = candidate // (100 * low_base)
-                low_port = low_ports[index]
-                if low_port is None:
-                    lower = candidate % low_base
-                    carry = (3 * lower + (candidate & 1)) // low_base
-                    next_fixed = center_next(c, carry, upper & 1)
-                    next_source = (3 * candidate + (candidate & 1)) // 2
-                else:
-                    if (candidate & 1) != (low_port.source & 1):
-                        raise ArithmeticError(
-                            "candidate changed its authenticated low inlet"
-                        )
-                    port = port_tables[index].get(candidate)
-                    if port is None:
-                        raise ArithmeticError("candidate has no bilateral port witness")
-                    carry = low_port.actual_carry
-                    next_fixed, outgoing, next_upper = low_port.upper_transfer(c, upper)
-                    if (
-                        port.lower_carry != carry
-                        or port.center_upper_carry != outgoing
-                        or port.upper_division_inlet != ((upper + outgoing) & 1)
-                        or port.fixed_next_center != next_fixed
-                        or port.next_source // (100 * low_base) != next_upper
-                    ):
-                        raise ArithmeticError(
-                            "punctured ports disagree with matrix inputs"
-                        )
-                    next_source = port.next_source
-                if next_fixed != (next_source // low_base) % 100:
-                    raise ArithmeticError(
-                        "100-state center transfer lost its exact carry"
-                    )
-                if MahlerCenterBooleanMatrix.from_driver(carry, upper & 1).destinations(
-                    c
-                ) != (next_fixed,):
-                    raise ArithmeticError("center row ignored its certified low carry")
-                if next_source in candidate_sets[index + 1]:
-                    next_center = (next_source // 10**next_s) % 100
-                    step_rows[c] |= 1 << next_center
-            step_matrix = MahlerCenterBooleanMatrix(tuple(step_rows))
-            conditional = conditional.then(step_matrix)
+        # This projection may include spliced aliases; full-source witnesses
+        # below remove those paths. Compose only reachable source-fiber rows.
+        conditional_rows, relation_work = compose_source_conditional_relation(
+            sources,
+            positions,
+            candidate_sets,
+            low_ports,
+            port_tables,
+            state_space=_MAHLER_CENTER_STATE_SPACE,
+            work_sink=work_sink,
+        )
+        conditional = MahlerCenterBooleanMatrix(conditional_rows)
         arithmetic = [0] * STATES
         safety = [0] * STATES
         refused = 0
@@ -750,11 +755,17 @@ class MahlerCertifiedCenterDepthTransfer:
             low_border_carries=low_ports,
             source_port_punctures=port_frames,
             source_fiber_edges=tuple(exact_edges),
+            relation_work=relation_work,
         )
 
     @classmethod
     def from_source(
-        cls, source: int, steps: int, *, initial_ledger: int | None = None
+        cls,
+        source: int,
+        steps: int,
+        *,
+        initial_ledger: int | None = None,
+        work_sink: MahlerCenterWorkSink | None = None,
     ) -> MahlerCertifiedCenterDepthTransfer:
         if type(steps) is not int or not 1 <= steps <= MAX_CERTIFIED_TICKS:
             raise ValueError("center transfer source demand needs 1..32 physical steps")
@@ -764,11 +775,16 @@ class MahlerCertifiedCenterDepthTransfer:
             raise BlockContextBudgetExceeded(
                 "pointed source exceeds the 256-digit center matrix budget"
             )
+        if work_sink is not None and not callable(work_sink):
+            raise TypeError("center transfer work sink must be callable")
         sequence = [source]
         for _ in range(steps):
             next_source = (3 * sequence[-1] + (sequence[-1] & 1)) // 2
             sequence.append(next_source)
-        return cls.from_sources(tuple(sequence), initial_ledger=initial_ledger)
+            _report_work(work_sink, MahlerCenterWorkEvent.POINTED_SUCCESSOR_STEP)
+        return cls.from_sources(
+            tuple(sequence), initial_ledger=initial_ledger, work_sink=work_sink
+        )
 
     @classmethod
     def from_program(
@@ -826,6 +842,7 @@ class MahlerCertifiedCenterDepthTransfer:
             low_border_carries=fields.low_border_carries,
             source_port_punctures=fields.source_port_punctures,
             source_fiber_edges=fields.source_fiber_edges,
+            relation_work=fields.relation_work,
             composition_joins=fields.composition_joins,
             equal_span_joins=fields.equal_span_joins,
         )

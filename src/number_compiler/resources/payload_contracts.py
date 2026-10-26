@@ -37,11 +37,13 @@ def contract_semantic_component(
 
 @dataclass(frozen=True, slots=True)
 class PayloadAuditStoreBinding:
-    """One exact family-owned root attribute and its ledger account."""
+    """One family store and any root authority fields pinned by the ledger."""
 
     owner: int
     attribute: str
     role: str
+    identity_attributes: tuple[str, ...] = ()
+    scalar_attributes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,12 +200,20 @@ class PayloadAuditBinding:
     root_type: type[object]
     root_reference: ReferenceType[object]
     stores: tuple[tuple[int, str, object, str], ...]
+    identity_attributes: tuple[tuple[str, object], ...]
+    scalar_attributes: tuple[tuple[str, str | int | bool | None], ...]
     validator: Callable[[object, object], PayloadAuditContribution]
     dependencies: tuple[tuple[int, str, ReferenceType[object]], ...]
 
 
 def _belongs_to_module(value: object, prefix: str) -> bool:
     return isinstance(value, str) and value.startswith(prefix)
+
+
+def _is_payload_audit_scalar(
+    value: object,
+) -> TypeGuard[str | int | bool | None]:
+    return type(value) in (str, int, bool, type(None))
 
 
 class PayloadContractRegistry(Protocol):
@@ -220,6 +230,70 @@ class PayloadContractRegistry(Protocol):
     def iter_execution_roots(self) -> Iterable[object]: ...
     def note_store_mutation(self) -> None: ...
     def bump(self, counter: str, amount: int = 1) -> None: ...
+
+    def payload_audit_contract_matches_root(self, root: object, family: str) -> bool:
+        """Check ledger-pinned root identities without invoking the validator."""
+        if type(family) is not str or not family:
+            return False
+        binding = self._payload_audit_contracts.get((id(root), family))
+        if (
+            binding is None
+            or binding.root_reference() is not root
+            or binding.root_type is not type(root)
+        ):
+            return False
+        if not binding.identity_attributes and not binding.scalar_attributes:
+            return True
+        try:
+            root_fields = vars(root)
+        except TypeError:
+            return False
+        return (
+            type(root_fields) is dict
+            and all(
+                attribute in root_fields and root_fields[attribute] is expected
+                for attribute, expected in binding.identity_attributes
+            )
+            and all(
+                attribute in root_fields
+                and type(root_fields[attribute]) is type(expected)
+                and root_fields[attribute] == expected
+                for attribute, expected in binding.scalar_attributes
+            )
+        )
+
+    def payload_audit_contract_matches_attribute(
+        self, root: object, family: str, attribute: str
+    ) -> bool:
+        """Check one root field against its ledger-pinned contract value."""
+        if (
+            type(family) is not str
+            or not family
+            or type(attribute) is not str
+            or not attribute
+        ):
+            return False
+        binding = self._payload_audit_contracts.get((id(root), family))
+        if (
+            binding is None
+            or binding.root_reference() is not root
+            or binding.root_type is not type(root)
+        ):
+            return False
+        try:
+            root_fields = vars(root)
+        except TypeError:
+            return False
+        if type(root_fields) is not dict or attribute not in root_fields:
+            return False
+        value = root_fields[attribute]
+        return any(
+            name == attribute and value is expected
+            for name, expected in binding.identity_attributes
+        ) or any(
+            name == attribute and type(value) is type(expected) and value == expected
+            for name, expected in binding.scalar_attributes
+        )
 
     def payload_contract_audit_is_current(
         self,
@@ -297,6 +371,9 @@ class PayloadContractRegistry(Protocol):
             break
 
         bound: list[tuple[int, str, object, str]] = []
+        identity_attributes: list[tuple[str, object]] = []
+        scalar_attributes: list[tuple[str, str | int | bool | None]] = []
+        identity_names: set[str] = set()
         owners: set[int] = set()
         containers: set[int] = set()
         for store_binding in stores:
@@ -315,6 +392,46 @@ class PayloadContractRegistry(Protocol):
                 or not role
             ):
                 raise TypeError("payload audit store binding has invalid fields")
+            if type(store_binding.identity_attributes) is not tuple:
+                raise TypeError("payload identity attributes must be an exact tuple")
+            if type(store_binding.scalar_attributes) is not tuple:
+                raise TypeError("payload scalar attributes must be an exact tuple")
+            if store_binding.identity_attributes or store_binding.scalar_attributes:
+                try:
+                    root_fields = vars(root)
+                except TypeError as exc:
+                    raise ValueError(
+                        "payload authority root has no instance fields"
+                    ) from exc
+            else:
+                root_fields = {}
+            for identity_attribute in store_binding.identity_attributes:
+                if (
+                    type(identity_attribute) is not str
+                    or not identity_attribute
+                    or identity_attribute in identity_names
+                    or type(root_fields) is not dict
+                    or identity_attribute not in root_fields
+                ):
+                    raise ValueError("payload identity attribute is not a root field")
+                identity_names.add(identity_attribute)
+                identity_attributes.append(
+                    (identity_attribute, root_fields[identity_attribute])
+                )
+            for scalar_attribute in store_binding.scalar_attributes:
+                if (
+                    type(scalar_attribute) is not str
+                    or not scalar_attribute
+                    or scalar_attribute in identity_names
+                    or type(root_fields) is not dict
+                    or scalar_attribute not in root_fields
+                ):
+                    raise ValueError("payload scalar attribute is not a root field")
+                scalar_value: object = root_fields[scalar_attribute]
+                if not _is_payload_audit_scalar(scalar_value):
+                    raise TypeError("payload scalar authority must be an exact scalar")
+                identity_names.add(scalar_attribute)
+                scalar_attributes.append((scalar_attribute, scalar_value))
             if owner in owners:
                 raise ValueError("payload audit owner bindings must be unique")
             account = self.account_status(owner)
@@ -414,6 +531,22 @@ class PayloadContractRegistry(Protocol):
                         new_reference,
                     ) in zip(current.dependencies, dependency_bindings, strict=True)
                 )
+                and len(current.identity_attributes) == len(identity_attributes)
+                and all(
+                    old_name == new_name and old_value is new_value
+                    for (old_name, old_value), (new_name, new_value) in zip(
+                        current.identity_attributes, identity_attributes, strict=True
+                    )
+                )
+                and len(current.scalar_attributes) == len(scalar_attributes)
+                and all(
+                    old_name == new_name
+                    and type(old_value) is type(new_value)
+                    and old_value == new_value
+                    for (old_name, old_value), (new_name, new_value) in zip(
+                        current.scalar_attributes, scalar_attributes, strict=True
+                    )
+                )
             ):
                 return
             raise ValueError("replace an existing payload audit contract explicitly")
@@ -423,6 +556,8 @@ class PayloadContractRegistry(Protocol):
             type(root),
             ref(root),
             tuple(bound),
+            tuple(identity_attributes),
+            tuple(scalar_attributes),
             validator,
             tuple(dependency_bindings),
         )
@@ -495,6 +630,9 @@ class PayloadContractRegistry(Protocol):
                 or type(root) is not binding.root_type
                 or key != (id(root), binding.family)
             ):
+                reject_contract()
+                continue
+            if not self.payload_audit_contract_matches_root(root, binding.family):
                 reject_contract()
                 continue
             bound: dict[int, object] = {}
