@@ -15,16 +15,9 @@ if TYPE_CHECKING:
 
 
 def project(compiler: NumberCompiler, query: PrimeTermQuery) -> ProjectedNumberTerm:
-    from number_compiler.sequences.prime.select import nth_prime_at_or_after
+    from number_compiler.api.projections.prime_value import select
 
-    value, metrics = nth_prime_at_or_after(
-        query.start,
-        query.index,
-        max_states=query.max_prime_states,
-        max_work=query.max_prime_work,
-        max_stages=query.max_prime_stages,
-        shared_cache=compiler.shared_cache,
-    )
+    value, metrics = select(query, compiler.shared_cache)
     return ProjectedNumberTerm(
         FamilyId.PRIME,
         query.index,

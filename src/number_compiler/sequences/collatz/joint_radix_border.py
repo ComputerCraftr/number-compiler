@@ -229,16 +229,47 @@ class JointRadix6Source:
         return difference_power_block(self.tripling_events, gap, modulus)
 
 
+# Semantic registry table, not a source- or occurrence-keyed cache.  Its
+# entries are immutable expected guard triples, with no retained source data.
+# Only the selected identity is authenticated on lookup; a table row is never
+# permission to execute a macro or bypass its valuation and parity cylinder.
+_BORDER_CANDIDATE_SNAPSHOT = tuple(
+    (identity, identity.structural_key(), selector_guard_for(identity).wire_value())
+    for identity in BOUNDARY_SELECTOR_IDENTITIES
+)
+_BORDER_CANDIDATE_BY_RESIDUE: tuple[int | None, ...] = tuple(
+    next(
+        (
+            index
+            for index, (_identity, _key, (wanted, modulus, _lower)) in enumerate(
+                _BORDER_CANDIDATE_SNAPSHOT
+            )
+            if residue % modulus == wanted
+        ),
+        None,
+    )
+    for residue in range(160)
+)
+
+
 def candidate_family_for_residue160(
     residue160: int,
 ) -> BoundaryActionIdentity | None:
-    """Stable finite candidate output; exact macro admission follows later."""
+    """Return one authenticated candidate without rescanning every cycle."""
     if type(residue160) is not int or not 0 <= residue160 < 160:
         raise ValueError("candidate projection requires a radix-160 residue")
-    for identity in BOUNDARY_SELECTOR_IDENTITIES:
-        if selector_guard_for(identity).matches_residue(residue160):
-            return identity
-    return None
+    index = _BORDER_CANDIDATE_BY_RESIDUE[residue160]
+    if index is None:
+        return None
+    identity, structural_key, guard_wire = _BORDER_CANDIDATE_SNAPSHOT[index]
+    # Detect forged mutations, even via object.__setattr__ on frozen ports.
+    if (
+        identity.structural_key() != structural_key
+        or selector_guard_for(identity).wire_value() != guard_wire
+        or residue160 % guard_wire[1] != guard_wire[0]
+    ):
+        raise ValueError("registered Collatz border guard changed after admission")
+    return identity
 
 
 def has_border_parent_from_residue160(residue160: int) -> bool:

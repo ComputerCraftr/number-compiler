@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Hashable, Iterator
+from collections.abc import Hashable, Iterator, Mapping
 from typing import TYPE_CHECKING, Final, NamedTuple
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_integer_tuple,
+)
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicCycleSummary,
     DyadicImageSummary,
@@ -55,6 +58,7 @@ from number_compiler.sequences.collatz.physical_image_publication import (
     JOINT_COCYCLE_PORT,
     TAPE_WIDTH_PORT,
     CollatzPhysicalImagePublication,
+    joint_action_node_cost,
 )
 
 if TYPE_CHECKING:
@@ -91,20 +95,6 @@ _BOUNDARY_OBSERVER_TAG: Final[str] = "collatz-boundary-observer-v1"
 _BoundaryMacroSnapshot = tuple[int, tuple[BorderWireValue, ...]]
 
 
-def _register_physical_image_audit(root: CollatzPhysicalImageWorkspace) -> None:
-    register_payload_audit_contract(
-        root.ledger,
-        root,
-        "collatz",
-        (
-            PayloadAuditStoreBinding(
-                root.width_owner, "by_width", "dyadic_return_action_index"
-            ),
-        ),
-        audit_collatz_physical_image_workspace,
-    )
-
-
 def audit_collatz_physical_image_workspace(
     ledger: object, root: object
 ) -> PayloadAuditContribution:
@@ -114,17 +104,7 @@ def audit_collatz_physical_image_workspace(
         or type(root) is not CollatzPhysicalImageWorkspace
     ):
         raise TypeError("Collatz physical-image audit received a foreign root")
-    if root.ledger is not ledger or root.closed:
-        return PayloadAuditContribution(
-            (), (PayloadAuditEntry(root.width_owner, root),)
-        )
-    try:
-        root.validate_publication_configuration()
-    except (ArithmeticError, AttributeError, IndexError, TypeError, ValueError):
-        return PayloadAuditContribution(
-            (), (PayloadAuditEntry(root.width_owner, root),)
-        )
-    return PayloadAuditContribution()
+    return root.payload_audit_contribution(ledger)
 
 
 class CollatzTermAuditSnapshot(NamedTuple):
@@ -139,6 +119,85 @@ class CollatzPhysicalImageWorkspace(
     DyadicReturnImageWorkspace, CollatzPhysicalImagePublication
 ):
     """Fixed physical Collatz steps using the shared dyadic law engine."""
+
+    def register_payload_audit(self) -> None:
+        """Register the exact root stores consumed by the payload audit."""
+        stores = [
+            PayloadAuditStoreBinding(
+                self.width_owner, "by_width", "dyadic_return_action_index"
+            ),
+        ]
+        memo = self._joint_action_memo
+        if memo is not None:
+            stores.append(
+                PayloadAuditStoreBinding(
+                    memo.owner,
+                    "_joint_action_store",
+                    "query_memo",
+                    scalar_attributes=("_joint_action_owner",),
+                )
+            )
+        register_payload_audit_contract(
+            self.ledger,
+            self,
+            "collatz",
+            tuple(stores),
+            audit_collatz_physical_image_workspace,
+        )
+
+    def payload_audit_contribution(self, ledger: object) -> PayloadAuditContribution:
+        """Validate retained joint authority for the generic payload walker."""
+        if type(ledger) is not ResourceLedger:
+            raise TypeError("Collatz physical-image audit requires its ledger")
+        if self.ledger is not ledger or self.closed:
+            return PayloadAuditContribution(
+                (), (PayloadAuditEntry(self.width_owner, self),)
+            )
+        try:
+            self.validate_publication_configuration()
+        except (ArithmeticError, AttributeError, IndexError, TypeError, ValueError):
+            return PayloadAuditContribution(
+                (), (PayloadAuditEntry(self.width_owner, self),)
+            )
+        memo = self._joint_action_memo
+        if memo is None:
+            if (
+                self._include_joint_cocycle
+                or self._joint_action_owner is not None
+                or self._joint_action_store is not None
+                or self._joint_action_snapshot is not None
+            ):
+                return PayloadAuditContribution(
+                    (), (PayloadAuditEntry(self.width_owner, self),)
+                )
+            return PayloadAuditContribution()
+        if (
+            not self._include_joint_cocycle
+            or self._joint_action_owner != memo.owner
+            or self._joint_action_store is not memo.audit_container
+        ):
+            return PayloadAuditContribution((), (PayloadAuditEntry(memo.owner, self),))
+        action = memo.get("root")
+        if action is None:
+            if self._joint_action_snapshot is not None:
+                return PayloadAuditContribution(
+                    (), (PayloadAuditEntry(memo.owner, self),)
+                )
+            return PayloadAuditContribution()
+        try:
+            retained = CollatzJointRunAction.from_admitted_root_payload(
+                self._joint_action_snapshot, action
+            )
+            if retained.source != self.seed or retained.physical_ticks != self.steps:
+                raise ValueError("joint action differs from its root occurrence")
+        except (AttributeError, TypeError, ValueError):
+            return PayloadAuditContribution(
+                (), (PayloadAuditEntry(memo.owner, action),)
+            )
+        return PayloadAuditContribution(
+            (PayloadAuditEntry(memo.owner, action),),
+            (),
+        )
 
     def __init__(
         self,
@@ -175,6 +234,9 @@ class CollatzPhysicalImageWorkspace(
         self._include_width_spine = include_width_spine
         self._include_joint_cocycle = include_joint_cocycle
         self._joint_action_snapshot: tuple[int, ...] | None = None
+        self._joint_action_memo: OwnedMemo[str, CollatzJointRunAction] | None = None
+        self._joint_action_store: Mapping[str, object] | None = None
+        self._joint_action_owner: int | None = None
         self._include_innovation_tape = include_innovation_tape
         self._innovation_modulus = innovation_modulus
         self._first_boundary_macro_snapshot: _BoundaryMacroSnapshot | None = None
@@ -196,8 +258,20 @@ class CollatzPhysicalImageWorkspace(
             | None
         ) = None
         with RuntimeConstruction(ledger):
+            if include_joint_cocycle:
+                owner = ledger.register(
+                    f"collatz-joint-root-actions-{ledger.owner_count}", "query_memo"
+                )
+                memo = OwnedMemo(
+                    ledger,
+                    owner,
+                    node_cost=joint_action_node_cost,
+                )
+                self._joint_action_memo = memo
+                self._joint_action_store = memo.audit_container
+                self._joint_action_owner = owner
             super().__init__(ledger, seed, steps, COLLATZ_PHYSICAL_LAW)
-            _register_physical_image_audit(self)
+            self.register_payload_audit()
 
     def validate_publication_configuration(self) -> None:
         """Validate the family law and demanded ports without constructing a query."""
@@ -291,7 +365,9 @@ class CollatzPhysicalImageWorkspace(
         view = self.scheduler.source_image_view(self, self.root_image)
         payload = self._joint_action_payload(view)
         try:
-            return CollatzJointRunAction.from_admitted_root_payload(payload)
+            return CollatzJointRunAction.from_admitted_root_payload(
+                payload, self._retained_joint_action()
+            )
         except (TypeError, ValueError) as error:
             raise BlockContextBudgetExceeded(
                 "the admitted Collatz image has an invalid joint action"
@@ -314,9 +390,14 @@ class CollatzPhysicalImageWorkspace(
                 "the admitted Collatz image has no completed joint action"
             )
         payload = payloads[0]
-        if type(payload) is not tuple or len(payload) != 13:
+        if not is_exact_integer_tuple(payload) or len(payload) != 13:
             raise BlockContextBudgetExceeded(
                 "the admitted Collatz image has a malformed joint action"
+            )
+        joint_action = self._retained_joint_action()
+        if joint_action is None or joint_action.root_port_payload() != payload:
+            raise BlockContextBudgetExceeded(
+                "the typed Collatz joint action differs from its root port"
             )
         return payload
 
@@ -435,7 +516,9 @@ class CollatzPhysicalImageWorkspace(
             raise ValueError("Collatz root morphism belongs to another image")
         payload = self._joint_action_payload(view)
         try:
-            joint = CollatzJointRunAction.from_admitted_root_payload(payload)
+            joint = CollatzJointRunAction.from_admitted_root_payload(
+                payload, self._retained_joint_action()
+            )
         except (TypeError, ValueError) as error:
             raise BlockContextBudgetExceeded(
                 "the admitted Collatz image has an invalid joint action"
@@ -747,6 +830,7 @@ class CollatzPhysicalImageWorkspace(
                 innovation_modulus=(
                     self._innovation_modulus if demand_innovation else None
                 ),
+                prefer_source_closed_d8=(is_root_action and not demand_width),
             )
         except MixedRouteNotAdmitted:
             self.bump_metric("temporal_balanced_routes")
@@ -838,6 +922,12 @@ class CollatzPhysicalImageWorkspace(
             return None
         return memo.get("root")
 
+    def _retained_joint_action(self) -> CollatzJointRunAction | None:
+        memo = self._joint_action_memo
+        if memo is None:
+            return None
+        return memo.get("root")
+
     def _release_boundary_macro_state(self) -> None:
         memo = self._boundary_macro_memo
         if memo is not None:
@@ -857,6 +947,12 @@ class CollatzPhysicalImageWorkspace(
         self._root_source_owner = None
 
     def _release_joint_action_state(self) -> None:
+        memo = self._joint_action_memo
+        if memo is not None:
+            memo.dispose()
+        self._joint_action_memo = None
+        self._joint_action_store = None
+        self._joint_action_owner = None
         self._joint_action_snapshot = None
 
     def _release_d8_temporal_rows(self) -> None:
@@ -866,10 +962,10 @@ class CollatzPhysicalImageWorkspace(
         base_cleanup = (super().rollback_construction,) if include_base else ()
         cleanup_all(
             (
+                self._release_joint_action_state,
                 *base_cleanup,
                 self._release_boundary_macro_state,
                 self._release_innovation_observation_state,
-                self._release_joint_action_state,
                 self._release_root_source_owner,
                 self._release_d8_temporal_rows,
             )

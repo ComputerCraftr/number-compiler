@@ -22,18 +22,22 @@ from number_compiler.sequences.collatz.border_identity import (
     CollatzSegmentIdentity,
 )
 from number_compiler.sequences.collatz.boundary_macros import (
-    BoundaryActionTemplateMemo,
     admit_boundary_macro_plan,
     select_admitted_boundary_macro,
 )
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo,
+)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
+)
+from number_compiler.sequences.collatz.guarded_skew_power import (
+    GuardedSkewCylinderPower,
 )
 from number_compiler.sequences.collatz.radial_boundary_coupling import (
     CollatzRadialBoundarySeam,
 )
 from number_compiler.sequences.collatz.skew_cylinder_repeat import (
-    GuardedSkewCylinderPower,
     RepeatedWordMooreCylinder,
 )
 from number_compiler.sequences.collatz.unified_skew_chain import (

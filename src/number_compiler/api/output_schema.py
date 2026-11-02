@@ -111,6 +111,43 @@ class AntihydraSourceFields(TypedDict, total=False):
     retained_nodes: NotRequired[JsonInteger]
 
 
+class AntihydraDiagonalPacket(TypedDict):
+    """Demanded finite carry field, with no all-time execution authority."""
+
+    family: Literal["antihydra"]
+    kind: Literal["temporal.diagonal-carry"]
+    source_binding: str
+    requested_returns: int
+    endpoint: int
+    clock_unit: Literal["macro_returns_after_startup"]
+    all_time_claim: Literal[False]
+    field: JsonValue
+
+
+class CollatzDiagonalPacket(TypedDict):
+    """Finite spatial projections of one issued physical/normalized run."""
+
+    family: Literal["collatz"]
+    kind: Literal["temporal.diagonal-carry"]
+    source: int
+    normalized_endpoint: int
+    physical_endpoint: int
+    normalized_steps: int
+    physical_ticks: int
+    phase: int
+    clock_unit: Literal["physical_iterations"]
+    moving_cut: Literal["binary-normalized"]
+    field_width: int
+    complete: bool
+    field: JsonValue
+    macro_affine_carries_lsb: tuple[int, ...]
+    macro_laurent_carry_lsb: tuple[int, ...]
+    macro_laurent_factor: Literal["z-2"]
+    weighted_laurent_complete: bool
+    weighted_laurent_aggregate: JsonValue
+    all_time_claim: Literal[False]
+
+
 class AntihydraRunAvailablePacket(AntihydraSourceFields):
     status: Literal["available"]
     halted: Literal[False]

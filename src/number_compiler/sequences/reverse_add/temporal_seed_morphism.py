@@ -141,6 +141,9 @@ class Q19WordFiber:
     center: tuple[int, ...]
     residue99: int
     residue198: int
+    reverse_residue198: int
+    reflected_carry_parity: int
+    next_raw_residue198: int
     exterior99: int
     exterior198: int
     carry_into_center: int
@@ -169,6 +172,9 @@ class Q19WordFiber:
             self.center,
             self.residue99,
             self.residue198,
+            self.reverse_residue198,
+            self.reflected_carry_parity,
+            self.next_raw_residue198,
             self.exterior99,
             self.exterior198,
             self.carry_into_center,
@@ -370,6 +376,18 @@ def _compute_fiber(
         ) % 198
         digit_99 = full.mod99[0]
         digit_198 = full.mod198[0]
+        # The numeric fold already retained both orientations of the physical
+        # normalized digit output. Apply the group-ring carry correction here,
+        # without another Q19 SLP scan or any hypothetical future occurrence.
+        reverse198 = full.port198.reversed[0]
+        reverse99 = full.port99.reversed[0]
+        if reverse99 != (10 if grow else 1) * digit_99 % 99:
+            raise AssertionError("Q19 reflected digit fold lost its 99-cochain")
+        reflected_defect = ((10 if grow else 1) * digit_198 - reverse198) % 198
+        reflected_parity, remainder = divmod(reflected_defect, 99)
+        if remainder:
+            raise AssertionError("reflected carry defect is not divisible by 99")
+        next_raw198 = (digit_198 + reverse198) % 198
     # The global clock is independent of the Q19 weighted digit fold.
     prediction = from_seed(seed, occurrence.temporal_steps).target_mod99
     if digit_99 != prediction:
@@ -391,6 +409,9 @@ def _compute_fiber(
         center,
         digit_99,
         digit_198,
+        reverse198,
+        reflected_parity,
+        next_raw198,
         ex99,
         ex198,
         c_in,

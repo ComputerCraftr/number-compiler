@@ -15,7 +15,7 @@ from contextlib import ExitStack
 
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.collatz.boundary_macros import (
+from number_compiler.sequences.collatz.boundary_templates import (
     BoundaryActionTemplateMemo,
 )
 from number_compiler.sequences.collatz.joint_temporal_action import (
@@ -52,6 +52,7 @@ def compile_collatz_temporal_run_quotient(
     include_innovation_tape: bool = False,
     require_mixed_prefix: bool = False,
     innovation_modulus: int | None = None,
+    prefer_source_closed_d8: bool = False,
 ) -> CollatzTemporalRunQuotient:
     """Compile the exact source-bound action without a parity itinerary.
 
@@ -78,6 +79,8 @@ def compile_collatz_temporal_run_quotient(
         raise TypeError("innovation-tape demand must be Boolean")
     if type(require_mixed_prefix) is not bool:
         raise TypeError("mixed-prefix routing mode must be Boolean")
+    if type(prefer_source_closed_d8) is not bool:
+        raise TypeError("D8 successor admission mode must be Boolean")
     if innovation_modulus is not None and (
         type(innovation_modulus) is not int
         or innovation_modulus < 3
@@ -129,6 +132,7 @@ def compile_collatz_temporal_run_quotient(
             include_innovation_tape=include_innovation_tape,
             require_mixed_prefix=require_mixed_prefix,
             innovation_modulus=innovation_modulus,
+            prefer_source_closed_d8=prefer_source_closed_d8,
             macros=macros,
             scratch=scratch,
             joint_builder=joint_builder,

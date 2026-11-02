@@ -38,6 +38,26 @@ ready window descends to the target. Source initialization, prefix extension,
 selection, and retained rank each have separate registered refinement theories
 listed in the [proof index](../proofs.md).
 
+## Ordered phase lanes and bounded carry defects
+
+For a consecutive admitted prime prefix ending at `q`, every composite
+candidate at most `q²` has a prime divisor in that prefix. Testing odd candidates
+in order therefore identifies the next prime, or certifies exhaustion of that
+bounded interval. Beyond the square boundary, exact rank descent is still
+required; this argument supplies no prime-gap assumption.
+
+The ordered rank of the first four factors is a sixteen-term signed floor sum.
+A fixed 210-to-2310 boundary can retain its 480 survivors as bit chunks and
+prefix counts. For a distinct new prime `p`, the removed survivors correspond
+to the parent's survivors through `floor(x/p)`. Thus each extension satisfies
+`R_new(x) = R_parent(x) - R_parent(floor(x/p))`. Small suffixes can be evaluated
+as signed subsets; larger ones use the same recurrence on demand. This avoids
+constructing successively larger wheels. An unordered phase histogram cannot
+replace the ordered prefix boundary.
+
+The [integration record](../sprints/week-of-2026-11-01/prime-rank-effective-returns.md)
+owns the current implementation, kernel scope and measurements.
+
 ## Progression and Goldbach views
 
 [`Prime_Wheel_Skew_Actions.thy`](../../proofs/isabelle/families/prime/prime_wheel/Prime_Wheel_Skew_Actions.thy)

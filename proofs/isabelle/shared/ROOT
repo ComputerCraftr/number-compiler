@@ -34,6 +34,7 @@ session Shared_Carry_Dynamics in "arithmetic/carry_dynamics" = "HOL-Number_Theor
     Shared_Carry_Domain
     Shared_Decimal_Cocycle_Core
     Decimal_Normalization_Morphism
+    Decimal_Repunit_Modular
     Shared_Carry_Tape
     Shared_Affine_Birth_Tape
     Port_Valued_Mealy

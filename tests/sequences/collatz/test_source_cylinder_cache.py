@@ -188,14 +188,12 @@ def test_transported_checkpoint_reduces_work_on_same_receiving_seed() -> None:
         warm.resource_ledger.counters["collatz_hashlife_occurrence_transported_hits"]
         > 0
     )
+    # The bounded source-window producer now accounts its real normalized
+    # iterations in this common work total, so compare the complete source
+    # work rather than only the retired D8 discovery path.
     assert (
-        warm.resource_ledger.counters["collatz_physical_temporal_d8_discovery_symbols"]
-        + warm.resource_ledger.counters.get(
-            "collatz_temporal_root_checkpoint_d8_steps", 0
-        )
-        < cold.resource_ledger.counters[
-            "collatz_physical_temporal_d8_discovery_symbols"
-        ]
+        warm.resource_ledger.counters["collatz_hashlife_primitive_steps"]
+        < cold.resource_ledger.counters["collatz_hashlife_primitive_steps"]
     )
 
 
@@ -631,9 +629,12 @@ def test_public_smaller_high_fiber_uses_admitted_prefix_and_reduces_work() -> No
     assert counters["collatz_hashlife_max_level"] == 6
     assert counters["collatz_hashlife_occurrence_applied_hits"] == 1
     assert counters["collatz_hashlife_occurrence_applied_parent_hits"] == 1
+    # A cached parent followed by one exact window can use the same number of
+    # scheduler actions as one window plus a tail. Compare their measured
+    # producer work, while retaining the exact parent-hit assertions above.
     assert (
-        counters["collatz_physical_temporal_run_actions"]
-        < bypass.resource_ledger.counters["collatz_physical_temporal_run_actions"]
+        counters["collatz_hashlife_primitive_steps"]
+        < bypass.resource_ledger.counters["collatz_hashlife_primitive_steps"]
     )
     assert warm.metrics().resource_accounting_mismatch == 0
     clear_process_cache()
@@ -853,9 +854,11 @@ def test_dyadic_macro_close_attempts_every_store_and_retries_failed_owner(
     assert failed_cleanup.width_spines_disposed
     assert failed_cleanup.gains_disposed
     assert failed_cleanup.frontier_disposed
+    assert failed_cleanup.mixed_actions_disposed
 
     macros.close()
     assert macros.audit_snapshot().occurrences_disposed
+    assert macros.audit_snapshot().mixed_actions_disposed
     assert ledger.entries == ledger.nodes == 0
 
 

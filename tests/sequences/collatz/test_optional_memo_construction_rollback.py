@@ -12,8 +12,10 @@ from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.sequences.collatz.border_identity import ENTRY_421
 from number_compiler.sequences.collatz.border_return_grammar import BorderReturnMacro
 from number_compiler.sequences.collatz.boundary_macros import (
-    BoundaryActionTemplateMemo,
     CollatzBoundaryMacro,
+)
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo,
 )
 from number_compiler.sequences.collatz.innovation_port_moore import (
     InnovationTapeObservation,

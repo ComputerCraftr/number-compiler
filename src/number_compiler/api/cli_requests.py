@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
+from functools import lru_cache
 
 from number_compiler.api.cli_types import (
     IndexPresentation,
@@ -266,6 +267,17 @@ def _add_presentation_options(command: argparse.ArgumentParser) -> None:
             raise ValueError(f"unsupported presentation option {option.value_kind!r}")
 
 
+# Embedded CLI calls use the same stock option schema repeatedly.  Cache only
+# its immutable argument ACTIONS, not parsed Namespaces, values, or registries.
+# Direct parser() callers and synthetic registries still get independent objects.
+_CANONICAL_PARSER = parser
+
+
+@lru_cache(maxsize=32)
+def _stock_parser(demanded_family: FamilyId | None) -> argparse.ArgumentParser:
+    return _CANONICAL_PARSER(demanded_family=demanded_family)
+
+
 def parse_request(
     argv: list[str],
     *,
@@ -280,7 +292,11 @@ def parse_request(
             candidate = None
         if candidate in capabilities:
             demanded_family = candidate
-    command = parser(demanded_family=demanded_family, registry=capabilities)
+    command = (
+        _stock_parser(demanded_family)
+        if registry is None and parser is _CANONICAL_PARSER
+        else parser(demanded_family=demanded_family, registry=capabilities)
+    )
     args = command.parse_args(argv)
     if args.list_families:
         if args.family is not None:

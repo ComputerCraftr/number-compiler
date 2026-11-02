@@ -7,7 +7,6 @@ from typing import Never, cast
 
 import pytest
 
-from number_compiler.api import cli as cli_module
 from number_compiler.api.cli import main as cli_main
 from number_compiler.api.number_api import (
     NumberCompiler,
@@ -26,7 +25,7 @@ from number_compiler.sequences.collatz import (
     temporal_mixed_execution,
     temporal_run_executor,
 )
-from number_compiler.sequences.collatz.boundary_macros import (
+from number_compiler.sequences.collatz.boundary_templates import (
     BoundaryActionTemplateMemo,
 )
 from number_compiler.sequences.collatz.mixed_clock_macros import MixedClockMacro
@@ -85,7 +84,9 @@ def _capture_projected_terms(
             captured.append(term)
             return term
 
-    monkeypatch.setattr(cli_module, "NumberCompiler", CapturingCompiler)
+    monkeypatch.setattr(
+        "number_compiler.api.number_api.NumberCompiler", CapturingCompiler
+    )
     return captured
 
 

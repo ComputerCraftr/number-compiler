@@ -8,7 +8,7 @@ context and never enters the cached semantic action.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Self, cast
+from typing import TYPE_CHECKING, Self
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
@@ -26,6 +26,9 @@ from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
 from number_compiler.sequences.collatz.joint_cylinder_cache import (
     JointCertifiedMacroCache,
 )
+from number_compiler.sequences.collatz.source_closed_port_action import (
+    bounded_three_power_matches,
+)
 from number_compiler.sequences.collatz.temporal_dyadic import D8CylinderFrame
 
 _MAX_JOINT_COEFFICIENT_BITS = 1_000_000
@@ -39,6 +42,9 @@ if TYPE_CHECKING:
         CollatzDyadicOccurrence,
     )
     from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
+    from number_compiler.sequences.collatz.weighted_right_congruence import (
+        CollatzDoubleWeight,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,8 +88,10 @@ class CollatzJointRunAction:
             raise ValueError("joint run occurrence has an invalid extent")
         if (
             self.fields.steps != self.normalized_steps
+            or self.odd_symbols > self.normalized_steps
             or self.normalized_steps + self.odd_symbols + self.phase
             != self.physical_ticks
+            or not bounded_three_power_matches(self.odd_symbols, self.fields.gain)
         ):
             raise ValueError("joint run clocks do not compose")
         if self.fields.endpoint(self.source) != self.normalized_endpoint:
@@ -99,6 +107,24 @@ class CollatzJointRunAction:
         )
         if self.endpoint != expected_endpoint:
             raise ValueError("joint normalized endpoint differs from physical endpoint")
+
+    def double_accumulators(self) -> CollatzDoubleWeight:
+        """Exact total 3n+1 credits and n/2 debits, including a pending G.
+
+        Uses the same authenticated normalized successor-sum field as the
+        existing accumulator observation: no second chronological tape.
+        """
+        from number_compiler.sequences.collatz.weighted_right_congruence import (
+            exact_double_weight,
+        )
+
+        result = exact_double_weight(self.fields, self.source, phase=self.phase)
+        if (
+            result.normalized_endpoint != self.normalized_endpoint
+            or result.physical_endpoint != self.endpoint
+        ):
+            raise ValueError("double accumulator disagrees with the run endpoint")
+        return result
 
     def normalized_accumulator_residue(self, modulus: int) -> int:
         """Sum the source and normalized successors, excluding odd half-steps."""
@@ -120,7 +146,7 @@ class CollatzJointRunAction:
         )
 
     def root_port_payload(self) -> tuple[int, ...]:
-        """Return the complete primitive wire payload for a root image port."""
+        """Return the immutable scalar descriptor published on the root port."""
         if not self.fields.producer_issued:
             raise ValueError("joint root port requires a producer-issued action")
         return (
@@ -140,29 +166,21 @@ class CollatzJointRunAction:
         )
 
     @classmethod
-    def from_admitted_root_payload(cls, payload: object) -> CollatzJointRunAction:
-        """Rehydrate only after a root-image owner has authenticated the tuple."""
+    def from_admitted_root_payload(
+        cls, payload: object, retained: CollatzJointRunAction | None
+    ) -> CollatzJointRunAction:
+        """Resolve a scalar port only through its already-issued root action."""
         if (
             not is_exact_object_tuple(payload)
             or len(payload) != 13
             or any(type(value) is not int for value in payload)
+            or type(retained) is not CollatzJointRunAction
+            or not retained.fields.producer_issued
+            or retained.root_port_payload() != payload
         ):
             raise ValueError("admitted Collatz root joint payload is malformed")
-        record = cast(tuple[int, ...], payload)
-        source, endpoint, normalized_endpoint, physical, normalized, odd, phase = (
-            record[:7]
-        )
-        fields = DyadicTerminalFieldAction.restore_cache_payload(normalized, record[7:])
-        return cls(
-            source,
-            endpoint,
-            normalized_endpoint,
-            physical,
-            normalized,
-            odd,
-            phase,
-            fields,
-        )
+        retained.__post_init__()
+        return retained
 
 
 @dataclass(frozen=True, slots=True)
@@ -781,7 +799,11 @@ class CollatzJointTemporalBuilder:
         width = min(width, JointCertifiedMacroCache.MAX_WIDTH)
         cell = macros.lookup_largest(source, width, physical_ticks)
         while cell is not None:
-            record = self.cache.lookup(source, cell.width)
+            record = self.cache.lookup(
+                source,
+                cell.width,
+                preflight=self.scratch.require_bits,
+            )
             if record is not None:
                 action, odd_symbols = record
                 endpoint = cell.apply(source)

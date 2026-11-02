@@ -25,6 +25,30 @@ def _collect(counters: dict[str, int]) -> TemporalExecutionDiagnostics:
     )
 
 
+def test_finite_construction_work_is_a_detached_snapshot() -> None:
+    counters = {
+        "reverse_q19_punctured_native_decimal_ticks": 17,
+        "reverse_q19_punctured_failed_applications": 0,
+        "double_reverse_packed_diagonal_row_evaluations": 64,
+        "double_reverse_packed_diagonal_row_operand_bits": 4096,
+    }
+    before = dict(counters)
+    record = _collect(counters)
+    assert counters == before
+    assert record.schema_version == 8
+    assert record.construction.reverse_finite_work == (
+        ("failed_applications", 0),
+        ("native_decimal_ticks", 17),
+    )
+    assert record.construction.packed_diagonal_work == (
+        ("row_evaluations", 64),
+        ("row_operand_bits", 4096),
+    )
+    counters.clear()
+    assert record.construction.reverse_finite_work is not None
+    assert dict(record.construction.reverse_finite_work)["native_decimal_ticks"] == 17
+
+
 def test_explicit_mahler_audit_does_not_reconstruct_endpoint() -> None:
     from number_compiler.api.cli_context import QueryContext
     from number_compiler.api.cli_requests import parse_request
@@ -67,6 +91,8 @@ def test_uninstrumented_lanes_are_unavailable_not_zero() -> None:
     assert record.construction.reverse_successor_rows is None
     assert record.construction.reverse_successor_spatial_bits is None
     assert record.construction.reverse_successor_transport_updates is None
+    assert record.construction.reverse_finite_work is None
+    assert record.construction.packed_diagonal_work is None
     assert record.demand.point_requests is None
     assert record.demand.length_requests is None
     assert record.stream.requests is None
@@ -467,9 +493,23 @@ def test_stream_demand_preserves_emission_and_retained_frame_peak_units() -> Non
         "reverse_recursive_pair_width_publications",
         "reverse_recursive_pair_width_descents",
         "reverse_recursive_pair_width_failures",
+        "reverse_accumulator99_bootstrap_digit_steps",
+        "reverse_accumulator99_bootstrap_operand_bits",
+        "reverse_accumulator99_bootstrap_failed_work",
+        "reverse_laurent_cache_hits",
+        "reverse_laurent_cache_misses",
+        "reverse_laurent_cache_publication_failures",
+        "reverse_laurent_failed_work",
+        "reverse_laurent_operand_bits",
+        "reverse_laurent_paired_blocks",
+        "reverse_laurent_run_record_visits",
+        "reverse_laurent_source_ticks",
+        "double_reverse_source_word_fold_node_visits",
+        "double_reverse_source_word_fold_operand_bits",
+        "double_reverse_source_word_fold_operations",
     ),
 )
-def test_pair_width_reporting_preserves_missing_zero_and_count(counter: str) -> None:
+def test_observation_work_preserves_missing_zero_and_count(counter: str) -> None:
     assert getattr(_collect({}).observations, counter) is None
     for count in (0, 3):
         assert getattr(_collect({counter: count}).observations, counter) == count

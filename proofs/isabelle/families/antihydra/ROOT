@@ -1,6 +1,6 @@
 session Antihydra in antihydra = HOL +
   options [document = false, quick_and_dirty = false]
-  sessions Shared_S_Arithmetic
+  sessions Shared_S_Arithmetic Shared_Carry_Dynamics
   theories
     Antihydra_Literal_TM
     Antihydra_Mahler_Skew
@@ -8,5 +8,6 @@ session Antihydra in antihydra = HOL +
     Antihydra_Family_Iteration
     Antihydra_Arithmetic_Cylinder_Lift
     Antihydra_Exact_Run_Candidate_Refinement
+    Antihydra_Diagonal_Carry_Refinement
     Antihydra_Affine_Certificate
     Antihydra_Macro_Grammar

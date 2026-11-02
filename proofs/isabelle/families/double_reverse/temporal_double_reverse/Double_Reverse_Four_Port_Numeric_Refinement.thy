@@ -49,6 +49,12 @@ lemma double_reverse_msf_value_append_digit:
   by (simp add: double_reverse_msf_value_append
       double_reverse_msf_value_singleton)
 
+lemma double_reverse_msf_value_cons:
+  "double_reverse_msf_value (digit # digits) =
+    digit * 10 ^ length digits + double_reverse_msf_value digits"
+  unfolding double_reverse_msf_value_def
+  by (simp add: double_reverse_lsf_value_append_digit algebra_simps)
+
 lemma double_reverse_msf_value_leading_zero:
   "double_reverse_msf_value (0 # digits) =
     double_reverse_msf_value digits"

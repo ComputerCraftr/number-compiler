@@ -90,13 +90,16 @@ def test_validator_rejects_rebound_issued_field_payload(
     macro = select_terminal_power2_macro(5, 5)
     assert macro is not None
 
-    # Rehydration gives the altered action a valid producer seal, so terminal
-    # admission must authenticate its complete field summary against the
-    # source-bound 1,0,0,0 word, not merely trust issuance or endpoint.
-    altered_fields = DyadicTerminalFieldAction.restore_cache_payload(4, coefficients)
-    assert altered_fields.producer_issued
+    # Integer-only restoration preserves coefficient shape but carries no
+    # source-word producer authority, even when endpoint and cylinder agree.
+    altered_fields = DyadicTerminalFieldAction.restore_untrusted_cache_payload(
+        4, coefficients
+    )
+    assert not altered_fields.producer_issued
     assert altered_fields.certifies(5)
-    assert altered_fields.endpoint(5) == expected_endpoint
+    assert (altered_fields.gain * 5 + altered_fields.offset) // (
+        1 << altered_fields.steps
+    ) == expected_endpoint
 
     object.__setattr__(macro, "fields", altered_fields)
     object.__setattr__(

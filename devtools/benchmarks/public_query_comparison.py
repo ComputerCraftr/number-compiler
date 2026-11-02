@@ -195,11 +195,13 @@ def compare(
     modes: Sequence[Mode],
     *,
     seed: int = 27,
+    start: int | None = None,
     bases: Sequence[int] = (2, 10),
     position: int = 2,
     max_output_bits: int = 1_000_000,
     info: Sequence[str] = ("metrics",),
     no_value: bool = False,
+    observation_options: Sequence[tuple[str, str]] = (),
     on_sample: Callable[[Sample], None] | None = None,
 ) -> list[Sample]:
     """Retain every timed sample; check agreement outside each timed demand.
@@ -219,9 +221,14 @@ def compare(
         raise ValueError("invalid public comparison configuration")
     if type(no_value) is not bool:
         raise ValueError("no_value must be Boolean")
-    if not info or any(type(name) is not str for name in info):
-        raise ValueError("at least one named CLI observation is required")
+    if any(type(name) is not str for name in info) or (not info and no_value):
+        raise ValueError("comparison requires a value or named CLI observation")
     spec = family_spec(selected_family)
+    declared_options = spec.observer_options_map()
+    if any(name not in declared_options for name, _ in observation_options):
+        raise ValueError("benchmark option is not declared by the family observer")
+    if len({name for name, _ in observation_options}) != len(observation_options):
+        raise ValueError("benchmark observation options must be unique")
     supported_info = set(spec.nth_info)
     if any(name not in supported_info for name in info):
         raise ValueError("CLI observation is not supported by the selected family")
@@ -232,6 +239,10 @@ def compare(
     if not modes or any(mode not in ("cold", "warm", "bypass") for mode in modes):
         raise ValueError("invalid comparison mode")
     source_arguments = option_argv("seed", seed) if "seed" in spec.parameters else []
+    if start is not None:
+        if type(start) is not int or "start" not in spec.parameters:
+            raise ValueError("start is not an admitted family source parameter")
+        source_arguments.extend(option_argv("start", start))
     requested_info = tuple(dict.fromkeys(info))
     selected_bases = tuple(bases[:1]) if no_value else tuple(bases)
     rows: list[Sample] = []
@@ -252,9 +263,11 @@ def compare(
             expected_digit: int | None = None
             expected_outputs: dict[int, str] = {}
             source_radix = 2
+            point_available = False
         else:
             projected = NumberCompiler(max_cached_terms=0).project(query)
             reference = projected.materialize(max_bits=max_output_bits)
+            point_available = projected.source_radix is not None
             source_radix = projected.source_radix or 2
             expected_digit = (reference // source_radix**position) % source_radix
             expected_outputs = {
@@ -288,6 +301,13 @@ def compare(
                             for argument in option_argv("info", name)
                         ],
                         *source_arguments,
+                        *[
+                            argument
+                            for name, value in observation_options
+                            for argument in option_argv(
+                                declared_options[name].flag, value
+                            )
+                        ],
                     ]
                     if no_value:
                         arguments.extend(option_argv("no_value", True))
@@ -337,7 +357,7 @@ def compare(
                             )
                 # A cold point demand has a fresh compiler and cleared process caches;
                 # unlike cold CLI timing, its timing excludes interpreter startup.
-                if no_value:
+                if no_value or not point_available:
                     continue
                 if mode in ("cold", "bypass"):
                     NumberCompiler.clear_shared_cache()
@@ -381,6 +401,8 @@ def main() -> int:
         default=["cold", "warm", "bypass"],
     )
     parser.add_argument("--seed", type=int, default=27)
+    parser.add_argument("--start", type=int)
+    parser.add_argument("--value-only", action="store_true")
     parser.add_argument("--bases", type=int, nargs="+", default=[2, 10])
     parser.add_argument("--position", type=int, default=2)
     parser.add_argument("--max-output-bits", type=int, default=1_000_000)
@@ -395,9 +417,21 @@ def main() -> int:
         action="store_true",
         help="time information-only CLI requests without output rendering",
     )
+    parser.add_argument(
+        "--observation-option",
+        action="append",
+        nargs=2,
+        default=[],
+        metavar=("NAME", "VALUE"),
+        help="repeatable family-registry observation option",
+    )
     options = parser.parse_args()
     modes: list[Mode] = options.modes
-    information = tuple(options.information or ("metrics",))
+    if options.value_only and (options.information or options.no_value):
+        parser.error("--value-only cannot be combined with --info or --no-value")
+    information = (
+        () if options.value_only else tuple(options.information or ("metrics",))
+    )
     selected_family = family_id(options.family)
     selected_spec = family_spec(selected_family)
     unsupported = set(information) - set(selected_spec.nth_info)
@@ -417,6 +451,7 @@ def main() -> int:
         "scope": "current public route/output agreement; API reference is not an independent oracle; no latency threshold or temporal complexity claim",
         "cold_cli_includes_interpreter_startup": True,
         "point_timings_include_project": True,
+        "point_policy": "only projected terms with a declared source radix",
         "warm_priming_samples_retained": True,
         "configuration": configuration,
         "bypass_cli_policy": "disable process-cache retrieval and publication; within-query memoization remains enabled",
@@ -448,11 +483,13 @@ def main() -> int:
                 options.trials,
                 modes,
                 seed=options.seed,
+                start=options.start,
                 bases=options.bases,
                 position=options.position,
                 max_output_bits=options.max_output_bits,
                 info=information,
                 no_value=options.no_value,
+                observation_options=options.observation_option,
                 on_sample=save_sample,
             )
     except BaseException:

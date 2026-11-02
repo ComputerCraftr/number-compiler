@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerList
@@ -27,6 +27,14 @@ from number_compiler.sequences.collatz.boundary_macros import (
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
+from number_compiler.sequences.collatz.guarded_skew_power import (
+    GuardedSkewCylinderPower,
+)
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.diagonal_source_window import (
+        CollatzDiagonalWindow,
+    )
 
 _UNISSUED = object()
 _PROGRAM_ISSUER = object()
@@ -617,9 +625,6 @@ class ParityProgramBuilder:
         preflight: Callable[[int], None],
     ) -> None:
         """Retain the exact repeated word under its source-issued cylinder."""
-        from number_compiler.sequences.collatz.skew_cylinder_repeat import (
-            GuardedSkewCylinderPower,
-        )
         from number_compiler.sequences.collatz.unified_skew_chain import (
             UnifiedSkewChain,
         )
@@ -657,6 +662,36 @@ class ParityProgramBuilder:
             current = following
         if current != endpoint:
             raise ValueError("repeated parity grammar endpoint differs from its power")
+
+    def append_diagonal_window(
+        self,
+        window: CollatzDiagonalWindow,
+        *,
+        reserve_bits: Callable[[int], None],
+        max_width: int,
+    ) -> None:
+        """Append the producer's same-pass parity mask as one finite factor."""
+        from number_compiler.sequences.collatz.diagonal_source_window import (
+            CollatzDiagonalWindow,
+        )
+
+        if type(window) is not CollatzDiagonalWindow:
+            raise TypeError("innovation diagonal input requires an issued window")
+        window.require_issued()
+        if not window.producer_issued:
+            raise ValueError("diagonal innovation window lost its source authority")
+        if window.action.steps == 0 or window.parity_mask is None:
+            raise ValueError("diagonal window has no demanded parity grammar")
+        motif = window.parity_factor(
+            reserve_bits=reserve_bits,
+            max_width=max_width,
+        )
+        self._append_admitted(
+            window.source,
+            window.normalized_endpoint,
+            ((motif, 1),),
+            odd_symbols=window.odd_symbols,
+        )
 
     def append_terminal_power2_macro(self, macro: object) -> None:
         from number_compiler.sequences.collatz.terminal_preimage import (

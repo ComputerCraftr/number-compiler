@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from math import gcd, prod
 
+from number_compiler.arithmetic.fields.integer_congruence import affine_preimage
 from number_compiler.arithmetic.fields.morphism_core import binary_power, modular_power
 from number_compiler.arithmetic.fields.radix import bit_width
 from number_compiler.sequences.prime.set import MultiplicativeLane, is_prime_u64
@@ -327,12 +328,14 @@ class PrimeWheelExtensionMorphism:
         q = int(new_prime)
         if not gaps or sum(gaps) != M or gcd(M, q) != 1:
             raise ValueError((gaps, M, q))
-        inv = pow(M, -1, q)
-        alpha = (-inv) % q
+        alpha_preimage = affine_preimage((q - 1, q), gain=M, offset=0, denominator=1)
+        if alpha_preimage is None or alpha_preimage[1] != q:
+            raise ValueError((M, q))
+        alpha = alpha_preimage[0]
         return cls(
             M,
             q,
-            (-inv) % q,
+            alpha,
             PrimeWheelPhaseBlock.from_gaps(gaps, prime=q, alpha=alpha),
         )
 
@@ -418,9 +421,10 @@ class PrimeWheelExtensionIndex:
         if r != M + 1:
             raise AssertionError((r, M, gaps))
         by_copy: list[list[int]] = [[] for _ in range(q)]
-        inv = pow(M, -1, q)
         for i, residue in enumerate(residues):
-            copy = (-residue * inv) % q
+            # The admitted morphism already solved M * alpha = -1 (mod q).
+            # Reuse it for each residue instead of recomputing the inverse.
+            copy = residue * morphism.initial_copy % q
             by_copy[copy].append(i)
         positions = tuple(tuple(xs) for xs in by_copy)
         cumulative = [0]

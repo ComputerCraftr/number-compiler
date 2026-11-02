@@ -1,4 +1,4 @@
-"""Differential checks for the root-balanced and generic Antihydra producers."""
+"""Differential checks for powered and generic Antihydra producers."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def _certified_result(n: int) -> tuple[int, int, int, int | None]:
     return (result.h, result.balance, result.minimum, result.first_failure_index)
 
 
-def test_root_balanced_producer_matches_generic_composite_issuer(
+def test_powered_root_producer_matches_generic_composite_issuer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Force the generic composite route as an independent oracle; do not
@@ -46,12 +46,12 @@ def test_root_balanced_producer_matches_generic_composite_issuer(
         return None
 
     monkeypatch.setattr(Workspace, "_try_odd_macro_candidate", no_macro)
-    monkeypatch.setattr(Workspace, "_balanced_root_candidate", use_generic_composite)
+    monkeypatch.setattr(Workspace, "_powered_source_candidate", use_generic_composite)
     for n in lengths:
         assert fast[n] == _certified_result(n), n
 
 
-def test_large_exact_roots_publish_shared_balanced_effect_directly(
+def test_large_exact_roots_publish_powered_carry_directly(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def forbidden(
@@ -65,10 +65,7 @@ def test_large_exact_roots_publish_shared_balanced_effect_directly(
     result.require_source()
     assert result.h > 0
     counters = term.ledger.counters
-    assert (
-        counters.get("antihydra_arithmetic_balanced_effect_requests", 0) > 0
-        or counters.get("antihydra_arithmetic_temporal_odd_macro_repetitions", 0) > 0
-    )
+    assert counters.get("antihydra_arithmetic_weighted_carry_requests", 0) == 1
     assert (
         term.ledger.counters.get("antihydra_arithmetic_composite_cutover_chunks", 0)
         == 0

@@ -15,9 +15,14 @@ from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.resources.process_cache import CacheLease
 from number_compiler.sequences.collatz.border_identity import MixedParityMotif
-from number_compiler.sequences.collatz.boundary_macros import BoundaryActionTemplateMemo
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo,
+)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
+)
+from number_compiler.sequences.collatz.skew_cylinder_repeat import (
+    RepeatedWordMooreCylinder,
 )
 from number_compiler.sequences.collatz.temporal_dyadic import (
     D8CylinderFrame,
@@ -27,7 +32,7 @@ from number_compiler.sequences.collatz.temporal_dyadic import (
 _ISSUER = object()
 _MIXED_ACTION_CACHE_ISSUER = object()
 MIXED_ACTION_CACHE_NAMESPACE: Final[str] = "collatz-mixed-action-index"
-MIXED_ACTION_CACHE_VERSION: Final[str] = "collatz-complete-mixed-action-v2"
+MIXED_ACTION_CACHE_VERSION: Final[str] = "collatz-complete-mixed-action-v3"
 MIXED_ACTION_CACHE_INDEX_BITS = 16
 _PREVIEW_BITS = (32, 64, 96)
 _MAX_MOTIF = 64
@@ -187,6 +192,7 @@ def restore_mixed_cache_payload(
     payload: object,
     *,
     include_width: bool,
+    preflight: Callable[[int], None],
     cache_lease: CacheLease | None = None,
 ) -> MixedClockMacro | None:
     """Rehydrate a complete cached action only when its full cylinder agrees."""
@@ -197,6 +203,7 @@ def restore_mixed_cache_payload(
         or not is_exact_object_tuple(payload)
         or len(payload) != 17
         or any(type(value) is not int for value in payload)
+        or not callable(preflight)
     ):
         raise ValueError("mixed action cache payload is malformed")
     record = cast(tuple[int, ...], payload)
@@ -252,15 +259,26 @@ def restore_mixed_cache_payload(
     motif = tuple((motif_code >> index) & 1 for index in range(motif_length))
     if not 0 < sum(motif) < motif_length or sum(motif) * repetitions != odd_symbols:
         raise ValueError("mixed action cache parity descriptor is inconsistent")
-    action = DyadicTerminalFieldAction.restore_cache_payload(
+    preflight(8 * (source.bit_length() + 4 * steps + motif_length + 32))
+    motif_action = DyadicTerminalFieldAction.identity()
+    for bit in motif:
+        motif_action = motif_action.then(
+            DyadicTerminalFieldAction.one_run(1)
+            if bit
+            else DyadicTerminalFieldAction.zero_run(1)
+        )
+    action = motif_action.power(repetitions)
+    if action.coefficient_snapshot() != (
         steps,
-        (gain, offset, sum_gain, sum_offset, previous_gain, previous_offset),
-    )
-    if (
-        (not trusted_cache_record and action.gain != _expected_mixed_gain(odd_symbols))
-        or not action.certifies(source)
-        or not action.certifies(publisher_source)
+        gain,
+        offset,
+        sum_gain,
+        sum_offset,
+        previous_gain,
+        previous_offset,
     ):
+        raise ValueError("mixed action cache coefficients differ from its grammar")
+    if not action.certifies(source) or not action.certifies(publisher_source):
         raise ValueError("mixed action cache cylinder differs from its action")
     endpoint = action.endpoint(source)
     if action.endpoint(publisher_source) != publisher_endpoint:
@@ -369,30 +387,38 @@ def _longest_repeat(
     limit: int,
     templates: BoundaryActionTemplateMemo,
 ) -> int:
-    identity = MixedParityMotif(motif)
+    """Find the exact guarded lifetime without a binary search over powers.
 
-    def admitted(repeats: int) -> bool:
-        action = templates.get(identity, repeats)[0]
-        templates.ledger.bump(_collatz_keys.COLLATZ_MIXED_CLOCK_CYLINDER_CHECKS)
-        templates.ledger.bump(
-            _collatz_keys.COLLATZ_MIXED_CLOCK_OPERAND_BITS,
-            source.bit_length() + action.steps,
-        )
-        return action.certifies(source)
-
-    if limit < 2 or not admitted(2):
+    The preview supplies only a candidate.  The shared right-cylinder owner
+    validates the complete action and computes its exact lifetime under this
+    query's scratch budget.  No border, upper-carry, or decimal port is
+    inferred from the resulting parity-word class.
+    """
+    if limit < 2:
         return 0
-    low, high = 2, min(4, limit)
-    while high > low and admitted(high):
-        low = high
-        high = min(2 * high, limit)
-    while high - low > 1:
-        middle = (low + high) // 2
-        if admitted(middle):
-            low = middle
-        else:
-            high = middle
-    return low
+    identity = MixedParityMotif(motif)
+    action = templates.get(identity, 1)[0]
+    templates.ledger.bump(_collatz_keys.COLLATZ_MIXED_CLOCK_CYLINDER_CHECKS)
+    templates.ledger.bump(
+        _collatz_keys.COLLATZ_MIXED_CLOCK_OPERAND_BITS,
+        source.bit_length() + action.steps + action.gain.bit_length(),
+    )
+
+    def reserve_guard(storage_bits: int) -> None:
+        with templates.scratch(nodes=max(1, (storage_bits + 63) // 64)):
+            pass
+
+    if not action.certifies(source):
+        return 0
+    cylinder = RepeatedWordMooreCylinder.from_action(
+        action, source, preflight=reserve_guard
+    )
+    repetitions = (
+        limit
+        if cylinder.remaining_repetitions is None
+        else min(limit, cylinder.remaining_repetitions)
+    )
+    return repetitions if repetitions >= 2 else 0
 
 
 def _width_summary(

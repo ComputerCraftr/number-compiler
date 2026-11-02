@@ -7,9 +7,11 @@ import pytest
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.border_identity import MixedParityMotif
 from number_compiler.sequences.collatz.boundary_macros import (
-    BoundaryActionTemplateMemo,
     admit_boundary_macro_plan,
     select_boundary_macro,
+)
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo,
 )
 from number_compiler.sequences.collatz.innovation_port_moore import SIGNED_SYMBOLS
 from number_compiler.sequences.collatz.innovation_temporal_tape import (

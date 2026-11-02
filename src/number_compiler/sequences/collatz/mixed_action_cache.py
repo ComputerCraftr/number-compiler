@@ -78,6 +78,32 @@ def lookup_mixed_action(
         return None
     bump = macros.bump_mixed_action_metric
     bump("mixed_lookups")
+    local_key = (source, physical_ticks, include_width)
+    local = macros.mixed_actions.get(local_key)
+    if local is not None:
+        if type(local) is not MixedClockMacro:
+            bump("mixed_invalid_records")
+            bump("failed_work")
+            raise ValueError("local mixed action record is malformed")
+        validate_mixed_clock_macro(local)
+        if (
+            local.source != source
+            or local.physical_ticks > physical_ticks
+            or (include_width and local.width_blank is None)
+        ):
+            bump("mixed_invalid_records")
+            bump("failed_work")
+            raise ValueError("local mixed action no longer matches its request")
+        # A local memo entry is keyed without the caller's minimum horizon.
+        # Reuse it only when it satisfies this request; otherwise continue to
+        # the process bucket, which may contain a longer compatible action or
+        # report the existing source-admitted short-tail refusal.
+        if (
+            minimum_physical_ticks is None
+            or local.physical_ticks >= minimum_physical_ticks
+        ):
+            bump("mixed_admitted")
+            return local
     prefix = source & ((1 << _INDEX_BITS) - 1)
     bump("mixed_key_operand_bits", source.bit_length() + prefix.bit_length())
     cache = get_process_cache()
@@ -152,6 +178,7 @@ def lookup_mixed_action(
                     source,
                     payload,
                     include_width=include_width,
+                    preflight=scratch.require_bits,
                     cache_lease=lease,
                 )
             except (TypeError, ValueError):
@@ -165,6 +192,12 @@ def lookup_mixed_action(
                 bump("mixed_rejected_fit")
                 continue
             validate_mixed_clock_macro(macro)
+            try:
+                macros.mixed_actions[local_key] = macro
+            except BlockContextBudgetExceeded:
+                # Local retention is optional; the just-admitted action is
+                # still returned to this exact consumer.
+                pass
             bump("mixed_admitted")
             bump(
                 "mixed_validation_operand_bits",

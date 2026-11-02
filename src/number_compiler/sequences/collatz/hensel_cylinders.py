@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.fields.integer_congruence import affine_preimage
 from number_compiler.arithmetic.fields.inverse_three_clock import (
     MAX_DYADIC_CLOCK_BITS,
 )
@@ -109,10 +110,15 @@ class HenselCylinder:
             raise TypeError("affine coefficients must be exact integers")
         if precision and not multiplier & 1:
             raise ValueError("dyadic pullback multiplier must be a unit")
-        inverse = pow(multiplier, -1, modulus)
-        return HenselCylinder(
-            precision, inverse * ((self.residue << divisions) - offset)
+        preimage = affine_preimage(
+            (self.residue, 1 << self.bits),
+            gain=multiplier,
+            offset=offset,
+            denominator=1 << divisions,
         )
+        if preimage is None or preimage[1] != modulus:
+            raise ValueError("dyadic unit pullback did not preserve its precision")
+        return HenselCylinder(precision, preimage[0])
 
 
 @dataclass(frozen=True, slots=True)

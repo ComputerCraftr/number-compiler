@@ -11,22 +11,16 @@ subtraction branches. They never authorize a successor or an endpoint.
 
 from __future__ import annotations
 
-from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Final, Self
+from typing import TYPE_CHECKING, Final
 
-from number_compiler.arithmetic.contracts.block_effect import (
-    BlockContextBudgetExceeded,
-)
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.hashlife.interfaces.border_macros import BorderWireValue
-from number_compiler.resources.construction_scope import RuntimeConstruction
-from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.border_identity import (
     BOUNDARY_SELECTOR_IDENTITIES,
-    CYCLE_26847,
     ENTRY_0563,
     ENTRY_89_AT_NINE,
     ENTRY_421,
@@ -38,8 +32,13 @@ from number_compiler.sequences.collatz.border_identity import (
     BoundaryPathKind,
     CycleEntryPhase,
     GuardedBorderPath,
-    MixedParityMotif,
-    cycle_phase,
+)
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo as _BoundaryActionTemplateMemo,
+)
+from number_compiler.sequences.collatz.boundary_templates import (
+    boundary_macro_26847_phase,
+    build_boundary_action_template,
 )
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
@@ -56,8 +55,8 @@ if TYPE_CHECKING:
         CollatzF5AffineAction,
     )
 
-BoundaryTemplateIdentity = BoundaryActionIdentity | MixedParityMotif
 _BOUNDARY_PLAN_IDENTITIES = frozenset(BOUNDARY_SELECTOR_IDENTITIES)
+
 _BOUNDARY_METRIC_SUFFIXES: dict[BoundaryActionIdentity, str] = {
     ENTRY_421: "421",
     ENTRY_4721: "4721",
@@ -72,9 +71,19 @@ _BOUNDARY_METRIC_SUFFIXES: dict[BoundaryActionIdentity, str] = {
 }
 
 
-def boundary_macro_26847_phase(identity: BoundaryActionIdentity) -> int | None:
-    """Return a typed cycle occurrence's phase on the five-digit border."""
-    return cycle_phase(identity, CYCLE_26847)
+@dataclass(frozen=True, slots=True)
+class _BoundaryMacroIssuance:
+    """Complete immutable payload captured by the boundary selector."""
+
+    identity: BorderWireValue
+    source: int
+    repetitions: int
+    maximum_repetitions: int
+    physical_ticks: int
+    odd_symbols: int
+    endpoint: int
+    fields: tuple[int, ...]
+    width_blank: tuple[int, int, int]
 
 
 def boundary_metric_suffix(identity: BoundaryActionIdentity) -> str:
@@ -109,6 +118,16 @@ class CollatzBoundaryMacro:
     fields: DyadicTerminalFieldAction
     width_blank: BlankLedger
     _issuer: object = field(repr=False, compare=False, init=False)
+    _issued_values: _BoundaryMacroIssuance = field(
+        repr=False, compare=False, init=False
+    )
+
+    def issuance_matches(self) -> bool:
+        """Authenticate all scalar, action and blank fields against issuance."""
+        try:
+            return self._issued_values == _boundary_macro_issuance_snapshot(self)
+        except (AttributeError, TypeError):
+            return False
 
     def __init__(self) -> None:
         raise TypeError("Collatz boundary macros are issued by the guarded selector")
@@ -290,7 +309,27 @@ def _issue_boundary_macro(
         ("_issuer", _BOUNDARY_MACRO_ISSUER),
     ):
         object.__setattr__(macro, name, value)
+    object.__setattr__(
+        macro, "_issued_values", _boundary_macro_issuance_snapshot(macro)
+    )
     return macro
+
+
+def _boundary_macro_issuance_snapshot(
+    macro: CollatzBoundaryMacro,
+) -> _BoundaryMacroIssuance:
+    """Capture the complete payload used by both issuance and validation."""
+    return _BoundaryMacroIssuance(
+        macro.identity.structural_key(),
+        macro.source,
+        macro.repetitions,
+        macro.maximum_repetitions,
+        macro.physical_ticks,
+        macro.odd_symbols,
+        macro.endpoint,
+        macro.fields.coefficient_snapshot(),
+        macro.width_blank.as_tuple(),
+    )
 
 
 def _issue_boundary_plan(
@@ -360,19 +399,21 @@ def admit_boundary_macro_plan(
         ledger.bump(_collatz_keys.COLLATZ_RADIX6_SOURCE_CANDIDATE_CHECKS)
     family = state.candidate_family
     identity: BoundaryActionIdentity
-    if family == ENTRY_421 and source > 4:
+    # candidate_family always returns the authenticated canonical registry object.
+    # Identity selection avoids hashing and comparing other registered cycles.
+    if family is ENTRY_421 and source > 4:
         identity = ENTRY_421
-    elif family == ENTRY_4721:
+    elif family is ENTRY_4721:
         identity = ENTRY_4721
-    elif family == ENTRY_0563:
+    elif family is ENTRY_0563:
         identity = ENTRY_0563
-    elif family is not None and family in ENTRY_26847_PHASES:
+    elif family is not None and any(family is entry for entry in ENTRY_26847_PHASES):
         identity = family
-    elif family == PATH_630:
+    elif family is PATH_630:
         identity = PATH_630
-    elif family == PATH_305:
+    elif family is PATH_305:
         identity = PATH_305
-    elif family == ENTRY_89_AT_NINE:
+    elif family is ENTRY_89_AT_NINE:
         identity = ENTRY_89_AT_NINE
     else:
         return None
@@ -439,80 +480,6 @@ def admit_routed_boundary_macro_plan(
     if is_new_edge_family and plan.physical_ticks == available_physical_ticks:
         return plan
     return None
-
-
-def _build_boundary_action_template(
-    identity: BoundaryTemplateIdentity, repetitions: int
-) -> tuple[DyadicTerminalFieldAction, int, int, int]:
-    """Intern the *full parity action*, including accumulator coefficients.
-
-    Unlike an innovation Moore observer ID, this key represents an exact
-    certified affine program, not just equal carry/borrow outputs. The caller
-    must still independently authenticate the source's guard and exit.
-    """
-    if type(repetitions) is not int or repetitions < 1:
-        raise ValueError("guarded boundary action needs a positive repeat count")
-    if isinstance(identity, MixedParityMotif):
-        fields = DyadicTerminalFieldAction.zero_run(0)
-        for bit in identity.bits:
-            fields = fields.then(
-                DyadicTerminalFieldAction.one_run(1)
-                if bit
-                else DyadicTerminalFieldAction.zero_run(1)
-            )
-        fields = fields.power(repetitions)
-        odd = sum(identity.bits) * repetitions
-        ticks = fields.steps + odd
-    elif identity == ENTRY_421:
-        motif = DyadicTerminalFieldAction.one_run(1).then(
-            DyadicTerminalFieldAction.zero_run(1)
-        )
-        fields = (
-            DyadicTerminalFieldAction.zero_run(2)
-            .then(motif.power(repetitions - 1))
-            .then(DyadicTerminalFieldAction.one_run(1))
-        )
-        odd = repetitions
-        ticks = 3 * repetitions + 1
-    elif identity in (ENTRY_4721, ENTRY_0563):
-        fields = DyadicTerminalFieldAction.zero_run(1).then(
-            DyadicTerminalFieldAction.one_run(2 * repetitions)
-        )
-        odd = 2 * repetitions
-        ticks = 4 * repetitions + 1
-    elif (phase := boundary_macro_26847_phase(identity)) is not None:
-        fields = DyadicTerminalFieldAction.zero_run(4 - phase)
-        if repetitions > 1:
-            motif = DyadicTerminalFieldAction.one_run(1).then(
-                DyadicTerminalFieldAction.zero_run(3)
-            )
-            fields = fields.then(motif.power(repetitions - 1))
-        fields = fields.then(DyadicTerminalFieldAction.one_run(1))
-        odd = repetitions
-        ticks = 5 * repetitions + 1 - phase
-    elif identity == PATH_630:
-        fields = (
-            DyadicTerminalFieldAction.zero_run(1)
-            .then(DyadicTerminalFieldAction.one_run(1))
-            .then(DyadicTerminalFieldAction.zero_run(repetitions))
-        )
-        odd = 1
-        ticks = repetitions + 3
-    elif identity == PATH_305:
-        fields = DyadicTerminalFieldAction.one_run(1).then(
-            DyadicTerminalFieldAction.zero_run(repetitions)
-        )
-        odd = 1
-        ticks = repetitions + 2
-    elif identity == ENTRY_89_AT_NINE:
-        fields = DyadicTerminalFieldAction.one_run(repetitions)
-        odd = repetitions
-        ticks = 2 * repetitions
-    else:
-        raise ValueError("unknown source-certified boundary action")
-    if fields.steps + odd != ticks:
-        raise AssertionError("guarded template lost its physical tick clock")
-    return fields, odd, ticks, fields.source_residue
 
 
 def _boundary_width_blank(
@@ -583,6 +550,8 @@ def validate_boundary_macro(macro: CollatzBoundaryMacro) -> None:
         or type(macro.width_blank) is not BlankLedger
     ):
         raise ValueError("Collatz boundary macro fields are malformed")
+    if not macro.issuance_matches():
+        raise ValueError("Collatz boundary macro changed after issuance")
     source = macro.source
     if macro.identity == ENTRY_421:
         if source <= 4 or source % 40 != 4:
@@ -664,212 +633,12 @@ def validate_boundary_macro(macro: CollatzBoundaryMacro) -> None:
 _BOUNDARY_MACRO_ISSUER = object()
 
 
-class BoundaryActionTemplateMemo:
-    """Per-query, ledger-accounted templates for exact guarded parity actions."""
-
-    def __init__(self, ledger: ResourceLedger) -> None:
-        if type(ledger) is not ResourceLedger:
-            raise TypeError("boundary action templates require their query ledger")
-        self.ledger = ledger
-        self._closed = False
-        self._closing = False
-        self._scratch_owner: int | None = None
-        self._templates: (
-            OwnedMemo[
-                tuple[BoundaryTemplateIdentity, int],
-                tuple[
-                    BoundaryTemplateIdentity,
-                    int,
-                    tuple[DyadicTerminalFieldAction, int, int, int],
-                ],
-            ]
-            | None
-        ) = None
-
-    def __enter__(self) -> Self:
-        if self._closed or self._closing:
-            raise RuntimeError("boundary action template memo is closed")
-        return self
-
-    def __exit__(self, *_args: object) -> None:
-        self.dispose()
-
-    def dispose(self) -> None:
-        """Release the memo; retain a retry path if ledger cleanup fails."""
-        if self._closed:
-            return
-        self._closing = True
-        if self._templates is not None:
-            self._templates.dispose()
-        if self._scratch_owner is not None:
-            self.ledger.mark_disposed(self._scratch_owner)
-        self._closing = False
-        self._closed = True
-
-    def scratch(self, *, nodes: int) -> AbstractContextManager[None]:
-        """Reserve bounded selector/construction temporaries on the query ledger."""
-        if self._closed or self._closing:
-            raise RuntimeError("boundary action template memo is closed")
-        if self._scratch_owner is None:
-            self._scratch_owner = self.ledger.register(
-                f"collatz-boundary-template-scratch-{self.ledger.owner_count}",
-                "temporary",
-            )
-        return self.ledger.reservation(self._scratch_owner, nodes=nodes)
-
-    def _memo(
-        self,
-    ) -> OwnedMemo[
-        tuple[BoundaryTemplateIdentity, int],
-        tuple[
-            BoundaryTemplateIdentity,
-            int,
-            tuple[DyadicTerminalFieldAction, int, int, int],
-        ],
-    ]:
-        if self._templates is None:
-            with RuntimeConstruction(self.ledger):
-                owner = self.ledger.register(
-                    f"collatz-boundary-action-templates-{self.ledger.owner_count}",
-                    "query_memo",
-                )
-
-                def template_cost(
-                    _key: tuple[BoundaryTemplateIdentity, int],
-                    value: tuple[
-                        BoundaryTemplateIdentity,
-                        int,
-                        tuple[DyadicTerminalFieldAction, int, int, int],
-                    ],
-                ) -> int:
-                    template = value[2]
-                    fields = template[0]
-                    return (
-                        8
-                        + (
-                            2 + len(value[0].bits)
-                            if isinstance(value[0], MixedParityMotif)
-                            else len(value[0].cycle.digits)
-                            if isinstance(value[0], CycleEntryPhase)
-                            else 1
-                        )
-                        + sum(
-                            (max(1, component.bit_length()) + 63) // 64
-                            for component in (
-                                fields.steps,
-                                fields.gain,
-                                fields.offset,
-                                fields.sum_gain,
-                                fields.sum_offset,
-                                fields.previous_gain,
-                                fields.previous_offset,
-                                template[1],
-                                template[2],
-                                template[3],
-                            )
-                        )
-                    )
-
-                templates = OwnedMemo(
-                    self.ledger,
-                    owner,
-                    node_cost=template_cost,
-                    evictable=True,
-                )
-                self.ledger.register_execution_root(self)
-                for counter in (
-                    "lookups",
-                    "hits",
-                    "misses",
-                    "publications",
-                    "bypasses",
-                ):
-                    self.ledger.bump(f"collatz_boundary_template_{counter}", 0)
-            self._templates = templates
-        return self._templates
-
-    def get(
-        self, identity: BoundaryTemplateIdentity, repetitions: int
-    ) -> tuple[DyadicTerminalFieldAction, int, int, int]:
-        if self._closed or self._closing:
-            raise RuntimeError("boundary action template memo is closed")
-        if (
-            type(identity) not in (CycleEntryPhase, GuardedBorderPath, MixedParityMotif)
-            or type(repetitions) is not int
-        ):
-            raise TypeError("boundary action template key is malformed")
-        if isinstance(identity, MixedParityMotif):
-            identity.require_valid()
-        if isinstance(identity, (CycleEntryPhase, GuardedBorderPath)) and (
-            identity not in _BOUNDARY_PLAN_IDENTITIES
-        ):
-            raise ValueError("unknown Collatz boundary action identity")
-        if repetitions < 1:
-            raise ValueError("boundary action repeat count must be positive")
-        key = identity, repetitions
-        self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_LOOKUPS)
-        memo = self._memo()
-        cached = memo.get(key)
-        if cached is not None:
-            if (
-                type(cached) is not tuple
-                or len(cached) != 3
-                or cached[0] != identity
-                or cached[1] != repetitions
-                or type(cached[2]) is not tuple
-                or len(cached[2]) != 4
-                or type(cached[2][0]) is not DyadicTerminalFieldAction
-                or not cached[2][0].producer_issued
-                or any(type(value) is not int for value in cached[2][1:])
-            ):
-                raise ValueError("cached boundary action template is malformed")
-            template = cached[2]
-            fields, odd, ticks, guard = template
-            self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_VALIDATIONS)
-            self.ledger.bump(
-                _collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_VALIDATION_OPERAND_BITS,
-                fields.gain.bit_length()
-                + fields.offset.bit_length()
-                + guard.bit_length(),
-            )
-            if (
-                fields.steps <= 0
-                or fields.steps + odd != ticks
-                or not 0 <= guard < fields.source_modulus
-                or (fields.gain * guard + fields.offset) % fields.source_modulus != 0
-            ):
-                raise ValueError("cached boundary action template is inconsistent")
-            self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_HITS)
-            return template
-        self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_MISSES)
-        if isinstance(identity, MixedParityMotif):
-            width = len(identity.bits) * repetitions
-            with self.scratch(nodes=128 + 32 * ((2 * width + 63) // 64)):
-                self.ledger.bump(
-                    _collatz_keys.COLLATZ_MIXED_CLOCK_COEFFICIENT_CONSTRUCTIONS
-                )
-                self.ledger.bump(
-                    _collatz_keys.COLLATZ_MIXED_CLOCK_REQUESTED_GUARD_BITS, width
-                )
-                template = _build_boundary_action_template(identity, repetitions)
-        else:
-            template = _build_boundary_action_template(identity, repetitions)
-        bound_template = identity, repetitions, template
-        try:
-            memo[key] = bound_template
-        except BlockContextBudgetExceeded:
-            self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_BYPASSES)
-        else:
-            self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_PUBLICATIONS)
-        return template
-
-
 def select_boundary_macro(
     source: int,
     available_physical_ticks: int,
     *,
     minimum_repetitions: int = 2,
-    templates: BoundaryActionTemplateMemo | None = None,
+    templates: _BoundaryActionTemplateMemo | None = None,
 ) -> CollatzBoundaryMacro | None:
     """Select a *completed* macro prefix without enumerating Collatz terms.
 
@@ -893,19 +662,19 @@ def select_boundary_macro(
 def select_admitted_boundary_macro(
     plan: AdmittedBoundaryMacroPlan,
     *,
-    templates: BoundaryActionTemplateMemo | None = None,
+    templates: _BoundaryActionTemplateMemo | None = None,
 ) -> CollatzBoundaryMacro:
     """Build the exact action once from an issued, validated source plan."""
     validate_admitted_boundary_macro_plan(plan)
     identity = plan.identity
     maximum = plan.maximum_repetitions
     repetitions = plan.repetitions
-    if templates is not None and type(templates) is not BoundaryActionTemplateMemo:
+    if templates is not None and type(templates) is not _BoundaryActionTemplateMemo:
         raise TypeError("boundary macro requires its ledger-owned template memo")
     fields, odd, ticks, guard = (
         templates.get(identity, repetitions)
         if templates is not None
-        else _build_boundary_action_template(identity, repetitions)
+        else build_boundary_action_template(identity, repetitions)
     )
     # Recheck the exact source cylinder without reconstructing the action.
     denominator = 1 << fields.steps
@@ -957,7 +726,6 @@ def validate_admitted_boundary_macro_plan(plan: AdmittedBoundaryMacroPlan) -> No
 
 __all__ = [
     "AdmittedBoundaryMacroPlan",
-    "BoundaryActionTemplateMemo",
     "CollatzBoundaryMacro",
     "admit_boundary_macro_plan",
     "admit_routed_boundary_macro_plan",

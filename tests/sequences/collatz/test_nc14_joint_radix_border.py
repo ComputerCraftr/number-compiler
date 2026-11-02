@@ -16,8 +16,10 @@ from number_compiler.sequences.collatz.border_identity import (
     selector_guard_for,
 )
 from number_compiler.sequences.collatz.boundary_macros import (
-    BoundaryActionTemplateMemo,
     admit_boundary_macro_plan,
+)
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo,
 )
 from number_compiler.sequences.collatz.joint_radix_border import (
     JointRadix6Source,

@@ -24,6 +24,7 @@ CollatzGuardWire: TypeAlias = tuple[int, int, int] | None
 CLOSED_BORDER_CYCLE_TAG: Final[str] = "collatz-closed-border-cycle-v3"
 GUARDED_BORDER_PATH_TAG: Final[str] = "collatz-guarded-border-path-v2"
 COLLATZ_DIGIT_PORT_TAG: Final[str] = "collatz-digit-port-v1"
+MIXED_PARITY_MOTIF_TAG: Final[str] = "collatz-mixed-parity-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,7 +212,8 @@ class ClosedBorderCycle:
         if type(other) is not ClosedBorderCycle:
             return False
         self.require_valid()
-        other.require_valid()
+        if other is not self:
+            other.require_valid()
         return self._port_wire_values == other._port_wire_values
 
     def __hash__(self) -> int:
@@ -288,6 +290,19 @@ class ClosedBorderCycle:
     def ports(self) -> tuple[CollatzBorderPort, ...]:
         self.require_valid()
         return self._ports
+
+    @property
+    def selector_guard_wire_values(self) -> tuple[CollatzGuardWire, ...]:
+        """Return the validated immutable guard snapshot for this cycle."""
+        self.require_valid()
+        return self._selector_guard_wire_values
+
+    def port_at(self, phase: int) -> CollatzBorderPort:
+        """Return one validated port without exposing private storage."""
+        self.require_valid()
+        if type(phase) is not int or not 0 <= phase < len(self._ports):
+            raise ValueError("cycle port phase is outside the cycle")
+        return self._ports[phase]
 
     @classmethod
     def from_rotation(
@@ -378,7 +393,8 @@ class CycleEntryPhase:
         if type(other) is not CycleEntryPhase:
             return False
         self.require_valid()
-        other.require_valid()
+        if other is not self:
+            other.require_valid()
         return self._identity_snapshot == other._identity_snapshot
 
     def __hash__(self) -> int:
@@ -389,10 +405,14 @@ class CycleEntryPhase:
         """Reject forged field changes before exposing admitted occurrence data."""
         if type(self.cycle) is not ClosedBorderCycle:
             raise ValueError("cycle occurrence fields changed after admission")
-        self.cycle.require_valid()
         if type(self.phase) is not int or not 0 <= self.phase < len(self.cycle.digits):
             raise ValueError("cycle occurrence fields changed after admission")
-        if self.cycle.structural_key(self.phase) != self._identity_snapshot:
+        if (
+            CLOSED_BORDER_CYCLE_TAG,
+            self.cycle.digits,
+            self.cycle.selector_guard_wire_values,
+            self.phase,
+        ) != self._identity_snapshot:
             raise ValueError("cycle occurrence changed after admission")
 
     @property
@@ -403,7 +423,7 @@ class CycleEntryPhase:
     @property
     def selector_guard(self) -> BoundarySelectorGuard | None:
         self.require_valid()
-        return self.cycle.ports[self.phase].selector_guard
+        return self.cycle.port_at(self.phase).selector_guard
 
     @property
     def display_label(self) -> str:
@@ -780,6 +800,8 @@ def cycle_phase(
     if type(identity) is not CycleEntryPhase:
         return None
     identity.require_valid()
+    if identity.cycle is cycle:
+        return identity.phase
     cycle.require_valid()
     if identity.cycle == cycle:
         return identity.phase

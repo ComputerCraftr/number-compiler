@@ -13,7 +13,7 @@ from number_compiler.hashlife.execution.source_image_inventory import (
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz import border_identity as border_identity_module
-from number_compiler.sequences.collatz import boundary_macros
+from number_compiler.sequences.collatz import boundary_templates
 from number_compiler.sequences.collatz.border_identity import (
     BOUNDARY_SELECTOR_IDENTITIES,
     CYCLE_89,
@@ -35,13 +35,16 @@ from number_compiler.sequences.collatz.border_identity import (
     border_return_path,
 )
 from number_compiler.sequences.collatz.boundary_macros import (
-    BoundaryActionTemplateMemo,
     CollatzBoundaryMacro,
     admit_boundary_macro_plan,
     boundary_metric_key,
     boundary_metric_suffix,
     select_boundary_macro,
     validate_boundary_macro,
+)
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo,
+    BoundaryTemplateIdentity,
 )
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
@@ -57,9 +60,9 @@ from number_compiler.sequences.collatz.temporal_run_quotient import (
     compile_collatz_temporal_run_quotient,
 )
 
-BoundaryTemplateKey: TypeAlias = tuple[boundary_macros.BoundaryTemplateIdentity, int]
+BoundaryTemplateKey: TypeAlias = tuple[BoundaryTemplateIdentity, int]
 BoundaryTemplateValue: TypeAlias = tuple[
-    boundary_macros.BoundaryTemplateIdentity,
+    BoundaryTemplateIdentity,
     int,
     tuple[DyadicTerminalFieldAction, int, int, int],
 ]
@@ -93,8 +96,29 @@ def test_guarded_macro_is_exact_and_issued_only_by_the_selector() -> None:
     for item in fields(macro):
         object.__setattr__(forged, item.name, getattr(macro, item.name))
     object.__setattr__(forged, "endpoint", macro.endpoint + 1)
-    with pytest.raises(ValueError, match="not an exact guarded action"):
+    with pytest.raises(ValueError, match="changed after issuance"):
         validate_boundary_macro(forged)
+
+
+def test_boundary_macro_rejects_rebound_same_endpoint_field_action() -> None:
+    macro = select_boundary_macro(327679, 300, minimum_repetitions=2)
+    assert macro is not None and macro.identity == ENTRY_89_AT_NINE
+    assert macro.fields.endpoint(macro.source) == macro.endpoint
+    coefficients = list(macro.fields.coefficient_snapshot()[1:])
+    coefficients[2] += 1  # preserve endpoint, alter the emitted sum action
+    altered = DyadicTerminalFieldAction.restore_untrusted_cache_payload(
+        macro.fields.steps, tuple(coefficients)
+    )
+    assert not altered.producer_issued
+    assert (altered.gain * macro.source + altered.offset) // (
+        1 << altered.steps
+    ) == macro.endpoint
+    assert altered.coefficient_snapshot() != macro.fields.coefficient_snapshot()
+
+    object.__setattr__(macro, "fields", altered)
+    assert not macro.issuance_matches()
+    with pytest.raises(ValueError, match="fields are malformed"):
+        validate_boundary_macro(macro)
 
 
 def test_cycle_display_phase_does_not_create_an_unguarded_entry_action() -> None:
@@ -447,7 +471,7 @@ def test_template_memo_warm_hit_bypasses_exact_cold_constructor(
             raise AssertionError("warm boundary template lookup rebuilt its action")
 
         monkeypatch.setattr(
-            boundary_macros, "_build_boundary_action_template", forbidden
+            boundary_templates, "build_boundary_action_template", forbidden
         )
         assert memo.get(ENTRY_4721, 2) is cold
     assert ledger.counters["collatz_boundary_template_publications"] == 1
@@ -625,7 +649,7 @@ def test_warm_guarded_parent_is_used_before_cold_macro_or_d8(
         raise AssertionError("warm parent fell back to D8 discovery")
 
     monkeypatch.setattr(
-        boundary_macros, "_build_boundary_action_template", forbidden_template
+        boundary_templates, "build_boundary_action_template", forbidden_template
     )
     monkeypatch.setattr(D8TemporalTable, "select", forbidden_d8)
     ledger = ResourceLedger()

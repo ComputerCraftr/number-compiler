@@ -10,7 +10,7 @@ from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.sequences.collatz.border_identity import (
     ENTRY_89_AT_NINE,
 )
-from number_compiler.sequences.collatz.boundary_macros import (
+from number_compiler.sequences.collatz.boundary_templates import (
     BoundaryActionTemplateMemo,
 )
 from number_compiler.sequences.collatz.conditional_scheduler_route import (
@@ -47,7 +47,9 @@ from number_compiler.sequences.collatz.temporal_dyadic_cache_execution import (
     try_consume_cached_dyadic_action,
 )
 from number_compiler.sequences.collatz.temporal_f5_observer import (
+    ODD_HALF_F5,
     CollatzF5AffineAction,
+    project_dyadic_fields_f5,
 )
 from number_compiler.sequences.collatz.temporal_mixed_execution import (
     MixedRouteNotAdmitted,
@@ -69,6 +71,10 @@ from number_compiler.sequences.collatz.temporal_run_state import (
 )
 from number_compiler.sequences.collatz.temporal_unified_skew_execution import (
     attempt_unified_skew_reentry,
+    has_unified_source_parent,
+)
+from number_compiler.sequences.collatz.temporal_weighted_right_execution import (
+    consume_weighted_right_run,
 )
 from number_compiler.sequences.collatz.terminal_run_execution import (
     consume_terminal_power_two,
@@ -83,6 +89,149 @@ if TYPE_CHECKING:
     )
 
 
+def _consume_diagonal_source_window(
+    control: CollatzRunControl,
+    *,
+    seed: int,
+    ledger: ResourceLedger,
+    scratch: RunArithmeticWorkspace,
+    macros: CollatzDyadicMacros | None,
+    width_spine: CollatzWidthSpineAccumulator,
+    joint_builder: CollatzJointTemporalBuilder,
+    parity_builder: ParityProgramBuilder | None,
+) -> bool:
+    """Consume one bounded source-seamed action before repeated D8 work."""
+    from number_compiler.sequences.collatz.diagonal_source_window import (
+        CollatzDiagonalWindow,
+        source_window_checkpoint_steps,
+    )
+
+    if (
+        control.remaining < 64
+        or control.current.bit_length() < 32
+        or control.include_innovation_tape
+        and parity_builder is None
+        or control.include_innovation_tape
+        and control.first_boundary_stamp is None
+    ):
+        return False
+    source = control.current
+
+    def record_window_step() -> None:
+        ledger.bump(_collatz_keys.COLLATZ_HASHLIFE_PRIMITIVE_STEPS)
+        ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_NTH_DIAGONAL_PRODUCER_STEPS)
+
+    def record_window_work(operand_bits: int) -> None:
+        ledger.bump(
+            _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_NTH_DIAGONAL_PRODUCER_OPERAND_BITS,
+            operand_bits,
+        )
+
+    window = CollatzDiagonalWindow.from_source_window(
+        source,
+        control.remaining,
+        max_normalized=256,
+        retain_parity_mask=parity_builder is not None,
+        retain_field_action=(
+            control.joint_requested or control.normalized_f5 is not None
+        ),
+        prefix_steps=(
+            source_window_checkpoint_steps(control.normalized, 256)
+            if macros is not None
+            else ()
+        ),
+        record_step=record_window_step,
+        reserve_bits=scratch.require_bits,
+        record_work=record_window_work,
+    )
+    window.require_issued()
+    if window.action.steps < 32:
+        return False
+
+    field_action = (
+        window.require_field_action()
+        if control.joint_requested or control.normalized_f5 is not None
+        else None
+    )
+    if macros is not None:
+        previous_source = source
+        previous_steps = 0
+        previous_ones = 0
+        for prefix in window.prefixes:
+            macros.observe(
+                previous_source,
+                prefix.action.steps - previous_steps,
+                prefix.odd_symbols - previous_ones,
+                prefix.normalized_endpoint,
+                anchor=seed,
+            )
+            previous_source = prefix.normalized_endpoint
+            previous_steps = prefix.action.steps
+            previous_ones = prefix.odd_symbols
+        if previous_steps < window.action.steps:
+            macros.observe(
+                previous_source,
+                window.action.steps - previous_steps,
+                window.odd_symbols - previous_ones,
+                window.normalized_endpoint,
+                anchor=seed,
+            )
+
+    if parity_builder is not None:
+        parity_builder.append_diagonal_window(
+            window,
+            reserve_bits=scratch.require_bits,
+            max_width=512,
+        )
+    if control.joint_requested:
+        if field_action is None:
+            raise AssertionError("joint carry demand did not retain its field action")
+        joint_builder.require_steps(source, window.action.steps)
+        joint_builder.append(
+            field_action,
+            source,
+            window.odd_symbols,
+            window.normalized_endpoint,
+            cache=False,
+        )
+    if control.normalized_f5 is not None:
+        if control.physical_f5 is None or field_action is None:
+            raise AssertionError("physical F5 action was not provisioned")
+        projection = project_dyadic_fields_f5(field_action)
+        control.normalized_f5 = control.normalized_f5.then(projection)
+        control.physical_f5 = control.physical_f5.then(projection)
+        if window.phase:
+            control.physical_f5 = control.physical_f5.then(ODD_HALF_F5)
+
+    control.current = window.physical_endpoint
+    control.remaining -= window.physical_ticks
+    control.normalized += window.action.steps
+    control.division_ticks += window.action.steps
+    control.odd_ticks += window.odd_symbols + window.phase
+    control.one_symbols += window.odd_symbols
+    control.zero_symbols += window.action.steps - window.odd_symbols
+    control.phase = window.phase
+    control.pending_normalized_source = (
+        window.normalized_endpoint if window.phase else None
+    )
+    control.weighted_binding = None
+    control.weighted_cursor_source = None
+    control.run_actions += 1
+    control.unified_skew_retry = True
+    if macros is not None:
+        # The source-window producer already published every aligned prefix,
+        # including its final endpoint. Move the publication cursor with the
+        # committed action so the next loop cannot replay the cumulative span
+        # as a second root-prefix observation.
+        control.restart_width_segment(width_spine)
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_NTH_DIAGONAL_SOURCE_WINDOWS)
+    ledger.bump(
+        _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_NTH_DIAGONAL_CERTIFIED_SYMBOLS,
+        window.action.steps,
+    )
+    return True
+
+
 def execute_collatz_temporal_run(
     seed: int,
     physical_ticks: int,
@@ -94,6 +243,7 @@ def execute_collatz_temporal_run(
     include_innovation_tape: bool,
     require_mixed_prefix: bool,
     innovation_modulus: int | None,
+    prefer_source_closed_d8: bool,
     macros: CollatzDyadicMacros | None,
     scratch: RunArithmeticWorkspace,
     joint_builder: CollatzJointTemporalBuilder,
@@ -255,9 +405,99 @@ def execute_collatz_temporal_run(
                 control.unified_skew_retry = True
                 continue
 
-        low, available, homogeneous_symbols = leading_homogeneous_run(
-            control.current, control.remaining
-        )
+        # The root consumer may request an exact bounded source-window cut.
+        # Cached parents and terminal powers were already offered above.
+        # Only after a negative registered-parent check can endpoint/joint
+        # demand skip speculative named/mixed discovery. The D8 row and any
+        # retained joint carry action remain source-certified, and the next
+        # iteration rechecks all named macro guards at its new source.
+        # Width and independent F5 consumers keep their prior route. A
+        # complete innovation demand may use the same window only after its
+        # first authenticated boundary witness has been retained.
+        observed_leading_run: tuple[int, int, int] | None = None
+        if (
+            prefer_source_closed_d8
+            and (
+                not include_f5 or control.joint_requested or parity_builder is not None
+            )
+            and not include_width_spine
+            and (not include_innovation_tape or parity_builder is not None)
+            and (
+                not include_innovation_tape or control.first_boundary_stamp is not None
+            )
+            and not require_mixed_prefix
+            and control.remaining >= 64
+            and control.current.bit_length() >= 32
+            and (control.current & 255) not in (0, 255)
+        ):
+            observed_leading_run = leading_homogeneous_run(
+                control.current, control.remaining
+            )
+            _, _, run_symbols = observed_leading_run
+            if run_symbols < 8 and _consume_diagonal_source_window(
+                control,
+                seed=seed,
+                ledger=ledger,
+                scratch=scratch,
+                macros=macros,
+                width_spine=width_spine,
+                joint_builder=joint_builder,
+                parity_builder=parity_builder,
+            ):
+                continue
+
+            # A positive catalog probe is only candidate presence. Cached
+            # issued actions and terminal powers have already been consumed
+            # above, so it must not veto an independently exact finite source
+            # window. Retain the old negative-probe condition for the D8
+            # fallback, whose admission still depends on that route.
+            if (
+                not has_unified_source_parent(control.current, control.remaining)
+                and not include_innovation_tape
+                and run_symbols < 8
+                and consume_d8_run_section(
+                    control,
+                    seed=seed,
+                    low=control.current & 255,
+                    homogeneous_symbols=run_symbols,
+                    control_bits=control_bits,
+                    include_innovation_tape=False,
+                    include_joint_cocycle=control.joint_requested,
+                    include_width_spine=False,
+                    ledger=ledger,
+                    scratch=scratch,
+                    width_spine=width_spine,
+                    joint_builder=joint_builder,
+                    parity_builder=None,
+                    macros=macros,
+                )
+            ):
+                ledger.bump(
+                    _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_NTH_SOURCE_PUNCTURE_D8_CUTS
+                )
+                continue
+
+        # Demand a source-certified weighted right transition before speculative
+        # border discovery, but only when it replaces a long admitted run.
+        if consume_weighted_right_run(
+            control,
+            seed=seed,
+            ledger=ledger,
+            scratch=scratch,
+            control_bits=control_bits,
+            templates=boundary_templates,
+            width_spine=width_spine,
+            joint_builder=joint_builder,
+            parity_builder=parity_builder,
+            macros=macros,
+        ):
+            continue
+
+        if observed_leading_run is None:
+            observed_leading_run = leading_homogeneous_run(
+                control.current, control.remaining
+            )
+        low, available, homogeneous_symbols = observed_leading_run
         homogeneous_prefix = homogeneous_symbols >= 8
 
         # Avoid crossing a fresh root checkpoint before its complete cylinder.

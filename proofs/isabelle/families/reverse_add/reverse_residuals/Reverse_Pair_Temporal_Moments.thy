@@ -132,6 +132,74 @@ proof -
     using digits_source digits_next zip_value by simp
 qed
 
+definition reverse_add_pair_finite_trace ::
+    "nat list \<Rightarrow> nat \<Rightarrow> nat list" where
+  "reverse_add_pair_finite_trace source duration =
+    map (\<lambda>i. reverse_add_pair_term (run step i source))
+      [0..<Suc duration]"
+
+lemma reverse_add_pair_finite_trace_length:
+  "length (reverse_add_pair_finite_trace source duration) = Suc duration"
+  by (simp add: reverse_add_pair_finite_trace_def)
+
+lemma reverse_add_pair_finite_trace_at:
+  assumes index: "i \<le> duration"
+  shows "reverse_add_pair_finite_trace source duration ! i =
+    reverse_add_pair_term (run step i source)"
+proof -
+  have index': "i < length [0..<Suc duration]"
+    using index by simp
+  have map_nth:
+    "map (\<lambda>j. reverse_add_pair_term (run step j source))
+        [0..<Suc duration] ! i =
+      reverse_add_pair_term (run step ([0..<Suc duration] ! i) source)"
+    by (rule nth_map[OF index'])
+  have range_nth: "[0..<Suc duration] ! i = i"
+    using nth_upt[of 0 i "Suc duration"] index by simp
+  show ?thesis
+    unfolding reverse_add_pair_finite_trace_def
+    using map_nth range_nth by simp
+qed
+
+theorem reverse_add_pair_finite_trace_successor:
+  assumes valid: "valid_pair source"
+      and index: "i < duration"
+  shows "reverse_add_pair_finite_trace source duration ! Suc i =
+      reverse_add_pair_finite_trace source duration ! i +
+        reverse_add_pair_reverse (run step i source)"
+proof -
+  have state_valid: "valid_pair (run step i source)"
+    by (rule valid_pair_run[OF valid])
+  have next_state:
+    "run step (Suc i) source = step (run step i source)"
+    by (simp add: run_commutes_with_step)
+  have previous_index: "i \<le> duration"
+    using index by arith
+  have next_index: "Suc i \<le> duration"
+    using index by arith
+  have current:
+    "reverse_add_pair_finite_trace source duration ! i =
+      reverse_add_pair_term (run step i source)"
+    by (rule reverse_add_pair_finite_trace_at[OF previous_index])
+  have next_value:
+    "reverse_add_pair_finite_trace source duration ! Suc i =
+      reverse_add_pair_term (run step (Suc i) source)"
+    by (rule reverse_add_pair_finite_trace_at[OF next_index])
+  show ?thesis
+    using current next_value next_state
+      reverse_add_completed_pair_successor[OF state_valid]
+    by simp
+qed
+
+theorem reverse_add_pair_finite_block_width_bounds:
+  "length (reverse_add_pair_finite_trace source duration) = Suc duration \<and>
+   length (digits source) \<le> length (digits (run step duration source)) \<and>
+   length (digits (run step duration source)) \<le>
+     length (digits source) + duration"
+  using reverse_add_pair_finite_trace_length
+    reverse_add_run_output_width_bounds[of source duration]
+  by blast
+
 definition reverse_add_interval_moments ::
     "nat list \<Rightarrow> nat \<Rightarrow> increment_moments" where
   "reverse_add_interval_moments source duration =
@@ -142,10 +210,6 @@ definition reverse_add_interval_moments ::
          r1 = int (reverse_add_pair_reverse first)
      in \<lparr>im_span = duration, im_sum = r1-r0,
           im_skew = x1-x0-int duration*r0\<rparr>)"
-
-lemma run_commutes_with_step:
-  "run step count (step source) = step (run step count source)"
-  by (induction count arbitrary: source) simp_all
 
 lemma reverse_add_run_add:
   "run step (first + second) source =
@@ -176,6 +240,8 @@ ML \<open>
   val checked = @{thms decimal_list_value_append carry_digit_balance
     emit_decimal_balance digits_preserve_decimal_value
     decimal_list_value_zip_add reverse_add_completed_pair_successor
+    reverse_add_pair_finite_trace_successor
+    reverse_add_pair_finite_block_width_bounds
     reverse_add_interval_moments_source_aligned};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Reverse pair moment refinement depends on an oracle";

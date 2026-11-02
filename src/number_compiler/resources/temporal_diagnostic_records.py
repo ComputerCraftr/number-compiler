@@ -34,6 +34,8 @@ class TemporalConstruction:
     reverse_successor_pair_symbols: int | None = None
     reverse_successor_event_symbols: int | None = None
     reverse_successor_transport_updates: int | None = None
+    reverse_finite_work: tuple[tuple[str, int], ...] | None = None
+    packed_diagonal_work: tuple[tuple[str, int], ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +105,20 @@ class TemporalObservations:
     reverse_q19_temporal_ring_propagation_rounds: int | None = None
     reverse_q19_temporal_ring_output_lane_visits: int | None = None
     reverse_q19_temporal_ring_failures: int | None = None
+    reverse_accumulator99_bootstrap_digit_steps: int | None = None
+    reverse_accumulator99_bootstrap_operand_bits: int | None = None
+    reverse_accumulator99_bootstrap_failed_work: int | None = None
+    reverse_laurent_cache_hits: int | None = None
+    reverse_laurent_cache_misses: int | None = None
+    reverse_laurent_cache_publication_failures: int | None = None
+    reverse_laurent_failed_work: int | None = None
+    reverse_laurent_operand_bits: int | None = None
+    reverse_laurent_paired_blocks: int | None = None
+    reverse_laurent_run_record_visits: int | None = None
+    reverse_laurent_source_ticks: int | None = None
+    double_reverse_source_word_fold_node_visits: int | None = None
+    double_reverse_source_word_fold_operand_bits: int | None = None
+    double_reverse_source_word_fold_operations: int | None = None
     reverse_q19_inward_symmetric_filter_value_visits: int | None = None
     reverse_q19_directed_diagonal_inlet_visits: int | None = None
     reverse_q19_border_width_power_requests: int | None = None
@@ -200,6 +216,15 @@ class TemporalFamilyWork:
     root_checkpoint_work: tuple[tuple[str, int], ...] = field(default=(), kw_only=True)
     border_return_work: tuple[tuple[str, int], ...] = field(default=(), kw_only=True)
     odd_macro_work: tuple[tuple[str, int], ...] | None = field(
+        default=None, kw_only=True
+    )
+    weighted_carry_work: tuple[tuple[str, int], ...] | None = field(
+        default=None, kw_only=True
+    )
+    diagonal_work: tuple[tuple[str, int], ...] | None = field(
+        default=None, kw_only=True
+    )
+    diagonal_source_window_work: tuple[tuple[str, int], ...] | None = field(
         default=None, kw_only=True
     )
     mixed_clock_work: tuple[tuple[str, int], ...] | None = field(

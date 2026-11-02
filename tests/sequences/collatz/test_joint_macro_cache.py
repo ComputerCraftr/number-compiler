@@ -1,11 +1,13 @@
 """Source authority and bounded reuse for the normalized joint macro cache."""
 
+from collections.abc import Iterator
 from dataclasses import replace
-from typing import cast
+from typing import NoReturn
 
 import pytest
 
 from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_integer_tuple,
     is_object_tuple,
 )
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
@@ -32,6 +34,33 @@ from number_compiler.sequences.collatz.temporal_dyadic import (
     D8TemporalTable,
 )
 from tests.support.collatz_affine_fixtures import alternating_collatz_source_action
+from tests.support.private_attributes import private_test_attribute
+
+
+@pytest.fixture
+def published_joint_action(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[tuple[ProcessCache, int, DyadicTerminalFieldAction]]:
+    """Publish the same exact action used by process-promotion regressions."""
+    process_cache = ProcessCache(enabled=True)
+    monkeypatch.setattr(
+        joint_cylinder_cache, "get_process_cache", lambda: process_cache
+    )
+    source = (1 << 16) - 1
+    action = DyadicTerminalFieldAction.one_run(16)
+    try:
+        with JointCertifiedMacroCache(ResourceLedger(), shared_cache=True) as publisher:
+            assert publisher.remember(source, action, 16)
+        yield process_cache, source, action
+    finally:
+        process_cache.reset()
+
+
+def _joint_action_cache_issuer() -> object:
+    issuer = private_test_attribute(joint_cylinder_cache, "_JOINT_ACTION_ISSUER")
+    if type(issuer) is not object:
+        raise AssertionError("joint action cache issuer is not an object capability")
+    return issuer
 
 
 def test_joint_macro_cache_reuses_only_issued_complete_actions() -> None:
@@ -39,7 +68,7 @@ def test_joint_macro_cache_reuses_only_issued_complete_actions() -> None:
     action = DyadicTerminalFieldAction.one_run(16)
     with JointCertifiedMacroCache(ResourceLedger(), shared_cache=False) as cache:
         assert cache.remember(source, action, 16)
-        assert cache.lookup(source, 16) == (action, 16)
+        assert cache.lookup(source, 16, preflight=lambda _bits: None) == (action, 16)
         assert cache.ledger.counters["collatz_hashlife_joint_applied_hits"] == 0
         cache.applied()
         assert cache.ledger.counters["collatz_hashlife_joint_applied_hits"] == 1
@@ -62,7 +91,7 @@ def test_joint_cache_classifies_non_capacity_bypasses(
     source = (1 << 16) - 1
     action = DyadicTerminalFieldAction.one_run(16)
     with JointCertifiedMacroCache(ResourceLedger(), shared_cache=shared_cache) as cache:
-        assert cache.lookup(source, 16) is None
+        assert cache.lookup(source, 16, preflight=lambda _bits: None) is None
         assert cache.remember(source, action, 16)
         counters = cache.ledger.counters
         assert counters[f"collatz_hashlife_joint_{reason}_bypasses"] == 2
@@ -98,7 +127,14 @@ def test_joint_cache_miss_does_not_construct_occurrence_high_fiber(
 
     monkeypatch.setattr(cache, "_fiber", reject_fiber)
     with cache:
-        assert cache.lookup((1 << 131_072) + 27, 16) is None
+        assert (
+            cache.lookup(
+                (1 << 131_072) + 27,
+                16,
+                preflight=lambda _bits: None,
+            )
+            is None
+        )
 
 
 def test_joint_macro_identity_ignores_publisher_high_fiber() -> None:
@@ -108,8 +144,59 @@ def test_joint_macro_identity_ignores_publisher_high_fiber() -> None:
     with JointCertifiedMacroCache(ResourceLedger(), shared_cache=False) as cache:
         assert cache.remember(source, action, 16)
         assert not cache.remember(transported_source, action, 16)
-        assert cache.lookup(transported_source, 16) == (action, 16)
+        assert cache.lookup(
+            transported_source,
+            16,
+            preflight=lambda _bits: None,
+        ) == (action, 16)
         assert cache.ledger.counters["collatz_hashlife_joint_transported_hits"] == 1
+
+
+def test_process_action_is_promoted_once_then_local_hits_skip_restoration(
+    monkeypatch: pytest.MonkeyPatch,
+    published_joint_action: tuple[ProcessCache, int, DyadicTerminalFieldAction],
+) -> None:
+    _, source, action = published_joint_action
+
+    with JointCertifiedMacroCache(ResourceLedger(), shared_cache=True) as receiver:
+        admitted = receiver.lookup(source, 16, preflight=lambda _bits: None)
+        assert admitted == (action, 16)
+
+        def forbidden(*_args: object, **_kwargs: object) -> NoReturn:
+            raise AssertionError("a local typed hit repeated cache promotion")
+
+        monkeypatch.setattr(
+            DyadicTerminalFieldAction,
+            "authenticate_cache_payload_for_source",
+            forbidden,
+        )
+        assert receiver.lookup(source, 16, preflight=forbidden) == admitted
+        assert receiver.ledger.counters["collatz_hashlife_joint_local_hits"] == 1
+
+
+def test_process_action_rejects_forged_sum_before_local_promotion(
+    published_joint_action: tuple[ProcessCache, int, DyadicTerminalFieldAction],
+) -> None:
+    process_cache, source, _action = published_joint_action
+    key = (16, source & ((1 << 16) - 1))
+    issuer = _joint_action_cache_issuer()
+    with process_cache.acquire(
+        "collatz-joint-action", JointCertifiedMacroCache.VERSION, key
+    ) as lease:
+        original = lease.get_issued(("action",), issuer)
+        assert is_exact_integer_tuple(original) and len(original) == 8
+        fields = list(original)
+        fields[3] += 1
+        lease.update_issued(
+            ("action",),
+            issuer,
+            lambda _old: (tuple(fields), "forged"),
+        )
+
+    with JointCertifiedMacroCache(ResourceLedger(), shared_cache=True) as receiver:
+        with pytest.raises(ValueError, match="coefficients differ from source word"):
+            receiver.lookup(source, 16, preflight=lambda _bits: None)
+        assert len(receiver.actions) == 0
 
 
 def test_joint_builder_disposes_batch_owner_if_spine_construction_fails(
@@ -262,7 +349,7 @@ def test_joint_cache_rejects_forged_sum_with_same_endpoint() -> None:
     endpoint = action.endpoint(source)
     original_sum = action.sum_offset
     object.__setattr__(action, "sum_offset", original_sum + 1)
-    assert action.endpoint(source) == endpoint
+    assert (action.gain * source + action.offset) // (1 << action.steps) == endpoint
     assert not action.producer_issued
     with JointCertifiedMacroCache(ResourceLedger(), shared_cache=False) as cache:
         with pytest.raises(ValueError, match="producer action"):
@@ -321,11 +408,15 @@ def test_accumulator_requires_prepared_source_image_and_matches_literal_run() ->
             joint_port_rows.append(port)
     joint_ports = tuple(joint_port_rows)
     assert len(joint_ports) == 1
+    joint_action_owner = private_test_attribute(root, "_joint_action_owner")
+    assert type(joint_action_owner) is int
+    assert term.resource_ledger.account_status(joint_action_owner).nodes > 0
     joint_port = joint_ports[0]
     assert len(joint_port) > 1
     wire_payload = joint_port[1]
-    assert type(wire_payload) is tuple
-    typed_payload = cast(tuple[int, ...], wire_payload)
+    assert is_exact_integer_tuple(wire_payload)
+    typed_payload = wire_payload
+    assert len(typed_payload) == 13
     assert all(type(value) is int for value in typed_payload)
     forged_payload = (
         *typed_payload[:10],
@@ -341,7 +432,20 @@ def test_accumulator_requires_prepared_source_image_and_matches_literal_run() ->
         root.audit_image_binding(
             replace(view.binding, boundary_ports=forged_ports), view.payload, None
         )
-    assert collect_ledger_metrics(term.resource_ledger).resource_audit_complete == 1
+    metrics = collect_ledger_metrics(term.resource_ledger)
+    assert metrics.resource_audit_complete == 1
+    retained_action = root.joint_action
+    assert retained_action is not None
+    root.scheduler.source_image_core().clear()
+    assert private_test_attribute(root, "_joint_action_memo") is not None
+    assert term.resource_ledger.account_status(joint_action_owner).nodes > 0
+    root.dispose()
+    assert private_test_attribute(root, "_joint_action_memo") is None
+    assert private_test_attribute(root, "_joint_action_snapshot") is None
+    assert private_test_attribute(root, "_joint_action_store") is None
+    joint_action_account = root.ledger.account_status(joint_action_owner)
+    assert joint_action_account.disposed
+    assert joint_action_account.nodes == 0
 
 
 def test_joint_lookup_descends_when_only_smaller_paired_macro_is_cached() -> None:

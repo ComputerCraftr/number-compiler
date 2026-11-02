@@ -5,18 +5,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import asdict, fields
 from decimal import Decimal
+from typing import TYPE_CHECKING
 
-from number_compiler.api.number_api import (
-    AntihydraTermPayload,
-    CommaTermPayload,
-    DoubleReverseTermPayload,
-    FermatTermPayload,
-    FormulaTermPayload,
-    MersenneTermPayload,
-    PoweredCollatzTermPayload,
-    PoweredReverseAddTermPayload,
-    ProjectedNumberTerm,
-)
 from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.arithmetic.contracts.input_validation import (
     require_integer as _integer,
@@ -32,12 +22,23 @@ from number_compiler.resources.metric_keys import api as _api_metrics
 from number_compiler.resources.output_stream_metrics import closing_output_stream
 from number_compiler.sequences.reverse_add.extent import ReverseAddExtent
 
+if TYPE_CHECKING:
+    from number_compiler.api.number_api import ProjectedNumberTerm
+
 _DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
 _DIGIT_BYTES = _DIGITS.encode("ascii")
 
 
 def _term_ledger(term: ProjectedNumberTerm) -> ResourceLedger | None:
     """Return an existing runtime ledger without constructing an execution owner."""
+    from number_compiler.api.number_api import (
+        AntihydraTermPayload,
+        CommaTermPayload,
+        DoubleReverseTermPayload,
+        PoweredCollatzTermPayload,
+        PoweredReverseAddTermPayload,
+    )
+
     owner = term.payload
     if isinstance(
         owner,
@@ -178,6 +179,16 @@ def render_value(term: ProjectedNumberTerm, *, output_base: int, max_bits: int) 
 def _render_value_body(
     term: ProjectedNumberTerm, *, output_base: int, max_bits: int
 ) -> str:
+    from number_compiler.api.number_api import (
+        CommaTermPayload,
+        DoubleReverseTermPayload,
+        FermatTermPayload,
+        FormulaTermPayload,
+        MersenneTermPayload,
+        PoweredCollatzTermPayload,
+        PoweredReverseAddTermPayload,
+    )
+
     bit_extent: Extent
     if isinstance(term.payload, PoweredReverseAddTermPayload):
         powered = term.payload.term

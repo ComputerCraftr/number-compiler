@@ -13,6 +13,10 @@ word is assumed here.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .power import DoubleReverseTerm
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp_interval import (
@@ -289,12 +293,15 @@ def certified_seed_orbit_morphism(
     steps: int,
     start_f_steps: int = 0,
     known_previous: CertifiedSeedOrbitMorphism | None = None,
+    completed_term: DoubleReverseTerm | None = None,
 ) -> CertifiedSeedOrbitMorphism:
     """Lift an exact Hashlife word power into the joint temporal fiber.
 
-    ``start_f_steps`` is relative to the owner-issued prefix cursor.  An
-    issued preceding morphism can provide the exact intermediate SLP root;
-    a freely supplied center or exterior fiber is never accepted as proof.
+    ``start_f_steps`` is relative to the owner-issued prefix cursor. An
+    issued preceding morphism can provide the exact intermediate SLP root.
+    An optional owner-authenticated complete scheduler endpoint transports
+    the same deterministic source to its target without re-powering it.
+    A freely supplied center, exterior fiber or root is never proof.
     """
     source.validate(require_issued_cursor=source.f_steps > 0)
     if (
@@ -307,6 +314,20 @@ def certified_seed_orbit_morphism(
         raise UncertifiedPointedStencilError(
             "temporal word action exceeds the seed-certified future horizon"
         )
+    if completed_term is not None:
+        # A complete scheduler image is proof of the endpoint only for this
+        # exact issued seed/source cursor. Never accept an arbitrary SLP root,
+        # independently supplied residue, or matching border occurrence.
+        completed_term.check_open()
+        if (
+            completed_term.source_arena is not source.arena
+            or completed_term.temporal_engine is not source.engine
+            or completed_term.source_root != source.engine.source_root
+            or completed_term.generation != source.physical_prefix + 2 * steps
+            or start_f_steps != 0
+            or known_previous is not None
+        ):
+            raise ValueError("completed image cannot transport this source/phase")
     engine = source.engine
     if known_previous is not None:
         authority = known_previous.validate_source_authority()
@@ -345,9 +366,30 @@ def certified_seed_orbit_morphism(
     first = _word_fiber(source, start_root) if known_first is None else known_first
     if first.root != start_root or first.width != source.arena.nodes[start_root].length:
         raise ValueError("pointed input fiber is not the actual seed-orbit root")
-    action = engine.advance_action(start_root, steps, phase)
-    engine.validate_action(action)
-    target_root = engine.root_of(action.target)
+    if completed_term is None:
+        action = engine.advance_action(start_root, steps, phase)
+        engine.validate_action(action)
+        target_root = engine.root_of(action.target)
+        phase_out = action.phase_out
+        left_births, right_births = action.left_births, action.right_births
+    else:
+        # Transport the already scheduler-issued T**N endpoint through the
+        # independently issued T**prefix cursor. Determinism of the exact
+        # source action proves that its remaining T**(2*steps) suffix has the
+        # same endpoint. This is source-to-class transport, NOT a guessed
+        # repeated Laurent driver or an unvalidated root substitution.
+        completed_target = completed_term.issued_completed_endpoint_root()
+        if completed_target is None:
+            raise ValueError("a complete scheduler image has not been issued")
+        target_root = completed_target
+        phase_out = (phase + 2 * steps) % 4
+        left_births, right_births = growth_ports(phase, steps)
+        if (
+            engine.certify(target_root) != phase_out
+            or source.arena.nodes[target_root].length
+            != first.width + left_births + right_births
+        ):
+            raise AssertionError("scheduler word fails issued prefix transport")
     last = _word_fiber(source, target_root)
     residue = certified_residue_action(
         phase=phase,
@@ -360,7 +402,7 @@ def certified_seed_orbit_morphism(
         residue.target_mod99 != last.residue99
         or residue.target_mod198 != last.residue198
         or residue.width_out != last.width
-        or residue.growth != action.left_births + action.right_births
+        or residue.growth != left_births + right_births
     ):
         raise AssertionError(
             "all-digit Hashlife power disagrees with outer cyclotomic ring"
@@ -394,10 +436,10 @@ def certified_seed_orbit_morphism(
             steps,
             first,
             last,
-            action.phase_in,
-            action.phase_out,
-            action.left_births,
-            action.right_births,
+            phase,
+            phase_out,
+            left_births,
+            right_births,
             residue,
             driver,
             odd,

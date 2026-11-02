@@ -95,6 +95,7 @@ _COMMON_OBSERVER_OPTIONS = {
             ObservationId.ARITHMETIC_TWISTED,
             ObservationId.SPATIAL_TAPE,
             ObservationId.TEMPORAL_SPACETIME,
+            ObservationId.TEMPORAL_DIAGONAL_CARRY,
             ObservationId.ARITHMETIC_HASSE,
             ObservationId.ARITHMETIC_FACTOR,
         ),
@@ -135,6 +136,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 ObservationId.TEMPORAL_MACRO,
                 ObservationId.TEMPORAL_MATRIX,
                 ObservationId.TEMPORAL_RESIDUE99,
+                ObservationId.TEMPORAL_ACCUMULATOR99,
                 ObservationId.TEMPORAL_OPEN_RING,
                 ObservationId.TEMPORAL_SEED_ORBIT,
                 ObservationId.TEMPORAL_STENCIL,
@@ -237,6 +239,12 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 "temporal residue99 requires decimal base",
             ),
             (
+                ObservationId.TEMPORAL_ACCUMULATOR99,
+                "base",
+                10,
+                "temporal accumulator99 requires decimal base",
+            ),
+            (
                 ObservationId.SPATIAL_BANK_MORPHISM,
                 "base",
                 10,
@@ -263,6 +271,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 ObservationId.TEMPORAL_CLOSED_FORM,
                 ObservationId.TEMPORAL_RESIDUE99,
                 ObservationId.TEMPORAL_SEED_MORPHISM,
+                ObservationId.TEMPORAL_DEFECT_CLOCK,
                 ObservationId.TEMPORAL_CARRY_SAFETY,
                 ObservationId.SPATIAL_STENCIL,
                 ObservationId.TEMPORAL_BANK,
@@ -292,6 +301,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 "walsh_start",
                 "open_ring_lookback",
                 "period_samples",
+                "defect_digits",
                 "period_stride",
                 "period_depth",
                 "period_max_lag",
@@ -304,7 +314,10 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 "prefix_horizon",
                 OptionSpec(
                     128,
-                    (ObservationId.TEMPORAL_SEED_MORPHISM,),
+                    (
+                        ObservationId.TEMPORAL_SEED_MORPHISM,
+                        ObservationId.TEMPORAL_DEFECT_CLOCK,
+                    ),
                     flag_name="temporal_prefix_horizon",
                     help="maximum exact chronological prefix before dyadic powering",
                 ),
@@ -313,16 +326,34 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 "period_samples",
                 OptionSpec(
                     0,
-                    (ObservationId.TEMPORAL_SEED_MORPHISM,),
+                    (
+                        ObservationId.TEMPORAL_SEED_MORPHISM,
+                        ObservationId.TEMPORAL_DEFECT_CLOCK,
+                    ),
                     flag_name="temporal_period_samples",
                     help="number of four-phase center samples (0 omits scan)",
+                ),
+            ),
+            (
+                "defect_digits",
+                OptionSpec(
+                    0,
+                    (
+                        ObservationId.TEMPORAL_DEFECT_CLOCK,
+                        ObservationId.TEMPORAL_SEED_MORPHISM,
+                    ),
+                    flag_name="temporal_defect_digits",
+                    help="decimal suffix digits in a joined four-symbol carry-defect clock",
                 ),
             ),
             (
                 "period_stride",
                 OptionSpec(
                     1,
-                    (ObservationId.TEMPORAL_SEED_MORPHISM,),
+                    (
+                        ObservationId.TEMPORAL_SEED_MORPHISM,
+                        ObservationId.TEMPORAL_DEFECT_CLOCK,
+                    ),
                     flag_name="temporal_period_stride",
                     help="spacing in four-generation blocks",
                 ),
@@ -340,7 +371,10 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 "period_max_lag",
                 OptionSpec(
                     16,
-                    (ObservationId.TEMPORAL_SEED_MORPHISM,),
+                    (
+                        ObservationId.TEMPORAL_SEED_MORPHISM,
+                        ObservationId.TEMPORAL_DEFECT_CLOCK,
+                    ),
                     flag_name="temporal_period_max_lag",
                     help="maximum sampled lag to check for finite-window returns",
                 ),
@@ -472,6 +506,8 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 ObservationId.TEMPORAL_MATRIX,
                 ObservationId.TEMPORAL_CLOCK,
                 ObservationId.TEMPORAL_ACCUMULATOR,
+                ObservationId.TEMPORAL_DOUBLE_ACCUMULATOR,
+                ObservationId.TEMPORAL_DIAGONAL_CARRY,
                 ObservationId.TEMPORAL_MACRO,
                 ObservationId.TEMPORAL_INNOVATION_BORROW,
             ),
@@ -617,7 +653,10 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 "clock_max_digits",
                 OptionSpec(
                     4096,
-                    (ObservationId.TEMPORAL_CLOCK,),
+                    (
+                        ObservationId.TEMPORAL_CLOCK,
+                        ObservationId.TEMPORAL_DIAGONAL_CARRY,
+                    ),
                     flag_name="temporal_clock_max_digits",
                 ),
             ),
@@ -665,6 +704,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 ObservationId.SPATIAL_TAPE,
                 ObservationId.ARITHMETIC_TWISTED,
                 ObservationId.TEMPORAL_SPACETIME,
+                ObservationId.TEMPORAL_DIAGONAL_CARRY,
                 ObservationId.ARITHMETIC_HASSE,
                 ObservationId.ARITHMETIC_HENSEL,
                 ObservationId.ARITHMETIC_MAHLER,
@@ -707,7 +747,13 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
         + (
             (
                 "max_observer_terms",
-                OptionSpec(1_000_000, (ObservationId.TEMPORAL_SPACETIME,)),
+                OptionSpec(
+                    1_000_000,
+                    (
+                        ObservationId.TEMPORAL_SPACETIME,
+                        ObservationId.TEMPORAL_DIAGONAL_CARRY,
+                    ),
+                ),
             ),
         ),
         matrix=MatrixCapability(
@@ -748,6 +794,9 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
         _observation(),
         term_observation=ObservationValueBinding(PrimeObservationOptions),
         output_bound=SizeBound.PRIME_UPPER,
+        scalar_value=AdapterBinding(
+            "number_compiler.api.projections.prime_value", "value"
+        ),
     ),
     FamilyId.FERMAT: FamilySpec(
         FamilyCapability(

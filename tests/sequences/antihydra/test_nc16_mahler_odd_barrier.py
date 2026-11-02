@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from random import Random
 from typing import cast
 
@@ -19,6 +20,7 @@ from number_compiler.sequences.antihydra.mahler_odd_macro import (
     MahlerOddToOddAction as Odd,
 )
 from number_compiler.sequences.antihydra.mahler_odd_macro import (
+    odd_seam_packet,
     odd_seam_pointwise_packet,
     odd_seam_step,
 )
@@ -365,6 +367,52 @@ def test_pointwise_demand_checks_bounds_before_source_revalidation(
         step.demanded_q_ports(places=True)
     with pytest.raises(ValueError):
         odd_seam_pointwise_packet(step, places=65)
+
+
+def test_odd_seam_observers_authenticate_once_and_keep_q_values_exact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.antihydra import mahler_odd_macro
+
+    step = odd_seam_step(7, 0, 0, 0)
+    original = mahler_odd_macro.odd_seam_step
+    authenticated: list[tuple[int, int, int, int, int]] = []
+
+    def counted(
+        source: int,
+        index: int,
+        clock: int,
+        balance: int,
+        *,
+        max_extent: int = 4096,
+    ) -> mahler_odd_macro.MahlerOddSeamStep:
+        authenticated.append((source, index, clock, balance, max_extent))
+        return original(source, index, clock, balance, max_extent=max_extent)
+
+    monkeypatch.setattr(mahler_odd_macro, "odd_seam_step", counted)
+
+    pointwise = odd_seam_pointwise_packet(step, places=4)
+    assert len(authenticated) == 1
+    q_ports = _mapping(pointwise["q_radix_orbits"])
+    assert _mapping(q_ports["10"])["q_initial"] == (3 * 7 + 1) % 10**4
+    assert _mapping(q_ports["10"])["q_next"] == 2 * (3 * 11 + 1) % 10**4
+
+    authenticated.clear()
+    detailed = odd_seam_packet(
+        step, bits=8, decimal_places=3, walsh=False, include_mixed_ring=False
+    )
+    assert len(authenticated) == 1
+    detailed_q = _mapping(detailed["q_radix_orbits"])
+    decimal_port = _mapping(_mapping(detailed_q["radix_ports"])["10"])
+    assert decimal_port["q_initial"] == (3 * 7 + 1) % 10**3
+    assert decimal_port["q_next"] == 2 * (3 * 11 + 1) % 10**3
+
+    forged = replace(step)
+    object.__setattr__(forged, "next_source", step.next_source + 1)
+    with pytest.raises(ValueError, match="source recurrence"):
+        forged.demanded_q_ports(places=4)
+    with pytest.raises(ValueError, match="source recurrence"):
+        odd_seam_pointwise_packet(forged, places=4)
 
 
 def test_mahler_high_digit_projection_is_only_computed_when_demanded(

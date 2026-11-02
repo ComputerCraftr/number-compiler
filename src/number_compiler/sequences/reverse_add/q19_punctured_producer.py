@@ -1,17 +1,20 @@
-"""Transactional publisher for fixed-depth punctured Q19 actions."""
+"""Transactional publisher for finite group-ring/carry Q19 macros."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
+from number_compiler.arithmetic.fields.run_pairing import append_run
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_on_error
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.sequences.reverse_add.punctured_temporal import (
     PuncturedTemporalWork,
-    append_run,
     punctured_pair_runs,
+)
+from number_compiler.sequences.reverse_add.temporal_port_quotient import (
+    MAX_EXACT_DECIMAL_BLOCK_WIDTH,
 )
 
 if TYPE_CHECKING:
@@ -19,6 +22,17 @@ if TYPE_CHECKING:
         ReversePairOutputOccurrence,
     )
     from number_compiler.sequences.reverse_add.q19_word_summary import WordSummary
+
+
+def admits_punctured_scheduler_block(steps: int, pair_width: int) -> bool:
+    """Bound finite attempts, including the scheduler's authenticated T3 tail.
+
+    Oversized native requests remain available through smaller exact children.
+    This predicate selects an attempt; the issuer still authenticates its source.
+    """
+    return (steps in (2, 3, 4) or 16 <= steps <= 1024) and (
+        steps <= 32 or pair_width + steps <= MAX_EXACT_DECIMAL_BLOCK_WIDTH
+    )
 
 
 class _OutputOwner(Protocol):
@@ -57,7 +71,7 @@ class _OutputOwner(Protocol):
 
 
 class PuncturedPairProducer:
-    """Apply a bounded T2/T4 pullback and publish it transactionally."""
+    """Apply a bounded finite Q19 action and publish only its endpoint."""
 
     def __init__(self, owner: _OutputOwner) -> None:
         self._owner = owner
@@ -67,8 +81,10 @@ class PuncturedPairProducer:
     ) -> ReversePairOutputOccurrence:
         owner = self._owner
         owner.validate(occurrence)
-        if type(steps) is not int or steps not in (2, 4):
-            raise ValueError("punctured Q19 producer admits exact T2 or T4 blocks")
+        if type(steps) is not int or not (steps in (2, 4) or 16 <= steps <= 1024):
+            raise ValueError(
+                "punctured Q19 producer requires a bounded T2..T1024 block"
+            )
 
         first_new_node = len(owner.arena.nodes)
         emitted_nodes = 0
@@ -85,9 +101,17 @@ class PuncturedPairProducer:
         try:
             with cleanup_on_error(rollback):
                 source_summary = owner.word_summary(occurrence.root)
-                # T4 keeps one more bounded pullback's run partitions live.
-                scratch_per_run = 512 if steps == 2 else 1024
-                scratch = scratch_per_run * (source_summary.runs + 1)
+                # Finite macros retain only their working run tape, never a
+                # chronology of intermediate Q19 output occurrences.
+                if (
+                    steps >= 16
+                    and occurrence.pair_width + steps <= MAX_EXACT_DECIMAL_BLOCK_WIDTH
+                ):
+                    scratch = 2 * (occurrence.pair_width + steps) + 32 * (
+                        source_summary.runs + 1
+                    )
+                else:
+                    scratch = 512 * steps * (source_summary.runs + 1)
                 with owner.ledger.reservation(
                     owner.scratch_owner, entries=scratch, nodes=scratch
                 ):
@@ -149,17 +173,34 @@ class PuncturedPairProducer:
             _reverse_add_keys.REVERSE_Q19_PUNCTURED_OUTPUT_RUNS, work.output_runs
         )
         ledger.bump(
+            _reverse_add_keys.REVERSE_Q19_PUNCTURED_PHYSICAL_T2_ACTIONS,
+            work.two_step_actions,
+        )
+        ledger.bump(
+            _reverse_add_keys.REVERSE_Q19_PUNCTURED_HALF_TAPE_TICK_TRANSITIONS,
+            work.half_tape_tick_transitions,
+        )
+        ledger.bump(
+            _reverse_add_keys.REVERSE_Q19_PUNCTURED_NATIVE_DECIMAL_TICKS,
+            work.native_decimal_ticks,
+        )
+        ledger.bump(
+            _reverse_add_keys.REVERSE_Q19_PUNCTURED_NATIVE_DECIMAL_DIGIT_VISITS,
+            work.native_decimal_digit_visits,
+        )
+        ledger.bump(
             _reverse_add_keys.REVERSE_Q19_PUNCTURED_EMITTED_GRAMMAR_NODES,
             emitted_nodes,
         )
         if failed:
             ledger.bump(_reverse_add_keys.REVERSE_Q19_PUNCTURED_FAILED_APPLICATIONS)
         else:
-            application_key = (
-                _reverse_add_keys.REVERSE_Q19_PUNCTURED_T2_APPLICATIONS
-                if steps == 2
-                else _reverse_add_keys.REVERSE_Q19_PUNCTURED_T4_APPLICATIONS
-            )
+            application_key = {
+                2: _reverse_add_keys.REVERSE_Q19_PUNCTURED_T2_APPLICATIONS,
+                4: _reverse_add_keys.REVERSE_Q19_PUNCTURED_T4_APPLICATIONS,
+                16: _reverse_add_keys.REVERSE_Q19_PUNCTURED_T16_APPLICATIONS,
+                32: _reverse_add_keys.REVERSE_Q19_PUNCTURED_T32_APPLICATIONS,
+            }.get(steps, _reverse_add_keys.REVERSE_Q19_PUNCTURED_WIDE_APPLICATIONS)
             ledger.bump(application_key)
 
     def _coefficient_runs(self, root: int) -> tuple[tuple[int, int], ...]:

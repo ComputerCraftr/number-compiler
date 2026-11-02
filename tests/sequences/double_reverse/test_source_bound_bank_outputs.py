@@ -31,9 +31,11 @@ from number_compiler.sequences.double_reverse.temporal_bank_output_morphism impo
     ExactPointedBankWindow,
     frame_from_digits,
 )
-from number_compiler.sequences.double_reverse.temporal_hashlife import growth_ports
-from number_compiler.sequences.double_reverse.temporal_residue_quotient import (
+from number_compiler.sequences.double_reverse.temporal_hashlife import (
     PHYSICAL_GROWTH_CYCLES,
+    growth_ports,
+)
+from number_compiler.sequences.double_reverse.temporal_residue_quotient import (
     CertifiedResidueTemporalAction,
     certified_width_moments,
 )

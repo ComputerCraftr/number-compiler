@@ -200,12 +200,29 @@ REVERSE_Q19_PUNCTURED_EVENT_REGIONS: Final = "reverse_q19_punctured_event_region
 REVERSE_Q19_PUNCTURED_FAILED_APPLICATIONS: Final = (
     "reverse_q19_punctured_failed_applications"
 )
+REVERSE_Q19_PUNCTURED_NATIVE_DECIMAL_TICKS: Final = (
+    "reverse_q19_punctured_native_decimal_ticks"
+)
+REVERSE_Q19_PUNCTURED_NATIVE_DECIMAL_DIGIT_VISITS: Final = (
+    "reverse_q19_punctured_native_decimal_digit_visits"
+)
+REVERSE_Q19_PUNCTURED_HALF_TAPE_TICK_TRANSITIONS: Final = (
+    "reverse_q19_punctured_half_tape_tick_transitions"
+)
 REVERSE_Q19_PUNCTURED_T2_APPLICATIONS: Final = "reverse_q19_punctured_t2_applications"
 REVERSE_Q19_PUNCTURED_T4_APPLICATIONS: Final = "reverse_q19_punctured_t4_applications"
+REVERSE_Q19_PUNCTURED_T16_APPLICATIONS: Final = "reverse_q19_punctured_t16_applications"
+REVERSE_Q19_PUNCTURED_T32_APPLICATIONS: Final = "reverse_q19_punctured_t32_applications"
+REVERSE_Q19_PUNCTURED_WIDE_APPLICATIONS: Final = (
+    "reverse_q19_punctured_wide_applications"
+)
 REVERSE_Q19_PUNCTURED_INPUT_GRAMMAR_NODES_VISITED: Final = (
     "reverse_q19_punctured_input_grammar_nodes_visited"
 )
 REVERSE_Q19_PUNCTURED_OUTPUT_RUNS: Final = "reverse_q19_punctured_output_runs"
+REVERSE_Q19_PUNCTURED_PHYSICAL_T2_ACTIONS: Final = (
+    "reverse_q19_punctured_physical_t2_actions"
+)
 REVERSE_Q19_PUNCTURED_PREFIX_QUERIES: Final = "reverse_q19_punctured_prefix_queries"
 REVERSE_Q19_PUNCTURED_PREFIX_RUN_VISITS: Final = (
     "reverse_q19_punctured_prefix_run_visits"
@@ -446,3 +463,22 @@ TILE_CAUSAL_FINITE_TRANSFER_PARENT_OBSERVATIONS: Final = (
 
 REVERSE_RADIX19_COCHAIN_NODE_VISITS: Final = "reverse_radix19_cochain_node_visits"
 REVERSE_RADIX19_COCHAIN_COMPOSITIONS: Final = "reverse_radix19_cochain_compositions"
+REVERSE_ACCUMULATOR99_BOOTSTRAP_DIGIT_STEPS: Final = (
+    "reverse_accumulator99_bootstrap_digit_steps"
+)
+REVERSE_ACCUMULATOR99_BOOTSTRAP_OPERAND_BITS: Final = (
+    "reverse_accumulator99_bootstrap_operand_bits"
+)
+REVERSE_ACCUMULATOR99_BOOTSTRAP_FAILED_WORK: Final = (
+    "reverse_accumulator99_bootstrap_failed_work"
+)
+REVERSE_LAURENT_CACHE_HITS: Final = "reverse_laurent_cache_hits"
+REVERSE_LAURENT_CACHE_MISSES: Final = "reverse_laurent_cache_misses"
+REVERSE_LAURENT_CACHE_PUBLICATION_FAILURES: Final = (
+    "reverse_laurent_cache_publication_failures"
+)
+REVERSE_LAURENT_FAILED_WORK: Final = "reverse_laurent_failed_work"
+REVERSE_LAURENT_OPERAND_BITS: Final = "reverse_laurent_operand_bits"
+REVERSE_LAURENT_PAIRED_BLOCKS: Final = "reverse_laurent_paired_blocks"
+REVERSE_LAURENT_RUN_RECORD_VISITS: Final = "reverse_laurent_run_record_visits"
+REVERSE_LAURENT_SOURCE_TICKS: Final = "reverse_laurent_source_ticks"

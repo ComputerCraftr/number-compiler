@@ -8,12 +8,20 @@ import sys
 from number_compiler.api import cli_render as _rendering
 from number_compiler.api.cli_requests import parse_request
 from number_compiler.api.cli_types import QueryRequest
-from number_compiler.api.number_api import NumberCompiler
 from number_compiler.api.observation_types import OutputFormat, SelectorId
-from number_compiler.api.output_schema import UnresolvedErrorPacket, query_result
-from number_compiler.api.registry_adapters import resolve_verification_adapter
+from number_compiler.api.output_schema import (
+    JsonValue,
+    UnresolvedErrorPacket,
+    query_result,
+)
+from number_compiler.api.query_types import is_term_query
+from number_compiler.api.registry_adapters import (
+    resolve_scalar_value_adapter,
+    resolve_verification_adapter,
+)
 from number_compiler.api.registry_cli import family_listing
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
 
 
@@ -45,6 +53,69 @@ def _unresolved_packet(
     }
 
 
+def _execute(
+    request: QueryRequest, shared_cache: bool
+) -> tuple[
+    str | None, dict[str, dict[str, JsonValue]], UnresolvedSequenceTerm | None, bool
+]:
+    """Consume a registered scalar path or prepare the demanded query context."""
+    execution = request.execution
+    if (
+        is_term_query(execution)
+        and not request.observations.info
+        and not request.presentation.no_value
+        and request.presentation.output_base == 10
+        and request.presentation.index.exponent is None
+        and request.presentation.format in (OutputFormat.VALUE, OutputFormat.JSON)
+    ):
+        adapter = resolve_scalar_value_adapter(execution)
+        if adapter is not None:
+            scalar = require_integer(
+                adapter(execution, shared_cache), "output value", 0
+            )
+            bits = max(1, scalar.bit_length())
+            if bits > request.presentation.max_output_bits:
+                raise ValueError((bits, request.presentation.max_output_bits))
+            return _rendering.radix_string(scalar, 10), {}, None, False
+    from number_compiler.api.cli_context import QueryContext, information_unresolved
+    from number_compiler.api.number_api import NumberCompiler
+
+    compiler = (
+        NumberCompiler(
+            max_context_nodes=10000,
+            max_cache_entries=20000,
+            shared_cache=shared_cache,
+        )
+        if request.requires_bounded_observer
+        else (
+            NumberCompiler()
+            if shared_cache is True
+            else NumberCompiler(shared_cache=shared_cache)
+        )
+    )
+    context = QueryContext(request, compiler)
+    context.admit_observation_extents()
+    value = None
+    if request.selector is SelectorId.NTH and not request.presentation.no_value:
+        value = (
+            (
+                context.term.symbolic
+                if request.presentation.index.exponent is None
+                else context.term.symbolic_expression.render(
+                    f"10^{request.presentation.index.exponent}"
+                )
+            )
+            if request.presentation.format is OutputFormat.SYMBOLIC
+            else _rendering.render_value(
+                context.term,
+                output_base=request.presentation.output_base,
+                max_bits=request.presentation.max_output_bits,
+            )
+        )
+    info = context.information()
+    return value, info, context.unresolved_boundary, information_unresolved(info)
+
+
 def main(argv: list[str] | None = None, *, shared_cache: bool = True) -> int:
     """Execute the CLI; embedded validation may disable process-cache reuse."""
     if argv is not None and (
@@ -60,42 +131,9 @@ def main(argv: list[str] | None = None, *, shared_cache: bool = True) -> int:
             return 0
         if request.selector is SelectorId.VERIFY:
             return _verify(request)
-        from number_compiler.api.cli_context import QueryContext, information_unresolved
         from number_compiler.api.json_output import json_integers
 
-        compiler = (
-            NumberCompiler(
-                max_context_nodes=10000,
-                max_cache_entries=20000,
-                shared_cache=shared_cache,
-            )
-            if request.requires_bounded_observer
-            else (
-                NumberCompiler()
-                if shared_cache is True
-                else NumberCompiler(shared_cache=shared_cache)
-            )
-        )
-        context = QueryContext(request, compiler)
-        context.admit_observation_extents()
-        value = None
-        if request.selector is SelectorId.NTH and not request.presentation.no_value:
-            value = (
-                (
-                    context.term.symbolic
-                    if request.presentation.index.exponent is None
-                    else context.term.symbolic_expression.render(
-                        f"10^{request.presentation.index.exponent}"
-                    )
-                )
-                if request.presentation.format is OutputFormat.SYMBOLIC
-                else _rendering.render_value(
-                    context.term,
-                    output_base=request.presentation.output_base,
-                    max_bits=request.presentation.max_output_bits,
-                )
-            )
-        info = context.information()
+        value, info, boundary, info_refusal = _execute(request, shared_cache)
         if request.presentation.format is OutputFormat.JSON:
             print(
                 json.dumps(
@@ -108,10 +146,8 @@ def main(argv: list[str] | None = None, *, shared_cache: bool = True) -> int:
                             value=value,
                             info=info,
                             error=None
-                            if context.unresolved_boundary is None
-                            else _unresolved_packet(
-                                request, context.unresolved_boundary
-                            ),
+                            if boundary is None
+                            else _unresolved_packet(request, boundary),
                         )
                     ),
                     sort_keys=True,
@@ -122,13 +158,11 @@ def main(argv: list[str] | None = None, *, shared_cache: bool = True) -> int:
                 print(value)
             if info:
                 print(json.dumps(json_integers(info), sort_keys=True), file=sys.stderr)
-        if context.unresolved_boundary is not None:
+        if boundary is not None:
             if request.presentation.format is not OutputFormat.JSON:
-                print(
-                    f"number-compiler: {context.unresolved_boundary}", file=sys.stderr
-                )
+                print(f"number-compiler: {boundary}", file=sys.stderr)
             return 3
-        return 3 if information_unresolved(info) else 0
+        return 3 if info_refusal else 0
     except UnresolvedSequenceTerm as exc:
         # No endpoint or symbolic value is published across an unproved boundary.
         if request is not None and request.presentation.format is OutputFormat.JSON:

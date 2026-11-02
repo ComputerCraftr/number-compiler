@@ -125,6 +125,11 @@ def audit_image_binding(
     if len(innovation_ports) > 1:
         raise ValueError("Collatz root has duplicate innovation tape ports")
     if is_root_binding:
+        if not joint_ports and (
+            root._joint_action_snapshot is not None
+            or root._retained_joint_action() is not None
+        ):
+            raise ValueError("Collatz joint action snapshot was not published")
         if not boundary_macro_ports and (
             root._first_boundary_macro_snapshot is not None
             or root._boundary_macro_memo is not None
@@ -225,7 +230,10 @@ def audit_image_binding(
         payload = joint_ports[0][1]
         if type(payload) is not tuple or payload != root._joint_action_snapshot:
             raise ValueError("Collatz joint port is not producer-issued by this root")
-        joint = CollatzJointRunAction.from_admitted_root_payload(payload)
+        retained_joint = root._retained_joint_action()
+        joint = CollatzJointRunAction.from_admitted_root_payload(
+            payload, retained_joint
+        )
         normalized_endpoint = (
             endpoint
             if joint.phase == 0

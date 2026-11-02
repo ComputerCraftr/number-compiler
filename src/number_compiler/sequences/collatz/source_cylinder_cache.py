@@ -5,6 +5,7 @@ Each width-w occurrence owns its low-w source germ and affine high-fiber action.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Final, Literal, Self, cast
 
@@ -13,6 +14,7 @@ from number_compiler.arithmetic.contracts.input_validation import is_exact_objec
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.resources.payload_cost import retained_payload_node_count
 from number_compiler.resources.process_cache import (
     MISSING,
     CacheRecordIssuerMismatch,
@@ -79,11 +81,7 @@ _MIXED_ACTION_METRICS: Final[frozenset[str]] = frozenset(
 
 @dataclass(frozen=True, slots=True, init=False)
 class CanonicalGain:
-    """An exact Collatz gain tied to the exponent that produced it.
-
-    Normal construction computes the power. Cache rehydration is private and
-    follows exact issuer, payload-shape, and exponent checks.
-    """
+    """Exact Collatz gain tied to its odd-event exponent."""
 
     odd_symbols: int
     multiplier: int
@@ -126,6 +124,7 @@ class CollatzDyadicMacrosAuditSnapshot:
     width_spines_disposed: bool
     gains_disposed: bool
     frontier_disposed: bool
+    mixed_actions_disposed: bool
 
 
 class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
@@ -206,6 +205,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
             role: str,
             *,
             nodes_per_entry: int = 0,
+            node_cost: Callable[[object, object], int] | None = None,
             evictable: bool = False,
         ) -> OwnedMemo[object, object]:
             owner = ledger.register(prefix + suffix, role)
@@ -215,6 +215,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
                     owner,
                     evictable=evictable,
                     nodes_per_entry=nodes_per_entry,
+                    node_cost=node_cost,
                 )
             except BaseException:
                 # OwnedMemo registers an empty ledger owner before finishing
@@ -253,6 +254,12 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
                 OwnedMemo[int, tuple[int, int, CollatzTapeWidthSummary | None]],
                 make_store("-frontier", "execution_stack", nodes_per_entry=10),
             )
+            self.mixed_actions = make_store(
+                "-mixed-actions",
+                "query_memo",
+                node_cost=lambda key, value: retained_payload_node_count((key, value)),
+                evictable=True,
+            )
             ledger.register_execution_root(self)
         except BaseException:
             self._closed = True
@@ -276,6 +283,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
             self.gains.dispose,
             self.width_spines.dispose,
             self.occurrences.dispose,
+            self.mixed_actions.dispose,
         ]
         cleanup_all(disposals)
         self._cleanup_complete = True
@@ -293,6 +301,7 @@ class CollatzDyadicMacros(ConditionalSchedulerMemoOwner):
             width_spines_disposed=self.width_spines.audit_snapshot().disposed,
             gains_disposed=self.gains.audit_snapshot().disposed,
             frontier_disposed=self.frontier.audit_snapshot().disposed,
+            mixed_actions_disposed=self.mixed_actions.audit_snapshot().disposed,
         )
 
     def _bump(self, suffix: str, amount: int = 1) -> None:

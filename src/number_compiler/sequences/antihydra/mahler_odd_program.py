@@ -8,7 +8,7 @@ Ordinary Antihydra physical execution never constructs these port packets.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.sequences.antihydra.mahler_odd_macro import MahlerOddToOddAction
@@ -19,6 +19,12 @@ from number_compiler.sequences.antihydra.mahler_odd_source_transfer import (
 from number_compiler.sequences.antihydra.mahler_source_actions import (
     MAX_MAHLER_SOURCE_EXTENT,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class _FragmentMotifBinding:
+    motif: tuple[int, ...]
+    action: MahlerOddToOddAction
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +48,51 @@ class MahlerOddProgramFragment:
     # queries do not recompose the same motif and powered action.
     motif_action: MahlerOddToOddAction | None = None
     powered_action: MahlerOddToOddAction | None = None
+    _motif_binding: _FragmentMotifBinding | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.motif) is not tuple
+            or not self.motif
+            or len(self.motif) > 8
+            or any(type(exponent) is not int or exponent < 1 for exponent in self.motif)
+            or sum(self.motif) > MAX_MAHLER_SOURCE_EXTENT
+        ):
+            raise ValueError("Mahler fragment needs a bounded ordered odd-run motif")
+        expected = MahlerOddToOddAction.identity()
+        for exponent in self.motif:
+            expected = expected.then(MahlerOddToOddAction.run(exponent))
+        action = self.motif_action
+        if action is None:
+            action = expected
+            object.__setattr__(self, "motif_action", action)
+        elif (
+            type(action) is not MahlerOddToOddAction
+            or action.semantic_id != expected.semantic_id
+        ):
+            raise ValueError("stored Mahler action differs from the ordered motif")
+        object.__setattr__(
+            self,
+            "_motif_binding",
+            _FragmentMotifBinding(self.motif, action),
+        )
+
+    def admitted_motif_action(self) -> MahlerOddToOddAction:
+        """Return this fragment's checked action for its exact ordered motif."""
+        action = self.motif_action
+        binding = self._motif_binding
+        if (
+            type(self) is not MahlerOddProgramFragment
+            or type(action) is not MahlerOddToOddAction
+            or type(binding) is not _FragmentMotifBinding
+            or binding.motif != self.motif
+            or binding.action is not action
+        ):
+            raise ValueError("Mahler fragment motif binding is stale or mismatched")
+        action.verify_issued()
+        return action
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,23 +119,6 @@ class MahlerOddSourceProgram:
     def avoided_scalar_event_issues(self) -> int:
         return self.emitted_events - len(self.fragments)
 
-    @staticmethod
-    def _fragment_motif_action(
-        fragment: MahlerOddProgramFragment,
-    ) -> MahlerOddToOddAction:
-        motif = fragment.motif_action
-        if motif is None:
-            motif = MahlerOddToOddAction.identity()
-            for exponent in fragment.motif:
-                motif = motif.then(MahlerOddToOddAction.run(exponent))
-        if (
-            type(motif) is not MahlerOddToOddAction
-            or motif.odd_events != len(fragment.motif)
-            or motif.extent != sum(fragment.motif)
-        ):
-            raise ValueError("stored odd motif action does not match its source word")
-        return motif
-
     @classmethod
     def _source_after_events(
         cls, fragment: MahlerOddProgramFragment, event_count: int
@@ -92,7 +126,7 @@ class MahlerOddSourceProgram:
         copies, partial = divmod(event_count, len(fragment.motif))
         if not 0 <= copies <= fragment.repetitions:
             raise ValueError("event request exceeds the issued Mahler fragment")
-        motif = cls._fragment_motif_action(fragment)
+        motif = fragment.admitted_motif_action()
         current = motif.power(copies).advance(fragment.source, 0)[0]
         if partial:
             prefix = MahlerOddToOddAction.identity()

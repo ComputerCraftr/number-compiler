@@ -7,7 +7,6 @@ from typing import Never
 
 import pytest
 
-from number_compiler.api import cli
 from number_compiler.api.cli import main
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -108,7 +107,9 @@ def test_large_power_respects_explicit_cache_budget_before_primitive_descent(
     monkeypatch.setattr(CausalTileEngine, "__init__", _forbidden)
     monkeypatch.setattr(HashLifeBlockIndex, "__init__", _forbidden)
     compiler = NumberCompiler(max_context_nodes=512, max_cache_entries=512)
-    monkeypatch.setattr(cli, "NumberCompiler", lambda: compiler)
+    monkeypatch.setattr(
+        "number_compiler.api.number_api.NumberCompiler", lambda: compiler
+    )
     assert main(["reverse-add", "--seed", "196", "--nth", str(steps)]) == 2
     captured = capsys.readouterr()
     assert captured.out == ""

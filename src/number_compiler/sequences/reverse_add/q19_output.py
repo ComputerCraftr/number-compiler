@@ -430,7 +430,7 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
     def apply_punctured_pair_block(
         self, occurrence: ReversePairOutputOccurrence, *, steps: int
     ) -> ReversePairOutputOccurrence:
-        """Apply a source-independent T2/T4 pullback to an issued field."""
+        """Apply a checked finite group-ring/carry macro on one issued field."""
         return PuncturedPairProducer(self).apply(occurrence, steps=steps)
 
     def radix19_cochain(

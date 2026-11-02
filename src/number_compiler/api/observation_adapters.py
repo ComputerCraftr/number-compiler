@@ -16,7 +16,7 @@ from number_compiler.api.cli_types import (
     ReverseAddObservationOptions,
     SpecialObservationOptions,
 )
-from number_compiler.api.json_output import json_integers
+from number_compiler.api.json_output import is_string_object_mapping, json_integers
 from number_compiler.api.observation_types import (
     IndexEncoding,
     ObservationId,
@@ -218,6 +218,54 @@ def observe_double_reverse(context: QueryContext, name: ObservationId) -> Packet
         return publish_observation(
             context, name, double_reverse_open_ring_packet(payload.term, options)
         )
+    if name is ObservationId.TEMPORAL_DEFECT_CLOCK:
+        # QueryContext deliberately emits seed-morphism before other temporal
+        # observations. If it has already authenticated and sampled the SAME
+        # defect dimensions, reuse the issued payload. Do not build a second
+        # source cone or independently reconstruct the temporal quotient.
+        existing = context.cached_information(ObservationId.TEMPORAL_SEED_MORPHISM)
+        shared: dict[str, object] | None = None
+        if options.defect_digits > 0 and options.period_samples > 0 and existing:
+            period = existing.get("period_observations")
+            power = existing.get("power")
+            if (
+                existing.get("status") == "available"
+                and existing.get("seed") == payload.term.seed
+                and existing.get("target_generation") == payload.term.generation
+                and is_string_object_mapping(period)
+                and period.get("status") == "available"
+                and period.get("full_endpoint_suffix_verified") is True
+                and is_string_object_mapping(power)
+                and type(power.get("source_prefix_generation")) is int
+            ):
+                # That extra flag verifies the full-word seed-morphism
+                # endpoint; it is not part of the standalone defect schema.
+                shared = {
+                    "seed": payload.term.seed,
+                    "target_generation": payload.term.generation,
+                    "source_prefix_generation": power["source_prefix_generation"],
+                    **{
+                        k: v
+                        for k, v in period.items()
+                        if k != "full_endpoint_suffix_verified"
+                    },
+                }
+        if shared is None:
+            from number_compiler.sequences.double_reverse.temporal_defect_period import (
+                defect_clock_cli_packet,
+            )
+
+            shared = defect_clock_cli_packet(
+                payload.term,
+                digits=options.defect_digits or 8,
+                samples=options.period_samples or 24,
+                stride=options.period_stride,
+                max_lag=options.period_max_lag,
+                prefix_horizon=options.prefix_horizon,
+            )
+        return publish_observation(
+            context, name, shared, coordinates=(("target_generation",),)
+        )
     if name is ObservationId.TEMPORAL_SEED_MORPHISM:
         from number_compiler.sequences.double_reverse.temporal_seed_cli import (
             seed_morphism_cli_packet,
@@ -229,6 +277,7 @@ def observe_double_reverse(context: QueryContext, name: ObservationId) -> Packet
             seed_morphism_cli_packet(
                 payload.term,
                 period_samples=options.period_samples,
+                defect_digits=options.defect_digits,
                 period_stride=options.period_stride,
                 period_depth=options.period_depth,
                 period_max_lag=options.period_max_lag,
@@ -496,6 +545,13 @@ def observe_reverse(context: QueryContext, name: ObservationId) -> Packet:
             asdict(payload.term.temporal_residue99()),
             coordinates=(("duration",),),
         )
+    if name is ObservationId.TEMPORAL_ACCUMULATOR99:
+        return publish_observation(
+            context,
+            name,
+            payload.term.temporal_accumulator99().packet(),
+            coordinates=(("generation",),),
+        )
     if name is ObservationId.SPATIAL_BANK_MORPHISM:
         from number_compiler.api.bank_observation import reverse_bank_packet
 
@@ -548,6 +604,8 @@ def prepare_collatz(context: QueryContext, term: ProjectedNumberTerm) -> None:
         term.payload.term.prepare_width_spine()
     if {
         ObservationId.TEMPORAL_ACCUMULATOR,
+        ObservationId.TEMPORAL_DOUBLE_ACCUMULATOR,
+        ObservationId.TEMPORAL_DIAGONAL_CARRY,
         ObservationId.TEMPORAL_MATRIX,
         ObservationId.TEMPORAL_MATRIX_TRACE,
     }.intersection(options.info):
@@ -662,6 +720,35 @@ def observe_collatz(context: QueryContext, name: ObservationId) -> Packet:
         )
         return publish_observation(
             context, name, clock_packet, coordinates=(("requested_ticks",),)
+        )
+    if name is ObservationId.TEMPORAL_DIAGONAL_CARRY:
+        from number_compiler.api.collatz_diagonal_observation import diagonal_packet
+
+        return publish_observation(
+            context,
+            name,
+            diagonal_packet(payload.term, max_width=term_options.clock_max_digits),
+            coordinates=(("physical_ticks",),),
+        )
+    if name is ObservationId.TEMPORAL_DOUBLE_ACCUMULATOR:
+        weight = payload.term.double_accumulators()
+        joint = payload.term.source_image().joint_action if execution.index else None
+        if execution.index and joint is None:
+            raise ValueError("weighted Collatz observer lost its joint field action")
+        return publish_observation(
+            context,
+            name,
+            {
+                "source": execution.seed,
+                "added": weight.added,
+                "subtracted": weight.subtracted,
+                "normalized_endpoint": weight.normalized_endpoint,
+                "physical_endpoint": weight.physical_endpoint,
+                "conservation_difference": weight.added - weight.subtracted,
+                "normalized_steps": 0 if joint is None else joint.normalized_steps,
+                "physical_ticks": execution.index,
+                "phase": 0 if joint is None else joint.phase,
+            },
         )
     if name is ObservationId.TEMPORAL_ACCUMULATOR:
         return publish_observation(

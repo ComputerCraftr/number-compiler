@@ -23,7 +23,9 @@ from number_compiler.sequences.collatz.border_identity import (
     PATH_630,
     BoundaryActionIdentity,
 )
-from number_compiler.sequences.collatz.boundary_macros import BoundaryActionTemplateMemo
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo,
+)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
@@ -40,6 +42,7 @@ from number_compiler.sequences.collatz.unified_skew_chain import (
     select_unified_skew_chain,
 )
 from number_compiler.sequences.collatz.unified_skew_clock import SkewQuadraticClock
+from tests.support.reference_arithmetic import normalized_collatz_word
 
 
 def _object_map(value: object) -> dict[str, object]:
@@ -47,15 +50,6 @@ def _object_map(value: object) -> dict[str, object]:
     if mapping is None:
         raise AssertionError("expected a string-keyed object map")
     return dict(mapping)
-
-
-def _normalized(source: int, steps: int) -> tuple[int, tuple[int, ...]]:
-    word: list[int] = []
-    for _ in range(steps):
-        bit = source & 1
-        word.append(bit)
-        source = (3 * source + 1) // 2 if bit else source // 2
-    return source, tuple(word)
 
 
 def test_general_affine_preimage_handles_nonunit_radix_three_and_six() -> None:
@@ -192,8 +186,13 @@ def test_chain_source_guard_and_power_preserve_exact_normalized_word() -> None:
     for multiplier in (1, 2):
         other = chain.source + multiplier * joined.guard.modulus
         assert joined.admits(other)
-        foreign_endpoint, foreign_word = _normalized(other, chain.normalized_symbols)
-        assert foreign_word == _normalized(chain.source, chain.normalized_symbols)[1]
+        foreign_endpoint, foreign_word = normalized_collatz_word(
+            other, chain.normalized_symbols
+        )
+        assert (
+            foreign_word
+            == normalized_collatz_word(chain.source, chain.normalized_symbols)[1]
+        )
         assert joined.endpoint(other) == foreign_endpoint
         current = other
         for seam in chain.seams:

@@ -418,10 +418,16 @@ class ReverseSourceImageWorkspace:
             raise ValueError("scheduler image has no matching issued Q19 endpoint")
         owner.validate_issued_occurrence(occurrence)
         after = self.ledger.snapshot().counters
+        # Count completed publications, including bounded finite ring macros.
+        # This is not physical per-T2 work: the separate ledger field
+        # reverse_q19_punctured_physical_t2_actions records that cost.
         block_keys = (
             _reverse_add_keys.REVERSE_Q19_PRIMITIVE_PAIR_APPLICATIONS,
             _reverse_add_keys.REVERSE_Q19_PUNCTURED_T2_APPLICATIONS,
             _reverse_add_keys.REVERSE_Q19_PUNCTURED_T4_APPLICATIONS,
+            _reverse_add_keys.REVERSE_Q19_PUNCTURED_T16_APPLICATIONS,
+            _reverse_add_keys.REVERSE_Q19_PUNCTURED_T32_APPLICATIONS,
+            _reverse_add_keys.REVERSE_Q19_PUNCTURED_WIDE_APPLICATIONS,
         )
         applications = sum(after.get(key, 0) - before.get(key, 0) for key in block_keys)
         if applications < 0:

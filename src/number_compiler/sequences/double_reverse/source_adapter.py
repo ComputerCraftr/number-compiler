@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import closing
 from dataclasses import dataclass
 from typing import Final, cast
@@ -43,6 +44,18 @@ from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
 )
 
 DOUBLE_REVERSE_SOURCE_IMAGE_VERSION: Final[str] = "decimal-2rev-source-image-v1"
+
+
+def decimal_digits_lsd(value: int) -> Iterator[int]:
+    """Yield the exact decimal digits of one admitted nonnegative source."""
+    if type(value) is not int or value < 0:
+        raise ValueError("source digits require a nonnegative exact integer")
+    if value == 0:
+        yield 0
+        return
+    while value:
+        value, digit = divmod(value, 10)
+        yield digit
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -438,7 +451,13 @@ class DoubleReverseSourceAdapter:
                     reserve_scratch=reserve_fold_scratch,
                     on_region_visit=record_fold_work,
                 )
-                projection.validate_for(self.arena, trimmed)
+                source_weight = projection.source_word_weight_in(
+                    self.arena, expected_source_root=trimmed
+                )
+                if self.arena.nodes[source_weight].length != new_width:
+                    raise AssertionError(
+                        "four-port source word lost its exact normalized width"
+                    )
                 row = projection.action.row(0, 0)
                 if row.forward_out != right_birth or row.reverse_out != left_birth:
                     raise AssertionError(
@@ -635,6 +654,19 @@ class DoubleReverseSourceAdapter:
                 powered_action = self.temporal_hashlife.advance_action(
                     prior.root, f_steps, phase
                 )
+                # The Hashlife issuer authenticates the action object, while
+                # this consumer binds its full physical seam to the admitted
+                # source image. Width and border equality alone do not grant
+                # authority to replace this occurrence's endpoint.
+                self.temporal_hashlife.validate_action(powered_action)
+                if (
+                    self.temporal_hashlife.root_of(powered_action.source) != prior.root
+                    or powered_action.steps != f_steps
+                    or powered_action.phase_in != phase
+                ):
+                    raise ValueError(
+                        "scheduler returned a foreign temporal source seam"
+                    )
                 result = self.temporal_hashlife.root_of(powered_action.target)
                 self.ledger.bump(
                     _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_HASHLIFE_PUBLICATIONS

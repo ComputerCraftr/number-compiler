@@ -67,6 +67,25 @@ of width, so width drift is reported separately. The transient is an aligned
 upper bound in physical ticks, while the period is exact for this projection.
 Neither this descriptor nor a cyclotomic residue supplies full-word authority.
 
+### Effective seam programs and finite period evidence
+
+For `2rev10`, an effective seam gate records the phase and the two emitted
+boundary digits. Inlets with the same gate produce the same retained bank
+successor under the admitted stencil. A finite repeated gate program can
+therefore have a conditional lasso on `(bank state, program position)`.
+Powering that lasso proves behavior for the supplied program, not that the
+original source supplies that program indefinitely. Independent source blocks
+must still validate their bank states and gates. A matching finite window is
+not an eventual-period certificate for the next inward layer.
+
+The four-step affine coefficient 160 also does not establish a rotation of
+the normalized mantissa: `168` reaches `16188` in four physical `2R` steps.
+After the two-digit width shift, the ratio is `1349/1400`, rather than `8/5`
+or its wrapped value `4/25`. The innovation correction must be retained.
+
+[Current bounded diagnostic and proof scope](../sprints/week-of-2026-11-01/prime-rank-effective-returns.md)
+keeps these claims separate from the source-closed outer-pair return.
+
 ### Spatial run responses versus temporal actions
 
 For a supplied domain run `d^(n+1)`, let `e = carry_apply(d, c)`.

@@ -11,6 +11,60 @@ from devtools.benchmarks.public_query_comparison import Sample, compare
 from number_compiler.api.number_api import NumberCompiler
 
 
+def test_scalar_comparison_keeps_start_and_does_not_invent_point_support() -> None:
+    rows = compare("prime", [0], 1, ["bypass"], start=100, bases=(10,), info=())
+    assert len(rows) == 1
+    assert rows[0]["route"] == "cli"
+    assert rows[0]["value"] == "101"
+    assert rows[0]["info"] == {}
+    with pytest.raises(ValueError, match="source parameter"):
+        compare("collatz", [0], 1, ["bypass"], start=100)
+
+
+def test_registry_observation_options_reach_cli_without_selector_overrides() -> None:
+    rows = compare(
+        "reverse-add",
+        [2],
+        1,
+        ["bypass"],
+        seed=196,
+        info=("temporal.matrix",),
+        no_value=True,
+        observation_options=(
+            ("temporal_matrix_kind", "innovation"),
+            ("temporal_matrix_modulus", "7"),
+        ),
+    )
+    assert len(rows) == 1
+    assert rows[0]["value"] is None
+    clock_rows = compare(
+        "collatz",
+        [2],
+        1,
+        ["bypass"],
+        seed=27,
+        info=("temporal.clock",),
+        no_value=True,
+        observation_options=(("clock_max_digits", "64"),),
+    )
+    assert clock_rows[0]["value"] is None
+    with pytest.raises(ValueError, match="not declared"):
+        compare(
+            "reverse-add", [2], 1, ["bypass"], observation_options=(("nth", "200"),)
+        )
+    with pytest.raises(ValueError, match="unique"):
+        compare(
+            "reverse-add",
+            [2],
+            1,
+            ["bypass"],
+            observation_options=(
+                ("temporal_matrix_modulus", "7"),
+                ("temporal_matrix_modulus", "198"),
+            ),
+        )
+
+
 @pytest.mark.parametrize(
     "horizons",
     [

@@ -40,6 +40,9 @@ from number_compiler.sequences.reverse_add.q19_output import (
     ReversePairOutputOccurrence,
     ReversePairQ19OutputOwner,
 )
+from number_compiler.sequences.reverse_add.q19_punctured_producer import (
+    admits_punctured_scheduler_block,
+)
 from number_compiler.sequences.reverse_add.recursive_cutover import (
     ReverseRecursiveOccurrence,
     ReverseRecursiveTemporalCutover,
@@ -673,13 +676,12 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
             owner = self._q19_owner
             if owner is None or self._q19_source is not origin:
                 raise ValueError("punctured block has no matching Q19 source owner")
-            if steps not in (2, 3, 4):
-                # TileScheduler owns temporal composition. It splits larger
-                # requests into completed T2/T4 children and joins those
-                # source-issued outputs at its existing parent boundary.
+            if not admits_punctured_scheduler_block(
+                steps, payload.pair_output.pair_width
+            ):
                 return None
             pair_output = owner.apply_punctured_pair_block(
-                payload.pair_output, steps=4 if steps == 4 else 2
+                payload.pair_output, steps=2 if steps == 3 else steps
             )
             if steps == 3:
                 # The odd tail is one authenticated irreducible leaf,

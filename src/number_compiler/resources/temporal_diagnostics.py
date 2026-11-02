@@ -437,6 +437,24 @@ def collect_temporal_diagnostics(
                     )
                 ),
                 odd_macro_work=_named_work(counters, f"{prefix}_temporal_odd_macro_"),
+                weighted_carry_work=(
+                    _named_work(counters, f"{prefix}_weighted_carry_")
+                    if prefix == "antihydra_arithmetic"
+                    else None
+                ),
+                diagonal_work=(
+                    _named_work(counters, f"{prefix}_diagonal_")
+                    if prefix == "antihydra_arithmetic"
+                    else None
+                ),
+                diagonal_source_window_work=(
+                    _named_work(
+                        counters,
+                        "collatz_physical_temporal_nth_diagonal_",
+                    )
+                    if prefix == "collatz_physical"
+                    else None
+                ),
                 mixed_clock_work=_named_work(
                     counters, f"{prefix}_temporal_mixed_clock_macro_"
                 ),
@@ -535,6 +553,10 @@ def collect_temporal_diagnostics(
             ),
             reverse_successor_transport_updates=_count(
                 counters, "reverse_successor_tape_reconstruction_coefficient_updates"
+            ),
+            reverse_finite_work=_named_work(counters, "reverse_q19_punctured_"),
+            packed_diagonal_work=_named_work(
+                counters, "double_reverse_packed_diagonal_"
             ),
         ),
         demand=TemporalDemand(
@@ -679,6 +701,51 @@ def collect_temporal_diagnostics(
             ),
             reverse_q19_temporal_ring_failures=_count(
                 counters, _reverse_add_keys.REVERSE_Q19_TEMPORAL_RING_FAILURES
+            ),
+            reverse_accumulator99_bootstrap_digit_steps=_count(
+                counters, _reverse_add_keys.REVERSE_ACCUMULATOR99_BOOTSTRAP_DIGIT_STEPS
+            ),
+            reverse_accumulator99_bootstrap_operand_bits=_count(
+                counters, _reverse_add_keys.REVERSE_ACCUMULATOR99_BOOTSTRAP_OPERAND_BITS
+            ),
+            reverse_accumulator99_bootstrap_failed_work=_count(
+                counters, _reverse_add_keys.REVERSE_ACCUMULATOR99_BOOTSTRAP_FAILED_WORK
+            ),
+            reverse_laurent_cache_hits=_count(
+                counters, _reverse_add_keys.REVERSE_LAURENT_CACHE_HITS
+            ),
+            reverse_laurent_cache_misses=_count(
+                counters, _reverse_add_keys.REVERSE_LAURENT_CACHE_MISSES
+            ),
+            reverse_laurent_cache_publication_failures=_count(
+                counters, _reverse_add_keys.REVERSE_LAURENT_CACHE_PUBLICATION_FAILURES
+            ),
+            reverse_laurent_failed_work=_count(
+                counters, _reverse_add_keys.REVERSE_LAURENT_FAILED_WORK
+            ),
+            reverse_laurent_operand_bits=_count(
+                counters, _reverse_add_keys.REVERSE_LAURENT_OPERAND_BITS
+            ),
+            reverse_laurent_paired_blocks=_count(
+                counters, _reverse_add_keys.REVERSE_LAURENT_PAIRED_BLOCKS
+            ),
+            reverse_laurent_run_record_visits=_count(
+                counters, _reverse_add_keys.REVERSE_LAURENT_RUN_RECORD_VISITS
+            ),
+            reverse_laurent_source_ticks=_count(
+                counters, _reverse_add_keys.REVERSE_LAURENT_SOURCE_TICKS
+            ),
+            double_reverse_source_word_fold_node_visits=_count(
+                counters,
+                _double_reverse_keys.DOUBLE_REVERSE_SOURCE_WORD_FOLD_NODE_VISITS,
+            ),
+            double_reverse_source_word_fold_operand_bits=_count(
+                counters,
+                _double_reverse_keys.DOUBLE_REVERSE_SOURCE_WORD_FOLD_OPERAND_BITS,
+            ),
+            double_reverse_source_word_fold_operations=_count(
+                counters,
+                _double_reverse_keys.DOUBLE_REVERSE_SOURCE_WORD_FOLD_OPERATIONS,
             ),
             reverse_q19_inward_symmetric_filter_value_visits=_count(
                 counters,

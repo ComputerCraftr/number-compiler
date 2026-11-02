@@ -67,6 +67,13 @@ class ProjectionAdapter(Protocol):
     ) -> ProjectedNumberTerm: ...
 
 
+@runtime_checkable
+class ScalarValueAdapter(Protocol):
+    """An exact scalar consumer of an admitted term query, without observers."""
+
+    def __call__(self, query: TermQuery, shared_cache: bool) -> int: ...
+
+
 @dataclass(frozen=True, slots=True)
 class FamilyCapability:
     unit: IndexUnit
@@ -177,6 +184,7 @@ class FamilySpec:
     candidate_information: tuple[ObservationId, ...] = ()
     output_bound: SizeBound | None = None
     matrix: MatrixCapability | None = None
+    scalar_value: AdapterBinding | None = None
 
     def __post_init__(self) -> None:
         if type(self.capability) is not FamilyCapability:
@@ -188,6 +196,11 @@ class FamilySpec:
             or type(self.observation) is not ObservationAdapterBinding
         ):
             raise TypeError("family specification requires typed adapter bindings")
+        if (
+            self.scalar_value is not None
+            and type(self.scalar_value) is not AdapterBinding
+        ):
+            raise TypeError("scalar value adapter requires a typed binding")
         if (
             self.event_query_type is not None
             and self.event_query_type is not CollatzEventQuery

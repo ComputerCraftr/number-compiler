@@ -73,6 +73,17 @@ rendering an endpoint. Reverse/add predicts modulo 99; the certified 2rev10
 width clock predicts modulo 99 and 198. These scalar projections do not select
 future carry banks or authorize a full digit word.
 
+Reverse/add also exposes `temporal.accumulator99`, the two alternating
+accumulator residues with their physical phase. Innovation matrices requested
+with `--temporal-matrix-modulus 99` use this same bounded-bootstrap, powered
+projection without constructing a Q19 endpoint. This projection admits source
+seeds of at most 4,096 decimal digits and charges its source scan and arithmetic
+under the query ledger; the requested generation is powered logarithmically.
+Other moduli retain their
+existing source requirements. Collatz's `temporal.double-accumulator` reports
+the exact added and subtracted physical-operation totals, including a pending
+odd half-step, from the admitted joint action.
+
 `reverse-add --info temporal.seed-orbit` reads the completed scheduler endpoint
 and its correlated center/carry ports for indices 2 through 4097. Width and
 digit consumers share that occurrence; this observation does not replay the
@@ -82,6 +93,22 @@ entry and powered endpoint. Optional `--temporal-period-samples` requests a
 bounded center-window scan, controlled by `--temporal-period-stride`,
 `--temporal-period-depth` and `--temporal-period-max-lag`. The default sample
 count is zero. Finite matching windows never certify an infinite period.
+
+For `2rev10`, `temporal.defect-clock` requests finite carry-defect samples
+from a shared causal halo. `--temporal-defect-digits` selects up to 96 low
+decimal positions, with 8 used when omitted for this observation.
+`--temporal-period-samples` selects at most 128 four-generation samples;
+the defect observation uses 24 when no positive count is supplied.
+Stride and maximum lag use the existing temporal-period options. Supplying
+positive defect digits and samples with `temporal.seed-morphism` requests
+the same finite samples and checks their suffix against its exact endpoint.
+Combined requests reuse that checked result. Candidate periods remain finite
+observations, not authority to repeat a physical source action indefinitely.
+
+The `2rev10` `temporal.residue99` packet also contains the source-guarded
+normalized Laurent accumulator projection modulo 198 and its first decimal
+jet modulo 1980. Its modular powering does not construct the full output or
+establish arbitrary-depth digit periodicity.
 
 ```sh
 number-compiler reverse-add --seed 196 --nth 64 --no-value --info temporal.seed-orbit --format json
@@ -207,10 +234,10 @@ The ordinary `temporal.open-ring` demand retains its 32-F-step limit.
 <!-- cli-capabilities:start -->
 | Family | Index unit | Parameters | Term information | Event information |
 | --- | --- | --- | --- | --- |
-| `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `temporal.residue99`, `temporal.open-ring`, `temporal.seed-orbit`, `temporal.stencil`, `spatial.bank-morphism`, `temporal.matrix.trace` | — |
-| `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.matrix`, `temporal.closed-form`, `temporal.residue99`, `temporal.seed-morphism`, `temporal.carry-safety`, `spatial.stencil`, `temporal.bank`, `temporal.open-ring`, `temporal.birth-layers`, `spatial.pair-bank`, `spatial.bank-morphism`, `spatial.bank-window`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift`, `temporal.matrix.trace` | — |
-| `collatz` | `physical_iterations` | `--seed`, `--radix` | `temporal`, `metrics`, `temporal.matrix`, `temporal.clock`, `temporal.accumulator`, `temporal.macro`, `temporal.innovation-borrow`, `temporal.matrix.trace` | `temporal`, `temporal.clock`, `arithmetic.modular`, `arithmetic.twisted`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.tropical`, `arithmetic.factor`, `safety.execution` |
-| `antihydra` | `macro_returns_after_startup` | — | `temporal`, `metrics`, `temporal.matrix`, `safety.ledger`, `temporal.clock`, `arithmetic.modular`, `spatial.tape`, `arithmetic.twisted`, `temporal.spacetime`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.mahler`, `arithmetic.tropical`, `arithmetic.factor`, `temporal.matrix.trace` | — |
+| `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `temporal.residue99`, `temporal.accumulator99`, `temporal.open-ring`, `temporal.seed-orbit`, `temporal.stencil`, `spatial.bank-morphism`, `temporal.matrix.trace` | — |
+| `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.matrix`, `temporal.closed-form`, `temporal.residue99`, `temporal.seed-morphism`, `temporal.defect-clock`, `temporal.carry-safety`, `spatial.stencil`, `temporal.bank`, `temporal.open-ring`, `temporal.birth-layers`, `spatial.pair-bank`, `spatial.bank-morphism`, `spatial.bank-window`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift`, `temporal.matrix.trace` | — |
+| `collatz` | `physical_iterations` | `--seed`, `--radix` | `temporal`, `metrics`, `temporal.matrix`, `temporal.clock`, `temporal.accumulator`, `temporal.double-accumulator`, `temporal.diagonal-carry`, `temporal.macro`, `temporal.innovation-borrow`, `temporal.matrix.trace` | `temporal`, `temporal.clock`, `arithmetic.modular`, `arithmetic.twisted`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.tropical`, `arithmetic.factor`, `safety.execution` |
+| `antihydra` | `macro_returns_after_startup` | — | `temporal`, `metrics`, `temporal.matrix`, `safety.ledger`, `temporal.clock`, `arithmetic.modular`, `spatial.tape`, `arithmetic.twisted`, `temporal.spacetime`, `temporal.diagonal-carry`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.mahler`, `arithmetic.tropical`, `arithmetic.factor`, `temporal.matrix.trace` | — |
 | `a367620` | `oeis_index` | — | `temporal`, `metrics`, `temporal.clock`, `arithmetic.tropical`, `safety.certificate` | — |
 | `prime` | `prime_index` | `--start` | `metrics` | — |
 | `fermat` | `fermat_index` | — | `temporal`, `metrics`, `temporal.matrix`, `number-theory.primality`, `number-theory.factor`, `number-theory.root`, `temporal.matrix.trace` | — |
@@ -253,8 +280,9 @@ Nondecimal fallback limits are unchanged. Guarded homogeneous/alternating
 interior formulas alone do not authorize a whole-integer endpoint.
 
 `--info temporal.matrix --temporal-matrix-kind innovation` reports endpoint-consistent innovation moments from
-the completed decimal occurrence. With `--temporal-matrix-modulus M`, it folds the output
-grammar modulo M without constructing the exact endpoint integer.
+the completed decimal occurrence. With `--temporal-matrix-modulus M`, it transports
+endpoint residues through the issued carry-switch intervals without constructing
+the exact endpoint integer or rescanning each successor's complete digit tape.
 `--info temporal.stencil` explicitly requests the bounded five-band carry and
 signed-borrow diagnostic, subject to `--max-digits` and `--max-output-bits`.
 These observations do not authorize repeating a conditional source action.
@@ -262,6 +290,25 @@ Neither runs for an ordinary value or metrics-only request.
 
 ```sh
 number-compiler reverse-add --seed 196 --nth 20 --no-value --info temporal.matrix --temporal-matrix-kind innovation --temporal-matrix-modulus 1009 --format json
+```
+
+## Collatz diagonal carry observations
+
+`--info temporal.diagonal-carry` uses the query's already issued joint action.
+It reports normalized and physical endpoints separately, including a pending
+odd half-step. `--temporal-clock-max-digits` bounds its binary spatial field;
+truncated fields are marked incomplete. The packet also reports the aggregate
+two-ledger Laurent defect when it fits that bound. This aggregate is not a sum
+of historical per-step carry polynomials. A moving-cut reflection is sparse,
+including negative exponents, and never pads a word to the temporal index.
+
+Ordinary values, metrics and temporal summaries do not construct these fields.
+The finite source-window executor shares its admitted action with endpoint,
+clock and demanded innovation consumers; it does not infer an unrestricted
+future parity word or a periodic orbit.
+
+```sh
+number-compiler collatz --seed 27 --nth 64 --no-value --info temporal.diagonal-carry --temporal-clock-max-digits 256 --format json
 ```
 
 ## Antihydra arithmetic and physical observations
@@ -272,6 +319,19 @@ The arithmetic endpoint is the total sequence
 negative. `safety.ledger` and `arithmetic.modular` use the arithmetic owner without a physical
 clock roof. Labels distinguish odd centered states `D = a - 1` from odd values
 of `a`.
+
+`--info temporal.diagonal-carry` projects the raw multiplication and corrected
+physical carry fields from that same authenticated arithmetic endpoint.
+`--spatial-width 0` requests every significant column; a positive width requests
+a bounded prefix. `--max-observer-terms` and the query's resource budget apply
+before field allocation. The packet carries eleven lanes in 32-bit column slots,
+with explicit lane offsets and widths; large packed words use the common exact
+hexadecimal integer encoding. It does not retain intermediate temporal rows.
+
+The raw floor of `(3/2)^n * a(0)` differs from iterating the physical integer
+floor. The returned correction keeps them distinct. This observation supplies
+finite source-bound arithmetic, not an all-time safety or non-halting certificate.
+Ordinary value, ledger and temporal-summary requests do not construct the field.
 
 Physical observations use guarded execution after the eleven-step blank-tape
 startup. If a requested target crosses a discovered halt, they report an

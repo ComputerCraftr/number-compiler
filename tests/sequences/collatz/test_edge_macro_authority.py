@@ -11,10 +11,12 @@ from number_compiler.sequences.collatz.border_identity import (
     ENTRY_26847_PHASES,
 )
 from number_compiler.sequences.collatz.boundary_macros import (
-    BoundaryActionTemplateMemo,
     admit_routed_boundary_macro_plan,
     select_admitted_boundary_macro,
     validate_admitted_boundary_macro_plan,
+)
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo,
 )
 from number_compiler.sequences.collatz.guarded_port_join import GuardedPortJoin
 from number_compiler.sequences.collatz.joint_temporal_action import (

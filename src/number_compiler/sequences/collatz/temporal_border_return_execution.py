@@ -21,13 +21,15 @@ from number_compiler.sequences.collatz.boundary_macro_prefixes import (
 )
 from number_compiler.sequences.collatz.boundary_macros import (
     AdmittedBoundaryMacroPlan,
-    BoundaryActionTemplateMemo,
     CollatzBoundaryMacro,
     admit_routed_boundary_macro_plan,
     boundary_macro_26847_phase,
     boundary_metric_key,
     select_admitted_boundary_macro,
     validate_admitted_boundary_macro_plan,
+)
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo,
 )
 from number_compiler.sequences.collatz.temporal_mixed_execution import (
     MixedRunExecutorState,
@@ -267,6 +269,7 @@ def consume_named_boundary(
     parity_builder: ParityProgramBuilder | None,
     macros: CollatzDyadicMacros | None,
     prior_lookup_enabled: bool,
+    issued_boundary: CollatzBoundaryMacro | None = None,
 ) -> tuple[MixedRunExecutorState, CollatzBoundaryMacro, bool]:
     """Use a legacy named boundary macro after exact plan admission."""
     if type(plan) is not AdmittedBoundaryMacroPlan:
@@ -283,7 +286,17 @@ def consume_named_boundary(
             + 32
         )
     )
-    boundary = select_admitted_boundary_macro(plan, templates=templates)
+    if issued_boundary is None:
+        boundary = select_admitted_boundary_macro(plan, templates=templates)
+    else:
+        from number_compiler.sequences.collatz.boundary_macros import (
+            validate_boundary_macro,
+        )
+
+        validate_boundary_macro(issued_boundary)
+        if issued_boundary.source != state.current:
+            raise ValueError("preissued boundary belongs to another source")
+        boundary = issued_boundary
     if (
         boundary.identity != plan.identity
         or boundary.repetitions != plan.repetitions

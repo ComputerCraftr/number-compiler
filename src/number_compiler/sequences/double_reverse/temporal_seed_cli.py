@@ -10,6 +10,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
+from number_compiler.api.json_output import (
+    is_object_sequence,
+    is_string_object_mapping,
+)
+
 from .temporal_center_cyclotomic import certified_cyclotomic_center_driver
 from .temporal_depth_transfer_matrix import (
     SourceConditionedDepthWindowUnavailable,
@@ -223,6 +228,7 @@ def seed_morphism_cli_packet(
     term: DoubleReverseTerm,
     *,
     period_samples: int = 0,
+    defect_digits: int = 0,
     period_stride: int = 1,
     period_depth: int = 2,
     period_max_lag: int = 16,
@@ -242,6 +248,8 @@ def seed_morphism_cli_packet(
         raise ValueError("temporal prefix horizon outside the allowed range")
     if type(period_samples) is not int or not 0 <= period_samples <= 128:
         raise ValueError("period samples outside the allowed range")
+    if type(defect_digits) is not int or not 0 <= defect_digits <= 96:
+        raise ValueError("defect suffix width outside the allowed range")
     if type(period_stride) is not int or not 1 <= period_stride <= 4096:
         raise ValueError("period stride outside the allowed range")
     if type(period_depth) is not int or not 0 <= period_depth <= 8:
@@ -258,6 +266,10 @@ def seed_morphism_cli_packet(
         raise ValueError("temporal period sampling exceeds its work budget")
     if period_drivers and period_samples > 32:
         raise ValueError("source-authenticated driver word exceeds 32 blocks")
+    if period_drivers and defect_digits:
+        raise ValueError(
+            "explicit center drivers and defect-only period view are separate queries"
+        )
 
     source: PointedBankSource | None = None
     morphism: CertifiedSeedOrbitMorphism | None = None
@@ -266,6 +278,13 @@ def seed_morphism_cli_packet(
         root = term.source_root
         mode = "exact_fixed_zero"
     elif term.generation >= 2:
+        # A caller may already have issued the exact prefix cursor and its
+        # powered temporal suffix. Preserve that source-owned route: asking
+        # the general endpoint scheduler to rebuild the same suffix would
+        # re-enter the scalar source adapter and discard authenticated work.
+        # A fresh cold observer still publishes the complete scheduler image
+        # once, which is the fast path used by the installed CLI.
+        prior_prefix = term.temporal_engine.source_prefix()
         try:
             term.temporal_engine.admit_extended_prefix(
                 min(prefix_horizon, term.generation - 2)
@@ -278,7 +297,15 @@ def seed_morphism_cli_packet(
             root = term.endpoint_root()
             mode = "exact_scheduler_fallback"
         else:
-            morphism = certified_seed_orbit_morphism(source, steps=source.f_steps)
+            completed_term = term if term.published_image is not None else None
+            if completed_term is None and prior_prefix is None:
+                term.prepare_endpoint()
+                completed_term = term
+            morphism = certified_seed_orbit_morphism(
+                source,
+                steps=source.f_steps,
+                completed_term=completed_term,
+            )
             morphism.validate_source_authority()
             root = morphism.last.root
             mode = "source_certified_hashlife_dyadic"
@@ -341,28 +368,91 @@ def seed_morphism_cli_packet(
         ):
             raise AssertionError("CLI global ring disagrees with exact word endpoint")
         packet["global_four_block_order"] = morphism.global_four_block_order
+        # The complete-word source morphism already owns the residue action.
+        # Project the same action into the two Laurent accumulation channels;
+        # no second source fold or chronology beyond the finite entry prefix.
+        from .temporal_laurent_return import source_laurent_accumulator_packet
+
+        packet["normalized_laurent_accumulator"] = source_laurent_accumulator_packet(
+            term,
+            source.physical_prefix,
+            morphism.residue_action,
+            authenticated_morphism=morphism,
+        )
         if period_samples:
-            scan = _finite_center_scan(
-                source,
-                samples=period_samples,
-                stride=period_stride,
-                depth=period_depth,
-                max_lag=period_max_lag,
-                include_drivers=period_drivers,
-            )
-            if int(scan["trace"][-1]["generation"]) != term.generation:
-                raise AssertionError(
-                    "finite period scan did not reach target generation"
+            if defect_digits:
+                # The same source-issued alternating-frame transducer powers
+                # the defect observer AND the source-morphism period view.
+                # Compare the final macro's output with the independently
+                # completed all-word Hashlife endpoint, without a new cone.
+                from number_compiler.arithmetic.automata.slp_walks import symbol_at
+
+                from .temporal_defect_period import source_bound_defect_period_packet
+                from .temporal_defect_quotient import defect_modulus
+
+                scan_defect = source_bound_defect_period_packet(
+                    source,
+                    digits=defect_digits,
+                    samples=period_samples,
+                    stride=period_stride,
+                    max_lag=period_max_lag,
                 )
-            if (
-                scan["trace"][-1]["center"] != "".join(map(str, last.center))
-                or scan["trace"][-1]["residue99"] != last.residue99
-                or scan["trace"][-1]["residue198"] != last.residue198
-            ):
-                raise AssertionError(
-                    "independent temporal cones disagree with all-word power"
+                if scan_defect["status"] == "available":
+                    rows = scan_defect["rows"]
+                    if not is_object_sequence(rows) or not rows:
+                        raise AssertionError(
+                            "source-period defect lost its temporal rows"
+                        )
+                    final_row = rows[-1]
+                    if not is_string_object_mapping(final_row):
+                        raise AssertionError("invalid defect terminal row")
+                    generation = final_row.get("generation")
+                    target_modulus_residue = final_row.get("target_mod_2x10w")
+                    if (
+                        type(generation) is not int
+                        or type(target_modulus_residue) is not int
+                    ):
+                        raise AssertionError("invalid exact defect terminal integers")
+                    final_generation = generation + 4
+                    if final_generation != term.generation:
+                        raise AssertionError(
+                            "defect period sample misses the requested endpoint"
+                        )
+                    take = min(last.width, defect_digits + 1)
+                    residue = 0
+                    for pos in range(last.width - take, last.width):
+                        residue = 10 * residue + symbol_at(source.arena, last.root, pos)
+                    if (
+                        residue % defect_modulus(defect_digits)
+                        != target_modulus_residue
+                    ):
+                        raise AssertionError(
+                            "source-certified defect disagrees with full-word endpoint"
+                        )
+                    scan_defect["full_endpoint_suffix_verified"] = True
+                packet["period_observations"] = scan_defect
+            else:
+                scan = _finite_center_scan(
+                    source,
+                    samples=period_samples,
+                    stride=period_stride,
+                    depth=period_depth,
+                    max_lag=period_max_lag,
+                    include_drivers=period_drivers,
                 )
-            packet["period_observations"] = scan
+                if int(scan["trace"][-1]["generation"]) != term.generation:
+                    raise AssertionError(
+                        "finite period scan did not reach target generation"
+                    )
+                if (
+                    scan["trace"][-1]["center"] != "".join(map(str, last.center))
+                    or scan["trace"][-1]["residue99"] != last.residue99
+                    or scan["trace"][-1]["residue198"] != last.residue198
+                ):
+                    raise AssertionError(
+                        "independent temporal cones disagree with all-word power"
+                    )
+                packet["period_observations"] = scan
     elif period_samples:
         packet["period_observations"] = {
             "status": "unavailable",

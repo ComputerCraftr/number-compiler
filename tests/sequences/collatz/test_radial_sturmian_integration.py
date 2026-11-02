@@ -14,7 +14,9 @@ from number_compiler.arithmetic.fields.homogeneous_growth import (
     HomogeneousGrowthScale,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.collatz.boundary_macros import BoundaryActionTemplateMemo
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo,
+)
 from number_compiler.sequences.collatz.clock_observers import CollatzClockObservers
 from number_compiler.sequences.collatz.observation_kind import (
     CollatzObservationKind,

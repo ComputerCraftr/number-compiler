@@ -159,7 +159,10 @@ def test_guarded_temporal_hashlife_matches_literal_long_horizons(
         assert term.materialize(max_bits=4096) == expected
         metrics = term.metrics()
         assert metrics["double_reverse_temporal_hashlife_publications"] > 0
-        assert metrics["double_reverse_hashlife_cones"] > 0
+        assert (
+            metrics["double_reverse_hashlife_cones"] > 0
+            or metrics["double_reverse_packed_diagonal_row_evaluations"] > 0
+        )
         assert metrics["double_reverse_hashlife_tile_selections"] > 0
 
 

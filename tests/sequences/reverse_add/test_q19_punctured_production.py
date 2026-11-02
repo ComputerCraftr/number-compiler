@@ -1,16 +1,23 @@
-"""Fixed-depth punctured T2/T4 are completed production Q19 images."""
+"""Finite punctured carry blocks are published as exact production Q19 images."""
 
+from collections.abc import Callable
 from typing import NoReturn
 
 import pytest
 
+import number_compiler.sequences.reverse_add.punctured_temporal as punctured_temporal
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import reverse_add as metric_keys
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from number_compiler.sequences.reverse_add.q19_output import (
     ReversePairQ19OutputOwner,
 )
 from number_compiler.sequences.reverse_add.source_images import (
     ReverseSourceImageAdapter,
+)
+from number_compiler.sequences.reverse_add.temporal_port_quotient import (
+    MAX_EXACT_DECIMAL_BLOCK_WIDTH,
+    native_decimal_string_transport,
 )
 from tests.support.reference_arithmetic import literal_reverse_add_digits
 
@@ -30,8 +37,9 @@ def test_punctured_t2_advances_two_pair_transitions_from_term_one() -> None:
         assert tuple(owner.iter_digits(result)) == literal_reverse_add_digits(seed, 3)
         counters = ledger.counters
         assert counters["reverse_q19_punctured_t2_applications"] == 1
-        assert counters["reverse_q19_punctured_event_regions"] > 0
-        assert counters["reverse_q19_punctured_prefix_queries"] > 0
+        assert counters["reverse_q19_punctured_event_regions"] == 0
+        assert counters["reverse_q19_punctured_prefix_queries"] == 0
+        assert counters["reverse_q19_punctured_half_tape_tick_transitions"] == 2
         assert counters["reverse_q19_punctured_emitted_grammar_nodes"] > 0
         assert counters.get("reverse_q19_primitive_pair_applications", 0) == 0
     finally:
@@ -183,3 +191,84 @@ def test_failed_postpublication_accounting_rolls_back_issued_slp(
     finally:
         monkeypatch.setattr(ledger, "bump", original_bump)
         owner.dispose()
+
+
+def test_interrupted_native_block_charges_progress_and_rolls_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_transport = native_decimal_string_transport
+    started_widths: list[int] = []
+    block_start_width: list[int] = []
+
+    def interrupt_after_three_ticks(
+        source_text: str,
+        steps: int,
+        *,
+        max_width: int = MAX_EXACT_DECIMAL_BLOCK_WIDTH,
+        on_tick_start: Callable[[int], None] | None = None,
+    ) -> tuple[str, int]:
+        if on_tick_start is None:
+            raise AssertionError("native finite block omitted work accounting")
+        block_start_width.append(len(source_text))
+
+        def interrupting_tick(width: int) -> None:
+            on_tick_start(width)
+            started_widths.append(width)
+            if len(started_widths) == 3:
+                raise RuntimeError("interrupted native decimal block")
+
+        return original_transport(
+            source_text,
+            steps,
+            max_width=max_width,
+            on_tick_start=interrupting_tick,
+        )
+
+    monkeypatch.setattr(
+        punctured_temporal,
+        "native_decimal_string_transport",
+        interrupt_after_three_ticks,
+    )
+    ledger = ResourceLedger()
+    owner = ReversePairQ19OutputOwner(
+        ledger, literal_reverse_add_digits(196, 0), base=10
+    )
+    initial_nodes = len(owner.arena.nodes)
+    initial_issues = dict(owner.audit_snapshot().issued.payload_view)
+    try:
+        with pytest.raises(RuntimeError, match="interrupted native decimal block"):
+            owner.apply_punctured_pair_block(owner.initial, steps=17)
+
+        counters = ledger.counters
+        assert counters[metric_keys.REVERSE_Q19_PUNCTURED_NATIVE_DECIMAL_TICKS] == 3
+        assert counters[
+            metric_keys.REVERSE_Q19_PUNCTURED_NATIVE_DECIMAL_DIGIT_VISITS
+        ] == block_start_width[0] + sum(started_widths)
+        assert counters[metric_keys.REVERSE_Q19_PUNCTURED_FAILED_APPLICATIONS] == 1
+        assert len(owner.arena.nodes) == initial_nodes
+        assert dict(owner.audit_snapshot().issued.payload_view) == initial_issues
+    finally:
+        owner.dispose()
+        assert ledger.entries == ledger.nodes == 0
+
+
+def test_seed_196_8256_nth_uses_bounded_q19_publications() -> None:
+    term = ReverseAddPoweredTerm(196, 8256)
+    workspace = term.source_workspace()
+    try:
+        expected = literal_reverse_add_digits(196, 8256)
+        assert term.digits() == expected
+        counters = term.resource_ledger.counters
+        assert (
+            counters.get(
+                metric_keys.REVERSE_SOURCE_PUNCTURED_COMPLETED_CHILD_PUBLICATIONS, 0
+            )
+            <= 32
+        )
+        assert counters.get(metric_keys.REVERSE_Q19_PUNCTURED_WIDE_APPLICATIONS, 0) > 0
+        assert (
+            counters.get(metric_keys.REVERSE_Q19_PUNCTURED_NATIVE_DECIMAL_TICKS, 0)
+            >= 8000
+        )
+    finally:
+        workspace.dispose()

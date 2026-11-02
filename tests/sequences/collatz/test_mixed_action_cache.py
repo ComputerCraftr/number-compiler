@@ -21,7 +21,7 @@ from number_compiler.sequences.collatz import (
     temporal_unified_skew_execution,
 )
 from number_compiler.sequences.collatz.border_identity import MixedParityMotif
-from number_compiler.sequences.collatz.boundary_macros import (
+from number_compiler.sequences.collatz.boundary_templates import (
     BoundaryActionTemplateMemo,
 )
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
@@ -29,6 +29,7 @@ from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
 )
 from number_compiler.sequences.collatz.mixed_action_cache import (
     MAX_RECORDS_PER_PREFIX,
+    MixedActionTailNotAdmitted,
     lookup_mixed_action,
     merge_mixed_action_records,
     remember_mixed_action,
@@ -190,6 +191,81 @@ def test_mixed_cache_rejects_wrong_residue_and_width_transport(
         cache.reset()
 
 
+def test_process_mixed_action_is_restored_once_per_local_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = _cold_production_d68(monkeypatch)
+    ledger = ResourceLedger()
+    scratch = RunArithmeticWorkspace.for_ledger(ledger, "collatz_physical")
+    try:
+        with scratch.scope(), CollatzDyadicMacros(ledger, shared_cache=True) as owner:
+            first = lookup_mixed_action(
+                owner,
+                _D68_SOURCE,
+                _QUERY_PHYSICAL_TICKS,
+                scratch,
+                include_width=False,
+            )
+            assert first is not None
+
+            def forbidden(*_args: object, **_kwargs: object) -> object:
+                raise AssertionError("local mixed action hit rebuilt its word action")
+
+            monkeypatch.setattr(
+                mixed_clock_macros, "restore_mixed_cache_payload", forbidden
+            )
+            second = lookup_mixed_action(
+                owner,
+                _D68_SOURCE,
+                _QUERY_PHYSICAL_TICKS,
+                scratch,
+                include_width=False,
+            )
+            assert second is first
+            assert ledger.counters["collatz_hashlife_mixed_retrieved"] == 1
+            assert ledger.counters["collatz_hashlife_mixed_admitted"] == 2
+    finally:
+        cache.reset()
+
+
+def test_local_short_mixed_action_respects_a_stricter_minimum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = _cold_production_d68(monkeypatch)
+    ledger = ResourceLedger()
+    scratch = RunArithmeticWorkspace.for_ledger(ledger, "collatz_physical")
+    try:
+        with scratch.scope(), CollatzDyadicMacros(ledger, shared_cache=True) as owner:
+            short = lookup_mixed_action(
+                owner,
+                _D68_SOURCE,
+                _QUERY_PHYSICAL_TICKS,
+                scratch,
+                include_width=False,
+                minimum_physical_ticks=0,
+            )
+            assert short is not None
+            assert short.physical_ticks == _D68_PHYSICAL_TICKS
+
+            with pytest.raises(MixedActionTailNotAdmitted):
+                lookup_mixed_action(
+                    owner,
+                    _D68_SOURCE,
+                    _QUERY_PHYSICAL_TICKS,
+                    scratch,
+                    include_width=False,
+                    minimum_physical_ticks=_D68_PHYSICAL_TICKS + 1,
+                )
+
+            # The undersized local memo entry was ignored and the process
+            # bucket retained authority to classify the source-admitted tail.
+            assert ledger.counters["collatz_hashlife_mixed_retrieved"] == 2
+            assert ledger.counters["collatz_hashlife_mixed_root_tail_rejections"] == 1
+            assert ledger.counters["collatz_hashlife_mixed_admitted"] == 1
+    finally:
+        cache.reset()
+
+
 def test_process_reset_invalidates_a_published_mixed_parent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -298,15 +374,19 @@ def test_unissued_mixed_payload_still_checks_exact_gain(
     changed = list(first_record)
     changed[2] += 1 << changed[0]
 
-    with pytest.raises(ValueError, match="differs from its action"):
+    with pytest.raises(ValueError, match="coefficients differ from its grammar"):
         mixed_clock_macros.restore_mixed_cache_payload(
-            _D68_SOURCE, tuple(changed), include_width=False
+            _D68_SOURCE,
+            tuple(changed),
+            include_width=False,
+            preflight=lambda _bits: None,
         )
     with pytest.raises(ValueError, match="foreign cache lease"):
         mixed_clock_macros.restore_mixed_cache_payload(
             _D68_SOURCE,
             first_record,
             include_width=False,
+            preflight=lambda _bits: None,
             cache_lease=cast(CacheLease, object()),
         )
 

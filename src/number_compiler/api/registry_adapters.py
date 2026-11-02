@@ -12,6 +12,7 @@ from number_compiler.api.family_types import (
     ObserveObserver,
     PrepareObserver,
     ProjectionAdapter,
+    ScalarValueAdapter,
     VerificationAdapter,
 )
 from number_compiler.api.observation_types import ObservationId
@@ -44,6 +45,22 @@ def resolve_projection_adapter(query: TermQuery) -> ProjectionAdapter:
         adapter, 2
     ):
         raise TypeError("registered projection adapter has an incompatible interface")
+    return adapter
+
+
+def resolve_scalar_value_adapter(query: TermQuery) -> ScalarValueAdapter | None:
+    """Resolve an optional scalar consumer through the same family authority."""
+    spec = family_registry.family_spec(query.family)
+    if type(query) is not spec.query_type:
+        raise TypeError("unsupported family query type")
+    binding = spec.scalar_value
+    if binding is None:
+        return None
+    adapter: object = getattr(import_module(binding.module), binding.attribute)
+    if not isinstance(adapter, ScalarValueAdapter) or not _accepts_positional_arguments(
+        adapter, 2
+    ):
+        raise TypeError("registered scalar adapter has an incompatible interface")
     return adapter
 
 

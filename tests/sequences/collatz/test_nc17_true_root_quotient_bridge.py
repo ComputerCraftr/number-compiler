@@ -42,6 +42,7 @@ def test_detailed_scheduler_publishes_carrier_without_recompiling(
         audit = audit_registered_payloads(term.resource_ledger)
         assert audit.forbidden_future_payloads == 0
         assert audit.unbounded_future_integers == 0
+        assert audit.unknown_payloads == 0
     finally:
         workspace = term.audit_snapshot().workspace
         if workspace is not None:

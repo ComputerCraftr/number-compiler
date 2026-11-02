@@ -488,6 +488,235 @@ proof -
   show ?thesis by (rule discovery_stop_constructs_complete_prefix[OF admission])
 qed
 
+text \<open>The bounded phase-lane selector inspects odd candidates after the
+last authenticated factor and tests only old prime lanes whose square does
+not exceed the candidate.  This is sound up to the square of the current
+prefix endpoint: any composite candidate has a prime divisor no larger than
+its square root, hence inside the authenticated consecutive prefix.  The
+square bound is a guard for this shortcut, not a bound on prime gaps or a
+claim that every requested root is covered by it.\<close>
+
+theorem consecutive_descriptor_phase_lane_candidate_prime:
+  assumes descriptor: "consecutive_prime_descriptor ps"
+      and above: "last ps < candidate"
+      and square_bound: "candidate \<le> (last ps)^2"
+      and lanes: "\<forall>p\<in>set ps. p^2 \<le> candidate \<longrightarrow>
+        \<not> p dvd candidate"
+  shows "prime candidate"
+proof -
+  have prefix_set:
+    "set ps = {p. prime p \<and> p \<le> last ps}"
+    by (rule consecutive_descriptor_set[OF descriptor])
+  have nonempty: "ps \<noteq> []"
+    using descriptor by (simp add: consecutive_prime_descriptor_def)
+  have last_prime: "prime (last ps)"
+    using last_in_set[OF nonempty] prefix_set by auto
+  have last_lower: "2 \<le> last ps"
+    using prime_gt_1_nat[OF last_prime] by arith
+  have candidate_nontrivial: "candidate \<noteq> 0" "candidate \<noteq> 1"
+    using above last_lower by arith+
+  have no_small_prime_divisor:
+    "\<nexists>p. prime p \<and> p dvd candidate \<and> p^2 \<le> candidate"
+  proof
+    assume "\<exists>p. prime p \<and> p dvd candidate \<and> p^2 \<le> candidate"
+    then obtain p where p_prime: "prime p"
+      and p_divides: "p dvd candidate"
+      and p_small: "p^2 \<le> candidate" by blast
+    have p_square_bound: "p^2 \<le> (last ps)^2"
+      by (rule order_trans[OF p_small square_bound])
+    have p_le_last: "p \<le> last ps"
+      using power_le_imp_le_base[of p 1 "last ps"] p_square_bound by simp
+    have p_member: "p \<in> set ps"
+      using p_prime p_le_last prefix_set by blast
+    show False using lanes[rule_format, OF p_member] p_small p_divides by blast
+  qed
+  have candidate_criterion:
+    "prime candidate \<longleftrightarrow>
+      candidate \<noteq> 0 \<and> candidate \<noteq> 1 \<and>
+      (\<not> (\<exists>p. prime p \<and> p dvd candidate \<and> p^2 \<le> candidate))"
+    by (rule prime_prime_factor_sqrt)
+  show ?thesis
+    using candidate_criterion candidate_nontrivial no_small_prime_divisor
+    by blast
+qed
+
+lemma consecutive_descriptor_bounded_lane_rejection_iff:
+  assumes descriptor: "consecutive_prime_descriptor ps"
+      and above: "last ps < n"
+      and square_bound: "n \<le> (last ps)^2"
+  shows "n \<notin> wheel_sift (rev ps) {1..n} \<longleftrightarrow>
+    (\<exists>p. p \<in> set ps \<and> p^2 \<le> n \<and> p dvd n)"
+proof -
+  have prefix_set:
+    "set ps = {p. prime p \<and> p \<le> last ps}"
+    by (rule consecutive_descriptor_set[OF descriptor])
+  have nonempty: "ps \<noteq> []"
+    using descriptor by (simp add: consecutive_prime_descriptor_def)
+  have last_prime: "prime (last ps)"
+    using last_in_set[OF nonempty] prefix_set by auto
+  have last_lower: "2 \<le> last ps"
+    using prime_gt_1_nat[OF last_prime] by arith
+  have n_gt_one: "1 < n" using above last_lower by arith
+  show ?thesis
+  proof
+    assume rejected: "n \<notin> wheel_sift (rev ps) {1..n}"
+    have some_lane:
+      "\<exists>p. p \<in> set ps \<and> p dvd n"
+      using rejected n_gt_one
+      by (auto simp: wheel_sift_membership)
+    then obtain p where p_member: "p \<in> set ps" and p_divides: "p dvd n"
+      by blast
+    have p_prime: "prime p" and p_le_last: "p \<le> last ps"
+      using prefix_set p_member by auto
+    have p_below_n: "p < n" using p_le_last above by arith
+    have n_not_prime: "\<not> prime n"
+    proof
+      assume n_prime: "prime n"
+      have p_eq_n: "p = n"
+        by (rule primes_dvd_imp_eq[OF p_prime n_prime p_divides])
+      with p_below_n show False by arith
+    qed
+    have n_criterion:
+      "prime n \<longleftrightarrow>
+        n \<noteq> 0 \<and> n \<noteq> 1 \<and>
+        (\<not> (\<exists>q. prime q \<and> q dvd n \<and> q^2 \<le> n))"
+      by (rule prime_prime_factor_sqrt)
+    have n_nontrivial: "n \<noteq> 0" "n \<noteq> 1"
+      using n_gt_one by arith+
+    have small_lane:
+      "\<exists>q. prime q \<and> q dvd n \<and> q^2 \<le> n"
+      using n_criterion n_nontrivial n_not_prime by blast
+    then obtain q where q_prime: "prime q" and q_divides: "q dvd n"
+      and q_small: "q^2 \<le> n" by blast
+    have q_square_bound: "q^2 \<le> (last ps)^2"
+      by (rule order_trans[OF q_small square_bound])
+    have q_le_last: "q \<le> last ps"
+      using power_le_imp_le_base[of q 1 "last ps"] q_square_bound by simp
+    have q_member: "q \<in> set ps"
+      using prefix_set q_prime q_le_last by blast
+    show "\<exists>p. p \<in> set ps \<and> p^2 \<le> n \<and> p dvd n"
+      using q_member q_small q_divides by blast
+  next
+    assume "\<exists>p. p \<in> set ps \<and> p^2 \<le> n \<and> p dvd n"
+    then obtain p where "p \<in> set ps" and "p dvd n" by blast
+    then show "n \<notin> wheel_sift (rev ps) {1..n}"
+      using n_gt_one by (auto simp: wheel_sift_membership)
+  qed
+qed
+
+theorem consecutive_descriptor_first_odd_lane_candidate_is_next_prime:
+  assumes descriptor: "consecutive_prime_descriptor ps"
+      and above: "last ps < candidate"
+      and square_bound: "candidate \<le> (last ps)^2"
+      and lanes: "\<forall>p\<in>set ps. p^2 \<le> candidate \<longrightarrow>
+        \<not> p dvd candidate"
+      and intervening_rejected: "\<forall>n. last ps < n \<and> n < candidate \<and>
+        odd n \<longrightarrow> n \<notin> wheel_sift (rev ps) {1..n}"
+  shows "candidate = next_prime_after (last ps)"
+proof -
+  have candidate_prime:
+    "prime candidate"
+    by (rule consecutive_descriptor_phase_lane_candidate_prime
+      [OF descriptor above square_bound lanes])
+  have next_prime: "prime (next_prime_after (last ps))"
+    by (rule next_prime_after_prime)
+  have next_after_last: "last ps < next_prime_after (last ps)"
+    by (rule next_prime_after_gt)
+  have next_le_candidate: "next_prime_after (last ps) \<le> candidate"
+    by (rule next_prime_after_least[OF candidate_prime above])
+  have nonempty: "ps \<noteq> []"
+    using descriptor by (simp add: consecutive_prime_descriptor_def)
+  have prefix_set:
+    "set ps = {p. prime p \<and> p \<le> last ps}"
+    by (rule consecutive_descriptor_set[OF descriptor])
+  have last_prime: "prime (last ps)"
+    using last_in_set[OF nonempty] prefix_set by auto
+  have last_lower: "2 \<le> last ps"
+    using prime_gt_1_nat[OF last_prime] by arith
+  have next_odd: "odd (next_prime_after (last ps))"
+    by (rule prime_odd_nat[OF next_prime])
+      (use next_after_last last_lower in arith)
+  have candidate_le_next:
+    "candidate \<le> next_prime_after (last ps)"
+  proof (rule ccontr)
+    assume "\<not> candidate \<le> next_prime_after (last ps)"
+    then have next_before: "next_prime_after (last ps) < candidate" by simp
+    have next_rejected:
+      "next_prime_after (last ps) \<notin>
+        wheel_sift (rev ps) {1..next_prime_after (last ps)}"
+      using intervening_rejected[rule_format, of "next_prime_after (last ps)"]
+        next_after_last next_before next_odd by blast
+    have next_survives:
+      "next_prime_after (last ps) \<in>
+        wheel_sift (rev ps) {1..next_prime_after (last ps)}"
+    proof -
+      have next_sift:
+        "wheel_sift (rev ps) {1..next_prime_after (last ps)} =
+          {1, next_prime_after (last ps)}"
+        by (rule consecutive_descriptor_sift_through_next[OF descriptor])
+      have next_not_one: "next_prime_after (last ps) \<noteq> 1"
+        using prime_gt_1_nat[OF next_prime] by arith
+      show ?thesis using next_sift next_not_one by simp
+    qed
+    from next_rejected next_survives show False by contradiction
+  qed
+  show ?thesis using candidate_le_next next_le_candidate by simp
+qed
+
+theorem consecutive_descriptor_phase_lane_exhaustion_is_exact:
+  fixes root :: nat
+  assumes descriptor: "consecutive_prime_descriptor ps"
+      and root_above: "last ps < root"
+      and square_bound: "root \<le> (last ps)^2"
+      and rejected: "\<forall>candidate. last ps < candidate \<and>
+        candidate \<le> root \<and> odd candidate \<longrightarrow>
+        candidate \<notin> wheel_sift (rev ps) {1..candidate}"
+  shows "root < next_prime_after (last ps)"
+proof -
+  have next_prime: "prime (next_prime_after (last ps))"
+    by (rule next_prime_after_prime)
+  have next_after_last: "last ps < next_prime_after (last ps)"
+    by (rule next_prime_after_gt)
+  have nonempty: "ps \<noteq> []"
+    using descriptor by (simp add: consecutive_prime_descriptor_def)
+  have prefix_set:
+    "set ps = {p. prime p \<and> p \<le> last ps}"
+    by (rule consecutive_descriptor_set[OF descriptor])
+  have last_prime: "prime (last ps)"
+    using last_in_set[OF nonempty] prefix_set by auto
+  have last_lower: "2 \<le> last ps"
+    using prime_gt_1_nat[OF last_prime] by arith
+  have next_odd: "odd (next_prime_after (last ps))"
+    by (rule prime_odd_nat[OF next_prime])
+      (use next_after_last last_lower in arith)
+  show ?thesis
+  proof (rule ccontr)
+    assume "\<not> root < next_prime_after (last ps)"
+    then have next_le_root: "next_prime_after (last ps) \<le> root" by simp
+    have next_le_square:
+      "next_prime_after (last ps) \<le> (last ps)^2"
+      by (rule order_trans[OF next_le_root square_bound])
+    have next_rejected:
+      "next_prime_after (last ps) \<notin>
+        wheel_sift (rev ps) {1..next_prime_after (last ps)}"
+      using rejected[rule_format, of "next_prime_after (last ps)"]
+        next_after_last next_le_root next_odd by blast
+    have next_survives:
+      "next_prime_after (last ps) \<in>
+        wheel_sift (rev ps) {1..next_prime_after (last ps)}"
+    proof -
+      have next_sift:
+        "wheel_sift (rev ps) {1..next_prime_after (last ps)} =
+          {1, next_prime_after (last ps)}"
+        by (rule consecutive_descriptor_sift_through_next[OF descriptor])
+      have next_not_one: "next_prime_after (last ps) \<noteq> 1"
+        using prime_gt_1_nat[OF next_prime] by arith
+      show ?thesis using next_sift next_not_one by simp
+    qed
+    from next_rejected next_survives show False by contradiction
+  qed
+qed
+
 text \<open>The exported theorem maps the exact Python branch entered after
 \<open>count(root) != 1\<close>: initial bounds are \<open>last_factor + 1\<close>
 and \<open>root\<close>, midpoint selection uses the same floor average, and the
@@ -516,6 +745,10 @@ ML \<open>
       consecutive_descriptor_next_prime_counts
       prefix_search_step_preserves_invariant prefix_search_loop_terminates
       prefix_search_loop_returns_next_prime
+      consecutive_descriptor_phase_lane_candidate_prime
+      consecutive_descriptor_bounded_lane_rejection_iff
+      consecutive_descriptor_first_odd_lane_candidate_is_next_prime
+      consecutive_descriptor_phase_lane_exhaustion_is_exact
       deterministic_prefix_extension_step
       deterministic_prefix_discovery_stop}) then ()
     else error "Deterministic prime prefix extension depends on an oracle";

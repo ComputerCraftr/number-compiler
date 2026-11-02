@@ -209,6 +209,7 @@ class PrimePrefixRank:
         self._covered_last_factor = self.dag.last_factor
         self._coverage_publishable = True
         self.discovery_queries = 0
+        self._pending_phase_seam: int | None = None
         self._partial_query: PrimePartialSuccessorQuery | None = None
 
     @property
@@ -286,16 +287,36 @@ class PrimePrefixRank:
         # discovery. Publishing every internal discovery rank adds cold latency
         # and retains states that a warm query never consumes.
         self._coverage_publishable = False
+        first_seam_validated = False
+        pending_seam = self._pending_phase_seam
+        if pending_seam is not None:
+            if pending_seam != self.dag.last_factor:
+                raise RuntimeError("pending prime phase seam lost its source endpoint")
+            self._validate_phase_successor_seam(pending_seam)
+            self._pending_phase_seam = None
+            first_seam_validated = True
         with self.dag.suspend_shared_publication():
             while True:
+                prime, examined, complete = self.dag.advance_verified_phase_lane(
+                    root, max_stages=self.max_stages
+                )
+                self.discovery_queries += examined
+                if complete:
+                    self._commit_covered_root(root)
+                    return
+                if prime is not None:
+                    if not first_seam_validated:
+                        self._pending_phase_seam = prime
+                        self._validate_phase_successor_seam(prime)
+                        self._pending_phase_seam = None
+                        first_seam_validated = True
+                    continue
+                # The phase lane stops at the last-factor square. Beyond that
+                # boundary, keep the exact Legendre rank/search path; no
+                # prime-gap bound or unproved period extension is assumed.
                 self.discovery_queries += 1
                 if self.dag.count(root) == 1:
-                    self.covered_root = root
-                    self._committed_covered_root = root
-                    self._covered_factor_authority = self.dag.factor_source_identity()
-                    self._covered_factor_count = self.dag.factor_count
-                    self._covered_last_factor = self.dag.last_factor
-                    self._coverage_publishable = True
+                    self._commit_covered_root(root)
                     return
                 if self.dag.factor_count >= self.max_stages:
                     raise ValueError("prime stage budget exceeded (--max-prime-stages)")
@@ -309,6 +330,23 @@ class PrimePrefixRank:
                     else:
                         lo = mid + 1
                 self.dag.append_consecutive_factor(lo)
+
+    def _commit_covered_root(self, root: int) -> None:
+        self.covered_root = root
+        self._committed_covered_root = root
+        self._covered_factor_authority = self.dag.factor_source_identity()
+        self._covered_factor_count = self.dag.factor_count
+        self._covered_last_factor = self.dag.last_factor
+        self._coverage_publishable = True
+
+    def _validate_phase_successor_seam(self, prime: int) -> None:
+        parent_depth = self.dag.factor_count - 1
+        self.discovery_queries += 2
+        if (
+            self.dag.count(prime - 1, parent_depth) != 1
+            or self.dag.count(prime, parent_depth) != 2
+        ):
+            raise RuntimeError("prime phase successor lost its rank seam")
 
     def count_leq(self, value: int) -> int:
         if value < 2:

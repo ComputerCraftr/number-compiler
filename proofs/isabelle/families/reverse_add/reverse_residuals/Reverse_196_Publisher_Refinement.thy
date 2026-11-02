@@ -74,15 +74,6 @@ proof -
     by (subst split, simp add: carry_out_append carry_out_def)
 qed
 
-lemma length_digits_exact:
-  "length (digits ss) =
-    length ss + (if carry_out False ss then 1 else 0)"
-  by (simp add: digits_def)
-
-lemma length_step_exact [simp]:
-  "length (step ss) = length (digits ss)"
-  by (simp add: step_def)
-
 text \<open>The physical Q19 middle is a carry transfer, not an independently
 chosen high-window ingress.  Splitting the producer's actual coefficient word
 into low, middle and high parts forces the low overflow through the middle
@@ -471,12 +462,6 @@ corollary reverse_two_port_publisher_refines_all_196_steps:
   "reverse_two_port_publisher (run step n [7,18,7]) =
     step (run step n [7,18,7])"
   using reverse_two_port_publisher_refines_step all_196_pair_fields_valid by blast
-
-lemma valid_pair_run:
-  assumes "valid_pair ss"
-  shows "valid_pair (run step n ss)"
-  using assms
-  by (induction n arbitrary: ss) (auto intro: valid_pair_successor)
 
 lemma reverse_add_run_source_root_square:
   "run f (first + second) source =

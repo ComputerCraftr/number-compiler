@@ -43,8 +43,14 @@ from number_compiler.sequences.collatz.boundary_macros import (
     CollatzBoundaryMacro,
     admit_boundary_macro_plan,
 )
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo,
+)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
+)
+from number_compiler.sequences.collatz.guarded_skew_power import (
+    GuardedSkewCylinderPower,
 )
 from number_compiler.sequences.collatz.joint_radix_border import JointRadix6Source
 from number_compiler.sequences.collatz.radial_boundary_coupling import (
@@ -56,11 +62,7 @@ from number_compiler.sequences.collatz.terminal_preimage import (
 from number_compiler.sequences.collatz.unified_skew_clock import SkewQuadraticClock
 
 if TYPE_CHECKING:
-    from number_compiler.sequences.collatz.boundary_macros import (
-        BoundaryActionTemplateMemo,
-    )
     from number_compiler.sequences.collatz.skew_cylinder_repeat import (
-        GuardedSkewCylinderPower,
         RepeatedWordMooreCylinder,
     )
     from number_compiler.sequences.collatz.source_closed_port_action import (
@@ -356,9 +358,6 @@ class UnifiedSkewChain:
         Coefficient and endpoint construction remains a separate demanded,
         preflighted operation on the returned power.
         """
-        from number_compiler.sequences.collatz.skew_cylinder_repeat import (
-            GuardedSkewCylinderPower,
-        )
 
         self.verify()
         return GuardedSkewCylinderPower.from_chain(
@@ -421,9 +420,6 @@ class UnifiedSkewChain:
                 self.fields.steps,
             ):
                 raise AssertionError("radial boundary seam count lost composition")
-            from number_compiler.sequences.collatz.skew_cylinder_repeat import (
-                GuardedSkewCylinderPower,
-            )
 
             cylinder, power = GuardedSkewCylinderPower.inspect_chain(
                 self, 2, evaluator=radial_evaluator

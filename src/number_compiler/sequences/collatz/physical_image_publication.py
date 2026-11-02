@@ -55,6 +55,13 @@ BOUNDARY_MACRO_PORT: Final[str] = "collatz-first-boundary-macro-v1"
 INNOVATION_TAPE_PORT = SIGNED_INNOVATION_TAPE_TAG
 
 
+def joint_action_node_cost(_key: str, action: CollatzJointRunAction) -> int:
+    """Charge the exact retained joint occurrence and its affine field graph."""
+    if type(action) is not CollatzJointRunAction or not action.fields.producer_issued:
+        raise TypeError("Collatz joint-action memo contains an unissued value")
+    return retained_payload_node_count(action)
+
+
 def _boundary_macro_node_cost(
     _key: str, macro: CollatzBoundaryMacro | BorderReturnMacro
 ) -> int:
@@ -86,6 +93,7 @@ class CollatzPhysicalImagePublication:
     root_action: DyadicReturnActionID
     _include_joint_cocycle: bool
     _joint_action_snapshot: tuple[int, ...] | None
+    _joint_action_memo: OwnedMemo[str, CollatzJointRunAction] | None
     _include_innovation_tape: bool
     _innovation_modulus: int | None
     _first_boundary_macro_snapshot: tuple[int, tuple[BorderWireValue, ...]] | None
@@ -134,6 +142,13 @@ class CollatzPhysicalImagePublication:
         payload = action.root_port_payload()
         if self._joint_action_snapshot not in (None, payload):
             raise ValueError("conflicting Collatz root joint actions")
+        memo = self._joint_action_memo
+        if memo is None:
+            raise ValueError("the demanded Collatz root action has no owner")
+        retained = memo.get("root")
+        if retained is not None and retained is not action:
+            raise ValueError("conflicting typed Collatz root joint actions")
+        memo["root"] = action
         self._joint_action_snapshot = payload
         return replace(
             candidate,

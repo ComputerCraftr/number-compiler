@@ -60,7 +60,7 @@ def test_prime_budget_options_are_typed_and_prime_only() -> None:
 def test_nonpositive_prime_budget_is_rejected_before_construction(
     option: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(cli, "NumberCompiler", _forbidden)
+    monkeypatch.setattr("number_compiler.api.number_api.NumberCompiler", _forbidden)
     assert cli.main(["prime", "--nth", "1", option, "0"]) == 2
     assert option in capsys.readouterr().err
 

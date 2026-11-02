@@ -23,6 +23,7 @@ __all__ = (
     "literal_pair_sum_successor",
     "literal_reverse_add",
     "literal_reverse_add_digits",
+    "normalized_collatz_word",
     "radix_digits_lsd",
 )
 
@@ -125,6 +126,20 @@ def physical_collatz_literal(seed: int, steps: int) -> int:
     for _ in range(steps):
         value = value // 2 if value % 2 == 0 else 3 * value + 1
     return value
+
+
+def normalized_collatz_word(source: int, steps: int) -> tuple[int, tuple[int, ...]]:
+    """Return an independent normalized endpoint and its finite parity word."""
+    if type(source) is not int or source <= 0:
+        raise ValueError("normalized Collatz source must be positive")
+    if type(steps) is not int or steps < 0:
+        raise ValueError("normalized Collatz steps must be nonnegative")
+    word: list[int] = []
+    for _ in range(steps):
+        bit = source & 1
+        word.append(bit)
+        source = (3 * source + 1) // 2 if bit else source // 2
+    return source, tuple(word)
 
 
 def symmetric_word(rng: random.Random, base: int, width: int) -> tuple[int, ...]:

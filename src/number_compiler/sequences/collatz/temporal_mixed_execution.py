@@ -13,7 +13,7 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
-from number_compiler.sequences.collatz.boundary_macros import (
+from number_compiler.sequences.collatz.boundary_templates import (
     BoundaryActionTemplateMemo,
 )
 from number_compiler.sequences.collatz.mixed_action_cache import (

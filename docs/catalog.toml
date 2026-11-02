@@ -494,3 +494,51 @@ kind = "sprint-topic"
 topic = "strict-toolchain-macro-identities"
 status = "current"
 week_start = "2026-10-18"
+
+[[document]]
+id = "sprint-2026-10-25-readme"
+path = "docs/sprints/week-of-2026-10-25/README.md"
+kind = "sprint"
+topic = "readme"
+status = "current"
+week_start = "2026-10-25"
+
+[[document]]
+id = "sprint-2026-10-25-carry-period-cli"
+path = "docs/sprints/week-of-2026-10-25/carry-period-cli.md"
+kind = "sprint-topic"
+topic = "carry-period-cli"
+status = "current"
+week_start = "2026-10-25"
+
+[[document]]
+id = "sprint-2026-11-01-readme"
+path = "docs/sprints/week-of-2026-11-01/README.md"
+kind = "sprint"
+topic = "readme"
+status = "current"
+week_start = "2026-11-01"
+
+[[document]]
+id = "sprint-2026-11-01-antihydra-carry-morphism"
+path = "docs/sprints/week-of-2026-11-01/antihydra-carry-morphism.md"
+kind = "sprint-topic"
+topic = "antihydra-carry-morphism"
+status = "current"
+week_start = "2026-11-01"
+
+[[document]]
+id = "sprint-2026-11-01-diagonal-modular-cli"
+path = "docs/sprints/week-of-2026-11-01/diagonal-modular-cli.md"
+kind = "sprint-topic"
+topic = "diagonal-modular-cli"
+status = "current"
+week_start = "2026-11-01"
+
+[[document]]
+id = "sprint-2026-11-01-prime-rank-effective-returns"
+path = "docs/sprints/week-of-2026-11-01/prime-rank-effective-returns.md"
+kind = "sprint-topic"
+topic = "prime-rank-effective-returns"
+status = "current"
+week_start = "2026-11-01"

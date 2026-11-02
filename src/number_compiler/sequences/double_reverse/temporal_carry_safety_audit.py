@@ -199,7 +199,7 @@ class CarrySafetyAuditBase:
     ) -> DoubleReverseSourcePrefix:
         raise NotImplementedError
 
-    def _validate_source_binding(self) -> None:
+    def validate_source_binding(self) -> None:
         raise NotImplementedError
 
     def carry_safety_entries(
@@ -406,7 +406,7 @@ class CarrySafetyAuditBase:
         return True
 
     def audit_carry_safety(self, ledger: ResourceLedger) -> PayloadAuditContribution:
-        self._validate_source_binding()
+        self.validate_source_binding()
         memo = self._carry_safety_cache
         account = ledger.account_status(memo.owner)
         if (

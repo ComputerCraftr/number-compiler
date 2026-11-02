@@ -20,6 +20,8 @@ from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.collatz.block_power import (
     CollatzPhysicalBlockEffect,
     PoweredCollatzTerm,
+)
+from number_compiler.sequences.collatz.physical_block_effect import (
     power_collatz_physical_effect,
 )
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
@@ -220,7 +222,8 @@ def test_standalone_collatz_power_rejects_step_aliases_before_compilation(
 ) -> None:
     value = cast(int, value)
     monkeypatch.setattr(
-        "number_compiler.sequences.collatz.block_power.LazyCompiler", forbidden
+        "number_compiler.sequences.collatz.physical_block_effect.LazyCompiler",
+        forbidden,
     )
     with pytest.raises((TypeError, ValueError)):
         power_collatz_physical_effect(value)

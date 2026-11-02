@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.arithmetic.fields.two_adic import v2_positive
@@ -27,6 +26,9 @@ from number_compiler.sequences.collatz.boundary_macros import (
     select_admitted_boundary_macro,
     validate_boundary_macro,
 )
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo,
+)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
@@ -42,11 +44,6 @@ from number_compiler.sequences.collatz.unified_skew_chain import (
     FactorSpecs,
     SeamWitness,
 )
-
-if TYPE_CHECKING:
-    from number_compiler.sequences.collatz.boundary_macros import (
-        BoundaryActionTemplateMemo,
-    )
 
 
 def _select_admitted_boundary_plan(

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Generator, Iterable, Iterator, Sized
 from contextlib import contextmanager
-from dataclasses import dataclass, field
 from weakref import ReferenceType, ref
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
@@ -22,6 +21,7 @@ from number_compiler.resources.factory_containers import (
 from number_compiler.resources.factory_containers import (
     FactoryContainerRegistry,
 )
+from number_compiler.resources.ledger_records import LedgerAccount
 from number_compiler.resources.ledger_records import (
     LedgerAccountStatus as LedgerAccountStatus,
 )
@@ -54,27 +54,6 @@ from number_compiler.resources.stores import LedgerDict, LedgerList, TrackedDict
 __all__ = ("LedgerReservation", "OwnedMemo")
 
 
-def _empty_root_map() -> dict[ArenaHandle, None]:
-    return {}
-
-
-@dataclass(slots=True)
-class _Account:
-    name: str
-    role: str
-    scope: ResourceScope
-    entries: int = 0
-    nodes: int = 0
-    roots: dict[ArenaHandle, None] = field(default_factory=_empty_root_map)
-    container: Sized | None = None
-    node_count: Callable[[], int] | None = None
-    payloads: Callable[[], Iterable[object]] | None = None
-    root_resolver: Callable[[], Iterable[object]] | None = None
-    evict: Callable[[], None] | None = None
-    composition_count: Callable[[], int] | None = None
-    disposed: bool = False
-
-
 class ResourceLedger(PayloadContractRegistry):
     """Reserve before publishing an allocation; rejected reservations mutate nothing.
 
@@ -90,7 +69,7 @@ class ResourceLedger(PayloadContractRegistry):
         self.max_nodes = max_nodes
         self.max_cache_entries = max_cache_entries
         self.counters: dict[str, int] = {}
-        self._accounts: list[_Account] = []
+        self._accounts: list[LedgerAccount] = []
         self._names: dict[str, int] = {}
         self._reservations: TrackedDict[object, tuple[int, int, int]] = TrackedDict(
             self
@@ -378,7 +357,7 @@ class ResourceLedger(PayloadContractRegistry):
 
         record_construction_owner(self, owner)
         try:
-            self._accounts.append(_Account(name, role, scope))
+            self._accounts.append(LedgerAccount(name, role, scope))
             try:
                 self._names[name] = owner
             except BaseException:
@@ -389,7 +368,7 @@ class ResourceLedger(PayloadContractRegistry):
             raise
         return owner
 
-    def _account(self, owner: int) -> _Account:
+    def _account(self, owner: int) -> LedgerAccount:
         if type(owner) is not int or owner < 0 or owner >= len(self._accounts):
             raise ValueError("unregistered resource owner")
         return self._accounts[owner]
@@ -433,17 +412,39 @@ class ResourceLedger(PayloadContractRegistry):
         """Confirm a tracker remains open without exposing held charges."""
         self._reservation_state(reservation)
 
+    @contextmanager
+    def _reservation_change(
+        self, reservation: object, entries: int, nodes: int
+    ) -> Generator[None, None, None]:
+        """Reconcile committed charges even when an operation raises afterward."""
+        owner, held_entries, held_nodes = self._reservation_state(reservation)
+        before_entries, before_nodes = self.account_usage(owner)
+        try:
+            yield
+        finally:
+            after_entries, after_nodes = self.account_usage(owner)
+            delta_entries = after_entries - before_entries
+            delta_nodes = after_nodes - before_nodes
+            if not (
+                min(0, entries) <= delta_entries <= max(0, entries)
+                and min(0, nodes) <= delta_nodes <= max(0, nodes)
+            ):
+                raise RuntimeError(
+                    "unrelated account mutation during reservation change"
+                )
+            self._reservations[reservation] = (
+                owner,
+                held_entries + delta_entries,
+                held_nodes + delta_nodes,
+            )
+
     def reserve_for_reservation(
         self, reservation: object, *, entries: int = 0, nodes: int = 0
     ) -> None:
-        owner, held_entries, held_nodes = self._reservation_state(reservation)
-        next_state = (
-            owner,
-            held_entries + entries,
-            held_nodes + nodes,
-        )
-        self.reserve(owner, entries=entries, nodes=nodes)
-        self._reservations[reservation] = next_state
+        owner, _, _ = self._reservation_state(reservation)
+        self._validate_quantities(entries, nodes)
+        with self._reservation_change(reservation, entries, nodes):
+            self.reserve(owner, entries=entries, nodes=nodes)
 
     def release_for_reservation(
         self, reservation: object, *, entries: int = 0, nodes: int = 0
@@ -453,9 +454,8 @@ class ResourceLedger(PayloadContractRegistry):
         self._validate_quantities(entries, nodes)
         if entries > held_entries or nodes > held_nodes:
             raise ValueError("release exceeds this reservation's live charges")
-        next_state = (owner, held_entries - entries, held_nodes - nodes)
-        self.release(owner, entries=entries, nodes=nodes)
-        self._reservations[reservation] = next_state
+        with self._reservation_change(reservation, -entries, -nodes):
+            self.release(owner, entries=entries, nodes=nodes)
 
     def transfer_reservation_to(
         self,
@@ -471,9 +471,8 @@ class ResourceLedger(PayloadContractRegistry):
             raise ValueError("reservation transfer needs a different owner")
         if entries > held_entries or nodes > held_nodes:
             raise ValueError("transfer exceeds this reservation's live charges")
-        next_state = (source, held_entries - entries, held_nodes - nodes)
-        self.reassign_many(((source, entries, nodes),), ((owner, entries, nodes),))
-        self._reservations[reservation] = next_state
+        with self._reservation_change(reservation, -entries, -nodes):
+            self.reassign_many(((source, entries, nodes),), ((owner, entries, nodes),))
 
     def transfer_reservation_from(
         self,
@@ -483,13 +482,12 @@ class ResourceLedger(PayloadContractRegistry):
         entries: int = 0,
         nodes: int = 0,
     ) -> None:
-        target, held_entries, held_nodes = self._reservation_state(reservation)
+        target, _, _ = self._reservation_state(reservation)
         self._validate_quantities(entries, nodes)
         if target == owner:
             raise ValueError("reservation transfer needs a different owner")
-        next_state = (target, held_entries + entries, held_nodes + nodes)
-        self.reassign_many(((owner, entries, nodes),), ((target, entries, nodes),))
-        self._reservations[reservation] = next_state
+        with self._reservation_change(reservation, entries, nodes):
+            self.reassign_many(((owner, entries, nodes),), ((target, entries, nodes),))
 
     def close_reservation(self, reservation: object) -> None:
         if type(reservation) is not LedgerReservation:
@@ -499,8 +497,8 @@ class ResourceLedger(PayloadContractRegistry):
         state = self._reservations.get(reservation)
         if state is None:
             return
-        owner, entries, nodes = state
-        self.release(owner, entries=entries, nodes=nodes)
+        _, entries, nodes = state
+        self.release_for_reservation(reservation, entries=entries, nodes=nodes)
         del self._reservations[reservation]
 
     @contextmanager
@@ -590,7 +588,7 @@ class ResourceLedger(PayloadContractRegistry):
     def reserve_many(self, reservations: Iterable[tuple[int, int, int]]) -> None:
         """Reserve a publication spanning several owners as one atomic unit."""
         self._validate_limits(self.max_nodes, self.max_cache_entries)
-        pending: list[tuple[_Account, int, int]] = []
+        pending: list[tuple[LedgerAccount, int, int]] = []
         entries = nodes = 0
         for owner, entry_count, node_count in reservations:
             account = self._account(owner)
@@ -633,8 +631,8 @@ class ResourceLedger(PayloadContractRegistry):
         fails.
         """
         self._validate_limits(self.max_nodes, self.max_cache_entries)
-        released: dict[int, tuple[_Account, int, int]] = {}
-        reserved: dict[int, tuple[_Account, int, int]] = {}
+        released: dict[int, tuple[LedgerAccount, int, int]] = {}
+        reserved: dict[int, tuple[LedgerAccount, int, int]] = {}
         for source, target in ((releases, released), (reservations, reserved)):
             for owner, entry_count, node_count in source:
                 account = self._account(owner)

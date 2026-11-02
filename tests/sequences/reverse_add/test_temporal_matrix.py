@@ -59,6 +59,20 @@ def test_conditional_matrix_square_is_not_a_physical_return_certificate() -> Non
         actual.square_if_adjacent(actual)
 
 
+def test_endpoint_join_rejects_same_width_mod7_residue_false_seam() -> None:
+    first = SourceBoundMoment.primitive(196)
+    second = SourceBoundMoment.from_endpoints(887, 1675, steps=1)
+    joined = first.then(second)
+    competing = SourceBoundMoment.primitive(1010)
+
+    assert joined.target == 1675 == 887 + 788
+    assert competing.source == 1010 == 109 + 901
+    assert joined.target_width == competing.source_width == 4
+    assert joined.target % 7 == competing.source % 7 == 2
+    with pytest.raises(ValueError, match="source/target temporal seam mismatch"):
+        joined.then(competing)
+
+
 def test_formal_skew_quadratic_clock_large_exponent_without_replay() -> None:
     rng = Random(643)
     for _ in range(100):

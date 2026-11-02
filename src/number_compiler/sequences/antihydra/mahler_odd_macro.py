@@ -167,76 +167,9 @@ class MahlerOddSeamStep:
         """
         _validate_q_port_demand(places, walsh, prime_radices)
         canonical = _canonical_odd_seam(self)
-        return canonical.demanded_q_ports_after_validation(
-            places=places, walsh=walsh, prime_radices=prime_radices
+        return _demanded_q_ports_for_canonical(
+            canonical, places=places, walsh=walsh, prime_radices=prime_radices
         )
-
-    def demanded_q_ports_after_validation(
-        self, *, places: int, walsh: bool, prime_radices: bool = False
-    ) -> dict[str, object]:
-        """Project q ports through the validated seam collaborator API."""
-        _validate_q_port_demand(places, walsh, prime_radices)
-        canonical = _canonical_odd_seam(self)
-        rows: dict[int, dict[str, object]] = {}
-        q_endpoints: dict[int, int] = {}
-        bases = (
-            (2, 3, 5, 6, 10, 64)
-            if prime_radices
-            else (2, 5, 10, 64)
-            if walsh
-            else (2, 5, 10)
-        )
-        for base in bases:
-            cells = 64 if base == 64 and walsh else places
-            carries = borrows = 0
-            q_initial = q_next = 0
-            for j in range(1, cells + 1):
-                modulus = base**j
-                q_initial = (
-                    exact_modular_power(2, canonical.clock, modulus)
-                    * (canonical.x + 1)
-                    % modulus
-                )
-                # Ordinary 3^a is the exact Collatz radix source at this seam.
-                triple = triple_residue("ordinary", canonical.exponent, base, j)
-                summand = exact_modular_power(2, canonical.next_clock, modulus)
-                product = triple * q_initial % modulus
-                q_next = (product + summand) % modulus
-                expected = (
-                    exact_modular_power(2, canonical.next_clock, modulus)
-                    * (canonical.next_x + 1)
-                    % modulus
-                )
-                if q_next != expected:
-                    raise ArithmeticError("q recurrence departed from pointed source")
-                carries |= int(product + summand >= modulus) << (j - 1)
-                borrows |= int(q_next < q_initial) << (j - 1)
-            q_endpoints[base] = q_next
-            rows[base] = {
-                "q_initial": q_initial,
-                "q_next": q_next,
-                "carry_mask": carries,
-                "difference_borrow_mask": borrows,
-                "carry_borrow_xor": carries ^ borrows,
-                "walsh64_mod5": (
-                    walsh64_mod5(carries ^ borrows) if base == 64 and walsh else None
-                ),
-            }
-        # Base-10 carries depend on both 2- and 5-primary constraints.
-        m2, m5 = 1 << places, 5**places
-        b2 = q_endpoints[2] % m2
-        b5 = q_endpoints[5]
-        joined: int = b2 + m2 * ((b5 - b2) * exact_modular_power(m2, -1, m5) % m5)
-        if joined != q_endpoints[10]:
-            raise ArithmeticError("q primary orbits do not reconstruct decimal suffix")
-        return {
-            "source_clock": canonical.clock,
-            "odd_index": canonical.index,
-            "q_valuation": canonical.q_valuation,
-            "barrier_exponent": canonical.required_valuation,
-            "base_10_crt": joined,
-            "radix_ports": rows,
-        }
 
 
 def odd_seam_pointwise_packet(
@@ -250,8 +183,8 @@ def odd_seam_pointwise_packet(
     """
     _validate_q_port_demand(places, False, True)
     canonical = _canonical_odd_seam(seam)
-    q_ports = canonical.demanded_q_ports_after_validation(
-        places=places, walsh=False, prime_radices=True
+    q_ports = _demanded_q_ports_for_canonical(
+        canonical, places=places, walsh=False, prime_radices=True
     )
     raw_ports = q_ports["radix_ports"]
     if (
@@ -722,6 +655,76 @@ def _canonical_odd_seam(seam: object) -> MahlerOddSeamStep:
     return canonical
 
 
+def _demanded_q_ports_for_canonical(
+    canonical: MahlerOddSeamStep,
+    *,
+    places: int,
+    walsh: bool,
+    prime_radices: bool,
+) -> dict[str, object]:
+    """Project q ports after the caller has authenticated the exact seam."""
+    rows: dict[int, dict[str, object]] = {}
+    q_endpoints: dict[int, int] = {}
+    bases = (
+        (2, 3, 5, 6, 10, 64)
+        if prime_radices
+        else (2, 5, 10, 64)
+        if walsh
+        else (2, 5, 10)
+    )
+    for base in bases:
+        cells = 64 if base == 64 and walsh else places
+        carries = borrows = 0
+        q_initial = q_next = 0
+        for j in range(1, cells + 1):
+            modulus = base**j
+            q_initial = (
+                exact_modular_power(2, canonical.clock, modulus)
+                * (canonical.x + 1)
+                % modulus
+            )
+            # Ordinary 3^a is the exact Collatz radix source at this seam.
+            triple = triple_residue("ordinary", canonical.exponent, base, j)
+            summand = exact_modular_power(2, canonical.next_clock, modulus)
+            product = triple * q_initial % modulus
+            q_next = (product + summand) % modulus
+            expected = (
+                exact_modular_power(2, canonical.next_clock, modulus)
+                * (canonical.next_x + 1)
+                % modulus
+            )
+            if q_next != expected:
+                raise ArithmeticError("q recurrence departed from pointed source")
+            carries |= int(product + summand >= modulus) << (j - 1)
+            borrows |= int(q_next < q_initial) << (j - 1)
+        q_endpoints[base] = q_next
+        rows[base] = {
+            "q_initial": q_initial,
+            "q_next": q_next,
+            "carry_mask": carries,
+            "difference_borrow_mask": borrows,
+            "carry_borrow_xor": carries ^ borrows,
+            "walsh64_mod5": (
+                walsh64_mod5(carries ^ borrows) if base == 64 and walsh else None
+            ),
+        }
+    # Base-10 carries depend on both 2- and 5-primary constraints.
+    m2, m5 = 1 << places, 5**places
+    b2 = q_endpoints[2] % m2
+    b5 = q_endpoints[5]
+    joined: int = b2 + m2 * ((b5 - b2) * exact_modular_power(m2, -1, m5) % m5)
+    if joined != q_endpoints[10]:
+        raise ArithmeticError("q primary orbits do not reconstruct decimal suffix")
+    return {
+        "source_clock": canonical.clock,
+        "odd_index": canonical.index,
+        "q_valuation": canonical.q_valuation,
+        "barrier_exponent": canonical.required_valuation,
+        "base_10_crt": joined,
+        "radix_ports": rows,
+    }
+
+
 def odd_seam_packet(
     seam: MahlerOddSeamStep,
     *,
@@ -753,7 +756,12 @@ def odd_seam_packet(
         places=decimal_places,
         walsh=walsh,
     )
-    q_ports = seam.demanded_q_ports_after_validation(places=decimal_places, walsh=walsh)
+    q_ports = _demanded_q_ports_for_canonical(
+        seam,
+        places=decimal_places,
+        walsh=walsh,
+        prime_radices=False,
+    )
     # The repeated-word ring is a separate, source-cylinder consumer. It is
     # constructed only for this detailed packet; ordinary Mahler terms and
     # the one-event action do not build a future graph.

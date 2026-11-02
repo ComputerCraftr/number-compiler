@@ -26,13 +26,37 @@ from number_compiler.resources.payload_contracts import (
 from number_compiler.sequences.double_reverse.boundary_cycles import (
     candidate_component,
 )
-from number_compiler.sequences.double_reverse.stencil_moore import (
-    DIGIT_STENCIL_MOORE,
-    stencil_cell,
+from number_compiler.sequences.double_reverse.stencil_moore import stencil_cell
+from number_compiler.sequences.double_reverse.temporal_defect_quotient import (
+    FourSymbolDefect,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife_audit import (
     TemporalHashlifeAuditBase,
     audit_double_reverse_temporal_actions,
+)
+from number_compiler.sequences.double_reverse.temporal_hashlife_borders import (
+    PHYSICAL_GROWTH_CYCLES,
+    edge_phase,
+    edge_phase_of_integer,
+    growth_ports,
+)
+from number_compiler.sequences.double_reverse.temporal_hashlife_pointed import (
+    CertifiedDefectTape,
+)
+from number_compiler.sequences.double_reverse.temporal_hashlife_pointed import (
+    pointed_combined_defect as _pointed_combined_defect_impl,
+)
+from number_compiler.sequences.double_reverse.temporal_hashlife_pointed import (
+    pointed_combined_defect_tape as _pointed_combined_defect_tape_impl,
+)
+from number_compiler.sequences.double_reverse.temporal_hashlife_pointed import (
+    pointed_source_window as _pointed_source_window_impl,
+)
+from number_compiler.sequences.double_reverse.temporal_hashlife_pointed import (
+    pointed_stencil as _pointed_stencil_impl,
+)
+from number_compiler.sequences.double_reverse.temporal_hashlife_pointed import (
+    pointed_window as _pointed_window_impl,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife_slp import (
     existingsymbol_at,
@@ -48,35 +72,6 @@ from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
     source_prefix_binding,
     temporal_action_binding,
 )
-
-
-def edge_phase(upper: tuple[int, int], lower: tuple[int, int]) -> int | None:
-    """Classify a source by its exact two digit borders."""
-    if upper == (1, 7):
-        if lower == (4, 2):
-            return 1
-        if lower in ((6, 8), (8, 8)):
-            return 0
-    elif upper in ((4, 8), (4, 9)):
-        if lower == (4, 2):
-            return 2
-        if lower in ((6, 8), (8, 8)):
-            return 3
-    return None
-
-
-def growth_ports(phase: int, steps: int) -> tuple[int, int]:
-    """Return exact left/right cell births after ``steps`` applications of F."""
-    if type(phase) is not int or phase not in (0, 1, 2, 3):
-        raise ValueError("invalid 2rev10 border phase")
-    if type(steps) is not int or steps < 0:
-        raise ValueError("2rev10 F-step count must be nonnegative")
-    low = steps // 2
-    high = (steps + 1) // 2
-    return (
-        high if phase in (2, 3) else low,
-        high if phase in (0, 3) else low,
-    )
 
 
 def _audit_temporal_hashlife_payloads(
@@ -837,150 +832,40 @@ class DoubleReverseTemporalHashlife(TemporalHashlifeAuditBase):
         """Return only the endpoint grammar from the complete action."""
         return self._root(self.advance_action(root, steps, phase).target)
 
+    def cone_step_for_pointed_window(self, root: int, steps: int) -> int:
+        """Apply the bounded cone kernel to one selected causal tile."""
+        return self._cone_step(root, steps)
+
     def pointed_source_window(self, root: int, origin: int, radius: int) -> int:
-        """Build the exact zero-extended causal interval around one source cell."""
-        width = self.arena.nodes[root].length
-        length = 2 * radius + 1
-        begin = origin - radius
-        end = begin + length
-        left_zeros = min(length, max(0, -begin))
-        right_zeros = min(length - left_zeros, max(0, end - width))
-        middle = length - left_zeros - right_zeros
-        with self.ledger.reservation(self.scratch_owner, entries=8, nodes=8):
-            fragments: list[int] = []
-            zero = self.arena.terminal(0)
-            if left_zeros:
-                fragments.append(self.arena.repeat(zero, left_zeros))
-            if middle:
-                first = max(0, begin)
-                fragments.append(self.part(root, first, first + middle))
-            if right_zeros:
-                fragments.append(self.arena.repeat(zero, right_zeros))
-            window = self.arena.concat_many(fragments)
-        if self.arena.nodes[window].length != length:
-            raise AssertionError("pointed stencil window omitted its causal halo")
-        return window
-
-    def _advance_pointed_window(self, window: int, steps: int) -> int:
-        """Apply one dyadic F chunk and retain only its exact future cone."""
-        width = self.arena.nodes[window].length
-        if steps < 1 or steps & (steps - 1) or width <= 2 * steps:
-            raise ValueError("pointed stencil needs a complete dyadic causal halo")
-        output_width = width - 2 * steps
-        span = 2 * steps
-        count = (output_width + span - 1) // span
-        if count > 32:
-            raise ValueError("pointed temporal interval exceeds 32 causal tiles")
-        reservations = 8 + 4 * max(0, count - 2)
-        with self.ledger.reservation(
-            self.scratch_owner, entries=reservations, nodes=reservations
-        ):
-            zero_pad = self.arena.repeat(self.arena.terminal(0), 2 * steps)
-            padded = self.arena.concat(window, zero_pad)
-            tile_roots: list[int] = []
-            for tile_index in range(count):
-                block = self.part(
-                    padded, tile_index * span, tile_index * span + 4 * steps
-                )
-                tile_roots.append(self._cone_step(block, steps))
-                self.ledger.bump(
-                    _double_reverse_keys.DOUBLE_REVERSE_POINTED_STENCIL_TILES
-                )
-            joined = self.arena.concat_many(tile_roots)
-            result = self.part(joined, 0, output_width)
-        if self.arena.nodes[result].length != output_width:
-            raise AssertionError("pointed stencil lost requested coordinates")
-        return result
-
-    def _pointed_causal_window(
-        self, root: int, steps: int, phase: int, msd_start: int, count: int
-    ) -> tuple[int, ...]:
-        """Share one complete source cone across a bounded output interval."""
-        left, right = growth_ports(phase, steps)
-        width = self.arena.nodes[root].length + left + right
-        if msd_start < 0 or msd_start + count > width:
-            raise IndexError("pointed temporal row outside the normalized output")
-        if steps == 0:
-            values = tuple(
-                symbol_at(self.arena, root, msd_start + i) for i in range(count)
-            )
-        else:
-            # The centered input cone for an even row contains one surplus
-            # cell on its left. Crop that cell after the causal evolution.
-            left_padding = int(count % 2 == 0)
-            center = msd_start - left + (count - 1) // 2
-            radius = steps + count // 2
-            window = self.pointed_source_window(root, center, radius)
-            for bit in range(steps.bit_length() - 1, -1, -1):
-                chunk = 1 << bit
-                if steps & chunk:
-                    window = self._advance_pointed_window(window, chunk)
-                    self.ledger.bump(
-                        _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWERED_T2_STEPS,
-                        chunk,
-                    )
-                    self.ledger.bump(
-                        _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWER_CHUNKS
-                    )
-            if self.arena.nodes[window].length != count + left_padding:
-                raise AssertionError("pointed causal cone lost its complete row")
-            values = tuple(
-                symbol_at(self.arena, window, left_padding + i) for i in range(count)
-            )
-        self.ledger.bump(
-            _double_reverse_keys.DOUBLE_REVERSE_POINTED_STENCIL_PUBLICATIONS,
-            count,
-        )
-        return values
+        return _pointed_source_window_impl(self, root, origin, radius)
 
     def pointed_window(
         self, root: int, steps: int, phase: int, msd_start: int, count: int
     ) -> tuple[int, ...]:
-        """Read a short exact row through one shared source-root causal cone."""
-        if (
-            type(root) is not int
-            or not 0 <= root < len(self.arena.nodes)
-            or type(steps) is not int
-            or not 0 <= steps <= self.max_steps // 2
-            or type(phase) is not int
-            or phase not in (0, 1, 2, 3)
-            or type(msd_start) is not int
-            or type(count) is not int
-            or not 1 <= count <= 18
-            or self.certify(root) != phase
-        ):
-            raise ValueError("pointed temporal row needs a certified bounded source")
-        return self._pointed_causal_window(root, steps, phase, msd_start, count)
+        return _pointed_window_impl(self, root, steps, phase, msd_start, count)
+
+    def pointed_combined_defect(
+        self, root: int, steps: int, phase: int, digits: int
+    ) -> FourSymbolDefect:
+        return _pointed_combined_defect_impl(self, root, steps, phase, digits)
+
+    def pointed_combined_defect_tape(
+        self,
+        root: int,
+        start_steps: int,
+        phase: int,
+        digits: int,
+        samples: int,
+        stride: int = 1,
+    ) -> CertifiedDefectTape:
+        return _pointed_combined_defect_tape_impl(
+            self, root, start_steps, phase, digits, samples, stride
+        )
 
     def pointed_stencil(
         self, root: int, steps: int, phase: int, msd_index: int
     ) -> PointedDigitStencil:
-        """Return one exact output cell without producing its full endpoint."""
-        if (
-            type(root) is not int
-            or not 0 <= root < len(self.arena.nodes)
-            or type(steps) is not int
-            or not 1 <= steps <= self.max_steps // 2
-            or type(phase) is not int
-            or phase not in (0, 1, 2, 3)
-            or type(msd_index) is not int
-            or self.certify(root) != phase
-        ):
-            raise ValueError("pointed stencil requires a certified source cylinder")
-        digit = self._pointed_causal_window(root, steps, phase, msd_index, 1)[0]
-        width = self.arena.nodes[root].length + sum(growth_ports(phase, steps))
-        return PointedDigitStencil(
-            self.scoped_handle(root),
-            steps,
-            phase,
-            (phase + 2 * steps) % 4,
-            width,
-            msd_index,
-            digit,
-            int(digit >= 5),
-            digit % 5,
-            DIGIT_STENCIL_MOORE["joint"].classes[digit],
-        )
+        return _pointed_stencil_impl(self, root, steps, phase, msd_index)
 
 
 __all__ = [
@@ -988,7 +873,9 @@ __all__ = [
     "DoubleReverseSLPID",
     "DoubleReverseTemporalHashlife",
     "PointedDigitStencil",
+    "PHYSICAL_GROWTH_CYCLES",
     "UncertifiedPointedStencilError",
     "edge_phase",
+    "edge_phase_of_integer",
     "growth_ports",
 ]

@@ -36,10 +36,9 @@ from .temporal_center_selector import (
     center_input_moore,
     center_return,
 )
-from .temporal_hashlife import growth_ports
+from .temporal_hashlife import PHYSICAL_GROWTH_CYCLES, growth_ports
 from .temporal_hashlife_types import UncertifiedPointedStencilError
 from .temporal_residue_quotient import (
-    PHYSICAL_GROWTH_CYCLES,
     CertifiedResidueTemporalAction,
     certified_residue_action,
     decimal_residues_from_slp,

@@ -48,6 +48,7 @@ from number_compiler.sequences.double_reverse.source_adapter import (
     DoubleReverseMachine,
     DoubleReverseSource,
     DoubleReverseSourceAdapter,
+    decimal_digits_lsd,
 )
 from number_compiler.sequences.double_reverse.source_bound_bank import (
     DoubleReverseBankMixin,
@@ -160,7 +161,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
                 owner_kind="double_reverse",
             )
             rollback.enter_context(cleanup_on_error(self._arena.dispose))
-            source_lsd = tuple(self._digits_lsd(self.seed))
+            source_lsd = tuple(decimal_digits_lsd(self.seed))
             self.source_digits = source_lsd
             source_msd = tuple(reversed(source_lsd))
             source_root = self._arena.word(source_msd)
@@ -218,55 +219,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
             from .temporal_packed_ring import initialize_packed_ring_metrics
 
             initialize_packed_ring_metrics(self._ledger)
-            for counter in (
-                _double_reverse_keys.DOUBLE_REVERSE_SPATIAL_TRANSDUCER_APPLICATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_SQUARE_APPLICATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_REPRESENTED_GROWTH_CELLS,
-                _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_CONES,
-                _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_CONE_HITS,
-                _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_TILE_SELECTIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWERED_T2_STEPS,
-                _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWER_CHUNKS,
-                _double_reverse_keys.DOUBLE_REVERSE_BOUNDARY_CLASSIFICATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_BOUNDARY_NODE_VISITS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_HASHLIFE_PUBLICATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_PORT_ACTION_PUBLICATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_PORT_ACTION_CACHE_HITS,
-                _double_reverse_keys.DOUBLE_REVERSE_WEIGHTED_CARRY_PORT_PUBLICATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_MOMENT_PORT_PUBLICATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_AFFINE_PORT_PUBLICATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_BIT_BUDGET_REFUSALS,
-                _double_reverse_keys.DOUBLE_REVERSE_POINTED_STENCIL_TILES,
-                _double_reverse_keys.DOUBLE_REVERSE_POINTED_STENCIL_PUBLICATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_ATTEMPTS,
-                _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_STEPS,
-                _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_CACHE_HITS,
-                _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_PREFIX_CURSOR_PUBLICATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_POINTED_PREFIX_CACHE_DISCARDS,
-                _double_reverse_keys.DOUBLE_REVERSE_ENDPOINT_PROJECTOR_DISCARDS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_PUBLICATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_ENVELOPE_PUBLICATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MATRIX_COMPOSITIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MATRIX_CELLS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MOORE_CONSTRUCTIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MOORE_TRANSITION_EVALUATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MOORE_OUTPUT_EVALUATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MOORE_STATE_VISITS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MOORE_REFINEMENT_SWEEPS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_BANK_MOORE_REFINEMENT_ROUNDS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_CERTIFIED_SUFFIX_PUBLICATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_EXACT_PAIR_PUBLICATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_PUBLICATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_TEMPORAL_STATES,
-                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_STENCIL_EVALUATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_GUARD_NODES,
-                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_INTERVAL_VISITS,
-                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_CONSTRUCTIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_OUTPUT_EVALUATIONS,
-                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_STATE_VISITS,
-                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_REFINEMENT_SWEEPS,
-                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_MOORE_REFINEMENT_ROUNDS,
-            ):
+            for counter in _double_reverse_keys.DOUBLE_REVERSE_INITIAL_COUNTERS:
                 self._ledger.bump(counter, 0)
             self._ledger.register_execution_root(self)
             rollback.enter_context(
@@ -288,15 +241,6 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
                 ),
                 audit_double_reverse_carry_safety,
             )
-
-    @staticmethod
-    def _digits_lsd(value: int) -> Iterator[int]:
-        if value == 0:
-            yield 0
-            return
-        while value:
-            value, digit = divmod(value, 10)
-            yield digit
 
     def _create_execution(
         self, rollback: ExitStack
@@ -428,7 +372,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
 
     def prepare_endpoint(self) -> None:
         """Construct the exact endpoint before entering source-read-only scope."""
-        self._validate_source_binding()
+        self.validate_source_binding()
         if (
             self._authority[:4]
             != (self.seed, self.generation, self.max_steps, self.max_state_bits)
@@ -466,7 +410,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
                 discarded,
             )
 
-    def _validate_source_binding(self) -> None:
+    def validate_source_binding(self) -> None:
         """Check the exact source/root snapshot without constructing an endpoint."""
         self.check_open()
         source = self._source
@@ -506,6 +450,28 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         assert image is not None
         view = self._scheduler.source_image_core().view(image)
         return self._adapter.view_payload(view).root
+
+    def issued_completed_endpoint_root(self) -> int | None:
+        """Read an already issued complete scheduler endpoint, without powering.
+
+        The scheduler image authenticates the physical ``T**generation`` action
+        on this exact seed and arena. A prefix-issued temporal morphism may
+        transport this complete image to the same target without constructing
+        a second occurrence-specific suffix. No unissued integer root is
+        accepted as a substitute for the scheduler's source image.
+        """
+        self.validate_source_binding()
+        image = self._image
+        if image is None:
+            return None
+        view = self._scheduler.source_image_core().view(image)
+        payload = self._adapter.view_payload(view)
+        if (
+            payload.source is not self._source
+            or payload.action.steps != self.generation
+        ):
+            raise ValueError("completed 2rev10 image has incompatible source action")
+        return payload.root
 
     @property
     def maximum_width(self) -> int:
@@ -682,7 +648,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         exit or across a shrinking frontier. A short original seed first needs
         an independently certified temporal-prefix entry.
         """
-        self._validate_source_binding()
+        self.validate_source_binding()
         return temporal_carry_safety_for_term(self)
 
     def protected_temporal_bank(

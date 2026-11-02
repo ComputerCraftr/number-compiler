@@ -178,7 +178,7 @@ def test_invalid_or_over_budget_indices_refuse_before_execution(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(cli, "NumberCompiler", forbidden)
+    monkeypatch.setattr("number_compiler.api.number_api.NumberCompiler", forbidden)
     assert cli.main(["prime", *options]) == 2
     captured = capsys.readouterr()
     assert captured.out == ""
@@ -237,7 +237,7 @@ def test_huge_exponent_refuses_before_power_construction(
 def test_huge_event_index_refuses_without_decimal_integer_conversion(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(cli, "NumberCompiler", forbidden)
+    monkeypatch.setattr("number_compiler.api.number_api.NumberCompiler", forbidden)
     original = cli_requests.cli_integer
 
     def guarded(text: str) -> int:
@@ -551,7 +551,7 @@ def test_compact_queries_preserve_family_admission(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(cli, "NumberCompiler", forbidden)
+    monkeypatch.setattr("number_compiler.api.number_api.NumberCompiler", forbidden)
     assert cli.main(argv) == 2
     assert message in capsys.readouterr().err
 

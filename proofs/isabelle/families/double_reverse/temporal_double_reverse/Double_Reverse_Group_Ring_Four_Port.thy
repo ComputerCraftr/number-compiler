@@ -827,6 +827,27 @@ proof -
     using first second by (simp add: Let_def)
 qed
 
+corollary double_reverse_four_port_single_digit_defect_alphabet:
+  assumes digit: "digit < 10" and forward_in: "forward_in \<le> 1"
+      and reverse_in: "reverse_in \<le> 1"
+  shows "4 * double_reverse_forward_out
+          (double_reverse_four_port_row [digit] forward_in reverse_in) +
+        double_reverse_reverse_out
+          (double_reverse_four_port_row [digit] forward_in reverse_in)
+      \<in> {0,1,4,5}"
+proof -
+  let ?first = "(2*digit+forward_in) mod 10"
+  have row:
+    "double_reverse_four_port_row [digit] forward_in reverse_in =
+      \<lparr>double_reverse_forward_out=(if 5 \<le> digit then 1 else 0),
+       double_reverse_reverse_out=(if 5 \<le> ?first then 1 else 0),
+       double_reverse_output_word=[(2*?first+reverse_in) mod 10]\<rparr>"
+    by (rule double_reverse_four_port_single_digit
+      [OF digit forward_in reverse_in])
+  show ?thesis using row
+    by (auto simp add: threshold5_digit_def split: if_splits)
+qed
+
 text \<open>A four-port row is a finite two-wave action on an explicit source
 word.  Its join theorem is chronological and output-preserving; it does not
 merge equal carry totals, erase digit order, or claim a period beyond the
@@ -853,7 +874,8 @@ ML \<open>
     double_reverse_four_port_canonical_birth_width
     double_reverse_four_port_action_append
     double_reverse_four_port_action_join_associative
-    double_reverse_four_port_single_digit};
+    double_reverse_four_port_single_digit
+    double_reverse_four_port_single_digit_defect_alphabet};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Double-reverse group-ring/four-port refinement depends on an oracle";
   val _ = if Thm_Deps.has_skip_proof checked

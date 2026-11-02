@@ -141,3 +141,39 @@ MAHLER_CENTER_MATRIX_ROW_MATERIALIZATIONS: Final = (
 )
 MAHLER_CENTER_MATRIX_DENSE_PRODUCTS: Final = "mahler_center_matrix_dense_products"
 MAHLER_CENTER_MATRIX_SPARSE_PRODUCTS: Final = "mahler_center_matrix_sparse_products"
+
+ANTIHYDRA_WEIGHTED_CARRY_REQUESTS: Final = (
+    "antihydra_arithmetic_weighted_carry_requests"
+)
+ANTIHYDRA_WEIGHTED_CARRY_BLOCK_REQUESTS: Final = (
+    "antihydra_arithmetic_weighted_carry_block_requests"
+)
+ANTIHYDRA_WEIGHTED_CARRY_BLOCK_HITS: Final = (
+    "antihydra_arithmetic_weighted_carry_block_hits"
+)
+ANTIHYDRA_WEIGHTED_CARRY_BLOCK_MISSES: Final = (
+    "antihydra_arithmetic_weighted_carry_block_misses"
+)
+ANTIHYDRA_WEIGHTED_CARRY_LEAF_STEPS: Final = (
+    "antihydra_arithmetic_weighted_carry_leaf_steps"
+)
+ANTIHYDRA_WEIGHTED_CARRY_COMPOSITIONS: Final = (
+    "antihydra_arithmetic_weighted_carry_compositions"
+)
+ANTIHYDRA_WEIGHTED_CARRY_OPERAND_BITS: Final = (
+    "antihydra_arithmetic_weighted_carry_operand_bits"
+)
+ANTIHYDRA_WEIGHTED_CARRY_TROPICAL_COMPOSITIONS: Final = (
+    "antihydra_arithmetic_weighted_carry_tropical_compositions"
+)
+ANTIHYDRA_WEIGHTED_CARRY_PROJECTION_REQUESTS: Final = (
+    "antihydra_arithmetic_weighted_carry_projection_requests"
+)
+ANTIHYDRA_WEIGHTED_CARRY_PROJECTION_OPERAND_BITS: Final = (
+    "antihydra_arithmetic_weighted_carry_projection_operand_bits"
+)
+ANTIHYDRA_ARITHMETIC_DIAGONAL_REQUESTS: Final = "antihydra_arithmetic_diagonal_requests"
+ANTIHYDRA_ARITHMETIC_DIAGONAL_CELLS: Final = "antihydra_arithmetic_diagonal_cells"
+ANTIHYDRA_ARITHMETIC_DIAGONAL_OPERAND_BITS: Final = (
+    "antihydra_arithmetic_diagonal_operand_bits"
+)

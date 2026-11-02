@@ -40,6 +40,7 @@ from number_compiler.sequences.double_reverse._temporal_bank_authority import (
     validate_source_record,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife import (
+    PHYSICAL_GROWTH_CYCLES,
     DoubleReverseTemporalHashlife,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
@@ -50,12 +51,6 @@ from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
 # One is a physical generation, not a T**2 frame.  These four letters follow
 # from the *certified* 1144/2288 edge signatures and growth_ports(), not from
 # an independently guessed interior carry.
-PHYSICAL_GROWTH_CYCLES: tuple[tuple[int, int, int, int], ...] = (
-    (1, 0, 0, 1),
-    (0, 0, 1, 1),
-    (0, 1, 1, 0),
-    (1, 1, 0, 0),
-)
 _PHYSICAL_RETURN_TICKS = 4
 
 

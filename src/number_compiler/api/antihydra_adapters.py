@@ -87,6 +87,51 @@ def observe_antihydra(context: QueryContext, name: ObservationId) -> Packet:
     payload = context.term.payload
     if not isinstance(payload, AntihydraTermPayload):
         raise TypeError("Antihydra query published a foreign term payload")
+    if name is ObservationId.TEMPORAL_DIAGONAL_CARRY:
+        from dataclasses import asdict
+
+        from number_compiler.api.json_output import json_value
+        from number_compiler.api.output_schema import AntihydraDiagonalPacket
+        from number_compiler.hashlife.execution.dyadic_return_runs import (
+            RunArithmeticWorkspace,
+        )
+        from number_compiler.sequences.antihydra.mahler_carry_quotient import (
+            project_weighted_carry,
+        )
+        from number_compiler.sequences.antihydra.mahler_diagonal_carry import (
+            MAX_DIAGONAL_COLUMNS,
+        )
+
+        result = payload.term.result()
+        workspace = payload.term.arithmetic_image()
+        scratch = RunArithmeticWorkspace.for_ledger(
+            workspace.ledger, "antihydra_diagonal"
+        )
+        with scratch.scope():
+            carry = project_weighted_carry(workspace, reserve_bits=scratch.require_bits)
+            field = (
+                carry.x15_morphism(reserve_bits=scratch.require_bits)
+                .diagonal_tower()
+                .packed_field(
+                    options.width,
+                    max_columns=MAX_DIAGONAL_COLUMNS,
+                    max_observer_terms=options.max_observer_terms,
+                    reserve_bits=scratch.require_bits,
+                )
+            )
+            diagonal_packet: AntihydraDiagonalPacket = {
+                "family": "antihydra",
+                "kind": "temporal.diagonal-carry",
+                "source_binding": result.source_binding,
+                "requested_returns": result.returns,
+                "endpoint": result.h,
+                "clock_unit": "macro_returns_after_startup",
+                "all_time_claim": False,
+                "field": json_value(asdict(field)),
+            }
+            return publish_observation(
+                context, name, diagonal_packet, coordinates=(("requested_returns",),)
+            )
     if name in {
         ObservationId.SAFETY_LEDGER,
         ObservationId.ARITHMETIC_MODULAR,

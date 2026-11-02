@@ -37,7 +37,16 @@ def double_reverse_residue_packet(term: DoubleReverseTerm) -> dict[str, object]:
         ledger=term.resource_ledger,
         scratch_owner=term.scratch_owner,
     )
+    # The certified source action also owns the exact, binary-powered
+    # normal/mirrored accumulator Laurent factor. Reuse it; do not start
+    # another period scan or independent source-fold/halo observer.
+    from number_compiler.sequences.double_reverse.temporal_laurent_return import (
+        source_laurent_accumulator_packet,
+    )
+
+    accumulator = source_laurent_accumulator_packet(term, prefix, action)
     packet: dict[str, object] = asdict(action)
+    packet["normalized_laurent_accumulator"] = accumulator
     packet.update(
         moore_class99=residue_clock_class_of(
             action.phase, action.width_in % 2, action.source_mod99, 99
@@ -315,6 +324,7 @@ def reverse_seed_orbit_packet(term: ReverseAddPoweredTerm) -> dict[str, object]:
             ),
             "logarithmic_q19_power_certified": False,
         }
+    from number_compiler.resources.metric_keys import reverse_add as reverse_metrics
     from number_compiler.sequences.reverse_add.temporal_seed_morphism import (
         certified_completed_reverse_add_seed_morphism,
     )
@@ -333,6 +343,10 @@ def reverse_seed_orbit_packet(term: ReverseAddPoweredTerm) -> dict[str, object]:
         "mod99_out": last.residue99,
         "mod198_in": first.residue198,
         "mod198_out": last.residue198,
+        "reverse198_out": last.reverse_residue198,
+        "reflected_carry_k_parity_out": last.reflected_carry_parity,
+        "next_raw_pair198": last.next_raw_residue198,
+        "group_ring_carry_correction_mod198": (-99 * last.reflected_carry_parity) % 198,
         "exterior99_out": last.exterior99,
         "exterior198_out": last.exterior198,
         "carry_into_center": last.carry_into_center,
@@ -340,6 +354,11 @@ def reverse_seed_orbit_packet(term: ReverseAddPoweredTerm) -> dict[str, object]:
         "middle_carry_map": list(last.middle_carry_map),
         "first_non9_from_upper": last.first_non9_from_upper,
         "q19_block_applications": action.q19_block_applications,
+        "q19_physical_t2_actions_cumulative": (
+            term.resource_ledger.counters.get(
+                reverse_metrics.REVERSE_Q19_PUNCTURED_PHYSICAL_T2_ACTIONS, 0
+            )
+        ),
         "terminal_occurrence_reused": action.terminal_occurrence_reused,
         "temporal_square_operations": action.temporal_square_operations,
         "whole_word_slp_certified": True,

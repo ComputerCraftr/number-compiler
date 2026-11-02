@@ -32,12 +32,6 @@ arguments = json.loads(sys.argv[1])
 samples = int(sys.argv[2])
 bypass = sys.argv[3] == 'bypass'
 interactive = sys.argv[4:] == ['interactive']
-if bypass:
-    import number_compiler.api.cli as cli
-    from number_compiler.api.number_api import NumberCompiler
-    def isolated_compiler():
-        return NumberCompiler(shared_cache=False)
-    cli.NumberCompiler = isolated_compiler
 rows = []
 for repetition in range(samples + 1):
     if interactive and sys.stdin.readline().strip() != 'run':
@@ -45,7 +39,7 @@ for repetition in range(samples + 1):
     stdout, stderr = io.StringIO(), io.StringIO()
     started = perf_counter()
     with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-        status = main(arguments)
+        status = main(arguments, shared_cache=not bypass)
     elapsed = perf_counter() - started
     if status != 0 or stderr.getvalue():
         raise RuntimeError((status, stderr.getvalue()))

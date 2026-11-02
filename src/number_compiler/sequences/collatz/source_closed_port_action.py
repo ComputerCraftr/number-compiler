@@ -36,11 +36,14 @@ from number_compiler.sequences.collatz.unified_skew_clock import SkewQuadraticCl
 if TYPE_CHECKING:
     from number_compiler.resources.ledger import ResourceLedger
     from number_compiler.sequences.collatz.unified_skew_chain import UnifiedSkewChain
+    from number_compiler.sequences.collatz.weighted_right_congruence import (
+        CollatzDoubleWeight,
+    )
 
 _SOURCE_CLOSED_PORT_ISSUER = object()
 
 
-def _bounded_three_power_matches(exponent: int, target: int) -> bool:
+def bounded_three_power_matches(exponent: int, target: int) -> bool:
     """Compare 3**exponent to target without allocating beyond target size."""
     if type(exponent) is not int or exponent < 0 or type(target) is not int:
         return False
@@ -289,7 +292,7 @@ class SourceClosedPortAction:
         object.__setattr__(self, "odd_events", odd_events)
         object.__setattr__(self, "_clock", _clock)
         object.__setattr__(self, "trace", trace)
-        self.validate_components(check_growth=_issuer is None)
+        self.validate_components()
         object.__setattr__(self, "_issuer", _SOURCE_CLOSED_PORT_ISSUER)
         object.__setattr__(self, "_issued_snapshot", self._snapshot())
 
@@ -312,7 +315,7 @@ class SourceClosedPortAction:
             _issuer=_SOURCE_CLOSED_PORT_ISSUER,
         )
 
-    def validate_components(self, *, check_growth: bool) -> None:
+    def validate_components(self) -> None:
         clock = object.__getattribute__(self, "_clock")
         if (
             type(self.action) is not DyadicTerminalFieldAction
@@ -334,9 +337,7 @@ class SourceClosedPortAction:
             raise ValueError("joint port action lost an authenticated component")
         if type(self.trace) is tuple:
             object.__setattr__(self, "trace", MacroTraceGrammar.leaf(self.trace))
-        if check_growth and not _bounded_three_power_matches(
-            self.odd_events, self.action.gain
-        ):
+        if not bounded_three_power_matches(self.odd_events, self.action.gain):
             raise ValueError("odd event count disagrees with the issued action gain")
         parity_guard = SourceCongruence(
             self.action.source_residue, self.action.source_modulus
@@ -579,6 +580,21 @@ class SourceClosedPortAction:
         if not self.admits(source):
             raise ValueError("source is outside the source-closed parity cylinder")
         return self.action.endpoint(source)
+
+    def double_accumulators(self, source: int) -> CollatzDoubleWeight:
+        """Demand both exact weighted outputs from this *guarded* action.
+
+        The method does not construct an independent carry/accumulator tape.
+        It preserves source-to-class transport: foreign source values are
+        refused even when their endpoint arithmetic happens to be integral.
+        """
+        if not self.admits(source):
+            raise ValueError("source lies outside the authenticated carry ports")
+        from number_compiler.sequences.collatz.weighted_right_congruence import (
+            exact_double_weight,
+        )
+
+        return exact_double_weight(self.action, source)
 
     def demanded_outer_inner_future(
         self,

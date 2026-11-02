@@ -27,11 +27,17 @@ from number_compiler.arithmetic.carry.carry_monoid import (
     compose_carry_fn,
     value_carry_fn,
 )
+from number_compiler.arithmetic.contracts.block_effect import (
+    BlockContextBudgetExceeded,
+)
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.fields.skew_moments import SkewMoment
 from number_compiler.arithmetic.fields.walsh import LOW_WALSH_WIDTH, walsh64_signed
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.sequences.reverse_add.temporal_residue99 import (
+    reverse_decimal_and_width,
+)
 
 if TYPE_CHECKING:
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
@@ -41,15 +47,6 @@ def _require_int(value: int, description: str, minimum: int = 0) -> int:
     if type(value) is not int or value < minimum:
         raise ValueError(f"{description} must be an integer >= {minimum}")
     return value
-
-
-def _reverse_decimal(value: int) -> int:
-    _require_int(value, "reverse source")
-    result = 0
-    while value:
-        value, digit = divmod(value, 10)
-        result = result * 10 + digit
-    return result
 
 
 def _decimal_borrow_tape(minuend: int, subtrahend: int, width: int) -> tuple[int, int]:
@@ -118,9 +115,11 @@ class SourceBoundMoment:
             raise ValueError("reverse/add width cannot shrink")
         if self.target_width - self.source_width > self.moment.duration:
             raise ValueError("reverse/add width growth exceeds time span")
-        if self.moment.apply(self.source, _reverse_decimal(self.source)) != (
+        source_reverse = reverse_decimal_and_width(self.source)[0]
+        target_reverse = reverse_decimal_and_width(self.target)[0]
+        if self.moment.apply(self.source, source_reverse) != (
             self.target,
-            _reverse_decimal(self.target),
+            target_reverse,
         ):
             raise ValueError("moment and endpoint observations do not agree")
 
@@ -139,14 +138,16 @@ class SourceBoundMoment:
         _require_int(steps, "steps")
         width_source = len(digits_lsd(source, 10))
         width_target = len(digits_lsd(target, 10))
-        u = _reverse_decimal(target) - _reverse_decimal(source)
-        v = target - source - steps * _reverse_decimal(source)
+        source_reverse = reverse_decimal_and_width(source)[0]
+        target_reverse = reverse_decimal_and_width(target)[0]
+        u = target_reverse - source_reverse
+        v = target - source - steps * source_reverse
         return cls(source, target, SkewMoment(steps, u, v), width_source, width_target)
 
     @classmethod
     def primitive(cls, source: int) -> SourceBoundMoment:
         """Derive and check the complete primitive from the original source."""
-        target = source + _reverse_decimal(source)
+        target = source + reverse_decimal_and_width(source)[0]
         return cls.from_endpoints(source, target, steps=1)
 
     def then(self, after: SourceBoundMoment) -> SourceBoundMoment:
@@ -396,8 +397,10 @@ class ReverseInnovationBank:
         future_xor = carry_mask ^ future_borrow
         future_raw_xor = carry_mask ^ future_raw_borrow
 
-        reverse_current = _reverse_decimal(source)
-        reverse_prev = None if previous is None else _reverse_decimal(previous)
+        reverse_current = reverse_decimal_and_width(source)[0]
+        reverse_prev = (
+            None if previous is None else reverse_decimal_and_width(previous)[0]
+        )
         sign: int | None = None
         borrow_mask: int | None = None
         raw_borrow_mask: int | None = None
@@ -569,25 +572,69 @@ def source_bound_modular_moments(
     *,
     modulus: int,
 ) -> SkewMoment:
-    """Project U,V directly from the Q19 output's carry-ported SLP.
+    """Project exact modular U,V with each modulus's existing owner.
 
-    The source image publisher is authoritative.  Unlike exact numeric
-    materialization, this demand does not stream expanded output digits or
-    construct the resulting integer.  The two-input carry fold also computes
-    the reversed normalized output, including the optional new high '1'.
-    This is not an orbit-period certificate and cannot authorize time skips.
+    Mod-99 uses its autonomous guarded accumulator. Mod-7 and mod-198 use the
+    bounded exact symmetric RLE source action. Other moduli use the source
+    image publisher's carry-ported SLP. None of these observations authorizes
+    time skips.
     """
-    from number_compiler.sequences.reverse_add.pair_numeric_ports import (
-        project_q19_numeric,
-    )
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
     if type(term) is not ReverseAddPoweredTerm or term.base != 10:
         raise TypeError("modular moments require a decimal powered term")
     _require_int(modulus, "moment modulus", 2)
     term.validate_source_binding()
+    if modulus == 99:
+        # The guarded accumulator admits and charges its bounded source scan
+        # before deriving either source or target reversal residues.
+        q = term.temporal_accumulator99(include_source_reverse=True)
+        source_reverse = q.source_reverse_mod99
+        if source_reverse is None:
+            raise AssertionError("guarded accumulator omitted source reversal")
+        u = (q.reverse_mod99 - source_reverse) % 99
+        v = (
+            q.integer_mod99 - q.source_mod99 - q.generation_mod99 * source_reverse
+        ) % 99
+        return SkewMoment(term.generation, u, v, 99)
+
+    if modulus in (7, 198):
+        # One bounded source-owned symmetric RLE transition stream produces
+        # both endpoint orientations and the carry/Laurent refinement. It
+        # does not issue Q19 roots or infer a repeated physical carry word.
+        from .temporal_laurent_accumulator import MAX_FINITE_LAURENT_TICKS
+
+        if term.seed == 0 or term.generation <= MAX_FINITE_LAURENT_TICKS:
+            try:
+                result = term.temporal_laurent_accumulator()
+            except BlockContextBudgetExceeded:
+                # The RLE source run is an optional bounded projection. If its
+                # scratch reservation cannot fit, continue through the exact
+                # Q19 publisher below, which applies its own budget and source
+                # authority checks. Malformed authority, arithmetic failures,
+                # and cancellation are deliberately not converted to fallback.
+                pass
+            else:
+                if modulus == 7:
+                    source = result.source_mod7
+                    source_reverse = result.source_reverse_mod7
+                    endpoint = result.target_mod7
+                    endpoint_reverse = result.target_reverse_mod7
+                else:
+                    source = result.source_mod198
+                    source_reverse = result.source_reverse_mod198
+                    endpoint = result.target_mod198
+                    endpoint_reverse = result.target_reverse_mod198
+                u = (endpoint_reverse - source_reverse) % modulus
+                v = (endpoint - source - term.generation * source_reverse) % modulus
+                return SkewMoment(term.generation, u, v, modulus)
+
+    from number_compiler.sequences.reverse_add.pair_numeric_ports import (
+        project_q19_numeric,
+    )
+
     source = term.seed % modulus
-    source_reverse = _reverse_decimal(term.seed) % modulus
+    source_reverse = reverse_decimal_and_width(term.seed)[0] % modulus
     if not term.generation:
         return SkewMoment(0, 0, 0, modulus)
     if term.seed == 0:
@@ -597,9 +644,9 @@ def source_bound_modular_moments(
     owner, occurrence, _, _ = term.completed_q19_occurrence()
     if occurrence.temporal_steps != term.generation:
         raise ValueError("Q19 temporal duration disagrees with source request")
-    endpoint = project_q19_numeric(owner, occurrence, modulus=modulus)
-    u = (endpoint.reverse_target_mod - source_reverse) % modulus
-    v = (endpoint.target_mod - source - term.generation * source_reverse) % modulus
+    projection = project_q19_numeric(owner, occurrence, modulus=modulus)
+    u = (projection.reverse_target_mod - source_reverse) % modulus
+    v = (projection.target_mod - source - term.generation * source_reverse) % modulus
     return SkewMoment(term.generation, u, v, modulus)
 
 

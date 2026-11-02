@@ -13,12 +13,15 @@ from number_compiler.sequences.collatz.border_identity import (
     GuardedBorderPath,
 )
 from number_compiler.sequences.collatz.boundary_macros import boundary_metric_key
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo,
+)
+from number_compiler.sequences.collatz.guarded_skew_power import (
+    GuardedSkewCylinderPower,
+)
 from number_compiler.sequences.collatz.joint_radix_border import (
     candidate_family_for_residue160,
     has_border_parent_from_residue160,
-)
-from number_compiler.sequences.collatz.skew_cylinder_repeat import (
-    GuardedSkewCylinderPower,
 )
 from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
 from number_compiler.sequences.collatz.temporal_f5_observer import (
@@ -39,9 +42,6 @@ if TYPE_CHECKING:
         RunArithmeticWorkspace,
     )
     from number_compiler.resources.ledger import ResourceLedger
-    from number_compiler.sequences.collatz.boundary_macros import (
-        BoundaryActionTemplateMemo,
-    )
     from number_compiler.sequences.collatz.innovation_input_tape import (
         ParityProgramBuilder,
     )
@@ -73,6 +73,29 @@ def d8_frame_has_guarded_seam(
     return candidate_family_for_residue160(
         residue
     ) is not None or has_border_parent_from_residue160(residue)
+
+
+def has_unified_source_parent(source: int, remaining: int) -> bool:
+    """Necessary, source-independent candidate-port gate for unified admission.
+
+    A true result is NOT a successor certificate.  The producer still checks
+    its valuation, parity cylinder, guards and physical duration.  A false
+    result proves the existing source selector has no named/border/terminal
+    parent, so it cannot produce a multi-seam chain.  No occurrence IDs or
+    source-keyed speculative matrix cache are constructed.
+    """
+    if type(source) is not int or source <= 0 or type(remaining) is not int:
+        raise ValueError("unified source gate needs positive source and exact horizon")
+    residue = source % 160
+    if candidate_family_for_residue160(residue) is not None:
+        return True
+    if has_border_parent_from_residue160(residue):
+        return True
+    if source & 1 and source > 1:
+        numerator = 3 * source + 1
+        if numerator & (numerator - 1) == 0 and numerator.bit_length() <= remaining:
+            return True
+    return False
 
 
 def consume_unified_skew_chain(
@@ -376,6 +399,11 @@ def attempt_unified_skew_reentry(
         )
     ):
         return retry, None
+    # The producer's parent families are exactly these finite CRT ports and
+    # the separately proved power-of-two terminal.  Rejecting other residues
+    # here avoids allocating and validating a speculative multi-seam chain.
+    if not has_unified_source_parent(current, remaining):
+        return False, None
     selected = consume_unified_skew_chain(
         current,
         remaining,
@@ -412,4 +440,8 @@ def attempt_unified_skew_reentry(
     return True, (state, chain, global_offset, witness)
 
 
-__all__ = ["attempt_unified_skew_reentry", "consume_unified_skew_chain"]
+__all__ = [
+    "attempt_unified_skew_reentry",
+    "consume_unified_skew_chain",
+    "has_unified_source_parent",
+]

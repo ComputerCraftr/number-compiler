@@ -518,7 +518,7 @@ def test_physical_budget_refusal_precedes_compiler_construction(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(cli, "NumberCompiler", forbidden)
+    monkeypatch.setattr("number_compiler.api.number_api.NumberCompiler", forbidden)
     assert (
         cli.main(
             [

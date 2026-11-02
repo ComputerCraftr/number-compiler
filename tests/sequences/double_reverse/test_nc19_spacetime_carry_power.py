@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from random import Random
 
 import pytest
@@ -18,6 +18,7 @@ from number_compiler.sequences.double_reverse import (
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.double_reverse.stencil_moore import stencil_cell
 from number_compiler.sequences.double_reverse.temporal_carry_spacetime import (
+    TemporalSquarePublicationFailed,
     TemporalSquareScratchCapacityRefused,
     temporal_square_cone,
 )
@@ -82,8 +83,15 @@ def test_temporal_square_matches_independent_stencil_replay(steps: int) -> None:
         )
         assert arena.materialize(actual_root) == _replay(source, steps)
         assert arena.nodes[actual_root].length == 2 * steps
-        assert stats.temporal_cones > 0
-        assert stats.semantic_tiles >= 10
+        if steps >= 64:
+            assert stats.packed_row_evaluations == steps
+            assert stats.packed_row_operand_bits > 0
+            assert stats.packed_output_digit_visits == 6 * steps
+            assert stats.temporal_cones == 0
+            assert stats.semantic_tiles == 0
+        else:
+            assert stats.temporal_cones > 0
+            assert stats.semantic_tiles >= 10
         _assert_released(ledger, scratch_owner)
     finally:
         arena.dispose()
@@ -111,6 +119,24 @@ def test_equal_content_with_different_slp_shapes_has_equal_powered_output() -> N
         ledger.retire_unpublished_owner(scratch_owner)
 
 
+def test_packed_diagonal_preserves_reversed_source_orientation() -> None:
+    # This asymmetric word catches a nibble-direction swap: the packed source
+    # is read high digit first, while its planes are indexed from the low end.
+    source = (9, 1, 7, 2, 8, 0, 3, 6) * 32
+    ledger, arena, scratch_owner = _arena_and_scratch()
+    try:
+        source_root = arena.word(source)
+        actual_root, stats = temporal_square_cone(
+            arena, source_root, 64, scratch_owner=scratch_owner
+        )
+        assert arena.materialize(actual_root) == _replay(source, 64)
+        assert stats.packed_row_evaluations == 64
+        _assert_released(ledger, scratch_owner)
+    finally:
+        arena.dispose()
+        ledger.retire_unpublished_owner(scratch_owner)
+
+
 def test_source_traversal_is_bounded_and_scratch_is_released_on_refusal() -> None:
     ledger, arena, scratch_owner = _arena_and_scratch()
     try:
@@ -124,6 +150,101 @@ def test_source_traversal_is_bounded_and_scratch_is_released_on_refusal() -> Non
             temporal_square_cone(arena, source_root, 128, scratch_owner=scratch_owner)
         _assert_failure_traceback_has_no_semantic_graph(raised.value)
         assert len(arena.nodes) == before_nodes
+        _assert_released(ledger, scratch_owner)
+    finally:
+        arena.dispose()
+        ledger.retire_unpublished_owner(scratch_owner)
+
+
+def test_packed_capacity_miss_falls_back_to_the_semantic_cone() -> None:
+    ledger, arena, scratch_owner = _arena_and_scratch()
+    try:
+        source_root = arena.repeat(arena.terminal(0), 256)
+        ledger.tighten_limits(
+            max_nodes=ledger.nodes + 447,
+            max_cache_entries=ledger.entries + 447,
+        )
+        output_root, stats = temporal_square_cone(
+            arena,
+            source_root,
+            64,
+            scratch_owner=scratch_owner,
+            account_semantic_metrics=True,
+        )
+        assert arena.materialize(output_root) == (0,) * 128
+        assert stats.temporal_cones > 0
+        assert stats.packed_row_evaluations == 0
+        _assert_released(ledger, scratch_owner)
+    finally:
+        arena.dispose()
+        ledger.retire_unpublished_owner(scratch_owner)
+
+
+def test_packed_publication_failure_is_not_reclassified_as_a_capacity_miss(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger, arena, scratch_owner = _arena_and_scratch()
+    try:
+        source_root = arena.repeat(arena.word((1, 6, 8, 2)), 64)
+        checkpoint = len(arena.nodes)
+        original_word = LedgerSLPArena.word
+
+        def publish_then_refuse(owner: LedgerSLPArena, word: Sequence[int]) -> int:
+            original_word(owner, word)
+            raise TemporalSquareScratchCapacityRefused(
+                "injected refusal after packed output publication"
+            )
+
+        monkeypatch.setattr(LedgerSLPArena, "word", publish_then_refuse)
+        with pytest.raises(
+            TemporalSquarePublicationFailed,
+            match="publishing packed output",
+        ):
+            temporal_square_cone(arena, source_root, 64, scratch_owner=scratch_owner)
+        assert len(arena.nodes) == checkpoint
+        _assert_released(ledger, scratch_owner)
+    finally:
+        arena.dispose()
+        ledger.retire_unpublished_owner(scratch_owner)
+
+
+@pytest.mark.parametrize("steps", (8, 64))
+def test_metric_failure_rolls_back_unconsumed_temporal_output(
+    monkeypatch: pytest.MonkeyPatch, steps: int
+) -> None:
+    from number_compiler.resources.metric_keys import double_reverse as keys
+
+    ledger, arena, scratch_owner = _arena_and_scratch()
+    try:
+        source = tuple((index * 7 + 3) % 10 for index in range(4 * steps))
+        source_root = arena.word(source)
+        node_checkpoint = len(arena.nodes)
+        original_bump = ledger.bump
+        failed = False
+        fail_key = (
+            keys.DOUBLE_REVERSE_HASHLIFE_CONES
+            if steps < 64
+            else keys.DOUBLE_REVERSE_PACKED_DIAGONAL_ROW_EVALUATIONS
+        )
+
+        def fail_after_publication(name: str, amount: int = 1) -> None:
+            nonlocal failed
+            if name == fail_key and not failed:
+                failed = True
+                raise RuntimeError("injected temporal metric failure")
+            original_bump(name, amount)
+
+        monkeypatch.setattr(ledger, "bump", fail_after_publication)
+        with pytest.raises(RuntimeError, match="injected temporal metric failure"):
+            temporal_square_cone(
+                arena,
+                source_root,
+                steps,
+                scratch_owner=scratch_owner,
+                account_semantic_metrics=True,
+            )
+        assert failed
+        assert len(arena.nodes) == node_checkpoint
         _assert_released(ledger, scratch_owner)
     finally:
         arena.dispose()
@@ -280,6 +401,7 @@ def test_warm_issued_parent_skips_temporal_square_discovery(
 def test_production_endpoint_consumes_temporally_squared_cones() -> None:
     from number_compiler.resources.metric_keys.double_reverse import (
         DOUBLE_REVERSE_HASHLIFE_CONES,
+        DOUBLE_REVERSE_PACKED_DIAGONAL_ROW_EVALUATIONS,
         DOUBLE_REVERSE_TEMPORAL_SQUARE_REGION_VISITS,
     )
 
@@ -293,5 +415,8 @@ def test_production_endpoint_consumes_temporally_squared_cones() -> None:
         term.prepare_endpoint()
         assert term.materialize(max_bits=4096) == expected
         counters = term.metrics()
-        assert counters[DOUBLE_REVERSE_HASHLIFE_CONES] > 0
+        assert (
+            counters[DOUBLE_REVERSE_HASHLIFE_CONES] > 0
+            or counters[DOUBLE_REVERSE_PACKED_DIAGONAL_ROW_EVALUATIONS] > 0
+        )
         assert counters[DOUBLE_REVERSE_TEMPORAL_SQUARE_REGION_VISITS] > 0

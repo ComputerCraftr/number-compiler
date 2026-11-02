@@ -31,6 +31,9 @@ from number_compiler.sequences.collatz.boundary_macros import (
     boundary_metric_suffix,
 )
 from number_compiler.sequences.collatz.decimal_boundary import physical_boundary_packet
+from number_compiler.sequences.collatz.guarded_skew_power import (
+    GuardedSkewCylinderPower,
+)
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.border_return_grammar import (
@@ -261,9 +264,6 @@ def observe_guarded_boundary(
             )
             from number_compiler.sequences.collatz.radial_boundary_coupling import (
                 CollatzRadialBoundarySeam,
-            )
-            from number_compiler.sequences.collatz.skew_cylinder_repeat import (
-                GuardedSkewCylinderPower,
             )
 
             if type(macro) is BorderReturnMacro or type(macro) is CollatzBoundaryMacro:

@@ -263,6 +263,21 @@ COLLATZ_PHYSICAL_TEMPORAL_D8_WORD_VALIDATION_STEPS: Final = (
 COLLATZ_PHYSICAL_TEMPORAL_DIVISION_TICKS: Final = (
     "collatz_physical_temporal_division_ticks"
 )
+COLLATZ_PHYSICAL_TEMPORAL_NTH_SOURCE_PUNCTURE_D8_CUTS: Final = (
+    "collatz_physical_temporal_nth_source_puncture_d8_cuts"
+)
+COLLATZ_PHYSICAL_TEMPORAL_NTH_DIAGONAL_SOURCE_WINDOWS: Final = (
+    "collatz_physical_temporal_nth_diagonal_source_windows"
+)
+COLLATZ_PHYSICAL_TEMPORAL_NTH_DIAGONAL_CERTIFIED_SYMBOLS: Final = (
+    "collatz_physical_temporal_nth_diagonal_certified_symbols"
+)
+COLLATZ_PHYSICAL_TEMPORAL_NTH_DIAGONAL_PRODUCER_STEPS: Final = (
+    "collatz_physical_temporal_nth_diagonal_producer_steps"
+)
+COLLATZ_PHYSICAL_TEMPORAL_NTH_DIAGONAL_PRODUCER_OPERAND_BITS: Final = (
+    "collatz_physical_temporal_nth_diagonal_producer_operand_bits"
+)
 COLLATZ_PHYSICAL_TEMPORAL_DYADIC_D8_PUMPS: Final = (
     "collatz_physical_temporal_dyadic_d8_pumps"
 )

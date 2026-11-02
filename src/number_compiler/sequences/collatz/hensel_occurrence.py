@@ -31,6 +31,7 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
     require_endpoint_construction,
 )
 from number_compiler.arithmetic.fields.radix import digits_lsd
+from number_compiler.arithmetic.fields.run_pairing import append_run
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.sequences.collatz.frame import (
     CollatzAffineSuffixAdvance,
@@ -57,16 +58,6 @@ def _word_value(word: SourceWord) -> int:
     return value
 
 
-def _append_run(runs: list[tuple[int, int]], digit: int, count: int) -> None:
-    if count <= 0:
-        return
-    if runs and runs[-1][0] == digit:
-        previous, length = runs[-1]
-        runs[-1] = previous, length + count
-    else:
-        runs.append((digit, count))
-
-
 def _affine_radix4_suffix(
     suffix: SourceWord,
     scale: int,
@@ -85,7 +76,7 @@ def _affine_radix4_suffix(
         while remaining:
             total = scale * digit + carry
             emitted, following = total & 3, total >> 2
-            _append_run(output, emitted, 1)
+            append_run(output, emitted, 1)
             remaining -= 1
             carry = following
             if not remaining:
@@ -93,11 +84,11 @@ def _affine_radix4_suffix(
             repeated = scale * digit + carry
             repeated_digit, repeated_carry = repeated & 3, repeated >> 2
             if repeated_carry == carry:
-                _append_run(output, repeated_digit, remaining)
+                append_run(output, repeated_digit, remaining)
                 remaining = 0
             # Otherwise the next iteration advances the bounded carry state.
     while carry:
-        _append_run(output, carry & 3, 1)
+        append_run(output, carry & 3, 1)
         carry >>= 2
     return EMPTY if not output else from_runs(output)
 

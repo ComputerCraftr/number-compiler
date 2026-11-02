@@ -20,7 +20,13 @@ session Reverse_Residuals in reverse_residuals = Shared_Carry_Dynamics +
     Reverse_196_Publisher_Refinement
     Reverse_196_Residue_Quotient
     Reverse_Punctured_T2_Coefficients
+    Reverse_Mod7_Controlled_Action
+    Reverse_Mod99_Accumulator_Moore
+    Reverse_Laurent_Source_Refinement
     Reverse_Punctured_Run_Pairing
+    Reverse_Laurent_Producer_Refinement
+    Reverse_Native_Block_Refinement
+    Reverse_Laurent_Modular_Projection
     Reverse_Punctured_Event_Intervals
     Reverse_Growth_Coboundary
     Reverse_Mod9_Skew

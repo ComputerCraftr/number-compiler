@@ -27,6 +27,43 @@ def _validated_arena(candidate: object) -> SLPArena:
     return candidate
 
 
+def normalized_t_squared_suffix_trace(
+    input_suffix: tuple[int, ...],
+) -> tuple[tuple[int, ...], tuple[int, ...], int]:
+    """One exact two-direction carry update, retaining the odd-frame digits.
+
+    Return ``(right_pass, left_pass, reverse_growth)``. Both pass outputs
+    belong to the SAME source suffix; no independent second-port history is
+    supplied or reconstructed. The right pass moves carry to increasing text
+    indices, the left pass to decreasing indices. Leading-halo and
+    right-boundary restrictions match ``normalized_t_squared_suffix``.
+    """
+    if len(input_suffix) < 3 or input_suffix[-1] == 0:
+        raise ValueError("normalized carry suffix requires a nonzero units digit")
+    growth = int(input_suffix[-1] >= 5)
+    intermediate = tuple(
+        (2 * input_suffix[i] + int(input_suffix[i - 1] >= 5)) % 10
+        for i in range(1, len(input_suffix))
+    ) + ((1,) if growth else ())
+    result = [0] * len(intermediate)
+    carry = 0
+    for i in range(len(intermediate) - 1, -1, -1):
+        carry, result[i] = divmod(2 * intermediate[i] + carry, 10)
+    return intermediate, tuple(result), growth
+
+
+def normalized_t_squared_suffix(
+    input_suffix: tuple[int, ...],
+) -> tuple[tuple[int, ...], int]:
+    """One exact source-word F=T², carrying right then left.
+
+    Only the low suffix is issued. A missing high digit is a halo port, not
+    a license to claim a whole-word result or a permanent temporal period.
+    """
+    _, result, growth = normalized_t_squared_suffix_trace(input_suffix)
+    return result, growth
+
+
 @dataclass(frozen=True, slots=True)
 class TwoStepCarryPorts:
     """One digit's two-pass output and its outward carry ports."""
@@ -379,6 +416,19 @@ class FourPortSLPProjection:
             ):
                 raise ValueError("four-port projection action was changed after issue")
         self.action.validate_for(arena, self._source_node.length)
+
+    def source_word_weight_in(
+        self, arena: SLPArena, *, expected_source_root: int
+    ) -> int:
+        """Return the exact source SLP used by this issued four-port fold.
+
+        This is a scalar source-word weight at the caller's chosen radix; it
+        is not a fifth carry output or a symbolic polynomial accumulator. The
+        expected root is mandatory so an equal-width or equal-residue source
+        cannot be substituted for the word this projection actually consumed.
+        """
+        self.validate_for(arena, expected_source_root)
+        return self.source_root
 
 
 def _issue_fold_projection(

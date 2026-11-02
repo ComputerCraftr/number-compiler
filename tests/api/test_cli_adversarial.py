@@ -37,7 +37,7 @@ def forbid_compiler(monkeypatch: pytest.MonkeyPatch) -> None:
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("invalid CLI request constructed a compiler")
 
-    monkeypatch.setattr(cli, "NumberCompiler", forbidden)
+    monkeypatch.setattr("number_compiler.api.number_api.NumberCompiler", forbidden)
 
 
 @pytest.mark.parametrize(
@@ -320,8 +320,10 @@ def test_expected_resource_failures_have_usable_cli_errors(
         def project(self, *args: object, **kwargs: object) -> Never:
             raise error
 
-    monkeypatch.setattr(cli, "NumberCompiler", LimitedCompiler)
-    assert cli.main(["prime", "--nth", "0"]) == 2
+    monkeypatch.setattr(
+        "number_compiler.api.number_api.NumberCompiler", LimitedCompiler
+    )
+    assert cli.main(["prime", "--nth", "0", "--info", "metrics"]) == 2
     output = capsys.readouterr()
     assert not output.out
     assert str(error) in output.err
@@ -412,7 +414,9 @@ def test_emitted_execution_metrics_match_actual_rendered_term_ledger(
             terms.append(term)
             return term
 
-    monkeypatch.setattr(cli, "NumberCompiler", CapturingCompiler)
+    monkeypatch.setattr(
+        "number_compiler.api.number_api.NumberCompiler", CapturingCompiler
+    )
     monkeypatch.setattr(payload_type, "power_metrics", forbidden_audit)
     assert (
         cli.main(
@@ -497,7 +501,9 @@ def test_symbolic_metrics_do_not_execute_points_or_width(
     def forbidden(*args: object, **kwargs: object) -> Never:
         raise AssertionError("metrics forced powered endpoint execution")
 
-    monkeypatch.setattr(cli, "NumberCompiler", CapturingCompiler)
+    monkeypatch.setattr(
+        "number_compiler.api.number_api.NumberCompiler", CapturingCompiler
+    )
     for cls in (PoweredCollatzTerm, ReverseAddPoweredTerm):
         monkeypatch.setattr(
             cls,

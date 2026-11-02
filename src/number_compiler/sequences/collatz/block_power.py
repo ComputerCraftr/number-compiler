@@ -28,9 +28,6 @@ from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockEffect,
-    BoundarySide,
-    BoundaryState,
-    next_operator_id,
 )
 from number_compiler.arithmetic.contracts.block_power_types import BlockPower
 from number_compiler.arithmetic.contracts.exact_tree_context import (
@@ -59,9 +56,8 @@ from number_compiler.resources.output_stream_metrics import (
     initialize_output_stream_metrics,
     measured_output_stream,
 )
-from number_compiler.sequences.collatz.physical_state import (
-    odd_carry_parts,
-    odd_carry_state,
+from number_compiler.sequences.collatz.physical_block_effect import (
+    CollatzPhysicalBlockEffect,
 )
 from number_compiler.sequences.collatz.radix_source_api import (
     ExteriorRadixCoordinate as _ExteriorRadixCoordinate,
@@ -83,6 +79,9 @@ if TYPE_CHECKING:
         HashLifeBehaviorMetrics,
     )
     from number_compiler.sequences.collatz.clock_observers import SArithmeticClock
+    from number_compiler.sequences.collatz.diagonal_carry_action import (
+        CollatzDiagonalSeam,
+    )
     from number_compiler.sequences.collatz.joint_temporal_action import (
         CollatzAccumulatorObservation,
     )
@@ -94,205 +93,9 @@ if TYPE_CHECKING:
     from number_compiler.sequences.collatz.temporal_source_morphism import (
         CertifiedCollatzRootMorphism,
     )
-
-
-# Left boundary states.  START means no active source digit has been consumed.
-_START = 0
-_EVEN = 1
-
-
-# Odd states encode (previous_bit, carry) in states 2..5.
-
-
-class CollatzPhysicalBlockEffect:
-    """One exact physical Collatz step on a padded LSD-first binary tape."""
-
-    __slots__ = (
-        "_sealed",
-        "base",
-        "blank",
-        "blank_left_tail",
-        "blank_right_tail",
-        "eager_boundary_quotient",
-        "exponent",
-        "node_id",
-        "stable_blank_output",
-        "supports_predecessor_trace",
+    from number_compiler.sequences.collatz.weighted_right_congruence import (
+        CollatzDoubleWeight,
     )
-
-    def __setattr__(self, name: str, value: object) -> None:
-        if getattr(self, "_sealed", False):
-            raise AttributeError("kernel definitions are immutable")
-        object.__setattr__(self, name, value)
-
-    def __delattr__(self, name: str) -> None:
-        raise AttributeError("immutable definition attributes cannot be deleted")
-
-    def __init__(self) -> None:
-        self.base = 2
-        self.blank = 2
-        self.exponent = 1
-        self.node_id = next_operator_id()
-        # An odd multiplication settles after at most two blank cells; an even
-        # shift needs only the immediately higher source symbol.
-        self.blank_left_tail = 2
-        self.blank_right_tail = 1
-        self.stable_blank_output = True
-        self.supports_predecessor_trace = False
-        # The complete atom carrier is only 6 left states x 3 right states.
-        # This opt-in lets composed powers retain exact extensional normalized
-        # action tables instead of falling back to provenance words.
-        self.eager_boundary_quotient = True
-        self._sealed = True
-
-    @property
-    def canonical_key(self) -> tuple[object, ...]:
-        return ("collatz-physical-block", 1)
-
-    def initial(self, side: BoundarySide) -> int:
-        if type(side) is not BoundarySide:
-            raise TypeError("Collatz boundary side must be an exact enum value")
-        return _START if side is BoundarySide.LEFT else self.blank
-
-    def boundary_universe(
-        self,
-        side: BoundarySide,
-        *,
-        max_states: int | None = None,
-    ) -> tuple[int, ...] | None:
-        if type(side) is not BoundarySide:
-            raise TypeError("Collatz boundary side must be an exact enum value")
-        states = tuple(range(6)) if side is BoundarySide.LEFT else (0, 1, self.blank)
-        if max_states is not None:
-            max_states = require_integer(max_states, "maximum boundary states", 0)
-        if max_states is not None and len(states) > max_states:
-            return None
-        return states
-
-    def diamond_boundary_state_bounds(self) -> tuple[int, int]:
-        """Return the bounded state alphabet used by diamond images."""
-        return 0, 64
-
-    def advance(self, side: BoundarySide, state: BoundaryState, symbol: int) -> int:
-        if type(side) is not BoundarySide:
-            raise TypeError("Collatz boundary side must be an exact enum value")
-        state = require_integer(state, "Collatz boundary state")
-        symbol = require_integer(symbol, "Collatz source symbol")
-        if symbol not in (0, 1, self.blank):
-            raise ValueError(symbol)
-        if side is BoundarySide.RIGHT:
-            # After scanning a suffix from high to low, the right state is the
-            # symbol immediately above the current position.
-            return symbol
-
-        if state == _START:
-            if symbol == self.blank:
-                return _START
-            if symbol == 0:
-                return _EVEN
-            # x0=1 selects odd mode.  At the first cell, 1 + 0 + 0 + 1 = 2,
-            # so the carry after the cell is one and previous input is one.
-            return odd_carry_state(1, 1)
-        if state == _EVEN:
-            return _EVEN
-        previous, carry = odd_carry_parts(state)
-        current = 0 if symbol == self.blank else symbol
-        total = current + previous + carry
-        return odd_carry_state(current, total >> 1)
-
-    def emit(self, left: BoundaryState, symbol: int, right: BoundaryState) -> int:
-        left = require_integer(left, "Collatz left boundary")
-        symbol = require_integer(symbol, "Collatz source symbol")
-        right = require_integer(right, "Collatz right boundary")
-        if symbol not in (0, 1, self.blank) or right not in (0, 1, self.blank):
-            raise ValueError((symbol, right))
-
-        consumes_right, local = self.output_consumer(left, symbol)
-        return right if consumes_right else local
-
-    def output_consumer(self, left: int, symbol: int) -> tuple[bool, int]:
-        """Return the geometry-selected right view and left-local output.
-
-        ``True`` means the even shift consumes the adjacent higher symbol.
-        The other branch is already an exact output of the odd carry state.
-        """
-        left = require_integer(left, "Collatz left boundary")
-        symbol = require_integer(symbol, "Collatz source symbol")
-        if symbol not in (0, 1, self.blank):
-            raise ValueError(symbol)
-
-        # The first digit itself chooses the global Collatz branch.
-        if left == _START:
-            if symbol == self.blank:
-                return False, self.blank
-            if symbol == 0:
-                return True, 0
-            # Odd first cell includes +1.
-            return False, (symbol + 1) & 1
-
-        if left == _EVEN:
-            # Binary division by two: output_i = input_(i+1).  A blank next
-            # symbol means this and every higher output position is blank.
-            return True, 0
-
-        previous, carry = odd_carry_parts(left)
-        current = 0 if symbol == self.blank else symbol
-        total = current + previous + carry
-        if symbol == self.blank and total == 0:
-            return False, self.blank
-        return False, total & 1
-
-    def predecessor(self, side: BoundarySide, state: BoundaryState) -> None:
-        return None
-
-    def operator_nodes(self) -> int:
-        return 1
-
-    def runtime_stats(self) -> dict[str, int]:
-        return {
-            "operator_nodes": 1,
-            "retained_execution_nodes": 0,
-            "canonical_program_word_roots": 0,
-            "left_boundary_residuals": 0,
-            "right_boundary_residuals": 0,
-            "residual_cache_hits": 0,
-            "residual_cache_misses": 0,
-            "output_cache_hits": 0,
-            "output_cache_misses": 0,
-            "output_cache_slots": 0,
-            "output_cache_occupied": 0,
-            "left_transition_entries": 0,
-            "right_transition_entries": 0,
-            "finite_kernel_left_states": 0,
-            "finite_kernel_right_states": 0,
-            "finite_kernel_storage_bytes": 0,
-            "leaf_effect_transition_cache_entries": 0,
-            "leaf_effect_output_cache_entries": 0,
-            "leaf_effect_cache_entries": 0,
-        }
-
-
-def power_collatz_physical_effect(
-    steps: int,
-    *,
-    max_context_nodes: int | None = None,
-    max_cache_entries: int | None = None,
-) -> BlockPower:
-    """Compile ``physical_collatz**steps`` by source-independent squaring."""
-    steps = require_integer(steps, "Collatz physical steps", 0)
-    from number_compiler.sequences.collatz.tile_family_hooks import (
-        collatz_runtime_tile_hooks,
-    )
-
-    compiler = LazyCompiler(
-        ResourceLedger(max_context_nodes, max_cache_entries),
-        family_hooks=collatz_runtime_tile_hooks(),
-    )
-    from number_compiler.sequences.collatz.compilation import (
-        compile_collatz_physical_power,
-    )
-
-    return compile_collatz_physical_power(compiler, steps)
 
 
 class PoweredCollatzTerm(RadixProjectionSourceAuditor):
@@ -735,6 +538,55 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             return
         self._joint_cocycle_demanded = True
 
+    def double_accumulators(self) -> CollatzDoubleWeight:
+        """Return both exact physical-operation totals from the powered fields."""
+        if not self._joint_cocycle_demanded:
+            raise ValueError(
+                "prepare the joint cocycle before requesting double totals"
+            )
+        if self.steps == 0:
+            from number_compiler.sequences.collatz.weighted_right_congruence import (
+                CollatzDoubleWeight,
+            )
+
+            return CollatzDoubleWeight(0, 0, self.seed, self.seed)
+        action = self.source_image().joint_action
+        if action is None:
+            raise ValueError("joint cocycle was not published with this source image")
+        return action.double_accumulators()
+
+    def diagonal_carry_seam(self) -> CollatzDiagonalSeam:
+        """Return the exact joint root action as a lazy bounded spatial seam.
+
+        This is an observation of the already admitted source action. It does
+        not select parity, compile another action, or retain a portable cache
+        handle. Every call rechecks this term's source-image owner and demand.
+        """
+        if not self._joint_cocycle_demanded:
+            raise ValueError(
+                "prepare the joint cocycle before requesting a diagonal seam"
+            )
+        from number_compiler.hashlife.execution.dyadic_return_runs import (
+            RunArithmeticWorkspace,
+        )
+        from number_compiler.sequences.collatz.diagonal_carry_action import (
+            CollatzDiagonalSeam,
+        )
+
+        workspace = self.source_image()
+        scratch = RunArithmeticWorkspace.for_ledger(self._ledger, "collatz_physical")
+        with scratch.scope():
+            scratch.require_bits(
+                8
+                * (
+                    self.seed.bit_length()
+                    + 4 * self.steps.bit_length()
+                    + self.steps
+                    + 128
+                )
+            )
+            return CollatzDiagonalSeam.from_issued_joint(workspace)
+
     def accumulator(self, modulus: int) -> CollatzAccumulatorObservation:
         """Return source plus normalized successors modulo ``modulus``."""
         modulus = require_integer(modulus, "accumulator modulus", 2)
@@ -942,5 +794,4 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
 __all__ = [
     "CollatzPhysicalBlockEffect",
     "PoweredCollatzTerm",
-    "power_collatz_physical_effect",
 ]

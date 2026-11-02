@@ -26,6 +26,28 @@ def trim_polynomial(coefficients: Sequence[int]) -> tuple[int, ...]:
     return tuple(out)
 
 
+def laurent_reflection_projections(
+    coefficients: Sequence[int], cut: int
+) -> tuple[tuple[tuple[int, int], ...], tuple[tuple[int, int], ...]]:
+    """Return sparse ``(I + J)P`` and ``(I - J)P`` for ``J: j -> cut-j``.
+
+    Negative powers are retained without padding to the moving cut. These are
+    doubled projections over the integers; no division by two is implied.
+    The caller budgets the demanded coefficient support before construction.
+    """
+    source = {index: value for index, value in enumerate(coefficients) if value}
+    reflected = {cut - index: value for index, value in source.items()}
+    symmetric: list[tuple[int, int]] = []
+    antisymmetric: list[tuple[int, int]] = []
+    for index in sorted(source.keys() | reflected.keys()):
+        first, second = source.get(index, 0), reflected.get(index, 0)
+        if first + second:
+            symmetric.append((index, first + second))
+        if first - second:
+            antisymmetric.append((index, first - second))
+    return tuple(symmetric), tuple(antisymmetric)
+
+
 def polynomial_add_constant(coefficients: Sequence[int], delta: int) -> tuple[int, ...]:
     out = list(trim_polynomial(coefficients))
     out[0] += int(delta)
@@ -197,6 +219,10 @@ def polynomial_divide_exact(
     b = trim_polynomial(denominator)
     if not b or b[-1] != 1:
         raise ValueError("denominator must be monic")
+    if b == (1,):
+        return tuple(a)
+    if not any(a):
+        return (0,)
     if len(a) < len(b):
         return None
     q = [0] * (len(a) - len(b) + 1)
@@ -249,6 +275,7 @@ __all__ = [
     "MonicPolynomialRing",
     "evaluate_polynomial",
     "f5_modes",
+    "laurent_reflection_projections",
     "polynomial_add_constant",
     "polynomial_affine",
     "polynomial_divide_exact",

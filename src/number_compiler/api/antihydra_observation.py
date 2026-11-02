@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import asdict
 from enum import StrEnum
-from typing import Literal, overload
+from typing import TYPE_CHECKING, Literal, overload
 
 from number_compiler.api.json_output import (
     is_string_object_mapping,
@@ -28,17 +28,16 @@ from number_compiler.api.output_schema import (
 )
 from number_compiler.resources.metric_keys import api as _api_metrics
 from number_compiler.sequences.antihydra.machine import MACHINE, MACHINE_SHA256
-from number_compiler.sequences.antihydra.mahler import tangent
-from number_compiler.sequences.antihydra.observers import (
-    SpaceTimeProjection,
-    tape_projection,
-)
-from number_compiler.sequences.antihydra.runtime import ArithmeticResult, Run
-from number_compiler.sequences.antihydra.support import (
-    directional_hasse,
-    tape_hasse,
-    tape_intervals,
-)
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.antihydra.runtime import ArithmeticResult, Run
+
+
+def tangent(result: Run | ArithmeticResult, precision: int) -> dict[str, object]:
+    """Load the arithmetic observer only for an explicit tangent demand."""
+    from number_compiler.sequences.antihydra.mahler import tangent as observe_tangent
+
+    return observe_tangent(result, precision)
 
 
 class AntihydraArithmeticKind(StrEnum):
@@ -232,10 +231,18 @@ def observe_run(
             "physical_ticks": result.physical_ticks % modulus,
         }
     elif kind is AntihydraRunKind.SPACETIME:
+        from number_compiler.sequences.antihydra.observers import SpaceTimeProjection
+
         value = SpaceTimeProjection(
             result, width, time_width, sign, time_sign, modulus, max_observer_terms
         ).evaluate()
     elif kind is AntihydraRunKind.HASSE:
+        from number_compiler.sequences.antihydra.support import (
+            directional_hasse,
+            tape_hasse,
+            tape_intervals,
+        )
+
         value = {
             "center": 1,
             "modulus": modulus,
@@ -246,6 +253,8 @@ def observe_run(
             tape_intervals(result)
         )
     elif kind is AntihydraRunKind.TROPICAL:
+        from number_compiler.sequences.antihydra.support import tape_intervals
+
         intervals = tape_intervals(result)
         # This is the full positive prime tape; no modular cancellation is discarded.
         value = {
@@ -255,6 +264,8 @@ def observe_run(
             "coefficient_domain": "positive integer prime tape",
         }
     else:
+        from number_compiler.sequences.antihydra.observers import tape_projection
+
         projection = tape_projection(result, width, sign, modulus)
         projection_value = asdict(projection)
         projection_value["modulus"] = modulus

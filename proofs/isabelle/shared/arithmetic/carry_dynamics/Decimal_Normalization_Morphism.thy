@@ -2,6 +2,68 @@ theory Decimal_Normalization_Morphism
   imports Shared_Decimal_Cocycle_Core
 begin
 
+text \<open>A decimal multiplier acts on an LSD-first digit word through one
+ordered carry path.  The input and output words remain distinct; the final
+carry is the boundary value to the right of the represented window.\<close>
+
+fun decimal_lsd_value :: "nat list \<Rightarrow> nat" where
+  "decimal_lsd_value [] = 0"
+| "decimal_lsd_value (d#ds) = d + 10 * decimal_lsd_value ds"
+
+fun decimal_multiplier_columns ::
+    "nat \<Rightarrow> nat \<Rightarrow> nat list \<Rightarrow> nat list \<times> nat" where
+  "decimal_multiplier_columns multiplier incoming [] = ([], incoming)"
+| "decimal_multiplier_columns multiplier incoming (d#ds) =
+    (let total = multiplier*d + incoming;
+         next = total div 10;
+         (tail, outgoing) = decimal_multiplier_columns multiplier next ds
+     in (total mod 10 # tail, outgoing))"
+
+theorem decimal_multiplier_columns_exact:
+  "multiplier * decimal_lsd_value digits + incoming =
+    decimal_lsd_value (fst (decimal_multiplier_columns multiplier incoming digits)) +
+      10^(length digits) * snd (decimal_multiplier_columns multiplier incoming digits)"
+proof (induction digits arbitrary: incoming)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons digit digits)
+  let ?total = "multiplier*digit + incoming"
+  let ?next = "?total div 10"
+  obtain tail outgoing where columns:
+    "decimal_multiplier_columns multiplier ?next digits = (tail, outgoing)"
+    by (cases "decimal_multiplier_columns multiplier ?next digits") auto
+  have column_split: "?total = ?total mod 10 + 10 * ?next"
+    using div_mult_mod_eq[of ?total 10]
+    by (simp add: mult.commute)
+  have rest:
+    "multiplier * decimal_lsd_value digits + ?next =
+      decimal_lsd_value tail + 10^(length digits) * outgoing"
+    using Cons.IH[of ?next] columns by simp
+  have combined:
+    "?total + 10 * multiplier * decimal_lsd_value digits =
+      ?total mod 10 +
+        10 * (decimal_lsd_value tail + 10^(length digits) * outgoing)"
+  proof -
+    have first:
+      "?total + 10 * multiplier * decimal_lsd_value digits =
+        ?total mod 10 + 10 * (?next + multiplier * decimal_lsd_value digits)"
+      using column_split by (simp add: algebra_simps)
+    have second:
+      "?next + multiplier * decimal_lsd_value digits =
+        decimal_lsd_value tail + 10^(length digits) * outgoing"
+      using rest by (simp add: add.commute)
+    show ?thesis using first second by simp
+  qed
+  have column_result:
+    "decimal_multiplier_columns multiplier incoming (digit#digits) =
+      (?total mod 10 # tail, outgoing)"
+    using columns by (simp add: decimal_multiplier_columns.simps Let_def)
+  show ?case
+    using combined column_result
+    by (simp add: decimal_lsd_value.simps power_Suc algebra_simps)
+qed
+
 text \<open>A finite spatial cut retains the carry escaping its final column.
 The coefficient stream may be symbolic; neither theorem constructs a digit
 list or expands a temporal path. Spatial z is independent of any temporal
@@ -102,7 +164,8 @@ proof -
 qed
 
 ML \<open>
-  val checked = @{thms decimal_normalization_finite_cut
+  val checked = @{thms decimal_multiplier_columns_exact
+    decimal_normalization_finite_cut
     decimal_mod32_erase_annihilated_coefficients
     decimal_normalization_mod32_reconstruct_cut};
   val _ = if null (Thm_Deps.all_oracles checked) then ()

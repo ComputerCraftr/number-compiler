@@ -17,7 +17,9 @@ from number_compiler.sequences.collatz.border_identity import (
     GuardedBorderPath,
     NonBorderSegment,
 )
-from number_compiler.sequences.collatz.boundary_macros import BoundaryActionTemplateMemo
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo,
+)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )

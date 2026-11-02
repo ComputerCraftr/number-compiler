@@ -16,6 +16,7 @@ S(10) = X_0 + reverse10(X_0) = 2*X_0 (mod 9).
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
@@ -53,12 +54,23 @@ def _check_duration(duration: int) -> None:
         raise ValueError("temporal duration must be a nonnegative integer")
 
 
-def _reverse_and_width(value: int) -> tuple[int, int]:
-    """Six-tick proof prefix; no ``str(value)`` digit-conversion limit."""
+def reverse_decimal_and_width(
+    value: int, *, before_digit: Callable[[int, int], None] | None = None
+) -> tuple[int, int]:
+    """Return exact decimal reversal and width without string conversion.
+
+    An optional callback runs before each digit operation with the current
+    input and accumulated output bit lengths. Production bounded observers
+    use it to account for operand work; ordinary arithmetic callers stay pure.
+    """
+    if type(value) is not int or value < 0:
+        raise ValueError("decimal source must be a nonnegative exact integer")
     if value == 0:
         return 0, 1
     reversed_value, width = 0, 0
     while value:
+        if before_digit is not None:
+            before_digit(value.bit_length(), reversed_value.bit_length())
         value, digit = divmod(value, 10)
         reversed_value = reversed_value * 10 + digit
         width += 1
@@ -87,9 +99,9 @@ def from_seed(seed: int, duration: int) -> ReverseAddResidue99:
             "universal six-tick mod-11 collapse and mod-9 doubling",
         )
     current = seed
-    _, width = _reverse_and_width(seed)
+    _, width = reverse_decimal_and_width(seed)
     for _ in range(duration):
-        reverse, _ = _reverse_and_width(current)
+        reverse, _ = reverse_decimal_and_width(current)
         current += reverse
     return ReverseAddResidue99(
         duration,

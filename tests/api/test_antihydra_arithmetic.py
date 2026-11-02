@@ -122,7 +122,7 @@ def test_total_arithmetic_result_matches_source_recurrence(returns: int) -> None
     assert term.ledger.counters.get("physical_roof_evaluations", 0) == 0
 
 
-def test_total_arithmetic_uses_balanced_scheduler_images_without_endpoint_replay(
+def test_total_arithmetic_uses_powered_carry_images_without_endpoint_replay(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def forbidden_advance(
@@ -146,7 +146,12 @@ def test_total_arithmetic_uses_balanced_scheduler_images_without_endpoint_replay
     assert (
         term.ledger.counters["antihydra_arithmetic_run_contraction_publications"] == 1
     )
-    assert term.ledger.counters["antihydra_arithmetic_balanced_effect_requests"] == 1
+    # The cold route now publishes the source-issued weighted carry directly;
+    # exact output and the no-endpoint-replay assertion above retain the former
+    # coverage while this counter identifies the replacement production path.
+    assert (
+        term.ledger.counters.get("antihydra_arithmetic_weighted_carry_requests", 0) == 1
+    )
     operand_work = term.ledger.counters[
         "antihydra_arithmetic_transport_operand_bits"
     ] + term.ledger.counters.get("antihydra_arithmetic_composition_operand_bits", 0)

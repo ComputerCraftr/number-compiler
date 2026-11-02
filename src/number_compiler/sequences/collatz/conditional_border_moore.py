@@ -11,6 +11,7 @@ replace source guards or certify a global infinite-period quotient.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.ledger import ResourceLedger
@@ -26,6 +27,11 @@ from number_compiler.sequences.collatz.source_closed_port_action import (
     SourceCongruence,
 )
 from number_compiler.sequences.collatz.unified_skew_clock import SkewQuadraticClock
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.weighted_right_congruence import (
+        CollatzDoubleWeight,
+    )
 
 
 class ConditionalBorderBudgetExceeded(BlockContextBudgetExceeded):
@@ -497,6 +503,10 @@ def compile_conditional_border_moore(
                     e.physical_ticks,
                     e.odd_events,
                     e.refusal,
+                    # Right congruence on the weighted alphabet: distinguish
+                    # edges with different *future affine output functions*,
+                    # not merely equal border letters or accumulated counts.
+                    None if e.action is None else e.action.coefficient_snapshot(),
                     None if e.successor is None else classes[e.successor],
                 )
                 for e in state.edges
@@ -552,6 +562,13 @@ class ConditionalReturnPower:
             raise ArithmeticError("conditional powered inlet is not a partition")
         return selected[0]
 
+    def double_accumulators(self, source: int) -> CollatzDoubleWeight | None:
+        """Two exact weighted outputs of the selected guarded powered branch."""
+        branch = self.select(source)
+        if branch.port is None:
+            return None
+        return branch.port.double_accumulators(source)
+
     def demanded_pointed_clock(
         self,
         source: int,
@@ -581,6 +598,7 @@ class ConditionalReturnPower:
                     None if b.target is None else b.target.forced_residue(10),
                     None if b.port is None else b.port.odd_events,
                     None if b.port is None else b.port.action.steps,
+                    None if b.port is None else b.port.action.coefficient_snapshot(),
                 )
                 for b in self.branches
             }

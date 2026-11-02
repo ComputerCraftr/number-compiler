@@ -26,6 +26,9 @@ if TYPE_CHECKING:
     )
     from number_compiler.sequences.collatz.temporal_dyadic import D8TemporalTable
     from number_compiler.sequences.collatz.unified_skew_chain import UnifiedSkewChain
+    from number_compiler.sequences.collatz.weighted_right_congruence import (
+        WeightedRightBinding,
+    )
 
 
 def prepare_run_control(
@@ -67,6 +70,8 @@ class CollatzRunControl:
     d8_table: D8TemporalTable | None = None
     previous_width: int = 0
     previous_ones: int = 0
+    weighted_binding: WeightedRightBinding | None = None
+    weighted_cursor_source: int | None = None
 
     def restart_width_segment(self, width_spine: CollatzWidthSpineAccumulator) -> None:
         """Start the next width segment at the current exact run endpoint."""
@@ -133,6 +138,10 @@ class CollatzRunControl:
         self.previous_source = state.current
         self.previous_width = state.normalized
         self.previous_ones = state.one_symbols
+        # A future parity class is never transported through a foreign macro.
+        # Its publisher may explicitly install a reauthenticated successor.
+        self.weighted_binding = None
+        self.weighted_cursor_source = None
 
 
 __all__ = ["CollatzRunControl", "prepare_run_control"]

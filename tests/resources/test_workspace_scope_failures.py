@@ -100,7 +100,7 @@ def test_prime_discovery_restores_already_suspended_publication(
     ) as owner:
         owner.dag.shared_publication_enabled = False
 
-        def failed_rank(_bound: int) -> Never:
+        def failed_rank(_bound: int, _depth: int | None = None) -> Never:
             raise RuntimeError("discovery failed")
 
         if fail:

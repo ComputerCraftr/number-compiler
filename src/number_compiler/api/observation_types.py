@@ -103,11 +103,15 @@ class ObservationId(StrEnum):
     TEMPORAL_RADIX_WALSH = "temporal.radix-walsh"
     TEMPORAL_CLOSED_FORM = "temporal.closed-form"
     TEMPORAL_RESIDUE99 = "temporal.residue99"
+    TEMPORAL_ACCUMULATOR99 = "temporal.accumulator99"
     TEMPORAL_SEED_MORPHISM = "temporal.seed-morphism"
+    TEMPORAL_DEFECT_CLOCK = "temporal.defect-clock"
     TEMPORAL_CARRY_SAFETY = "temporal.carry-safety"
     TEMPORAL_ACCUMULATOR = "temporal.accumulator"
+    TEMPORAL_DOUBLE_ACCUMULATOR = "temporal.double-accumulator"
     TEMPORAL_INNOVATION_BORROW = "temporal.innovation-borrow"
     TEMPORAL_SPACETIME = "temporal.spacetime"
+    TEMPORAL_DIAGONAL_CARRY = "temporal.diagonal-carry"
     SPATIAL_MIRROR = "spatial.mirror"
     SPATIAL_STENCIL = "spatial.stencil"
     SPATIAL_PAIR_BANK = "spatial.pair-bank"
@@ -237,11 +241,15 @@ _CATEGORIES: Final[dict[ObservationCategory, tuple[ObservationId, ...]]] = {
         ObservationId.TEMPORAL_RADIX_WALSH,
         ObservationId.TEMPORAL_CLOSED_FORM,
         ObservationId.TEMPORAL_RESIDUE99,
+        ObservationId.TEMPORAL_ACCUMULATOR99,
         ObservationId.TEMPORAL_SEED_MORPHISM,
+        ObservationId.TEMPORAL_DEFECT_CLOCK,
         ObservationId.TEMPORAL_CARRY_SAFETY,
         ObservationId.TEMPORAL_ACCUMULATOR,
+        ObservationId.TEMPORAL_DOUBLE_ACCUMULATOR,
         ObservationId.TEMPORAL_INNOVATION_BORROW,
         ObservationId.TEMPORAL_SPACETIME,
+        ObservationId.TEMPORAL_DIAGONAL_CARRY,
     ),
     ObservationCategory.SPATIAL: (
         ObservationId.SPATIAL_MIRROR,

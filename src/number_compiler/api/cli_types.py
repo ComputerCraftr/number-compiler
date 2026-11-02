@@ -125,6 +125,7 @@ class DoubleReverseObservationOptions:
     walsh_start: int = 0
     open_ring_lookback: int = 8
     period_samples: int = 0
+    defect_digits: int = 0
     period_stride: int = 1
     period_depth: int = 2
     period_max_lag: int = 16
@@ -135,6 +136,7 @@ class DoubleReverseObservationOptions:
         _validate_info_names(self.info)
         require_integer(self.prefix_horizon, "--temporal-prefix-horizon", 1, 512)
         require_integer(self.period_samples, "--temporal-period-samples", 0, 128)
+        require_integer(self.defect_digits, "--temporal-defect-digits", 0, 96)
         require_integer(self.period_stride, "--temporal-period-stride", 1, 4096)
         require_integer(self.period_depth, "--temporal-period-depth", 0, 8)
         require_integer(self.period_max_lag, "--temporal-period-max-lag", 1, 128)
@@ -245,7 +247,20 @@ class AntihydraObservationOptions:
         modulus = require_integer(self.modulus, "--modulus", 2)
         if modulus.bit_length() > 4096:
             raise ValueError("coefficient modulus exceeds bit budget")
-        require_integer(self.width, "--width", 1, 256)
+        require_integer(
+            self.width,
+            "--spatial-width",
+            0 if ObservationId.TEMPORAL_DIAGONAL_CARRY in self.info else 1,
+            256,
+        )
+        if self.width == 0 and {
+            ObservationId.ARITHMETIC_TWISTED,
+            ObservationId.SPATIAL_TAPE,
+            ObservationId.TEMPORAL_SPACETIME,
+            ObservationId.ARITHMETIC_HASSE,
+            ObservationId.ARITHMETIC_FACTOR,
+        }.intersection(self.info):
+            raise ValueError("full spatial width is only supported by diagonal carry")
         require_integer(self.sign, "--sign")
         require_integer(self.precision, "--precision", 0, 4096)
         require_integer(self.time_width, "--time-width", 1, 256)

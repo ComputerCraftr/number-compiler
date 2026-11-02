@@ -31,9 +31,6 @@ from number_compiler.hashlife.execution.dyadic_return_runs import (
     RunArithmeticWorkspace,
     publish_exact_run_candidate,
 )
-from number_compiler.hashlife.execution.dyadic_return_transport import (
-    balanced_residue_effect,
-)
 from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageDemand,
@@ -394,36 +391,54 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             self, action, source, transfer, odd_steps, delta, minimum
         )
 
-    def _balanced_root_candidate(
+    def _powered_source_candidate(
         self, action: DyadicReturnActionID, source: SourceImageView
     ) -> SourceImageCandidate:
-        """Publish one shared balanced effect for the admitted root source."""
+        """Publish the exact root from its issued weighted carry action.
+
+        This path is deliberately separate from Mahler's fractional safety
+        consumer. Integer successor authority comes from the admitted source
+        and action; the pinned Mahler cap is derived later from the published
+        physical transfer, so this integer action does not request min-plus
+        carry work.
+        """
+        from number_compiler.sequences.antihydra.mahler_carry_quotient import (
+            issued_weighted_carry,
+        )
+
         source_id = source.binding.source
         if type(source_id) is not DyadicReturnSourceID:
-            raise TypeError("Antihydra source has another sort")
+            raise TypeError("powered Antihydra source has another sort")
         admitted = self.source_node(source_id)
         width = self.action_node(action).width
         if (
-            not admitted.exact
+            source_id != self.root_source
+            or action != self.root_action
+            or not admitted.exact
             or admitted.precision != width
             or source.binding.action != self.identity
             or width <= self.MAX_LEAF_STEPS
+            or width > MAX_MAHLER_SOURCE_EXTENT
         ):
-            raise ValueError("balanced root requires its complete admitted source")
-        # The exact source precision is checked above. The shared balanced
-        # worklist constructs its affine action from the low cylinder, while
-        # the publisher binds the resulting summary to this authenticated
-        # source occurrence.
-        effect = balanced_residue_effect(self, width, admitted.residue)
-        return publish_exact_run_candidate(
-            self,
-            action,
-            source,
-            effect.transfer,
-            effect.odd_steps,
-            effect.delta,
-            effect.minimum,
-        )
+            raise ValueError("powered Antihydra action requires its admitted root")
+        with RunArithmeticWorkspace.for_ledger(
+            self.ledger, self.counter_prefix
+        ).scope() as scratch:
+            carry = issued_weighted_carry(
+                self,
+                source,
+                action,
+                reserve_bits=scratch.require_bits,
+            )
+            return publish_exact_run_candidate(
+                self,
+                action,
+                source,
+                carry.physical_transfer,
+                carry.odd_h_steps,
+                carry.delta,
+                carry.minimum,
+            )
 
     def _try_odd_macro_candidate(
         self, action: DyadicReturnActionID, source: SourceImageView
@@ -656,19 +671,17 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             width <= self.MAX_LEAF_STEPS or self.whole_initial_run(source, width)
         ):
             candidate = self._run_candidate(action, source)
+        elif (
+            source_id == self.root_source
+            and action == self.root_action
+            and width <= MAX_MAHLER_SOURCE_EXTENT
+            and self.source_node(source_id).exact
+        ):
+            candidate = self._powered_source_candidate(action, source)
         elif self.source_node(source_id).exact:
             macro_candidate = self._try_odd_macro_candidate(action, source)
             if macro_candidate is not None:
                 candidate = macro_candidate
-            elif (
-                source_id == self.root_source
-                and action == self.root_action
-                and width <= MAX_MAHLER_SOURCE_EXTENT
-            ):
-                # A source-certified odd motif has priority when present. The
-                # direct root path is the exact shared-worklist fallback after
-                # that selector has exhausted its bounded proof route.
-                candidate = self._balanced_root_candidate(action, source)
             elif 1536 <= width <= 2048:
                 # For this bounded high-cost non-root span, the exact admitted
                 # integer lets the existing punctured carry/run constructor

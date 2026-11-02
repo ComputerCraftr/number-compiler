@@ -19,8 +19,19 @@ from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import prime as _prime_keys
 from number_compiler.resources.process_cache import MISSING, CacheLease
 from number_compiler.resources.stores import LedgerList
+from number_compiler.sequences.prime.ordered_rank import (
+    ORDERED_BOUNDARY_NODE_COST,
+    ORDERED_WHEEL_210_TERMS,
+    OrderedRankBoundary2310,
+    OrderedRankBoundaryStore,
+    ordered_cyclotomic_suffix_rank,
+)
 
 MAX_SHARED_FACTOR_STAGES = 4096
+
+_ORDERED_WHEEL_2310_LENGTH = 2310
+_ORDERED_SUFFIX_PACKET_NODES = 64
+_ORDERED_WHEEL_2310_BUILD_WORK = 4 * 210 + 11 * 48 + 37
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +120,16 @@ class CoprimeRankDAG:
         self._closed = False
         self._factor_owner = self.ledger.register(
             "prime.rank.factors", "factor descriptor"
+        )
+        self._ordered_boundary_owner = self.ledger.register(
+            "prime.rank.ordered_boundary", "fixed 2310-period rank boundary"
+        )
+        self._ordered_boundary_store = OrderedRankBoundaryStore()
+        self.ledger.register_container(
+            self._ordered_boundary_owner,
+            self._ordered_boundary_store,
+            node_count=self._ordered_boundary_store.node_count,
+            payloads=self._ordered_boundary_store.payloads,
         )
         self._primes: LedgerList[int] = self.ledger.make_list(
             self._factor_owner, append_only=True
@@ -287,6 +308,154 @@ class CoprimeRankDAG:
         self.validate_fresh_successor(prime)
         self.append_factor(prime)
         self._consecutive_depth = len(self._primes)
+
+    def advance_verified_phase_lane(
+        self, root: int, *, max_stages: int
+    ) -> tuple[int | None, int, bool]:
+        """Find the next prefix prime by scanning its exact odd divisor lanes.
+
+        For candidates at most the square of the last admitted prime, every
+        composite has a divisor in this authenticated consecutive prefix.
+        The scan is ordered, so its first survivor is the exact next prime.
+        If the requested endpoint exceeds that square and no survivor was
+        found, the caller must use the ordinary exact rank recurrence.
+
+        The return values are the appended factor (if any), odd candidates
+        examined, and whether the requested interval is fully covered.
+        """
+        self._validate_factor_source()
+        if self._closed:
+            raise RuntimeError("prime rank workspace is closed")
+        if (
+            type(root) is not int
+            or root < 2
+            or type(max_stages) is not int
+            or max_stages < 1
+        ):
+            raise ValueError("invalid prime phase-lane horizon or stage budget")
+        if (
+            not self._primes
+            or self._consecutive_depth != len(self._primes)
+            or self._primes[0] != 2
+        ):
+            raise RuntimeError(
+                "phase-lane discovery needs a certified consecutive prefix"
+            )
+        previous = self._primes[-1]
+        if previous >= root:
+            return None, 0, True
+        square_bound = previous * previous
+        end = min(root, square_bound)
+        start = 3 if previous == 2 else previous + 2
+        if start > end:
+            return None, 0, root <= square_bound
+        tested = 0
+        factor_count = len(self._primes)
+        for candidate in range(start, end + 1, 2):
+            tested += 1
+            self.charge(candidate.bit_length())
+            removed = False
+            for index in range(1, factor_count):
+                factor = self._primes[index]
+                if factor * factor > candidate:
+                    break
+                self.charge(candidate.bit_length() + factor.bit_length())
+                if candidate % factor == 0:
+                    removed = True
+                    break
+            if removed:
+                continue
+            if factor_count >= max_stages:
+                raise ValueError("prime stage budget exceeded (--max-prime-stages)")
+            self.append_factor(candidate)
+            self._consecutive_depth = len(self._primes)
+            return candidate, tested, False
+        return None, tested, root <= square_bound
+
+    def _build_ordered_boundary_2310(
+        self,
+    ) -> OrderedRankBoundary2310 | None:
+        """Build the one fixed 210-to-2310 boundary under ledger ownership."""
+        existing = self._ordered_boundary_store.boundary
+        if existing is not None:
+            return existing
+        if (
+            self._consecutive_depth < 5
+            or len(self._primes) < 5
+            or tuple(self._primes[index] for index in range(5)) != (2, 3, 5, 7, 11)
+        ):
+            return None
+        if (
+            self.max_work is not None
+            and self.work + _ORDERED_WHEEL_2310_BUILD_WORK > self.max_work
+        ):
+            return None
+        self.ledger.reserve(
+            self._ordered_boundary_owner,
+            nodes=ORDERED_BOUNDARY_NODE_COST,
+        )
+        try:
+            self.charge_many(
+                _ORDERED_WHEEL_2310_BUILD_WORK,
+                _ORDERED_WHEEL_2310_BUILD_WORK * 12,
+            )
+            boundary = OrderedRankBoundary2310.build()
+            self._ordered_boundary_store.publish(boundary)
+            self.ledger.note_store_mutation()
+        except BaseException:
+            if self._ordered_boundary_store.clear():
+                self.ledger.note_store_mutation()
+            self.ledger.release(
+                self._ordered_boundary_owner,
+                nodes=ORDERED_BOUNDARY_NODE_COST,
+            )
+            raise
+        return boundary
+
+    def _ordered_cyclotomic_carry_rank(self, limit: int, depth: int) -> int | None:
+        """Evaluate a bounded exact suffix over the fixed 2310 boundary.
+
+        The source must own a consecutive prime prefix. The inclusion-exclusion
+        packet is bounded to sixteen ordered divisor pullbacks; greater depth
+        uses the existing memoized recurrence rather than extending a wheel.
+        """
+        suffix_length = depth - 5
+        if depth < 5 or depth > self._consecutive_depth or suffix_length > 4:
+            return None
+        if self._ordered_boundary_store.boundary is None and (
+            depth < 8 or limit < _ORDERED_WHEEL_2310_LENGTH * 32
+        ):
+            return None
+        estimated_terms = 1 << suffix_length
+        build_work = (
+            0
+            if self._ordered_boundary_store.boundary is not None
+            else _ORDERED_WHEEL_2310_BUILD_WORK
+        )
+        packet_work = suffix_length + 7 * estimated_terms
+        estimated_work = build_work + packet_work
+        if self.max_work is not None and self.work + estimated_work > self.max_work:
+            return None
+        boundary = self._build_ordered_boundary_2310()
+        if boundary is None:
+            return None
+        bit_work = packet_work * (limit.bit_length() + 12)
+        self.ledger.reserve(
+            self._ordered_boundary_owner,
+            nodes=_ORDERED_SUFFIX_PACKET_NODES,
+        )
+        try:
+            self.charge_many(packet_work, bit_work)
+            return ordered_cyclotomic_suffix_rank(
+                limit,
+                boundary,
+                (self._primes[index] for index in range(5, depth)),
+            )
+        finally:
+            self.ledger.release(
+                self._ordered_boundary_owner,
+                nodes=_ORDERED_SUFFIX_PACKET_NODES,
+            )
 
     def append_next_cached_prefix_factor(
         self, capability: CachedPrimePrefixCapability
@@ -495,6 +664,25 @@ class CoprimeRankDAG:
                     continue
                 if x <= 1 or d == 0:
                     result = max(0, x)
+                elif d <= self._consecutive_depth and x <= self._primes[d - 1]:
+                    # The source owns every prime through p_d. Thus 1 is the
+                    # sole positive survivor at or below that endpoint.
+                    result = 1
+                elif d == 4 and self._consecutive_depth >= 4:
+                    # Exact ordered Phi_210 prefix action. A phase histogram
+                    # would lose endpoint ownership; the signed floor sum
+                    # retains it directly.
+                    self.charge_many(16, 16 * x.bit_length())
+                    result = sum(
+                        sign * (x // divisor)
+                        for divisor, sign in ORDERED_WHEEL_210_TERMS
+                    )
+                elif (
+                    d >= 5
+                    and (ordered_result := self._ordered_cyclotomic_carry_rank(x, d))
+                    is not None
+                ):
+                    result = ordered_result
                 elif d == 1:
                     # Exact base recurrence: Phi(x,1)=x-floor(x/p1).
                     p = self._primes[0]
@@ -707,10 +895,20 @@ class CoprimeRankDAG:
             return
         with ExitStack() as cleanup:
             cleanup.callback(self._close_factors)
+            cleanup.callback(self._close_ordered_boundary)
             cleanup.callback(self.memo.dispose)
             cleanup.callback(self._progression_inverses.dispose)
             self.progression_memo.dispose()
         self._closed = True
+
+    def _close_ordered_boundary(self) -> None:
+        if self._ordered_boundary_store.clear():
+            self.ledger.note_store_mutation()
+            self.ledger.release(
+                self._ordered_boundary_owner,
+                nodes=ORDERED_BOUNDARY_NODE_COST,
+            )
+        self.ledger.mark_disposed(self._ordered_boundary_owner)
 
     def _close_factors(self) -> None:
         size = len(self._primes)

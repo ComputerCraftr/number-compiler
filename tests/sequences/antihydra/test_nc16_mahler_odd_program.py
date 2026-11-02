@@ -13,6 +13,7 @@ from number_compiler.sequences.antihydra.mahler_border_identity import (
 from number_compiler.sequences.antihydra.mahler_mixed_harmonic_ring import (
     MahlerMixedOddHarmonicRing,
 )
+from number_compiler.sequences.antihydra.mahler_odd_macro import MahlerOddToOddAction
 from number_compiler.sequences.antihydra.mahler_odd_program import (
     compile_mahler_odd_program,
 )
@@ -81,6 +82,28 @@ def test_persistent_mixed_run_reuses_one_compressed_source_fragment(
     assert set(q_harmonics) == {"2", "3", "5", "6", "10", "64"}
     assert program.endpoint == _scalar(source, program.emitted_events)[0]
     assert frag.fractional_guard_empty is True
+
+
+def test_fragment_rejects_same_weight_action_with_different_ordered_motif() -> None:
+    source = source_for_motif((1, 3), 2)
+    program = compile_mahler_odd_program(
+        source,
+        max_events=4,
+        max_motif_events=2,
+        source_gate_bits=0,
+    )
+    assert len(program.fragments) == 1
+    fragment = program.fragments[0]
+    assert fragment.motif == (1, 3)
+
+    reordered = MahlerOddToOddAction.run(2).then(MahlerOddToOddAction.run(2))
+    assert reordered.odd_events == len(fragment.motif)
+    assert reordered.extent == sum(fragment.motif)
+    with pytest.raises(ValueError, match="ordered motif"):
+        replace(fragment, motif_action=reordered)
+    object.__setattr__(fragment, "motif_action", reordered)
+    with pytest.raises(ValueError, match="binding is stale"):
+        program.source_at_tick(fragment.clock_before + 2)
 
 
 def test_any_forged_harmonic_capacity_is_refused_at_creation() -> None:

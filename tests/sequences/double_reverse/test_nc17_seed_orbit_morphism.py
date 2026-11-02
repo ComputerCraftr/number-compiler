@@ -134,7 +134,10 @@ def test_seed196_joint_square_uses_actual_midroot_not_replayed_word(
         assert current.first.root == pointed.root
         assert current.last.center == (5, 0)
         metrics = term.metrics()
-        assert metrics["double_reverse_hashlife_cones"] > 0
+        assert (
+            metrics["double_reverse_hashlife_cones"] > 0
+            or metrics["double_reverse_packed_diagonal_row_evaluations"] > 0
+        )
         assert metrics["double_reverse_spatial_transducer_applications"] == 0
 
 
