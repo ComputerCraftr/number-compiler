@@ -211,8 +211,7 @@ struct
               val noncanonical_steps =
                 HOLogic.mk_binop @{const_name plus} (steps, nat 0)
               val noncanonical_pair = HOLogic.mk_prod (action, noncanonical_steps)
-              val rewrite_context = put_simpset HOL_basic_ss ctxt
-                addsimps [@{thm add_0_right}]
+              val rewrite_context = Simplifier.add_simps ([@{thm add_0_right}]) (put_simpset HOL_basic_ss ctxt)
               val step_rewrite = Simplifier.rewrite rewrite_context
                 (Thm.cterm_of ctxt noncanonical_pair)
               val _ = if Thm.term_of (Thm.lhs_of step_rewrite) aconv
@@ -255,5 +254,21 @@ struct
           #transition_evaluations retry_work = 1 andalso
           #near_application_transports retry_work = 1 then ()
         else error "Near numeral validation rejected the independent canonical retry"
+
+      val fiber82 = @{term "Comma_Near 5 0 82"}
+      val fiber202 = @{term "Comma_Near 5 0 202"}
+      val first_fiber = #classify ports fiber82
+      val first_work = #work ports ()
+      val second_fiber = #classify ports fiber202
+      val second_work = #work ports ()
+      val _ = if #action_key first_fiber aconv #action_key second_fiber andalso
+          not (#application_key first_fiber aconv #application_key second_fiber) andalso
+          Option.map number (#selected_steps first_fiber) = SOME 0 andalso
+          Option.map number (#selected_steps second_fiber) = SOME 2 andalso
+          #near_residual_builds second_work = #near_residual_builds first_work andalso
+          #near_residual_hits second_work = #near_residual_hits first_work + 1
+        then () else error "Near cycle fiber rebuilt or aliased its physical cocycle"
+      val _ = (ignore (pair_application (#transition ports first_fiber 0) fiber82 0);
+        ignore (pair_application (#transition ports second_fiber 0) fiber202 2))
     in () end
 end

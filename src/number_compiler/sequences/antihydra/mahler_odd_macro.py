@@ -114,14 +114,16 @@ def _macro_radix_harmonics(
 ) -> tuple[dict[int, dict[str, object]], tuple[int, ...] | None]:
     radix_rows: dict[int, dict[str, object]] = {}
     for base in (2, 5, 10):
-        ports = ThreePowerRadixOrbit("ordinary", extent, base).ordinary_ports(places)
+        ports = ThreePowerRadixOrbit("ordinary", extent, base).compact_ordinary_ports(
+            places
+        )
         radix_rows[base] = {
             "tripling_carries": ports.carry_word,
             "innovation_borrows": ports.forward_borrow_mask,
             "xor": ports.difference_xor_mask,
         }
     radix64 = (
-        ThreePowerRadixOrbit("ordinary", extent, 64).ordinary_ports(64)
+        ThreePowerRadixOrbit("ordinary", extent, 64).compact_ordinary_ports(64)
         if walsh
         else None
     )

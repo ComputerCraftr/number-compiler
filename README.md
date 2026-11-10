@@ -1,7 +1,10 @@
 # Number Compiler
 
 Number Compiler provides exact terms and radix projections for reverse-add, decimal double-reversal (`2rev10`),
-Collatz, Antihydra, prime blocks, Fermat numbers, Mersenne numbers and the admitted A367620 comma prefix.
+Collatz, Antihydra, prime blocks, Fermat numbers, Mersenne numbers and an A367620 comma interface.
+
+Comma production output awaits the checked global proof artifact. See the
+[current release gates](docs/release-status.md).
 
 ```bash
 python -m pip install -e '.[dev]'
@@ -10,7 +13,6 @@ number-compiler reverse-add --seed 196 --nth 8
 number-compiler collatz --nth 8 --seed 27
 number-compiler collatz --nth-power10 6 --seed 27
 number-compiler antihydra --nth 64 --info safety.ledger --info temporal.clock
-number-compiler a367620 --nth 1
 number-compiler fermat --nth 3 --no-value --info number-theory.primality --format json
 number-compiler mersenne --nth 131 --no-value --info number-theory.primality --info number-theory.factor --format json
 ```

@@ -22,7 +22,6 @@ from number_compiler.sequences.comma.cyclotomic_clock import CyclotomicClock
 from number_compiler.sequences.comma.domain import canonical_entry_coordinate
 
 PERIOD = 924
-MAX_CHART_MOVES = 4096
 
 
 @dataclass(frozen=True, slots=True)
@@ -220,14 +219,16 @@ def chart_moves(
 ) -> Iterator[tuple[BoundaryChart, ChartMove]]:
     """Construct a bounded macro, retaining its terminal chart.
 
-    Exhaustion is a failure, never a landmine or a branch-safety verdict.
+    The release induction proves both scalar and grouped walks reach exact
+    terminal control for every admitted initial chart. The charge callback
+    still bounds production work and refuses before an over-budget step.
     Grouped construction uses the weighted port only for strict interior
     Near prefixes. Its weight is physical phase time, never diagonal dwell.
     """
     if type(grouped_near) is not bool:
         raise ValueError("comma chart grouping requires a Boolean selector")
     chart = initial_chart(kind, a)
-    for _ in range(MAX_CHART_MOVES):
+    while True:
         if charge is not None:
             charge(1)
         validate_chart(residue, chart)
@@ -260,4 +261,3 @@ def chart_moves(
         if move.next_chart is None:
             return
         chart = move.next_chart
-    raise ValueError("comma boundary macro exceeded its finite seam bound")

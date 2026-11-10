@@ -267,10 +267,10 @@ struct
       val take_nil = @{thm take_Nil} RS @{thm eq_reflection}
       val drop_cons = @{thm drop_Cons'} RS @{thm eq_reflection}
       val drop_nil = @{thm drop_Nil} RS @{thm eq_reflection}
-      val arithmetic_context = Comma_Entry_Arithmetic.natural_context ctxt addsimps
+      val arithmetic_context = Comma_Entry_Arithmetic.natural_context ctxt |> Simplifier.add_simps
         @{thms list.size take.simps drop.simps nat.case case_nat_numeral
           pred_numeral_simps Let_def}
-      val prune_condition_context = Comma_Entry_Arithmetic.natural_context ctxt addsimps
+      val prune_condition_context = Comma_Entry_Arithmetic.natural_context ctxt |> Simplifier.add_simps
         @{thms snd_conv}
       val length_cons = @{thm length_Cons} RS @{thm eq_reflection}
       val snd_projection = @{thm snd_conv} RS @{thm eq_reflection}

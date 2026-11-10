@@ -17,12 +17,12 @@ from pathlib import Path
 from typing import Literal, TypedDict
 
 from devtools.paths import isabelle_root
+from devtools.verification.comma_semantic_quotients import bounded_chart_walk
 from number_compiler.sequences.comma.arithmetic import (
     cycle_power_residue,
     cycle_transfer,
 )
 from number_compiler.sequences.comma.boundary_chart import (
-    MAX_CHART_MOVES,
     PERIOD,
     BoundaryChart,
     ChartMove,
@@ -412,27 +412,13 @@ def _control_witness(kind: Literal["N", "Z"], a: int, residue: int) -> ControlWi
     )
 
 
-def _chart_moves_from(
-    start: BoundaryChart, residue: int
-) -> Iterator[tuple[BoundaryChart, ChartMove]]:
-    """Use the same local step to propose a trace from a non-boundary chart."""
-    chart = start
-    for _ in range(MAX_CHART_MOVES):
-        move = chart_step(residue, chart)
-        yield chart, move
-        if move.next_chart is None:
-            return
-        chart = move.next_chart
-    raise ValueError("comma chart exceeded its finite seam bound")
-
-
 def control_witness_from_chart(start: BoundaryChart, residue: int) -> ControlWitness:
     """Propose a control witness for a caller-supplied intermediate chart."""
     return _assemble_control_witness(
         {"chart": _chart_data(start), "residue": residue},
         start,
         residue,
-        _chart_moves_from(start, residue),
+        bounded_chart_walk(start, residue),
     )
 
 

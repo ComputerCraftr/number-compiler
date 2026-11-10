@@ -70,6 +70,17 @@ definition comma_crt_shifted_cofactor_or_false ::
       ((digit+shift) mod comma_crt_period level) column of
        Some child \<Rightarrow> child | None \<Rightarrow> Comma_CRT_Bool False)"
 
+text \<open>
+This predicate inspects only the root constructor.  At this level a Boolean
+column is constant, while a node whose level is later than the queried level
+passes through the cofactor operation unchanged.  It deliberately does not
+inspect descendants or infer validity of malformed columns.
+\<close>
+fun comma_crt_root_skips_level :: "nat \<Rightarrow> comma_crt_column \<Rightarrow> bool" where
+  "comma_crt_root_skips_level level (Comma_CRT_Bool value) = True"
+| "comma_crt_root_skips_level level (Comma_CRT_Node node_level children) =
+    (level < node_level)"
+
 fun comma_crt_apply_shifted_from ::
     "nat \<Rightarrow> nat \<Rightarrow> comma_crt_boolean_operation \<Rightarrow>
       comma_crt_column \<Rightarrow> comma_crt_column \<Rightarrow> comma_crt_column" where
@@ -101,167 +112,6 @@ lemma comma_crt_shifted_cofactor_or_false_as_cofactor:
   by (simp add: comma_crt_shifted_cofactor_or_false_def
       comma_crt_cofactor_or_false_def)
 
-lemma comma_crt_apply_shifted_from_shift_equiv:
-  assumes depth_bound: "depth \<le> 4"
-    and zero_branch: "(shift mod 924 = 0) \<longleftrightarrow> (shift' mod 924 = 0)"
-    and suffix_residues:
-      "\<forall>level. 4-depth \<le> level \<longrightarrow> level < 4 \<longrightarrow>
-        shift mod comma_crt_period level = shift' mod comma_crt_period level"
-  shows "comma_crt_apply_shifted_from depth shift operation left right =
-    comma_crt_apply_shifted_from depth shift' operation left right"
-  using assms
-proof (induction depth arbitrary: shift shift' operation left right)
-  case 0
-  then show ?case
-    by (simp add: comma_crt_apply_shifted_from.simps
-        comma_crt_shifted_apply_shortcut_def comma_crt_apply_shortcut_def)
-next
-  case (Suc depth)
-  let ?level = "4 - Suc depth"
-  have level_lt: "?level < 4" by arith
-  have shift_residue:
-    "shift mod comma_crt_period ?level = shift' mod comma_crt_period ?level"
-    using Suc.prems(3) level_lt by blast
-  have shifted_index:
-    "(digit + shift) mod comma_crt_period ?level =
-      (digit + shift') mod comma_crt_period ?level" for digit
-    by (rule mod_add_cong[OF refl shift_residue])
-  have child_residues:
-    "\<forall>level. 4-depth \<le> level \<longrightarrow> level < 4 \<longrightarrow>
-      shift mod comma_crt_period level = shift' mod comma_crt_period level"
-  proof (intro allI impI)
-    fix level
-    assume lower: "4-depth \<le> level" and upper: "level < 4"
-    have parent_lower: "4 - Suc depth \<le> level" using lower by arith
-    show "shift mod comma_crt_period level = shift' mod comma_crt_period level"
-      using Suc.prems(3) parent_lower upper by blast
-  qed
-  have child_depth_bound: "depth \<le> 4" using Suc.prems(1) by arith
-  have child_apply:
-    "\<And>digit. comma_crt_apply_shifted_from depth shift operation
-        (comma_crt_cofactor_or_false ?level digit left)
-        (comma_crt_shifted_cofactor_or_false ?level digit shift right) =
-      comma_crt_apply_shifted_from depth shift' operation
-        (comma_crt_cofactor_or_false ?level digit left)
-        (comma_crt_shifted_cofactor_or_false ?level digit shift' right)"
-  proof -
-    fix digit
-    have right_alignment:
-      "comma_crt_apply_shifted_from depth shift' operation
-          (comma_crt_cofactor_or_false ?level digit left)
-          (comma_crt_shifted_cofactor_or_false ?level digit shift' right) =
-        comma_crt_apply_shifted_from depth shift' operation
-          (comma_crt_cofactor_or_false ?level digit left)
-          (comma_crt_shifted_cofactor_or_false ?level digit shift right)"
-      by (simp only: comma_crt_shifted_cofactor_or_false_as_cofactor shifted_index)
-    have induction_result:
-      "comma_crt_apply_shifted_from depth shift operation
-          (comma_crt_cofactor_or_false ?level digit left)
-          (comma_crt_shifted_cofactor_or_false ?level digit shift right) =
-        comma_crt_apply_shifted_from depth shift' operation
-          (comma_crt_cofactor_or_false ?level digit left)
-          (comma_crt_shifted_cofactor_or_false ?level digit shift right)"
-    proof (rule Suc.IH)
-      show "depth \<le> 4" by (rule child_depth_bound)
-      show "(shift mod 924 = 0) \<longleftrightarrow> (shift' mod 924 = 0)"
-        by (rule Suc.prems(2))
-      show "\<forall>level. 4-depth \<le> level \<longrightarrow> level < 4 \<longrightarrow>
-        shift mod comma_crt_period level = shift' mod comma_crt_period level"
-        by (rule child_residues)
-    qed
-    show "comma_crt_apply_shifted_from depth shift operation
-        (comma_crt_cofactor_or_false ?level digit left)
-        (comma_crt_shifted_cofactor_or_false ?level digit shift right) =
-      comma_crt_apply_shifted_from depth shift' operation
-        (comma_crt_cofactor_or_false ?level digit left)
-        (comma_crt_shifted_cofactor_or_false ?level digit shift' right)"
-      using induction_result right_alignment by simp
-  qed
-  have children_equal:
-    "map (\<lambda>digit. comma_crt_apply_shifted_from depth shift operation
-        (comma_crt_cofactor_or_false ?level digit left)
-        (comma_crt_shifted_cofactor_or_false ?level digit shift right))
-      [0..<comma_crt_period ?level] =
-     map (\<lambda>digit. comma_crt_apply_shifted_from depth shift' operation
-        (comma_crt_cofactor_or_false ?level digit left)
-        (comma_crt_shifted_cofactor_or_false ?level digit shift' right))
-      [0..<comma_crt_period ?level]"
-    by (rule map_cong[OF refl]) (rule child_apply)
-  have shortcut_equal:
-    "comma_crt_shifted_apply_shortcut operation shift left right =
-      comma_crt_shifted_apply_shortcut operation shift' left right"
-    using Suc.prems(2)
-    by (simp add: comma_crt_shifted_apply_shortcut_def)
-  show ?case
-  proof (cases "comma_crt_shifted_apply_shortcut operation shift left right")
-    case None
-    have other_none:
-      "comma_crt_shifted_apply_shortcut operation shift' left right = None"
-      using shortcut_equal None by simp
-    show ?thesis
-      by (simp only: comma_crt_apply_shifted_from.simps None other_none
-          option.case Let_def level_lt if_True children_equal)
-  next
-    case (Some result)
-    have other_some:
-      "comma_crt_shifted_apply_shortcut operation shift' left right = Some result"
-      using shortcut_equal Some by simp
-    show ?thesis
-      by (simp only: comma_crt_apply_shifted_from.simps Some other_some option.case)
-  qed
-qed
-
-definition comma_crt_apply_suffix_period :: "nat \<Rightarrow> nat" where
-  "comma_crt_apply_suffix_period depth =
-    (if depth = 0 then 1 else if depth = 1 then 11 else
-      if depth = 2 then 77 else if depth = 3 then 231 else 924)"
-
-lemma comma_crt_apply_period_divides_suffix:
-  assumes depth_bound: "depth \<le> 4"
-    and lower: "4-depth \<le> level"
-    and upper: "level < 4"
-  shows "comma_crt_period level dvd comma_crt_apply_suffix_period depth"
-proof -
-  have depth_cases: "depth = 0 \<or> depth = 1 \<or> depth = 2 \<or>
-      depth = 3 \<or> depth = 4" using depth_bound by arith
-  have level_cases: "level = 0 \<or> level = 1 \<or> level = 2 \<or> level = 3"
-    using upper by arith
-  show ?thesis
-    using depth_cases level_cases lower
-    by (elim disjE; simp_all add: comma_crt_apply_suffix_period_def
-        comma_crt_period_def dvd_eq_mod_eq_0)
-qed
-
-lemma comma_crt_apply_shifted_from_suffix_equiv:
-  assumes depth_bound: "depth \<le> 4"
-    and zero_branch: "(shift mod 924 = 0) \<longleftrightarrow> (shift' mod 924 = 0)"
-    and suffix_residue:
-      "shift mod comma_crt_apply_suffix_period depth =
-        shift' mod comma_crt_apply_suffix_period depth"
-  shows "comma_crt_apply_shifted_from depth shift operation left right =
-    comma_crt_apply_shifted_from depth shift' operation left right"
-proof (rule comma_crt_apply_shifted_from_shift_equiv[OF depth_bound zero_branch])
-  show "\<forall>level. 4-depth \<le> level \<longrightarrow> level < 4 \<longrightarrow>
-      shift mod comma_crt_period level = shift' mod comma_crt_period level"
-  proof (intro allI impI)
-    fix level
-    assume lower: "4-depth \<le> level" and upper: "level < 4"
-    have divides: "comma_crt_period level dvd
-        comma_crt_apply_suffix_period depth"
-      by (rule comma_crt_apply_period_divides_suffix[OF depth_bound lower upper])
-    have shift_cancel:
-      "(shift mod comma_crt_apply_suffix_period depth) mod comma_crt_period level =
-        shift mod comma_crt_period level"
-      by (rule mod_mod_cancel[OF divides])
-    have shift'_cancel:
-      "(shift' mod comma_crt_apply_suffix_period depth) mod comma_crt_period level =
-        shift' mod comma_crt_period level"
-      by (rule mod_mod_cancel[OF divides])
-    show "shift mod comma_crt_period level = shift' mod comma_crt_period level"
-      using suffix_residue shift_cancel shift'_cancel by metis
-  qed
-qed
-
 lemma comma_crt_node_constant_map:
   assumes nonempty: "columns \<noteq> []"
   shows "comma_crt_node level (map (\<lambda>_. column) columns) = column"
@@ -289,6 +139,34 @@ next
   then show ?thesis using Comma_CRT_Node by simp
 qed
 
+lemma comma_crt_root_skips_level_from_admission:
+  assumes admitted: "comma_crt_admitted (Suc level) column"
+  shows "comma_crt_root_skips_level level column"
+proof (cases column)
+  case (Comma_CRT_Bool payload)
+  then show ?thesis by simp
+next
+  case (Comma_CRT_Node node_level children)
+  have "Suc level \<le> node_level"
+    using admitted Comma_CRT_Node by simp
+  then have "level < node_level" by simp
+  then show ?thesis using Comma_CRT_Node by simp
+qed
+
+lemma comma_crt_cofactor_or_false_root_skips_level:
+  assumes skips: "comma_crt_root_skips_level level column"
+  shows "comma_crt_cofactor_or_false level digit column = column"
+  using skips
+  by (cases column)
+     (simp_all add: comma_crt_root_skips_level.simps
+       comma_crt_cofactor_or_false_def)
+
+lemma comma_crt_shifted_cofactor_or_false_root_skips_level:
+  assumes skips: "comma_crt_root_skips_level level column"
+  shows "comma_crt_shifted_cofactor_or_false level digit shift column = column"
+  unfolding comma_crt_shifted_cofactor_or_false_as_cofactor
+  by (rule comma_crt_cofactor_or_false_root_skips_level[OF skips])
+
 lemma comma_crt_apply_shifted_from_shortcut_result:
   assumes shortcut:
     "comma_crt_shifted_apply_shortcut operation shift left right = Some result"
@@ -302,10 +180,10 @@ next
   then show ?case by (simp add: comma_crt_apply_shifted_from.simps)
 qed
 
-lemma comma_crt_apply_shifted_from_skip_unused_level:
+lemma comma_crt_apply_shifted_from_skip_root_level:
   assumes depth: "depth < 4"
-    and left: "comma_crt_admitted (4-depth) left"
-    and right: "comma_crt_admitted (4-depth) right"
+    and left: "comma_crt_root_skips_level (4 - Suc depth) left"
+    and right: "comma_crt_root_skips_level (4 - Suc depth) right"
   shows "comma_crt_apply_shifted_from (Suc depth) shift operation left right =
     comma_crt_apply_shifted_from depth shift operation left right"
 proof (cases "comma_crt_shifted_apply_shortcut operation shift left right")
@@ -321,27 +199,12 @@ next
   case None
   let ?level = "4 - Suc depth"
   have level_bound: "?level < 4" using depth by arith
-  have successor_level: "Suc ?level = 4-depth" using depth by arith
-  have left_admitted: "comma_crt_admitted (Suc ?level) left"
-    using left successor_level by simp
-  have right_admitted: "comma_crt_admitted (Suc ?level) right"
-    using right successor_level by simp
   have left_cofactor:
     "comma_crt_cofactor_or_false ?level digit left = left" for digit
-  proof -
-    have "comma_crt_cofactor ?level digit left = Some left"
-      by (rule comma_crt_apply_cofactor_skip_from_admission[OF left_admitted])
-    then show ?thesis by (simp add: comma_crt_cofactor_or_false_def)
-  qed
+    by (rule comma_crt_cofactor_or_false_root_skips_level[OF left])
   have right_cofactor:
     "comma_crt_shifted_cofactor_or_false ?level digit shift right = right" for digit
-  proof -
-    have "comma_crt_cofactor ?level
-        ((digit+shift) mod comma_crt_period ?level) right = Some right"
-      by (rule comma_crt_apply_cofactor_skip_from_admission[OF right_admitted])
-    then show ?thesis
-      by (simp add: comma_crt_shifted_cofactor_or_false_def)
-  qed
+    by (rule comma_crt_shifted_cofactor_or_false_root_skips_level[OF right])
   have period_positive: "0 < comma_crt_period ?level"
     by (rule comma_crt_period_positive[OF level_bound])
   have digits_nonempty: "[0..<comma_crt_period ?level] \<noteq> []"
@@ -366,6 +229,86 @@ next
     "comma_crt_node ?level (map (\<lambda>_. ?child) [0..<comma_crt_period ?level]) = ?child"
     by (rule comma_crt_node_constant_map[OF digits_nonempty])
   show ?thesis by (simp only: parent children collapse)
+qed
+
+lemma comma_crt_apply_shifted_from_skip_unused_level:
+  assumes depth: "depth < 4"
+    and left: "comma_crt_admitted (4-depth) left"
+    and right: "comma_crt_admitted (4-depth) right"
+  shows "comma_crt_apply_shifted_from (Suc depth) shift operation left right =
+    comma_crt_apply_shifted_from depth shift operation left right"
+proof -
+  have level: "Suc (4 - Suc depth) = 4-depth" using depth by arith
+  have left_admitted: "comma_crt_admitted (Suc (4 - Suc depth)) left"
+    using left level by simp
+  have right_admitted: "comma_crt_admitted (Suc (4 - Suc depth)) right"
+    using right level by simp
+  have left_skips: "comma_crt_root_skips_level (4 - Suc depth) left"
+    by (rule comma_crt_root_skips_level_from_admission[OF left_admitted])
+  have right_skips: "comma_crt_root_skips_level (4 - Suc depth) right"
+    by (rule comma_crt_root_skips_level_from_admission[OF right_admitted])
+  show ?thesis
+    by (rule comma_crt_apply_shifted_from_skip_root_level[OF depth left_skips right_skips])
+qed
+
+text \<open>
+The logical function equations remain the reference for proofs.  Generated
+code skips a level before building its digit map when both operands pass
+through the level at their roots.  The guard includes `depth < 4`; outside
+that admitted recursion range the original total branch is retained exactly.
+\<close>
+declare comma_crt_apply_shifted_from.simps(2)[code drop]
+declare comma_crt_apply_shifted_from.simps(1)[code]
+
+lemma comma_crt_apply_shifted_from_code [code]:
+  "comma_crt_apply_shifted_from (Suc depth) shift operation left right =
+    (case comma_crt_shifted_apply_shortcut operation shift left right of
+       Some result \<Rightarrow> result
+     | None \<Rightarrow>
+       (if depth < 4 \<and>
+            comma_crt_root_skips_level (4 - Suc depth) left \<and>
+            comma_crt_root_skips_level (4 - Suc depth) right
+        then comma_crt_apply_shifted_from depth shift operation left right
+        else
+          (let level = 4 - Suc depth in
+           if level < 4 then
+             comma_crt_node level
+               (map (\<lambda>digit. comma_crt_apply_shifted_from depth shift operation
+                 (comma_crt_cofactor_or_false level digit left)
+                 (comma_crt_shifted_cofactor_or_false level digit shift right))
+                 [0..<comma_crt_period level])
+           else Comma_CRT_Bool False)))"
+proof (cases "comma_crt_shifted_apply_shortcut operation shift left right")
+  case (Some result)
+  have applied:
+    "comma_crt_apply_shifted_from (Suc depth) shift operation left right = result"
+    by (rule comma_crt_apply_shifted_from_shortcut_result[OF Some])
+  show ?thesis using applied Some
+    by (simp only: option.case)
+next
+  case None
+  show ?thesis
+  proof (cases
+      "depth < 4 \<and>
+        comma_crt_root_skips_level (4 - Suc depth) left \<and>
+        comma_crt_root_skips_level (4 - Suc depth) right")
+    case True
+    then have depth: "depth < 4"
+      and left: "comma_crt_root_skips_level (4 - Suc depth) left"
+      and right: "comma_crt_root_skips_level (4 - Suc depth) right"
+      by auto
+    have skipped:
+      "comma_crt_apply_shifted_from (Suc depth) shift operation left right =
+        comma_crt_apply_shifted_from depth shift operation left right"
+      by (rule comma_crt_apply_shifted_from_skip_root_level[OF depth left right])
+    show ?thesis using None True skipped
+      by (simp only: skipped None True option.case if_True HOL.simp_thms)
+  next
+    case False
+    show ?thesis using None False
+      by (simp only: comma_crt_apply_shifted_from.simps(2) None False
+        option.case if_False Let_def HOL.simp_thms)
+  qed
 qed
 
 text \<open>
@@ -925,15 +868,19 @@ ML \<open>
     comma_crt_apply_shifted_refines_boolean
     comma_crt_fused_power_intersection_refines
     comma_crt_shifted_cofactor_or_false_as_cofactor
-    comma_crt_apply_shifted_from_shift_equiv
-    comma_crt_apply_period_divides_suffix
-    comma_crt_apply_shifted_from_suffix_equiv
-    comma_crt_apply_shifted_from_skip_unused_level};
+    comma_crt_root_skips_level_from_admission
+    comma_crt_cofactor_or_false_root_skips_level
+    comma_crt_shifted_cofactor_or_false_root_skips_level
+    comma_crt_apply_shifted_from_skip_root_level
+    comma_crt_apply_shifted_from_skip_unused_level
+    comma_crt_apply_shifted_from_code};
   val _ = Thm.consolidate checked;
   val _ = Comma_Proof_Profile.report "CRT apply claims consolidated";
+  val _ = Comma_Proof_Profile.report "CRT apply root-skip code audit=entered";
   val _ = Comma_Proof_Profile.report "CRT apply audit=native entered";
   val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}
     "Structural matched-cofactor CRT Boolean apply" checked;
+  val _ = Comma_Proof_Profile.report "CRT apply root-skip code audit=checked";
   val _ = Comma_Proof_Profile.report "CRT apply audit=native checked";
 \<close>
 

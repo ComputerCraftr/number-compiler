@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
+from typing import NoReturn
 
 import pytest
 
@@ -24,11 +25,13 @@ from number_compiler.sequences.antihydra.arithmetic_images import (
 )
 from number_compiler.sequences.antihydra.mahler_carry_quotient import (
     IssuedWeightedCarry,
+    WeightedCarryClass,
     issued_weighted_carry,
     project_weighted_carry,
 )
 from number_compiler.sequences.antihydra.mahler_x15_source_morphism import (
     X15CarryMorphism,
+    X15LaurentCarryInProjection,
     two_parent_x15_floor,
 )
 
@@ -43,6 +46,16 @@ def _literal(ticks: int) -> tuple[int, int, int, int]:
         odd_h_steps += 1 - bit
         centered = (3 * centered + bit) >> 1
     return centered, delta, minimum, odd_h_steps
+
+
+def _centered_word(source: int, ticks: int) -> tuple[int, ...]:
+    bits: list[int] = []
+    centered = source
+    for _ in range(ticks):
+        bit = centered & 1
+        bits.append(bit)
+        centered = (3 * centered + bit) >> 1
+    return tuple(bits)
 
 
 def _digits(value: int, width: int) -> list[int]:
@@ -102,6 +115,104 @@ def test_weighted_carry_matches_literal_centered_and_physical_orbits(
         numerator = physical.upper * 8 + physical.offset
         assert not numerator & (physical.lower - 1)
         assert numerator >> ticks == workspace.endpoint() == endpoint + 1
+
+
+@pytest.mark.parametrize("ticks", (0, 1, 6, 64, 128))
+@pytest.mark.parametrize("places", (1, 2, 4))
+def test_laurent_carry_projection_joins_at_the_issued_physical_endpoint(
+    ticks: int, places: int
+) -> None:
+    with _issued(ticks) as (workspace, carry, scratch):
+        endpoint = workspace.endpoint()
+        projection = carry.next_laurent_carry_projection(
+            places, reserve_bits=scratch.require_bits
+        )
+        modulus = 10**places
+        lower = endpoint % modulus
+        expected_upper, expected_remainder = divmod(
+            15 * lower - 5 * (lower & 1), modulus
+        )
+        assert type(projection) is X15LaurentCarryInProjection
+        assert projection.target == endpoint
+        assert projection.lower_residue == lower
+        assert projection.parity == endpoint & 1
+        assert (projection.upper_carry, projection.remainder) == (
+            expected_upper,
+            expected_remainder,
+        )
+        assert projection.places == places
+        assert projection.modulus == modulus
+
+
+@pytest.mark.parametrize("ticks", (0, 1, 2, 6, 31, 64, 127))
+def test_issued_weighted_parent_lifts_both_exact_dyadic_children(ticks: int) -> None:
+    with _issued(ticks) as (_workspace, carry, scratch):
+        parent = WeightedCarryClass.from_issued(carry)
+        parent_word = _centered_word(parent.residue, ticks)
+        assert parent.first_centered_bit == (
+            None if not parent_word else parent_word[0]
+        )
+        assert parent.last_centered_bit == (
+            None if not parent_word else parent_word[-1]
+        )
+        children = carry.demanded_weighted_next_depth_classes(
+            reserve_bits=scratch.require_bits
+        )
+        assert children == parent.lift_children()
+        centered = carry.centered_source
+        assert children[(centered >> ticks) & 1].endpoint(centered) == (
+            (3 * (carry.endpoint(centered) + 1) - ((carry.endpoint(centered) + 1) & 1))
+            // 2
+            - 1
+        )
+        for source, child in (
+            (parent.residue, children[0]),
+            (parent.residue + (1 << ticks), children[1]),
+        ):
+            child_word = _centered_word(source, ticks + 1)
+            assert child.first_centered_bit == child_word[0]
+            assert child.last_centered_bit == child_word[-1]
+            before = parent.endpoint(source) + 1
+            after = child.endpoint(source) + 1
+            assert after == (3 * before - (before & 1)) // 2
+            assert child.correction == 3 * parent.correction + (1 << ticks) * (
+                before & 1
+            )
+            assert child.delta == parent.delta + 3 * (parent.endpoint(source) & 1) - 1
+            assert child.minimum == min(parent.minimum, child.delta)
+
+
+def test_issued_next_decimal_projection_does_not_build_a_second_x15_action(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _issued(31) as (_workspace, carry, scratch):
+
+        def forbidden(*_args: object, **_kwargs: object) -> NoReturn:
+            raise AssertionError("next physical carry rebuilt an x15 morphism")
+
+        monkeypatch.setattr(X15CarryMorphism, "from_carry", forbidden)
+        projection = carry.next_laurent_carry_projection(
+            5, reserve_bits=scratch.require_bits
+        )
+        endpoint = carry.endpoint(carry.centered_source) + 1
+        next_endpoint = (3 * endpoint - (endpoint & 1)) // 2
+        assert projection.target == endpoint
+        assert projection.lower_residue == endpoint % (10**5)
+        assert projection.next_endpoint_parity == next_endpoint & 1
+
+
+def test_laurent_carry_projection_is_snapshot_and_rejects_mutated_action() -> None:
+    with _issued(8) as (_workspace, carry, scratch):
+        projection = carry.next_laurent_carry_projection(
+            3, reserve_bits=scratch.require_bits
+        )
+        original_target = projection.target
+        object.__setattr__(carry, "innovation", carry.innovation + 1)
+        assert projection.target == original_target
+        reserved: list[int] = []
+        with pytest.raises(ValueError, match="source owner"):
+            carry.next_laurent_carry_projection(3, reserve_bits=reserved.append)
+        assert not reserved
 
 
 def test_cold_producer_uses_authenticated_origin_and_request_local_blocks() -> None:
@@ -493,3 +604,106 @@ def test_recomputed_self_snapshot_cannot_forge_cold_carry_issuance() -> None:
                 forged.require_issued()
     finally:
         workspace.dispose()
+
+
+@pytest.mark.parametrize("ticks,places", ((0, 2), (1, 2), (8, 4), (64, 7)))
+def test_issued_signed_laurent_cut_yields_next_endpoint_parity(
+    ticks: int, places: int
+) -> None:
+    with _issued(ticks) as (workspace, carry, scratch):
+        physical = workspace.endpoint()
+        next_endpoint = (3 * physical) // 2
+        projection = carry.next_laurent_carry_projection(
+            places, reserve_bits=scratch.require_bits
+        )
+        assert projection.next_endpoint_residue == next_endpoint % 10 ** (places - 1)
+        assert projection.next_endpoint_parity == next_endpoint & 1
+        assert (
+            carry.demanded_next_parity_xor(reserve_bits=scratch.require_bits)
+            == next_endpoint & 1
+        )
+
+
+def test_diagonal_field_reuses_the_issued_signed_laurent_cut(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int] = []
+    original = X15CarryMorphism.next_laurent_carry_projection
+
+    def counted_projection(
+        morphism: X15CarryMorphism,
+        places: int,
+        *,
+        reserve_bits: Callable[[int], None],
+    ) -> X15LaurentCarryInProjection:
+        calls.append(places)
+        return original(morphism, places, reserve_bits=reserve_bits)
+
+    monkeypatch.setattr(
+        X15CarryMorphism, "next_laurent_carry_projection", counted_projection
+    )
+    ticks, columns = 3, 12
+    with _issued(ticks) as (_workspace, carry, scratch):
+        morphism = carry.x15_morphism(reserve_bits=scratch.require_bits)
+        morphism.diagonal_tower().packed_field(
+            columns,
+            max_columns=32,
+            max_observer_terms=32,
+            reserve_bits=scratch.require_bits,
+            moduli=(99, 101),
+        )
+    assert calls == [columns - ticks + 1]
+
+
+def test_diagonal_field_zero_fills_when_signed_shift_exceeds_cut() -> None:
+    ticks, columns = 3, 3
+    with _issued(ticks) as (_workspace, carry, scratch):
+        field = (
+            carry.x15_morphism(reserve_bits=scratch.require_bits)
+            .diagonal_tower()
+            .packed_field(
+                columns,
+                max_columns=columns,
+                max_observer_terms=columns,
+                reserve_bits=scratch.require_bits,
+                moduli=(),
+            )
+        )
+        assert tuple(
+            field.vectors.lane_value(index, "physical_next_digit")
+            for index in range(columns)
+        ) == (0, 0, 0)
+
+
+def test_diagonal_field_keeps_bounded_fallback_above_signed_window_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    columns = 4096
+
+    def refuse_window(
+        _morphism: X15CarryMorphism,
+        _places: int,
+        *,
+        reserve_bits: Callable[[int], None],
+    ) -> X15LaurentCarryInProjection:
+        del reserve_bits
+        raise AssertionError("window-cap fallback must not request the signed cut")
+
+    monkeypatch.setattr(
+        X15CarryMorphism, "next_laurent_carry_projection", refuse_window
+    )
+    with _issued(0) as (_workspace, carry, scratch):
+        field = (
+            carry.x15_morphism(reserve_bits=scratch.require_bits)
+            .diagonal_tower()
+            .packed_field(
+                columns,
+                max_columns=columns,
+                max_observer_terms=columns,
+                reserve_bits=scratch.require_bits,
+                moduli=(),
+            )
+        )
+        assert tuple(
+            field.vectors.lane_value(index, "physical_next_digit") for index in range(3)
+        ) == (0, 2, 1)

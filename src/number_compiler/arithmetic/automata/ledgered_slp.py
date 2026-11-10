@@ -9,7 +9,7 @@ from typing import TypeVar, cast
 from number_compiler.arithmetic.automata.guard import record_slp_metrics
 from number_compiler.arithmetic.automata.slp import SLPArena, SLPMetrics, SLPNode
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
-from number_compiler.resources.lifecycle import cleanup_all
+from number_compiler.resources.lifecycle import cleanup_all, clear_accounted_store
 from number_compiler.resources.stores import LedgerList
 
 _Key = TypeVar("_Key")
@@ -56,6 +56,8 @@ class LedgerSLPArena(SLPArena):
         "_cleanup_complete",
         "_closed",
         "_nodes_released",
+        "_nodes_pending_clear_entries",
+        "_nodes_pending_clear_nodes",
         "_nodes_store",
         "_rep_store",
         "_term_store",
@@ -73,6 +75,10 @@ class LedgerSLPArena(SLPArena):
         self._closed = False
         self._cleanup_complete = False
         self._nodes_released = False
+        self._nodes_pending_clear_entries = 0
+        self._nodes_pending_clear_nodes = 0
+        self._node_id_generation = 0
+        self._node_storage_poisoned = False
         self.ledger = ledger
         self.owners = (
             ledger.register(prefix + "-slp-nodes", owner_kind + "_grammar"),
@@ -218,12 +224,52 @@ class LedgerSLPArena(SLPArena):
         try:
             self.nodes.append(SLPNode(node_id, kind, int(length), **fields))
         except BaseException:
-            if len(self.nodes) > node_id:
-                self._nodes_store.rollback_unpublished(node_id)
-            self.ledger.release(owner, entries=1, nodes=1)
+            self._rollback_failed_node_publication(node_id)
             raise
         record_slp_metrics(nodes=1)
         return node_id
+
+    def _rollback_failed_node_publication(self, node_id: int) -> None:
+        """Undo one reserved append and release exactly the removed row charge."""
+        before = len(self.nodes)
+        if before <= node_id:
+            self._record_pending_node_clear(
+                self._nodes_pending_clear_entries + 1,
+                self._nodes_pending_clear_nodes + 1,
+            )
+            self._rollback_node_store_to(before, invalidate_generation=False)
+            return
+
+        self._rollback_node_store_to(node_id)
+
+    def _record_pending_node_clear(self, entries: int, nodes: int) -> None:
+        self._nodes_pending_clear_entries = entries
+        self._nodes_pending_clear_nodes = nodes
+
+    def _rollback_node_store_to(
+        self,
+        size: int,
+        *,
+        invalidate_generation: bool = True,
+    ) -> None:
+        """Rollback a node suffix and reconcile its exact ledger delta on failure."""
+        if size == len(self.nodes) and not (
+            self._nodes_pending_clear_entries or self._nodes_pending_clear_nodes
+        ):
+            return
+        if invalidate_generation and size < len(self.nodes):
+            self._invalidate_node_ids()
+        clear_accounted_store(
+            self.ledger,
+            self.owners[0],
+            lambda: self._nodes_store.rollback_unpublished(size),
+            lambda: (len(self.nodes), len(self.nodes)),
+            (
+                self._nodes_pending_clear_entries,
+                self._nodes_pending_clear_nodes,
+            ),
+            self._record_pending_node_clear,
+        )
 
     def _add_interned(
         self,
@@ -240,10 +286,30 @@ class LedgerSLPArena(SLPArena):
         try:
             self.nodes.append(SLPNode(node_id, kind, int(length), **fields))
             table[key] = node_id
-        except BaseException:
-            if len(self.nodes) > node_id:
-                self._nodes_store.rollback_unpublished(node_id)
-            self.ledger.release(owner, entries=1, nodes=1)
+        except BaseException as error:
+            try:
+                published_id = table.get(key)
+            except BaseException as cleanup_error:
+                # Keep the node if publication state cannot be observed. An
+                # orphaned node is safe; rolling it back could leave a cache
+                # key that aliases a future node ID.
+                fields.clear()
+                raise error from cleanup_error
+            if (
+                len(self.nodes) > node_id
+                and type(published_id) is int
+                and published_id == node_id
+            ):
+                # A store cleanup failure may leave the exact key in place.
+                # Retain its node so the interner never names a recycled ID.
+                fields.clear()
+                raise
+            try:
+                self._rollback_failed_node_publication(node_id)
+            except BaseException as cleanup_error:
+                fields.clear()
+                raise error from cleanup_error
+            fields.clear()
             raise
         record_slp_metrics(nodes=1)
         return node_id
@@ -256,11 +322,18 @@ class LedgerSLPArena(SLPArena):
     ) -> None:
         """Remove an unpublished suffix and its exact interner publications."""
         self._check_open()
+        # A prior callback may have removed rows but failed during ledger
+        # reconciliation. Settle that delta before validating a retry boundary.
+        if self._nodes_pending_clear_entries or self._nodes_pending_clear_nodes:
+            self._rollback_node_store_to(len(self.nodes), invalidate_generation=False)
         if type(first_new_node) is not int or not 1 <= first_new_node <= len(
             self.nodes
         ):
             raise ValueError("invalid SLP rollback boundary")
-        owner = self.owners[0]
+        if len(self.nodes) > first_new_node:
+            # Invalidate before callbacks/removals so even a partial rollback
+            # cannot leave node-ID keyed consumers using the old generation.
+            self._invalidate_node_ids()
         while len(self.nodes) > first_new_node:
             node_id = len(self.nodes) - 1
             node = self.nodes[node_id]
@@ -284,22 +357,19 @@ class LedgerSLPArena(SLPArena):
                         del self._rep_store[key]
             else:
                 raise AssertionError("cannot roll back the SLP empty node")
-            self._nodes_store.rollback_unpublished(node_id)
-            self.ledger.release(owner, entries=1, nodes=1)
+            self._rollback_node_store_to(node_id, invalidate_generation=False)
 
     def dispose(self) -> None:
         if self._cleanup_complete:
             return
+        self._invalidate_node_ids()
         self._closed = True
-        count = len(self.nodes)
 
         def release_nodes() -> None:
-            self._nodes_store.rollback_unpublished(0)
+            self._rollback_node_store_to(0, invalidate_generation=False)
             if not len(self.nodes) and not self._nodes_released:
-                self.ledger.release(self.owners[0], entries=count, nodes=count)
-                self._nodes_released = True
-            if not len(self.nodes):
                 self.ledger.mark_disposed(self.owners[0])
+                self._nodes_released = True
 
         cleanup_all(
             (

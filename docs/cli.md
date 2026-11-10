@@ -44,7 +44,7 @@ Reverse/add, double-reversal and Collatz count iterations from the supplied
 source at index zero. Antihydra counts macro returns after startup, starting at 8.
 Prime queries use zero-based positions at or above `--start`; Fermat uses its
 zero-based sequence index, Mersenne uses a positive exponent, and A367620 uses
-positive OEIS indices with checked-prefix admission. The generated capability
+positive OEIS indices with global-provider admission. The generated capability
 table below owns the supported source parameters and observations.
 
 `2rev10` uses `U(n) = 2 * reverse10(n)`, including decimal normalization: `10 → 2`. Its decimal grammar is applied through the shared scheduler. Admitted four-phase boundary cylinders use temporal HashLife composition of the exact two-step cellular rule; other source regions retain charged exact transitions. `--max-steps` and `--max-state-bits` both default to 4096. It accepts `--info metrics`, `--info temporal.closed-form`, `--info spatial.stencil`, `--info temporal.bank`, `--info spatial.pair-bank` and `--info temporal.grammar`, output formats and output bases, but no input base, radix or event selector. The demanded closed-form packet reports source-bound carry and moment ports from the completed endpoint; `--temporal-closed-form-modulus M` projects them modulo a positive integer. Modular output does not authorize an approximate branch or phase decision. Metrics alone never constructs these ports. `--info spatial.stencil --spatial-stencil-position P` demands one LSD-indexed digit from an admitted temporal cylinder. `--info temporal.bank` reports the admitted border’s forced growth/carry word and separately labeled bounds for conditional observers. Both share bounded, charged entry discovery; neither renders the full endpoint. A source without a certified entry returns an unavailable observation (exit 3), rather than guessing a digit or treating a bound as exact. The `pair-bank` observation uses a final outer-to-inner pair coordinate. The `temporal-grammar` observation uses an entry-source coordinate and `--temporal-grammar-period` (1–8) to certify both finite causal halos before publishing a repeated motif. Their coordinate units are explicit in JSON. A `closed-form` request retains original-source fields and separately reports an admitted transient prefix and affine suffix; the suffix shift is endpoint-derived, not a new predictive source certificate.
@@ -93,6 +93,15 @@ entry and powered endpoint. Optional `--temporal-period-samples` requests a
 bounded center-window scan, controlled by `--temporal-period-stride`,
 `--temporal-period-depth` and `--temporal-period-max-lag`. The default sample
 count is zero. Finite matching windows never certify an infinite period.
+
+`reverse-add --info temporal.mirrored-diagonal` requests a finite decimal
+center-carry action with a 512-physical-tick horizon, subject to the request's
+scratch budget; the default budget can refuse shorter intervals. Its `center11` packet includes
+the two half-word residues and their accumulated difference, which differs from
+the difference at just the final endpoint. The action retains exact source and
+carry seams. This diagnostic evaluates the bounded seed trajectory, rather than
+reusing a completed successor path. It supplies no autonomous future-port program; ordinary output,
+metrics and temporal summaries do not construct this diagnostic.
 
 For `2rev10`, `temporal.defect-clock` requests finite carry-defect samples
 from a shared causal halo. `--temporal-defect-digits` selects up to 96 low
@@ -234,7 +243,7 @@ The ordinary `temporal.open-ring` demand retains its 32-F-step limit.
 <!-- cli-capabilities:start -->
 | Family | Index unit | Parameters | Term information | Event information |
 | --- | --- | --- | --- | --- |
-| `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `temporal.residue99`, `temporal.accumulator99`, `temporal.open-ring`, `temporal.seed-orbit`, `temporal.stencil`, `spatial.bank-morphism`, `temporal.matrix.trace` | — |
+| `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `temporal.residue99`, `temporal.accumulator99`, `temporal.mirrored-diagonal`, `temporal.open-ring`, `temporal.seed-orbit`, `temporal.stencil`, `spatial.bank-morphism`, `temporal.matrix.trace` | — |
 | `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.matrix`, `temporal.closed-form`, `temporal.residue99`, `temporal.seed-morphism`, `temporal.defect-clock`, `temporal.carry-safety`, `spatial.stencil`, `temporal.bank`, `temporal.open-ring`, `temporal.birth-layers`, `spatial.pair-bank`, `spatial.bank-morphism`, `spatial.bank-window`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift`, `temporal.matrix.trace` | — |
 | `collatz` | `physical_iterations` | `--seed`, `--radix` | `temporal`, `metrics`, `temporal.matrix`, `temporal.clock`, `temporal.accumulator`, `temporal.double-accumulator`, `temporal.diagonal-carry`, `temporal.macro`, `temporal.innovation-borrow`, `temporal.matrix.trace` | `temporal`, `temporal.clock`, `arithmetic.modular`, `arithmetic.twisted`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.tropical`, `arithmetic.factor`, `safety.execution` |
 | `antihydra` | `macro_returns_after_startup` | — | `temporal`, `metrics`, `temporal.matrix`, `safety.ledger`, `temporal.clock`, `arithmetic.modular`, `spatial.tape`, `arithmetic.twisted`, `temporal.spacetime`, `temporal.diagonal-carry`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.mahler`, `arithmetic.tropical`, `arithmetic.factor`, `temporal.matrix.trace` | — |
@@ -400,18 +409,19 @@ rank, with exact doubling when necessary; it assumes no prime-density bound.
 This finite production bridge does not establish cheap unbounded prime-stage
 discovery or the unresolved cross-family terminal and powered-construction proofs.
 
-## A367620 prefix admission
+## A367620 global-provider admission
 
 `number-compiler a367620 --nth N` uses fixed source 20 and decimal comma-child
 semantics. It rejects `--seed`, `--base`, `--radix`, `--start` and `--events`.
 Construction budgets are `--max-comma-states` (131,072) and `--max-comma-work`
 (1,000,000); stricter resource limits still apply.
 
-The runtime-verified prefix covers indices **1 through 412987860**, including
-the first certified fork choice. The last admitted value is `19999999999`.
-Later indices return exit 3: JSON contains `value: null` and an
-`unresolved_sequence_boundary` error; text reports the boundary on stderr.
-The full Isabelle certificate-instance proof remains a release obligation.
+All value requests require a registered global release artifact. The finite
+forest/prefix fallback has been removed. The required artifact and admission
+are currently absent, so public value requests return exit 3 with `value: null`
+and an `unresolved_sequence_boundary` error; text reports the boundary on stderr.
+The following command forms remain valid, but do not yet have successful
+production value admission. See the [release gate](release-status.md).
 
 ```sh
 number-compiler a367620 --nth 1
@@ -421,10 +431,10 @@ number-compiler a367620 --nth 20000 --no-value --info safety.certificate --info 
 ```
 
 The safety.certificate packet distinguishes `runtime_verified` from
-`isabelle_instance_checked`. Verification streams complete finite regions;
-the published OEIS choice bits are not runtime branch oracles. `--info metrics`
-alone never initiates certificate verification or arithmetic. Metrics remain
-read-only schema 8.
+`isabelle_instance_checked`. Only an exact artifact registered against the
+global kernel release contract can authorize values; metadata or a checksum
+alone cannot. `--info metrics` alone never initiates certificate verification
+or arithmetic. Metrics remain read-only schema 8.
 Its shared `family_work` rows report `punctured_event_actions` (completed
 source events) and `punctured_event_symbols` (transitions represented by those
 events). They remain null when uninstrumented. These counters do not imply
@@ -438,13 +448,10 @@ work units, not measured CPU instructions or a bit-complexity theorem. Missing
 counters are null. Exact width is null until a width demand has a certified result; it is
 not replaced by a bit upper bound. See the [mathematics](research/comma.md).
 
-Certificate work counts record parsing/checking, guarded-cycle checks and
-bounded child classifications. One such classification tests all nine possible
-leading digits; `certificate_candidate_digit_trials` reports these scalar
-trials separately. The work cap is not a cap on individual candidate trials.
-Verification markers use the existing bounded process cache, while bypassed
-queries retain only their own ledger-owned admission marker. Repeated demands
-still hash the immutable compressed certificate; those bytes are charged.
+Provider admission retains source, generation and ledger ownership checks.
+Parsing, authority checks and source-selected execution remain budgeted.
+Legacy certificate metric fields remain part of schema 8; their presence does
+not mean the retired forest verifier ran.
 
 ### Homogeneous growth projections
 

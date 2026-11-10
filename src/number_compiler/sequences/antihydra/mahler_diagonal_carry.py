@@ -312,11 +312,31 @@ class DiagonalCarryTower:
         floor_position = ticks
         ten_phase: int = pow(10, ticks, top)
         next_physical = (15 * physical - 5 * parity * ten_phase) % top
-        expected_next_phase: int = pow(10, ticks + 1, top)
-        expected_next = expected_next_phase * ((3 * endpoint) // 2) % top
+        if ticks < columns and columns - ticks + 1 <= 4096:
+            # The signed Laurent cut already supplies 10*H_(n+1) modulo
+            # 10**places. Use its guarded endpoint window for the independent
+            # successor seam and decode those demanded digits once.
+            successor_places = columns - ticks
+            successor_cut = action.next_laurent_carry_projection(
+                successor_places + 1,
+                reserve_bits=reserve_bits,
+            )
+            successor = successor_cut.next_endpoint_residue
+            expected_next_phase: int = pow(10, ticks + 1, top)
+            expected_next = expected_next_phase * successor % top
+            next_physical_digits = bytearray(ticks + 1)
+            next_physical_digits.extend(_digits(successor, successor_places))
+        elif ticks >= columns:
+            expected_next = 0
+            next_physical_digits = bytearray(columns + 1)
+        else:
+            # Explicit cuts wider than the signed-window hard cap retain the
+            # existing bounded Laurent check.
+            expected_next_phase = pow(10, ticks + 1, top)
+            expected_next = expected_next_phase * ((3 * endpoint) // 2) % top
+            next_physical_digits = _digits(next_physical, columns + 1)
         if next_physical != expected_next:
             raise ArithmeticError("physical next-step decimal seam was lost")
-        next_physical_digits = _digits(next_physical, columns + 1)
         packed_columns = bytearray(4 * columns)
         projection_values = {modulus: [0, 0, 0, 0, 0] for modulus in moduli}
         projection_weights = {modulus: 1 for modulus in moduli}

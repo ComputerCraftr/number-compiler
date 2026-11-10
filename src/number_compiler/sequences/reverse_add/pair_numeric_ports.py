@@ -43,6 +43,10 @@ class DecimalPairNumericPort:
     outgoing: tuple[int, int]
     modulus: int
 
+    def __hash__(self) -> int:
+        """Reject numeric output witnesses as temporal state cache keys."""
+        raise TypeError("numeric pair output ports are not semantic cache identities")
+
     @classmethod
     def identity(cls, modulus: int) -> DecimalPairNumericPort:
         return cls(0, (0, 0), (0, 0), (0, 1), modulus)

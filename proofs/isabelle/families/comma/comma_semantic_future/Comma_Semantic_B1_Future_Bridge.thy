@@ -3,7 +3,6 @@ theory Comma_Semantic_B1_Future_Bridge
     Comma_Decade_Occurrence_Lift.Comma_Decade_Occurrence_Lift
 begin
 
-ML_file "../comma_entry_arithmetic/Proof_Dependency_Audit.ML"
 
 text \<open>
 This is a provider-neutral bridge from a powered semantic Stop payload to

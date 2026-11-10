@@ -29,6 +29,131 @@ next
   then show thesis by (rule that(2))
 qed
 
+fun antihydra_h_iterate :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
+  "antihydra_h_iterate 0 h = h"
+| "antihydra_h_iterate (Suc n) h = antihydra_h_step (antihydra_h_iterate n h)"
+
+lemma antihydra_h_step_quotient:
+  "antihydra_h_step h = 3 * (h div 2) + h mod 2"
+  by (cases h rule: nat_mod_two_cases;
+      simp add: antihydra_h_step_def algebra_simps mod_Suc)
+
+lemma antihydra_h_step_even_shift:
+  "antihydra_h_step (h + 2 * k) = antihydra_h_step h + 3 * k"
+  by (simp only: antihydra_h_step_quotient; simp add: div_add_self2 algebra_simps)
+
+lemma antihydra_h_iterate_dyadic_lift:
+  "antihydra_h_iterate m (h + q * 2^m) =
+    antihydra_h_iterate m h + q * 3^m"
+proof (induction m arbitrary: h q)
+  case 0
+  then show ?case by simp
+next
+  case (Suc m)
+  have lifted:
+    "antihydra_h_iterate m (h + q * 2^(Suc m)) =
+      antihydra_h_iterate m h + (q * 2) * 3^m"
+    using Suc.IH[of h "q * 2"]
+    by (simp add: power_Suc algebra_simps)
+  show ?case
+    using lifted antihydra_h_step_even_shift[of "antihydra_h_iterate m h" "q * 3^m"]
+    by (simp add: antihydra_h_iterate.simps algebra_simps power_Suc)
+qed
+
+definition antihydra_physical_correction :: "nat \<Rightarrow> nat \<Rightarrow> int" where
+  "antihydra_physical_correction m h =
+    (3::int)^m * int h - (2::int)^m * int (antihydra_h_iterate m h)"
+
+lemma antihydra_physical_correction_dyadic_lift:
+  "antihydra_physical_correction m (h + 2^m) =
+    antihydra_physical_correction m h"
+  using antihydra_h_iterate_dyadic_lift[of m h 1]
+  by (simp add: antihydra_physical_correction_def algebra_simps)
+
+lemma antihydra_h_step_exact:
+  "2 * int (antihydra_h_step h) = 3 * int h - int (h mod 2)"
+proof -
+  have equality:
+    "2 * antihydra_h_step h = 3 * h - h mod 2"
+    by (cases h rule: nat_mod_two_cases; simp add: antihydra_h_step_def algebra_simps)
+  show ?thesis using equality by simp
+qed
+
+lemma antihydra_physical_correction_successor:
+  "antihydra_physical_correction (Suc m) h =
+    3 * antihydra_physical_correction m h +
+      (2::int)^m * int (antihydra_h_iterate m h mod 2)"
+proof -
+  have exact:
+    "2 * int (antihydra_h_step (antihydra_h_iterate m h)) =
+      3 * int (antihydra_h_iterate m h) -
+        int (antihydra_h_iterate m h mod 2)"
+    by (rule antihydra_h_step_exact)
+  have scaled:
+    "(2::int)^m * (2 * int (antihydra_h_step (antihydra_h_iterate m h))) =
+      (2::int)^m *
+        (3 * int (antihydra_h_iterate m h) -
+          int (antihydra_h_iterate m h mod 2))"
+    using exact by simp
+  show ?thesis
+    unfolding antihydra_physical_correction_def
+    using scaled
+    by (simp only: antihydra_h_iterate.simps power_Suc;
+        simp add: algebra_simps scaled)
+qed
+
+theorem antihydra_weighted_two_child_correction:
+  "antihydra_physical_correction (Suc m) h =
+      3 * antihydra_physical_correction m h +
+        (2::int)^m * int (antihydra_h_iterate m h mod 2)"
+  "antihydra_physical_correction (Suc m) (h + 2^m) =
+      3 * antihydra_physical_correction m h +
+        (2::int)^m * int (1 - antihydra_h_iterate m h mod 2)"
+proof -
+  show low:
+    "antihydra_physical_correction (Suc m) h =
+      3 * antihydra_physical_correction m h +
+        (2::int)^m * int (antihydra_h_iterate m h mod 2)"
+    by (rule antihydra_physical_correction_successor)
+  have parity:
+    "antihydra_h_iterate m (h + 2^m) mod 2 =
+      1 - antihydra_h_iterate m h mod 2"
+  proof -
+    have odd: "(3::nat)^m mod 2 = 1"
+    proof (induction m)
+      case 0
+      then show ?case by simp
+    next
+      case (Suc m)
+      have power: "(3::nat)^Suc m = 3 * 3^m" by (rule power_Suc)
+      have product:
+        "((3::nat) * 3^m) mod 2 = (((3::nat) mod 2) * (3^m mod 2)) mod 2"
+        by (rule mod_mult_eq[symmetric])
+      show ?case
+        unfolding power
+        using product Suc.IH by simp
+    qed
+    let ?H = "antihydra_h_iterate m h"
+    have bound: "?H mod 2 < 2" by simp
+    have split:
+      "(?H + 3^m) mod 2 = (?H mod 2 + (3::nat)^m mod 2) mod 2"
+      by (rule mod_add_eq[symmetric])
+    have next_mod: "(?H + 3^m) mod 2 = (?H mod 2 + 1) mod 2"
+      using split odd by simp
+    have complement: "(?H mod 2 + 1) mod 2 = 1 - ?H mod 2"
+      by (cases ?H rule: nat_mod_two_cases; simp)
+    show ?thesis
+      using antihydra_h_iterate_dyadic_lift[of m h 1] next_mod complement
+      by simp
+  qed
+  show "antihydra_physical_correction (Suc m) (h + 2^m) =
+      3 * antihydra_physical_correction m h +
+        (2::int)^m * int (1 - antihydra_h_iterate m h mod 2)"
+    using antihydra_physical_correction_successor[of m "h + 2^m"]
+      antihydra_physical_correction_dyadic_lift[of m h] parity
+    by simp
+qed
+
 lemma mahler_D_step_parity:
   "mahler_D_step D = (3*D + D mod 2) div 2"
   by (cases D rule: nat_mod_two_cases;
@@ -728,6 +853,49 @@ lemma source_seven_is_blank_return_center:
   "7 + 1 = (8::nat)"
   by simp
 
+theorem antihydra_signed_fifteen_boolean_parity:
+  fixes h :: nat
+  shows "((3*h - h mod 2) div 2) mod 2 =
+    ((h div 10 mod 2 + ((3*(h mod 10) - h mod 2) div 2 mod 2)) mod 2)"
+proof -
+  let ?q = "h div 10"
+  let ?r = "h mod 10"
+  let ?p = "h mod 2"
+  have decimal_split: "h = 10*?q + ?r"
+    using div_mult_mod_eq[of h 10] by (simp add: mult.commute)
+  have parity_split: "?p = ?r mod 2"
+  proof -
+    have low_parity: "?r mod 2 = ?p"
+      by (rule mod_mod_cancel; simp)
+    show ?thesis using low_parity by simp
+  qed
+  have parity_bound: "?p \<le> ?r"
+    using parity_split by simp
+  have low_bound: "?p \<le> 3*?r"
+    using parity_bound by arith
+  have numerator:
+    "3*h - ?p = 2*(15*?q) + (3*?r - ?p)"
+    using decimal_split low_bound by arith
+  have quotient:
+    "(3*h - ?p) div 2 = 15*?q + (3*?r - ?p) div 2"
+    unfolding numerator
+    by (rule div_mult_self4) simp
+  have factor: "(15*?q) mod 2 = ?q mod 2"
+  proof -
+    have "(15*?q) mod 2 = (1*?q) mod 2"
+      by (rule mod_mult_cong) simp_all
+    then show ?thesis by simp
+  qed
+  have "((3*h - ?p) div 2) mod 2 =
+      (15*?q + (3*?r - ?p) div 2) mod 2"
+    by (simp only: quotient)
+  also have "... = (?q + (3*?r - ?p) div 2) mod 2"
+    by (rule mod_add_cong[OF factor refl])
+  also have "... = (?q mod 2 + ((3*?r - ?p) div 2) mod 2) mod 2"
+    by (rule mod_add_eq[symmetric])
+  finally show ?thesis .
+qed
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms antihydra_linear_projection_identity antihydra_linear_projection_then
@@ -739,6 +907,12 @@ ML \<open>
       mahler_decimal_source_blocks mahler_decimal_low_carry_block_decomposition
       mahler_decimal_upper_block_projection
       mahler_decimal_source_bilateral_port_projection
+      antihydra_h_step_exact
+      antihydra_h_iterate_dyadic_lift
+      antihydra_physical_correction_dyadic_lift
+      antihydra_physical_correction_successor
+      antihydra_weighted_two_child_correction
+      antihydra_signed_fifteen_boolean_parity
       mahler_radix4_two_tick_reentry mahler_radix4_low_translation_table
       mahler_radix4_two_tick_finite_block_projection
       skew_then_identity skew_then_valid skew_then_assoc

@@ -2,6 +2,13 @@
 
 from typing import Final
 
+REVERSE_Q19_BROADWORD_SEMANTIC_STEPS: Final = "reverse_q19_broadword_semantic_steps"
+REVERSE_Q19_BROADWORD_PREFIX_ROUNDS: Final = "reverse_q19_broadword_prefix_rounds"
+REVERSE_Q19_BROADWORD_OPERAND_BITS: Final = "reverse_q19_broadword_operand_bits"
+REVERSE_Q19_BROADWORD_ENDPOINT_PUBLICATIONS: Final = (
+    "reverse_q19_broadword_endpoint_publications"
+)
+
 CARRY_ACTION_OPERATIONS: Final = "carry_action_operations"
 INNOVATION_ACTION_OPERATIONS: Final = "innovation_action_operations"
 NONLINEAR_BRANCH_EVALUATIONS: Final = "nonlinear_branch_evaluations"
@@ -206,6 +213,12 @@ REVERSE_Q19_PUNCTURED_NATIVE_DECIMAL_TICKS: Final = (
 REVERSE_Q19_PUNCTURED_NATIVE_DECIMAL_DIGIT_VISITS: Final = (
     "reverse_q19_punctured_native_decimal_digit_visits"
 )
+REVERSE_Q19_PUNCTURED_SPATIAL_PROJECTOR_STEPS: Final = (
+    "reverse_q19_punctured_spatial_projector_steps"
+)
+REVERSE_Q19_PUNCTURED_SPATIAL_PROJECTOR_SECTIONS: Final = (
+    "reverse_q19_punctured_spatial_projector_sections"
+)
 REVERSE_Q19_PUNCTURED_HALF_TAPE_TICK_TRANSITIONS: Final = (
     "reverse_q19_punctured_half_tape_tick_transitions"
 )
@@ -215,6 +228,9 @@ REVERSE_Q19_PUNCTURED_T16_APPLICATIONS: Final = "reverse_q19_punctured_t16_appli
 REVERSE_Q19_PUNCTURED_T32_APPLICATIONS: Final = "reverse_q19_punctured_t32_applications"
 REVERSE_Q19_PUNCTURED_WIDE_APPLICATIONS: Final = (
     "reverse_q19_punctured_wide_applications"
+)
+REVERSE_Q19_PUNCTURED_REPEAT_GUARD_NODE_VISITS: Final = (
+    "reverse_q19_punctured_repeat_guard_node_visits"
 )
 REVERSE_Q19_PUNCTURED_INPUT_GRAMMAR_NODES_VISITED: Final = (
     "reverse_q19_punctured_input_grammar_nodes_visited"
@@ -463,6 +479,10 @@ TILE_CAUSAL_FINITE_TRANSFER_PARENT_OBSERVATIONS: Final = (
 
 REVERSE_RADIX19_COCHAIN_NODE_VISITS: Final = "reverse_radix19_cochain_node_visits"
 REVERSE_RADIX19_COCHAIN_COMPOSITIONS: Final = "reverse_radix19_cochain_compositions"
+REVERSE_RADIX19_COCHAIN_DEPENDENCY_NODES: Final = (
+    "reverse_radix19_cochain_dependency_nodes"
+)
+REVERSE_RADIX19_COCHAIN_WORK_ITEMS: Final = "reverse_radix19_cochain_work_items"
 REVERSE_ACCUMULATOR99_BOOTSTRAP_DIGIT_STEPS: Final = (
     "reverse_accumulator99_bootstrap_digit_steps"
 )
@@ -482,3 +502,9 @@ REVERSE_LAURENT_OPERAND_BITS: Final = "reverse_laurent_operand_bits"
 REVERSE_LAURENT_PAIRED_BLOCKS: Final = "reverse_laurent_paired_blocks"
 REVERSE_LAURENT_RUN_RECORD_VISITS: Final = "reverse_laurent_run_record_visits"
 REVERSE_LAURENT_SOURCE_TICKS: Final = "reverse_laurent_source_ticks"
+REVERSE_LAURENT_NATIVE_TICKS: Final = "reverse_laurent_native_ticks"
+REVERSE_LAURENT_NATIVE_DIGIT_VISITS: Final = "reverse_laurent_native_digit_visits"
+REVERSE_CENTER11_PREFIX: Final = "reverse_center11_"
+REVERSE_CENTER11_SOURCE_TICKS: Final = "reverse_center11_source_ticks"
+REVERSE_CENTER11_COEFFICIENT_VISITS: Final = "reverse_center11_coefficient_visits"
+REVERSE_CENTER11_FAILED_WORK: Final = "reverse_center11_failed_work"

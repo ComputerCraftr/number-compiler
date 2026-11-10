@@ -564,6 +564,148 @@ proof -
 qed
 
 
+text \<open>Signed binary coefficients are normalized by an ordered division
+recurrence. Its exact weighted summary replaces expansion of a compressed word
+when checking the terminal seam; it does not authenticate the source word.\<close>
+
+fun binary_coefficient_value :: "int list \<Rightarrow> int" where
+  "binary_coefficient_value [] = 0"
+| "binary_coefficient_value (a # as) = a + 2 * binary_coefficient_value as"
+
+fun binary_normalized_carry :: "int \<Rightarrow> int list \<Rightarrow> int" where
+  "binary_normalized_carry c [] = c"
+| "binary_normalized_carry c (a # as) =
+    binary_normalized_carry ((a+c) div 2) as"
+
+lemma binary_coefficient_append:
+  "binary_coefficient_value (xs @ ys) =
+    binary_coefficient_value xs + 2^(length xs) * binary_coefficient_value ys"
+  by (induction xs) (simp_all add: algebra_simps)
+
+lemma binary_normalized_carry_append:
+  "binary_normalized_carry c (xs @ ys) =
+    binary_normalized_carry (binary_normalized_carry c xs) ys"
+  by (induction xs arbitrary: c) simp_all
+
+theorem binary_normalized_carry_weighted:
+  "binary_normalized_carry c xs =
+    (c + binary_coefficient_value xs) div 2^(length xs)"
+proof (induction xs arbitrary: c)
+  case Nil
+  then show ?case by simp
+next
+  case (Cons a xs)
+  have split:
+    "(c + (a + 2 * binary_coefficient_value xs)) div 2 =
+      (a+c) div 2 + binary_coefficient_value xs"
+    by (simp add: algebra_simps)
+  show ?case
+    by (simp only: binary_normalized_carry.simps Cons.IH length_Cons
+        binary_coefficient_value.simps power_Suc;
+        simp add: zdiv_zmult2_eq split)
+qed
+
+theorem binary_normalized_carry_seam:
+  assumes "binary_coefficient_value xs + c = d + 2^(length xs) * outgoing"
+      and "0 \<le> d" "d < 2^(length xs)"
+  shows "binary_normalized_carry c xs = outgoing"
+  using assms
+  by (simp add: binary_normalized_carry_weighted add.commute)
+
+theorem binary_signed_minus_one_seam:
+  assumes "binary_coefficient_value xs + c = -1 + 2^(length xs) * outgoing"
+  shows "binary_normalized_carry (c+1) xs = outgoing"
+proof -
+  have "c+1 + binary_coefficient_value xs = 2^(length xs) * outgoing"
+    using assms by arith
+  then show ?thesis by (simp add: binary_normalized_carry_weighted)
+qed
+
+
+text \<open>Reassociation and powered repetition preserve the complete ordered
+coefficient word, including its prefix carries. These laws allow a balanced
+evaluation plan without retaining the integer at each source prefix.\<close>
+
+datatype binary_carry_plan =
+    Binary_Carry_Leaf "int list"
+  | Binary_Carry_Join binary_carry_plan binary_carry_plan
+  | Binary_Carry_Repeat nat binary_carry_plan
+
+fun binary_carry_plan_word :: "binary_carry_plan \<Rightarrow> int list" where
+  "binary_carry_plan_word (Binary_Carry_Leaf xs) = xs"
+| "binary_carry_plan_word (Binary_Carry_Join a b) =
+    binary_carry_plan_word a @ binary_carry_plan_word b"
+| "binary_carry_plan_word (Binary_Carry_Repeat n a) =
+    concat (replicate n (binary_carry_plan_word a))"
+
+fun binary_carry_plan_summary :: "binary_carry_plan \<Rightarrow> nat \<times> int" where
+  "binary_carry_plan_summary (Binary_Carry_Leaf xs) =
+    (length xs, binary_coefficient_value xs)"
+| "binary_carry_plan_summary (Binary_Carry_Join a b) =
+    (fst (binary_carry_plan_summary a) + fst (binary_carry_plan_summary b),
+      snd (binary_carry_plan_summary a) +
+      2^(fst (binary_carry_plan_summary a)) * snd (binary_carry_plan_summary b))"
+| "binary_carry_plan_summary (Binary_Carry_Repeat n a) =
+    (n * fst (binary_carry_plan_summary a),
+      (\<Sum>i<n. (2^(fst (binary_carry_plan_summary a)))^i) *
+        snd (binary_carry_plan_summary a))"
+
+lemma binary_carry_word_repeat_length:
+  "length (concat (replicate n xs)) = n * length xs"
+  by (induction n) simp_all
+
+lemma binary_coefficient_repeated_word:
+  "binary_coefficient_value (concat (replicate n xs)) =
+    (\<Sum>i<n. (2^(length xs))^i) * binary_coefficient_value xs"
+proof (induction n)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  have tail: "replicate (Suc n) xs = replicate n xs @ [xs]"
+    by (simp add: replicate_append_same)
+  have length: "length (concat (replicate n xs)) = length xs * n"
+    by (simp add: binary_carry_word_repeat_length mult.commute)
+  have exponent: "(2::int)^length (concat (replicate n xs)) = (2^length xs)^n"
+    by (simp only: length power_mult)
+  show ?case
+    apply (subst tail)
+    apply (simp only: concat_append concat.simps append_Nil binary_coefficient_append)
+    by (simp add: exponent Suc.IH algebra_simps)
+qed
+
+theorem binary_carry_plan_summary_exact:
+  "binary_carry_plan_summary plan =
+    (length (binary_carry_plan_word plan),
+      binary_coefficient_value (binary_carry_plan_word plan))"
+  by (induction plan) (simp_all add: binary_coefficient_append
+      binary_coefficient_repeated_word binary_carry_word_repeat_length)
+
+corollary binary_carry_plan_application_exact:
+  "(c + snd (binary_carry_plan_summary plan)) div
+      2^(fst (binary_carry_plan_summary plan)) =
+    binary_normalized_carry c (binary_carry_plan_word plan)"
+  by (simp add: binary_carry_plan_summary_exact binary_normalized_carry_weighted)
+
+lemma binary_carry_plan_reassociate:
+  "binary_carry_plan_summary (Binary_Carry_Join (Binary_Carry_Join a b) c) =
+    binary_carry_plan_summary (Binary_Carry_Join a (Binary_Carry_Join b c))"
+  by (simp only: binary_carry_plan_summary_exact binary_carry_plan_word.simps
+      append_assoc)
+
+lemma binary_carry_plan_repeat_split:
+  "binary_carry_plan_summary (Binary_Carry_Repeat (m+n) a) =
+    binary_carry_plan_summary
+      (Binary_Carry_Join (Binary_Carry_Repeat m a) (Binary_Carry_Repeat n a))"
+  by (simp add: binary_carry_plan_summary_exact replicate_add)
+
+lemma binary_carry_plan_prefix_reassociate:
+  "binary_normalized_carry incoming
+      (take k (binary_carry_plan_word (Binary_Carry_Join (Binary_Carry_Join a b) c))) =
+    binary_normalized_carry incoming
+      (take k (binary_carry_plan_word (Binary_Carry_Join a (Binary_Carry_Join b c))))"
+  by (simp only: binary_carry_plan_word.simps append_assoc)
+
 ML \<open>
   val checked = @{thms carry_finish_fold carry_finish_append
     advance_phase_append advance_phase_by_length carry_finish_equal_prefix
@@ -583,7 +725,12 @@ ML \<open>
     binary_boolean_signed_fold_composition signed_tripling_weighted_concat
     signed_tripling_concat_preserves_block_bounds decimal_double_three_digits
     signed_carry_histogram_endpoints signed_position_double_width
-    signed_position_clock_transport};
+    signed_position_clock_transport binary_coefficient_append
+    binary_normalized_carry_append binary_normalized_carry_weighted
+    binary_normalized_carry_seam binary_signed_minus_one_seam
+    binary_carry_word_repeat_length binary_coefficient_repeated_word binary_carry_plan_summary_exact
+    binary_carry_plan_application_exact binary_carry_plan_reassociate
+    binary_carry_plan_repeat_split binary_carry_plan_prefix_reassociate};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Shared carry-tape proof depends on an oracle";
 \<close>

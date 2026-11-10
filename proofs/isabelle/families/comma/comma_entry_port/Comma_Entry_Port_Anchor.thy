@@ -62,7 +62,7 @@ lemma comma_entry_port_anchor_laws_checked:
           comma_period_displacement_succ[where j=6]
           comma_period_displacement_succ[where j=7]
           comma_period_displacement_succ[where j=8]}
-    in simp_tac (arithmetic addsimps recurrence addsimps
+    in simp_tac (arithmetic |> Simplifier.add_simps recurrence |> Simplifier.add_simps
       @{thms list_all_Nil_iff list_all_Cons_iff upt_rec
         comma_entry_port_anchor_law_def comma_entry_port_orbit_def
         comma_entry_port_seed_def comma_entry_port_position_def

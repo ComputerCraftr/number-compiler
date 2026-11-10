@@ -6,7 +6,7 @@ let
       current_generation = fn () => getenv "NUMBER_COMPILER_PROOF_GENERATION"};
   val comma_phase_initial_stats = comma_slice_stats ();
   val comma_phase_five_timer = Timing.start ();
-  val comma_phase_five_normalizer = put_simpset HOL_basic_ss @{context} addsimps
+  val comma_phase_five_normalizer = put_simpset HOL_basic_ss @{context} |> Simplifier.add_simps
     @{thms One_nat_def[symmetric] Suc_1 Suc_numeral add_num_simps};
 
   fun comma_phase_five_check (offset, expected) =

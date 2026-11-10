@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -50,7 +51,10 @@ class PointedHashlifeEngine(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class CertifiedDefectTape:
-    """Source-guarded local emissions and their bounded halo work summary."""
+    """Source-guarded local emissions and their bounded halo work summary.
+
+    ``emissions`` is empty when the caller supplied a streaming consumer.
+    """
 
     emissions: tuple[FourSymbolDefect, ...]
     halo_segments: int
@@ -262,6 +266,8 @@ def pointed_combined_defect_tape(
     digits: int,
     samples: int,
     stride: int = 1,
+    *,
+    on_emission: Callable[[FourSymbolDefect], None] | None = None,
 ) -> CertifiedDefectTape:
     """Compile exact sampled carry actions from bounded shared halos.
 
@@ -295,6 +301,8 @@ def pointed_combined_defect_tape(
     # every private source cone bounded regardless of samples or stride.
     maximum_halo = 1024
     max_segment_samples = max(1, 1 + (maximum_halo - digits - 6) // (2 * stride))
+    if on_emission is not None and not callable(on_emission):
+        raise TypeError("defect emission consumer must be callable")
     actions: list[FourSymbolDefect] = []
     segment_count = 0
     local_steps = 0
@@ -312,7 +320,10 @@ def pointed_combined_defect_tape(
             action, after_two_steps = defect_and_successor_from_normalized_suffix(
                 current, digits
             )
-            actions.append(action)
+            if on_emission is None:
+                actions.append(action)
+            else:
+                on_emission(action)
             if i + 1 == batch:
                 break
             # The same normalized two-step successor is re-used for the

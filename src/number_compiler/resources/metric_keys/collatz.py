@@ -615,3 +615,20 @@ COLLATZ_LOW_BORDER_NUMERATOR_PHASE_CHECKS: Final = (
 COLLATZ_CONDITIONAL_POWER_PAIR_MATRIX_CHECKS: Final = (
     "collatz_conditional_power_pair_matrix_checks"
 )
+
+# Source-certified two-odd Boolean/cyclotomic harmonic production path.
+COLLATZ_PHYSICAL_TEMPORAL_JOINT_HARMONIC_BAND_PUMPS: Final = (
+    "collatz_physical_temporal_joint_harmonic_band_pumps"
+)
+COLLATZ_PHYSICAL_TEMPORAL_JOINT_HARMONIC_BAND_SYMBOLS: Final = (
+    "collatz_physical_temporal_joint_harmonic_band_symbols"
+)
+COLLATZ_PHYSICAL_TEMPORAL_JOINT_HARMONIC_EXIT_JOINS: Final = (
+    "collatz_physical_temporal_joint_harmonic_exit_joins"
+)
+COLLATZ_PHYSICAL_TEMPORAL_JOINT_XOR_FIVE_PORT_CHECKS: Final = (
+    "collatz_physical_temporal_joint_xor_five_port_checks"
+)
+COLLATZ_PHYSICAL_TEMPORAL_JOINT_FIVE_RETURN_CERTS: Final = (
+    "collatz_physical_temporal_joint_five_return_certs"
+)

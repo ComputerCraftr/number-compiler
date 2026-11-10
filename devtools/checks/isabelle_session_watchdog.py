@@ -9,6 +9,10 @@ SESSION_STATUS = re.compile(
     r"^\s*(Running|Building|Finished|Failed|FAILED|Unfinished)\s+"
     r"([A-Za-z0-9_][A-Za-z0-9_.+-]*)(?:\s|\(|$)"
 )
+SESSION_NAME_FIRST_TERMINAL = re.compile(
+    r"^\s*([A-Za-z0-9_][A-Za-z0-9_.+-]*)\s+"
+    r"(FAILED|CANCELLED)(?:\s|\(|$)"
+)
 SESSION_DURATION = re.compile(r"\((\d+:\d{2}:\d{2}(?:\.\d+)?) elapsed time")
 SESSION_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.+-]*$")
 _MAX_PARTIAL_LINE_BYTES = 64 * 1024
@@ -36,9 +40,10 @@ class IsabelleSessionWatchdog:
         self._partial = bytearray()
         self._discarding_long_line = False
         self._active: dict[str, float] = {}
-        self._started: set[str] = set()
+        self._started: dict[str, float] = {}
         self._finished: set[str] = set()
         self._failed: set[str] = set()
+        self._cancelled: set[str] = set()
         self.timed_out_session: str | None = None
         self.timed_out_elapsed_seconds: float | None = None
 
@@ -106,6 +111,7 @@ class IsabelleSessionWatchdog:
             "started_sessions": sorted(self._started),
             "finished_sessions": sorted(self._finished),
             "failed_sessions": sorted(self._failed),
+            "cancelled_sessions": sorted(self._cancelled),
             "active_sessions": sorted(self._active),
             "timed_out_session": self.timed_out_session,
             "timed_out_elapsed_seconds": self.timed_out_elapsed_seconds,
@@ -114,19 +120,27 @@ class IsabelleSessionWatchdog:
         }
 
     def _consume_line(self, line: str, now: float) -> None:
-        match = SESSION_STATUS.match(line)
-        if match is None:
-            return
-        status, name = match.groups()
+        terminal_match = SESSION_NAME_FIRST_TERMINAL.match(line)
+        if terminal_match is not None:
+            name, status = terminal_match.groups()
+        else:
+            match = SESSION_STATUS.match(line)
+            if match is None:
+                return
+            status, name = match.groups()
         if name not in self.admitted_sessions:
             return
         if status in {"Running", "Building"}:
-            # Never let duplicate or post-completion status lines reset time.
-            if name not in self._started and name not in self._finished:
-                self._started.add(name)
-                self._active[name] = now
+            # Duplicate lines and retries retain the first observed start.
+            # A completed session cannot be restarted within the same build.
+            if name not in self._finished and name not in self._active:
+                started = self._started.setdefault(name, now)
+                self._active[name] = started
+                self._expire(now)
             return
-        if status not in {"Finished", "Failed", "FAILED"} or name not in self._active:
+        if status not in {"Finished", "Failed", "FAILED", "CANCELLED"} or (
+            name not in self._active
+        ):
             return
         started = self._active[name]
         elapsed = max(0.0, now - started)
@@ -142,8 +156,10 @@ class IsabelleSessionWatchdog:
         del self._active[name]
         if status == "Finished":
             self._finished.add(name)
-        else:
+        elif status in {"Failed", "FAILED"}:
             self._failed.add(name)
+        else:
+            self._cancelled.add(name)
 
     def _expire(self, now: float) -> None:
         if self.timed_out_session is not None:

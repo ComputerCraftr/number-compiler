@@ -3,13 +3,13 @@ struct
   fun make arithmetic certify =
     let
       val records = @{thms comma_selected_return_block.select_convs}
-      val normalization = arithmetic addsimps
+      val normalization = arithmetic |> Simplifier.add_simps
         (@{thms comma_selected_block_leaf_def comma_selected_block_then_def
           comma_selected_block_repeat_def} @ records)
         |> fold Simplifier.add_cong
           @{thms comma_selected_choice_join_opaque_cong
             comma_selected_choice_repeat_opaque_cong}
-      val leaf_context = arithmetic delsimps
+      val leaf_context = arithmetic |> Simplifier.del_simps
         @{thms comma_boundary_valid_def comma_total_children_def}
       fun leaf choice valid defined macro ordered target_valid sibling =
         let
@@ -31,7 +31,7 @@ struct
             in reduce (pairs theorems) end
       fun observe block =
         (@{thm comma_selected_block_choice_path} OF [block])
-        |> Simplifier.simplify (arithmetic addsimps
+        |> Simplifier.simplify (arithmetic |> Simplifier.add_simps
           (@{thms comma_selected_choice_word.simps append.simps} @ records)) |> certify
     in {leaf=leaf,join=join,reduce=reduce,observe=observe} end
 end

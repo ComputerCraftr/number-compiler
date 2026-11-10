@@ -27,12 +27,12 @@ from number_compiler.arithmetic.fields.radix import digits_lsd, value_from_lsd_d
 from number_compiler.arithmetic.fields.symbolic_extent import (
     Extent,
 )
-from number_compiler.arithmetic.formula.formula import FormulaRoot
 from number_compiler.resources.metric_keys import api as _api_metrics
 from number_compiler.resources.metric_keys import shared as _shared_metrics
 from number_compiler.resources.output_stream_metrics import measured_output_stream
 
 if TYPE_CHECKING:
+    from number_compiler.arithmetic.formula.formula import FormulaRoot
     from number_compiler.arithmetic.functions.state_reduction import (
         ReverseAddGrowthState,
     )
@@ -82,6 +82,8 @@ class ProjectionMetrics:
     prime_scheduler_work: int = 0
     prime_scheduler_peak_entries: int = 0
     prime_scheduler_counters: tuple[tuple[str, int], ...] = ()
+    prime_birth_innovation_collapses: int = 0
+    prime_birth_innovation_stages: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +92,8 @@ class FormulaTermPayload:
     radix: int
 
     def __post_init__(self) -> None:
+        from number_compiler.arithmetic.formula.formula import FormulaRoot
+
         if type(self.root) is not FormulaRoot:
             raise TypeError("formula payload requires a canonical formula root")
         require_integer(self.radix, "formula radix", 2)

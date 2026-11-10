@@ -70,10 +70,72 @@ lemma tripling_digit_with_ordered_inlet:
   using tripling_quotient_carry[OF assms, of source]
   by (metis mod_add_left_eq mod_mult_right_eq)
 
+lemma tripling_carry_boolean_borrow:
+  fixes r m :: nat
+  assumes modulus_positive: "0 < m" and source_remainder: "r < m"
+  shows "3 * r div m =
+    2 * r div m + (if 3 * r mod m < r then 1 else 0)"
+proof -
+  let ?q = "2 * r div m"
+  let ?s = "2 * r mod m"
+  let ?t = "r + ?s"
+  have s_bound: "?s < m"
+    using modulus_positive by simp
+  have double_split: "2 * r = ?q * m + ?s"
+    using div_mult_mod_eq[of "2 * r" m] by (simp add: mult.commute)
+  have triple_split: "3 * r = ?q * m + ?t"
+    using double_split by arith
+  have quotient_split: "3 * r div m = ?q + ?t div m"
+    unfolding triple_split
+    by (rule div_mult_self3) (use modulus_positive in simp)
+  have remainder_split: "3 * r mod m = ?t mod m"
+    unfolding triple_split by (rule mod_mult_self3)
+  have t_bound: "?t < 2 * m"
+    using source_remainder s_bound by arith
+  have t_quotient_bound: "?t div m < 2"
+    using modulus_positive t_bound
+    by (simp add: div_less_iff_less_mult mult.commute)
+  have t_remainder_bound: "?t mod m < m"
+    using modulus_positive by simp
+  have t_split: "?t = (?t div m) * m + ?t mod m"
+    using div_mult_mod_eq[of ?t m] by (simp add: mult.commute)
+  have t_boolean: "?t div m = (if ?t mod m < r then 1 else 0)"
+  proof (cases "?t < m")
+    case True
+    have t_div_zero: "?t div m = 0"
+      using True by simp
+    have t_mod_self: "?t mod m = ?t"
+      using True by simp
+    show ?thesis using t_div_zero t_mod_self by (simp; arith)
+  next
+    case False
+    have lower: "m \<le> ?t"
+      using False by arith
+    have t_div_one: "?t div m = 1"
+    proof (cases "?t div m = 0")
+      case True
+      have "?t = ?t mod m"
+        using t_split True by simp
+      then show ?thesis
+        using lower t_remainder_bound by arith
+    next
+      case False
+      then show ?thesis
+        using t_quotient_bound by arith
+    qed
+    have t_mod_less: "?t mod m < r"
+      using t_split s_bound by (simp only: t_div_one mult_1_left; arith)
+    show ?thesis using t_div_one t_mod_less by simp
+  qed
+  show ?thesis
+    using quotient_split remainder_split t_boolean by simp
+qed
+
 ML \<open>
   val checked = @{thms tripling_source_step tripling_source_split
     tripling_source_period tripling_source_repeated_period
-    tripling_quotient_carry tripling_digit_with_ordered_inlet};
+    tripling_quotient_carry tripling_digit_with_ordered_inlet
+    tripling_carry_boolean_borrow};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Ordered carry theorem depends on an oracle";
   val _ = if Thm_Deps.has_skip_proof checked

@@ -16,7 +16,7 @@ primrec comma_crt_supported :: "comma_crt_column \<Rightarrow> bool" where
 | "comma_crt_supported (Comma_CRT_Node level children) =
     list_ex id (map comma_crt_supported children)"
 
-declare comma_crt_supported.simps(2)[code del]
+declare comma_crt_supported.simps(2)[code drop]
 declare comma_crt_supported.simps(1)[code]
 
 lemma comma_crt_supported_node_short_circuit[code]:

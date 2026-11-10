@@ -1,6 +1,8 @@
 theory Comma_Semantic_Graph
   imports Comma_Semantic_Graph_Core
 begin
+
+ML_file "proof_rewrite_rules.ML"
 ML \<open>Comma_Proof_Profile.report "B1 graph stage=entered"\<close>
 
 text \<open>

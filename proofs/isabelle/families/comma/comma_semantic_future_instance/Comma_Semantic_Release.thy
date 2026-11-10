@@ -3,7 +3,7 @@ theory Comma_Semantic_Release
     Comma_Python_Chart_Refinement
     Comma_Python_Grouped_Chart_Refinement
     Comma_Semantic_Global_Safety
-    Comma_Semantic_B1_Instance.Comma_Semantic_Summary_Instance
+    Comma_Semantic_Graph_Instance.Comma_Semantic_Summary_Instance
 begin
 
 text \<open>
@@ -791,8 +791,18 @@ ML \<open>
      "comma_semantic_graph_root_action_exact",
      "comma_semantic_graph_action_power_refines",
      "comma_semantic_b1_action_power_refines_orbit",
-     "comma_semantic_graph_predecessor_stop242_checked",
-     "comma_semantic_graph_stop242_from_weighted_crt_power_all",
+     "comma_semantic_phase_continue24_image_certificate_native",
+     "comma_semantic_phase_continue24_image_checked",
+     "comma_semantic_phase_class_B32_exact_output_checked",
+     "comma_semantic_phase_class_B32_exact_output",
+     "comma_crt_rank_relations_sound",
+     "comma_semantic_graph_stop242_from_stop_within",
+     "comma_semantic_graph_stop_within_exact_action",
+     "comma_semantic_graph_stop_within_summary",
+     "comma_semantic_graph_root_control_transport",
+     "comma_semantic_graph_stop_from_exact_summary",
+     "comma_semantic_b1_action_power_b32_stop242",
+     "comma_semantic_graph_weighted_power_exact",
      "comma_semantic_decade_summary_provider_exact",
      "comma_semantic_graph_b32_stop242_checked",
      "comma_semantic_p5_entry_future_open_checked",
@@ -819,5 +829,7 @@ ML \<open>
       comma_semantic_b32_grouped_chart_terminates
       comma_semantic_decade_writer_partial_selection}
 \<close>
+
+ML_file "semantic_future_candidate_native_export.ML"
 
 end

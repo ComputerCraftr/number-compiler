@@ -281,6 +281,74 @@ def test_semantic_branch_binds_ordered_literal_choice_and_weighted_event(
     assert len(calls) == 2
 
 
+def test_rank_classification_does_not_authorize_wrong_label_or_weight(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    source, prefix = _source_prefix()
+    charge_work = _work_log()
+
+    wrong_label_record = _candidate_for_prefix(prefix, selected_slot=1)
+    controls = cast(list[object], wrong_label_record["controls"])
+    wrong_coefficient = 2 if prefix.template.destination_a != 2 else 3
+    controls[2] = ["fork", wrong_coefficient]
+    wrong_label_provider = _admitted_provider(
+        monkeypatch, wrong_label_record, charge_work, request
+    )
+    wrong_label_cid = wrong_label_provider.source_class(
+        source.state, charge_work=charge_work
+    )
+    wrong_label_row = wrong_label_provider.class_row(
+        wrong_label_cid, charge_work=charge_work
+    )
+    assert wrong_label_row.rank is None
+    assert wrong_label_row.control.fork_coefficient == wrong_coefficient
+
+    with pytest.raises(ValueError, match="Fork coefficient differs"):
+        select_semantic_macro_child(
+            source,
+            prefix,
+            fork_value=prefix.terminal_value,
+            ordered_literal_children=_literal_children(prefix),
+            provider=wrong_label_provider,
+            charge_work=charge_work,
+        )
+
+    correct_record = _candidate_for_prefix(prefix, selected_slot=1)
+    assert (
+        wrong_label_record["class_rank_candidate"]
+        == correct_record["class_rank_candidate"]
+    )
+    assert wrong_label_record["ordered_children"] == correct_record["ordered_children"]
+    correct_provider = _admitted_provider(
+        monkeypatch, correct_record, charge_work, request
+    )
+    selected = select_semantic_macro_child(
+        source,
+        prefix,
+        fork_value=prefix.terminal_value,
+        ordered_literal_children=_literal_children(prefix),
+        provider=correct_provider,
+        charge_work=charge_work,
+    )
+    correct_row = correct_provider.class_row(
+        selected.selection.source_class, charge_work=charge_work
+    )
+    assert correct_row.rank is None
+    assert selected.weighted_action == WeightedBoundaryAction.from_selected_fork(
+        prefix.template,
+        prefix.template.ordered_children[selected.selection.selected_slot],
+    )
+
+    object.__setattr__(
+        selected.weighted_action.weight,
+        "numerator_offset",
+        selected.weighted_action.weight.numerator_offset + 1,
+    )
+    with pytest.raises(ValueError, match="numeric payload snapshot changed"):
+        selected.validate()
+
+
 def test_semantic_branch_rejects_wrong_fork_value_children_and_source(
     monkeypatch: pytest.MonkeyPatch,
     request: pytest.FixtureRequest,

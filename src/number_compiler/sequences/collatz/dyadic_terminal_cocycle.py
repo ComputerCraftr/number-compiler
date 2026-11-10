@@ -11,12 +11,22 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from itertools import pairwise
-from typing import Final, NamedTuple
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.morphism_core import binary_power
+from number_compiler.sequences.collatz.dyadic_window_field_accumulator import (
+    EndpointWindowPrefixState,
+    FieldWindowPrefixState,
+    WindowFieldAccumulator,
+)
 
 MAX_DYADIC_SOURCE_WINDOW_STEPS: Final = 512
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.mahler_joint_carry import (
+        MahlerRecoveredCocycle,
+    )
 
 _FIELD_ACTION_ISSUER = object()
 _FIELD_WORD_ISSUER = object()
@@ -175,73 +185,6 @@ class DyadicTerminalEndpointAction:
             source,
             producer_issued=self.producer_issued,
             authority_error="untrusted endpoint coefficients cannot be applied",
-        )
-
-
-class _EndpointWindowPrefixState(NamedTuple):
-    steps: int
-    gain: int
-    offset: int
-    odd_symbols: int
-
-
-class _FieldWindowPrefixState(NamedTuple):
-    steps: int
-    gain: int
-    offset: int
-    sum_gain: int
-    sum_offset: int
-    previous_gain: int
-    previous_offset: int
-    odd_symbols: int
-
-
-@dataclass(slots=True)
-class _WindowFieldAccumulator:
-    sum_gain: int = 0
-    sum_offset: int = 0
-    previous_gain: int = 0
-    previous_offset: int = 0
-
-    def advance(
-        self,
-        previous_gain: int,
-        previous_offset: int,
-        gain: int,
-        offset: int,
-    ) -> int:
-        old_values = (
-            self.sum_gain,
-            self.sum_offset,
-            self.previous_gain,
-            self.previous_offset,
-        )
-        self.previous_gain = previous_gain
-        self.previous_offset = previous_offset
-        self.sum_gain = (self.sum_gain << 1) + gain
-        self.sum_offset = (self.sum_offset << 1) + offset
-        return sum(value.bit_length() for value in old_values) + sum(
-            value.bit_length()
-            for value in (
-                self.sum_gain,
-                self.sum_offset,
-                self.previous_gain,
-                self.previous_offset,
-            )
-        )
-
-    def prefix_state(
-        self, steps: int, gain: int, offset: int, odd_symbols: int
-    ) -> _FieldWindowPrefixState:
-        return _FieldWindowPrefixState(
-            steps,
-            gain,
-            offset,
-            self.sum_gain,
-            self.sum_offset,
-            self.previous_gain,
-            self.previous_offset,
-            odd_symbols,
         )
 
 
@@ -625,6 +568,27 @@ class DyadicTerminalFieldAction:
             authority_error="untrusted field coefficients cannot produce an endpoint",
         )
 
+    def mahler_chronological_cocycle(
+        self,
+        source: int,
+        *,
+        max_steps: int = 2048,
+        max_columns: int = 4096,
+        reserve_bits: Callable[[int], None] | None = None,
+    ) -> MahlerRecoveredCocycle:
+        """Materialize chronological Laurent carries only on explicit demand."""
+        from number_compiler.sequences.collatz.mahler_joint_carry import (
+            recover_chronological_cocycle,
+        )
+
+        return recover_chronological_cocycle(
+            self,
+            source,
+            max_steps=max_steps,
+            max_columns=max_columns,
+            reserve_bits=reserve_bits,
+        )
+
     def sum_mod(self, source: int, modulus: int) -> int:
         self._require_source(source)
         modulus = require_integer(modulus, "field modulus", 2)
@@ -709,10 +673,10 @@ class DyadicTerminalFieldAction:
 
         low = source & ((1 << k_limit) - 1) if k_limit else 0
         gain, offset = 1, 0
-        field_accumulator = _WindowFieldAccumulator() if retain_field_action else None
+        field_accumulator = WindowFieldAccumulator() if retain_field_action else None
         denominator = 1
         steps = odd_symbols = spent = parity_mask = 0
-        prefix_states: list[_EndpointWindowPrefixState | _FieldWindowPrefixState] = []
+        prefix_states: list[EndpointWindowPrefixState | FieldWindowPrefixState] = []
         next_prefix = 0
         while steps < k_limit:
             odd = low & 1
@@ -774,7 +738,7 @@ class DyadicTerminalFieldAction:
                     )
                 else:
                     prefix_states.append(
-                        _EndpointWindowPrefixState(
+                        EndpointWindowPrefixState(
                             steps,
                             gain,
                             offset,
@@ -824,7 +788,7 @@ class DyadicTerminalFieldAction:
         prefixes: list[DyadicSourceWindowPrefix] = []
         for prefix_state in prefix_states:
             prefix_action: DyadicTerminalEndpointAction | DyadicTerminalFieldAction
-            if type(prefix_state) is _FieldWindowPrefixState:
+            if type(prefix_state) is FieldWindowPrefixState:
                 prefix_width = prefix_state.steps
                 prefix_odd_symbols = prefix_state.odd_symbols
                 prefix_action = cls._create(
@@ -836,7 +800,7 @@ class DyadicTerminalFieldAction:
                     prefix_state.previous_gain,
                     prefix_state.previous_offset,
                 )
-            elif type(prefix_state) is _EndpointWindowPrefixState:
+            elif type(prefix_state) is EndpointWindowPrefixState:
                 prefix_width = prefix_state.steps
                 prefix_odd_symbols = prefix_state.odd_symbols
                 prefix_action = DyadicTerminalEndpointAction(

@@ -1,5 +1,6 @@
 theory Comma_Cyclotomic_Clock
   imports Comma_Frobenius_Recurrence.Comma_Carry_Core_Quotient
+    Shared_Carry_Dynamics.Boolean_Cyclotomic3
 begin
 
 text \<open>
@@ -42,6 +43,156 @@ definition comma_cyclotomic_phase ::
        (comma_clock_mod7 C +
         7 * nat ((3 * (int (comma_clock_mod4 C) - int (comma_clock_mod7 C))) mod 4) + shift) mod 28
      else 0 + shift mod 1)"
+
+text \<open>The pure mod-3 CRT action is separate from one physical decade.
+Adding 616 rotates only the mod-3 character; adding one advances all four
+clock coordinates.  In particular, the first action is not a mod-32
+invariance statement (616 is 8 modulo 32).\<close>
+
+definition comma_cyclotomic_mod3_next ::
+    "comma_cyclotomic_clock \<Rightarrow> comma_cyclotomic_clock" where
+  "comma_cyclotomic_mod3_next C =
+    \<lparr>comma_clock_mod4 = comma_clock_mod4 C,
+     comma_clock_mod3 = (comma_clock_mod3 C + 1) mod 3,
+     comma_clock_mod7 = comma_clock_mod7 C,
+     comma_clock_mod11 = comma_clock_mod11 C\<rparr>"
+
+definition comma_cyclotomic_physical_next ::
+    "comma_cyclotomic_clock \<Rightarrow> comma_cyclotomic_clock" where
+  "comma_cyclotomic_physical_next C =
+    \<lparr>comma_clock_mod4 = (comma_clock_mod4 C + 1) mod 4,
+     comma_clock_mod3 = (comma_clock_mod3 C + 1) mod 3,
+     comma_clock_mod7 = (comma_clock_mod7 C + 1) mod 7,
+     comma_clock_mod11 = (comma_clock_mod11 C + 1) mod 11\<rparr>"
+
+lemma comma_cyclotomic_clock_of_mod3_step_616:
+  "comma_cyclotomic_clock_of ((r + 616) mod 924) =
+    comma_cyclotomic_mod3_next (comma_cyclotomic_clock_of r)"
+proof -
+  have d4: "(4::nat) dvd 924" by simp
+  have d3: "(3::nat) dvd 924" by simp
+  have d7: "(7::nat) dvd 924" by simp
+  have d11: "(11::nat) dvd 924" by simp
+  have p4: "(r + 616) mod 4 = r mod 4"
+    by (subst mod_add_eq[symmetric]) simp
+  have p3: "(r + 616) mod 3 = (r mod 3 + 1) mod 3"
+    by (subst mod_add_eq[symmetric]) simp
+  have p7: "(r + 616) mod 7 = r mod 7"
+    by (subst mod_add_eq[symmetric]) simp
+  have p11: "(r + 616) mod 11 = r mod 11"
+    by (subst mod_add_eq[symmetric]) simp
+  have q4: "((r + 616) mod 924) mod 4 = r mod 4"
+    by (simp only: mod_mod_cancel[OF d4] p4)
+  have q3: "((r + 616) mod 924) mod 3 = (r mod 3 + 1) mod 3"
+    by (simp only: mod_mod_cancel[OF d3] p3)
+  have q7: "((r + 616) mod 924) mod 7 = r mod 7"
+    by (simp only: mod_mod_cancel[OF d7] p7)
+  have q11: "((r + 616) mod 924) mod 11 = r mod 11"
+    by (simp only: mod_mod_cancel[OF d11] p11)
+  show ?thesis
+    unfolding comma_cyclotomic_clock_of_def comma_cyclotomic_mod3_next_def
+    by (simp only: comma_cyclotomic_clock.select_convs q4 q3 q7 q11)
+qed
+
+lemma comma_cyclotomic_clock_of_physical_step_1:
+  "comma_cyclotomic_clock_of ((r + 1) mod 924) =
+    comma_cyclotomic_physical_next (comma_cyclotomic_clock_of r)"
+proof -
+  have d4: "(4::nat) dvd 924" by simp
+  have d3: "(3::nat) dvd 924" by simp
+  have d7: "(7::nat) dvd 924" by simp
+  have d11: "(11::nat) dvd 924" by simp
+  have p4: "(r + 1) mod 4 = (r mod 4 + 1) mod 4"
+    by (subst mod_add_eq[symmetric]) simp
+  have p3: "(r + 1) mod 3 = (r mod 3 + 1) mod 3"
+    by (subst mod_add_eq[symmetric]) simp
+  have p7: "(r + 1) mod 7 = (r mod 7 + 1) mod 7"
+    by (subst mod_add_eq[symmetric]) simp
+  have p11: "(r + 1) mod 11 = (r mod 11 + 1) mod 11"
+    by (subst mod_add_eq[symmetric]) simp
+  have q4: "((r + 1) mod 924) mod 4 = (r mod 4 + 1) mod 4"
+    by (simp only: mod_mod_cancel[OF d4] p4)
+  have q3: "((r + 1) mod 924) mod 3 = (r mod 3 + 1) mod 3"
+    by (simp only: mod_mod_cancel[OF d3] p3)
+  have q7: "((r + 1) mod 924) mod 7 = (r mod 7 + 1) mod 7"
+    by (simp only: mod_mod_cancel[OF d7] p7)
+  have q11: "((r + 1) mod 924) mod 11 = (r mod 11 + 1) mod 11"
+    by (simp only: mod_mod_cancel[OF d11] p11)
+  show ?thesis
+    unfolding comma_cyclotomic_clock_of_def comma_cyclotomic_physical_next_def
+    by (simp only: comma_cyclotomic_clock.select_convs q4 q3 q7 q11)
+qed
+
+lemma comma_cyclotomic_clock_of_mod924:
+  "comma_cyclotomic_clock_of (r mod 924) = comma_cyclotomic_clock_of r"
+proof -
+  have d4: "(4::nat) dvd 924" by simp
+  have d3: "(3::nat) dvd 924" by simp
+  have d7: "(7::nat) dvd 924" by simp
+  have d11: "(11::nat) dvd 924" by simp
+  show ?thesis
+    unfolding comma_cyclotomic_clock_of_def
+    by (simp add: mod_mod_cancel[OF d4] mod_mod_cancel[OF d3]
+        mod_mod_cancel[OF d7] mod_mod_cancel[OF d11])
+qed
+
+lemma comma_cyclotomic_clock_of_add_924:
+  "comma_cyclotomic_clock_of (r + 924) = comma_cyclotomic_clock_of r"
+proof -
+  have p4: "(r + 924) mod 4 = r mod 4"
+    by (subst mod_add_eq[symmetric]) simp
+  have p3: "(r + 924) mod 3 = r mod 3"
+    by (subst mod_add_eq[symmetric]) simp
+  have p7: "(r + 924) mod 7 = r mod 7"
+    by (subst mod_add_eq[symmetric]) simp
+  have p11: "(r + 924) mod 11 = r mod 11"
+    by (subst mod_add_eq[symmetric]) simp
+  show ?thesis
+    unfolding comma_cyclotomic_clock_of_def
+    by (simp only: p4 p3 p7 p11)
+qed
+
+lemma comma_cyclotomic_clock_of_mod924_period:
+  "comma_cyclotomic_clock_of ((r + 924) mod 924) =
+    comma_cyclotomic_clock_of r"
+  by (simp add: comma_cyclotomic_clock_of_mod924 comma_cyclotomic_clock_of_add_924)
+
+text \<open>A bitplane-valued selector may depend on all four CRT characters.
+The pure +616 step fixes three characters and advances only mod 3.  Its
+three consecutive samples therefore use the shared lossless harmonic shift.
+This transports selector coordinates; it does not establish a physical
+carry period, a C1 guard theorem, or a quotient of guarded actions.\<close>
+
+lemma comma_cyclotomic_selector_pure_mod3_transport:
+  fixes selector :: "comma_cyclotomic_clock \<Rightarrow> 'i boolean_bitplane"
+  shows "boolean_cyclotomic3_encode
+      (selector (comma_cyclotomic_clock_of ((r + 616) mod 924)),
+       selector (comma_cyclotomic_clock_of ((r + 1232) mod 924)),
+       selector (comma_cyclotomic_clock_of ((r + 1848) mod 924))) =
+    boolean_cyclotomic3_shift (boolean_cyclotomic3_encode
+      (selector (comma_cyclotomic_clock_of r),
+       selector (comma_cyclotomic_clock_of ((r + 616) mod 924)),
+       selector (comma_cyclotomic_clock_of ((r + 1232) mod 924))))"
+proof -
+  have step3:
+    "comma_cyclotomic_clock_of ((r + 1848) mod 924) =
+      comma_cyclotomic_clock_of r"
+    using comma_cyclotomic_clock_of_mod924[of "r + 1848"]
+      comma_cyclotomic_clock_of_add_924[of "r + 924"]
+      comma_cyclotomic_clock_of_add_924[of r]
+    by (simp add: add.assoc)
+  have rotation:
+    "boolean_cyclotomic3_encode
+        (selector (comma_cyclotomic_clock_of ((r + 616) mod 924)),
+         selector (comma_cyclotomic_clock_of ((r + 1232) mod 924)),
+         selector (comma_cyclotomic_clock_of r)) =
+      boolean_cyclotomic3_shift (boolean_cyclotomic3_encode
+        (selector (comma_cyclotomic_clock_of r),
+         selector (comma_cyclotomic_clock_of ((r + 616) mod 924)),
+         selector (comma_cyclotomic_clock_of ((r + 1232) mod 924))))"
+    by (rule boolean_cyclotomic3_encode_rotate)
+  show ?thesis using rotation step3 by (simp only: step3 rotation)
+qed
 
 
 text \<open>Only the three small CRT bases are checked concretely. The arbitrary
@@ -159,7 +310,12 @@ theorem comma_cyclotomic_clock_core_residue:
 
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
-    @{thms comma_cyclotomic_clock_projection comma_cyclotomic_clock_core_residue})
+    @{thms comma_cyclotomic_clock_projection comma_cyclotomic_clock_core_residue
+      comma_cyclotomic_clock_of_mod3_step_616
+      comma_cyclotomic_clock_of_physical_step_1
+      comma_cyclotomic_clock_of_mod924 comma_cyclotomic_clock_of_add_924
+      comma_cyclotomic_clock_of_mod924_period
+      comma_cyclotomic_selector_pure_mod3_transport})
     then () else error "Cyclotomic clock depends on an oracle"
 \<close>
 end

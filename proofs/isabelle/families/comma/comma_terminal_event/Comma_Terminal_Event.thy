@@ -54,7 +54,7 @@ lemma comma_event_guards_exact:
   using valid phase
   by (cases event)
     (auto simp: comma_event_wall_def comma_event_false_def
-      list_all_iff comma_finite_step_def comma_weighted_step_def Let_def
+      list_all_iff comma_near_control_formula Let_def
       split: if_splits; arith)+
 
 fun comma_event_action :: "nat \<Rightarrow> nat \<Rightarrow> comma_finite_move \<Rightarrow> comma_chart_action" where

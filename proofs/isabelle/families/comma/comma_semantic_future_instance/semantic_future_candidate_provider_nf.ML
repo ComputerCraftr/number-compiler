@@ -80,7 +80,7 @@ struct
   fun rewrite_rhs ctxt definition constant label =
     let
       val theorem = Simplifier.rewrite
-        (ctxt addsimps [definition]) (Thm.cterm_of ctxt constant)
+        (Simplifier.add_simps ([definition]) (ctxt)) (Thm.cterm_of ctxt constant)
       val _ = if Thm.term_of (Thm.lhs_of theorem) aconv constant then ()
         else error (label ^ " rewrite changed its input")
     in Thm.term_of (Thm.rhs_of theorem) end
@@ -183,10 +183,32 @@ struct
       val _ = if Context.subthy (theorem_theory, Proof_Context.theory_of context) andalso
           Context.subthy (theorem_theory, Proof_Context.theory_of ctxt) then ()
         else error "Candidate class output lookup belongs to another theory"
-      val leaf_payload = payload ctxt class_count result
-      val _ = if #value leaf_payload aconv result then ()
-        else error "Candidate projection payload changed its value"
-    in (leaf_payload, theorem) end
+    in (result, theorem) end
+
+  type candidate_output_components =
+    {control: Data.payload, north: Data.payload, south: Data.payload}
+
+  fun parse_candidate_output_components ctxt class_count result:
+      candidate_output_components =
+    let
+      val (control_term, children_term) = HOLogic.dest_prod result
+      val children = HOLogic.dest_list children_term |> map (parse_nat ctxt)
+      val control = parse_control ctxt control_term
+      val (north_id, south_id) =
+        (case control of
+          Provider_Fork _ =>
+            (case children of
+              [north, south] => (north, south)
+            | _ => error "Checked Fork candidate output must have two ordered children")
+        | Provider_Landmine =>
+            if null children then (0, 0)
+            else error "Checked Landmine candidate output must have no children")
+      val control_payload = payload ctxt class_count control_term
+      val north_payload = payload ctxt class_count (nat north_id)
+      val south_payload = payload ctxt class_count (nat south_id)
+    in
+      {control = control_payload, north = north_payload, south = south_payload}
+    end
 
   fun terminal_of_payload ctxt ({value, ...}: Data.payload) =
     (case strip_comb value of
@@ -242,7 +264,7 @@ struct
   fun prove ctxt proposition rules label =
     let
       val theorem = Goal.prove ctxt [] [] proposition
-        (fn {context, ...} => asm_full_simp_tac (context addsimps rules) 1)
+        (fn {context, ...} => asm_full_simp_tac (Simplifier.add_simps (rules) (context)) 1)
     in exact_closed ctxt theorem label end
 
   fun publish lthy =
@@ -281,31 +303,30 @@ struct
            @{thm comma_semantic_future_candidate_children_def}] @
         @{thms list.map nth_Cons_0 nth_Cons_Suc nth_Cons' map_filter.simps
           list.size prod.case_eq_if if_True if_False}
-      val output_context = ctxt
+      val output_key_context = ctxt
         |> Simplifier.add_proc (#procedure controls_selector)
         |> Simplifier.add_proc (#procedure children_selector)
-        |> Simplifier.add_simps output_rules
+        |> Simplifier.add_simps
+          ([ @{thm comma_semantic_future_candidate_class_output_key_def},
+             @{thm comma_semantic_future_candidate_controls_def},
+             @{thm comma_semantic_future_candidate_children_def} ] @
+            @{thms list.map nth_Cons_0 nth_Cons_Suc nth_Cons' map_filter.simps
+              list.size prod.case_eq_if if_True if_False})
       val distinct_ids = sort_distinct int_ord ids
       val _ = if length distinct_ids <= class_count then ()
         else error "Candidate output lookup memo exceeds the validated class table"
-      fun projection_values output expectedT ids = Symtab.make (map (fn id =>
-        (Int.toString id,
-         candidate_output ctxt output_context class_count output expectedT id))
-        ids)
-      val control_values = projection_values
-        @{term comma_semantic_future_candidate_output_control} control_optionT
-        distinct_ids
-      fun control_at_id id =
-        (case Symtab.lookup control_values (Int.toString id) of
-          SOME (({value,...}: Data.payload),_) => parse_control ctxt value
-        | NONE => error "Candidate control projection was not admitted")
-      val fork_ids = List.filter (fn id =>
-        (case control_at_id id of Provider_Fork _ => true | Provider_Landmine => false))
-        distinct_ids
-      val north_values = projection_values
-        @{term comma_semantic_future_candidate_output_north_id} natT fork_ids
-      val south_values = projection_values
-        @{term comma_semantic_future_candidate_output_south_id} natT fork_ids
+      val output_values = Symtab.make (map (fn id =>
+        let
+          val (result, _lookup_theorem) = candidate_output ctxt output_key_context
+            class_count @{term comma_semantic_future_candidate_class_output_key}
+            keyT id
+        in (Int.toString id,
+          parse_candidate_output_components ctxt class_count result) end)
+        distinct_ids)
+      fun output_at_id id =
+        (case Symtab.lookup output_values (Int.toString id) of
+          SOME components => components
+        | NONE => error "Candidate output projection was not admitted")
       val arena = Data.make_arena 8192
       val control_serializer = Data.make_serializer arena control_optionT
       val child_serializer = Data.make_serializer arena natT
@@ -334,45 +355,29 @@ struct
         source_nf_terms
       val _ = List.app (check_stopped_source ctxt arena) source_actions
 
-      fun candidate_projection values id_action =
+      fun candidate_projection id_action =
         Data.map_leaves arena
           (fn id_payload =>
             let
               val id = parse_nat ctxt (#value id_payload)
-              val ({value, ...}: Data.payload, _lookup_theorem) =
-                case Symtab.lookup values (Int.toString id) of
-                  SOME output => output
-                | NONE => error "Candidate projection ID was not admitted"
-            in payload_of value end)
+              val {control, ...} = output_at_id id
+            in control end)
           id_action
-      fun candidate_child_projection values id_action =
+      fun candidate_child_projection choose_north id_action =
         Data.map_leaves arena
           (fn id_payload =>
             let
               val id = parse_nat ctxt (#value id_payload)
-              val ({value=control_value,...}: Data.payload, _control_theorem) =
-                (case Symtab.lookup control_values (Int.toString id) of
-                  SOME result => result
-                | NONE => error "Candidate child control projection was not admitted")
-            in
-              (case parse_control ctxt control_value of
-                Provider_Landmine => payload_of (nat 0)
-              | Provider_Fork _ =>
-                  let
-                    val ({value,...}: Data.payload, _child_theorem) =
-                      (case Symtab.lookup values (Int.toString id) of
-                        SOME result => result
-                      | NONE => error "Fork candidate child projection was not admitted")
-                  in payload_of value end)
-            end)
+              val {north, south, ...} = output_at_id id
+            in if choose_north then north else south end)
           id_action
       fun candidate_components id_action =
         {control = Data.erase_weights arena
-            (candidate_projection control_values id_action),
+            (candidate_projection id_action),
          north = Data.erase_weights arena
-            (candidate_child_projection north_values id_action),
+            (candidate_child_projection true id_action),
          south = Data.erase_weights arena
-            (candidate_child_projection south_values id_action)}
+            (candidate_child_projection false id_action)}
       fun source_components source_action =
         {control = make_source_control_action payload_of ctxt arena source_action,
          north = make_source_child_action payload_of ctxt arena id_actions
@@ -463,7 +468,7 @@ struct
             |> Simplifier.add_proc (#procedure children_selector)
             |> Simplifier.add_simps output_rules
           val raw_theorem = Goal.prove proof_context [] [] raw_proposition
-            (fn {context, ...} => asm_full_simp_tac (context addsimps rules) 1)
+            (fn {context, ...} => asm_full_simp_tac (Simplifier.add_simps (rules) (context)) 1)
             |> exact_closed proof_context
               ("raw candidate parent-key action family " ^ Int.toString family)
           val normalized_term = component_action serializers
@@ -477,10 +482,9 @@ struct
                  key_apply $
                   candidate_logic $ phase)))
           val theorem = Goal.prove proof_context [] [] normalized_proposition
-            (fn {context, ...} => asm_full_simp_tac (context addsimps
-              (rules @ certificate_equations certificate @ [raw_theorem,
+            (fn {context, ...} => asm_full_simp_tac (Simplifier.add_simps ((rules @ certificate_equations certificate @ [raw_theorem,
                 @{thm comma_semantic_future_projected_key_apply_def},
-                @{thm comma_weighted_crt_apply_def}])) 1)
+                @{thm comma_weighted_crt_apply_def}])) (context)) 1)
         in exact_closed proof_context theorem
             ("normalized candidate parent-key action family " ^ Int.toString family) end)
         (map_index (fn (family, raw_action) =>
@@ -520,7 +524,7 @@ struct
             |> Simplifier.add_proc (#procedure children_selector)
             |> Simplifier.add_simps output_rules
           val raw_theorem = Goal.prove proof_context [] [] raw_proposition
-            (fn {context, ...} => asm_full_simp_tac (context addsimps rules) 1)
+            (fn {context, ...} => asm_full_simp_tac (Simplifier.add_simps (rules) (context)) 1)
             |> exact_closed proof_context
               ("raw source NF key action family " ^ Int.toString family)
           val normalized_term = component_action serializers
@@ -536,9 +540,9 @@ struct
           val normalized_theorem = Goal.prove proof_context [] []
             normalized_proposition
             (fn {context, ...} => asm_full_simp_tac
-              (context addsimps (rules @ certificate_equations certificate @ [raw_theorem,
+              (Simplifier.add_simps ((rules @ certificate_equations certificate @ [raw_theorem,
                 @{thm comma_semantic_future_projected_key_apply_def},
-                @{thm comma_weighted_crt_apply_def}])) 1)
+                @{thm comma_weighted_crt_apply_def}])) (context)) 1)
             |> exact_closed proof_context
               ("normalized source NF key action family " ^ Int.toString family)
         in normalized_theorem end)
@@ -565,11 +569,10 @@ struct
           val proposition = HOLogic.mk_Trueprop (HOLogic.mk_all ("phase",natT,
             HOLogic.mk_eq (lhs,rhs)))
         in Goal.prove (Local_Theory.target_of lthy2) [] [] proposition
-          (fn {context, ...} => asm_full_simp_tac (context addsimps
-            [List.nth (candidate_refinements,family),
+          (fn {context, ...} => asm_full_simp_tac (Simplifier.add_simps ([List.nth (candidate_refinements,family),
              List.nth (source_refinements,family),
              candidate_source_equal, candidate_definition', source_definition',
-             @{thm comma_semantic_future_projected_key_apply_def}]) 1)
+             @{thm comma_semantic_future_projected_key_apply_def}]) (context)) 1)
           |> exact_closed (Local_Theory.target_of lthy2)
             ("all-phase provider NF family " ^ Int.toString family)
         end) (0 upto 15)
@@ -588,9 +591,8 @@ struct
               (key_apply $ action $ phase,
                key_apply $ parent_key $ phase)))
         in Goal.prove (Local_Theory.target_of lthy2) [] [] proposition
-          (fn {context, ...} => asm_full_simp_tac (context addsimps
-            [List.nth (candidate_refinements,family), candidate_definition',
-             @{thm comma_semantic_future_projected_key_apply_def}]) 1)
+          (fn {context, ...} => asm_full_simp_tac (Simplifier.add_simps ([List.nth (candidate_refinements,family), candidate_definition',
+             @{thm comma_semantic_future_projected_key_apply_def}]) (context)) 1)
           |> exact_closed (Local_Theory.target_of lthy2)
             ("candidate provider NF row to parent-key action " ^
               Int.toString family)
@@ -616,10 +618,9 @@ struct
             @{term "[0..<16] :: nat list"})
       val parent_family_all = Goal.prove (Local_Theory.target_of lthy2) [] []
         parent_family_prop
-        (fn {context, ...} => asm_full_simp_tac (context addsimps
-          (candidate_parent_refinement_rows @
+        (fn {context, ...} => asm_full_simp_tac (Simplifier.add_simps ((candidate_parent_refinement_rows @
             @{thms list_all_iff set_upt atLeastLessThan_iff nth_Cons_0
-              nth_Cons_Suc nth_Cons' list.map})) 1)
+              nth_Cons_Suc nth_Cons' list.map})) (context)) 1)
         |> exact_closed (Local_Theory.target_of lthy2)
           "all-family candidate NF to parent-key action transport"
 
@@ -642,10 +643,9 @@ struct
           HOLogic.listT natT --> HOLogic.boolT) $ all_family_predicate $
           @{term "[0..<16] :: nat list"})
       val all_family = Goal.prove (Local_Theory.target_of lthy2) [] [] all_family_prop
-        (fn {context, ...} => asm_full_simp_tac (context addsimps
-          (candidate_refinement_rows @
+        (fn {context, ...} => asm_full_simp_tac (Simplifier.add_simps ((candidate_refinement_rows @
             @{thms list_all_iff set_upt atLeastLessThan_iff nth_Cons_0
-              nth_Cons_Suc nth_Cons' list.map})) 1)
+              nth_Cons_Suc nth_Cons' list.map})) (context)) 1)
         |> exact_closed (Local_Theory.target_of lthy2)
           "all-family source-to-candidate provider NF transport"
 

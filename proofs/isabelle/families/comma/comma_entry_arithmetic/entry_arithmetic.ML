@@ -2,11 +2,11 @@
 structure Comma_Entry_Arithmetic =
 struct
   fun numeral n = HOLogic.mk_number @{typ nat} n
-  fun numeral_context ctxt = put_simpset HOL_basic_ss ctxt addsimps
+  fun numeral_context ctxt = put_simpset HOL_basic_ss ctxt |> Simplifier.add_simps
     @{thms One_nat_def[symmetric] Suc_1 Suc_numeral add_num_simps}
   (* Closed natural arithmetic: no family transition or recursive observer rules. *)
   fun natural_context ctxt = (put_simpset HOL_ss ctxt
-    |> Simplifier.add_cong @{thm if_weak_cong}) addsimps
+    |> Simplifier.add_cong @{thm if_weak_cong}) |> Simplifier.add_simps
     @{thms arith_simps arith_special rel_simps Let_def
       One_nat_def[symmetric] Suc_1 Suc_numeral
       diff_nat_numeral nat_numeral_diff_1 nat_numeral nat_0 nat_1 diff_zero
@@ -17,6 +17,15 @@ struct
       fst_conv snd_conv numeral_One case_prod_beta
       euclidean_size_nat_less_eq_iff euclidean_size_int_less_eq_iff
       mod_self mult_1_left mult_1_right}
+  (* Clock rebasing and diagonal ports cross nat/int at signed modular seams.
+     Keep those scalar conversions at the arithmetic owner, independently of
+     source admission and transition definitions. *)
+  val signed_scalar_rules = @{thms
+    of_nat_0 of_nat_1 of_nat_numeral zmod_zminus1_eq_if zmod_zminus2_eq_if
+    zmod_numeral_Bit0 zmod_numeral_Bit1 more_arith_simps}
+  fun signed_context ctxt = natural_context ctxt
+    |> Simplifier.add_simps signed_scalar_rules
+
   (* Dependency nodes are immutable and identified by Isabelle's proof serial.
      Each root is inspected on every call. A node certificate is committed only
      after the entire traversal succeeds; final exports use the builtin audit. *)
@@ -55,15 +64,15 @@ struct
       val (certify, _) = make_certifier ctxt
       fun finish th = certify (Thm.transitive th
         (Simplifier.rewrite canonical (Thm.rhs_of th)))
-      val gcd_ctxt = ctxt addsimps @{thms gcd_nat.simps}
+      val gcd_ctxt = ctxt |> Simplifier.add_simps @{thms gcd_nat.simps}
       val gcds = map (fn f => finish (Simplifier.rewrite gcd_ctxt
         (Thm.cterm_of ctxt (@{term "gcd :: nat => nat => nat"} $
           numeral f $ numeral 10)))) (1 upto 9)
-      val arithmetic = ctxt addsimps gcds
+      val arithmetic = ctxt |> Simplifier.add_simps gcds
       (* The same nine closed gcd certificates discharge cycle lengths once.
          Consumers select one exact unary equation; no recursive gcd rule is
          exported or required by their hot arithmetic context. *)
-      val cycle_unfold = put_simpset HOL_basic_ss ctxt addsimps
+      val cycle_unfold = put_simpset HOL_basic_ss ctxt |> Simplifier.add_simps
         @{thms comma_cycle_length_def}
       fun cycle_length f =
         let
@@ -72,7 +81,7 @@ struct
         in finish (Thm.transitive unfolded
           (Simplifier.rewrite arithmetic (Thm.rhs_of unfolded))) end
       val cycle_lengths = map cycle_length (1 upto 9)
-      val period_unfold = put_simpset HOL_basic_ss ctxt addsimps
+      val period_unfold = put_simpset HOL_basic_ss ctxt |> Simplifier.add_simps
         @{thms comma_finite_period_def Let_def}
       fun period f d =
         let
@@ -84,7 +93,7 @@ struct
       fun value th = snd (HOLogic.dest_number (Thm.term_of (Thm.rhs_of th)))
       val catalog = sort_distinct int_ord (map value periods)
       fun short p = finish (Simplifier.rewrite
-        (arithmetic addsimps @{thms comma_short_period_def})
+        (arithmetic |> Simplifier.add_simps @{thms comma_short_period_def})
         (Thm.cterm_of ctxt (@{term comma_short_period} $ numeral p)))
       val short_periods = map short catalog
       fun power_seed p = finish (Simplifier.rewrite arithmetic
@@ -99,7 +108,7 @@ struct
              ( ("n",0), Thm.cterm_of ctxt (numeral exponent))]
             @{thm comma_decimal_power_successor}
           val reduced = Simplifier.full_simplify
-            (natural_context ctxt addsimps [previous RS @{thm meta_eq_to_obj_eq}]) rule
+            (natural_context ctxt |> Simplifier.add_simps [previous RS @{thm meta_eq_to_obj_eq}]) rule
           val theorem = finish (reduced RS @{thm eq_reflection})
           val requested = @{term "mod_exp :: nat => nat => nat => nat"} $
             numeral 10 $ numeral (exponent + 1) $ numeral p
@@ -129,7 +138,7 @@ struct
       val canonical = numeral_context ctxt
       val arithmetic = ctxt
         |> fold Simplifier.del_simp @{thms eval_mod_exp eval_mod_exp_aux}
-      fun rules facts = put_simpset HOL_basic_ss ctxt addsimps facts
+      fun rules facts = put_simpset HOL_basic_ss ctxt |> Simplifier.add_simps facts
       val period_rules = rules periods
       val short_rules = rules short_periods
       val power_rules = rules powers

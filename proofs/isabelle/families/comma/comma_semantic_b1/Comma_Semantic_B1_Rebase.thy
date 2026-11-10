@@ -30,11 +30,11 @@ definition comma_semantic_b1_root_rebase ::
 lemma comma_semantic_b1_rebase_apply:
   "comma_semantic_b1_rebase delta action clock root =
     action ((clock+delta) mod 924) root"
-  by (simp add: comma_semantic_b1_rebase_def)
+  by (simp only: comma_semantic_b1_rebase_def)
 
 lemma comma_semantic_b1_rebase_zero [simp]:
   "comma_semantic_b1_rebase 0 action clock root = action (clock mod 924) root"
-  by (simp add: comma_semantic_b1_rebase_def)
+  by (simp only: comma_semantic_b1_rebase_def add_0_right)
 
 lemma comma_semantic_b1_phase_shift_add:
   fixes clock delta epsilon :: nat

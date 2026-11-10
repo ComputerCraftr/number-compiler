@@ -284,13 +284,13 @@ class MahlerSourceBoundSafetyAction:
                 raise TypeError("Mahler radix-port metrics require a query ledger")
             ledger.bump(_antihydra_keys.MAHLER_RADIX_PORT_DEMANDS)
         orbit = ThreePowerRadixOrbit("ordinary", self.extent, base)
-        ports = orbit.ordinary_ports(places)
+        ports = orbit.compact_ordinary_ports(places)
         pivot = ports.difference_xor_mask
         # For this fixed two-step gap, 3**(R+2)-3**R is exactly 8*3**R,
-        # with v2=3.  Reuse the last source residue already present in the
-        # shared radix tape instead of launching a second modular power pass.
+        # with v2=3. Reuse the source residue from the aggregate's single
+        # modular-power pass instead of launching a second resolver call.
         modulus = base**places
-        normalized = ports.tape[-1].source_remainder
+        normalized = ports.source_residue
         raw, valuation = (8 * normalized) % modulus, 3
         joint: dict[str, object] | None = None
         if source is not None:

@@ -294,6 +294,17 @@ def test_boundary_state_rejects_wrong_residue_and_range() -> None:
         BoundaryState("N", 10, 10)
 
 
+@pytest.mark.parametrize("exponent", (1, 2, 10, 100, 1000))
+def test_comma_children_preserve_decimal_seam_corpus(exponent: int) -> None:
+    scale = 10**exponent
+    for leading in range(1, 11):
+        for offset in (-100, -99, -10, -9, -2, -1, 0, 1, 9, 99):
+            parent = leading * scale + offset
+            if parent <= 0:
+                continue
+            assert comma_children(parent) == _literal_children(parent)
+
+
 def test_tropical_sector_rule_agrees_with_literal_nine_child_search() -> None:
     for value in range(100, 10_001):
         assert comma_children(value) == _literal_children(value)

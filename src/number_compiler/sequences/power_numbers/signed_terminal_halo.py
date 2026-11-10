@@ -98,8 +98,11 @@ def demand_signed_birth_window(
         raise ValueError("signed-fold window exceeds authenticated fold width")
     if not action.verify_cochain():
         raise ArithmeticError("signed-fold cochain or seam verification failed")
-    carries = tuple(action.carry_at(i) for i in range(start, start + length + 1))
-    digits = tuple(action.digit_at(i) for i in range(start, start + length))
+    demanded = action.demand(tuple(range(start, start + length)))
+    carries = tuple(carry for _position, _digit, carry in demanded) + (
+        action.carry_at(start + length),
+    )
+    digits = tuple(digit for _position, digit, _carry in demanded)
     births = tuple(carries[i] - 2 * carries[i + 1] for i in range(length))
     mask = sum((birth & 1) << i for i, birth in enumerate(births))
     return SignedFoldBirthWindow(

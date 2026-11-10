@@ -114,7 +114,7 @@ local_setup \<open>
         @{term comma_sparse_base_word_checked} $ index_terms $ data
       val checked_theorem = Goal.prove (Local_Theory.target_of next) [] []
         (HOLogic.mk_Trueprop checked)
-        (fn {context,...} => simp_tac (context addsimps
+        (fn {context,...} => simp_tac (context |> Simplifier.add_simps
           (data_def :: refinements @
             @{thms comma_sparse_base_word_checked_def upt_rec})) 1)
       val (_, final) = Local_Theory.note

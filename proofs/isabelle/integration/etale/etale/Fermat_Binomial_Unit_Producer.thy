@@ -179,7 +179,7 @@ method_setup fermat_source_steps = \<open>
       val (t, p, count) = (case arguments of [t, p, n] =>
           (t, p, snd (HOLogic.dest_number n))
         | _ => error "Expected a concrete Fermat accumulator stream");
-      val arithmetic = ctxt addsimps
+      val arithmetic = ctxt |> Simplifier.add_simps
         @{thms fermat_binomial_choose_step_def fermat_binomial_term_step_def
           fermat_binomial_accumulator_step_def
           fermat_binomial_modulus_def fermat_odd_part_def
@@ -229,7 +229,7 @@ method_setup fermat_source_steps = \<open>
           val normalized_inverses = map (Simplifier.simplify arithmetic)
             [inverse, successor_inverse];
           val result = Simplifier.rewrite
-            (arithmetic addsimps normalized_inverses) (Thm.rhs_of equation);
+            (arithmetic |> Simplifier.add_simps normalized_inverses) (Thm.rhs_of equation);
           val (coefficient, accumulator) = HOLogic.dest_prod
             (Thm.term_of (Thm.rhs_of result));
           val _ = if numeral coefficient andalso numeral accumulator then ()
@@ -239,7 +239,7 @@ method_setup fermat_source_steps = \<open>
         in @{thm meta_eq_to_obj_eq} OF [closed] end;
       val completed = fold advance (1 upto count) initial;
       val selected = put_simpset HOL_basic_ss ctxt
-        addsimps [@{thm fermat_binomial_accumulator_stream_def}, completed];
+        |> Simplifier.add_simps [@{thm fermat_binomial_accumulator_stream_def}, completed];
       fun finish (remaining, j) =
         if Term.exists_subterm (fn Const (name, _) =>
             name = @{const_name fermat_binomial_source_state} | _ => false) remaining

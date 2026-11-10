@@ -56,6 +56,58 @@ class TwoParentX15Floor:
 
 
 @dataclass(frozen=True, slots=True)
+class X15LaurentCarryInProjection:
+    """Historical decimal carry projection derived from an issued x15 action.
+
+    This immutable value is observation data, not an action handle or a
+    certificate for further transitions.
+    """
+
+    target: int
+    places: int
+    modulus: int
+    lower_residue: int
+    parity: int
+    upper_carry: int
+    remainder: int
+
+    @classmethod
+    def from_target(cls, target: int, places: int) -> X15LaurentCarryInProjection:
+        """Build the one-step signed decimal cut from one exact endpoint."""
+        if type(target) is not int or target < 0:
+            raise ValueError("Laurent target must be a nonnegative exact integer")
+        if type(places) is not int or not 1 <= places <= 4096:
+            raise ValueError("Laurent projection width must be in 1..4096")
+        modulus = 10**places
+        lower_residue = target % modulus
+        parity = lower_residue & 1
+        upper_carry, remainder = divmod(15 * lower_residue - 5 * parity, modulus)
+        return cls(
+            target, places, modulus, lower_residue, parity, upper_carry, remainder
+        )
+
+    @property
+    def next_endpoint_residue(self) -> int:
+        """Return the next endpoint modulo ``10**(places-1)`` when available."""
+        if (
+            type(self.places) is not int
+            or not 2 <= self.places <= 4096
+            or type(self.modulus) is not int
+            or self.modulus != 10**self.places
+            or type(self.remainder) is not int
+            or not 0 <= self.remainder < self.modulus
+            or self.remainder % 10
+        ):
+            raise ValueError("Laurent projection has no signed successor window")
+        return self.remainder // 10
+
+    @property
+    def next_endpoint_parity(self) -> int:
+        """Read the next physical parity from a two-place signed cut."""
+        return self.next_endpoint_residue & 1
+
+
+@dataclass(frozen=True, slots=True)
 class _X15IssuanceCertificate:
     issuer: object
     payload: tuple[object, ...]
@@ -263,6 +315,22 @@ class X15CarryMorphism:
             self.floor_correction,
         )
 
+    def next_laurent_carry_projection(
+        self,
+        places: int,
+        *,
+        reserve_bits: Callable[[int], None],
+    ) -> X15LaurentCarryInProjection:
+        """Snapshot the next physical decimal carry from this issued action."""
+        self.require_issued()
+        if not callable(reserve_bits):
+            raise TypeError("Laurent projection requires scratch reservation")
+        if type(places) is not int or not 1 <= places <= 4096:
+            raise ValueError("Laurent projection width must be in 1..4096")
+        reserve_bits(24 * (self.ticks + places + self.endpoint.bit_length() + 65))
+        target = self.endpoint + 1
+        return X15LaurentCarryInProjection.from_target(target, places)
+
     def scaled_integer_pair(
         self, *, reserve_bits: Callable[[int], None]
     ) -> X15ScaledIntegerPair:
@@ -398,6 +466,7 @@ def two_parent_x15_floor(
 
 
 __all__ = [
+    "X15LaurentCarryInProjection",
     "TwoParentX15Floor",
     "X15CarryMorphism",
     "X15IntegerCut",

@@ -17,7 +17,7 @@ struct
       fun children q macro =
         let
           val lhs = @{term comma_total_children} $ q
-          val simp = arithmetic addsimps [macro]
+          val simp = arithmetic |> Simplifier.add_simps [macro]
           val result = Simplifier.rewrite simp
             (Thm.cterm_of ctxt lhs)
           val rhs = Thm.term_of (Thm.rhs_of result)

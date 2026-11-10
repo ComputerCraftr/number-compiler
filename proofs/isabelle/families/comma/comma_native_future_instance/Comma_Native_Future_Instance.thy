@@ -7,8 +7,6 @@ theory Comma_Native_Future_Instance
     Comma_Source_Uniqueness.Comma_Source_Unique
 begin
 
-ML_file "../comma_entry_arithmetic/Proof_Dependency_Audit.ML"
-ML_file "../comma_entry_arithmetic/selected_list_conversion.ML"
 ML_file "../comma_future_rank_data/rank_table_lookup.ML"
 
 text \<open>The decimal rank rows are used only as candidate natural-valued

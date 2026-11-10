@@ -21,14 +21,14 @@ struct
       (* Comparator callbacks decide only scalar, closed Boolean terms.  Use
          the arithmetic/HOL context so list and datatype comparisons finish
          at True/False instead of returning a residual Boolean expression. *)
-      val row_simp = Comma_Entry_Arithmetic.natural_context ctxt addsimps
+      val row_simp = Comma_Entry_Arithmetic.natural_context ctxt |> Simplifier.add_simps
         @{thms comma_sector_round_key.simps comma_round_result.inject
           comma_round_result.distinct comma_finite_position.inject
           comma_finite_position.distinct list.inject list.distinct
           Cons_le_Cons le_Nil Nil_le_Cons}
       (* Crossing ignores endpoint headroom and target offset. Never import
          endpoint/sector evaluation rules here: clauses already own that work. *)
-      val arithmetic = Comma_Entry_Arithmetic.natural_context ctxt addsimps
+      val arithmetic = Comma_Entry_Arithmetic.natural_context ctxt |> Simplifier.add_simps
         @{thms comma_round_crossing_def prod.case comma_finite_position.case}
       val (certify, certification) = Comma_Entry_Arithmetic.make_certifier ctxt
       (* The full word is another checked binary guard construction; expanding

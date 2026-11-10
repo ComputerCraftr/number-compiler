@@ -7,11 +7,16 @@ REPEAT, without materializing a successor or expanding a repeated word.
 
 The resulting polynomial is an exact one-step spatial projection. It does
 not authorize an unknown temporal growth word or a complete future integer.
+
+The cochain node-visit metric counts evaluated algebra units consistently:
+one per emitted encoded symbol in the bounded finite path, or one per unique
+reachable SLP node in the compressed DAG path. It does not count worklist pops.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import closing
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -23,6 +28,7 @@ from number_compiler.arithmetic.fields.decimal_pair_partition import (
 )
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.resources.owned_memo import LedgerReservation
 
 if TYPE_CHECKING:
     from .q19_occurrence import ReversePairOutputOccurrence
@@ -179,6 +185,62 @@ class _HalfSummary:
     prefix_reverse: Radix19CarryBlock
 
 
+# Streaming is bounded by expanded half length; REPEAT grammars stay compressed.
+_FINITE_HALF_LIMIT = 32
+
+
+def _verified_source_result(
+    result: Radix19CarryBlock, source: ReversePairOutputOccurrence
+) -> Radix19CarryBlock:
+    if result.length != source.pair_width:
+        raise AssertionError("carry cochain lost palindrome or center")
+    if result.exits[0] != source.output_width - source.pair_width:
+        raise AssertionError("cochain growth disagrees with issued source")
+    return result
+
+
+def _fold_finite_half(
+    owner: ReversePairQ19OutputOwner,
+    source: ReversePairOutputOccurrence,
+    z: int,
+    modulus: int,
+) -> Radix19CarryBlock:
+    """Compose both half orientations in one bounded, charged source stream."""
+    zero = Radix19CarryBlock.identity(z, modulus)
+    forward = reverse = previous_reverse = zero
+    count = 0
+    expected = owner.arena.nodes[source.root].length
+    parity: int | None = None
+
+    def composed() -> None:
+        owner.ledger.bump(_reverse_add_keys.REVERSE_RADIX19_COCHAIN_COMPOSITIONS)
+
+    # Six simultaneous two-ingress blocks, including composition temporaries.
+    with owner.ledger.reservation(owner.scratch_owner, nodes=96):
+        with closing(owner.iter_encoded_symbols(source)) as symbols:
+            for index, symbol in enumerate(symbols):
+                count += 1
+                owner.ledger.bump(_reverse_add_keys.REVERSE_RADIX19_COCHAIN_NODE_VISITS)
+                if index == 0:
+                    parity = symbol - 19
+                    if parity not in (0, 1):
+                        raise ValueError("invalid Q19 parity tag")
+                elif index == expected - 1:
+                    if symbol != 21:
+                        raise ValueError("invalid Q19 end-of-word symbol")
+                else:
+                    atom = Radix19CarryBlock.atom(symbol, z, modulus)
+                    previous_reverse = reverse
+                    reverse = atom.then(reverse, on_compose=composed)
+                    forward = forward.then(atom, on_compose=composed)
+        if count != expected or parity is None:
+            raise AssertionError("issued Q19 half changed during traversal")
+        result = forward.then(
+            previous_reverse if parity else reverse, on_compose=composed
+        )
+        return _verified_source_result(result, source)
+
+
 def fold_source_pair_cochain(
     owner: ReversePairQ19OutputOwner,
     source: ReversePairOutputOccurrence,
@@ -187,9 +249,11 @@ def fold_source_pair_cochain(
     modulus: int,
 ) -> Radix19CarryBlock:
     """Fold the authenticated physical palindrome and its center once."""
-    owner.validate(source)
+    owner.validate_issued_occurrence(source)
     if type(z) is not int or type(modulus) is not int or modulus < 2:
         raise ValueError("integer evaluation and modulus >= 2 required")
+    if owner.arena.nodes[source.root].length - 2 <= _FINITE_HALF_LIMIT:
+        return _fold_finite_half(owner, source, z, modulus)
     zero = Radix19CarryBlock.identity(z, modulus)
     identity = _HalfSummary(zero, zero, zero)
 
@@ -226,10 +290,38 @@ def fold_source_pair_cochain(
             ),
         )
 
-    node_count = len(owner.arena.nodes) + 1
-    with owner.ledger.reservation(
-        owner.scratch_owner, entries=3 * node_count, nodes=9 * node_count
-    ):
+    # Keep one exact evaluation per shared node. Reference counts drop each
+    # summary after its final parent consumes it; a tiny LRU would instead
+    # re-expand shared diamonds. Charge use rows, live tasks and each retained
+    # summary before allocation, only for this root's reachable DAG.
+    with LedgerReservation(owner.ledger, owner.scratch_owner) as reservation:
+        reservation.reserve(nodes=192)
+
+        def schedule(count: int) -> None:
+            reservation.reserve(entries=count, nodes=2 * count)
+            owner.ledger.bump(
+                _reverse_add_keys.REVERSE_RADIX19_COCHAIN_WORK_ITEMS, count
+            )
+
+        def unschedule(count: int) -> None:
+            reservation.release(entries=count, nodes=2 * count)
+
+        def reference_entry(_node: int) -> None:
+            reservation.reserve(entries=1, nodes=2)
+            owner.ledger.bump(
+                _reverse_add_keys.REVERSE_RADIX19_COCHAIN_DEPENDENCY_NODES
+            )
+
+        def reference_release(_node: int) -> None:
+            reservation.release(entries=1, nodes=2)
+
+        def evaluate(_node: int) -> None:
+            reservation.reserve(entries=1, nodes=48)
+            owner.ledger.bump(_reverse_add_keys.REVERSE_RADIX19_COCHAIN_NODE_VISITS)
+
+        def release_value(_node: int) -> None:
+            reservation.release(entries=1, nodes=48)
+
         summaries = fold_slp_dag(
             owner.arena,
             source.root,
@@ -237,23 +329,26 @@ def fold_source_pair_cochain(
             terminal_value=terminal,
             concatenate=concatenate,
             repeat=repeat,
-            on_pending=lambda _node: owner.ledger.bump(
-                _reverse_add_keys.REVERSE_RADIX19_COCHAIN_NODE_VISITS
-            ),
+            on_schedule=schedule,
+            on_evaluate=evaluate,
+            on_unschedule=unschedule,
+            reclaim_values=True,
+            on_reference_entry=reference_entry,
+            on_reference_release=reference_release,
+            on_value_release=release_value,
         )
-        half = summaries[source.root]
-        parity = owner.symbol_at(source.root, 0) - 19
-        if parity not in (0, 1):
-            raise ValueError("invalid Q19 parity tag")
-        result = half.forward.then(
-            half.prefix_reverse if parity else half.reverse,
-            on_compose=record_composition,
-        )
-        if result.length != source.pair_width:
-            raise AssertionError("carry cochain lost palindrome or center")
-        if result.exits[0] != source.output_width - source.pair_width:
-            raise AssertionError("cochain growth disagrees with issued source")
-        return result
+        try:
+            half = summaries[source.root]
+            parity = owner.symbol_at(source.root, 0) - 19
+            if parity not in (0, 1):
+                raise ValueError("invalid Q19 parity tag")
+            result = half.forward.then(
+                half.prefix_reverse if parity else half.reverse,
+                on_compose=record_composition,
+            )
+            return _verified_source_result(result, source)
+        finally:
+            summaries.clear()
 
 
 def source_walsh64_mod5(

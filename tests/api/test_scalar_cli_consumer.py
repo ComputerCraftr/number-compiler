@@ -14,6 +14,31 @@ from number_compiler.arithmetic.contracts.block_effect import BlockContextBudget
 from number_compiler.arithmetic.contracts.family_identity import FamilyId
 
 
+@pytest.mark.parametrize("arguments", [["--help"], ["--list-families"]])
+def test_cli_metadata_does_not_load_execution_or_rendering_owners(
+    arguments: list[str],
+) -> None:
+    program = """
+import sys
+from number_compiler.api.cli import main
+try:
+    status = main(sys.argv[1:])
+except SystemExit as error:
+    status = error.code
+assert status == 0
+assert 'number_compiler.resources.ledger' not in sys.modules
+assert 'number_compiler.api.number_api' not in sys.modules
+assert 'decimal' not in sys.modules
+assert not any(name.startswith('number_compiler.sequences.') for name in sys.modules)
+"""
+    subprocess.run(
+        [sys.executable, "-c", program, *arguments],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+
 def test_cold_scalar_cli_does_not_import_projected_or_observation_owners() -> None:
     completed = subprocess.run(
         [
@@ -30,6 +55,30 @@ def test_cold_scalar_cli_does_not_import_projected_or_observation_owners() -> No
         check=True,
     )
     assert completed.stdout.strip() == "73"
+
+
+def test_projected_api_import_keeps_formula_and_special_number_owners_lazy() -> None:
+    program = """
+import sys
+from number_compiler.api.number_api import NumberCompiler
+NumberCompiler()
+assert 'number_compiler.arithmetic.formula.formula' not in sys.modules
+assert 'number_compiler.sequences.power_numbers.numbers' not in sys.modules
+"""
+    subprocess.run([sys.executable, "-c", program], capture_output=True, check=True)
+
+
+def test_cold_collatz_value_does_not_load_undemanded_innovation_observer() -> None:
+    program = """
+import sys
+sys.modules['number_compiler.sequences.collatz.innovation_port_moore'] = None
+from number_compiler.api.cli import main
+assert main(['collatz', '--seed', '27', '--nth', '16']) == 0
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", program], capture_output=True, text=True, check=True
+    )
+    assert completed.stdout.strip() == "121"
 
 
 @pytest.mark.parametrize(

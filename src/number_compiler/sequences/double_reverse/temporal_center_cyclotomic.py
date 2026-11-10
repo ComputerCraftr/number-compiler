@@ -31,6 +31,7 @@ from .temporal_bank_output_morphism import (
 )
 from .temporal_center_selector import (
     CenterDriver,
+    CenterForcingPower,
     CenterInputMoore,
     CenterReturn,
     center_input_moore,
@@ -178,6 +179,15 @@ class CertifiedCyclotomicCenterDriver(SourceAuthorizedRecord):
 
     def validate_source_authority(self) -> SourceRecordAuthority:
         return validate_source_record(self)
+
+    @property
+    def right_center_forcing(self) -> CenterForcingPower:
+        """One source-issued four-step right-center forcing from existing ports."""
+        self.validate_source_authority()
+        result = center_return(self.initial_pair, self.driver)
+        if result.odd != self.odd_centers or result.next_pair != self.next_pair:
+            raise AssertionError("source driver disagrees with its center word")
+        return CenterForcingPower.from_return(result)
 
 
 def certified_cyclotomic_center_driver(

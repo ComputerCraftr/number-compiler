@@ -10,13 +10,12 @@ from dataclasses import dataclass
 
 from devtools.verification.comma_semantic_quotients import (
     CommaFutureGraph,
+    bounded_chart_walk,
     future_losing_ranks,
 )
 from number_compiler.sequences.comma.boundary_chart import (
-    MAX_CHART_MOVES,
     PERIOD,
     BoundaryChart,
-    chart_step,
 )
 from number_compiler.sequences.comma.boundary_quotient import BoundaryState
 
@@ -37,18 +36,21 @@ class CommaRootEntry:
 def audit_root_entries(graph: CommaFutureGraph) -> tuple[CommaRootEntry, ...]:
     """Check every possible first crossing of 10**5, including all alternatives.
 
-    Exhausting the existing chart guard is an error, never a losing verdict.
-    The result retains rank evidence for both children, not a greedy choice.
+    A shared developer-audit chart bound and the command-level validation
+    guard bound runtime; exhausting either yields no partial table and is
+    never interpreted as a losing verdict. The result retains rank evidence
+    for both children, not a greedy choice.
     """
     ranks = future_losing_ranks(graph)
     indices = {state: index for index, state in enumerate(graph.states)}
     rows: list[CommaRootEntry] = []
     for offset in range(91):
-        chart = BoundaryChart("entry", 1, 0, offset)
-        for visits in range(1, MAX_CHART_MOVES + 1):
-            move = chart_step(5, chart)
+        start = BoundaryChart("entry", 1, 0, offset)
+        visits = 0
+        terminal_found = False
+        for chart, move in bounded_chart_walk(start, 5):
+            visits += 1
             if move.next_chart is not None:
-                chart = move.next_chart
                 continue
             children = None
             if move.fork_a is not None:
@@ -60,7 +62,8 @@ def audit_root_entries(graph: CommaFutureGraph) -> tuple[CommaRootEntry, ...]:
             rows.append(
                 CommaRootEntry(offset, chart.delta, move.fork_a, children, visits)
             )
+            terminal_found = True
             break
-        else:
-            raise ValueError(f"comma entry {offset} exceeded the chart work bound")
+        if not terminal_found:
+            raise AssertionError("bounded comma chart walk returned without terminal")
     return tuple(rows)

@@ -49,7 +49,7 @@ visits every branch of the CRT node.  The guard is unchanged, so malformed
 nodes retain their original total behavior.
 \<close>
 
-declare comma_crt_eval.simps(2)[code del]
+declare comma_crt_eval.simps(2)[code drop]
 declare comma_crt_eval.simps(1)[code]
 
 lemma comma_crt_eval_node_selected[code]:
@@ -160,6 +160,17 @@ primrec comma_crt_shift :: "nat \<Rightarrow> comma_crt_column \<Rightarrow> com
   "comma_crt_shift shift (Comma_CRT_Bool value) = Comma_CRT_Bool value"
 | "comma_crt_shift shift (Comma_CRT_Node level children) =
     Comma_CRT_Node level (rotate shift (map (comma_crt_shift shift) children))"
+
+lemma comma_crt_shift_node_bounded_rotation:
+  "comma_crt_shift shift (Comma_CRT_Node level children) =
+    (let shifted = map (comma_crt_shift shift) children;
+         offset = shift mod length shifted
+     in Comma_CRT_Node level (drop offset shifted @ take offset shifted))"
+  by (simp only: comma_crt_shift.simps(2) rotate_drop_take Let_def)
+
+declare comma_crt_shift.simps(2)[code drop]
+declare comma_crt_shift.simps(1)[code]
+declare comma_crt_shift_node_bounded_rotation[code]
 
 lemma comma_crt_shift_zero [simp]:
   "comma_crt_shift 0 column = column"

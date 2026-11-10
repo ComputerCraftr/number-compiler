@@ -73,6 +73,79 @@ def test_sequential_sessions_keep_independent_nonresettable_clocks() -> None:
     assert watchdog.check(15.0) is not None
 
 
+def test_native_name_first_failure_closes_only_its_session_timer() -> None:
+    watchdog = IsabelleSessionWatchdog(("Failed", "Problem", "Next"), 10)
+    watchdog.observe_output(b"Running Failed\n", 0.0)
+    watchdog.observe_output(b"Failed FAILED\n", 1.0)
+    assert watchdog.report()["failed_sessions"] == ["Failed"]
+
+    watchdog.observe_output(b"Running Problem\n", 1.0)
+    watchdog.observe_output(b"diagnostic prose: Problem FAILED\n", 8.0)
+    assert watchdog.report()["active_sessions"] == ["Problem"]
+
+    # Isabelle prints terminal status after the session name. Exercise a split
+    # pipe read and ensure the complete anchored event, not the prose, closes it.
+    watchdog.observe_output(b"Problem FAI", 9.0)
+    watchdog.observe_output(b'LED (see also "isabelle build_log")\n', 9.1)
+    assert watchdog.report()["failed_sessions"] == ["Failed", "Problem"]
+    assert watchdog.report()["active_sessions"] == []
+
+    watchdog.observe_output(b"Running Next\n", 10.0)
+    assert watchdog.check(19.9) is None
+    assert watchdog.check(20.0) is not None
+    assert watchdog.report()["timed_out_session"] == "Next"
+
+
+def test_native_name_first_cancellation_is_recorded_and_closes_timer() -> None:
+    watchdog = IsabelleSessionWatchdog(("Cancelled",), 10)
+    watchdog.observe_output(b"Building Cancelled\n", 0.0)
+    watchdog.observe_output(b"Cancelled CANCELLED\n", 3.0)
+    report = watchdog.report()
+    assert report["cancelled_sessions"] == ["Cancelled"]
+    assert report["active_sessions"] == []
+    assert watchdog.check(10.0) is None
+
+
+@pytest.mark.parametrize(
+    ("terminal", "terminal_field"),
+    [("FAILED", "failed_sessions"), ("CANCELLED", "cancelled_sessions")],
+)
+def test_retry_after_terminal_event_keeps_original_deadline(
+    terminal: str, terminal_field: str
+) -> None:
+    watchdog = IsabelleSessionWatchdog(("Retry",), 10)
+    watchdog.observe_output(b"Running Retry\n", 0.0)
+    watchdog.observe_output(f"Retry {terminal}\n".encode(), 3.0)
+    assert watchdog.report()[terminal_field] == ["Retry"]
+
+    watchdog.observe_output(b"Building Retry\n", 5.0)
+    assert watchdog.report()["active_sessions"] == ["Retry"]
+    assert watchdog.check(9.9) is None
+    assert watchdog.check(10.0) is not None
+    assert watchdog.report()["timed_out_session"] == "Retry"
+
+
+def test_native_failure_line_does_not_mask_nonzero_child_exit(
+    tmp_path: Path,
+) -> None:
+    watchdog = IsabelleSessionWatchdog(("Problem",), 10)
+    result = run_guarded(
+        (
+            sys.executable,
+            "-c",
+            "import sys; print('Building Problem', flush=True); "
+            "print('Problem FAILED', flush=True); sys.exit(7)",
+        ),
+        output=tmp_path / "failed-session.log",
+        timeout=5,
+        progress_watchdog=watchdog,
+        lock_path=tmp_path / "lock",
+    )
+    assert result.outcome == "child_failed"
+    assert result.child_returncode == 7
+    assert watchdog.report()["failed_sessions"] == ["Problem"]
+
+
 def test_single_output_chunk_uses_reported_elapsed_time() -> None:
     watchdog = IsabelleSessionWatchdog(("Target",), 10)
     watchdog.observe_output(

@@ -49,6 +49,17 @@ def test_finite_construction_work_is_a_detached_snapshot() -> None:
     assert dict(record.construction.reverse_finite_work)["native_decimal_ticks"] == 17
 
 
+def test_centered_observation_work_preserves_missing_and_detached_counts() -> None:
+    assert _collect({}).observations.reverse_center11_work is None
+    counters = {"reverse_center11_source_ticks": 7, "reverse_center11_failed_work": 0}
+    record = _collect(counters)
+    counters.clear()
+    assert record.observations.reverse_center11_work == (
+        ("failed_work", 0),
+        ("source_ticks", 7),
+    )
+
+
 def test_explicit_mahler_audit_does_not_reconstruct_endpoint() -> None:
     from number_compiler.api.cli_context import QueryContext
     from number_compiler.api.cli_requests import parse_request
@@ -504,6 +515,8 @@ def test_stream_demand_preserves_emission_and_retained_frame_peak_units() -> Non
         "reverse_laurent_paired_blocks",
         "reverse_laurent_run_record_visits",
         "reverse_laurent_source_ticks",
+        "reverse_laurent_native_ticks",
+        "reverse_laurent_native_digit_visits",
         "double_reverse_source_word_fold_node_visits",
         "double_reverse_source_word_fold_operand_bits",
         "double_reverse_source_word_fold_operations",

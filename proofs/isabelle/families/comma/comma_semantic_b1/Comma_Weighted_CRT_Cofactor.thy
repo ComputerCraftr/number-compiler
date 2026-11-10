@@ -68,6 +68,55 @@ termination
     by (metis comma_weighted_crt_branch_child_size_less)
   done
 
+lemma comma_weighted_crt_cofactor_all_raw_axis_absent:
+  assumes absent: "comma_weighted_crt_axis_absent axis tree"
+  shows "comma_weighted_crt_cofactor_all_raw axis slot tree = (0,tree)"
+  using absent
+proof (induction tree)
+  case (Comma_Weighted_CRT_Leaf control)
+  then show ?case by simp
+next
+  case (Comma_Weighted_CRT_Branch branch_axis rows)
+  have different: "branch_axis\<noteq>axis"
+    using Comma_Weighted_CRT_Branch.prems by simp
+  have children: "\<And>weight child. (weight,child)\<in>set rows \<Longrightarrow>
+      comma_weighted_crt_cofactor_all_raw axis slot child=(0,child)"
+    using Comma_Weighted_CRT_Branch by (auto simp: list_all_iff)
+  have mapped: "map (\<lambda>(weight,child).
+      let restricted=comma_weighted_crt_cofactor_all_raw axis slot child
+      in (weight+fst restricted,snd restricted)) rows=rows"
+  proof (rule map_idI)
+    fix entry
+    assume member: "entry\<in>set rows"
+    obtain weight child where entry: "entry=(weight,child)"
+      by (cases entry) auto
+    show "(case entry of (weight,child) \<Rightarrow>
+        let restricted=comma_weighted_crt_cofactor_all_raw axis slot child
+        in (weight+fst restricted,snd restricted))=entry"
+      using children[OF member[unfolded entry]]
+      by (simp add: entry)
+  qed
+  show ?case
+    using different mapped
+    by (simp only: comma_weighted_crt_cofactor_all_raw.simps
+      if_False mapped)
+qed
+
+lemma comma_weighted_crt_shape_axis_below_absent:
+  assumes shape: "comma_weighted_crt_shape lower tree"
+    and below: "axis<lower"
+  shows "comma_weighted_crt_axis_absent axis tree"
+  using shape below
+  by (induction tree arbitrary: lower)
+    (auto simp: list_all_iff)
+
+lemma comma_weighted_crt_cofactor_all_raw_axis_below:
+  assumes shape: "comma_weighted_crt_shape lower tree"
+    and below: "axis<lower"
+  shows "comma_weighted_crt_cofactor_all_raw axis slot tree=(0,tree)"
+  by (rule comma_weighted_crt_cofactor_all_raw_axis_absent
+    [OF comma_weighted_crt_shape_axis_below_absent[OF shape below]])
+
 definition comma_weighted_crt_cofactor_all ::
     "nat \<Rightarrow> nat \<Rightarrow> 'a comma_semantic_weighted_crt_dag \<Rightarrow>
       (nat \<times> 'a comma_semantic_weighted_crt_dag) option" where

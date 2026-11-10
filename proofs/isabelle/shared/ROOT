@@ -32,6 +32,7 @@ session Shared_Carry_Dynamics in "arithmetic/carry_dynamics" = "HOL-Number_Theor
   options [document = false, quick_and_dirty = false]
   theories
     Shared_Carry_Domain
+    Boolean_Cyclotomic3
     Shared_Decimal_Cocycle_Core
     Decimal_Normalization_Morphism
     Decimal_Repunit_Modular
@@ -39,6 +40,7 @@ session Shared_Carry_Dynamics in "arithmetic/carry_dynamics" = "HOL-Number_Theor
     Shared_Affine_Birth_Tape
     Port_Valued_Mealy
     Temporal_Moment_Algebra
+    Pascal_Word_Moments
     Fifteen_Raw_Carry_Period
     Temporal_Decimal_Carry_Monoid
     Finite_Transfer_Power

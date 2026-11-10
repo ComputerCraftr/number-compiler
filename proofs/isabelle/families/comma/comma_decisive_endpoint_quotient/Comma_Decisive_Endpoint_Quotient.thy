@@ -38,16 +38,52 @@ proof -
   show thesis using that[of n] sector source_target by simp
 qed
 
-definition comma_decisive_entry_clock_key ::
-    "comma_cyclotomic_clock \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<times> nat" where
-  "comma_decisive_entry_clock_key C f x =
-    (let P=comma_finite_period_fast f (x mod 10);
-         c=comma_core_modulus P;
-         t=comma_cyclotomic_phase C (comma_core_period c) 919
+definition comma_cyclotomic_clock_core_value ::
+    "comma_cyclotomic_clock \<Rightarrow> nat \<Rightarrow> nat" where
+  "comma_cyclotomic_clock_core_value C c =
+    comma_recursive_core_residue c
+      (comma_cyclotomic_phase C (comma_core_period c) 919)"
+
+lemma comma_cyclotomic_clock_core_value_bound:
+  assumes core: "c\<in>{1,3,7,11,13,21,23,27,29}"
+  shows "comma_cyclotomic_clock_core_value C c<c"
+proof -
+  have positive: "0<c" using core by auto
+  show ?thesis
+    by (simp only: comma_cyclotomic_clock_core_value_def
+        comma_recursive_core_residue_refines[OF core];
+        rule mod_less_divisor[OF positive])
+qed
+
+definition comma_decisive_entry_clock_key_from_core_residue ::
+    "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow>
+      nat \<times> nat" where
+  "comma_decisive_entry_clock_key_from_core_residue f x c core_residue =
+    (let P=comma_finite_period_fast f (x mod 10)
      in (x mod 10,
        comma_entry_diagonal P x
          (comma_core_primary P *
-           ((comma_core_seed P * comma_recursive_core_residue c t) mod c))))"
+           ((comma_core_seed P * core_residue) mod c))))"
+
+definition comma_decisive_entry_clock_key_with_core ::
+    "comma_cyclotomic_clock \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow>
+      nat \<times> nat" where
+  "comma_decisive_entry_clock_key_with_core C f x c =
+    comma_decisive_entry_clock_key_from_core_residue f x c
+      (comma_cyclotomic_clock_core_value C c)"
+
+definition comma_decisive_entry_clock_key ::
+    "comma_cyclotomic_clock \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<times> nat" where
+  "comma_decisive_entry_clock_key C f x =
+    comma_decisive_entry_clock_key_with_core C f x
+      (comma_core_modulus (comma_finite_period_fast f (x mod 10)))"
+
+lemma comma_decisive_entry_clock_key_with_core_exact:
+  assumes core:
+    "c=comma_core_modulus (comma_finite_period_fast f (x mod 10))"
+  shows "comma_decisive_entry_clock_key_with_core C f x c =
+    comma_decisive_entry_clock_key C f x"
+  by (simp only: core comma_decisive_entry_clock_key_def)
 
 lemma comma_decisive_entry_clock_key_refines_core:
   assumes sector: "1\<le>f" "f\<le>9"
@@ -70,6 +106,9 @@ proof -
       of "(r+delta) mod 924"] clock by (simp add: Let_def)
   show ?thesis using core_residue x_bound
     by (simp add: comma_decisive_entry_clock_key_def
+      comma_decisive_entry_clock_key_with_core_def
+      comma_decisive_entry_clock_key_from_core_residue_def
+      comma_cyclotomic_clock_core_value_def
       comma_addsub_entry_core_key_def comma_c1_phase_of_def
       comma_c1_decode_residue Let_def)
 qed
@@ -334,7 +373,10 @@ proof -
         (comma_core_period ?c) 919"
     using phase period by simp
   show ?thesis
-    by (simp only: comma_decisive_entry_clock_key_def Let_def actual_phase)
+    by (simp only: comma_decisive_entry_clock_key_def
+      comma_decisive_entry_clock_key_with_core_def
+      comma_decisive_entry_clock_key_from_core_residue_def
+      comma_cyclotomic_clock_core_value_def Let_def actual_phase)
 qed
 
 theorem comma_decisive_sector_target_period:
@@ -754,7 +796,8 @@ ML \<open>
   val _ = if null (Thm_Deps.all_oracles legacy_endpoint_comparison) then ()
     else error "Legacy endpoint compatibility comparison depends on an oracle"
   val _ = Comma_Decisive_Endpoint_Profile.report "Endpoint quotient stage=legacy-oracle-audit checked"
-  val core_endpoint = @{thms comma_decisive_entry_clock_key_refines_core
+  val core_endpoint = @{thms comma_cyclotomic_clock_core_value_bound
+    comma_decisive_entry_clock_key_refines_core
     comma_decisive_entry_core_clock_refines comma_decisive_entry_target_diagonal}
   val _ = if null (Thm_Deps.all_oracles core_endpoint) then ()
     else error "Decisive Entry core bridge depends on an oracle"
@@ -796,7 +839,7 @@ ML \<open>
   fun checkpoint stage = Comma_Decisive_Endpoint_Profile.report
     ("Endpoint quotient smoke=" ^ stage)
   fun prove_admitted proposition = Goal.prove ctxt [] [] proposition
-    (fn _ => simp_tac (ctxt addsimps @{thms comma_round_admitted.simps}) 1)
+    (fn _ => simp_tac (ctxt |> Simplifier.add_simps @{thms comma_round_admitted.simps}) 1)
   fun check_valid (r, f, x) =
     let
       val label = "r=" ^ Int.toString r ^ ",f=" ^ Int.toString f ^

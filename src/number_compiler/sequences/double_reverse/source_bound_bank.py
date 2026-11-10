@@ -69,6 +69,7 @@ if TYPE_CHECKING:
         CertifiedCyclotomicCenter,
         CertifiedCyclotomicCenterDriver,
     )
+    from .temporal_center_power import CertifiedCyclotomicCenterPower
     from .temporal_seed_morphism import CertifiedSeedOrbitMorphism
 
 
@@ -759,6 +760,35 @@ class DoubleReverseBankMixin(CarrySafetyAuditBase):
             max_prefix=min(32, self.generation - 4)
         )
         return certified_cyclotomic_center_driver(source)
+
+    def temporal_cyclotomic_center_power(
+        self,
+        *,
+        four_step_blocks: int = 1,
+    ) -> CertifiedCyclotomicCenterPower:
+        """Power a source-issued center harmonic without a carry-history tape.
+
+        Only the final requested k-block window is admitted; the canonical
+        pointed source issues the two center endpoints and existing clock.
+        """
+        from .temporal_center_power import certified_cyclotomic_center_power
+
+        self.check_open()
+        if type(four_step_blocks) is not int or four_step_blocks < 1:
+            raise ValueError("center power requires positive four-step blocks")
+        needed = 4 * four_step_blocks
+        if self.generation < needed:
+            raise ValueError("center power exceeds target physical horizon")
+        _entry, source = self.prepare_bank_source(
+            max_prefix=min(32, self.generation - needed)
+        )
+        if source.f_steps < 2 * four_step_blocks:
+            raise ValueError("certified source prefix does not cover center power")
+        return certified_cyclotomic_center_power(
+            source,
+            start_f_steps=source.f_steps - 2 * four_step_blocks,
+            four_step_blocks=four_step_blocks,
+        )
 
     def temporal_cyclotomic_center_join(
         self,

@@ -24,7 +24,6 @@ lemma comma_fast_boundary_run_numeral:
        | Comma_Round_Invalid \<Rightarrow> None))"
   by (cases rounds; cases "comma_fast_round_aux 9 r source") simp_all
 
-ML_file "../comma_entry_arithmetic/selected_list_conversion.ML"
 ML_file "../comma_future_rank_data/rank_table_lookup.ML"
 ML_file "future_rank_check.ML"
 

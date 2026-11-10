@@ -35,6 +35,7 @@ struct
      stats: unit -> string,
      work: unit -> {transition_evaluations: int,
        near_operator_builds: int, near_operator_reuses: int,
+       near_residual_builds: int, near_residual_hits: int,
        near_application_transports: int}}
 
   fun make {ctxt, equation, equation_with, checked_object_proof,
@@ -50,6 +51,8 @@ struct
         {key: term, action: term, steps: term, equation: thm}
       val near_operators = Unsynchronized.ref
         (Termtab.empty: near_operator Termtab.table)
+      val near_residuals = Unsynchronized.ref
+        (Termtab.empty: near_selection Termtab.table)
       val class_attempts = Unsynchronized.ref 0
       val class_hits = Unsynchronized.ref 0
       val class_failures = Unsynchronized.ref 0
@@ -58,6 +61,8 @@ struct
       val transition_failures = Unsynchronized.ref 0
       val near_operator_reuses = Unsynchronized.ref 0
       val near_operator_builds = Unsynchronized.ref 0
+      val near_residual_builds = Unsynchronized.ref 0
+      val near_residual_hits = Unsynchronized.ref 0
       val near_application_transports = Unsynchronized.ref 0
       val class_relation_rules = @{thms comma_guarded_source_class_rel_def
         comma_finite_position.inject comma_finite_position.distinct}
@@ -109,7 +114,7 @@ struct
          continuation (including its exact Goto target); the physical step
          count remains occurrence payload.  This is a structural action key,
          not a Moore-minimal future equivalence. *)
-      fun near_action_selection sector headroom : near_selection =
+      fun direct_near_action_selection sector headroom : near_selection =
         let
           val operator = near_operator_key sector
           val request = operator $ nat headroom $ nat 0
@@ -125,6 +130,64 @@ struct
           val key = HOLogic.mk_prod (nat 1,
             HOLogic.mk_list action_type [action])
         in {key=key, action=action, steps=steps, equation=theorem} end
+
+      fun near_action_selection sector headroom : near_selection =
+        if headroom <= (if sector < 9 then 1 else 0) then
+          direct_near_action_selection sector headroom
+        else
+          let
+            val packet = @{term comma_near_residual_binding} $
+              nat sector $ nat headroom
+            val packet_equation = equation_with
+              @{thms comma_near_residual_binding_def Let_def} packet
+            val _ = if Thm.term_of (Thm.lhs_of packet_equation) aconv packet then ()
+              else error "Near residual packet was issued for another source"
+            val (port,occurrence) =
+              HOLogic.dest_prod (Thm.term_of (Thm.rhs_of packet_equation))
+            val (elapsed,reduced) = HOLogic.dest_prod occurrence
+            val residual_key = HOLogic.mk_prod (nat sector,port)
+            val selected = (case Termtab.lookup (!near_residuals) residual_key of
+                SOME existing =>
+                  (near_residual_hits := !near_residual_hits + 1; existing)
+              | NONE =>
+                  let
+                    val representative_source = @{term Comma_Near} $
+                      nat sector $ nat 0 $ reduced
+                    val _ = header representative_source
+                    val representative =
+                      direct_near_action_selection sector (number reduced)
+                    val _ = near_residuals :=
+                      Termtab.update (residual_key,representative) (!near_residuals)
+                    val _ = near_residual_builds := !near_residual_builds + 1
+                  in representative end)
+          in if headroom = number reduced then selected else
+            let
+              val added = equation
+                (@{term "(+) :: nat => nat => nat"} $ elapsed $ #steps selected)
+              val steps = Thm.term_of (Thm.rhs_of added)
+              val request = near_operator_key sector $ nat headroom $ nat 0
+              val proposition = HOLogic.mk_Trueprop (HOLogic.mk_eq
+                (request,HOLogic.mk_prod (#action selected,steps)))
+              val transport = Drule.infer_instantiate ctxt
+                [(("f",0),Thm.cterm_of ctxt (nat sector)),
+                 (("H",0),Thm.cterm_of ctxt (nat headroom)),
+                 (("slot",0),Thm.cterm_of ctxt (nat 0))]
+                @{thm comma_near_symbolic_port_operator_residual}
+              val exact = Simplifier.full_simplify
+                (Comma_Entry_Arithmetic.natural_context ctxt
+                  |> Simplifier.add_simps
+                    [packet_equation, #equation selected, added, @{thm Let_def}])
+                transport
+              val _ = if Thm.nprems_of exact = 0 andalso
+                  null (Thm.hyps_of exact) andalso null (Thm.tpairs_of exact) andalso
+                  Thm.prop_of exact aconv proposition andalso
+                  null (Thm_Deps.all_oracles [exact]) then ()
+                else error ("Near residual transport lost its exact action/physical cocycle: " ^
+                  Thm.string_of_thm ctxt exact)
+              val theorem = exact RS @{thm eq_reflection}
+            in {key= #key selected, action= #action selected,
+              steps=steps, equation=theorem}:near_selection end
+          end
 
       fun near_operator sector =
         let
@@ -214,63 +277,33 @@ struct
       fun selection_id (source: term) (source_header: source_header)
           (selection: near_selection) =
         let
-          val (sector, headroom) =
+          val (sector,headroom) =
             (case near_chart_coordinates source of
               SOME coordinates => coordinates
             | NONE => error "Near selector lost its exact source occurrence")
-          val action = #action selection
-          val steps = #steps selection
-          val key = #key selection
           val request = near_operator_key sector $ headroom $ nat 0
-          val generic_rule = Drule.infer_instantiate ctxt
-            [(("f", 0), Thm.cterm_of ctxt (nat sector)),
-             (("H", 0), Thm.cterm_of ctxt headroom),
-             (("slot", 0), Thm.cterm_of ctxt (nat 0))]
-            @{thm comma_near_symbolic_port_operator_source}
-          val (rule_lhs, rule_rhs) = HOLogic.dest_eq
-            (HOLogic.dest_Trueprop (Thm.prop_of generic_rule))
-          val (source_action, _) = HOLogic.dest_prod rule_rhs
-          val expected_source_action =
-            @{term comma_semantic_b1_source_port_action} $ source $ nat 0
-          val selected_rhs = Thm.term_of (Thm.rhs_of (#equation selection))
-          val _ = if rule_lhs aconv request andalso
-              source_action aconv expected_source_action andalso
-              selected_rhs aconv HOLogic.mk_prod (action, steps) then ()
-            else error "Near selector theorem does not bind this source/action/step tuple"
-          val specialized_meta = generic_rule RS @{thm eq_reflection}
-          val pair_equality_meta = Thm.transitive
-            (Thm.symmetric specialized_meta) (#equation selection)
-          val pair_equality = pair_equality_meta RS @{thm meta_eq_to_obj_eq}
-          val pairT = fastype_of rule_rhs
-          val actionT = fastype_of source_action
-          val first = Const (@{const_name fst}, pairT --> actionT)
-          val projection_rule = Drule.infer_instantiate ctxt
-            [(("f", 0), Thm.cterm_of ctxt first)] @{thm arg_cong}
-          val projected = projection_rule OF [pair_equality]
-          val projected_meta = projected RS @{thm eq_reflection}
-          val basic_context = put_simpset HOL_basic_ss ctxt addsimps [@{thm fst_conv}]
-          val source_first = Simplifier.rewrite basic_context
-            (Thm.cterm_of ctxt (first $ rule_rhs))
-          val selected_first = Simplifier.rewrite basic_context
-            (Thm.cterm_of ctxt (first $ selected_rhs))
-          val exact_meta = Thm.transitive (Thm.symmetric source_first)
-            (Thm.transitive projected_meta selected_first)
-          val exact_port = exact_meta RS @{thm meta_eq_to_obj_eq}
-          val exact_port_prop = HOLogic.mk_Trueprop (HOLogic.mk_eq
-            (expected_source_action, action))
-          val _ = if Thm.nprems_of exact_port = 0 andalso
-              null (Thm.hyps_of exact_port) andalso null (Thm.tpairs_of exact_port) andalso
-              Thm.prop_of exact_port aconv exact_port_prop andalso
-              null (Thm_Deps.all_oracles [exact_port]) then ()
-            else error "Near action selector did not produce a checked exact-port theorem"
-          val id_prop = HOLogic.mk_Trueprop (HOLogic.mk_eq
-            (@{term comma_source_continuation_id} $ source, key))
-          val id_theorem = checked_object_proof id_prop
-            ([exact_port, #base source_header, #period_equation source_header,
-              #admitted source_header, @{thm comma_semantic_b1_source_id_ports}] @
-             @{thms comma_semantic_b1_source_port_actions_def list.map upt_rec})
-            "Near action selector did not prove its exact one-slot continuation ID"
-        in id_theorem end
+          val selected = #equation selection
+          val _ = if Thm.term_of (Thm.lhs_of selected) aconv request andalso
+              Thm.term_of (Thm.rhs_of selected) aconv
+                HOLogic.mk_prod (#action selection,#steps selection) then ()
+            else error "Near selector lost its exact source/action/step binding"
+          val admitted = @{thm eqTrueE} OF
+            [#admitted source_header RS @{thm meta_eq_to_obj_eq}]
+          val source_id = Drule.infer_instantiate ctxt
+            [(("f",0),Thm.cterm_of ctxt (nat sector)),
+             (("H",0),Thm.cterm_of ctxt headroom)]
+            @{thm comma_near_symbolic_port_source_id} OF [admitted]
+          val result = Simplifier.full_simplify
+            (put_simpset HOL_basic_ss ctxt
+              |> Simplifier.add_simps [selected,@{thm fst_conv}]) source_id
+          val expected = HOLogic.mk_Trueprop (HOLogic.mk_eq
+            (@{term comma_source_continuation_id} $ source,#key selection))
+          val _ = if Thm.nprems_of result = 0 andalso
+              null (Thm.hyps_of result) andalso null (Thm.tpairs_of result) andalso
+              Thm.prop_of result aconv expected andalso
+              null (Thm_Deps.all_oracles [result]) then ()
+            else error "Near selector did not transport its generic source-ID theorem"
+        in result end
 
       fun membership source shape source_header =
         (case #kind shape of
@@ -553,8 +586,7 @@ struct
                               @{thm arg_cong}
                             val projected_object = projection_rule OF [pair_equality]
                             val projected_meta = projected_object RS @{thm eq_reflection}
-                            val basic_context = put_simpset HOL_basic_ss ctxt
-                              addsimps [@{thm fst_conv}]
+                            val basic_context = Simplifier.add_simps ([@{thm fst_conv}]) (put_simpset HOL_basic_ss ctxt)
                             val source_first = Simplifier.rewrite basic_context
                               (Thm.cterm_of ctxt (first $ rule_rhs))
                             val result_first = Simplifier.rewrite basic_context
@@ -711,6 +743,8 @@ struct
         " semantic_source_class_failures=" ^ Int.toString (!class_failures) ^
         " semantic_near_operator_builds=" ^ Int.toString (!near_operator_builds) ^
         " semantic_near_operator_reuses=" ^ Int.toString (!near_operator_reuses) ^
+        " semantic_near_residual_builds=" ^ Int.toString (!near_residual_builds) ^
+        " semantic_near_residual_hits=" ^ Int.toString (!near_residual_hits) ^
         " semantic_near_application_transports=" ^
           Int.toString (!near_application_transports) ^
         " semantic_source_transition_evaluations=" ^
@@ -732,6 +766,8 @@ struct
         {transition_evaluations= !transition_attempts,
          near_operator_builds= !near_operator_builds,
          near_operator_reuses= !near_operator_reuses,
+         near_residual_builds= !near_residual_builds,
+         near_residual_hits= !near_residual_hits,
          near_application_transports= !near_application_transports}
     in {classify=classify, validate_selection=validate_selection,
       transition=transition, forward=forward,

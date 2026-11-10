@@ -15,7 +15,11 @@ from number_compiler.api.json_output import (
     is_string_object_mapping,
 )
 
-from .temporal_center_cyclotomic import certified_cyclotomic_center_driver
+from .temporal_center_power import (
+    CenterForcingPower,
+    centered_half_combination_mod11,
+)
+from .temporal_center_selector import CenterDriver, CenterReturn, center_return
 from .temporal_depth_transfer_matrix import (
     SourceConditionedDepthWindowUnavailable,
     source_conditioned_depth_window_packet,
@@ -24,7 +28,6 @@ from .temporal_hashlife import growth_ports
 from .temporal_hashlife_types import UncertifiedPointedStencilError
 from .temporal_residue_quotient import (
     certified_residue_action,
-    decimal_residues_from_slp,
 )
 from .temporal_seed_morphism import (
     certified_seed_orbit_morphism,
@@ -44,6 +47,8 @@ class _CenterTraceRow(TypedDict):
     residue99: int
     residue198: int
     center: str
+    centered_half_mode: str
+    centered_half_mod11: int
 
 
 class _FiniteCenterScan(TypedDict):
@@ -56,6 +61,8 @@ class _FiniteCenterScan(TypedDict):
     layers: list[dict[str, object]]
     scope: str
     drivers: NotRequired[dict[str, object]]
+    spatial_pascal_moments: NotRequired[dict[str, object]]
+    spatial_mod70_cyclotomic: NotRequired[dict[str, object]]
 
 
 def _finite_center_scan(
@@ -66,6 +73,97 @@ def _finite_center_scan(
     depth: int,
     max_lag: int,
     include_drivers: bool,
+    source_mod99: int,
+    source_mod198: int,
+) -> _FiniteCenterScan:
+    """Reserve the finite observer's complete scratch shape before reading it."""
+    source.validate(require_issued_cursor=True)
+    count = min(samples, 1 + source.f_steps // (2 * stride))
+    if count < 1 or depth < 0:
+        raise ValueError("finite center scan needs samples and a nonnegative depth")
+    word_digits = (depth + 1) * (depth + 2)
+    driver_blocks = count - 1 if include_drivers and stride == 1 and count > 1 else 0
+    scratch_entries = (
+        count * (2 * (depth + 1) + 5) + 4 * driver_blocks + 3 * (depth + 1)
+    )
+    scratch_nodes = count * (word_digits + 8 * (depth + 1) + 40) + 32 * driver_blocks
+    with source.ledger.reservation(
+        source.scratch_owner, entries=scratch_entries, nodes=scratch_nodes
+    ):
+        return _finite_center_scan_reserved(
+            source,
+            samples=samples,
+            stride=stride,
+            depth=depth,
+            max_lag=max_lag,
+            include_drivers=include_drivers,
+            source_mod99=source_mod99,
+            source_mod198=source_mod198,
+            count=count,
+        )
+
+
+def _finite_center_driver_from_halos(
+    before_width: int,
+    before_halo: tuple[int, int, int, int],
+    middle_halo: tuple[int, int, int, int],
+    before_pair: tuple[int, int],
+    after_pair: tuple[int, int],
+) -> CenterReturn:
+    """Reconstruct one exact four-tick center action from two source halos.
+
+    The first and final even frames are requested period samples. The one
+    intervening odd-width frame supplies the middle center and adjacent carry
+    ports. The other two odd frames follow directly from the reflected-double
+    digit rule, so no second center-driver publisher or residue fold is needed.
+    """
+    if before_width < 4 or before_width % 2:
+        raise ValueError("mirrored center seam needs an even source width >= 4")
+    center = before_width // 2
+
+    def odd_at(
+        halo: tuple[int, int, int, int], width: int, growth: int, at: int
+    ) -> int:
+        if growth and at == 0:
+            return 1
+        source_index = width - 1 - (at - growth)
+        offset = source_index - (center - 2)
+        if not 0 <= offset < len(halo):
+            raise AssertionError("mirrored center halo omitted an input port")
+        carry = int(source_index > 0 and halo[offset - 1] >= 5)
+        return (2 * halo[offset] + carry) % 10
+
+    first_left = odd_at(before_halo, before_width, 1, center - 1)
+    first_center = odd_at(before_halo, before_width, 1, center)
+    middle_center = middle_halo[2]
+    third_left = odd_at(middle_halo, before_width + 1, 0, center - 1)
+    third_center = odd_at(middle_halo, before_width + 1, 0, center)
+    third_right = odd_at(middle_halo, before_width + 1, 0, center + 1)
+    driver = CenterDriver(
+        int(first_left >= 5),
+        int(middle_halo[1] >= 5),
+        int(third_left >= 5),
+        third_right % 5,
+    )
+    returned = center_return(before_pair, driver)
+    if returned.odd != (first_center, middle_center, third_center):
+        raise AssertionError("single-pass center carries disagree with odd centers")
+    if returned.next_pair != after_pair:
+        raise AssertionError("single-pass center carries disagree with next pair")
+    return returned
+
+
+def _finite_center_scan_reserved(
+    source: PointedBankSource,
+    *,
+    samples: int,
+    stride: int,
+    depth: int,
+    max_lag: int,
+    include_drivers: bool,
+    source_mod99: int,
+    source_mod198: int,
+    count: int,
 ) -> _FiniteCenterScan:
     """Demand exact center windows, never whole intermediate integer words.
 
@@ -73,19 +171,25 @@ def _finite_center_scan(
     generation.  Each depth is the full width-(2d+2) even-center or width-
     (2d+1) odd-center window. The finite lag tests do not assume stationarity.
     """
-    source.validate(require_issued_cursor=True)
-    count = min(samples, 1 + source.f_steps // (2 * stride))
     start_f = source.f_steps - 2 * stride * (count - 1)
     indexes = tuple(start_f + 2 * stride * j for j in range(count))
-    source_mod99, source_mod198 = decimal_residues_from_slp(
-        source.arena,
-        source.root,
-        ledger=source.ledger,
-        scratch_owner=source.scratch_owner,
-    )
     trace: list[_CenterTraceRow] = []
     columns: list[list[str]] = [[] for _ in range(depth + 1)]
-    for f in indexes:
+    first_width = source.width_in + sum(growth_ports(source.phase, start_f))
+    driver_available = (
+        include_drivers
+        and stride == 1
+        and count >= 2
+        and (source.phase + 2 * start_f) % 4 == 0
+        and first_width >= 4
+        and first_width % 2 == 0
+    )
+    published_letters: list[dict[str, object]] = []
+    composed_power: CenterForcingPower | None = None
+    prior_halo: tuple[int, int, int, int] | None = None
+    prior_pair: tuple[int, int] | None = None
+    prior_width: int | None = None
+    for sample_index, f in enumerate(indexes):
         width = source.width_in + sum(growth_ports(source.phase, f))
         center_width = 2 if width % 2 == 0 else 1
         position = (width - center_width) // 2
@@ -102,8 +206,9 @@ def _finite_center_scan(
         # Every requested layer is nested around the same center. One bounded
         # row shares its exact source halo across the complete sample.
         valid = min(depth, position, width - position - center_width)
-        start = position - valid
-        count_digits = center_width + 2 * valid
+        read_depth = max(valid, int(driver_available))
+        start = position - read_depth
+        count_digits = center_width + 2 * read_depth
         sampled = source.engine.pointed_window(
             source.root, f, source.phase, start, count_digits
         )
@@ -111,9 +216,14 @@ def _finite_center_scan(
             if d > valid:
                 columns[d].append("")  # missing window is NOT a return match
             else:
-                begin = valid - d
-                end = valid + center_width + d
+                begin = read_depth - d
+                end = read_depth + center_width + d
                 columns[d].append("".join(map(str, sampled[begin:end])))
+        half_mode, half_residue = centered_half_combination_mod11(
+            width,
+            tuple(map(int, columns[0][-1])),
+            residues.target_mod99,
+        )
         trace.append(
             {
                 "generation": source.physical_prefix + 2 * f,
@@ -122,8 +232,69 @@ def _finite_center_scan(
                 "residue99": residues.target_mod99,
                 "residue198": residues.target_mod198,
                 "center": columns[0][-1],
+                "centered_half_mode": half_mode,
+                "centered_half_mod11": half_residue,
             }
         )
+        if driver_available:
+            if read_depth < 1 or center_width != 2:
+                raise AssertionError("center scan omitted its exact four-digit halo")
+            halo = (
+                sampled[read_depth - 1],
+                sampled[read_depth],
+                sampled[read_depth + 1],
+                sampled[read_depth + 2],
+            )
+            pair_digits = tuple(map(int, columns[0][-1]))
+            if len(pair_digits) != 2:
+                raise AssertionError(
+                    "even center sample did not produce an ordered pair"
+                )
+            pair = (pair_digits[0], pair_digits[1])
+            if sample_index:
+                if prior_halo is None or prior_pair is None or prior_width is None:
+                    raise AssertionError("center scan lost its previous source halo")
+                old_center = prior_width // 2
+                middle_values = source.engine.pointed_window(
+                    source.root,
+                    f - 1,
+                    source.phase,
+                    old_center - 2,
+                    4,
+                )
+                middle_halo = (
+                    middle_values[0],
+                    middle_values[1],
+                    middle_values[2],
+                    middle_values[3],
+                )
+                returned = _finite_center_driver_from_halos(
+                    prior_width, prior_halo, middle_halo, prior_pair, pair
+                )
+                block_power = CenterForcingPower.from_return(returned)
+                composed_power = (
+                    block_power
+                    if composed_power is None
+                    else composed_power.then(block_power)
+                )
+                published_letters.append(
+                    {
+                        "generation": int(trace[-2]["generation"]),
+                        "incoming_carries": [
+                            returned.driver.left_1,
+                            returned.driver.left_2,
+                            returned.driver.left_3,
+                        ],
+                        "right_f5": returned.driver.right_f5,
+                        "right_center_forcing": block_power.weighted_mod10,
+                        "odd_center_digits": list(returned.odd),
+                        "from_center": trace[-2]["center"],
+                        "to_center": trace[-1]["center"],
+                    }
+                )
+            prior_halo = halo
+            prior_pair = pair
+            prior_width = width
 
     layers: list[dict[str, object]] = []
     for d, values in enumerate(columns):
@@ -182,46 +353,198 @@ def _finite_center_scan(
         "scope": "exact finite source-cone observations; no all-depth period claim",
     }
     if include_drivers:
-        if (
-            stride != 1
-            or count < 2
-            or trace[0]["phase"] != 0
-            or int(trace[0]["width"]) % 2
-        ):
+        if not driver_available:
             packet["drivers"] = {
                 "status": "unavailable",
-                "reason": "four-tick center driver needs consecutive phase-0 even-width blocks",
+                "reason": (
+                    "four-tick center driver needs consecutive phase-0 even-width "
+                    "blocks of width at least four"
+                ),
             }
         else:
-            letters: list[dict[str, object]] = []
-            for i in range(count - 1):
-                witness = certified_cyclotomic_center_driver(
-                    source, start_f_steps=indexes[i]
+            if composed_power is None or len(published_letters) != count - 1:
+                raise AssertionError("finite center driver composition is incomplete")
+            powered = CenterForcingPower.from_endpoints(
+                int(columns[0][0][-1]),
+                int(columns[0][-1][-1]),
+                count - 1,
+            )
+            if composed_power != powered:
+                raise AssertionError(
+                    "source driver forcing disagrees with powered center"
                 )
-                witness.validate_source_authority()
-                if (
-                    "".join(map(str, witness.initial_pair)) != columns[0][i]
-                    or "".join(map(str, witness.next_pair)) != columns[0][i + 1]
-                ):
-                    raise AssertionError(
-                        "source center driver diverged from period scan"
-                    )
-                letters.append(
-                    {
-                        "generation": int(trace[i]["generation"]),
-                        "incoming_carries": [
-                            witness.driver.left_1,
-                            witness.driver.left_2,
-                            witness.driver.left_3,
-                        ],
-                        "right_f5": witness.driver.right_f5,
-                        "odd_center_digits": list(witness.odd_centers),
-                        "from_center": columns[0][i],
-                        "to_center": columns[0][i + 1],
-                    }
+            half_multiplier = pow(16, powered.blocks, 11)
+            half_innovation = (
+                int(trace[-1]["centered_half_mod11"])
+                - half_multiplier * int(trace[0]["centered_half_mod11"])
+            ) % 11
+            if (
+                trace[0]["centered_half_mode"] != trace[-1]["centered_half_mode"]
+                or trace[0]["centered_half_mode"] == "difference"
+                and half_innovation
+            ):
+                raise AssertionError(
+                    "centered half clock disagrees with global 99/198 power"
                 )
-            packet["drivers"] = {"status": "available", "letters": letters}
+            packet["drivers"] = {
+                "status": "available",
+                "letters": published_letters,
+                "center_forcing_power": {
+                    "scope": "finite source-authenticated endpoint action",
+                    "blocks": powered.blocks,
+                    "weighted_mod10": powered.weighted_mod10,
+                    "forcing_sum_mod5": powered.sum_mod5,
+                    "last_forcing_parity": powered.last_forcing_parity,
+                    "right_center_return": powered.harmonic_return,
+                    "complete_center_pair_return": columns[0][0] == columns[0][-1],
+                    "centered_half_mod11": {
+                        "mode": trace[0]["centered_half_mode"],
+                        "source": trace[0]["centered_half_mod11"],
+                        "target": trace[-1]["centered_half_mod11"],
+                        "multiplier": half_multiplier,
+                        "center_forcing": half_innovation,
+                    },
+                },
+            }
     return packet
+
+
+def _pascal_moments_packet(
+    morphism: CertifiedSeedOrbitMorphism,
+    source: PointedBankSource,
+) -> dict[str, object] | None:
+    """Serialize demanded exact spatial bands under the source morphism."""
+    morphism.validate_source_authority()
+    first = morphism.first
+    last = morphism.last
+    if not first.pascal_levels:
+        if last.pascal_levels:
+            raise AssertionError("target Pascal demand lacks a source demand")
+        return None
+    if (
+        first.pascal_levels != last.pascal_levels
+        or first.pascal_order != last.pascal_order
+        or len(first.pascal_bands) != len(last.pascal_bands)
+    ):
+        raise AssertionError("source/target Pascal summaries have different demands")
+    bands: list[dict[str, object]] = []
+    for (source_level, source_moments), (target_level, target_moments) in zip(
+        first.pascal_bands, last.pascal_bands, strict=True
+    ):
+        if source_level != target_level:
+            raise AssertionError("source/target Pascal band levels differ")
+        bands.append(
+            {
+                "level": source_level,
+                "source_length": source_moments.length,
+                "target_length": target_moments.length,
+                "source_digit_moments": list(source_moments.digit_moments),
+                "target_digit_moments": list(target_moments.digit_moments),
+                "source_high_marker_moments": list(source_moments.marker_moments),
+                "target_high_marker_moments": list(target_moments.marker_moments),
+                "source_endpoint_markers": [
+                    source_moments.first_marker,
+                    source_moments.last_marker,
+                ],
+                "target_endpoint_markers": [
+                    target_moments.first_marker,
+                    target_moments.last_marker,
+                ],
+            }
+        )
+    return {
+        "status": "available",
+        "source_generation": source.physical_prefix + 2 * morphism.start_f_steps,
+        "target_generation": source.physical_prefix
+        + 2 * (morphism.start_f_steps + morphism.steps),
+        "orientation": "most-significant-digit-first",
+        "modulus": 11,
+        "order": first.pascal_order,
+        "marker": "digit-at-least-five",
+        "bands": bands,
+        "scope": (
+            "finite exact source-issued SLP bands; no temporal repetition authority"
+        ),
+    }
+
+
+def _spatial_mod70_packet(
+    morphism: CertifiedSeedOrbitMorphism,
+    source: PointedBankSource,
+) -> dict[str, object]:
+    """Serialize demanded source/target spatial factors from their shared fold."""
+    authority = morphism.validate_source_authority()
+    source.validate(require_issued_cursor=source.f_steps > 0)
+    if (
+        authority.arena is not source.arena
+        or authority.root != source.root
+        or authority.source_generation != source.physical_prefix
+        or morphism.source_root != source.root
+        or morphism.start_f_steps != 0
+        or morphism.first.root != source.root
+        or morphism.first.mod70 is None
+        or morphism.last.mod70 is None
+    ):
+        raise ValueError("mod-70 projection lacks the demanded issued source fold")
+    source_summary = morphism.first.mod70
+    target_summary = morphism.last.mod70
+    if len(morphism.first.mod70_bands) != len(morphism.last.mod70_bands):
+        raise AssertionError("source and target mod-70 bands have different demands")
+    bands: list[dict[str, object]] = []
+    for (source_level, source_band), (target_level, target_band) in zip(
+        morphism.first.mod70_bands,
+        morphism.last.mod70_bands,
+        strict=True,
+    ):
+        if source_level != target_level:
+            raise AssertionError("source and target mod-70 band levels differ")
+        bands.append(
+            {
+                "level": source_level,
+                "source": source_band.packet(),
+                "target": target_band.packet(),
+                "scope": "finite spatial interval; no exterior halo authority",
+            }
+        )
+    result: dict[str, object] = {
+        "source_generation": source.physical_prefix,
+        "target_generation": source.physical_prefix + 2 * morphism.steps,
+        "orientation": "most-significant-decimal-digit-first",
+        "source": source_summary.packet(),
+        "target": target_summary.packet(),
+        "bands": bands,
+        "scope": (
+            "finite source-issued word projections; spatial factors do not "
+            "establish a temporal period"
+        ),
+    }
+    if source_summary.suffix_digits[-1] == 0:
+        result["source_t_squared_affine_mod70"] = {
+            "status": "unavailable",
+            "reason": "source ends in zero; exact width-normalizing fallback is required",
+        }
+        return result
+    affine = morphism.source_t_squared_mod70_affine()
+    projected_t2 = affine.apply(
+        source_summary.word_mod70,
+        multiply=lambda left, right: left * right % 70,
+        add=lambda left, right: (left + right) % 70,
+    )
+    if morphism.steps == 1 and projected_t2 != target_summary.word_mod70:
+        raise AssertionError("mod-70 affine projection disagrees with exact T² root")
+    result["source_t_squared_affine_mod70"] = {
+        "status": "available",
+        "physical_ticks": 2,
+        "source_generation": source.physical_prefix,
+        "target_generation": source.physical_prefix + 2,
+        "multiplier": affine.multiplier,
+        "addend": affine.addend,
+        "source_mod70": source_summary.word_mod70,
+        "projected_t_squared_mod70": projected_t2,
+        "compared_with_exact_endpoint": morphism.steps == 1,
+        "scope": "one authenticated canonical whole-word source only",
+    }
+    return result
 
 
 def seed_morphism_cli_packet(
@@ -301,10 +624,19 @@ def seed_morphism_cli_packet(
             if completed_term is None and prior_prefix is None:
                 term.prepare_endpoint()
                 completed_term = term
+            pascal_levels = (
+                tuple(range(1, period_depth + 1))
+                if period_samples and period_drivers
+                else ()
+            )
+            mod70_projection = period_samples > 0 and period_drivers
             morphism = certified_seed_orbit_morphism(
                 source,
                 steps=source.f_steps,
                 completed_term=completed_term,
+                pascal_levels=pascal_levels,
+                pascal_order=1,
+                mod70_projection=mod70_projection,
             )
             morphism.validate_source_authority()
             root = morphism.last.root
@@ -439,6 +771,8 @@ def seed_morphism_cli_packet(
                     depth=period_depth,
                     max_lag=period_max_lag,
                     include_drivers=period_drivers,
+                    source_mod99=morphism.first.residue99,
+                    source_mod198=morphism.first.residue198,
                 )
                 if int(scan["trace"][-1]["generation"]) != term.generation:
                     raise AssertionError(
@@ -453,6 +787,13 @@ def seed_morphism_cli_packet(
                         "independent temporal cones disagree with all-word power"
                     )
                 packet["period_observations"] = scan
+                spatial_pascal = _pascal_moments_packet(morphism, source)
+                if spatial_pascal is not None:
+                    scan["spatial_pascal_moments"] = spatial_pascal
+                if period_drivers and morphism.first.mod70 is not None:
+                    scan["spatial_mod70_cyclotomic"] = _spatial_mod70_packet(
+                        morphism, source
+                    )
     elif period_samples:
         packet["period_observations"] = {
             "status": "unavailable",

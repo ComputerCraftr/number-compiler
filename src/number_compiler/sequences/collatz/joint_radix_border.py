@@ -208,7 +208,10 @@ class JointRadix6Source:
         if walsh and (base != 64 or places != 64):
             raise ValueError("Walsh64 requires 64 radix-64 carry positions")
         orbit = ThreePowerRadixOrbit("ordinary", self.tripling_events, base)
-        ports = orbit.ordinary_ports(places)
+        ports = orbit.compact_ordinary_ports(places, include_source_boundaries=True)
+        source_boundaries = ports.source_boundaries
+        if source_boundaries is None:
+            raise AssertionError("requested source-boundary projection was omitted")
         pivot = ports.difference_xor_mask
         return {
             "exponent": self.tripling_events,
@@ -221,7 +224,7 @@ class JointRadix6Source:
             "tripling_high_mask": ports.high_mask,
             "tripling_low_mask": ports.low_mask,
             "walsh64_mod5": walsh64_mod5(pivot) if walsh else None,
-            "source_boundaries": tuple(row.source_remainder for row in ports.tape),
+            "source_boundaries": source_boundaries,
             "scope": "homogeneous tripling field; not a parity source guard",
         }
 

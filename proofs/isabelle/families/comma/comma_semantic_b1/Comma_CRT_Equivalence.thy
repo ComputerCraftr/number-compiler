@@ -150,12 +150,95 @@ lemma comma_crt_equiv_check_sound:
   shows "comma_crt_set left=comma_crt_set right"
   using comma_crt_equiv_check_iff[of left right] equivalent by blast
 
+lemma comma_crt_equiv_check_supported:
+  assumes equivalent: "comma_crt_equiv_check left right"
+  shows "comma_crt_supported left = comma_crt_supported right"
+proof -
+  have left_admitted: "comma_crt_admitted 0 left"
+    and right_admitted: "comma_crt_admitted 0 right"
+    and equal_sets: "comma_crt_set left=comma_crt_set right"
+    using comma_crt_equiv_check_iff[of left right] equivalent by blast+
+  have left_nonempty:
+    "comma_crt_set left\<noteq>{} \<longleftrightarrow> comma_crt_supported left"
+    by (rule comma_crt_supported_nonempty[OF left_admitted])
+  have right_nonempty:
+    "comma_crt_set right\<noteq>{} \<longleftrightarrow> comma_crt_supported right"
+    by (rule comma_crt_supported_nonempty[OF right_admitted])
+  show ?thesis using left_nonempty right_nonempty equal_sets by blast
+qed
+
 lemma comma_crt_equiv_check_complete:
   assumes left: "comma_crt_admitted 0 left"
     and right: "comma_crt_admitted 0 right"
     and equal: "comma_crt_set left=comma_crt_set right"
   shows "comma_crt_equiv_check left right"
   using comma_crt_equiv_check_iff[of left right] left right equal by blast
+
+lemma comma_crt_equiv_check_refl:
+  assumes "comma_crt_admitted 0 column"
+  shows "comma_crt_equiv_check column column"
+  using assms by (simp only: comma_crt_equiv_check_iff)
+
+lemma comma_crt_equiv_check_trans:
+  assumes "comma_crt_equiv_check left middle"
+    and "comma_crt_equiv_check middle right"
+  shows "comma_crt_equiv_check left right"
+  using assms by (auto simp only: comma_crt_equiv_check_iff)
+
+text \<open>Consume certified child equivalences before constructing a parent.
+These laws transport admission and denotation; they do not run the executable
+equivalence checker over either child's expanded construction.\<close>
+
+lemma comma_crt_equiv_check_apply:
+  assumes left: "comma_crt_equiv_check left left'"
+    and right: "comma_crt_equiv_check right right'"
+  shows "comma_crt_equiv_check
+    (comma_crt_apply operation left right)
+    (comma_crt_apply operation left' right')"
+proof -
+  have admitted:
+    "comma_crt_admitted 0 left" "comma_crt_admitted 0 left'"
+    "comma_crt_admitted 0 right" "comma_crt_admitted 0 right'"
+    and equal:
+    "comma_crt_set left=comma_crt_set left'"
+    "comma_crt_set right=comma_crt_set right'"
+    using left right by (auto simp only: comma_crt_equiv_check_iff)
+  have parent: "comma_crt_admitted 0 (comma_crt_apply operation left right)"
+    by (rule comma_crt_apply_admitted[OF admitted(1,3)])
+  have parent': "comma_crt_admitted 0 (comma_crt_apply operation left' right')"
+    by (rule comma_crt_apply_admitted[OF admitted(2,4)])
+  have sets: "comma_crt_set (comma_crt_apply operation left right) =
+      comma_crt_set (comma_crt_apply operation left' right')"
+    using equal
+    by (cases operation)
+      (simp_all only: comma_crt_apply_and_set[OF admitted(1,3)]
+        comma_crt_apply_and_set[OF admitted(2,4)]
+        comma_crt_apply_or_set[OF admitted(1,3)]
+        comma_crt_apply_or_set[OF admitted(2,4)])
+  show ?thesis
+    by (rule comma_crt_equiv_check_complete[OF parent parent' sets])
+qed
+
+lemma comma_crt_equiv_check_shift:
+  assumes equivalent: "comma_crt_equiv_check left right"
+  shows "comma_crt_equiv_check
+    (comma_crt_shift clock left) (comma_crt_shift clock right)"
+proof -
+  have left: "comma_crt_admitted 0 left"
+    and right: "comma_crt_admitted 0 right"
+    and equal: "comma_crt_set left=comma_crt_set right"
+    using equivalent by (auto simp only: comma_crt_equiv_check_iff)
+  have shifted_left: "comma_crt_admitted 0 (comma_crt_shift clock left)"
+    by (rule comma_crt_shift_admitted[OF left])
+  have shifted_right: "comma_crt_admitted 0 (comma_crt_shift clock right)"
+    by (rule comma_crt_shift_admitted[OF right])
+  have sets: "comma_crt_set (comma_crt_shift clock left) =
+      comma_crt_set (comma_crt_shift clock right)"
+    by (simp only: comma_crt_shift_column_exact[OF left]
+        comma_crt_shift_column_exact[OF right] equal)
+  show ?thesis
+    by (rule comma_crt_equiv_check_complete[OF shifted_left shifted_right sets])
+qed
 
 text \<open>
 The row relation preserves the output label.  This is deliberately stronger

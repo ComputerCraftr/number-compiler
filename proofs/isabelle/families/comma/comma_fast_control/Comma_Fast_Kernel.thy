@@ -98,7 +98,7 @@ struct
         comma_decade_outcome.case_cong_weak comma_finite_move.case_cong_weak
         comma_finite_position.case_cong_weak comma_round_result.case_cong_weak
         sum.case_cong_weak
-        conj_left_cong disj_left_cong}) addsimps
+        conj_left_cong disj_left_cong}) |> Simplifier.add_simps
     @{thms comma_fast_entry_round_jump comma_fast_round_aux_eval
       comma_near_residual_target_eval comma_fast_decade_control.simps
       comma_sector_entry_alphabet comma_sector_near_alphabet comma_entry_alphabet_phase_def
@@ -146,7 +146,7 @@ struct
             @{thms comma_sector_entry_alphabet comma_sector_near_alphabet}),
          ("decade", @{term "comma_fast_decade_control s"},
             @{thms comma_fast_decade_control.simps})]
-      val base = context ctxt delsimps (maps #3 selected @
+      val base = context ctxt |> Simplifier.del_simps (maps #3 selected @
         @{thms comma_fast_entry_round_jump comma_fast_round_aux_eval})
       val evaluator = Unsynchronized.ref (NONE: Proof.context option)
       fun closed t = null (Term.add_frees t []) andalso
@@ -248,7 +248,7 @@ struct
                       val admitted_meta = admitted RS @{thm eq_reflection}
                       val rhs = Thm.rhs_of admitted_meta
                       val normalize_phase = Simplifier.rewrite
-                        (round_arithmetic addsimps
+                        (round_arithmetic |> Simplifier.add_simps
                           @{thms comma_finite_period_fast_def comma_short_period_def
                             nth_Cons'}) rhs
                       val equation = Thm.transitive admitted_meta normalize_phase
@@ -304,7 +304,7 @@ struct
             | NONE =>
                 let
                   val evaluation = (the (!evaluator)
-                    |> Simplifier.del_proc (the (!own_procedure))) addsimps equations
+                    |> Simplifier.del_proc (the (!own_procedure))) |> Simplifier.add_simps equations
                   val _ = boundary_context := SOME evaluation
                   val _ = context_builds := !context_builds + 1
                 in evaluation end)

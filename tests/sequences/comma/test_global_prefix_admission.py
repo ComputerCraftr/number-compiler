@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Event
@@ -15,7 +14,6 @@ from number_compiler.api.comma_term import CommaTermPayload
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.sequences.comma import (
     certificates,
-    future_authority,
     future_provider,
     power,
 )
@@ -29,13 +27,10 @@ from tests.support.comma_future_provider_fixture import (
 )
 
 
-def test_fixture_and_forged_leases_cannot_bypass_the_forest_gate(
+def test_fixture_and_forged_leases_cannot_bypass_global_admission(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def reject_forest_fallback(*_args: object, **_kwargs: object) -> None:
-        pytest.fail("invalid global authority reached the finite forest verifier")
 
-    monkeypatch.setattr(certificates, "_verify", reject_forest_fallback)
     record = candidate_record()
 
     def no_work_limit(_amount: int) -> None:
@@ -82,14 +77,14 @@ def test_fixture_and_forged_leases_cannot_bypass_the_forest_gate(
         uninitialized = object.__new__(lease_type)
         assert not uninitialized.runtime_admitted
         assert not uninitialized.global_release_admitted
-        with pytest.raises(TypeError, match="malformed comma global provider store"):
+        with pytest.raises(TypeError, match="malformed future provider lease binding"):
             certificates.require_certified_index(
                 1, term.ledger, term.max_work, global_provider=uninitialized
             )
 
         spoofed_store = object.__new__(lease_type)
         object.__setattr__(spoofed_store, "_store", SimpleNamespace(ledger=term.ledger))
-        with pytest.raises(TypeError, match="malformed comma global provider store"):
+        with pytest.raises(TypeError, match="malformed future provider lease binding"):
             certificates.require_certified_index(
                 1, term.ledger, term.max_work, global_provider=spoofed_store
             )
@@ -158,51 +153,6 @@ def test_fixture_and_forged_leases_cannot_bypass_the_forest_gate(
             )
 
 
-def test_absent_global_lease_keeps_finite_prefix_checker(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    requests: list[tuple[object, int, bool, object]] = []
-
-    def verify(ledger: object, max_work: int, shared_cache: bool, memo: object) -> None:
-        requests.append((ledger, max_work, shared_cache, memo))
-
-    monkeypatch.setattr(certificates, "_verify", verify)
-    with CommaTerm(1, certificate_version=certificates.CERTIFICATE_ID) as term:
-        CommaTermPayload(term).require_certified()
-        assert requests == [
-            (term.ledger, term.max_work, term.shared_cache, term.certificate_memo)
-        ]
-
-
-def test_empty_kernel_registry_does_not_resolve_future_package_resource(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    requests: list[object] = []
-
-    def verify(ledger: object, max_work: int, shared_cache: bool, memo: object) -> None:
-        requests.append((ledger, max_work, shared_cache, memo))
-
-    def forbidden_resource_lookup(*_args: object, **_kwargs: object) -> object:
-        pytest.fail("empty FutureCID registry attempted package resource I/O")
-
-    empty_registry: Mapping[str, future_authority.KernelInstanceAdmission] = (
-        MappingProxyType({})
-    )
-    monkeypatch.setattr(future_provider, "_ADMITTED_KERNEL_INSTANCES", empty_registry)
-    monkeypatch.setattr(power, "files", forbidden_resource_lookup)
-    monkeypatch.setattr(certificates, "_verify", verify)
-
-    with CommaTerm(1, certificate_version=certificates.CERTIFICATE_ID) as term:
-        assert term.global_future_provider_for_prefix_admission() is None
-        CommaTermPayload(term).require_certified()
-
-        assert requests == [
-            (term.ledger, term.max_work, term.shared_cache, term.certificate_memo)
-        ]
-        assert term.retained_global_future_provider is None
-        assert not term.has_global_future_provider
-
-
 def test_fixture_registry_does_not_resolve_global_package_resource(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -264,10 +214,6 @@ def test_registered_missing_or_corrupt_artifact_fails_closed(
 
     monkeypatch.setattr(power, "files", local_package_files)
 
-    def forbidden_forest_fallback(*_args: object, **_kwargs: object) -> None:
-        pytest.fail("registered artifact failure fell back to forest admission")
-
-    monkeypatch.setattr(certificates, "_verify", forbidden_forest_fallback)
     with CommaTerm(1, certificate_version=certificates.CERTIFICATE_ID) as term:
         with pytest.raises(expected_error):
             term.global_future_provider_for_prefix_admission()
@@ -385,3 +331,21 @@ def test_term_lookup_rejects_lease_store_owned_by_another_ledger(
             same_ledger_store.close()
             owned_store.close()
             foreign_store.close()
+
+
+def test_empty_registry_refuses_all_indices_without_package_io(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("empty global registry accessed package resources")
+
+    monkeypatch.setattr(
+        future_provider, "_ADMITTED_KERNEL_INSTANCES", MappingProxyType[str, object]({})
+    )
+    monkeypatch.setattr(power, "files", forbidden)
+    with CommaTerm(1) as term:
+        assert term.global_future_provider_for_prefix_admission() is None
+        from number_compiler.sequences.comma.certificates import UnresolvedCommaTerm
+
+        with pytest.raises(UnresolvedCommaTerm):
+            CommaTermPayload(term).require_certified()

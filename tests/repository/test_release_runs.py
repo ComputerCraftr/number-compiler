@@ -468,6 +468,13 @@ def test_release_proofs_records_live_session_timeout(
     assert len(gates) == 1
     assert gates[0]["session"] == "Base"
     assert gates[0]["limit_seconds"] == ISABELLE_SESSION_SECONDS
+    summaries = manifest_steps_named(run, "proof-build-session-summary")
+    assert len(summaries) == 1
+    assert summaries[0]["outcome"] == "partial"
+    assert summaries[0]["started_sessions"] == ["Base"]
+    assert summaries[0]["finished_sessions"] == []
+    # An interrupted build cannot establish that an unreported heap was reused.
+    assert summaries[0]["reused_sessions"] is None
 
 
 def test_release_proofs_profiles_to_fresh_run_file_and_honors_explicit_path(
@@ -551,8 +558,9 @@ def test_release_proofs_profiles_to_fresh_run_file_and_honors_explicit_path(
     )
 
 
+@pytest.mark.parametrize("acceptance", [False, True])
 def test_release_quality_retains_failures_and_attempts_later_checks(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, acceptance: bool
 ) -> None:
     from devtools.checks import release
 
@@ -568,18 +576,25 @@ def test_release_quality_retains_failures_and_attempts_later_checks(
         acceptance: bool = False,
         pytest_run: bool = False,
     ) -> bool:
-        del run, acceptance, pytest_run
+        del run, pytest_run
         calls.append(name)
         assert policy.timeout_seconds == 60
         assert policy.memory_bytes == 4 * 1024**3
         if name in ("ruff", "format"):
             assert command[:3] == (sys.executable, "-m", "ruff")
+        if name == "proof-index":
+            assert ("--require-comma-release-owner" in command) is acceptance
         return name != "mypy"
 
+    def npm_install(_root: Path) -> tuple[str, ...]:
+        return ("npm", "ci", "--ignore-scripts")
+
     monkeypatch.setattr(release, "execute", execute)
+    monkeypatch.setattr(release, "npm_install_command", npm_install)
     with EvidenceRun(root=tmp_path) as run:
-        assert not release.quality(run)
+        assert not release.quality(run, acceptance=acceptance)
     assert calls == [
+        *(["pyright-locked-install"] if acceptance else []),
         "dependency-consistency",
         "mypy",
         "ruff",

@@ -22,7 +22,7 @@ struct
     let
       val theorem = Goal.prove ctxt [] [] proposition
         (fn {context, ...} =>
-          asm_full_simp_tac (context addsimps rules) 1)
+          asm_full_simp_tac (Simplifier.add_simps (rules) (context)) 1)
     in checked_closed ctxt theorem "Future candidate selector proof" end
 
   fun parse_nat term =
@@ -192,10 +192,9 @@ struct
       val rows_prop = HOLogic.mk_Trueprop (all_phase_rows actions_constant)
       val rows_theorem = Goal.prove (Local_Theory.target_of lthy1) [] [] rows_prop
         (fn {context, ...} =>
-          asm_full_simp_tac (context addsimps
-            (actions_definition :: family_refinements @
+          asm_full_simp_tac (Simplifier.add_simps ((actions_definition :: family_refinements @
               @{thms list_all_iff set_upt atLeastLessThan_iff
-                nth_Cons_0 nth_Cons_Suc nth_Cons' list.map})) 1)
+                nth_Cons_0 nth_Cons_Suc nth_Cons' list.map})) (context)) 1)
       val rows_theorem = checked_closed (Local_Theory.target_of lthy1)
         rows_theorem "Candidate selector 16-family vector refinement"
       val shape_terms = map (fn action =>
@@ -212,9 +211,8 @@ struct
             (shape_const natT $ numeral 0 $
               (HOLogic.mk_snd (Free ("action",actionT)))) $ actions_constant)
       val shape_theorem = Goal.prove (Local_Theory.target_of lthy1) [] [] shape_prop
-        (fn {context, ...} => asm_full_simp_tac (context addsimps
-          (actions_definition :: shape_facts @
-            @{thms list_all_iff list.map nth_Cons_0 nth_Cons_Suc nth_Cons'})) 1)
+        (fn {context, ...} => asm_full_simp_tac (Simplifier.add_simps ((actions_definition :: shape_facts @
+            @{thms list_all_iff list.map nth_Cons_0 nth_Cons_Suc nth_Cons'})) (context)) 1)
         |> checked_closed (Local_Theory.target_of lthy1)
           "Candidate selector shape vector"
       val wellformed_facts = map2 (fn action => fn shape_fact =>
@@ -234,9 +232,8 @@ struct
               (Free ("action",actionT))) $ actions_constant)
       val wellformed_theorem = Goal.prove (Local_Theory.target_of lthy1) [] []
         wellformed_prop (fn {context, ...} =>
-          asm_full_simp_tac (context addsimps
-            (actions_definition :: wellformed_facts @
-              @{thms list_all_iff list.map nth_Cons_0 nth_Cons_Suc nth_Cons'})) 1)
+          asm_full_simp_tac (Simplifier.add_simps ((actions_definition :: wellformed_facts @
+              @{thms list_all_iff list.map nth_Cons_0 nth_Cons_Suc nth_Cons'})) (context)) 1)
         |> checked_closed (Local_Theory.target_of lthy1)
           "Candidate selector wellformed vector"
       val _ = Comma_Proof_Dependency_Audit.require_native_clean ctxt
@@ -260,8 +257,7 @@ struct
         "comma_semantic_future_candidate_class_ids_length"
         ids_length lthy5
       val final_stats = Comma_Semantic_Weighted_CRT_Data.stats arena
-      val _ = if #nodes final_stats + #proof_entries final_stats +
-          #scratch_entries final_stats <= 8192 andalso
+      val _ = if #used_entries final_stats <= 8192 andalso
           #scratch_entries final_stats = 0 andalso
           #peak_entries final_stats <= 8192 then ()
         else error "Future candidate selector exceeded the shared CRT arena envelope"
@@ -269,7 +265,8 @@ struct
         ("candidate_selector_families=16 phases=924 interned_nodes=" ^
           Int.toString (#nodes final_stats) ^ " proof_entries=" ^
           Int.toString (#proof_entries final_stats) ^ " scratch_entries=" ^
-          Int.toString (#scratch_entries final_stats) ^ " peak_entries=" ^
+          Int.toString (#scratch_entries final_stats) ^ " payload_aliases=" ^
+          Int.toString (#payload_aliases final_stats) ^ " peak_entries=" ^
           Int.toString (#peak_entries final_stats))
     in lthy9 end
 end

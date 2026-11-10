@@ -8,6 +8,7 @@ foreign source.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -35,6 +36,9 @@ from number_compiler.sequences.collatz.unified_skew_clock import SkewQuadraticCl
 
 if TYPE_CHECKING:
     from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.sequences.collatz.mahler_joint_carry import (
+        MahlerRecoveredCocycle,
+    )
     from number_compiler.sequences.collatz.unified_skew_chain import UnifiedSkewChain
     from number_compiler.sequences.collatz.weighted_right_congruence import (
         CollatzDoubleWeight,
@@ -580,6 +584,24 @@ class SourceClosedPortAction:
         if not self.admits(source):
             raise ValueError("source is outside the source-closed parity cylinder")
         return self.action.endpoint(source)
+
+    def mahler_chronological_cocycle(
+        self,
+        source: int,
+        *,
+        max_steps: int = 2048,
+        max_columns: int = 4096,
+        reserve_bits: Callable[[int], None] | None = None,
+    ) -> MahlerRecoveredCocycle:
+        """Recover the finite cocycle while retaining this action's full guard."""
+        if not self.admits(source):
+            raise ValueError("source lies outside the authenticated carry ports")
+        return self.action.mahler_chronological_cocycle(
+            source,
+            max_steps=max_steps,
+            max_columns=max_columns,
+            reserve_bits=reserve_bits,
+        )
 
     def double_accumulators(self, source: int) -> CollatzDoubleWeight:
         """Demand both exact weighted outputs from this *guarded* action.

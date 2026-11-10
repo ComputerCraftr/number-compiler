@@ -16,7 +16,7 @@ definition comma_port_action_power ::
   "nat \<Rightarrow> nat \<Rightarrow> (nat\<times>nat) \<Rightarrow> nat\<times>nat" where
   "comma_port_action_power f n state=(comma_port_action f ^^ n) state"
 
-lemma comma_port_action_power_trace:
+lemma comma_port_action_power_trace [code_unfold]:
   "comma_port_action_power f n (d,0)=comma_port_weighted_trace f d n"
 proof (induction n)
   case 0
@@ -528,7 +528,7 @@ lemma comma_entry_port_search_trees_checked:
       val (certify, _) = Comma_Entry_Arithmetic.make_certifier ctxt
       fun number n = HOLogic.mk_number @{typ nat} n
       fun closed_value th = #2 (HOLogic.dest_number (Thm.term_of (Thm.rhs_of th)))
-      val seed_context = arithmetic addsimps
+      val seed_context = arithmetic |> Simplifier.add_simps
         @{thms comma_entry_port_seed_def comma_entry_port_orbit_def
           comma_compiled_cycle_length_facts}
       fun seed f d = certify (Simplifier.rewrite seed_context
@@ -547,7 +547,7 @@ lemma comma_entry_port_search_trees_checked:
           comma_port_weighted_trace.simps(2)[where n=6]
           comma_port_weighted_trace.simps(2)[where n=7]
           comma_port_weighted_trace.simps(2)[where n=8]}
-      val step_context = arithmetic addsimps
+      val step_context = arithmetic |> Simplifier.add_simps
         @{thms comma_port_next_def comma_port_previous_def comma_port_dwell_def}
       fun trace_term f d n =
         @{term comma_port_weighted_trace} $ number f $ number d $ number n
@@ -560,17 +560,17 @@ lemma comma_entry_port_search_trees_checked:
       fun traces (f,d) =
         let
           val zero = check_pair (Simplifier.rewrite
-            (arithmetic addsimps @{thms comma_port_weighted_trace.simps(1)})
+            (arithmetic |> Simplifier.add_simps @{thms comma_port_weighted_trace.simps(1)})
             (Thm.cterm_of ctxt (trace_term f d 0)))
           fun successor n previous = check_pair (Simplifier.rewrite
-            (step_context addsimps [previous, nth recurrence (n-1)])
+            (step_context |> Simplifier.add_simps [previous, nth recurrence (n-1)])
             (Thm.cterm_of ctxt (trace_term f d n)))
           val (_, backwards) = fold (fn n => fn (previous, facts) =>
             let val next=successor n previous in (next,next::facts) end)
             (1 upto 9) (zero,[zero])
         in rev backwards end
       val facts = maps traces ports
-    in simp_tac (arithmetic addsimps seeds addsimps facts addsimps
+    in simp_tac (arithmetic |> Simplifier.add_simps seeds |> Simplifier.add_simps facts |> Simplifier.add_simps
       @{thms list_all_Nil_iff list_all_Cons_iff upt_rec
         comma_entry_prefix_tree_def comma_entry_port_search_tree_def
         comma_entry_port_orbit_def comma_port_cycle_length_def

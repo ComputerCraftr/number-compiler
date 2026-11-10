@@ -222,6 +222,70 @@ class OrdinaryRadixPorts:
 
 
 @dataclass(frozen=True, slots=True)
+class CompactOrdinaryRadixPorts:
+    """Aggregated ordinary-power ports without per-position boundary rows."""
+
+    source_residue: int
+    source_boundaries: tuple[int, ...] | None
+    carry_word: str
+    add_borrow_mask: int
+    forward_borrow_mask: int
+    difference_xor_mask: int
+    high_mask: int
+    low_mask: int
+
+
+def _ordinary_port_summary(
+    source: int,
+    base: int,
+    places: int,
+    *,
+    include_source_boundaries: bool,
+    boundary_rows: tuple[TripleRadixBoundary, ...] | None = None,
+) -> CompactOrdinaryRadixPorts:
+    """Fold one resolved ordinary source into demanded aggregate ports."""
+    _require_base_places(base, places)
+    if type(include_source_boundaries) is not bool:
+        raise TypeError("source-boundary demand must be Boolean")
+    if type(source) is not int or not 0 <= source < base**places:
+        raise ValueError("ordinary port source is outside its radix window")
+    source_boundaries: list[int] | None = [] if include_source_boundaries else None
+    carry_digits: list[str] = []
+    add = forward = high = low = 0
+    modulus = 1
+    for position in range(places):
+        modulus *= base
+        if boundary_rows is None:
+            remainder = source % modulus
+            tripling, _doubling, add_borrow, _subtraction = _tripling_prefix_components(
+                modulus, remainder
+            )
+        else:
+            row = boundary_rows[position]
+            remainder = row.source_remainder
+            tripling = row.tripling_carry
+            add_borrow = row.tripling_sub_borrow
+        forward_borrow = int((6 * remainder) % modulus < (2 * remainder) % modulus)
+        add |= add_borrow << position
+        forward |= forward_borrow << position
+        high |= int(tripling >= 2) << position
+        low |= int(tripling >= 1) << position
+        carry_digits.append(str(tripling))
+        if source_boundaries is not None:
+            source_boundaries.append(remainder)
+    return CompactOrdinaryRadixPorts(
+        source,
+        None if source_boundaries is None else tuple(source_boundaries),
+        "".join(reversed(carry_digits)),
+        add,
+        forward,
+        add ^ forward,
+        high,
+        low,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class ThreePowerRadixOrbit:
     """Compact, source-authenticated ordinary/dyadic low-radix action."""
 
@@ -347,25 +411,41 @@ class ThreePowerRadixOrbit:
         if self.clock != ThreePowerClock.ORDINARY:
             raise ValueError("forward innovation identity requires ordinary powers")
         tape = self.tape(places)
-        add = forward = high = low = 0
-        modulus = 1
-        for position, row in enumerate(tape):
-            modulus *= self.base
-            residue = row.source_remainder
-            add |= row.tripling_sub_borrow << position
-            forward |= (
-                int((6 * residue) % modulus < (2 * residue) % modulus) << position
-            )
-            high |= row.tripling_high << position
-            low |= row.tripling_low << position
+        summary = _ordinary_port_summary(
+            tape[-1].source_remainder,
+            self.base,
+            places,
+            include_source_boundaries=False,
+            boundary_rows=tape,
+        )
         return OrdinaryRadixPorts(
             tape,
-            "".join(str(row.tripling_carry) for row in reversed(tape)),
-            add,
-            forward,
-            add ^ forward,
-            high,
-            low,
+            summary.carry_word,
+            summary.add_borrow_mask,
+            summary.forward_borrow_mask,
+            summary.difference_xor_mask,
+            summary.high_mask,
+            summary.low_mask,
+        )
+
+    def compact_ordinary_ports(
+        self, places: int, *, include_source_boundaries: bool = False
+    ) -> CompactOrdinaryRadixPorts:
+        """Aggregate ordinary ports without constructing boundary dataclasses.
+
+        ``source_boundaries`` is retained only for callers that publish the
+        per-position source remainders.  The detailed ``tape`` API remains
+        available when callers need the full physical boundary records.
+        """
+        if self.clock != ThreePowerClock.ORDINARY:
+            raise ValueError("forward innovation identity requires ordinary powers")
+        _require_base_places(self.base, places)
+        source = self.residue(places)
+        return _ordinary_port_summary(
+            source,
+            self.base,
+            places,
+            include_source_boundaries=include_source_boundaries,
         )
 
     def conditional_digit_mask(self, places: int) -> int:
@@ -437,14 +517,12 @@ def difference_power_block(
 def _boundary_from_residues(
     places: int, base: int, modulus: int, previous: int, x: int, future: int
 ) -> TripleRadixBoundary:
-    c3, c2 = 3 * x // modulus, 2 * x // modulus
-    add_carry = c3 - c2
-    subtraction = int((3 * x) % modulus < x)
+    c3, c2, add_carry, subtraction = _tripling_prefix_components(modulus, x)
     innovation = (future - x) % modulus
     previous_innovation = (x - previous) % modulus
     innovation_carry = int(x + innovation >= modulus)
     innovation_borrow = int(future < x)
-    if add_carry != subtraction or innovation_carry != innovation_borrow:
+    if innovation_carry != innovation_borrow:
         raise AssertionError("carry/borrow duality failed")
     return TripleRadixBoundary(
         places,
@@ -458,3 +536,16 @@ def _boundary_from_residues(
         innovation_borrow,
         int(innovation < previous_innovation),
     )
+
+
+def _tripling_prefix_components(
+    modulus: int, remainder: int
+) -> tuple[int, int, int, int]:
+    """Return tripling/doubling carries and their exact borrow duals."""
+    tripling = 3 * remainder // modulus
+    doubling = 2 * remainder // modulus
+    add_carry = tripling - doubling
+    subtraction_borrow = int((3 * remainder) % modulus < remainder)
+    if add_carry != subtraction_borrow:
+        raise AssertionError("tripling carry and subtraction borrow disagree")
+    return tripling, doubling, add_carry, subtraction_borrow

@@ -17,7 +17,7 @@ validates and canonicalizes their results before publishing a field action.
 from __future__ import annotations
 
 from collections.abc import MutableMapping, MutableSequence
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.automata.symmetry_powering import ActionTransform
 from number_compiler.arithmetic.carry.carry_monoid import CarryFn, compose_carry_fn
@@ -51,6 +51,7 @@ from number_compiler.sequences.reverse_add.field_action_audit import (
     ReverseFieldActionAudit,
 )
 from number_compiler.sequences.reverse_add.semantic_identity_cache import (
+    RadialIdentitySeal,
     SemanticIdentityMemoRecord,
     build_radial_identity,
     valid_radial_memo,
@@ -80,6 +81,15 @@ from number_compiler.sequences.reverse_add.field_action_types import (
 )
 
 _DEFAULT_REVERSE_GEOMETRY_1 = ReverseGeometry(0)
+
+
+def _radial_identity_digit_work(
+    radial: PowerTwoCyclotomicRadialQuotient,
+) -> int:
+    """Count decimal digits in the typed canonical multiplier key."""
+    key = radial.canonical_key
+    unit_digits = 0 if key[4] is None else sum(len(str(value)) for value in key[4])
+    return len(str(key[1])) + len(str(key[2])) + len(str(key[3])) + unit_digits
 
 
 class ReverseFieldActionArena(ReverseFieldActionAudit):
@@ -467,10 +477,21 @@ class ReverseFieldActionArena(ReverseFieldActionAudit):
         record: SemanticIdentityMemoRecord | None = None
         try:
             identity = self._compute_semantic_identity(radial)
+            component = identity.behavior[1]
+            if type(component) is not SemanticIdentity:
+                raise AssertionError(
+                    "radial identity lost its typed multiplier component"
+                )
+            radial_seal: RadialIdentitySeal = (
+                radial.no_growth,
+                radial.growth,
+                radial.canonical_key,
+                component.digest,
+            )
             record = (
                 reference,
                 id(action),
-                (radial.no_growth, radial.growth),
+                radial_seal,
                 identity,
                 identity.digest,
                 identity.behavior,
@@ -495,9 +516,7 @@ class ReverseFieldActionArena(ReverseFieldActionAudit):
             raise
         self.ledger.bump(
             _reverse_add_keys.REVERSE_FIELD_ACTION_IDENTITY_RETAINED_PAYLOAD_BYTES,
-            len(cast(str, identity.behavior[1]))
-            + len(cast(str, identity.behavior[2]))
-            + len(identity.digest),
+            _radial_identity_digit_work(radial) + len(identity.digest),
         )
         self.ledger.bump(
             _reverse_add_keys.REVERSE_FIELD_ACTION_SEMANTIC_IDENTITY_PUBLICATIONS
@@ -515,9 +534,7 @@ class ReverseFieldActionArena(ReverseFieldActionAudit):
                 _reverse_add_keys.REVERSE_FIELD_ACTION_SEMANTIC_IDENTITY_FAILED_WORK
             )
             raise
-        radial_chars = len(cast(str, identity.behavior[1])) + len(
-            cast(str, identity.behavior[2])
-        )
+        radial_chars = _radial_identity_digit_work(radial)
         self.ledger.bump(
             _reverse_add_keys.REVERSE_FIELD_ACTION_IDENTITY_RADIAL_DECIMAL_DIGIT_WORK,
             radial_chars,

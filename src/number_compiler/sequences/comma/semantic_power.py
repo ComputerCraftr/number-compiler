@@ -123,8 +123,7 @@ class SymbolicDecadePowers:
     completed columns and output bindings; Stop weights and clock transport
     remain occurrence payload. This owner does not infer infinite branch
     safety; public prefix admission uses a separately registered global
-    FutureCID provider when available and retains finite forest admission
-    otherwise.
+    FutureCID provider and refuses requests without that authority.
     """
 
     def __init__(self, view: SemanticContinuation) -> None:

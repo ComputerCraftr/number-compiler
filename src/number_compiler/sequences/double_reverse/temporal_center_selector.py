@@ -13,7 +13,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from number_compiler.arithmetic.contracts.input_validation import is_runtime_instance
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_runtime_instance,
+    require_instance,
+)
 
 
 def _h(value: int) -> int:
@@ -82,6 +85,126 @@ class CenterReturn:
     @property
     def output_f5(self) -> tuple[int, int]:
         return self.next_pair[0] % 5, self.next_pair[1] % 5
+
+    @property
+    def right_forcing(self) -> int:
+        """The actual, not independently supplied, right-center carry forcing.
+
+        For the certified even/odd/odd/odd/even four-step clock,
+          next_right = 16*old_right + f (mod 10),
+          f = 8*H(old_left) + 4*left_1 + 2*left_2 + left_3.
+        Every bit is already a port of THIS exact center-return action.
+        """
+        forcing = (
+            8 * _h(self.initial[0])
+            + 4 * self.driver.left_1
+            + 2 * self.driver.left_2
+            + self.driver.left_3
+        )
+        if self.next_pair[1] != (16 * self.initial[1] + forcing) % 10:
+            raise AssertionError(
+                "center forcing disagrees with the exact returned pair"
+            )
+        return forcing
+
+
+@dataclass(frozen=True, slots=True)
+class CenterForcingPower:
+    """Mod-10 affine forcing cocycle, projected from a TRUE center path.
+
+    This holds a path's source/target center *right* digits, not a separately
+    postulated periodic driver.  The unconditional stencil identity implies
+    that the 16-power weighted forcing modulo 10 is the endpoint difference.
+    Modulo 5 the sum telescopes; modulo 2 only the final forcing matters.
+    These exact identities allow a log-horizon source-pointed implementation.
+    An endpoint equality does NOT prove an indefinitely recurring return.
+    """
+
+    blocks: int
+    first_right: int
+    last_right: int
+    weighted_mod10: int
+    sum_mod5: int
+    last_forcing_parity: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.blocks) is not int
+            or self.blocks < 1
+            or any(
+                type(d) is not int or d not in range(10)
+                for d in (self.first_right, self.last_right)
+            )
+            or type(self.weighted_mod10) is not int
+            or self.weighted_mod10
+            != (self.last_right - pow(16, self.blocks, 10) * self.first_right) % 10
+            or type(self.sum_mod5) is not int
+            or self.sum_mod5 != (self.last_right - self.first_right) % 5
+            or type(self.last_forcing_parity) is not int
+            or self.last_forcing_parity != (self.last_right & 1)
+        ):
+            raise ValueError("center forcing must be the exact affine endpoint cocycle")
+
+    @classmethod
+    def from_endpoints(
+        cls,
+        first_right: int,
+        last_right: int,
+        blocks: int,
+    ) -> CenterForcingPower:
+        if (
+            type(blocks) is not int
+            or blocks < 1
+            or any(
+                type(d) is not int or not 0 <= d < 10 for d in (first_right, last_right)
+            )
+        ):
+            raise ValueError("center power needs positive blocks and decimal endpoints")
+        return cls(
+            blocks,
+            first_right,
+            last_right,
+            (last_right - pow(16, blocks, 10) * first_right) % 10,
+            (last_right - first_right) % 5,
+            last_right & 1,
+        )
+
+    @classmethod
+    def from_return(cls, returned: object) -> CenterForcingPower:
+        returned = require_instance(returned, CenterReturn)
+        value = cls.from_endpoints(returned.initial[1], returned.next_pair[1], 1)
+        if value.weighted_mod10 != returned.right_forcing % 10:
+            raise AssertionError("four-step center forcing does not match source ports")
+        return value
+
+    @property
+    def right_returns(self) -> bool:
+        return self.first_right == self.last_right
+
+    @property
+    def harmonic_return(self) -> bool:
+        """Necessary and sufficient MOD-10 return of this right center digit."""
+        return self.sum_mod5 == 0 and self.last_forcing_parity == self.first_right % 2
+
+    def then(self, later: object) -> CenterForcingPower:
+        later = require_instance(later, CenterForcingPower)
+        if self.last_right != later.first_right:
+            raise ValueError("center forcing composition needs an exact digit seam")
+        combined = CenterForcingPower.from_endpoints(
+            self.first_right,
+            later.last_right,
+            self.blocks + later.blocks,
+        )
+        expected = (
+            pow(16, later.blocks, 10) * self.weighted_mod10 + later.weighted_mod10
+        ) % 10
+        if (
+            combined.weighted_mod10 != expected
+            or combined.sum_mod5 != (self.sum_mod5 + later.sum_mod5) % 5
+            or combined.last_forcing_parity != later.last_forcing_parity
+        ):
+            raise AssertionError("triangular center forcing lost composition")
+        return combined
 
 
 def center_return(pair: tuple[int, int], driver: CenterDriver) -> CenterReturn:
@@ -407,6 +530,7 @@ __all__ = [
     "CenterReturn",
     "center_input_moore",
     "center_return",
+    "CenterForcingPower",
     "conditional_center_moore",
     "encode_multiplier_word",
 ]

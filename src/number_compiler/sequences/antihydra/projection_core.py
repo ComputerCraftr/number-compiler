@@ -134,10 +134,10 @@ class AntihydraFragmentAdapter(SourceBoundImageAdapter):
         )
         self.ledger.register_execution_root(self)
         from number_compiler.sequences.antihydra.payload_audit import (
-            register_antihydra_payload_contract,
+            register_fragment_adapter_contract,
         )
 
-        register_antihydra_payload_contract(self)
+        register_fragment_adapter_contract(self)
 
     def audit_snapshot(self) -> ProjectionAdapterAuditState:
         return ProjectionAdapterAuditState(

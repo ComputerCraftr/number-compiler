@@ -10,27 +10,21 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import replace
+from importlib.resources.abc import Traversable
+from importlib.util import find_spec
 from pathlib import Path
-from types import MappingProxyType, ModuleType
-from typing import Protocol, cast
+from types import ModuleType
+from typing import Never, Protocol, cast
 
 import pytest
 
-from devtools.paths import isabelle_root
-from devtools.verification.comma_semantic_future_artifact import (
-    runtime_candidate_record_from_isabelle_data,
-)
 from number_compiler.api.cli import main
 from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageView,
 )
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.comma import (
-    certificates,
-    future_authority,
-    future_provider,
-)
+from number_compiler.sequences.comma import future_provider
 from number_compiler.sequences.comma import power as comma_power
 from number_compiler.sequences.comma.action_arena import (
     CommaActionID,
@@ -64,7 +58,11 @@ from number_compiler.sequences.comma.semantic_branch import (
     SemanticMacroChild,
     select_global_semantic_macro_child,
 )
-from tests.support.comma_future_provider_fixture import canonical_bytes
+from tests.support.comma_future_provider_fixture import (
+    authored_candidate_record,
+    canonical_bytes,
+    install_test_only_global_registry,
+)
 from tests.support.comma_source_image_payload import source_image_payload
 
 
@@ -82,45 +80,25 @@ def _no_work(_amount: int) -> None:
     return None
 
 
-def _authored_candidate() -> dict[str, object]:
-    source = (
-        isabelle_root()
-        / "families/comma/comma_semantic_future_instance"
-        / "Comma_Semantic_Future_Candidate_Data.thy"
-    )
-    return runtime_candidate_record_from_isabelle_data(
-        source.read_text(encoding="utf-8"), source
-    )
+def _record_provider_loads(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+    loaded: list[Path] = []
+    load_file = future_provider.SemanticFutureProviderStore.load_file
 
+    def record_load(
+        store: future_provider.SemanticFutureProviderStore,
+        path: Path,
+        *,
+        charge_work: Callable[[int], None],
+    ) -> future_provider.SemanticFutureProviderLease:
+        loaded.append(Path(path))
+        return load_file(store, path, charge_work=charge_work)
 
-def _install_test_only_global_registry(
-    monkeypatch: pytest.MonkeyPatch,
-    record: Mapping[str, object],
-) -> str:
-    """Exercise the global consumer with explicitly synthetic admission."""
-    parsed = future_provider.parse_future_candidate(record, charge_work=_no_work)
-    admission = future_authority.KernelInstanceAdmission(
-        artifact_sha256=parsed.artifact_sha256,
-        instance_id=future_authority.GLOBAL_RELEASE_SESSION_ID,
-        theorem_id=future_authority.GLOBAL_RELEASE_THEOREM_ID,
-        contract_id=future_authority.GLOBAL_RELEASE_CONTRACT_ID,
-        claims=future_authority.GLOBAL_RELEASE_CLAIMS,
-        scope=future_authority.KERNEL_RELEASE_SCOPE,
-    )
     monkeypatch.setattr(
-        future_provider,
-        "_ADMITTED_KERNEL_INSTANCES",
-        MappingProxyType({parsed.artifact_sha256: admission}),
+        future_provider.SemanticFutureProviderStore,
+        "load_file",
+        record_load,
     )
-    # The production callable is a partial bound to the immutable empty
-    # release registry at import time. Rebind only this test process to the
-    # synthetic fixture registry; production authority remains unchanged.
-    monkeypatch.setattr(
-        future_provider,
-        "registered_global_release_artifact_sha256",
-        lambda: parsed.artifact_sha256,
-    )
-    return parsed.artifact_sha256
+    return loaded
 
 
 def _provider(
@@ -170,8 +148,8 @@ def test_authored_provider_selects_two_later_forks_and_transports_exponents(
     monkeypatch: pytest.MonkeyPatch,
     request: pytest.FixtureRequest,
 ) -> None:
-    record = _authored_candidate()
-    _install_test_only_global_registry(monkeypatch, record)
+    record = authored_candidate_record()
+    install_test_only_global_registry(monkeypatch, record)
     provider = _provider(record, request)
     source = _source20_first_child()
     visited: list[BoundaryOccurrence] = []
@@ -209,11 +187,23 @@ def test_authored_provider_selects_two_later_forks_and_transports_exponents(
         (19_999_999_999_999, 20_000_000_000_000),
     )
 
-    for expected_source, expected_window, expected_terminal, expected_children in zip(
+    expected_slots = (0, 1)
+    expected_selected_literals = (6_999_999_999_999, 20_000_000_000_000)
+
+    for (
+        expected_source,
+        expected_window,
+        expected_terminal,
+        expected_children,
+        expected_slot,
+        expected_literal,
+    ) in zip(
         expected_sources,
         expected_windows,
         expected_terminals,
         expected_terminal_children,
+        expected_slots,
+        expected_selected_literals,
         strict=True,
     ):
         assert source == expected_source
@@ -225,7 +215,9 @@ def test_authored_provider_selects_two_later_forks_and_transports_exponents(
 
         selected = _next_boundary_child(source, provider)
         slot = selected.selection.selected_slot
-        assert selected.literal_value == expected_children[slot]
+        assert slot == expected_slot
+        assert expected_children[expected_slot] == expected_literal
+        assert selected.literal_value == expected_literal
         assert selected.total_transition_count == prefix.transition_count + 1
         assert selected.weighted_action.weight.evaluate(source.exponent) == (
             selected.total_transition_count
@@ -274,6 +266,40 @@ def test_authored_provider_selects_two_later_forks_and_transports_exponents(
     )
 
 
+def test_authenticated_global_return_crosses_the_selected_fork(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    record = authored_candidate_record()
+    install_test_only_global_registry(monkeypatch, record)
+    provider = _provider(record, request)
+    selected = _next_boundary_child(_source20_first_child(), provider)
+    target_index = SOURCE20_SELECTED_CHILD_INDEX + selected.total_transition_count
+
+    artifact_directory = tmp_path / "kernels"
+    artifact_directory.mkdir()
+    artifact = artifact_directory / future_provider.FUTURE_PROVIDER_ASSET
+    artifact.write_bytes(canonical_bytes(record))
+
+    with comma_power.CommaTerm(target_index) as term:
+        stage_provider = cast(
+            Callable[[Path], None],
+            object.__getattribute__(term, "_stage_global_future_provider_artifact"),
+        )
+        stage_provider(artifact)
+        term.require_certified_public_prefix()
+
+        assert term.materialize() == selected.target.value()
+        assert object.__getattribute__(term, "_boundary_occurrence") == selected.target
+        assert len(term.audit_snapshot().boundary_receipts) == 1
+        assert term.ledger.counters["comma_global_branch_action_applications"] == 2
+        receipt_count = len(term.audit_snapshot().boundary_receipts)
+        assert term.materialize() == selected.target.value()
+        assert term.ledger.counters["comma_global_branch_action_applications"] == 2
+        assert len(term.audit_snapshot().boundary_receipts) == receipt_count
+
+
 @pytest.mark.validation
 def test_authored_candidate_drives_public_cli_after_the_source20_edge(
     tmp_path: Path,
@@ -281,8 +307,8 @@ def test_authored_candidate_drives_public_cli_after_the_source20_edge(
     capsys: pytest.CaptureFixture[str],
     request: pytest.FixtureRequest,
 ) -> None:
-    record = _authored_candidate()
-    digest = _install_test_only_global_registry(monkeypatch, record)
+    record = authored_candidate_record()
+    digest = install_test_only_global_registry(monkeypatch, record)
     parsed = future_provider.parse_future_candidate(record, charge_work=_no_work)
     assert parsed.artifact_sha256 == digest
     provider = _provider(record, request)
@@ -293,17 +319,23 @@ def test_authored_candidate_drives_public_cli_after_the_source20_edge(
         + first_selected.total_transition_count
         + second_selected.total_transition_count
     )
-    expected = second_selected.literal_value
+    assert first_selected.selection.selected_slot == 0
+    assert first_selected.literal_value == 6_999_999_999_999
+    assert second_selected.selection.selected_slot == 1
+    assert second_selected.literal_value == 20_000_000_000_000
+    expected = 20_000_000_000_000
 
     artifact_directory = tmp_path / "kernels"
     artifact_directory.mkdir()
     artifact = artifact_directory / future_provider.FUTURE_PROVIDER_ASSET
     artifact.write_bytes(canonical_bytes(record))
 
-    def local_package_files(_package: str | ModuleType) -> Path:
+    def local_package_files(_package: str | ModuleType) -> Traversable:
         return tmp_path
 
     monkeypatch.setattr(comma_power, "files", local_package_files)
+
+    staged_artifacts = _record_provider_loads(monkeypatch)
 
     selected_sources: list[BoundaryState] = []
     select = future_provider.SemanticFutureProvider.select_unique_unranked_child
@@ -345,10 +377,7 @@ def test_authored_candidate_drives_public_cli_after_the_source20_edge(
         record_ordered_children,
     )
 
-    def forbid_finite_admission(*_args: object, **_kwargs: object) -> None:
-        pytest.fail("global future CLI route fell back to finite forest admission")
-
-    monkeypatch.setattr(certificates, "_verify", forbid_finite_admission)
+    assert find_spec("number_compiler.sequences.comma.forest_verifier") is None
     assert main(["a367620", "--nth", str(target_index), "--format", "json"]) == 0
     packet = json.loads(capsys.readouterr().out)
     assert packet["index"] == target_index
@@ -356,14 +385,15 @@ def test_authored_candidate_drives_public_cli_after_the_source20_edge(
     expected_sources = [BoundaryState("N", 2, 10), BoundaryState("N", 7, 12)]
     assert selected_sources == expected_sources
     assert ordered_sources == expected_sources
+    assert staged_artifacts == [artifact]
 
 
 def test_future_publication_poison_and_stale_provider_fail_before_term_commit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    record = _authored_candidate()
-    digest = _install_test_only_global_registry(monkeypatch, record)
+    record = authored_candidate_record()
+    digest = install_test_only_global_registry(monkeypatch, record)
     artifact_directory = tmp_path / "kernels"
     artifact_directory.mkdir()
     artifact = artifact_directory / future_provider.FUTURE_PROVIDER_ASSET
@@ -634,3 +664,34 @@ def test_future_publication_poison_and_stale_provider_fail_before_term_commit(
         )
         assert audit_registered_payloads(term.ledger).forbidden_future_payloads == 0
         term.close()
+
+
+def test_global_provider_warm_reuse_is_term_owned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = authored_candidate_record()
+    digest = install_test_only_global_registry(monkeypatch, record)
+    artifact_directory = tmp_path / "kernels"
+    artifact_directory.mkdir()
+    artifact = artifact_directory / future_provider.FUTURE_PROVIDER_ASSET
+    artifact.write_bytes(canonical_bytes(record))
+
+    def local_package_files(_package: str | ModuleType) -> Traversable:
+        return tmp_path
+
+    monkeypatch.setattr(comma_power, "files", local_package_files)
+    loaded = _record_provider_loads(monkeypatch)
+    with comma_power.CommaTerm(1) as term:
+        first = term.global_future_provider_for_prefix_admission()
+        assert first is not None and first.artifact_sha256 == digest
+
+        def reject_warm_package_read(_package: str | ModuleType) -> Never:
+            raise AssertionError("warm provider reopened package resources")
+
+        monkeypatch.setattr(comma_power, "files", reject_warm_package_read)
+        second = term.global_future_provider_for_prefix_admission()
+        assert second is first
+        term.require_certified_public_prefix()
+        assert term.materialize() == 20
+    assert loaded == [artifact]

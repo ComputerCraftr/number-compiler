@@ -16,7 +16,7 @@ local_setup \<open>fn lthy =>
           error "Warm parent reopened a child proof owner"
         else NONE) lthy
     val reference = Comma_Fast_Kernel.context lthy
-      delsimps @{thms comma_fast_entry_round_jump}
+      |> Simplifier.del_simps @{thms comma_fast_entry_round_jump}
     fun nat n = HOLogic.mk_number @{typ nat} n
     fun request fuel phase offset = @{term comma_fast_round_aux} $ nat fuel $ nat phase $
       (@{term Comma_Entry} $ nat 1 $ nat 0 $ nat offset)

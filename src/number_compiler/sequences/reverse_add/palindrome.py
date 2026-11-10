@@ -9,7 +9,7 @@ from number_compiler.arithmetic.formula.formula import FormulaArena, FormulaRoot
 from number_compiler.arithmetic.formula.types import RadixSpec
 from number_compiler.arithmetic.polynomials.twisted_observer import (
     TwistedCylinderProjection,
-    first_mirror_obstruction,
+    mirror_obstruction_from_buffer,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.stores import LedgerList
@@ -32,6 +32,7 @@ def _completed_output_buffer(
     *,
     ledger: ResourceLedger,
     scratch: LedgerList[int],
+    sheet_width: int | None = None,
 ) -> Generator[LedgerList[int], None, None]:
     """Reserve and release one complete output for mirrored-coordinate queries.
 
@@ -51,7 +52,10 @@ def _completed_output_buffer(
         raise ValueError("mirror output scratch belongs to another ledger or policy")
     if scratch:
         raise RuntimeError("mirror output scratch is already in use")
-    with ledger.reservation(scratch.owner, entries=width, nodes=2 * width):
+    sheet_nodes = 0 if sheet_width is None else 2 * max(sheet_width, 2 * width) + 8
+    with ledger.reservation(
+        scratch.owner, entries=width, nodes=2 * width + sheet_nodes
+    ):
         try:
             for digit in digits:
                 if len(scratch) >= width:
@@ -75,10 +79,11 @@ def mirror_obstruction_from_output(
     """Compute the exact obstruction from a single completed output stream."""
     if type(first_width) is not int or first_width < 1:
         raise ValueError("positive first-sheet width required")
-    with _completed_output_buffer(width, digits, ledger=ledger, scratch=scratch):
-        return first_mirror_obstruction(
-            width, scratch.__getitem__, first_width=first_width
-        )
+    # Reserve the active sheet and its immutable result before reading output.
+    with _completed_output_buffer(
+        width, digits, ledger=ledger, scratch=scratch, sheet_width=first_width
+    ):
+        return mirror_obstruction_from_buffer(scratch, first_width=first_width)
 
 
 def mirror_palindrome_from_output(

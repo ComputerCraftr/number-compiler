@@ -11,21 +11,15 @@ import sys
 from collections.abc import Mapping
 from dataclasses import replace
 
-from number_compiler.resources.cellular_diagnostics import (
-    collect_cellular_work,
-)
+from number_compiler.resources.cellular_diagnostics import collect_cellular_work
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.resources.metric_keys import api as _api_keys
-from number_compiler.resources.metric_keys import (
-    arithmetic_fields as _fields_keys,
-)
+from number_compiler.resources.metric_keys import arithmetic_fields as _fields_keys
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.resources.metric_keys import double_reverse as _double_reverse_keys
-from number_compiler.resources.metric_keys import (
-    hashlife_execution as _execution_keys,
-)
+from number_compiler.resources.metric_keys import hashlife_execution as _execution_keys
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.reuse_diagnostics import (
@@ -734,6 +728,15 @@ def collect_temporal_diagnostics(
             ),
             reverse_laurent_source_ticks=_count(
                 counters, _reverse_add_keys.REVERSE_LAURENT_SOURCE_TICKS
+            ),
+            reverse_laurent_native_ticks=_count(
+                counters, _reverse_add_keys.REVERSE_LAURENT_NATIVE_TICKS
+            ),
+            reverse_laurent_native_digit_visits=_count(
+                counters, _reverse_add_keys.REVERSE_LAURENT_NATIVE_DIGIT_VISITS
+            ),
+            reverse_center11_work=_named_work(
+                counters, _reverse_add_keys.REVERSE_CENTER11_PREFIX
             ),
             double_reverse_source_word_fold_node_visits=_count(
                 counters,

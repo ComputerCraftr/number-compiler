@@ -80,6 +80,9 @@ struct
           complete_value some_triple andalso
           not (complete_value (@{term "1 + (2::nat)"})) andalso
           not (complete_value (@{term "comma_core_primary (1::nat)"})) andalso
+          not (complete_value (@{term
+            "comma_decisive_entry_clock_key_with_core
+              (comma_cyclotomic_clock_of 0) 1 0 23"})) andalso
           not (complete_value partial_near)
         end
       val _ = if complete_value_regression then ()
@@ -90,7 +93,8 @@ struct
             Thm.nprems_of theorem = 0 andalso null (Thm.hyps_of theorem) andalso
             null (Thm.tpairs_of theorem) then
             if complete_value result then theorem
-            else error "Endpoint equation has an incomplete closed result"
+            else error ("Endpoint equation has an incomplete closed result: " ^
+              Syntax.string_of_term ctxt request ^ " = " ^ Syntax.string_of_term ctxt result)
           else error "Endpoint equation has the wrong owner or open authority"
         end
       (* These are closed local arithmetic requests, not whole B1/round
@@ -100,14 +104,14 @@ struct
       (* Separate the selected fast-period table read from the small core
          projection.  The recursive gcd equations are used only for a selected
          P, then memoized by P rather than re-run for each source spelling. *)
-      val source_period_context = put_simpset HOL_basic_ss ctxt addsimps
+      val source_period_context = put_simpset HOL_basic_ss ctxt |> Simplifier.add_simps
         @{thms comma_decisive_sector_period_def comma_finite_position.case}
-      val fast_period_context = local_arithmetic addsimps
+      val fast_period_context = local_arithmetic |> Simplifier.add_simps
         @{thms comma_finite_period_fast_def nth_Cons'}
-      val core_period_context = local_arithmetic addsimps
+      val core_period_context = local_arithmetic |> Simplifier.add_simps
         @{thms comma_core_primary_def comma_core_modulus_def
           comma_core_period_def gcd_nat.simps}
-      val admitted_context = local_arithmetic addsimps
+      val admitted_context = local_arithmetic |> Simplifier.add_simps
         @{thms comma_round_admitted.simps}
       fun instantiate_index theorem variable n =
         Simplifier.simplify local_arithmetic
@@ -117,14 +121,18 @@ struct
         (instantiate_index @{thm comma_port_weighted_trace.simps(2)} "n") (0 upto 8)
       val displacement_steps = map
         (instantiate_index @{thm comma_period_displacement_succ} "j") (0 upto 8)
-      val endpoint_context = kernel_context addsimps
+      val endpoint_context = kernel_context |> Simplifier.add_simps
         (@{thms comma_decisive_sector_period_def comma_decisive_sector_target.simps
-          comma_decisive_entry_clock_key_def comma_core_primary_def
+          comma_decisive_entry_clock_key_def
+          comma_decisive_entry_clock_key_with_core_def
+          comma_decisive_entry_clock_key_from_core_residue_def
+          comma_cyclotomic_clock_core_value_def comma_core_primary_def
           comma_core_modulus_def comma_core_seed_def comma_core_period_def
           comma_recursive_core_residue_def comma_core_halfcycle_def comma_core_seven_def
           comma_cyclotomic_clock_projection insert_iff empty_iff
           comma_entry_diagonal_def comma_entry_diagonal_endpoint_def
-          comma_diagonal_headroom_def
+          comma_diagonal_headroom_def comma_offset_orbit_def
+          comma_digit_orbit_sum_def power2_eq_square
           comma_entry_port_refined_locator_def comma_entry_port_seed_def
           comma_entry_port_row_def comma_entry_port_orbit_def
           comma_entry_port_position_def comma_entry_port_potential_def
@@ -138,12 +146,15 @@ struct
           fst_conv snd_conv case_prod_beta}
          @ port_steps @ displacement_steps)
       val boundaries =
-        [(@{term "comma_decisive_sector_period source"},
+        [(@{term "comma_offset_orbit x"}, @{thms comma_offset_orbit_def}),
+         (@{term "comma_decisive_sector_period source"},
             @{thms comma_decisive_sector_period_def}),
          (@{term "comma_decisive_sector_target r source"},
             @{thms comma_decisive_sector_target.simps}),
          (@{term "comma_decisive_entry_clock_key clock f x"},
             @{thms comma_decisive_entry_clock_key_def}),
+         (@{term "comma_decisive_entry_clock_key_with_core clock f x c"},
+            @{thms comma_decisive_entry_clock_key_with_core_def}),
          (@{term "comma_core_primary P"}, @{thms comma_core_primary_def}),
          (@{term "comma_core_modulus P"}, @{thms comma_core_modulus_def}),
          (@{term "comma_core_seed P"}, @{thms comma_core_seed_def}),
@@ -395,7 +406,7 @@ struct
                         SOME (typ, value) =>
                           if typ = natT andalso value > 0 andalso value <= 924 then
                             let
-                              val congruence_context = local_arithmetic addsimps [equation]
+                              val congruence_context = local_arithmetic |> Simplifier.add_simps [equation]
                               val answer = (value, equation, admitted, congruence_context)
                               val _ = if Termtab.size (!period_memo) < 8192 then
                                   period_memo := Termtab.update (source, answer) (!period_memo)
@@ -647,7 +658,7 @@ struct
          lhss = map (schematic o #1) boundaries,
          proc = fn _ => fn _ => endpoint, identifier = []}
       val _ = endpoint_evaluator :=
-        (endpoint_context delsimps (maps #2 boundaries)
+        (endpoint_context |> Simplifier.del_simps (maps #2 boundaries)
           |> Simplifier.add_proc endpoint_proc)
 
       fun stats () = "endpoint_hits=" ^ Int.toString (!endpoint_hits) ^

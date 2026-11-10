@@ -245,7 +245,6 @@ lemma comma_semantic_graph_forall_less_iff_list_all:
 
 ML \<open>Thm.consolidate [@{thm comma_semantic_graph_completed_binding_from_lookup}]\<close>
 
-ML_file "../comma_entry_arithmetic/selected_list_conversion.ML"
 ML_file "semantic_source_ports.ML"
 ML_file "semantic_near_operator_fixture.ML"
 ML_file "semantic_graph_publication.ML"

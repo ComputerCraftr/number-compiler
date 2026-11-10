@@ -51,7 +51,7 @@ from number_compiler.sequences.comma.boundary_receipt import (
 if TYPE_CHECKING:
     from number_compiler.sequences.comma.power import CommaTerm
 
-SEMANTIC_VERSION: Final[str] = "comma-source-cylinder-v6-ledger-issued-receipt-handle"
+SEMANTIC_VERSION: Final[str] = "comma-source-cylinder-v7-receiver-bound-prefix"
 STRICT_INTERIOR_CYCLE_CONSUMER_TAG: Final[str] = "strict-interior-cycle-v2-phase-coset"
 
 
@@ -387,52 +387,36 @@ class CommaImageAdapter(SourceBoundImageAdapter):
                 radix=source.binding.radix,
                 precision=source.binding.precision,
             )
-        if node.kind in {"boundary-prefix", "boundary-prefix-occurrence"}:
+        if node.kind == "boundary-prefix-occurrence":
             state = node.boundary_source
             if state is None:
                 raise ValueError("comma boundary action is incomplete")
-            root: CommaImagePayload | None = None
-            prior_steps = 0
-            if node.kind == "boundary-prefix":
-                exponent = node.boundary_exponent
-                if exponent < 5:
-                    raise ValueError("comma boundary action has no exact exponent")
-                representative = state.exponent_residue
-                if representative < 5:
-                    representative += PERIOD
-                if exponent != representative:
-                    raise ValueError("comma boundary lifting is not yet admitted")
-            else:
-                if node.boundary_exponent != 0:
+            root = self.source_payload(source.binding.source)
+            cursor = root.boundary_cursor
+            if cursor is None:
+                exponent = decimal_sector(root.value).exponent
+                if exponent % PERIOD != state.exponent_residue:
                     raise ValueError(
-                        "comma receiver-bound prefix action has a fixed exponent"
+                        "comma receiver prefix has another source occurrence "
+                        "(root exponent/phase mismatch)"
                     )
-                root = self.source_payload(source.binding.source)
-                cursor = root.boundary_cursor
-                if cursor is None:
-                    exponent = decimal_sector(root.value).exponent
-                    if exponent % PERIOD != state.exponent_residue:
-                        raise ValueError(
-                            "comma receiver prefix has another source occurrence "
-                            "(root exponent/phase mismatch)"
-                        )
-                    if (
-                        state.value(exponent, charge_bits=self.arena.charge_bits)
-                        != root.value
-                    ):
-                        raise ValueError(
-                            "comma receiver prefix has another source occurrence "
-                            "(root value mismatch)"
-                        )
-                    prior_steps = 0
-                else:
-                    if cursor.state != state:
-                        raise ValueError(
-                            "comma receiver prefix has another source occurrence "
-                            "(cursor chart mismatch)"
-                        )
-                    exponent = cursor.exponent
-                    prior_steps = cursor.transitions
+                if (
+                    state.value(exponent, charge_bits=self.arena.charge_bits)
+                    != root.value
+                ):
+                    raise ValueError(
+                        "comma receiver prefix has another source occurrence "
+                        "(root value mismatch)"
+                    )
+                prior_steps = 0
+            else:
+                if cursor.state != state:
+                    raise ValueError(
+                        "comma receiver prefix has another source occurrence "
+                        "(cursor chart mismatch)"
+                    )
+                exponent = cursor.exponent
+                prior_steps = cursor.transitions
             template = (
                 self.arena.boundary_template(state)
                 if boundary_template is None
@@ -440,43 +424,30 @@ class CommaImageAdapter(SourceBoundImageAdapter):
             )
             if type(template) is not MacroTemplate or template.source != state:
                 raise ValueError("comma global action has another boundary template")
-            if node.kind == "boundary-prefix-occurrence":
-                if node.boundary_exponent != 0:
-                    raise ValueError("comma receiver-bound prefix has a fixed exponent")
-                if root is None:
-                    raise AssertionError("receiver prefix lost its source payload")
-                if root.boundary_cursor != payload.boundary_cursor:
-                    raise ValueError(
-                        "comma receiver prefix has another source occurrence "
-                        "(cursor authority mismatch)"
-                    )
-                if (
-                    root.absolute_index != payload.absolute_index
-                    or root.value != payload.value
-                ):
-                    raise ValueError(
-                        "comma receiver prefix has another source occurrence "
-                        "(receiving endpoint mismatch)"
-                    )
-                transitions = prior_steps + node.steps
-                if transitions > template.weight.evaluate(
-                    exponent, charge_bits=self.arena.charge_bits
-                ):
-                    raise ValueError("comma receiver prefix crosses its next branch")
-                base_index = root.absolute_index - prior_steps
-                if base_index < 1:
-                    raise ValueError(
-                        "comma receiver prefix has another source occurrence "
-                        "(cursor index mismatch)"
-                    )
-            else:
-                expected = state.value(exponent, charge_bits=self.arena.charge_bits)
-                if payload.value != expected or payload.boundary_cursor is not None:
-                    raise ValueError(
-                        "comma boundary action has another source occurrence"
-                    )
-                transitions = node.steps
-                base_index = payload.absolute_index
+            if root.boundary_cursor != payload.boundary_cursor:
+                raise ValueError(
+                    "comma receiver prefix has another source occurrence "
+                    "(cursor authority mismatch)"
+                )
+            if (
+                root.absolute_index != payload.absolute_index
+                or root.value != payload.value
+            ):
+                raise ValueError(
+                    "comma receiver prefix has another source occurrence "
+                    "(receiving endpoint mismatch)"
+                )
+            transitions = prior_steps + node.steps
+            if transitions > template.weight.evaluate(
+                exponent, charge_bits=self.arena.charge_bits
+            ):
+                raise ValueError("comma receiver prefix crosses its next branch")
+            base_index = root.absolute_index - prior_steps
+            if base_index < 1:
+                raise ValueError(
+                    "comma receiver prefix has another source occurrence "
+                    "(cursor index mismatch)"
+                )
             value = template.point(
                 exponent,
                 transitions,
@@ -488,29 +459,28 @@ class CommaImageAdapter(SourceBoundImageAdapter):
             self.ledger.bump(
                 _comma_keys.COMMA_BOUNDARY_REPRESENTED_TRANSITIONS, node.steps
             )
-            if node.kind == "boundary-prefix-occurrence":
-                sector = decimal_sector(value)
-                next_index = payload.absolute_index + node.steps
-                self.arena.charge_bits(
-                    value.bit_length()
-                    + next_index.bit_length()
-                    + exponent.bit_length()
-                    + transitions.bit_length()
-                    + state.a.bit_length()
-                    + state.exponent_residue.bit_length()
-                )
-                self.ledger.bump(_comma_keys.COMMA_OPERAND_BIT_WORK, value.bit_length())
-                return SourceImageCandidate(
-                    CommaImagePayload(
-                        value,
-                        next_index,
-                        payload.certificate_version,
-                        BoundaryPrefixCursor(state, exponent, transitions),
-                    ),
-                    source.binding.extent + node.steps,
-                    (sector.leading, sector.digit, sector.headroom),
-                    radix=10,
-                )
+            sector = decimal_sector(value)
+            next_index = payload.absolute_index + node.steps
+            self.arena.charge_bits(
+                value.bit_length()
+                + next_index.bit_length()
+                + exponent.bit_length()
+                + transitions.bit_length()
+                + state.a.bit_length()
+                + state.exponent_residue.bit_length()
+            )
+            self.ledger.bump(_comma_keys.COMMA_OPERAND_BIT_WORK, value.bit_length())
+            return SourceImageCandidate(
+                CommaImagePayload(
+                    value,
+                    next_index,
+                    payload.certificate_version,
+                    BoundaryPrefixCursor(state, exponent, transitions),
+                ),
+                source.binding.extent + node.steps,
+                (sector.leading, sector.digit, sector.headroom),
+                radix=10,
+            )
         elif node.kind == "source20-first-child":
             owner = self._term
             if owner is None:
@@ -666,26 +636,12 @@ class CommaImageAdapter(SourceBoundImageAdapter):
                 raise UnresolvedCommaBranch(
                     f"comma landmine at index {payload.absolute_index} has no child"
                 )
-            owner = self._term
-            if owner is None:
-                raise ValueError("comma adapter has no source owner")
-            if len(children) == 1:
-                value = children[0]
-            else:
-                from number_compiler.sequences.comma.certificates import (
-                    require_selected_child,
+            if len(children) != 1:
+                raise UnresolvedCommaBranch(
+                    f"comma fork at index {payload.absolute_index} needs "
+                    "an authenticated boundary-return action"
                 )
-
-                value = require_selected_child(
-                    source_index=payload.absolute_index,
-                    source_value=payload.value,
-                    children=children,
-                    certificate_version=owner.certificate_version,
-                    ledger=owner.ledger,
-                    max_work=owner.max_work,
-                    shared_cache=owner.shared_cache,
-                    memo=owner.certificate_memo,
-                )
+            value = children[0]
             if value - payload.value != 10 * (payload.value % 10) + node.child_digit:
                 raise ValueError("comma action selected another child")
             self.ledger.bump(_comma_keys.COMMA_SCALAR_SEAM_STEPS)

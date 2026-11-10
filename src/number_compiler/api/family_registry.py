@@ -137,6 +137,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 ObservationId.TEMPORAL_MATRIX,
                 ObservationId.TEMPORAL_RESIDUE99,
                 ObservationId.TEMPORAL_ACCUMULATOR99,
+                ObservationId.TEMPORAL_MIRRORED_DIAGONAL,
                 ObservationId.TEMPORAL_OPEN_RING,
                 ObservationId.TEMPORAL_SEED_ORBIT,
                 ObservationId.TEMPORAL_STENCIL,
@@ -213,6 +214,12 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 "base",
                 10,
                 "seed-orbit Q19 morphism requires decimal base",
+            ),
+            (
+                ObservationId.TEMPORAL_MIRRORED_DIAGONAL,
+                "base",
+                10,
+                "mirrored diagonal Laurent action requires decimal base",
             ),
             (
                 ObservationId.TEMPORAL_MACRO,

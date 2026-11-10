@@ -75,6 +75,9 @@ def verify_wheel(
         raise ValueError("installed distribution has no immutable kernel resources")
     if any(Path(name).name.startswith("base10_t2_") for name in resources):
         raise ValueError("retired reverse/add proof-machine resource was packaged")
+    required_future_asset = "number_compiler/kernels/comma_semantic_future_v2.json"
+    if required_future_asset not in members:
+        raise ValueError("installed distribution lacks the admitted comma future")
     environment = dict(os.environ)
     environment.pop("PYTHONPATH", None)
     environment.pop("MYPYPATH", None)
@@ -119,6 +122,7 @@ def verify_wheel(
                 "-c",
                 """
 import json
+from hashlib import sha256
 import sys
 from contextlib import redirect_stdout
 from io import StringIO
@@ -133,6 +137,8 @@ kernel = PhysicalCollatzFourBlockEffect()
 assert kernel.left_count > 0 and kernel.right_count > 0
 for removed in ('classical_ceiling', 'digit_power'):
     assert find_spec('number_compiler.sequences.power_numbers.' + removed) is None
+assert find_spec('number_compiler.sequences.comma.forest_verifier') is None
+assert not files('number_compiler').joinpath('kernels/comma_prefix_v1.jsonl.gz').is_file()
 for removed in (
     'sequences.collatz.clocked_target_seam',
     'hashlife.execution.continuations.higher_input',
@@ -160,9 +166,21 @@ for removed in (
 ):
     assert find_spec('number_compiler.' + removed) is None
 assert not any(name == 'devtools' or name.startswith('devtools.') for name in sys.modules)
+from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.comma import future_provider
+global_digest = future_provider.registered_global_release_artifact_sha256()
+assert global_digest is not None
+future_asset = files('number_compiler').joinpath('kernels/comma_semantic_future_v2.json')
+future_record = json.loads(future_asset.read_text())
+provider_store = future_provider.SemanticFutureProviderStore(ResourceLedger())
+future_instance = provider_store.load_record(
+    future_record, charge_work=lambda _amount: None
+)
+assert future_instance.global_release_admitted
+assert future_instance.artifact_sha256 == global_digest
+assert sha256(future_asset.read_bytes()).hexdigest() == global_digest
 from number_compiler.api.cli import main
 from number_compiler.sequences.comma.power import CommaTerm
-assert CommaTerm(20000).materialize() == 1039404
 from unittest.mock import patch
 from number_compiler.sequences.reverse_add.recursive_cutover import (
     ReverseRecursiveTemporalCutover,
@@ -178,7 +196,7 @@ with patch.object(ReverseRecursiveFieldAdapter, 'compile_completed', require_com
         assert ''.join(map(str, reversed(reverse.digits()))) == '70446464506'
 assert not any(name == 'devtools' or name.startswith('devtools.') for name in sys.modules)
 captured = StringIO()
-with patch('number_compiler.sequences.comma.certificates._verify', side_effect=AssertionError('report replayed admission')):
+with patch.object(CommaTerm, '_stage_global_future_provider_artifact_locked', side_effect=AssertionError('metadata request loaded the artifact')):
     with redirect_stdout(captured):
         assert main(['a367620', '--nth', '20000', '--no-value', '--info', 'safety.certificate', '--format', 'json']) == 0
 comma_status = json.loads(captured.getvalue())
@@ -192,11 +210,75 @@ assert compact_status['value'] is None
 assert comma_status['index_unit'] == 'oeis_index'
 assert comma_status['value'] is None
 assert comma_status['info']['safety.certificate']['runtime_verified'] is False
-assert comma_status['info']['safety.certificate']['isabelle_instance_checked'] is False
-captured = StringIO()
-with redirect_stdout(captured):
-    assert main(['a367620', '--nth', '412987860']) == 0
-assert captured.getvalue().strip() == '19999999999'
+assert comma_status['info']['safety.certificate']['isabelle_instance_checked'] is True
+assert comma_status['info']['safety.certificate']['certificate_sha256'] == global_digest
+assert comma_status['info']['safety.certificate']['coverage'] == 'all_positive_indices'
+for index, expected in ((1, '20'), (20000, '1039404'), (412987859, '19999999918'), (412987860, '19999999999')):
+    output = StringIO()
+    with redirect_stdout(output):
+        assert main(['a367620', '--nth', str(index)]) == 0
+    assert output.getvalue().strip() == expected
+from number_compiler.sequences.comma.arithmetic import comma_children
+assert comma_children(19999999918) == (19999999999, 20000000000)
+from importlib.resources import as_file
+from number_compiler.sequences.comma.boundary_quotient import BoundaryState, construct_macro
+from number_compiler.sequences.comma.occurrence import BoundaryOccurrence, OccurrencePrefixReturn
+from number_compiler.sequences.comma.semantic_branch import select_global_semantic_macro_child
+with as_file(future_asset) as provider_path:
+    provider = provider_store.load_file(
+        provider_path, charge_work=lambda _amount: None
+    )
+source = BoundaryOccurrence(BoundaryState('N', 2, 10), 10)
+expected_fork_sources = (BoundaryState('N', 2, 10), BoundaryState('N', 7, 12))
+expected_fork_children = (
+    (6999999999999, 7000000000000),
+    (19999999999999, 20000000000000),
+)
+# Authored rank rows fix N(2,10) to slot 0 and N(7,12) to slot 1.
+expected_fork_slots = (0, 1)
+expected_selected_literals = (6999999999999, 20000000000000)
+transition_counts = []
+for expected_state, expected_children, expected_slot, expected_literal in zip(
+    expected_fork_sources, expected_fork_children, expected_fork_slots,
+    expected_selected_literals, strict=True
+):
+    assert source.state == expected_state
+    prefix = OccurrencePrefixReturn(source, construct_macro(source.state))
+    assert prefix.outcome == 'fork'
+    assert comma_children(prefix.terminal_value) == expected_children
+    ordered = prefix.ordered_literal_children()
+    _, literals = ordered.validated_parts()
+    selected = select_global_semantic_macro_child(
+        source,
+        prefix,
+        fork_value=prefix.terminal_value,
+        ordered_literal_children=(literals[0], literals[1]),
+        provider=provider,
+        charge_work=lambda _amount: None,
+    )
+    assert selected.selection.selected_slot == expected_slot
+    assert expected_children[expected_slot] == expected_literal
+    assert selected.literal_value == expected_literal
+    transition_counts.append(selected.total_transition_count)
+    source = selected.target
+later_index = 412987860 + sum(transition_counts)
+expected_later_output = 20000000000000
+assert source.value() == expected_later_output
+observed_fork_sources = []
+original_select = SemanticFutureProvider.select_unique_unranked_child
+def traced_select(self, state, *, charge_work):
+    observed_fork_sources.append(state)
+    return original_select(self, state, charge_work=charge_work)
+later_output = StringIO()
+with patch.object(SemanticFutureProvider, 'select_unique_unranked_child', traced_select):
+    with redirect_stdout(later_output):
+        assert main(['a367620', '--nth', str(later_index), '--format', 'json']) == 0
+later_packet = json.loads(later_output.getvalue())
+assert later_packet['index'] == later_index
+assert later_packet['value'] == str(expected_later_output)
+assert expected_fork_sources[0] in observed_fork_sources
+assert expected_fork_sources[1] in observed_fork_sources
+provider_store.close()
 assert not any(name == 'devtools' or name.startswith('devtools.') for name in sys.modules)
 from number_compiler.sequences.antihydra import runtime
 def forbidden_roof(*args, **kwargs):
@@ -473,8 +555,10 @@ print(json.dumps({'python_version': list(sys.version_info[:3]), 'public_exports'
             ),
             (["reverse-add", "--nth", "0", "--seed", "0"], 0, "0"),
             (["a367620", "--nth", "1"], 0, "20"),
+            (["a367620", "--nth", "20000"], 0, "1039404"),
+            (["a367620", "--nth", "412987859"], 0, "19999999918"),
             (["a367620", "--nth", "412987860"], 0, "19999999999"),
-            (["a367620", "--nth", "412987861"], 3, ""),
+            (["a367620", "--nth", "412987861"], 0, "20000000091"),
             (["collatz", "--nth", "4", "--seed", "27"], 0, "62"),
             (
                 [

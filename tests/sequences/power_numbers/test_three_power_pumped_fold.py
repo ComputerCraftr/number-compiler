@@ -4,6 +4,7 @@ import pytest
 
 from number_compiler.arithmetic.automata.slp import SLPArena, SLPNode
 from number_compiler.sequences.power_numbers.fermat_binary_pair_fold import (
+    FermatBinaryFoldAction,
     FermatBinarySLPSnapshot,
     fold_binary_slp,
 )
@@ -15,6 +16,7 @@ from tests.support.fermat_guarded_source_oracle import (
     literal_radial_width,
     literal_toggle_runs,
 )
+from tests.support.private_attributes import private_test_attribute
 
 
 def _source(bits: tuple[int, ...]) -> tuple[SLPArena, int, GuardedBinarySource]:
@@ -121,3 +123,44 @@ def test_snapshot_preflights_malformed_child_before_length_arithmetic() -> None:
 
     with pytest.raises(ValueError, match="exact integers"):
         FermatBinarySLPSnapshot.admit(arena, root)
+
+
+def test_population_counts_are_lazy_for_signed_fold_admission() -> None:
+    arena = SLPArena()
+    block = arena.word((1, 0, 1))
+    root = arena.repeat(block, 1 << 350)
+    snapshot = FermatBinarySLPSnapshot.admit(arena, root)
+
+    assert private_test_attribute(snapshot, "_one_counts") is None
+    before_hash = hash(snapshot)
+    equivalent = FermatBinarySLPSnapshot.admit(arena, root)
+    assert snapshot == equivalent
+    assert hash(snapshot) == hash(equivalent)
+    snapshot.fold(width=7)
+    assert private_test_attribute(snapshot, "_one_counts") is None
+    ones, visits = snapshot.count_ones(0, snapshot.nodes[snapshot.root].length)
+    assert ones == 2 * (1 << 350)
+    assert visits > 0
+    assert private_test_attribute(snapshot, "_one_counts") is not None
+    assert hash(snapshot) == before_hash
+    assert snapshot == equivalent
+    assert {snapshot: "stable"}[equivalent] == "stable"
+
+
+def test_aligned_signed_width_repeats_match_ordered_composition() -> None:
+    for width in (1, 2, 5, 9):
+        modulus = (1 << width) + 1
+        for length in (2 * width, width):
+            action = FermatBinaryFoldAction(width, length, modulus - 2)
+            for count in (0, 1, 2, 3, 8, 17):
+                expected = FermatBinaryFoldAction.identity(width)
+                for _ in range(count):
+                    expected = expected.then(action)
+                assert action.repeat(count) == expected
+
+    # A nonaligned action still uses the ordered general composition path.
+    action = FermatBinaryFoldAction(7, 10, 19)
+    expected = FermatBinaryFoldAction.identity(7)
+    for _ in range(13):
+        expected = expected.then(action)
+    assert action.repeat(13) == expected

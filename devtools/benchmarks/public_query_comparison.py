@@ -22,6 +22,7 @@ from number_compiler.api.json_output import (
     is_string_object_mapping,
 )
 from number_compiler.api.number_api import NumberCompiler
+from number_compiler.api.observation_types import OptionValueKind
 from number_compiler.api.query_types import AntihydraVerifyQuery, CollatzEventQuery
 from number_compiler.api.registry_cli import option_argv
 from number_compiler.arithmetic.contracts.family_identity import family_id
@@ -199,6 +200,8 @@ def compare(
     bases: Sequence[int] = (2, 10),
     position: int = 2,
     max_output_bits: int = 1_000_000,
+    max_steps: int | None = None,
+    max_state_bits: int | None = None,
     info: Sequence[str] = ("metrics",),
     no_value: bool = False,
     observation_options: Sequence[tuple[str, str]] = (),
@@ -229,6 +232,16 @@ def compare(
         raise ValueError("benchmark option is not declared by the family observer")
     if len({name for name, _ in observation_options}) != len(observation_options):
         raise ValueError("benchmark observation options must be unique")
+    observation_arguments: list[str] = []
+    for name, option_text in observation_options:
+        declaration = declared_options[name]
+        if declaration.value_kind is OptionValueKind.BOOLEAN:
+            if option_text not in ("true", "false"):
+                raise ValueError("Boolean observation option requires true or false")
+            parsed: str | bool = option_text == "true"
+        else:
+            parsed = option_text
+        observation_arguments.extend(option_argv(declaration.flag, parsed))
     supported_info = set(spec.nth_info)
     if any(name not in supported_info for name in info):
         raise ValueError("CLI observation is not supported by the selected family")
@@ -239,6 +252,9 @@ def compare(
     if not modes or any(mode not in ("cold", "warm", "bypass") for mode in modes):
         raise ValueError("invalid comparison mode")
     source_arguments = option_argv("seed", seed) if "seed" in spec.parameters else []
+    for name, limit in (("max_steps", max_steps), ("max_state_bits", max_state_bits)):
+        if limit is not None:
+            source_arguments.extend(option_argv(name, limit))
     if start is not None:
         if type(start) is not int or "start" not in spec.parameters:
             raise ValueError("start is not an admitted family source parameter")
@@ -301,13 +317,7 @@ def compare(
                             for argument in option_argv("info", name)
                         ],
                         *source_arguments,
-                        *[
-                            argument
-                            for name, value in observation_options
-                            for argument in option_argv(
-                                declared_options[name].flag, value
-                            )
-                        ],
+                        *observation_arguments,
                     ]
                     if no_value:
                         arguments.extend(option_argv("no_value", True))
@@ -406,6 +416,8 @@ def main() -> int:
     parser.add_argument("--bases", type=int, nargs="+", default=[2, 10])
     parser.add_argument("--position", type=int, default=2)
     parser.add_argument("--max-output-bits", type=int, default=1_000_000)
+    parser.add_argument("--max-steps", type=int)
+    parser.add_argument("--max-state-bits", type=int)
     parser.add_argument(
         "--info",
         action="append",
@@ -487,6 +499,8 @@ def main() -> int:
                 bases=options.bases,
                 position=options.position,
                 max_output_bits=options.max_output_bits,
+                max_steps=options.max_steps,
+                max_state_bits=options.max_state_bits,
                 info=information,
                 no_value=options.no_value,
                 observation_options=options.observation_option,

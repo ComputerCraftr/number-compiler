@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
+from importlib.resources.abc import Traversable
+from pathlib import Path
+from types import ModuleType
 from typing import Never, cast
 
 import pytest
@@ -16,12 +19,8 @@ from number_compiler.hashlife.execution.source_image_inventory import (
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
 from number_compiler.resources.payload_audit import audit_registered_payloads
 from number_compiler.resources.stores import LedgerList
-from number_compiler.sequences.comma import action_arena, certificates
-from number_compiler.sequences.comma.action_arena import (
-    CommaActionArena,
-    CommaActionID,
-    CommaActionRecord,
-)
+from number_compiler.sequences.comma import action_arena, future_provider
+from number_compiler.sequences.comma import power as comma_power
 from number_compiler.sequences.comma.arithmetic import cycle_transfer
 from number_compiler.sequences.comma.boundary_chart import BoundaryChart
 from number_compiler.sequences.comma.boundary_quotient import (
@@ -38,10 +37,28 @@ from number_compiler.sequences.comma.image_adapter import (
     CommaSource,
 )
 from number_compiler.sequences.comma.occurrence import BoundaryOccurrence
-from number_compiler.sequences.comma.power import (
-    FIRST_FORK_INDEX,
-    CommaTerm,
+from number_compiler.sequences.comma.power import FIRST_FORK_INDEX, CommaTerm
+from tests.support.comma_future_provider_fixture import (
+    authored_candidate_record,
+    canonical_bytes,
+    install_test_only_global_registry,
 )
+
+
+def _stage_authored_global_provider(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    record = authored_candidate_record()
+    install_test_only_global_registry(monkeypatch, record)
+    artifact_directory = tmp_path / "kernels"
+    artifact_directory.mkdir()
+    artifact = artifact_directory / future_provider.FUTURE_PROVIDER_ASSET
+    artifact.write_bytes(canonical_bytes(record))
+
+    def local_package_files(_package: str | ModuleType) -> Traversable:
+        return tmp_path
+
+    monkeypatch.setattr(comma_power, "files", local_package_files)
 
 
 def test_closed_phase_formula_matches_every_literal_phase_and_guard() -> None:
@@ -151,19 +168,17 @@ def test_interior_cycle_relative_reuse_rebinds_the_exact_occurrence(
 
 
 def test_boundary_prefix_uses_exact_source_and_stops_before_fork(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def first_winning_child(**_: object) -> int:
-        return 19_999_999_999
-
-    monkeypatch.setattr(certificates, "require_selected_child", first_winning_child)
-    term = CommaTerm(FIRST_FORK_INDEX + 1, certificate_version="test-boundary")
+    _stage_authored_global_provider(monkeypatch, tmp_path)
+    term = CommaTerm(FIRST_FORK_INDEX + 1)
+    term.require_certified_public_prefix()
     assert term.materialize() == 19_999_999_999
     state = BoundaryState("N", 2, 10)
     template = term.arena.boundary_template(state)
     total = template.weight.evaluate(10)
     assert template.outcome == "fork"
-    action = _boundary_prefix(term.arena, state, 10, total)
+    action = term.arena.boundary_prefix_occurrence(BoundaryOccurrence(state, 10), total)
     source = _current_source(term)
     evaluated = term.ledger.counters["comma_evaluated_transitions"]
     image = term.scheduler.source_image(term.adapter, source, action)
@@ -194,6 +209,7 @@ def test_boundary_prefix_uses_exact_source_and_stops_before_fork(
     receiver_source = BoundaryOccurrence(state, 10)
     receiver_action = term.arena.boundary_prefix_occurrence(receiver_source, 6)
     translated_source = BoundaryOccurrence(state, 934)
+    # Equivalent exponent representatives share a source-independent action ID.
     assert (
         term.arena.boundary_prefix_occurrence(translated_source, 6) == receiver_action
     )
@@ -261,12 +277,10 @@ def test_boundary_prefix_uses_exact_source_and_stops_before_fork(
     assert continued_payload.boundary_cursor.state == state
     assert continued_payload.boundary_cursor.exponent == 10
     assert continued_payload.boundary_cursor.transitions == 12
-    with pytest.raises(ValueError, match="another source occurrence"):
+    with pytest.raises(ValueError, match="crosses its next branch"):
         term.scheduler.source_image(term.adapter, image, action)
     with pytest.raises(ValueError, match="crosses its next branch"):
-        _boundary_prefix(term.arena, state, 10, total + 1)
-    with pytest.raises(ValueError, match="lifting is not yet admitted"):
-        _boundary_prefix(term.arena, state, 934, 1)
+        term.arena.boundary_prefix_occurrence(BoundaryOccurrence(state, 10), total + 1)
     audit = audit_registered_payloads(term.ledger)
     assert audit.unknown_payloads == 0
     assert audit.forbidden_future_payloads == 0
@@ -286,18 +300,9 @@ def test_boundary_prefix_uses_exact_source_and_stops_before_fork(
         for item in term.ledger.inventory()
         if item.name.startswith("comma-boundary-")
     )
-    forged = term.arena.intern_record(
-        ("boundary-prefix", state, 934, 1),
-        CommaActionRecord(
-            "boundary-prefix", 1, boundary_source=state, boundary_exponent=934
-        ),
-    )
-    with pytest.raises(ValueError, match="lifting is not yet admitted"):
-        term.scheduler.source_image(term.adapter, source, forged)
-    assert audit_registered_payloads(term.ledger).forbidden_future_payloads > 0
 
 
-def testboundary_template_budget_refusal_publishes_no_partial_state() -> None:
+def test_boundary_template_budget_refusal_publishes_no_partial_state() -> None:
     term = CommaTerm(1, max_states=100)
     with pytest.raises(BlockContextBudgetExceeded, match="budget exceeded"):
         term.arena.boundary_template(BoundaryState("N", 2, 10))
@@ -427,7 +432,7 @@ def test_boundary_chart_components_are_owned_and_forensically_sealed() -> None:
         object.__setattr__(segment, "source", old_source)
 
 
-def test_mutatedboundary_template_and_action_fail_closed() -> None:
+def test_mutated_boundary_template_and_action_fail_closed() -> None:
     from number_compiler.sequences.comma.boundary_quotient import AffineWeight
 
     term = CommaTerm(1)
@@ -448,22 +453,15 @@ def test_mutatedboundary_template_and_action_fail_closed() -> None:
 
 
 def test_mutated_boundary_components_fail_before_private_scheduler_demand(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-
-    def first_winning_child(**_kwargs: object) -> int:
-        return 19_999_999_999
-
-    monkeypatch.setattr(
-        certificates,
-        "require_selected_child",
-        first_winning_child,
-    )
-    term = CommaTerm(FIRST_FORK_INDEX + 1, certificate_version="test-boundary")
+    _stage_authored_global_provider(monkeypatch, tmp_path)
+    term = CommaTerm(FIRST_FORK_INDEX + 1)
+    term.require_certified_public_prefix()
     assert term.materialize() == 19_999_999_999
     state = BoundaryState("N", 2, 10)
     template = term.arena.boundary_template(state)
-    action = _boundary_prefix(term.arena, state, 10, 6)
+    action = term.arena.boundary_prefix_occurrence(BoundaryOccurrence(state, 10), 6)
     fragment = template.sector_fragments[1]
     prefix = template.prefix_displacements[1]
     weight_prefix = template.prefix_weights[1]
@@ -542,17 +540,19 @@ def test_mutated_boundary_state_is_rejected_before_hash_or_equality() -> None:
 
     term = CommaTerm(1)
     invalid = BoundaryState("N", 2, 10)
+    invalid_occurrence = BoundaryOccurrence(invalid, 10)
     invalid_kind = HashEqualityTrap()
     object.__setattr__(invalid, "kind", invalid_kind)
     with pytest.raises(ValueError, match="noncanonical scalar fields"):
         term.arena.boundary_template(invalid)
-    with pytest.raises(ValueError, match="noncanonical scalar fields"):
-        _boundary_prefix(term.arena, invalid, 10, 1)
+    with pytest.raises(ValueError, match="boundary occurrence differs"):
+        term.arena.boundary_prefix_occurrence(invalid_occurrence, 1)
     assert invalid_kind.hash_calls == 0
     assert invalid_kind.equality_calls == 0
 
     published = BoundaryState("N", 2, 10)
-    _boundary_prefix(term.arena, published, 10, 1)
+    published_occurrence = BoundaryOccurrence(published, 10)
+    term.arena.boundary_prefix_occurrence(published_occurrence, 1)
     published_kind = HashEqualityTrap()
     object.__setattr__(published, "kind", published_kind)
     audit = audit_registered_payloads(term.ledger)
@@ -579,16 +579,3 @@ def _current_source(term: CommaTerm) -> CommaSource | CommaOccurrenceID:
         CommaSource | CommaOccurrenceID,
         object.__getattribute__(term, "_source"),
     )
-
-
-def _boundary_prefix(
-    arena: CommaActionArena,
-    state: BoundaryState,
-    exponent: int,
-    transitions: int,
-) -> CommaActionID:
-    constructor = cast(
-        Callable[[BoundaryState, int, int], CommaActionID],
-        object.__getattribute__(arena, "_boundary_prefix"),
-    )
-    return constructor(state, exponent, transitions)

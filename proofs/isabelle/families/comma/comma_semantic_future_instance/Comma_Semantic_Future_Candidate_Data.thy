@@ -1,5 +1,5 @@
 theory Comma_Semantic_Future_Candidate_Data
-  imports Comma_Semantic_B1_Instance.Comma_Semantic_Summary_Instance
+  imports Comma_Semantic_Graph_Instance.Comma_Semantic_Summary_Instance
 begin
 
 text \<open>Untrusted, source-derived Moore candidate data.  The concrete

@@ -575,7 +575,8 @@ def source_bound_modular_moments(
     """Project exact modular U,V with each modulus's existing owner.
 
     Mod-99 uses its autonomous guarded accumulator. Mod-7 and mod-198 use the
-    bounded exact symmetric RLE source action. Other moduli use the source
+    bounded native physical source action (with symmetric RLE fallback). Other
+    moduli use the source
     image publisher's carry-ported SLP. None of these observations authorizes
     time skips.
     """
@@ -599,8 +600,8 @@ def source_bound_modular_moments(
         return SkewMoment(term.generation, u, v, 99)
 
     if modulus in (7, 198):
-        # One bounded source-owned symmetric RLE transition stream produces
-        # both endpoint orientations and the carry/Laurent refinement. It
+        # One bounded source-owned physical transition stream produces both
+        # endpoint orientations and the checked Laurent accumulator. It
         # does not issue Q19 roots or infer a repeated physical carry word.
         from .temporal_laurent_accumulator import MAX_FINITE_LAURENT_TICKS
 

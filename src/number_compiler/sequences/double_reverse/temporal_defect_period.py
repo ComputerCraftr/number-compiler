@@ -18,6 +18,7 @@ from .temporal_four_observer import (
     CYCLIC_NEGACYCLIC_MODULI,
     FourObserverAffineClock,
     FourObserverEmission,
+    FourObserverPeriodSample,
     projected_period_profiles,
 )
 from .temporal_hashlife import growth_ports
@@ -99,35 +100,69 @@ def source_bound_defect_period_packet(
         }
     last_f = source.f_steps - 2
     start_f = last_f - 2 * stride * (count - 1)
+    comparison_lags = min(max_lag, count - 1)
+    segment_samples = min(count, max(1, 1 + (1024 - digits - 6) // (2 * stride)))
+    halo_slots = digits + 6 + 2 * stride * (segment_samples - 1)
+    # Entries track the simultaneously retained caller rows and signatures;
+    # node units cover the bounded causal halo and exact profile comparison
+    # cells. These are logical ledger units, not estimates of Python bytes.
+    scratch_entries = count * (24 + 2 * digits)
+    scratch_nodes = 8 * halo_slots + 5 * (digits + 1) * (comparison_lags + 1)
+    with source.ledger.reservation(
+        source.scratch_owner, entries=scratch_entries, nodes=scratch_nodes
+    ):
+        return _source_bound_defect_period_packet_reserved(
+            source,
+            digits=digits,
+            count=count,
+            stride=stride,
+            max_lag=max_lag,
+            start_f=start_f,
+        )
+
+
+def _source_bound_defect_period_packet_reserved(
+    source: PointedBankSource,
+    *,
+    digits: int,
+    count: int,
+    stride: int,
+    max_lag: int,
+    start_f: int,
+) -> dict[str, object]:
+    """Consume bounded source emissions and retain only their period views."""
     rows: list[dict[str, object]] = []
-    emission_tape = source.engine.pointed_combined_defect_tape(
-        source.root, start_f, source.phase, digits, count, stride
-    )
-    shared_halo = emission_tape.halo_segments == 1
-    defects: list[FourSymbolDefect] = []
-    emissions: list[FourObserverEmission] = []
-    for i in range(count):
+    period_samples: list[FourObserverPeriodSample] = []
+    joint_clock = FourObserverAffineClock.identity(digits) if stride == 1 else None
+    prior_output: int | None = None
+    failed_sample_generation: int | None = None
+
+    def consume(defect: FourSymbolDefect) -> None:
+        nonlocal joint_clock, prior_output, failed_sample_generation
+        if type(defect) is not FourSymbolDefect:
+            raise AssertionError("foreign combined carry defect")
+        i = len(period_samples)
         f = start_f + 2 * stride * i
         try:
-            candidate = emission_tape.emissions[i]
-            if type(candidate) is not FourSymbolDefect:
-                raise AssertionError("foreign combined carry defect")
-            defect = candidate
             defect.verify()
-        except ValueError as exc:
-            return {
-                "status": "unavailable",
-                "reason": str(exc),
-                "failed_sample_generation": source.physical_prefix + 2 * f,
-                "infinite_period_certified": False,
-            }
-        defects.append(defect)
+        except ValueError:
+            failed_sample_generation = source.physical_prefix + 2 * f
+            raise
         current_phase = (source.phase + 2 * f) % 4
         source_width = source.width_in + sum(growth_ports(source.phase, f))
         emission = FourObserverEmission.from_source(
             defect, phase=current_phase, source_width=source_width
         )
-        emissions.append(emission)
+        period_samples.append(FourObserverPeriodSample.from_emission(emission))
+        if joint_clock is not None:
+            if prior_output is not None and prior_output != defect.input_modulus:
+                raise AssertionError(
+                    "successive normalized defect suffixes fail temporal seam"
+                )
+            prior_output = defect.output_modulus
+            joint_clock = joint_clock.then(
+                FourObserverAffineClock.from_emission(emission)
+            )
         rows.append(
             {
                 "generation": source.physical_prefix + 2 * f,
@@ -184,11 +219,34 @@ def source_bound_defect_period_packet(
             }
         )
 
+    try:
+        emission_tape = source.engine.pointed_combined_defect_tape(
+            source.root,
+            start_f,
+            source.phase,
+            digits,
+            count,
+            stride,
+            on_emission=consume,
+        )
+    except ValueError as exc:
+        if failed_sample_generation is None:
+            raise
+        return {
+            "status": "unavailable",
+            "reason": str(exc),
+            "failed_sample_generation": failed_sample_generation,
+            "infinite_period_certified": False,
+        }
+    shared_halo = emission_tape.halo_segments == 1
+    if emission_tape.emissions or len(period_samples) != count:
+        raise AssertionError("streamed observer retained or omitted a defect history")
+
     # A single comparison of two carry words determines every smaller
     # decimal suffix precision: v_10(a-b) is the number of agreeing low
     # columns. Build right, left, signed-difference and four-output period
     # profiles together, without scanning each width independently.
-    profiles = projected_period_profiles(emissions, max_lag)
+    profiles = projected_period_profiles(period_samples, max_lag)
     right_profile = profiles["right"]
     left_profile = profiles["left"]
     joint_profile = profiles["joint"]
@@ -197,7 +255,7 @@ def source_bound_defect_period_packet(
     cyclotomic_profiles = {}
     for modulus in CYCLIC_NEGACYCLIC_MODULI:
         mod_lags, mod_tail = _tail_lags(
-            [e.cyclotomic_key(modulus) for e in emissions], max_lag
+            [sample.cyclotomic_key(modulus) for sample in period_samples], max_lag
         )
         cyclotomic_profiles[str(modulus)] = {
             "source_scope": "bounded-carry-suffix-plus-exact-global-overflow-phase",
@@ -206,29 +264,16 @@ def source_bound_defect_period_packet(
             "unit_width_clock": True,
         }
     source_residue_lags, source_residue_tail = _tail_lags(
-        [d.input_modulus for d in defects], max_lag
+        [sample.input_modulus for sample in period_samples], max_lag
     )
-    chain_checked = False
-    joint_clock: FourObserverAffineClock | None = None
-    if stride == 1:
-        for before, after in zip(defects, defects[1:], strict=False):
-            if before.output_modulus != after.input_modulus:
-                raise AssertionError(
-                    "successive normalized defect suffixes fail temporal seam"
-                )
-        chain_checked = True
-        # One product in the four-output abelian affine action. The physical
-        # signed clock is its RIGHT projection, not a separately composed
-        # duplicate using the very same emissions and multiplier.
-        joint_clock = FourObserverAffineClock.identity(digits)
-        for emission in emissions:
-            joint_clock = joint_clock.then(
-                FourObserverAffineClock.from_emission(emission)
-            )
+    chain_checked = joint_clock is not None
+    if joint_clock is not None:
+        if prior_output is None:
+            raise AssertionError("empty source-bound affine carry chain")
         if (
-            joint_clock.multiplier * defects[0].input_modulus
+            joint_clock.multiplier * period_samples[0].input_modulus
             + joint_clock.right_forcing
-        ) % joint_clock.modulus != defects[-1].output_modulus:
+        ) % joint_clock.modulus != prior_output:
             raise AssertionError("combined temporal signed cocycle failed source seam")
 
     result: dict[str, object] = {
@@ -308,8 +353,8 @@ def source_bound_defect_period_packet(
             "macro_steps": joint_clock.steps,
             "multiplier": joint_clock.multiplier,
             "forcing": joint_clock.right_forcing,
-            "source_residue": defects[0].input_modulus,
-            "target_residue": defects[-1].output_modulus,
+            "source_residue": period_samples[0].input_modulus,
+            "target_residue": prior_output,
         }
     return result
 

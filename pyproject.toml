@@ -29,7 +29,12 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-number_compiler = ["kernels/*.zlib", "kernels/*.gz", "py.typed"]
+number_compiler = [
+    "kernels/*.zlib",
+    "kernels/*.gz",
+    "kernels/comma_semantic_future_v2.json",
+    "py.typed",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import weakref
 from collections.abc import Callable
+from dataclasses import replace
 
 import pytest
 
@@ -17,8 +18,14 @@ from number_compiler.resources.fused_traversal_workspace import (
     FusedTraversalWorkspace,
     fused_traversal_workspace_owner_names,
 )
-from number_compiler.resources.ledger import OwnedMemo
-from number_compiler.sequences.comma.boundary_chart import BoundaryChart
+from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.sequences.comma import (
+    boundary_chart,
+)
+from number_compiler.sequences.comma import (
+    semantic_continuation as semantic_owner,
+)
+from number_compiler.sequences.comma.boundary_chart import BoundaryChart, ChartMove
 from number_compiler.sequences.comma.cyclotomic_clock import CyclotomicClock
 from number_compiler.sequences.comma.semantic_continuation import (
     ContinuationID,
@@ -26,10 +33,28 @@ from number_compiler.sequences.comma.semantic_continuation import (
     SemanticContinuationArena,
     TerminalWeight,
 )
+from tests.sequences.comma.near_clock_oracle import direct_near_event_clock
 
 
 def _root(offset: int, delta: int = 0) -> BoundaryChart:
     return BoundaryChart("entry", 1, delta, offset)
+
+
+def _record_chart_sources(monkeypatch: pytest.MonkeyPatch) -> list[BoundaryChart]:
+    calls: list[BoundaryChart] = []
+    original = boundary_chart.chart_step
+
+    def counted(
+        phase: int | CyclotomicClock,
+        chart: BoundaryChart,
+        *,
+        charge_bits: Callable[[int], None] | None = None,
+    ) -> ChartMove:
+        calls.append(chart)
+        return original(phase, chart, charge_bits=charge_bits)
+
+    monkeypatch.setattr(semantic_owner, "chart_step", counted)
+    return calls
 
 
 def test_terminal_weight_is_the_b32_occurrence_codec() -> None:
@@ -60,6 +85,67 @@ def test_source_delta_is_external_to_the_scoped_cid() -> None:
     assert shift == 1849
 
 
+def test_near_operator_reuses_residual_action_and_binds_cycle_weight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = _record_chart_sources(monkeypatch)
+    arena = SemanticContinuationArena()
+    first = BoundaryChart("near", 5, 0, 82)
+    translated = BoundaryChart("near", 5, 0, 202)
+    first_id = arena.compile(first)
+    first_productions = len(calls)
+    translated_id = arena.compile(translated)
+    assert len(calls) == first_productions
+    assert first_id == translated_id
+
+    view = arena.publish((first, translated))
+    first_action = view.transitions[first][0]
+    translated_action = view.transitions[translated][0]
+    assert first_action.control == translated_action.control
+    assert first_action.child == translated_action.child
+    assert translated_action.occurrence == replace(
+        first_action.occurrence,
+        near_physical_steps=first_action.occurrence.near_physical_steps + 2,
+    )
+    for source, action in (
+        (first, first_action),
+        (translated, translated_action),
+    ):
+        literal = direct_near_event_clock(source.leading, source.coordinate)
+        assert action.occurrence.near_physical_steps == literal.elapsed_steps
+        assert literal.residual_headroom == 82
+
+
+def test_failed_near_operator_publication_rolls_back_before_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    arena = SemanticContinuationArena(ledger)
+    original_reserve = ledger.reserve
+    reservations = 0
+
+    def fail_raw_row(owner: int, entries: int = 0, nodes: int = 0) -> None:
+        nonlocal reservations
+        reservations += 1
+        if reservations == 2:
+            raise RuntimeError("poisoned Near row reservation")
+        original_reserve(owner, entries, nodes)
+
+    monkeypatch.setattr(ledger, "reserve", fail_raw_row)
+    source = BoundaryChart("near", 5, 0, 82)
+    with pytest.raises(RuntimeError, match="poisoned Near row reservation"):
+        arena.compile(source)
+    assert ledger.entries == 0
+    assert ledger.nodes == 0
+
+    monkeypatch.setattr(ledger, "reserve", original_reserve)
+    calls = _record_chart_sources(monkeypatch)
+    arena.compile(source)
+    produced = len(calls)
+    arena.compile(BoundaryChart("near", 5, 0, 202))
+    assert len(calls) == produced
+
+
 def test_cids_are_scoped_and_gotos_descend() -> None:
     source = _root(offset_representatives()[1])
     first = SemanticContinuationArena()
@@ -80,7 +166,7 @@ def test_live_and_stop_controls_match_independent_chart_observer() -> None:
     arena.compile_many(roots)
     view = arena.publish(roots)
     for fiber, source in zip((0, 7, 23, 45), roots, strict=True):
-        for phase in (0, 1, 17, 460, 923):
+        for phase in (0, 1, 17, 23, 28, 460, 923):
             actual = view.evaluate(source, phase).action
             expected = observe_b1(B1State(fiber, phase)).observation
             if expected.kind == "live":
@@ -93,6 +179,23 @@ def test_live_and_stop_controls_match_independent_chart_observer() -> None:
             else:
                 assert actual.kind == "stop"
                 assert actual.stop_j == 8
+
+
+@pytest.mark.parametrize(("phase", "local_period"), ((1, 22), (0, 28)))
+def test_local_clock_period_is_not_the_complete_return_period(
+    phase: int, local_period: int
+) -> None:
+    source = _root(offset_representatives()[0])
+    arena = SemanticContinuationArena()
+    arena.compile(source)
+    view = arena.publish((source,))
+    left = observe_b1(B1State(0, phase)).observation
+    right = observe_b1(B1State(0, phase + local_period)).observation
+    assert left != right
+    assert (
+        view.evaluate(source, phase).action
+        != view.evaluate(source, phase + local_period).action
+    )
 
 
 def test_apply_decades_returns_weighted_stop_and_resolves_live_roots() -> None:

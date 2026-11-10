@@ -42,7 +42,7 @@ benefit of sharing the forty-six control representatives.\<close>
 local_setup \<open>fn lthy =>
   let
     val (certify, _) = Comma_Entry_Arithmetic.make_certifier lthy
-    val arithmetic = Comma_Entry_Arithmetic.natural_context lthy addsimps
+    val arithmetic = Comma_Entry_Arithmetic.natural_context lthy |> Simplifier.add_simps
       @{thms comma_offset_representative_def comma_offset_representatives_def
         comma_offset_orbit_def comma_digit_orbit_sum_def power2_eq_square
         nth_Cons' of_nat_numeral of_nat_0 of_nat_1

@@ -8,10 +8,12 @@ from random import Random
 
 import pytest
 
+from number_compiler.arithmetic.automata.slp_walks import iter_symbols
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.fields.walsh import walsh64_mod5
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as reverse_add_keys
+from number_compiler.resources.metric_keys import shared as shared_keys
 from number_compiler.sequences.reverse_add.q19_output import (
     ReversePairQ19OutputOwner,
 )
@@ -32,6 +34,24 @@ def _pairs(value: int) -> tuple[int, ...]:
 
 def _eval(values: tuple[int, ...], z: int, modulus: int) -> int:
     return sum(value * pow(z, i, modulus) for i, value in enumerate(values)) % modulus
+
+
+def _reachable_slp_nodes(owner: ReversePairQ19OutputOwner, root: int) -> int:
+    pending = [root]
+    visited: set[int] = set()
+    while pending:
+        node_id = pending.pop()
+        if node_id in visited:
+            continue
+        visited.add(node_id)
+        node = owner.arena.nodes[node_id]
+        if node.kind == "CONCAT":
+            pending.extend((node.left, node.right))
+        elif node.kind == "REPEAT":
+            pending.append(node.child)
+        elif node.kind not in ("EMPTY", "TERM"):
+            raise AssertionError("unknown node in issued Q19 grammar")
+    return len(visited)
 
 
 def test_radix19_cochain_matches_decimal_step_over_nonunit_rings() -> None:
@@ -81,14 +101,59 @@ def test_source_cochain_fold_records_visits_and_compositions() -> None:
     owner = ReversePairQ19OutputOwner(ledger, digits_lsd(value, 10), base=10)
     try:
         before = ledger.snapshot().counters
+        expected_visits = _reachable_slp_nodes(owner, owner.initial.root)
         owner.radix19_cochain(owner.initial, z=7, modulus=10**9)
         after = ledger.snapshot().counters
-        assert after[reverse_add_keys.REVERSE_RADIX19_COCHAIN_NODE_VISITS] > before.get(
-            reverse_add_keys.REVERSE_RADIX19_COCHAIN_NODE_VISITS, 0
+        visits = reverse_add_keys.REVERSE_RADIX19_COCHAIN_NODE_VISITS
+        dependency_nodes = reverse_add_keys.REVERSE_RADIX19_COCHAIN_DEPENDENCY_NODES
+        work_items = reverse_add_keys.REVERSE_RADIX19_COCHAIN_WORK_ITEMS
+        assert after.get(visits, 0) - before.get(visits, 0) == expected_visits
+        assert (
+            after.get(dependency_nodes, 0) - before.get(dependency_nodes, 0)
+            == expected_visits
         )
+        assert after.get(work_items, 0) - before.get(work_items, 0) >= expected_visits
         assert after[
             reverse_add_keys.REVERSE_RADIX19_COCHAIN_COMPOSITIONS
         ] > before.get(reverse_add_keys.REVERSE_RADIX19_COCHAIN_COMPOSITIONS, 0)
+    finally:
+        owner.dispose()
+        assert ledger.entries == ledger.nodes == 0
+
+
+def test_q19_stream_node_visits_exclude_repeat_continuations() -> None:
+    ledger = ResourceLedger()
+    owner = ReversePairQ19OutputOwner(ledger, digits_lsd(1, 10), base=10)
+    try:
+        repeated = owner.arena.repeat(owner.arena.terminal(2), 3)
+        root = owner.arena.concat_many(
+            (owner.arena.terminal(19), repeated, owner.arena.terminal(21))
+        )
+        occurrence = owner.publish(owner.candidate(root, temporal_steps=8))
+
+        task_kinds: list[bool] = []
+        expected = tuple(
+            iter_symbols(
+                owner.arena,
+                occurrence.root,
+                on_task=task_kinds.append,
+                reserve_task=lambda: None,
+                release_tasks=lambda _count: None,
+            )
+        )
+        before = ledger.snapshot().counters.get(
+            shared_keys.RECURSIVE_OUTPUT_STREAM_NODE_VISITS, 0
+        )
+        emitted = tuple(owner.iter_encoded_symbols(occurrence))
+        observed = (
+            ledger.snapshot().counters[shared_keys.RECURSIVE_OUTPUT_STREAM_NODE_VISITS]
+            - before
+        )
+
+        assert expected == emitted == (19, 2, 2, 2, 21)
+        assert False in task_kinds
+        assert observed == sum(task_kinds)
+        assert observed < len(task_kinds)
     finally:
         owner.dispose()
         assert ledger.entries == ledger.nodes == 0

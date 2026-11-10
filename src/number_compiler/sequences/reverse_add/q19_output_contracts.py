@@ -7,10 +7,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
-    from number_compiler.arithmetic.automata.slp import (
-        BimachineSLPProjector,
-        SLPCacheAuditView,
-    )
+    from number_compiler.arithmetic.automata.slp import BimachineSLPProjector
+    from number_compiler.arithmetic.automata.slp_cache_audit import SLPCacheAuditView
     from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
     from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
     from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot

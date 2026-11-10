@@ -428,8 +428,8 @@ boundary-cutover acceptance target. The split provides focused feedback:
 | Theory | Statement and assumptions | Implementation connection |
 | --- | --- | --- |
 | `Comma_Child_Cylinder` | Decimal carry/phase equations; fixed-leading-digit iteration and displacement; phase closure; a guarded block stays in its sector and refines a literal child path. | Local laws in `sequences/comma/arithmetic.py`; not yet full Python scheduler/worklist refinement. |
-| `Comma_Decimal_Parent` | Decimal leading digit, predecessor descent and the finite root classification. | Independent root-forest tooling; does not check the compressed termination forest instance. |
-| `Comma_Root_Forest` | Finite child-closed regions for excluded roots plus global root coverage imply infinitely many descendants of root 20; finite compressed-region closure is sound. | Runtime certificate specification; the concrete production certificate instance is not yet kernel-checked. |
+| `Comma_Decimal_Parent` | Decimal leading digit, predecessor descent and the finite root classification. | Arithmetic and root coverage used by the semantic global-root bridge; this theory alone does not classify infinite futures. |
+| `Comma_Semantic_Future_Instance` / `Comma_Semantic_Release` | The producer contract joins exact decade output and prefix selection with the checked future classifier, ordered children, global-root statement, source-20 path agreement, and positive-source lower bound. | The release artifact must identify the exact session, theorem, contract, claims, source universe, and bytes. A checksum authenticates bytes; the kernel theorem is the authority. The finite forest session is not a production dependency. |
 | `Comma_Boundary_Quotient` | Fork/landmine normal forms under the stated seam hypotheses and definitions of the finite displacement catalog. | Arithmetic ingredients of `boundary_quotient.py`; these local laws do not establish macro or successor refinement. |
 | `Comma_Affine_Ray` | Sign and zero guards for affine expressions on an entire increasing decimal-exponent ray. | Inequality obligations checked by `macro_lifting.py`; does not yet connect its fragment worklist to literal paths or elapsed weights. |
 | `Comma_Child_Classification` | For every `p>=2`, the two adjacent leading-digit candidates are all literal children; exact iff headroom conditions cover interiors, forks, crossings and 9-sector landmines. | Complete alternatives used by production `comma_children`, the boundary constructor and development ray checker, not merely correctness of a selected child. |
@@ -450,7 +450,7 @@ boundary-cutover acceptance target. The split provides focused feedback:
 | `Comma_Entry_Port_Anchor`, `Comma_Entry_Port_Refinement` | Signed Entry transport, weighted selection, exact physical phase and direct terminal headroom. The checked 17-tree catalog retains literal digits and both interval bounds; stored-leaf evaluation refines the existing weighted trace without replaying it. | Focused `Comma_Entry_Port` session. `comma_entry_stored_tree_locator_refines_source` and `comma_entry_reduced_key_locator_refines_source` require equality with the authenticated Entry key and concludes the actual Near target without an old Near evaluation. Python inverse-phase/whole-cycle refinement and global branch safety remain separate. |
 | `Comma_Pair_Field` | Reversible raw-predecessor encoding, successor closure, adjacent root thresholds and carry decomposition. | `Comma_Vieta_Root` session. Preserves the zero root before puncturing; an encoding of 81 ports, not a claim of 81 fewer behaviors. |
 | `Comma_Carry_Core_Quotient` | Orbit-independent normalized carry, occurrence-weight formula and primary/core residue lifting. Recursive halfcycle/rotation evaluation equals `10^t mod c` on all nine admitted cores. | `Comma_Frobenius_Recurrence` session; production counterpart is `recursive_core_residue` and its exact physical lift. This is arithmetic refinement, not a losing/winning classification. |
-| `Comma_Total_Macro` | Successful finite runs are unique and stable under added fuel. `comma_boundary_macro_exists` derives successful boundary construction from termination of every admitted decade state; a checked local residual classifier also suffices directly. Rank corollaries are downstream in `Comma_Fast_Decade_Rank`. Weighted existence follows by erasure. Definite descriptions give fuel-independent semantic macros on that proved domain. | Checked generic implications, not a concrete rank instance. `THE` is not a runtime constructor or evidence of admission outside the proved domain. No forest removal follows from these definitions alone. |
+| `Comma_Total_Macro` | Successful finite runs are unique and stable under added fuel. `comma_boundary_macro_exists` derives successful boundary construction from termination of every admitted decade state; a checked local residual classifier also suffices directly. Rank corollaries are downstream in `Comma_Fast_Decade_Rank`. Weighted existence follows by erasure. Definite descriptions give fuel-independent semantic macros on that proved domain. | Checked generic implications, not a concrete rank instance. `THE` is not a runtime constructor or evidence of admission outside the proved domain. This generic theory is not the runtime admission authority; that belongs to the semantic-future release contract. |
 | `Comma_Short_Phase` | Entry headroom depends only on the displacement's short cyclotomic phase. Exact move transport restores the original exponent gain after reuse of a delta-zero representative. | Build `isabelle-195-short-phase` passes. Power observations use the rotated index `(r+919) mod T`; the Entry cache phase and power-table index must not be confused. |
 | `Comma_Entry_Arithmetic` | Kernel-checked compilation of 90 period equations, 17 short periods and 116 modular powers from the arithmetic definitions. | Proof-evaluator data, not a production transition table. Cache facts must have no premises, hypotheses or oracle dependencies. |
 | `Comma_Fast_Arithmetic` | Table-backed cycle lengths, periods, modular powers and Entry headroom equal the canonical arithmetic on admitted inputs. | Kernel-checked in the focused session. Its heap is inherited by Run Germ, avoiding repeated proof-table construction. It does not decide future branches. |
@@ -494,12 +494,20 @@ boundary-cutover acceptance target. The split provides focused feedback:
 | `Comma_Future_Safety` | Losing-level induction and an infinite selected path in a closed, stable finite complement. | Conditional graph lemmas; no concrete comma classification is assumed or certified by these statements. |
 | `Comma_Checked_Ranks` | A checked rank witness proves all-branch termination of ranked states, unique unranked continuation and the bounded losing fixed point. | Checker soundness only. A concrete instance must check every outcome of the executable transition; a generated rank table alone supplies no theorem. |
 
-Build the core with `python -m devtools.checks.release --suite proofs --session Comma_Cylinder`.
-The `-b` option saves the checked heap for subsequent child builds. The forest
-is isolated in `Comma_Forest_Legacy`; the older scalar macro and its refinement
-are isolated in `Comma_Scalar_Reference`. Neither is an ancestor of the weighted
-literal bridge. Boundary and literal-path primitives have one neutral owner;
-the obsolete `Comma_Macro_Refinement` wrapper has been deleted.
+Build the comma release owner with `python -m devtools.checks.release --suite proofs --session Comma_Semantic_Future_Instance`.
+The release theorem is `Comma_Semantic_Release.comma_semantic_producer_global_release_contract`.
+The concrete B1/B32/global build and artifact admission are not yet accepted;
+the following describes the required contract, not a completed release gate.
+Its artifact binding covers the producer writer and prefix refinement, complete
+source map, exact control and ordered-child equality, checked rank rows, the
+global decimal-root classification, source-20 first-child/index and path
+agreement, and the positive-source lower bound. The Python registry accepts
+only an artifact with the matching immutable release metadata and digest; the
+digest is an integrity check, not proof authority. Public A367620 requests use
+this semantic provider rather than a finite forest or finite-prefix admission
+route. The older scalar macro remains isolated in `Comma_Scalar_Reference`.
+Boundary and literal-path primitives have one neutral owner; the obsolete
+`Comma_Macro_Refinement` wrapper has been deleted.
 Concrete trace fixtures live in the sibling `Comma_Trace_Regression` session;
 moving them does not remove their acceptance assertions.
 `Comma_Chart_Bridge` owns Entry/Near refinement and saves that checked heap for
@@ -551,8 +559,9 @@ the aggregate time limit.
 Each theorem-owning theory audits its exported results for oracles. The
 executable boundary constructor, finite classification instance,
 infinite-path/lexicographic-prefix bridge and scheduler cost proof remain
-distinct obligations. The current forest route is scheduled for deletion only
-after these replacement obligations pass. The generated
+distinct obligations. The finite forest admission route is retired by the
+semantic-future cutover; production admission is governed by its checked
+release contract and matching artifact. The generated
 [proof inventory](../devtools/checks/isabelle_proof_index.py) records imports
 and exact theorem names; registration alone never certifies a successful build.
 See the [research scope](research/comma.md) and the
@@ -586,7 +595,8 @@ sector-wrapper evaluation and warm-parent child access, and check changed
 phase/depth/source requests. Their session is `Comma_Fast_Control`. The summary
 kernel separately rejects foreign transport theorems. Current build evidence and
 remaining global obligations are recorded in the weekly comma sprint; this
-identity audit does not authorize forest deletion.
+identity audit is not release authority; production admission is governed by
+the checked semantic-future contract and its matching artifact.
 
 ## Comma return induction without rank tables
 

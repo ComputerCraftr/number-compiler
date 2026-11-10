@@ -2,8 +2,7 @@
 
 The causal boundary evaluator is no longer a production fallback. Identity,
 one-step, fused two-step and guarded no-growth consumers use the original source.
-General temporal pullback remains a construction obligation; compact action
-syntax alone is not execution.
+General temporal pullback remains open; compact syntax is not execution.
 """
 
 from __future__ import annotations
@@ -13,9 +12,7 @@ from dataclasses import dataclass, replace
 from math import ceil, log2
 from typing import TYPE_CHECKING
 
-from number_compiler.arithmetic.contracts.block_effect import (
-    BlockContextBudgetExceeded,
-)
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.exact_tree_context import (
     OriginalSourceConstruction,
     source_reads_only,
@@ -198,6 +195,7 @@ class ReverseAddPoweredTerm:
         "_laurent_cache_owner",
         "_laurent_cache_token",
         "_laurent_scratch_owner",
+        "_center11_scratch_owner",
         "_mirror_output_scratch",
         "_source_construction",
         "_workspace",
@@ -236,6 +234,7 @@ class ReverseAddPoweredTerm:
         self._laurent_cache_owner: int | None = None
         self._laurent_cache_token = object()
         self._laurent_scratch_owner: int | None = None
+        self._center11_scratch_owner: int | None = None
         self._boundary_observer: object | None = None
         self._boundary_observer_identity: object | None = None
         initialize_output_stream_metrics(self._ledger, "reverse_output_stream")
@@ -763,6 +762,73 @@ class ReverseAddPoweredTerm:
             self._laurent_cache_identity = memo
             self._laurent_cache_owner = cache_owner
         return result
+
+    def temporal_mirrored_diagonal(
+        self, *, max_steps: int | None = None
+    ) -> dict[str, object]:
+        """Observe a bounded source interval with reserved, exception-safe scratch.
+
+        The packet grants no future repetition authority.
+        """
+        if (self.seed, self.generation, self.base) != self._binding:
+            raise ValueError("reverse/add term source/action binding changed")
+        if self.base != 10:
+            raise ValueError("mirrored diagonal is decimal-only")
+        from .temporal_mirrored_diagonal import (
+            MAX_MIRRORED_TICKS,
+            center11_interval_packet,
+            center11_scratch_nodes,
+        )
+        from .temporal_port_quotient import (
+            decimal_width_upper_bound,
+        )
+
+        if max_steps is not None and type(max_steps) is not int:
+            raise ValueError("mirrored diagonal exceeds its finite source interval")
+        if max_steps is None:
+            max_steps = MAX_MIRRORED_TICKS
+        if (
+            not 1 <= max_steps <= MAX_MIRRORED_TICKS
+            or not 1 <= self.generation <= max_steps
+        ):
+            raise ValueError("mirrored diagonal exceeds its finite source interval")
+        max_width = decimal_width_upper_bound(self.seed) + self.generation
+        scratch_nodes = center11_scratch_nodes(max_width)
+        scratch_owner = self._center11_scratch_owner
+        if scratch_owner is None:
+            scratch_owner = self._ledger.register(
+                "reverse-center11-term-scratch",
+                "temporary_work",
+                scope=ResourceScope.INDEX_OWNED,
+            )
+            self._center11_scratch_owner = scratch_owner
+
+        def tick_started(_width: int) -> None:
+            self._ledger.bump(_reverse_add_keys.REVERSE_CENTER11_SOURCE_TICKS)
+
+        def coefficient_visits(count: int) -> None:
+            self._ledger.bump(
+                _reverse_add_keys.REVERSE_CENTER11_COEFFICIENT_VISITS, count
+            )
+
+        try:
+            with self._ledger.reservation(scratch_owner, nodes=scratch_nodes):
+                packet = center11_interval_packet(
+                    self.seed,
+                    self.generation,
+                    max_steps=max_steps,
+                    on_tick_start=tick_started,
+                    on_coefficient_visits=coefficient_visits,
+                )
+            if (self.seed, self.generation, self.base) != self._binding:
+                raise ValueError("reverse/add term changed during mirrored observation")
+        except BaseException as error:
+            try:
+                self._ledger.bump(_reverse_add_keys.REVERSE_CENTER11_FAILED_WORK)
+            except BaseException as accounting_error:
+                raise accounting_error from error
+            raise
+        return packet
 
     def temporal_residue99(self) -> ReverseAddResidue99:
         """Predict mod-99 without initializing the Q19 source workspace."""

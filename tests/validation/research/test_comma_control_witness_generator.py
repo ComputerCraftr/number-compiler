@@ -15,7 +15,19 @@ from devtools.experiments.comma.generate_rank_candidate import (
     ControlWitness,
     control_witness_from_chart,
 )
-from number_compiler.sequences.comma.boundary_chart import PERIOD, BoundaryChart
+from devtools.verification import comma_root_entries, comma_semantic_quotients
+from devtools.verification.comma_semantic_quotients import (
+    AUDIT_CHART_WALK_LIMIT,
+    CommaFutureGraph,
+    bounded_chart_walk,
+)
+from number_compiler.sequences.comma.boundary_chart import (
+    PERIOD,
+    BoundaryChart,
+    ChartMove,
+    ChartWeight,
+)
+from number_compiler.sequences.comma.cyclotomic_clock import CyclotomicClock
 from tests.support.private_attributes import private_test_attribute
 
 
@@ -82,6 +94,54 @@ def test_intermediate_entry_candidate_keeps_exact_start() -> None:
     assert witness["start"] == ["entry", 1, 0, 3]
     assert witness["depth"] == len(witness["positions"]) == 230
     assert witness["outcome"] == {"kind": "fork", "a": 2, "delta": 5}
+
+
+def test_arbitrary_chart_walk_fails_closed_at_audit_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    start = BoundaryChart("entry", 1, 0, 0)
+    calls = 0
+
+    def nonterminating_step(
+        residue: int | CyclotomicClock, chart: BoundaryChart
+    ) -> ChartMove:
+        nonlocal calls
+        assert residue == 5
+        calls += 1
+        return ChartMove(chart, ChartWeight(0, 0, 0, 1))
+
+    monkeypatch.setattr(comma_semantic_quotients, "chart_step", nonterminating_step)
+    with pytest.raises(RuntimeError, match="audit walk exceeded 4096 moves"):
+        tuple(bounded_chart_walk(start, 5))
+    assert calls == AUDIT_CHART_WALK_LIMIT
+
+
+def test_root_entry_audit_does_not_return_partial_rows_on_exhaustion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    graph = CommaFutureGraph((), (), ())
+    calls = 0
+
+    def step_then_stall(
+        residue: int | CyclotomicClock, chart: BoundaryChart
+    ) -> ChartMove:
+        nonlocal calls
+        assert residue == 5
+        calls += 1
+        if chart.kind == "entry" and chart.coordinate == 0:
+            return ChartMove(BoundaryChart("near", 1, 0, 1), ChartWeight(0, 0, 0, 1))
+        if chart.kind == "near" and chart.coordinate == 1:
+            return ChartMove(
+                None,
+                ChartWeight(0, 0, 0, 1),
+                terminal_chart=chart,
+            )
+        return ChartMove(chart, ChartWeight(0, 0, 0, 1))
+
+    monkeypatch.setattr(comma_semantic_quotients, "chart_step", step_then_stall)
+    with pytest.raises(RuntimeError, match="audit walk exceeded 4096 moves"):
+        comma_root_entries.audit_root_entries(graph)
+    assert calls == 2 + AUDIT_CHART_WALK_LIMIT
 
 
 def test_witness_slices_are_complete_and_selectable() -> None:

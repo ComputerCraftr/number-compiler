@@ -1,23 +1,30 @@
-# Pending comma global-future cutover
+# Comma global-future cutover
 
-`comma-global-future.patch` is an unapplied review patch against the current
-working sources. It replaces the finite public forest admission path with the
-existing authenticated global-provider interface, removes retired forest
-code/data and audit registration, and migrates the related tests and current
-documentation.
+The prepared forest-deletion patch was applied on 2026-11-03. Its implementation
+now lives in the working sources; the redundant patch file was removed and its
+history remains in Git. The finite public forest admission path, verifier,
+prefix data and legacy forest session have been removed. The replacement uses
+the existing authenticated global-provider interface.
 
-The patch intentionally contains **no global artifact and no production
-admission entry**. The source registry in `future_provider.py` remains empty.
+There is still **no global artifact or production admission entry**. The source
+registry in `future_provider.py` remains empty.
 The package-data declaration reserves the exact
 `kernels/comma_semantic_future_v2.json` path, and the positive installed-wheel
 checks require that asset to match the registered digest. The removed JSON
 candidate was not a kernel artifact and must not be restored or trusted. With
 the registry empty, applying the cutover before release finalization fails
 closed for all public comma values; the positive release checks are expected to
-remain red. The patch is therefore not an activation patch until the separate
-artifact and registry finalization below are complete.
+remain red. Source deletion is applied, but production activation is incomplete.
+Unmocked positive CLI output assertions remain in default units; empty-registry
+refusal tests are negative coverage, not cutover acceptance.
 
 ## Required release-artifact finalization
+
+The B1/B32 replacement must prove an exact labelled terminal and decade height,
+the encoded normalized position, and separate physical/affine occurrence
+weights. A stopping mask or rank bound alone cannot authorize the exact summary
+provider, writer or runtime registry. Preserve the existing weighted-power,
+ordered-child and prefix/index refinement paths when replacing the predecessor.
 
 Do this only after the concrete B1, B32, global-induction and producer/consumer
 kernel gates pass under the central validation policy:
@@ -41,8 +48,7 @@ kernel gates pass under the central validation policy:
    admission from metadata inside the JSON, and never use a test fixture or a
    placeholder digest in production.
 5. Place those same frozen bytes at the reserved package path. After the
-   artifact and registry are finalized, apply the prepared cutover patch in a
-   review checkout, then run its guarded installed-wheel checks and positive
+   artifact and registry are finalized, run the guarded installed-wheel checks and positive
    public CLI cases before considering production activation. Those checks
    verify the packaged bytes against the compiled registry and exercise the
    admitted provider; they do not substitute for the Isabelle kernel build.
@@ -52,7 +58,7 @@ its completed representative with zero additional transition evaluations. The
 native graph fixture checks that behavior; it does not establish arbitrary-source
 closure or B32 acceptance. Do not treat fail-closed tests as positive acceptance.
 
-The patch retires forest-verifier and finite-certificate memo tests with their
+The deletion retires forest-verifier and finite-certificate memo tests with their
 implementation. Independent literal seam comparisons remain; provider authority,
 generation, malformed input, metadata laziness and later-fork tests protect the
 replacement. Current public API names, strict test typing and resource-lifecycle fixes are
@@ -63,6 +69,6 @@ Developer-only trace audits retain explicit work bounds and reject exhaustion;
 those bounds do not supply production fuel or prove termination outside an
 admitted source domain.
 
-This directory is authored source, rather than an ignored validation result.
-Review the patch against the working tree before applying; later source edits
-may require another rebase. No proof success is asserted by its presence.
+Current evidence and remaining proof work are recorded in the
+[cutover sprint](../../docs/sprints/week-of-2026-11-01/comma-global-cutover.md).
+No proof success follows from deleting the legacy implementation.

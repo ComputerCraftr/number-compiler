@@ -109,9 +109,58 @@ next
     using composition_eq semantic_square by simp
 qed
 
+lemma comma_semantic_b1_action_stop_from_exact_summary:
+  assumes phase: "phase<924" and root: "root<46"
+    and summary: "comma_decade_exact_summary
+      (Comma_Decade phase (comma_offset_representatives!root)) h terminal"
+    and height_bound: "h\<le>26"
+  shows "comma_semantic_b1_action_power 5 phase root =
+      Comma_Semantic_B1_Stop (comma_terminal_weight_encode h terminal)
+    \<and> comma_terminal_weight_encode h terminal\<le>242"
+proof -
+  let ?source = "Comma_Decade phase (comma_offset_representatives!root)"
+  have representative: "comma_offset_representatives!root\<le>90"
+    and representative_index:
+      "comma_offset_orbit (comma_offset_representatives!root)=root"
+    using comma_orbit_representative_index[OF root] by auto
+  have admitted: "comma_decade_admitted ?source"
+    using phase representative by simp
+  have block_run_stop:
+    "comma_decade_block_run 32 ?source=Comma_Block_Stop h terminal"
+    by (rule comma_decade_exact_summary_block_stop[OF summary admitted])
+      (use height_bound in arith)
+  have block_stop:
+    "comma_decade_block_power 5 ?source=Comma_Block_Stop h terminal"
+    using block_run_stop by (simp add: comma_decade_block_square_refines)
+  have orbit_refinement:
+    "comma_word_project comma_offset_orbit
+        (comma_decade_block_power 5 ?source)=comma_orbit_word 5 phase root"
+    using comma_orbit_word_refines[OF admitted] representative_index by simp
+  have orbit_stop: "comma_orbit_word 5 phase root=Comma_Word_Stop h terminal"
+    using orbit_refinement block_stop by simp
+  have semantic_refinement:
+    "comma_semantic_b1_action_power 5 phase root=
+      comma_semantic_b1_of_word (comma_orbit_word 5 phase root)"
+    by (rule comma_semantic_b1_action_power_refines_orbit[OF phase root])
+  have action_equation:
+    "comma_semantic_b1_action_power 5 phase root=
+      Comma_Semantic_B1_Stop (comma_terminal_weight_encode h terminal)"
+    using semantic_refinement orbit_stop by simp
+  have terminal_admitted:
+    "comma_terminal_weight_admitted terminal"
+    by (rule comma_decade_exact_summary_terminal_admitted[OF summary])
+  have digit_bound: "comma_terminal_weight_digit terminal<9"
+    by (rule comma_terminal_weight_digit_bound[OF terminal_admitted])
+  have weight_bound: "comma_terminal_weight_encode h terminal\<le>242"
+    using height_bound digit_bound
+    by (simp add: comma_terminal_weight_encode_def; arith)
+  show ?thesis using action_equation weight_bound by blast
+qed
+
 ML \<open>
   val checked = @{thms
-    comma_semantic_b1_action_power_refines_orbit};
+    comma_semantic_b1_action_power_refines_orbit
+    comma_semantic_b1_action_stop_from_exact_summary};
   val _ = Thm.consolidate checked;
   val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}
     "Representation-independent semantic B1 action power" checked;

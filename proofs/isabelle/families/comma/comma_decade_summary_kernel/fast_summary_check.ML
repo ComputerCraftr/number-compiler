@@ -12,7 +12,7 @@ struct
       (* Coordinate lenses are immutable theorem templates. Build a demanded
          offset once; engine setup and unrelated offset requests do no proof
          work. The control memo still retains the exact receiving occurrence. *)
-      val orbit_context = Comma_Entry_Arithmetic.natural_context ctxt addsimps
+      val orbit_context = Comma_Entry_Arithmetic.natural_context ctxt |> Simplifier.add_simps
         @{thms comma_offset_representative_def comma_offset_representatives_def
           comma_offset_orbit_def comma_digit_orbit_sum_def power2_eq_square
           nth_Cons' of_nat_numeral of_nat_0 of_nat_1
@@ -116,7 +116,7 @@ struct
         terminal_lookup
       val evaluation = (#context core
         |> Simplifier.add_proc rank_proc
-        |> Simplifier.add_proc terminal_proc) addsimps
+        |> Simplifier.add_proc terminal_proc) |> Simplifier.add_simps
         @{thms comma_fast_decade_summary_step_def comma_decade_summary_step_for_def
           comma_fast_decade_summary_range_def
           comma_decade_admitted.simps comma_decade_terminal_candidate_on_valid_def

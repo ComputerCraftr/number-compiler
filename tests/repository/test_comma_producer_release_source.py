@@ -37,12 +37,21 @@ def test_concrete_decade_summary_producer_bridge_is_registered(
     ).read_text()
     summary = (
         ISABELLE
-        / "families/comma/comma_semantic_b1_instance/Comma_Semantic_Summary_Instance.thy"
+        / "families/comma/comma_semantic_graph_instance/Comma_Semantic_Summary_Instance.thy"
     ).read_text()
 
     assert "comma_semantic_graph_action_power 5 r (comma_offset_orbit x)" in summary
     assert "comma_semantic_graph_action_power_refines" in summary
-    assert "comma_semantic_graph_b32_stop242_checked" in summary
+    summary_declarations = {
+        item.name: item
+        for item in extract_isabelle_declarations(
+            summary,
+            ISABELLE
+            / "families/comma/comma_semantic_graph_instance/Comma_Semantic_Summary_Instance.thy",
+        )
+    }
+    stop_bridge = summary_declarations["comma_semantic_b1_action_power_b32_stop242"]
+    assert "comma_semantic_b1_action_b32_stop242_checked" in stop_bridge.body
 
     assert "comma_semantic_decade_summary_writer_release" in release
     summary_result_start = release.index(
@@ -179,7 +188,11 @@ def test_concrete_decade_summary_producer_bridge_is_registered(
         "comma_semantic_graph_root_action_exact",
         "comma_semantic_graph_action_power_refines",
         "comma_semantic_b1_action_power_refines_orbit",
-        "comma_semantic_graph_stop242_from_weighted_crt_power_all",
+        "comma_semantic_phase_continue24_image_certificate_native",
+        "comma_semantic_phase_continue24_image_checked",
+        "comma_semantic_phase_class_B32_exact_output_checked",
+        "comma_semantic_phase_class_B32_exact_output",
+        "comma_crt_rank_relations_sound",
         "comma_semantic_decade_summary_provider_exact",
         "comma_semantic_graph_b32_stop242_checked",
         "comma_semantic_p5_entry_future_open_checked",

@@ -15,7 +15,7 @@ definition comma_finite_period_fast :: "nat \<Rightarrow> nat \<Rightarrow> nat"
 lemma comma_cycle_length_fast_checked:
   "list_all (\<lambda>f. comma_cycle_length_fast f = comma_cycle_length f) [1..<10]"
   by (tactic \<open>simp_tac
-    (Comma_Entry_Arithmetic.natural_context @{context} addsimps
+    (Comma_Entry_Arithmetic.natural_context @{context} |> Simplifier.add_simps
       @{thms comma_cycle_length_fast_def comma_compiled_cycle_length_facts
         list_all_Nil_iff list_all_Cons_iff upt_rec nth_Cons'}) 1\<close>)
 
@@ -29,7 +29,7 @@ lemma comma_finite_period_fast_checked:
   "list_all (\<lambda>f. list_all (\<lambda>d.
     comma_finite_period_fast f d = comma_finite_period f d) [0..<10]) [1..<10]"
   by (tactic \<open>simp_tac
-    (Comma_Entry_Arithmetic.natural_context @{context} addsimps
+    (Comma_Entry_Arithmetic.natural_context @{context} |> Simplifier.add_simps
       @{thms comma_finite_period_fast_def comma_compiled_period_facts
         list_all_Nil_iff list_all_Cons_iff upt_rec nth_Cons'}) 1\<close>)
 
@@ -70,7 +70,7 @@ lemma comma_power_table_checked:
     [0..<comma_short_period P])
     [60,80,100,120,140,210,220,230,240,260,270,280,290,460,480,520,540]"
   by (tactic \<open>simp_tac
-    (Comma_Entry_Arithmetic.natural_context @{context} addsimps
+    (Comma_Entry_Arithmetic.natural_context @{context} |> Simplifier.add_simps
       @{thms comma_power_table_def comma_compiled_short_period_facts
         comma_compiled_power_facts
         list_all_Nil_iff list_all_Cons_iff upt_rec nth_Cons'}) 1\<close>)

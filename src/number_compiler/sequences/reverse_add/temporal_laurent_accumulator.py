@@ -1,27 +1,35 @@
 """Finite source-bound Laurent and carry projections for reverse/add.
 
-This consumer advances the exact canonical symmetric RLE port from the
-queried term's literal seed. It never creates Q19 roots and never promotes a
-supplied carry word into a physical future-period certificate. The term owns
-the cache and ledger; this module owns only the arithmetic fold.
+This consumer advances the exact physical source through the same trapped
+native decimal transport used by the production Q19 finite-block issuer,
+falling back to symmetric RLE when the native width guard is exceeded. It
+never creates Q19 roots or promotes a supplied carry word into a future-period
+certificate. The term owns the cache and ledger.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _metric_keys
 
 from .temporal_port_quotient import (
+    MAX_EXACT_DECIMAL_BLOCK_WIDTH,
     DigitRuns,
     SymmetricCoefficientPort,
     decimal_run_residues,
+    decimal_width_upper_bound,
+    native_decimal_string_transport,
+    q19_transition_scratch_nodes,
 )
 
-MAX_FINITE_LAURENT_TICKS = 4097
+MAX_FINITE_LAURENT_TICKS = (
+    16_384  # audited finite physical duration; NOT a temporal period
+)
 _RESIDUE_MODULUS = 1386  # lcm(7, 198)
 _J_MODULUS = 693  # 7 * 99, enough to recover J modulo seven
 
@@ -29,12 +37,6 @@ _J_MODULUS = 693  # 7 * 99, enough to recover J modulo seven
 def _require_natural(value: int, name: str) -> None:
     if type(value) is not int or value < 0:
         raise ValueError(f"{name} must be a nonnegative exact integer")
-
-
-def _decimal_width_upper_bound(value: int) -> int:
-    """An integer-only decimal width bound used before seed digit expansion."""
-    bits = value.bit_length()
-    return max(1, (302 * bits + 999) // 1000)
 
 
 def _j_from_literal_residues(integer_mod693: int, reverse_mod693: int) -> int:
@@ -138,6 +140,133 @@ class _LaurentWork:
     run_records_visited: int = 0
     operand_bits: int = 0
     paired_blocks_checked: int = 0
+    native_ticks: int = 0
+    native_digit_visits: int = 0
+
+
+def _from_seed_native(
+    seed_text: str,
+    generation: int,
+    source_integer: int,
+    source_reverse: int,
+    work: _LaurentWork,
+) -> SourceBoundLaurentResult:
+    """One exact native physical stream, projected into both Laurent matrices.
+
+    No Q19 root or second carry issuer is constructed. The same exact
+    Decimal successor/physical reversal feeds all residues and accumulators.
+    Unlike a supplied-input matrix power this performs `generation` ticks.
+    """
+    first7, second7 = source_integer % 7, 0
+    first198, second198 = source_integer % 198, 0
+    previous_u7, previous_u198 = source_integer % 7, source_integer % 198
+    forward, reflected = source_integer, source_reverse
+    pending_action: LaurentAction7 | None = None
+    pending7: tuple[int, int] | None = None
+    pending198: tuple[int, int] | None = None
+    pending_q: int | None = None
+    tick = 0
+
+    def starting(width: int) -> None:
+        # Charge the native tick before performing work. If Decimal rejects an
+        # operation or a later cross-check fails, the attempted physical step
+        # still appears in the failed-work snapshot.
+        work.source_ticks += 1
+        work.native_ticks += 1
+        # A native digit visit is one decimal position consumed by this
+        # transition. The transport's return value additionally counts the
+        # final endpoint scan once, after successful completion.
+        work.native_digit_visits += width
+        work.operand_bits += 8 * width
+
+    def completed(text: str, value: Decimal, reverse: Decimal) -> None:
+        nonlocal first7, second7, first198, second198
+        nonlocal previous_u7, previous_u198, forward, reflected
+        nonlocal pending_action, pending7, pending198, pending_q, tick
+        # Decimal remainder is exact in the native block's trapped context.
+        # The integers converted here are < 1386, not large decimal roots.
+        next_forward = int(value % _RESIDUE_MODULUS)
+        next_reflected = int(reverse % _RESIDUE_MODULUS)
+        next7, reverse7 = next_forward % 7, next_reflected % 7
+        next198, reverse198 = next_forward % 198, next_reflected % 198
+        next_u7 = next7 if (tick + 1) % 2 == 0 else reverse7
+        next_u198 = next198 if (tick + 1) % 2 == 0 else reverse198
+        if tick % 2 == 0:
+            second7 = (second7 + next_u7 - previous_u7) % 7
+            second198 = (second198 + next_u198 - previous_u198) % 198
+        else:
+            first7 = (first7 + next_u7 - previous_u7) % 7
+            first198 = (first198 + next_u198 - previous_u198) % 198
+        previous_u7, previous_u198 = next_u7, next_u198
+        if tick % 2 == 0 and tick + 2 <= generation and forward % 11 == 0:
+            if next_forward % 11:
+                raise AssertionError("native successor lost its mod-11 source guard")
+            j_source = _j_from_literal_residues(
+                forward % _J_MODULUS, reflected % _J_MODULUS
+            )
+            j_middle = _j_from_literal_residues(
+                next_forward % _J_MODULUS, next_reflected % _J_MODULUS
+            )
+            pending_action = LaurentAction7.two_steps(j_source, j_middle)
+            # B was just updated by next_u - old_u; reconstruct the prior D:
+            # old_u was forward on the even input, new_u is reflected output.
+            pending7 = (forward % 7, (first7 - second7 + next_u7 - (forward % 7)) % 7)
+            pending198 = (
+                forward % 198,
+                (first198 - second198 + next_u198 - (forward % 198)) % 198,
+            )
+            pending_q = (ord(text[0]) - ord(text[-1])) & 1
+        elif tick % 2 == 1 and pending_action is not None:
+            if pending7 is None or pending198 is None or pending_q is None:
+                raise AssertionError("native Laurent lost its pointed seam")
+            if pending_action.apply(*pending7) != (next7, (first7 - second7) % 7):
+                raise AssertionError(
+                    "native mod7 Laurent transfer disagrees with source"
+                )
+            total198, difference198 = pending198
+            if (
+                (4 * total198 + 99 * pending_q) % 198,
+                (difference198 + total198 - 99 * pending_q) % 198,
+            ) != (next198, (first198 - second198) % 198):
+                raise AssertionError(
+                    "native mod198 Laurent transfer disagrees with source"
+                )
+            work.paired_blocks_checked += 1
+            pending_action = None
+            pending7 = pending198 = None
+            pending_q = None
+        forward, reflected = next_forward, next_reflected
+        tick += 1
+        # Exact decimal operand precision is charged above at tick start,
+        # before any operation that may fail.
+
+    endpoint, native_visits = native_decimal_string_transport(
+        seed_text,
+        generation,
+        on_tick_start=starting,
+        on_tick_complete=completed,
+    )
+    if tick != generation:
+        raise AssertionError("native Laurent did not issue the whole source word")
+    if generation:
+        work.native_digit_visits += len(endpoint)
+    if native_visits != work.native_digit_visits:
+        raise AssertionError("native Laurent digit visits disagree with transport")
+    return SourceBoundLaurentResult(
+        generation,
+        source_integer % 7,
+        source_reverse % 7,
+        forward % 7,
+        reflected % 7,
+        source_integer % 198,
+        source_reverse % 198,
+        forward % 198,
+        reflected % 198,
+        first7,
+        second7,
+        first198,
+        second198,
+    )
 
 
 def _from_seed(
@@ -146,12 +275,16 @@ def _from_seed(
     *,
     work: _LaurentWork,
 ) -> SourceBoundLaurentResult:
-    """Run exact finite source transport under the caller's ledger reservation."""
+    """Run exact finite source transport under the caller's ledger reservation.
+
+    Prefer the shared native physical issuer; RLE remains the audited fallback
+    for sources beyond its finite decimal width guard.
+    """
     _require_natural(seed, "reverse/add seed")
     _require_natural(generation, "generation")
     if generation > MAX_FINITE_LAURENT_TICKS and seed != 0:
         raise ValueError(
-            "source-bound Laurent supports at most 4097 physical ticks; "
+            f"source-bound Laurent supports at most {MAX_FINITE_LAURENT_TICKS} physical ticks; "
             "no unbounded carry-driver period is certified"
         )
 
@@ -177,14 +310,22 @@ def _from_seed(
     source_projection = decimal_run_residues(source_runs, _RESIDUE_MODULUS)
     source_integer = source_projection.integer_residue
     source_reverse = source_projection.reverse_residue
-    port = SymmetricCoefficientPort.from_source_digits(source_digits)
     work.run_records_visited += (
-        len(source_digits)
-        + port.half_width
-        + 2 * len(port.half_runs)
-        + source_projection.run_records_visited
+        len(source_digits) + len(source_runs) + source_projection.run_records_visited
     )
     work.operand_bits += source_projection.operand_bits
+    # Use the SAME physical decimal issuer as bounded Q19 publication for
+    # admitted small/medium source cylinders. No per-tick RLE rebuild.
+    if len(source_digits) + generation <= MAX_EXACT_DECIMAL_BLOCK_WIDTH:
+        return _from_seed_native(
+            "".join(str(d) for d in reversed(source_digits)),
+            generation,
+            source_integer,
+            source_reverse,
+            work,
+        )
+    port = SymmetricCoefficientPort.from_source_digits(source_digits)
+    work.run_records_visited += port.half_width + 2 * len(port.half_runs)
 
     first7, second7 = seed % 7, 0
     first198, second198 = seed % 198, 0
@@ -344,13 +485,13 @@ def source_bound_laurent_projection(
         raise TypeError("Laurent source projection requires its term ledger")
     if generation > MAX_FINITE_LAURENT_TICKS and seed != 0:
         raise ValueError(
-            "source-bound Laurent supports at most 4097 physical ticks; "
+            f"source-bound Laurent supports at most {MAX_FINITE_LAURENT_TICKS} physical ticks; "
             "no unbounded carry-driver period is certified"
         )
-    max_width = _decimal_width_upper_bound(seed) + min(
+    max_width = decimal_width_upper_bound(seed) + min(
         generation, MAX_FINITE_LAURENT_TICKS
     )
-    scratch_nodes = 64 if seed == 0 else 24 * max_width + 64
+    scratch_nodes = 64 if seed == 0 else q19_transition_scratch_nodes(max_width)
     work = _LaurentWork()
     try:
         with ledger.reservation(scratch_owner, nodes=scratch_nodes):
@@ -365,6 +506,11 @@ def source_bound_laurent_projection(
         raise
     finally:
         ledger.bump(_metric_keys.REVERSE_LAURENT_SOURCE_TICKS, work.source_ticks)
+        ledger.bump(_metric_keys.REVERSE_LAURENT_NATIVE_TICKS, work.native_ticks)
+        ledger.bump(
+            _metric_keys.REVERSE_LAURENT_NATIVE_DIGIT_VISITS,
+            work.native_digit_visits,
+        )
         ledger.bump(
             _metric_keys.REVERSE_LAURENT_RUN_RECORD_VISITS,
             work.run_records_visited,

@@ -87,6 +87,34 @@ def test_mersenne_cyclic_signed_birth_h5_and_seam() -> None:
         )
 
 
+def test_signed_birth_window_uses_one_prefix_per_demanded_position(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    action = _carry_action_from_coefficients((3, 1, -2, 0, 4, 2, 0, 0), sign=-1)
+    start, length = 1, 6
+    expected_carries = tuple(
+        action.carry_at(i) for i in range(start, start + length + 1)
+    )
+    expected_digits = tuple(action.digit_at(i) for i in range(start, start + length))
+    prefix_queries: list[int] = []
+    original_carry_at = action.carry_at
+
+    def counted_carry_at(boundary: int) -> int:
+        prefix_queries.append(boundary)
+        return original_carry_at(boundary)
+
+    def reject_digit_at(_position: int) -> int:
+        raise AssertionError("birth-window demand repeated a prefix for its digit")
+
+    monkeypatch.setattr(action, "carry_at", counted_carry_at)
+    monkeypatch.setattr(action, "digit_at", reject_digit_at)
+    window = demand_signed_birth_window(action, start=start, length=length)
+
+    assert prefix_queries == list(range(start, start + length + 1))
+    assert window.carries == expected_carries
+    assert window.digits == expected_digits
+
+
 def test_walsh_birth_is_not_a_source_or_prime_certificate() -> None:
     true_coefficients = _cyclic_source_square_coefficients(4870, 13)
     honest = _carry_action_from_coefficients(true_coefficients, sign=1)

@@ -11,8 +11,10 @@ from number_compiler.sequences.double_reverse.temporal_defect_quotient import (
     defect_from_normalized_suffix,
 )
 from number_compiler.sequences.double_reverse.temporal_four_observer import (
+    CYCLIC_NEGACYCLIC_MODULI,
     FourObserverAffineClock,
     FourObserverEmission,
+    FourObserverPeriodSample,
     projected_period_profiles,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife import edge_phase
@@ -200,6 +202,18 @@ def test_valuation_period_kernel_agrees_with_independent_naive_lag_scan() -> Non
                 assert active == candidate, (seed, kind, w, active, candidate)
                 if w == 25:
                     assert kind_profile["finite_window_period_lags"] == full
+
+
+def test_compact_period_samples_preserve_all_four_observer_projections() -> None:
+    observations = [_source_observation(x, 18) for x in _even_orbit(168, 40, 32)]
+    compact = tuple(FourObserverPeriodSample.from_emission(row) for row in observations)
+    assert projected_period_profiles(compact, 16) == projected_period_profiles(
+        observations, 16
+    )
+    for modulus in CYCLIC_NEGACYCLIC_MODULI:
+        assert [row.cyclotomic_key(modulus) for row in compact] == [
+            row.cyclotomic_key(modulus) for row in observations
+        ]
 
 
 def test_full_successor_is_reused_without_changing_carry_columns() -> None:

@@ -14,6 +14,45 @@ This is development evidence, not clean-commit acceptance.
 
 ## Changes
 
+The November 6 continuation starts from dirty Git
+`2994b2841317fd141cd7913142c53f38685838a7`. The fixed-boundary prime-birth
+quotient now runs inside the existing rank DAG. After the issuer has validated
+the complete prime prefix through the square-root boundary, remaining primes
+remove only themselves. The consumer evaluates the core rank once and subtracts
+the admitted suffix count; it does not build another sieve or CLI entry point.
+Cached rank application precedes square-root discovery. Source-prefix validation,
+budget refusal, pending-frame cleanup and shared-cache authority remain intact.
+
+`Prime_Deterministic_Refinement` rebuilds successfully in
+`20261107T053149Z-e9536ca8de604221b3aeaa300aafc2ac` (13 seconds reported,
+9.514 seconds native session execution; the new theory takes 3.501 cumulative
+seconds). The concrete guard bridge derives the complete square-root prefix
+from the admitted consecutive-prime descriptor and a strict cutoff below the
+admitted depth. It then transports finite suffix subtraction to `numerical_Phi`.
+Completeness is proved from those guards rather than assumed as the consumer's
+result. This is arithmetic refinement, not authentication of a Python handle.
+All 250 prime tests pass in
+`20261107T041614Z-79fc8cc543664b9c9d80e9003f5eeed9`.
+
+The same guarded public-query harness, five trials per mode, compares the
+pre-change run `20261107T040821Z-842eeb5187104dd49f2e2e28c457ab5a` with
+`20261107T041628Z-21864969119a4f79b468f4e545d971af` and confirmation run
+`20261107T041721Z-c7d7e05acd8a465a875415917e9c2e33`. At start 1,000,000,
+cold medians for indices 0 and 20 move from 196.25/264.83 ms to
+129.27/151.69 ms in the confirmation run. Cache-bypassed medians move from
+81.35/146.87 ms to 22.59/43.46 ms. Warm medians are 3.24/5.09 ms before and
+3.00/4.82 ms in that run; the first replacement run had a noisy 8.54 ms
+index-zero warm median, so no warm-speed claim is made. Exact values agree.
+
+A guarded isolated rank comparison against the unchanged Git-HEAD rank owner
+returns the same rank 78,331 at boundary 1,000,000 and 168 prime factors.
+Memo states fall from 43,486 to 4,396 and charged work from 130,269 to 90,290
+(`results/nov7-prime-structure-v2.json`). This is avoided finite rank work, not
+a logarithmic bound for prime enumeration. Schema-eight measurement owners now
+expose innovation collapses and eliminated suffix stages separately.
+
+The earlier integration below remains context for the existing production path.
+
 - Prime discovery scans ordered odd candidates under the authenticated prefix's
   square bound. An independent rank seam checks the first extension; a failed
   check remains pending across retry. Exact rank descent remains the fallback.

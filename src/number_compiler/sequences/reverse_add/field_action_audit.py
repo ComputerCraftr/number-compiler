@@ -458,10 +458,19 @@ class ReverseFieldActionAudit(Protocol):
                 record
             )
             expected_identity = build_radial_identity(action.radial)
+            component = expected_identity.behavior[1]
+            if type(component) is not SemanticIdentity:
+                return False
             return (
                 recorded_source == source
                 and action_seal == id(action)
-                and radial_seal == (action.radial.no_growth, action.radial.growth)
+                and radial_seal
+                == (
+                    action.radial.no_growth,
+                    action.radial.growth,
+                    action.radial.canonical_key,
+                    component.digest,
+                )
                 and type(identity) is SemanticIdentity
                 and identity.digest == digest
                 and identity.behavior is behavior

@@ -1,6 +1,7 @@
 theory Comma_Semantic_Future_Action_Compare
-  imports Comma_Semantic_Future_Candidate_Selector
-    Comma_Semantic_Future_Weighted_Transport
+  imports Comma_Semantic_Future_Source_Action
+    Comma_Semantic_Future_Candidate_Selector
+    Comma_Semantic_Future_Rank_B1_Transport
 begin
 
 text \<open>
@@ -11,63 +12,6 @@ action at span one.  The resulting Stop height is the total source-to-event
 exponent \<delta>; the boundary adapter below separates that value back into
 the local displacement d and complete-decade payload H.
 \<close>
-
-definition comma_semantic_future_family_action_nf_spec ::
-    "(nat \<Rightarrow> nat \<Rightarrow> comma_semantic_b1_weighted_result) \<Rightarrow>
-      (nat \<Rightarrow> nat \<Rightarrow> comma_semantic_b1_weighted_result) \<Rightarrow>
-      nat \<Rightarrow> nat \<Rightarrow> comma_semantic_b1_weighted_result" where
-  "comma_semantic_future_family_action_nf_spec source_round b32_action phase source_cid =
-    comma_semantic_b1_weighted_word_then 1 source_round b32_action
-      phase source_cid"
-
-definition comma_semantic_future_family_nf_dags ::
-    "(nat \<times> comma_semantic_b1_crt_dag) list \<Rightarrow>
-      (nat \<times> comma_semantic_b1_crt_dag) list \<Rightarrow>
-      (nat \<times> comma_semantic_b1_crt_dag) list" where
-  "comma_semantic_future_family_nf_dags source_actions b32_actions =
-    (if length source_actions=16 \<and> length b32_actions=46 then
-       map (\<lambda>source_action.
-         comma_semantic_b1_crt_compose 1 source_action b32_actions)
-         source_actions
-     else [])"
-
-definition comma_semantic_future_family_nf_action_at ::
-    "(nat \<times> comma_semantic_b1_crt_dag) list \<Rightarrow>
-      (nat \<times> comma_semantic_b1_crt_dag) list \<Rightarrow>
-      nat \<Rightarrow> nat \<Rightarrow> comma_semantic_b1_weighted_result" where
-  "comma_semantic_future_family_nf_action_at source_actions b32_actions
-      phase family_slot =
-    (if phase<924 \<and> family_slot<16 \<and>
-        length source_actions=16 \<and> length b32_actions=46 then
-       comma_semantic_b1_crt_action_eval
-         (comma_semantic_future_family_nf_dags source_actions b32_actions !
-           family_slot) phase
-     else Comma_Semantic_B1_Weighted_Invalid)"
-
-definition comma_semantic_future_family_nf_spec_of_dags ::
-    "(nat \<times> comma_semantic_b1_crt_dag) list \<Rightarrow>
-      (nat \<times> comma_semantic_b1_crt_dag) list \<Rightarrow>
-      nat \<Rightarrow> nat \<Rightarrow> comma_semantic_b1_weighted_result" where
-  "comma_semantic_future_family_nf_spec_of_dags source_actions b32_actions
-      phase family_slot =
-    comma_semantic_b1_weighted_word_then 1
-      (\<lambda>p i. comma_semantic_b1_crt_action_eval (source_actions!i) p)
-      (\<lambda>p i. comma_semantic_b1_crt_action_eval (b32_actions!i) p)
-      phase family_slot"
-
-definition comma_semantic_future_initial_nf_dags ::
-    "(nat \<times> comma_semantic_b1_crt_dag) list" where
-  "comma_semantic_future_initial_nf_dags =
-    comma_semantic_future_family_nf_dags
-      comma_semantic_graph_initial_source_actions
-      comma_semantic_graph_b32_weighted_actions"
-
-definition comma_semantic_future_initial_nf_action_at ::
-    "nat \<Rightarrow> nat \<Rightarrow> comma_semantic_b1_weighted_result" where
-  "comma_semantic_future_initial_nf_action_at phase family_slot =
-    comma_semantic_future_family_nf_action_at
-      comma_semantic_graph_initial_source_actions
-      comma_semantic_graph_b32_weighted_actions phase family_slot"
 
 text \<open>
 The child IDs are separate phase receivers.  Both query the same authenticated
@@ -397,7 +341,7 @@ proof -
       using table
       by (simp add: comma_semantic_future_candidate_class_table_check_def)
     show ?thesis using ids_length family phase
-    by (simp add: comma_boundary_states_card; omega)
+    by (simp add: comma_boundary_states_card; arith)
   qed
   have class_member:
     "?class \<in> set comma_semantic_future_candidate_class_ids"
@@ -569,76 +513,6 @@ proof -
   qed
 qed
 
-lemma comma_semantic_future_family_nf_action_at_exact:
-  assumes phase: "phase<924"
-    and slot: "family_slot<16"
-    and source_length: "length source_actions=16"
-    and b32_length: "length b32_actions=46"
-    and source_wf: "comma_weighted_crt_wellformed
-      (snd (source_actions!family_slot))"
-    and source_zero: "comma_semantic_b1_crt_action_nonterminal_zero
-      (source_actions!family_slot)"
-    and b32_wf: "\<And>root. root<46 \<Longrightarrow>
-      comma_weighted_crt_wellformed (snd (b32_actions!root))"
-    and b32_zero: "\<And>root. root<46 \<Longrightarrow>
-      comma_semantic_b1_crt_action_nonterminal_zero (b32_actions!root)"
-  shows "comma_semantic_future_family_nf_action_at source_actions b32_actions
-      phase family_slot =
-    comma_semantic_future_family_nf_spec_of_dags source_actions b32_actions
-      phase family_slot"
-proof -
-  have roots_wf:
-      "\<And>root. root<46 \<Longrightarrow>
-        comma_weighted_crt_wellformed (snd (b32_actions!root))"
-    by (rule b32_wf)
-  have roots_zero:
-      "\<And>root. root<46 \<Longrightarrow>
-        comma_semantic_b1_crt_action_nonterminal_zero (b32_actions!root)"
-    by (rule b32_zero)
-  have composed:
-      "comma_semantic_b1_crt_action_eval
-          (comma_semantic_b1_crt_compose 1
-            (source_actions!family_slot) b32_actions) phase =
-        comma_semantic_b1_weighted_word_then 1
-          (\<lambda>p i. comma_semantic_b1_crt_action_eval
-            (source_actions!i) p)
-          (\<lambda>p i. comma_semantic_b1_crt_action_eval
-            (b32_actions!i) p)
-          phase family_slot"
-    by (rule comma_semantic_b1_crt_compose_action_eval
-      [OF b32_length source_wf roots_wf source_zero roots_zero])
-  show ?thesis
-    using composed phase slot source_length b32_length
-    by (simp add: comma_semantic_future_family_nf_action_at_def
-        comma_semantic_future_family_nf_dags_def
-        comma_semantic_future_family_nf_spec_of_dags_def)
-qed
-
-lemma comma_semantic_future_initial_nf_action_at_exact:
-  assumes phase: "phase<924"
-    and slot: "family_slot<16"
-    and source_length:
-      "length comma_semantic_graph_initial_source_actions=16"
-    and b32_length:
-      "length comma_semantic_graph_b32_weighted_actions=46"
-    and source_wf: "comma_weighted_crt_wellformed
-      (snd (comma_semantic_graph_initial_source_actions!family_slot))"
-    and source_zero: "comma_semantic_b1_crt_action_nonterminal_zero
-      (comma_semantic_graph_initial_source_actions!family_slot)"
-    and b32_wf: "\<And>root. root<46 \<Longrightarrow>
-      comma_weighted_crt_wellformed
-        (snd (comma_semantic_graph_b32_weighted_actions!root))"
-    and b32_zero: "\<And>root. root<46 \<Longrightarrow>
-      comma_semantic_b1_crt_action_nonterminal_zero
-        (comma_semantic_graph_b32_weighted_actions!root)"
-  shows "comma_semantic_future_initial_nf_action_at phase family_slot =
-    comma_semantic_future_family_nf_spec_of_dags
-      comma_semantic_graph_initial_source_actions
-      comma_semantic_graph_b32_weighted_actions phase family_slot"
-  using comma_semantic_future_family_nf_action_at_exact
-    [OF phase slot source_length b32_length source_wf source_zero b32_wf b32_zero]
-  by (simp add: comma_semantic_future_initial_nf_action_at_def)
-
 fun comma_semantic_future_nf_control_of_crt ::
     "comma_semantic_b1_crt_control \<Rightarrow> comma_future_control option" where
   "comma_semantic_future_nf_control_of_crt
@@ -697,7 +571,7 @@ lemma comma_semantic_future_initial_nf_key_action_exact:
     and source_length:
       "length comma_semantic_graph_initial_source_actions=16"
     and b32_length:
-      "length comma_semantic_graph_b32_weighted_actions=46"
+      "length comma_semantic_future_rank_b32_weighted_actions=46"
   shows "comma_semantic_future_initial_nf_key_action phase family_slot =
     comma_semantic_future_nf_key_action
       (comma_semantic_future_initial_nf_dags!family_slot)"
@@ -938,12 +812,6 @@ qed
 
 ML \<open>
   val published = @{thms
-    comma_semantic_future_family_action_nf_spec_def
-    comma_semantic_future_family_nf_dags_def
-    comma_semantic_future_family_nf_action_at_def
-    comma_semantic_future_family_nf_spec_of_dags_def
-    comma_semantic_future_initial_nf_dags_def
-    comma_semantic_future_initial_nf_action_at_def
     comma_semantic_future_candidate_child_receiver_north_def
     comma_semantic_future_candidate_child_receiver_south_def
     comma_semantic_future_candidate_child_receiver_north_shape
@@ -957,8 +825,6 @@ ML \<open>
     comma_semantic_future_candidate_parent_key_action_shape
     comma_semantic_future_candidate_parent_key_action_apply
     comma_semantic_future_candidate_class_output_key_from_projections
-    comma_semantic_future_family_nf_action_at_exact
-    comma_semantic_future_initial_nf_action_at_exact
     comma_semantic_future_nf_key_action_shape
     comma_semantic_future_nf_key_action_apply
     comma_semantic_future_initial_nf_key_action_exact

@@ -8,7 +8,7 @@ struct
       val (z_proc, z_stats) = Comma_Future_Rank_Lookup.selected_table ctxt "Z" @{thm comma_rank_codes_Z_def}
       val context = (#context summary
         |> Simplifier.add_proc n_proc
-        |> Simplifier.add_proc z_proc) addsimps
+        |> Simplifier.add_proc z_proc) |> Simplifier.add_simps
         @{thms comma_future_descent_phase_range_def comma_future_descent_row_def
           comma_summary_boundary_children_def comma_fast_total_boundary_def
           comma_decade_summary_resume.simps comma_boundary_states_def

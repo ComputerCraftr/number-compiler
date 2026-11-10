@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import MutableMapping
 from dataclasses import replace
+from decimal import Decimal
 from itertools import groupby
 from typing import Never, cast
 
@@ -169,6 +170,27 @@ def test_bounded_decimal_string_transport_preserves_global_int_limit() -> None:
         native_decimal_string_transport("196", 4, max_width=6)
 
 
+def test_native_transport_callback_observes_each_exact_endpoint() -> None:
+    seen: list[tuple[str, str, int, int]] = []
+
+    def complete(text: str, value: Decimal, reverse: Decimal) -> None:
+        assert str(value) == text
+        assert str(reverse) == text[::-1].lstrip("0") or reverse == 0
+        seen.append((text, str(value), int(value % 1386), int(reverse % 1386)))
+
+    endpoint, visits = native_decimal_string_transport(
+        "196", 8, on_tick_complete=complete
+    )
+    assert endpoint == str(literal_reverse_add(196, 8))
+    assert len(seen) == 8
+    assert [row[0] for row in seen] == [
+        str(literal_reverse_add(196, step)) for step in range(1, 9)
+    ]
+    assert visits == sum(
+        len(str(literal_reverse_add(196, step))) for step in range(8)
+    ) + len(endpoint)
+
+
 def test_native_width_guard_falls_back_to_exact_half_tape_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -192,7 +214,9 @@ def test_laurent_modular_matrices_match_literal_source(
     first, second = seed, 0
     previous_u = seed
     current = seed
+    native_digit_visits = 0
     for tick in range(generation):
+        native_digit_visits += len(str(current))
         current = literal_reverse_add(current, 1)
         following_u = current if (tick + 1) % 2 == 0 else int(str(current)[::-1])
         if tick % 2 == 0:
@@ -200,6 +224,10 @@ def test_laurent_modular_matrices_match_literal_source(
         else:
             first += following_u - previous_u
         previous_u = following_u
+    if seed and generation:
+        native_digit_visits += len(str(current))
+    elif not seed:
+        native_digit_visits = 0
     try:
         for modulus in (7, 198):
             expected = SkewMoment(
@@ -218,6 +246,15 @@ def test_laurent_modular_matrices_match_literal_source(
         assert result.second_accumulator_mod7 == second % 7
         assert result.first_accumulator_mod198 == first % 198
         assert result.second_accumulator_mod198 == second % 198
+        assert term.resource_ledger.counters.get(
+            metric_keys.REVERSE_LAURENT_NATIVE_TICKS, 0
+        ) == (0 if seed == 0 else generation)
+        assert (
+            term.resource_ledger.counters.get(
+                metric_keys.REVERSE_LAURENT_NATIVE_DIGIT_VISITS, 0
+            )
+            == native_digit_visits
+        )
         assert term.published_workspace is None
         if generation:
             assert (
@@ -248,11 +285,15 @@ def test_laurent_horizon_uses_exact_q19_fallback(
         ReversePairOutputOccurrence,
         ReversePairQ19OutputOwner,
     )
+    from number_compiler.sequences.reverse_add.temporal_laurent_accumulator import (
+        MAX_FINITE_LAURENT_TICKS,
+    )
 
-    term = ReverseAddPoweredTerm(196, 4098)
+    generation = MAX_FINITE_LAURENT_TICKS + 1
+    term = ReverseAddPoweredTerm(196, generation)
     bounded_term = ReverseAddPoweredTerm(196, 1)
     owner, occurrence, used_cache, reused_work = bounded_term.completed_q19_occurrence()
-    projected_occurrence = replace(occurrence, temporal_steps=4098)
+    projected_occurrence = replace(occurrence, temporal_steps=generation)
 
     def forbidden_laurent(_term: ReverseAddPoweredTerm) -> Never:
         raise AssertionError("finite Laurent path exceeded its admitted horizon")
@@ -275,7 +316,7 @@ def test_laurent_horizon_uses_exact_q19_fallback(
             reverse_target_mod=456 % modulus,
             pair_carry_out=0,
             q19_root=0,
-            temporal_steps=4098,
+            temporal_steps=generation,
         )
 
     monkeypatch.setattr(
@@ -288,9 +329,9 @@ def test_laurent_horizon_uses_exact_q19_fallback(
 
     try:
         assert term.temporal_moments(modulus=7) == SkewMoment(
-            4098,
+            generation,
             (456 - 691) % 7,
-            (123 - 196 - 4098 * 691) % 7,
+            (123 - 196 - generation * 691) % 7,
             7,
         )
         assert term.published_workspace is None

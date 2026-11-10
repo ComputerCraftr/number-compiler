@@ -21,10 +21,10 @@ struct
       val _ = if 1 <= max_nodes andalso max_nodes <= 8192 then ()
         else error "Guard node capacity must lie in 1..8192"
       val (certify, certification) = Comma_Entry_Arithmetic.make_certifier ctxt
-      val arithmetic = Comma_Entry_Arithmetic.natural_context ctxt addsimps
+      val arithmetic = Comma_Entry_Arithmetic.natural_context ctxt |> Simplifier.add_simps
         @{thms power_numeral_even power_numeral_odd power_0 power_one_right power_Suc0_right
           dvd_eq_mod_eq_0 upt_rec list_all_Nil_iff list_all_Cons_iff}
-      val packed = arithmetic addsimps
+      val packed = arithmetic |> Simplifier.add_simps
         @{thms numeral_or_num or_num.simps or.left_neutral or.right_neutral
           numeral_and_num and_num.simps and_numerals
           mask_Suc_0 mask_0
@@ -219,7 +219,7 @@ struct
                  | NONE => NONE
                end
            | _ => NONE), identifier=[]}
-      val packed_raw = (packed delsimps @{thms and_num.simps or_num.simps})
+      val packed_raw = (packed |> Simplifier.del_simps @{thms and_num.simps or_num.simps})
         |> Simplifier.add_proc sub_proc
       fun packed_lookup evaluation key =
         (packed_lookups := !packed_lookups + 1;
@@ -328,7 +328,7 @@ struct
             else error "Mask rotation requires a nonnegative shift and closed natural word"
           val expression = @{term comma_rotate_phase} $ HOLogic.mk_number @{typ nat} shift $ bits
           fun exact_rotation () =
-            packed_lookup (packed_raw addsimps @{thms comma_rotate_phase_def}) expression
+            packed_lookup (packed_raw |> Simplifier.add_simps @{thms comma_rotate_phase_def}) expression
           fun checked_trim () =
             (case mask_trim bits of
               SOME theorem => SOME (validate_equation (trim_key bits) theorem)
@@ -358,7 +358,7 @@ struct
             (case checked_trim () of
               NONE =>
                 Simplifier.rewrite
-                  (packed_raw addsimps @{thms comma_rotate_phase_def})
+                  (packed_raw |> Simplifier.add_simps @{thms comma_rotate_phase_def})
                   (Thm.cterm_of ctxt expression)
             | SOME trim =>
                 let
@@ -383,7 +383,7 @@ struct
            (fn Free (name,typ) => Var ((name,0),typ) | atom => atom))
            [@{term "a AND b :: nat"}, @{term "a OR b :: nat"}],
          proc = fn _ => fn _ => packed_convert, identifier = []}
-      val packed = (packed_raw delsimps
+      val packed = (packed_raw |> Simplifier.del_simps
         @{thms numeral_and_num numeral_or_num and_numerals or_numerals})
         |> Simplifier.add_proc packed_proc
       val memo = Unsynchronized.ref (Pattern_Table.empty: pattern Pattern_Table.table)

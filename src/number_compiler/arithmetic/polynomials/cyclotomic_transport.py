@@ -7,11 +7,16 @@ consumer and the repository-wide binary composition kernel.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass, field
 from math import comb
+from typing import Final
 
 from number_compiler.arithmetic.polynomials.cyclotomic import is_power_of_two
 from number_compiler.arithmetic.polynomials.cyclotomic_ring import CyclotomicRing
+
+_RADIAL_ISSUER = object()
+_MULTIPLIER_KEY_VERSION: Final[str] = "power-two-cyclotomic-multiplier-v2"
+_RadialSeal = tuple[int, int, int, int, int, int, tuple[int, ...] | None, bool]
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,8 +30,38 @@ class PowerTwoCyclotomicTransport:
     remainder_growth: int
     exact_zero: bool = False
 
+    def __post_init__(self) -> None:
+        if (
+            any(
+                type(value) is not int
+                for value in (
+                    self.classes,
+                    self.no_growth,
+                    self.growth,
+                    self.scalar_v2,
+                    self.remainder_growth,
+                )
+            )
+            or type(self.exact_zero) is not bool
+        ):
+            raise TypeError("cyclotomic transport requires exact coordinates")
+        if not is_power_of_two(self.classes) or self.no_growth < 0 or self.growth < 0:
+            raise ValueError("invalid cyclotomic transport source")
+        zero = self.classes == 1 and self.growth > 0
+        valuation = (
+            self.no_growth if zero else self.no_growth + self.growth // self.classes
+        )
+        remainder = 0 if zero else self.growth % self.classes
+        if (self.scalar_v2, self.remainder_growth, self.exact_zero) != (
+            valuation,
+            remainder,
+            zero,
+        ):
+            raise ValueError("cyclotomic transport differs from its exact exponents")
+
     def annihilated(self, bits: int) -> bool:
-        bits = int(bits)
+        if type(bits) is not int:
+            raise TypeError("cyclotomic precision requires an exact integer")
         if bits <= 0:
             raise ValueError(bits)
         return self.exact_zero or self.scalar_v2 >= bits
@@ -56,8 +91,12 @@ class PowerTwoCyclotomicRadialQuotient:
     remainder_growth: int
     unit_residue: tuple[int, ...] | None
     exact_zero: bool = False
+    _checked: InitVar[object] = None
+    _verified: _RadialSeal | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, _checked: object = None) -> None:
         integer_coordinates = (
             self.classes,
             self.bits,
@@ -105,6 +144,27 @@ class PowerTwoCyclotomicRadialQuotient:
                 raise ValueError(
                     "radial quotient residue is outside its reduced modulus"
                 )
+        coordinates = (
+            m,
+            bits,
+            q,
+            r,
+            self.scalar_v2,
+            self.remainder_growth,
+            self.unit_residue,
+            self.exact_zero,
+        )
+        if self._verified is not None:
+            if coordinates != self._verified:
+                raise ValueError("radial quotient changed after validation")
+            return
+        if not self.annihilated and _checked is not _RADIAL_ISSUER:
+            expected = _live_radial_unit(m, r, bits - self.scalar_v2)
+            if self.unit_residue != expected:
+                raise ValueError(
+                    "radial quotient unit differs from its exact multiplier"
+                )
+        object.__setattr__(self, "_verified", coordinates)
 
     @property
     def steps(self) -> int:
@@ -120,15 +180,27 @@ class PowerTwoCyclotomicRadialQuotient:
         return self.exact_zero or self.scalar_v2 >= self.bits
 
     @property
-    def canonical_key(self) -> tuple[object, ...]:
+    def canonical_key(
+        self,
+    ) -> tuple[
+        str,
+        int,
+        int,
+        int,
+        tuple[int, ...] | None,
+    ]:
+        """Identity of the multiplier at this precision, excluding its derivation.
+
+        Annihilation has one identity in each ring, regardless of which growth
+        or scalar factor killed the source. Raw exponents remain occurrence
+        provenance; this key alone does not authenticate their source action.
+        """
         return (
-            "power-two-cyclotomic-radial",
+            _MULTIPLIER_KEY_VERSION,
             self.classes,
             self.bits,
-            min(self.bits, self.scalar_v2),
-            self.remainder_growth,
-            self.unit_residue,
-            self.exact_zero,
+            self.bits if self.annihilated else self.scalar_v2,
+            None if self.annihilated else self.unit_residue,
         )
 
     def multiplier_residue(self) -> tuple[int, ...]:
@@ -140,6 +212,32 @@ class PowerTwoCyclotomicRadialQuotient:
         modulus = 1 << self.bits
         scale = 1 << self.scalar_v2
         return tuple((scale * value) % modulus for value in self.unit_residue)
+
+
+def _live_radial_unit(m: int, r: int, live_bits: int) -> tuple[int, ...]:
+    """Compute the exact unit once; no source or occurrence cache is involved."""
+    modulus = 1 << live_bits
+    if m == 1:
+        return (1 % modulus,)
+    blocks, rem = divmod(r, m)
+    if not blocks:
+        # No full cyclotomic block is used. In particular, the identity must
+        # not construct m binomial coefficients and a ring merely to power 0.
+        return tuple(comb(rem, i) % modulus for i in range(rem + 1)) + (0,) * (
+            m - rem - 1
+        )
+    unit_m = [0] * m
+    for index in range(1, m):
+        coefficient = comb(m, index)
+        if coefficient & 1:
+            raise AssertionError((m, index, coefficient))
+        unit_m[index] = (coefficient // 2) % modulus
+    ring = CyclotomicRing(2 * m, modulus)
+    unit = ring.power_residue(unit_m, blocks).value
+    if rem:
+        one_plus_z = ring.reduce((1, 1))
+        unit = ring.multiply(unit, ring.power_residue(one_plus_z, rem).value)
+    return tuple(unit)
 
 
 def power_two_cyclotomic_radial_quotient(
@@ -164,7 +262,9 @@ def power_two_cyclotomic_radial_quotient(
     ``bits-(q+a)``.  Hence large temporal exponents do not require expanding a
     binomial polynomial or replaying the growth itinerary.
     """
-    m, q, r, bits = map(int, (classes, no_growth, growth, bits))
+    if any(type(value) is not int for value in (classes, no_growth, growth, bits)):
+        raise TypeError("cyclotomic coordinates require exact integers")
+    m, q, r = classes, no_growth, growth
     if not is_power_of_two(m) or q < 0 or r < 0 or bits <= 0:
         raise ValueError((m, q, r, bits))
     transport = power_two_cyclotomic_transport(m, q, r)
@@ -180,25 +280,7 @@ def power_two_cyclotomic_radial_quotient(
             transport.exact_zero,
         )
     live_bits = bits - transport.scalar_v2
-    modulus = 1 << live_bits
-    if m == 1:
-        # The only live m=1 case has r=0, because any growth is exact zero.
-        unit: tuple[int, ...] = (1 % modulus,)
-    else:
-        blocks, rem = divmod(r, m)
-        # Endpoints of (1+z)^m cancel under z^m=-1.  Every remaining binomial
-        # coefficient is even for power-of-two m, so division by two is exact.
-        unit_m = [0] * m
-        for index in range(1, m):
-            coefficient = comb(m, index)
-            if coefficient & 1:
-                raise AssertionError((m, index, coefficient))
-            unit_m[index] = (coefficient // 2) % modulus
-        ring = CyclotomicRing(2 * m, modulus)
-        unit = ring.power_residue(unit_m, blocks).value
-        if rem:
-            one_plus_z = ring.reduce((1, 1))
-            unit = ring.multiply(unit, ring.power_residue(one_plus_z, rem).value)
+    unit = _live_radial_unit(m, r, live_bits)
     return PowerTwoCyclotomicRadialQuotient(
         m,
         bits,
@@ -206,8 +288,9 @@ def power_two_cyclotomic_radial_quotient(
         r,
         transport.scalar_v2,
         transport.remainder_growth,
-        tuple(unit),
+        unit,
         False,
+        _checked=_RADIAL_ISSUER,
     )
 
 
@@ -221,7 +304,9 @@ def power_two_cyclotomic_transport(
     coefficient-content valuation is exactly ``q + floor(r/m)``; the remaining
     factor is nonzero modulo two.
     """
-    m, q, r = map(int, (classes, no_growth, growth))
+    if any(type(value) is not int for value in (classes, no_growth, growth)):
+        raise TypeError("cyclotomic coordinates require exact integers")
+    m, q, r = classes, no_growth, growth
     if not is_power_of_two(m) or q < 0 or r < 0:
         raise ValueError((m, q, r))
     if m == 1 and r:
@@ -238,7 +323,8 @@ def power_two_cyclotomic_annihilated(
 
 def power_two_cyclotomic_modulus(radix: int, classes: int) -> int:
     """Return ``Phi_(2m)(radix)=radix**m+1`` for power-of-two ``m``."""
-    radix, classes = int(radix), int(classes)
+    if type(radix) is not int or type(classes) is not int:
+        raise TypeError("cyclotomic coordinates require exact integers")
     if radix < 2 or not is_power_of_two(classes):
         raise ValueError((radix, classes))
     return int(pow(radix, classes)) + 1

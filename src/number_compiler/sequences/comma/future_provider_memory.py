@@ -646,6 +646,7 @@ def audit_semantic_future_provider_store(
             "_pending_clear_nodes",
             "_disposed",
             "_data",
+            "_consumer_claim",
         }
     )
     if (
@@ -688,6 +689,12 @@ def audit_semantic_future_provider_store(
         or memo.pending_clear_nodes != 0
         or type(memo.disposed) is not bool
         or memo.disposed
+        or type(memo.consumer_claimed) is not bool
+        or memo.consumer_claimed
+        or type(memo.consumer_claim_committed) is not bool
+        or memo.consumer_claim_committed
+        or memo.consumer_claim_identity is not None
+        or memo.consumer_reference is not None
         or not _is_provider_ledger_dict(container)
         or type(container.sealed) is not bool
         or not container.sealed

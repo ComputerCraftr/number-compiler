@@ -166,6 +166,26 @@ definition comma_c1_b1_entry_core_port_action ::
          comma_semantic_b1_near_control_port_action f 0 h
      | None \<Rightarrow> Comma_Continuation_Invalid)"
 
+lemma comma_c1_b1_entry_core_port_action_period:
+  assumes sector: "1\<le>f" "f\<le>9"
+    and period: "T=comma_core_period
+      (comma_core_modulus (comma_finite_period_fast f (offset mod 10)))"
+    and same: "r mod T=s mod T"
+  shows "comma_c1_b1_entry_core_port_action f offset r =
+    comma_c1_b1_entry_core_port_action f offset s"
+proof -
+  have key:
+    "comma_decisive_entry_clock_key
+        (comma_cyclotomic_clock_of (r mod 924)) f offset =
+      comma_decisive_entry_clock_key
+        (comma_cyclotomic_clock_of (s mod 924)) f offset"
+    using comma_decisive_entry_clock_key_period
+      [OF sector period same, where delta=0]
+    by (simp only: add_0_right)
+  show ?thesis
+    by (simp only: comma_c1_b1_entry_core_port_action_def Let_def key)
+qed
+
 lemma comma_c1_b1_entry_core_port_action_source_exact:
   fixes f offset slot :: nat
   assumes sector: "1 \<le> f" "f \<le> 9"
@@ -298,6 +318,7 @@ qed
 
 ML \<open>
   val checked = @{thms comma_c1_entry_b1_slot_bridge
+    comma_c1_b1_entry_core_port_action_period
     comma_c1_b1_entry_core_port_action_source_exact
     comma_c1_b1_entry_core_port_action_exact
     comma_c1_b1_entry_occurrence_weight_exact};

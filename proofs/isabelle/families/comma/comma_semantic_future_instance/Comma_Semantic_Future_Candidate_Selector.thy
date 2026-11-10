@@ -1,5 +1,6 @@
 theory Comma_Semantic_Future_Candidate_Selector
   imports Comma_Semantic_Future_Candidate_Integrity
+    Comma_Semantic_Predecessor_Certificate
 begin
 
 text \<open>

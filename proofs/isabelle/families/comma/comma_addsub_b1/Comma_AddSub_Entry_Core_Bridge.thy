@@ -4,7 +4,6 @@ theory Comma_AddSub_Entry_Core_Bridge
     Comma_Frobenius_Recurrence.Comma_Carry_Core_Quotient
 begin
 
-ML_file "../comma_entry_arithmetic/Proof_Dependency_Audit.ML"
 
 text \<open>
 The Entry bridge joins the existing C1 source phase to the recursive core

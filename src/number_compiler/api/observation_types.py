@@ -99,6 +99,7 @@ class ObservationId(StrEnum):
     TEMPORAL_BIRTH_LAYERS = "temporal.birth-layers"
     TEMPORAL_OPEN_RING = "temporal.open-ring"
     TEMPORAL_SEED_ORBIT = "temporal.seed-orbit"
+    TEMPORAL_MIRRORED_DIAGONAL = "temporal.mirrored-diagonal"
     TEMPORAL_GRAMMAR = "temporal.grammar"
     TEMPORAL_RADIX_WALSH = "temporal.radix-walsh"
     TEMPORAL_CLOSED_FORM = "temporal.closed-form"
@@ -236,6 +237,7 @@ _CATEGORIES: Final[dict[ObservationCategory, tuple[ObservationId, ...]]] = {
         ObservationId.TEMPORAL_BANK,
         ObservationId.TEMPORAL_OPEN_RING,
         ObservationId.TEMPORAL_SEED_ORBIT,
+        ObservationId.TEMPORAL_MIRRORED_DIAGONAL,
         ObservationId.TEMPORAL_BIRTH_LAYERS,
         ObservationId.TEMPORAL_GRAMMAR,
         ObservationId.TEMPORAL_RADIX_WALSH,

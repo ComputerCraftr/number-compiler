@@ -7,7 +7,6 @@ theory Comma_Native_Summary_Occurrence
 begin
 
 ML_file "../comma_entry_arithmetic/proof_profile.ML"
-ML_file "../comma_entry_arithmetic/Proof_Dependency_Audit.ML"
 
 ML \<open>
   structure Comma_Native_Occurrence_Profile =

@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     )
     from number_compiler.sequences.antihydra.mahler_x15_source_morphism import (
         X15CarryMorphism,
+        X15LaurentCarryInProjection,
     )
 
 
@@ -235,12 +236,77 @@ class IssuedWeightedCarry:
 
     def x15_morphism(self, *, reserve_bits: Callable[[int], None]) -> X15CarryMorphism:
         """Demand the multiplicative source morphism without another replay."""
-        self.require_issued()
         from number_compiler.sequences.antihydra.mahler_x15_source_morphism import (
             X15CarryMorphism,
         )
 
         return X15CarryMorphism.from_carry(self, reserve_bits=reserve_bits)
+
+    def next_laurent_carry_projection(
+        self,
+        places: int,
+        *,
+        reserve_bits: Callable[[int], None],
+    ) -> X15LaurentCarryInProjection:
+        """Snapshot the one-step decimal carry from the issued endpoint."""
+        self.require_issued()
+        if type(places) is not int or not 1 <= places <= 4096:
+            raise ValueError("Laurent projection width must be in 1..4096")
+        if not callable(reserve_bits):
+            raise TypeError("Laurent projection requires a scratch reservation")
+        reserve_bits(
+            24 * (self.width + self._centered_source.bit_length() + places + 64)
+        )
+        target = self.endpoint(self._centered_source) + 1
+        from number_compiler.sequences.antihydra.mahler_x15_source_morphism import (
+            X15LaurentCarryInProjection,
+        )
+
+        return X15LaurentCarryInProjection.from_target(target, places)
+
+    def demanded_next_parity_xor(self, *, reserve_bits: Callable[[int], None]) -> int:
+        """Read next physical parity directly from the issued endpoint."""
+        self.require_issued()
+        if not callable(reserve_bits):
+            raise TypeError("next parity requires a scratch reservation")
+        reserve_bits(24 * (self.width + self._centered_source.bit_length() + 64))
+        current = self.endpoint(self._centered_source) + 1
+        return ((3 * current - (current & 1)) // 2) & 1
+
+    def demanded_weighted_next_depth_classes(
+        self, *, reserve_bits: Callable[[int], None]
+    ) -> tuple[WeightedCarryClass, WeightedCarryClass]:
+        """Lift one authenticated parent into both exact semantic children.
+
+        The returned values are guarded arithmetic classes, not issued source
+        handles.  A future physical action still needs its scheduler/source
+        publication.  Computing the pair uses one parent correction and the
+        two possible next parity bits; it never replays two carry words.
+        """
+        self.require_issued()
+        if self.width >= MAX_WEIGHTED_CARRY_EXTENT:
+            raise BlockContextBudgetExceeded(
+                "weighted future lift exceeds source budget"
+            )
+        if not callable(reserve_bits):
+            raise TypeError("weighted future lift requires scratch reservation")
+        reserve_bits(24 * (self.width + self._centered_source.bit_length() + 64))
+        children, _parent_endpoint = self._weighted_next_depth_classes()
+        return children
+
+    def _weighted_next_depth_classes(
+        self,
+    ) -> tuple[tuple[WeightedCarryClass, WeightedCarryClass], int]:
+        """Internal lift after the caller has authenticated and reserved."""
+        parent = _weighted_class_from_admitted(self)
+        children = parent.lift_children()
+        parent_endpoint = parent.endpoint(self._centered_source)
+        selected = children[(self._centered_source >> self.width) & 1]
+        current = parent_endpoint + 1
+        expected = (3 * current - (current & 1)) // 2 - 1
+        if selected.endpoint(self._centered_source) != expected:
+            raise ArithmeticError("weighted child does not match its issued source")
+        return children, parent_endpoint
 
     def publication_payload(self) -> tuple[object, ...]:
         """Return the immutable semantic value authenticated at publication."""
@@ -266,6 +332,193 @@ class IssuedWeightedCarry:
             self._projection_payload,
             self._issuer,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class WeightedCarryClass:
+    """Source-free finite physical carry action on one dyadic cylinder.
+
+    This is a semantic finite-horizon class, not source or issuance authority.
+    ``correction`` is the physical K in
+    ``2**width * H' = 3**width * H - K``.  The source owner must issue a
+    corresponding action before a class can be used as a production handle.
+    """
+
+    width: int
+    residue: int
+    correction: int
+    delta: int
+    minimum: int
+    odd_h_steps: int
+    first_centered_bit: int | None
+    last_centered_bit: int | None
+
+    def __post_init__(self) -> None:
+        integers = (
+            self.width,
+            self.residue,
+            self.correction,
+            self.delta,
+            self.minimum,
+            self.odd_h_steps,
+        )
+        if (
+            any(type(value) is not int for value in integers)
+            or self.width < 0
+            or self.width > MAX_WEIGHTED_CARRY_EXTENT
+        ):
+            raise ValueError("weighted carry class needs exact integer fields")
+        denominator = 1 << self.width
+        gain = 3**self.width
+        if (
+            not 0 <= self.residue < denominator
+            or not 0 <= self.correction <= gain - denominator
+            or not 0 <= self.odd_h_steps <= self.width
+            or self.delta != 2 * self.width - 3 * self.odd_h_steps
+            or not -self.width <= self.minimum <= min(0, self.delta)
+            or any(
+                value is not None and type(value) is not int
+                for value in (self.first_centered_bit, self.last_centered_bit)
+            )
+            or self.first_centered_bit not in (0, 1, None)
+            or self.last_centered_bit not in (0, 1, None)
+            or (
+                self.width == 0
+                and (
+                    self.first_centered_bit is not None
+                    or self.last_centered_bit is not None
+                )
+            )
+            or (self.width > 0 and self.first_centered_bit != (self.residue & 1))
+        ):
+            raise ValueError("weighted carry class has an invalid cylinder or ledger")
+        numerator = gain * (self.residue + 1) - self.correction
+        if numerator < denominator or numerator % denominator:
+            raise ValueError("weighted carry class is not exact on its cylinder")
+        expected_last = _weighted_last_centered_bit(self.correction, self.width)
+        if self.last_centered_bit != expected_last:
+            raise ValueError("weighted carry class has an invalid final bit")
+
+    @classmethod
+    def from_issued(cls, carry: IssuedWeightedCarry) -> WeightedCarryClass:
+        """Project a validated source-owned action into a semantic class."""
+        if type(carry) is not IssuedWeightedCarry:
+            raise TypeError("weighted class projection requires an issued carry")
+        carry.require_issued()
+        return _weighted_class_from_admitted(carry)
+
+    @property
+    def gain(self) -> int:
+        return _weighted_gain(self.width)
+
+    @property
+    def denominator(self) -> int:
+        return 1 << self.width
+
+    @property
+    def innovation(self) -> int:
+        """Centered affine offset corresponding to the physical correction."""
+        return self.gain - self.denominator - self.correction
+
+    def _endpoint_unchecked(self, centered_source: int) -> int:
+        gain = _weighted_gain(self.width)
+        denominator = 1 << self.width
+        numerator = gain * (centered_source + 1) - self.correction
+        if numerator % denominator:
+            raise ValueError("weighted carry class is not integral on its cylinder")
+        return numerator // denominator - 1
+
+    def endpoint(self, centered_source: int) -> int:
+        """Apply the finite action only inside its complete dyadic cylinder."""
+        if type(centered_source) is not int or centered_source < 0:
+            raise ValueError("centered source must be a nonnegative exact integer")
+        if centered_source % self.denominator != self.residue:
+            raise ValueError("weighted carry class has another dyadic source guard")
+        return self._endpoint_unchecked(centered_source)
+
+    def lift_children(
+        self,
+    ) -> tuple[WeightedCarryClass, WeightedCarryClass]:
+        """Use one parent K and complementary next parities for both children."""
+        if self.width >= MAX_WEIGHTED_CARRY_EXTENT:
+            raise BlockContextBudgetExceeded(
+                "weighted future lift exceeds source budget"
+            )
+        centered_endpoint = self.endpoint(self.residue)
+        centered_bit = centered_endpoint & 1
+        next_width = self.width + 1
+        source_lift = 1 << self.width
+        base = 3 * self.correction
+        low_correction = base + source_lift * (1 - centered_bit)
+        high_correction = base + source_lift * centered_bit
+
+        def child(
+            residue: int, correction: int, bit: int, *, odd_increment: int
+        ) -> WeightedCarryClass:
+            return WeightedCarryClass(
+                next_width,
+                residue,
+                correction,
+                self.delta + 3 * bit - 1,
+                min(self.minimum, self.delta + 3 * bit - 1),
+                self.odd_h_steps + odd_increment,
+                self.first_centered_bit if self.width else bit,
+                bit,
+            )
+
+        return (
+            child(
+                self.residue,
+                low_correction,
+                centered_bit,
+                odd_increment=1 - centered_bit,
+            ),
+            child(
+                self.residue + source_lift,
+                high_correction,
+                1 - centered_bit,
+                odd_increment=centered_bit,
+            ),
+        )
+
+
+def _weighted_last_centered_bit(correction: int, width: int) -> int | None:
+    """Recover the last consumed source bit from the exact physical K."""
+    if width == 0:
+        return None
+    # K_m = 3 K_(m-1) + 2^(m-1) * (H_(m-1) mod 2).  Since 2^(m-1)
+    # is a unit modulo three, K_m identifies that final physical inlet bit
+    # without replaying the preceding carry tape.
+    physical_bit = (correction % 3) * pow(2, width - 1, 3) % 3
+    if physical_bit not in (0, 1):
+        raise ValueError("weighted correction has no final physical parity bit")
+    return 1 - physical_bit
+
+
+def _weighted_gain(width: int) -> int:
+    """Return the admitted exact gain, normalizing the builtin pow type."""
+    if type(width) is not int or not 0 <= width <= MAX_WEIGHTED_CARRY_EXTENT:
+        raise ValueError("weighted carry width is outside its admitted range")
+    # `pow` computes an exact integer here; the explicit conversion keeps
+    # static analyzers from propagating Any from the builtin power overload.
+    return int(pow(3, width))
+
+
+def _weighted_class_from_admitted(carry: IssuedWeightedCarry) -> WeightedCarryClass:
+    """Project an already source-authenticated carry into its semantic class."""
+    correction = carry.gain - carry.denominator - carry.innovation
+    first = None if carry.width == 0 else carry.residue & 1
+    last = _weighted_last_centered_bit(correction, carry.width)
+    return WeightedCarryClass(
+        carry.width,
+        carry.residue,
+        correction,
+        carry.delta,
+        carry.minimum,
+        carry.odd_h_steps,
+        first,
+        last,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -594,6 +847,7 @@ def _issued_physical_source(
 __all__ = [
     "IssuedWeightedCarry",
     "MAX_WEIGHTED_CARRY_EXTENT",
+    "WeightedCarryClass",
     "issued_weighted_carry",
     "project_weighted_carry",
 ]

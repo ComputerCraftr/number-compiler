@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TypeGuard
+from typing import TYPE_CHECKING, TypeGuard
 
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
@@ -18,6 +18,11 @@ from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalEndpointAction,
     DyadicTerminalFieldAction,
 )
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.mahler_joint_carry import (
+        MahlerFutureCarryPort,
+    )
 
 _DIAGONAL_WINDOW_ISSUER = object()
 
@@ -239,6 +244,14 @@ class CollatzDiagonalWindow:
         if type(action) is not DyadicTerminalFieldAction:
             raise ValueError("diagonal source window retained endpoint arithmetic only")
         return action
+
+    def mahler_future_carry_port(self) -> MahlerFutureCarryPort:
+        """View this issued endpoint as the next 6305 source seam."""
+        from number_compiler.sequences.collatz.mahler_joint_carry import (
+            MahlerFutureCarryPort,
+        )
+
+        return MahlerFutureCarryPort.from_issued_window(self)
 
     @property
     def producer_issued(self) -> bool:

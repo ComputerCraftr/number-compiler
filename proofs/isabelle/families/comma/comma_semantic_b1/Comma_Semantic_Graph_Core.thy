@@ -637,9 +637,14 @@ lemma comma_semantic_b1_graph_edges_are_well_formed:
     | Comma_Semantic_B1_Live_Edge root \<Rightarrow> root < 46
     | Comma_Semantic_B1_Stop_Edge j \<Rightarrow> j \<le> 8
     | Comma_Semantic_B1_Invalid_Edge \<Rightarrow> True"
-  using graph node edge
-  by (auto simp: comma_semantic_b1_graph_valid_def
-    comma_semantic_b1_edge_refs_valid_def)
+proof -
+  have completed: "comma_semantic_b1_graph_completed_valid bindings nodes"
+    by (rule comma_semantic_b1_graph_valid_implies_completed_valid[OF graph])
+  have refs: "comma_semantic_b1_edge_refs_valid nodes node"
+    by (rule comma_semantic_b1_graph_completed_node_refs[OF completed node])
+  show ?thesis
+    by (rule bspec[OF refs[unfolded comma_semantic_b1_edge_refs_valid_def] edge])
+qed
 
 lemma comma_semantic_b1_graph_apply_goto_decreases:
   assumes graph: "comma_semantic_b1_graph_valid bindings nodes"

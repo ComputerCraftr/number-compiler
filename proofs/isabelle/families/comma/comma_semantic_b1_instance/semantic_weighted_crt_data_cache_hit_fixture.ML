@@ -13,11 +13,11 @@ struct
 
   fun nat n = HOLogic.mk_number natT n
 
-  fun used ({nodes, proof_entries, scratch_entries, ...}: Data.stats) =
-    nodes + proof_entries + scratch_entries
+  fun used (stats: Data.stats) = #used_entries stats
 
   fun same_stats (left: Data.stats) (right: Data.stats) =
     #nodes left = #nodes right andalso
+    #payload_aliases left = #payload_aliases right andalso
     #proof_entries left = #proof_entries right andalso
     #scratch_entries left = #scratch_entries right andalso
     #peak_entries left = #peak_entries right andalso
@@ -377,12 +377,11 @@ struct
             (HOLogic.mk_eq (apply $ action $ nat phase, expected))
           val theorem = Goal.prove ctxt [] [] proposition
             (fn {context,...} =>
-              simp_tac (Comma_Entry_Arithmetic.natural_context context addsimps
-                (@{thms comma_weighted_crt_apply_def
+              simp_tac (Simplifier.add_simps ((@{thms comma_weighted_crt_apply_def
                   comma_weighted_crt_eval.simps(1)
                   comma_weighted_crt_eval_selected comma_crt_axis_radix_def
                   nth_Cons_0 nth_Cons_Suc nth_Cons' list.map list.size fst_conv snd_conv
-                  case_prod_beta option.map})) 1)
+                  case_prod_beta option.map})) (Comma_Entry_Arithmetic.natural_context context)) 1)
           val _ = if Thm.nprems_of theorem = 0 then ()
             else error "Weighted CRT bounded point proof retained premises"
         in theorem end
@@ -457,12 +456,11 @@ struct
             (HOLogic.mk_eq (apply $ action $ nat phase, expected))
           val theorem = Goal.prove ctxt [] [] proposition
             (fn {context,...} =>
-              simp_tac (Comma_Entry_Arithmetic.natural_context context addsimps
-                (@{thms comma_weighted_crt_apply_def
+              simp_tac (Simplifier.add_simps ((@{thms comma_weighted_crt_apply_def
                   comma_weighted_crt_eval.simps(1)
                   comma_weighted_crt_eval_selected comma_crt_axis_radix_def
                   nth_Cons_0 nth_Cons_Suc nth_Cons' list.map list.size fst_conv snd_conv
-                  case_prod_beta option.map})) 1)
+                  case_prod_beta option.map})) (Comma_Entry_Arithmetic.natural_context context)) 1)
         in if Thm.nprems_of theorem = 0 then theorem
           else error "Weighted CRT bounded selector point retained premises" end
       fun expected_point phase =

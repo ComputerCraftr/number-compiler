@@ -24,7 +24,8 @@ text \<open>Select the demanded child before recursion. The primitive-recursion
 specification uses map to express the recursive calls, but executable consumers
 must not evaluate unselected siblings. Missing-child admission stays Invalid.\<close>
 
-declare comma_response_value.simps(2) [simp del, code del]
+declare comma_response_value.simps(2) [simp del, code drop]
+declare comma_response_value.simps(1) [code]
 
 lemma comma_response_value_selected [simp, code]:
   "comma_response_value r (Comma_Response_Phases f delta x children)=

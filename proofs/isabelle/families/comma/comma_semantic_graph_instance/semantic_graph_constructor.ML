@@ -28,8 +28,7 @@ struct
     let
       val kernel = Comma_Fast_Kernel.make ctxt
       val endpoint = Comma_Decisive_Endpoint_Kernel.make ctxt (#context kernel)
-      val evaluation = #context endpoint addsimps
-        @{thms comma_source_continuation_base.simps
+      val evaluation = Simplifier.add_simps (@{thms comma_source_continuation_base.simps
           comma_source_continuation_shift.simps comma_round_crossing_def
           comma_round_admitted.simps
           comma_sector_number.simps
@@ -47,7 +46,7 @@ struct
           comma_finite_headroom_fast_correct[symmetric]
           comma_near_control_formula
           list.map append.simps upt_rec power2_eq_square of_nat_numeral of_nat_0
-          of_nat_1 zmod_zminus1_eq_if zmod_zminus2_eq_if Let_def}
+          of_nat_1 zmod_zminus1_eq_if zmod_zminus2_eq_if Let_def}) (#context endpoint)
       fun nat n = HOLogic.mk_number @{typ nat} n
       fun theorem_closed theorem =
         not (Term.is_open (Thm.prop_of theorem)) andalso
@@ -70,7 +69,7 @@ struct
         let
           val theorem = Goal.prove proof_context [] [] proposition
             (fn {context, ...} =>
-              HEADGOAL (Simplifier.asm_full_simp_tac (context addsimps facts)))
+              HEADGOAL (Simplifier.asm_full_simp_tac (Simplifier.add_simps (facts) (context))))
         in if theorem_closed_no_premises theorem andalso
             Thm.prop_of theorem aconv proposition then theorem
           else error message end
@@ -80,7 +79,7 @@ struct
         let
           val _ = if Term.is_open expression then
               error "Semantic graph source action request is not closed" else ()
-          val context = evaluation addsimps extra
+          val context = Simplifier.add_simps (extra) (evaluation)
           val theorem = Simplifier.full_rewrite context (Thm.cterm_of context expression)
         in if Thm.nprems_of theorem = 0 andalso null (Thm.hyps_of theorem) andalso
             null (Thm.tpairs_of theorem) andalso theorem_closed theorem andalso
@@ -420,9 +419,8 @@ struct
             (HOLogic.size_const (HOLogic.listT nodeT) $ nodes_constant,
               nat node_extent))
           val node_size_started = Time.now ()
-          val node_size_context = Local_Theory.target_of nodes_lthy addsimps
-            (nodes_definition :: @{thms comma_semantic_b1_node_from_data_def
-              comma_semantic_b1_node.select_convs list.map})
+          val node_size_context = Simplifier.add_simps ((nodes_definition :: @{thms comma_semantic_b1_node_from_data_def
+              comma_semantic_b1_node.select_convs list.map})) (Local_Theory.target_of nodes_lthy)
           val node_size = Goal.prove (Local_Theory.target_of nodes_lthy) [] []
             node_size_prop
             (fn _ => HEADGOAL (Simplifier.asm_full_simp_tac node_size_context))
@@ -447,9 +445,8 @@ struct
           val dense_nodes_explicit = Goal.prove (Local_Theory.target_of nodes_lthy) [] []
             node_ids_explicit_expression
             (fn {context, ...} =>
-              HEADGOAL (Simplifier.asm_full_simp_tac (context addsimps
-                ([nodes_definition] @ @{thms comma_semantic_b1_node_from_data_def
-                  comma_semantic_b1_node.select_convs list.map}))))
+              HEADGOAL (Simplifier.asm_full_simp_tac (Simplifier.add_simps (([nodes_definition] @ @{thms comma_semantic_b1_node_from_data_def
+                  comma_semantic_b1_node.select_convs list.map})) (context))))
           val _ = if Thm.nprems_of dense_nodes_explicit = 0 andalso
               null (Thm.hyps_of dense_nodes_explicit) andalso
               null (Thm.tpairs_of dense_nodes_explicit) andalso
@@ -468,7 +465,7 @@ struct
             range_bridge_prop
             (fn {context, ...} =>
               HEADGOAL (Simplifier.asm_full_simp_tac
-                (context addsimps [node_size, @{thm upt_rec}])))
+                (Simplifier.add_simps ([node_size, @{thm upt_rec}]) (context))))
           val _ = if Thm.nprems_of range_bridge = 0 andalso
               null (Thm.hyps_of range_bridge) andalso
               null (Thm.tpairs_of range_bridge) andalso theorem_closed range_bridge andalso
@@ -570,8 +567,7 @@ struct
                root_definition = binding_pairs_definition,
                table_pattern = binding_pair_selection_pattern,
                extents = [length binding_entries]}
-          val pair_context = Local_Theory.target_of root_ids_lthy
-            addsimps [binding_pairs_definition]
+          val pair_context = Simplifier.add_simps ([binding_pairs_definition]) (Local_Theory.target_of root_ids_lthy)
             |> Simplifier.add_proc binding_pair_procedure
           val _ = report_checkpoint "binding-pair-selection-installed"
             (binding_pair_selection_stats ())
@@ -598,7 +594,7 @@ struct
               val index_prop = HOLogic.mk_Trueprop (HOLogic.mk_binrel @{const_name less}
                 (position_term, HOLogic.size_const (HOLogic.listT binding_pairT) $
                   binding_pairs))
-            in prove_closed_in (pair_context addsimps [binding_pairs_size])
+            in prove_closed_in (Simplifier.add_simps ([binding_pairs_size]) (pair_context))
               index_prop end
           val pair_first = Const (@{const_name fst}, binding_pairT --> positionT)
           val pair_sources = mapped_list @{const_name map} binding_pairT positionT
@@ -674,8 +670,7 @@ struct
             (Const (@{const_name distinct}, HOLogic.listT natT --> HOLogic.boolT) $
               node_ids_list)
           val node_ids_distinct = prove_closed_in
-            (Local_Theory.target_of root_ids_lthy addsimps
-              [@{thm distinct_upt}, node_size]) node_ids_distinct_prop
+            (Simplifier.add_simps ([@{thm distinct_upt}, node_size]) (Local_Theory.target_of root_ids_lthy)) node_ids_distinct_prop
           val node_distinct = @{thm comma_semantic_graph_node_ids_dense_distinct}
             OF [dense_nodes, node_ids_distinct]
           val _ = report_checkpoint "node-distinct-finished"
@@ -693,14 +688,14 @@ struct
               val node_length = HOLogic.size_const (HOLogic.listT nodeT) $ nodes_constant
               val bound_started = Time.now ()
               val index_bound = prove_closed_in
-                (Local_Theory.target_of root_ids_lthy addsimps [node_size])
+                (Simplifier.add_simps ([node_size]) (Local_Theory.target_of root_ids_lthy))
                 (HOLogic.mk_Trueprop
                   (HOLogic.mk_binrel @{const_name less} (index_term, node_length)))
               val _ = node_bound_elapsed := Time.+ (!node_bound_elapsed,
                 Time.- (Time.now (), bound_started))
               val selected_started = Time.now ()
               val selected = prove_closed_in
-                (Local_Theory.target_of root_ids_lthy addsimps [node_size, index_bound])
+                (Simplifier.add_simps ([node_size, index_bound]) (Local_Theory.target_of root_ids_lthy))
                 (HOLogic.mk_Trueprop
                 (HOLogic.mk_eq (Const (@{const_name nth},
                   HOLogic.listT natT --> natT --> natT) $ node_ids_list $ index_term,
@@ -761,8 +756,7 @@ struct
                 point_prop
                 (fn {context, ...} =>
                   HEADGOAL (Simplifier.asm_full_simp_tac
-                    (put_simpset HOL_basic_ss context addsimps
-                      [bindings_definition, indexed_binding])))
+                    (Simplifier.add_simps ([bindings_definition, indexed_binding]) (put_simpset HOL_basic_ss context))))
               val _ = if Thm.nprems_of witness = 0 andalso
                   null (Thm.hyps_of witness) andalso null (Thm.tpairs_of witness) andalso
                   theorem_closed witness andalso Thm.prop_of witness aconv point_prop
@@ -784,11 +778,10 @@ struct
                    decides the upt bounds while preserving canonical literal
                    roots, so the indexed witnesses retain their exact source
                    terms.  Avoid the ambient graph simplifier here. *)
-                val root_context = Comma_Entry_Arithmetic.natural_context context
-                  addsimps (root_ids_definition ::
+                val root_context = Simplifier.add_simps ((root_ids_definition ::
                     @{thms list_all2_Cons list_all2_Nil list.map upt_rec
                       nth_Cons'} @
-                    representatives_certificate :: root_binding_witnesses)
+                    representatives_certificate :: root_binding_witnesses)) (Comma_Entry_Arithmetic.natural_context context)
               in ALLGOALS (asm_full_simp_tac root_context) end)
           val _ = if Thm.nprems_of root_exact = 0 andalso
               null (Thm.hyps_of root_exact) andalso
@@ -807,9 +800,8 @@ struct
             null (Thm.tpairs_of root_coverage) andalso theorem_closed root_coverage
           val _ = if root_coverage_checked then ()
             else error "Semantic graph root coverage did not follow from exact root bindings"
-          val graph_definition_context = put_simpset HOL_basic_ss
-            (Local_Theory.target_of root_ids_lthy) addsimps
-              @{thms comma_semantic_b1_graph_completed_valid_def}
+          val graph_definition_context = Simplifier.add_simps (@{thms comma_semantic_b1_graph_completed_valid_def}) (put_simpset HOL_basic_ss
+            (Local_Theory.target_of root_ids_lthy))
           val graph_definition_equation = Simplifier.rewrite graph_definition_context
             (Thm.cterm_of graph_definition_context proposition)
           val graph_definition_checked = Thm.nprems_of graph_definition_equation = 0 andalso
@@ -830,10 +822,9 @@ struct
           fun source_distinct_component term =
             let
               val proposition = HOLogic.mk_Trueprop term
-              val source_context = put_simpset HOL_basic_ss
-                (Local_Theory.target_of root_ids_lthy) addsimps
-                  [bindings_definition,
-                   @{thm comma_semantic_graph_binding_sources_from_pairs}]
+              val source_context = Simplifier.add_simps ([bindings_definition,
+                   @{thm comma_semantic_graph_binding_sources_from_pairs}]) (put_simpset HOL_basic_ss
+                (Local_Theory.target_of root_ids_lthy))
               val equation = Simplifier.rewrite source_context
                 (Thm.cterm_of source_context proposition)
               val expected = Thm.prop_of distinct_pairs

@@ -162,10 +162,10 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                     bindings[(self.root_source, self.root_action)] = wire
                     self._mahler_wire = wire
             from number_compiler.sequences.antihydra.payload_audit import (
-                register_antihydra_payload_contract,
+                register_arithmetic_image_contract,
             )
 
-            register_antihydra_payload_contract(self)
+            register_arithmetic_image_contract(self)
             close_consumer()
             self._mahler_consumer = None
 

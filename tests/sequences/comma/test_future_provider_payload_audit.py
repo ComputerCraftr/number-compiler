@@ -414,6 +414,26 @@ def test_provider_store_payload_contract_checks_rows_charges_and_lifecycle(
     assert restored.forbidden_future_payloads == 0
 
 
+def test_provider_store_rejects_projector_claim_on_its_memo() -> None:
+    ledger = ResourceLedger()
+    store = future_provider.SemanticFutureProviderStore(ledger)
+    memo_value = object.__getattribute__(store, "_providers")
+    assert type(memo_value) is OwnedMemo
+    memo = cast(OwnedMemo[object, object], memo_value)
+    try:
+        with OwnedMemo.claim_empty_consumer((memo,), ledger=ledger, consumer=store):
+            pass
+
+        invalid = audit_registered_payloads(ledger, fresh=True)
+        assert invalid.forbidden_future_payloads > 0
+    finally:
+        # The test injected an otherwise permanent owner claim. Restore the
+        # ordinary provider memo shape so its normal close path can run.
+        object.__setattr__(memo, "_consumer_claim", None)
+        store.close()
+    _assert_fresh_payload_audit_clean(ledger)
+
+
 def test_provider_store_close_failure_restores_contract_and_retries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

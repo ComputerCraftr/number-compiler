@@ -1,5 +1,7 @@
 theory Comma_Semantic_Future_Prefix_Transport
-  imports Comma_Semantic_Future_Weighted_Transport
+  imports Comma_Semantic_Future_Rank_B1_Transport
+    Comma_Semantic_B1_Instance.Comma_Continue_Image_Instance
+    Comma_Semantic_Future.Comma_Semantic_Initial_Prefix
 begin
 
 text \<open>The family domain is explicit so a source lookup or checked
@@ -238,74 +240,33 @@ theorem comma_semantic_future_initial_family_prefix_closed:
         comma_normalize_position (snd (snd q)) (Comma_Entry 1 1 x) =
           Comma_Entry 1 ((snd (snd q)+1) mod 924) x)"
 proof -
-  obtain kind a r where q: "q=(kind,a,r)"
-    by (cases q) auto
-  let ?initial = "comma_finite_initial q"
-  have source_admitted: "comma_round_admitted ?initial"
-    by (rule comma_semantic_future_initial_source_admitted[OF valid])
-  obtain calls where calls:
-      "comma_round_control_germ_calls r ?initial calls"
+  obtain calls steps terminal event where
+    calls: "comma_round_control_germ_calls (snd (snd q))
+      (comma_finite_initial q) calls"
     and calls_bound: "calls\<le>9"
-    using comma_round_control_germ_at_most_nine_sectors[OF source_admitted]
-    by blast
-  obtain steps terminal event where close:
-      "comma_round_close r ?initial=(steps,terminal,event)"
-    by (cases "comma_round_close r ?initial") auto
-  have trace:
-      "comma_round_prefix_steps steps r ?initial terminal"
-    using comma_round_close_refines_trace[OF close] by simp
-  have initial_action:
-      "comma_semantic_future_initial_family_action ?initial r =
-        comma_source_continuation_action_of_packet
-          (comma_decisive_endpoint_packet r ?initial)"
-    by (rule comma_semantic_future_initial_family_action_packet[OF valid])
-  have germ:
-      "comma_round_control_germ r ?initial=(steps,terminal,event)"
-    using comma_round_control_germ_refines close by simp
-  have close_at_q:
-      "comma_round_close (snd (snd q)) ?initial=(steps,terminal,event)"
-    using close q by simp
-  have event_not_invalid: "event\<noteq>Comma_Round_Invalid"
-    using comma_round_close_admitted(2)[OF close source_admitted] by simp
-  have source_delta: "comma_round_delta ?initial=0"
-    using q by (cases kind) (simp_all add: comma_finite_initial_def)
-  have event_shape:
-      "(\<exists>a' d'. event = Comma_Round_Fork a' d') \<or>
-       (\<exists>d'. event = Comma_Round_Landmine d') \<or>
+    and germ: "comma_round_control_germ (snd (snd q)) (comma_finite_initial q) =
+      (steps,terminal,event)"
+    and close: "comma_round_close (snd (snd q)) (comma_finite_initial q) =
+      (steps,terminal,event)"
+    and trace: "comma_round_prefix_steps steps (snd (snd q))
+      (comma_finite_initial q) terminal"
+    and event_shape:
+      "(\<exists>a d. event = Comma_Round_Fork a d) \<or>
+       (\<exists>d. event = Comma_Round_Landmine d) \<or>
        (\<exists>x. x\<le>90 \<and>
          event=Comma_Round_Cross (Comma_Entry 1 1 x) \<and>
-         comma_normalize_position r (Comma_Entry 1 1 x) =
-           Comma_Entry 1 ((r+1) mod 924) x)"
-  proof (cases event)
-    case (Comma_Round_Fork fork delta)
-    then show ?thesis by blast
-  next
-    case (Comma_Round_Landmine delta)
-    then show ?thesis by blast
-  next
-    case (Comma_Round_Cross target)
-    obtain x where x_bound: "x\<le>90"
-      and target: "target=Comma_Entry 1 (Suc (comma_round_delta ?initial)) x"
-      and normalized:
-        "comma_normalize_position r target =
-          Comma_Entry 1 ((r+comma_round_delta ?initial+1) mod 924) x"
-      using comma_round_close_crossing_phase[OF close source_admitted]
-      by blast
-    have target_one: "target=Comma_Entry 1 1 x"
-      using target source_delta by simp
-    have normalized_one:
-        "comma_normalize_position r (Comma_Entry 1 1 x) =
-          Comma_Entry 1 ((r+1) mod 924) x"
-      using normalized target_one source_delta by simp
-    show ?thesis using Comma_Round_Cross x_bound target_one normalized_one
-      by blast
-  next
-    case Comma_Round_Invalid
-    then show ?thesis using event_not_invalid by blast
-  qed
+         comma_normalize_position (snd (snd q)) (Comma_Entry 1 1 x) =
+           Comma_Entry 1 ((snd (snd q)+1) mod 924) x)"
+    by (rule comma_semantic_future_initial_round_prefix_closed[OF valid])
+  have initial_action:
+      "comma_semantic_future_initial_family_action (comma_finite_initial q)
+          (snd (snd q)) =
+        comma_source_continuation_action_of_packet
+          (comma_decisive_endpoint_packet (snd (snd q))
+            (comma_finite_initial q))"
+    by (rule comma_semantic_future_initial_family_action_packet[OF valid])
   show thesis
-    using calls calls_bound germ close_at_q trace initial_action event_shape q
-    by (intro that[of calls steps terminal event]) simp_all
+    by (rule that[OF calls calls_bound germ close trace initial_action event_shape])
 qed
 
 theorem comma_semantic_future_initial_family_prefix_root_or_terminal:
@@ -568,17 +529,92 @@ proof -
     by (rule that[OF close_cross normalized_initial d_eq x_bound_initial])
 qed
 
+lemma comma_semantic_future_rank_b32_source_free_exact:
+  fixes phase root :: nat
+  assumes image24:
+      "\<And>p cid terminal. p<924 \<Longrightarrow> cid<46 \<Longrightarrow>
+        comma_phase_class_continue_power
+          comma_semantic_phase_program_class_step 24 (p,cid)=Some terminal
+        \<Longrightarrow> terminal\<in>comma_continue24_endpoints"
+    and phase: "phase<924"
+    and root: "root<46"
+  obtains height terminal where
+    "height\<le>26"
+    "comma_decade_exact_summary
+      (Comma_Decade phase (comma_offset_representatives!root)) height terminal"
+    "comma_semantic_b1_weighted_action_power 5
+      comma_semantic_future_rank_round_action phase root =
+        Comma_Semantic_B1_Stop_At
+          (comma_terminal_weight_digit terminal) height"
+proof -
+  obtain height terminal where height: "height\<le>26"
+    and summary: "comma_decade_exact_summary
+      (Comma_Decade phase (comma_offset_representatives!root)) height terminal"
+    and b1_power:
+      "comma_semantic_b1_action_power 5 phase root =
+        Comma_Semantic_B1_Stop (comma_terminal_weight_encode height terminal)"
+    and encoded_bound: "comma_terminal_weight_encode height terminal\<le>242"
+    by (rule comma_semantic_phase_class_B32_exact_output_if_continue24_image
+      [OF image24 phase root])
+  have encoded_action:
+    "comma_semantic_b1_weighted_encode
+      (comma_semantic_b1_weighted_action_power 5
+        comma_semantic_future_rank_round_action phase root) =
+      comma_semantic_b1_action_power 5 phase root"
+  proof -
+    have base:
+      "(\<lambda>p i. comma_semantic_b1_weighted_encode
+          (comma_semantic_future_rank_round_action p i)) =
+        (\<lambda>p i. comma_semantic_b1 p i)"
+    proof (intro ext)+
+      fix p i :: nat
+      show "comma_semantic_b1_weighted_encode
+          (comma_semantic_future_rank_round_action p i) =
+          comma_semantic_b1 p i"
+        by (rule comma_semantic_future_rank_round_action_encode)
+    qed
+    have power_from:
+      "comma_semantic_b1_action_power_from 5
+          (\<lambda>p i. comma_semantic_b1 p i) phase root =
+        comma_semantic_b1_action_power 5 phase root"
+      by (rule comma_semantic_future_b1_action_power_from_exact)
+    show ?thesis
+      using comma_semantic_b1_weighted_action_power_encode[of 5
+          comma_semantic_future_rank_round_action phase root]
+        base power_from by simp
+  qed
+  have weighted_result:
+    "comma_semantic_b1_weighted_action_power 5
+        comma_semantic_future_rank_round_action phase root =
+      Comma_Semantic_B1_Stop_At (comma_terminal_weight_digit terminal) height"
+  proof -
+    have admitted:
+      "comma_semantic_b1_weighted_result_admitted
+        (comma_semantic_b1_weighted_action_power 5
+          comma_semantic_future_rank_round_action phase root)"
+      by (rule comma_semantic_b1_weighted_action_power_admitted
+        [OF comma_semantic_future_rank_action_base_admitted phase root])
+    have terminal_admitted: "comma_terminal_weight_admitted terminal"
+      by (rule comma_decade_exact_summary_terminal_admitted[OF summary])
+    have terminal_digit: "comma_terminal_weight_digit terminal<9"
+      by (rule comma_terminal_weight_digit_bound[OF terminal_admitted])
+    show ?thesis
+      using admitted encoded_action b1_power terminal_digit encoded_bound
+      by (cases "comma_semantic_b1_weighted_action_power 5
+          comma_semantic_future_rank_round_action phase root")
+        (auto simp: comma_semantic_b1_weighted_result_admitted.simps
+          comma_semantic_b1_weighted_encode.simps
+          comma_terminal_weight_encode_def; arith)
+  qed
+  show thesis by (rule that[OF height summary weighted_result])
+qed
+
 theorem comma_semantic_future_initial_crossing_weighted_boundary:
   fixes q :: comma_boundary_state and x d J H n terminal_position :: nat
   assumes valid: "comma_boundary_valid q"
     and close:
       "comma_round_close (snd (snd q)) (comma_finite_initial q) =
         (n,terminal_position,Comma_Round_Cross (Comma_Entry 1 d x))"
-    and weighted_stop:
-      "comma_semantic_b1_weighted_action_power 5
-        comma_semantic_graph_root_weighted_action
-        ((snd (snd q)+d) mod 924) (comma_offset_orbit x) =
-          Comma_Semantic_B1_Stop_At J H"
   obtains binding terminal where
     "binding \<in> set comma_semantic_graph_bindings"
     "comma_semantic_b1_binding_source binding =
@@ -592,6 +628,10 @@ theorem comma_semantic_future_initial_crossing_weighted_boundary:
     "d=1" "x\<le>90" "J=comma_terminal_weight_digit terminal" "H\<le>26"
     "comma_decade_exact_summary
       (Comma_Decade ((snd (snd q)+d) mod 924) x) H terminal"
+    "comma_semantic_b1_weighted_action_power 5
+      comma_semantic_future_rank_round_action
+        ((snd (snd q)+d) mod 924) (comma_offset_orbit x) =
+      Comma_Semantic_B1_Stop_At J H"
     "comma_semantic_decade_summary
       (Comma_Decade ((snd (snd q)+d) mod 924) x) = Some (H,terminal)"
     "comma_semantic_boundary_step comma_semantic_decade_summary q =
@@ -658,60 +698,79 @@ proof -
     using root_binding by blast
   have state_admitted: "comma_decade_admitted ?state"
     using phase_bound x_bound_initial by simp
-  obtain h terminal where provider_lookup:
-      "comma_semantic_decade_summary ?state=Some (h,terminal)"
-    and height: "h\<le>26"
-    and exact:
-      "comma_decade_exact_summary ?state h terminal"
-    using comma_semantic_decade_summary_total_exact[OF state_admitted]
-    by blast
-  have weighted_admitted:
-    "comma_semantic_b1_weighted_result_admitted
-      (comma_semantic_b1_weighted_action_power 5
-        comma_semantic_graph_root_weighted_action ?phase ?root)"
-  proof (rule comma_semantic_b1_weighted_action_power_admitted)
-    show "\<And>phase root. phase<924 \<Longrightarrow> root<46 \<Longrightarrow>
-        comma_semantic_b1_weighted_result_admitted
-          (comma_semantic_graph_root_weighted_action phase root)"
-      by (rule comma_semantic_graph_root_weighted_action_admitted)
-    show "?phase<924" by (rule phase_bound)
-    show "?root<46" by (rule root_bound)
-  qed
-  have J_bound: "J<9"
-    using weighted_admitted weighted_stop
-    by (simp add: comma_semantic_b1_weighted_result_admitted.simps)
-  have graph_stop:
-    "comma_semantic_graph_action_power 5 ?phase ?root =
-      Comma_Semantic_B1_Stop (9*H+J)"
-    using comma_semantic_graph_weighted_power_exact[of 5 ?phase ?root]
-      weighted_stop by simp
-  have decode:
-    "comma_terminal_weight_decode (9*H+J) =
-      (H,comma_terminal_weight_terminal J)"
-    using J_bound
-    by (simp add: comma_terminal_weight_decode_def
-        comma_terminal_weight_terminal_def div_add1_eq mod_add_left_eq)
-  have computed:
-    "comma_semantic_decade_summary ?state =
-      Some (H,comma_terminal_weight_terminal J)"
-    using state_admitted graph_stop decode
-    by (simp add: comma_semantic_decade_summary_code)
-  have fields:
-    "h=H" "terminal=comma_terminal_weight_terminal J"
-    using provider_lookup computed by auto
-  have digit:
-    "comma_terminal_weight_digit (comma_terminal_weight_terminal J)=J"
-    using J_bound
-    by (cases "J=8")
-      (simp_all add: comma_terminal_weight_terminal_def)
-  have terminal_digit: "J=comma_terminal_weight_digit terminal"
-    using fields digit by simp
+  have image24:
+      "\<And>p cid terminal. p<924 \<Longrightarrow> cid<46 \<Longrightarrow>
+        comma_phase_class_continue_power
+          comma_semantic_phase_program_class_step 24 (p,cid)=Some terminal
+        \<Longrightarrow> terminal\<in>comma_continue24_endpoints"
+    by (rule comma_semantic_phase_continue24_image_checked)
+  obtain H terminal where height: "H\<le>26"
+    and representative_summary:
+      "comma_decade_exact_summary
+        (Comma_Decade ?phase (comma_offset_representatives!?root)) H terminal"
+    and weighted_power:
+      "comma_semantic_b1_weighted_action_power 5
+        comma_semantic_future_rank_round_action ?phase ?root =
+          Comma_Semantic_B1_Stop_At (comma_terminal_weight_digit terminal) H"
+    by (rule comma_semantic_future_rank_b32_source_free_exact
+      [OF image24 phase_bound root_bound])
+  have representative:
+    "comma_offset_representatives!?root = comma_offset_representative x"
+    by (simp add: comma_offset_representative_def)
+  have representative_bound: "comma_offset_representative x\<le>90"
+    by (rule comma_offset_representative_admitted(1))
+  have same_orbit:
+    "comma_offset_orbit (comma_offset_representative x)=comma_offset_orbit x"
+    using comma_offset_representative_admitted(2)[of x] by simp
   have exact_H:
     "comma_decade_exact_summary ?state H terminal"
-    using exact fields by simp
+    using comma_semantic_future_exact_summary_orbit_transport
+      [OF phase_bound representative_bound x_bound_initial same_orbit]
+      representative_summary representative by simp
+  have terminal_admitted: "comma_terminal_weight_admitted terminal"
+    by (rule comma_decade_exact_summary_terminal_admitted[OF exact_H])
+  have decoded:
+    "comma_terminal_weight_decode (comma_terminal_weight_encode H terminal) =
+      (H,terminal)"
+    by (rule comma_terminal_weight_decode_encode[OF terminal_admitted])
+  have encoded_action:
+    "comma_semantic_b1_weighted_encode
+      (comma_semantic_b1_weighted_action_power 5
+        comma_semantic_future_rank_round_action ?phase ?root) =
+      comma_semantic_b1_action_power 5 ?phase ?root"
+  proof -
+    have base:
+      "(\<lambda>p i. comma_semantic_b1_weighted_encode
+          (comma_semantic_future_rank_round_action p i)) =
+        (\<lambda>p i. comma_semantic_b1 p i)"
+    proof (intro ext)+
+      fix p i :: nat
+      show "comma_semantic_b1_weighted_encode
+          (comma_semantic_future_rank_round_action p i) =
+          comma_semantic_b1 p i"
+        by (rule comma_semantic_future_rank_round_action_encode)
+    qed
+    have power_from:
+      "comma_semantic_b1_action_power_from 5
+          (\<lambda>p i. comma_semantic_b1 p i) ?phase ?root =
+        comma_semantic_b1_action_power 5 ?phase ?root"
+      by (rule comma_semantic_future_b1_action_power_from_exact)
+    show ?thesis
+      using comma_semantic_b1_weighted_action_power_encode[of 5
+          comma_semantic_future_rank_round_action ?phase ?root]
+        base power_from by simp
+  qed
+  have semantic_power:
+    "comma_semantic_b1_action_power 5 ?phase ?root =
+      Comma_Semantic_B1_Stop (comma_terminal_weight_encode H terminal)"
+    using encoded_action weighted_power
+    by (simp add: comma_terminal_weight_encode_def)
   have lookup_H:
     "comma_semantic_decade_summary ?state=Some (H,terminal)"
-    using provider_lookup fields by simp
+    using state_admitted semantic_power decoded
+    by (simp add: comma_semantic_decade_summary_def)
+  have terminal_digit: "J=comma_terminal_weight_digit terminal"
+    using weighted_power by simp
   have event:
     "comma_semantic_boundary_event_outcome comma_semantic_decade_summary
         (snd (snd q)) (Comma_Round_Cross (Comma_Entry 1 d x)) =
@@ -747,8 +806,8 @@ proof -
         comma_summary_outcome.simps algebra_simps)
   show thesis
     by (rule that[OF binding_member binding_source binding_cid normalized_cross
-        d_eq x_bound_initial terminal_digit height exact_H lookup_H boundary control
-        children ordered_children])
+        d_eq x_bound_initial terminal_digit height exact_H weighted_power lookup_H
+        boundary control children ordered_children])
 qed
 
 ML \<open>

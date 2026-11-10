@@ -10,7 +10,7 @@ struct
       val kernel = Comma_Fast_Kernel.make ctxt
       val (certify, certification) = Comma_Entry_Arithmetic.make_certifier ctxt
       val arithmetic = Comma_Entry_Arithmetic.natural_context ctxt
-      val base_context = #context kernel addsimps
+      val base_context = #context kernel |> Simplifier.add_simps
         @{thms comma_decade_orbit_base_layer_def comma_decade_block_atom_def
           comma_orbit_layer_representative_constants
           comma_decade_admitted.simps comma_decade_block_result.case
@@ -18,13 +18,13 @@ struct
       val square_context = (arithmetic |> fold Simplifier.add_cong
         @{thms comma_decade_orbit_layer_lookup_weak_cong comma_decade_orbit_layer_resume_weak_cong
           comma_decade_orbit_layer_nth_weak_cong comma_decade_orbit_layer_length_weak_cong
-          comma_decade_orbit_layer_square_weak_cong}) addsimps
+          comma_decade_orbit_layer_square_weak_cong}) |> Simplifier.add_simps
         @{thms comma_decade_orbit_layer_square_def comma_decade_orbit_layer_lookup_def
           comma_decade_orbit_layer_resume.simps comma_orbit_layer_slot_constants
           comma_decade_block_then.simps
           comma_decade_block_result.case list.map list.size
           nth_Cons' power_numeral_even power_numeral_odd power_0 power_one_right power_Suc0_right}
-      val complete_context = square_context addsimps
+      val complete_context = square_context |> Simplifier.add_simps
         @{thms comma_decade_orbit_layer_complete_def comma_decade_block_stopped_below.simps
           list_all_Nil_iff list_all_Cons_iff}
       val memo = Unsynchronized.ref (Inttab.empty: layer Inttab.table)
@@ -133,7 +133,7 @@ struct
           val expression = @{term comma_decade_orbit_layer_square} $ nat prior $ nat phase $
             #value left $ #value right
           val evaluated = equation
-            (square_context addsimps [#length left, #length right]) expression
+            (square_context |> Simplifier.add_simps [#length left, #length right]) expression
           val value = checked_value evaluated
           val rule = instantiate [("next", nat level), ("k", nat prior),
             ("phase", nat shifted), ("r", nat phase), ("lhs", #value left),

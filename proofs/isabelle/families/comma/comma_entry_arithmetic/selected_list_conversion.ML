@@ -119,6 +119,41 @@ struct
     in {equation = equation, stats = stats, clear = clear,
         hits = fn () => !hits} end
 
+  (* Request-local exact normalization for concrete natural indices.  Reuse
+     the same arithmetic context across selected-list owners without sharing
+     mutable lookup state or changing normalization/certificate semantics. *)
+  fun make_natural_normalizer ctxt =
+    let
+      val natT = @{typ nat}
+      val context = Comma_Entry_Arithmetic.natural_context ctxt
+        |> Simplifier.add_simps @{thms pred_numeral_simps}
+      val arithmetic = Simplifier.rewrite context
+      val codec = Comma_Selected_List_Alias.make_codec
+        {ctxt=ctxt, validate_equation=validate_equation}
+      val decode = #decode codec
+      fun canonical_nat term =
+        (case try HOLogic.dest_number term of
+          SOME (typ,value) => typ = natT andalso value >= 0
+        | NONE => false)
+      fun convert index_context cterm =
+        if canonical_nat (Thm.term_of cterm) then Thm.reflexive cterm
+        else
+          let
+            (* Evaluate computed indices in their active representation before
+               decoding instance constants: Code_Simp arithmetic rules are
+               keyed by those instance heads. *)
+            val selected = Simplifier.rewrite index_context cterm
+            val decoded = decode (Thm.rhs_of selected)
+            val normalized = arithmetic (Thm.rhs_of decoded)
+            (* Simplification can expose the instance constant again. *)
+            val normalized_term = Thm.term_of (Thm.rhs_of normalized)
+            val canonical = if canonical_nat normalized_term
+              then Thm.reflexive (Thm.rhs_of normalized)
+              else decode (Thm.rhs_of normalized)
+          in Thm.transitive selected (Thm.transitive decoded
+            (Thm.transitive normalized canonical)) end
+    in {context=context,convert=convert} end
+
   fun prove_indexed_list_all
       {ctxt, predicate, bound, prove_item, zero_fact, step_fact,
        successor_equation} =
@@ -256,39 +291,13 @@ struct
               in extent :: dimensions (remaining - 1) (maps I lists) end
     in dimensions depth [root_body] end
 
-  fun make_with_child_definitions extent_of_table
-      child_name_prefix child_definitions
-      {ctxt, name, root_definition, table_pattern} =
+  fun make_with_extents extent_of_table {ctxt, name, root_definition, table_pattern} =
     let
       val natT = @{typ nat}
-      val scalar_context = Comma_Entry_Arithmetic.natural_context ctxt addsimps
-        @{thms pred_numeral_simps}
+      val normalizer = make_natural_normalizer ctxt
+      val scalar_context = #context normalizer
+      val normalize_scalar = #convert normalizer
       val arithmetic = Simplifier.rewrite scalar_context
-      fun canonical_nat term =
-        (case try HOLogic.dest_number term of
-          SOME (typ, value) => typ = natT andalso value >= 0
-        | NONE => false)
-      fun normalize_scalar index_context cterm =
-        if canonical_nat (Thm.term_of cterm) then Thm.reflexive cterm
-        else
-          let
-            (* Code_Simp presents concrete natural zero/successor constants in
-               unoverloaded class form.  Restore the typed numeral first so
-               both the extent check and the scalar arithmetic see the same
-               canonical natural index. *)
-            val overloaded = Axclass.overload_conv ctxt cterm
-            val selected = Simplifier.rewrite index_context (Thm.rhs_of overloaded)
-            val normalized = arithmetic (Thm.rhs_of selected)
-            (* Simplification can expose the instance constant again (for
-               example `zero_nat_inst.zero_nat`).  Canonicalize it after
-               selection/arithmetic, while leaving already canonical numerals
-               alone on the common path. *)
-            val normalized_term = Thm.term_of (Thm.rhs_of normalized)
-            val canonical = if canonical_nat normalized_term
-              then Thm.reflexive (Thm.rhs_of normalized)
-              else Axclass.overload_conv ctxt (Thm.rhs_of normalized)
-          in Thm.transitive overloaded
-            (Thm.transitive selected (Thm.transitive normalized canonical)) end
       val code_zero = Const
         (Sign.intern_const (Proof_Context.theory_of ctxt) "zero_nat_inst.zero_nat", natT)
       val code_zero_equation = normalize_scalar scalar_context
@@ -301,58 +310,11 @@ struct
       val root_term = Thm.term_of (Thm.lhs_of root)
       val _ = validate_equation root_term root
       val root_body = Thm.term_of (Thm.rhs_of root)
-      fun child_equation (index, (definition, declared_extent)) =
-        let
-          val equation = if can Logic.dest_equals (Thm.prop_of definition)
-            then definition else definition RS @{thm eq_reflection}
-          val child_term = Thm.term_of (Thm.lhs_of equation)
-          val expected_name = Sign.intern_const (Proof_Context.theory_of ctxt)
-            (child_name_prefix ^ Int.toString index)
-          val _ = (case child_term of
-            Const (actual_name, _) => if actual_name = expected_name then ()
-              else error "Named selected-list child has a foreign canonical name"
-          | _ => error "Named selected-list child definition lhs is not a constant")
-          val _ = validate_equation child_term equation
-          val child_rhs = Thm.term_of (Thm.rhs_of equation)
-          val _ = if literal_list_length child_rhs = declared_extent andalso
-              declared_extent >= 0 then ()
-            else error "Named selected-list child has an inconsistent row extent"
-          val _ = if null (Thm_Deps.all_oracles [equation]) then ()
-            else error "Named selected-list child definition has an oracle"
-        in (child_term, equation, declared_extent) end
-      val checked_children = map_index
-        (fn (index, definition) => child_equation (index, definition)) child_definitions
-      val child_definitions_table = fold (fn (term, equation, _) => fn table =>
-        if Termtab.defined table term then
-          error "Named selected-list child definition is duplicated"
-        else Termtab.update (term, equation) table)
-          checked_children Termtab.empty
-      val child_extent_table = fold (fn (term, _, extent) => fn table =>
-        Termtab.update (term, extent) table) checked_children Termtab.empty
-      val _ = if null child_definitions then ()
-        else
-          let
-            val root_children = (case try HOLogic.dest_list root_body of
-              SOME values => values
-            | NONE => error "Named selected-list root is not a literal child list")
-            val expected_children = map #1 checked_children
-            val root_type = fastype_of root_body
-            val child_type = (case root_type of
-              Type (list_name, [typ]) =>
-                if list_name = @{type_name list} then typ
-                else error "Named selected-list root is not a list"
-            | _ => error "Named selected-list root is not a list")
-            val _ = if length root_children = length expected_children andalso
-                ListPair.allEq (fn (actual, expected) => actual aconv expected)
-                  (root_children, expected_children)
-              then () else error
-                "Named selected-list root child order disagrees with its definitions"
-            val _ = if List.all (fn child => fastype_of child = child_type)
-                root_children then ()
-              else error "Named selected-list root child has the wrong list type"
-            val _ = if null (Thm_Deps.all_oracles [root]) then ()
-              else error "Named selected-list root definition has an oracle"
-          in () end
+      val alias = Comma_Selected_List_Alias.make
+        {ctxt=ctxt, root_definition=root, validate_equation=validate_equation}
+      val root_aliases = #root_aliases alias
+      val root_equation = #root_equation alias
+      val encode_result = #encode_result alias
       val extents = extent_of_table root_body
       val _ = if not (null extents) andalso
           List.all (fn extent => extent > 0) extents
@@ -486,8 +448,7 @@ struct
             limit ("B1 selected-list " ^ name) label f
 
       fun selector_depth table =
-        if table aconv root_term then SOME 0
-        else if Termtab.defined child_definitions_table table then SOME 1
+        if Option.isSome (root_equation table) then SOME 0
         else
           (case strip_comb table of
             (Const (constant, _), [parent, _]) =>
@@ -530,7 +491,7 @@ struct
                 Comma_Proof_Profile.report
                   ("selected-list extent failure owner=" ^ name ^
                    " depth=" ^ depth_text ^ " extent=" ^ bound_text ^
-                   " root_table=" ^ Bool.toString (table aconv root_term) ^
+                   " root_table=" ^ Bool.toString (Option.isSome (root_equation table)) ^
                    " raw_index=" ^ excerpt raw_index ^
                    " normalized_index=" ^ normalized_text)
               end
@@ -566,16 +527,7 @@ struct
           (Const (constant, _), [table]) =>
             (* HOL's `length` is an abbreviation for the size class constant. *)
             if constant <> @{const_name size} then NONE
-            else if table aconv root_term then SOME root
-            else Termtab.lookup child_definitions_table table
-        | _ => NONE)
-
-      fun concat_definition cterm =
-        (case strip_comb (Thm.term_of cterm) of
-          (Const (constant, _), [table]) =>
-            if constant = @{const_name concat}
-            then Termtab.lookup child_definitions_table table
-            else NONE
+            else root_equation table
         | _ => NONE)
 
       (* Once a selector's table spine reaches this conversion's root, an
@@ -627,13 +579,15 @@ struct
                     let
                       val zero = Conv.rewr_conv
                         (@{thm drop_0} RS @{thm eq_reflection}) cterm
-                    in
-                      (case if table aconv root_term then SOME root
-                            else Termtab.lookup child_definitions_table table of
+                      val source_definition =
+                        (case root_equation table of
+                          SOME definition => SOME definition
+                        | NONE => Termtab.lookup (!memo) table)
+                      val rooted = (case source_definition of
                         SOME definition => Thm.transitive zero
                           (Conv.rewr_conv definition (Thm.rhs_of zero))
                       | NONE => zero)
-                    end
+                    in rooted end
                   else
                     let
                       val previous = suffix table (index - 1)
@@ -725,8 +679,9 @@ struct
                 val attempt = Exn.capture (fn () =>
                   let
                     val theorem =
-                      if key aconv root_term then root
-                      else
+                      (case root_equation key of
+                        SOME definition => definition
+                      | NONE =>
                         (case strip_comb key of
                           (Const (constant, _), [table, _]) =>
                             if constant = @{const_name nth} then
@@ -735,15 +690,14 @@ struct
                                   (case Term.head_of table of
                                     Const (name, _) => name = @{const_name nth}
                                   | _ => false)
-                                val prepared = if lookup_table then
-                                    Conv.fun_conv
-                                      (Conv.arg_conv (lookup index_context)) cterm
-                                  else Thm.reflexive cterm
-                              in Thm.transitive prepared
-                                (nth index_context (Thm.rhs_of prepared)
-                                  index_conversion) end
+                                val _ = if lookup_table then
+                                  let
+                                    val (nth_function_ct,_) = Thm.dest_comb cterm
+                                    val (_,table_ct) = Thm.dest_comb nth_function_ct
+                                  in ignore (lookup index_context table_ct) end else ()
+                              in nth index_context cterm index_conversion end
                             else error "Selected-list cache received a non-selector term"
-                        | _ => error "Selected-list cache received an unowned term")
+                        | _ => error "Selected-list cache received an unowned term"))
                   in trace_stage "selected-request-validation" 12 (fn () =>
                     validate_equation key theorem) end) ()
                 val _ = active := Termtab.delete key (!active)
@@ -786,10 +740,6 @@ struct
               index < fold (fn extent => fn maximum => Int.max (extent, maximum))
                 extents 0
             then () else error "Selected-list index exceeds its declared extent"
-          val _ = (case Termtab.lookup child_extent_table table of
-            SOME extent => if index < extent then ()
-              else error "Named selected-list row index exceeds its source extent"
-          | NONE => ())
           val _ = selected_cells := !selected_cells + 1
           val selected_suffix = trace_stage "suffix-select" 12 (fn () =>
             suffix table index)
@@ -849,48 +799,33 @@ struct
               in theorem end
         end
 
-      fun lookup_concat definition cterm =
-        let
-          val key = Thm.term_of cterm
-          val _ = lookups := !lookups + 1
-        in
-          case Termtab.lookup (!memo) key of
-            SOME theorem => (hits := !hits + 1; theorem)
-          | NONE =>
-              let
-                val selected = Conv.arg_conv (Conv.rewr_conv definition) cterm
-                val flatten_context = put_simpset HOL_basic_ss ctxt
-                  addsimps (@{thms concat.simps append.simps})
-                val flattened = Simplifier.rewrite flatten_context (Thm.rhs_of selected)
-                val composed = Thm.transitive selected flattened
-                val flattened_value = Thm.term_of (Thm.rhs_of composed)
-                val _ = if can HOLogic.dest_list flattened_value then ()
-                  else error "Named selected source did not flatten to a literal list"
-                val theorem = validate_equation key composed
-                val _ = if !retained < 8192 then () else
-                  (evicted := !evicted + !retained;
-                   memo := Termtab.empty; retained := 0)
-                val _ = memo := Termtab.update (key, theorem) (!memo)
-                val _ = retained := !retained + 1
-                val _ = peak_retained := Int.max (!peak_retained, !retained)
-                val _ = internal_publications := !internal_publications + 1
-              in theorem end
-        end
-
-      fun convert index_context cterm =
+      val canonical_root = #canonical_root alias
+      val canonical_lookup = #canonical_lookup alias
+      fun convert code_output index_context cterm =
         let val term = Thm.term_of cterm in
           if not (closed term) then NONE
           else
-            (case length_definition cterm of
-              SOME definition =>
-                SOME (timed elapsed failures (lookup_length definition) cterm)
-            | NONE =>
-                (case concat_definition cterm of
+            let
+              val canonical = canonical_lookup cterm
+              val selected_ct = Thm.rhs_of canonical
+              val selected = (case length_definition selected_ct of
                   SOME definition =>
-                    SOME (timed elapsed failures (lookup_concat definition) cterm)
-                | NONE => if owned_selector cterm then
-                    SOME (timed elapsed failures (lookup index_context) cterm)
-                  else NONE))
+                    SOME (timed elapsed failures (lookup_length definition) selected_ct)
+                | NONE => if owned_selector selected_ct then
+                    SOME (timed elapsed failures (lookup index_context) selected_ct)
+                  else NONE)
+              fun finish theorem =
+                let
+                  val result = Thm.transitive canonical theorem
+                  val encoded = if code_output then encode_result result else result
+                in validate_equation term encoded end
+            in Option.map finish selected end
+        end
+
+      fun canonicalize cterm =
+        let val term = Thm.term_of cterm in
+          if not (closed term) orelse not (Option.isSome (selector_depth term))
+          then NONE else SOME (validate_equation term (canonical_root cterm))
         end
 
       val pattern = table_pattern
@@ -901,17 +836,20 @@ struct
          then checked against the original root spine by [owned_selector]. *)
       val selector_pattern = schematize @{term "selected_table ! selected_index"}
       val length_pattern = schematize @{term "length selected_table"}
-      val concat_pattern = schematize @{term "concat selected_table"}
-      val procedure = Simplifier.make_simproc ctxt
-        {name = "comma_selected_list_" ^ name,
-         kind = Simplifier.Congproc false,
-         lhss = [pattern, selector_pattern, length_pattern, concat_pattern],
-         proc = fn _ => fn index_context => convert index_context, identifier = []}
-      val post_procedure = Simplifier.make_simproc ctxt
-        {name = "comma_selected_list_after_operands_" ^ name,
-         kind = Simplifier.Simproc,
-         lhss = [pattern, selector_pattern, length_pattern, concat_pattern],
-         proc = fn _ => convert, identifier = []}
+      val code_length_pattern = #code_pattern alias length_pattern
+      fun make_procedure code_output after_operands = Simplifier.make_simproc ctxt
+        {name = "comma_selected_list_" ^ name ^
+           (if code_output then "_code" else "") ^
+           (if after_operands then "_after_operands" else ""),
+         kind = if after_operands then Simplifier.Simproc
+           else Simplifier.Congproc false,
+         lhss = [pattern, selector_pattern, length_pattern, code_length_pattern],
+         proc = fn _ => convert code_output,
+         identifier = []}
+      val procedure = make_procedure false false
+      val post_procedure = make_procedure false true
+      val code_procedure = make_procedure true false
+      val code_post_procedure = make_procedure true true
 
       fun stats () = name ^ "_lookups=" ^ Int.toString (!lookups) ^
         " " ^ name ^ "_hits=" ^ Int.toString (!hits) ^
@@ -933,54 +871,18 @@ struct
         " " ^ name ^ "_failed=" ^ Int.toString (!failures) ^
         " " ^ name ^ "_lookup_ms=" ^
           LargeInt.toString (Time.toMilliseconds (!elapsed))
-    in {procedure = procedure, post_procedure = post_procedure, stats = stats} end
-
-  fun make_with_extents extent_of_table child_definitions
-      {ctxt, name, root_definition, table_pattern} =
-    make_with_child_definitions extent_of_table "" child_definitions
-      {ctxt = ctxt, name = name, root_definition = root_definition,
-       table_pattern = table_pattern}
+    in {procedure = procedure, post_procedure = post_procedure,
+        code_procedure = code_procedure, code_post_procedure = code_post_procedure,
+        stats = stats, canonicalize = canonicalize} end
 
   fun make {ctxt, name, root_definition, table_pattern, extents} =
-    make_with_extents (fn _ => extents) []
+    make_with_extents (fn _ => extents)
       {ctxt = ctxt, name = name, root_definition = root_definition,
        table_pattern = table_pattern}
 
   fun make_nested {ctxt, name, root_definition, table_pattern, depth} =
-    make_with_extents (literal_nested_extents depth) []
+    make_with_extents (literal_nested_extents depth)
       {ctxt = ctxt, name = name, root_definition = root_definition,
        table_pattern = table_pattern}
-
-  fun make_named_children
-      {ctxt, name, root_definition, table_pattern, child_name_prefix,
-       child_definitions, child_row_extents} =
-    let
-      val _ = if length child_definitions = length child_row_extents andalso
-          List.all (fn extent => extent >= 0) child_row_extents
-        then () else error "Named selected-list child extents are malformed"
-      val max_rows = fold
-        (fn extent => fn maximum => Int.max (extent, maximum))
-        child_row_extents 0
-      val entries = ListPair.zip (child_definitions, child_row_extents)
-    in
-      make_with_child_definitions
-        (fn _ => [length entries, Int.max (1, max_rows)])
-        child_name_prefix entries
-        {ctxt = ctxt, name = name, root_definition = root_definition,
-         table_pattern = table_pattern}
-    end
-
-  fun make_named_children_from_source
-      {ctxt, name, table_pattern, child_name_prefix, get_definitions} =
-    let
-      val {root_definition, child_definitions, child_row_extents} =
-        get_definitions ctxt
-    in
-      make_named_children
-        {ctxt = ctxt, name = name, root_definition = root_definition,
-         table_pattern = table_pattern, child_name_prefix = child_name_prefix,
-         child_definitions = child_definitions,
-         child_row_extents = child_row_extents}
-    end
 
 end

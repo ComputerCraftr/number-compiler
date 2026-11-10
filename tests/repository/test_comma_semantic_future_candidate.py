@@ -22,6 +22,7 @@ from devtools.verification.comma_semantic_future_artifact import (
     runtime_candidate_bytes,
     runtime_candidate_record_from_isabelle_data,
     runtime_candidate_sha256,
+    write_runtime_candidate_from_native_export,
 )
 from devtools.verification.comma_semantic_future_candidate import (
     Control,
@@ -470,6 +471,95 @@ def test_runtime_candidate_exports_authored_hol_tables_without_rebuilding(
     candidate_main()
     assert output.read_bytes() == canonical_candidate_bytes(record)
     assert json.loads(output.read_text(encoding="ascii")) == record
+
+
+def _native_export_candidate_record() -> dict[str, object]:
+    return {
+        "format": future_provider.FUTURE_CANDIDATE_FORMAT,
+        "authority": future_provider.FUTURE_CANDIDATE_AUTHORITY,
+        "state_universe": future_provider.FUTURE_SOURCE_UNIVERSE,
+        "class_of_state_varint_base64": base64.b64encode(bytes(SOURCE_COUNT)).decode(
+            "ascii"
+        ),
+        "controls": [["landmine", None]],
+        "ordered_children": [[None, None]],
+        "class_rank_candidate": [0],
+    }
+
+
+def test_runtime_candidate_copies_canonical_native_export_bytes(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "native-export.json"
+    output = tmp_path / "candidate.json"
+    payload = canonical_candidate_bytes(_native_export_candidate_record())
+    source.write_bytes(payload)
+
+    result = write_runtime_candidate_from_native_export(source, output)
+
+    assert output.read_bytes() == payload
+    assert result["bytes"] == len(payload)
+    assert result["sha256"] == sha256(payload).hexdigest()
+    assert result["authority"] == future_provider.FUTURE_CANDIDATE_AUTHORITY
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (b'{"format":"first","format":"second"}', "duplicate"),
+        (
+            json.dumps(_native_export_candidate_record()).encode("ascii"),
+            "canonical",
+        ),
+    ],
+    ids=("duplicate-keys", "noncanonical-whitespace"),
+)
+def test_runtime_candidate_rejects_duplicate_or_noncanonical_native_export(
+    tmp_path: Path, payload: bytes, message: str
+) -> None:
+    source = tmp_path / "native-export.json"
+    output = tmp_path / "candidate.json"
+    source.write_bytes(payload)
+
+    with pytest.raises(ValueError, match=message):
+        write_runtime_candidate_from_native_export(source, output)
+    assert not output.exists()
+
+
+def test_runtime_candidate_native_export_preserves_existing_output(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "native-export.json"
+    output = tmp_path / "candidate.json"
+    source.write_bytes(canonical_candidate_bytes(_native_export_candidate_record()))
+    output.write_bytes(b"existing evidence")
+
+    with pytest.raises(FileExistsError):
+        write_runtime_candidate_from_native_export(source, output)
+    assert output.read_bytes() == b"existing evidence"
+
+
+def test_runtime_candidate_native_export_cli_rejects_combined_modes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "candidate.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "comma-semantic-future-candidate",
+            "--output",
+            str(output),
+            "--from-native-export",
+            str(tmp_path / "native-export.json"),
+            "--from-isabelle-data",
+            str(tmp_path / "candidate-data.thy"),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="cannot be combined"):
+        candidate_main()
+    assert not output.exists()
 
 
 def test_runtime_candidate_hol_literal_parser_rejects_computed_or_changed_tables() -> (

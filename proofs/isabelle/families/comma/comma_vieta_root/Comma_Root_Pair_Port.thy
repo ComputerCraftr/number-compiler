@@ -45,7 +45,7 @@ lemma comma_port_local_laws_checked:
   "list_all (\<lambda>f. list_all (comma_port_local_law f)
     [1..<10]) [1..<10]"
   by (tactic \<open>simp_tac
-    (Comma_Entry_Arithmetic.natural_context @{context} addsimps
+    (Comma_Entry_Arithmetic.natural_context @{context} |> Simplifier.add_simps
       @{thms list_all_Nil_iff list_all_Cons_iff upt_rec comma_port_local_law_def
         comma_port_low_def comma_port_dwell_def comma_port_previous_def
         comma_port_next_def comma_port_first_residual_def comma_vieta_root_run_def}) 1\<close>)
@@ -129,7 +129,7 @@ lemma comma_port_phase_inverse_checked:
     comma_port_previous f ((d+f) mod 10)=d)
     [0..<10]) [1..<10]"
   by (tactic \<open>simp_tac
-    (Comma_Entry_Arithmetic.natural_context @{context} addsimps
+    (Comma_Entry_Arithmetic.natural_context @{context} |> Simplifier.add_simps
       @{thms list_all_Nil_iff list_all_Cons_iff upt_rec comma_port_previous_def}) 1\<close>)
 
 lemma comma_port_actual_previous:
@@ -217,9 +217,9 @@ lemma comma_port_weighted_cycles_checked:
           comma_port_weighted_trace.simps(2)[where n=6]
           comma_port_weighted_trace.simps(2)[where n=7]
           comma_port_weighted_trace.simps(2)[where n=8]}
-      val length_context = arithmetic addsimps
+      val length_context = arithmetic |> Simplifier.add_simps
         @{thms comma_port_cycle_length_def comma_compiled_cycle_length_facts}
-      val step_context = arithmetic addsimps
+      val step_context = arithmetic |> Simplifier.add_simps
         @{thms comma_port_next_def comma_port_previous_def comma_port_dwell_def}
       fun trace_term f d n =
         @{term comma_port_weighted_trace} $ number f $ number d $ number n
@@ -237,15 +237,15 @@ lemma comma_port_weighted_cycles_checked:
           val _ = if 0<count andalso count<=9 then ()
             else error "Weighted port produced an unbounded cycle"
           val zero = check_pair (Simplifier.rewrite
-            (arithmetic addsimps @{thms comma_port_weighted_trace.simps(1)})
+            (arithmetic |> Simplifier.add_simps @{thms comma_port_weighted_trace.simps(1)})
             (Thm.cterm_of ctxt (trace_term f d 0)))
           fun successor n previous = check_pair (Simplifier.rewrite
-            (step_context addsimps [previous, nth recursion (n-1)])
+            (step_context |> Simplifier.add_simps [previous, nth recursion (n-1)])
             (Thm.cterm_of ctxt (trace_term f d n)))
           val final = fold successor (1 upto count) zero
         in [length, final] end
       val facts = maps (fn f => maps (port f) (1 upto 9)) (1 upto 9)
-    in simp_tac (arithmetic addsimps facts addsimps
+    in simp_tac (arithmetic |> Simplifier.add_simps facts |> Simplifier.add_simps
       @{thms list_all_Nil_iff list_all_Cons_iff upt_rec comma_compiled_period_facts}) 1 end
     \<close>)
 

@@ -76,6 +76,9 @@ def test_seed_morphism_packet_reuses_completed_scheduler_endpoint(
         start_f_steps: int = 0,
         known_previous: CertifiedSeedOrbitMorphism | None = None,
         completed_term: DoubleReverseTerm | None = None,
+        pascal_levels: tuple[int, ...] = (),
+        pascal_order: int = 1,
+        mod70_projection: bool = False,
     ) -> CertifiedSeedOrbitMorphism:
         if completed_term is None:
             raise AssertionError("seed morphism bypassed completed endpoint authority")
@@ -89,6 +92,9 @@ def test_seed_morphism_packet_reuses_completed_scheduler_endpoint(
             start_f_steps=start_f_steps,
             known_previous=known_previous,
             completed_term=completed_term,
+            pascal_levels=pascal_levels,
+            pascal_order=pascal_order,
+            mod70_projection=mod70_projection,
         )
 
     monkeypatch.setattr(temporal_seed_cli, "certified_seed_orbit_morphism", checked)

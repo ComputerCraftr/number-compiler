@@ -26,6 +26,21 @@ DigitRuns = tuple[DigitRun, ...]
 MAX_EXACT_DECIMAL_BLOCK_WIDTH = 20_000
 
 
+def decimal_width_upper_bound(value: int) -> int:
+    """Return an integer-only upper bound before decimal digit expansion."""
+    if type(value) is not int or value < 0:
+        raise ValueError("decimal width bound requires a nonnegative exact integer")
+    bits = value.bit_length()
+    return max(1, (302 * bits + 999) // 1000)
+
+
+def q19_transition_scratch_nodes(max_width: int) -> int:
+    """Reserve the established temporary node bound for one Q19 transition."""
+    if type(max_width) is not int or max_width < 1:
+        raise ValueError("Q19 maximum width must be a positive exact integer")
+    return 24 * max_width + 64
+
+
 class NativeTransportWidthExceeded(ValueError):
     """A finite native decimal action exceeded its explicit width budget."""
 
@@ -36,6 +51,7 @@ def native_decimal_string_transport(
     *,
     max_width: int = MAX_EXACT_DECIMAL_BLOCK_WIDTH,
     on_tick_start: Callable[[int], None] | None = None,
+    on_tick_complete: Callable[[str, Decimal, Decimal], None] | None = None,
 ) -> tuple[str, int]:
     """Apply a bounded exact reverse/add block without integer conversion.
 
@@ -63,29 +79,43 @@ def native_decimal_string_transport(
         return source_text, 0
 
     visits = 0
-    with localcontext(
-        Context(
-            prec=len(source_text) + steps + 2,
-            traps=[Inexact, Rounded],
-        )
-    ):
-        value = Decimal(source_text)
-        reverse = Decimal(source_text[::-1])
-        for tick in range(steps):
-            if on_tick_start is not None:
-                on_tick_start(len(source_text))
-            visits += len(source_text)
-            value += reverse
-            source_text = str(value)
-            if not source_text.isdecimal() or (
-                len(source_text) > 1 and source_text[0] == "0"
-            ):
-                raise AssertionError(
-                    "decimal transport lost canonical integer representation"
-                )
-            if tick + 1 < steps:
-                reverse = Decimal(source_text[::-1])
-    return source_text, visits + len(source_text)
+    value: Decimal | None = None
+    reverse: Decimal | None = None
+    try:
+        with localcontext(
+            Context(
+                prec=len(source_text) + steps + 2,
+                traps=[Inexact, Rounded],
+            )
+        ):
+            value = Decimal(source_text)
+            reverse = Decimal(source_text[::-1])
+            for tick in range(steps):
+                if on_tick_start is not None:
+                    on_tick_start(len(source_text))
+                visits += len(source_text)
+                value += reverse
+                source_text = str(value)
+                if not source_text.isdecimal() or (
+                    len(source_text) > 1 and source_text[0] == "0"
+                ):
+                    raise AssertionError(
+                        "decimal transport lost canonical integer representation"
+                    )
+                if tick + 1 < steps or on_tick_complete is not None:
+                    reverse = Decimal(source_text[::-1])
+                if on_tick_complete is not None:
+                    # The callback sees the *same exact physical endpoint* used
+                    # by the next tick. No independently guessed port sequence.
+                    on_tick_complete(source_text, value, reverse)
+        return source_text, visits + len(source_text)
+    except BaseException:
+        # Callers may retain this exception's traceback. Do not let it keep
+        # source-sized strings or Decimal coefficients after scratch release.
+        source_text = ""
+        value = None
+        reverse = None
+        raise
 
 
 def _append_issued_run(runs: list[DigitRun], symbol: int, count: int) -> None:
@@ -408,6 +438,8 @@ class SymmetricCoefficientPort:
 
 __all__ = [
     "MAX_EXACT_DECIMAL_BLOCK_WIDTH",
+    "decimal_width_upper_bound",
+    "q19_transition_scratch_nodes",
     "NativeTransportWidthExceeded",
     "AlignedCarryPort",
     "DigitRun",

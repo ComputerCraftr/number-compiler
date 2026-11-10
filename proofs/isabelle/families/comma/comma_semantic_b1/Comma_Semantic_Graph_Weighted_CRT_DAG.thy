@@ -80,7 +80,7 @@ lemma comma_weighted_crt_eval_selected:
   using comma_weighted_crt_axis_positive
   by (auto simp: nth_map case_prod_beta)
 
-declare comma_weighted_crt_eval.simps(2)[simp del, code del]
+declare comma_weighted_crt_eval.simps(2)[simp del, code drop]
 declare comma_weighted_crt_eval.simps(1)[code]
 declare comma_weighted_crt_eval_selected[simp, code]
 

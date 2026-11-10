@@ -227,3 +227,62 @@ def test_native_dependency_audit_rejects_dynamic_antiquotation_expressions() -> 
     )
     with pytest.raises(ValueError, match="not a closed theorem-name list"):
         isabelle_oracle_audit.audited_theorems(source)
+
+
+def test_local_runtime_dependency_audits_do_not_claim_named_theorems() -> None:
+    source = (
+        'lemma exported_endpoint: "True" by simp\n'
+        "ML \\<open>val _ = let\n"
+        "  val ctxt = @{context}\n"
+        "  val checked = @{thm exported_endpoint}\n"
+        "in Comma_Proof_Dependency_Audit.require_native_clean ctxt "
+        '"local runtime audit" ([checked] @ @{thms exported_endpoint}) end\\<close>'
+    )
+    # The runtime call audits a local theorem value but does not assert an
+    # exported theorem-name dependency for the proof index.
+    assert isabelle_oracle_audit.audited_theorems(source) == ()
+
+
+@pytest.mark.parametrize("result", ("lthy", "snd (Local_Theory.note binding lthy)"))
+@pytest.mark.parametrize(
+    "context", ("Local_Theory.target_of lthy", "Certificate_Store.context store")
+)
+def test_local_setup_runtime_dependency_audit_has_no_global_theorem_credit(
+    result: str,
+    context: str,
+) -> None:
+    source = (
+        'lemma exported_endpoint: "True" by simp\n'
+        "local_setup \\<open>fn lthy => let\n"
+        f"  val ctxt = {context}\n"
+        "  val endpoint = @{thm exported_endpoint}\n"
+        "  val _ = Comma_Proof_Dependency_Audit.require_native_clean ctxt\n"
+        '    "local setup runtime audit" (endpoint::@{thms exported_endpoint})\n'
+        f"in {result} end\\<close>"
+    )
+    assert isabelle_oracle_audit.audited_theorems(source) == ()
+
+
+def test_local_runtime_audit_rejects_shadowed_context_and_delayed_calls() -> None:
+    shadowed_context = (
+        "ML \\<open>val _ = let\n"
+        "  val ctxt = @{context}\n"
+        "  val ctxt = dynamically_computed\n"
+        'in Comma_Proof_Dependency_Audit.require_native_clean ctxt "local" [endpoint] end\\<close>'
+    )
+    with pytest.raises(
+        ValueError, match="unsupported Comma_Proof_Dependency_Audit invocation form"
+    ):
+        isabelle_oracle_audit.audited_theorems(shadowed_context)
+
+    delayed_local_setup = (
+        "local_setup \\<open>fn lthy => let\n"
+        "  val ctxt = Local_Theory.target_of lthy\n"
+        "  val delayed = fn () => Comma_Proof_Dependency_Audit.require_native_clean ctxt\n"
+        '    "delayed local audit" [endpoint]\n'
+        "in lthy end\\<close>"
+    )
+    with pytest.raises(
+        ValueError, match="unsupported Comma_Proof_Dependency_Audit invocation form"
+    ):
+        isabelle_oracle_audit.audited_theorems(delayed_local_setup)

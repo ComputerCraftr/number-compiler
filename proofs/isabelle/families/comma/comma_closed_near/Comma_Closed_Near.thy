@@ -162,6 +162,267 @@ next
   show ?thesis by (simp only: closed endpoint germ)
 qed
 
+lemma comma_near_fast_period_positive_decimal:
+  assumes sector: "1\<le>f" "f\<le>9" and digit: "d<10"
+  shows "0<comma_finite_period_fast f d"
+    "comma_finite_period_fast f d mod 10=0"
+proof -
+  have period: "comma_finite_period f d\<in>comma_cycle_displacements"
+    using comma_finite_period_in_catalog[rule_format, of f d] sector digit
+    by auto
+  have fast: "comma_finite_period_fast f d=comma_finite_period f d"
+    by (rule comma_finite_period_fast_correct[OF sector digit])
+  have catalog: "comma_finite_period_fast f d\<in>comma_cycle_displacements"
+    using period fast by simp
+  show "0<comma_finite_period_fast f d"
+    using catalog by (auto simp: comma_cycle_displacements_def)
+  show "comma_finite_period_fast f d mod 10=0"
+    using catalog by (auto simp: comma_cycle_displacements_def)
+qed
+
+text \<open>
+The finite Near control depends on the residual port, not on the number of
+complete displacement cycles already consumed.  The quotient contributes
+only the additive elapsed-time cocycle.  The endpoint below is still the
+exact decisive headroom, so terminal labels and subsequent sector actions
+remain source-correct.
+\<close>
+theorem comma_near_closed_germ_residual_factorization_with_data:
+  fixes f h e g d P L B q b h0 :: nat
+  assumes sector: "1\<le>f" "f\<le>9"
+    and initial: "1\<le>h" "h\<le>540"
+    and headroom: "(if f<9 then 1 else 0)<h"
+  defines e_def: "e\<equiv>(if f<9 then 1 else 0)"
+    and g_def: "g\<equiv>e+1"
+    and d_def: "d\<equiv>(10-h mod 10) mod 10"
+    and P_def: "P\<equiv>comma_finite_period_fast f d"
+    and L_def: "L\<equiv>comma_cycle_length_fast f"
+    and B_def: "B\<equiv>h-g"
+    and q_def: "q\<equiv>B div P"
+    and b_def: "b\<equiv>B mod P"
+    and h0_def: "h0\<equiv>g+b"
+  shows "1\<le>h0"
+    and "h0\<le>540"
+    and "e<h0"
+    and "comma_near_closed_germ f h =
+      (q*L+fst (comma_near_closed_germ f h0),
+       snd (comma_near_closed_germ f h0))"
+proof -
+  have e_headroom: "e<h" using headroom e_def by simp
+  have digit: "d<10" using d_def by simp
+  have period_facts:
+      "0<comma_finite_period_fast f d"
+      "comma_finite_period_fast f d mod 10=0"
+    by (rule comma_near_fast_period_positive_decimal[OF sector digit])+
+  have period_positive: "0<P"
+    using period_facts(1) P_def by simp
+  have period_decimal: "P mod 10=0"
+    using period_facts(2) P_def by simp
+  have period_dvd: "10 dvd P"
+    using period_decimal by (simp add: dvd_eq_mod_eq_0)
+  have period_product_mod: "(q*P) mod 10=0"
+    using dvd_mult[OF period_dvd, of q]
+    by (simp add: dvd_eq_mod_eq_0 mult.commute)
+  have g_bound: "g\<le>h"
+    using e_headroom g_def by arith
+  have boundary: "B+g=h"
+    using B_def g_bound by arith
+  have quotient_remainder: "q*P+b=B"
+  proof -
+    have "(B div P)*P+B mod P=B"
+      by (rule div_mult_mod_eq)
+    then show ?thesis using q_def b_def by simp
+  qed
+  have remainder_bound: "b<P"
+    using period_positive b_def by simp
+  have h_decomposition: "h=h0+q*P"
+    using boundary quotient_remainder h0_def
+    by (simp add: add.assoc add.commute add.left_commute)
+  have h0_le_h: "h0\<le>h"
+    using h_decomposition by arith
+  have h0_positive: "1\<le>h0"
+    using e_def g_def h0_def by arith
+  have h0_within: "h0\<le>540"
+    using h0_le_h initial(2) by arith
+  have h0_headroom: "e<h0"
+    using e_def g_def h0_def by arith
+  show "1\<le>h0" by (rule h0_positive)
+  show "h0\<le>540" by (rule h0_within)
+  show "e<h0" by (rule h0_headroom)
+
+  have h_mod_h0: "h mod 10=h0 mod 10"
+  proof -
+    have reduce_right:
+        "(h0+q*P) mod 10=(h0+(q*P mod 10)) mod 10"
+      by (rule mod_add_right_eq[symmetric])
+    show ?thesis
+      using h_decomposition period_product_mod reduce_right by simp
+  qed
+  have d_h0: "(10-h0 mod 10) mod 10=d"
+    using h_mod_h0 d_def by simp
+  have fast_period_h: "comma_finite_period_fast f d=P"
+    using P_def by simp
+  have fast_period_h0:
+      "comma_finite_period_fast f ((10-h0 mod 10) mod 10)=P"
+    using d_h0 fast_period_h by simp
+  have fast_length_h: "comma_cycle_length_fast f=L"
+    using L_def by simp
+  obtain j u where residual:
+      "comma_near_residual_count (L-1) f d b=(j,u)"
+    by (cases "comma_near_residual_count (L-1) f d b") auto
+  have guard_h:
+      "\<not>(f<1 \<or> 9<f \<or> h=0 \<or> 540<h \<or> h\<le>e)"
+    using sector initial e_headroom by arith
+  have base_headroom: "h0-e-1=b"
+    using g_def h0_def by arith
+  have base_quotient: "(h0-e-1) div P=0"
+    using base_headroom remainder_bound by simp
+  have base_remainder: "(h0-e-1) mod P=b"
+    using base_headroom remainder_bound by simp
+  have guard_h0:
+      "\<not>(f<1 \<or> 9<f \<or> h0=0 \<or> 540<h0 \<or> h0\<le>e)"
+    using sector h0_positive h0_within h0_headroom by arith
+  have closed_h:
+      "comma_near_closed_germ f h=(q*L+j,h-q*P-(b-u))"
+  proof -
+    have exact_headroom: "h-e-1=B"
+      using B_def g_def by arith
+    have quotient: "(h-e-1) div P=q"
+      using exact_headroom q_def by simp
+    have remainder: "(h-e-1) mod P=b"
+      using exact_headroom b_def by simp
+    show ?thesis
+      by (simp only: comma_near_closed_germ_def Let_def guard_h if_False
+        e_def[symmetric] d_def[symmetric] fast_length_h fast_period_h exact_headroom
+        quotient remainder q_def[symmetric] b_def[symmetric] residual prod.case)
+  qed
+  have closed_h0:
+      "comma_near_closed_germ f h0=(j,h0-(b-u))"
+  proof -
+    have exact_headroom: "h0-e-1=b" by (rule base_headroom)
+    have quotient: "(h0-e-1) div P=0" by (rule base_quotient)
+    have remainder: "(h0-e-1) mod P=b" by (rule base_remainder)
+    have base_div: "b div P=0" using remainder_bound by simp
+    have base_mod: "b mod P=b" using remainder_bound by simp
+    show ?thesis
+      by (simp only: comma_near_closed_germ_def Let_def guard_h0 if_False
+        e_def[symmetric] d_h0 fast_length_h fast_period_h fast_period_h0 exact_headroom
+        quotient remainder base_div base_mod residual prod.case; simp)
+  qed
+  have endpoint: "h-q*P=h0"
+    using h_decomposition by arith
+  show "comma_near_closed_germ f h =
+      (q*L+fst (comma_near_closed_germ f h0),
+       snd (comma_near_closed_germ f h0))"
+    using closed_h closed_h0 endpoint by simp
+qed
+
+theorem comma_near_closed_germ_residual_factorization:
+  fixes f H :: nat
+  assumes sector: "1\<le>f" "f\<le>9"
+    and admitted: "1\<le>H" "H\<le>540"
+    and interior: "(if f<9 then 1 else 0)<H"
+  shows "(let e=if f<9 then 1 else 0;
+             g=e+1;
+             d=(10-H mod 10) mod 10;
+             P=comma_finite_period_fast f d;
+             L=comma_cycle_length_fast f;
+             B=H-g;
+             q=B div P;
+             b=B mod P;
+             h0=g+b
+         in 1\<le>h0 \<and> h0\<le>540 \<and> e<h0 \<and>
+           comma_near_closed_germ f H =
+             (q*L+fst (comma_near_closed_germ f h0),
+              snd (comma_near_closed_germ f h0)))"
+proof -
+  let ?e = "if f<9 then 1 else 0"
+  let ?g = "?e+1"
+  let ?d = "(10-H mod 10) mod 10"
+  let ?P = "comma_finite_period_fast f ?d"
+  let ?L = "comma_cycle_length_fast f"
+  let ?B = "H-?g"
+  let ?q = "?B div ?P"
+  let ?b = "?B mod ?P"
+  let ?h0 = "?g+?b"
+  have h0_positive: "1\<le>?h0"
+    using comma_near_closed_germ_residual_factorization_with_data(1)
+      [OF sector admitted interior]
+    by (simp only: Let_def)
+  have h0_within: "?h0\<le>540"
+    using comma_near_closed_germ_residual_factorization_with_data(2)
+      [OF sector admitted interior]
+    by (simp only: Let_def)
+  have h0_headroom: "?e<?h0"
+    using comma_near_closed_germ_residual_factorization_with_data(3)
+      [OF sector admitted interior]
+    by (simp only: Let_def)
+  have factor:
+      "comma_near_closed_germ f H =
+        (?q*?L+fst (comma_near_closed_germ f ?h0),
+         snd (comma_near_closed_germ f ?h0))"
+    using comma_near_closed_germ_residual_factorization_with_data(4)
+      [OF sector admitted interior]
+    by (simp only: Let_def)
+  show ?thesis
+    unfolding Let_def
+    by (intro conjI;
+        (rule h0_positive | rule h0_within | rule h0_headroom | rule factor))
+qed
+
+corollary comma_near_germ_residual_factorization:
+  fixes f H :: nat
+  assumes sector: "1\<le>f" "f\<le>9"
+    and admitted: "1\<le>H" "H\<le>540"
+    and interior: "(if f<9 then 1 else 0)<H"
+  shows "(let e=if f<9 then 1 else 0;
+             g=e+1;
+             d=(10-H mod 10) mod 10;
+             P=comma_finite_period_fast f d;
+             L=comma_cycle_length_fast f;
+             B=H-g;
+             q=B div P;
+             b=B mod P;
+             h0=g+b
+         in comma_near_germ f H =
+             (q*L+fst (comma_near_germ f h0),
+              snd (comma_near_germ f h0)))"
+proof -
+  let ?e = "if f<9 then 1 else 0"
+  let ?g = "?e+1"
+  let ?d = "(10-H mod 10) mod 10"
+  let ?P = "comma_finite_period_fast f ?d"
+  let ?L = "comma_cycle_length_fast f"
+  let ?B = "H-?g"
+  let ?q = "?B div ?P"
+  let ?b = "?B mod ?P"
+  let ?h0 = "?g+?b"
+  have package:
+      "1\<le>?h0 \<and> ?h0\<le>540 \<and> ?e<?h0 \<and>
+       comma_near_closed_germ f H =
+         (?q*?L+fst (comma_near_closed_germ f ?h0),
+          snd (comma_near_closed_germ f ?h0))"
+    using comma_near_closed_germ_residual_factorization[OF sector admitted interior]
+    by (simp only: Let_def)
+  have h0_positive: "1\<le>?h0" using package by blast
+  have h0_within: "?h0\<le>540" using package by blast
+  have closed_factor:
+      "comma_near_closed_germ f H =
+        (?q*?L+fst (comma_near_closed_germ f ?h0),
+         snd (comma_near_closed_germ f ?h0))"
+    using package by blast
+  have source_correct:
+      "comma_near_closed_germ f H=comma_near_germ f H"
+    by (rule comma_near_closed_germ_correct[OF sector admitted])
+  have base_correct:
+      "comma_near_closed_germ f ?h0=comma_near_germ f ?h0"
+    by (rule comma_near_closed_germ_correct[OF sector h0_positive h0_within])
+  show ?thesis
+    unfolding Let_def
+    using closed_factor source_correct base_correct
+    by (simp only: source_correct[symmetric] closed_factor base_correct)
+qed
+
 corollary comma_near_closed_germ_correct_all:
   "comma_near_closed_germ f h = comma_near_germ f h"
 proof (cases "1\<le>f \<and> f\<le>9 \<and> 1\<le>h \<and> h\<le>540")

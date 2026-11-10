@@ -11,7 +11,7 @@ struct
     let
       val core = Comma_Fast_Kernel.make ctxt
       val (certify, certification) = Comma_Entry_Arithmetic.make_certifier ctxt
-      val arithmetic = Comma_Entry_Arithmetic.natural_context ctxt addsimps
+      val arithmetic = Comma_Entry_Arithmetic.natural_context ctxt |> Simplifier.add_simps
         @{thms comma_boundary_valid_def comma_finite_initial_def
           comma_total_children_def comma_boundary_kind.case comma_boundary_kind.distinct
           comma_finite_outcome.case list.set insert_iff empty_iff
@@ -19,7 +19,7 @@ struct
           comma_shift_position.simps comma_return_shift_outcome.simps}
       fun nat n = HOLogic.mk_number @{typ nat} n
       fun prove proposition facts = certify (Goal.prove ctxt [] [] proposition
-        (fn _ => simp_tac (arithmetic addsimps facts) 1))
+        (fn _ => simp_tac (arithmetic |> Simplifier.add_simps facts) 1))
       fun eq term = Simplifier.rewrite (#context core) (Thm.cterm_of ctxt term)
       fun number t = snd (HOLogic.dest_number t)
       fun canonical_natural t =

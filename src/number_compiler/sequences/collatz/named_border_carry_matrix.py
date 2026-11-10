@@ -17,7 +17,7 @@ An incomplete digit word such as 2684 is an authenticated prefix of an issued
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.fields.morphism_core import binary_power
@@ -416,7 +416,6 @@ def certify_named_border_carry_matrix(
     tape = joined.parity_tape_for_action()
     if tape is None:
         raise ArithmeticError("named source join did not retain its parity grammar")
-    joined = replace(joined, parity_tape=tape)
     units = tape.prefix_units(tape.steps)
     if units.steps != macro.fields.steps or units.odds != macro.odd_symbols:
         raise ArithmeticError("forced-carry matrix differs from issued macro clocks")
@@ -579,7 +578,6 @@ def certify_composed_border_carry_matrix(
     tape = joined.parity_tape_for_action()
     if tape is None:
         raise ArithmeticError("composed source join did not retain its factor grammar")
-    joined = replace(joined, parity_tape=tape)
     units = tape.prefix_units(tape.steps)
     if units.steps != action.steps or units.odds != odd_events:
         raise ValueError("composed carry matrix does not match temporal action")

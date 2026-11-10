@@ -214,7 +214,7 @@ lemmas comma_source_control_simps =
 
 ML \<open>
   fun comma_source_arithmetic_context ctxt =
-    Comma_Entry_Arithmetic.natural_context ctxt addsimps
+    Comma_Entry_Arithmetic.natural_context ctxt |> Simplifier.add_simps
       @{thms comma_source_control_simps comma_finite_move.inject
         comma_finite_move.distinct comma_finite_position.inject
         comma_finite_position.distinct list_all_Nil_iff list_all_Cons_iff
@@ -448,7 +448,7 @@ lemma comma_source_entry_weight:
 
 method_setup comma_source_weight = \<open>
   Scan.succeed (fn ctxt => SIMPLE_METHOD' (simp_tac
-    (comma_source_arithmetic_context ctxt addsimps
+    (comma_source_arithmetic_context ctxt |> Simplifier.add_simps
       @{thms comma_source_near_weight comma_source_entry_weight
         comma_chart_weight_value_def comma_chart_weight.case
         comma_finite_move.case list.map sum_list.Cons sum_list.Nil

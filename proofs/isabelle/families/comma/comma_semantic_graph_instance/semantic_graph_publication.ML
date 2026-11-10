@@ -42,8 +42,8 @@ struct
                 bindings_constant $ source,
                Const (@{const_name Some}, natT -->
                  Type (@{type_name option}, [natT])) $ nat cid))
-            val context = put_simpset HOL_basic_ss
-              (Local_Theory.target_of lthy) addsimps [bindings_definition]
+            val context = Simplifier.add_simps ([bindings_definition]) (put_simpset HOL_basic_ss
+              (Local_Theory.target_of lthy))
             val equation = Simplifier.rewrite context
               (Thm.cterm_of context expected)
             val indexed = List.nth (binding_lookup_equations, binding_position)
@@ -94,9 +94,8 @@ struct
         exact_proposition
         (fn {context, ...} => HEADGOAL
           (Simplifier.asm_full_simp_tac
-            (put_simpset HOL_basic_ss context addsimps
-              ([source_ids_definition, source_list_equation] @
-                @{thms list_all2_Cons list_all2_Nil} @ lookup_facts))))
+            (Simplifier.add_simps (([source_ids_definition, source_list_equation] @
+                @{thms list_all2_Cons list_all2_Nil} @ lookup_facts)) (put_simpset HOL_basic_ss context))))
         |> (fn result => checked exact_proposition result
           "Initial source IDs are not tied to their exact source lookups")
       val _ = Comma_Fast_Kernel.report
@@ -124,7 +123,7 @@ struct
         {ctxt=ctxt, name="semantic_graph_nodes",
          root_definition=nodes_definition, table_pattern=selected,
          extents=[node_extent]}
-      val selection_context = ctxt addsimps [nodes_definition]
+      val selection_context = Simplifier.add_simps ([nodes_definition]) (ctxt)
         |> Simplifier.add_proc procedure
       val started = Time.now ()
       val row_time = Unsynchronized.ref Time.zeroTime
@@ -163,7 +162,7 @@ struct
       fun concrete (i, indexed) =
         let
           val row = List.nth (node_rows, i)
-          val rewrite_context = put_simpset HOL_basic_ss ctxt addsimps [row]
+          val rewrite_context = Simplifier.add_simps ([row]) (put_simpset HOL_basic_ss ctxt)
           val equation = Simplifier.rewrite rewrite_context
             (Thm.cterm_of rewrite_context (Thm.prop_of indexed))
           val value = List.nth (node_values, i)
@@ -201,9 +200,8 @@ struct
       val literal_started = Time.now ()
       val _ = Comma_Fast_Kernel.report
         "semantic graph publication stage=binding-literal-start"
-      val literal_context = put_simpset HOL_basic_ss ctxt addsimps
-        ([bindings_definition, binding_pairs_definition,
-          @{thm comma_semantic_b1_binding_from_pair_def}] @ @{thms list.map})
+      val literal_context = Simplifier.add_simps (([bindings_definition, binding_pairs_definition,
+          @{thm comma_semantic_b1_binding_from_pair_def}] @ @{thms list.map})) (put_simpset HOL_basic_ss ctxt)
       val bindings_literal = Goal.prove ctxt [] [] literal_prop
         (fn {context, ...} =>
           HEADGOAL (Simplifier.asm_full_simp_tac literal_context))
@@ -221,7 +219,7 @@ struct
           val expected = HOLogic.mk_Trueprop (HOLogic.mk_eq
             (@{term comma_semantic_b1_binding_cid_of} $
               bindings_constant $ source, some_nat))
-          val context = put_simpset HOL_basic_ss ctxt addsimps [bindings_definition]
+          val context = Simplifier.add_simps ([bindings_definition]) (put_simpset HOL_basic_ss ctxt)
           val equation = Simplifier.rewrite context (Thm.cterm_of context expected)
           val _ = if Thm.term_of (Thm.rhs_of equation) aconv Thm.prop_of indexed
             then () else error "Binding lookup did not transport through its published table definition"
@@ -331,8 +329,7 @@ struct
           val source = #source source_info
           val proposition = HOLogic.mk_Trueprop
             (@{term comma_round_admitted} $ source)
-          val context = put_simpset HOL_basic_ss ctxt addsimps
-            [#admitted (#header source_info)]
+          val context = Simplifier.add_simps ([#admitted (#header source_info)]) (put_simpset HOL_basic_ss ctxt)
         in Goal.prove ctxt [] [] proposition
           (fn _ => HEADGOAL (Simplifier.simp_tac context))
           |> (fn result => checked proposition result
@@ -343,8 +340,7 @@ struct
           val source = #source source_info
           val proposition = HOLogic.mk_Trueprop (HOLogic.mk_eq
             (source, @{term comma_source_continuation_base} $ source))
-          val context = put_simpset HOL_basic_ss ctxt addsimps
-            [#base (#header source_info)]
+          val context = Simplifier.add_simps ([#base (#header source_info)]) (put_simpset HOL_basic_ss ctxt)
         in Goal.prove ctxt [] [] proposition
           (fn _ => HEADGOAL (Simplifier.simp_tac context))
           |> (fn result => checked proposition result
@@ -369,8 +365,7 @@ struct
              and Near.  Resolve its conditional premises explicitly, then
              discharge only the checked admission and normalization facts.
              This avoids reopening either family-specific evaluator here. *)
-          val transport_context = put_simpset HOL_basic_ss ctxt addsimps
-            [#base source_header, #admitted source_header]
+          val transport_context = Simplifier.add_simps ([#base source_header, #admitted source_header]) (put_simpset HOL_basic_ss ctxt)
           val theorem = Goal.prove ctxt [] [] pointwise
             (fn {context = goal_context, ...} =>
               (REPEAT_DETERM
@@ -430,15 +425,14 @@ struct
              (("node", 0), Thm.cterm_of ctxt node)]
             @{thm comma_semantic_b1_binding_row_valid_from_pointwise_port}
           val lookups = lookup_facts actions
-          val row_context = Comma_Entry_Arithmetic.natural_context ctxt
-            addsimps (base_simp @
+          val row_context = Simplifier.add_simps ((base_simp @
               [#base (#header row_source_info),
                #period_equation (#header row_source_info),
                #admitted (#header row_source_info),
                port_list_equation, pointwise_theorem,
                @{thm comma_semantic_graph_source_port_action_nth},
                @{thm comma_semantic_graph_forall_less_iff_list_all},
-               node_lookup] @ orbit_equations @ lookups)
+               node_lookup] @ orbit_equations @ lookups)) (Comma_Entry_Arithmetic.natural_context ctxt)
           val proposition = HOLogic.mk_Trueprop
             (@{term comma_semantic_b1_binding_row_valid} $
               bindings_constant $ nodes_constant $ row_binding)
@@ -525,14 +519,13 @@ struct
               val port_list_prop = HOLogic.mk_Trueprop
                 (HOLogic.mk_eq (port_list, action_list))
               val exact_transitions = map #exact (#transitions row)
-              val list_context = Comma_Entry_Arithmetic.natural_context ctxt addsimps
-                (base_simp @
+              val list_context = Simplifier.add_simps ((base_simp @
                   [#base representative_header,
                    #period_equation representative_header,
                    #admitted representative_header,
                    @{thm comma_semantic_b1_source_port_actions_def}] @
                   @{thms comma_source_continuation_base.simps} @
-                  exact_transitions)
+                  exact_transitions)) (Comma_Entry_Arithmetic.natural_context ctxt)
               val first_class = Termtab.is_empty (!class_certificates)
               val port_list_started = Time.now ()
               val _ = if first_class then Comma_Fast_Kernel.report
@@ -717,9 +710,8 @@ struct
             @{thm comma_semantic_graph_completed_binding_from_lookup}
           (* Lookup and local action certificates are consumed directly.
              Reopening their definitions here would reconstruct the row. *)
-          val context = Comma_Entry_Arithmetic.natural_context ctxt addsimps
-            ([base, period_equation] @
-              @{thms comma_round_admitted.simps} @ transport_facts)
+          val context = Simplifier.add_simps (([base, period_equation] @
+              @{thms comma_round_admitted.simps} @ transport_facts)) (Comma_Entry_Arithmetic.natural_context ctxt)
           val binding = binding_from_pair $ HOLogic.mk_prod (source, nat cid)
           val proposition = HOLogic.mk_Trueprop
             (@{term comma_semantic_b1_completed_binding_row_valid} $
@@ -747,8 +739,7 @@ struct
       val list_equation = list_conversion
         (Thm.cterm_of ctxt (HOLogic.mk_Trueprop component))
       val literal_goal = Thm.term_of (Thm.rhs_of list_equation)
-      val aggregation_context = put_simpset HOL_basic_ss ctxt addsimps
-        (@{thms list_all_Cons_iff list_all_Nil_iff} @ row_theorems)
+      val aggregation_context = Simplifier.add_simps ((@{thms list_all_Cons_iff list_all_Nil_iff} @ row_theorems)) (put_simpset HOL_basic_ss ctxt)
       val aggregated = Goal.prove ctxt [] [] literal_goal
         (fn {context, ...} =>
           HEADGOAL (Simplifier.asm_full_simp_tac aggregation_context))
@@ -820,7 +811,7 @@ struct
       val set_equation = Goal.prove ctxt [] [] set_equation_prop
         (fn {context, ...} =>
           HEADGOAL (Simplifier.asm_full_simp_tac
-            (put_simpset HOL_basic_ss context addsimps [nodes_definition])))
+            (Simplifier.add_simps ([nodes_definition]) (put_simpset HOL_basic_ss context))))
         |> (fn result => checked set_equation_prop result
           "Semantic graph node-set expansion changed the published table")
       val _ = if published_set aconv nodes_set then ()
@@ -844,18 +835,16 @@ struct
           val indexed_witness_theorem = Goal.prove ctxt [] [] witness_proposition
             (fn {context, ...} =>
               HEADGOAL (Simplifier.asm_full_simp_tac
-                (put_simpset HOL_basic_ss context addsimps
-                  [bindings_definition, indexed_witness])))
+                (Simplifier.add_simps ([bindings_definition, indexed_witness]) (put_simpset HOL_basic_ss context))))
             |> (fn result => checked witness_proposition result
               "Node source binding did not transfer from its checked table row")
           val node_cid = Const (@{const_name comma_semantic_b1_node_cid},
             nodeT --> natT) $ value
           val cid_proposition = HOLogic.mk_Trueprop (HOLogic.mk_eq
             (node_cid, nat cid))
-          val cid_context = put_simpset HOL_basic_ss ctxt addsimps
-            (@{thms comma_semantic_b1_node_from_data_def
+          val cid_context = Simplifier.add_simps ((@{thms comma_semantic_b1_node_from_data_def
               comma_semantic_b1_node.select_convs list.map
-              prod.case fst_conv snd_conv})
+              prod.case fst_conv snd_conv})) (put_simpset HOL_basic_ss ctxt)
           val cid_theorem = Goal.prove ctxt [] [] cid_proposition
             (fn {context, ...} =>
               HEADGOAL (Simplifier.asm_full_simp_tac cid_context))
@@ -867,8 +856,7 @@ struct
           val edge_proposition = HOLogic.mk_Trueprop
             (@{term comma_semantic_b1_edge_refs_valid} $
               nodes_constant $ value)
-          val edge_context = Comma_Entry_Arithmetic.natural_context ctxt
-            addsimps (@{thms comma_semantic_b1_edge_refs_valid_def
+          val edge_context = Simplifier.add_simps ((@{thms comma_semantic_b1_edge_refs_valid_def
               comma_semantic_b1_node_from_data_def
               comma_semantic_b1_node.select_convs
               comma_semantic_b1_edge.case comma_semantic_b1_edge.distinct
@@ -876,7 +864,7 @@ struct
               list_all_Nil_iff comma_semantic_graph_Ball_set_list_all
               option.case option.distinct option.inject
               option.map prod.case fst_conv snd_conv Let_def
-              of_nat_numeral of_nat_0 of_nat_1} @ child_lookups)
+              of_nat_numeral of_nat_0 of_nat_1} @ child_lookups)) (Comma_Entry_Arithmetic.natural_context ctxt)
           val edge_theorem = Goal.prove ctxt [] [] edge_proposition
             (fn {context, ...} =>
               HEADGOAL (Simplifier.asm_full_simp_tac edge_context))
@@ -893,8 +881,7 @@ struct
           val binding_claim_theorem = Goal.prove ctxt [] [] binding_claim_proposition
             (fn {context, ...} =>
               HEADGOAL (Simplifier.asm_full_simp_tac
-                (put_simpset HOL_basic_ss context addsimps
-                  [cid_theorem, indexed_witness_theorem])))
+                (Simplifier.add_simps ([cid_theorem, indexed_witness_theorem]) (put_simpset HOL_basic_ss context))))
             |> (fn result => checked binding_claim_proposition result
               "Node binding witness does not match the node's published CID")
           val node_theorem = @{thm conjI} OF [binding_claim_theorem, edge_theorem]
@@ -912,9 +899,8 @@ struct
             else ()
         in node_theorem end
       val node_theorems = map_index certify_node (ListPair.zip (node_values, node_cids))
-      val aggregate_context = put_simpset HOL_basic_ss ctxt addsimps
-        (@{thms comma_semantic_graph_Ball_set_list_all
-          list_all_Cons_iff list_all_Nil_iff} @ node_theorems)
+      val aggregate_context = Simplifier.add_simps ((@{thms comma_semantic_graph_Ball_set_list_all
+          list_all_Cons_iff list_all_Nil_iff} @ node_theorems)) (put_simpset HOL_basic_ss ctxt)
       val aggregated = Goal.prove ctxt [] [] list_goal
         (fn {context, ...} =>
           HEADGOAL (Simplifier.asm_full_simp_tac aggregate_context))

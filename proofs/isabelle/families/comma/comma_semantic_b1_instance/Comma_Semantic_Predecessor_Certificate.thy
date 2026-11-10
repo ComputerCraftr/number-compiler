@@ -652,11 +652,10 @@ proof (induction action arbitrary: limit phase)
 qed
 
 text \<open>
-The checked source graph is compiled into one weighted CRT action DAG.
-Graph-node actions are normalized in postorder before parent compilation; the
-publisher then certifies the five chronological squares and transports their
-all-phase Stop bound back to the checked graph.
-No per-depth observer masks or occurrence-indexed rank planes are published.
+The checked source graph is compiled only at its authenticated 16 source roots.
+Graph-node actions are normalized in postorder before parent compilation.
+The separate rank owner supplies the B32 action, so this publisher does not
+recompute or recertify the five-square graph action.
 \<close>
 
 ML_file "semantic_weighted_crt_local_node_compiler.ML"
@@ -666,60 +665,22 @@ ML_file "semantic_predecessor_certificate.ML"
 local_setup \<open>Comma_Semantic_Predecessor_Certificate.publish\<close>
 
 ML \<open>
-  Thm.consolidate @{thms comma_semantic_graph_predecessor_stop242_checked};
-  Comma_Proof_Dependency_Audit.require_native_closed_expected_paths @{context}
-    "Checked quotient predecessor closure"
-    ["comma_semantic_graph_valid_checked",
-     "comma_semantic_graph_root_binding_exact",
-     "comma_semantic_b1_crt_compile_node_from_children_refines_graph_eval",
-     "comma_semantic_b1_crt_decode_graph_root",
-     "comma_semantic_graph_weighted_power_exact",
-     "comma_semantic_graph_stop242_from_weighted_crt_power_all"]
-    @{thms comma_semantic_graph_predecessor_stop242_checked};
-  Thm.consolidate @{thms comma_semantic_graph_initial_source_actions_refine
-    comma_semantic_graph_b32_weighted_actions_refine};
+  Thm.consolidate @{thms comma_semantic_graph_initial_source_actions_refine};
   Thm.consolidate @{thms comma_semantic_graph_initial_source_actions_length
     comma_semantic_graph_initial_source_actions_wellformed
-    comma_semantic_graph_initial_source_actions_nonterminal_zero
-    comma_semantic_graph_b32_weighted_actions_length
-    comma_semantic_graph_b32_weighted_actions_wellformed
-    comma_semantic_graph_b32_weighted_actions_nonterminal_zero
-    comma_semantic_graph_initial_nf_actions_refine
-    comma_semantic_graph_initial_nf_actions_length
-    comma_semantic_graph_initial_nf_actions_wellformed
-    comma_semantic_graph_initial_nf_actions_shape
-    comma_semantic_graph_initial_nf_actions_stopped};
+    comma_semantic_graph_initial_source_actions_nonterminal_zero};
   Comma_Proof_Dependency_Audit.require_native_clean @{context}
-    "Authenticated source and B32 weighted action vectors"
+    "Authenticated 16-source weighted action vector"
     @{thms comma_semantic_graph_initial_source_binding_exact
       comma_semantic_graph_initial_source_actions_refine
-      comma_semantic_graph_b32_weighted_actions_refine
       comma_semantic_graph_initial_source_actions_length
       comma_semantic_graph_initial_source_actions_wellformed
-      comma_semantic_graph_initial_source_actions_nonterminal_zero
-      comma_semantic_graph_b32_weighted_actions_length
-      comma_semantic_graph_b32_weighted_actions_wellformed
-      comma_semantic_graph_b32_weighted_actions_nonterminal_zero
-      comma_semantic_graph_initial_nf_actions_refine
-      comma_semantic_graph_initial_nf_actions_length
-      comma_semantic_graph_initial_nf_actions_wellformed
-      comma_semantic_graph_initial_nf_actions_shape
-      comma_semantic_graph_initial_nf_actions_stopped};
+      comma_semantic_graph_initial_source_actions_nonterminal_zero};
   Comma_Proof_Dependency_Audit.require_native_closed_expected_paths @{context}
     "Source selected action DAGs refine the checked graph"
     ["comma_semantic_graph_valid_checked",
      "comma_semantic_b1_crt_compile_node_from_children_refines_graph_eval"]
     @{thms comma_semantic_graph_initial_source_actions_refine};
-  Comma_Proof_Dependency_Audit.require_native_closed_expected_paths @{context}
-    "B32 weighted action DAGs refine the five-square graph action"
-    ["comma_semantic_b1_crt_compile_node_from_children_refines_graph_eval",
-     "comma_semantic_b1_crt_power_action_eval",
-     "comma_semantic_graph_weighted_power_exact"]
-    @{thms comma_semantic_graph_b32_weighted_actions_refine};
-  Comma_Proof_Dependency_Audit.require_native_closed_expected_paths @{context}
-    "Source-prefix followed by B32 ends in a bounded terminal action"
-    ["comma_semantic_b1_crt_terminal_bound_sound"]
-    @{thms comma_semantic_graph_initial_nf_actions_stopped};
 \<close>
 
 end

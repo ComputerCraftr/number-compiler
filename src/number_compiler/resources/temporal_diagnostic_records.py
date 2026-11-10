@@ -116,6 +116,9 @@ class TemporalObservations:
     reverse_laurent_paired_blocks: int | None = None
     reverse_laurent_run_record_visits: int | None = None
     reverse_laurent_source_ticks: int | None = None
+    reverse_laurent_native_ticks: int | None = None
+    reverse_laurent_native_digit_visits: int | None = None
+    reverse_center11_work: tuple[tuple[str, int], ...] | None = None
     double_reverse_source_word_fold_node_visits: int | None = None
     double_reverse_source_word_fold_operand_bits: int | None = None
     double_reverse_source_word_fold_operations: int | None = None

@@ -1,22 +1,10 @@
-"""Scoped semantic continuation actions for comma B1 and weighted B32.
-
-The source chart is compiled once into a bottom-up continuation DAG.  A CID
-contains only control: the local action period, successor CIDs, live root
-outputs, and the local terminal ``J``.  The receiving phase and source
-``delta`` remain occurrence inputs.  Exact source transitions and arithmetic
-fragments are retained beside the CID so a weighted consumer can account for
-the occurrence without making those fragments part of semantic identity.
-
-This module owns the Python application boundary.  It is intentionally small
-enough to be compared with the checked HOL refinement; it does not certify an
-infinite branch or replace the certificate owner.
-"""
+"""Scoped comma continuations; source transitions and arithmetic stay occurrence data."""
 
 from __future__ import annotations
 
 from _thread import LockType
 from collections.abc import Callable, Iterator, Mapping, MutableMapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from threading import Lock
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Literal, Self
@@ -27,11 +15,15 @@ from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.comma.arithmetic import (
     CycleTransfer,
+    NearPortOccurrence,
     NearPortReturn,
+    NearResidualPort,
+    classify_near_occurrence,
     classify_near_port,
     cycle_residue_period,
     cycle_transfer,
     entry_headroom_from_validated_transfer,
+    near_port_occurrence,
 )
 from number_compiler.sequences.comma.boundary_chart import (
     PERIOD,
@@ -60,11 +52,7 @@ class ContinuationID(ArenaHandle):
 
 @dataclass(frozen=True, slots=True)
 class TerminalWeight:
-    """Weighted terminal position ``D = 9*H + J``.
-
-    ``J`` is the local B1 stop position.  ``H`` counts complete preceding
-    decades and is occurrence data; neither field participates in a CID key.
-    """
+    """Weighted terminal position ``D = 9*H + J``; H stays occurrence data."""
 
     d: int
 
@@ -102,14 +90,7 @@ class TerminalWeight:
 
 @dataclass(frozen=True, slots=True)
 class OccurrenceWeight:
-    """Exact shared-arithmetic fragments attached to one source action.
-
-    The entry period/displacement and Near return fields are occurrence
-    evidence.  They are deliberately excluded from CID interning.  A caller
-    requiring a complete literal affine weight must compose these fragments
-    through ``weighted_return.py``; this record never pretends to be that
-    proof object.
-    """
+    """Exact per-source arithmetic fragments, excluded from CID interning."""
 
     entry_period: int
     entry_displacement: int
@@ -221,11 +202,7 @@ class _PeriodView(Mapping[SourceState, int]):
 
 @dataclass(frozen=True, slots=True)
 class SemanticResult:
-    """One terminal/live result.
-
-    Source-bound occurrence fragments remain in ``SemanticContinuation.transitions``;
-    this result deliberately does not retain the complete path through a block.
-    """
+    """One control result; source-bound weights remain in the transition row."""
 
     action: SemanticAction
 
@@ -531,25 +508,37 @@ def _source_cycle(source: SourceState) -> tuple[CycleTransfer | None, int]:
 
 
 def _selected_target(
-    source: SourceState, phase: int, transfer: CycleTransfer | None
+    source: SourceState,
+    phase: int,
+    transfer: CycleTransfer | None,
+    near_occurrence: NearPortOccurrence | None = None,
 ) -> tuple[BoundaryChart, NearPortReturn, int, int]:
     if source.kind == "entry":
         if transfer is None:
             raise ArithmeticError("comma Entry action is missing its source transfer")
-        # `_source_cycle` creates this transfer from the same source fields;
-        # the checked public helper remains available for external transfers.
         headroom = entry_headroom_from_validated_transfer(
             source.leading, source.coordinate, phase, transfer
         )
         entry_period = transfer.period
         entry_displacement = transfer.displacement
+        near_return = classify_near_port(source.leading, headroom)
     else:
         if transfer is not None:
             raise ArithmeticError("comma Near action received an Entry transfer")
         headroom = source.coordinate
         entry_period = 1
         entry_displacement = 0
-    near_return = classify_near_port(source.leading, headroom)
+        if near_occurrence is None:
+            near_return = classify_near_port(source.leading, headroom)
+        else:
+            if (
+                near_occurrence.port.leading != source.leading
+                or near_occurrence.headroom != headroom
+            ):
+                raise ValueError("Near occurrence does not bind to its source chart")
+            near_return = classify_near_occurrence(
+                near_occurrence, charge_work=None, charge_bits=None
+            )
     return (
         BoundaryChart("near", source.leading, 0, near_return.terminal_headroom),
         near_return,
@@ -559,10 +548,13 @@ def _selected_target(
 
 
 def _raw_action(
-    source: SourceState, phase: int, transfer: CycleTransfer | None
+    source: SourceState,
+    phase: int,
+    transfer: CycleTransfer | None,
+    near_occurrence: NearPortOccurrence | None = None,
 ) -> _RawAction:
     target, near_return, entry_period, entry_displacement = _selected_target(
-        source, phase, transfer
+        source, phase, transfer, near_occurrence
     )
     move: ChartMove = chart_step(phase, target)
     live_coordinate = (
@@ -624,6 +616,9 @@ class SemanticContinuationArena:
         self._action_owner = self.ledger.register(
             prefix + "-actions", "semantic_action"
         )
+        self._near_operator_owner = self.ledger.register(
+            prefix + "-near-operators", "semantic_near_operator"
+        )
         self._key_owner = self.ledger.register(prefix + "-keys", "semantic_interner")
         self._raw: LedgerDict[SourceState, tuple[_RawAction, ...]] = (
             self.ledger.make_dict(self._raw_owner, nodes_per_entry=1)
@@ -636,6 +631,9 @@ class SemanticContinuationArena:
         )
         self._actions: LedgerDict[ContinuationID, tuple[SemanticAction, ...]] = (
             self.ledger.make_dict(self._action_owner, nodes_per_entry=1)
+        )
+        self._near_operators: LedgerDict[NearResidualPort, _RawAction] = (
+            self.ledger.make_dict(self._near_operator_owner, nodes_per_entry=1)
         )
         self._signatures: LedgerDict[
             tuple[int, tuple[tuple[object, ...], ...]], ContinuationID
@@ -669,7 +667,6 @@ class SemanticContinuationArena:
         *,
         nodes: int,
     ) -> None:
-        """Delete a failed publication and retire its exact reservation."""
         if key not in mapping:
             return
         del mapping[key]
@@ -680,14 +677,12 @@ class SemanticContinuationArena:
 
     @staticmethod
     def _signature_nodes(signature: tuple[int, tuple[tuple[object, ...], ...]]) -> int:
-        """Charge the retained period and action-key tuple payload."""
         _period, keys = signature
         return 1 + sum(len(key) for key in keys)
 
     def _rollback_sources(
         self, sources: tuple[SourceState, ...] | list[SourceState], *, remove_raw: bool
     ) -> None:
-        """Undo source publication, optionally including raw discovery rows."""
         for item in sources:
             if remove_raw:
                 raw = self._raw.get(item)
@@ -709,16 +704,68 @@ class SemanticContinuationArena:
         found = self._source_ids.get(normalized)
         if found is not None:
             return found
-        discovered = self._discover(normalized)
+        discovered, added_near_operators = self._discover(normalized)
         try:
             self._intern_new_sources(discovered)
         except BaseException:
             self._rollback_sources(discovered, remove_raw=True)
+            self._rollback_near_operators(added_near_operators)
             raise
         identifier = self._source_ids.get(normalized)
         if identifier is None:
             raise AssertionError("comma source publication lost its root")
         return identifier
+
+    def _rollback_near_operators(self, keys: tuple[NearResidualPort, ...]) -> None:
+        for key in keys:
+            self._remove(
+                self._near_operators,
+                self._near_operator_owner,
+                key,
+                nodes=1,
+            )
+
+    @staticmethod
+    def _bind_near_occurrence(
+        operator: _RawAction, occurrence: NearPortOccurrence
+    ) -> _RawAction:
+        steps = (
+            operator.occurrence.near_physical_steps
+            + occurrence.cycle_quotient * occurrence.cycle_length
+        )
+        return replace(
+            operator,
+            occurrence=replace(operator.occurrence, near_physical_steps=steps),
+        )
+
+    def _near_action(
+        self,
+        source: SourceState,
+        occurrence: NearPortOccurrence,
+        added_keys: list[NearResidualPort],
+    ) -> _RawAction:
+        # A Near chart action ignores the external clock; its row has period 1.
+        key = occurrence.port
+        cached = self._near_operators.get(key)
+        if cached is not None:
+            return self._bind_near_occurrence(cached, occurrence)
+        action = _raw_action(source, 0, None, occurrence)
+        repeated_steps = occurrence.cycle_quotient * occurrence.cycle_length
+        residual_steps = action.occurrence.near_physical_steps - repeated_steps
+        if not 0 <= residual_steps < occurrence.cycle_length:
+            raise ArithmeticError("Near action has an invalid residual-time cocycle")
+        operator = replace(
+            action,
+            occurrence=replace(action.occurrence, near_physical_steps=residual_steps),
+        )
+        added_keys.append(key)
+        self._store(
+            self._near_operators,
+            self._near_operator_owner,
+            key,
+            operator,
+        )
+        return action
 
     def _intern_new_sources(self, discovered: tuple[SourceState, ...]) -> None:
         ordered = sorted(
@@ -811,11 +858,6 @@ class SemanticContinuationArena:
                         identifier,
                         nodes=len(actions),
                     )
-            # A failure can happen after allocating an ID but before its
-            # signature is published, so the number of appended identifiers
-            # is not a reliable rollback count.  Restore the allocator cursor
-            # to keep a retry's handles dense and valid against the arena
-            # action-store size.
             self._next_id = starting_next_id
             self.ledger.bump(
                 _comma_keys.COMMA_SEMANTIC_FAILED_SOURCE_PUBLICATIONS,
@@ -823,10 +865,13 @@ class SemanticContinuationArena:
             )
             raise
 
-    def _discover(self, root: SourceState) -> tuple[SourceState, ...]:
+    def _discover(
+        self, root: SourceState
+    ) -> tuple[tuple[SourceState, ...], tuple[NearResidualPort, ...]]:
         pending = [root]
         pending_set = {root}
         discovered: list[SourceState] = []
+        added_near_operators: list[NearResidualPort] = []
         try:
             while pending:
                 source = pending.pop()
@@ -836,11 +881,24 @@ class SemanticContinuationArena:
                 transfer, period = _source_cycle(source)
                 if transfer is not None:
                     self.ledger.bump(_comma_keys.COMMA_SEMANTIC_CYCLE_TRANSFER_BUILDS)
+                near_occurrence = (
+                    None
+                    if source.kind != "near"
+                    else near_port_occurrence(source.leading, source.coordinate)
+                )
+                if near_occurrence is not None and period != 1:
+                    raise ArithmeticError("Near residual operator requires unit period")
                 actions: list[_RawAction] = []
                 for phase in range(period):
                     self.ledger.bump(_comma_keys.COMMA_SEMANTIC_ACTION_REQUESTS)
                     try:
-                        actions.append(_raw_action(source, phase, transfer))
+                        if near_occurrence is None:
+                            actions.append(_raw_action(source, phase, transfer))
+                        else:
+                            action = self._near_action(
+                                source, near_occurrence, added_near_operators
+                            )
+                            actions.append(action)
                     except BaseException:
                         self.ledger.bump(_comma_keys.COMMA_SEMANTIC_ACTION_FAILURES)
                         raise
@@ -868,8 +926,9 @@ class SemanticContinuationArena:
                 raw = self._raw.get(source)
                 if raw is not None:
                     self._remove(self._raw, self._raw_owner, source, nodes=len(raw))
+            self._rollback_near_operators(tuple(added_near_operators))
             raise
-        return tuple(discovered)
+        return tuple(discovered), tuple(added_near_operators)
 
     def compile_many(
         self, sources: tuple[SourceState, ...]

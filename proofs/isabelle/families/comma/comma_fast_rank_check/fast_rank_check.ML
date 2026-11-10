@@ -25,7 +25,7 @@ struct
          lhss = [@{term comma_decade_rank_candidate_on_valid} $
            Var (("s", 0), @{typ comma_decade_state})],
          proc = fn _ => fn _ => convert, identifier = []}
-      val evaluation = (#context core |> Simplifier.add_proc procedure) addsimps
+      val evaluation = (#context core |> Simplifier.add_proc procedure) |> Simplifier.add_simps
         @{thms comma_fast_decade_rank_step_def comma_fast_decade_bounded_rank_step_def
           comma_fast_decade_bounded_rank_range_def
           comma_decade_admitted.simps}

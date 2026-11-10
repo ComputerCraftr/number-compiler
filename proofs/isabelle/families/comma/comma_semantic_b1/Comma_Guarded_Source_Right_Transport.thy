@@ -102,52 +102,6 @@ proof -
   qed
 qed
 
-lemma comma_guarded_source_port_action_periodic:
-  assumes admitted: "comma_round_admitted source"
-    and normalized: "source=comma_source_continuation_base source"
-  shows "comma_semantic_b1_source_port_action source slot =
-    comma_semantic_b1_source_port_action source
-      (slot mod comma_decisive_sector_period source)"
-proof -
-  let ?period = "comma_decisive_sector_period source"
-  have same: "slot mod ?period = (slot mod ?period) mod ?period"
-    by simp
-  have target:
-    "comma_decisive_sector_target slot source =
-      comma_decisive_sector_target (slot mod ?period) source"
-    by (rule comma_decisive_sector_target_period[OF admitted same])
-  show ?thesis using target normalized
-    by (simp add: comma_semantic_b1_source_port_action_def)
-qed
-
-lemma comma_guarded_source_action_at_port:
-  assumes admitted: "comma_round_admitted source"
-    and normalized: "source=comma_source_continuation_base source"
-  shows "comma_source_continuation_action_at source phase =
-    comma_semantic_b1_source_port_action source phase"
-proof -
-  let ?period = "comma_decisive_sector_period source"
-  have positive: "0 < ?period"
-    by (rule comma_decisive_sector_period_admitted(1)[OF admitted])
-  have slot: "phase mod ?period < ?period" using positive by simp
-  have exact_slot:
-    "comma_source_continuation_action_at source (phase mod ?period) =
-      comma_semantic_b1_source_port_action source (phase mod ?period)"
-    using comma_semantic_b1_source_action_at_port[OF admitted, of
-      "phase mod ?period"] normalized slot by simp
-  have action_periodic:
-    "comma_source_continuation_action_at source phase =
-      comma_source_continuation_action_at source (phase mod ?period)"
-    using normalized
-    by (simp add: comma_source_continuation_action_at_def
-        comma_source_continuation_id_def Let_def)
-  have port_periodic:
-    "comma_semantic_b1_source_port_action source phase =
-      comma_semantic_b1_source_port_action source (phase mod ?period)"
-    by (rule comma_guarded_source_port_action_periodic[OF admitted normalized])
-  show ?thesis using exact_slot action_periodic port_periodic by simp
-qed
-
 lemma comma_guarded_source_class_rel_port_action:
   assumes rel: "comma_guarded_source_class_rel left right"
   shows "comma_semantic_b1_source_port_action left slot =
@@ -481,80 +435,25 @@ proof -
   have admitted_left: "comma_round_admitted left"
     and admitted_right: "comma_round_admitted right"
     using rel by (auto simp: comma_guarded_source_class_rel_def)
-  have normalized_left:
-    "left=comma_source_continuation_base left"
-    using comma_guarded_source_class_rel_normalized[OF rel] by simp
-  have normalized_right:
-    "right=comma_source_continuation_base right"
-    using comma_guarded_source_class_rel_normalized[OF rel] by simp
-  have periods:
-    "comma_decisive_sector_period left =
-      comma_decisive_sector_period right"
-    by (rule comma_guarded_source_class_rel_period[OF rel])
-  let ?P = "comma_decisive_sector_period left"
-  let ?slot = "phase mod ?P"
-  have positive: "0 < ?P"
-    by (rule comma_decisive_sector_period_admitted(1)[OF admitted_left])
-  have slot_bound: "?slot < ?P" using positive by simp
-  have slot_bound_right:
-    "?slot < comma_decisive_sector_period right"
-    using slot_bound periods by simp
-  have selected_left: "phase mod comma_decisive_sector_period left = ?slot"
-    by simp
-  have selected_right:
-    "phase mod comma_decisive_sector_period right = ?slot"
-    using periods by simp
-  have left_action:
-    "comma_semantic_b1_source_slot_action left ?slot =
-      comma_semantic_b1_source_port_action left ?slot"
-  proof -
-    have first:
-      "comma_semantic_b1_source_slot_action left ?slot =
-        comma_source_continuation_action_at left ?slot"
-      by (rule comma_semantic_b1_source_slot_action_refines[OF admitted_left])
-    have second:
-      "comma_source_continuation_action_at left ?slot =
-        comma_semantic_b1_source_port_action left ?slot"
-      by (rule comma_semantic_b1_source_action_at_port[OF admitted_left])
-        (use normalized_left slot_bound in simp)
-    show ?thesis using first second by simp
-  qed
-  have right_action:
-    "comma_semantic_b1_source_slot_action right ?slot =
-      comma_semantic_b1_source_port_action right ?slot"
-  proof -
-    have first:
-      "comma_semantic_b1_source_slot_action right ?slot =
-        comma_source_continuation_action_at right ?slot"
-      by (rule comma_semantic_b1_source_slot_action_refines[OF admitted_right])
-    have second:
-      "comma_source_continuation_action_at right ?slot =
-        comma_semantic_b1_source_port_action right ?slot"
-      by (rule comma_semantic_b1_source_action_at_port[OF admitted_right])
-        (use normalized_right slot_bound periods in simp)
-    show ?thesis using first second by simp
-  qed
-  have port_equal:
-    "comma_semantic_b1_source_port_action left ?slot =
-      comma_semantic_b1_source_port_action right ?slot"
-    by (rule comma_guarded_source_class_rel_port_action[OF rel])
-  have action_equal:
-    "comma_semantic_b1_source_slot_action left ?slot =
-      comma_semantic_b1_source_slot_action right ?slot"
-    using left_action right_action port_equal by simp
-  have output_left:
+  have normalized_left: "left=comma_source_continuation_base left"
+    and normalized_right: "right=comma_source_continuation_base right"
+    using comma_guarded_source_class_rel_normalized[OF rel] by simp_all
+  have left_output:
     "comma_semantic_b1_source_slot_output phase
-       (comma_semantic_b1_source_slot_action left ?slot) =
+      (comma_semantic_b1_source_port_action left phase) =
       comma_semantic_b1_round_output phase left"
-    by (rule comma_semantic_b1_source_slot_round_output
-      [OF normalized_left admitted_left slot_bound selected_left])
-  have output_right:
+    by (rule comma_semantic_b1_port_round_output
+      [OF admitted_left normalized_left])
+  have right_output:
     "comma_semantic_b1_source_slot_output phase
-       (comma_semantic_b1_source_slot_action right ?slot) =
+      (comma_semantic_b1_source_port_action right phase) =
       comma_semantic_b1_round_output phase right"
-    by (rule comma_semantic_b1_source_slot_round_output
-      [OF normalized_right admitted_right slot_bound_right selected_right])
-  show ?thesis using output_left output_right action_equal by simp
+    by (rule comma_semantic_b1_port_round_output
+      [OF admitted_right normalized_right])
+  have same_port: "comma_semantic_b1_source_port_action left phase =
+      comma_semantic_b1_source_port_action right phase"
+    by (rule comma_guarded_source_class_rel_port_action[OF rel])
+  show ?thesis using left_output right_output same_port by simp
 qed
 
 text \<open>

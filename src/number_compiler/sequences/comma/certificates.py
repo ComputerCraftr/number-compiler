@@ -1,84 +1,39 @@
-"""Admission routes for the published comma prefix.
+"""Fail-closed global semantic-future admission for public A367620 queries.
 
-Exact prefix admission uses exhaustive finite-region closure, not OEIS decision
-bits as a branch oracle while the global theorem registry is empty. Once an
-exact global-release provider is registered, its authenticated theorem can
-admit the infinite source-20 path without the finite forest certificate.
+Finite forest evidence is retained only as historical audit material. Public
+values require the exact registered global Isabelle release artifact and a
+source-owned, generation-valid provider lease. An empty registry refuses every
+index without loading package data or guessing a branch.
 """
 
 from __future__ import annotations
 
-from hashlib import blake2b, sha256
-from hmac import compare_digest
-from importlib.resources import as_file, files
-from pathlib import Path
-from secrets import token_bytes
 from typing import TYPE_CHECKING, Final
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.arithmetic.contracts.input_validation import (
-    is_exact_object_tuple,
-    require_integer,
-)
+from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
-from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import comma as _comma_keys
-from number_compiler.resources.process_cache import MISSING, get_process_cache
 from number_compiler.sequences.comma.future_authority import (
-    SOURCE20_FIRST_FORK_CHILDREN as FIRST_FORK_CHILDREN,
+    GLOBAL_RELEASE_CONTRACT_ID,
+    GLOBAL_RELEASE_SESSION_ID,
+    GLOBAL_RELEASE_THEOREM_ID,
 )
-from number_compiler.sequences.comma.future_authority import (
-    SOURCE20_FIRST_FORK_INDEX as FIRST_FORK_INDEX,
-)
-from number_compiler.sequences.comma.future_authority import (
-    SOURCE20_FIRST_FORK_VALUE as FIRST_FORK_VALUE,
-)
-from number_compiler.sequences.comma.image_adapter import UnresolvedCommaBranch
 
 if TYPE_CHECKING:
-    from number_compiler.sequences.comma.power import CommaTerm
-
-CERTIFICATE_ID: Final[str] = "a367620-closed-regions-v1"
-CERTIFICATE_ASSET = "comma_prefix_v1.jsonl.gz"
-# Filled only from the independently generated, reviewed immutable certificate.
-CERTIFICATE_SHA256 = "f6e864b26ca9c8164ed91594d995aca15b19e027166d469844be37268896e4eb"
-CERTIFIED_MAX_INDEX = 412_987_860
-CertificateMemo = OwnedMemo[tuple[str, str], str]
-_CACHE_AUTHORITY = token_bytes(32)
+    from number_compiler.sequences.comma.future_provider import SemanticFutureProvider
 
 
-def new_certificate_memo(ledger: ResourceLedger) -> CertificateMemo:
-    owner = ledger.register("comma-certificate-admission", "query_memo")
-    return OwnedMemo(ledger, owner, nodes_per_entry=1, evictable=True)
-
-
-def _admission_marker(generation: int) -> tuple[tuple[str, str], str]:
-    local_key = (CERTIFICATE_ID, f"{CERTIFICATE_SHA256}:{generation}")
-    tag = blake2b(
-        repr(
-            (
-                local_key,
-                20,
-                10,
-                CERTIFIED_MAX_INDEX,
-                FIRST_FORK_INDEX,
-                FIRST_FORK_VALUE,
-                FIRST_FORK_CHILDREN,
-            )
-        ).encode(),
-        key=_CACHE_AUTHORITY,
-        digest_size=32,
-    ).hexdigest()
-    return local_key, tag
+CERTIFICATE_ID: Final[str] = GLOBAL_RELEASE_CONTRACT_ID
+NO_ADMITTED_INDEX = 0
 
 
 class UnresolvedCommaTerm(UnresolvedSequenceTerm):
-    """The requested index is beyond currently admitted prefix evidence."""
+    """A requested comma term lacks an admitted global release artifact."""
 
 
-def charge_certificate_work(
-    ledger: ResourceLedger, max_work: int, amount: int = 1
-) -> None:
+def _charge(ledger: ResourceLedger, max_work: int, amount: int = 1) -> None:
     spent = ledger.counters.get(_comma_keys.COMMA_WORK, 0) + ledger.counters.get(
         _comma_keys.COMMA_CERTIFICATE_WORK, 0
     )
@@ -90,16 +45,16 @@ def charge_certificate_work(
 
 
 def unresolved_boundary(index: int) -> UnresolvedCommaTerm:
+    index = require_integer(index, "comma index", 1)
     return UnresolvedCommaTerm(
         index,
-        CERTIFIED_MAX_INDEX,
+        NO_ADMITTED_INDEX,
         CERTIFICATE_ID,
-        "the requested index exceeds the checked comma prefix",
+        "no kernel-admitted global comma future is registered",
     )
 
 
 def _registered_global_release_digest() -> str | None:
-    """Read compiled release metadata without loading its provider artifact."""
     from number_compiler.sequences.comma.future_provider import (
         registered_global_release_artifact_sha256,
     )
@@ -107,130 +62,32 @@ def _registered_global_release_digest() -> str | None:
     return registered_global_release_artifact_sha256()
 
 
-def _checked_asset(path: Path, ledger: ResourceLedger, max_work: int) -> None:
-    digest = sha256()
-    total = 0
-    with path.open("rb") as stream:
-        while True:
-            charge_certificate_work(ledger, max_work)
-            chunk = stream.read(65536)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > 8 * 1024 * 1024:
-                raise ValueError("comma certificate exceeds its compressed size limit")
-            ledger.bump(_comma_keys.COMMA_CERTIFICATE_READ_BYTES, len(chunk))
-            ledger.bump(_comma_keys.COMMA_OPERAND_BIT_WORK, 8 * len(chunk))
-            digest.update(chunk)
-    if digest.hexdigest() != CERTIFICATE_SHA256:
-        raise ValueError("comma certificate checksum differs from its admitted version")
-
-
-def _matches_marker(value: object, expected: str) -> bool:
-    return (
-        type(value) is str
-        and len(value) == len(expected)
-        and value.isascii()
-        and compare_digest(value, expected)
+def _require_global_provider(
+    global_provider: object | None,
+    ledger: ResourceLedger,
+    *,
+    record_metrics: bool = True,
+) -> SemanticFutureProvider:
+    from number_compiler.sequences.comma.future_provider import (
+        SemanticFutureProviderLease,
     )
 
-
-def _verify(
-    ledger: ResourceLedger,
-    max_work: int,
-    shared_cache: bool,
-    memo: CertificateMemo | None,
-) -> None:
-    def check(path: Path) -> None:
-        # The verifier is needed only on a cold admission. A warm process-cache
-        # hit must not import the forest parser or its gzip/JSON dependencies.
-        from number_compiler.sequences.comma.forest_verifier import (
-            verify_forest_certificate,
-        )
-
-        result = verify_forest_certificate(path, ledger, max_work)
-        if (
-            result.roots_exhausted != 49
-            or result.sector_entries <= 0
-            or result.prefix_index != FIRST_FORK_INDEX
-            or result.prefix_value != FIRST_FORK_VALUE
-            or result.prefix_children != FIRST_FORK_CHILDREN
-        ):
-            raise ValueError(
-                "comma certificate verifier omitted required source coverage"
-            )
-
-    if memo is not None and memo.ledger is not ledger:
-        raise ValueError("foreign comma certificate admission owner")
-
-    def local_hit(local_key: tuple[str, str], tag: str) -> bool:
-        charge_certificate_work(ledger, max_work)
-        previous = memo.get(local_key) if memo is not None else None
-        if previous is None:
-            return False
-        if not _matches_marker(previous, tag):
-            raise ValueError("forged comma certificate admission marker")
-        return True
-
-    def check_asset() -> None:
-        asset = files("number_compiler").joinpath("kernels", CERTIFICATE_ASSET)
-        with as_file(asset) as path:
-            _checked_asset(path, ledger, max_work)
-            check(path)
-
-    # Bypassed queries keep only their own admission, independent of process
-    # resets. Shared admissions instead consume a generation-bound lease even
-    # on query-local hits; a reset during lookup must invalidate that authority.
-    if not shared_cache:
-        local_key, tag = _admission_marker(-1)
-        if local_hit(local_key, tag):
-            ledger.bump(_comma_keys.COMMA_CERTIFICATE_LOCAL_HITS)
-            return
-        ledger.bump(_comma_keys.COMMA_CERTIFICATE_CACHE_BYPASSES)
-        check_asset()
-        if memo is not None:
-            memo[local_key] = tag
-        return
-    with get_process_cache().acquire(
-        "comma-prefix-certificate", CERTIFICATE_ID, (20, 10, CERTIFICATE_SHA256)
-    ) as lease:
-        local_key, tag = _admission_marker(lease.stats().generation)
-
-        def publish_local() -> None:
-            try:
-                if memo is not None:
-                    memo[local_key] = tag
-                lease.stats()
-            except Exception:
-                if memo is not None:
-                    memo.pop(local_key, None)
-                raise
-
-        if local_hit(local_key, tag):
-            lease.stats()  # Recheck authority after the query-local lookup.
-            ledger.bump(_comma_keys.COMMA_CERTIFICATE_LOCAL_HITS)
-            return
-        key = (CERTIFIED_MAX_INDEX, FIRST_FORK_INDEX, FIRST_FORK_VALUE)
-        expected = (CERTIFICATE_SHA256, tag)
-        charge_certificate_work(ledger, max_work)
-        cached = lease.get(key)
-        if cached is not MISSING:
-            if (
-                not is_exact_object_tuple(cached)
-                or len(cached) != 2
-                or not _matches_marker(cached[0], expected[0])
-                or not _matches_marker(cached[1], expected[1])
-            ):
-                raise ValueError("foreign comma certificate cache payload")
-            publish_local()
-            ledger.bump(_comma_keys.COMMA_CERTIFICATE_CACHE_HITS)
-            return
-        ledger.bump(_comma_keys.COMMA_CERTIFICATE_CACHE_MISSES)
-        check_asset()
-        charge_certificate_work(ledger, max_work)
-        if lease.put(key, expected):
-            ledger.bump(_comma_keys.COMMA_CERTIFICATE_CACHE_PUBLICATIONS)
-        publish_local()
+    if type(global_provider) is not SemanticFutureProviderLease:
+        raise TypeError("comma global prefix authority needs its exact provider lease")
+    if global_provider.resource_ledger is not ledger:
+        raise ValueError("foreign comma global provider admission owner")
+    provider = (
+        global_provider.resolve_provider()
+        if record_metrics
+        else global_provider.status_provider()
+    )
+    if provider is None:
+        raise PermissionError("comma provider lease is stale or no longer retained")
+    provider.require_global_release_admission()
+    expected = _registered_global_release_digest()
+    if expected is None or provider.artifact_sha256 != expected:
+        raise PermissionError("comma provider differs from the global release registry")
+    return provider
 
 
 def certificate_status(
@@ -238,105 +95,42 @@ def certificate_status(
     ledger: ResourceLedger,
     max_work: int,
     *,
-    shared_cache: bool = True,
-    memo: CertificateMemo | None = None,
     global_provider: object | None = None,
 ) -> dict[str, object]:
-    """Report existing query evidence without initiating admission or asset I/O.
-
-    This snapshot is never an authorization token. Value consumers must call
-    ``require_certified_index``, including after a process-cache reset.
-    """
+    """Return metadata only; this function never loads or constructs a provider."""
     index = require_integer(index, "comma index", 1)
     require_integer(max_work, "comma work budget", 1)
-    if type(shared_cache) is not bool:
-        raise TypeError("shared_cache must be a bool")
-    if memo is not None and memo.ledger is not ledger:
-        raise ValueError("foreign comma certificate admission owner")
-
-    global_digest = _registered_global_release_digest()
+    if type(ledger) is not ResourceLedger:
+        raise TypeError("comma status needs its exact query ledger")
+    digest = _registered_global_release_digest()
     runtime_verified = False
     if global_provider is not None:
-        from number_compiler.sequences.comma.future_provider import (
-            SemanticFutureProviderLease,
-            SemanticFutureProviderStore,
+        provider = _require_global_provider(
+            global_provider, ledger, record_metrics=False
         )
-
-        if type(global_provider) is not SemanticFutureProviderLease:
-            raise TypeError("comma status needs its exact global provider lease")
-        store = getattr(global_provider, "_store", None)
-        if type(store) is not SemanticFutureProviderStore:
-            raise TypeError("malformed comma status provider store")
-        if getattr(store, "ledger", None) is not ledger:
-            raise ValueError("foreign comma status provider owner")
-        provider = global_provider.status_provider()
-        if provider is None:
-            raise PermissionError("comma status provider lease is stale")
-        provider.require_global_release_admission()
-        provider_digest = provider.artifact_sha256
-        if global_digest is None or provider_digest != global_digest:
-            raise PermissionError("comma status provider differs from release registry")
+        digest = provider.artifact_sha256
         runtime_verified = True
-
-    if global_digest is not None:
-        from number_compiler.sequences.comma.future_authority import (
-            GLOBAL_RELEASE_CONTRACT_ID,
-            GLOBAL_RELEASE_SESSION_ID,
-            GLOBAL_RELEASE_THEOREM_ID,
-        )
-
-        return {
-            "family": "a367620",
-            "status": "available",
-            "certificate_id": GLOBAL_RELEASE_CONTRACT_ID,
-            "certificate_sha256": global_digest,
-            "certified_max_index": None,
-            "requested_index": index,
-            "runtime_verified": runtime_verified,
-            "isabelle_instance_checked": True,
-            "proof_scope": "global_decimal_root_future_safety",
-            "proof_session_id": GLOBAL_RELEASE_SESSION_ID,
-            "proof_theorem_id": GLOBAL_RELEASE_THEOREM_ID,
-            "coverage": "all_positive_indices",
-            "global_release_registered": True,
-            "reason": (
-                "the registered global release provider is admitted for this query"
-                if runtime_verified
-                else (
-                    "the global release theorem is registered; "
-                    "runtime provider is not loaded"
-                )
-            ),
-        }
-
-    admitted = index <= CERTIFIED_MAX_INDEX
-    verified = False
-    if admitted and memo is not None and len(memo):
-        generation = get_process_cache().generation if shared_cache else -1
-        local_key, tag = _admission_marker(generation)
-        previous = memo.get(local_key)
-        if previous is not None:
-            if not _matches_marker(previous, tag):
-                raise ValueError("forged comma certificate admission marker")
-            verified = not shared_cache or get_process_cache().generation == generation
+    registered = digest is not None
     return {
         "family": "a367620",
-        "status": "available" if admitted else "unknown",
+        "status": "available" if registered else "unknown",
         "certificate_id": CERTIFICATE_ID,
-        "certificate_sha256": CERTIFICATE_SHA256,
-        "certified_max_index": CERTIFIED_MAX_INDEX,
+        "certificate_sha256": digest,
+        "certified_max_index": None,
         "requested_index": index,
-        "runtime_verified": verified,
-        "isabelle_instance_checked": False,
-        "proof_scope": "finite_root_and_first_fork_branch_closure",
-        "coverage": f"indices_1_through_{CERTIFIED_MAX_INDEX}",
-        "global_release_registered": False,
+        "runtime_verified": runtime_verified,
+        "isabelle_instance_checked": registered,
+        "proof_scope": "global_decimal_root_future_safety",
+        "proof_session_id": GLOBAL_RELEASE_SESSION_ID if registered else None,
+        "proof_theorem_id": GLOBAL_RELEASE_THEOREM_ID if registered else None,
+        "coverage": "all_positive_indices" if registered else "none",
+        "global_release_registered": registered,
         "reason": (
-            "query has checked finite regions; complete Isabelle instance remains open"
-            if verified
-            else "prefix evidence available; this query has not verified it"
-            if admitted
-            else "the requested index exceeds the checked comma prefix"
+            "the registered global release provider is admitted for this query"
+            if runtime_verified
+            else "the global release theorem is registered; runtime provider is not loaded"
+            if registered
+            else "no kernel-admitted global comma future is registered"
         ),
     }
 
@@ -346,87 +140,14 @@ def require_certified_index(
     ledger: ResourceLedger,
     max_work: int,
     *,
-    shared_cache: bool = True,
-    memo: CertificateMemo | None = None,
     global_provider: object | None = None,
 ) -> None:
     index = require_integer(index, "comma index", 1)
-    max_work = require_integer(max_work, "comma work budget", 1)
-    if type(shared_cache) is not bool:
-        raise TypeError("shared_cache must be a bool")
-    if memo is not None and memo.ledger is not ledger:
-        raise ValueError("foreign comma certificate admission owner")
-    charge_certificate_work(ledger, max_work)
-    if global_provider is not None:
-        from number_compiler.sequences.comma.future_provider import (
-            SemanticFutureProviderLease,
-            SemanticFutureProviderStore,
-        )
-
-        if type(global_provider) is not SemanticFutureProviderLease:
-            raise TypeError(
-                "comma global prefix authority needs its exact provider lease"
-            )
-        store = getattr(global_provider, "_store", None)
-        if type(store) is not SemanticFutureProviderStore:
-            raise TypeError("malformed comma global provider store binding")
-        if getattr(store, "ledger", None) is not ledger:
-            raise ValueError("foreign comma global provider admission owner")
-        global_provider.require_global_release_admission()
-        ledger.bump(_comma_keys.COMMA_GLOBAL_RELEASE_PREFIX_ADMISSIONS)
-        return
-    if index > CERTIFIED_MAX_INDEX:
+    require_integer(max_work, "comma work budget", 1)
+    if type(ledger) is not ResourceLedger:
+        raise TypeError("comma admission needs its exact query ledger")
+    if global_provider is None:
         raise unresolved_boundary(index)
-    _verify(ledger, max_work, shared_cache, memo)
-
-
-def require_certified_public_prefix(term: CommaTerm) -> None:
-    """Admit a public term prefix through its exact provider or certificate."""
-    term.require_open()
-    provider = term.global_future_provider_for_prefix_admission()
-    if term.certificate_version != CERTIFICATE_ID and provider is None:
-        raise UnresolvedCommaTerm(
-            term.index, 0, CERTIFICATE_ID, "stale comma certificate binding"
-        )
-    require_certified_index(
-        term.index,
-        term.ledger,
-        term.max_work,
-        shared_cache=term.shared_cache,
-        memo=term.certificate_memo,
-        global_provider=provider,
-    )
-
-
-def require_selected_child(
-    *,
-    source_index: int,
-    source_value: int,
-    children: tuple[int, ...],
-    certificate_version: str,
-    ledger: ResourceLedger,
-    max_work: int,
-    shared_cache: bool = True,
-    memo: CertificateMemo | None = None,
-) -> int:
-    if certificate_version == "uncertified-arithmetic":
-        raise UnresolvedCommaBranch(
-            f"comma branch at index {source_index} requires a certificate"
-        )
-    if (
-        certificate_version != CERTIFICATE_ID
-        or type(source_index) is not int
-        or type(source_value) is not int
-        or type(children) is not tuple
-        or any(type(child) is not int for child in children)
-        or source_index != FIRST_FORK_INDEX
-        or source_value != FIRST_FORK_VALUE
-        or children != FIRST_FORK_CHILDREN
-    ):
-        raise unresolved_boundary(source_index + 1)
-    require_certified_index(
-        source_index + 1, ledger, max_work, shared_cache=shared_cache, memo=memo
-    )
-    # The other child is a checked finite component. Every infinite root-20
-    # continuation must therefore take this child, not merely the smaller one.
-    return children[0]
+    _charge(ledger, max_work)
+    _require_global_provider(global_provider, ledger)
+    ledger.bump(_comma_keys.COMMA_GLOBAL_RELEASE_PREFIX_ADMISSIONS)

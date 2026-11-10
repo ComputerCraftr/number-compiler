@@ -1,6 +1,7 @@
 """Finite punctured carry blocks are published as exact production Q19 images."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Generator
+from contextlib import contextmanager
 from typing import NoReturn
 
 import pytest
@@ -12,6 +13,9 @@ from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from number_compiler.sequences.reverse_add.q19_output import (
     ReversePairQ19OutputOwner,
 )
+from number_compiler.sequences.reverse_add.q19_punctured_producer import (
+    admits_punctured_scheduler_block,
+)
 from number_compiler.sequences.reverse_add.source_images import (
     ReverseSourceImageAdapter,
 )
@@ -20,6 +24,46 @@ from number_compiler.sequences.reverse_add.temporal_port_quotient import (
     native_decimal_string_transport,
 )
 from tests.support.reference_arithmetic import literal_reverse_add_digits
+
+
+@pytest.mark.parametrize("seed", (99, 196))
+def test_native_reservation_uses_the_normalized_source_width(
+    monkeypatch: pytest.MonkeyPatch, seed: int
+) -> None:
+    owner = ReversePairQ19OutputOwner(
+        ResourceLedger(), literal_reverse_add_digits(seed, 0), base=10
+    )
+    reserved: list[tuple[int, int]] = []
+    original = ResourceLedger.reservation
+
+    @contextmanager
+    def recording(
+        ledger: ResourceLedger, account: int, *, entries: int = 0, nodes: int = 0
+    ) -> Generator[None]:
+        if ledger is owner.ledger and account == owner.scratch_owner:
+            reserved.append((entries, nodes))
+        with original(ledger, account, entries=entries, nodes=nodes):
+            yield
+
+    try:
+        source = owner.initial
+        runs = owner.word_summary(source.root).runs
+        expected = 2 * (source.output_width + 16) + 32 * (runs + 1)
+        monkeypatch.setattr(ResourceLedger, "reservation", recording)
+        result = owner.apply_punctured_pair_block(source, steps=16)
+        assert (expected, expected) in reserved
+        assert tuple(owner.iter_digits(result)) == literal_reverse_add_digits(seed, 17)
+        available = MAX_EXACT_DECIMAL_BLOCK_WIDTH - 64
+        assert admits_punctured_scheduler_block(64, available)
+        assert not admits_punctured_scheduler_block(64, available + 1)
+    finally:
+        owner.dispose()
+
+
+def test_punctured_scheduler_retains_the_certified_8192_action_bound() -> None:
+    assert admits_punctured_scheduler_block(8192, 1000)
+    assert not admits_punctured_scheduler_block(8193, 1000)
+    assert not admits_punctured_scheduler_block(8192, 11_809)
 
 
 def test_punctured_t2_advances_two_pair_transitions_from_term_one() -> None:
@@ -266,9 +310,11 @@ def test_seed_196_8256_nth_uses_bounded_q19_publications() -> None:
             <= 32
         )
         assert counters.get(metric_keys.REVERSE_Q19_PUNCTURED_WIDE_APPLICATIONS, 0) > 0
-        assert (
+        exact_transitions = (
             counters.get(metric_keys.REVERSE_Q19_PUNCTURED_NATIVE_DECIMAL_TICKS, 0)
-            >= 8000
+            + counters.get(metric_keys.REVERSE_Q19_BROADWORD_SEMANTIC_STEPS, 0)
+            + counters.get(metric_keys.REVERSE_Q19_BROADWORD_ENDPOINT_PUBLICATIONS, 0)
         )
+        assert exact_transitions >= 8000
     finally:
         workspace.dispose()

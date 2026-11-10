@@ -268,6 +268,31 @@ def test_live_carry_itinerary_self_prunes_and_advances_without_discarded_rows() 
     assert live.dropped_rows > 250
 
 
+def test_live_carry_itinerary_bootstraps_from_certified_adaptive_prefix() -> None:
+    from number_compiler.arithmetic.carry.event_memory import event_memory_horizon
+
+    pair = _pair_from_int(196)
+    rows: list[tuple[int, ...]] = []
+    quiet = 0
+    while quiet < 5:
+        rows.append(carry_field(pair, base=10))
+        pair, growth = pair_step(pair, 10)
+        quiet += 1 - growth
+
+    assert 0 < len(rows) < event_memory_horizon(10)
+    live = LiveCarryItinerary.seed(rows, base=10)
+    assert live.pair == pair
+    with pytest.raises(ValueError, match="not annihilated"):
+        LiveCarryItinerary.seed(rows[:-1], base=10)
+
+
+def test_live_carry_itinerary_seed_rejects_bool_coercion() -> None:
+    with pytest.raises(TypeError, match="exact integers"):
+        LiveCarryItinerary.seed(((0, False, 0, 0),), base=10)
+    with pytest.raises(TypeError, match="exact integer"):
+        LiveCarryItinerary.seed(((0, 0, 0, 0),), base=True)
+
+
 def test_live_carry_itinerary_generalizes_across_bases_3_through_16() -> None:
     from number_compiler.arithmetic.carry.event_memory import event_memory_horizon
 
@@ -298,7 +323,7 @@ def _decimal_growth_trace() -> list[int]:
 def test_live_reconstruction_counts_completed_updates_even_when_output_is_invalid(
     coefficient: int,
 ) -> None:
-    # Two event widths, 2 then 3, produce 2*2 + 3 coefficient updates.
+    # Horner initializes two cells and evaluates three successor cells.
     # This checks arithmetic accounting; it does not admit a source itinerary.
     events = ((coefficient, coefficient), (0, 0, 0))
     updates: list[int] = []
@@ -311,4 +336,4 @@ def test_live_reconstruction_counts_completed_updates_even_when_output_is_invali
         assert reconstruct_pair_from_live_event_suffix(
             events, record_updates=updates.append
         ) == (0, 0, 0)
-    assert updates == [7]
+    assert updates == [5]

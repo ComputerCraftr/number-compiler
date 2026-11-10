@@ -43,11 +43,11 @@ from number_compiler.sequences.collatz.boundary_templates import (
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
-from number_compiler.sequences.collatz.joint_radix_border import JointRadix6Source
 
 COLLATZ_BOUNDARY_MACRO_ACTION_TAG: Final[str] = "collatz-boundary-macro-v2"
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.joint_radix_border import JointRadix6Source
     from number_compiler.sequences.collatz.position_cycle_harmonics import (
         PositionHarmonicSpectrum,
     )
@@ -379,6 +379,10 @@ def admit_boundary_macro_plan(
     ledger: ResourceLedger | None = None,
 ) -> AdmittedBoundaryMacroPlan | None:
     """Issue a source-bound guard token for one later coefficient build."""
+    from number_compiler.sequences.collatz.joint_radix_border import (
+        JointRadix6Source,
+    )
+
     if type(source) is not int or source <= 0:
         raise ValueError("Collatz boundary requires a positive integer source")
     if type(available_physical_ticks) is not int or available_physical_ticks < 0:

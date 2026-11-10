@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 
 from devtools.checks.isabelle_syntax import (
+    dynamic_cartouche_spans,
     executable_text,
-    ml_cartouches,
     navigation_text,
     unquoted_matches,
 )
@@ -24,7 +24,9 @@ _LEMMAS_START = re.compile(r"(?m)^[ \t]*lemmas\b")
 
 def _executed_ml_structure(
     source: str,
-) -> tuple[tuple[tuple[int, int], ...], frozenset[int]]:
+    *,
+    depth_offsets: set[int] | None = None,
+) -> tuple[tuple[tuple[int, int], ...], frozenset[int], dict[int, int]]:
     """Return ML source segments separated by executed top-level semicolons.
 
     Delimiter and ML block tracking keeps separators inside lists, calls, and
@@ -38,8 +40,12 @@ def _executed_ml_structure(
     delimiters: list[str] = []
     blocks: list[str] = []
     matching = {")": "(", "]": "[", "}": "{"}
+    depths: dict[int, int] = {}
+    targets = depth_offsets or set()
     offset = 0
     while offset < len(source):
+        if offset in targets:
+            depths[offset] = len(blocks)
         char = source[offset]
         if char.isalpha() or char == "_":
             end = offset + 1
@@ -65,7 +71,105 @@ def _executed_ml_structure(
             start = offset + 1
         offset += 1
     segments.append((start, len(source)))
-    return tuple(segments), frozenset(bindings)
+    if len(source) in targets:
+        depths[len(source)] = len(blocks)
+    return tuple(segments), frozenset(bindings), depths
+
+
+def _local_runtime_audit(
+    reference: re.Match[str],
+    *,
+    block: str,
+    command_kind: str,
+    top_level_segments: tuple[tuple[int, int], ...],
+    block_depths: dict[int, int],
+) -> bool:
+    """Recognize a local executable audit without exporting theorem names."""
+    if reference.group(1) != "require_native_clean":
+        return False
+    call_start = reference.start()
+    call = re.match(
+        r"Comma_Proof_Dependency_Audit\s*\.\s*require_native_clean\s+"
+        r'([A-Za-z][A-Za-z0-9_\']*)\s+""\s+',
+        block[call_start:],
+    )
+    if call is None:
+        return False
+    context_name = call.group(1)
+    head_end = call_start + call.end()
+
+    def closed_local_theorem_expression(expression: str) -> bool:
+        expression = expression.strip()
+        if not expression or re.search(
+            r"\b(?:fn|let|local|struct|sig|in|end|if|then|else|raise)\b",
+            expression,
+        ):
+            return False
+        # Local runtime lists in this API are identifiers, closed
+        # theorem antiquotations, and list/cons/append composition.
+        expression = re.sub(
+            r"@\{thms?\s+[A-Za-z][A-Za-z0-9_'.]*(?:\s+[A-Za-z][A-Za-z0-9_'.]*)*\}",
+            "theorems",
+            expression,
+        )
+        return re.fullmatch(r"[A-Za-z0-9_'.\s@\[\](),:#]+", expression) is not None
+
+    def context_is_locally_bound(scope: str, offset: int, base_offset: int) -> bool:
+        assignments = tuple(
+            re.finditer(
+                rf"(?m)\bval\s+{re.escape(context_name)}\s*=\s*([^\n;]+)",
+                scope[:offset],
+            )
+        )
+        if not assignments:
+            return False
+        assignment = assignments[-1]
+        if block_depths.get(base_offset + assignment.start()) != 1:
+            return False
+        value = assignment.group(1).strip()
+        return (
+            re.fullmatch(
+                r"@\{context\}|(?:Local_Theory\.target_of|"
+                r"[A-Za-z][A-Za-z0-9_'.]*\.context)\s+[A-Za-z][A-Za-z0-9_']*",
+                value,
+            )
+            is not None
+        )
+
+    if command_kind == "local_setup":
+        if not re.match(r"\s*fn\s+[A-Za-z][A-Za-z0-9_']*\s*=>\s*let\b", block):
+            return False
+        if block_depths.get(call_start) != 1:
+            return False
+        if re.search(r"\bval\s+_\s*=\s*$", block[:call_start]) is None:
+            return False
+        suffix = block[head_end:]
+        terminal = re.search(r"\s+in\s+.+\s+end\s*$", suffix, re.DOTALL)
+        if terminal is None:
+            return False
+        if not closed_local_theorem_expression(suffix[: terminal.start()]):
+            return False
+        return context_is_locally_bound(block, call_start, 0)
+
+    for start, end in top_level_segments:
+        if not start <= call_start < end:
+            continue
+        segment = block[start:end]
+        relative = call_start - start
+        if re.match(r"\s*val\s+_\s*=\s*let\b", segment) is None:
+            return False
+        if block_depths.get(call_start) != 1:
+            return False
+        if re.search(r"\bin\s+$", segment[:relative]) is None:
+            return False
+        suffix = segment[relative + call.end() :]
+        terminal = re.search(r"\s+end\s*;?\s*$", suffix)
+        if terminal is None:
+            return False
+        if not closed_local_theorem_expression(suffix[: terminal.start()]):
+            return False
+        return context_is_locally_bound(segment, relative, start)
+    return False
 
 
 def audited_theorems(
@@ -76,7 +180,14 @@ def audited_theorems(
 ) -> tuple[str, ...]:
     names: list[str] = []
     clean = executable_text(text)
-    for block in ml_cartouches(clean):
+    for command_start, _, raw_block in dynamic_cartouche_spans(clean):
+        command = re.match(
+            r"[ \t]*(ML(?:_val|_prf)?|local_setup|setup)\b", clean[command_start:]
+        )
+        if command is None or command.group(1) == "setup":
+            continue
+        command_kind = "local_setup" if command.group(1) == "local_setup" else "ML"
+        block = raw_block
         block = re.sub(r'"(?:\\.|[^"\\])*"', '""', block)
 
         def names_from_body(body: str) -> tuple[str, ...]:
@@ -154,7 +265,17 @@ def audited_theorems(
                     return tuple(resolved_names)
             raise ValueError("unsupported require_native_clean theorem argument")
 
-        top_level_segments, executed_bindings = _executed_ml_structure(block)
+        depth_targets = {
+            match.start()
+            for match in re.finditer(
+                r"\bval\s+(?:[A-Za-z_][A-Za-z0-9_']*|_)\s*=|"
+                r"\bComma_Proof_Dependency_Audit\s*\.\s*[A-Za-z][A-Za-z0-9_']*",
+                block,
+            )
+        }
+        top_level_segments, executed_bindings, block_depths = _executed_ml_structure(
+            block, depth_offsets=depth_targets
+        )
         binding_assignment = re.compile(r"\bval\s+([A-Za-z_][A-Za-z0-9_']*|_)\s*=")
         binding_assignments = tuple(
             match
@@ -321,6 +442,18 @@ def audited_theorems(
             for match in direct_calls
         }
         direct_reference_offsets.update(bare_call_offsets)
+        local_runtime_offsets = {
+            reference.start()
+            for reference in audit_references
+            if _local_runtime_audit(
+                reference,
+                block=block,
+                command_kind=command_kind,
+                top_level_segments=top_level_segments,
+                block_depths=block_depths,
+            )
+        }
+        direct_reference_offsets.update(local_runtime_offsets)
         for reference in audit_references:
             if reference.start() in direct_reference_offsets:
                 continue

@@ -198,7 +198,7 @@ struct
           [(("k",0),Thm.cterm_of ctxt (nat_term (IntInf.fromInt (level-1))))])
       val instance = Simplifier.full_simplify
         (Comma_Entry_Arithmetic.numeral_context ctxt
-          delsimps @{thms comma_sparse_table_power.simps})
+          |> Simplifier.del_simps @{thms comma_sparse_table_power.simps})
         (Drule.infer_instantiate ctxt variables selected)
       val source_rules = if level=0 then [base_definition]
         else (case previous of SOME theorem => [theorem RS @{thm sym}]
@@ -222,7 +222,7 @@ struct
       val _ = if Thm.term_of (Thm.lhs_of root) aconv target then ()
         else error "Sparse square equation lost its selected power head"
       val evaluated = Simplifier.full_rewrite
-        (ctxt delsimps @{thms comma_sparse_table_power.simps} addsimps rules)
+        (ctxt |> Simplifier.del_simps @{thms comma_sparse_table_power.simps} |> Simplifier.add_simps rules)
         (Thm.rhs_of root)
       val _ = if Thm.term_of (Thm.rhs_of evaluated) aconv list_term rows then ()
         else
@@ -272,7 +272,7 @@ struct
            (fn Free (name,typ) => Var ((name,0),typ) | atom => atom)
            @{term "comma_rotate_phase n bits"}],
          proc=fn _ => fn _ => rotate_conversion, identifier=[]}
-      val comparison_context = #packed_context guards addsimps
+      val comparison_context = #packed_context guards |> Simplifier.add_simps
         @{thms comma_sparse_label_key.simps fst_conv snd_conv
           comma_word_result.inject comma_word_result.distinct
           comma_decade_terminal.inject comma_decade_terminal.distinct

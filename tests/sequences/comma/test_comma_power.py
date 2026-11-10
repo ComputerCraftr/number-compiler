@@ -15,7 +15,7 @@ from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageDemand,
 )
 from number_compiler.resources.stores import LedgerList
-from number_compiler.sequences.comma import certificates, future_provider
+from number_compiler.sequences.comma import future_provider
 from number_compiler.sequences.comma.action_arena import CommaActionID
 from number_compiler.sequences.comma.arithmetic import (
     DecimalSector,
@@ -302,43 +302,6 @@ def test_first_fork_is_not_silently_selected() -> None:
     )
 
 
-def test_fork_requires_source_bound_certificate_at_discovery_and_admission(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[dict[str, object]] = []
-
-    def checked_choice(**binding: object) -> int:
-        calls.append(binding)
-        assert binding["source_index"] == FIRST_FORK_INDEX
-        assert binding["source_value"] == FIRST_FORK_VALUE
-        assert binding["children"] == (19_999_999_999, 20_000_000_000)
-        assert binding["certificate_version"] == "test-checked-fork-v1"
-        return 19_999_999_999
-
-    monkeypatch.setattr(
-        certificates, "require_selected_child", checked_choice, raising=False
-    )
-    term = CommaTerm(
-        FIRST_FORK_INDEX + 1,
-        certificate_version="test-checked-fork-v1",
-        shared_cache=False,
-    )
-    assert term.materialize() == 19_999_999_999
-    assert len(calls) == 2
-    assert calls[0]["ledger"] is term.ledger
-    assert calls[0]["memo"] is term.certificate_memo
-    assert calls[1]["memo"] is term.certificate_memo
-    assert calls[1]["max_work"] == term.max_work
-    assert all(call["shared_cache"] is False for call in calls)
-
-    source = CommaTerm(FIRST_FORK_INDEX, certificate_version="test-checked-fork-v1")
-    source.materialize()
-    with pytest.raises(ValueError, match="selected another child"):
-        source.scheduler.source_image(
-            source.adapter, _term_source(source), source.arena.step(2)
-        )
-
-
 def test_comma_shared_cache_selection_must_be_boolean() -> None:
     with pytest.raises(ValueError, match="shared-cache selection"):
         CommaTerm(1, shared_cache=cast(bool, 1))
@@ -482,21 +445,17 @@ def test_phase_transfer_work_includes_discovery_and_validation() -> None:
     assert term.ledger.counters["comma_transfer_phase_terms"] == 0
 
 
-def test_certificate_budget_refusal_is_not_a_failed_certificate() -> None:
-    from number_compiler.arithmetic.contracts.block_effect import (
-        BlockContextBudgetExceeded,
+def test_missing_global_future_refuses_before_admission_work() -> None:
+    from number_compiler.sequences.comma.certificates import (
+        UnresolvedCommaTerm,
+        require_certified_index,
     )
-    from number_compiler.resources.temporal_diagnostics import (
-        collect_temporal_diagnostics_snapshot,
-    )
-    from number_compiler.sequences.comma.certificates import require_certified_index
 
     term = CommaTerm(1, max_work=1)
-    with pytest.raises(BlockContextBudgetExceeded, match="certificate work budget"):
+    counters_before = dict(term.ledger.counters)
+    with pytest.raises(UnresolvedCommaTerm):
         require_certified_index(1, term.ledger, term.max_work)
-    report = collect_temporal_diagnostics_snapshot(term.ledger)
-    assert report.comma.certificate_budget_refusals == 1
-    assert report.comma.budget_refusals == 1
+    assert dict(term.ledger.counters) == counters_before
     assert "comma_certificate_failed_work" not in term.ledger.counters
 
 

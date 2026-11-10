@@ -8,6 +8,7 @@ session Prime_Deterministic_Refinement in integration_prime = Prime_Wheel_Bridge
   options [document = false, quick_and_dirty = false]
   theories
     Prime_Deterministic_Phi_Refinement
+    Prime_Birth_Innovation_Refinement
     Prime_Deterministic_Worklist_Refinement
     Prime_Python_Count_Transition_Refinement
     Prime_Prefix_Image_Projection_Refinement

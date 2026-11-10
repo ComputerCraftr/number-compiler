@@ -341,6 +341,118 @@ proof -
   qed
 qed
 
+lemma double_reverse_source_carry_prefix_mod7_no_growth:
+  assumes canonical: "double_reverse_canonical_source source"
+      and no_growth: "threshold5_digit (last source) = 0"
+  shows "double_reverse_source_carry_prefix source mod 7 =
+    (5 * double_reverse_source_carry_mask source) mod 7"
+proof -
+  have nonempty: "source \<noteq> []"
+    using canonical unfolding double_reverse_canonical_source_def by simp
+  have split:
+    "double_reverse_source_carry_mask source =
+      10 * double_reverse_source_carry_prefix source +
+        threshold5_digit (last source)"
+    by (rule double_reverse_source_carry_mask_split[OF nonempty])
+  have mask:
+    "double_reverse_source_carry_mask source =
+      10 * double_reverse_source_carry_prefix source"
+    using split no_growth by simp
+  have scaled:
+    "(5 * (10 * double_reverse_source_carry_prefix source)) mod 7 =
+      double_reverse_source_carry_prefix source mod 7"
+  proof -
+    let ?prefix = "double_reverse_source_carry_prefix source"
+    have regroup: "(5 * (10 * ?prefix)) mod 7 = (50 * ?prefix) mod 7"
+      by (simp add: mult.assoc[symmetric])
+    have product:
+      "(((50::nat) mod 7) * ?prefix) mod 7 = (50 * ?prefix) mod 7"
+      by (rule mod_mult_left_eq)
+    have coefficient: "(50::nat) mod 7 = 1" by simp
+    have "(5 * (10 * ?prefix)) mod 7 = (50 * ?prefix) mod 7"
+      by (rule regroup)
+    also have "... = (((50::nat) mod 7) * ?prefix) mod 7"
+      by (rule product[symmetric])
+    also have "... = ?prefix mod 7"
+      using coefficient by simp
+    finally show ?thesis .
+  qed
+  show ?thesis using mask scaled by simp
+qed
+
+theorem double_reverse_four_port_source_t_squared_mod70:
+  assumes canonical: "double_reverse_canonical_source source"
+  shows "int (double_reverse_msf_value
+      (double_reverse_four_port_closed_word
+        (double_reverse_four_port_row source 0 0))) mod 70 =
+    (if threshold5_digit (last source) = 0 then
+       (4 * (int (double_reverse_msf_value source) mod 70) -
+         198 * (int (double_reverse_source_carry_prefix source) mod 70)) mod 70
+     else
+       (40 * (int (double_reverse_msf_value source) mod 70) -
+         198 * (int (double_reverse_source_carry_mask source) mod 70)) mod 70)"
+proof -
+  have nonempty: "source \<noteq> []"
+    using canonical unfolding double_reverse_canonical_source_def by simp
+  let ?growth = "threshold5_digit (last source)"
+  let ?source = "int (double_reverse_msf_value source)"
+  let ?mask = "int (double_reverse_source_carry_mask source)"
+  let ?prefix = "int (double_reverse_source_carry_prefix source)"
+  have endpoint_nat:
+    "double_reverse_msf_value
+        (double_reverse_four_port_closed_word
+          (double_reverse_four_port_row source 0 0)) =
+      double_reverse_T_run 2 (double_reverse_msf_value source)"
+    by (rule double_reverse_four_port_closed_word_numeric_t2[OF canonical])
+  have endpoint:
+    "int (double_reverse_msf_value
+        (double_reverse_four_port_closed_word
+          (double_reverse_four_port_row source 0 0))) =
+      int (double_reverse_T_run 2 (double_reverse_msf_value source))"
+    using arg_cong[OF endpoint_nat, where f=int] by simp
+  have quotient:
+    "int (double_reverse_source_carry_mask source div 10) = ?prefix"
+    using double_reverse_source_carry_mask_div10[OF nonempty] by simp
+  have recurrence:
+    "int (double_reverse_T_run 2 (double_reverse_msf_value source)) =
+      (if ?growth = 0 then 4 * ?source - 198 * ?prefix
+       else 40 * ?source - 198 * ?mask)"
+    using double_reverse_four_port_source_affine_carry[OF canonical] quotient
+    by simp
+  have source_product:
+    "(4 * (?source mod 70)) mod 70 = (4 * ?source) mod 70"
+    by (rule mod_mult_right_eq)
+  have source_growth_product:
+    "(40 * (?source mod 70)) mod 70 = (40 * ?source) mod 70"
+    by (rule mod_mult_right_eq)
+  have prefix_product:
+    "(198 * (?prefix mod 70)) mod 70 = (198 * ?prefix) mod 70"
+    by (rule mod_mult_right_eq)
+  have mask_product:
+    "(198 * (?mask mod 70)) mod 70 = (198 * ?mask) mod 70"
+    by (rule mod_mult_right_eq)
+  have no_growth_residue:
+    "(4 * (?source mod 70) - 198 * (?prefix mod 70)) mod 70 =
+      (4 * ?source - 198 * ?prefix) mod 70"
+    by (rule mod_diff_cong[OF source_product prefix_product])
+  have growth_residue:
+    "(40 * (?source mod 70) - 198 * (?mask mod 70)) mod 70 =
+      (40 * ?source - 198 * ?mask) mod 70"
+    by (rule mod_diff_cong[OF source_growth_product mask_product])
+  have growth_cases: "?growth = 0 \<or> ?growth = 1"
+    by (simp add: threshold5_digit_def split: if_splits)
+  from growth_cases show ?thesis
+  proof
+    assume growth_zero: "?growth = 0"
+    then show ?thesis
+      using endpoint recurrence no_growth_residue by simp
+  next
+    assume growth_one: "?growth = 1"
+    then show ?thesis
+      using endpoint recurrence growth_residue by simp
+  qed
+qed
+
 theorem double_reverse_four_port_two_macro_defect_exact:
   assumes first_source: "double_reverse_canonical_source source"
       and second_source: "double_reverse_canonical_source next_source"
@@ -474,6 +586,8 @@ lemmas double_reverse_four_port_defect_refinement_audit_bundle =
   double_reverse_forward_pass_msf_carry_cut
   double_reverse_four_port_closed_word_value_by_pass
   double_reverse_four_port_source_affine_carry
+  double_reverse_source_carry_prefix_mod7_no_growth
+  double_reverse_four_port_source_t_squared_mod70
   double_reverse_four_port_two_macro_defect_exact
   double_reverse_seed_168_four_step_rotation_correction
 

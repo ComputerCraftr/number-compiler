@@ -75,6 +75,8 @@ class PrimeRankSelectMetrics:
     scheduler_work: int = 0
     scheduler_allocations: int = 0
     scheduler_counters: tuple[tuple[str, int], ...] = ()
+    innovation_collapses: int = 0
+    innovation_stages: int = 0
 
 
 def _validate_cached_prefix(
@@ -570,6 +572,12 @@ def nth_prime_at_or_after(
                         )
                     )
                 )
+            ),
+            innovation_collapses=dag.ledger.counters.get(
+                _prime_keys.PRIME_BIRTH_INNOVATION_COLLAPSES, 0
+            ),
+            innovation_stages=dag.ledger.counters.get(
+                _prime_keys.PRIME_BIRTH_INNOVATION_STAGES, 0
             ),
         )
 

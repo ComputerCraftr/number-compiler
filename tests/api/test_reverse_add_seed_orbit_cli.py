@@ -47,7 +47,10 @@ def test_source_bound_cli_outputs_actual_center_and_carry_ports(
     assert "".join(map(str, record["center_out"])) == center
     assert record["mod99_out"] == value % 99
     assert record["mod198_out"] == value % 198
-    assert record["q19_block_applications"] > 0
+    assert record["q19_block_applications"] > 0 or (
+        record["q19_broadword_semantic_steps_cumulative"] > 0
+        and record["q19_broadword_endpoint_publications_cumulative"] > 0
+    )
     assert record["temporal_square_operations"] == 0
     assert record["temporal_square_from_actual_root"] is False
     assert record["terminal_occurrence_reused"] is False

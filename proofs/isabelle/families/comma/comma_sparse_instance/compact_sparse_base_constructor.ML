@@ -177,7 +177,7 @@ struct
         (fn Free (name, typ) => Var ((name, 0), typ) | atom => atom) pattern
 
       val scope_arithmetic = Comma_Entry_Arithmetic.natural_context ctxt
-        addsimps @{thms gcd_nat.simps lcm_nat_def dvd_eq_mod_eq_0 comma_phase_scope_admitted_def}
+        |> Simplifier.add_simps @{thms gcd_nat.simps lcm_nat_def dvd_eq_mod_eq_0 comma_phase_scope_admitted_def}
       fun phase_scope term =
         (case strip_comb term of
           (head, [p, zero, a]) =>
@@ -246,8 +246,8 @@ struct
       val full_scope = Thm.symmetric
         (@{thm comma_guard_full_phase} RS @{thm eq_reflection})
       val base = #context kernel
-        delsimps @{thms comma_fast_entry_round_jump comma_fast_round_aux_eval}
-        addsimps (@{thms comma_compact_b1_sparse_base_def
+        |> Simplifier.del_simps @{thms comma_fast_entry_round_jump comma_fast_round_aux_eval}
+        |> Simplifier.add_simps (@{thms comma_compact_b1_sparse_base_def
           comma_compact_b1_source_rows_def comma_compact_b1_rows_scope_eval
           comma_compact_b1_packet_plan_def comma_compact_b1_attach_rows_def
           comma_compact_packet_mask_def comma_sparse_sector_base_def

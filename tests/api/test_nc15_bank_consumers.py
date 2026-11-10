@@ -7,12 +7,14 @@ import json
 import pytest
 
 from number_compiler.api import cli
+from number_compiler.api.json_output import is_string_object_mapping
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.reverse_add.mixed_periodic_bank import MixedFrame
 from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 from number_compiler.sequences.reverse_add.q19_bank_boolean import (
     CoupledBooleanBankFrame,
 )
+from number_compiler.sequences.reverse_add.q19_output import ReversePairQ19OutputOwner
 from tests.support.reverse_add_sources import periodic_reverse_add_source
 
 
@@ -125,7 +127,7 @@ def test_summary_does_not_demand_new_banks(
 def test_reverse_bank_packet_projects_all_bands_from_one_coupled_frame(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    seed = periodic_reverse_add_source((5, 16), seed=9323)
+    seed = periodic_reverse_add_source((5, 16), seed=9326)
     calls = 0
     original = CoupledBooleanBankFrame.from_frame
 
@@ -164,3 +166,58 @@ def test_reverse_bank_packet_projects_all_bands_from_one_coupled_frame(
     assert calls == 1
     assert sum(packet["five_band_counts"].values()) == 48
     assert len(packet["first_pair_coefficients"]) == 16
+    phi6: object = packet["source_carry_phi6"]
+    assert is_string_object_mapping(phi6)
+    digits = tuple(map(int, str(seed)[::-1]))
+    carry = carry_mask = gt_mask = eq_mask = 0
+    place = 1
+    for low, high in zip(digits, reversed(digits), strict=True):
+        pair = low + high
+        carry = int(pair + carry >= 10)
+        carry_mask = (carry_mask + carry * place) % 70
+        gt_mask = (gt_mask + int(pair > 9) * place) % 70
+        eq_mask = (eq_mask + int(pair == 9) * place) % 70
+        place = place * 10 % 70
+    assert phi6["source_pair_width"] == len(digits)
+    # The initial Q19 pair grammar emits the first normalized return.
+    assert phi6["occurrence_temporal_steps"] == 1
+    assert phi6["propagated_carry_mod70"] == carry_mask
+    assert phi6["raw_gt_mask_mod70"] == gt_mask
+    assert phi6["raw_eq_mask_mod70"] == eq_mask
+    assert phi6["complete_temporal_successor_certified"] is False
+    harmonic: object = packet["mod99_binary_harmonic_phi3"]
+    assert is_string_object_mapping(harmonic)
+    assert seed % 9 != 0
+    current = seed
+    # The Q19 pair grammar is issued from the original seed; 12 physical ticks
+    # reach the requested term even though that grammar has temporal_steps=1.
+    for _ in range(12):
+        current += int(str(current)[::-1])
+    assert packet["mod99"] == current % 99
+    phases: list[int] = []
+    for _ in range(6):
+        phases.append(current % 99)
+        current += int(str(current)[::-1])
+    a, b, c, d, e, f = phases
+    assert harmonic["initial_pair"] == [a ^ b ^ d ^ e, b ^ c ^ e ^ f]
+    assert harmonic["initial_pair"] != [0, 0]
+    assert harmonic["transition_matrix"] == [[0, 1], [1, 1]]
+    assert harmonic["clock_unit"] == "physical-ticks"
+
+
+@pytest.mark.parametrize("information", (None, "metrics", "temporal"))
+def test_reverse_value_and_summaries_do_not_demand_phi6(
+    information: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        ReversePairQ19OutputOwner, "issued_carry_phi6_packet", _no_endpoint
+    )
+    arguments = ["reverse-add", "--seed", "196", "--nth", "20", "--format", "json"]
+    if information is not None:
+        arguments.extend(("--info", information))
+    assert cli.main(arguments) == 0
+    payload: object = json.loads(capsys.readouterr().out)
+    assert is_string_object_mapping(payload)
+    assert payload["value"] == "70446464506"

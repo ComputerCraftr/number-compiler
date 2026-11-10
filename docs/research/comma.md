@@ -6,11 +6,23 @@ records mathematical scope and source connections.
 ## Carry normalization and source-action authority
 
 The nine-core, Add/Sub Entry and Frobenius arithmetic is already transitively
-connected to the B1 session through `Comma_Decisive_Endpoint_Quotient`; it is
-not a missing session-registration edge. The remaining integration is concrete
-guarded action publication and consumption: spatial carry normalization,
-symbolic C1 admission and the independent 924-phase selector must retain their
-source, clock and seam authority through the new certificate owner.
+connected to the B1 session through `Comma_Decisive_Endpoint_Quotient`; session
+registration is not the missing step. For decade control, the existing
+`comma_decade_power_orbit_congruent` already identifies the 91 admitted offsets
+through 46 orbit classes for every dyadic power. Source-control refinement and
+Continue closure separately establish the receiving phase `(r+1) mod 924`.
+This right congruence does not equate physical elapsed weights or prove a
+minimal global future machine. The missing consumer bridge authenticates a
+shared one-step action DAG against that class semantics and transports its
+backward preimages, without rebuilding physical source proofs at each round.
+
+The mod-3 harmonic representation is a lossless change of basis, not an
+additional required state quotient. For Boolean channels, retain
+`c=x0 XOR x1 XOR x2`, `u=x0 XOR x1`, and `v=x1 XOR x2`; the inverse and nonlinear
+AND law need all three. The pure CRT mod-3 rotation is `+616 mod 924`, distinct
+from the physical `+1` clock and from mod-32 carry transport. Erasing `c` does
+not preserve unrestricted AND. A further reachable-operator reduction would
+need its own proof, but is not a prerequisite for the existing B1 congruence.
 
 The C1 coefficient carrier and characteristic-32/`z`-inverse normalization
 morphism now separate the phase-only arithmetic from physical path admission.
@@ -24,7 +36,7 @@ against generated chart words does not prove source-action equivalence or
 Moore minimality. Full CRT structural normalization alone is not that source
 equivalence. Constructor changes, kernel acceptance and outstanding release
 gates are recorded in the
-[integration record](../sprints/week-of-2026-10-18/strict-toolchain-macro-identities.md#current-status--2026-10-26).
+[integration record](../sprints/week-of-2026-11-01/comma-global-cutover.md).
 
 Mathematically, in a coefficient ring with `32 = 0` where `z` is a unit,
 `10^5 z^-5 = 0`, so
@@ -40,11 +52,12 @@ The source-bound carrier now supplies `(A,D,Q,B)` from the admitted C1 action;
 the remaining obligation is to transport that result into the guarded B1
 selector without rebuilding the phase action.
 
-Forest/fuel retirement requires kernel acceptance of the connected
-source/C1/924 refinement and its B1/B32/global consumers. Neither available
-source code nor finite weighted composition establishes global authority or
-consumption of the characteristic-32 morphism. The release record owns the
-current disposition of that gate and its prepared patch.
+A source-bound successor-closed class stop certificate must preserve the exact
+action and terminal weight through B1, B32 and global consumers. Neither finite
+weighted composition nor the characteristic-32 morphism alone supplies this
+authority. The [integration record](../sprints/week-of-2026-11-01/comma-global-cutover.md)
+owns constructor changes and proof scheduling; the
+[release record](../release-status.md) owns current acceptance status.
 
 Local-step prime-adic gain/loss is a parameterized, derived consistency observer. For an
 increment of valuation `s`, its sign depends on the source modulo `p^(s+1)`;
@@ -82,7 +95,7 @@ are arithmetic reductions, not extra semantic clocks: neither the derived
 Coefficient annihilation keeps the explicit outgoing cut carry and exact guards;
 its generic law alone does not establish preallocation erasure in every consumer.
 Concrete rank publication and the B32/global consumer cutover remain separate
-unaccepted gates, as recorded in the topic status table.
+unaccepted gates, as recorded in the current release gates.
 
 - **Definition:** A367620 is the lexicographically earliest infinite path in the
   decimal comma-child graph, with OEIS index one at 20. A smallest-child rule
@@ -91,19 +104,17 @@ unaccepted gates, as recorded in the topic status table.
   infinite component rooted at 20 using finite-root coverage and computation of
   the other root trees. The outstanding repository gate is its executable
   formal refinement. [Primary paper](https://arxiv.org/html/2401.14346v2)
-- **Implemented finite construction:** source-bound guarded phase-cycle actions
-  use `TileScheduler`; near-boundary alternatives are enumerated exactly.
-- **Runtime certificate:** the packaged finite-region forest excludes the 49
-  other roots and the first fork's right child. Production streams and verifies
-  every sector entry and outgoing alternative before admitting the prefix
-  through index 412987860. Published branch bits are cross-checks, not selectors.
-- **Checked theorem:** predecessor descent covers all positive integers by the
-  classified 50 roots.
-- **Replacement proof target:** prove the executable boundary macro, its
-  periodic lifting, the complete finite losing/winning classification, and the
-  repeating source-20 path. The forest remains the current admission route until
-  this replacement and its weighted scheduler consumers pass. Completing the
-  forest parser proof is no longer the cutover objective.
+- **Finite implementation:** guarded phase-cycle actions use `TileScheduler`,
+  with exact near-boundary alternatives. This is local arithmetic support; it
+  does not establish global future closure.
+- **Retired admission route:** the packaged finite-region forest and verifier
+  have been removed. No replacement global artifact is currently admitted, so
+  positive public comma outputs remain blocked.
+- **Open proof target:** establish a quotient-first guarded action algebra, a
+  source-to-action refinement, successor-closed class stopping, and exact
+  label/child/weight reconstruction for B1/B32 and global consumers. The
+  27-layer stop-mask experiment is not an accepted substitute; finite candidate
+  tables remain differential checks, not release authority.
 
 ## Arithmetic and admission
 
@@ -242,9 +253,6 @@ history belong in the [weekly record](../sprints/week-of-2026-09-27/comma.md#pun
 
 [Comma_Child_Cylinder](../../proofs/isabelle/families/comma/comma/Comma_Child_Cylinder.thy)
 models child, phase and interior-guard equations.
-[Comma_Root_Forest](../../proofs/isabelle/families/comma/comma_legacy/Comma_Root_Forest.thy)
-states the root-exhaustion bridge: global finite-root coverage and finite
-child-closed regions for all roots except 20 imply unbounded descendants of 20.
 [Comma_Decimal_Parent](../../proofs/isabelle/families/comma/comma/Comma_Decimal_Parent.thy)
 checks the 50-root classification and establishes global root coverage by
 predecessor descent. The concrete closed regions remain obligations; the
@@ -253,14 +261,11 @@ conditional finite-set argument is not checker refinement.
 The development [forest checker](../../devtools/experiments/comma/forest_certificate.py)
 uses exact integer sectors. Production imports no generator or fixture.
 [Production admission](../../src/number_compiler/sequences/comma/certificates.py)
-requires the independent streaming checker to exhaust the exact source forest.
-Successful admission records `runtime_verified=true` and
-`isabelle_instance_checked=false`. Certificate information is a read-only
-snapshot: requesting it alone performs no asset verification and reports
-`runtime_verified=false`. Reporting available evidence does not authorize a
-value request.
-A checksum authenticates the artifact; the complete child-closure checks
-supply its finite-termination argument. Missing or forged records are rejected.
+requires an authenticated global-provider artifact and a reviewed kernel
+admission. An artifact checksum identifies bytes; it does not prove the
+global theorem. Information requests report the available evidence without
+authorizing values. The required concrete certificate remains an obligation;
+see the [current release gate](../release-status.md).
 
 Beyond the first fork, a discarded branch needs a complete finite termination
 certificate. Only the common prefix of all surviving candidate paths is
@@ -317,7 +322,7 @@ The concrete exponent remains part of the source occurrence.
   The Python ray checker is an independent oracle, not a theorem premise. The
   [boundary theory](../../proofs/isabelle/families/comma/comma/Comma_Boundary_Quotient.thy)
   develops the seam and modular ingredients; it does not certify the complete
-  constructor or authorize removing production forest admission.
+  constructor or authorize global production admission.
 
 The canonical weighted chart emits an exact affine weight on every move;
 finite control is its weight-erasing projection. An
@@ -436,7 +441,8 @@ block. Sector-five aliases share weight but retain different exact endpoints
 and partial locators. **Finite experiment:** independent Moore refinement
 finds 90 classes at B1 and 86 at B2 through B1024 for the declared weighted
 observer. This does not establish native decade refinement or its structural
-termination measure. Those remain **open obligations** before forest deletion.
+termination measure. Those remain **open obligations** for B1/B32/global
+acceptance after the source deletion.
 
 
 **Temporal observation boundary.** The exact
@@ -888,11 +894,29 @@ source control has no height coordinate, and `D` is the returned occurrence
 weight. This is not a one-state ordinary Moore quotient, and `D` is not the literal sequence
 transition count. Neither storing `D` instead of `(H,terminal)` nor a small
 terminal alphabet by itself reduces the number of distinct exact output rows.
+An exact summary provider must establish both height and terminal control.
+A labelled recurrence is one way to do so. A decreasing rank or stopping mask alone does not
+determine either: changing a fork label, exchanging a fork with Landmine, or
+adding one decade can preserve bounded stopping while changing `D`. Equal
+`D` also does not imply equal physical elapsed time for sources of different
+width. Source-bound C1/Entry/Near weight and seam transports remain necessary
+for the literal writer and index-selection refinement. The
+`comma_decade_summary_recurrence_sound` theorem is the existing interface from
+the exact recurrence to an exact summary for a constructor using that route. Another
+valid construction separates a compact stopping certificate from a universal
+exact-action reconstruction theorem: the certificate proves termination,
+while the admitted carry/clock/action algebra supplies terminal identity and
+symbolic physical weights. This separation does not require concrete headroom
+in semantic IDs or a physical-result table indexed by source occurrence.
 The [terminal audit](../../devtools/verification/comma_b1_terminal_audit.py)
 constructs the weight from source transitions without rank/terminal tables:
 `python -m devtools.verification.comma_b1_terminal_audit --full --full-future`.
 Its finite experiment and the weighted refinement remain distinct from global
-infinite-path admission and sparse-publisher performance.
+infinite-path admission and sparse-publisher performance. The current Future
+release proof still consumes literal source-to-class and candidate control,
+child and rank tables; replacing them requires a proved source binding and
+class-successor theorem. They are not merely post-hoc differential checks in
+the active proof dependency.
 
 **C1 landmine recognition.** The checked Near theorem uses `B=h-1` and proves
 that sector 9 is terminal Landmine exactly when `18≤B≤81` and `B mod 9=0`,
@@ -940,8 +964,9 @@ separate obligations. See the
   [Comma_Global_Root_Safety](../../proofs/isabelle/families/comma/comma_future_global/Comma_Global_Root_Safety.thy)
   combines the 91-entry B32 check, deterministic parent descent and imported
   rank/literal-path theorems. Its `comma_global_release_safety` statement is about
-  listed decimal roots and source 20's first choice. The imported global rank
-  checker must finish before this result can authorize forest deletion.
+  listed decimal roots and source 20's first choice. Its imported global rank
+  checker and current source-bound action certificate must finish before this
+  result can authorize global production admission.
 - **Scope:** the reduction removes the need for 49 separate root-tree arguments.
   It does not itself remove finite-run fuel, extend emitted indices, establish
   all-exponent runtime refinement, or make the 14,784-state rank check redundant.

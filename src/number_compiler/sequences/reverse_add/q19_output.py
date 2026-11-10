@@ -9,7 +9,7 @@ Q19/width metadata.
 from __future__ import annotations
 
 from collections.abc import Callable, Generator, Iterator
-from contextlib import ExitStack, closing
+from contextlib import ExitStack, closing, contextmanager
 from typing import TYPE_CHECKING
 
 from number_compiler.resources.metric_keys import shared as _shared_keys
@@ -67,6 +67,8 @@ from number_compiler.sequences.reverse_add.q19_punctured_producer import (
     PuncturedPairProducer,
 )
 from number_compiler.sequences.reverse_add.q19_word_summary import (
+    Q19_LOWER,
+    Q19_UPPER,
     Q19Summary,
     WordSummary,
     pair_step_law,
@@ -94,6 +96,9 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
         self.ledger = ledger
         self.base = base
         self._digits = digits_lsd
+        # One source-scoped key hint only; authenticated output handles remain
+        # exclusively in the issued-occurrence memo.
+        self._broadword_last: tuple[int, int] | None = None
         self._authority = ArenaToken("reverse-pair-q19-output")
         prefix = f"reverse-pair-q19-{ledger.owner_count}"
 
@@ -418,6 +423,92 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
             raise TypeError("published Q19 summary has another record type")
         return summary
 
+    def issued_carry_phi6_packet(
+        self, occurrence: ReversePairOutputOccurrence
+    ) -> dict[str, object]:
+        """Demand the source's spatial five-band and forward carry responses.
+
+        Both Phi6 roots retain both incoming physical carry cases. The packet
+        belongs to this issued Q19 occurrence and licenses no temporal return.
+        """
+        from number_compiler.arithmetic.fields.decimal_pair_partition import (
+            DECIMAL_PAIR_BANDS,
+            decimal_pair_partition,
+        )
+        from number_compiler.arithmetic.polynomials.digit_cyclotomic import (
+            crt_mod70_from_residues,
+        )
+
+        from .temporal_matrix7_port import Mod7CarryPortAction
+
+        self.validate_occurrence(occurrence)
+        if self._summaries.get(occurrence.root) is None:
+            raise ValueError("issued Q19 source lost its cached base summary")
+        base_summary = self._validated_full_summary(occurrence)
+        phi6 = self._demanded_carry_phi6_summary(occurrence)
+        if phi6.length != base_summary.length or (
+            phi6.carry_exit(0),
+            phi6.carry_exit(1),
+        ) != (
+            int(base_summary.domain == Q19_UPPER),
+            int(base_summary.domain != Q19_LOWER),
+        ):
+            raise ValueError("Phi6 carry projection disagrees with issued Q19 extent")
+        source_summary = self._summaries.get(occurrence.root)
+        if not is_runtime_instance(source_summary, WordSummary):
+            raise TypeError("source-issued Q19 word changed summary type")
+        if source_summary.first_symbol is None:
+            raise ValueError("source-issued Q19 word lost its first pair")
+        first = self.symbol_at(occurrence.root, 1)
+        if not 0 <= first <= 18 or first != source_summary.first_symbol:
+            raise ValueError("source-issued Q19 first pair metadata changed")
+        first_bands = decimal_pair_partition(first).masks
+        mirror_factor = pow(5, (phi6.length - 1) % 6, 7)
+
+        def symmetric_phi6(at3: int) -> tuple[int, int]:
+            # Raw pair coefficients are palindromic; physical carry is not.
+            return phi6.phi6(at3, mirror_factor * at3 % 7)
+
+        gt3 = (phi6.bands3[3] + phi6.bands3[4]) % 7
+        eq3 = phi6.bands3[2]
+        growth = phi6.carry_exit(0)
+        difference = phi6.aligned_difference_mod7()
+        port = Mod7CarryPortAction.from_port(difference_mod7=difference, growth=growth)
+        return {
+            "source_pair_width": phi6.length,
+            "occurrence_temporal_steps": occurrence.temporal_steps,
+            "spatial_orientation": "lsd_to_msd",
+            "scope": "whole symmetric Q19 occurrence; spatial carry only",
+            "spatial_phase_mod6": phi6.length % 6,
+            "raw_gt_mask_mod70": crt_mod70_from_residues(gt3, int(first > 9)),
+            "raw_eq_mask_mod70": crt_mod70_from_residues(eq3, int(first == 9)),
+            "propagated_carry_mod70": crt_mod70_from_residues(
+                phi6.carry3[0], int(first > 9)
+            ),
+            "raw_gt_phi6_mod7": symmetric_phi6(gt3),
+            "raw_eq_phi6_mod7": symmetric_phi6(eq3),
+            "five_band_mod70": {
+                band.value: crt_mod70_from_residues(residue, first_bands[index])
+                for index, (band, residue) in enumerate(
+                    zip(DECIMAL_PAIR_BANDS, phi6.bands3, strict=True)
+                )
+            },
+            "five_band_phi6_mod7": {
+                band.value: symmetric_phi6(residue)
+                for band, residue in zip(DECIMAL_PAIR_BANDS, phi6.bands3, strict=True)
+            },
+            "forward_carry_at3": phi6.carry3,
+            "forward_carry_at5": phi6.carry5,
+            "propagated_carry_phi6_mod7": phi6.carry_phi6(),
+            "growth_carry": growth,
+            "aligned_difference_mod7": difference,
+            "source_mod7_affine_action": (port.multiplier, port.correction),
+            "mod7_affine_source_step": occurrence.temporal_steps,
+            "mod7_affine_target_step": occurrence.temporal_steps + 1,
+            "mod7_affine_coordinate": "normalized decimal term residue",
+            "complete_temporal_successor_certified": False,
+        }
+
     def discard_published_word_summary(self, root: int) -> None:
         if root in self._summaries:
             del self._summaries[root]
@@ -682,16 +773,17 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
     def _iter_symbols(
         self, root: int, *, reverse: bool = False
     ) -> Generator[int, None, None]:
+        def record_visit(is_node: bool) -> None:
+            if is_node:
+                self.ledger.bump(_shared_keys.RECURSIVE_OUTPUT_STREAM_NODE_VISITS)
+
         def walk() -> Generator[int, None, None]:
-            self._active_symbol_walks += 1
-            try:
+            with self._active_scratch_use():
                 yield from iter_symbols(
                     self.arena,
                     root,
                     reverse=reverse,
-                    on_task=lambda _is_node: self.ledger.bump(
-                        _shared_keys.RECURSIVE_OUTPUT_STREAM_NODE_VISITS
-                    ),
+                    on_task=record_visit,
                     reserve_task=lambda: self.ledger.reserve(
                         self._scratch_owner, nodes=1
                     ),
@@ -700,14 +792,24 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
                     ),
                     check_open=self.validate_open,
                 )
-            finally:
-                self._active_symbol_walks -= 1
-                if self._disposed and self._active_symbol_walks == 0:
-                    self._mark_scratch_disposed()
-                    if self._dispose_resources_complete:
-                        self._cleanup_complete = True
 
         return walk()
+
+    @contextmanager
+    def _active_scratch_use(self) -> Generator[None, None, None]:
+        """Keep the existing scratch owner alive through a charged demand."""
+        self.validate_open()
+        # This audit-visible count also covers non-stream demands that reserve
+        # the same scratch owner. Its disposal finalizer has one owner.
+        self._active_symbol_walks += 1
+        try:
+            yield
+        finally:
+            self._active_symbol_walks -= 1
+            if self._disposed and self._active_symbol_walks == 0:
+                self._mark_scratch_disposed()
+                if self._dispose_resources_complete:
+                    self._cleanup_complete = True
 
     def iter_pair_values(
         self, occurrence: ReversePairOutputOccurrence
@@ -715,10 +817,17 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
         self.validate(occurrence)
         yield from self._stream_pair_values(occurrence)
 
+    def iter_encoded_symbols(
+        self, occurrence: ReversePairOutputOccurrence
+    ) -> Generator[int, None, None]:
+        """Stream one issued encoded half, with the owner's charged worklist."""
+        self.validate_issued_occurrence(occurrence)
+        return self._iter_symbols(occurrence.root)
+
     def _stream_pair_values(
         self, occurrence: ReversePairOutputOccurrence
-    ) -> Iterator[int]:
-        self.validate(occurrence)
+    ) -> Generator[int, None, None]:
+        # Public entrypoints authenticate before entering this private stream.
         encoded_length = self.arena.nodes[occurrence.root].length
         parity = self.symbol_at(occurrence.root, 0) - (2 * self.base - 1)
         if parity not in (0, 1):
@@ -747,7 +856,7 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
         self.validate(occurrence)
         carry = 0
         emitted = 0
-        with closing(self.iter_pair_values(occurrence)) as pairs:
+        with closing(self._stream_pair_values(occurrence)) as pairs:
             for pair in pairs:
                 total = pair + carry
                 carry, digit = divmod(total, self.base)

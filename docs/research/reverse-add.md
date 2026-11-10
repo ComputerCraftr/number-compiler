@@ -67,6 +67,100 @@ of width, so width drift is reported separately. The transient is an aligned
 upper bound in physical ticks, while the period is exact for this projection.
 Neither this descriptor nor a cyclotomic residue supplies full-word authority.
 
+### Finite Pascal summaries and carry-event evaluation
+
+A finite MSB-first word has signed Pascal moments
+`M_r(w) = sum_i (-1)^i binom(i,r) w_i`, reduced modulo a declared coefficient
+modulus. Concatenation uses Vandermonde translation by the exact left length;
+reflection changes both the sign and the binomial coordinates. The same law
+can summarize a separately supplied Boolean marker stream. Digit thresholds
+remain family-specific. A compressed spatial REPEAT composes these summaries
+by binary powering; it does not certify temporal repetition of the source.
+
+The carry-event Green sum also admits chronological Horner evaluation:
+start with the first signed event, then apply `2` or `1+z` before adding each
+later event. The event-width differences select those operators. This shares
+the finite polynomial algebra with the
+[comma normalization cut](comma.md#carry-normalization-and-source-action-authority),
+while retaining distinct source admission, seam and clock refinements. Neither
+an event window nor a moment vector replaces an authenticated future action.
+For an admitted decimal pair source, an outer-carry proof potential in
+`0..3` drops by one on growth and rises by at most one on a nongrowth step.
+Thus `growth_count <= nongrowth_count + 3`. Every twelve admitted pair-field transitions have
+at least five nongrowth steps, so the homogeneous input coefficient is zero
+modulo 32. This erases that input contribution, not the subsequently emitted
+forcing. A supplied event history still needs source admission before a
+shorter window can be used.
+Implementation, proof acceptance and measurements belong to the
+[centered carry integration record](../sprints/week-of-2026-11-01/centered-carry-cli.md).
+
+Modulo seven, `Phi6(z)=(z-3)(z-5)`. For a finite LSD-first polynomial,
+`A=P(3)` and `B=P(5)` determine `c1=4(B-A)` and `c0=A-3*c1`.
+The reverse-numeric projection and exact width recover the second evaluation.
+The propagated carry word requires both forward root evaluations for each
+incoming carry. If `W_r(B,b)=sum_i carry_i(b)*r^i mod 7`, chronological
+concatenation obeys
+`W_r(AB,b)=W_r(A,b)+r^len(A)*W_r(B,exit_A(b))`.
+Symmetry of the complete source pair field does not make the propagated
+carry symmetric. Reflection of a raw bank polynomial is valid only for that
+complete symmetric field, not an arbitrary half-word or spatial interval.
+Combining a residue `r mod 7` with the actual units digit `u` gives
+`u+10*(5*(r-u) mod 7)` modulo seventy.
+
+The carry port's affine input is the normalized successor `Y=X+reverse10(X)`,
+not the original pair source `X`. If `g` is its terminal carry and `D` is the
+authenticated directed carry defect, then
+`reverse10(Y)=10^g*(Y-D)+g`. Its next normalized value therefore has residue
+`(1+10^g)*Y-10^g*D+g` modulo seven. The source occurrence and its returned
+value have different clock positions; the affine packet records that input
+position and the following output position explicitly. This one-step law
+does not supply an independently repeatable temporal action.
+
+For the distinct double-reverse recurrence `T(X)=2*reverse10(X)`, let `C`
+be the decimal threshold mask of a canonical whole source: its digit at each
+position is `[digit>=5]`. With nonzero source units, the four-port carry law
+gives `T²(X)=4X-198*(C div 10)` when the units are below five, and
+`T²(X)=40X-198*C` otherwise. The quotient branch needs the preceding
+threshold bit to reconstruct its units digit; `C mod 70` alone does not supply
+that bit. Zero-ending words require width-normalizing treatment. Applying
+these equations to a spatial subinterval requires its actual exterior seam;
+the subinterval residue is insufficient.
+
+Digitwise doubling as decimal glyphs is a different morphism from normalized
+multiplication: the glyph for six is `12`. Reflecting the source before that
+morphism leaves this glyph `12`, whereas reflecting the glyph gives `21`.
+Its length phase therefore includes the threshold count. A copy-count period
+of a supplied spatial band is not a physical recurrence period. For a fixed
+nonempty band, each mod-seven copy sum has ratio of order dividing six.
+Its geometric sum repeats after six copies when the ratio differs from one,
+or after seven copies when it equals one. Thus 42 is a common positive-copy
+period for the joined word, threshold and glyph projections; the exact word
+length still grows. This is a finite spatial algebra law, not a source-period
+certificate. Likewise, a
+strict-interior stencil needs its real exterior halo before it can predict
+an embedded band's boundary outputs. These factors do not establish a
+source-reachable all-future twisted return.
+
+The bank-stencil refinement can be expressed without a second physical tape.
+For a nonempty MSB-first band `W`, let `core(W)` emit only stencil cells whose
+two neighbors lie inside `W`. For nonempty adjacent bands `U,V`, concatenate
+`core(U)`, the cell `F(U[-2],U[-1],V[0])` when `len(U)>=2`, the cell
+`F(U[-1],V[0],V[1])` when `len(V)>=2`, and `core(V)`, in that order.
+This local seam law is associative. For `len(B)>=2` and positive `r`, it gives
+`core(B^r)=core(B)*(seam(B,B)*core(B))^(r-1)`. Exterior digits, width birth
+and leading-zero normalization remain separate source-bound obligations.
+In the truncated Pascal ring over F11 through order `j`, choose the least
+`e` with `11^e>j`. The substitution `z=-1-u` has multiplicative period
+dividing `2*11^e`; eleven such cycles annihilate the additive copy sum.
+Together with the mod-seven factors this gives the spatial-copy bound
+`42*11^(e+1)`. Neither that bound nor the interior seam law authorizes an
+all-future temporal return or a global mod-99/198 clock identification.
+
+For example, the Q19 carry-domain, F9, five-band and carry-Phi6 projections
+of `101` and `112` agree, while those projections of their reverse/add
+successors `202` and `323` differ. This particular finite observer therefore
+cannot be used alone as a physical-successor class ID.
+
 ### Effective seam programs and finite period evidence
 
 For `2rev10`, an effective seam gate records the phase and the two emitted
@@ -128,6 +222,34 @@ constructor. These performance and executable-refinement obligations remain open
 [Integration and adversarial checks](../sprints/week-of-2026-09-27/reverse-add.md#september-30--bounded-completed-child-parent-joins).
 
 ## Source authority and publication
+
+### Centered harmonic projections
+
+On the admitted four-physical-step `2rev10` growth sector `(1,0,0,1)`, the
+right centered digit has the forced recurrence
+`c' = 16*c + f (mod 10)`. For a finite issued interval of `k` blocks, its
+weighted forcing is `c_end - 16^k*c_start (mod 10)`. Modulo five, the forcing
+sum telescopes to `c_end-c_start`; modulo two, the last forcing equals
+`c_end`. Both conditions are required for a digit return. Mod-five
+cancellation alone does not establish an exact return.
+
+Let `a` be the leading `ceil(w/2)` decimal digits and `b` the reversed trailing
+`ceil(w/2)` digits. For `w=2h`, `a-b=(-1)^h X (mod 11)`; for `w=2h+1`, the
+halves overlap at `c` and `a+b=c+(-1)^h X (mod 11)`. These are projections of
+the existing whole-word clock and pointed center, not independent clocks or
+half-word scans.
+
+Reverse/add has a different controlled action: its actual central pair-sum
+coefficient, incoming/outgoing normalization carries and growth bit select
+the affine half-residue transformation. Its third output is the cumulative
+sum of successive half differences. Replacing that sum with the final
+half difference loses information. Chronological composition requires the
+exact source, width and carry seams; matching current projected coordinates
+does not supply the next physical forcing.
+
+The [centered carry integration record](../sprints/week-of-2026-11-01/centered-carry-cli.md)
+owns implementation and kernel acceptance. These conditional identities do
+not establish a source-closed infinite temporal period.
 
 ### Admitted source pair
 
@@ -252,6 +374,15 @@ most three at a no-growth step. Summing this potential proves the bound.
 with fewer than five doublings is younger than 20 steps, including at later
 196 occurrences. This bounds the age of a live contribution, not the number
 of newly created innovations or residue-run boundaries.
+
+[`Reverse_Carry_Suffix_Refinement.thy`](../../proofs/isabelle/families/reverse_add/reverse_growth/Reverse_Carry_Suffix_Refinement.thy)
+connects that erasure to the actual punctured carry producer. Its chronological
+Horner recurrence uses multiplier 2 on quiet rows and `1+z` on growth rows,
+with signed forcing determined by incoming and reflected outgoing carries.
+After five actual quiet rows, the zero-initial-field fold agrees modulo 32
+with the source-generated endpoint. The canonical `0..18` coefficient bound
+lifts this agreement to exact coefficients. The premise is an authenticated
+source trajectory, not five arbitrary historical carry masks.
 
 Terminal growth does not require the first outgoing carry to be one:
 `[9,18,9]` has incoming/first outgoing carry zero, grows, and produces pair

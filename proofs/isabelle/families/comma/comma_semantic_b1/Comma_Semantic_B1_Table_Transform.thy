@@ -171,7 +171,7 @@ next
     by (simp only: comma_semantic_b1_source_slot_action_def if_False)
 qed
 
-declare comma_semantic_b1_source_slot_action_def[code del]
+declare comma_semantic_b1_source_slot_action_def[code drop]
 declare comma_semantic_b1_source_slot_action_code[code]
 
 lemma comma_semantic_b1_source_slot_actions_refines:

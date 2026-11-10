@@ -1,7 +1,7 @@
 """Finite decimal pair transitions used by the Q19 image owner.
 
 The operation includes the authenticated exact T2 group-ring/carry pullback and
-bounded finite source-issued actions through T1024 without materializing
+bounded finite source-issued actions through T8192 without materializing
 intermediate Q19 output occurrences. It consumes and returns maximal run tapes;
 the caller owns source authority, ledger reservations, occurrence publication,
 and larger temporal composition. This module deliberately contains no global
@@ -33,6 +33,8 @@ from .temporal_port_quotient import (
     native_decimal_string_transport,
 )
 
+MAX_PUNCTURED_TEMPORAL_STEPS = 8192
+
 
 @dataclass(slots=True)
 class PuncturedTemporalWork:
@@ -46,6 +48,8 @@ class PuncturedTemporalWork:
     half_tape_tick_transitions: int = 0
     native_decimal_ticks: int = 0
     native_decimal_digit_visits: int = 0
+    spatial_projector_steps: int = 0
+    spatial_projector_sections: int = 0
 
 
 class CarryPrefix:
@@ -321,11 +325,14 @@ def punctured_pair_runs(
     Each primitive tick uses the exact normalized-digit and symmetric
     half-tape successor, or the bounded native decimal route after one exact
     group-ring normalization. No intermediate Q19 occurrence is issued and no
-    periodic continuation is assumed. Durations 16 through 1024 are accepted
-    as finite chronological actions, including odd and non-dyadic spans.
+    periodic continuation is assumed. Durations 16 through the configured
+    finite maximum are accepted as chronological actions, including odd and
+    non-dyadic spans.
     """
-    if type(steps) is not int or not (steps in (2, 4) or 16 <= steps <= 1024):
-        raise ValueError("punctured temporal action requires a bounded T2..T1024 block")
+    if type(steps) is not int or not (
+        steps in (2, 4) or 16 <= steps <= MAX_PUNCTURED_TEMPORAL_STEPS
+    ):
+        raise ValueError("punctured temporal action exceeds its finite bound")
     state = SymmetricCoefficientPort.from_half_runs(half_runs, odd=odd)
     work.run_records_visited += 3 * len(state.half_runs)
     if steps >= 16 and state.width + steps <= MAX_EXACT_DECIMAL_BLOCK_WIDTH:

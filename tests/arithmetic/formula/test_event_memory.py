@@ -2,17 +2,23 @@ from __future__ import annotations
 
 import random
 from collections.abc import Sequence
+from math import comb
 from typing import TYPE_CHECKING
+
+import pytest
 
 from number_compiler.arithmetic.carry.event_memory import (
     carry_field,
     endpoint_width_from_event_window,
     event_memory_horizon,
+    fold_forcing_events,
     forcing_event,
     forcing_event_from_carry,
+    forcing_image_from_certified_carry_suffix,
     growths_from_event_widths,
     next_carry_from_window,
     next_event_from_window,
+    pair_plane_bits,
     pair_step,
     reconstruct_pair_from_carry_window,
     reconstruct_pair_from_event_window,
@@ -27,6 +33,47 @@ from number_compiler.arithmetic.formula.types import RadixSpec
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.formula.event_formula import CarryEventFormulaView
+
+
+def test_finite_forcing_fold_is_algebra_not_a_source_certificate() -> None:
+    updates: list[int] = []
+    # No source or annihilation premise is supplied: this is only the finite
+    # polynomial 2*(1+z)*(1,2) + 2*(3,4,5) + (6,7,8), modulo 32.
+    assert fold_forcing_events(
+        ((1, 2), (3, 4, 5), (6, 7, 8)), record_updates=updates.append
+    ) == (14, 21, 22)
+    assert updates == [8]
+
+
+def test_certified_carry_suffix_uses_actual_nongrowth_erasure() -> None:
+    initial = (7, 18, 7)
+    pair: tuple[int, ...] = initial
+    carries: list[tuple[int, ...]] = []
+    quiet = 0
+    while quiet < pair_plane_bits(10):
+        carry = carry_field(pair, base=10)
+        carries.append(carry)
+        pair, growth = pair_step(pair, 10)
+        quiet += 1 - growth
+
+    assert 0 < len(carries) < event_memory_horizon(10)
+    assert (
+        forcing_image_from_certified_carry_suffix(
+            carries, source_width=len(initial), base=10
+        )
+        == pair
+    )
+    with pytest.raises(ValueError, match="not annihilated"):
+        forcing_image_from_certified_carry_suffix(
+            carries[:-1], source_width=len(initial), base=10
+        )
+
+
+def test_certified_carry_suffix_rejects_coerced_or_nonbinary_witnesses() -> None:
+    with pytest.raises(TypeError, match="exact integers"):
+        forcing_image_from_certified_carry_suffix(((0, False, 0, 0),), source_width=3)
+    with pytest.raises(ValueError, match="carry geometry"):
+        forcing_image_from_certified_carry_suffix(((0, 0, 2, 0),), source_width=3)
 
 
 def _materialize_event_sets(
@@ -60,6 +107,33 @@ def _orbit(
         source = target
         states.append(source)
     return states, carries, events
+
+
+def _binomial_green_reference(
+    events: Sequence[Sequence[int]], *, base: int
+) -> tuple[int, ...]:
+    """Independent direct Pascal-kernel reference for a complete event window."""
+    rows = tuple(tuple(map(int, event)) for event in events)
+    widths = tuple(map(len, rows))
+    later_growths = tuple(
+        widths[index + 1] - widths[index] for index in range(len(widths) - 1)
+    )
+    assert all(growth in (0, 1) for growth in later_growths)
+    modulus = 1 << pair_plane_bits(base)
+    target_width = widths[-1]
+    result = [0] * target_width
+    for index, event in enumerate(rows):
+        tail = later_growths[index:]
+        growth_count = sum(tail)
+        no_growth_count = len(tail) - growth_count
+        scalar = pow(2, no_growth_count, modulus)
+        for position, value in enumerate(event):
+            for shift in range(growth_count + 1):
+                target = position + shift
+                result[target] = (
+                    result[target] + value * scalar * comb(growth_count, shift)
+                ) % modulus
+    return tuple(result)
 
 
 def test_event_position_sets_are_exact_derived_formula_views() -> None:
@@ -118,6 +192,24 @@ def test_decimal_196_pair_and_length_are_exactly_last_20_events() -> None:
         if t < len(events):
             assert next_event_from_window(window, base=10) == events[t]
             assert next_carry_from_window(carry_window, base=10) == carries[t]
+
+
+def test_horner_event_reconstruction_matches_independent_binomial_reference() -> None:
+    horizon = event_memory_horizon(10)
+    mixed_growth_seen = False
+    for seed in ((7, 18, 7), (1, 2, 1), (9, 0, 9)):
+        states, _carries, events = _orbit(seed, 10, horizon + 24)
+        for end in range(horizon, len(states)):
+            window = events[end - horizon : end]
+            growths = tuple(
+                len(window[index + 1]) - len(window[index])
+                for index in range(len(window) - 1)
+            )
+            mixed_growth_seen |= 0 in growths and 1 in growths
+            assert reconstruct_pair_from_event_window(window, base=10) == (
+                _binomial_green_reference(window, base=10)
+            )
+    assert mixed_growth_seen
 
 
 def test_bounded_carry_memory_generalizes_random_bases() -> None:

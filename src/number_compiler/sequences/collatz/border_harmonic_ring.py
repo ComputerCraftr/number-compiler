@@ -23,6 +23,10 @@ from number_compiler.arithmetic.fields.homogeneous_growth import (
 )
 from number_compiler.arithmetic.fields.integer_congruence import exact_modular_power
 from number_compiler.arithmetic.fields.two_adic import v2_positive
+from number_compiler.sequences.collatz.joint_harmonic_band import (
+    TWO_ODD_HARMONIC_BAND,
+    TwoOddHarmonicPoint,
+)
 
 if TYPE_CHECKING:
     from number_compiler.arithmetic.fields.homogeneous_growth import (
@@ -115,6 +119,15 @@ class ZeroTailFreeBorderRing:
             or self.return_capacity != (v2_positive(self.source + 1) - 1) // 2
         ):
             raise ValueError("ring capacity disagrees with the 2-adic cylinder")
+
+    def pointed_harmonic_band(self) -> TwoOddHarmonicPoint | None:
+        """View a zero-tail-free inlet without rescanning 3/5 valuations."""
+        if v2_positive(self.source + 1) < 2 or self.source % 6 == 5:
+            return None
+        pointed = TWO_ODD_HARMONIC_BAND.point_zero_tail_free_3_border(self.source)
+        if self.return_capacity != pointed.return_to_three_capacity:
+            raise AssertionError("6305 return guard conflicts with harmonic headroom")
+        return pointed
 
     def admissible_count(self, *, ticks: int, returns: int) -> int:
         """Maximal *3-return* block within the authorized physical horizon."""
@@ -422,11 +435,11 @@ def _periodic_tail_coefficients(motif: tuple[int, ...]) -> tuple[int, int, int]:
     """Compose a recorded *mixed* 6305 return word without any source digits."""
     if (
         type(motif) is not tuple
-        or not 2 <= len(motif) <= 4
+        or not 2 <= len(motif) <= 8
         or any(type(j) is not int or j < 0 for j in motif)
         or len(set(motif)) == 1
     ):
-        raise ValueError("periodic ring requires 2..4 changing zero-tail letters")
+        raise ValueError("periodic ring requires 2..8 changing zero-tail letters")
     return zero_tail_word_coefficients(motif)
 
 

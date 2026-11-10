@@ -64,6 +64,7 @@ from number_compiler.sequences.collatz.temporal_run_finalize import (
 from number_compiler.sequences.collatz.temporal_run_pumping import (
     consume_homogeneous_run,
     pump_normalized_one_cycle,
+    try_consume_joint_harmonic_band,
 )
 from number_compiler.sequences.collatz.temporal_run_state import (
     CollatzRunControl,
@@ -404,6 +405,20 @@ def execute_collatz_temporal_run(
                 control.physical_f5 = terminal.physical_f5
                 control.unified_skew_retry = True
                 continue
+
+        if try_consume_joint_harmonic_band(
+            control,
+            seed=seed,
+            control_bits=control_bits,
+            ledger=ledger,
+            scratch=scratch,
+            width_spine=width_spine,
+            joint_builder=joint_builder,
+            parity_builder=parity_builder,
+            macros=macros,
+            require_mixed_prefix=require_mixed_prefix,
+        ):
+            continue
 
         # The root consumer may request an exact bounded source-window cut.
         # Cached parents and terminal powers were already offered above.

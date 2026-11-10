@@ -414,10 +414,13 @@ def test_macro_rejects_spurious_fork_at_landmine(
         construct_macro(BoundaryState("N", 3, 5))
 
 
-def test_exhaustion_never_publishes_a_landmine(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(boundary_chart, "MAX_CHART_MOVES", 1)
-    with pytest.raises(ValueError, match="finite seam bound"):
-        construct_macro(BoundaryState("N", 2, 10))
+def test_admitted_chart_ends_only_at_a_mathematical_terminal() -> None:
+    moves = tuple(chart_moves("N", 2, 10))
+    assert moves
+    _chart, final_move = moves[-1]
+    assert final_move.next_chart is None
+    assert final_move.terminal_chart is not None
+    assert final_move.fork_a is not None or final_move.cycle is not None
 
 
 @pytest.mark.parametrize(

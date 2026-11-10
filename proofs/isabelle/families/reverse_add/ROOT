@@ -25,6 +25,8 @@ session Reverse_Residuals in reverse_residuals = Shared_Carry_Dynamics +
     Reverse_Laurent_Source_Refinement
     Reverse_Punctured_Run_Pairing
     Reverse_Laurent_Producer_Refinement
+    Reverse_Center11_Controlled_Action
+    Reverse_Center11_Source_Refinement
     Reverse_Native_Block_Refinement
     Reverse_Laurent_Modular_Projection
     Reverse_Punctured_Event_Intervals
@@ -51,4 +53,5 @@ session Reverse_Growth_Admission in reverse_growth = Reverse_Residuals +
   options [document = false, quick_and_dirty = false]
   theories
     Reverse_Growth_Run_Admission
+    Reverse_Carry_Suffix_Refinement
     Weighted_Partial_Growth_Action

@@ -72,6 +72,65 @@ def test_source_core_equality_does_not_imply_decade_observation_equality() -> No
     assert right.successor == B1State(39, 24)
 
 
+@pytest.mark.parametrize(
+    ("phase", "live_fibers", "terminal"),
+    [
+        (0, (14, 11, 2), B1Observation("fork", 6)),
+        (28, (34, 19, 25, 13, 23, 19), B1Observation("landmine", 0)),
+    ],
+)
+def test_local_clock_period_does_not_determine_complete_decade_height(
+    phase: int, live_fibers: tuple[int, ...], terminal: B1Observation
+) -> None:
+    """Equal mod-28 clocks can have distinct complete futures and heights.
+
+    This bounded witness checks both the chart reference and the source-selected
+    endpoint consumer. It does not assert a global rank certificate.
+    """
+    assert CyclotomicClock.from_phase(phase).phase(28) == 0
+    state = B1State(0, phase)
+    representatives = offset_representatives()
+    for expected in (
+        *(B1Observation("live", fiber) for fiber in live_fibers),
+        terminal,
+    ):
+        reference = observe_b1(state)
+        assert reference.observation == expected
+        result = evaluate_b1_source(
+            CyclotomicClock.from_phase(state.phase), representatives[state.fiber]
+        ).outcome
+        assert result.kind == expected.kind
+        if expected.kind == "live":
+            assert result.entry_coordinate is not None
+            assert offset_orbit(result.entry_coordinate) == expected.value
+            assert result.exponent_advance == 1
+            assert reference.successor == B1State(
+                expected.value, (state.phase + 1) % 924
+            )
+            assert reference.successor is not None
+            state = reference.successor
+        else:
+            assert reference.successor is None
+            assert result.fork_a == (
+                expected.value if expected.kind == "fork" else None
+            )
+
+
+def test_class_self_loop_requires_phase_in_a_strictly_decreasing_rank() -> None:
+    # A class-only potential would require rank(26) < rank(26). The phase
+    # change is occurrence data, but it cannot be discarded from this proof.
+    source = B1State(26, 0)
+    assert offset_representatives()[source.fiber] == 17
+    reference = observe_b1(source)
+    assert reference.observation == B1Observation("live", 26)
+    assert reference.successor == B1State(26, 1)
+    result = evaluate_b1_source(CyclotomicClock.from_phase(0), 17).outcome
+    assert result.kind == "live"
+    assert result.entry_coordinate is not None
+    assert offset_orbit(result.entry_coordinate) == source.fiber
+    assert result.exponent_advance == 1
+
+
 def test_equal_terminal_summaries_do_not_select_the_first_b1_successor() -> None:
     """The terminal residual alone does not determine the first live action.
 

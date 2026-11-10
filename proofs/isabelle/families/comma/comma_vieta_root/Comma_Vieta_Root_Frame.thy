@@ -221,7 +221,7 @@ lemma comma_vieta_admitted_entry_clock:
   "comma_diagonal_headroom 1 460 5 9=365"
   "comma_diagonal_headroom 1 460 5 10=355"
   by (tactic \<open>ALLGOALS (simp_tac
-    (Comma_Entry_Arithmetic.natural_context @{context} addsimps
+    (Comma_Entry_Arithmetic.natural_context @{context} |> Simplifier.add_simps
       @{thms of_nat_numeral of_nat_0 of_nat_1 zmod_zminus1_eq_if
         zmod_zminus2_eq_if Num.inc.simps
         comma_round_admitted.simps comma_entry_diagonal_key_def
@@ -240,15 +240,15 @@ lemma comma_vieta_one_row_counterexample:
   by (tactic \<open>
     let
       val arithmetic = Comma_Entry_Arithmetic.natural_context @{context}
-        addsimps @{thms of_nat_numeral of_nat_0 of_nat_1
+        |> Simplifier.add_simps @{thms of_nat_numeral of_nat_0 of_nat_1
           zmod_zminus1_eq_if zmod_zminus2_eq_if Num.inc.simps}
       val zero = Goal.prove @{context} [] []
         @{prop "comma_period_displacement 1 5 0=0"}
-        (fn _ => simp_tac (@{context} addsimps
+        (fn _ => simp_tac (@{context} |> Simplifier.add_simps
           @{thms comma_period_displacement_def}) 1)
       val steps = fold (fn step => fn known =>
           Simplifier.simplify
-            (arithmetic addsimps known addsimps @{thms comma_phase_digit_def})
+            (arithmetic |> Simplifier.add_simps known |> Simplifier.add_simps @{thms comma_phase_digit_def})
             step :: known)
         @{thms comma_period_displacement_succ[of 1 5 0]
           comma_period_displacement_succ[of 1 5 1]
@@ -256,8 +256,8 @@ lemma comma_vieta_one_row_counterexample:
           comma_period_displacement_succ[of 1 5 3]
           comma_period_displacement_succ[of 1 5 4]
           comma_period_displacement_succ[of 1 5 5]} [zero]
-    in ALLGOALS (simp_tac (arithmetic addsimps steps
-      addsimps @{thms comma_vieta_root_def comma_phase_digit_def})) end
+    in ALLGOALS (simp_tac (arithmetic |> Simplifier.add_simps steps
+      |> Simplifier.add_simps @{thms comma_vieta_root_def comma_phase_digit_def})) end
     \<close>)
 
 text \<open>The normalization unit is the complete ordered root interval.

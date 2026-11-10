@@ -8,9 +8,9 @@ data and cannot authorize a weighted transfer or an infinite branch.
 
 from __future__ import annotations
 
-from collections.abc import Hashable
+from collections.abc import Hashable, Iterator
 from dataclasses import dataclass
-from typing import Literal
+from typing import Final, Literal
 
 from number_compiler.arithmetic.functions.finite_observer import (
     FiniteObserverMinimization,
@@ -24,12 +24,41 @@ from number_compiler.sequences.comma.arithmetic import (
     comma_port_previous,
     cycle_transfer,
 )
-from number_compiler.sequences.comma.boundary_chart import PERIOD, chart_moves
+from number_compiler.sequences.comma.boundary_chart import (
+    PERIOD,
+    BoundaryChart,
+    ChartMove,
+    chart_moves,
+    chart_step,
+)
 from number_compiler.sequences.comma.boundary_quotient import BoundaryState
 from number_compiler.sequences.comma.cycle_spatial import CycleSpatialState
 
 BranchSymbol = Literal[0, 1]
 _BRANCH_SLOT: dict[BranchSymbol, int] = {0: 1, 1: 0}
+AUDIT_CHART_WALK_LIMIT: Final[int] = 4096
+
+
+def bounded_chart_walk(
+    start: BoundaryChart, residue: int
+) -> Iterator[tuple[BoundaryChart, ChartMove]]:
+    """Yield one chart trace with a developer-audit work bound.
+
+    The bound prevents an arbitrary chart supplied to research tooling from
+    hanging forever. It is not a production fuel policy, termination proof, or
+    authority for accepting a comma source. Exhaustion raises instead of
+    returning a partial trace.
+    """
+    chart = start
+    for _ in range(AUDIT_CHART_WALK_LIMIT):
+        move = chart_step(residue, chart)
+        yield chart, move
+        if move.next_chart is None:
+            return
+        chart = move.next_chart
+    raise RuntimeError(
+        f"comma chart audit walk exceeded {AUDIT_CHART_WALK_LIMIT} moves"
+    )
 
 
 @dataclass(frozen=True, slots=True)

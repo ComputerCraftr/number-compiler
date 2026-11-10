@@ -291,6 +291,8 @@ class ResidueCarrySLPProjector:
     def _validate_root(arena: SLPArena, root: SLPNode) -> int:
         if type(arena) is not SLPArena:
             raise TypeError("residue carry input requires an SLPArena")
+        if arena.node_storage_poisoned:
+            raise ValueError("residue carry SLP definition was invalidated")
         if type(root) is not SLPNode:
             raise TypeError("residue carry SLP root requires an arena node")
         if not 0 <= root.id < len(arena.nodes) or arena.nodes[root.id] is not root:

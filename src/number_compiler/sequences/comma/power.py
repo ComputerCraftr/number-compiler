@@ -136,9 +136,6 @@ class CommaTerm:
             ),
         )
         initialize_output_stream_metrics(self.ledger, "comma_stream")
-        from number_compiler.sequences.comma.certificates import new_certificate_memo
-
-        self.certificate_memo = new_certificate_memo(self.ledger)
         self.arena = CommaActionArena(self.ledger, max_work, shared_cache=shared_cache)
         self._future_provider_store: SemanticFutureProviderStore | None = None
         self._future_provider_lease: SemanticFutureProviderLease | None = None
@@ -350,9 +347,9 @@ class CommaTerm:
     def _stage_global_future_provider_artifact(self, artifact: Path) -> None:
         """Load a registered global provider before any query progress exists.
 
-        The public prefix gate may consume this lease only after it rechecks the
-        exact global-release contract. With no registered release artifact, the
-        public path keeps using its finite forest/prefix certificate.
+        The public query may consume this lease only after it rechecks the
+        exact global-release contract. With an empty registry, public admission
+        fails closed for every index and no package data is opened.
         """
         with self._boundary_receipt_lock:
             self.require_open()
@@ -389,7 +386,7 @@ class CommaTerm:
         """Stage only the package artifact named by an admitted exact digest.
 
         The empty production registry returns before resolving package
-        resources, leaving the finite-prefix forest path untouched. A
+        resources, so public admission fails closed. A
         registered digest with missing or mismatched bytes fails closed.
         """
         self.require_open()
@@ -450,10 +447,16 @@ class CommaTerm:
         with self._boundary_receipt_lock:
             self.require_open()
             from number_compiler.sequences.comma.certificates import (
-                require_certified_public_prefix,
+                require_certified_index,
             )
 
-            require_certified_public_prefix(self)
+            provider = self.global_future_provider_for_prefix_admission()
+            require_certified_index(
+                self.index,
+                self.ledger,
+                self.max_work,
+                global_provider=provider,
+            )
 
     @property
     def retained_global_future_provider(self) -> SemanticFutureProviderLease | None:
@@ -844,22 +847,10 @@ class CommaTerm:
                     "global comma provider has no admitted occurrence for this fork"
                 )
             else:
-                from number_compiler.sequences.comma.certificates import (
-                    require_selected_child,
+                raise UnresolvedCommaBranch(
+                    f"comma source 20 has no admitted global fork at index "
+                    f"{self._current_index}"
                 )
-
-                child = require_selected_child(
-                    source_index=self._current_index,
-                    source_value=value,
-                    children=children,
-                    certificate_version=self.certificate_version,
-                    ledger=self.ledger,
-                    max_work=self.max_work,
-                    shared_cache=self.shared_cache,
-                    memo=self.certificate_memo,
-                )
-                if type(child) is not int or child not in children:
-                    raise ValueError("comma certificate selected a non-child")
             action = self.arena.step(child - value - 10 * sector.digit)
             value = self._publish(action)
             remaining -= 1

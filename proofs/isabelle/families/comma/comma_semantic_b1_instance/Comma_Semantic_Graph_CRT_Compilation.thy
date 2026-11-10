@@ -1,6 +1,6 @@
 theory Comma_Semantic_Graph_CRT_Compilation
   imports Comma_Semantic_Graph_Stop_Transport
-    Comma_Semantic_Weighted_CRT_Selector_Laws
+    Comma_Semantic_B1.Comma_Weighted_CRT_Data
 begin
 
 text \<open>
@@ -34,110 +34,6 @@ lemma comma_semantic_b1_crt_leaf_apply:
     Some (control,0)"
   by (simp add: comma_weighted_crt_apply_def
       comma_semantic_b1_crt_leaf_def)
-
-text \<open>
-Bottom-up normalization transports a completed child action through its
-parent row.  The row's edge weight is included in the incoming offset, so the
-equivalence preserves the chronological weight accumulated before the child.
-The premise is uniform in both that offset and the phase; it can therefore be
-reused unchanged when the normalized parent itself becomes a child.
-\<close>
-
-lemma comma_weighted_crt_branch_all_offsets_congruence:
-  fixes axis :: nat
-    and left right :: "(nat \<times> 'a comma_semantic_weighted_crt_dag) list"
-  assumes axis: "axis<4"
-    and left_extent: "length left=comma_crt_axis_radix axis"
-    and right_extent: "length right=comma_crt_axis_radix axis"
-    and rows: "\<forall>slot. slot<comma_crt_axis_radix axis \<longrightarrow>
-      (\<forall>root_offset phase.
-        comma_weighted_crt_apply
-          (root_offset+fst (left!slot),snd (left!slot)) phase =
-        comma_weighted_crt_apply
-          (root_offset+fst (right!slot),snd (right!slot)) phase)"
-  shows "\<And>root_offset phase.
-    comma_weighted_crt_apply
-      (root_offset,Comma_Weighted_CRT_Branch axis left) phase =
-    comma_weighted_crt_apply
-      (root_offset,Comma_Weighted_CRT_Branch axis right) phase"
-proof -
-  fix root_offset phase
-  show "comma_weighted_crt_apply
-      (root_offset,Comma_Weighted_CRT_Branch axis left) phase =
-    comma_weighted_crt_apply
-      (root_offset,Comma_Weighted_CRT_Branch axis right) phase"
-  proof (rule comma_weighted_crt_branch_congruence
-      [OF axis left_extent right_extent])
-    fix slot
-    assume slot: "slot<comma_crt_axis_radix axis"
-    have row_all:
-      "\<forall>root_offset phase.
-        comma_weighted_crt_apply
-          (root_offset+fst (left!slot),snd (left!slot)) phase =
-        comma_weighted_crt_apply
-          (root_offset+fst (right!slot),snd (right!slot)) phase"
-      using rows slot by blast
-    have row_zero:
-      "\<forall>phase.
-        comma_weighted_crt_apply
-          (0+fst (left!slot),snd (left!slot)) phase =
-        comma_weighted_crt_apply
-          (0+fst (right!slot),snd (right!slot)) phase"
-      using row_all by (rule spec[where x=0])
-    have row_phase:
-      "\<forall>phase.
-        comma_weighted_crt_apply (left!slot) phase =
-          comma_weighted_crt_apply (right!slot) phase"
-      using row_zero by (simp add: prod.collapse)
-    have row:
-      "comma_weighted_crt_apply (left!slot) phase =
-        comma_weighted_crt_apply (right!slot) phase"
-      using row_phase by (rule spec[where x=phase])
-    show "comma_weighted_crt_apply (left!slot) phase =
-        comma_weighted_crt_apply (right!slot) phase"
-      by (rule row)
-  qed
-qed
-
-lemma comma_weighted_crt_literal_branch_all_offsets:
-  fixes axis bound :: nat
-    and source_rows target_rows ::
-      "(nat \<times> 'a comma_semantic_weighted_crt_dag) list"
-  assumes axis: "axis<4"
-    and radix: "bound=comma_crt_axis_radix axis"
-    and source_extent: "length source_rows=bound"
-    and target_extent: "length target_rows=bound"
-    and rows: "\<forall>slot. slot<bound \<longrightarrow>
-      (\<forall>incoming phase.
-        comma_weighted_crt_apply
-          (incoming+fst (source_rows!slot),snd (source_rows!slot)) phase =
-        comma_weighted_crt_apply
-          (incoming+fst (target_rows!slot),snd (target_rows!slot)) phase)"
-  shows "\<forall>incoming phase.
-      comma_weighted_crt_apply
-        (incoming,Comma_Weighted_CRT_Branch axis source_rows) phase =
-      comma_weighted_crt_apply
-        (incoming,Comma_Weighted_CRT_Branch axis target_rows) phase"
-proof (intro allI)
-  fix incoming phase
-  have source: "length source_rows=comma_crt_axis_radix axis"
-    using source_extent radix by simp
-  have target: "length target_rows=comma_crt_axis_radix axis"
-    using target_extent radix by simp
-  have children: "\<forall>slot. slot<comma_crt_axis_radix axis \<longrightarrow>
-      (\<forall>incoming phase.
-        comma_weighted_crt_apply
-          (incoming+fst (source_rows!slot),snd (source_rows!slot)) phase =
-        comma_weighted_crt_apply
-          (incoming+fst (target_rows!slot),snd (target_rows!slot)) phase)"
-    using rows radix by simp
-  show "comma_weighted_crt_apply
-        (incoming,Comma_Weighted_CRT_Branch axis source_rows) phase =
-      comma_weighted_crt_apply
-        (incoming,Comma_Weighted_CRT_Branch axis target_rows) phase"
-    by (rule comma_weighted_crt_branch_all_offsets_congruence
-      [OF axis source target children])
-qed
 
 primrec comma_semantic_b1_crt_compile_node_fuel ::
     "nat \<Rightarrow> (comma_semantic_b1_node list \<Rightarrow> nat \<Rightarrow>
@@ -815,12 +711,6 @@ ML \<open>
       comma_semantic_b1_crt_compile_fuel_stable};
 \<close>
 
-ML_file "semantic_weighted_crt_data_transport.ML"
-ML_file "semantic_weighted_crt_branch_transport.ML"
-ML_file "semantic_weighted_crt_selector_transport.ML"
-ML_file "semantic_weighted_crt_data_contract.ML"
-ML_file "semantic_weighted_crt_certificate_builder.ML"
-ML_file "semantic_weighted_crt_data.ML"
 ML_file "semantic_weighted_crt_data_cache_hit_fixture.ML"
 ML \<open>Comma_Weighted_CRT_Data_Cache_Hit_Fixture.run @{context}\<close>
 

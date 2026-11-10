@@ -10,6 +10,10 @@ from typing import cast
 
 import pytest
 
+from devtools.paths import isabelle_root
+from devtools.verification.comma_semantic_future_artifact import (
+    runtime_candidate_record_from_isabelle_data,
+)
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.comma import (
     future_authority,
@@ -99,3 +103,44 @@ def workspace_owner(ledger: ResourceLedger) -> int:
         for row in ledger.inventory()
         if row.role == "semantic_future_provider_workspace"
     )
+
+
+def authored_candidate_record() -> dict[str, object]:
+    source = (
+        isabelle_root()
+        / "families/comma/comma_semantic_future_instance"
+        / "Comma_Semantic_Future_Candidate_Data.thy"
+    )
+    return runtime_candidate_record_from_isabelle_data(
+        source.read_text(encoding="utf-8"), source
+    )
+
+
+def install_test_only_global_registry(
+    monkeypatch: pytest.MonkeyPatch, record: Mapping[str, object]
+) -> str:
+    """Exercise the global consumer under explicitly synthetic test admission."""
+
+    def charge_no_work(_amount: int) -> None:
+        return None
+
+    parsed = future_provider.parse_future_candidate(record, charge_work=charge_no_work)
+    admission = future_authority.KernelInstanceAdmission(
+        artifact_sha256=parsed.artifact_sha256,
+        instance_id=future_authority.GLOBAL_RELEASE_SESSION_ID,
+        theorem_id=future_authority.GLOBAL_RELEASE_THEOREM_ID,
+        contract_id=future_authority.GLOBAL_RELEASE_CONTRACT_ID,
+        claims=future_authority.GLOBAL_RELEASE_CLAIMS,
+        scope=future_authority.KERNEL_RELEASE_SCOPE,
+    )
+    monkeypatch.setattr(
+        future_provider,
+        "_ADMITTED_KERNEL_INSTANCES",
+        MappingProxyType({parsed.artifact_sha256: admission}),
+    )
+    monkeypatch.setattr(
+        future_provider,
+        "registered_global_release_artifact_sha256",
+        lambda: parsed.artifact_sha256,
+    )
+    return parsed.artifact_sha256

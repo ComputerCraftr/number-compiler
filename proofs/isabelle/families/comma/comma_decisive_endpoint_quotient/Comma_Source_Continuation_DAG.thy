@@ -78,6 +78,14 @@ fun comma_source_continuation_transport ::
 | "comma_source_continuation_transport k Comma_Continuation_Invalid =
     Comma_Continuation_Invalid"
 
+lemma comma_source_continuation_transport_zero [simp]:
+  "comma_source_continuation_transport 0 = id"
+proof (rule ext)
+  fix action
+  show "comma_source_continuation_transport 0 action = id action"
+    by (cases action) simp_all
+qed
+
 lemma comma_source_continuation_base_shift_position:
   "comma_source_continuation_base (comma_shift_position k source)=
     comma_source_continuation_base source"
@@ -366,6 +374,7 @@ ML \<open>
 ML \<open>
   Comma_Decisive_Endpoint_Profile.report "Source continuation DAG stage=oracle audit entered";
   val checked = @{thms comma_source_continuation_reconstruct
+    comma_source_continuation_transport_zero
     comma_source_continuation_base_idempotent comma_source_continuation_base_sector
     comma_source_continuation_base_shift_position comma_source_continuation_shift_position
     comma_source_continuation_action_shift

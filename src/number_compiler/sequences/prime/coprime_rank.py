@@ -13,7 +13,7 @@ from collections.abc import Generator, MutableMapping
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from itertools import islice
-from math import gcd
+from math import gcd, isqrt
 
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import prime as _prime_keys
@@ -588,6 +588,12 @@ class CoprimeRankDAG:
         self.ledger.bump(_prime_keys.PRIME_FRESH_SUCCESSOR_PARTIAL_QUERIES)
         return self.count(limit, parent_depth) - self.count(limit // q, parent_depth)
 
+    def _birth_core_depth(self, limit: int, depth: int) -> int:
+        if depth < 5 or depth > self._consecutive_depth:
+            return depth
+        self.charge_many(1, limit.bit_length() * (depth.bit_length() + 1))
+        return bisect_right(self._primes, isqrt(limit), 0, depth)
+
     def count(self, limit: int, depth: int | None = None) -> int:
         """Count positive survivors <= limit without materializing a gap cycle."""
         if self._closed:
@@ -677,6 +683,23 @@ class CoprimeRankDAG:
                         sign * (x // divisor)
                         for divisor, sign in ORDERED_WHEEL_210_TERMS
                     )
+                elif (cut := self._birth_core_depth(x, d)) < d:
+                    # At this fixed boundary, the authenticated prefix through
+                    # sqrt(x) has removed every composite. Later primes delete
+                    # only themselves, not another wheel or trajectory.
+                    if not ready:
+                        stack.append((d, x, True))
+                        if local_value((cut, x)) is None:
+                            stack.append((cut, x, False))
+                        continue
+                    core = local_value((cut, x))
+                    if core is None:
+                        raise RuntimeError("prime birth quotient lost its core rank")
+                    self.charge_many(d - cut, (d - cut) * x.bit_length())
+                    lost = bisect_right(self._primes, x, cut, d) - cut
+                    self.ledger.bump(_prime_keys.PRIME_BIRTH_INNOVATION_COLLAPSES)
+                    self.ledger.bump(_prime_keys.PRIME_BIRTH_INNOVATION_STAGES, d - cut)
+                    result = core - lost
                 elif (
                     d >= 5
                     and (ordered_result := self._ordered_cyclotomic_carry_rank(x, d))

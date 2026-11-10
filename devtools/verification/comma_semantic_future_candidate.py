@@ -736,7 +736,7 @@ def render_candidate_data_theory(
     )
     return (
         "theory Comma_Semantic_Future_Candidate_Data\n"
-        "  imports Comma_Semantic_B1_Instance.Comma_Semantic_Summary_Instance\n"
+        "  imports Comma_Semantic_Graph_Instance.Comma_Semantic_Summary_Instance\n"
         "begin\n\n"
         "text \\<open>Untrusted, source-derived Moore candidate data.  The concrete\n"
         "semantic provider and the rank-row checker validate this map before\n"

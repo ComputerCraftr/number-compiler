@@ -778,6 +778,49 @@ proof -
   show ?thesis using residue left right by simp
 qed
 
+text \<open>The same admitted two-odd return induces multiplication by four on
+the centered mod-7 phase. This establishes the three-step return of that
+projection; it does not make the phase period a physical repetition guard.\<close>
+
+lemma collatz_6305_zero_tail_mod7:
+  assumes admitted: "collatz_guarded_normalized_word_admitted
+    (collatz_6305_return_word 0) x"
+  shows "(collatz_guarded_normalized_word_endpoint
+    (collatz_6305_return_word 0) x + 1) mod 7 = (4*(x+1)) mod 7"
+proof -
+  let ?y = "collatz_guarded_normalized_word_endpoint
+    (collatz_6305_return_word 0) x"
+  have equation: "4*(?y+1) = 9*(x+1)"
+    by (rule collatz_6305_zero_tail_shifted_endpoint[OF admitted])
+  have scaled: "8*(?y+1) = 18*(x+1)"
+  proof -
+    have "2*(4*(?y+1)) = 2*(9*(x+1))"
+      by (rule arg_cong[OF equation, where f="\<lambda>z. 2*z"])
+    then show ?thesis by (simp add: algebra_simps)
+  qed
+  have residue: "(8*(?y+1)) mod 7 = (18*(x+1)) mod 7"
+    by (rule arg_cong[OF scaled])
+  have left:
+    "(8*(?y+1)) mod 7 = ((8 mod 7)*(?y+1)) mod 7"
+    by (rule mod_mult_left_eq[symmetric])
+  have right:
+    "(18*(x+1)) mod 7 = ((18 mod 7)*(x+1)) mod 7"
+    by (rule mod_mult_left_eq[symmetric])
+  show ?thesis using residue left right by simp
+qed
+
+lemma collatz_6305_shifted_mod7_clock:
+  "((4::nat)^(k+3)*z) mod 7 = (4^k*z) mod 7"
+proof -
+  have period: "(4::nat)^3 mod 7 = 1" by simp
+  have "(4^(k+3)*z) mod 7 = (4^3*(4^k*z)) mod 7"
+    by (simp add: power_add mult.commute mult.left_commute mult.assoc)
+  also have "... = ((4^3 mod 7)*(4^k*z)) mod 7"
+    by (rule mod_mult_left_eq[symmetric])
+  finally have "(4^(k+3)*z) mod 7 = ((4^3 mod 7)*(4^k*z)) mod 7" .
+  then show ?thesis using period by simp
+qed
+
 lemma collatz_6305_shifted_mod25_clock:
   "((21::nat)^(k+5)*z) mod 25 = (21^k*z) mod 25"
 proof -
@@ -806,6 +849,8 @@ ML \<open>
       collatz_6305_repeated_return_preserves_3_border
       collatz_6305_zero_tail_shifted_endpoint
       collatz_6305_zero_tail_mod25
+      collatz_6305_zero_tail_mod7
+      collatz_6305_shifted_mod7_clock
       collatz_6305_shifted_mod25_clock}) then ()
     else error "The powered 6305 endpoint cylinder depends on an oracle";
 \<close>

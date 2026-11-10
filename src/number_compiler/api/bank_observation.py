@@ -160,8 +160,27 @@ def reverse_bank_packet(
             },
             "scope": "one source-admitted successor; unresolved reflected carries stay conditional",
         }
+    residue = bank.residue99()
+    harmonic: dict[str, object] | None = None
+    if (
+        residue.duration >= 6
+        and residue.source_certified
+        and not residue.control_needed
+    ):
+        harmonic = {
+            "initial_pair": list(residue.binary_harmonic_phi3),
+            "transition_matrix": [[0, 1], [1, 1]],
+            "coefficient_field": "F2",
+            "clock_unit": "physical-ticks",
+            "period_divides": 3,
+            "scope": "mod-99 output projection; no digit or carry execution authority",
+        }
     return {
         "inward_harmonic_bank": inward,
+        "mod99_binary_harmonic_phi3": harmonic,
+        "source_carry_phi6": bank.action.owner.issued_carry_phi6_packet(
+            bank.action.source
+        ),
         "source_pair_width": bank.action.source.pair_width,
         "temporal_depth": bank.action.steps,
         "pair_start_lsd": bank.start,
@@ -181,7 +200,7 @@ def reverse_bank_packet(
         "walsh64_gt_high_mod5": (
             list(words["gt_high"].walsh64_mod5(0)) if bank.count >= 64 else None
         ),
-        "mod99": bank.residue99().target_mod99,
+        "mod99": residue.target_mod99,
         "complete_integer_certified": False,
         "scope": "protected source-owned output morphism; not a whole-root temporal power",
     }
@@ -331,6 +350,7 @@ def reverse_seed_orbit_packet(term: ReverseAddPoweredTerm) -> dict[str, object]:
 
     action = certified_completed_reverse_add_seed_morphism(term)
     first, last = action.first, action.last
+    counters = term.resource_ledger.counters
     return {
         "physical_interval": list(action.physical_interval),
         "duration": action.duration,
@@ -355,9 +375,13 @@ def reverse_seed_orbit_packet(term: ReverseAddPoweredTerm) -> dict[str, object]:
         "first_non9_from_upper": last.first_non9_from_upper,
         "q19_block_applications": action.q19_block_applications,
         "q19_physical_t2_actions_cumulative": (
-            term.resource_ledger.counters.get(
-                reverse_metrics.REVERSE_Q19_PUNCTURED_PHYSICAL_T2_ACTIONS, 0
-            )
+            counters.get(reverse_metrics.REVERSE_Q19_PUNCTURED_PHYSICAL_T2_ACTIONS, 0)
+        ),
+        "q19_broadword_semantic_steps_cumulative": counters.get(
+            reverse_metrics.REVERSE_Q19_BROADWORD_SEMANTIC_STEPS, 0
+        ),
+        "q19_broadword_endpoint_publications_cumulative": counters.get(
+            reverse_metrics.REVERSE_Q19_BROADWORD_ENDPOINT_PUBLICATIONS, 0
         ),
         "terminal_occurrence_reused": action.terminal_occurrence_reused,
         "temporal_square_operations": action.temporal_square_operations,

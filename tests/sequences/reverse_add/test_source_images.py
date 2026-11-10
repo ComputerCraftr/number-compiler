@@ -279,6 +279,26 @@ def test_small_decimal_composite_uses_authenticated_q19_occurrence(
     assert payload.pair_output.temporal_steps == steps
 
 
+def test_large_root_decimal_composite_uses_terminal_broadword_publication() -> None:
+    seed, steps = 196, 64
+    workspace = ReverseSourceImageWorkspace(ResourceLedger(), seed, steps)
+    try:
+        expected = literal_reverse_add_digits(seed, steps)
+        assert tuple(workspace.iter_digits()) == expected
+        counters = workspace.ledger.counters
+        assert counters["reverse_q19_broadword_semantic_steps"] == steps - 1
+        assert counters["reverse_q19_broadword_endpoint_publications"] == 1
+        assert counters.get("reverse_q19_primitive_pair_applications", 0) == 0
+        image = workspace.audit_snapshot().image
+        assert image is not None
+        payload = workspace.scheduler.source_image_core().view(image).payload
+        assert isinstance(payload, ReverseImagePayload)
+        assert payload.pair_output is not None
+        assert payload.pair_output.temporal_steps == steps
+    finally:
+        workspace.dispose()
+
+
 def test_completed_child_parent_join_never_recompiles_nonleaf_source(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

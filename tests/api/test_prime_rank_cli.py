@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 from typing import cast
 
 import pytest
@@ -12,6 +11,7 @@ from number_compiler.api.cli_requests import parse_request
 from number_compiler.api.cli_types import NoObservations, QueryRequest
 from number_compiler.api.number_api import NumberCompiler, ProjectedNumberTerm
 from number_compiler.api.query_types import PrimeTermQuery, TermQuery
+from number_compiler.sequences.prime.select import PrimeRankSelectMetrics
 
 pytestmark = pytest.mark.usefixtures("isolated_process_cache")
 
@@ -135,7 +135,7 @@ def test_prime_cli_reports_real_descriptor_work_without_parent_gaps(
 def test_prime_api_surfaces_rank_workspace_metrics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    report = SimpleNamespace(
+    report = PrimeRankSelectMetrics(
         block_compilations=5,
         projection_work=89,
         max_block_length=128,
@@ -162,6 +162,8 @@ def test_prime_api_surfaces_rank_workspace_metrics(
         scheduler_work=17,
         scheduler_allocations=23,
         scheduler_counters=(("source_image_primitive_applications", 3),),
+        innovation_collapses=4,
+        innovation_stages=18,
     )
 
     def select(
@@ -173,7 +175,7 @@ def test_prime_api_surfaces_rank_workspace_metrics(
         max_work: int = 1_000_000,
         max_stages: int = 4096,
         shared_cache: bool = False,
-    ) -> tuple[int, object]:
+    ) -> tuple[int, PrimeRankSelectMetrics]:
         assert (start, index, leaf_length) == (100, 3, 128)
         assert (max_states, max_work, max_stages) == (987, 876, 765)
         assert shared_cache is True
@@ -203,6 +205,8 @@ def test_prime_api_surfaces_rank_workspace_metrics(
     assert metrics.prime_peak_pending_frames == 13
     assert metrics.prime_retained_entries == 34
     assert metrics.prime_arithmetic_bit_work == 144
+    assert metrics.prime_birth_innovation_collapses == 4
+    assert metrics.prime_birth_innovation_stages == 18
     assert metrics.prime_parent_gap_positions_materialized == 0
     assert metrics.shared_cache_hits == 21
     assert metrics.shared_cache_misses == 13

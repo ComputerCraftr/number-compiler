@@ -2,7 +2,6 @@ theory Comma_Native_Boundary
   imports Comma_Native_Summary_Occurrence.Comma_Native_Summary_Occurrence
 begin
 
-ML_file "../comma_entry_arithmetic/Proof_Dependency_Audit.ML"
 
 ML \<open>
   structure Comma_Native_Boundary_Profile =

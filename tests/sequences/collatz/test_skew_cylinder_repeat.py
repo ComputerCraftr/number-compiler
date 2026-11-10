@@ -15,6 +15,7 @@ from number_compiler.arithmetic.fields.homogeneous_growth import (
     GrowthArithmeticEvaluator,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as collatz_keys
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
 from number_compiler.sequences.collatz.border_identity import (
     ENTRY_89_AT_NINE,
@@ -33,6 +34,9 @@ from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
 )
 from number_compiler.sequences.collatz.guarded_skew_power import (
     GuardedSkewCylinderPower,
+)
+from number_compiler.sequences.collatz.innovation_input_tape import (
+    ParityProgramBuilder,
 )
 from number_compiler.sequences.collatz.radial_boundary_coupling import (
     CollatzRadialBoundarySeam,
@@ -265,8 +269,7 @@ def test_repeat_cylinder_requires_its_issuer_at_power_admission() -> None:
         )
 
 
-def test_unified_chain_rejects_copied_or_mutated_repeat_cylinder() -> None:
-    ledger = ResourceLedger()
+def _multifactor_chain(ledger: ResourceLedger) -> UnifiedSkewChain:
     with BoundaryActionTemplateMemo(ledger) as templates:
         chain = select_unified_skew_chain(
             77,
@@ -277,7 +280,14 @@ def test_unified_chain_rejects_copied_or_mutated_repeat_cylinder() -> None:
             include_quadratic_clock=False,
         )
     assert chain is not None and chain.repeat_cylinder is not None
+    return chain
+
+
+def test_unified_chain_rejects_copied_or_mutated_repeat_cylinder() -> None:
+    ledger = ResourceLedger()
+    chain = _multifactor_chain(ledger)
     cylinder = chain.repeat_cylinder
+    assert cylinder is not None
     copied = copy(cylinder)
     with pytest.raises(ValueError, match="cylinder seal"):
         _issue_unified_chain(
@@ -297,6 +307,182 @@ def test_unified_chain_rejects_copied_or_mutated_repeat_cylinder() -> None:
     object.__setattr__(cylinder, "remaining_repetitions", None)
     with pytest.raises(ValueError, match="cylinder seal"):
         chain.verify()
+
+
+def test_repeated_unified_grammar_preserves_multifactor_chronology_and_guards() -> None:
+    ledger = ResourceLedger()
+    chain = _multifactor_chain(ledger)
+    assert len(chain.factors) > 1
+    power = GuardedSkewCylinderPower.from_chain(
+        chain,
+        2,
+        preflight=lambda _bits: None,
+    )
+    motif = tuple(
+        bit
+        for bits, repetitions in chain.factors
+        for _ in range(repetitions)
+        for bit in bits
+    )
+    expected_word = motif * power.repetitions
+
+    def literal_endpoint(source: int, word: tuple[int, ...]) -> int:
+        value = source
+        for bit in word:
+            assert value & 1 == bit
+            value = (3 * value + 1) // 2 if bit else value // 2
+        return value
+
+    expected_endpoint = literal_endpoint(chain.source, expected_word)
+    powered_action = power.action.power(power.repetitions)
+    assert expected_endpoint == powered_action.endpoint(chain.source)
+    composition_operand_bits: list[int] = []
+    endpoint_calls = 0
+    power_calls = 0
+    original_endpoint = DyadicTerminalFieldAction.endpoint
+    original_power = DyadicTerminalFieldAction.power
+    source_operand_bits_before = ledger.counters.get(
+        collatz_keys.COLLATZ_INNOVATION_SOURCE_OPERAND_BITS, 0
+    )
+    compositions_before = ledger.counters.get(
+        collatz_keys.COLLATZ_FIELD_ACTION_COMPOSITIONS, 0
+    )
+
+    def counted_endpoint(action: DyadicTerminalFieldAction, source: int) -> int:
+        nonlocal endpoint_calls
+        endpoint_calls += 1
+        return original_endpoint(action, source)
+
+    def counted_power(
+        action: DyadicTerminalFieldAction,
+        repetitions: int,
+        *,
+        on_compose: Callable[
+            [DyadicTerminalFieldAction, DyadicTerminalFieldAction], None
+        ]
+        | None = None,
+    ) -> DyadicTerminalFieldAction:
+        nonlocal power_calls
+        power_calls += 1
+        if on_compose is None:
+            return original_power(action, repetitions)
+
+        def observe_composition(
+            first: DyadicTerminalFieldAction,
+            second: DyadicTerminalFieldAction,
+        ) -> None:
+            composition_operand_bits.append(
+                sum(
+                    value.bit_length()
+                    for value in (
+                        *first.coefficient_snapshot(),
+                        *second.coefficient_snapshot(),
+                    )
+                )
+            )
+            on_compose(first, second)
+
+        return original_power(
+            action,
+            repetitions,
+            on_compose=observe_composition,
+        )
+
+    with ParityProgramBuilder(chain.source, ledger) as refused_builder:
+        before_refused = refused_builder.issuance_snapshot()
+
+        def refuse_preflight(_bits: int) -> None:
+            raise MemoryError("repeated grammar preflight refused")
+
+        with (
+            patch.object(
+                DyadicTerminalFieldAction,
+                "power",
+                side_effect=AssertionError("preflight refusal reached power"),
+            ),
+            pytest.raises(MemoryError, match="preflight refused"),
+        ):
+            refused_builder.append_guarded_skew_repetitions(
+                chain,
+                power,
+                expected_endpoint,
+                preflight=refuse_preflight,
+            )
+        assert refused_builder.issuance_snapshot() == before_refused
+
+    with ParityProgramBuilder(chain.source, ledger) as builder:
+        with (
+            patch.object(DyadicTerminalFieldAction, "endpoint", counted_endpoint),
+            patch.object(DyadicTerminalFieldAction, "power", counted_power),
+        ):
+            builder.append_guarded_skew_repetitions(
+                chain,
+                power,
+                expected_endpoint,
+                preflight=lambda _bits: None,
+            )
+        snapshot = builder.issuance_snapshot()
+        emitted_word = tuple(
+            bit
+            for factor in snapshot.factors
+            for _ in range(factor.repetitions)
+            for bit in factor.motif
+        )
+        assert emitted_word == expected_word
+        assert snapshot.source == expected_endpoint
+        assert power_calls == 1
+        assert endpoint_calls == 1
+    expected_endpoint_operand_bits = 2 * (
+        chain.source.bit_length()
+        + powered_action.gain.bit_length()
+        + abs(powered_action.offset).bit_length()
+        + powered_action.steps
+        + 1
+    )
+    assert ledger.counters[collatz_keys.COLLATZ_INNOVATION_SOURCE_OPERAND_BITS] - (
+        source_operand_bits_before
+    ) == (
+        sum(composition_operand_bits)
+        + expected_endpoint_operand_bits
+        + chain.fields.steps
+    )
+    assert ledger.counters[collatz_keys.COLLATZ_FIELD_ACTION_COMPOSITIONS] - (
+        compositions_before
+    ) == len(composition_operand_bits)
+    assert ledger.entries == ledger.nodes == 0
+
+    with ParityProgramBuilder(chain.source, ledger) as wrong_endpoint_builder:
+        before_wrong_endpoint = wrong_endpoint_builder.issuance_snapshot()
+        with pytest.raises(ValueError, match="endpoint differs"):
+            wrong_endpoint_builder.append_guarded_skew_repetitions(
+                chain,
+                power,
+                expected_endpoint + 1,
+                preflight=lambda _bits: None,
+            )
+        assert wrong_endpoint_builder.issuance_snapshot() == before_wrong_endpoint
+    assert ledger.entries == ledger.nodes == 0
+
+    object.__setattr__(power, "source", power.source + 1)
+    try:
+        with ParityProgramBuilder(chain.source, ledger) as forged_builder:
+            with (
+                patch.object(
+                    DyadicTerminalFieldAction,
+                    "power",
+                    side_effect=AssertionError("forged guard reached action power"),
+                ),
+                pytest.raises(ValueError, match="seal is invalid"),
+            ):
+                forged_builder.append_guarded_skew_repetitions(
+                    chain,
+                    power,
+                    expected_endpoint,
+                    preflight=lambda _bits: None,
+                )
+    finally:
+        object.__setattr__(power, "source", chain.source)
+    assert ledger.entries == ledger.nodes == 0
 
 
 def test_repeated_parity_word_does_not_extend_named_family_guard() -> None:

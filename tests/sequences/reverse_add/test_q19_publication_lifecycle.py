@@ -99,11 +99,14 @@ def test_issued_occurrence_rejects_mutated_public_metadata_without_refolding(
 ) -> None:
     workspace, owner = _q19_workspace()
     occurrence = owner.initial
+    candidate = replace(occurrence)
 
     def forbidden_refold(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("issued-handle validation refolded the Q19 grammar")
 
     monkeypatch.setattr(ReversePairQ19OutputOwner, "_full_summary", forbidden_refold)
+    assert owner.publish(occurrence) is occurrence
+    assert owner.publish(candidate) is occurrence
     owner.validate_issued_occurrence(occurrence)
     object.__setattr__(occurrence, "pair_width", occurrence.pair_width - 1)
     with pytest.raises(ValueError, match="metadata was altered"):

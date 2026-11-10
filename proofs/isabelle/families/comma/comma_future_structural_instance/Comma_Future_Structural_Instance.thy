@@ -11,7 +11,6 @@ certified one-step decade summary.  No 28-round boundary replay occurs here.
 The numeric rank payload is only a well-founded measure.
 \<close>
 
-ML_file "../comma_entry_arithmetic/selected_list_conversion.ML"
 ML_file "../comma_future_rank_data/rank_table_lookup.ML"
 ML_file "future_structural_check.ML"
 
@@ -31,7 +30,7 @@ local_setup \<open>fn lthy =>
            (("mid",0), Thm.cterm_of lthy (nat mid)),
            (("hi",0), Thm.cterm_of lthy (nat hi))]
           @{thm comma_future_descent_phase_range_join}
-        val context = Comma_Entry_Arithmetic.natural_context lthy addsimps [left,right]
+        val context = Comma_Entry_Arithmetic.natural_context lthy |> Simplifier.add_simps [left,right]
         val result = Simplifier.simplify context rule
       in (lo,hi,result) end
     fun reduce [item] = item
@@ -41,7 +40,7 @@ local_setup \<open>fn lthy =>
           in reduce (pairs items) end
     val (_,_,checked_range) = reduce (map certify (0 upto 923))
     val full = Simplifier.simplify
-      (Comma_Entry_Arithmetic.natural_context lthy addsimps [checked_range])
+      (Comma_Entry_Arithmetic.natural_context lthy |> Simplifier.add_simps [checked_range])
       @{thm comma_future_descent_phase_range_full}
     val expected = @{prop "comma_future_descent_check
       comma_decade_rank_candidate_on_valid comma_decade_terminal_candidate_on_valid comma_rank_candidate_on_valid"}

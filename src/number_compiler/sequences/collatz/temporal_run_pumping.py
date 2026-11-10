@@ -5,9 +5,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
+from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.sequences.collatz.border_harmonic_ring import (
+    ZeroTailFreeBorderRing,
+)
 from number_compiler.sequences.collatz.joint_temporal_action import (
     CollatzJointTemporalBuilder,
 )
@@ -39,6 +43,14 @@ if TYPE_CHECKING:
         CollatzDyadicMacros,
     )
     from number_compiler.sequences.collatz.temporal_run_state import CollatzRunControl
+
+
+def _post_run_phase(control: CollatzRunControl) -> int:
+    """Read and validate the phase published by the mutating run producer."""
+    phase = control.phase
+    if phase not in (0, 1):
+        raise AssertionError("harmonic scalar path left the normalized phase contract")
+    return phase
 
 
 def pump_normalized_ones(
@@ -129,6 +141,133 @@ def pump_normalized_one_cycle(
         ),
         repetitions,
     )
+
+
+def try_consume_joint_harmonic_band(
+    control: CollatzRunControl,
+    *,
+    seed: int,
+    control_bits: int,
+    ledger: ResourceLedger,
+    scratch: RunArithmeticWorkspace,
+    width_spine: CollatzWidthSpineAccumulator,
+    joint_builder: CollatzJointTemporalBuilder,
+    parity_builder: ParityProgramBuilder | None,
+    macros: CollatzDyadicMacros | None,
+    require_mixed_prefix: bool,
+) -> bool:
+    """Consume one admitted odd-prefix band and any represented even exit.
+
+    The exact homogeneous-run producer owns endpoint, clocks, scratch and
+    ledger effects. The pointed quotient only checks its normalized cuts;
+    rich observers and incomplete publication requests keep their existing
+    routes. A partial final physical half-step remains the exact producer's
+    output; the quotient checks the normalized cut immediately before it.
+    """
+    source = control.current
+    if (
+        control.phase != 0
+        or control.remaining < 32
+        or (source.bit_length() < 32 and source % 10 != 3)
+        or (source & 3) != 3
+        or (source % 10 != 3 and source % 6 != 5)
+        or control.joint_requested
+        or control.include_innovation_tape
+        or control.normalized_f5 is not None
+        or control.physical_f5 is not None
+        or width_spine.requested
+        or parity_builder is not None
+        or macros is not None
+        or require_mixed_prefix
+        or control.first_boundary_stamp is not None
+    ):
+        return False
+
+    from number_compiler.sequences.collatz.joint_harmonic_band import (
+        TWO_ODD_HARMONIC_BAND,
+    )
+
+    if source % 10 == 3 and source % 6 != 5:
+        ring = ZeroTailFreeBorderRing.from_source(source)
+        pointed = ring.pointed_harmonic_band()
+    else:
+        pointed = TWO_ODD_HARMONIC_BAND.point(source)
+    if pointed is None or pointed.v2_center < 16:
+        return False
+
+    before_normalized = control.normalized
+    consume_homogeneous_run(
+        control,
+        seed=seed,
+        available=pointed.v2_center,
+        control_bits=control_bits,
+        include_joint_cocycle=False,
+        ledger=ledger,
+        scratch=scratch,
+        width_spine=width_spine,
+        joint_builder=joint_builder,
+        parity_builder=None,
+        macros=None,
+    )
+    completed = control.normalized - before_normalized
+    if completed <= 0 or completed > pointed.v2_center:
+        raise AssertionError("joint harmonic run exceeded its source cylinder")
+
+    phase = _post_run_phase(control)
+    normalized_endpoint = control.current
+    if phase == 1:
+        # The executor consumed one raw 3n+1 half-step after the last
+        # normalized cut. Validate the quotient at that exact cut; the final
+        # raw endpoint remains owned by the homogeneous-run producer.
+        pending_normalized_endpoint = control.pending_normalized_source
+        if pending_normalized_endpoint is None:
+            raise AssertionError("pending odd half-step lost its normalized source")
+        normalized_endpoint = pending_normalized_endpoint
+    xor_next, border, phase7, phase25, _harmonic9 = pointed.odd_prefix_ports(completed)
+    has_five_band = pointed.base6_five_band_after_odd_steps(completed) > 0
+    if (
+        normalized_endpoint & 1 != xor_next
+        or normalized_endpoint % 10 != border
+        or (normalized_endpoint + 1) % 7 != phase7
+        or (normalized_endpoint + 1) % 25 != phase25
+        or ((normalized_endpoint + 1) % 6 == 0) != has_five_band
+    ):
+        raise AssertionError(
+            "joint XOR/cyclotomic/base-6 ports lost the issued endpoint"
+        )
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_JOINT_XOR_FIVE_PORT_CHECKS)
+    if completed % 2 == 0:
+        blocks = completed // 2
+        period = pointed.joint_cyclotomic_period(2)
+        if blocks and blocks % period == 0:
+            if phase7 != pointed.phase7 or phase25 != pointed.phase25:
+                raise AssertionError("joint harmonic return lost its 5-adic lift")
+            ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_JOINT_FIVE_RETURN_CERTS)
+    if phase == 0 and xor_next == 0 and control.remaining > 0:
+        even_run = v2_positive(control.current)
+        consume_homogeneous_run(
+            control,
+            seed=seed,
+            available=even_run,
+            control_bits=control_bits,
+            include_joint_cocycle=False,
+            ledger=ledger,
+            scratch=scratch,
+            width_spine=width_spine,
+            joint_builder=joint_builder,
+            parity_builder=None,
+            macros=None,
+        )
+        ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_JOINT_HARMONIC_EXIT_JOINS)
+    control.weighted_binding = None
+    control.weighted_cursor_source = None
+    control.restart_width_segment(width_spine)
+    ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_JOINT_HARMONIC_BAND_PUMPS)
+    ledger.bump(
+        _collatz_keys.COLLATZ_PHYSICAL_TEMPORAL_JOINT_HARMONIC_BAND_SYMBOLS,
+        completed,
+    )
+    return True
 
 
 def consume_homogeneous_run(

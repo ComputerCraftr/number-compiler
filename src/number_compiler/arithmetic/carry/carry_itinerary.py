@@ -26,9 +26,10 @@ from math import comb, gcd
 from number_compiler.arithmetic.carry.event_memory import (
     carry_field,
     event_memory_horizon,
+    fold_forcing_events,
     forcing_event_from_carry,
+    forcing_image_from_certified_carry_suffix,
     pair_plane_bits,
-    reconstruct_pair_from_carry_window,
 )
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.arithmetic.polynomials.cyclotomic import is_power_of_two
@@ -462,35 +463,12 @@ def reconstruct_pair_from_live_event_suffix(
     Unlike ``reconstruct_pair_from_event_window`` this accepts fewer than H
     rows.  Its precondition is semantic: every omitted older event/source
     contribution has already been proved dead modulo ``2**w``.  The
-    ``LiveCarryItinerary`` constructor below establishes that certificate from
-    one ordinary H-row seed and preserves it under every advance.
+    ``LiveCarryItinerary`` takes a source-admitted H-row seed and preserves
+    that premise under every advance. Numeric shape checks do not authenticate
+    a freely fabricated source history.
     """
-    rows = tuple(tuple(map(int, row)) for row in events)
-    if not rows or any(not row for row in rows):
-        raise ValueError("nonempty certified event suffix required")
-    widths = tuple(len(row) for row in rows)
-    growths = tuple(b - a for a, b in itertools.pairwise(widths))
-    if any(g not in (0, 1) for g in growths):
-        raise ValueError("invalid event-width schedule")
-    modulus = 1 << pair_plane_bits(base)
-    target_width = widths[-1]
-    out = [0] * target_width
-    updates = 0
-    try:
-        for j, event in enumerate(rows):
-            tail = growths[j:]
-            r = sum(tail)
-            q = len(tail) - r
-            scale = pow(2, q, modulus)
-            for i, value in enumerate(event):
-                for k in range(r + 1):
-                    out[i + k] = (out[i + k] + value * scale * comb(r, k)) % modulus
-                    updates += 1
-    finally:
-        if record_updates is not None:
-            record_updates(updates)
+    result = fold_forcing_events(events, base=base, record_updates=record_updates)
     pair_max = 2 * (int(base) - 1)
-    result = tuple(out)
     if any(not 0 <= value <= pair_max for value in result) or result != result[::-1]:
         raise ValueError("suffix is not a valid certified pair itinerary")
     return result
@@ -502,9 +480,10 @@ class LiveCarryItinerary:
 
     This is research/compiler data, never a second semantic root.  It exists to
     test whether the fixed H-row theorem can be represented by its actually
-    live temporal suffix.  ``seed`` needs one ordinary H-row carry window;
-    ``advance`` then maintains the certificate without recovering discarded
-    rows.
+    live temporal suffix.  ``seed`` accepts a contiguous prefix once its own
+    no-growth rows prove source erasure; the universal H-row bound remains an
+    upper bound. ``advance`` maintains the certificate without recovering
+    discarded rows.
     """
 
     base: int
@@ -512,27 +491,50 @@ class LiveCarryItinerary:
     dropped_rows: int = 0
 
     def __post_init__(self) -> None:
+        if type(self.base) is not int:
+            raise TypeError("base must be an exact integer")
+        if type(self.carries) is not tuple or any(
+            type(row) is not tuple for row in self.carries
+        ):
+            raise TypeError("carry suffix must use immutable tuple rows")
+        if type(self.dropped_rows) is not int or self.dropped_rows < 0:
+            raise ValueError("dropped row count must be a nonnegative exact integer")
         if self.base < 3 or not self.carries:
             raise ValueError((self.base, len(self.carries)))
+        if any(type(bit) is not int for row in self.carries for bit in row):
+            raise TypeError("carry bits must be exact integers")
         if any(
             not row or row[0] != 0 or any(v not in (0, 1) for v in row)
             for row in self.carries
         ):
             raise ValueError("invalid carry suffix")
+        if any(
+            len(later) - len(earlier) != earlier[-1]
+            for earlier, later in itertools.pairwise(self.carries)
+        ):
+            raise ValueError("carry suffix has inconsistent consecutive widths")
 
     @classmethod
     def seed(
         cls, carries: Sequence[Sequence[int]], *, base: int = 10
     ) -> LiveCarryItinerary:
-        rows = tuple(tuple(map(int, row)) for row in carries)
+        if type(base) is not int:
+            raise TypeError("base must be an exact integer")
+        rows = tuple(tuple(row) for row in carries)
+        if any(type(bit) is not int for row in rows for bit in row):
+            raise TypeError("carry bits must be exact integers")
         horizon = event_memory_horizon(base)
-        if len(rows) != horizon:
-            raise ValueError(f"seed requires exactly {horizon} carry rows")
-        full_pair = reconstruct_pair_from_carry_window(rows, base=base)
+        if not 1 <= len(rows) <= horizon:
+            raise ValueError(f"seed requires 1..{horizon} carry rows")
+        if not rows or not rows[0]:
+            raise ValueError("nonempty carry rows required")
+        full_pair = forcing_image_from_certified_carry_suffix(
+            rows, source_width=len(rows[0]) - 1, base=base
+        )
         events = tuple(forcing_event_from_carry(row, base=base) for row in rows)
         start = live_event_suffix_start(events, base=base)
         live = rows[start:]
-        obj = cls(int(base), live, start)
+        obj = cls(base, live, start)
         if obj.pair != full_pair:
             raise AssertionError("live suffix failed seed equivalence")
         return obj

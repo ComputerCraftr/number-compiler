@@ -48,6 +48,28 @@ class ReverseAddResidue99:
     def target_mod11(self) -> int:
         return self.target_mod99 % 11
 
+    @property
+    def binary_harmonic_phi3(self) -> tuple[int, int]:
+        """Exact F2 third-cyclotomic *output* of the physical mod-99 clock.
+
+        The physical reverse/add modulus-99 value doubles after the universal
+        six-tick 11-divisibility collapse.  Its six phase values are encoded
+        as seven-bit vectors, NOT as decimal addition-carry bits.  Writing
+        S for one physical time shift and XOR for F2 addition, this returns
+        the first two values of Z=(S+1)(S**3+1)R, so the next pair is
+        (Z[n+1], Z[n] XOR Z[n+1]); the matrix [[0,1],[1,1]] has order 3.
+
+        This is a certified *output projection*, not a Moore state for
+        future source digits, growth or the independent carry/F5 ports.
+        """
+        if self.duration < 6 or not self.source_certified or self.control_needed:
+            raise ValueError("binary harmonic needs the certified six-tick mod-99 ray")
+        phases = [self.target_mod99]
+        for _ in range(5):
+            phases.append(2 * phases[-1] % 99)
+        a, b, c, d, e, f = phases
+        return (a ^ b ^ d ^ e, b ^ c ^ e ^ f)
+
 
 def _check_duration(duration: int) -> None:
     if type(duration) is not int or duration < 0:

@@ -1,5 +1,6 @@
 theory Comma_Semantic_Future_Candidate_Provider_Closure
   imports Comma_Semantic_Future_Instance
+    Comma_Semantic_Future_Candidate_Bridge
 begin
 
 text \<open>
@@ -160,7 +161,7 @@ proof -
     have target_bounds: "2\<le>target \<and> target\<le>9"
       using control_exact terminal Comma_Future_Fork
       by (auto simp: comma_semantic_future_control_of_terminal_position_def
-          split: if_splits; omega)
+          split: if_splits; arith)
     let ?phase = "(snd (snd q)+delta) mod 924"
     have north_valid: "comma_boundary_valid (Comma_N,target,?phase)"
       using target_bounds target_phase

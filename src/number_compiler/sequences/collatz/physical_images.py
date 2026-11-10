@@ -40,24 +40,16 @@ from number_compiler.resources.payload_contracts import (
     PayloadAuditStoreBinding,
     register_payload_audit_contract,
 )
-from number_compiler.sequences.collatz.border_return_grammar import (
-    BorderReturnMacro,
-)
-from number_compiler.sequences.collatz.boundary_macros import (
-    CollatzBoundaryMacro,
-)
-from number_compiler.sequences.collatz.innovation_port_moore import (
-    InnovationTapeObservation,
-)
-from number_compiler.sequences.collatz.joint_temporal_action import (
-    CollatzJointRunAction,
-)
 from number_compiler.sequences.collatz.physical_image_publication import (
     BOUNDARY_MACRO_PORT,
     INNOVATION_TAPE_PORT,
     JOINT_COCYCLE_PORT,
     TAPE_WIDTH_PORT,
     CollatzPhysicalImagePublication,
+    collatz_cycle_width_summary,
+    collatz_joint_action_from_payload,
+    is_collatz_tape_width_summary,
+    is_issued_collatz_innovation_observation,
     joint_action_node_cost,
 )
 
@@ -65,6 +57,19 @@ if TYPE_CHECKING:
     from number_compiler.projection.microblock_cache import (
         MicroblockCacheAuditSnapshot,
     )
+    from number_compiler.sequences.collatz.border_return_grammar import (
+        BorderReturnMacro,
+    )
+    from number_compiler.sequences.collatz.boundary_macros import (
+        CollatzBoundaryMacro,
+    )
+    from number_compiler.sequences.collatz.innovation_port_moore import (
+        InnovationTapeObservation,
+    )
+    from number_compiler.sequences.collatz.joint_temporal_action import (
+        CollatzJointRunAction,
+    )
+    from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
     from number_compiler.sequences.collatz.temporal_source_morphism import (
         CertifiedCollatzRootMorphism,
     )
@@ -72,10 +77,6 @@ from number_compiler.sequences.collatz.physical_boundary_route import (
     exact_source_bit_length,
     has_admitted_boundary_macro,
     release_d8_rows_if_unleased,
-)
-from number_compiler.sequences.collatz.tape_width import (
-    CollatzTapeWidthSummary,
-    cycle_width_summary,
 )
 
 COLLATZ_PHYSICAL_SEMANTIC_VERSION: Final[str] = (
@@ -185,7 +186,7 @@ class CollatzPhysicalImageWorkspace(
                 )
             return PayloadAuditContribution()
         try:
-            retained = CollatzJointRunAction.from_admitted_root_payload(
+            retained = collatz_joint_action_from_payload(
                 self._joint_action_snapshot, action
             )
             if retained.source != self.seed or retained.physical_ticks != self.steps:
@@ -342,7 +343,7 @@ class CollatzPhysicalImageWorkspace(
         for port in view.binding.boundary_ports:
             if type(port) is tuple and len(port) == 2 and port[0] == TAPE_WIDTH_PORT:
                 summary = port[1]
-                if type(summary) is not CollatzTapeWidthSummary:
+                if not is_collatz_tape_width_summary(summary):
                     raise ValueError("Collatz width publication has another sort")
                 summaries.append(summary)
         if len(summaries) > 1:
@@ -365,7 +366,7 @@ class CollatzPhysicalImageWorkspace(
         view = self.scheduler.source_image_view(self, self.root_image)
         payload = self._joint_action_payload(view)
         try:
-            return CollatzJointRunAction.from_admitted_root_payload(
+            return collatz_joint_action_from_payload(
                 payload, self._retained_joint_action()
             )
         except (TypeError, ValueError) as error:
@@ -489,8 +490,7 @@ class CollatzPhysicalImageWorkspace(
             raise ValueError("Collatz innovation publication has another root handle")
         observation = self._retained_innovation_observation()
         if (
-            type(observation) is not InnovationTapeObservation
-            or not observation.producer_issued
+            not is_issued_collatz_innovation_observation(observation)
             or not typed_payload_equal(
                 observation.structural_payload(),
                 self._innovation_observation_snapshot,
@@ -516,7 +516,7 @@ class CollatzPhysicalImageWorkspace(
             raise ValueError("Collatz root morphism belongs to another image")
         payload = self._joint_action_payload(view)
         try:
-            joint = CollatzJointRunAction.from_admitted_root_payload(
+            joint = collatz_joint_action_from_payload(
                 payload, self._retained_joint_action()
             )
         except (TypeError, ValueError) as error:
@@ -708,7 +708,7 @@ class CollatzPhysicalImageWorkspace(
         if type(action) is not DyadicReturnActionID:
             raise TypeError("pinned Collatz cycle requires an action ID")
         if self._include_width_spine:
-            summary = cycle_width_summary(
+            summary = collatz_cycle_width_summary(
                 self.ledger, ports[3], self.action_node(action).width
             )
             return self._attach_tape_width_summary(candidate, summary)

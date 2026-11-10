@@ -27,8 +27,7 @@ reverse/add has an exact order-20 nonlinear recurrence on binary carry fields.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Sequence
-from math import comb
+from collections.abc import Callable, Iterable, Sequence
 
 from number_compiler.arithmetic.formula.skew_residue_laws import (
     pair_growth_edge,
@@ -234,49 +233,137 @@ def endpoint_width_from_event_window(events: Sequence[Sequence[int]]) -> int:
     return len(events[-1])
 
 
-def _transport_event(
-    event: Sequence[int], *, growths_after_birth: Sequence[int], modulus: int
+def fold_forcing_events(
+    events: Sequence[Sequence[int]],
+    *,
+    base: int = 10,
+    record_updates: Callable[[int], None] | None = None,
 ) -> tuple[int, ...]:
-    event = tuple(map(int, event))
-    growths = tuple(map(int, growths_after_birth))
-    if any(g not in (0, 1) for g in growths):
-        raise ValueError(growths)
-    r = sum(growths)
-    q = len(growths) - r
-    scalar = pow(2, q, modulus)
-    kernel = tuple((scalar * comb(r, m)) % modulus for m in range(r + 1))
-    out = [0] * (len(event) + r)
-    for i, value in enumerate(event):
-        value %= modulus
-        for m, coefficient in enumerate(kernel):
-            out[i + m] = (out[i + m] + value * coefficient) % modulus
-    return tuple(out)
+    """Fold a finite chronological forcing word with zero initial field.
+
+    This is polynomial arithmetic, not trajectory admission. Recovering a
+    physical endpoint additionally requires a source-bound proof that the
+    omitted homogeneous contribution vanishes. Updates count evaluated
+    coefficient cells, including initialization, rather than logical Green
+    convolution terms.
+    """
+    rows = tuple(tuple(map(int, event)) for event in events)
+    if not rows:
+        raise ValueError("a forcing fold requires nonempty event rows")
+    later_growths = growths_from_event_widths(rows)
+    modulus = 1 << pair_plane_bits(base)
+    # Horner evaluation of the same chronological operator product. Each
+    # event E_j is added after the transition whose growth is encoded by the
+    # width change from E_(j-1) to E_j. This avoids rebuilding binomial
+    # kernels and convolving every historical event separately.
+    updates = 0
+    out: list[int] = []
+    try:
+        for value in rows[0]:
+            out.append(value % modulus)
+            updates += 1
+        for growth, event in zip(later_growths, rows[1:], strict=True):
+            prior = out
+            out = []
+            if growth:
+                out.append((prior[0] + event[0]) % modulus)
+                updates += 1
+                for i in range(1, len(prior)):
+                    out.append((prior[i] + prior[i - 1] + event[i]) % modulus)
+                    updates += 1
+                out.append((prior[-1] + event[-1]) % modulus)
+                updates += 1
+            else:
+                for value, addend in zip(prior, event, strict=True):
+                    out.append((2 * value + addend) % modulus)
+                    updates += 1
+        return tuple(out)
+    finally:
+        if record_updates is not None:
+            record_updates(updates)
+
+
+def _exact_carry_rows(carries: Iterable[Sequence[int]]) -> tuple[tuple[int, ...], ...]:
+    """Freeze a carry witness without accepting bools or numeric coercions."""
+    rows = tuple(tuple(row) for row in carries)
+    if any(type(bit) is not int for row in rows for bit in row):
+        raise TypeError("carry bits must be exact integers")
+    return rows
+
+
+def forcing_image_from_certified_carry_suffix(
+    carries: Iterable[Sequence[int]], *, source_width: int, base: int = 10
+) -> tuple[int, ...]:
+    """Recover a pair field after its omitted source is killed by quiet steps.
+
+    The caller must authenticate a contiguous source-issued interval beginning
+    at ``source_width`` coefficients. This arithmetic helper checks width
+    continuity through each final carry bit; it does not issue authority.
+    A nongrowth row multiplies the old
+    polynomial by two; a growth row multiplies it by ``1 + z``.  Once the
+    interval contains ``pair_plane_bits(base)`` nongrowths, the initial field
+    vanishes modulo the coefficient modulus and the shared Horner fold is the
+    exact endpoint forcing image.
+
+    This finite witness does not infer future carries or authorize a temporal
+    repetition.  Fewer quiet steps fail closed; there is no H-row fallback.
+    """
+    if type(source_width) is not int or source_width < 1:
+        raise ValueError("positive exact initial coefficient width required")
+    if type(base) is not int:
+        raise TypeError("base must be an exact integer")
+    bits = pair_plane_bits(base)
+    rows = _exact_carry_rows(carries)
+    if not rows:
+        raise ValueError("nonempty certified carry suffix required")
+
+    width = source_width
+    quiet = 0
+    events: list[tuple[int, ...]] = []
+    for row in rows:
+        if not row or row[0] != 0 or any(bit not in (0, 1) for bit in row):
+            raise ValueError("invalid forward carry geometry")
+        if len(row) != width + 1:
+            raise ValueError("carry suffix has inconsistent consecutive widths")
+        growth = row[-1]
+        event = forcing_event_from_carry(row, base=base)
+        expected_width = width + growth
+        if len(event) != expected_width:
+            raise AssertionError("signed forcing has incorrect growth geometry")
+        events.append(event)
+        quiet += 1 - growth
+        width = expected_width
+
+    if quiet < bits:
+        raise ValueError("carry suffix has not annihilated its unknown source")
+    image = fold_forcing_events(events, base=base)
+    pair_max = 2 * (base - 1)
+    if image != image[::-1] or any(not 0 <= value <= pair_max for value in image):
+        raise ValueError("certified suffix does not reconstruct a canonical pair field")
+    return image
 
 
 def reconstruct_pair_from_event_window(
     events: Sequence[Sequence[int]], *, base: int = 10
 ) -> tuple[int, ...]:
-    """Reconstruct the exact endpoint pair field from the previous H events."""
+    """Recover an endpoint from H source-admitted events.
+
+    Row shape and output-range checks alone do not authenticate a trajectory
+    or prove its homogeneous-source erasure premise. This compiler/test
+    helper must not issue production source authority.
+    """
     base = int(base)
     horizon = event_memory_horizon(base)
     rows = tuple(tuple(map(int, event)) for event in events)
     if len(rows) != horizon:
         raise ValueError(f"expected exactly {horizon} event fields, got {len(rows)}")
-    later_growths = growths_from_event_widths(rows)
-    modulus = 1 << pair_plane_bits(base)
     target_width = endpoint_width_from_event_window(rows)
-    out = [0] * target_width
-    for j, event in enumerate(rows):
-        tail = later_growths[j:]
-        transported = _transport_event(event, growths_after_birth=tail, modulus=modulus)
-        if len(transported) != target_width:
-            raise AssertionError((j, len(transported), target_width))
-        for i, value in enumerate(transported):
-            out[i] = (out[i] + value) % modulus
+    result = fold_forcing_events(rows, base=base)
+    if len(result) != target_width:
+        raise AssertionError((len(result), target_width))
     pair_max = 2 * (base - 1)
-    if any(value > pair_max for value in out):
+    if any(value > pair_max for value in result):
         raise ValueError("event window is not a valid canonical pair trajectory window")
-    result = tuple(out)
     if result != result[::-1]:
         raise ValueError("event window reconstructed a nonsymmetric pair field")
     return result
@@ -315,10 +402,12 @@ __all__ = [
     "carry_field",
     "endpoint_width_from_event_window",
     "event_memory_horizon",
+    "fold_forcing_events",
     "forcing_difference_alphabet",
     "forcing_event",
     "forcing_event_alphabet",
     "forcing_event_from_carry",
+    "forcing_image_from_certified_carry_suffix",
     "growths_from_event_widths",
     "next_carry_from_window",
     "next_event_from_window",

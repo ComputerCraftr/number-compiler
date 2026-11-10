@@ -123,19 +123,19 @@ struct
          short_periods = @{thms comma_compiled_short_period_facts},
          powers = @{thms comma_compiled_power_facts}}
       val step_ctxt = (put_simpset HOL_basic_ss ctxt
-        |> Simplifier.add_cong @{thm if_weak_cong}) addsimps
+        |> Simplifier.add_cong @{thm if_weak_cong}) |> Simplifier.add_simps
         @{thms comma_entry_control_formula comma_near_control_formula Let_def}
-      val headroom_ctxt = put_simpset HOL_basic_ss ctxt addsimps
+      val headroom_ctxt = put_simpset HOL_basic_ss ctxt |> Simplifier.add_simps
         @{thms comma_finite_headroom_def Let_def}
       (* Composition consumes proved germ equations only. Inheriting the global
          simpset here reopens arithmetic and source semantics for cached effects;
          numeral normalization and exact structural equations are sufficient. *)
-      val composition_ctxt = numeral_ctxt addsimps
+      val composition_ctxt = numeral_ctxt |> Simplifier.add_simps
         @{thms numeral_plus_numeral add_numeral_special add_0_left add_0_right}
       (* Closed Near arithmetic has no sequence semantics. In particular it must
          not search the imported comma/cylinder simplification collection. *)
       val near_arithmetic_ctxt = Comma_Entry_Arithmetic.natural_context ctxt
-      val shift_ctxt = near_arithmetic_ctxt addsimps
+      val shift_ctxt = near_arithmetic_ctxt |> Simplifier.add_simps
         @{thms comma_shift_move.simps comma_shift_position.simps}
       fun local_conversion ct =
         let
@@ -264,7 +264,7 @@ struct
         (case head_of source of
           Const (name, _) => name = @{const_name Comma_Near}
         | _ => false)
-      val germ_ctxt = composition_ctxt addsimps
+      val germ_ctxt = composition_ctxt |> Simplifier.add_simps
         @{thms comma_finite_move.case comma_finite_position.case prod.case Let_def}
       (* Prove one compact (count, terminal-headroom) equation per Near class.
          Recursive arithmetic is discharged here once; round proofs consume the
@@ -297,7 +297,7 @@ struct
                closed certificates before adding them as exact rewrites. *)
             val facts = map normalize_numeral_fact (move :: tail)
             val normalized = Simplifier.rewrite
-              (germ_ctxt addsimps facts) (Thm.rhs_of unfolded)
+              (germ_ctxt |> Simplifier.add_simps facts) (Thm.rhs_of unfolded)
             val _ = HOLogic.dest_prod (rhs normalized)
           in Thm.transitive unfolded normalized end)
         in Thm.transitive authority cached end
@@ -312,7 +312,7 @@ struct
       val selector_elapsed = Unsynchronized.ref Time.zeroTime
       val compatibility_calls = Unsynchronized.ref 0
       val compatibility_elapsed = Unsynchronized.ref Time.zeroTime
-      val payload_ctxt = composition_ctxt addsimps
+      val payload_ctxt = composition_ctxt |> Simplifier.add_simps
         @{thms simp_thms if_True if_False arith_simps rel_simps of_nat_numeral
           comma_event_kind.distinct prod.case Let_def option.case list.map append.simps
           comma_finite_position.case comma_weighted_move.case
@@ -326,7 +326,7 @@ struct
           comma_occurrence_guards.simps comma_lift_event_guard.simps}
       (* Proof normalization keeps the semantic predicates opaque. It can only
          rewrite certified payload equations and concrete record selectors. *)
-      val proof_ctxt = put_simpset HOL_basic_ss ctxt addsimps
+      val proof_ctxt = put_simpset HOL_basic_ss ctxt |> Simplifier.add_simps
         @{thms simp_thms comma_weighted_germ.select_convs
           comma_weight_expression.select_convs comma_terminal_payload.select_convs
           comma_weighted_germ_then_source comma_germ_then_target comma_germ_then_controls
@@ -336,12 +336,12 @@ struct
       fun normalize_payload rules facts term =
         (normalization_calls := !normalization_calls + 1;
          certify (measured normalization_elapsed
-           (Simplifier.rewrite (payload_ctxt addsimps (rules @ facts)))
+           (Simplifier.rewrite (payload_ctxt |> Simplifier.add_simps (rules @ facts)))
            (Thm.cterm_of ctxt term)))
       fun normalize_proof facts theorem =
         (normalization_calls := !normalization_calls + 1;
          certify (measured normalization_elapsed
-           (Simplifier.full_simplify (proof_ctxt addsimps facts)) theorem))
+           (Simplifier.full_simplify (proof_ctxt |> Simplifier.add_simps facts)) theorem))
       fun leaf_selector selector record =
         (selector_calls := !selector_calls + 1;
          certify (measured selector_elapsed (Simplifier.rewrite proof_ctxt)
@@ -406,7 +406,7 @@ struct
           val local_fact = Thm.transitive normalization cached
           val applied = Conv.arg_conv (Conv.rewr_conv local_fact) (Thm.rhs_of transport)
           val shifted = Simplifier.rewrite
-            (germ_ctxt addsimps @{thms comma_shift_move.simps comma_shift_position.simps})
+            (germ_ctxt |> Simplifier.add_simps @{thms comma_shift_move.simps comma_shift_position.simps})
             (Thm.rhs_of applied)
           val move = Thm.transitive transport (Thm.transitive applied shifted)
         in certify move end
@@ -433,7 +433,7 @@ struct
                           val request = Term.betapply (Term.betapply (@{term "\<lambda>e d::nat. (10::int)^(e-d)"}, e), delta)
                           val _ = scalar_normalizations := !scalar_normalizations + 1
                         in [certify (measured composition_elapsed
-                          (Simplifier.rewrite (local_ctxt addsimps @{thms power_0 power_Suc}))
+                          (Simplifier.rewrite (local_ctxt |> Simplifier.add_simps @{thms power_0 power_Suc}))
                           (Thm.cterm_of ctxt request))] end else []
                     | _ => [])
                 | _ => [])
@@ -590,7 +590,7 @@ struct
       val observation_elapsed = Unsynchronized.ref Time.zeroTime
       val observation_normalizations = Unsynchronized.ref 0
       val observation_normalization_elapsed = Unsynchronized.ref Time.zeroTime
-      val observation_ctxt = composition_ctxt addsimps
+      val observation_ctxt = composition_ctxt |> Simplifier.add_simps
         @{thms simp_thms if_True if_False arith_simps rel_simps
           comma_event_kind.distinct comma_move_kind.simps
           comma_finite_position.case comma_finite_move.case prod.case Let_def
@@ -598,7 +598,7 @@ struct
       fun observation_equation facts term =
         (observation_normalizations := !observation_normalizations + 1;
          certify (measured observation_normalization_elapsed
-           (Simplifier.rewrite (observation_ctxt addsimps facts)) (Thm.cterm_of ctxt term)))
+           (Simplifier.rewrite (observation_ctxt |> Simplifier.add_simps facts)) (Thm.cterm_of ctxt term)))
       val observation_sector_cache = Unsynchronized.ref
         (Termtab.empty: (term * thm) Termtab.table)
       val observation_sector_hits = Unsynchronized.ref 0
@@ -756,7 +756,7 @@ struct
             [#observation result]
           val decoded_eq = decoded RS @{thm eq_reflection}
           val result_eq = Simplifier.rewrite
-            (near_arithmetic_ctxt addsimps @{thms comma_decade_decode.simps
+            (near_arithmetic_ctxt |> Simplifier.add_simps @{thms comma_decade_decode.simps
               comma_decade_root_admitted_entry})
             (Thm.rhs_of decoded_eq)
           val equation = certify (object_eq (Thm.transitive decoded_eq result_eq))

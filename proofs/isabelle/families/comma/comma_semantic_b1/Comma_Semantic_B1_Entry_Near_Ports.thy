@@ -278,8 +278,7 @@ lemma comma_semantic_b1_entry_modular_rebase_f1_0_10_same_digit_period_distinct_
   "(0::nat) mod 460 \<noteq> 10 mod 460"
   by (tactic \<open>
     ALLGOALS (simp_tac
-      (Comma_Entry_Arithmetic.natural_context @{context} addsimps
-        @{thms comma_finite_period_fast_def nth_Cons'}))
+      (Simplifier.add_simps (@{thms comma_finite_period_fast_def nth_Cons'}) (Comma_Entry_Arithmetic.natural_context @{context})))
   \<close>)
 
 lemma comma_semantic_b1_entry_modular_rebase_f1_0_10_different_ports:
@@ -290,11 +289,10 @@ proof -
   proof -
     have fast: "comma_finite_headroom_fast 1 0 0 0 = 300"
       by (tactic \<open>simp_tac
-        (Comma_Entry_Arithmetic.natural_context @{context} addsimps
-          @{thms comma_finite_headroom_fast_def comma_finite_period_fast_def
+        (Simplifier.add_simps (@{thms comma_finite_headroom_fast_def comma_finite_period_fast_def
             comma_power_residue_fast_def comma_power_table_def comma_short_period_def
             nth_Cons' of_nat_numeral of_nat_0 of_nat_1
-            zmod_zminus1_eq_if zmod_zminus2_eq_if}) 1\<close>)
+            zmod_zminus1_eq_if zmod_zminus2_eq_if}) (Comma_Entry_Arithmetic.natural_context @{context})) 1\<close>)
     have correct:
       "comma_finite_headroom_fast 1 0 0 0 = comma_finite_headroom 1 0 0 0"
       by (rule comma_finite_headroom_fast_correct) simp_all
@@ -304,11 +302,10 @@ proof -
   proof -
     have fast: "comma_finite_headroom_fast 1 0 0 10 = 290"
       by (tactic \<open>simp_tac
-        (Comma_Entry_Arithmetic.natural_context @{context} addsimps
-          @{thms comma_finite_headroom_fast_def comma_finite_period_fast_def
+        (Simplifier.add_simps (@{thms comma_finite_headroom_fast_def comma_finite_period_fast_def
             comma_power_residue_fast_def comma_power_table_def comma_short_period_def
             nth_Cons' of_nat_numeral of_nat_0 of_nat_1
-            zmod_zminus1_eq_if zmod_zminus2_eq_if}) 1\<close>)
+            zmod_zminus1_eq_if zmod_zminus2_eq_if}) (Comma_Entry_Arithmetic.natural_context @{context})) 1\<close>)
     have correct:
       "comma_finite_headroom_fast 1 0 0 10 = comma_finite_headroom 1 0 0 10"
       by (rule comma_finite_headroom_fast_correct) simp_all
@@ -479,8 +476,99 @@ proof -
 qed
 
 
+lemma comma_guarded_source_port_action_periodic:
+  assumes admitted: "comma_round_admitted source"
+    and normalized: "source=comma_source_continuation_base source"
+  shows "comma_semantic_b1_source_port_action source slot =
+    comma_semantic_b1_source_port_action source
+      (slot mod comma_decisive_sector_period source)"
+proof -
+  let ?period = "comma_decisive_sector_period source"
+  have same: "slot mod ?period = (slot mod ?period) mod ?period"
+    by simp
+  have target:
+    "comma_decisive_sector_target slot source =
+      comma_decisive_sector_target (slot mod ?period) source"
+    by (rule comma_decisive_sector_target_period[OF admitted same])
+  show ?thesis using target normalized
+    by (simp add: comma_semantic_b1_source_port_action_def)
+qed
+
+lemma comma_guarded_source_action_at_port:
+  assumes admitted: "comma_round_admitted source"
+    and normalized: "source=comma_source_continuation_base source"
+  shows "comma_source_continuation_action_at source phase =
+    comma_semantic_b1_source_port_action source phase"
+proof -
+  let ?period = "comma_decisive_sector_period source"
+  have positive: "0 < ?period"
+    by (rule comma_decisive_sector_period_admitted(1)[OF admitted])
+  have slot: "phase mod ?period < ?period" using positive by simp
+  have exact_slot:
+    "comma_source_continuation_action_at source (phase mod ?period) =
+      comma_semantic_b1_source_port_action source (phase mod ?period)"
+    using comma_semantic_b1_source_action_at_port[OF admitted, of
+      "phase mod ?period"] normalized slot by simp
+  have action_periodic:
+    "comma_source_continuation_action_at source phase =
+      comma_source_continuation_action_at source (phase mod ?period)"
+    using normalized
+    by (simp add: comma_source_continuation_action_at_def
+        comma_source_continuation_id_def Let_def)
+  have port_periodic:
+    "comma_semantic_b1_source_port_action source phase =
+      comma_semantic_b1_source_port_action source (phase mod ?period)"
+    by (rule comma_guarded_source_port_action_periodic[OF admitted normalized])
+  show ?thesis using exact_slot action_periodic port_periodic by simp
+qed
+
+lemma comma_semantic_b1_action_at_selected_port:
+  assumes admitted: "comma_round_admitted source"
+    and normalized: "source=comma_source_continuation_base source"
+  shows "comma_source_continuation_action_at source phase =
+    comma_semantic_b1_source_port_action source
+      (phase mod comma_decisive_sector_period source)"
+  by (rule trans[OF comma_guarded_source_action_at_port[OF admitted normalized]
+    comma_guarded_source_port_action_periodic[OF admitted normalized]])
+
+lemma comma_semantic_b1_port_round_output:
+  assumes admitted: "comma_round_admitted source"
+    and normalized: "source=comma_source_continuation_base source"
+  shows "comma_semantic_b1_source_slot_output phase
+      (comma_semantic_b1_source_port_action source phase) =
+    comma_semantic_b1_round_output phase source"
+proof -
+  let ?period = "comma_decisive_sector_period source"
+  let ?slot = "phase mod ?period"
+  have positive: "0<?period"
+    by (rule comma_decisive_sector_period_admitted(1)[OF admitted])
+  have slot: "?slot<?period" using positive by simp
+  have source_slot:
+    "comma_semantic_b1_source_slot_action source ?slot =
+      comma_source_continuation_action_at source ?slot"
+    by (rule comma_semantic_b1_source_slot_action_refines[OF admitted])
+  have port_slot:
+    "comma_source_continuation_action_at source ?slot =
+      comma_semantic_b1_source_port_action source ?slot"
+    by (rule comma_semantic_b1_source_action_at_port[OF admitted])
+      (use normalized slot in simp)
+  have periodic:
+    "comma_semantic_b1_source_port_action source phase =
+      comma_semantic_b1_source_port_action source ?slot"
+    by (rule comma_guarded_source_port_action_periodic[OF admitted normalized])
+  have exact:
+    "comma_semantic_b1_source_slot_output phase
+      (comma_semantic_b1_source_slot_action source ?slot) =
+      comma_semantic_b1_round_output phase source"
+    by (rule comma_semantic_b1_source_slot_round_output
+      [OF normalized admitted slot refl])
+  show ?thesis using exact source_slot port_slot periodic by simp
+qed
+
 ML \<open>
-  val checked = @{thms comma_semantic_b1_entry_slot_decisive_near
+  val checked = @{thms comma_guarded_source_action_at_port
+    comma_semantic_b1_action_at_selected_port comma_guarded_source_port_action_periodic
+    comma_semantic_b1_port_round_output comma_semantic_b1_entry_slot_decisive_near
     comma_semantic_b1_entry_slot_action_near
     comma_semantic_b1_entry_source_ports_near
     comma_semantic_b1_source_action_at_port

@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.symbolic_extent import Extent
-from number_compiler.sequences.power_numbers.numbers import (
-    FermatNumberSpec,
-    MersenneNumberSpec,
-)
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.power_numbers.numbers import (
+        FermatNumberSpec,
+        MersenneNumberSpec,
+    )
 
 
 @dataclass(frozen=True, slots=True)

@@ -179,12 +179,11 @@ local
           val length_equation = prove_true (HOLogic.mk_eq
             (length_term control_list, numeral class_count))
           val source_ids_range = prove_true_in
-            (proof_context addsimps
-              ([@{thm comma_semantic_future_candidate_class_ids_range_check_def},
+            (Simplifier.add_simps (([@{thm comma_semantic_future_candidate_class_ids_range_check_def},
                 @{thm comma_semantic_future_candidate_id_vector_in_range_def},
                 @{thm comma_semantic_future_candidate_class_ids_def}] @
                @{thms comma_semantic_future_nat_list_max.simps} @
-               [length_equation]))
+               [length_equation])) (proof_context))
             @{term comma_semantic_future_candidate_class_ids_range_check}
           val indexed_rows =
             Comma_Selected_List_Conversion.prove_indexed_list_all

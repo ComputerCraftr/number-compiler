@@ -60,6 +60,14 @@ where
 | "comma_semantic_boundary_control_of (Comma_Landmine_At d) =
     Comma_Future_Landmine"
 
+text \<open>The terminal index is a pure projection of the boundary control,
+shared by the summary and weighted-action consumers.\<close>
+
+fun comma_semantic_future_action_terminal_position ::
+    "comma_future_control \<Rightarrow> nat" where
+  "comma_semantic_future_action_terminal_position (Comma_Future_Fork a) = a - 2"
+| "comma_semantic_future_action_terminal_position Comma_Future_Landmine = 8"
+
 definition comma_semantic_boundary_control_step ::
   "(comma_decade_state \<Rightarrow> comma_decade_residual option) \<Rightarrow>
    comma_boundary_state \<Rightarrow> comma_future_control option"

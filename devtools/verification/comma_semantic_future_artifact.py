@@ -263,6 +263,45 @@ def write_runtime_candidate_from_isabelle_data(
     }
 
 
+def write_runtime_candidate_from_native_export(
+    source_path: Path, output_path: Path
+) -> dict[str, object]:
+    """Copy a bounded candidate exported by the checked native session.
+
+    The input is the session database export, not authored theory text. This
+    function validates and copies its canonical bytes; it does not regenerate
+    class data or grant the runtime provider authority.
+    """
+    from number_compiler.sequences.comma import future_provider_codec
+
+    validate_output_paths(output_path)
+    if source_path.resolve() == output_path.resolve():
+        raise ValueError("candidate output must be distinct from its native export")
+    canonical_payload: bytes | None = None
+
+    def capture_canonical_payload(record: Mapping[str, object]) -> None:
+        nonlocal canonical_payload
+        canonical_payload = future_provider_codec.canonical_json_bytes(record)
+
+    parsed = future_provider_codec.parse_future_candidate_file(
+        source_path,
+        charge_work=lambda _amount: None,
+        before_parse=capture_canonical_payload,
+    )
+    if canonical_payload is None:
+        raise RuntimeError("native candidate parser did not expose its validated bytes")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("xb") as target:
+        target.write(canonical_payload)
+    return {
+        "output": str(output_path),
+        "format": future_provider_codec.FUTURE_CANDIDATE_FORMAT,
+        "bytes": len(canonical_payload),
+        "sha256": parsed.artifact_sha256,
+        "authority": future_provider_codec.FUTURE_CANDIDATE_AUTHORITY,
+    }
+
+
 def assert_candidate_data_theory_matches(
     checked_text: str,
     checked_path: Path,

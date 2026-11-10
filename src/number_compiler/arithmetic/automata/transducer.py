@@ -14,6 +14,7 @@ from typing import (
     TYPE_CHECKING,
     Generic,
     Literal,
+    Protocol,
     TypeVar,
 )
 
@@ -33,6 +34,23 @@ if TYPE_CHECKING:
 
 _MetricsT = TypeVar("_MetricsT")
 _StateT = TypeVar("_StateT")
+
+
+class DFAProtocol(Protocol):
+    @property
+    def start(self) -> int: ...
+
+    def step(self, state: int, symbol: int) -> int | None: ...
+
+
+class BimachineProtocol(Protocol):
+    @property
+    def left(self) -> DFAProtocol: ...
+
+    @property
+    def right(self) -> DFAProtocol: ...
+
+    def emit(self, left: int, symbol: int, right: int, /) -> tuple[int, ...] | None: ...
 
 
 def _intern_dfa_state(

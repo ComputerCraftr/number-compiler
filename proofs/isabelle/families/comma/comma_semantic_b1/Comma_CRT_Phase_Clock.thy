@@ -424,6 +424,40 @@ lemma comma_crt_rebase_bounded:
   "comma_crt_rebase axis slot phase<924"
   by (simp add: comma_crt_rebase_def)
 
+lemma comma_crt_rebase_inactive_modulus:
+  assumes divides: "period dvd 924"
+    and inactive: "comma_crt_axis_weight axis mod period=0"
+  shows "comma_crt_rebase axis slot phase mod period=phase mod period"
+proof -
+  let ?correction = "(slot+comma_crt_axis_radix axis-
+    phase mod comma_crt_axis_radix axis) mod comma_crt_axis_radix axis"
+  have product:
+      "(comma_crt_axis_weight axis*?correction) mod period=0"
+  proof -
+    have "(comma_crt_axis_weight axis*?correction) mod period =
+        ((comma_crt_axis_weight axis mod period)*
+          (?correction mod period)) mod period"
+      by (rule mod_mult_eq[symmetric])
+    then show ?thesis using inactive by simp
+  qed
+  have sum:
+      "(phase+comma_crt_axis_weight axis*?correction) mod period =
+        phase mod period"
+  proof -
+    have "(phase+comma_crt_axis_weight axis*?correction) mod period =
+        ((phase mod period)+
+          ((comma_crt_axis_weight axis*?correction) mod period)) mod period"
+      by (rule mod_add_eq[symmetric])
+    then show ?thesis using product by simp
+  qed
+  have outer:
+      "comma_crt_rebase axis slot phase mod period =
+        (phase+comma_crt_axis_weight axis*?correction) mod period"
+    unfolding comma_crt_rebase_def
+    by (rule mod_mod_cancel[OF divides])
+  show ?thesis by (rule trans[OF outer sum])
+qed
+
 ML \<open>
   val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}
     "External CRT selector clock and coordinate transport"
@@ -431,7 +465,7 @@ ML \<open>
       comma_crt_clock_axis_residue comma_crt_suffix_step
       comma_crt_suffix_zero_is_clock comma_crt_rebase_selected
       comma_crt_rebase_other_axis comma_crt_rebase_selected_axis
-      comma_crt_rebase_bounded};
+      comma_crt_rebase_bounded comma_crt_rebase_inactive_modulus};
 \<close>
 
 end

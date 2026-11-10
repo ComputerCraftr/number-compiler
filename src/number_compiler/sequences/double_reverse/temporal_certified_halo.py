@@ -234,6 +234,10 @@ class SourceContinuedHaloTrace(SourceAuthorizedRecord):
             "f_steps": self.f_steps,
             "block_f_steps": self.block_f_steps,
             "refill_offsets_f_steps": list(self.refill_offsets),
+            "source_refill_count": len(self.refill_offsets),
+            "halo_construction": (
+                "single_source_halo" if not self.refill_offsets else "source_refills"
+            ),
             "overlap_verified_on_every_refill": True,
             "minimum_certified_pairs": self.minimum_certified_pairs,
             "maximum_halo_pairs": self.maximum_halo_pairs,

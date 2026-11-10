@@ -45,7 +45,9 @@ definition comma_near_symbolic_port_operator ::
        (near_clock_residual (comma_near_event_clock_bind slot f 0 H)),
      near_clock_steps (comma_near_event_clock_bind slot f 0 H))"
 
-lemma comma_near_symbolic_port_operator_eval:
+declare comma_near_symbolic_port_operator_def [code drop]
+
+lemma comma_near_symbolic_port_operator_eval [code]:
   "comma_near_symbolic_port_operator f H slot =
     (case comma_near_closed_germ f H of (n,t) \<Rightarrow>
       (comma_semantic_b1_near_control_port_action f 0 t,n))"
@@ -63,6 +65,58 @@ lemma comma_near_symbolic_port_operator_source:
       comma_semantic_b1_source_port_action_def
       comma_source_continuation_base.simps
       comma_decisive_sector_target.simps Let_def)
+
+definition comma_near_residual_binding ::
+    "nat \<Rightarrow> nat \<Rightarrow> (nat \<times> nat) \<times> (nat \<times> nat)" where
+  "comma_near_residual_binding f H =
+    (let g = (if f<9 then 1 else 0)+1;
+         d = (10-H mod 10) mod 10;
+         P = comma_finite_period_fast f d;
+         B = H-g
+     in ((d,B mod P),
+         ((B div P)*comma_cycle_length_fast f,g+B mod P)))"
+
+lemma comma_near_symbolic_port_operator_residual:
+  assumes sector: "1\<le>f" "f\<le>9"
+    and admitted: "1\<le>H" "H\<le>540"
+    and interior: "(if f<9 then 1 else 0)<H"
+  shows "let binding = comma_near_residual_binding f H;
+             elapsed = fst (snd binding); reduced = snd (snd binding)
+         in comma_near_symbolic_port_operator f H slot =
+           (fst (comma_near_symbolic_port_operator f reduced slot),
+            elapsed + snd (comma_near_symbolic_port_operator f reduced slot))"
+proof -
+  let ?binding = "comma_near_residual_binding f H"
+  let ?reduced = "snd (snd ?binding)"
+  let ?elapsed = "fst (snd ?binding)"
+  have factor:
+    "comma_near_closed_germ f H =
+      (?elapsed + fst (comma_near_closed_germ f ?reduced),
+       snd (comma_near_closed_germ f ?reduced))"
+    using comma_near_closed_germ_residual_factorization[OF sector admitted interior]
+    by (simp add: comma_near_residual_binding_def Let_def)
+  obtain n t where reduced: "comma_near_closed_germ f ?reduced=(n,t)"
+    by (cases "comma_near_closed_germ f ?reduced") auto
+  have original: "comma_near_closed_germ f H=(?elapsed+n,t)"
+    using factor reduced by simp
+  show ?thesis
+    by (simp add: Let_def comma_near_symbolic_port_operator_eval original reduced)
+qed
+
+lemma comma_near_symbolic_port_source_id:
+  assumes admitted: "comma_round_admitted (Comma_Near f 0 H)"
+  shows "comma_source_continuation_id (Comma_Near f 0 H) =
+    (1,[fst (comma_near_symbolic_port_operator f H 0)])"
+proof -
+  have port:
+    "comma_semantic_b1_source_port_action (Comma_Near f 0 H) 0 =
+      fst (comma_near_symbolic_port_operator f H 0)"
+    using comma_near_symbolic_port_operator_source[of f H 0] by simp
+  show ?thesis
+    using comma_semantic_b1_source_id_ports[OF admitted]
+    by (simp add: comma_source_continuation_base.simps
+      comma_decisive_sector_period_def comma_semantic_b1_source_port_actions_def port)
+qed
 
 lemma comma_near_prefix_terminal_positive:
   fixes n f H t :: nat
@@ -323,7 +377,13 @@ proof -
     using comma_near_event_clock_bind_refines(4)[OF sector initial]
     by (simp add: t_def)
   have valid: "1 \<le> f" "f \<le> 9" "5 \<le> p" "1 \<le> t" "t \<le> 540"
-    using sector exponent t_positive t_upper by blast+
+  proof -
+    show "1 \<le> f" by (rule sector(1))
+    show "f \<le> 9" by (rule sector(2))
+    show "5 \<le> p" by (rule exponent)
+    show "1 \<le> t" by (rule t_positive)
+    show "t \<le> 540" by (rule t_upper)
+  qed
   have move:
       "terminal_move (comma_terminal_event_germ (p mod 924) f delta t) =
         Comma_Fork a delta"
@@ -384,7 +444,13 @@ proof -
     using comma_near_event_clock_bind_refines(4)[OF sector initial]
     by (simp add: t_def)
   have valid: "1 \<le> f" "f \<le> 9" "5 \<le> p" "1 \<le> t" "t \<le> 540"
-    using sector exponent t_positive t_upper by blast+
+  proof -
+    show "1 \<le> f" by (rule sector(1))
+    show "f \<le> 9" by (rule sector(2))
+    show "5 \<le> p" by (rule exponent)
+    show "1 \<le> t" by (rule t_positive)
+    show "t \<le> 540" by (rule t_upper)
+  qed
   have move:
       "terminal_move (comma_terminal_event_germ (p mod 924) f delta t) =
         Comma_Next target"
@@ -417,7 +483,13 @@ proof -
     using comma_near_event_clock_bind_refines(4)[OF sector initial]
     by (simp add: t_def)
   have valid: "1 \<le> f" "f \<le> 9" "5 \<le> p" "1 \<le> t" "t \<le> 540"
-    using sector exponent t_positive t_upper by blast+
+  proof -
+    show "1 \<le> f" by (rule sector(1))
+    show "f \<le> 9" by (rule sector(2))
+    show "5 \<le> p" by (rule exponent)
+    show "1 \<le> t" by (rule t_positive)
+    show "t \<le> 540" by (rule t_upper)
+  qed
   have move:
       "terminal_move (comma_terminal_event_germ (p mod 924) f delta t) =
         Comma_Landmine delta"
@@ -434,8 +506,9 @@ lemma comma_near_closed_germ_82_92:
   "comma_near_closed_germ 1 82=(0,82)"
   "comma_near_closed_germ 1 92=(1,11)"
   by (simp_all add: comma_near_closed_germ_def
-    comma_near_residual_count.simps(2)[where k=8, simplified]
-    comma_near_residual_count.simps(2)[where k=7, simplified]
+    comma_near_residual_count.simps(2)[where k=8 and f=1 and d=8 and b=80, simplified]
+    comma_near_residual_count.simps(2)[where k=8 and f=1 and d=8 and b=90, simplified]
+    comma_near_residual_count.simps(2)[where k=7 and f=1 and d=9 and b=9, simplified]
     comma_cycle_length_fast_def comma_finite_period_fast_def Let_def nth_Cons')
 
 lemma comma_near_event_clock_82_92_separate:
@@ -463,6 +536,7 @@ ML \<open>
   val checked = @{thms comma_near_prefix_terminal_positive
     comma_near_symbolic_port_operator_eval
     comma_near_symbolic_port_operator_source
+    comma_near_symbolic_port_operator_residual comma_near_symbolic_port_source_id
     comma_near_event_clock_bind_refines comma_near_event_clock_round_close_cocycle
     comma_near_symbolic_port_operator_exact
     comma_near_event_clock_fork_order comma_near_event_clock_next_action
@@ -471,5 +545,4 @@ ML \<open>
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Near symbolic operator refinement depends on an oracle";
 \<close>
-
 end

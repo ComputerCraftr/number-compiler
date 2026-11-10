@@ -31,7 +31,6 @@ from .temporal_certified_halo import (
     CertifiedHalo,
     SourceConditionedDepthWindowUnavailable,
     SourceContinuedHaloTrace,
-    build_source_continued_halo_trace,
     halo_outer_odd_row,
     ring_next_pair,
     ring_outer,
@@ -600,38 +599,51 @@ def source_conditioned_depth_window_packet(
 ) -> dict[str, object]:
     """Build and serialize a finite matrix under one bounded reservation.
 
-    The explicit matrix demand also replays this same finite source interval
-    as shrinking, source-refilled halo blocks. No horizon beyond the requested
-    matrix is sampled.
+    Its continuation packet is projected from the same single source-issued
+    causal halo as the matrix. No source-refill traversal is repeated.
     """
 
-    def publish(window: SourceConditionedDepthWindow) -> dict[str, object]:
-        continued = build_source_continued_halo_trace(
-            source,
-            outer_pairs=window.outer_pairs,
-            start_f_steps=window.start_f_steps,
-            f_steps=window.f_steps,
-            block_f_steps=min(2, window.f_steps),
-        )
+    def publish(
+        window: SourceConditionedDepthWindow,
+        even_trace: tuple[BirthRingState, ...],
+        odd_trace: tuple[tuple[tuple[int, int], ...] | None, ...],
+    ) -> dict[str, object]:
+        """Publish two checked projections of the already-built source trace."""
         if (
-            tuple(
-                ring_outer(state, window.outer_pairs) for state in continued.even_outer
-            )
+            tuple(ring_outer(state, window.outer_pairs) for state in even_trace)
             != window.outer_trace
-            or tuple(
-                ring_next_pair(state, window.outer_pairs)
-                for state in continued.even_outer
-            )
+            or tuple(ring_next_pair(state, window.outer_pairs) for state in even_trace)
             != window.transfer.pointed_trace
         ):
-            raise AssertionError("refilled halo diverged from the matrix source trace")
+            raise AssertionError("shared halo diverged from the matrix source trace")
         if any(
             row is None or row[: window.outer_pairs] != expected
-            for row, expected in zip(continued.odd_outer, window.odd_outer, strict=True)
+            for row, expected in zip(odd_trace, window.odd_outer, strict=True)
         ):
-            raise AssertionError("refilled odd halo diverged from the matrix trace")
+            raise AssertionError("shared odd halo diverged from the matrix trace")
+        continued = SourceContinuedHaloTrace(
+            window.physical_prefix,
+            window.source_root,
+            window.source_phase,
+            window.source_horizon,
+            window.start_f_steps,
+            window.outer_pairs,
+            window.f_steps,
+            window.f_steps,
+            even_trace,
+            odd_trace,
+            (),
+            window.outer_pairs + 1,
+            window.outer_pairs + 1 + window.f_steps,
+        )
+        issued_continued = issue_source_record(
+            continued,
+            source.arena,
+            source.root,
+            source_generation=source.physical_prefix,
+        )
         packet = window.to_packet()
-        packet["source_backed_continuation"] = continued.to_packet()
+        packet["source_backed_continuation"] = issued_continued.to_packet()
         return packet
 
     return _build_source_conditioned_depth_window(
@@ -663,7 +675,14 @@ def _build_source_conditioned_depth_window(
     start_f_steps: int,
     f_steps: int | None,
     issued_path: SourceIssuedRootPath | None = None,
-    publish: Callable[[SourceConditionedDepthWindow], _Published],
+    publish: Callable[
+        [
+            SourceConditionedDepthWindow,
+            tuple[BirthRingState, ...],
+            tuple[tuple[tuple[int, int], ...] | None, ...],
+        ],
+        _Published,
+    ],
 ) -> _Published: ...
 
 
@@ -674,7 +693,15 @@ def _build_source_conditioned_depth_window(
     start_f_steps: int,
     f_steps: int | None,
     issued_path: SourceIssuedRootPath | None = None,
-    publish: Callable[[SourceConditionedDepthWindow], _Published] | None = None,
+    publish: Callable[
+        [
+            SourceConditionedDepthWindow,
+            tuple[BirthRingState, ...],
+            tuple[tuple[tuple[int, int], ...] | None, ...],
+        ],
+        _Published,
+    ]
+    | None = None,
 ) -> SourceConditionedDepthWindow | _Published:
     """Build an issued window and optionally publish it before release."""
     from .source_bound_bank import PointedBankSource as BankSource
@@ -813,7 +840,7 @@ def _build_source_conditioned_depth_window(
         )
         issued.validate_source_authority()
         if publish is not None:
-            return publish(issued)
+            return publish(issued, rooted_states, rooted_odd)
     return issued
 
 

@@ -43,6 +43,9 @@ from number_compiler.sequences.reverse_add.q19_output import (
 from number_compiler.sequences.reverse_add.q19_punctured_producer import (
     admits_punctured_scheduler_block,
 )
+from number_compiler.sequences.reverse_add.q19_source_bootstrap import (
+    publish_q19_source_root,
+)
 from number_compiler.sequences.reverse_add.recursive_cutover import (
     ReverseRecursiveOccurrence,
     ReverseRecursiveTemporalCutover,
@@ -616,31 +619,21 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
         payload: ReverseImagePayload,
         steps: int,
     ) -> SourceImageCandidate | None:
-        """Publish only the bounded Q19 prefix needed to enter T2 scheduling."""
-        if steps < 2 or steps > 4 or self.actions.node(payload.action).steps != 0:
-            return None
-        owner = self.q19_output_owner(origin)
-        occurrence = owner.initial
-        remaining = steps - 1
-        if remaining >= 2:
-            occurrence = owner.apply_punctured_pair_block(occurrence, steps=2)
-            remaining -= 2
-        if remaining:
-            occurrence = owner.apply_pair_step(occurrence)
-            remaining -= 1
-        if remaining or occurrence.temporal_steps != steps:
-            raise AssertionError("bounded Q19 startup published the wrong index")
-        cumulative = self.actions.compose(payload.action, action)
-        if self.actions.node(cumulative).steps != occurrence.temporal_steps:
-            raise ValueError("bounded Q19 startup disagrees with temporal action")
-        self.ledger.bump(
-            _reverse_add_keys.REVERSE_Q19_ROOT_BOOTSTRAP_PAIR_STEPS, steps - 1
+        """Publish a source-rooted decimal endpoint or a bounded Q19 prefix."""
+        result = publish_q19_source_root(
+            self.actions,
+            self.ledger,
+            action,
+            payload.action,
+            origin,
+            steps,
+            self.q19_output_owner,
+            self.clear_query_output,
+            owner_already_published=self._q19_owner is not None,
         )
-        self.ledger.bump(_reverse_add_keys.REVERSE_Q19_ROOT_BOOTSTRAP_PUBLICATIONS)
-        if steps == 3:
-            self.ledger.bump(
-                _reverse_add_keys.REVERSE_SOURCE_PUNCTURED_COMPLETED_CHILD_PUBLICATIONS
-            )
+        if result is None:
+            return None
+        cumulative, occurrence = result
         return SourceImageCandidate(
             ReverseImagePayload(cumulative, pair_output=occurrence),
             source.binding.extent + steps,
@@ -677,7 +670,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
             if owner is None or self._q19_source is not origin:
                 raise ValueError("punctured block has no matching Q19 source owner")
             if not admits_punctured_scheduler_block(
-                steps, payload.pair_output.pair_width
+                steps, payload.pair_output.output_width
             ):
                 return None
             pair_output = owner.apply_punctured_pair_block(

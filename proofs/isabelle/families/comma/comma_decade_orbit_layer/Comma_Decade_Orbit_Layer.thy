@@ -101,7 +101,7 @@ ML \<open>if getenv "COMMA_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.repo
 local_setup \<open>fn lthy =>
   let
     val (certify, _) = Comma_Entry_Arithmetic.make_certifier lthy
-    val arithmetic = Comma_Entry_Arithmetic.natural_context lthy addsimps
+    val arithmetic = Comma_Entry_Arithmetic.natural_context lthy |> Simplifier.add_simps
       @{thms comma_offset_representatives_def nth_Cons'}
     fun check i =
       let
@@ -115,7 +115,7 @@ local_setup \<open>fn lthy =>
     val facts = map check (0 upto 45)
     val (_, next) = Local_Theory.note
       ((Binding.name "comma_orbit_layer_representative_constants", []), facts) lthy
-    val orbit_context = arithmetic addsimps
+    val orbit_context = arithmetic |> Simplifier.add_simps
       @{thms comma_offset_orbit_def comma_digit_orbit_sum_def power2_eq_square
         of_nat_numeral of_nat_0 of_nat_1 zmod_zminus1_eq_if zmod_zminus2_eq_if}
     fun orbit x =

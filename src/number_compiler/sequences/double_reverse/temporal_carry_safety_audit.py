@@ -407,6 +407,17 @@ class CarrySafetyAuditBase:
 
     def audit_carry_safety(self, ledger: ResourceLedger) -> PayloadAuditContribution:
         self.validate_source_binding()
+        projector_memos = self._adapter.projector_memos
+        if type(projector_memos) is not tuple or len(projector_memos) != 5:
+            raise ValueError("2rev10 projector memo bindings are invalid")
+        if not self._adapter.projector.has_exact_owned_cache_binding(
+            forward=projector_memos[0],
+            reverse=projector_memos[1],
+            block=projector_memos[2],
+            forward_power=projector_memos[3],
+            reverse_power=projector_memos[4],
+        ):
+            raise ValueError("2rev10 projector cache claim is invalid")
         memo = self._carry_safety_cache
         account = ledger.account_status(memo.owner)
         if (

@@ -20,7 +20,11 @@ from number_compiler.arithmetic.contracts.input_validation import require_intege
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.execution.source_image_inventory import SourceImageID
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
-from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.ledger import (
+    LedgerReservation,
+    OwnedMemo,
+    ResourceLedger,
+)
 from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
 from number_compiler.resources.metric_keys import (
     double_reverse as _double_reverse_keys,
@@ -70,6 +74,9 @@ from number_compiler.sequences.double_reverse.temporal_carry_safety_audit import
     audit_double_reverse_carry_safety,
     carry_safety_result_node_cost,
     temporal_carry_safety_for_term,
+)
+from number_compiler.sequences.double_reverse.temporal_digit_affine import (
+    seed196_low_four_digits_at_even_generation,
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife import (
     DoubleReverseTemporalHashlife,
@@ -211,6 +218,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
                 (self._source.issuer, self._source.seed, self._source.root),
                 self._carry_safety_owner,
                 self._carry_safety_cache,
+                self.source_digits,
             )
             initialize_output_stream_metrics(
                 self._ledger, "double_reverse_output_stream"
@@ -391,6 +399,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
             or self._authority[16] is not self._adapter.temporal_memos
             or self._authority[18] != self._carry_safety_owner
             or self._authority[19] is not self._carry_safety_cache
+            or self._authority[20] != self.source_digits
         ):
             raise ValueError("double-reverse term binding changed")
         if self._image is None:
@@ -428,6 +437,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
             or self._authority[17] != (source.issuer, source.seed, source.root)
             or self._authority[18] != self._carry_safety_owner
             or self._authority[19] is not self._carry_safety_cache
+            or self._authority[20] != self.source_digits
             or source.issuer is not self._issuer
             or source.seed != self.seed
         ):
@@ -747,8 +757,34 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
     def digit(self, position: int) -> int:
         position = require_integer(position, "digit coordinate")
         self.check_open()
+        self.validate_source_binding()
         if position < 0:
             raise IndexError(position)
+        if (
+            self.seed == 196
+            and self.generation >= 16
+            and self.generation % 2 == 0
+            and position < 4
+            and self.estimated_bit_length <= self.max_state_bits
+        ):
+            with LedgerReservation(self._ledger, self._scratch_owner) as scratch:
+                scratch.reserve(entries=1, nodes=1)
+                self._ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_LOW_BAND_PROJECTIONS
+                )
+                operand_bits = (
+                    self.generation.bit_length()
+                    + self.seed.bit_length()
+                    + position.bit_length()
+                    + 14
+                )
+                self._ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_LOW_BAND_OPERAND_BITS,
+                    operand_bits,
+                )
+                low_four = seed196_low_four_digits_at_even_generation(self.generation)
+                place = (1, 10, 100, 1000)[position]
+                return (low_four // place) % 10
         if self._image is not None:
             return self._digit_at_root(self.endpoint_root(), position)
         if self.generation >= 2:

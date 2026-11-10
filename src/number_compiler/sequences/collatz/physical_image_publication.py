@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, TypeGuard
 
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnActionID,
@@ -25,26 +25,24 @@ from number_compiler.sequences.collatz.border_identity import (
     BoundaryOccurrenceProducerStamp,
     is_boundary_occurrence,
 )
-from number_compiler.sequences.collatz.border_return_grammar import (
-    BorderReturnMacro,
-    validate_border_return_macro,
-)
-from number_compiler.sequences.collatz.boundary_macros import (
-    CollatzBoundaryMacro,
-    validate_boundary_macro,
-)
-from number_compiler.sequences.collatz.innovation_port_moore import (
-    InnovationTapeObservation,
-)
 from number_compiler.sequences.collatz.innovation_tape_contract import (
     SIGNED_INNOVATION_TAPE_TAG,
 )
-from number_compiler.sequences.collatz.joint_temporal_action import (
-    CollatzJointRunAction,
-)
-from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.border_return_grammar import (
+        BorderReturnMacro,
+    )
+    from number_compiler.sequences.collatz.boundary_macros import (
+        CollatzBoundaryMacro,
+    )
+    from number_compiler.sequences.collatz.innovation_port_moore import (
+        InnovationTapeObservation,
+    )
+    from number_compiler.sequences.collatz.joint_temporal_action import (
+        CollatzJointRunAction,
+    )
+    from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
     from number_compiler.sequences.collatz.temporal_source_morphism import (
         PointedCollatzSource,
     )
@@ -55,8 +53,49 @@ BOUNDARY_MACRO_PORT: Final[str] = "collatz-first-boundary-macro-v1"
 INNOVATION_TAPE_PORT = SIGNED_INNOVATION_TAPE_TAG
 
 
+def collatz_joint_action_from_payload(
+    payload: object, retained: CollatzJointRunAction | None
+) -> CollatzJointRunAction:
+    """Rehydrate an admitted exact joint action without eager observer imports."""
+    from number_compiler.sequences.collatz.joint_temporal_action import (
+        CollatzJointRunAction,
+    )
+
+    return CollatzJointRunAction.from_admitted_root_payload(payload, retained)
+
+
+def is_collatz_tape_width_summary(
+    value: object,
+) -> TypeGuard[CollatzTapeWidthSummary]:
+    from number_compiler.sequences.collatz.tape_width import CollatzTapeWidthSummary
+
+    return type(value) is CollatzTapeWidthSummary
+
+
+def collatz_cycle_width_summary(
+    ledger: ResourceLedger, residue: int, width: int
+) -> CollatzTapeWidthSummary:
+    from number_compiler.sequences.collatz.tape_width import cycle_width_summary
+
+    return cycle_width_summary(ledger, residue, width)
+
+
+def is_issued_collatz_innovation_observation(
+    value: object,
+) -> TypeGuard[InnovationTapeObservation]:
+    from number_compiler.sequences.collatz.innovation_port_moore import (
+        InnovationTapeObservation,
+    )
+
+    return type(value) is InnovationTapeObservation and value.producer_issued
+
+
 def joint_action_node_cost(_key: str, action: CollatzJointRunAction) -> int:
     """Charge the exact retained joint occurrence and its affine field graph."""
+    from number_compiler.sequences.collatz.joint_temporal_action import (
+        CollatzJointRunAction,
+    )
+
     if type(action) is not CollatzJointRunAction or not action.fields.producer_issued:
         raise TypeError("Collatz joint-action memo contains an unissued value")
     return retained_payload_node_count(action)
@@ -66,6 +105,11 @@ def _boundary_macro_node_cost(
     _key: str, macro: CollatzBoundaryMacro | BorderReturnMacro
 ) -> int:
     """Charge nested boundary structure and all retained integer limbs."""
+    from number_compiler.sequences.collatz.border_return_grammar import (
+        BorderReturnMacro,
+    )
+    from number_compiler.sequences.collatz.boundary_macros import CollatzBoundaryMacro
+
     if type(macro) not in (CollatzBoundaryMacro, BorderReturnMacro):
         raise TypeError("Collatz boundary memo contains another value sort")
     return retained_payload_node_count(macro.structural_payload())
@@ -75,6 +119,10 @@ def _innovation_observation_node_cost(
     _key: str, observation: InnovationTapeObservation
 ) -> int:
     """Charge an immutable finite-prefix observer summary."""
+    from number_compiler.sequences.collatz.innovation_port_moore import (
+        InnovationTapeObservation,
+    )
+
     if (
         type(observation) is not InnovationTapeObservation
         or not observation.producer_issued
@@ -112,6 +160,10 @@ class CollatzPhysicalImagePublication:
         candidate: SourceImageCandidate,
         summary: CollatzTapeWidthSummary,
     ) -> SourceImageCandidate:
+        from number_compiler.sequences.collatz.tape_width import (
+            CollatzTapeWidthSummary,
+        )
+
         if type(candidate) is not SourceImageCandidate:
             raise TypeError("Collatz width summary needs a source-image candidate")
         if type(summary) is not CollatzTapeWidthSummary:
@@ -126,6 +178,10 @@ class CollatzPhysicalImagePublication:
         candidate: SourceImageCandidate,
         action: CollatzJointRunAction,
     ) -> SourceImageCandidate:
+        from number_compiler.sequences.collatz.joint_temporal_action import (
+            CollatzJointRunAction,
+        )
+
         if type(candidate) is not SourceImageCandidate:
             raise TypeError("Collatz joint action needs a source-image candidate")
         if type(action) is not CollatzJointRunAction:
@@ -162,6 +218,15 @@ class CollatzPhysicalImagePublication:
         producer_stamp: BoundaryOccurrenceProducerStamp,
         macro: CollatzBoundaryMacro | BorderReturnMacro,
     ) -> SourceImageCandidate:
+        from number_compiler.sequences.collatz.border_return_grammar import (
+            BorderReturnMacro,
+            validate_border_return_macro,
+        )
+        from number_compiler.sequences.collatz.boundary_macros import (
+            CollatzBoundaryMacro,
+            validate_boundary_macro,
+        )
+
         if type(candidate) is not SourceImageCandidate:
             raise TypeError("Collatz boundary macro needs a source-image candidate")
         if not is_boundary_occurrence(occurrence):
@@ -232,6 +297,10 @@ class CollatzPhysicalImagePublication:
         candidate: SourceImageCandidate,
         observation: InnovationTapeObservation,
     ) -> SourceImageCandidate:
+        from number_compiler.sequences.collatz.innovation_port_moore import (
+            InnovationTapeObservation,
+        )
+
         if type(candidate) is not SourceImageCandidate:
             raise TypeError("Collatz innovation summary needs a source-image candidate")
         if (

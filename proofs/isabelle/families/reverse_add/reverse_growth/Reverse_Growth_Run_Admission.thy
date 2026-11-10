@@ -1,6 +1,7 @@
 theory Reverse_Growth_Run_Admission
   imports "Reverse_Residuals.Reverse_Invariant"
     "Reverse_Residuals.Reverse_196_Residue_Quotient"
+    "Shared_Carry_Dynamics.Decimal_Normalization_Morphism"
 begin
 
 text \<open>The growth-run bound is derived from the actual symmetric source
@@ -40,10 +41,11 @@ proof -
   show "hd ss \<le> 18" using bounded hd_in_set[OF nonempty] by blast
 qed
 
-lemma source_nongrowth_outer_coefficient_doubles:
+lemma source_nongrowth_outer_coefficient_bounds:
   assumes valid: "valid_pair ss"
       and no_growth: "\<not> carry_out False ss"
   shows "hd (step ss) \<ge> 2 * hd ss"
+    and "hd (step ss) \<le> 2 * hd ss + 1"
 proof -
   have nonempty: "ss \<noteq> []" and symmetric: "rev ss = ss"
     using valid unfolding valid_pair_def by auto
@@ -156,8 +158,18 @@ proof -
       using hd_nth last_nth last_index by simp
     finally show ?thesis .
   qed
-  show ?thesis using step_head first_digit last_digit_bound outer by arith
+  show "hd (step ss) \<ge> 2 * hd ss"
+    using step_head first_digit last_digit_bound outer by arith
+  have last_upper: "digits ss ! length xs \<le> a + 1"
+    using last_digit_formula mod_less_eq_dividend[of a 10]
+      mod_less_eq_dividend[of "a+1" 10]
+    by (cases "carry_out False xs") auto
+  show "hd (step ss) \<le> 2 * hd ss + 1"
+    using step_head first_digit last_upper outer by arith
 qed
+
+lemmas source_nongrowth_outer_coefficient_doubles =
+  source_nongrowth_outer_coefficient_bounds(1)
 
 lemma source_growth_edge_successor:
   assumes "ss \<noteq> []" "carry_out False ss"
@@ -186,6 +198,119 @@ fun source_no_growth_count :: "nat \<Rightarrow> nat list \<Rightarrow> nat" whe
   "source_no_growth_count 0 ss = 0"
 | "source_no_growth_count (Suc n) ss =
     (if carry_out False ss then 0 else 1) + source_no_growth_count n (step ss)"
+
+text \<open>The following word records the actual branch bit at each physical
+source successor.  It is only a proof index for the homogeneous factor; the
+carry rows and their forcing events are not encoded or authenticated by this
+word.\<close>
+
+fun source_chronological_growth_word :: "nat \<Rightarrow> nat list \<Rightarrow> bool list" where
+  "source_chronological_growth_word 0 ss = []"
+| "source_chronological_growth_word (Suc n) ss =
+    carry_out False ss # source_chronological_growth_word n (step ss)"
+
+lemma source_chronological_growth_word_counts:
+  "length (filter id (source_chronological_growth_word n ss)) =
+      source_growth_count n ss"
+  "length (filter Not (source_chronological_growth_word n ss)) =
+      source_no_growth_count n ss"
+  by (induction n arbitrary: ss) auto
+
+definition source_growth_homogeneous_factor :: "int \<Rightarrow> bool list \<Rightarrow> int" where
+  "source_growth_homogeneous_factor z word =
+    prod_list (map (\<lambda>growth. if growth then 1+z else 2) word)"
+
+lemma source_growth_homogeneous_factor_counts:
+  "source_growth_homogeneous_factor z word =
+    (2::int)^length (filter Not word) *
+      (1+z)^length (filter id word)"
+  by (induction word) (auto simp: source_growth_homogeneous_factor_def
+      algebra_simps)
+
+lemma source_growth_word_homogeneous_mod32_erasure:
+  fixes z x :: int
+  assumes quiet: "5 \<le> length (filter Not word)"
+  shows "(source_growth_homogeneous_factor z word * x) mod 32 = 0"
+proof -
+  let ?q = "length (filter Not word)"
+  let ?g = "length (filter id word)"
+  have factor:
+    "source_growth_homogeneous_factor z word =
+      (2::int)^?q * (1+z)^?g"
+    by (rule source_growth_homogeneous_factor_counts)
+  have q_split: "?q = 5 + (?q - 5)" using quiet by arith
+  have binary_factor: "(2::int)^?q = 32 * (2::int)^(?q - 5)"
+  proof -
+    have exponent: "(2::int)^?q = (2::int)^(5 + (?q - 5))"
+      by (rule arg_cong[where f="\<lambda>n. (2::int)^n", OF q_split])
+    also have "... = (2::int)^5 * (2::int)^(?q - 5)"
+      by (rule power_add)
+    also have "... = 32 * (2::int)^(?q - 5)"
+      by simp
+    finally show ?thesis .
+  qed
+  show ?thesis
+    by (simp only: factor binary_factor) (simp add: algebra_simps)
+qed
+
+corollary source_chronological_homogeneous_mod32_erasure:
+  fixes z x :: int
+  assumes quiet: "5 \<le> source_no_growth_count n ss"
+  shows "(source_growth_homogeneous_factor z
+      (source_chronological_growth_word n ss) * x) mod 32 = 0"
+  by (rule source_growth_word_homogeneous_mod32_erasure)
+    (use source_chronological_growth_word_counts(2)[of n ss] quiet in simp)
+
+text \<open>This is the coefficient-level decimal consequence used by a later
+forcing producer.  Its factors are the homogeneous coefficient formula
+@{term "2^q * residual"}; the shared normalization theorem accounts for the
+additional powers of ten in a spatial Laurent evaluation.\<close>
+
+theorem source_decimal_homogeneous_coefficient_erasure:
+  fixes coefficient residual z :: "nat \<Rightarrow> 'a::comm_ring_1"
+  assumes characteristic: "(32::'a)=0"
+      and quiet: "5 \<le> q"
+      and factors: "\<And>j. j<width \<Longrightarrow>
+        coefficient j=2^q*residual j"
+  shows "(\<Sum>j<width. coefficient j*10^j*z j) = 0"
+proof -
+  have erased:
+    "(\<Sum>j<width. coefficient j*10^j*z j) =
+      (\<Sum>j<width. if 5 \<le> q+j then 0
+        else coefficient j*10^j*z j)"
+    by (rule decimal_mod32_erase_annihilated_coefficients
+        [where order="\<lambda>j. q", OF characteristic])
+      (use factors in auto)
+  have zero:
+    "(\<Sum>j<width. if 5 \<le> q+j then 0
+      else coefficient j*10^j*z j) = 0"
+  proof -
+    have all_zero:
+      "(\<Sum>j<width. if 5 \<le> q+j then 0
+        else coefficient j*10^j*z j) = (\<Sum>j<width. 0)"
+    proof (rule sum.cong)
+      show "{..<width} = {..<width}" by rule
+      fix j
+      assume index: "j \<in> {..<width}"
+      have nonnegative: "0 \<le> j" using index by simp
+      have threshold: "5 \<le> q+j" using quiet nonnegative by arith
+      show "(if 5 \<le> q+j then 0
+          else coefficient j*10^j*z j) = 0"
+        by (simp only: threshold if_True)
+    qed
+    show ?thesis using all_zero by (simp add: sum.neutral)
+  qed
+  show ?thesis using erased zero by simp
+qed
+
+text \<open>The actual chronological growth word and its nongrowth count are now
+source-derived, and every homogeneous Laurent coefficient with the resulting
+five factors is erased.  This theory does not yet construct the signed forcing
+row from a physical carry mask or prove the full vector recurrence
+@{term "Q_next = A_growth Q + E"}; consequently it makes no endpoint-equals-
+forcing-image claim.  That producer refinement must use the punctured T2
+coefficient equations before a finite carry suffix can be promoted to an
+endpoint coefficient word.\<close>
 
 text \<open>This count is computed from the actual source carry at each temporal
 successor. It is not inferred from a finite radial observer or from an extent
@@ -547,6 +672,95 @@ theorem source_radial_growth_bound:
   using source_growth_potential[OF assms, of n] edge_growth_rank_bound[of "hd ss"]
   by arith
 
+text \<open>The two-sided outer coefficient gives a sharper accounting
+potential than the consecutive-growth rank.  This is a proof measure on an
+already admitted source, not a temporal-state ID or a future selector.\<close>
+
+definition edge_carry_potential :: "nat \<Rightarrow> nat" where
+  "edge_carry_potential e =
+    (if e=18 then 3
+     else if e\<in>{9,13,15,16,17} then 2
+     else if e\<in>{4,6,7,8,10,11,12,14} then 1 else 0)"
+
+lemma edge_carry_potential_bound: "edge_carry_potential e \<le> 3"
+  by (simp add: edge_carry_potential_def)
+
+lemma edge_carry_potential_growth:
+  assumes "9\<le>e" "e\<le>18"
+  shows "edge_carry_potential (1+e mod 10)+1 = edge_carry_potential e"
+proof -
+  have "e=9 \<or> e=10 \<or> e=11 \<or> e=12 \<or> e=13 \<or> e=14 \<or>
+    e=15 \<or> e=16 \<or> e=17 \<or> e=18" using assms by arith
+  then show ?thesis by (auto simp: edge_carry_potential_def)
+qed
+
+lemma edge_carry_potential_nongrowth:
+  assumes "2*e\<le>y" "y\<le>2*e+1" "y\<le>18"
+  shows "edge_carry_potential y \<le> edge_carry_potential e+1"
+proof -
+  have e_bound: "e\<le>9" using assms by arith
+  have cases: "e=0 \<or> e=1 \<or> e=2 \<or> e=3 \<or> e=4 \<or> e=5 \<or>
+    e=6 \<or> e=7 \<or> e=8 \<or> e=9" using e_bound by arith
+  have adjacent: "y=2*e \<or> y=2*e+1" using assms by arith
+  show ?thesis using cases adjacent assms(3)
+    by (auto simp: edge_carry_potential_def)
+qed
+
+theorem source_carry_potential_accounting:
+  assumes "valid_pair ss"
+  shows "source_growth_count n ss + edge_carry_potential (hd (run step n ss))
+    \<le> source_no_growth_count n ss + edge_carry_potential (hd ss)"
+using assms
+proof (induction n arbitrary: ss)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  have next_valid: "valid_pair (step ss)"
+    by (rule valid_pair_successor[OF Suc.prems])
+  have ih: "source_growth_count n (step ss) +
+      edge_carry_potential (hd (run step n (step ss))) \<le>
+      source_no_growth_count n (step ss) + edge_carry_potential (hd (step ss))"
+    by (rule Suc.IH[OF next_valid])
+  show ?case
+  proof (cases "carry_out False ss")
+    case True
+    have nonempty: "ss\<noteq>[]" using Suc.prems
+      by (simp add: valid_pair_def)
+    have outer: "hd (step ss)=1+hd ss mod 10"
+      by (rule source_growth_edge_successor[OF nonempty True])
+    have drop: "edge_carry_potential (hd (step ss))+1 = edge_carry_potential (hd ss)"
+      using edge_carry_potential_growth[OF source_growth_requires_edge[OF Suc.prems True]]
+      by (simp only: outer)
+    show ?thesis using ih drop by (simp add: True; arith)
+  next
+    case False
+    have next_edge: "hd (step ss)\<le>18"
+      using next_valid by (auto simp: valid_pair_def)
+    have rise: "edge_carry_potential (hd (step ss))\<le>edge_carry_potential (hd ss)+1"
+      by (rule edge_carry_potential_nongrowth
+        [OF source_nongrowth_outer_coefficient_bounds[OF Suc.prems False] next_edge])
+    show ?thesis using ih rise by (simp add: False; arith)
+  qed
+qed
+
+corollary source_decimal_twelve_step_nongrowth:
+  assumes "valid_pair ss"
+  shows "5\<le>source_no_growth_count 12 ss"
+  using source_carry_potential_accounting[OF assms, of 12]
+    edge_carry_potential_bound[of "hd ss"] source_growth_accounting[of 12 ss]
+  by arith
+
+corollary source_decimal_twelve_step_mod32_erasure:
+  assumes "valid_pair ss"
+  shows "((2::int)^source_no_growth_count 12 ss * x) mod 32 = 0"
+proof -
+  have count: "source_no_growth_count 12 ss =
+      5 + (source_no_growth_count 12 ss - 5)"
+    using source_decimal_twelve_step_nongrowth[OF assms] by arith
+  show ?thesis by (subst count) (simp add: power_add mult.assoc)
+qed
+
 corollary source_live_radial_age:
   assumes valid: "valid_pair ss" and live: "source_no_growth_count n ss < bits"
   shows "n < 4*bits" "source_growth_count n ss \<le> 3*bits"
@@ -592,12 +806,22 @@ composing admitted blocks. No spatial scan or grammar-size bound follows.\<close
 
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
-    @{thms step_length_exact source_run_length_exact
+    @{thms source_chronological_growth_word_counts
+      source_growth_homogeneous_factor_counts
+      source_growth_word_homogeneous_mod32_erasure
+      source_chronological_homogeneous_mod32_erasure
+      source_decimal_homogeneous_coefficient_erasure
+      step_length_exact source_run_length_exact
       source_growth_count_chronological source_growth_phase_chronological
       source_width_phase_exact source_width_phase_chronological
       source_growth_requires_edge source_growth_edge_successor
       source_nongrowth_outer_coefficient_doubles
+      source_nongrowth_outer_coefficient_bounds
       source_growth_rank_decreases source_growth_potential source_radial_growth_bound
+      edge_carry_potential_bound edge_carry_potential_growth
+      edge_carry_potential_nongrowth source_carry_potential_accounting
+      source_decimal_twelve_step_nongrowth
+      source_decimal_twelve_step_mod32_erasure
       source_nongrowth_outer_bound source_five_step_growth_positive
       source_positive_growth_has_odd_prefix source_even_width_state_within_five
       source_sixth_value_mod11 source_pair_run_residue99

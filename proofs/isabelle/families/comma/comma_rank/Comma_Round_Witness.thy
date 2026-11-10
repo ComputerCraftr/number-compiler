@@ -102,7 +102,7 @@ ML \<open>
     val _ = if Thm.term_of (Thm.lhs_of (#equation comma_delta_smoke RS @{thm eq_reflection}))
         aconv @{term "comma_round_close 5 (Comma_Entry 1 924 3)"}
       then () else error "Occurrence delta was erased from requested source";
-    val comma_selector_context = put_simpset HOL_basic_ss @{context} addsimps
+    val comma_selector_context = put_simpset HOL_basic_ss @{context} |> Simplifier.add_simps
       @{thms comma_weighted_germ.select_convs comma_weight_expression.select_convs
         comma_germ_then_weight comma_weight_then_def append.simps};
     fun comma_weight_deltas payload =
@@ -128,7 +128,7 @@ ML \<open>
     val (comma_observe, comma_observe_stats) = Comma_Round_Witness.make_observer_source_owned
       @{context} {generation=1, current_generation=fn () => !comma_smoke_generation};
     val comma_observed = comma_observe 5 (Comma_Round_Witness.entry 1 0 3);
-    val comma_observation_compare_context = put_simpset HOL_basic_ss @{context} addsimps
+    val comma_observation_compare_context = put_simpset HOL_basic_ss @{context} |> Simplifier.add_simps
       @{thms One_nat_def[symmetric] Suc_1 Suc_numeral add_num_simps
         add_0_left add_0_right numeral_plus_numeral add_numeral_special
         comma_germ_then_controls comma_weighted_germ.select_convs};

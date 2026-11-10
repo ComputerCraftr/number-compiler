@@ -58,7 +58,6 @@ class CommaActionRecord:
     maximum_guard: int = 0
     child_digit: int = 0
     boundary_source: BoundaryState | None = None
-    boundary_exponent: int = 0
     boundary_target: BoundaryState | None = None
     future_digest: str = ""
     before: CommaActionID | None = None
@@ -112,7 +111,6 @@ def action_snapshot(node: CommaActionRecord) -> tuple[object, ...]:
         node.maximum_guard,
         node.child_digit,
         boundary,
-        node.boundary_exponent,
         target_signature,
         node.future_digest,
         handle(node.before),
@@ -653,40 +651,6 @@ class CommaActionArena:
             self.charge_bits(_seal_integer_bits(expected))
 
         return verify
-
-    def _boundary_prefix(
-        self, state: BoundaryState, exponent: int, transitions: int
-    ) -> CommaActionID:
-        """Construct an exact-source prefix ending no later than the fork.
-
-        The representative exponent is the sole currently admitted input for
-        this unproved symbolic constructor.  A checked whole-ray contract must
-        be installed before this method can transport to other exponents.
-        """
-        if type(state) is not BoundaryState:
-            raise TypeError("comma boundary state must be exact")
-        boundary_state_signature(state)
-        representative = state.exponent_residue
-        if representative < 5:
-            representative += PERIOD
-        if type(exponent) is not int or exponent != representative:
-            raise ValueError("comma boundary lifting is not yet admitted")
-        if type(transitions) is not int or transitions < 0:
-            raise ValueError("comma boundary prefix length must be nonnegative")
-        template = self.boundary_template(state)
-        if transitions > template.weight.evaluate(
-            exponent, charge_bits=self.charge_bits
-        ):
-            raise ValueError("comma boundary prefix crosses its next branch")
-        return self.intern_record(
-            ("boundary-prefix", state, exponent, transitions),
-            CommaActionRecord(
-                "boundary-prefix",
-                transitions,
-                boundary_source=state,
-                boundary_exponent=exponent,
-            ),
-        )
 
     def boundary_prefix_occurrence(
         self, source: BoundaryOccurrence, transitions: int

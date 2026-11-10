@@ -7,7 +7,7 @@ primality.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from number_compiler.arithmetic.automata.slp import SLPArena, SLPNode
 from number_compiler.arithmetic.automata.slp_interval import (
@@ -31,7 +31,7 @@ class FermatBinarySLPSnapshot:
 
     nodes: tuple[SLPNode, ...]
     root: int
-    one_counts: tuple[int, ...]
+    _one_counts: tuple[int, ...] | None = field(compare=False, hash=False, repr=False)
 
     @classmethod
     def admit(
@@ -89,7 +89,6 @@ class FermatBinarySLPSnapshot:
         ordered_ids = sorted(reachable)
         remap = {old: new for new, old in enumerate(ordered_ids)}
         compact: list[SLPNode] = []
-        one_counts: list[int] = []
         for old_id in ordered_ids:
             node = arena.nodes[old_id]
             if node.kind == "TERM" and node.symbol not in (0, 1):
@@ -104,9 +103,6 @@ class FermatBinarySLPSnapshot:
                         right=remap[node.right],
                     )
                 )
-                one_counts.append(
-                    one_counts[remap[node.left]] + one_counts[remap[node.right]]
-                )
             elif node.kind == "REPEAT":
                 compact.append(
                     SLPNode(
@@ -117,20 +113,43 @@ class FermatBinarySLPSnapshot:
                         count=node.count,
                     )
                 )
-                one_counts.append(one_counts[remap[node.child]] * node.count)
             elif node.kind == "TERM":
                 compact.append(
                     SLPNode(len(compact), node.kind, node.length, symbol=node.symbol)
                 )
-                one_counts.append(node.symbol)
             else:
                 compact.append(SLPNode(len(compact), node.kind, node.length))
-                one_counts.append(0)
         snapshot = object.__new__(cls)
         object.__setattr__(snapshot, "nodes", tuple(compact))
         object.__setattr__(snapshot, "root", remap[root])
-        object.__setattr__(snapshot, "one_counts", tuple(one_counts))
+        # Signed folds consume the compact grammar but do not need a large
+        # population bigint for every intermediate node.  Count populations
+        # only when an interval-count observer is explicitly requested.
+        object.__setattr__(snapshot, "_one_counts", None)
         return snapshot
+
+    @property
+    def one_counts(self) -> tuple[int, ...]:
+        """Return exact SLP populations, materializing them only on demand."""
+        existing = self._one_counts
+        if existing is not None:
+            return existing
+        counts: list[int] = []
+        for node in self.nodes:
+            if node.kind == "CONCAT":
+                counts.append(counts[node.left] + counts[node.right])
+            elif node.kind == "REPEAT":
+                counts.append(counts[node.child] * node.count)
+            elif node.kind == "TERM":
+                counts.append(node.symbol)
+            else:
+                counts.append(0)
+        result = tuple(counts)
+        # The frozen snapshot's optional cache is deterministic immutable
+        # derived data; concurrent duplicate computation publishes the same
+        # tuple and carries no source or certificate authority.
+        object.__setattr__(self, "_one_counts", result)
+        return result
 
     def count_ones(
         self, begin: int, end: int, *, max_visits: int = MAX_BINARY_SLP_NODES
@@ -280,6 +299,11 @@ class FermatBinaryFoldAction:
         """Alternating block phase, independent of represented word length."""
         return self.length % (2 * self.width)
 
+    @property
+    def semantic_key(self) -> tuple[int, int, int]:
+        """Extensional spatial action, excluding source occurrence metadata."""
+        return self.width, self.phase, self.residue
+
     @classmethod
     def identity(cls, width: int) -> FermatBinaryFoldAction:
         return cls(_width(width), 0, 0)
@@ -304,6 +328,21 @@ class FermatBinaryFoldAction:
         selected_count = require_integer(count, "Fermat action repeat count", 0)
         if selected_count.bit_length() > MAX_SLP_INTEGER_BITS:
             raise ValueError("Fermat action repeat count exceeds its exact budget")
+
+        # At these complete signed-width boundaries, the spatial action is a
+        # scalar cocycle or an involution.  Repeating the supplied action has
+        # a direct exact result, avoiding a logarithmic tower of equivalent
+        # matrix compositions.
+        if self.phase == 0:
+            residue = (self.residue * (selected_count % self.modulus)) % self.modulus
+            return FermatBinaryFoldAction(
+                self.width, self.length * selected_count, residue
+            )
+        if self.phase == self.width:
+            residue = self.residue if selected_count & 1 else 0
+            return FermatBinaryFoldAction(
+                self.width, self.length * selected_count, residue
+            )
 
         def compose(
             first: FermatBinaryFoldAction, second: FermatBinaryFoldAction

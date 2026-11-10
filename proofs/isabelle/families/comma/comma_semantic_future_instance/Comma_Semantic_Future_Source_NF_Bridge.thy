@@ -1,6 +1,5 @@
 theory Comma_Semantic_Future_Source_NF_Bridge
-  imports Comma_Semantic_Future_Prefix_Boundary
-    Comma_Semantic_Future_Candidate_Provider_NF
+  imports Comma_Semantic_Future_Source_Action
 begin
 
 lemma comma_semantic_future_initial_round_output_from_close:
@@ -69,55 +68,33 @@ lemma comma_semantic_future_initial_crossing_stop:
         (n,terminal_position,Comma_Round_Cross (Comma_Entry 1 d x))"
   obtains J H where
     "comma_semantic_b1_weighted_action_power 5
-      comma_semantic_graph_root_weighted_action
-      ((snd (snd q)+d) mod 924) (comma_offset_orbit x) =
-        Comma_Semantic_B1_Stop_At J H"
+      comma_semantic_future_rank_round_action
+        ((snd (snd q)+d) mod 924) (comma_offset_orbit x) =
+      Comma_Semantic_B1_Stop_At J H"
 proof -
-  have admitted: "comma_round_admitted (comma_finite_initial q)"
-    by (rule comma_semantic_future_initial_source_admitted[OF valid])
-  obtain x' where x_bound: "x'\<le>90"
-    and target_shape:
-      "Comma_Entry 1 d x = Comma_Entry 1
-        (Suc (comma_round_delta (comma_finite_initial q))) x'"
-    using comma_round_close_crossing_phase[OF close admitted] by blast
-  have initial_delta: "comma_round_delta (comma_finite_initial q)=0"
-    by (cases q) (auto simp: comma_finite_initial_def)
-  have d_eq: "d=1" using target_shape initial_delta by simp
-  have x_eq: "x=x'" using target_shape by simp
-  have offset: "x\<le>90" using x_bound x_eq by simp
   let ?phase = "(snd (snd q)+d) mod 924"
   let ?root = "comma_offset_orbit x"
-  let ?state = "Comma_Decade ?phase x"
   have phase_bound: "?phase<924" by simp
   have root_bound: "?root<46" by (rule comma_offset_orbit_bound)
-  have state_admitted: "comma_decade_admitted ?state"
-    using phase_bound offset by simp
+  have image24:
+      "\<And>p cid terminal. p<924 \<Longrightarrow> cid<46 \<Longrightarrow>
+        comma_phase_class_continue_power
+          comma_semantic_phase_program_class_step 24 (p,cid)=Some terminal
+        \<Longrightarrow> terminal\<in>comma_continue24_endpoints"
+    by (rule comma_semantic_phase_continue24_image_checked)
   obtain H terminal where height: "H\<le>26"
-    and summary: "comma_decade_exact_summary ?state H terminal"
-    using comma_semantic_decade_summary_total_exact[OF state_admitted] by blast
-  have digit_bound: "comma_terminal_weight_digit terminal<9"
-    by (rule comma_terminal_weight_digit_bound
-      [OF comma_decade_exact_summary_terminal_admitted[OF summary]])
-  let ?children =
-    "case terminal of Comma_Terminal_Fork a \<Rightarrow> [0,0]
-     | Comma_Terminal_Landmine \<Rightarrow> []"
-  have children_shape:
-    "comma_semantic_future_action_children_shape
-      (comma_semantic_future_control_of_terminal_position
-        (comma_terminal_weight_digit terminal)) ?children"
-    using digit_bound
-    by (cases terminal)
-      (auto simp: comma_semantic_future_action_children_shape.simps
-        comma_semantic_future_control_of_terminal_position_def
-        comma_terminal_weight_digit.simps)
-  obtain action where weighted:
+    and summary:
+      "comma_decade_exact_summary
+        (Comma_Decade ?phase
+          (comma_offset_representatives!?root)) H terminal"
+    and weighted_power:
       "comma_semantic_b1_weighted_action_power 5
-        comma_semantic_graph_root_weighted_action ?phase ?root =
+        comma_semantic_future_rank_round_action ?phase ?root =
           Comma_Semantic_B1_Stop_At
             (comma_terminal_weight_digit terminal) H"
-    by (rule comma_semantic_future_graph_power_weighted_stop
-      [OF phase_bound offset summary height children_shape])
-  show thesis using weighted by (rule that)
+    by (rule comma_semantic_future_rank_b32_source_free_exact
+      [OF image24 phase_bound root_bound])
+  show thesis by (rule that[OF weighted_power])
 qed
 
 lemma comma_semantic_future_initial_source_graph_eval_exact:
@@ -201,115 +178,342 @@ proof -
         comma_semantic_b1_crt_graph_result.simps)
 qed
 
-lemma comma_semantic_future_initial_nf_action_eval_exact:
-  fixes slot phase :: nat
-  assumes slot: "slot<16" and phase: "phase<924"
-  shows "comma_semantic_b1_crt_action_eval
-      (comma_semantic_graph_initial_nf_actions!slot) phase =
-    comma_semantic_b1_weighted_word_then 1
-      (\<lambda>p i. comma_semantic_b1_crt_action_eval
-        (comma_semantic_graph_initial_source_actions!i) p)
-      (\<lambda>p i. comma_semantic_b1_crt_action_eval
-        (comma_semantic_graph_b32_weighted_actions!i) p)
-      phase slot"
+lemma comma_semantic_future_initial_round_output_cases:
+  fixes q :: comma_boundary_state and phase :: nat
+  assumes valid: "comma_boundary_valid q"
+  obtains J where
+      "comma_semantic_b1_round_output phase (comma_finite_initial q) =
+        Comma_Semantic_B1_Stop J" "J<9"
+    | root where
+      "comma_semantic_b1_round_output phase (comma_finite_initial q) =
+        Comma_Semantic_B1_Live root" "root<46"
 proof -
-  have source_length:
-    "length comma_semantic_graph_initial_source_actions=16"
-    by (rule comma_semantic_graph_initial_source_actions_length)
-  have b32_length:
-    "length comma_semantic_graph_b32_weighted_actions=46"
-    by (rule comma_semantic_graph_b32_weighted_actions_length)
-  have source_slot_bound:
-    "slot<length comma_semantic_graph_initial_source_actions"
-    using slot source_length by simp
-  have source_member:
-    "comma_semantic_graph_initial_source_actions!slot \<in>
-      set comma_semantic_graph_initial_source_actions"
-    by (rule nth_mem[OF source_slot_bound])
-  have source_wf:
-    "comma_weighted_crt_wellformed
-      (snd (comma_semantic_graph_initial_source_actions!slot))"
-    using comma_semantic_graph_initial_source_actions_wellformed source_member
-    by (simp add: list_all_iff)
-  have source_zero:
-    "comma_semantic_b1_crt_action_nonterminal_zero
-      (comma_semantic_graph_initial_source_actions!slot)"
-    using comma_semantic_graph_initial_source_actions_nonterminal_zero
-      source_member by (simp add: list_all_iff)
-  have b32_wf:
-    "\<And>root. root<46 \<Longrightarrow>
-      comma_weighted_crt_wellformed
-        (snd (comma_semantic_graph_b32_weighted_actions!root))"
-  proof -
-    fix root assume root: "root<46"
-    have root_bound:
-      "root<length comma_semantic_graph_b32_weighted_actions"
-      using root b32_length by simp
-    have member:
-      "comma_semantic_graph_b32_weighted_actions!root \<in>
-        set comma_semantic_graph_b32_weighted_actions"
-      by (rule nth_mem[OF root_bound])
-    show "comma_weighted_crt_wellformed
-        (snd (comma_semantic_graph_b32_weighted_actions!root))"
-      using comma_semantic_graph_b32_weighted_actions_wellformed member
-      by (simp add: list_all_iff)
+  let ?source = "comma_finite_initial q"
+  have source_admitted: "comma_round_admitted ?source"
+    by (rule comma_semantic_future_initial_source_admitted[OF valid])
+  have source_delta: "comma_round_delta ?source=0"
+    using valid by (cases q) (simp add: comma_finite_initial_def comma_boundary_valid_def)
+  obtain steps terminal event where close:
+      "comma_round_close phase ?source=(steps,terminal,event)"
+    by (cases "comma_round_close phase ?source") auto
+  have terminal_admitted: "comma_round_admitted terminal"
+    by (rule comma_round_close_admitted(1)[OF close source_admitted])
+  have event_not_invalid: "event\<noteq>Comma_Round_Invalid"
+    by (rule comma_round_close_admitted(2)[OF close source_admitted])
+  have terminal_delta: "comma_round_delta terminal=0"
+    using comma_round_close_delta[OF close source_admitted] source_delta by simp
+  have trace:
+      "case event of
+         Comma_Round_Fork a d \<Rightarrow>
+           comma_finite_step (phase mod 924) terminal=Comma_Fork a d
+       | Comma_Round_Landmine d \<Rightarrow>
+           comma_finite_step (phase mod 924) terminal=Comma_Landmine d
+       | Comma_Round_Cross target \<Rightarrow>
+           comma_finite_step (phase mod 924) terminal=Comma_Next target \<and>
+             comma_round_crossing terminal target
+       | Comma_Round_Invalid \<Rightarrow>
+           comma_finite_step (phase mod 924) terminal=Comma_Invalid"
+    using comma_round_close_refines_trace[OF close] by simp
+  have output_exact:
+      "comma_semantic_b1_round_output phase ?source =
+        (case event of
+           Comma_Round_Fork a d \<Rightarrow>
+             if d=0 then Comma_Semantic_B1_Stop (a-2)
+             else Comma_Semantic_B1_Invalid
+         | Comma_Round_Landmine d \<Rightarrow>
+             if d=0 then Comma_Semantic_B1_Stop 8
+             else Comma_Semantic_B1_Invalid
+         | Comma_Round_Cross (Comma_Entry f d x) \<Rightarrow>
+             if f=1 \<and> d=1 \<and> x\<le>90
+             then Comma_Semantic_B1_Live (comma_offset_orbit x)
+             else Comma_Semantic_B1_Invalid
+         | _ \<Rightarrow> Comma_Semantic_B1_Invalid)"
+    by (rule comma_semantic_future_initial_round_output_from_close[OF valid close])
+  show thesis
+  proof (cases event)
+    case (Comma_Round_Fork a d)
+    have finite_fork:
+      "comma_finite_step (phase mod 924) terminal=Comma_Fork a d"
+      using trace Comma_Round_Fork by simp
+    have digit_bounds: "2\<le>a" "a\<le>9"
+      using comma_finite_fork_digit_bounds[OF finite_fork] by auto
+    have delta_zero: "d=0"
+      using finite_fork terminal_delta
+      by (cases terminal)
+        (auto simp: comma_finite_step_def comma_weighted_step_def Let_def
+          split: if_splits)
+    have output:
+      "comma_semantic_b1_round_output phase ?source=
+        Comma_Semantic_B1_Stop (a-2)"
+      using output_exact Comma_Round_Fork delta_zero by simp
+    have bound: "a-2<9" using digit_bounds by arith
+    show thesis by (rule that(1)[OF output bound])
+  next
+    case (Comma_Round_Landmine d)
+    have finite_landmine:
+      "comma_finite_step (phase mod 924) terminal=Comma_Landmine d"
+      using trace Comma_Round_Landmine by simp
+    have delta_zero: "d=0"
+      using finite_landmine terminal_delta
+      by (cases terminal)
+        (auto simp: comma_finite_step_def comma_weighted_step_def Let_def
+          split: if_splits)
+    have output:
+      "comma_semantic_b1_round_output phase ?source=
+        Comma_Semantic_B1_Stop 8"
+      using output_exact Comma_Round_Landmine delta_zero by simp
+    have bound: "8<9" by simp
+    show thesis by (rule that(1)[OF output bound])
+  next
+    case (Comma_Round_Cross target)
+    obtain d h x where terminal_shape:
+        "terminal=Comma_Near 9 d h"
+      and target_shape: "target=Comma_Entry 1 (Suc d) x"
+      and offset_bound: "x\<le>90"
+      using comma_round_close_crossing_shape[OF close] by blast
+    have delta_zero: "d=0"
+      using terminal_delta terminal_shape by simp
+    have output:
+      "comma_semantic_b1_round_output phase ?source=
+        Comma_Semantic_B1_Live (comma_offset_orbit x)"
+      using output_exact Comma_Round_Cross target_shape offset_bound delta_zero
+      by simp
+    have root_bound: "comma_offset_orbit x<46"
+      by (rule comma_offset_orbit_bound)
+    show thesis by (rule that(2)[OF output root_bound])
+  next
+    case Comma_Round_Invalid
+    show thesis using event_not_invalid Comma_Round_Invalid by simp
   qed
-  have b32_zero:
-    "\<And>root. root<46 \<Longrightarrow>
-      comma_semantic_b1_crt_action_nonterminal_zero
-        (comma_semantic_graph_b32_weighted_actions!root)"
-  proof -
-    fix root assume root: "root<46"
-    have root_bound:
-      "root<length comma_semantic_graph_b32_weighted_actions"
-      using root b32_length by simp
-    have member:
-      "comma_semantic_graph_b32_weighted_actions!root \<in>
-        set comma_semantic_graph_b32_weighted_actions"
-      by (rule nth_mem[OF root_bound])
-    show "comma_semantic_b1_crt_action_nonterminal_zero
-        (comma_semantic_graph_b32_weighted_actions!root)"
-      using comma_semantic_graph_b32_weighted_actions_nonterminal_zero member
-      by (simp add: list_all_iff)
-  qed
-  have family_spec:
-    "comma_semantic_future_initial_nf_action_at phase slot =
-      comma_semantic_future_family_nf_spec_of_dags
-        comma_semantic_graph_initial_source_actions
-        comma_semantic_graph_b32_weighted_actions phase slot"
-    by (rule comma_semantic_future_initial_nf_action_at_exact
-      [OF phase slot source_length b32_length source_wf source_zero b32_wf b32_zero])
-  have compiled_action:
-    "comma_weighted_crt_apply
-      (comma_semantic_graph_initial_nf_actions!slot) phase =
-      comma_weighted_crt_apply
-        (comma_semantic_b1_crt_compose 1
-          (comma_semantic_graph_initial_source_actions!slot)
-          comma_semantic_graph_b32_weighted_actions) phase"
-    using comma_semantic_graph_initial_nf_actions_refine slot
-    by (simp add: list_all_iff)
-  have actual:
-    "comma_semantic_b1_crt_action_eval
-      (comma_semantic_graph_initial_nf_actions!slot) phase =
-      comma_semantic_future_initial_nf_action_at phase slot"
-    using compiled_action
-    by (simp add: comma_semantic_b1_crt_action_eval_def
-      comma_semantic_future_initial_nf_action_at_def
-      comma_semantic_future_family_nf_action_at_def
-      comma_semantic_future_family_nf_dags_def)
-  show ?thesis
-    using actual family_spec
-    by (simp add: comma_semantic_future_family_nf_spec_of_dags_def)
 qed
 
 lemma comma_semantic_future_b32_action_eval_exact:
   fixes root phase :: nat
   assumes root: "root<46" and phase: "phase<924"
   shows "comma_semantic_b1_crt_action_eval
-      (comma_semantic_graph_b32_weighted_actions!root) phase =
+      (comma_semantic_future_rank_b32_weighted_actions!root) phase =
     comma_semantic_b1_weighted_action_power 5
-      comma_semantic_graph_root_weighted_action phase root"
-  by (rule comma_semantic_graph_b32_weighted_actions_refine[OF root phase])
+      comma_semantic_future_rank_round_action phase root"
+  by (rule comma_semantic_future_rank_b32_action_eval_exact[OF root phase])
+
+lemma comma_semantic_future_action_eval_stop_apply:
+  assumes eval:
+    "comma_semantic_b1_crt_action_eval action phase=
+      Comma_Semantic_B1_Stop_At J H"
+  shows "comma_weighted_crt_apply action phase=
+    Some (Comma_Semantic_B1_CRT_Stop J,H)"
+  using eval
+  by (cases "comma_weighted_crt_apply action phase")
+    (auto simp: comma_semantic_b1_crt_action_eval_def
+      comma_semantic_b1_crt_decode.simps split: prod.splits
+        comma_semantic_b1_crt_control.splits)
+
+lemma comma_semantic_future_initial_nf_slot_stopped:
+  fixes slot phase :: nat
+  assumes slot: "slot<16" and phase: "phase<924"
+  obtains J H where
+    "comma_weighted_crt_apply
+      (comma_semantic_graph_initial_nf_actions!slot) phase =
+      Some (Comma_Semantic_B1_CRT_Stop J,H)"
+    "J<9" "H\<le>27"
+proof -
+  let ?kind = "if slot<8 then Comma_N else Comma_Z"
+  let ?digit = "if slot<8 then slot+2 else slot-6"
+  let ?source_state = "(?kind,?digit,0)"
+  have source_valid: "comma_boundary_valid ?source_state"
+    using slot by (auto simp: comma_boundary_valid_def; arith)
+  have source_index:
+      "comma_semantic_future_initial_source_index ?source_state=slot"
+    using slot by (auto simp: comma_semantic_future_initial_source_index_def;
+      arith)
+  have source_position:
+      "comma_semantic_future_initial_sources!slot=
+        comma_finite_initial ?source_state"
+  proof -
+    have exact:
+      "comma_semantic_future_initial_sources!
+        comma_semantic_future_initial_source_index ?source_state=
+        comma_finite_initial ?source_state"
+      by (rule comma_semantic_future_initial_source_index_exact(2)[OF source_valid])
+    show ?thesis using exact source_index by simp
+  qed
+  have classified:
+      "(\<exists>J<9. comma_semantic_b1_round_output phase
+          (comma_finite_initial ?source_state)=Comma_Semantic_B1_Stop J) \<or>
+       (\<exists>root<46. comma_semantic_b1_round_output phase
+          (comma_finite_initial ?source_state)=Comma_Semantic_B1_Live root)"
+    using comma_semantic_future_initial_round_output_cases[OF source_valid]
+    by blast
+  have source_exact:
+      "comma_semantic_b1_crt_action_eval
+        (comma_semantic_graph_initial_source_actions!slot) phase =
+       (case comma_semantic_b1_round_output phase (comma_finite_initial ?source_state) of
+          Comma_Semantic_B1_Live root \<Rightarrow> Comma_Semantic_B1_Continue root
+        | Comma_Semantic_B1_Stop J \<Rightarrow> Comma_Semantic_B1_Stop_At J 0
+        | Comma_Semantic_B1_Invalid \<Rightarrow> Comma_Semantic_B1_Weighted_Invalid)"
+    using comma_semantic_future_initial_source_action_eval_exact
+      [OF source_valid phase] source_index source_position by simp
+  have nf_exact:
+      "comma_semantic_b1_crt_action_eval
+        (comma_semantic_graph_initial_nf_actions!slot) phase =
+       comma_semantic_b1_weighted_word_then 1
+         (\<lambda>p i. comma_semantic_b1_crt_action_eval
+           (comma_semantic_graph_initial_source_actions!i) p)
+         (\<lambda>p i. comma_semantic_b1_crt_action_eval
+           (comma_semantic_future_rank_b32_weighted_actions!i) p)
+         phase slot"
+    using comma_semantic_future_initial_nf_action_eval_exact[OF slot phase]
+    by (simp add: comma_semantic_future_initial_nf_dags_def)
+  show thesis
+  proof (cases "comma_semantic_b1_round_output phase
+      (comma_finite_initial ?source_state)")
+    case (Comma_Semantic_B1_Stop first_J)
+    have first_stop_bound: "first_J<9"
+      using classified Comma_Semantic_B1_Stop by blast
+    have word_stop:
+      "comma_semantic_b1_weighted_word_then 1
+         (\<lambda>p i. comma_semantic_b1_crt_action_eval
+           (comma_semantic_graph_initial_source_actions!i) p)
+         (\<lambda>p i. comma_semantic_b1_crt_action_eval
+           (comma_semantic_future_rank_b32_weighted_actions!i) p)
+         phase slot = Comma_Semantic_B1_Stop_At first_J 0"
+      using source_exact Comma_Semantic_B1_Stop
+      by (simp add: comma_semantic_b1_weighted_word_then.simps)
+    have action_eval:
+      "comma_semantic_b1_crt_action_eval
+        (comma_semantic_graph_initial_nf_actions!slot) phase =
+        Comma_Semantic_B1_Stop_At first_J 0"
+      using nf_exact word_stop by simp
+    have applied:
+      "comma_weighted_crt_apply
+        (comma_semantic_graph_initial_nf_actions!slot) phase =
+        Some (Comma_Semantic_B1_CRT_Stop first_J,0)"
+      by (rule comma_semantic_future_action_eval_stop_apply[OF action_eval])
+    have height_bound: "0\<le>27" by simp
+    show thesis
+      by (rule that(1)[OF applied first_stop_bound height_bound])
+  next
+    case (Comma_Semantic_B1_Live root)
+    have root_bound: "root<46"
+      using classified Comma_Semantic_B1_Live by blast
+    let ?next_phase = "(phase+1) mod 924"
+    have next_phase_bound: "?next_phase<924" by simp
+    obtain H terminal where height: "H\<le>26"
+      and summary:
+        "comma_decade_exact_summary
+          (Comma_Decade ?next_phase (comma_offset_representatives!root)) H terminal"
+      and power:
+        "comma_semantic_b1_weighted_action_power 5
+          comma_semantic_future_rank_round_action ?next_phase root =
+          Comma_Semantic_B1_Stop_At
+            (comma_terminal_weight_digit terminal) H"
+      and rank_eval:
+        "comma_semantic_b1_crt_action_eval
+          (comma_semantic_future_rank_b32_weighted_actions!root) ?next_phase =
+          Comma_Semantic_B1_Stop_At
+            (comma_terminal_weight_digit terminal) H"
+      by (rule comma_semantic_future_rank_b32_action_stop_exact
+        [OF next_phase_bound root_bound])
+    have terminal_admitted:
+        "comma_terminal_weight_admitted terminal"
+      by (rule comma_decade_exact_summary_terminal_admitted[OF summary])
+    have digit_bound:
+        "comma_terminal_weight_digit terminal<9"
+      by (rule comma_terminal_weight_digit_bound[OF terminal_admitted])
+    have word_stop:
+      "comma_semantic_b1_weighted_word_then 1
+         (\<lambda>p i. comma_semantic_b1_crt_action_eval
+           (comma_semantic_graph_initial_source_actions!i) p)
+         (\<lambda>p i. comma_semantic_b1_crt_action_eval
+           (comma_semantic_future_rank_b32_weighted_actions!i) p)
+         phase slot = Comma_Semantic_B1_Stop_At
+           (comma_terminal_weight_digit terminal) (1+H)"
+      using source_exact Comma_Semantic_B1_Live rank_eval
+      by (simp add: comma_semantic_b1_weighted_word_then.simps)
+    have action_eval:
+      "comma_semantic_b1_crt_action_eval
+        (comma_semantic_graph_initial_nf_actions!slot) phase =
+        Comma_Semantic_B1_Stop_At
+          (comma_terminal_weight_digit terminal) (1+H)"
+      using nf_exact word_stop by simp
+    have applied:
+      "comma_weighted_crt_apply
+        (comma_semantic_graph_initial_nf_actions!slot) phase =
+        Some (Comma_Semantic_B1_CRT_Stop
+          (comma_terminal_weight_digit terminal),1+H)"
+      by (rule comma_semantic_future_action_eval_stop_apply[OF action_eval])
+    have height_bound: "1+H\<le>27" using height by arith
+    show thesis
+      by (rule that(1)[OF applied digit_bound height_bound])
+  next
+    case Comma_Semantic_B1_Invalid
+    then show thesis using classified by blast
+  qed
+qed
+
+lemma comma_semantic_graph_initial_nf_actions_stopped:
+  "list_all
+    (\<lambda>action. \<forall>phase. \<exists>J delta.
+      comma_weighted_crt_apply action phase =
+        Some (Comma_Semantic_B1_CRT_Stop J,delta) \<and>
+      J<9 \<and> delta\<le>27)
+    comma_semantic_graph_initial_nf_actions"
+proof -
+  have actions_length: "length comma_semantic_graph_initial_nf_actions=16"
+    by (rule comma_semantic_graph_initial_nf_actions_length)
+  have all_slots:
+      "\<forall>slot<length comma_semantic_graph_initial_nf_actions.
+        (\<forall>phase. \<exists>J delta.
+          comma_weighted_crt_apply
+            (comma_semantic_graph_initial_nf_actions!slot) phase =
+              Some (Comma_Semantic_B1_CRT_Stop J,delta) \<and>
+          J<9 \<and> delta\<le>27)"
+  proof (intro allI impI)
+    fix slot :: nat
+    assume slot: "slot<length comma_semantic_graph_initial_nf_actions"
+    have slot_bound: "slot<16" using slot actions_length by simp
+    have action_member:
+        "comma_semantic_graph_initial_nf_actions!slot \<in>
+          set comma_semantic_graph_initial_nf_actions"
+      using slot by (rule nth_mem)
+    have action_wf:
+        "comma_weighted_crt_wellformed
+          (snd (comma_semantic_graph_initial_nf_actions!slot))"
+      using comma_semantic_graph_initial_nf_actions_wellformed action_member
+      by (simp add: list_all_iff)
+    show "\<forall>phase. \<exists>J delta.
+        comma_weighted_crt_apply
+          (comma_semantic_graph_initial_nf_actions!slot) phase =
+            Some (Comma_Semantic_B1_CRT_Stop J,delta) \<and>
+        J<9 \<and> delta\<le>27"
+    proof (intro allI)
+      fix phase :: nat
+      have reduced_phase: "phase mod 924<924" by simp
+      obtain J delta where stopped:
+          "comma_weighted_crt_apply
+            (comma_semantic_graph_initial_nf_actions!slot) (phase mod 924) =
+              Some (Comma_Semantic_B1_CRT_Stop J,delta)"
+        and digit: "J<9" and height: "delta\<le>27"
+        by (rule comma_semantic_future_initial_nf_slot_stopped
+          [OF slot_bound reduced_phase])
+      have periodic:
+          "comma_weighted_crt_apply
+            (comma_semantic_graph_initial_nf_actions!slot) phase =
+           comma_weighted_crt_apply
+            (comma_semantic_graph_initial_nf_actions!slot) (phase mod 924)"
+        using comma_weighted_crt_eval_mod_924[OF action_wf, of phase]
+        by (simp add: comma_weighted_crt_apply_def)
+      show "\<exists>J delta. comma_weighted_crt_apply
+          (comma_semantic_graph_initial_nf_actions!slot) phase =
+            Some (Comma_Semantic_B1_CRT_Stop J,delta) \<and>
+          J<9 \<and> delta\<le>27"
+        using stopped digit height periodic by blast
+    qed
+  qed
+  show ?thesis
+    using all_slots actions_length
+    by (simp add: list_all_iff all_set_conv_all_nth)
+qed
 
 text \<open>
 The published initial normal form is tied back to the same source's first
@@ -317,12 +521,16 @@ boundary event.  Its displacement remains occurrence data, and candidate
 children are selected only after that displacement has rebased the clock.
 \<close>
 
-theorem comma_semantic_future_initial_nf_action_boundary_exact:
+theorem comma_semantic_future_initial_nf_direct_boundary_exact:
   fixes q :: comma_boundary_state
   assumes valid: "comma_boundary_valid q"
-  obtains J delta control ordered_children where
+  obtains J delta control where
     "comma_weighted_crt_apply
       (comma_semantic_graph_initial_nf_actions!
+        (comma_semantic_future_initial_source_index q)) (snd (snd q)) =
+      Some (Comma_Semantic_B1_CRT_Stop J delta)"
+    "comma_weighted_crt_apply
+      (comma_semantic_future_initial_nf_dags!
         (comma_semantic_future_initial_source_index q)) (snd (snd q)) =
       Some (Comma_Semantic_B1_CRT_Stop J delta)"
     "J<9" "delta\<le>27"
@@ -335,20 +543,6 @@ theorem comma_semantic_future_initial_nf_action_boundary_exact:
            [(Comma_N,a,(snd (snd q)+delta) mod 924),
             (Comma_Z,a,(snd (snd q)+delta) mod 924)]
        | Comma_Future_Landmine \<Rightarrow> [])"
-    "comma_semantic_future_candidate_child_ids_at (Some control)
-      ((snd (snd q)+delta) mod 924) = Some ordered_children"
-    "ordered_children =
-      (case control of
-         Comma_Future_Fork a \<Rightarrow>
-           [comma_semantic_future_candidate_class_ids!
-              (924*(a-2)+((snd (snd q)+delta) mod 924)),
-            comma_semantic_future_candidate_class_ids!
-              (924*(8+(a-2))+((snd (snd q)+delta) mod 924))]
-       | Comma_Future_Landmine \<Rightarrow> [])"
-    "comma_semantic_future_projected_key_apply
-      (comma_semantic_future_initial_nf_source_key_action
-        (comma_semantic_future_initial_source_index q)) (snd (snd q)) =
-      Some (Some control,ordered_children)"
 proof -
   let ?slot = "comma_semantic_future_initial_source_index q"
   let ?phase = "snd (snd q)"
@@ -368,38 +562,66 @@ proof -
            Comma_Semantic_B1_Weighted_Invalid)"
     by (rule comma_semantic_future_initial_source_action_eval_exact
       [OF valid phase_bound])
-  obtain actual_J actual_delta actual_children where actual_apply:
+  have all_stopped:
+    "list_all
+      (\<lambda>action. \<forall>phase. \<exists>J delta.
+        comma_weighted_crt_apply action phase =
+          Some (Comma_Semantic_B1_CRT_Stop J delta) \<and>
+        J<9 \<and> delta\<le>27)
+      comma_semantic_graph_initial_nf_actions"
+    by (rule comma_semantic_graph_initial_nf_actions_stopped)
+  have actions_length:
+    "length comma_semantic_graph_initial_nf_actions=16"
+    by (rule comma_semantic_graph_initial_nf_actions_length)
+  have selected_mem:
+    "comma_semantic_graph_initial_nf_actions!?slot \<in>
+      set comma_semantic_graph_initial_nf_actions"
+    using slot_bound actions_length by (auto intro: nth_mem)
+  have selected_stopped:
+    "\<forall>phase. \<exists>J delta.
+      comma_weighted_crt_apply
+        (comma_semantic_graph_initial_nf_actions!?slot) phase =
+          Some (Comma_Semantic_B1_CRT_Stop J delta) \<and>
+      J<9 \<and> delta\<le>27"
+    using all_stopped selected_mem by (simp add: list_all_iff)
+  obtain actual_J actual_delta where actual_apply:
       "comma_weighted_crt_apply
         (comma_semantic_graph_initial_nf_actions!?slot) ?phase =
           Some (Comma_Semantic_B1_CRT_Stop actual_J actual_delta)"
     and actual_j_bound: "actual_J<9"
     and actual_delta_bound: "actual_delta\<le>27"
-    and actual_receiver:
-      "comma_semantic_future_candidate_child_ids_at
-        (Some (comma_semantic_future_control_of_terminal_position actual_J))
-        ((?phase+actual_delta) mod 924) = Some actual_children"
-    and actual_key:
-      "comma_semantic_future_projected_key_apply
-        (comma_semantic_future_initial_nf_source_key_action ?slot) ?phase =
-          Some (Some (comma_semantic_future_control_of_terminal_position actual_J),
-            actual_children)"
-    by (rule comma_semantic_future_initial_nf_source_key_action_result
-      [OF slot_bound phase_bound])
+    using selected_stopped by blast
+  have actual_future_apply:
+      "comma_weighted_crt_apply
+        (comma_semantic_future_initial_nf_dags!?slot) ?phase =
+          Some (Comma_Semantic_B1_CRT_Stop actual_J actual_delta)"
+    using actual_apply actual_j_bound by simp
   have actual_eval:
     "comma_semantic_b1_crt_action_eval
-        (comma_semantic_graph_initial_nf_actions!?slot) ?phase =
+        (comma_semantic_future_initial_nf_dags!?slot) ?phase =
       Comma_Semantic_B1_Stop_At actual_J actual_delta"
-    using actual_apply actual_j_bound
+    using actual_future_apply actual_j_bound
     by (simp add: comma_semantic_b1_crt_action_eval_def
         comma_semantic_b1_crt_decode.simps)
+  have nf_eval:
+    "comma_semantic_b1_crt_action_eval
+        (comma_semantic_future_initial_nf_dags!?slot) ?phase =
+      comma_semantic_b1_weighted_word_then 1
+        (\<lambda>p i. comma_semantic_b1_crt_action_eval
+          (comma_semantic_graph_initial_source_actions!i) p)
+        (\<lambda>p i. comma_semantic_b1_crt_action_eval
+          (comma_semantic_future_rank_b32_weighted_actions!i) p)
+        ?phase ?slot"
+    by (rule comma_semantic_future_initial_nf_action_eval_exact
+      [OF slot_bound phase_bound])
   have crossing_stop:
       "\<And>n final d x.
         comma_round_close ?phase (comma_finite_initial q) =
           (n,final,Comma_Round_Cross (Comma_Entry 1 d x)) \<Longrightarrow>
         \<exists>J H. comma_semantic_b1_weighted_action_power 5
-          comma_semantic_graph_root_weighted_action
-          ((?phase+d) mod 924) (comma_offset_orbit x) =
-            Comma_Semantic_B1_Stop_At J H"
+          comma_semantic_future_rank_round_action
+            ((?phase+d) mod 924) (comma_offset_orbit x) =
+              Comma_Semantic_B1_Stop_At J H"
     using comma_semantic_future_initial_crossing_stop[OF valid] by blast
   obtain calls steps final event where close:
       "comma_round_close ?phase (comma_finite_initial q) =
@@ -420,8 +642,8 @@ proof -
        (\<exists>x J H terminal. x\<le>90 \<and>
           event=Comma_Round_Cross (Comma_Entry 1 1 x) \<and>
           comma_semantic_b1_weighted_action_power 5
-            comma_semantic_graph_root_weighted_action
-            ((?phase+1) mod 924) (comma_offset_orbit x) =
+            comma_semantic_future_rank_round_action
+              ((?phase+1) mod 924) (comma_offset_orbit x) =
               Comma_Semantic_B1_Stop_At J H \<and>
           J=comma_terminal_weight_digit terminal \<and> H\<le>26 \<and>
           comma_decade_exact_summary (Comma_Decade ((?phase+1) mod 924) x)
@@ -440,17 +662,6 @@ proof -
     using comma_semantic_future_initial_prefix_boundary_result
       [OF valid crossing_stop]
     by blast
-  have nf_eval:
-    "comma_semantic_b1_crt_action_eval
-        (comma_semantic_graph_initial_nf_actions!?slot) ?phase =
-      comma_semantic_b1_weighted_word_then 1
-        (\<lambda>p i. comma_semantic_b1_crt_action_eval
-          (comma_semantic_graph_initial_source_actions!i) p)
-        (\<lambda>p i. comma_semantic_b1_crt_action_eval
-          (comma_semantic_graph_b32_weighted_actions!i) p)
-        ?phase ?slot"
-    by (rule comma_semantic_future_initial_nf_action_eval_exact
-      [OF slot_bound phase_bound])
   have event_relation:
     "(\<exists>a. actual_J=a-2 \<and> actual_delta=0 \<and>
         2\<le>a \<and> a\<le>9 \<and>
@@ -513,8 +724,8 @@ proof -
        (\<exists>x J H terminal. x\<le>90 \<and>
           event=Comma_Round_Cross (Comma_Entry 1 1 x) \<and>
           comma_semantic_b1_weighted_action_power 5
-            comma_semantic_graph_root_weighted_action
-            ((?phase+1) mod 924) (comma_offset_orbit x) =
+            comma_semantic_future_rank_round_action
+              ((?phase+1) mod 924) (comma_offset_orbit x) =
               Comma_Semantic_B1_Stop_At J H \<and>
           J=comma_terminal_weight_digit terminal \<and> H\<le>26 \<and>
           (case terminal of Comma_Terminal_Fork a \<Rightarrow>
@@ -560,7 +771,7 @@ proof -
           (\<lambda>p i. comma_semantic_b1_crt_action_eval
             (comma_semantic_graph_initial_source_actions!i) p)
           (\<lambda>p i. comma_semantic_b1_crt_action_eval
-            (comma_semantic_graph_b32_weighted_actions!i) p)
+            (comma_semantic_future_rank_b32_weighted_actions!i) p)
           ?phase ?slot =
           (if d=0 then Comma_Semantic_B1_Stop_At (a-2) 0
            else Comma_Semantic_B1_Weighted_Invalid)"
@@ -601,7 +812,7 @@ proof -
           (\<lambda>p i. comma_semantic_b1_crt_action_eval
             (comma_semantic_graph_initial_source_actions!i) p)
           (\<lambda>p i. comma_semantic_b1_crt_action_eval
-            (comma_semantic_graph_b32_weighted_actions!i) p)
+            (comma_semantic_future_rank_b32_weighted_actions!i) p)
           ?phase ?slot =
           (if d=0 then Comma_Semantic_B1_Stop_At 8 0
            else Comma_Semantic_B1_Weighted_Invalid)"
@@ -619,9 +830,9 @@ proof -
       assume cross:
         "\<exists>x J H terminal. x\<le>90 \<and>
           event=Comma_Round_Cross (Comma_Entry 1 1 x) \<and>
-          comma_semantic_b1_weighted_action_power 5
-            comma_semantic_graph_root_weighted_action
-            ((?phase+1) mod 924) (comma_offset_orbit x) =
+          comma_semantic_b1_crt_action_eval
+            (comma_semantic_future_rank_b32_weighted_actions!
+              (comma_offset_orbit x)) ((?phase+1) mod 924) =
               Comma_Semantic_B1_Stop_At J H \<and>
           J=comma_terminal_weight_digit terminal \<and> H\<le>26 \<and>
           comma_decade_exact_summary (Comma_Decade ((?phase+1) mod 924) x)
@@ -632,10 +843,10 @@ proof -
       then obtain x J H terminal where x_bound: "x\<le>90"
         and event_eq:
           "event=Comma_Round_Cross (Comma_Entry 1 1 x)"
-        and stop:
+        and weighted_power:
           "comma_semantic_b1_weighted_action_power 5
-            comma_semantic_graph_root_weighted_action
-            ((?phase+1) mod 924) (comma_offset_orbit x) =
+            comma_semantic_future_rank_round_action
+              ((?phase+1) mod 924) (comma_offset_orbit x) =
               Comma_Semantic_B1_Stop_At J H"
         and j_terminal: "J=comma_terminal_weight_digit terminal"
         and height: "H\<le>26"
@@ -663,18 +874,29 @@ proof -
         using source_exact round by simp
       have root_bound: "comma_offset_orbit x<46"
         by (rule comma_offset_orbit_bound)
+      have post_phase_bound: "((?phase+1) mod 924)<924" by simp
       have b32:
         "comma_semantic_b1_crt_action_eval
-          (comma_semantic_graph_b32_weighted_actions!comma_offset_orbit x)
+          (comma_semantic_future_rank_b32_weighted_actions!comma_offset_orbit x)
           ((?phase+1) mod 924) = Comma_Semantic_B1_Stop_At J H"
-        using comma_semantic_future_b32_action_eval_exact[OF root_bound] stop
-        by simp
+      proof -
+        have exact:
+          "comma_semantic_b1_crt_action_eval
+            (comma_semantic_future_rank_b32_weighted_actions!comma_offset_orbit x)
+            ((?phase+1) mod 924) =
+           comma_semantic_b1_weighted_action_power 5
+            comma_semantic_future_rank_round_action
+            ((?phase+1) mod 924) (comma_offset_orbit x)"
+          by (rule comma_semantic_future_b32_action_eval_exact
+            [OF root_bound post_phase_bound])
+        show ?thesis using exact weighted_power by simp
+      qed
       have composed:
         "comma_semantic_b1_weighted_word_then 1
           (\<lambda>p i. comma_semantic_b1_crt_action_eval
             (comma_semantic_graph_initial_source_actions!i) p)
           (\<lambda>p i. comma_semantic_b1_crt_action_eval
-            (comma_semantic_graph_b32_weighted_actions!i) p)
+            (comma_semantic_future_rank_b32_weighted_actions!i) p)
           ?phase ?slot = Comma_Semantic_B1_Stop_At J (1+H)"
         using src b32
         by (simp add: comma_semantic_b1_weighted_word_then.simps)
@@ -709,39 +931,19 @@ proof -
             (Comma_Z,a,(?phase+actual_delta) mod 924)]
        | Comma_Future_Landmine \<Rightarrow> [])"
     using semantic_children control_eq by simp
-  have receiver:
-    "comma_semantic_future_candidate_child_ids_at (Some control)
-      ((?phase+actual_delta) mod 924) = Some actual_children"
-    using actual_receiver control_eq by simp
-  have key:
-    "comma_semantic_future_projected_key_apply
-      (comma_semantic_future_initial_nf_source_key_action ?slot) ?phase =
-        Some (Some control,actual_children)"
-    using actual_key control_eq by simp
-  have receiver_shape:
-    "actual_children =
-      (case control of
-         Comma_Future_Fork a \<Rightarrow>
-           [comma_semantic_future_candidate_class_ids!
-              (924*(a-2)+((?phase+actual_delta) mod 924)),
-            comma_semantic_future_candidate_class_ids!
-              (924*(8+(a-2))+((?phase+actual_delta) mod 924))]
-       | Comma_Future_Landmine \<Rightarrow> [])"
-    using receiver control_eq actual_j_bound
-    by (cases control)
-      (auto simp: comma_semantic_future_candidate_child_ids_fork_exact
-        comma_semantic_future_candidate_child_ids_landmine)
   show thesis
-    by (rule that[OF actual_apply actual_j_bound actual_delta_bound control_step
-        control_eq boundary_children receiver receiver_shape key])
+    by (rule that[OF actual_apply actual_future_apply actual_j_bound
+        actual_delta_bound control_step control_eq boundary_children])
 qed
+
 
 ML \<open>
 val _ =
   if null (Thm_Deps.all_oracles @{thms
       comma_semantic_future_initial_prefix_boundary_result
+      comma_semantic_future_initial_crossing_stop
       comma_semantic_future_initial_round_fork_target_bounds
-      comma_semantic_future_initial_nf_action_boundary_exact})
+      comma_semantic_future_initial_nf_direct_boundary_exact})
   then ()
   else error "Comma_Semantic_Future_Source_NF_Bridge oracle audit failed"
 \<close>

@@ -26,7 +26,7 @@ local_setup \<open>fn lthy =>
            (("hi",0), Thm.cterm_of lthy (nat hi))]
           @{thm comma_fast_decade_summary_range_join}
         val result = Simplifier.simplify
-          (Comma_Entry_Arithmetic.natural_context lthy addsimps [left,right]) rule
+          (Comma_Entry_Arithmetic.natural_context lthy |> Simplifier.add_simps [left,right]) rule
       in (lo,hi,result) end
     fun reduce [item] = item
       | reduce items =
@@ -36,7 +36,7 @@ local_setup \<open>fn lthy =>
     val ranges = map (fn i => (i,i+1)) (0 upto 923)
     val (_,_,checked_range) = reduce (map certify ranges)
     val full = Simplifier.simplify
-      (Comma_Entry_Arithmetic.natural_context lthy addsimps [checked_range])
+      (Comma_Entry_Arithmetic.natural_context lthy |> Simplifier.add_simps [checked_range])
       @{thm comma_fast_decade_summary_range_full}
     val expected = @{prop "comma_decade_summary_checked
       comma_decade_rank_candidate_on_valid comma_decade_terminal_candidate_on_valid"}

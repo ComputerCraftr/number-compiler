@@ -1,6 +1,7 @@
 theory Reverse_Laurent_Source_Refinement
   imports Reverse_Symmetric_Publisher_Bridge
     Reverse_Mod7_Controlled_Action Reverse_Mod99_Accumulator_Moore
+    Shared_Carry_Dynamics.Boolean_Cyclotomic3
 begin
 
 text \<open>The Laurent observer below is a source-bound scalar refinement.
@@ -8,6 +9,181 @@ It starts from the actual symmetric pair field, reconstructs its canonical
 Q19 half, and uses the existing two-port publisher theorem to identify the
 physical successor. The modular laws do not select a future carry word or
 authorize a temporal skip.\<close>
+
+text \<open>The following source-independent quotient law supplies a bounded
+six-phase output window after 11-divisibility. It concerns only the scalar
+mod-99 accumulator and does not assert closure of physical carry or width
+state.\<close>
+
+lemma reverse_mod99_output_run_power:
+  "reverse_mod99_output (run reverse_mod99_tick n state) =
+    ((2::nat)^n * reverse_mod99_output state) mod 99"
+proof (induction n arbitrary: state)
+  case 0
+  then show ?case by (simp add: reverse_mod99_output_def)
+next
+  case (Suc n)
+  have ih:
+    "reverse_mod99_output
+        (run reverse_mod99_tick n (reverse_mod99_tick state)) =
+      ((2::nat)^n * reverse_mod99_output (reverse_mod99_tick state)) mod 99"
+    by (rule Suc.IH)
+  show ?case
+    using ih
+    by (simp add: reverse_mod99_output_tick power_Suc algebra_simps
+        mod_mult_right_eq)
+qed
+
+lemma reverse_mod99_output_six_tick:
+  assumes mod11: "reverse_mod99_output state mod 11 = 0"
+  shows "reverse_mod99_output (run reverse_mod99_tick 6 state) =
+    reverse_mod99_output state"
+proof -
+  let ?r = "reverse_mod99_output state"
+  have powered:
+    "reverse_mod99_output (run reverse_mod99_tick 6 state) =
+      (64 * ?r) mod 99"
+    using reverse_mod99_output_run_power[of 6 state] by simp
+  have factor_mod9: "(64::nat) mod 9 = 1 mod 9" by simp
+  have raw_mod9: "(64 * ?r) mod 9 = ?r mod 9"
+  proof -
+    have product:
+      "(64 * ?r) mod 9 = (1 * ?r) mod 9"
+      by (rule mod_mult_cong[OF factor_mod9 refl])
+    show ?thesis using product by simp
+  qed
+  have nine_dvd_99: "9 dvd (99::nat)" by simp
+  have result_mod9:
+    "(64 * ?r mod 99) mod 9 = ?r mod 9"
+  proof -
+    have reduce: "(64 * ?r mod 99) mod 9 = (64 * ?r) mod 9"
+      by (rule mod_mod_cancel[OF nine_dvd_99])
+    show ?thesis using reduce raw_mod9 by simp
+  qed
+  have raw_mod11: "(64 * ?r) mod 11 = 0"
+    using mod11 by (simp add: mod_mult_right_eq[symmetric])
+  have eleven_dvd_99: "11 dvd (99::nat)" by simp
+  have result_mod11:
+    "(64 * ?r mod 99) mod 11 = ?r mod 11"
+  proof -
+    have reduce: "(64 * ?r mod 99) mod 11 = (64 * ?r) mod 11"
+      by (rule mod_mod_cancel[OF eleven_dvd_99])
+    show ?thesis using reduce raw_mod11 mod11 by simp
+  qed
+  have result_mod99:
+    "(64 * ?r mod 99) mod 99 = ?r mod 99"
+    by (rule mod_9_11_equal_mod99[OF result_mod9 result_mod11])
+  have canonical: "?r mod 99 = ?r"
+    by (simp add: reverse_mod99_output_def mod_mod_trivial)
+  show ?thesis using powered result_mod99 canonical by simp
+qed
+
+definition reverse_mod99_output_bitplane ::
+    "reverse_mod99_accumulator \<Rightarrow> nat boolean_bitplane" where
+  "reverse_mod99_output_bitplane state =
+    (\<lambda>i. bit (reverse_mod99_output state) i)"
+
+definition reverse_mod99_binary_harmonic ::
+    "reverse_mod99_accumulator \<Rightarrow>
+      nat boolean_bitplane \<times> nat boolean_bitplane" where
+  "reverse_mod99_binary_harmonic state =
+    boolean_cyclotomic3_drop_constant
+      (boolean_six_phase_harmonic
+        (reverse_mod99_output_bitplane (run reverse_mod99_tick 0 state))
+        (reverse_mod99_output_bitplane (run reverse_mod99_tick 1 state))
+        (reverse_mod99_output_bitplane (run reverse_mod99_tick 2 state))
+        (reverse_mod99_output_bitplane (run reverse_mod99_tick 3 state))
+        (reverse_mod99_output_bitplane (run reverse_mod99_tick 4 state))
+        (reverse_mod99_output_bitplane (run reverse_mod99_tick 5 state)))"
+
+lemma reverse_mod99_output_bitplane_six_return:
+  assumes mod11: "reverse_mod99_output state mod 11 = 0"
+  shows "reverse_mod99_output_bitplane (run reverse_mod99_tick 6 state) =
+    reverse_mod99_output_bitplane state"
+  using reverse_mod99_output_six_tick[OF mod11]
+  by (simp add: reverse_mod99_output_bitplane_def)
+
+lemma reverse_mod99_binary_harmonic_output:
+  "reverse_mod99_binary_harmonic state =
+    (boolean_bitplane_xor
+       (boolean_bitplane_xor
+         (reverse_mod99_output_bitplane state)
+         (reverse_mod99_output_bitplane
+           (run reverse_mod99_tick 3 state)))
+       (boolean_bitplane_xor
+         (reverse_mod99_output_bitplane
+           (run reverse_mod99_tick 1 state))
+         (reverse_mod99_output_bitplane
+           (run reverse_mod99_tick 4 state))),
+     boolean_bitplane_xor
+       (boolean_bitplane_xor
+         (reverse_mod99_output_bitplane
+           (run reverse_mod99_tick 1 state))
+         (reverse_mod99_output_bitplane
+           (run reverse_mod99_tick 4 state)))
+       (boolean_bitplane_xor
+         (reverse_mod99_output_bitplane
+           (run reverse_mod99_tick 2 state))
+         (reverse_mod99_output_bitplane
+           (run reverse_mod99_tick 5 state))))"
+  unfolding reverse_mod99_binary_harmonic_def
+  by (simp only: run.simps boolean_six_phase_harmonic_output)
+
+lemma reverse_mod99_binary_harmonic_matrix_step:
+  assumes mod11: "reverse_mod99_output state mod 11 = 0"
+  shows "reverse_mod99_binary_harmonic (reverse_mod99_tick state) =
+    (snd (reverse_mod99_binary_harmonic state),
+      boolean_bitplane_xor (fst (reverse_mod99_binary_harmonic state))
+        (snd (reverse_mod99_binary_harmonic state)))"
+proof -
+  let ?a = "reverse_mod99_output_bitplane (run reverse_mod99_tick 0 state)"
+  let ?b = "reverse_mod99_output_bitplane (run reverse_mod99_tick 1 state)"
+  let ?c = "reverse_mod99_output_bitplane (run reverse_mod99_tick 2 state)"
+  let ?d = "reverse_mod99_output_bitplane (run reverse_mod99_tick 3 state)"
+  let ?e = "reverse_mod99_output_bitplane (run reverse_mod99_tick 4 state)"
+  let ?f = "reverse_mod99_output_bitplane (run reverse_mod99_tick 5 state)"
+  let ?g = "reverse_mod99_output_bitplane (run reverse_mod99_tick 6 state)"
+  have last_phase: "?g = ?a"
+    using reverse_mod99_output_bitplane_six_return[OF mod11]
+    by (simp only: run.simps)
+  have phase_rotation:
+    "boolean_six_phase_harmonic ?b ?c ?d ?e ?f ?g =
+      boolean_cyclotomic3_shift
+        (boolean_six_phase_harmonic ?a ?b ?c ?d ?e ?f)"
+  proof -
+    have "boolean_six_phase_harmonic ?b ?c ?d ?e ?f ?g =
+        boolean_six_phase_harmonic ?b ?c ?d ?e ?f ?a"
+      by (simp only: last_phase)
+    also have "... = boolean_cyclotomic3_shift
+        (boolean_six_phase_harmonic ?a ?b ?c ?d ?e ?f)"
+      by (rule boolean_six_phase_harmonic_rotate)
+    finally show ?thesis .
+  qed
+  have shifted:
+    "reverse_mod99_binary_harmonic (reverse_mod99_tick state) =
+      boolean_cyclotomic3_drop_constant
+        (boolean_cyclotomic3_shift
+          (boolean_six_phase_harmonic ?a ?b ?c ?d ?e ?f))"
+  proof -
+    have harmonic_tick:
+      "reverse_mod99_binary_harmonic (reverse_mod99_tick state) =
+        boolean_cyclotomic3_drop_constant
+          (boolean_six_phase_harmonic ?b ?c ?d ?e ?f ?g)"
+      unfolding reverse_mod99_binary_harmonic_def
+      by (simp add: numeral_eq_Suc)
+    show ?thesis
+      by (simp only: harmonic_tick phase_rotation)
+  qed
+  have current_phases:
+    "reverse_mod99_binary_harmonic state =
+      boolean_cyclotomic3_drop_constant
+        (boolean_six_phase_harmonic ?a ?b ?c ?d ?e ?f)"
+    unfolding reverse_mod99_binary_harmonic_def
+    by (simp only: run.simps)
+  show ?thesis
+    using shifted current_phases
+    by (simp only: shifted current_phases boolean_cyclotomic3_output_shift)
+qed
 
 definition reverse_laurent_source_half :: "nat list \<Rightarrow> nat list" where
   "reverse_laurent_source_half ss = take ((length ss + 1) div 2) ss"
@@ -775,6 +951,10 @@ qed
 
 ML \<open>
   val checked = @{thms reverse_laurent_half_reconstructs_symmetric_source
+    reverse_mod99_output_run_power reverse_mod99_output_six_tick
+    reverse_mod99_output_bitplane_six_return
+    reverse_mod99_binary_harmonic_output
+    reverse_mod99_binary_harmonic_matrix_step
     reverse_laurent_q19_publisher_refines_source
     reverse_laurent_q19_carry_normalization_refines_source
     reverse_laurent_defect_exact

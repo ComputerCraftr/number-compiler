@@ -1,5 +1,5 @@
 theory Comma_Phase_Class_Rank_Masks
-  imports Comma_Phase_Class_Rank Comma_Symbolic_Phase_Masks
+  imports Comma_Semantic_Phase_Class_Action Comma_Symbolic_Phase_Masks
 begin
 
 text \<open>
@@ -7,25 +7,6 @@ Rank and one-step actions are stored as disjoint 924-bit guard rows, not
 phase/control cells.  A separate premise at the final bridge authenticates
 the action masks against the admitted source control.
 \<close>
-
-datatype comma_phase_rank_mask_action =
-    Comma_Phase_Rank_Mask_Invalid
-  | Comma_Phase_Rank_Mask_Fork nat nat
-  | Comma_Phase_Rank_Mask_Landmine nat
-  | Comma_Phase_Rank_Mask_Continue nat
-
-fun comma_phase_rank_mask_lift ::
-    "nat \<Rightarrow> comma_phase_rank_mask_action \<Rightarrow>
-      nat comma_phase_class_action"
-where
-  "comma_phase_rank_mask_lift phase Comma_Phase_Rank_Mask_Invalid =
-    Comma_Phase_Class_Invalid"
-| "comma_phase_rank_mask_lift phase (Comma_Phase_Rank_Mask_Fork a d) =
-    Comma_Phase_Class_Fork a d"
-| "comma_phase_rank_mask_lift phase (Comma_Phase_Rank_Mask_Landmine d) =
-    Comma_Phase_Class_Landmine d"
-| "comma_phase_rank_mask_lift phase (Comma_Phase_Rank_Mask_Continue c) =
-    Comma_Phase_Class_Continue ((phase+1) mod 924) c"
 
 definition comma_phase_mask_rows_partition :: "(nat \<times> 'a) list \<Rightarrow> bool" where
   "comma_phase_mask_rows_partition rows \<longleftrightarrow>

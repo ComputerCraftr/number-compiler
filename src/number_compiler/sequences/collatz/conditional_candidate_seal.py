@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
@@ -17,6 +18,188 @@ if TYPE_CHECKING:
     from number_compiler.sequences.collatz.conditional_scheduler_adapter import (
         CertifiedSchedulerCandidate,
     )
+    from number_compiler.sequences.collatz.parity_carry_tape import ParityCarryTape
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _IdentityRef:
+    """Retain an object and compare its authority by identity only."""
+
+    value: object
+
+    def __eq__(self, other: object) -> bool:
+        return type(other) is _IdentityRef and self.value is other.value
+
+
+@dataclass(frozen=True, slots=True)
+class _ParityTapeNodeSeal:
+    reference: _IdentityRef
+    kind: str
+    word: tuple[int, ...]
+    children: tuple[ParityCarryTape, ...]
+    count: int
+    steps: int
+    odds: int
+
+
+@dataclass(frozen=True, slots=True)
+class _ParityTapeSeal:
+    root: _IdentityRef
+    rows: tuple[_ParityTapeNodeSeal, ...]
+    work: int
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateSealSnapshot:
+    """Memo payload plus pinned parity rows and their verification allowance."""
+
+    payload: tuple[object, ...]
+    parity_tape: _ParityTapeSeal | None
+    parity_work: int
+
+
+def _inspect_parity_tape(
+    tape: object,
+    *,
+    retain: bool,
+) -> tuple[_ParityTapeSeal | None, int]:
+    from number_compiler.sequences.collatz.parity_carry_tape import ParityCarryTape
+
+    if type(tape) is not ParityCarryTape:
+        raise TypeError("conditional parity tape has malformed authority")
+
+    pending: list[tuple[ParityCarryTape, int]] = [(tape, 0)]
+    active: set[int] = set()
+    seen: set[int] = set()
+    rows: list[_ParityTapeNodeSeal] = []
+    root_reference = _IdentityRef(tape) if retain else None
+    node: ParityCarryTape | None = None
+    child: ParityCarryTape | None = None
+    work = 0
+    try:
+        while pending:
+            node, child_index = pending[-1]
+            identity = id(node)
+            if identity not in active and identity not in seen:
+                if (
+                    type(node.kind) is not str
+                    or type(node.word) is not tuple
+                    or len(node.word) > 64
+                    or type(node.children) is not tuple
+                    or type(node.repetitions) is not int
+                    or type(node.steps) is not int
+                    or type(node.odds) is not int
+                    or any(
+                        type(bit) is not int or bit not in (0, 1) for bit in node.word
+                    )
+                    or any(
+                        type(child) is not ParityCarryTape for child in node.children
+                    )
+                ):
+                    raise TypeError("conditional parity tape node has malformed fields")
+                work += (
+                    64 * (5 + len(node.children))
+                    + len(node.word)
+                    + node.repetitions.bit_length()
+                    + node.steps.bit_length()
+                    + node.odds.bit_length()
+                )
+                active.add(identity)
+            if child_index < len(node.children):
+                child = node.children[child_index]
+                pending[-1] = (node, child_index + 1)
+                child_identity = id(child)
+                if child_identity in active:
+                    raise TypeError("conditional parity tape grammar contains a cycle")
+                if child_identity not in seen:
+                    pending.append((child, 0))
+                continue
+            if node.kind == "word":
+                valid = (
+                    1 <= len(node.word) <= 64
+                    and not node.children
+                    and node.repetitions == 1
+                    and node.steps == len(node.word)
+                    and node.odds == sum(node.word)
+                )
+            elif node.kind == "concat":
+                valid = (
+                    not node.word
+                    and node.repetitions == 1
+                    and len(node.children) >= 1
+                    and node.steps == sum(child.steps for child in node.children)
+                    and node.odds == sum(child.odds for child in node.children)
+                )
+            elif node.kind == "repeat":
+                valid = (
+                    not node.word
+                    and len(node.children) == 1
+                    and node.repetitions >= 1
+                    and node.steps == node.children[0].steps * node.repetitions
+                    and node.odds == node.children[0].odds * node.repetitions
+                )
+            else:
+                valid = False
+            if not valid:
+                raise TypeError("conditional parity tape node is not a valid SLP node")
+            if retain:
+                rows.append(
+                    _ParityTapeNodeSeal(
+                        _IdentityRef(node),
+                        node.kind,
+                        node.word,
+                        node.children,
+                        node.repetitions,
+                        node.steps,
+                        node.odds,
+                    )
+                )
+            active.remove(identity)
+            seen.add(identity)
+            pending.pop()
+        if not retain:
+            return None, work
+        if root_reference is None:
+            raise ArithmeticError("conditional parity root identity was omitted")
+        return _ParityTapeSeal(root_reference, tuple(rows), work), work
+    finally:
+        pending.clear()
+        active.clear()
+        seen.clear()
+        rows.clear()
+        node = None
+        child = None
+
+
+def parity_tape_verification_work(tape: object) -> int:
+    """Return conservative bits for each pinned row, edge, word and scalar."""
+    _snapshot, work = _inspect_parity_tape(tape, retain=False)
+    return work
+
+
+def _validate_parity_tape_seal(tape: object, seal: _ParityTapeSeal) -> None:
+    from number_compiler.sequences.collatz.parity_carry_tape import ParityCarryTape
+
+    if type(tape) is not ParityCarryTape or tape is not seal.root.value:
+        raise TypeError("conditional parity tape root changed after memo issuance")
+    for row in seal.rows:
+        node = row.reference.value
+        if (
+            type(node) is not ParityCarryTape
+            or type(node.kind) is not str
+            or node.kind != row.kind
+            or type(node.word) is not tuple
+            or node.word is not row.word
+            or type(node.children) is not tuple
+            or node.children is not row.children
+            or type(node.repetitions) is not int
+            or node.repetitions != row.count
+            or type(node.steps) is not int
+            or node.steps != row.steps
+            or type(node.odds) is not int
+            or node.odds != row.odds
+        ):
+            raise TypeError("conditional parity tape changed after memo issuance")
 
 
 def _tag(value: object) -> tuple[object, object]:
@@ -121,9 +304,17 @@ def _trace(
     return tuple(nodes)
 
 
-def _joined(joined: object) -> tuple[object, ...] | None:
+def _joined(
+    joined: object,
+    *,
+    expected_tape: _ParityTapeSeal | None,
+    capture_tape: bool,
+    validate_tape_action: bool,
+) -> tuple[tuple[object, ...] | None, _ParityTapeSeal | None, int]:
     if joined is None:
-        return None
+        if expected_tape is not None:
+            raise TypeError("conditional joined port lost its sealed parity tape")
+        return None, None, 0
     from number_compiler.sequences.collatz.guarded_port_join import GuardedPortJoin
     from number_compiler.sequences.collatz.guarded_radix6_bridge import (
         GuardedRadix6Bridge,
@@ -134,7 +325,42 @@ def _joined(joined: object) -> tuple[object, ...] | None:
         or type(joined.bridge) is not GuardedRadix6Bridge
     ):
         raise TypeError("conditional joined port has malformed authority")
+    if (
+        joined.named_macro is not None
+        or joined.factor_grammar is not None
+        or type(joined.factor_repetitions) is not int
+        or joined.factor_repetitions != 1
+    ):
+        raise TypeError("conditional candidate join has unsupported source grammar")
     bridge = joined.bridge
+    parity_tape = joined.parity_tape
+    if capture_tape:
+        if parity_tape is None:
+            parity_seal = None
+            parity_work = 0
+        else:
+            parity_seal, parity_work = _inspect_parity_tape(parity_tape, retain=True)
+            if parity_seal is None:
+                raise ArithmeticError("conditional parity tape snapshot was omitted")
+    else:
+        if expected_tape is None:
+            if parity_tape is not None:
+                raise TypeError("conditional join acquired an unissued parity tape")
+            parity_seal = None
+            parity_work = 0
+        else:
+            _validate_parity_tape_seal(parity_tape, expected_tape)
+            parity_seal = expected_tape
+            parity_work = expected_tape.work
+    if capture_tape and validate_tape_action:
+        resolved_tape = joined.parity_tape_for_action()
+        if resolved_tape is not None and (
+            resolved_tape.steps != joined.port.action.steps
+            or resolved_tape.odds != joined.port.odd_events
+            or resolved_tape.action().coefficient_snapshot()
+            != joined.port.action.coefficient_snapshot()
+        ):
+            raise ValueError("conditional parity tape differs from its issued port")
 
     from number_compiler.sequences.collatz.guarded_radix6_bridge import FiveBand
 
@@ -160,29 +386,40 @@ def _joined(joined: object) -> tuple[object, ...] | None:
     typed_defects = defects
 
     return (
-        id(joined),
-        _cylinder(joined.source),
-        id(joined.port),
-        id(bridge),
-        _cylinder(bridge.inlet),
-        _cylinder(bridge.target),
-        id(bridge.action),
-        tuple(_tag(value) for value in bridge.action.coefficient_snapshot()),
-        _tag(bridge.odd_events),
-        _coverage(bridge.source_coverage),
-        _coverage(bridge.target_coverage),
-        bands_snapshot(bridge.source_fives),
-        bands_snapshot(bridge.inherited_fives),
-        bands_snapshot(bridge.born_fives),
-        bands_snapshot(bridge.target_fives),
-        _tag(bridge.centered_at_minus_one),
-        (id(defects), type(defects), tuple(_tag(value) for value in typed_defects)),
+        (
+            id(joined),
+            _cylinder(joined.source),
+            id(joined.port),
+            id(bridge),
+            _cylinder(bridge.inlet),
+            _cylinder(bridge.target),
+            id(bridge.action),
+            tuple(_tag(value) for value in bridge.action.coefficient_snapshot()),
+            _tag(bridge.odd_events),
+            _coverage(bridge.source_coverage),
+            _coverage(bridge.target_coverage),
+            bands_snapshot(bridge.source_fives),
+            bands_snapshot(bridge.inherited_fives),
+            bands_snapshot(bridge.born_fives),
+            bands_snapshot(bridge.target_fives),
+            _tag(bridge.centered_at_minus_one),
+            (id(defects), type(defects), tuple(_tag(value) for value in typed_defects)),
+            _tag(joined.named_macro),
+            _tag(joined.factor_grammar),
+            _tag(joined.factor_repetitions),
+            parity_seal,
+        ),
+        parity_seal,
+        parity_work,
     )
 
 
 def snapshot_scheduler_candidate(
     candidate: CertifiedSchedulerCandidate,
-) -> tuple[object, ...]:
+    *,
+    expected: CandidateSealSnapshot | None = None,
+    validate_tape_action: bool = False,
+) -> CandidateSealSnapshot:
     """Capture every value a verified retained candidate can later publish."""
     port = candidate.port
     if type(port) is not SourceClosedPortAction:
@@ -233,7 +470,13 @@ def snapshot_scheduler_candidate(
         ):
             raise TypeError("conditional candidate upper factor is malformed")
         upper_value = (type(upper), tuple(_tag(value) for value in upper))
-    return (
+    joined_value, parity_seal, parity_work = _joined(
+        candidate.joined_port,
+        expected_tape=None if expected is None else expected.parity_tape,
+        capture_tape=expected is None,
+        validate_tape_action=validate_tape_action,
+    )
+    payload = (
         id(candidate),
         _tag(candidate.source),
         _tag(candidate.endpoint),
@@ -248,7 +491,8 @@ def snapshot_scheduler_candidate(
         _trace(candidate.tail_trace),
         phase_value,
         pair_value,
-        _joined(candidate.joined_port),
+        joined_value,
         carry_value,
         upper_value,
     )
+    return CandidateSealSnapshot(payload, parity_seal, parity_work)

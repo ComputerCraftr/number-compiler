@@ -631,7 +631,6 @@ proof -
     by (simp add: double_reverse_packed_nibble_planes_def Let_def)
 qed
 
-
 lemma double_reverse_packed_source_selector_slice:
   assumes width: "2 \<le> length source_digits"
       and shift: "shift \<le> 2"

@@ -522,6 +522,24 @@ def observe_reverse(context: QueryContext, name: ObservationId) -> Packet:
     payload = context.term.payload
     if not isinstance(payload, PoweredReverseAddTermPayload):
         raise TypeError("reverse/add query published a foreign term payload")
+    if name is ObservationId.TEMPORAL_MIRRORED_DIAGONAL:
+        from number_compiler.sequences.reverse_add.temporal_mirrored_diagonal import (
+            MAX_MIRRORED_TICKS,
+        )
+
+        if not 1 <= payload.term.generation <= MAX_MIRRORED_TICKS:
+            return publish_observation(
+                context,
+                name,
+                {
+                    "status": OutputStatus.UNAVAILABLE.value,
+                    "reason": "mirrored carry observation exceeds its finite horizon",
+                    "max_physical_ticks": MAX_MIRRORED_TICKS,
+                },
+            )
+        return publish_observation(
+            context, name, payload.term.temporal_mirrored_diagonal()
+        )
     if name is ObservationId.TEMPORAL_SEED_ORBIT:
         from number_compiler.api.bank_observation import reverse_seed_orbit_packet
 
@@ -781,7 +799,6 @@ def admit_comma(context: QueryContext) -> None:
         UnresolvedSequenceTerm,
     )
     from number_compiler.sequences.comma.certificates import (
-        CERTIFIED_MAX_INDEX,
         certificate_status,
         unresolved_boundary,
     )
@@ -798,17 +815,14 @@ def admit_comma(context: QueryContext) -> None:
         ObservationId.METRICS,
         ObservationId.SAFETY_CERTIFICATE,
     }:
-        if request.index > CERTIFIED_MAX_INDEX:
-            status = certificate_status(
-                request.index,
-                payload.term.ledger,
-                payload.term.max_work,
-                shared_cache=payload.term.shared_cache,
-                memo=payload.term.certificate_memo,
-                global_provider=payload.certificate_provider,
-            )
-            if status["status"] == "unknown":
-                context.unresolved_boundary = unresolved_boundary(request.index)
+        status = certificate_status(
+            request.index,
+            payload.term.ledger,
+            payload.term.max_work,
+            global_provider=payload.certificate_provider,
+        )
+        if status["status"] == "unknown":
+            context.unresolved_boundary = unresolved_boundary(request.index)
         return
     try:
         payload.require_certified()
@@ -834,8 +848,6 @@ def observe_comma(context: QueryContext, name: ObservationId) -> Packet:
             context.request.index,
             payload.term.ledger,
             payload.term.max_work,
-            shared_cache=payload.term.shared_cache,
-            memo=payload.term.certificate_memo,
             global_provider=payload.certificate_provider,
         )
         return publish_observation(

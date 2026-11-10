@@ -54,6 +54,33 @@ def _affine_morphism() -> type[CyclotomicAffineMorphism]:
     return CyclotomicAffineMorphism
 
 
+def phi6_coefficients_from_root_values_mod7(
+    at_three: int, at_five: int
+) -> tuple[int, int]:
+    """Recover ``(c0, c1)`` for ``c0 + c1*z`` from its F7 root values.
+
+    Since ``Phi_6(z) = (z - 3)(z - 5)`` over ``F_7``, the two evaluations
+    determine the unique degree-less-than-two representative.  This is a
+    coordinate conversion only; it carries no source or period authority.
+    """
+    if type(at_three) is not int or type(at_five) is not int:
+        raise TypeError("Phi6 root values must be exact integers")
+    if not 0 <= at_three < 7 or not 0 <= at_five < 7:
+        raise ValueError("Phi6 root values must be normalized modulo seven")
+    coefficient_one = 4 * (at_five - at_three) % 7
+    coefficient_zero = (at_three - 3 * coefficient_one) % 7
+    return coefficient_zero, coefficient_one
+
+
+def crt_mod70_from_residues(remainder_seven: int, units_ten: int) -> int:
+    """Join normalized residues modulo 7 and 10 into one residue modulo 70."""
+    if type(remainder_seven) is not int or type(units_ten) is not int:
+        raise TypeError("mod-70 CRT inputs must be exact integers")
+    if not 0 <= remainder_seven < 7 or not 0 <= units_ten < 10:
+        raise ValueError("mod-70 CRT inputs must be normalized residues")
+    return units_ten + 10 * (5 * (remainder_seven - units_ten) % 7)
+
+
 @dataclass(frozen=True, slots=True)
 class CyclotomicDigitBlock:
     """One fixed-width digit polynomial in a canonical cyclotomic quotient.
@@ -815,4 +842,8 @@ class CyclotomicDigitBlock:
         return bits
 
 
-__all__ = ["CyclotomicDigitBlock"]
+__all__ = [
+    "CyclotomicDigitBlock",
+    "crt_mod70_from_residues",
+    "phi6_coefficients_from_root_values_mod7",
+]

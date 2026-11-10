@@ -126,5 +126,14 @@ def iter_symbols(
             else:
                 raise ValueError(f"unknown SLP node kind: {node.kind}")
     finally:
-        if retained:
-            release_tasks(retained)
+        try:
+            if retained:
+                release_tasks(retained)
+        except BaseException:
+            # Keep the outstanding count visible in the traceback if release
+            # fails, but never retain the corresponding uncharged task stack.
+            tasks.clear()
+            raise
+        else:
+            tasks.clear()
+            retained = 0

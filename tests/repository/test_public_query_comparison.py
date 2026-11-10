@@ -138,11 +138,15 @@ def test_info_only_comparison_skips_value_reference_and_point_demand(
         ["bypass"],
         info=("arithmetic.mahler",),
         no_value=True,
+        max_steps=32,
+        max_state_bits=8192,
     )
     assert len(rows) == 1
     assert rows[0]["route"] == "cli"
     assert rows[0]["value"] is None
     assert len(calls) == 1
+    assert calls[0][calls[0].index("--max-steps") + 1] == "32"
+    assert calls[0][calls[0].index("--max-state-bits") + 1] == "8192"
 
 
 def test_mismatched_observation_sample_is_retained_before_rejection(
@@ -242,3 +246,38 @@ def test_sample_journal_survives_failure_without_rewriting_the_growing_report(
     assert journal == packet["rows"]
     assert len(journal) == 3
     assert packet["outcome"] == "failed_or_interrupted"
+
+
+@pytest.mark.parametrize("enabled", (True, False))
+def test_boolean_observer_probe_uses_registry_flag_kind(
+    enabled: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from devtools.benchmarks import public_query_comparison as module
+
+    def observe(
+        arguments: list[str], *, fresh: bool, shared_cache: bool = True
+    ) -> tuple[float, dict[str, object]]:
+        assert ("--temporal-period-drivers" in arguments) is enabled
+        assert "true" not in arguments and "false" not in arguments
+        return 0.01, {"value": None, "info": {"temporal.seed-morphism": {}}}
+
+    monkeypatch.setattr(module, "cli_sample", observe)
+    rows = compare(
+        "2rev10",
+        [16],
+        1,
+        ["bypass"],
+        seed=196,
+        info=("temporal.seed-morphism",),
+        no_value=True,
+        observation_options=(("period_drivers", "true" if enabled else "false"),),
+    )
+    assert len(rows) == 1
+    with pytest.raises(ValueError, match="true or false"):
+        compare(
+            "2rev10",
+            [16],
+            1,
+            ["bypass"],
+            observation_options=(("period_drivers", "yes"),),
+        )

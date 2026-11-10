@@ -99,6 +99,10 @@ class FourObserverEmission:
         )
 
     @property
+    def width(self) -> int:
+        return self.defect.width
+
+    @property
     def right(self) -> int:
         return self.defect.combined_decimal
 
@@ -192,31 +196,8 @@ class FourObserverEmission:
         The full repunit width is replaced by its 12-phase clock; no
         occurrence-specific decimal exponent is retained in the key.
         """
-        if type(modulus) is not int or modulus not in CYCLIC_NEGACYCLIC_MODULI:
-            raise ValueError("unsupported certified cyclotomic factor")
-        if pow(10, 12, modulus) != 1:
-            raise AssertionError("cyclotomic width-phase certificate is invalid")
-        g0 = sum(PHYSICAL_GROWTH_CYCLES[self.phase][:2])
-        r0, r1 = self.right_overflow
-        l0, l1 = self.mirrored_left_overflow
-        right_exponents = (self.width_phase12 + 1, self.width_phase12 + g0 + 1)
-        left_exponents = (self.width_phase12 + r0 + 1, self.width_phase12 + g0 + r1 + 1)
-        right = tuple(
-            b * (pow(10, exponent % 12, modulus) - 1) % modulus
-            for b, exponent in zip((r0, r1), right_exponents, strict=True)
-        )
-        left = tuple(
-            b * (pow(10, exponent % 12, modulus) - 1) % modulus
-            for b, exponent in zip((l0, l1), left_exponents, strict=True)
-        )
-        return (
-            self.phase,
-            self.right % modulus,
-            self.left % modulus,
-            right[0],
-            right[1],
-            left[0],
-            left[1],
+        return _cyclotomic_key(
+            self.phase, self.right, self.left, self.width_phase12, modulus
         )
 
     def output_at_width(
@@ -234,6 +215,105 @@ class FourObserverEmission:
 
     def difference_signature(self) -> dict[str, object]:
         return _p_signature(99 * self.difference)
+
+
+@dataclass(frozen=True, slots=True)
+class FourObserverPeriodSample:
+    """Minimal finite-sample signature without retained carry/cochain vectors."""
+
+    width: int
+    phase: int
+    right: int
+    left: int
+    width_phase12: int
+    input_modulus: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.width) is not int
+            or not 1 <= self.width <= 96
+            or type(self.phase) is not int
+            or self.phase not in (0, 1, 2, 3)
+            or any(type(value) is not int for value in (self.right, self.left))
+            or type(self.width_phase12) is not int
+            or not 0 <= self.width_phase12 < 12
+            or type(self.input_modulus) is not int
+            or not 0 <= self.input_modulus < 2 * 10**self.width
+        ):
+            raise ValueError("invalid compact four-observer period sample")
+
+    @classmethod
+    def from_emission(cls, emission: FourObserverEmission) -> FourObserverPeriodSample:
+        return cls(
+            emission.defect.width,
+            emission.phase,
+            emission.right,
+            emission.left,
+            emission.width_phase12,
+            emission.defect.input_modulus,
+        )
+
+    @property
+    def difference(self) -> int:
+        return self.right - self.left
+
+    @property
+    def right_overflow(self) -> tuple[int, int]:
+        word = PHYSICAL_GROWTH_CYCLES[self.phase]
+        return word[0], word[2]
+
+    @property
+    def mirrored_left_overflow(self) -> tuple[int, int]:
+        word = PHYSICAL_GROWTH_CYCLES[self.phase]
+        return word[1], word[3]
+
+    def cyclotomic_key(self, modulus: int) -> tuple[int, ...]:
+        return _cyclotomic_key(
+            self.phase, self.right, self.left, self.width_phase12, modulus
+        )
+
+
+def _cyclotomic_key(
+    phase: int,
+    right_residue: int,
+    left_residue: int,
+    width_phase12: int,
+    modulus: int,
+) -> tuple[int, ...]:
+    """Shared four-observer phase projection with no retained carry tape."""
+    if (
+        type(phase) is not int
+        or phase not in (0, 1, 2, 3)
+        or any(type(value) is not int for value in (right_residue, left_residue))
+        or type(width_phase12) is not int
+        or not 0 <= width_phase12 < 12
+    ):
+        raise ValueError("invalid source phase for cyclotomic projection")
+    if type(modulus) is not int or modulus not in CYCLIC_NEGACYCLIC_MODULI:
+        raise ValueError("unsupported certified cyclotomic factor")
+    if pow(10, 12, modulus) != 1:
+        raise AssertionError("cyclotomic width-phase certificate is invalid")
+    r0, l0, r1, l1 = PHYSICAL_GROWTH_CYCLES[phase]
+    g0 = r0 + l0
+    right_exponents = (width_phase12 + 1, width_phase12 + g0 + 1)
+    left_exponents = (width_phase12 + r0 + 1, width_phase12 + g0 + r1 + 1)
+    right = tuple(
+        bit * (pow(10, exponent % 12, modulus) - 1) % modulus
+        for bit, exponent in zip((r0, r1), right_exponents, strict=True)
+    )
+    left = tuple(
+        bit * (pow(10, exponent % 12, modulus) - 1) % modulus
+        for bit, exponent in zip((l0, l1), left_exponents, strict=True)
+    )
+    return (
+        phase,
+        right_residue % modulus,
+        left_residue % modulus,
+        right[0],
+        right[1],
+        left[0],
+        left[1],
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -320,7 +400,8 @@ class FourObserverAffineClock:
 
 
 def projected_period_profiles(
-    observations: Sequence[FourObserverEmission], max_lag: int
+    observations: Sequence[FourObserverEmission | FourObserverPeriodSample],
+    max_lag: int,
 ) -> dict[str, dict[str, object]]:
     """All suffix periods from a single mismatch/valuation pass per lag.
 
@@ -333,9 +414,10 @@ def projected_period_profiles(
         raise ValueError("cannot minimize empty four-observer history")
     if type(max_lag) is not int or max_lag < 1:
         raise ValueError("invalid comparison lag")
-    width = observations[0].defect.width
+    width = observations[0].width
     if any(
-        type(row) is not FourObserverEmission or row.defect.width != width
+        type(row) not in (FourObserverEmission, FourObserverPeriodSample)
+        or row.width != width
         for row in observations
     ):
         raise ValueError("all observations must have the same suffix precision")

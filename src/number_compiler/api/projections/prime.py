@@ -57,5 +57,7 @@ def project(compiler: NumberCompiler, query: PrimeTermQuery) -> ProjectedNumberT
             prime_scheduler_work=metrics.scheduler_work,
             prime_scheduler_peak_entries=metrics.scheduler_allocations,
             prime_scheduler_counters=metrics.scheduler_counters,
+            prime_birth_innovation_collapses=metrics.innovation_collapses,
+            prime_birth_innovation_stages=metrics.innovation_stages,
         ),
     )

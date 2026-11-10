@@ -321,10 +321,10 @@ class AntihydraArithmeticTerm:
         self.mahler_workspace: MahlerWorkspace | None = None
         self.ledger.register_execution_root(self)
         from number_compiler.sequences.antihydra.payload_audit import (
-            register_antihydra_payload_contract,
+            register_term_contract,
         )
 
-        register_antihydra_payload_contract(self)
+        register_term_contract(self)
 
     @property
     def mahler_prepared(self) -> bool:
@@ -806,10 +806,10 @@ class CylinderEngine:
         self.projection_fragment_driver: object | None = None
         self.ledger.register_execution_root(self)
         from number_compiler.sequences.antihydra.payload_audit import (
-            register_antihydra_payload_contract,
+            register_engine_contract,
         )
 
-        register_antihydra_payload_contract(self)
+        register_engine_contract(self)
 
     @property
     def audit_memo_store(self) -> object:

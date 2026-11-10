@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Self
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.resources.stores import LedgerList
 from number_compiler.sequences.collatz.border_identity import (
     ENTRY_0563,
@@ -644,24 +645,78 @@ class ParityProgramBuilder:
             or not power.cylinder.admits(power.repetitions)
         ):
             raise ValueError("repeated parity grammar differs from its source cylinder")
-        current = chain.source
-        for _ in range(power.repetitions):
-            preflight(
-                current.bit_length()
-                + chain.fields.gain.bit_length()
-                + 2 * chain.fields.steps
-                + 16
+        # The cylinder certifies the entire repeated word, so validate its
+        # powered source action once and retain one compressed grammar factor.
+        count = power.repetitions
+        preflight(
+            chain.source.bit_length()
+            + chain.fields.gain.bit_length()
+            + chain.fields.sum_gain.bit_length()
+            + 4 * chain.fields.steps * count
+            + 32
+        )
+
+        def account_power_composition(
+            first: DyadicTerminalFieldAction,
+            second: DyadicTerminalFieldAction,
+        ) -> None:
+            self._ledger.bump(
+                _collatz_keys.COLLATZ_INNOVATION_SOURCE_OPERAND_BITS,
+                sum(
+                    value.bit_length()
+                    for value in (
+                        *first.coefficient_snapshot(),
+                        *second.coefficient_snapshot(),
+                    )
+                ),
             )
-            following = chain.fields.endpoint(current)
-            self._append_admitted(
-                current,
-                following,
-                chain.factors,
-                odd_symbols=chain.odd_symbols,
-            )
-            current = following
-        if current != endpoint:
+            self._ledger.bump(_collatz_keys.COLLATZ_FIELD_ACTION_COMPOSITIONS)
+
+        issued_power = power.action.power(
+            count,
+            on_compose=account_power_composition,
+        )
+        if not issued_power.producer_issued:
             raise ValueError("repeated parity grammar endpoint differs from its power")
+        endpoint_operand_bits = 2 * (
+            chain.source.bit_length()
+            + issued_power.gain.bit_length()
+            + abs(issued_power.offset).bit_length()
+            + issued_power.steps
+            + 1
+        )
+        self._ledger.bump(
+            _collatz_keys.COLLATZ_INNOVATION_SOURCE_OPERAND_BITS,
+            endpoint_operand_bits,
+        )
+        if issued_power.endpoint(chain.source) != endpoint:
+            raise ValueError("repeated parity grammar endpoint differs from its power")
+        if len(chain.factors) == 1:
+            motif, repetitions = chain.factors[0]
+            specifications = ((motif, repetitions * count),)
+        else:
+            # (u v ...)^q differs from u^q v^q ... . Flatten one source word,
+            # after charging its bounded extent, then keep the outer power.
+            preflight(16 * chain.fields.steps + 128)
+            self._ledger.bump(
+                _collatz_keys.COLLATZ_INNOVATION_SOURCE_OPERAND_BITS,
+                chain.fields.steps,
+            )
+            motif = tuple(
+                bit
+                for bits, repetitions in chain.factors
+                for _ in range(repetitions)
+                for bit in bits
+            )
+            if len(motif) != chain.fields.steps:
+                raise AssertionError("authenticated skew factors lost their extent")
+            specifications = ((motif, count),)
+        self._append_admitted(
+            chain.source,
+            endpoint,
+            specifications,
+            odd_symbols=chain.odd_symbols * count,
+        )
 
     def append_diagonal_window(
         self,

@@ -3,17 +3,30 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from random import Random
 from typing import Never
 
 import pytest
 
 from number_compiler.api import cli
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
+from number_compiler.sequences.double_reverse.temporal_defect_period import (
+    source_bound_defect_period_packet,
+)
+from number_compiler.sequences.double_reverse.temporal_defect_quotient import (
+    FourSymbolDefect,
+)
 from number_compiler.sequences.double_reverse.temporal_hashlife import (
     PHYSICAL_GROWTH_CYCLES,
+    DoubleReverseTemporalHashlife,
     edge_phase_of_integer,
     growth_ports,
+)
+from number_compiler.sequences.double_reverse.temporal_hashlife_pointed import (
+    CertifiedDefectTape,
 )
 from number_compiler.sequences.double_reverse.temporal_residue_quotient import (
     certified_width_moments,
@@ -95,6 +108,205 @@ def test_both_cli_observers_reuse_one_authenticated_defect_cone(
         == seed["period_observations"]["composed_signed_action"]
     )
     assert direct["source_halo_segments"] == 1
+
+
+def test_streamed_defect_tape_matches_materialized_actions_without_history() -> None:
+    with DoubleReverseTerm(168, 128, max_state_bits=16384) as term:
+        _, source = term.prepare_bank_source(max_prefix=16)
+        digits = 11
+        samples = 7
+        stride = 1
+        start_f = source.f_steps - 2 - 2 * stride * (samples - 1)
+        materialized = source.engine.pointed_combined_defect_tape(
+            source.root, start_f, source.phase, digits, samples, stride
+        )
+        streamed_actions: list[FourSymbolDefect] = []
+        streamed = source.engine.pointed_combined_defect_tape(
+            source.root,
+            start_f,
+            source.phase,
+            digits,
+            samples,
+            stride,
+            on_emission=streamed_actions.append,
+        )
+        assert materialized.emissions == tuple(streamed_actions)
+        assert streamed.emissions == ()
+        assert (materialized.halo_segments, materialized.locally_advanced_f_steps) == (
+            streamed.halo_segments,
+            streamed.locally_advanced_f_steps,
+        )
+
+
+def test_cli_defect_observer_consumes_streamed_tape(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    original = DoubleReverseTemporalHashlife.pointed_combined_defect_tape
+    issued: list[CertifiedDefectTape] = []
+
+    def capture_tape(
+        engine: DoubleReverseTemporalHashlife,
+        root: int,
+        start_steps: int,
+        phase: int,
+        digits: int,
+        samples: int,
+        stride: int = 1,
+        *,
+        on_emission: Callable[[FourSymbolDefect], None] | None = None,
+    ) -> CertifiedDefectTape:
+        tape = original(
+            engine,
+            root,
+            start_steps,
+            phase,
+            digits,
+            samples,
+            stride,
+            on_emission=on_emission,
+        )
+        issued.append(tape)
+        return tape
+
+    monkeypatch.setattr(
+        DoubleReverseTemporalHashlife,
+        "pointed_combined_defect_tape",
+        capture_tape,
+    )
+    assert (
+        cli.main(
+            [
+                "2rev10",
+                "--seed",
+                "168",
+                "--nth",
+                "128",
+                "--no-value",
+                "--format",
+                "json",
+                "--info",
+                "temporal.defect-clock",
+                "--temporal-defect-digits",
+                "12",
+                "--temporal-period-samples",
+                "12",
+            ]
+        )
+        == 0
+    )
+    assert capsys.readouterr().out
+    assert issued
+    assert all(not tape.emissions for tape in issued)
+
+
+def test_defect_observer_reserves_before_reading_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with DoubleReverseTerm(168, 128, max_state_bits=16384) as term:
+        _, source = term.prepare_bank_source(max_prefix=16)
+
+        def refuse_reservation(
+            ledger: ResourceLedger,
+            owner: int,
+            *,
+            entries: int = 0,
+            nodes: int = 0,
+        ) -> Never:
+            assert ledger is source.ledger
+            assert owner == source.scratch_owner
+            assert entries > 0 and nodes > 0
+            raise BlockContextBudgetExceeded("injected observer scratch refusal")
+
+        def prohibit_source_read(*_args: object, **_kwargs: object) -> Never:
+            raise AssertionError("source was read before scratch admission")
+
+        with monkeypatch.context() as patcher:
+            patcher.setattr(ResourceLedger, "reservation", refuse_reservation)
+            patcher.setattr(
+                DoubleReverseTemporalHashlife,
+                "pointed_combined_defect_tape",
+                prohibit_source_read,
+            )
+            patcher.setattr(
+                DoubleReverseTemporalHashlife,
+                "pointed_window",
+                prohibit_source_read,
+            )
+            with pytest.raises(BlockContextBudgetExceeded, match="scratch refusal"):
+                source_bound_defect_period_packet(
+                    source, digits=12, samples=8, stride=1, max_lag=4
+                )
+
+
+def test_streamed_defect_cancellation_releases_source_scratch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with DoubleReverseTerm(168, 128, max_state_bits=16384) as term:
+        _, source = term.prepare_bank_source(max_prefix=16)
+        expected = source_bound_defect_period_packet(
+            source, digits=12, samples=4, stride=1, max_lag=2
+        )
+        assert expected["status"] == "available"
+        scratch_before = source.ledger.account_usage(source.scratch_owner)
+        original = DoubleReverseTemporalHashlife.pointed_combined_defect_tape
+        emitted = 0
+        published: list[dict[str, object]] = []
+
+        def cancel_after_first(
+            engine: DoubleReverseTemporalHashlife,
+            root: int,
+            start_steps: int,
+            phase: int,
+            digits: int,
+            samples: int,
+            stride: int = 1,
+            *,
+            on_emission: Callable[[FourSymbolDefect], None] | None = None,
+        ) -> CertifiedDefectTape:
+            def emit(defect: FourSymbolDefect) -> None:
+                nonlocal emitted
+                if on_emission is None:
+                    raise AssertionError("observer did not request streamed emissions")
+                on_emission(defect)
+                emitted += 1
+                if emitted == 1:
+                    raise RuntimeError("injected streamed observer cancellation")
+
+            return original(
+                engine,
+                root,
+                start_steps,
+                phase,
+                digits,
+                samples,
+                stride,
+                on_emission=emit,
+            )
+
+        with monkeypatch.context() as patcher:
+            patcher.setattr(
+                DoubleReverseTemporalHashlife,
+                "pointed_combined_defect_tape",
+                cancel_after_first,
+            )
+            with pytest.raises(
+                RuntimeError, match="injected streamed observer cancellation"
+            ):
+                packet = source_bound_defect_period_packet(
+                    source, digits=12, samples=4, stride=1, max_lag=2
+                )
+                published.append(packet)
+
+        assert emitted == 1
+        assert published == []
+        assert source.ledger.account_usage(source.scratch_owner) == scratch_before
+        assert (
+            source_bound_defect_period_packet(
+                source, digits=12, samples=4, stride=1, max_lag=2
+            )
+            == expected
+        )
 
 
 def test_segmented_source_halo_not_single_sample_cones(

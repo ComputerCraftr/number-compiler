@@ -41,6 +41,9 @@ if TYPE_CHECKING:
         GuardedDecimalPairTransfer,
         UpperNumeratorF5Matrix,
     )
+    from number_compiler.sequences.collatz.conditional_candidate_seal import (
+        CandidateSealSnapshot,
+    )
     from number_compiler.sequences.collatz.guarded_port_join import GuardedPortJoin
     from number_compiler.sequences.collatz.guarded_radix6_bridge import (
         GuardedTemporalCarryCounts,
@@ -112,7 +115,7 @@ class CertifiedSchedulerCandidate:
     carry_program: GuardedTemporalCarryCounts | None = None
     upper_sturmian: tuple[int, int, int] | None = None
     _memo_issuer: object = field(init=False, repr=False, compare=False)
-    _memo_snapshot: tuple[object, ...] | None = field(
+    _memo_snapshot: CandidateSealSnapshot | None = field(
         init=False, repr=False, compare=False
     )
 
@@ -120,31 +123,52 @@ class CertifiedSchedulerCandidate:
         object.__setattr__(self, "_memo_issuer", None)
         object.__setattr__(self, "_memo_snapshot", None)
 
-    def seal_for_memo(self) -> None:
-        """Memo-seal only after every observer has passed full verification."""
+    def seal_for_memo(self) -> CandidateSealSnapshot | None:
+        """Memo-seal after verification; return a new unpublished seal token."""
         if self._memo_issuer is _CANDIDATE_MEMO_ISSUER:
             self.verify_memo_issued()
-            return
+            return None
         self.verify()
         from number_compiler.sequences.collatz.conditional_candidate_seal import (
             snapshot_scheduler_candidate,
         )
 
-        snapshot = snapshot_scheduler_candidate(self)
+        snapshot = snapshot_scheduler_candidate(self, validate_tape_action=True)
         object.__setattr__(self, "_memo_snapshot", snapshot)
         object.__setattr__(self, "_memo_issuer", _CANDIDATE_MEMO_ISSUER)
+        return snapshot
+
+    def discard_unpublished_memo_seal(self, snapshot: CandidateSealSnapshot) -> None:
+        """Drop only this new seal when its memo publication did not commit."""
+        from number_compiler.sequences.collatz.conditional_candidate_seal import (
+            CandidateSealSnapshot,
+        )
+
+        if (
+            type(snapshot) is not CandidateSealSnapshot
+            or self._memo_issuer is not _CANDIDATE_MEMO_ISSUER
+            or self._memo_snapshot is not snapshot
+        ):
+            raise ValueError("conditional candidate memo seal is not unpublished here")
+        object.__setattr__(self, "_memo_snapshot", None)
+        object.__setattr__(self, "_memo_issuer", None)
 
     def verify_memo_issued(self) -> None:
         from number_compiler.sequences.collatz.conditional_candidate_seal import (
+            CandidateSealSnapshot,
             snapshot_scheduler_candidate,
         )
 
         try:
-            valid = object.__getattribute__(
-                self, "_memo_issuer"
-            ) is _CANDIDATE_MEMO_ISSUER and object.__getattribute__(
-                self, "_memo_snapshot"
-            ) == snapshot_scheduler_candidate(self)
+            stored = object.__getattribute__(self, "_memo_snapshot")
+            if (
+                object.__getattribute__(self, "_memo_issuer")
+                is not _CANDIDATE_MEMO_ISSUER
+                or type(stored) is not CandidateSealSnapshot
+            ):
+                valid = False
+            else:
+                valid = stored == snapshot_scheduler_candidate(self, expected=stored)
         except (AttributeError, TypeError, ValueError):
             valid = False
         if not valid:
@@ -223,6 +247,16 @@ class CertifiedSchedulerCandidate:
         elif self.pair_transfer is not None or self.numerator_phase is not None:
             raise TypeError("conditional scheduler matrices lost their trace")
         joined_values: tuple[int, ...] = ()
+        parity_work = 0
+        if self._memo_issuer is _CANDIDATE_MEMO_ISSUER:
+            from number_compiler.sequences.collatz.conditional_candidate_seal import (
+                CandidateSealSnapshot,
+            )
+
+            snapshot = self._memo_snapshot
+            if type(snapshot) is not CandidateSealSnapshot:
+                raise TypeError("conditional candidate parity seal is malformed")
+            parity_work = snapshot.parity_work
         if self.joined_port is not None or self.carry_program is not None:
             from number_compiler.sequences.collatz.guarded_port_join import (
                 GuardedPortJoin,
@@ -257,6 +291,16 @@ class CertifiedSchedulerCandidate:
                         for endpoint in (band.lower, band.upper)
                     ),
                 )
+                parity_tape = self.joined_port.parity_tape
+                if (
+                    parity_tape is not None
+                    and self._memo_issuer is not _CANDIDATE_MEMO_ISSUER
+                ):
+                    from number_compiler.sequences.collatz.conditional_candidate_seal import (
+                        parity_tape_verification_work,
+                    )
+
+                    parity_work = parity_tape_verification_work(parity_tape)
             if (
                 self.carry_program is not None
                 and type(self.carry_program) is not GuardedTemporalCarryCounts
@@ -288,6 +332,7 @@ class CertifiedSchedulerCandidate:
             0 if self.numerator_phase is None else self.numerator_phase.scale,
             0 if self.numerator_phase is None else self.numerator_phase.offset,
             *joined_values,
+            parity_work,
             0 if self.carry_program is None else self.carry_program.guard.residue,
             0 if self.carry_program is None else self.carry_program.guard.modulus,
             0
@@ -351,11 +396,15 @@ class CertifiedSchedulerCandidate:
             )
             + 1,
         )
-        return 8 * (
-            sum(abs(value).bit_length() for value in values)
-            + source_bits
-            + endpoint_bits
-            + 32
+        return (
+            8
+            * (
+                sum(abs(value).bit_length() for value in values)
+                + source_bits
+                + endpoint_bits
+                + 32
+            )
+            + parity_work
         )
 
     def verify(self) -> None:

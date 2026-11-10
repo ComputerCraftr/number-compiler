@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Generator, Iterable, Iterator
 from contextlib import contextmanager
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
-from number_compiler.resources.ledger import ResourceLedger
+if TYPE_CHECKING:
+    from number_compiler.resources.ledger import ResourceLedger
 
 _T = TypeVar("_T")
 

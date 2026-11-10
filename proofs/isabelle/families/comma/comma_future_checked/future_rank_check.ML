@@ -8,7 +8,7 @@ struct
       val (z_procedure, z_stats) = Comma_Future_Rank_Lookup.selected_table ctxt "Z" @{thm comma_rank_codes_Z_def}
       val evaluation = (#context core
         |> Simplifier.add_proc n_procedure
-        |> Simplifier.add_proc z_procedure) addsimps
+        |> Simplifier.add_proc z_procedure) |> Simplifier.add_simps
         @{thms comma_boundary_states_def comma_boundary_valid_def
           comma_fast_boundary_children_def comma_fast_boundary_macro_def
           comma_fast_boundary_run_numeral comma_finite_initial_def

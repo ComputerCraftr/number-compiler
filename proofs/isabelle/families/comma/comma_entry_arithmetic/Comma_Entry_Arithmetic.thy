@@ -77,4 +77,9 @@ ML \<open>
     else error "Compiled Entry arithmetic export depends on an oracle";
 \<close>
 
+ML_file "proof_profile.ML"
+ML_file "Proof_Dependency_Audit.ML"
+ML_file "selected_list_alias.ML"
+ML_file "selected_list_conversion.ML"
+
 end

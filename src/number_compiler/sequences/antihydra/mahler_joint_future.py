@@ -11,6 +11,7 @@ The high fiber k in D = residue + 2**L*k is persistent across CONCAT/REPEAT.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Final, cast
 from weakref import ReferenceType, ref
@@ -27,7 +28,7 @@ from number_compiler.arithmetic.fields.consumer_pullback import (
     HalfOpenInterval as Interval,
 )
 from number_compiler.arithmetic.fields.integer_congruence import exact_modular_power
-from number_compiler.arithmetic.fields.morphism_core import binary_power
+from number_compiler.arithmetic.fields.morphism_core import balanced_fold, binary_power
 from number_compiler.arithmetic.fields.two_adic import v2_positive
 from number_compiler.arithmetic.fields.walsh import WalshH5
 from number_compiler.sequences.antihydra.mahler_source_actions import (
@@ -469,29 +470,41 @@ class MahlerJointFutureAction:
             or length > MAX_MAHLER_SOURCE_EXTENT
         ):
             raise BlockContextBudgetExceeded("source prefix discovery exceeds budget")
-        result = cls()
         current = source
-        remaining = length
-        # The source selects maximal even runs and odd-to-odd event blocks.
-        # Consecutive odd symbols remain separate events. Each block is
-        # clipped to the requested horizon; no next parity is inferred.
-        while remaining:
-            if current & 1:
-                exponent = v2_positive(3 * current + 1)
-                run_length = min(exponent, remaining)
-                step = cls.bit(1).then(
-                    cls.zero_run(run_length - 1, max_extent=max_steps)
-                )
-            else:
-                run_length = (
-                    remaining if current == 0 else min(v2_positive(current), remaining)
-                )
-                step = cls.zero_run(run_length, max_extent=max_steps)
-            if not step.integer_admits(current):
-                raise ArithmeticError("source-selected parity run lost its inlet")
-            result = result.then(step)
-            current = step.endpoint(current)
-            remaining -= run_length
+
+        def source_runs() -> Iterator[MahlerJointFutureAction]:
+            nonlocal current
+            remaining = length
+            # The source selects maximal even runs and odd-to-odd event
+            # blocks. Consecutive odd symbols remain separate events. Each
+            # block is clipped to the requested horizon; no next parity is
+            # inferred. Admission and physical advancement happen before the
+            # step enters the ordered composition fold.
+            while remaining:
+                if current & 1:
+                    exponent = v2_positive(3 * current + 1)
+                    run_length = min(exponent, remaining)
+                    step = cls.bit(1).then(
+                        cls.zero_run(run_length - 1, max_extent=max_steps)
+                    )
+                else:
+                    run_length = (
+                        remaining
+                        if current == 0
+                        else min(v2_positive(current), remaining)
+                    )
+                    step = cls.zero_run(run_length, max_extent=max_steps)
+                if not step.integer_admits(current):
+                    raise ArithmeticError("source-selected parity run lost its inlet")
+                current = step.endpoint(current)
+                remaining -= run_length
+                yield step
+
+        result = balanced_fold(
+            source_runs(),
+            identity=cls(),
+            compose=lambda prefix, step: prefix.then(step),
+        )
         if not result.integer_admits(source) or result.endpoint(source) != current:
             raise ArithmeticError("source prefix and future cylinder disagree")
         return result

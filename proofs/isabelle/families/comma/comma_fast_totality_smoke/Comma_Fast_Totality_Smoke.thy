@@ -48,14 +48,14 @@ method elaboration and tactic replay cannot repeat the expensive computation.\<c
 local_setup \<open>fn lthy =>
   let
     val core = Comma_Fast_Kernel.make lthy
-    val engine = {context = #context core addsimps
+    val engine = {context = #context core |> Simplifier.add_simps
       @{thms comma_fast_finishes_within_eval comma_fast_totality_phase_def
         comma_fast_totality_range_def comma_fast_totality_rectangle_def},
       stats = #stats core}
     val rows = map
       (Comma_Fast_Totality_Profile.row_with lthy (#context engine) (#stats engine) 0)
       (0 upto 90)
-    val assembly = Comma_Entry_Arithmetic.natural_context lthy addsimps
+    val assembly = Comma_Entry_Arithmetic.natural_context lthy |> Simplifier.add_simps
       (@{thms comma_fast_totality_phase_def list_all_Nil_iff list_all_Cons_iff
         upt_rec} @ rows)
     val phase = Goal.prove lthy [] [] @{prop "comma_fast_totality_phase 0 27"}

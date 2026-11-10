@@ -151,24 +151,6 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
             elif node.kind == "sequence":
                 expected_key = ("sequence", node.before, node.after)
                 valid_node = node.before is not None and node.after is not None
-            elif node.kind == "boundary-prefix":
-                state = node.boundary_source
-                if type(state) is not BoundaryState:
-                    raise ValueError("comma boundary action has another source sort")
-                boundary_state_signature(state)
-                valid_node = (
-                    type(node.steps) is int
-                    and node.steps >= 0
-                    and type(node.boundary_exponent) is int
-                    and node.boundary_exponent >= 5
-                    and node.boundary_exponent % PERIOD == state.exponent_residue
-                )
-                expected_key = (
-                    "boundary-prefix",
-                    state,
-                    node.boundary_exponent,
-                    node.steps,
-                )
             elif node.kind == "boundary-prefix-occurrence":
                 state = node.boundary_source
                 if type(state) is not BoundaryState:
@@ -177,7 +159,6 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                 valid_node = (
                     type(node.steps) is int
                     and node.steps >= 0
-                    and node.boundary_exponent == 0
                     and node.future_digest == ""
                 )
                 expected_key = ("boundary-prefix-occurrence", state, node.steps)
@@ -222,10 +203,6 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
 
     for local_id, node in enumerate(nodes):
         try:
-            if type(node) is CommaActionRecord and node.kind == "boundary-prefix":
-                state = node.boundary_source
-                if state is not None:
-                    boundary_state_signature(state)
             if (
                 type(node) is not CommaActionRecord
                 or local_id not in canonical
@@ -247,21 +224,6 @@ def audit_comma_term(ledger: object, root: object) -> PayloadAuditContribution:
                     raise ValueError(
                         "comma composition has invalid chronological children"
                     )
-            elif node.kind == "boundary-prefix":
-                state = node.boundary_source
-                if state is not None:
-                    boundary_state_signature(state)
-                if (
-                    state is None
-                    or state not in arena.boundary_templates
-                    or node.boundary_exponent
-                    != (
-                        state.exponent_residue
-                        if state.exponent_residue >= 5
-                        else state.exponent_residue + PERIOD
-                    )
-                ):
-                    raise ValueError("comma boundary action lost its admitted template")
             elif node.kind == "boundary-prefix-occurrence":
                 state = node.boundary_source
                 if state is None or state not in arena.boundary_templates:

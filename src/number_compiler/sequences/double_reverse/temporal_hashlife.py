@@ -857,9 +857,18 @@ class DoubleReverseTemporalHashlife(TemporalHashlifeAuditBase):
         digits: int,
         samples: int,
         stride: int = 1,
+        *,
+        on_emission: Callable[[FourSymbolDefect], None] | None = None,
     ) -> CertifiedDefectTape:
         return _pointed_combined_defect_tape_impl(
-            self, root, start_steps, phase, digits, samples, stride
+            self,
+            root,
+            start_steps,
+            phase,
+            digits,
+            samples,
+            stride,
+            on_emission=on_emission,
         )
 
     def pointed_stencil(

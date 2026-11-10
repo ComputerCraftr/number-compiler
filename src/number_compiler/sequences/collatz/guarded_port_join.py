@@ -14,7 +14,7 @@ cuts; intermediate weighted arrivals require a certified finite inlet program.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass, field
 from math import gcd
 from typing import TYPE_CHECKING
 
@@ -33,6 +33,12 @@ from number_compiler.sequences.collatz.collatz_two_sided_ring import (
 )
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
+)
+from number_compiler.sequences.collatz.guarded_parity_binding import (
+    JoinedParityComposition as _JoinedParityComposition,
+)
+from number_compiler.sequences.collatz.guarded_parity_binding import (
+    ParityTapeActionBinding as _ParityTapeActionBinding,
 )
 from number_compiler.sequences.collatz.guarded_port_source import (
     ceil_div as _ceil_div,
@@ -96,8 +102,13 @@ class GuardedPortJoin:
     factor_grammar: tuple[tuple[tuple[int, ...], int], ...] | None = None
     factor_repetitions: int = 1
     parity_tape: ParityCarryTape | None = None
+    # Internal proof token used only for the ordered two-parent join path.
+    _composed_parity: InitVar[_JoinedParityComposition | None] = None
+    _parity_binding: _ParityTapeActionBinding | None = field(
+        default=None, init=False, compare=False, repr=False
+    )
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, _composed_parity: _JoinedParityComposition | None) -> None:
         if (
             type(self.source) is not CollatzTwoSidedCylinder
             or type(self.port) is not SourceClosedPortAction
@@ -199,27 +210,49 @@ class GuardedPortJoin:
                 type(self.parity_tape) is not ParityCarryTape
                 or self.parity_tape.steps != self.port.action.steps
                 or self.parity_tape.odds != self.port.odd_events
-                or self.parity_tape.action().coefficient_snapshot()
-                != self.port.action.coefficient_snapshot()
             ):
                 raise ValueError("retained parity tape differs from the issued action")
+            if _composed_parity is None:
+                # Cold admission performs one independent full fold and seals
+                # the exact root/action pair for constant-time warm reuse.
+                binding = _ParityTapeActionBinding.issue_from_fold(
+                    self.parity_tape, self.port.action
+                )
+            else:
+                # The internal join token transports the exact two parent
+                # actions, avoiding a refold of the full historical SLP.
+                binding = _ParityTapeActionBinding.issue_from_composition(
+                    self.parity_tape, self.port.action, _composed_parity
+                )
+            object.__setattr__(self, "_parity_binding", binding)
+        elif _composed_parity is not None:
+            raise ValueError("composed parity proof has no associated tape")
 
     def parity_tape_for_action(self) -> ParityCarryTape | None:
         """Return only an already-retained, source-validated parity grammar."""
         if self.parity_tape is not None:
+            binding = self._parity_binding
+            if binding is None:
+                raise ValueError("retained parity tape has no action binding")
+            binding.verify(self.parity_tape, self.port.action)
             return self.parity_tape
         from number_compiler.sequences.collatz.parity_carry_tape import (
             ParityCarryTape,
         )
 
         if self.factor_grammar is not None:
-            return ParityCarryTape.factors(
+            tape = ParityCarryTape.factors(
                 self.factor_grammar, repetitions=self.factor_repetitions
             )
-        macro = self.named_macro
-        if macro is None:
-            return None
-        return ParityCarryTape.from_named_macro(macro)
+        else:
+            macro = self.named_macro
+            if macro is None:
+                return None
+            tape = ParityCarryTape.from_named_macro(macro)
+        binding = _ParityTapeActionBinding.issue_from_fold(tape, self.port.action)
+        object.__setattr__(self, "parity_tape", tape)
+        object.__setattr__(self, "_parity_binding", binding)
+        return tape
 
     def _prefix(self, time: int) -> tuple[DyadicTerminalFieldAction, int]:
         """Recover a *proved* prefix from the issued parity residue, not a guess.
@@ -557,8 +590,18 @@ class GuardedPortJoin:
             time, self.source, tuple(result), fives, prefix, prefix_scalar_steps
         )
 
-    def then(self, after: GuardedPortJoin) -> GuardedPortJoin | None:
+    def then(
+        self,
+        after: GuardedPortJoin,
+        *,
+        ledger: ResourceLedger | None = None,
+    ) -> GuardedPortJoin | None:
         """Source-pulled guard join, retaining intermediate 5 births.
+
+        The pure join path is not a resource-certified allocation transaction.
+        An explicitly budgeted join therefore fails before source, bridge, or
+        SLP construction until all of those owners participate in one ledger
+        reservation and rollback protocol.
 
         If the next source fiber is only a subcylinder of this action's
         target, rebuild both certificates on that smaller fiber BEFORE
@@ -566,6 +609,15 @@ class GuardedPortJoin:
         """
         if type(after) is not GuardedPortJoin:
             raise TypeError("guarded port composition requires another joint port")
+        if ledger is not None:
+            from number_compiler.resources.ledger import ResourceLedger
+
+            if type(ledger) is not ResourceLedger:
+                raise TypeError("budgeted guarded join requires its exact query ledger")
+            raise BlockContextBudgetExceeded(
+                "guarded port join has no complete ledger-owned source/bridge/SLP "
+                "transaction; resource-certified composition is disabled"
+            )
         combined = self.port.then(after.port)
         if combined is None:
             return None
@@ -589,17 +641,25 @@ class GuardedPortJoin:
         first_tape = self.parity_tape_for_action()
         second_tape = after.parity_tape_for_action()
         tape = None
+        proof = None
         if first_tape is not None and second_tape is not None:
-            from number_compiler.sequences.collatz.parity_carry_tape import (
-                ParityCarryTape,
+            first_binding = self._parity_binding
+            second_binding = after._parity_binding
+            if first_binding is None or second_binding is None:
+                raise ValueError("joined parity parent lost its action binding")
+            proof = _JoinedParityComposition.issue(
+                first_tape,
+                first_binding,
+                second_tape,
+                second_binding,
             )
-
-            tape = ParityCarryTape.sequence((first_tape, second_tape))
+            tape = proof.root
         return GuardedPortJoin(
             root,
             combined,
             first.then(second),
             parity_tape=tape,
+            _composed_parity=proof,
         )
 
     def prefix_units(self, time: int) -> UnitsCarryMatrix:
@@ -770,148 +830,12 @@ class GuardedPortJoin:
         *,
         max_steps: int = 512,
     ) -> GuardedTemporalCarryCounts:
-        """Intersect EVERY demanded temporal matrix row with its source guard.
-
-        At stage t, the original source must imply the entire 200-state
-        inlet letter under the affine prefix, as well as every available
-        source-wide base-6 5-suffix reset. The matrix then yields the exact
-        two decimal carry arrivals. On an authenticated five-phase period the
-        same proof uses the logarithmic powered matrix, not a linear walk.
-        """
-        from number_compiler.sequences.collatz.guarded_radix6_bridge import (
-            GuardedTemporalCarryCounts,
-            common_plus_one_valuation,
-            merge_bands,
+        """Return source-authenticated weighted carry counts for this port."""
+        from number_compiler.sequences.collatz.guarded_port_weighted_counts import (
+            authenticate_weighted_ports,
         )
 
-        steps = self.port.action.steps
-        if type(max_steps) is not int or not 0 <= max_steps <= 4096:
-            raise ValueError("invalid joined matrix temporal budget")
-        if type(source) is not int or not self.source.contains(source):
-            raise ValueError("temporal inlet source is outside joint source guard")
-        program_modulus = 200 << steps
-        program_guard = SourceCongruence(source % program_modulus, program_modulus)
-        fiber = _restrict(self.source, program_guard)
-        if fiber is None or not fiber.contains(source):
-            raise ArithmeticError(
-                "temporal inlet preimage has no original-source fiber"
-            )
-        # The special five-return cycle is proved for the COMPLETE original
-        # joined cylinder. It must never be inferred from just a pointed root.
-        powered = self.powered_zero_tail_carries(source)
-        if powered is not None:
-            tens, hundreds, odds, last, compositions, squarings = powered
-            return GuardedTemporalCarryCounts.create_checked(
-                program_guard,
-                steps,
-                odds,
-                tens,
-                hundreds,
-                last,
-                matrix_power_period=5,
-                forced_six_reset_events=0,
-                port_punctures=0,
-                matrix_compositions=compositions,
-                matrix_squarings=squarings,
-                scalar_steps=0,
-            )
-        if steps > max_steps:
-            raise BlockContextBudgetExceeded(
-                "unproved nonperiodic carry-inlet program exceeds its budget"
-            )
-        value = source
-        prefix = DyadicTerminalFieldAction.identity()
-        odds = tens = hundreds = resets = remainders = 0
-        # All source alternatives inside the *inlet guard* have these
-        # guaranteed base-6 fives; the original wider source cannot be used
-        # as a substitute for a stricter source-derived observation.
-        original_cover = certify_guarded_radix6_bridge(
-            fiber,
-            prefix,
-            0,
-            max_upper_digits=0,
-            max_lower_digits=32,
-        )
-        bands = original_cover.source_fives
-        v2 = common_plus_one_valuation(fiber, 2)
-        v3 = common_plus_one_valuation(fiber, 3)
-        for t in range(steps):
-            # Detect newly born fives from the exact centered affine action,
-            # then put their 6-adic congruence into the ORIGINAL source guard.
-            if prefix.offset + (1 << t) == prefix.gain and v2 >= t:
-                born = min(v2 - t, v3 + odds)
-                if born:
-                    bands = merge_bands(bands + (FiveBand(0, born),))
-            odd_now = value & 1
-            for band in bands:
-                if odd_now:
-                    resets += band.upper - band.lower
-                remainders += max(0, band.upper - band.lower - odd_now)
-                if band.lower == 0:
-                    checked = _restrict_forced_five_suffix(fiber, prefix, band)
-                    if checked is None or checked.count != fiber.count:
-                        raise ArithmeticError(
-                            "forced radix-6 carry reset contradicts a matrix source row"
-                        )
-            letter = SourceCongruence(value % 200, 200).pullback(prefix)
-            constrained = None if letter is None else _restrict(fiber, letter)
-            if constrained is None or constrained.count != fiber.count:
-                raise ArithmeticError(
-                    "weighted matrix inlet is not forced by its complete source guard"
-                )
-            pair, high, odd = value % 100, (value // 100) & 1, value & 1
-            matrix = (
-                WeightedPairMatrix.odd_half(high)
-                if odd
-                else WeightedPairMatrix.even(high)
-            )
-            rows = matrix.successors(pair)
-            if len(rows) != 1:
-                raise ArithmeticError(
-                    "guarded decimal inlet has no normalized successor"
-                )
-            output, c1, c2 = rows[0]
-            step = (
-                DyadicTerminalFieldAction.one_run(1)
-                if odd
-                else DyadicTerminalFieldAction.zero_run(1)
-            )
-            next_value = ((3 * value + 1) // 2) if odd else value // 2
-            if next_value % 100 != output:
-                raise ArithmeticError(
-                    "forced carry/matrix output contradicts exact affine step"
-                )
-            prefix = prefix.then(step)
-            odds += odd
-            tens += c1
-            hundreds += c2
-            value = next_value
-            bands = merge_bands(
-                tuple(
-                    carried
-                    for band in bands
-                    if (carried := band.through(odd, 1)) is not None
-                )
-            )
-        if (
-            prefix.coefficient_snapshot() != self.port.action.coefficient_snapshot()
-            or odds != self.port.odd_events
-            or value != self.port.endpoint(source)
-        ):
-            raise ArithmeticError("joined matrix tape disagrees with the issued macro")
-        return GuardedTemporalCarryCounts.create_checked(
-            program_guard,
-            steps,
-            odds,
-            tens,
-            hundreds,
-            value % 100,
-            matrix_power_period=None,
-            forced_six_reset_events=resets,
-            forced_six_div_remainders=remainders,
-            port_punctures=steps,
-            scalar_steps=steps,
-        )
+        return authenticate_weighted_ports(self, source, max_steps=max_steps)
 
     def weighted_pointed_program(
         self, source: int, *, max_steps: int = 512

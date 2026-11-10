@@ -5,21 +5,14 @@ begin
 text \<open>The following theorem closes the complete initial-family prefix,
 including any Goto chain, before choosing its provider.  Direct Fork and
 Landmine events are already boundary results.  A crossing is admitted only
-when its authenticated Entry-1 root supplies a checked weighted Stop.  Thus
-the theorem covers all sixteen initial charts without asserting that any of
-them is itself a published graph binding.\<close>
+when the checked phase-class rank action supplies a weighted Stop.  The
+separate root binding records the occurrence identity and phase normalization.
+Thus the theorem covers all sixteen initial charts without asserting that any
+of them is itself a published graph binding.\<close>
 
 theorem comma_semantic_future_initial_prefix_boundary_result:
   fixes q :: comma_boundary_state
   assumes valid: "comma_boundary_valid q"
-    and crossing_stop:
-      "\<And>n final d x.
-        comma_round_close (snd (snd q)) (comma_finite_initial q) =
-          (n,final,Comma_Round_Cross (Comma_Entry 1 d x)) \<Longrightarrow>
-        \<exists>J H. comma_semantic_b1_weighted_action_power 5
-          comma_semantic_graph_root_weighted_action
-          ((snd (snd q)+d) mod 924) (comma_offset_orbit x) =
-            Comma_Semantic_B1_Stop_At J H"
   obtains calls steps final event where
     "comma_round_control_germ_calls (snd (snd q))
       (comma_finite_initial q) calls"
@@ -58,8 +51,8 @@ theorem comma_semantic_future_initial_prefix_boundary_result:
       (\<exists>x J H terminal binding. x\<le>90 \<and>
         event=Comma_Round_Cross (Comma_Entry 1 1 x) \<and>
         comma_semantic_b1_weighted_action_power 5
-          comma_semantic_graph_root_weighted_action
-          ((snd (snd q)+1) mod 924) (comma_offset_orbit x) =
+          comma_semantic_future_rank_round_action
+            ((snd (snd q)+1) mod 924) (comma_offset_orbit x) =
             Comma_Semantic_B1_Stop_At J H \<and>
         binding\<in>set comma_semantic_graph_bindings \<and>
         comma_semantic_b1_binding_source binding =
@@ -142,8 +135,8 @@ proof -
       (\<exists>x J H terminal binding. x\<le>90 \<and>
         event=Comma_Round_Cross (Comma_Entry 1 1 x) \<and>
         comma_semantic_b1_weighted_action_power 5
-          comma_semantic_graph_root_weighted_action
-          ((snd (snd q)+1) mod 924) (comma_offset_orbit x) =
+          comma_semantic_future_rank_round_action
+            ((snd (snd q)+1) mod 924) (comma_offset_orbit x) =
             Comma_Semantic_B1_Stop_At J H \<and>
         binding\<in>set comma_semantic_graph_bindings \<and>
         comma_semantic_b1_binding_source binding =
@@ -226,13 +219,17 @@ proof -
       "comma_round_close (snd (snd q)) (comma_finite_initial q) =
         (steps,final,Comma_Round_Cross (Comma_Entry 1 1 x))"
       using close crossing by simp
-    obtain J H where stop:
-      "comma_semantic_b1_weighted_action_power 5
-        comma_semantic_graph_root_weighted_action
-        ((snd (snd q)+1) mod 924) (comma_offset_orbit x) =
+    obtain J H binding terminal where weighted_power:
+        "comma_semantic_b1_weighted_action_power 5
+          comma_semantic_future_rank_round_action
+            ((snd (snd q)+1) mod 924) (comma_offset_orbit x) =
           Comma_Semantic_B1_Stop_At J H"
-      using crossing_stop[OF close_cross] by blast
-    obtain binding terminal where binding:
+      and height: "H\<le>26"
+      and terminal_position: "J=comma_terminal_weight_digit terminal"
+      and exact:
+        "comma_decade_exact_summary
+          (Comma_Decade ((snd (snd q)+1) mod 924) x) H terminal"
+      and binding:
         "binding\<in>set comma_semantic_graph_bindings"
       and binding_source:
         "comma_semantic_b1_binding_source binding =
@@ -244,13 +241,7 @@ proof -
       and phase:
         "comma_normalize_position (snd (snd q)) (Comma_Entry 1 1 x) =
           Comma_Entry 1 ((snd (snd q)+1) mod 924) x"
-      and delta: "1=1"
       and x_admitted: "x\<le>90"
-      and terminal_position: "J=comma_terminal_weight_digit terminal"
-      and height: "H\<le>26"
-      and exact:
-        "comma_decade_exact_summary
-          (Comma_Decade ((snd (snd q)+1) mod 924) x) H terminal"
       and boundary:
         "comma_semantic_boundary_step comma_semantic_decade_summary q =
           Some (comma_summary_outcome (H+1) terminal)"
@@ -272,9 +263,9 @@ proof -
                 (Comma_Z,a,(snd (snd q)+1+H) mod 924)]
            | Comma_Terminal_Landmine \<Rightarrow> [])"
       using comma_semantic_future_initial_crossing_weighted_boundary
-        [OF valid close_cross stop] by blast
+        [OF valid close_cross] by blast
     show ?thesis
-      using crossing stop binding binding_source binding_cid phase
+      using crossing weighted_power binding binding_source binding_cid phase
         x_admitted terminal_position height exact boundary control children ordered
       by blast
   next
@@ -293,11 +284,6 @@ corollary comma_semantic_future_initial_exit_weighted_boundary:
       "comma_semantic_future_initial_family_action
         (comma_finite_initial q) (snd (snd q)) =
           Comma_Continuation_Exit (Comma_Entry 1 0 x) d"
-    and weighted_stop:
-      "comma_semantic_b1_weighted_action_power 5
-        comma_semantic_graph_root_weighted_action
-        ((snd (snd q)+d) mod 924) (comma_offset_orbit x) =
-          Comma_Semantic_B1_Stop_At J H"
   obtains binding terminal where
     "binding \<in> set comma_semantic_graph_bindings"
     "comma_semantic_b1_binding_source binding =
@@ -334,15 +320,9 @@ proof -
         (n,terminal_position,Comma_Round_Cross (Comma_Entry 1 d x))"
     and d_eq: "d=1" and x_bound: "x\<le>90"
     by (rule comma_semantic_future_initial_exit_close[OF valid exit])
-  have selected:
-      "comma_semantic_b1_weighted_action_power 5
-        comma_semantic_graph_root_weighted_action
-        ((snd (snd q)+d) mod 924) (comma_offset_orbit x) =
-          Comma_Semantic_B1_Stop_At J H"
-    by (rule weighted_stop)
   show thesis
     by (rule comma_semantic_future_initial_crossing_weighted_boundary
-      [OF valid close selected])
+      [OF valid close])
 qed
 
 ML \<open>

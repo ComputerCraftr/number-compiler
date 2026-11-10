@@ -20,12 +20,36 @@ def main() -> None:
     parser.add_argument(
         "--from-isabelle-data", type=Path, help="export authored tables"
     )
+    parser.add_argument(
+        "--from-native-export",
+        type=Path,
+        help="copy canonical candidate bytes exported by the checked Isabelle session",
+    )
     parser.add_argument("--occurrence-output", type=Path, help="C1/weight audit output")
     parser.add_argument("--runtime-output", type=Path, help="canonical v2 output")
     parser.add_argument("--reencode-input", type=Path, help="existing v1 candidate")
     parser.add_argument("--isabelle-data-output", type=Path, help="generated HOL data")
     parser.add_argument("--checked-isabelle-data", type=Path, help="authored HOL data")
     args = parser.parse_args()
+    if args.from_native_export is not None:
+        if any(
+            (
+                args.from_isabelle_data,
+                args.occurrence_output,
+                args.runtime_output,
+                args.reencode_input,
+                args.isabelle_data_output,
+                args.checked_isabelle_data,
+            )
+        ):
+            raise ValueError(
+                "native candidate export cannot be combined with other modes"
+            )
+        result = future_artifact.write_runtime_candidate_from_native_export(
+            args.from_native_export, args.output
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
     if args.from_isabelle_data is not None:
         if any(
             (

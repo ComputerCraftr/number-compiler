@@ -341,16 +341,13 @@ def audit_reverse_pair_output_roots(
                     state.audit_bindings, expected_audit_bindings, strict=True
                 )
             )
-            and state.projector_cache_stores[0].backing_store_identity
-            is state.projector_forward.container
-            and state.projector_cache_stores[1].backing_store_identity
-            is state.projector_reverse.container
-            and state.projector_cache_stores[2].backing_store_identity
-            is state.projector_block.container
-            and state.projector_cache_stores[3].backing_store_identity
-            is state.projector_forward_power.container
-            and state.projector_cache_stores[4].backing_store_identity
-            is state.projector_reverse_power.container
+            and state.projector.has_exact_owned_cache_binding(
+                forward=state.projector_forward.container,
+                reverse=state.projector_reverse.container,
+                block=state.projector_block.container,
+                forward_power=state.projector_forward_power.container,
+                reverse_power=state.projector_reverse_power.container,
+            )
             and state.issuance_registry.diagonal_comparisons
             is state.diagonal_comparisons_binding
             and state.issuance_registry.diagonal_comparison_next

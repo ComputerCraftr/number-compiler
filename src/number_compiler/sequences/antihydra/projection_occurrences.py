@@ -293,10 +293,10 @@ class ProjectionOccurrenceCursor:
         self._active = False
         ledger.register_execution_root(self)
         from number_compiler.sequences.antihydra.payload_audit import (
-            register_antihydra_payload_contract,
+            register_cursor_contract,
         )
 
-        register_antihydra_payload_contract(self)
+        register_cursor_contract(self)
 
     def audit_snapshot(self) -> ProjectionCursorAuditState:
         return ProjectionCursorAuditState(

@@ -75,6 +75,7 @@ from devtools.runs import EvidenceRun
 # Canonical P0 owners. Runtime gates live with their family or shared runtime,
 # while theorem/release obligations retain their proof-owner modules.
 P0 = (
+    "tests/api/test_comma_cli.py",
     "tests/sequences/collatz/test_source_image_runtime.py",
     "tests/sequences/reverse_add/test_source_image_runtime.py",
     "tests/validation/runtime/test_cross_family_runtime_reporting.py",
@@ -446,8 +447,16 @@ def quality(run: EvidenceRun, *, acceptance: bool = False) -> bool:
             for name, module in (
                 ("policy", "repository_policy"),
                 ("docs", "docs_index"),
-                ("proof-index", "isabelle_proof_index"),
             )
+        ),
+        (
+            "proof-index",
+            (
+                sys.executable,
+                "-m",
+                "devtools.checks.isabelle_proof_index",
+                *(("--require-comma-release-owner",) if acceptance else ()),
+            ),
         ),
     )
     passed = not violations
@@ -759,7 +768,6 @@ def proofs(
                 "detail": "A live Isabelle session exceeded its wall-clock limit",
             }
         )
-        return False
     build_log = run.path / "proofs.log"
     try:
         summary = session_build_summary(
@@ -797,7 +805,7 @@ def proofs(
             }
         )
         return False
-    return completed
+    return completed and timed_out_session is None
 
 
 def _output_path(
@@ -896,7 +904,7 @@ def main() -> int:
         "--isabelle",
         default=os.environ.get(
             "ISABELLE",
-            shutil.which("isabelle") or "/Applications/Isabelle2025-2.app/bin/isabelle",
+            shutil.which("isabelle") or "/Applications/Isabelle2026.app/bin/isabelle",
         ),
     )
     parser.add_argument("--session", action="append", default=[])

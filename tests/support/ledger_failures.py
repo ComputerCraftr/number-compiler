@@ -8,7 +8,20 @@ from typing import cast
 import pytest
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger_records import ResourceInventory
 from number_compiler.resources.stores import LedgerDict
+
+
+def assert_empty_ledger_account(
+    ledger: ResourceLedger, account_name: str
+) -> ResourceInventory:
+    """Require one live, empty account with the requested name."""
+    matches = [item for item in ledger.inventory() if item.name == account_name]
+    assert len(matches) == 1
+    account = matches[0]
+    assert not account.disposed
+    assert account.entries == account.nodes == 0
+    return account
 
 
 def assert_constructor_rollback(ledger: ResourceLedger, initial_inventory: int) -> None:

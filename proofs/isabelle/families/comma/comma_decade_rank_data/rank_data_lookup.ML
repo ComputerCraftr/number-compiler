@@ -93,7 +93,7 @@ struct
             (Const (name, _) $ _, _) => Const (name, fastype_of state --> @{typ nat})
           | _ => error "Expected unary candidate rank definition"
           val opened = Simplifier.rewrite
-            (scalar addsimps [rank_def] addsimps
+            (scalar |> Simplifier.add_simps [rank_def] |> Simplifier.add_simps
               @{thms comma_decade_state.case comma_decade_admitted.simps})
             (Thm.cterm_of ctxt (rank_head $ state))
           val indices = arithmetic (Thm.rhs_of opened)

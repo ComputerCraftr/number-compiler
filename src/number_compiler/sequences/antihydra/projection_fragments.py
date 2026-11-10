@@ -144,10 +144,10 @@ class ProjectionFragmentCache:
         )
         ledger.register_execution_root(self)
         from number_compiler.sequences.antihydra.payload_audit import (
-            register_antihydra_payload_contract,
+            register_fragment_cache_contract,
         )
 
-        register_antihydra_payload_contract(self)
+        register_fragment_cache_contract(self)
 
     @staticmethod
     def retained_nodes(key: ProjectionFragmentKey) -> int:

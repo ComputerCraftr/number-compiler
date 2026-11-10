@@ -28,7 +28,7 @@ struct
   fun make ctxt =
     let
       val base = Comma_Future_Structural_Instance_Check.make ctxt
-      val context = (#context base) addsimps
+      val context = (#context base) |> Simplifier.add_simps
         @{thms comma_summary_survivor_run.simps comma_summary_survivor_step_def
           Let_def prod.case option.case option.map}
       fun stats () = #stats base ()

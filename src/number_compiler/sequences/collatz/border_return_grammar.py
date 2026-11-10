@@ -45,9 +45,12 @@ from number_compiler.sequences.collatz.border_identity import (
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
-from number_compiler.sequences.collatz.joint_radix_border import JointRadix6Source
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.joint_radix_border import JointRadix6Source
+    from number_compiler.sequences.collatz.mahler_joint_carry import (
+        MahlerFutureCarryPort,
+    )
     from number_compiler.sequences.collatz.position_cycle_harmonics import (
         PositionHarmonicSpectrum,
     )
@@ -258,6 +261,7 @@ def select_border_return_macro(
     preflight: Callable[[int], None] | None = None,
     ledger: ResourceLedger | None = None,
     radix_state: JointRadix6Source | None = None,
+    future_carry_port: MahlerFutureCarryPort | None = None,
 ) -> BorderReturnMacro | None:
     """Produce one complete source-closed port action without scalar Collatz replay.
 
@@ -265,6 +269,10 @@ def select_border_return_macro(
     valuation and residue on the exact upper coordinate, not a scan of the
     zero tail.  No preview or default modular clock authorizes an exit.
     """
+    from number_compiler.sequences.collatz.joint_radix_border import (
+        JointRadix6Source,
+    )
+
     if type(source) is not int or source <= 0:
         raise ValueError("Collatz border source must be a positive integer")
     if type(available_physical_ticks) is not int or available_physical_ticks < 0:
@@ -284,6 +292,13 @@ def select_border_return_macro(
     if type(state) is not JointRadix6Source:
         raise TypeError("border-return selector requires a radix-6 source state")
     state.require_source(source)
+    if future_carry_port is not None:
+        from number_compiler.sequences.collatz.mahler_joint_carry import (
+            MahlerFutureCarryPort,
+        )
+
+        if type(future_carry_port) is not MahlerFutureCarryPort:
+            raise TypeError("foreign future Mahler carry port")
 
     if ledger is not None:
         ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_CANDIDATE_CHECKS)
@@ -554,7 +569,7 @@ def select_border_return_macro(
     def periodic_tail_candidate(
         numerator: int, first_tail: int
     ) -> tuple[PeriodicTail6305Ring, int] | None:
-        """Speculatively inspect at most four border *numerators*.
+        """Speculatively inspect at most eight border *numerators*.
 
         No interior digit or hypothetical full endpoint is computed before a
         three-copy modular guard succeeds. The guard is a necessary and
@@ -572,7 +587,7 @@ def select_border_return_macro(
         observed: list[int] = []
         upper = numerator
         tick_sum = 0
-        for period in range(1, 5):
+        for period in range(1, 9):
             j = v2_positive(upper)
             if j > 128:
                 return None
@@ -643,6 +658,7 @@ def select_border_return_macro(
     # upper numerator across returns so the hot loop need not reconstruct q
     # from the complete endpoint after each selected return.
     upper_numerator: int | None = None
+    first_zero_tail: int | None = None
     returns_to_three = state.decimal_residue(10) == 3
     # One exact two-sided cylinder proves a whole consecutive 3->3 band.
     # Admit and transport its radix/F5 state in a single action instead of
@@ -672,17 +688,33 @@ def select_border_return_macro(
             tails.extend((0,) * bulk)
             returns += bulk
             upper_numerator = 3 * ((current - 3) // 10) + 1
+            first_zero_tail = None
             if not (state.residue5 == 3 and not state.even):
                 raise AssertionError("bulk 6305 ring lost F5 or returned border")
     last_upper_odd: int | None = None
     while returns_to_three and len(tails) < max_returns:
         account_operands(current)
         if upper_numerator is None:
-            upper_numerator = 3 * ((current - 3) // 10) + 1
+            carried_first_return = (
+                future_carry_port.first_6305_carry(current)
+                if future_carry_port is not None
+                and current == source
+                and state.decimal_residue(10) == 3
+                else None
+            )
+            if carried_first_return is not None:
+                upper_numerator, first_zero_tail = carried_first_return
+            else:
+                upper_numerator = 3 * ((current - 3) // 10) + 1
         account_operands(upper_numerator)
         if ledger is not None:
             ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_BORDER_RETURN_VALUATION_CHECKS)
-        exponent = v2_positive(upper_numerator)
+        exponent = (
+            first_zero_tail
+            if first_zero_tail is not None
+            else v2_positive(upper_numerator)
+        )
+        first_zero_tail = None
         if budget < exponent + 4:
             break
         odd = upper_numerator >> exponent

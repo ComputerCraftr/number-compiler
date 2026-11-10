@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from typing import cast
 
 import pytest
 
@@ -158,6 +159,120 @@ def test_fragment_audit_scans_one_source_prefix_for_mixed_demands() -> None:
         - before
         == 192
     )
+
+    term = result.source_term
+    engine = term.engine
+    driver = engine.projection_fragment_driver
+    image = term.arithmetic_workspace
+    section = engine.projection_workspace
+    from number_compiler.sequences.antihydra.projection_core import (
+        AntihydraProjectionDriver,
+    )
+
+    assert type(driver) is AntihydraProjectionDriver
+    assert image is not None and section is not None
+    family_audit = result.ledger.audit_payload_contracts()
+    roots = (
+        engine,
+        cache,
+        term,
+        image,
+        driver.cursor,
+        driver.adapter,
+        section,
+    )
+    assert all(
+        family_audit.owns_root("antihydra", root, ledger=result.ledger)
+        for root in roots
+    )
+    assert family_audit.family("antihydra", ledger=result.ledger)[1] == frozenset()
+
+
+def test_term_contract_rejects_matching_module_and_class_lookalike() -> None:
+    from number_compiler.sequences.antihydra.payload_audit import (
+        register_term_contract,
+    )
+    from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+
+    def fail_if_ledger_is_read(_root: object) -> object:
+        raise AssertionError("lookalike fields must not be read")
+
+    lookalike_type = type(
+        AntihydraArithmeticTerm.__name__,
+        (),
+        {
+            "__module__": AntihydraArithmeticTerm.__module__,
+            "ledger": property(fail_if_ledger_is_read),
+        },
+    )
+    lookalike = cast(AntihydraArithmeticTerm, lookalike_type())
+
+    with pytest.raises(TypeError, match="exact owner type"):
+        register_term_contract(lookalike)
+
+
+def test_antihydra_contract_owners_rebind_after_registry_reset() -> None:
+    from number_compiler.sequences.antihydra.payload_audit import (
+        register_arithmetic_image_contract,
+        register_cursor_contract,
+        register_engine_contract,
+        register_fragment_adapter_contract,
+        register_fragment_cache_contract,
+        register_section_workspace_contract,
+        register_term_contract,
+    )
+
+    result = run(64)
+    projection = _projection(
+        result,
+        width=2,
+        time_width=3,
+        sign=-1,
+        time_sign=1,
+        modulus=5,
+    )
+    projection.evaluate()
+    ledger = result.ledger
+    term = result.source_term
+    engine = term.engine
+    driver = engine.projection_fragment_driver
+    image = term.arithmetic_workspace
+    section = engine.projection_workspace
+    from number_compiler.sequences.antihydra.projection_core import (
+        AntihydraProjectionDriver,
+    )
+
+    assert type(driver) is AntihydraProjectionDriver
+    assert image is not None and section is not None
+    roots = (
+        engine,
+        engine.projection_fragments,
+        term,
+        image,
+        driver.cursor,
+        driver.adapter,
+        section,
+    )
+
+    prior = ledger.audit_payload_contracts()
+    assert all(prior.owns_root("antihydra", root, ledger=ledger) for root in roots)
+    ledger.clear_payload_audit_contracts()
+    assert not prior.is_current_for(ledger)
+    assert ledger.audit_payload_contracts().family("antihydra", ledger=ledger) == (
+        frozenset(),
+        frozenset(),
+    )
+
+    register_engine_contract(engine)
+    register_fragment_cache_contract(engine.projection_fragments)
+    register_term_contract(term)
+    register_arithmetic_image_contract(image)
+    register_cursor_contract(driver.cursor)
+    register_fragment_adapter_contract(driver.adapter)
+    register_section_workspace_contract(section)
+    rebound = ledger.audit_payload_contracts()
+    assert all(rebound.owns_root("antihydra", root, ledger=ledger) for root in roots)
+    assert rebound.family("antihydra", ledger=ledger)[1] == frozenset()
 
 
 @pytest.mark.parametrize(

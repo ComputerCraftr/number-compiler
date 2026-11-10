@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
-from number_compiler.sequences.comma.boundary_chart import MAX_CHART_MOVES, PERIOD
+from number_compiler.sequences.comma.boundary_chart import PERIOD
 from number_compiler.sequences.comma.boundary_quotient import (
     AffineWeight,
     BoundaryState,
@@ -67,7 +67,11 @@ def c1_payloads(
     for state, macro in zip(states, macros, strict=True):
         represented = _canonical_exponent(state)
         receiving = represented + macro.exponent_delta
-        if macro.source != state or not 0 <= macro.exponent_delta <= MAX_CHART_MOVES:
+        if (
+            macro.source != state
+            or type(macro.exponent_delta) is not int
+            or macro.exponent_delta < 0
+        ):
             raise ValueError("C1 candidate is outside its canonical source domain")
         weight = (
             macro.weight.numerator_scale,

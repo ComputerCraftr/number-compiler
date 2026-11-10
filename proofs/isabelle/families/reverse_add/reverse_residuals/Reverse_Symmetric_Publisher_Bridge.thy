@@ -61,6 +61,33 @@ proof -
     using both_inputs by (cases incoming) simp_all
 qed
 
+lemma reverse_q19_pair_sum_bound:
+  fixes left_digit right_digit :: nat
+  assumes left_digit: "left_digit < 10"
+      and right_digit: "right_digit < 10"
+  shows "left_digit + right_digit \<le> 18"
+  using left_digit right_digit by arith
+
+text \<open>For a decimal pair sum, the packed carry selector has a forced bit
+at sums at least ten and a propagation bit exactly at nine. This is the
+scalar recurrence represented by the broadword lane masks; it does not by
+itself prove the packed bit operations or their implementation refinement.\<close>
+
+lemma reverse_q19_lane_carry_boolean:
+  fixes pair_sum :: nat
+  assumes pair_bound: "pair_sum \<le> 18"
+  shows "carry_apply (domain pair_sum) incoming =
+    ((10 \<le> pair_sum) \<or> (pair_sum = 9 \<and> incoming))"
+proof (cases incoming)
+  case False
+  show ?thesis
+    using False by (simp add: carry_apply_decimal_threshold)
+next
+  case True
+  show ?thesis
+    using True by (simp add: carry_apply_decimal_threshold; arith)
+qed
+
 lemma reverse_q19_emitted_pair_sum:
   "fst (reverse_q19_emitted_pair q previous_pair growth low_carry reflected_carry) +
       snd (reverse_q19_emitted_pair q previous_pair growth low_carry reflected_carry) =
@@ -175,7 +202,8 @@ that a finite port word can be repeated on future sources.\<close>
 
 ML \<open>
   val checked = @{thms reverse_q19_reflected_transfer_exact
-    reverse_q19_transfer_extensional reverse_q19_emitted_pair_sum
+    reverse_q19_transfer_extensional reverse_q19_pair_sum_bound
+    reverse_q19_lane_carry_boolean reverse_q19_emitted_pair_sum
     reverse_q19_upper_source_length reverse_q19_upper_source_last
     reverse_q19_emitted_growth_pair_matches_upper_source
     reverse_q19_upper_scan_is_emission_and_carry

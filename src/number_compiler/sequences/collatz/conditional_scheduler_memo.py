@@ -15,6 +15,9 @@ from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.conditional_candidate_seal import (
+        CandidateSealSnapshot,
+    )
     from number_compiler.sequences.collatz.conditional_scheduler_adapter import (
         CertifiedSchedulerCandidate,
     )
@@ -110,10 +113,14 @@ class ConditionalSchedulerMemo:
                 continue
             if type(candidate) is not CertifiedSchedulerCandidate:
                 raise ValueError("conditional port cache is malformed")
-            candidate.verify_memo_issued()
-            bits = candidate.verification_operand_bits(
-                control_bits, source_override=source
-            )
+            try:
+                bits = candidate.verification_operand_bits(
+                    control_bits, source_override=source
+                )
+            except (AttributeError, TypeError, ValueError) as error:
+                raise ValueError(
+                    "conditional candidate memo issuance seal is invalid"
+                ) from error
             candidates.append((candidate, 16 + (bits + 63) // 64))
         if not candidates:
             return None
@@ -152,7 +159,6 @@ class ConditionalSchedulerMemo:
             or coefficient_budget < 32
         ):
             raise ValueError("conditional source action or demand is malformed")
-        candidate.seal_for_memo()
         guard = candidate.port.guard
         key = (
             candidate.return_count,
@@ -164,13 +170,41 @@ class ConditionalSchedulerMemo:
         )
         memo = self._port_memo()
         if key in memo:
+            candidate.verify()
             return
+        nodes = memo.entry_nodes(key, candidate)
         if len(memo) >= 32:
             del memo[next(iter(memo))]
+        reservation = LedgerReservation(
+            self.ledger, self._ensure_lookup_workspace_owner()
+        )
+        seal: CandidateSealSnapshot | None = None
         try:
-            memo[key] = candidate
-        except BlockContextBudgetExceeded:
+            with reservation:
+                reservation.reserve(entries=1, nodes=nodes)
+                seal = candidate.seal_for_memo()
+                memo.adopt_reserved(key, candidate, reservation)
+        except BlockContextBudgetExceeded as error:
+            self._discard_unpublished_seal(candidate, key, memo, seal, error)
             self.ledger.bump(_collatz_keys.COLLATZ_CONDITIONAL_SCHEDULER_CACHE_BYPASSES)
+        except BaseException as error:
+            self._discard_unpublished_seal(candidate, key, memo, seal, error)
+            raise
+
+    @staticmethod
+    def _discard_unpublished_seal(
+        candidate: CertifiedSchedulerCandidate,
+        key: tuple[int, ...],
+        memo: OwnedMemo[tuple[int, ...], object],
+        seal: CandidateSealSnapshot | None,
+        error: BaseException,
+    ) -> None:
+        if seal is None or key in memo:
+            return
+        try:
+            candidate.discard_unpublished_memo_seal(seal)
+        except BaseException as cleanup_error:
+            raise error from cleanup_error
 
     def _miss_memo(self) -> OwnedMemo[tuple[int, ...], bool]:
         self.check_open()

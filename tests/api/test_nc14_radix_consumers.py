@@ -7,14 +7,20 @@ import json
 import pytest
 
 from number_compiler.api import cli
+from number_compiler.arithmetic.fields.three_power_radix import ThreePowerRadixOrbit
 from number_compiler.sequences.antihydra.mahler_source_actions import (
     MahlerSourceBoundSafetyAction,
 )
 
 
 def test_mahler_cli_demands_source_bound_radix6(
+    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("aggregate CLI ports must not construct boundary rows")
+
+    monkeypatch.setattr(ThreePowerRadixOrbit, "tape", forbidden)
     assert (
         cli.main(
             [

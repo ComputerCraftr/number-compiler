@@ -17,6 +17,8 @@ from number_compiler.arithmetic.formula.decimal_pair_coordinates import (
 )
 from number_compiler.sequences.comma import arithmetic
 from number_compiler.sequences.comma.arithmetic import (
+    NearPortOccurrence,
+    NearResidualPort,
     classify_near_port,
     punctured_digit_port,
 )
@@ -262,6 +264,74 @@ def test_diagonal_dwell_is_not_literal_physical_time() -> None:
     assert punctured_digit_port(1, 9).dwell == 9
 
 
+def test_near_residual_port_separates_cycle_cocycle_from_control() -> None:
+    first = classify_near_port(5, 82)
+    translated = classify_near_port(5, 202)
+    assert first.residual_port == translated.residual_port == NearResidualPort(5, 8, 80)
+    assert first.cycle_length == translated.cycle_length == 2
+    assert first.whole_cycles == 0
+    assert translated.whole_cycles == 1
+    assert first.residual_steps == translated.residual_steps == 0
+    assert first.terminal_headroom == translated.terminal_headroom == 82
+    assert (first.physical_steps, translated.physical_steps) == (0, 2)
+
+    assert (
+        classify_near_port(1, 82).residual_port
+        != classify_near_port(1, 92).residual_port
+    )
+
+
+def test_near_residual_port_rejects_boolean_and_immediate_guards() -> None:
+    with pytest.raises(ValueError, match="invalid comma Near port source"):
+        classify_near_port(True, 82)
+    with pytest.raises(ValueError, match="invalid comma Near port source"):
+        classify_near_port(5, True)
+    with pytest.raises(ValueError, match="invalid comma Near port source"):
+        classify_near_port(1, 1)
+    with pytest.raises(ValueError, match="invalid comma Near residual port"):
+        NearResidualPort(5, 8, True)
+    with pytest.raises(ValueError, match="invalid comma Near port source"):
+        NearPortOccurrence(True, 82)
+    with pytest.raises(ValueError, match="invalid comma Near port source"):
+        NearPortOccurrence(1, 1)
+
+
+@pytest.mark.parametrize("leading", (5, 9))
+def test_first_admitted_near_headroom_has_zero_residual(leading: int) -> None:
+    headroom = 1 + int(leading < 9)
+    occurrence = NearPortOccurrence(leading, headroom)
+    assert occurrence.port == NearResidualPort(leading, (-headroom) % 10, 0)
+    assert occurrence.cycle_quotient == 0
+    result = classify_near_port(leading, headroom)
+    assert (result.physical_steps, result.terminal_headroom) == (
+        _literal_near_prefix(leading, headroom)
+    )
+
+
+@pytest.mark.parametrize(
+    ("leading", "headroom", "expected_period"),
+    ((5, 82, 2), (1, 82, 10)),
+)
+def test_cold_near_classification_reuses_one_source_transfer(
+    monkeypatch: pytest.MonkeyPatch,
+    leading: int,
+    headroom: int,
+    expected_period: int,
+) -> None:
+    original = arithmetic.cycle_transfer
+    calls: list[tuple[int, int]] = []
+
+    def counted(leading: int, digit: int) -> arithmetic.CycleTransfer:
+        calls.append((leading, digit))
+        return original(leading, digit)
+
+    monkeypatch.setattr(arithmetic, "cycle_transfer", counted)
+    result = classify_near_port(leading, headroom)
+    assert calls == [(leading, (-headroom) % 10)]
+    assert result.cycle_length == expected_period
+    assert result.residual_port == NearResidualPort(leading, (-headroom) % 10, 80)
+
+
 def test_huge_near_prefix_is_bounded_and_charged_without_scalar_replay(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -429,15 +499,15 @@ def test_all_450_weighted_rows_keep_both_interval_bounds_and_source_headroom() -
 def test_near_selection_has_bounded_prefix_work_without_observer_tables(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    original = arithmetic.phase_prefix_displacement
+    original = arithmetic.phase_prefix_displacement_from_transfer
     calls: list[int] = []
 
-    def measured(leading: int, digit: int, steps: int) -> int:
-        assert 0 < steps < 10 // gcd(leading, 10)
+    def measured(transfer: arithmetic.CycleTransfer, steps: int) -> int:
+        assert 0 < steps < transfer.period
         calls.append(steps)
-        return original(leading, digit, steps)
+        return original(transfer, steps)
 
-    monkeypatch.setattr(arithmetic, "phase_prefix_displacement", measured)
+    monkeypatch.setattr(arithmetic, "phase_prefix_displacement_from_transfer", measured)
     for leading in range(1, 10):
         for headroom in range(1 + int(leading < 9), 541):
             calls.clear()

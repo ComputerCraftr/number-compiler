@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Never, cast
 
 import pytest
 
+from number_compiler.sequences.double_reverse import temporal_certified_halo
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.double_reverse.source_bound_bank import source_suffix
 from number_compiler.sequences.double_reverse.temporal_birth_ring import (
@@ -196,6 +197,32 @@ def test_prepared_source_depth_matrix_is_a_finite_exact_window(
         before_entries, before_nodes = ledger.entries, ledger.nodes
         live_reservations: list[tuple[int, int]] = []
         original_to_packet = SourceConditionedDepthWindow.to_packet
+        original_pointed_window = DoubleReverseTemporalHashlife.pointed_window
+        pointed_reads = 0
+
+        def count_pointed_window(
+            engine: DoubleReverseTemporalHashlife,
+            root: int,
+            f_steps: int,
+            phase: int,
+            start: int,
+            count: int,
+        ) -> tuple[int, ...]:
+            nonlocal pointed_reads
+            pointed_reads += 1
+            return original_pointed_window(engine, root, f_steps, phase, start, count)
+
+        def prohibit_refill_replay(*_args: object, **_kwargs: object) -> Never:
+            raise AssertionError("one authenticated halo must supply both packets")
+
+        monkeypatch.setattr(
+            DoubleReverseTemporalHashlife, "pointed_window", count_pointed_window
+        )
+        monkeypatch.setattr(
+            temporal_certified_halo,
+            "build_source_continued_halo_trace",
+            prohibit_refill_replay,
+        )
 
         def assert_released(reservations: list[tuple[int, int]]) -> None:
             assert len(reservations) == 1
@@ -220,6 +247,7 @@ def test_prepared_source_depth_matrix_is_a_finite_exact_window(
             start_f_steps=start,
             f_steps=steps,
         )
+        assert pointed_reads == 2
         assert_released(live_reservations)
         assert packet["status"] == "available"
         assert packet["f_steps"] == steps
@@ -237,10 +265,13 @@ def test_prepared_source_depth_matrix_is_a_finite_exact_window(
             start_generation,
             start_generation + 2 * steps,
         ]
-        assert continuation["refill_offsets_f_steps"] == [start + 2]
+        assert continuation["refill_offsets_f_steps"] == []
+        assert continuation["source_refill_count"] == 0
+        assert continuation["halo_construction"] == "single_source_halo"
+        assert continuation["block_f_steps"] == steps
         assert continuation["overlap_verified_on_every_refill"] is True
         assert continuation["minimum_certified_pairs"] == 2
-        assert continuation["maximum_halo_pairs"] == 4
+        assert continuation["maximum_halo_pairs"] == 2 + steps
         assert continuation["infinite_period_certified"] is False
         transition_rows = packet["transition_rows"]
         assert isinstance(transition_rows, list)
@@ -274,6 +305,7 @@ def test_prepared_source_depth_matrix_is_a_finite_exact_window(
                 f_steps=steps,
             )
         assert type(failure.value) is ValueError
+        assert pointed_reads == 4
         assert_released(failed_publication_reservations)
 
 

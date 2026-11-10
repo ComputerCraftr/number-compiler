@@ -6,7 +6,7 @@ not certify polynomial zero. Evaluation commutes only at a compatible modulus.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 
 from number_compiler.arithmetic.fields.tropical_divisor import TropicalDivisorState
@@ -106,20 +106,41 @@ def first_mirror_obstruction(
         or first_width < 1
     ):
         raise ValueError("positive target and first-sheet widths required")
-    # Read each target digit once across all sheets. Keep the mirror defect,
-    # not an exact integer or a temporal history.
-    difference = [0] * width
-    for i in range(width // 2):
-        delta = digit(i) - digit(width - 1 - i)
-        difference[i] = delta
-        difference[width - 1 - i] = -delta
+    # Preserve the callback contract: a physical target is read at most once.
+    # Buffered consumers call the sequence entrypoint directly, avoiding this
+    # extra vector and never replaying a temporal source for another sheet.
+    values = [0] * width
+    for index in range(width // 2):
+        values[index] = digit(index)
+        values[width - 1 - index] = digit(width - 1 - index)
+    return mirror_obstruction_from_buffer(values, first_width=first_width)
+
+
+def mirror_obstruction_from_buffer(
+    digits: Sequence[int], *, first_width: int = 1
+) -> TwistedCylinderProjection | None:
+    """Project one current sheet over an already authenticated output buffer."""
+    width = len(digits)
+    if width < 1 or type(first_width) is not int or first_width < 1:
+        raise ValueError("positive target and first-sheet widths required")
     sheet, sign = first_width, 1
     while True:
-        projection = TwistedCylinderProjection.observe(
-            difference,
-            width=sheet,
-            sign=sign,
-        )
+        coefficients = [0] * sheet
+        for index in range(width // 2):
+            mirrored = width - 1 - index
+            left, right = digits[index], digits[mirrored]
+            if type(left) is not int or type(right) is not int:
+                raise ValueError("mirror coefficients must be exact integers")
+            delta = left - right
+            if not delta:
+                continue
+            turns, slot = divmod(index, sheet)
+            mirror_turns, mirror_slot = divmod(mirrored, sheet)
+            coefficients[slot] += -delta if sign == -1 and turns & 1 else delta
+            coefficients[mirror_slot] -= (
+                -delta if sign == -1 and mirror_turns & 1 else delta
+            )
+        projection = TwistedCylinderProjection(sheet, sign, tuple(coefficients))
         if projection.nonzero:
             return projection
         # Degree below sheet: this individual zero remainder is the zero polynomial.

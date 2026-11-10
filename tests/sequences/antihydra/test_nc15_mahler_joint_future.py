@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from fractions import Fraction
 from random import Random
 from typing import cast
@@ -13,7 +13,15 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.boolean_counter import BinaryBooleanCarryAction
 from number_compiler.arithmetic.fields.consumer_pullback import ExactRational as Q
-from number_compiler.sequences.antihydra import payload_audit
+from number_compiler.arithmetic.fields.morphism_core import (
+    balanced_fold as shared_balanced_fold,
+)
+from number_compiler.sequences.antihydra import (
+    mahler_joint_future as joint_future_module,
+)
+from number_compiler.sequences.antihydra import (
+    payload_audit,
+)
 from number_compiler.sequences.antihydra.mahler_action import associated_action
 from number_compiler.sequences.antihydra.mahler_joint_future import (
     MahlerJointFutureAction as M,
@@ -169,9 +177,10 @@ def test_zero_run_closed_form_matches_binary_composition_and_source_prefixes() -
         M.from_source_prefix(0, True)
 
 
-def test_source_prefix_uses_one_composition_for_a_maximal_zero_run(
+def test_source_prefix_returns_a_single_zero_run_without_composition(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Preserve the exact source action without composing identity with it."""
     compositions = 0
     original = M.then
 
@@ -182,9 +191,119 @@ def test_source_prefix_uses_one_composition_for_a_maximal_zero_run(
 
     monkeypatch.setattr(M, "then", counted)
     action = M.from_source_prefix(0, 128)
+    assert action == M.zero_run(128)
     assert action.endpoint(0) == 0
     assert action.extent == 128
-    assert compositions == 1
+    assert compositions == 0
+
+
+def _source_selected_runs(source: int, length: int) -> tuple[tuple[M, ...], int]:
+    current = source
+    remaining = length
+    steps: list[M] = []
+    while remaining:
+        if current & 1:
+            event = 3 * current + 1
+            exponent = (event & -event).bit_length() - 1
+            run_length = min(exponent, remaining)
+            step = M.bit(1).then(M.zero_run(run_length - 1, max_extent=length or 1))
+        else:
+            run_length = (
+                remaining
+                if current == 0
+                else min((current & -current).bit_length() - 1, remaining)
+            )
+            step = M.zero_run(run_length, max_extent=length or 1)
+        assert step.integer_admits(current)
+        current = step.endpoint(current)
+        steps.append(step)
+        remaining -= run_length
+    return tuple(steps), current
+
+
+def _joint_action_operand_width(action: M) -> int:
+    guard_values = (
+        action.guard.lower.numerator,
+        action.guard.lower.denominator,
+        action.guard.upper.numerator,
+        action.guard.upper.denominator,
+    )
+    safety_values = (
+        action.safety.offset_hat,
+        0 if action.safety.cap_hat is None else action.safety.cap_hat,
+    )
+    values = (
+        action.extent,
+        action.gain,
+        action.residue,
+        action.innovation,
+        action.source_modulus,
+        *safety_values,
+        *guard_values,
+    )
+    return sum(max(1, abs(value).bit_length()) for value in values)
+
+
+def test_source_prefix_balances_ordered_runs_without_changing_the_action(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source, length = 27, 128
+    steps, expected_endpoint = _source_selected_runs(source, length)
+    left_fold = M()
+    left_fold_operand_work = 0
+    left_fold_compositions = 0
+    for step in steps:
+        if left_fold.extent:
+            left_fold_operand_work += _joint_action_operand_width(
+                left_fold
+            ) + _joint_action_operand_width(step)
+            left_fold_compositions += 1
+        left_fold = left_fold.then(step)
+
+    balanced_operand_work: list[int] = []
+
+    def measured_fold(
+        nodes: Iterable[M], *, identity: M, compose: Callable[[M, M], M]
+    ) -> M:
+        def measured_compose(prefix: M, step: M) -> M:
+            balanced_operand_work.append(
+                _joint_action_operand_width(prefix) + _joint_action_operand_width(step)
+            )
+            return compose(prefix, step)
+
+        return shared_balanced_fold(nodes, identity=identity, compose=measured_compose)
+
+    monkeypatch.setattr(joint_future_module, "balanced_fold", measured_fold)
+    balanced = M.from_source_prefix(source, length)
+
+    assert balanced.extent == left_fold.extent == length
+    assert balanced.gain == left_fold.gain
+    assert balanced.residue == left_fold.residue
+    assert balanced.innovation == left_fold.innovation
+    assert balanced.guard == left_fold.guard
+    assert balanced.safety == left_fold.safety
+    assert balanced.endpoint(source) == expected_endpoint
+    assert balanced == left_fold
+    assert len(balanced_operand_work) == left_fold_compositions
+    assert sum(balanced_operand_work) < left_fold_operand_work
+
+
+def test_source_prefix_stops_at_the_first_refused_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refused_sources: list[int] = []
+    original_admits = M.integer_admits
+
+    def refuse_second_run(self: M, source: int) -> bool:
+        if source == 41:
+            refused_sources.append(source)
+            return False
+        return original_admits(self, source)
+
+    monkeypatch.setattr(M, "integer_admits", refuse_second_run)
+    with pytest.raises(ArithmeticError, match="source-selected parity run"):
+        M.from_source_prefix(27, 16)
+    assert refused_sources == [41]
 
 
 def test_repeat_source_obstruction_and_fractional_guard() -> None:
@@ -405,7 +524,7 @@ def test_window_contract_failure_restores_authority_and_allows_retry(
     with monkeypatch.context() as local:
         local.setattr(
             payload_audit,
-            "register_antihydra_payload_contract",
+            "register_term_contract",
             fail_registration,
         )
         with pytest.raises(RuntimeError, match="injected Antihydra contract failure"):

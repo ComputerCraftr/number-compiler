@@ -24,7 +24,7 @@ local_setup \<open>fn lthy =>
            (("hi",0), Thm.cterm_of lthy (nat hi))]
           @{thm comma_fast_decade_bounded_rank_range_join}
         val result = Simplifier.simplify
-          (Comma_Entry_Arithmetic.natural_context lthy addsimps [left,right]) rule
+          (Comma_Entry_Arithmetic.natural_context lthy |> Simplifier.add_simps [left,right]) rule
       in (lo,hi,result) end
     fun reduce [item] = item
       | reduce items =

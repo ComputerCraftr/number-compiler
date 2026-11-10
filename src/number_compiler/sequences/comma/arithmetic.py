@@ -170,6 +170,74 @@ class PuncturedDigitPort:
     next_digit: int
 
 
+@dataclass(frozen=True, slots=True, order=True)
+class NearResidualPort:
+    """Finite pre-Moore coordinate; source-bound admission lives in its occurrence."""
+
+    leading: int
+    digit: int
+    residual: int
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.leading) is not int
+            or not 1 <= self.leading <= 9
+            or type(self.digit) is not int
+            or not 0 <= self.digit <= 9
+            or type(self.residual) is not int
+            or self.residual < 0
+        ):
+            raise ValueError("invalid comma Near residual port")
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class NearPortOccurrence:
+    """Source-local cycle quotient and remainder attached to a Near port."""
+
+    port: NearResidualPort
+    headroom: int
+    cycle_quotient: int
+    transfer: CycleTransfer
+
+    @property
+    def cycle_length(self) -> int:
+        return self.transfer.period
+
+    @property
+    def cycle_displacement(self) -> int:
+        return self.transfer.displacement
+
+    def __init__(
+        self,
+        leading: int,
+        headroom: int,
+        *,
+        charge_work: Callable[[int], None] | None = None,
+        charge_bits: Callable[[int], None] | None = None,
+    ) -> None:
+        if (
+            type(leading) is not int
+            or type(headroom) is not int
+            or not 1 <= leading <= 9
+            or headroom <= int(leading < 9)
+        ):
+            raise ValueError("invalid comma Near port source")
+        if charge_work is not None:
+            charge_work(8)
+        if charge_bits is not None:
+            charge_bits(8 * headroom.bit_length() + leading.bit_length() + 32)
+        extra = int(leading < 9)
+        digit = (-headroom) % 10
+        transfer = cycle_transfer(leading, digit)
+        if transfer.displacement % 10:
+            raise ArithmeticError("comma Near cycle displacement changed digit phase")
+        quotient, residual = divmod(headroom - 1 - extra, transfer.displacement)
+        object.__setattr__(self, "port", NearResidualPort(leading, digit, residual))
+        object.__setattr__(self, "headroom", headroom)
+        object.__setattr__(self, "cycle_quotient", quotient)
+        object.__setattr__(self, "transfer", transfer)
+
+
 @dataclass(frozen=True, slots=True)
 class NearPortReturn:
     """Exact physical prefix to the next Near seam, with bounded port selection."""
@@ -181,6 +249,9 @@ class NearPortReturn:
     whole_cycles: int
     port_visits: int
     locator_comparisons: int
+    residual_port: NearResidualPort
+    cycle_length: int
+    residual_steps: int
 
 
 def _decimal_scale(value: int) -> tuple[int, int]:
@@ -567,23 +638,75 @@ def classify_near_port(
     charged. Monotone prefix selection constructs only the selected port; no
     stored observer tree or prefix word is needed.
     """
-    if (
-        type(leading) is not int
-        or type(headroom) is not int
-        or not 1 <= leading <= 9
-        or headroom <= int(leading < 9)
-    ):
-        raise ValueError("invalid comma Near port source")
-    if charge_work is not None:
+    occurrence = near_port_occurrence(
+        leading,
+        headroom,
+        charge_work=charge_work,
+        charge_bits=charge_bits,
+    )
+    return _classify_near_occurrence(
+        occurrence,
+        charge_work=charge_work,
+        charge_bits=charge_bits,
+        initial_work_charged=True,
+    )
+
+
+def near_port_occurrence(
+    leading: int,
+    headroom: int,
+    *,
+    charge_work: Callable[[int], None] | None = None,
+    charge_bits: Callable[[int], None] | None = None,
+) -> NearPortOccurrence:
+    """Factor an admitted Near occurrence into its finite residual and cocycle."""
+    return NearPortOccurrence(
+        leading,
+        headroom,
+        charge_work=charge_work,
+        charge_bits=charge_bits,
+    )
+
+
+def classify_near_occurrence(
+    occurrence: NearPortOccurrence,
+    *,
+    charge_work: Callable[[int], None] | None,
+    charge_bits: Callable[[int], None] | None,
+) -> NearPortReturn:
+    """Resolve an admitted occurrence without rebuilding its residual port."""
+    if type(occurrence) is not NearPortOccurrence:
+        raise TypeError("Near classifier requires an exact occurrence environment")
+    return _classify_near_occurrence(
+        occurrence,
+        charge_work=charge_work,
+        charge_bits=charge_bits,
+        initial_work_charged=True,
+    )
+
+
+def _classify_near_occurrence(
+    occurrence: NearPortOccurrence,
+    *,
+    charge_work: Callable[[int], None] | None,
+    charge_bits: Callable[[int], None] | None,
+    initial_work_charged: bool,
+) -> NearPortReturn:
+    if not initial_work_charged and charge_work is not None:
         charge_work(8)
-    if charge_bits is not None:
-        charge_bits(8 * headroom.bit_length() + leading.bit_length() + 32)
+    if not initial_work_charged and charge_bits is not None:
+        charge_bits(
+            8 * occurrence.headroom.bit_length()
+            + occurrence.port.leading.bit_length()
+            + 32
+        )
+    leading = occurrence.port.leading
+    orbit = occurrence.port.digit
+    headroom = occurrence.headroom
+    period = occurrence.cycle_length
+    whole_cycles = occurrence.cycle_quotient
+    remainder = occurrence.port.residual
     extra = int(leading < 9)
-    orbit = (-headroom) % 10
-    divisor = gcd(leading, 10)
-    period = 10 // divisor
-    transfer = cycle_transfer(leading, orbit)
-    whole_cycles, remainder = divmod(headroom - 1 - extra, transfer.displacement)
     reduced_headroom = 1 + extra + remainder
     # Select the largest physical prefix within the remaining displacement.
     # Complete cycles are already removed; the search has at most ten positions.
@@ -597,7 +720,7 @@ def classify_near_port(
             charge_work(middle + 2)
         if charge_bits is not None:
             charge_bits(64 * middle + 32)
-        prefix = phase_prefix_displacement(leading, orbit, middle)
+        prefix = phase_prefix_displacement_from_transfer(occurrence.transfer, middle)
         comparisons += 1
         if prefix <= remainder:
             lower, displacement = middle, prefix
@@ -627,12 +750,21 @@ def classify_near_port(
     # The retained lower-prefix displacement is the proved complete-period
     # decomposition. Check its balance without running the prefix engine again.
     if (
-        headroom - (whole_cycles * transfer.displacement + displacement)
+        headroom - (whole_cycles * occurrence.cycle_displacement + displacement)
         != terminal_headroom
     ):
         raise ArithmeticError("comma selected prefix has an inconsistent balance")
     return NearPortReturn(
-        physical_steps, terminal_headroom, active, row, whole_cycles, 1, comparisons
+        physical_steps,
+        terminal_headroom,
+        active,
+        row,
+        whole_cycles,
+        1,
+        comparisons,
+        occurrence.port,
+        period,
+        lower,
     )
 
 
@@ -724,9 +856,12 @@ def comma_port_next(leading: int, digit: int) -> int:
 __all__ = [
     "CycleTransfer",
     "DecimalSector",
+    "NearPortOccurrence",
+    "NearResidualPort",
     "NearPortReturn",
     "PuncturedDigitPort",
     "classify_near_port",
+    "classify_near_occurrence",
     "comma_children",
     "comma_port_dwell",
     "comma_port_next",
@@ -740,6 +875,7 @@ __all__ = [
     "entry_headroom_from_transfer",
     "is_sector9_landmine_headroom",
     "leading_digit",
+    "near_port_occurrence",
     "phase_prefix_displacement",
     "phase_prefix_displacement_from_transfer",
     "punctured_digit_port",

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import asdict, fields
-from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.family_identity import FamilyId
@@ -17,13 +16,12 @@ from number_compiler.arithmetic.fields.symbolic_extent import (
     Extent,
     extent_json_value,
 )
-from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import api as _api_metrics
 from number_compiler.resources.output_stream_metrics import closing_output_stream
-from number_compiler.sequences.reverse_add.extent import ReverseAddExtent
 
 if TYPE_CHECKING:
     from number_compiler.api.number_api import ProjectedNumberTerm
+    from number_compiler.resources.ledger import ResourceLedger
 
 _DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
 _DIGIT_BYTES = _DIGITS.encode("ascii")
@@ -152,6 +150,8 @@ def radix_string(value: int, base: int) -> str:
     if base == 10:
         # Integer construction and fixed-point formatting are exact, independent
         # of Decimal precision, and do not alter the process-wide int limit.
+        from decimal import Decimal
+
         return format(Decimal(value), "f")
     encoded = bytearray(_DIGIT_BYTES[digit] for digit in iter_digits_lsd(value, base))
     encoded.reverse()
@@ -188,6 +188,7 @@ def _render_value_body(
         PoweredCollatzTermPayload,
         PoweredReverseAddTermPayload,
     )
+    from number_compiler.sequences.reverse_add.extent import ReverseAddExtent
 
     bit_extent: Extent
     if isinstance(term.payload, PoweredReverseAddTermPayload):

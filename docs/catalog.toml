@@ -542,3 +542,35 @@ kind = "sprint-topic"
 topic = "prime-rank-effective-returns"
 status = "current"
 week_start = "2026-11-01"
+
+[[document]]
+id = "sprint-2026-11-01-centered-carry-cli"
+path = "docs/sprints/week-of-2026-11-01/centered-carry-cli.md"
+kind = "sprint-topic"
+topic = "centered-carry-cli"
+status = "current"
+week_start = "2026-11-01"
+
+[[document]]
+id = "sprint-2026-11-01-comma-global-cutover"
+path = "docs/sprints/week-of-2026-11-01/comma-global-cutover.md"
+kind = "sprint-topic"
+topic = "comma-global-cutover"
+status = "current"
+week_start = "2026-11-01"
+
+[[document]]
+id = "sprint-2026-11-08-readme"
+path = "docs/sprints/week-of-2026-11-08/README.md"
+kind = "sprint"
+topic = "readme"
+status = "current"
+week_start = "2026-11-08"
+
+[[document]]
+id = "sprint-2026-11-08-harmonic-carry-consumers"
+path = "docs/sprints/week-of-2026-11-08/harmonic-carry-consumers.md"
+kind = "sprint-topic"
+topic = "harmonic-carry-consumers"
+status = "current"
+week_start = "2026-11-08"

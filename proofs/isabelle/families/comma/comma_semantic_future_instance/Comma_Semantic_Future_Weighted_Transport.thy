@@ -1,5 +1,6 @@
 theory Comma_Semantic_Future_Weighted_Transport
-  imports Comma_Semantic_B1_Instance.Comma_Semantic_Summary_Instance
+  imports Comma_Semantic_Graph_Instance.Comma_Semantic_Summary_Instance
+    Comma_Decade_Orbit.Comma_Decade_Orbit_Summary
 begin
 
 text \<open>
@@ -18,11 +19,6 @@ record comma_semantic_future_weighted_action =
   comma_semantic_future_action_local_delta :: nat
   comma_semantic_future_action_complete_decades :: nat
   comma_semantic_future_action_ordered_children :: "nat list"
-
-fun comma_semantic_future_action_terminal_position ::
-    "comma_future_control \<Rightarrow> nat" where
-  "comma_semantic_future_action_terminal_position (Comma_Future_Fork a) = a - 2"
-| "comma_semantic_future_action_terminal_position Comma_Future_Landmine = 8"
 
 fun comma_semantic_future_action_terminal ::
     "comma_future_control \<Rightarrow> comma_decade_terminal" where
@@ -81,7 +77,7 @@ fun comma_semantic_future_action_children_shape ::
     (children=[])"
 
 definition comma_semantic_future_action_of_weighted_stop ::
-    "nat \<Rightarrow> nat \<Rightarrow> nat list \<Rightarrow>
+    "nat \<Rightarrow> nat list \<Rightarrow>
       comma_semantic_b1_weighted_result \<Rightarrow>
       comma_semantic_future_weighted_action option" where
   "comma_semantic_future_action_of_weighted_stop d children result =
@@ -204,21 +200,6 @@ proof -
         comma_semantic_future_action_completed_delta_def)
 qed
 
-text \<open>This decoder binds only the graph-derived Stop control and complete
-decade weight.  Its local displacement and ordered children are explicit
-occurrence inputs; no source-prefix or candidate-class authority follows from
-this adapter alone.\<close>
-
-definition comma_semantic_future_action_of_graph_power ::
-    "nat \<Rightarrow> nat list \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow>
-      comma_semantic_future_weighted_action option" where
-  "comma_semantic_future_action_of_graph_power d children phase root =
-    (if phase<924 \<and> root<46 then
-       comma_semantic_future_action_of_weighted_stop d children
-         (comma_semantic_b1_weighted_action_power 5
-           comma_semantic_graph_root_weighted_action phase root)
-     else None)"
-
 lemma comma_semantic_future_action_of_weighted_stop_rejects_large_height:
   assumes stop: "result=Comma_Semantic_B1_Stop_At J H"
     and height: "26 < H"
@@ -226,165 +207,6 @@ lemma comma_semantic_future_action_of_weighted_stop_rejects_large_height:
   using stop height
   by (simp add: comma_semantic_future_action_of_weighted_stop_def)
 
-lemma comma_semantic_future_exact_summary_control_transport:
-  assumes controls: "comma_decade_control source = comma_decade_control target"
-    and summary: "comma_decade_exact_summary source H terminal"
-  shows "comma_decade_exact_summary target H terminal"
-  using summary controls
-proof (induction rule: comma_decade_exact_summary.induct)
-  case (fork s a)
-  have target_control:
-    "comma_decade_control target = Comma_Decade_Fork a 0"
-    using fork.hyps fork.prems by simp
-  show ?case
-    by (rule comma_decade_exact_summary.fork[OF target_control])
-next
-  case (landmine s)
-  have target_control:
-    "comma_decade_control target = Comma_Decade_Landmine 0"
-    using landmine.hyps landmine.prems by simp
-  show ?case
-    by (rule comma_decade_exact_summary.landmine[OF target_control])
-next
-  case (crossing s t n terminal)
-  have target_control:
-    "comma_decade_control target = Comma_Decade_Continue t"
-    using crossing.hyps(1) crossing.prems by simp
-  show ?case
-    by (rule comma_decade_exact_summary.crossing
-      [OF target_control crossing.hyps(2)])
-qed
-
-lemma comma_semantic_future_exact_summary_orbit_transport:
-  assumes phase: "phase<924"
-    and x: "x\<le>90" and y: "y\<le>90"
-    and same: "comma_offset_orbit x=comma_offset_orbit y"
-    and summary:
-      "comma_decade_exact_summary (Comma_Decade phase x) H terminal"
-  shows "comma_decade_exact_summary (Comma_Decade phase y) H terminal"
-proof -
-  have controls:
-    "comma_decade_control (Comma_Decade phase x) =
-      comma_decade_control (Comma_Decade phase y)"
-    by (rule comma_decade_control_orbit_congruent[OF x y same])
-  show ?thesis
-    by (rule comma_semantic_future_exact_summary_control_transport
-      [OF controls summary])
-qed
-
-lemma comma_semantic_future_graph_power_weighted_stop:
-  assumes phase: "phase<924"
-    and offset: "offset\<le>90"
-    and summary:
-      "comma_decade_exact_summary (Comma_Decade phase offset) H terminal"
-    and height: "H\<le>26"
-    and children_shape:
-      "comma_semantic_future_action_children_shape
-        (comma_semantic_future_control_of_terminal_position
-          (comma_terminal_weight_digit terminal)) children"
-  obtains action where
-    "comma_semantic_b1_weighted_action_power 5
-        comma_semantic_graph_root_weighted_action phase
-        (comma_offset_orbit offset) =
-      Comma_Semantic_B1_Stop_At (comma_terminal_weight_digit terminal) H"
-    "comma_semantic_future_action_of_graph_power d children phase
-        (comma_offset_orbit offset) = Some action"
-    "comma_semantic_future_action_control action =
-      comma_semantic_future_control_of_terminal_position
-        (comma_terminal_weight_digit terminal)"
-    "comma_semantic_future_action_local_delta action = d"
-    "comma_semantic_future_action_complete_decades action = H"
-    "comma_semantic_future_action_ordered_children action = children"
-    "comma_semantic_future_action_stop_weight action =
-      comma_terminal_weight_encode H terminal"
-    "comma_semantic_future_action_completed_delta action = d+H"
-proof -
-  let ?root = "comma_offset_orbit offset"
-  let ?representative = "comma_offset_representative offset"
-  let ?result = "comma_semantic_b1_weighted_action_power 5
-      comma_semantic_graph_root_weighted_action phase ?root"
-  have root: "?root<46"
-    by (rule comma_offset_orbit_bound)
-  have representative_bound: "?representative\<le>90"
-    by (rule comma_offset_representative_admitted(1))
-  have same:
-    "comma_offset_orbit offset=comma_offset_orbit ?representative"
-    by (rule comma_offset_representative_admitted(2))
-  have representative_summary:
-    "comma_decade_exact_summary
-      (Comma_Decade phase ?representative) H terminal"
-    by (rule comma_semantic_future_exact_summary_orbit_transport
-      [OF phase offset representative_bound same summary])
-  have graph_stop:
-    "comma_semantic_graph_action_power 5 phase ?root =
-      Comma_Semantic_B1_Stop (comma_terminal_weight_encode H terminal)"
-    using comma_semantic_graph_stop_from_exact_summary
-      [OF phase root representative_summary height] by blast
-  have encoded:
-    "comma_semantic_b1_weighted_encode ?result =
-      Comma_Semantic_B1_Stop (comma_terminal_weight_encode H terminal)"
-    using comma_semantic_graph_weighted_power_exact[of 5 phase ?root]
-      graph_stop by simp
-  have admitted: "comma_semantic_b1_weighted_result_admitted ?result"
-  proof (rule comma_semantic_b1_weighted_action_power_admitted)
-    show "\<And>phase root. phase<924 \<Longrightarrow> root<46 \<Longrightarrow>
-        comma_semantic_b1_weighted_result_admitted
-          (comma_semantic_graph_root_weighted_action phase root)"
-      by (rule comma_semantic_graph_root_weighted_action_admitted)
-    show "phase<924" by (rule phase)
-    show "?root<46" by (rule root)
-  qed
-  have stop: "\<exists>J. \<exists>K. ?result=Comma_Semantic_B1_Stop_At J K"
-    using encoded admitted
-    by (cases ?result)
-      (auto simp: comma_semantic_b1_weighted_result_admitted.simps)
-  obtain J K where result:
-      "?result=Comma_Semantic_B1_Stop_At J K"
-    using stop by blast
-  have J_bound: "J<9"
-    using admitted result
-    by (simp add: comma_semantic_b1_weighted_result_admitted.simps)
-  have digit_bound: "comma_terminal_weight_digit terminal<9"
-    by (rule comma_terminal_weight_digit_bound
-      [OF comma_decade_exact_summary_terminal_admitted[OF summary]])
-  have components:
-    "J=comma_terminal_weight_digit terminal" "K=H"
-    using encoded result J_bound digit_bound
-    by (auto simp: comma_semantic_b1_weighted_encode.simps
-        comma_terminal_weight_encode_def; presburger)
-  have selected:
-    "comma_semantic_future_action_of_graph_power d children phase ?root =
-      Some \<lparr>comma_semantic_future_action_control =
-          comma_semantic_future_control_of_terminal_position
-            (comma_terminal_weight_digit terminal),
-        comma_semantic_future_action_local_delta=d,
-        comma_semantic_future_action_complete_decades=H,
-        comma_semantic_future_action_ordered_children=children\<rparr>"
-    using result components digit_bound height children_shape phase root
-    by (simp add: comma_semantic_future_action_of_graph_power_def
-        comma_semantic_future_action_of_weighted_stop_def)
-  have weighted_result:
-    "comma_semantic_b1_weighted_action_power 5
-        comma_semantic_graph_root_weighted_action phase ?root =
-      Comma_Semantic_B1_Stop_At (comma_terminal_weight_digit terminal) H"
-    using result components by simp
-  have position:
-    "comma_semantic_future_action_terminal_position
-      (comma_semantic_future_control_of_terminal_position
-        (comma_terminal_weight_digit terminal)) =
-      comma_terminal_weight_digit terminal"
-    and control_admitted:
-    "comma_semantic_future_action_control_admitted
-      (comma_semantic_future_control_of_terminal_position
-        (comma_terminal_weight_digit terminal))"
-    by (rule comma_semantic_future_control_of_terminal_position_exact
-      [OF digit_bound])+
-  show thesis
-    by (rule that[OF weighted_result selected])
-      (simp_all add: comma_semantic_future_action_stop_weight_def
-        comma_semantic_future_action_completed_delta_def
-        comma_terminal_weight_encode_def position)
-qed
 
 lemma comma_semantic_future_action_position_bound:
   assumes "comma_semantic_future_action_control_admitted control"
@@ -961,14 +783,12 @@ ML \<open>
     comma_semantic_future_action_children_shape.simps
     comma_semantic_future_action_of_weighted_stop_def
     comma_semantic_future_action_of_direct_control_def
-    comma_semantic_future_action_of_graph_power_def
     comma_semantic_future_control_of_terminal_position_exact
     comma_semantic_future_action_of_weighted_stop_exact
     comma_semantic_future_action_of_direct_control_exact
     comma_semantic_future_action_of_weighted_stop_rejects_large_height
     comma_semantic_future_exact_summary_control_transport
     comma_semantic_future_exact_summary_orbit_transport
-    comma_semantic_future_graph_power_weighted_stop
     comma_semantic_future_action_position_bound
     comma_semantic_future_action_terminal_weight_decode
     comma_semantic_future_action_phase_transport

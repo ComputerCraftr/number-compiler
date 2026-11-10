@@ -20,7 +20,26 @@ from number_compiler.resources.payload_contracts import (
 )
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.antihydra.arithmetic_images import (
+        AntihydraArithmeticImageWorkspace,
+    )
     from number_compiler.sequences.antihydra.blocks import ArithmeticCylinder, Cylinder
+    from number_compiler.sequences.antihydra.projection_core import (
+        AntihydraFragmentAdapter,
+    )
+    from number_compiler.sequences.antihydra.projection_fragments import (
+        ProjectionFragmentCache,
+    )
+    from number_compiler.sequences.antihydra.projection_occurrences import (
+        ProjectionOccurrenceCursor,
+    )
+    from number_compiler.sequences.antihydra.projection_workspace import (
+        SectionImageWorkspace,
+    )
+    from number_compiler.sequences.antihydra.runtime import (
+        AntihydraArithmeticTerm,
+        CylinderEngine,
+    )
 
 _Cylinder = TypeVar("_Cylinder", "Cylinder", "ArithmeticCylinder")
 
@@ -89,134 +108,212 @@ def _canonical_arithmetic_cylinder(value: object, ledger: ResourceLedger) -> boo
     )
 
 
-def register_antihydra_payload_contract(root: object) -> None:
-    """Register one callback for each supported exact Antihydra owner root."""
-    from number_compiler.sequences.antihydra.arithmetic_images import (
-        AntihydraArithmeticImageWorkspace,
-    )
-    from number_compiler.sequences.antihydra.projection_core import (
-        AntihydraFragmentAdapter,
-    )
-    from number_compiler.sequences.antihydra.projection_fragments import (
-        ProjectionFragmentCache,
-    )
-    from number_compiler.sequences.antihydra.projection_occurrences import (
-        ProjectionOccurrenceCursor,
-    )
-    from number_compiler.sequences.antihydra.projection_payload_audit import (
-        audit_antihydra_cursor,
-        audit_antihydra_fragment_adapter,
-        audit_antihydra_fragment_cache,
-        audit_antihydra_section_workspace,
-    )
-    from number_compiler.sequences.antihydra.projection_workspace import (
-        SectionImageWorkspace,
-    )
-    from number_compiler.sequences.antihydra.runtime import (
-        AntihydraArithmeticTerm,
-        CylinderEngine,
-    )
-
+def _register_exact_root_contract(
+    root: object,
+    expected_type: type[object],
+    stores: tuple[PayloadAuditStoreBinding, ...],
+    validator: Callable[[object, object], PayloadAuditContribution],
+) -> None:
+    if type(root) is not expected_type:
+        raise TypeError("Antihydra audit registration requires its exact owner type")
     ledger = getattr(root, "ledger", None)
     if type(ledger) is not ResourceLedger:
         raise TypeError("Antihydra payload roots require their ResourceLedger")
-    register = ledger.register_payload_audit_contract
-    bind = PayloadAuditStoreBinding
-    if type(root) is AntihydraArithmeticImageWorkspace:
-        stores = [
-            bind(root.image_owner, "images", "arithmetic_image"),
-        ]
-        if root.mahler_bindings is not None:
-            if root.mahler_binding_owner is None:
-                raise ValueError("Antihydra Mahler bindings have no ledger owner")
-            stores.append(
-                bind(
-                    root.mahler_binding_owner,
-                    "mahler_bindings",
-                    "arithmetic_source_action",
-                )
-            )
-        register(root, "antihydra", tuple(stores), audit_antihydra_image_workspace)
-    elif type(root) is CylinderEngine:
-        register(
-            root,
-            "antihydra",
-            (
-                bind(root.memo.owner, "audit_memo_store", "arithmetic_cylinder"),
-                bind(
-                    root.arithmetic_memo.owner,
-                    "audit_arithmetic_memo_store",
-                    "arithmetic_cylinder",
-                ),
-                bind(root.workspace, "stack", "workspace"),
-            ),
-            audit_antihydra_engine,
-        )
-    elif type(root) is AntihydraArithmeticTerm:
-        stores = [
-            bind(
-                root.segment_owner,
-                "_segments",
-                "arithmetic_cylinder_support",
-            ),
-            bind(root.result_owner, "result_publications", "arithmetic_result"),
-            bind(root.physical_owner, "physical_publications", "physical_result"),
-        ]
-        memo = getattr(root, "mahler_window_memo", None)
-        workspace = getattr(root, "mahler_workspace", None)
-        window_owner = getattr(workspace, "_window_owner", None)
-        if memo is not None and type(window_owner) is int:
-            stores.append(
-                bind(
-                    window_owner,
-                    "mahler_window_memo",
-                    "query_memo",
-                )
-            )
-        register(root, "antihydra", tuple(stores), audit_antihydra_term)
-    elif type(root) is ProjectionFragmentCache:
-        register(
-            root,
-            "antihydra",
-            (
-                bind(root.owner, "fragments", "demanded_projection"),
-                bind(root.seal_owner, "seals", "projection_binding"),
-            ),
-            audit_antihydra_fragment_cache,
-        )
-    elif (
-        type(root) is ProjectionOccurrenceCursor
-        or type(root) is AntihydraFragmentAdapter
-    ):
-        register(
-            root,
-            "antihydra",
-            tuple(
-                bind(row.owner, row.attribute, row.role)
-                for row in root.audit_snapshot().stores
-            ),
-            audit_antihydra_cursor
-            if type(root) is ProjectionOccurrenceCursor
-            else audit_antihydra_fragment_adapter,
-        )
-    elif type(root) is SectionImageWorkspace:
-        register(
-            root,
-            "antihydra",
-            (bind(root.owner, "images", "demanded_projection"),),
-            audit_antihydra_section_workspace,
-        )
+    ledger.register_payload_audit_contract(root, "antihydra", stores, validator)
 
 
-def refresh_antihydra_payload_contract(root: object) -> None:
+def _require_exact_root(root: object, expected_type: type[object]) -> None:
+    if type(root) is not expected_type:
+        raise TypeError("Antihydra audit registration requires its exact owner type")
+
+
+def register_arithmetic_image_contract(
+    root: AntihydraArithmeticImageWorkspace,
+) -> None:
+    from number_compiler.sequences.antihydra.arithmetic_images import (
+        AntihydraArithmeticImageWorkspace,
+    )
+
+    _require_exact_root(root, AntihydraArithmeticImageWorkspace)
+    stores = [PayloadAuditStoreBinding(root.image_owner, "images", "arithmetic_image")]
+    if root.mahler_bindings is not None:
+        if root.mahler_binding_owner is None:
+            raise ValueError("Antihydra Mahler bindings have no ledger owner")
+        stores.append(
+            PayloadAuditStoreBinding(
+                root.mahler_binding_owner,
+                "mahler_bindings",
+                "arithmetic_source_action",
+            )
+        )
+    _register_exact_root_contract(
+        root,
+        AntihydraArithmeticImageWorkspace,
+        tuple(stores),
+        audit_antihydra_image_workspace,
+    )
+
+
+def register_engine_contract(root: CylinderEngine) -> None:
+    from number_compiler.sequences.antihydra.runtime import CylinderEngine
+
+    _require_exact_root(root, CylinderEngine)
+    _register_exact_root_contract(
+        root,
+        CylinderEngine,
+        (
+            PayloadAuditStoreBinding(
+                root.memo.owner, "audit_memo_store", "arithmetic_cylinder"
+            ),
+            PayloadAuditStoreBinding(
+                root.arithmetic_memo.owner,
+                "audit_arithmetic_memo_store",
+                "arithmetic_cylinder",
+            ),
+            PayloadAuditStoreBinding(root.workspace, "stack", "workspace"),
+        ),
+        audit_antihydra_engine,
+    )
+
+
+def register_term_contract(root: AntihydraArithmeticTerm) -> None:
+    from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+
+    _require_exact_root(root, AntihydraArithmeticTerm)
+    stores = [
+        PayloadAuditStoreBinding(
+            root.segment_owner, "_segments", "arithmetic_cylinder_support"
+        ),
+        PayloadAuditStoreBinding(
+            root.result_owner, "result_publications", "arithmetic_result"
+        ),
+        PayloadAuditStoreBinding(
+            root.physical_owner, "physical_publications", "physical_result"
+        ),
+    ]
+    memo = getattr(root, "mahler_window_memo", None)
+    workspace = getattr(root, "mahler_workspace", None)
+    window_owner = getattr(workspace, "_window_owner", None)
+    if memo is not None and type(window_owner) is int:
+        stores.append(
+            PayloadAuditStoreBinding(window_owner, "mahler_window_memo", "query_memo")
+        )
+    _register_exact_root_contract(
+        root, AntihydraArithmeticTerm, tuple(stores), audit_antihydra_term
+    )
+
+
+def _audit_fragment_cache_lazily(
+    ledger: object, root: object
+) -> PayloadAuditContribution:
+    from number_compiler.sequences.antihydra.projection_payload_audit import (
+        audit_antihydra_fragment_cache,
+    )
+
+    return audit_antihydra_fragment_cache(ledger, root)
+
+
+def _audit_cursor_lazily(ledger: object, root: object) -> PayloadAuditContribution:
+    from number_compiler.sequences.antihydra.projection_payload_audit import (
+        audit_antihydra_cursor,
+    )
+
+    return audit_antihydra_cursor(ledger, root)
+
+
+def _audit_fragment_adapter_lazily(
+    ledger: object, root: object
+) -> PayloadAuditContribution:
+    from number_compiler.sequences.antihydra.projection_payload_audit import (
+        audit_antihydra_fragment_adapter,
+    )
+
+    return audit_antihydra_fragment_adapter(ledger, root)
+
+
+def _audit_section_workspace_lazily(
+    ledger: object, root: object
+) -> PayloadAuditContribution:
+    from number_compiler.sequences.antihydra.projection_payload_audit import (
+        audit_antihydra_section_workspace,
+    )
+
+    return audit_antihydra_section_workspace(ledger, root)
+
+
+def register_fragment_cache_contract(root: ProjectionFragmentCache) -> None:
+    from number_compiler.sequences.antihydra.projection_fragments import (
+        ProjectionFragmentCache,
+    )
+
+    _require_exact_root(root, ProjectionFragmentCache)
+    _register_exact_root_contract(
+        root,
+        ProjectionFragmentCache,
+        (
+            PayloadAuditStoreBinding(root.owner, "fragments", "demanded_projection"),
+            PayloadAuditStoreBinding(root.seal_owner, "seals", "projection_binding"),
+        ),
+        _audit_fragment_cache_lazily,
+    )
+
+
+def register_cursor_contract(root: ProjectionOccurrenceCursor) -> None:
+    from number_compiler.sequences.antihydra.projection_occurrences import (
+        ProjectionOccurrenceCursor,
+    )
+
+    _require_exact_root(root, ProjectionOccurrenceCursor)
+    stores = tuple(
+        PayloadAuditStoreBinding(row.owner, row.attribute, row.role)
+        for row in root.audit_snapshot().stores
+    )
+    _register_exact_root_contract(
+        root, ProjectionOccurrenceCursor, stores, _audit_cursor_lazily
+    )
+
+
+def register_fragment_adapter_contract(root: AntihydraFragmentAdapter) -> None:
+    from number_compiler.sequences.antihydra.projection_core import (
+        AntihydraFragmentAdapter,
+    )
+
+    _require_exact_root(root, AntihydraFragmentAdapter)
+    stores = tuple(
+        PayloadAuditStoreBinding(row.owner, row.attribute, row.role)
+        for row in root.audit_snapshot().stores
+    )
+    _register_exact_root_contract(
+        root, AntihydraFragmentAdapter, stores, _audit_fragment_adapter_lazily
+    )
+
+
+def register_section_workspace_contract(root: SectionImageWorkspace) -> None:
+    from number_compiler.sequences.antihydra.projection_workspace import (
+        SectionImageWorkspace,
+    )
+
+    _require_exact_root(root, SectionImageWorkspace)
+    _register_exact_root_contract(
+        root,
+        SectionImageWorkspace,
+        (PayloadAuditStoreBinding(root.owner, "images", "demanded_projection"),),
+        _audit_section_workspace_lazily,
+    )
+
+
+def refresh_antihydra_payload_contract(root: AntihydraArithmeticTerm) -> None:
     """Refresh a live term contract atomically through its ledger owner."""
+    from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
+
+    _require_exact_root(root, AntihydraArithmeticTerm)
     ledger = getattr(root, "ledger", None)
     if type(ledger) is not ResourceLedger:
         raise TypeError("Antihydra payload roots require their ResourceLedger")
     ledger.refresh_payload_audit_contract(
         root,
         "antihydra",
-        lambda: register_antihydra_payload_contract(root),
+        lambda: register_term_contract(root),
         missing_message="Antihydra term has no exact contract to refresh",
         restore_message="failed to restore the Antihydra payload contract",
     )
@@ -774,6 +871,12 @@ __all__ = [
     "audit_antihydra_engine",
     "audit_antihydra_image_workspace",
     "audit_antihydra_term",
+    "register_arithmetic_image_contract",
+    "register_cursor_contract",
+    "register_engine_contract",
+    "register_fragment_adapter_contract",
+    "register_fragment_cache_contract",
+    "register_section_workspace_contract",
+    "register_term_contract",
     "refresh_antihydra_payload_contract",
-    "register_antihydra_payload_contract",
 ]

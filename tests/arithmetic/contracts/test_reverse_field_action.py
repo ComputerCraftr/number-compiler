@@ -161,6 +161,9 @@ def test_reverse_semantic_identity_memo_hits_after_validating_action_handle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+    from number_compiler.sequences.reverse_add import (
+        field_action as field_action_module,
+    )
 
     arena = reverse_action_arena()
     action = reverse_action_atom(
@@ -189,7 +192,13 @@ def test_reverse_semantic_identity_memo_hits_after_validating_action_handle(
     def forbidden(*_args: object, **_kwargs: object) -> str:
         pytest.fail("warm reverse semantic identity recomputed its digest")
 
+    def forbidden_identity_build(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("warm reverse semantic identity rebuilt its canonical ID")
+
     monkeypatch.setattr(SemanticIdentity, "_canonical_digest", forbidden)
+    monkeypatch.setattr(
+        field_action_module, "build_radial_identity", forbidden_identity_build
+    )
     assert arena.semantic_identity(action) is identity
     after_warm = arena.ledger.snapshot()
     assert after_warm.counters["reverse_field_action_semantic_identity_cache_hits"] == 1
@@ -273,9 +282,7 @@ def test_reverse_semantic_identity_cache_seals_exact_radial_coordinates() -> Non
         "exact_zero",
     ):
         object.__setattr__(action.radial, field, getattr(replacement, field))
-    with pytest.raises(
-        ValueError, match="cached reverse semantic identity lost its seal"
-    ):
+    with pytest.raises(ValueError, match="radial coordinates changed"):
         arena.semantic_identity(reference)
 
 
@@ -299,6 +306,9 @@ def test_reverse_semantic_identity_cache_rejects_foreign_stale_and_swapped_handl
     None
 ):
     from number_compiler.arithmetic.contracts.semantic_identity import SemanticIdentity
+    from number_compiler.sequences.reverse_add.semantic_identity_cache import (
+        build_radial_identity,
+    )
 
     arena = reverse_action_arena()
     first = reverse_action_atom(
@@ -339,13 +349,18 @@ def test_reverse_semantic_identity_cache_rejects_foreign_stale_and_swapped_handl
     assert arena.semantic_identity(second) is second_identity
 
     action = arena.resolve(second)
-    forged_identity = SemanticIdentity(
-        "", ("reverse-centered-radial-action-v1", "no-growth:0", "growth:0")
-    )
+    forged_identity = build_radial_identity(action.radial)
+    component = forged_identity.behavior[1]
+    assert isinstance(component, SemanticIdentity)
     forged_record = (
         second,
         id(action),
-        (action.radial.no_growth, action.radial.growth),
+        (
+            action.radial.no_growth,
+            action.radial.growth,
+            action.radial.canonical_key,
+            component.digest,
+        ),
         forged_identity,
         forged_identity.digest,
         forged_identity.behavior,
