@@ -7,6 +7,7 @@ from typing import cast
 
 import pytest
 
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.border_pair_temporal_matrix import (
     WeightedPairMatrix,
     certify_pointed_low_border,
@@ -30,10 +31,15 @@ from number_compiler.sequences.collatz.named_border_carry_matrix import (
     MAX_NAMED_MATRIX_TRACE_PREFIX,
     certify_named_border_carry_matrix,
 )
+from number_compiler.sequences.collatz.parity_carry_tape import ParityCarryTape
+from number_compiler.sequences.collatz.parity_carry_tape_actions import (
+    LedgeredParityTapeActions,
+)
 from number_compiler.sequences.collatz.source_closed_port_action import (
     SourceClosedPortAction,
     SourceCongruence,
 )
+from tests.support.ledger_failures import observe_parity_prefix_reservation
 
 
 def test_weighted_deterministic_fast_product_matches_exact_semiring() -> None:
@@ -272,3 +278,63 @@ def test_named_matrix_trace_reads_only_a_bounded_retained_tape_prefix() -> None:
     )
     with pytest.raises(ValueError, match="64"):
         matrix.trace_packet(normalized_steps=MAX_NAMED_MATRIX_TRACE_PREFIX + 1)
+
+
+def test_named_matrix_interior_puncture_reserves_its_weighted_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    macro = select_boundary_macro(159, 300, minimum_repetitions=1)
+    assert macro is not None and macro.normalized_symbols > 1
+    with LedgeredParityTapeActions(ledger) as parity_actions:
+        matrix = certify_named_border_carry_matrix(
+            macro, ledger=ledger, parity_actions=parity_actions
+        )
+        reservations = observe_parity_prefix_reservation(
+            monkeypatch, ledger, parity_actions.scratch_owner
+        )
+        cut = matrix.puncture(
+            1,
+            pointed_source=macro.source,
+            parity_actions=parity_actions,
+        )
+        assert cut.pointed(macro.source) is not None
+        assert reservations and reservations[0][0] > 0 and reservations[0][1] > 0
+        assert ledger.account_usage(parity_actions.scratch_owner) == (0, 0)
+
+
+def test_join_puncture_charges_owned_action_and_odds_prefixes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    macro = select_boundary_macro(159, 300, minimum_repetitions=1)
+    assert macro is not None
+    with LedgeredParityTapeActions(ledger) as parity_actions:
+        matrix = certify_named_border_carry_matrix(
+            macro, ledger=ledger, parity_actions=parity_actions
+        )
+        original_action = ParityCarryTape.prefix_action
+        original_odds = ParityCarryTape.prefix_odds
+        reservations: list[tuple[int, int]] = []
+
+        def observe_action(
+            tape: ParityCarryTape, time: int
+        ) -> DyadicTerminalFieldAction:
+            reservations.append(ledger.account_usage(parity_actions.scratch_owner))
+            return original_action(tape, time)
+
+        def observe_odds(tape: ParityCarryTape, time: int) -> int:
+            reservations.append(ledger.account_usage(parity_actions.scratch_owner))
+            return original_odds(tape, time)
+
+        monkeypatch.setattr(ParityCarryTape, "prefix_action", observe_action)
+        monkeypatch.setattr(ParityCarryTape, "prefix_odds", observe_odds)
+        cut = matrix.joined.puncture(
+            1,
+            pointed_source=macro.source,
+            parity_cache=parity_actions,
+        )
+        assert cut.pointed(macro.source) is not None
+        assert len(reservations) == 2
+        assert all(entries > 0 and nodes > 0 for entries, nodes in reservations)
+        assert ledger.account_usage(parity_actions.scratch_owner) == (0, 0)

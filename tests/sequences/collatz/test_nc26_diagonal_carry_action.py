@@ -509,6 +509,15 @@ def test_diagonal_seam_carries_and_weighted_laurent_are_exact_and_stale_safe() -
         carries = seam.macro_carries(
             width, reserve_bits=scratch.require_bits, max_width=4096
         )
+        expected_carries = tuple(
+            (
+                action.fields.gain * (seam.source % (1 << boundary))
+                + action.fields.offset % (1 << boundary)
+            )
+            // (1 << boundary)
+            for boundary in range(1, width + 1)
+        )
+        assert carries == expected_carries
         gamma = seam.macro_laurent_defect_from_carries(carries, max_width=4096)
         raw = tuple(
             action.fields.gain * ((seam.source >> i) & 1)

@@ -80,6 +80,29 @@ class DoubleReverseTermQuery:
 
 
 @dataclass(frozen=True, slots=True)
+class FiveReverseTermQuery:
+    """Zero-based physical multiplication-by-five/reversal query."""
+
+    index: int
+    seed: int = field(kw_only=True)
+    max_steps: int = 4096
+    max_state_bits: int = 4096
+
+    family: ClassVar[FamilyId] = FamilyId.FIVE_REVERSE
+    selector: ClassVar[SelectorId] = SelectorId.NTH
+
+    def __post_init__(self) -> None:
+        require_query_integer(self.index, "index", 0, name="term index")
+        require_query_integer(self.seed, "seed", 0, name="5rev10 seed")
+        require_query_integer(
+            self.max_steps, "max_steps", 0, name="maximum 5rev10 steps"
+        )
+        require_query_integer(
+            self.max_state_bits, "max_state_bits", 1, name="maximum 5rev10 state bits"
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class CollatzTermQuery:
     index: int
     seed: int = field(kw_only=True)
@@ -189,6 +212,7 @@ class MersenneTermQuery:
 TermQuery: TypeAlias = (
     ReverseAddTermQuery
     | DoubleReverseTermQuery
+    | FiveReverseTermQuery
     | CollatzTermQuery
     | AntihydraTermQuery
     | CommaTermQuery
@@ -250,6 +274,7 @@ ExecutionQuery: TypeAlias = TermQuery | CollatzEventQuery | AntihydraVerifyQuery
 _TERM_QUERY_TYPES = (
     ReverseAddTermQuery,
     DoubleReverseTermQuery,
+    FiveReverseTermQuery,
     CollatzTermQuery,
     AntihydraTermQuery,
     CommaTermQuery,
@@ -271,6 +296,7 @@ __all__ = [
     "CollatzTermQuery",
     "CommaTermQuery",
     "DoubleReverseTermQuery",
+    "FiveReverseTermQuery",
     "ExecutionQuery",
     "FermatTermQuery",
     "MersenneTermQuery",

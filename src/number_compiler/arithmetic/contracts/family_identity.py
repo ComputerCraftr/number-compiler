@@ -10,6 +10,7 @@ class FamilyId(StrEnum):
 
     REVERSE_ADD = "reverse-add"
     DOUBLE_REVERSE = "2rev10"
+    FIVE_REVERSE = "5rev10"
     COLLATZ = "collatz"
     ANTIHYDRA = "antihydra"
     A367620 = "a367620"

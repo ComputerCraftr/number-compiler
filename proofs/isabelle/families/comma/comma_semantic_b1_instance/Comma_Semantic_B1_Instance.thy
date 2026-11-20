@@ -3,7 +3,7 @@ theory Comma_Semantic_B1_Instance
 begin
 
 text \<open>
-The concrete B32 stop bound is consumed from the source-free Continue-image
+The concrete B32 stop bound is consumed from the source-bound M204 Bellman
 certificate and its exact B1 output refinement. Graph powering and physical
 occurrence weights remain owned by their separate consumers.
 \<close>
@@ -30,13 +30,10 @@ qed
 
 ML \<open>
   val _ = Comma_Proof_Dependency_Audit.require_native_closed_expected_paths @{context}
-    "Source-free Continue-image semantic B32 action"
+    "Source-bound M204 semantic B32 action"
     ["comma_semantic_phase_class_B32_exact_output_checked",
-     "comma_semantic_phase_continue24_image_checked",
-     "comma_semantic_phase_continue24_image_certificate_native",
-     "comma_continue24_direct_image_implies_image24",
-     "comma_continue24_bad_support_exact",
-     "comma_no_27_from_continue24_image"]
+     "comma_frontier_m204_bellman_native",
+     "comma_frontier_m204_exact_stop_from_checked_bellman"]
     @{thms comma_semantic_b1_action_b32_stop242_checked};
 \<close>
 

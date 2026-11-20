@@ -218,16 +218,32 @@ class GuardedPairStencil:
         conditional port rather than a guessed future digit. The existing
         cell_at remains available when a complete exact cell is required.
         """
+        self._assert_owner(owner)
+        return self._inward_bank_from_carries(
+            owner,
+            coordinate,
+            self.carry_at(owner, coordinate),
+            self.carry_at(owner, self.source_width - 1),
+            inward_lookahead,
+        )
+
+    def _inward_bank_from_carries(
+        self,
+        owner: ReversePairQ19OutputOwner,
+        coordinate: int,
+        low_carry: int,
+        high_border_carry: int,
+        inward_lookahead: int,
+    ) -> InwardBankSelection:
         from .inward_bank_harmonics import inward_bank_select
 
-        self._assert_owner(owner)
         return inward_bank_select(
             width=self.source_width,
             coordinate=coordinate,
             growth=self.source_growth,
             pair_at=lambda i: owner.pair_value_at(self.source, i),
-            low_carry=self.carry_at(owner, coordinate),
-            high_border_carries=(self.carry_at(owner, self.source_width - 1),),
+            low_carry=low_carry,
+            high_border_carries=(high_border_carry,),
             inward_lookahead=inward_lookahead,
         )
 
@@ -255,13 +271,16 @@ class GuardedPairStencil:
             or start + count > self.source_width // 2
         ):
             raise ValueError("mask window must fit the protected source half")
+        high_border_carry = self.carry_at(owner, self.source_width - 1)
         return InwardBankWindow(
             start,
             tuple(
-                self.inward_bank_at(
+                self._inward_bank_from_carries(
                     owner,
                     i,
-                    inward_lookahead=inward_lookahead,
+                    self.carry_at(owner, i),
+                    high_border_carry,
+                    inward_lookahead,
                 )
                 for i in range(start, start + count)
             ),

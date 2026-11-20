@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import replace
 
 import pytest
@@ -33,6 +35,9 @@ from number_compiler.sequences.collatz.joint_harmonic_band import (
     TWO_ODD_HARMONIC_BAND,
 )
 from number_compiler.sequences.collatz.parity_carry_tape import ParityCarryTape
+from number_compiler.sequences.collatz.parity_carry_tape_actions import (
+    LedgeredParityTapeActions,
+)
 from number_compiler.sequences.collatz.source_closed_port_action import (
     MacroTraceGrammar,
     SourceClosedPortAction,
@@ -137,84 +142,99 @@ def test_source_free_band_identity_and_joint_period_are_explicit() -> None:
     assert second.base6_five_band_after_odd_steps(10) == 10
 
 
-def _adjacent_bound_ports() -> tuple[GuardedPortJoin, GuardedPortJoin]:
+@contextmanager
+def _adjacent_bound_ports() -> Generator[
+    tuple[
+        GuardedPortJoin,
+        GuardedPortJoin,
+        ResourceLedger,
+        LedgeredParityTapeActions,
+    ],
+    None,
+    None,
+]:
+    ledger = ResourceLedger()
+    actions = LedgeredParityTapeActions(ledger)
     first = _pointed_join(13, (1, 0))
     second = _pointed_join(first.port.endpoint(13), (0, 1))
-    first_tape = first.parity_tape_for_action()
-    second_tape = second.parity_tape_for_action()
+    first_tape = first.parity_tape_for_action(cache=actions)
+    second_tape = second.parity_tape_for_action(cache=actions)
     assert first_tape is not None and second_tape is not None
-    return first, second
+    try:
+        yield first, second, ledger, actions
+    finally:
+        actions.dispose()
 
 
 def test_joined_parity_tape_uses_parent_actions_without_historical_refold(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    first, second = _adjacent_bound_ports()
-    original_action = ParityCarryTape.action
+    with _adjacent_bound_ports() as (first, second, ledger, actions):
+        original_action = ParityCarryTape.action
 
-    def forbidden_action(
-        _tape: ParityCarryTape,
-    ) -> DyadicTerminalFieldAction:
-        raise AssertionError("join refolded the complete historical parity tape")
+        def forbidden_action(
+            _tape: ParityCarryTape,
+        ) -> DyadicTerminalFieldAction:
+            raise AssertionError("join refolded the complete historical parity tape")
 
-    monkeypatch.setattr(ParityCarryTape, "action", forbidden_action)
-    joined = first.then(second)
-    assert joined is not None and joined.parity_tape is not None
-    monkeypatch.setattr(ParityCarryTape, "action", original_action)
-    assert joined.parity_tape.action().coefficient_snapshot() == (
-        joined.port.action.coefficient_snapshot()
-    )
-    assert joined.parity_tape.prefix_letters(4) == (1, 0, 0, 1)
+        monkeypatch.setattr(ParityCarryTape, "action", forbidden_action)
+        joined = first.then(second, ledger=ledger, parity_cache=actions)
+        assert joined is not None and joined.parity_tape is not None
+        monkeypatch.setattr(ParityCarryTape, "action", original_action)
+        assert joined.parity_tape.action().coefficient_snapshot() == (
+            joined.port.action.coefficient_snapshot()
+        )
+        assert joined.parity_tape.prefix_letters(4) == (1, 0, 0, 1)
 
 
 def test_joined_parity_token_binds_order_for_equal_weight_words() -> None:
-    first, second = _adjacent_bound_ports()
-    joined = first.then(second)
-    assert joined is not None and joined.parity_tape is not None
+    with _adjacent_bound_ports() as (first, second, ledger, actions):
+        joined = first.then(second, ledger=ledger, parity_cache=actions)
+        assert joined is not None and joined.parity_tape is not None
 
-    alternate = ParityCarryTape.sequence(
-        (
-            ParityCarryTape.letters((0, 1)),
-            ParityCarryTape.letters((1, 0)),
+        alternate = ParityCarryTape.sequence(
+            (
+                ParityCarryTape.letters((0, 1)),
+                ParityCarryTape.letters((1, 0)),
+            )
         )
-    )
-    assert alternate.steps == joined.parity_tape.steps
-    assert alternate.odds == joined.parity_tape.odds
-    assert alternate.prefix_letters(4) == (0, 1, 1, 0)
-    assert joined.parity_tape.prefix_letters(4) == (1, 0, 0, 1)
-    assert joined.parity_tape != alternate
-    assert alternate.action().coefficient_snapshot() != (
-        joined.port.action.coefficient_snapshot()
-    )
-    with pytest.raises(ValueError, match="parity binding action does not match"):
-        replace(joined, parity_tape=alternate)
+        assert alternate.steps == joined.parity_tape.steps
+        assert alternate.odds == joined.parity_tape.odds
+        assert alternate.prefix_letters(4) == (0, 1, 1, 0)
+        assert joined.parity_tape.prefix_letters(4) == (1, 0, 0, 1)
+        assert joined.parity_tape != alternate
+        assert alternate.action().coefficient_snapshot() != (
+            joined.port.action.coefficient_snapshot()
+        )
+        with pytest.raises(ValueError, match="parity binding action does not match"):
+            replace(joined, parity_tape=alternate)
 
-    class ForeignComposition(JoinedParityComposition):
-        def verify(
-            self, root: ParityCarryTape, action: DyadicTerminalFieldAction
-        ) -> None:
-            raise AssertionError("foreign proof verifier must never be dispatched")
+        class ForeignComposition(JoinedParityComposition):
+            def verify(
+                self, root: ParityCarryTape, action: DyadicTerminalFieldAction
+            ) -> None:
+                raise AssertionError("foreign proof verifier must never be dispatched")
 
-    foreign = object.__new__(ForeignComposition)
-    with pytest.raises(ValueError, match="exact proof token"):
-        replace(joined, _composed_parity=foreign)
+        foreign = object.__new__(ForeignComposition)
+        with pytest.raises(ValueError, match="exact proof token"):
+            replace(joined, _composed_parity=foreign)
 
 
 def test_join_rejects_equal_weight_parent_tape_replacement() -> None:
-    first, second = _adjacent_bound_ports()
-    original = first.parity_tape_for_action()
-    assert original is not None
-    alternate = ParityCarryTape.letters((0, 1))
-    assert alternate.steps == original.steps
-    assert alternate.odds == original.odds
-    assert alternate.action().coefficient_snapshot() != (
-        first.port.action.coefficient_snapshot()
-    )
+    with _adjacent_bound_ports() as (first, second, ledger, actions):
+        original = first.parity_tape_for_action(cache=actions)
+        assert original is not None
+        alternate = ParityCarryTape.letters((0, 1))
+        assert alternate.steps == original.steps
+        assert alternate.odds == original.odds
+        assert alternate.action().coefficient_snapshot() != (
+            first.port.action.coefficient_snapshot()
+        )
 
-    # Simulate stale/foreign object reuse that bypasses dataclass immutability.
-    object.__setattr__(first, "parity_tape", alternate)
-    with pytest.raises(ValueError, match="parity tape no longer matches"):
-        first.then(second)
+        # Simulate stale/foreign object reuse that bypasses dataclass immutability.
+        object.__setattr__(first, "parity_tape", alternate)
+        with pytest.raises(ValueError, match="parity tape no longer matches"):
+            first.then(second, ledger=ledger, parity_cache=actions)
 
 
 def test_budgeted_guarded_join_stays_fail_closed_before_composition(
@@ -222,19 +242,19 @@ def test_budgeted_guarded_join_stays_fail_closed_before_composition(
 ) -> None:
     first = _pointed_join(63, (1, 1))
     second = _pointed_join(first.port.endpoint(63), (1,))
-
-    def forbidden_compose(
-        _first: SourceClosedPortAction, _after: SourceClosedPortAction
-    ) -> SourceClosedPortAction:
-        raise AssertionError("source composition started before budget refusal")
-
-    monkeypatch.setattr(SourceClosedPortAction, "then", forbidden_compose)
     ledger = ResourceLedger()
-    with pytest.raises(BlockContextBudgetExceeded, match="complete ledger-owned"):
-        first.then(second, ledger=ledger)
-    assert (ledger.entries, ledger.nodes, ledger.peak_entries, ledger.peak_nodes) == (
-        0,
-        0,
-        0,
-        0,
-    )
+    with LedgeredParityTapeActions(ledger) as actions:
+        first.parity_tape_for_action(cache=actions)
+        second.parity_tape_for_action(cache=actions)
+        usage = (ledger.entries, ledger.nodes)
+        ledger.tighten_limits(ledger.nodes, ledger.entries)
+
+        def forbidden_compose(
+            _first: SourceClosedPortAction, _after: SourceClosedPortAction
+        ) -> SourceClosedPortAction:
+            raise AssertionError("source composition started before budget refusal")
+
+        monkeypatch.setattr(SourceClosedPortAction, "then", forbidden_compose)
+        with pytest.raises(BlockContextBudgetExceeded, match="budget exceeded"):
+            first.then(second, ledger=ledger, parity_cache=actions)
+        assert (ledger.entries, ledger.nodes) == usage

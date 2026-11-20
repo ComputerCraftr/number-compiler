@@ -65,6 +65,38 @@ def test_registry_observation_options_reach_cli_without_selector_overrides() -> 
         )
 
 
+def test_ordered_covector_benchmark_keeps_signed_coefficients_together(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from devtools.benchmarks import public_query_comparison as module
+
+    def observe(
+        arguments: list[str], *, fresh: bool, shared_cache: bool = True
+    ) -> tuple[float, dict[str, object]]:
+        assert "--temporal-matrix-coefficients=-2,0,3" in arguments
+        return 0.01, {
+            "value": None,
+            "info": {"temporal.matrix": {"status": "available"}},
+        }
+
+    monkeypatch.setattr(module, "cli_sample", observe)
+    rows = compare(
+        "2rev10",
+        [4400],
+        1,
+        ["bypass"],
+        seed=196,
+        info=("temporal.matrix",),
+        no_value=True,
+        observation_options=(
+            ("temporal_matrix_kind", "digit-band"),
+            ("temporal_matrix_steps", "4"),
+            ("temporal_matrix_coefficients", "-2,0,3"),
+        ),
+    )
+    assert len(rows) == 1
+
+
 @pytest.mark.parametrize(
     "horizons",
     [

@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Generator
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.automata.slp_interval import SLPNodeArena
+from number_compiler.resources.owned_memo import LedgerReservation
+
+if TYPE_CHECKING:
+    from number_compiler.resources.ledger import ResourceLedger
 
 _TaskObserver = Callable[[bool], None]
 _ReserveTask = Callable[[], None]
@@ -56,8 +61,11 @@ def iter_symbols(
     *,
     reverse: bool = False,
     on_task: _TaskObserver | None = None,
-    reserve_task: _ReserveTask,
-    release_tasks: _ReleaseTasks,
+    reserve_task: _ReserveTask | None = None,
+    release_tasks: _ReleaseTasks | None = None,
+    ledger: ResourceLedger | None = None,
+    owner: int | None = None,
+    task_entries: int = 1,
     check_open: Callable[[], None] | None = None,
 ) -> Generator[int, None, None]:
     """Stream a grammar in either direction with ledger-owned traversal tasks.
@@ -71,6 +79,29 @@ def iter_symbols(
         check_open()
     if type(root) is not int or not 0 <= root < len(arena.nodes):
         raise IndexError(root)
+
+    reservation: LedgerReservation | None = None
+    if ledger is not None and owner is not None:
+        if reserve_task is not None or release_tasks is not None:
+            raise ValueError("SLP walk cannot mix reservation and task callbacks")
+        if type(task_entries) is not int or task_entries not in (0, 1):
+            raise ValueError("SLP task entry charge must be zero or one")
+        reservation = LedgerReservation(ledger, owner)
+
+        def reserve_owned_task() -> None:
+            assert reservation is not None
+            reservation.reserve(entries=task_entries, nodes=1)
+
+        def release_owned_tasks(count: int) -> None:
+            assert reservation is not None
+            reservation.release(entries=task_entries * count, nodes=count)
+
+        reserve_task = reserve_owned_task
+        release_tasks = release_owned_tasks
+    elif ledger is not None or owner is not None:
+        raise ValueError("SLP walk requires both ledger and owner")
+    if reserve_task is None or release_tasks is None:
+        raise ValueError("SLP walk requires a task reservation")
 
     tasks: list[tuple[str, int, int]] = []
     retained = 0
@@ -126,14 +157,21 @@ def iter_symbols(
             else:
                 raise ValueError(f"unknown SLP node kind: {node.kind}")
     finally:
-        try:
-            if retained:
-                release_tasks(retained)
-        except BaseException:
-            # Keep the outstanding count visible in the traceback if release
-            # fails, but never retain the corresponding uncharged task stack.
-            tasks.clear()
-            raise
-        else:
+        if reservation is not None:
             tasks.clear()
             retained = 0
+            try:
+                reservation.retire()
+            except BaseException as error:
+                try:
+                    reservation.close()
+                except BaseException as cleanup_error:
+                    raise error from cleanup_error
+                raise
+        else:
+            try:
+                if retained:
+                    release_tasks(retained)
+            finally:
+                tasks.clear()
+                retained = 0

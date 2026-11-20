@@ -93,27 +93,27 @@ def _execute(
             else NumberCompiler(shared_cache=shared_cache)
         )
     )
-    context = QueryContext(request, compiler)
-    context.admit_observation_extents()
-    value = None
-    if request.selector is SelectorId.NTH and not request.presentation.no_value:
-        value = (
-            (
-                context.term.symbolic
-                if request.presentation.index.exponent is None
-                else context.term.symbolic_expression.render(
-                    f"10^{request.presentation.index.exponent}"
+    with QueryContext(request, compiler) as context:
+        context.admit_observation_extents()
+        value = None
+        if request.selector is SelectorId.NTH and not request.presentation.no_value:
+            value = (
+                (
+                    context.term.symbolic
+                    if request.presentation.index.exponent is None
+                    else context.term.symbolic_expression.render(
+                        f"10^{request.presentation.index.exponent}"
+                    )
+                )
+                if request.presentation.format is OutputFormat.SYMBOLIC
+                else _rendering.render_value(
+                    context.term,
+                    output_base=request.presentation.output_base,
+                    max_bits=request.presentation.max_output_bits,
                 )
             )
-            if request.presentation.format is OutputFormat.SYMBOLIC
-            else _rendering.render_value(
-                context.term,
-                output_base=request.presentation.output_base,
-                max_bits=request.presentation.max_output_bits,
-            )
-        )
-    info = context.information()
-    return value, info, context.unresolved_boundary, information_unresolved(info)
+        info = context.information()
+        return value, info, context.unresolved_boundary, information_unresolved(info)
 
 
 def main(argv: list[str] | None = None, *, shared_cache: bool = True) -> int:

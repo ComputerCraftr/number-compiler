@@ -873,7 +873,7 @@ struct
           LargeInt.toString (Time.toMilliseconds (!elapsed))
     in {procedure = procedure, post_procedure = post_procedure,
         code_procedure = code_procedure, code_post_procedure = code_post_procedure,
-        stats = stats, canonicalize = canonicalize} end
+        stats = stats, canonicalize = canonicalize, select = convert false ctxt} end
 
   fun make {ctxt, name, root_definition, table_pattern, extents} =
     make_with_extents (fn _ => extents)

@@ -82,15 +82,8 @@ Failure of a proposed paired-residue quotient says only that the omitted phase,
 rank, or window boundary matters. It is not a counterexample to Goldbach. A
 finite successful corpus likewise cannot be promoted to universal multiplicity.
 
-## Production and reproduction
+## Construction scope
 
-- **Implemented owner:** [sequences/prime/coprime_rank.py](../../src/number_compiler/sequences/prime/coprime_rank.py).
-- **Checked theorem:** the named Isabelle results above apply with their explicit premises; use the [proof index](../proofs.md) for source statements, sessions and oracle audits.
-- **Finite experiment:** bounded test comparisons establish only the tested sources and horizons.
-- **Construction-cost status:** Count-state discovery and rank/select descent remain charged separately from action composition. A finite timing result is not an arbitrary-target bound.
+Rank/select construction and action composition have separate costs.
 
-Run the exact executable checks (including validation-marked assertions):
-
-```console
-python -m devtools.checks.release --suite unit --select tests/sequences/prime/test_image_consumers.py --select tests/sequences/prime/test_prime_automaton.py
-```
+[Implementation and validation record](../sprints/week-of-2026-11-01/prime-rank-effective-returns.md).

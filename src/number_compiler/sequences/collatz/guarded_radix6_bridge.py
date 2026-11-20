@@ -198,6 +198,7 @@ class GuardedTemporalCarryCounts:
     matrix_compositions: int = 0
     matrix_squarings: int = 0
     scalar_steps: int = 0
+    matrix_row_evaluations: int = 0
     _issuer: object = field(init=False, repr=False, compare=False)
     _issued_snapshot: tuple[object, ...] = field(init=False, repr=False, compare=False)
 
@@ -216,6 +217,7 @@ class GuardedTemporalCarryCounts:
         matrix_compositions: int = 0,
         matrix_squarings: int = 0,
         scalar_steps: int = 0,
+        matrix_row_evaluations: int = 0,
         *,
         _issuer: object | None = None,
     ) -> None:
@@ -235,6 +237,7 @@ class GuardedTemporalCarryCounts:
             ("matrix_compositions", matrix_compositions),
             ("matrix_squarings", matrix_squarings),
             ("scalar_steps", scalar_steps),
+            ("matrix_row_evaluations", matrix_row_evaluations),
         ):
             object.__setattr__(self, name, value)
         self.__post_init__()
@@ -257,6 +260,7 @@ class GuardedTemporalCarryCounts:
         matrix_compositions: int = 0,
         matrix_squarings: int = 0,
         scalar_steps: int = 0,
+        matrix_row_evaluations: int = 0,
     ) -> GuardedTemporalCarryCounts:
         """Issue counts only after a producer checked the complete program."""
         return cls(
@@ -273,6 +277,7 @@ class GuardedTemporalCarryCounts:
             matrix_compositions,
             matrix_squarings,
             scalar_steps,
+            matrix_row_evaluations,
             _issuer=_CARRY_COUNTS_ISSUER,
         )
 
@@ -300,6 +305,7 @@ class GuardedTemporalCarryCounts:
             tagged(self.matrix_compositions),
             tagged(self.matrix_squarings),
             tagged(self.scalar_steps),
+            tagged(self.matrix_row_evaluations),
         )
 
     def verify_issued(self) -> None:
@@ -353,6 +359,8 @@ class GuardedTemporalCarryCounts:
             or type(self.scalar_steps) is not int
             or self.scalar_steps < 0
             or self.scalar_steps > self.steps
+            or type(self.matrix_row_evaluations) is not int
+            or self.matrix_row_evaluations < 0
         ):
             raise ValueError("invalid guarded temporal carry certificate")
 
@@ -595,10 +603,11 @@ class GuardedRadix6Bridge:
             (WeightedPairMatrix.even(0), WeightedPairMatrix.even(1)),
             (WeightedPairMatrix.odd_half(0), WeightedPairMatrix.odd_half(1)),
         )
-        current, odds, tens, hundreds = source, 0, 0, 0
+        current, odds, tens, hundreds, row_evaluations = source, 0, 0, 0, 0
         for _ in range(self.action.steps):
             odd, parity, pair = current & 1, (current // 100) & 1, current % 100
             row = matrices[odd][parity].successors(pair)
+            row_evaluations += 1
             if len(row) != 1:
                 raise ArithmeticError("weighted 100x100 inlet lacks exact successor")
             output, c1, c2 = row[0]
@@ -616,7 +625,13 @@ class GuardedRadix6Bridge:
                 "weighted carry program disagrees with the issued macro"
             )
         return GuardedTemporalCarryCounts.create_checked(
-            guard, self.action.steps, odds, tens, hundreds, current % 100
+            guard,
+            self.action.steps,
+            odds,
+            tens,
+            hundreds,
+            current % 100,
+            matrix_row_evaluations=row_evaluations,
         )
 
     def demanded_zero_tail_sturmian_factor(

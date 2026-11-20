@@ -234,6 +234,33 @@ class IssuedWeightedCarry:
             raise ArithmeticError("weighted carry lost exact integrality")
         return numerator >> self.width
 
+    def centered_state_at(
+        self, ticks: int, *, reserve_bits: Callable[[int], None]
+    ) -> int:
+        """Project one physical state from the issued horizon's innovation.
+
+        The fractional tail starting at J / 3**width has terminal tail zero.
+        Backward substitution through the admitted parity word keeps each
+        earlier tail in [0, 1), so its integer part recovers the physical state.
+        """
+        self.require_issued()
+        if type(ticks) is not int or not 0 <= ticks <= self.width:
+            raise ValueError("physical tick is outside the issued carry extent")
+        source = self._centered_source
+        if ticks == 0:
+            return source
+        # Bound the powers, quotient, product, and numerator before allocating
+        # them. The caller owns scratch for the operation and its result.
+        bits = 6 * (self.gain.bit_length() + source.bit_length() + 1)
+        reserve_bits(bits)
+        if ticks <= self.width - ticks:
+            prefix_gain = 3**ticks
+            suffix_gain = self.gain // prefix_gain
+        else:
+            suffix_gain = 3 ** (self.width - ticks)
+            prefix_gain = self.gain // suffix_gain
+        return (prefix_gain * source + self.innovation // suffix_gain) >> ticks
+
     def x15_morphism(self, *, reserve_bits: Callable[[int], None]) -> X15CarryMorphism:
         """Demand the multiplicative source morphism without another replay."""
         from number_compiler.sequences.antihydra.mahler_x15_source_morphism import (

@@ -91,17 +91,13 @@ def test_c1_entry_packet_is_derived_before_physical_source_admission() -> None:
     assert "comma_finite_entry_headroom_admitted" not in count
 
 
-def test_b32_release_uses_continue_image_before_graph_publication() -> None:
+def test_b32_release_consumes_exact_bellman_summary() -> None:
     root = isabelle_root(repository_root())
     comma = root / "families/comma"
     instance_path = comma / "comma_semantic_b1_instance/Comma_Semantic_B1_Instance.thy"
     image_path = comma / "comma_semantic_b1_instance/Comma_Continue_Image_Instance.thy"
-    graph_path = (
-        comma / "comma_semantic_graph_instance/Comma_Semantic_Graph_B32_Instance.thy"
-    )
     instance = executable_text(instance_path.read_text(encoding="utf-8"))
     image = executable_text(image_path.read_text(encoding="utf-8"))
-    graph = executable_text(graph_path.read_text(encoding="utf-8"))
     assert "comma_semantic_phase_class_B32_exact_output_checked" in instance
     assert "comma_semantic_b1_action_b32_stop242_checked" in instance
     _, image_imports = parse_theory_header(
@@ -109,23 +105,17 @@ def test_b32_release_uses_continue_image_before_graph_publication() -> None:
     )
     assert "Comma_Continue_Frontier24_Source_Bridge" in image_imports
     assert not ml_file_references(image, image_path)
-    assert "comma_semantic_phase_continue24_image_certificate_native" in image
-    assert "comma_continue24_direct_image_implies_image24" in image
-    assert "comma_continue24_bad_support_exact" in image
-    assert "comma_continue24_image_implies_direct_certificate" in image
-    assert "comma_continue_frontier_empty_implies_image" in image
-    assert "comma_semantic_graph_action_power_refines" in graph
-    assert "comma_semantic_graph_b32_stop242_checked" in graph
-    assert 'ML_file "semantic_graph_action_certificate.ML"' in graph
-    assert "Comma_Semantic_Graph_Action_Certificate.make" in graph
-
+    assert "comma_frontier_m204_bellman_native" in image
+    assert "comma_frontier_m204_exact_stop_from_checked_bellman" in image
+    assert "comma_decade_exact_summary" in image
+    assert "comma_terminal_weight_encode height terminal" in image
+    assert "Comma_Semantic_B1_Stop" in image
+    assert "height\\<le>26" in image
+    assert "\\<le>242" in image
+    assert "comma_semantic_phase_continue24_image_certificate_native" not in image
     sessions = discover_sessions(root)
     closure = session_dependency_closure(sessions, ("Comma_Semantic_B1_Instance",))
-    assert "Comma_Semantic_Graph_Instance" not in closure
-    graph_closure = session_dependency_closure(
-        sessions, ("Comma_Semantic_Graph_Instance",)
-    )
-    assert "Comma_Semantic_B1_Instance" in graph_closure
+    assert "Comma_Semantic_Future" in closure
 
 
 def test_frontier_parent_reuse_precedes_bind_witness_reconstruction() -> None:
@@ -160,125 +150,98 @@ def test_frontier_parent_reuse_precedes_bind_witness_reconstruction() -> None:
     assert "Comma_Proof_Dependency_Audit.require_native_clean" in fixture
 
 
-def test_concrete_bound_requires_checked_quotient_transfers() -> None:
-    owner = (
-        isabelle_root(repository_root()) / "families/comma/comma_semantic_b1_instance"
-    )
-    transport_path = owner / "Comma_Semantic_Predecessor_Certificate.thy"
+def test_concrete_bound_consumes_checked_typed_bellman_authority() -> None:
+    comma = isabelle_root(repository_root()) / "families/comma"
+    path = comma / "comma_semantic_b1_instance/Comma_Continue_Image_Instance.thy"
     declarations = {
-        item.name: item
-        for item in extract_isabelle_declarations(
-            transport_path.read_text(), transport_path
-        )
-    }
-    checked = declarations[
-        "comma_semantic_graph_stop242_from_weighted_crt_power_all"
-    ].body
-    assert "roots_wf:" in checked
-    assert "base_exact:" in checked
-    assert "base_admitted:" in checked
-    assert "final_exact:" in checked
-    assert "final_bounded:" in checked
-    assert "comma_semantic_b1_crt_power 5 roots!root" in checked
-    assert "Some (Comma_Semantic_B1_CRT_Stop J,H)" in checked
-    assert "J<9" in checked
-    assert "H\\<le>26" in checked
-    assert "Comma_Semantic_B1_Stop D" in checked
-    assert "D\\<le>242" in checked
-    publisher = executable_text(
-        (owner / "semantic_predecessor_certificate.ML").read_text()
-    )
-    assert "parse_initial_source_ids" in publisher
-    assert "comma_semantic_graph_initial_source_binding_exact" in publisher
-    assert "Inttab.lookup node_refinements_by_cid cid" in publisher
-    assert (
-        "comma_semantic_b1_crt_compile_node_from_children_refines_graph_eval"
-        in publisher
-    )
-    assert "Thm_Deps.all_oracles" in publisher
-    assert "require_native_clean" in publisher
-
-
-def test_postorder_compiler_refines_children_before_publishing_parents() -> None:
-    owner = (
-        isabelle_root(repository_root()) / "families/comma/comma_semantic_b1_instance"
-    )
-    source = executable_text((owner / "semantic_weighted_crt_dag.ML").read_text())
-    node = source.split("and build_node cid", 1)[1].split("val source_roots", 1)[0]
-    assert node.index("Inttab.lookup (!compiled) cid") < node.index("build_selector")
-    assert node.index("certify_action raw") < node.index("Inttab.update (cid, result)")
-    assert "#normalized (build_node child)" in source
-    compiler = source.split("fun compile_sources ctxt", 1)[1].split(
-        "fun make_serializer", 1
-    )[0]
-    assert compiler.index("length source_cids = 16") < compiler.index(
-        "val source_roots"
-    )
-    assert "map (fn cid => #normalized (build_node cid)) source_cids" in compiler
-    assert "source_actions=source_roots" in compiler
-    path = owner / "Comma_Semantic_Graph_CRT_Local_Node_Compilation.thy"
-    contract = {
         item.name: item.body
         for item in extract_isabelle_declarations(path.read_text(), path)
-    }["comma_semantic_b1_crt_compile_node_from_children_refines_graph_eval"]
-    assert "comma_semantic_b1_graph_completed_valid bindings nodes" in contract
-    assert "comma_semantic_b1_node_of nodes cid = Some node" in contract
-    assert "child_exact:" in contract
-    assert (
-        "\\<forall>phase. comma_weighted_crt_apply (child_action child) phase"
-        in contract
-    )
-    assert "map_option comma_semantic_b1_crt_graph_result" in contract
-
-
-def test_predecessor_publisher_does_not_materialize_scalar_phase_tables() -> None:
-    owner = (
-        isabelle_root(repository_root()) / "families/comma/comma_semantic_b1_instance"
-    )
-    path = owner / "semantic_predecessor_certificate.ML"
-    declarations = {
-        item.name: item
-        for item in extract_isabelle_declarations(path.read_text(), path)
     }
-    publisher = declarations["publish"].body
-    assert "Array.array" not in publisher
-    assert re.search(r"0\s+upto\s+923", publisher) is None
-    assert "Comma_Semantic_Weighted_CRT_DAG.compile_sources_checked" in publisher
-    assert "source_cids" in publisher
-    assert "source_node_refinements" in publisher
-    assert "comma_semantic_b1_stop_mask_iteration" not in publisher
-    assert "#evaluate evaluator" not in publisher
-    assert "0 upto 26" not in publisher
-    # This owner authenticates initial source actions. The Future rank owner
-    # supplies B32; compiling another power here duplicates that authority.
-    assert "#power_equation" not in publisher
-    assert "#bounded_stops" not in publisher
-    assert re.search(r"\b(?:square|power)\s+\d", publisher) is None
+    checked = declarations["comma_semantic_phase_class_B32_exact_output_checked"]
+    assert "phase<924" in checked
+    assert "cid<46" in checked
+    assert "height\\<le>26" in checked
+    assert "comma_decade_exact_summary" in checked
+    assert "Comma_Semantic_B1_Stop" in checked
+    assert "comma_terminal_weight_encode height terminal\\<le>242" in checked
+    assert "comma_frontier_m204_bellman_native" in checked
+    assert "comma_frontier_m204_exact_stop_from_checked_bellman" in checked
 
-    evaluator = executable_text(
+
+def test_multiway_source_publisher_uses_authenticated_ordered_actions() -> None:
+    comma = isabelle_root(repository_root()) / "families/comma"
+    compiler = executable_text(
         (
-            owner.parent
-            / "comma_semantic_graph_instance/semantic_graph_action_certificate.ML"
+            comma
+            / "comma_semantic_b1_instance/semantic_frontier24_parametric_compiler.ML"
         ).read_text()
     )
-    query = evaluator.split("fun query phase root", 1)[1].split("fun parse", 1)[0]
-    assert query.index("case Inttab.lookup (!cache) key") < query.index(
-        "val value = specialize phase root"
+    publisher = executable_text(
+        (
+            comma / "comma_semantic_b1_instance/semantic_frontier24_bundle_publisher.ML"
+        ).read_text()
     )
-    # The point projector uses the graph power for exact labels and weights;
-    # the separately checked source-class rank supplies the universal Stop
-    # envelope. Keep both authorities explicit in the cold projection path.
-    assert "@{thm comma_semantic_graph_b32_stop242_checked}" in evaluator
-    assert "@{thm comma_semantic_graph_action_power_refines}" in evaluator
-    assert "val authority = [stop242, graph_refinement]" in evaluator
-    assert "Comma_Semantic_Graph_Power_Evaluator.make ctxt" in evaluator
-    assert "val evaluated = #evaluate power 5 phase root" in evaluator
-    assert "[graph_refinement]" in evaluator
-    assert "elapsed_position <= 242" in evaluator
-    assert "exact (request phase root) stop" in evaluator
-    assert "Context.subthy" in evaluator
-    assert "exact (request phase root)" in query
-    assert "Exn.release attempted" in query
+    replay = executable_text(
+        (comma / "comma_semantic_b1/crt_mdd_multiway_replay.ML").read_text()
+    )
+    soundness = (
+        comma / "comma_semantic_b1/Comma_Parametric_Typed_Soundness.thy"
+    ).read_text()
+    assert "Arena.priority_select" in compiler
+    assert "Store.priority_witness" in publisher
+    assert "Multiway.certify" in publisher
+    assert "comma_frontier24_multiways_certified" in publisher
+    assert "#shifted_guard_root row" in publisher
+    assert "#action_output_root row" in publisher
+    assert "Utils.exact_prop" in replay
+    assert "Cyclic priority witness" in replay
+    assert "comma_frontier24_closures_typed_exact" in soundness
+    assert "comma_frontier24_class_roots_typed_exact" in soundness
+    assert "comma_frontier24_closure_certified" in soundness
+
+
+def _assert_direct_bellman_owner(source: str) -> None:
+    """Check authored wiring; the native build checks theorem authority."""
+    code = executable_text(source)
+    assert re.search(
+        r"Comma_M204_Direct_Candidate_Publication\.publish\s+"
+        r"Comma_Direct_Bellman_Issuer\.prepare\b",
+        code,
+    )
+    assert "comma_frontier_m204_bellman_native" in code
+    assert "require_native_clean" in code
+    assert (
+        re.search(r"\b(?:Direct\.run|M204_Transport\.prove|Publisher\.certify)\b", code)
+        is None
+    )
+    assert re.search(r"0\s+upto\s+923", code) is None
+
+
+def test_source_publisher_uses_direct_bellman_owner() -> None:
+    path = (
+        isabelle_root(repository_root())
+        / "families/comma/comma_semantic_b1_instance/Comma_Continue_Frontier24_Source_Bridge.thy"
+    )
+    source = path.read_text()
+    _assert_direct_bellman_owner(source)
+    assert "semantic_direct_bellman_issuer.ML" in ml_file_references(source, path)
+    issuer = path.with_name("semantic_direct_bellman_issuer.ML")
+    code = executable_text(issuer.read_text())
+    assert "Comma_Direct_Bellman_Publication.publish" in code
+    assert "require_native_clean" in code
+
+
+def test_direct_bellman_owner_comment_cannot_satisfy_wiring() -> None:
+    source = """(* Comma_M204_Direct_Candidate_Publication.publish
+      Comma_Direct_Bellman_Issuer.prepare *)
+      val _ = comma_frontier_m204_bellman_native
+      val _ = require_native_clean
+    """
+    assert re.search(
+        r"Comma_M204_Direct_Candidate_Publication\.publish\s+"
+        r"Comma_Direct_Bellman_Issuer\.prepare\b",
+        executable_text(source),
+    ) is None
 
 
 def test_shared_selected_list_checks_nested_extent_before_memo_lookup() -> None:
@@ -373,13 +336,15 @@ def test_weighted_action_cache_authority_precedes_construction() -> None:
     assert "Thm.prop_of theorem aconv proposition" in publication
     assert "(#native_certify cache) theorem" in publication
 
-    compilation_path = _registered_theory("Comma_Semantic_Graph_CRT_Compilation")
+    compilation_path = _registered_theory("Comma_Weighted_CRT_Guard")
     fixture_path = (
-        compilation_path.parent / "semantic_weighted_crt_data_cache_hit_fixture.ML"
+        compilation_path.parent.parent
+        / "comma_semantic_b1_instance"
+        / "semantic_weighted_crt_data_cache_hit_fixture.ML"
     )
     fixture = executable_text(fixture_path.read_text())
     compilation = executable_text(compilation_path.read_text())
-    assert f'ML_file "{fixture_path.name}"' in compilation
+    assert f'ML_file "../comma_semantic_b1_instance/{fixture_path.name}"' in compilation
     assert "Comma_Weighted_CRT_Data_Cache_Hit_Fixture.run @{context}" in compilation
     assert "Data.with_reservation" in fixture
     assert "a foreign-arena reservation use" in fixture_path.read_text()
@@ -404,10 +369,12 @@ def test_weighted_selector_proofs_keep_occurrence_offsets_out_of_cache_keys() ->
     assert "validated_cached_entry (B.node initial)" in hit
     assert "B.offset initial + B.offset (#result entry)" in hit
     assert "Goal.prove" not in hit
-    compilation_path = _registered_theory("Comma_Semantic_Graph_CRT_Compilation")
+    compilation_path = _registered_theory("Comma_Weighted_CRT_Guard")
     fixture = executable_text(
         (
-            compilation_path.parent / "semantic_weighted_crt_data_cache_hit_fixture.ML"
+            compilation_path.parent.parent
+            / "comma_semantic_b1_instance"
+            / "semantic_weighted_crt_data_cache_hit_fixture.ML"
         ).read_text()
     )
     assert "Data.with_offset arena 17 raw" in fixture
@@ -441,7 +408,7 @@ def test_clock_projection_keeps_exact_bounded_selector_contract() -> None:
         assert "next_bounded:" in specialized
 
 
-def test_predecessor_closure_transports_actual_graph_control() -> None:
+def test_generic_phase_fold_retains_control_and_guards() -> None:
     root = isabelle_root(repository_root())
     fold_path = (
         root / "families/comma/comma_semantic_b1/Comma_Semantic_Graph_Phase_Fold.thy"
@@ -458,34 +425,6 @@ def test_predecessor_closure_transports_actual_graph_control() -> None:
     assert "comma_semantic_b1_graph_completed_valid" in congruence
     assert "comma_semantic_b1_graph_completed_eval_refines_endpoint" in congruence
     assert "\\<forall>clock." in congruence
-    transport_path = (
-        root
-        / "families/comma/comma_semantic_graph_instance"
-        / "Comma_Semantic_Graph_Stop_Transport.thy"
-    )
-    transport = {
-        item.name: item
-        for item in extract_isabelle_declarations(
-            transport_path.read_text(encoding="utf-8"), transport_path
-        )
-    }
-    control = transport["comma_semantic_graph_root_control_transport"].body
-    assert "comma_decade_control" in control
-    assert "next_phase=(phase+1) mod 924" in control
-    assert "Comma_Semantic_B1_Live (comma_offset_orbit next_offset)" in control
-    assert "Comma_Semantic_B1_Stop" in control
-    exact_action = transport["comma_semantic_graph_stop_within_exact_action"].body
-    assert "comma_semantic_graph_stop_within_summary" in exact_action
-    assert "comma_semantic_graph_action_power 5 phase root" in exact_action
-    assert "comma_semantic_b1_action_power 5 phase root" in exact_action
-    assert "comma_semantic_graph_weighted_power_exact" in exact_action
-    assert "comma_terminal_weight_encode height terminal\\<le>242" in exact_action
-    stop_transport = transport["comma_semantic_graph_stop242_from_stop_within"].body
-    assert "comma_semantic_b1_stop_within" in stop_transport
-    assert "comma_semantic_graph_stop_within_exact_action" in stop_transport
-    assert "Comma_Semantic_B1_Stop D" in stop_transport
-    assert "D\\<le>242" in stop_transport
-
     masks_path = (
         root / "families/comma/comma_decade_orbit/Comma_Phase_Mask_Arithmetic.thy"
     )
@@ -532,11 +471,11 @@ def test_residual_summary_recurrence_uses_canonical_control() -> None:
     assert "comma_decade_summary_step_for" in core["comma_decade_summary_step"].body
 
 
-def test_concrete_summary_decodes_the_graph_power_result() -> None:
+def test_concrete_summary_decodes_the_checked_m204_weight() -> None:
     root = isabelle_root(repository_root())
     path = (
         root
-        / "families/comma/comma_semantic_graph_instance"
+        / "families/comma/comma_semantic_b1_instance"
         / "Comma_Semantic_Summary_Instance.thy"
     )
     text = path.read_text(encoding="utf-8")
@@ -545,9 +484,11 @@ def test_concrete_summary_decodes_the_graph_power_result() -> None:
         item.name: item for item in extract_isabelle_declarations(text, path)
     }
     provider = declarations["comma_semantic_decade_summary_code"].body
-    assert "comma_semantic_graph_action_power 5 r (comma_offset_orbit x)" in provider
-    assert "Comma_Semantic_B1_Stop D" in provider
-    assert "comma_terminal_weight_decode D" in provider
+    assert "comma_frontier_m204_weight r (comma_offset_orbit x)" in provider
+    assert "comma_terminal_weight_decode" in provider
+    assert "comma_frontier_m204_exact_weight_from_checked_bellman" in provider
+    assert "comma_frontier_m204_bellman_native" in provider
+    assert "Comma_Semantic_B1_Stop" in provider
     exact = declarations["comma_semantic_decade_summary_total_exact"].body
     assert "comma_semantic_b1_action_power_b32_stop242" in exact
     bound = declarations["comma_semantic_b1_action_power_b32_stop242"].body
@@ -568,115 +509,8 @@ def test_concrete_summary_decodes_the_graph_power_result() -> None:
     }.intersection(closure)
 
 
-def test_graph_action_projection_is_demand_driven_and_request_bound() -> None:
-    root = isabelle_root(repository_root())
-    graph = root / "families/comma/comma_semantic_graph_instance"
-    future = root / "families/comma/comma_semantic_future_instance"
-    instance = executable_text(
-        (graph / "Comma_Semantic_Graph_B32_Instance.thy").read_text(encoding="utf-8")
-    )
-    power_fixtures = executable_text(
-        (graph / "Comma_Semantic_Graph_Action_Power.thy").read_text(encoding="utf-8")
-    )
-    certificate = executable_text(
-        (graph / "semantic_graph_action_certificate.ML").read_text(encoding="utf-8")
-    )
-    entry = executable_text(
-        (future / "Comma_Semantic_Entry_Open.thy").read_text(encoding="utf-8")
-    )
-    assert "Comma_Semantic_Graph_Action_Certificate.make" in entry
-    assert "Comma_Selected_List_Conversion.schematize" in entry
-    assert "comma_semantic_b1_action_power 5 phase root" in entry
-
-    # The global provider consumes one all-phase family refinement. It must
-    # not turn every candidate source/phase into a fresh B32 point request.
-    future_instance = executable_text(
-        (future / "Comma_Semantic_Future_Instance.thy").read_text(encoding="utf-8")
-    )
-    closure = executable_text(
-        (future / "Comma_Semantic_Future_Candidate_Provider_Closure.thy").read_text()
-    )
-    assert "Comma_Semantic_Graph_Action_Certificate.make" not in future_instance
-    assert "construct_provider_check" not in future_instance
-    assert "provider_check_tac" not in future_instance
-    assert "prove_indexed_list_all" not in closure
-    assert "comma_semantic_future_candidate_provider_row_of_source_key" in closure
-    assert "comma_semantic_future_candidate_parent_source_key_nf" in closure
-
-    assert "type certificate" in certificate
-    assert "query: int -> int -> result" in certificate
-    assert "convert: cterm -> thm option" in certificate
-    assert "fun query phase root" in certificate
-    assert re.search(r"\bfun convert\s+\w+\s*=", certificate)
-    assert "Context.subthy (theory, Thm.theory_of_cterm requested)" in certificate
-    assert "r < 924" in certificate
-    assert "i < 46" in certificate
-    assert "SOME (pT, 5)" in certificate
-    assert "0 <= r" in certificate
-    assert "0 <= i" in certificate
-    assert "case Inttab.lookup (!cache) key" in certificate
-    assert "Inttab.update (key, value)" in certificate
-    assert "aconv HOLogic.mk_Trueprop (HOLogic.mk_eq (request, value))" in certificate
-    assert "null (Thm.hyps_of theorem)" in certificate
-    assert "null (Thm.tpairs_of theorem)" in certificate
-    assert "closed (Thm.prop_of theorem)" in certificate
-    assert "query phase root" in instance
-    assert "comma_semantic_graph_b32_stop242_checked" in instance
-    assert '"Comma_Semantic_B1_Live 12"' in power_fixtures
-    assert '"Comma_Semantic_B1_Live 23"' in power_fixtures
-    assert "Distinct receiving phases lost their exact B1 results" in power_fixtures
-    assert "Graph power failed to absorb an actual Stop endpoint" in power_fixtures
-    assert "Live-to-Stop power lost the chronological weight" in power_fixtures
-    assert "Named generic Invalid absorption" in power_fixtures
-    assert '"Graph power phase is outside 0..923"' in power_fixtures
-    assert '"Graph power root is outside 0..45"' in power_fixtures
-
-
-def test_source_binding_publication_consumes_the_pointwise_port_bridge() -> None:
+def test_generic_source_binding_retains_pointwise_port_and_guard() -> None:
     comma = isabelle_root(repository_root()) / "families/comma"
-    instance = comma / "comma_semantic_graph_instance"
-    _, imports = parse_theory_header(
-        (instance / "Comma_Semantic_Graph_Instance.thy").read_text(),
-        instance / "Comma_Semantic_Graph_Instance.thy",
-    )
-    assert "Comma_Semantic_B1.Comma_Semantic_Graph_Pointwise_Binding_Row" in imports
-    publication = executable_text(
-        (instance / "semantic_graph_publication.ML").read_text()
-    )
-    assert "comma_semantic_b1_binding_row_valid_from_pointwise_port" in publication
-    assert "comma_semantic_b1_source_action_at_port" in publication
-    assert "comma_semantic_b1_source_port_action" in publication
-    assert "comma_semantic_b1_binding_row_valid_pair_guarded_rebase" in publication
-    declarations = {
-        item.name: item.body
-        for item in extract_isabelle_declarations(
-            publication, instance / "semantic_graph_publication.ML"
-        )
-    }
-    binding_rows = declarations["certify_binding_rows"]
-    certificate = binding_rows.split("fun certified_class", 1)[1].split(
-        "fun certify_row", 1
-    )[0]
-    assert certificate.index(
-        "Termtab.lookup (!class_certificates)"
-    ) < certificate.index("prove_class_row")
-    receiving_row = binding_rows.split("fun certify_row", 1)[1].split(
-        "fun completed_row", 1
-    )[0]
-    assert "#row_valid certificate" in receiving_row
-    assert "NearClass" in receiving_row
-    assert "#action_key source_info aconv #action_key row" in receiving_row
-    assert "checked_near_selection_id source_info" in receiving_row
-    assert "checked_near_selection_id row_source_info" in receiving_row
-    assert "admitted_fact source_info" in receiving_row
-    assert "normalized_fact source_info" in receiving_row
-    assert "comma_semantic_b1_binding_row_valid_pair_id_rebase" in receiving_row
-    assert "comma_semantic_b1_binding_row_valid_pair_guarded_rebase" in receiving_row
-    assert "Goal.prove" not in receiving_row
-    assert (
-        "comma_semantic_b1_binding_row_valid_from_pointwise_port" not in receiving_row
-    )
-
     path = comma / "comma_semantic_b1/Comma_Semantic_Graph_Pointwise_Binding_Row.thy"
     bridge = {
         item.name: item
@@ -687,14 +521,6 @@ def test_source_binding_publication_consumes_the_pointwise_port_bridge() -> None
     assert "port_row:" in bridge
     assert "comma_semantic_b1_edge_of_continuation bindings" in bridge
     assert "comma_semantic_b1_graph_valid" not in bridge
-
-    source_path = instance / "semantic_source_ports.ML"
-    source_owner = executable_text(source_path.read_text())
-    membership = source_owner.split("fun membership", 1)[1].split("fun same_shape", 1)[
-        0
-    ]
-    assert "comma_guarded_source_class_rel" in membership
-    assert "comma_source_continuation_id" not in membership
 
     transport_path = comma / "comma_semantic_b1/Comma_Guarded_Source_Row_Transport.thy"
     transport = {
@@ -709,69 +535,8 @@ def test_source_binding_publication_consumes_the_pointwise_port_bridge() -> None
     assert "comma_semantic_b1_graph_valid" not in assumptions
 
 
-def test_initial_source_publication_reuses_the_checked_literal_catalogue() -> None:
-    owner = (
-        isabelle_root(repository_root())
-        / "families/comma/comma_semantic_graph_instance"
-    )
-    path = owner / "semantic_graph_publication.ML"
-    publication = {
-        item.name: item.body
-        for item in extract_isabelle_declarations(path.read_text(), path)
-    }["publish_initial_source_ids"]
-    # Range arithmetic is already certified by discovery. Reopening it in a
-    # sterile list-proof context can expand an undecided range indefinitely.
-    assert "upt_rec" not in publication
-    assert "list.map" not in publication
-    assert "append.simps" not in publication
-    assert "list_all2_Cons" in publication
-    assert "list_all2_Nil" in publication
-    assert "lookup_facts" in publication
-    assert "checked exact_proposition" in publication
-
-    constructor = executable_text((owner / "semantic_graph_constructor.ML").read_text())
-    assert "initial_sources_equation" in constructor
-    assert re.search(
-        r"source_list_equation\s*=\s*initial_sources_equation", constructor
-    )
-
-
-def test_completed_alias_publication_uses_a_local_representative() -> None:
+def test_generic_completed_binding_preserves_source_guards() -> None:
     comma = isabelle_root(repository_root()) / "families/comma"
-    instance = comma / "comma_semantic_graph_instance"
-    source = executable_text((instance / "semantic_source_ports.ML").read_text())
-    publication = executable_text(
-        (instance / "semantic_graph_publication.ML").read_text()
-    )
-    constructor = executable_text(
-        (instance / "semantic_graph_constructor.ML").read_text()
-    )
-    theory = executable_text(
-        (instance / "Comma_Semantic_Graph_Instance.thy").read_text()
-    )
-
-    # The native fixture measures actual transition-row discovery when an
-    # admitted alias consumes its completed representative.
-    assert "transition_evaluations= !transition_attempts" in source
-    assert "comma_semantic_b1_entry_period_one_direct_goto_completed" in source
-    assert "comma_semantic_b1_entry_period_one_direct_goto_action" in source
-    assert "fun build ()" in constructor
-    assert "val forward = #forward source_ports source" in constructor
-    assert "val cid = compile child" in constructor
-    assert "comma_semantic_b1_graph_completed_valid" in constructor
-    assert "val representatives = filter" in publication
-    assert "comma_semantic_graph_completed_binding_from_lookup" in publication
-    completed_row = publication.split("fun completed_row", 1)[1].split(
-        "val row_theorems =", 1
-    )[0]
-    assert "resolve_tac goal_context [found]" in completed_row
-    assert "resolve_tac goal_context [local_row]" in completed_row
-    assert "binding_row_valid_def" not in completed_row
-    assert "base_simp @" not in completed_row
-    assert "Completed source alias rediscovered a transition row" in theory
-    assert "#transition_evaluations before_alias" in theory
-    assert "#transition_evaluations after_alias" in theory
-
     graph_path = comma / "comma_semantic_b1/Comma_Semantic_Graph_Core.thy"
     declarations = {
         item.name: item

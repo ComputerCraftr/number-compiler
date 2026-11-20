@@ -114,8 +114,11 @@ qed
 
 definition comma_crt_apply_suffix_period :: "nat \<Rightarrow> nat" where
   "comma_crt_apply_suffix_period depth =
-    (if depth = 0 then 1 else if depth = 1 then 11 else
-      if depth = 2 then 77 else if depth = 3 then 231 else 924)"
+    (if depth = 0 then 1 else if depth = 1 then comma_crt_period 3
+     else if depth = 2 then comma_crt_period 2 * comma_crt_period 3
+     else if depth = 3 then comma_crt_period 1 * comma_crt_period 2 * comma_crt_period 3
+     else comma_crt_period 0 * comma_crt_period 1 *
+       comma_crt_period 2 * comma_crt_period 3)"
 
 lemma comma_crt_apply_period_divides_suffix:
   assumes depth_bound: "depth \<le> 4"

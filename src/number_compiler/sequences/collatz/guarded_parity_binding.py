@@ -11,6 +11,9 @@ from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
 
 if TYPE_CHECKING:
     from number_compiler.sequences.collatz.parity_carry_tape import ParityCarryTape
+    from number_compiler.sequences.collatz.parity_carry_tape_actions import (
+        LedgeredParityTapeActions,
+    )
 
 
 _PARITY_BINDING_ISSUER = object()
@@ -91,6 +94,34 @@ class ParityTapeActionBinding:
         folded_action = tape.action()
         if folded_action.coefficient_snapshot() != action.coefficient_snapshot():
             raise ValueError("parity binding action does not match the full tape fold")
+        return cls._seal_after_validation(tape, action)
+
+    @classmethod
+    def issue_from_owned_action(
+        cls,
+        tape: ParityCarryTape,
+        action: DyadicTerminalFieldAction,
+        cache: LedgeredParityTapeActions,
+    ) -> ParityTapeActionBinding:
+        """Bind an action returned by the exact query-owned tape cache."""
+        from number_compiler.sequences.collatz.parity_carry_tape import (
+            ParityCarryTape,
+        )
+        from number_compiler.sequences.collatz.parity_carry_tape_actions import (
+            LedgeredParityTapeActions,
+        )
+
+        if (
+            type(tape) is not ParityCarryTape
+            or type(action) is not DyadicTerminalFieldAction
+            or not action.producer_issued
+            or action.steps != tape.steps
+            or type(cache) is not LedgeredParityTapeActions
+        ):
+            raise ValueError("owned parity binding requires exact issued values")
+        cached_action = cache.action(tape)
+        if cached_action.coefficient_snapshot() != action.coefficient_snapshot():
+            raise ValueError("owned parity action differs from its source port")
         return cls._seal_after_validation(tape, action)
 
     @classmethod

@@ -27,6 +27,7 @@ from number_compiler.sequences.comma.return_scopes import (
     mdd_child,
     mdd_intersection,
     mdd_union,
+    require_return_column_shape,
     scope_column_key,
     scopes_from_key,
     translated_column_key,
@@ -39,10 +40,7 @@ _SubstitutionState: TypeAlias = tuple[
 
 
 def _require_column(column: ReturnColumnKey) -> None:
-    if type(column) is not ReturnColumnKey:
-        raise TypeError("comma return-column operations require an exact MDD key")
-    if column.kind not in (0, 1, 2):
-        raise ValueError("invalid comma return-column node kind")
+    require_return_column_shape(column)
 
 
 def translate_return_column(
@@ -344,7 +342,7 @@ def evaluate_return_column(
     _require_column(column)
     if type(phase) is not int or not 0 <= phase < 924:
         raise ValueError("comma phase must be in 0..923")
-    clock = (phase % 4, phase % 3, phase % 7, phase % 11)
+    clock = tuple(phase % modulus for modulus in COMPONENT_DOMAINS)
     node = column
     previous_level = -1
     while node.kind == 2:

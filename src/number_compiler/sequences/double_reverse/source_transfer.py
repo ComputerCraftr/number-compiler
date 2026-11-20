@@ -94,12 +94,6 @@ def same_word(term: DoubleReverseTerm, left: int, right: int) -> bool:
                 _double_reverse_keys.DOUBLE_REVERSE_STATE_COMPARISON_NODE_VISITS
             )
 
-    def reserve_task() -> None:
-        term.resource_ledger.reserve(term.scratch_owner, entries=1, nodes=1)
-
-    def release_tasks(count: int) -> None:
-        term.resource_ledger.release(term.scratch_owner, entries=count, nodes=count)
-
     with ExitStack() as streams:
         left_symbols = streams.enter_context(
             closing_output_stream(
@@ -107,8 +101,8 @@ def same_word(term: DoubleReverseTerm, left: int, right: int) -> bool:
                     term.source_arena,
                     left,
                     on_task=record_visit,
-                    reserve_task=reserve_task,
-                    release_tasks=release_tasks,
+                    ledger=term.resource_ledger,
+                    owner=term.scratch_owner,
                     check_open=term.check_open,
                 )
             )
@@ -119,8 +113,8 @@ def same_word(term: DoubleReverseTerm, left: int, right: int) -> bool:
                     term.source_arena,
                     right,
                     on_task=record_visit,
-                    reserve_task=reserve_task,
-                    release_tasks=release_tasks,
+                    ledger=term.resource_ledger,
+                    owner=term.scratch_owner,
                     check_open=term.check_open,
                 )
             )

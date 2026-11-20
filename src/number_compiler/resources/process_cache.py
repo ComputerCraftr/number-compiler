@@ -20,6 +20,7 @@ from number_compiler.arithmetic.contracts.block_effect import (
 )
 from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger, ResourceScope
+from number_compiler.resources.lifecycle import cleanup_all
 
 DEFAULT_PROCESS_CACHE_ENTRIES: Final = 131_072
 DEFAULT_PROCESS_CACHE_BYTES: Final = 32 * 1024 * 1024
@@ -149,9 +150,12 @@ class CacheLease:
     def source_qualification(self) -> PartitionKey:
         return self._partition
 
-    def _check_live(self) -> None:
+    def _require_open(self) -> None:
         if self._closed:
             raise RuntimeError("process-cache lease is closed")
+
+    def _check_live(self) -> None:
+        self._require_open()
         self._cache.validate_lease(
             id(self), self._token, self._partition, self._generation
         )
@@ -161,7 +165,7 @@ class CacheLease:
         key: tuple[ImmutableValue, ...],
         default: object = MISSING,
     ) -> ImmutableValue | object:
-        self._check_live()
+        self._require_open()
         return self._cache.get_for_lease(
             self._partition,
             key,
@@ -182,7 +186,7 @@ class CacheLease:
         Capability identity is an in-process trusted-code boundary only. It
         does not authenticate semantic correctness of the stored payload.
         """
-        self._check_live()
+        self._require_open()
         if type(issuer) is not object:
             raise TypeError("cache record issuer must be an exact object capability")
         return self._cache.get_for_lease(
@@ -202,7 +206,7 @@ class CacheLease:
         *,
         accounted_bytes: int | None = None,
     ) -> bool:
-        self._check_live()
+        self._require_open()
         return self._cache.put_for_lease(
             self._partition,
             key,
@@ -225,7 +229,7 @@ class CacheLease:
 
         The caller remains responsible for proving the payload's semantics.
         """
-        self._check_live()
+        self._require_open()
         if type(issuer) is not object:
             raise TypeError("cache record issuer must be an exact object capability")
         return self._cache.put_for_lease(
@@ -254,7 +258,7 @@ class CacheLease:
         an already-retained value from an optional capacity miss. The updated
         immutable payload is accounted by the same path as :meth:`put_issued`.
         """
-        self._check_live()
+        self._require_open()
         if type(issuer) is not object:
             raise TypeError("cache record issuer must be an exact object capability")
         if not callable(update):
@@ -275,12 +279,13 @@ class CacheLease:
 
     def close(self) -> None:
         with self._cache.lease_transaction():
-            if self._closed:
-                return
-            self._cache.release_lease(
-                id(self), self._token, self._partition, self._generation
-            )
-            self._closed = True
+            if not self._closed:
+                failure = self._cache.release_lease(
+                    id(self), self._token, self._partition, self._generation
+                )
+                self._closed = True
+                if failure is not None:
+                    raise failure
 
     def __enter__(self) -> Self:
         self._check_live()
@@ -340,6 +345,7 @@ class ProcessCache:
         self._entry_bytes = 0
         self._lease_bytes = 0
         self._active_leases = 0
+        self._reset_pending = False
         self._hits = 0
         self._misses = 0
         self._puts = 0
@@ -364,6 +370,19 @@ class ProcessCache:
     def _retained_entries(self) -> int:
         return len(self._entries) + len(self._pins) + len(self._authorities)
 
+    def _require_live_cache(self) -> None:
+        if self._reset_pending:
+            raise RuntimeError("process-cache reset must finish before reuse")
+
+    def _settle_byte_account(self) -> None:
+        """Release only bytes no longer backed by entries or leases."""
+        entries, charged = self.ledger.account_usage(self._byte_owner)
+        retired = charged - self._retained_bytes
+        if entries or retired < 0:
+            raise RuntimeError("process-cache byte ownership is inconsistent")
+        if retired:
+            self.ledger.release(self._byte_owner, nodes=retired)
+
     def acquire(
         self,
         namespace: str,
@@ -383,6 +402,8 @@ class ProcessCache:
             raise ValueError("source qualification must identify a source/action")
         partition: PartitionKey = (namespace, version, source)
         with self._lock:
+            self._require_live_cache()
+            self._settle_byte_account()
             generation = self._generation
             self._token_serial += 1
             token = self._token_serial
@@ -406,8 +427,8 @@ class ProcessCache:
                     "process-cache capacity cannot admit a source lease"
                 )
             total_cost = partition_cost + authority_cost
-            self.ledger.reserve(self._byte_owner, nodes=total_cost)
             try:
+                self.ledger.reserve(self._byte_owner, nodes=total_cost)
                 if pinned is None:
                     self._pins[partition] = (1, partition_cost)
                 else:
@@ -421,14 +442,16 @@ class ProcessCache:
                     provisional,
                 )
             except BaseException:
-                registered = self._pins.get(partition)
-                if registered is not None:
-                    count, cost = registered
-                    if count == 1 and pinned is None:
-                        del self._pins[partition]
-                    elif pinned is not None:
-                        self._pins[partition] = (count - 1, cost)
-                self.ledger.release(self._byte_owner, nodes=total_cost)
+                try:
+                    self._authorities.pop(id(provisional), None)
+                    if pinned is None:
+                        self._pins.pop(partition, None)
+                    else:
+                        self._pins[partition] = pinned
+                except BaseException:
+                    self._reset_pending = True
+                    raise
+                self._settle_byte_account()
                 raise
             self._lease_bytes += total_cost
             self._active_leases += 1
@@ -438,7 +461,11 @@ class ProcessCache:
     def lease_transaction(self) -> Generator[None]:
         """Serialize a lease lifecycle transition with cache reset and release."""
         with self._lock:
-            yield
+            try:
+                yield
+            finally:
+                if not self._reset_pending:
+                    self._settle_byte_account()
 
     def validate_lease(
         self,
@@ -448,6 +475,7 @@ class ProcessCache:
         generation: int,
     ) -> None:
         with self._lock:
+            self._require_live_cache()
             self._require_lease_fields(lease_identity, token, partition, generation)
             authority = self._authorities.get(lease_identity)
             if generation != self._generation:
@@ -501,14 +529,16 @@ class ProcessCache:
         token: int,
         partition: PartitionKey,
         generation: int,
-    ) -> None:
+    ) -> BaseException | None:
+        """Retire a lease and return any error raised after its retirement."""
         with self._lock:
+            self._require_live_cache()
             self._require_lease_fields(lease_identity, token, partition, generation)
             authority = self._authorities.get(lease_identity)
             if generation != self._generation:
                 if authority is not None:
                     raise RuntimeError("process-cache lease has foreign authority")
-                return
+                return None
             if self._active_leases < 1:
                 raise RuntimeError("process-cache lease accounting underflow")
             if not self._matches_authority(
@@ -516,21 +546,40 @@ class ProcessCache:
             ):
                 raise RuntimeError("process-cache lease has foreign authority")
             assert authority is not None
-            self._active_leases -= 1
             authority_cost = authority[3]
-            del self._authorities[lease_identity]
             pinned = self._pins.get(partition)
             if pinned is None:
                 raise RuntimeError("process-cache source lease is not registered")
             count, cost = pinned
-            if count > 1:
-                self._pins[partition] = (count - 1, cost)
-                released = authority_cost
-            else:
-                del self._pins[partition]
-                released = authority_cost + cost
-            self.ledger.release(self._byte_owner, nodes=released)
-            self._lease_bytes -= released
+            failure: BaseException | None = None
+            try:
+                del self._authorities[lease_identity]
+            except BaseException as error:
+                if lease_identity in self._authorities:
+                    raise
+                failure = error
+
+            target_pin = (count - 1, cost) if count > 1 else None
+            try:
+                if target_pin is None:
+                    del self._pins[partition]
+                else:
+                    self._pins[partition] = target_pin
+            except BaseException as error:
+                if self._pins.get(partition) != target_pin:
+                    # The authority is already gone. Revoke access to these
+                    # partially updated stores until reset reconciles them.
+                    self._reset_pending = True
+                    if failure is not None:
+                        raise error from failure
+                    raise
+                if failure is None:
+                    failure = error
+                else:
+                    failure.add_note(f"Cache pin cleanup also failed: {error}")
+            self._active_leases -= 1
+            self._lease_bytes -= authority_cost + (cost if count == 1 else 0)
+            return failure
 
     def _qualified_key(
         self, partition: PartitionKey, key: tuple[ImmutableValue, ...]
@@ -551,9 +600,9 @@ class ProcessCache:
         *,
         expected_issuer: object | None = None,
     ) -> ImmutableValue | object:
-        full_key = self._qualified_key(partition, key)
         with self._lock:
             self.validate_lease(lease_identity, token, partition, generation)
+            full_key = self._qualified_key(partition, key)
             if not self.enabled:
                 self._bypasses += 1
                 return default
@@ -585,10 +634,10 @@ class ProcessCache:
         generation: int,
         issuer: object | None = None,
     ) -> bool:
-        full_key = self._qualified_key(partition, key)
-        admitted_payload = _validate_immutable(payload, "cache payload")
         with self._lock:
             self.validate_lease(lease_identity, token, partition, generation)
+            full_key = self._qualified_key(partition, key)
+            admitted_payload = _validate_immutable(payload, "cache payload")
             old = self._entries.get(full_key)
             if old is not None and old[4] is not issuer:
                 raise CacheRecordIssuerMismatch(
@@ -613,6 +662,7 @@ class ProcessCache:
             if not self.enabled:
                 self._bypasses += 1
                 return False
+            self._settle_byte_account()
             extra_entries = int(old is None)
             extra_bytes = cost - (0 if old is None else old[2])
             if not self._make_room(
@@ -620,8 +670,6 @@ class ProcessCache:
             ):
                 self._bypasses += 1
                 return False
-            if extra_bytes > 0:
-                self.ledger.reserve(self._byte_owner, nodes=extra_bytes)
             tick = self._next_tick()
             record: CacheRecord = (
                 partition,
@@ -631,15 +679,18 @@ class ProcessCache:
                 issuer,
             )
             try:
+                if extra_bytes > 0:
+                    self.ledger.reserve(self._byte_owner, nodes=extra_bytes)
                 self._entries[full_key] = record
             except BaseException:
-                if extra_bytes > 0:
-                    self.ledger.release(self._byte_owner, nodes=extra_bytes)
+                if self._entries.get(full_key) is record:
+                    self._entry_bytes += extra_bytes
+                self._settle_byte_account()
                 raise
-            if extra_bytes < 0:
-                self.ledger.release(self._byte_owner, nodes=-extra_bytes)
             self._entry_bytes += extra_bytes
             self._puts += 1
+            if extra_bytes < 0:
+                self._settle_byte_account()
             return True
 
     def update_issued_for_lease(
@@ -654,9 +705,9 @@ class ProcessCache:
         generation: int,
     ) -> tuple[bool | None, _UpdateMetadata | None]:
         """Run one bounded issued-record read/modify/write under the cache lock."""
-        full_key = self._qualified_key(partition, key)
         with self._lock:
             self.validate_lease(lease_identity, token, partition, generation)
+            full_key = self._qualified_key(partition, key)
             if not self.enabled:
                 self._bypasses += 1
                 return False, None
@@ -728,28 +779,30 @@ class ProcessCache:
         if freed_entries < max(0, need_entries) or freed_bytes < max(0, need_bytes):
             return False
         for key, cost in selected:
-            del self._entries[key]
-            self.ledger.release(self._byte_owner, nodes=cost)
-            self._entry_bytes -= cost
-            self._evictions += 1
+            try:
+                del self._entries[key]
+            finally:
+                if key not in self._entries:
+                    self._entry_bytes -= cost
+                    self._evictions += 1
+                    self._settle_byte_account()
         return True
 
     def reset(self) -> None:
         """Release retained data and invalidate every previously issued lease."""
         with self._lock:
-            entry_bytes = self._entry_bytes
-            lease_bytes = self._lease_bytes
-            self._entries.clear()
-            self._pins.clear()
-            self._authorities.clear()
-            if entry_bytes + lease_bytes:
-                self.ledger.release(self._byte_owner, nodes=entry_bytes + lease_bytes)
+            self._reset_pending = True
+            cleanup_all(
+                (self._entries.clear, self._pins.clear, self._authorities.clear)
+            )
             self._entry_bytes = self._lease_bytes = 0
             self._active_leases = 0
             self._generation += 1
             self._tick = 0
             self._hits = self._misses = self._puts = 0
             self._bypasses = self._evictions = 0
+            self._reset_pending = False
+            self._settle_byte_account()
 
     def stats(self) -> CacheStats:
         with self._lock:
@@ -761,7 +814,7 @@ class ProcessCache:
                 evictions=self._evictions,
                 entries=len(self._entries),
                 lease_partitions=len(self._pins),
-                bytes=self._retained_bytes,
+                bytes=self.ledger.account_usage(self._byte_owner)[1],
                 active_leases=self._active_leases,
                 generation=self._generation,
                 max_entries=self.max_entries,

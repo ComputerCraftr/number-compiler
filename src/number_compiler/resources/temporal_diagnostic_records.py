@@ -35,6 +35,7 @@ class TemporalConstruction:
     reverse_successor_event_symbols: int | None = None
     reverse_successor_transport_updates: int | None = None
     reverse_finite_work: tuple[tuple[str, int], ...] | None = None
+    five_reverse_work: tuple[tuple[str, int], ...] | None = None
     packed_diagonal_work: tuple[tuple[str, int], ...] | None = None
 
 

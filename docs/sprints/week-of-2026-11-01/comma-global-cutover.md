@@ -4,6 +4,10 @@ Period: 2026-11-01 through 2026-11-07 (Sunday–Saturday).
 
 [Week index](README.md)
 
+The measurements below record this tranche. Current proof status and the
+remaining selector-contract work are maintained in the
+[current carry-consumer sprint](../week-of-2026-11-08/harmonic-carry-consumers.md#remaining-work).
+
 ## Objective
 
 Retire the old forest/fuel production path without fabricating global authority.

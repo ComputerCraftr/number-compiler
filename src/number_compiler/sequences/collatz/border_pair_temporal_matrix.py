@@ -24,6 +24,7 @@ from number_compiler.arithmetic.fields.boolean_transfer import (
 )
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.arithmetic.fields.weighted_transfer import (
+    WeightedRowPowerResult,
     WeightedTransfer,
     WeightedTransferLaw,
 )
@@ -256,6 +257,18 @@ class WeightedPairMatrix:
             exponent, max_row_entries=max_row_entries
         )
         return self._from_transfer(transfer), compositions, squarings
+
+    def power_row_with_work(
+        self,
+        source_pair: int,
+        exponent: int,
+        *,
+        max_row_entries: int = 512,
+    ) -> WeightedRowPowerResult:
+        """Power one decimal-pair row, preserving exact branch alternatives."""
+        return self._transfer.power_row_with_work(
+            source_pair, exponent, max_row_entries=max_row_entries
+        )
 
     def support(self) -> BooleanPairMatrix:
         return BooleanPairMatrix(

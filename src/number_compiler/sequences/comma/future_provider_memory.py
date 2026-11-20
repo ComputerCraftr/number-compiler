@@ -39,6 +39,11 @@ from number_compiler.sequences.comma.future_authority import (
     valid_artifact_digest,
 )
 from number_compiler.sequences.comma.future_provider_codec import SOURCE_COUNT
+from number_compiler.sequences.comma.future_source_mdd import (
+    MAX_NODES,
+    FutureSourceMDD,
+    SourceBranch,
+)
 
 if TYPE_CHECKING:
     from number_compiler.sequences.comma.future_provider import (
@@ -53,7 +58,7 @@ class RetainedSemanticFutureProvider(NamedTuple):
 
     provider: SemanticFutureProvider
     artifact_sha256: str
-    source_classes: tuple[int, ...]
+    source_classes: FutureSourceMDD
     classes: tuple[FutureClass, ...]
     row_signatures: tuple[ScalarSignature, ...]
     admission: KernelInstanceAdmission
@@ -65,7 +70,7 @@ class SemanticFutureProviderAuditSnapshot:
     """Read-only provider rows and source authority used by the store contract."""
 
     artifact_sha256: str
-    source_classes: tuple[int, ...]
+    source_classes: FutureSourceMDD
     classes: tuple[FutureClass, ...]
     row_signatures: tuple[ScalarSignature, ...]
     admission: KernelInstanceAdmission
@@ -129,15 +134,19 @@ def provider_table_bindings_match(
     selection_binding: object,
 ) -> bool:
     if (
-        not _is_int_tuple(source_classes)
+        type(source_classes) is not FutureSourceMDD
         or source_classes is not source_binding
-        or not _is_future_class_tuple(classes)
+        or not is_exact_object_tuple(classes)
         or classes is not classes_binding
-        or not _is_signature_tuple(signatures)
+        or not is_exact_object_tuple(signatures)
         or signatures is not signatures_binding
         or selection_authority is not selection_binding
     ):
         return False
+    # Parsing validates the immutable tuple-backed source graph once. Runtime
+    # admission also checks its independent issuance-store identity; selected
+    # mutable class rows retain their own signature check. Full graph/row
+    # traversal belongs to the explicit forensic audit, not every cache hit.
     return len(classes) == len(signatures)
 
 
@@ -213,24 +222,6 @@ def _is_retained_provider_memo(
     return type(value) is OwnedMemo
 
 
-def _is_int_tuple(value: object) -> TypeGuard[tuple[int, ...]]:
-    return is_exact_object_tuple(value) and all(type(item) is int for item in value)
-
-
-def _is_future_class_tuple(
-    value: object,
-) -> TypeGuard[tuple[FutureClass, ...]]:
-    return is_exact_object_tuple(value) and all(
-        type(item) is FutureClass for item in value
-    )
-
-
-def _is_signature_tuple(
-    value: object,
-) -> TypeGuard[tuple[ScalarSignature, ...]]:
-    return is_exact_object_tuple(value) and all(type(item) is tuple for item in value)
-
-
 def retained_provider_entry_matches(
     ledger: ResourceLedger,
     owner: object,
@@ -281,7 +272,7 @@ def retained_provider_entry_matches(
 def make_retained_provider_entry(
     provider: SemanticFutureProvider,
     digest: str,
-    source_classes: tuple[int, ...],
+    source_classes: FutureSourceMDD,
     classes: tuple[FutureClass, ...],
     row_signatures: tuple[ScalarSignature, ...],
     admission: KernelInstanceAdmission,
@@ -300,7 +291,7 @@ def make_retained_provider_entry(
 
 def provider_audit_snapshot(
     digest: str,
-    source_classes: tuple[int, ...],
+    source_classes: FutureSourceMDD,
     classes: tuple[FutureClass, ...],
     row_signatures: tuple[ScalarSignature, ...],
     admission: KernelInstanceAdmission,
@@ -429,10 +420,21 @@ def provider_node_cost(digest: str, retained: RetainedSemanticFutureProvider) ->
         raise ValueError("future provider ledger key differs from its artifact digest")
     # Include the retained source/class rows, signatures, issuer and external
     # table anchor. The DynamicMemoValue wrapper is charged by OwnedMemo.
-    return len(retained.source_classes) + 10 * len(retained.classes) + 9
+    source = retained.source_classes
+    edges = sum(
+        len(node.children) for node in source.nodes if type(node) is SourceBranch
+    )
+    return (
+        len(source.nodes) + edges + len(source.roots) + 10 * len(retained.classes) + 9
+    )
 
 
-def candidate_workspace_cost(record: Mapping[str, object], source_count: int) -> int:
+def candidate_workspace_cost(
+    record: Mapping[str, object],
+    source_count: int,
+    *,
+    charge_work: Callable[[int], None],
+) -> int:
     """Reserve decoded semantic tuples while candidate validation is active.
 
     The serialized byte limit bounds input size; this estimate does not claim
@@ -443,9 +445,24 @@ def candidate_workspace_cost(record: Mapping[str, object], source_count: int) ->
     controls = record.get("controls")
     if not is_object_list(controls) or not 0 < len(controls) <= source_count:
         return 0
-    # Source IDs and their tuple coexist; class rows overlap their builder list.
-    signature_nodes = 6 * len(controls) + 5
-    return 2 * source_count + 5 * len(controls) + 2 + signature_nodes
+    source_nodes = record.get("source_nodes")
+    if not is_object_list(source_nodes):
+        return 0
+    if not 0 < len(source_nodes) <= MAX_NODES:
+        raise ValueError("future source MDD exceeds its node bound")
+    charge_work(len(source_nodes))
+    edges = 0
+    for row in source_nodes:
+        if not is_object_list(row):
+            raise ValueError("future source MDD row is malformed")
+        if len(row) == 1:
+            continue
+        if len(row) != 2 or not is_object_list(row[1]) or len(row[1]) > 11:
+            raise ValueError("future source MDD row is malformed")
+        edges += len(row[1])
+    # Charge the immutable decoded node records, edge tuples and roots.
+    source_cost = 2 * len(source_nodes) + edges + 16
+    return source_cost + 5 * len(controls) + 2
 
 
 def _provider_rows_are_admitted(
@@ -461,8 +478,7 @@ def _provider_rows_are_admitted(
         or hasattr(snapshot, "__dict__")
         or not valid_artifact_digest(digest)
         or snapshot.artifact_sha256 != digest
-        or type(snapshot.source_classes) is not tuple
-        or len(snapshot.source_classes) != SOURCE_COUNT
+        or type(snapshot.source_classes) is not FutureSourceMDD
         or type(snapshot.classes) is not tuple
         or not 0 < len(snapshot.classes) <= SOURCE_COUNT
         or type(snapshot.row_signatures) is not tuple
@@ -500,12 +516,7 @@ def _provider_rows_are_admitted(
         return False
 
     class_count = len(snapshot.classes)
-    used_classes = [False] * class_count
-    for cid in snapshot.source_classes:
-        if type(cid) is not int or not 0 <= cid < class_count:
-            return False
-        used_classes[cid] = True
-    if not all(used_classes):
+    if not snapshot.source_classes.validate(class_count):
         return False
 
     for row, expected_signature in zip(

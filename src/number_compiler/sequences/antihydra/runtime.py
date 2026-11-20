@@ -485,6 +485,34 @@ class AntihydraArithmeticTerm:
         return value
 
     @source_reads_only
+    def physical_value_at(self, ticks: int) -> int:
+        """Read a prefix of this term's total arithmetic action."""
+        from number_compiler.hashlife.execution.dyadic_return_runs import (
+            RunArithmeticWorkspace,
+        )
+        from number_compiler.sequences.antihydra.mahler_carry_quotient import (
+            project_weighted_carry,
+        )
+
+        ticks = require_integer(ticks, "physical tick", 0)
+        if ticks > self.requested:
+            raise ValueError("physical tick exceeds the term's extent")
+        if ticks == self.requested:
+            return self.value()
+        self.prepare_source_action()
+        workspace = self.arithmetic_image()
+        with RunArithmeticWorkspace.for_ledger(
+            self.ledger, "antihydra_physical_prefix"
+        ).scope() as scratch:
+            carry = project_weighted_carry(workspace, reserve_bits=scratch.require_bits)
+            value = (
+                carry.centered_state_at(ticks, reserve_bits=scratch.require_bits) + 1
+            )
+        if value.bit_length() > self.max_state_bits:
+            raise ValueError("Antihydra arithmetic state exceeds bit budget")
+        return value
+
+    @source_reads_only
     def digit(self, index: int) -> int:
         """Read one binary cell without demanding ledger safety or the endpoint."""
         from number_compiler.hashlife.execution.dyadic_return_observers import (

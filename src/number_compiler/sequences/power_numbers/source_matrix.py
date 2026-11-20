@@ -21,7 +21,8 @@ from number_compiler.arithmetic.fields.digit_formula import (
     synthesize_function_monoid,
     synthesize_multiply_add,
 )
-from number_compiler.arithmetic.fields.morphism_core import binary_power, modular_power
+from number_compiler.arithmetic.fields.morphism_core import modular_power
+from number_compiler.arithmetic.fields.ordered_matrix import Matrix2 as OrderedMatrix2
 from number_compiler.arithmetic.fields.symbolic_extent import DyadicExtent
 from number_compiler.hashlife.execution.source_image_seals import typed_payload_equal
 
@@ -131,26 +132,15 @@ def _sl2_group_order(modulus: int) -> tuple[int, int]:
     return order, trials
 
 
-Matrix2 = tuple[int, int, int, int]
-
-
-def _matrix_multiply(first: Matrix2, second: Matrix2, modulus: int) -> Matrix2:
-    a, b, c, d = first
-    e, f, g, h = second
-    return (
-        (a * e + b * g) % modulus,
-        (a * f + b * h) % modulus,
-        (c * e + d * g) % modulus,
-        (c * f + d * h) % modulus,
-    )
+MatrixEntries = tuple[int, int, int, int]
 
 
 def checked_dyadic_matrix_power(
-    matrix: Matrix2,
+    matrix: MatrixEntries,
     steps: int,
     modulus: int,
     proposed_period: int,
-) -> tuple[Matrix2, int, int]:
+) -> tuple[MatrixEntries, int, int]:
     """Power a modular 2x2 matrix after checking its proposed period.
 
     The proposed period is only a candidate.  It is admitted for exponent
@@ -171,18 +161,10 @@ def checked_dyadic_matrix_power(
     ):
         raise ValueError("invalid modular dyadic matrix request")
 
-    identity: Matrix2 = (1 % modulus, 0, 0, 1 % modulus)
-
-    def compose(first: Matrix2, after: Matrix2) -> Matrix2:
-        return _matrix_multiply(first, after, modulus)
-
-    period_check = binary_power(
-        matrix,
-        proposed_period,
-        identity=identity,
-        compose=compose,
-    )
-    if period_check.value != identity:
+    action = OrderedMatrix2(matrix, modulus)
+    identity = OrderedMatrix2.identity(modulus)
+    period_check, period_compositions = action.power_with_work(proposed_period)
+    if period_check != identity:
         raise ArithmeticError("proposed matrix identity failed exact period check")
 
     if proposed_period == 1:
@@ -192,22 +174,17 @@ def checked_dyadic_matrix_power(
         reduced_exponent = modular_power(2, steps, proposed_period)
         reduced_exponent_value = reduced_exponent.value
         scalar_compositions = reduced_exponent.compositions
-    powered = binary_power(
-        matrix,
-        reduced_exponent_value,
-        identity=identity,
-        compose=compose,
-    )
+    powered, power_compositions = action.power_with_work(reduced_exponent_value)
     return (
-        powered.value,
+        powered.entries,
         scalar_compositions,
-        period_check.compositions + powered.compositions,
+        period_compositions + power_compositions,
     )
 
 
 def _mersenne_source_residue(level: int, modulus: int) -> tuple[int, int, int, int]:
     order, factor_trials = _sl2_group_order(modulus)
-    matrix: Matrix2 = (4 % modulus, (-1) % modulus, 1 % modulus, 0)
+    matrix: MatrixEntries = (4 % modulus, (-1) % modulus, 1 % modulus, 0)
     matrix_power, scalar_compositions, matrix_compositions = (
         checked_dyadic_matrix_power(matrix, level, modulus, order)
     )

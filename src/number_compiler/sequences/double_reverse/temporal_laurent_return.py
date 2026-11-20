@@ -38,6 +38,7 @@ from .temporal_residue_quotient import (
     CertifiedResidueTemporalAction,
     certified_residue_action,
 )
+from .two_rev10_digit_field import TwoReverseDualDigitField18
 
 if TYPE_CHECKING:
     from .power import DoubleReverseTerm
@@ -104,6 +105,14 @@ def physical_carry_field_borrow_projection(
     next_last_digit = 2 if target_phase in (0, 1) else 8
     physical_mod990 = physical_mod198 + 198 * (2 * (last_digit - physical_mod198) % 5)
     carry_field_mod90 = 2 * physical_mod990 % 90
+    dual_field_mod18 = TwoReverseDualDigitField18.from_border(
+        physical_mod198=physical_mod198, phase=target_phase
+    )
+    if (
+        dual_field_mod18.four_field_orientations_mod90["high_first_mod90"]
+        != carry_field_mod90
+    ):
+        raise ArithmeticError("joint digit-field mod-90 projection lost its parent")
 
     def fixes_seed_residue(period: int) -> bool:
         multiplier: int = pow(2, period, 9)
@@ -120,6 +129,7 @@ def physical_carry_field_borrow_projection(
         "target_phase": target_phase,
         "physical_target_mod990": physical_mod990,
         "carry_field_mod90": carry_field_mod90,
+        "dual_digit_field18_temporal_quotient": dual_field_mod18.packet(),
         "carry_field_primitive_period_physical_steps": lcm(4, period9),
         "physical_subtraction_borrow_low_digit": int(next_last_digit < last_digit),
         "physical_subtraction_borrow_low_digit_period": 4,
@@ -581,12 +591,9 @@ def source_laurent_accumulator_packet(
             owner.source_arena,
             authority.root,
             reverse=True,
-            reserve_task=lambda: owner.resource_ledger.reserve(
-                owner.scratch_owner, entries=1, nodes=1
-            ),
-            release_tasks=lambda count: owner.resource_ledger.release(
-                owner.scratch_owner, entries=count, nodes=count
-            ),
+            ledger=owner.resource_ledger,
+            owner=owner.scratch_owner,
+            task_entries=1,
             check_open=owner.check_open,
         )
     ) as source_digits:

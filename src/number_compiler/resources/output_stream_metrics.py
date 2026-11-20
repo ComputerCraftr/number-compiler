@@ -98,7 +98,6 @@ def measured_output_stream(
                 ledger.bump(f"{prefix}_emitted_digits")
                 yield value
         except GeneratorExit as error:
-            primary_error = error
             _record_failure_without_masking(
                 error, lambda: ledger.bump(f"{prefix}_cancellations")
             )

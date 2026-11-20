@@ -354,6 +354,9 @@ class CertifiedSchedulerCandidate:
             0 if self.carry_program is None else self.carry_program.matrix_compositions,
             0 if self.carry_program is None else self.carry_program.matrix_squarings,
             0 if self.carry_program is None else self.carry_program.scalar_steps,
+            0
+            if self.carry_program is None
+            else self.carry_program.matrix_row_evaluations,
             *(self.upper_sturmian if self.upper_sturmian is not None else (0, 0, 0)),
             control_bits,
         )
@@ -772,6 +775,13 @@ def issue_conditional_scheduler_candidate(
                         # Other authenticated ports stay available when a
                         # mixed, nonperiodic inlet has no bounded count proof.
                         carry_program = None
+                    if carry_program is not None:
+                        row_evaluations = carry_program.matrix_row_evaluations
+                        if row_evaluations:
+                            ledger.bump(
+                                _collatz_keys.COLLATZ_CONDITIONAL_POWER_PAIR_MATRIX_ROW_EVALUATIONS,
+                                row_evaluations,
+                            )
                 if include_f5:
                     upper_sturmian = bridge.demanded_zero_tail_sturmian_factor(
                         source, selected.tails

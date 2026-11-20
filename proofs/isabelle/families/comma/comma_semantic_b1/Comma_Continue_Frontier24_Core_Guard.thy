@@ -4,8 +4,8 @@ begin
 
 text \<open>
 Translate the shared cyclotomic core-value guards into the frontier MDD axis
-order (3,4,11,7).  Only the axes used by a core are present.  In particular,
-the C7/C13/C21 guards transpose their old C4-then-C3 tree to C3-then-C4.
+order (3,4,7,11).  Only the axes used by a core are present.  In particular,
+the C7/C13/C21 guards use the same C3-then-C4 order as the shared core guards.
 These small guard diagrams are source-side inputs to the checked MDD arena;
 they contain no phase rows or semantic class identifiers.
 \<close>
@@ -55,7 +55,7 @@ definition comma_frontier24_core_guard_nodes ::
      | Comma_Core_23 \<Rightarrow>
          map (\<lambda>i. comma_frontier24_guard_leaf Comma_Core_23 wanted
            0 (i div 11) (i mod 11) 0) [0..<44] @
-         map (\<lambda>r4. Comma_CRT_MDD_Branch 2
+         map (\<lambda>r4. Comma_CRT_MDD_Branch 3
            (map (\<lambda>r11. r4*11+r11) [0..<11])) [0..<4] @
          [Comma_CRT_MDD_Branch 1 (map (\<lambda>r4. 44+r4) [0..<4])]
      | Comma_Core_27 \<Rightarrow>
@@ -65,7 +65,7 @@ definition comma_frontier24_core_guard_nodes ::
      | Comma_Core_29 \<Rightarrow>
          map (\<lambda>i. comma_frontier24_guard_leaf Comma_Core_29 wanted
            0 (i div 7) 0 (i mod 7)) [0..<28] @
-         map (\<lambda>r4. Comma_CRT_MDD_Branch 3
+         map (\<lambda>r4. Comma_CRT_MDD_Branch 2
            (map (\<lambda>r7. r4*7+r7) [0..<7])) [0..<4] @
          [Comma_CRT_MDD_Branch 1 (map (\<lambda>r4. 28+r4) [0..<4])])"
 
@@ -85,7 +85,7 @@ definition comma_frontier24_core_guard_value ::
   "comma_frontier24_core_guard_value core wanted coordinate =
     comma_frontier24_guard_value_at core wanted
       (coordinate 0 mod 3) (coordinate 1 mod 4)
-      (coordinate 2 mod 11) (coordinate 3 mod 7)"
+      (coordinate 3 mod 11) (coordinate 2 mod 7)"
 
 lemma comma_frontier24_eval_branch_at:
   fixes coordinate :: "nat \<Rightarrow> nat"
@@ -283,7 +283,7 @@ proof -
 qed
 
 lemma comma_frontier24_core_guard_nodes_wellformed:
-  "comma_crt_mdd_table_wellformed [3,4,11,7]
+  "comma_crt_mdd_table_wellformed [3,4,7,11]
     (comma_frontier24_core_guard_nodes core wanted)"
   unfolding comma_frontier24_table_wellformed_iff_list_all
   by (cases core)
@@ -294,13 +294,13 @@ lemma comma_frontier24_core_guard_nodes_wellformed:
 
 lemma comma_frontier24_core_guard_eval:
   fixes coordinate :: "nat \<Rightarrow> nat"
-  shows "comma_crt_mdd_eval [3,4,11,7]
+  shows "comma_crt_mdd_eval [3,4,7,11]
       (comma_frontier24_core_guard_nodes core wanted) coordinate
       (comma_frontier24_core_guard_root core) =
     Some (comma_frontier24_core_guard_value core wanted coordinate)"
 proof -
   have wellformed:
-    "comma_crt_mdd_table_wellformed [3,4,11,7]
+    "comma_crt_mdd_table_wellformed [3,4,7,11]
       (comma_frontier24_core_guard_nodes core wanted)"
     by (rule comma_frontier24_core_guard_nodes_wellformed)
   have one: "comma_recursive_core_residue 1 t = 0" for t
@@ -317,7 +317,7 @@ proof -
         Comma_CRT_MDD_Leaf (wanted=0)"
       by (simp add: comma_frontier24_core_guard_nodes_def)
     have result:
-      "comma_crt_mdd_eval [3,4,11,7]
+      "comma_crt_mdd_eval [3,4,7,11]
         (comma_frontier24_core_guard_nodes Comma_Core_1 wanted)
         coordinate 0 = Some (wanted=0)"
       by (rule comma_frontier24_eval_leaf_at[OF
@@ -338,7 +338,7 @@ proof -
         Comma_CRT_MDD_Leaf (wanted=1)"
       by (simp add: comma_frontier24_core_guard_nodes_def)
     have result:
-      "comma_crt_mdd_eval [3,4,11,7]
+      "comma_crt_mdd_eval [3,4,7,11]
         (comma_frontier24_core_guard_nodes Comma_Core_3 wanted)
         coordinate 0 = Some (wanted=1)"
       by (rule comma_frontier24_eval_leaf_at[OF
@@ -353,11 +353,11 @@ proof -
   next
     case Comma_Core_7
     have result:
-      "comma_crt_mdd_eval [3,4,11,7]
+      "comma_crt_mdd_eval [3,4,7,11]
         (comma_frontier24_core_guard_nodes Comma_Core_7 wanted)
         coordinate 15 = Some (comma_frontier24_guard_value_at Comma_Core_7 wanted
           (coordinate 0 mod 3) (coordinate 1 mod 4) 0 0)"
-      using comma_frontier24_eval_flat_two_axes[where radices="[3,4,11,7]"
+      using comma_frontier24_eval_flat_two_axes[where radices="[3,4,7,11]"
           and nodes="comma_frontier24_core_guard_nodes Comma_Core_7 wanted"
           and coordinate=coordinate and
           outer_axis=0 and inner_axis=1 and outer_width=3 and inner_width=4
@@ -376,11 +376,11 @@ proof -
   next
     case Comma_Core_11
     have result:
-      "comma_crt_mdd_eval [3,4,11,7]
+      "comma_crt_mdd_eval [3,4,7,11]
         (comma_frontier24_core_guard_nodes Comma_Core_11 wanted)
         coordinate 4 = Some (comma_frontier24_guard_value_at Comma_Core_11 wanted
           0 (coordinate 1 mod 4) 0 0)"
-      using comma_frontier24_eval_flat_one_axis[where radices="[3,4,11,7]"
+      using comma_frontier24_eval_flat_one_axis[where radices="[3,4,7,11]"
           and nodes="comma_frontier24_core_guard_nodes Comma_Core_11 wanted"
           and coordinate=coordinate and axis=1 and width=4
           and leaf_value="\<lambda>r4. comma_frontier24_guard_value_at
@@ -397,11 +397,11 @@ proof -
   next
     case Comma_Core_13
     have result:
-      "comma_crt_mdd_eval [3,4,11,7]
+      "comma_crt_mdd_eval [3,4,7,11]
         (comma_frontier24_core_guard_nodes Comma_Core_13 wanted)
         coordinate 15 = Some (comma_frontier24_guard_value_at Comma_Core_13 wanted
           (coordinate 0 mod 3) (coordinate 1 mod 4) 0 0)"
-      using comma_frontier24_eval_flat_two_axes[where radices="[3,4,11,7]"
+      using comma_frontier24_eval_flat_two_axes[where radices="[3,4,7,11]"
           and nodes="comma_frontier24_core_guard_nodes Comma_Core_13 wanted"
           and coordinate=coordinate and
           outer_axis=0 and inner_axis=1 and outer_width=3 and inner_width=4
@@ -420,11 +420,11 @@ proof -
   next
     case Comma_Core_21
     have result:
-      "comma_crt_mdd_eval [3,4,11,7]
+      "comma_crt_mdd_eval [3,4,7,11]
         (comma_frontier24_core_guard_nodes Comma_Core_21 wanted)
         coordinate 15 = Some (comma_frontier24_guard_value_at Comma_Core_21 wanted
           (coordinate 0 mod 3) (coordinate 1 mod 4) 0 0)"
-      using comma_frontier24_eval_flat_two_axes[where radices="[3,4,11,7]"
+      using comma_frontier24_eval_flat_two_axes[where radices="[3,4,7,11]"
           and nodes="comma_frontier24_core_guard_nodes Comma_Core_21 wanted"
           and coordinate=coordinate and
           outer_axis=0 and inner_axis=1 and outer_width=3 and inner_width=4
@@ -443,14 +443,14 @@ proof -
   next
     case Comma_Core_23
     have result:
-      "comma_crt_mdd_eval [3,4,11,7]
+      "comma_crt_mdd_eval [3,4,7,11]
         (comma_frontier24_core_guard_nodes Comma_Core_23 wanted)
         coordinate 48 = Some (comma_frontier24_guard_value_at Comma_Core_23 wanted
-          0 (coordinate 1 mod 4) (coordinate 2 mod 11) 0)"
-      using comma_frontier24_eval_flat_two_axes[where radices="[3,4,11,7]"
+          0 (coordinate 1 mod 4) (coordinate 3 mod 11) 0)"
+      using comma_frontier24_eval_flat_two_axes[where radices="[3,4,7,11]"
           and nodes="comma_frontier24_core_guard_nodes Comma_Core_23 wanted"
           and coordinate=coordinate and
-          outer_axis=1 and inner_axis=2 and outer_width=4 and inner_width=11
+          outer_axis=1 and inner_axis=3 and outer_width=4 and inner_width=11
           and leaf_value="\<lambda>r4 r11. comma_frontier24_guard_value_at
             Comma_Core_23 wanted 0 r4 r11 0", OF
           comma_frontier24_core_guard_nodes_wellformed[of Comma_Core_23 wanted]]
@@ -466,11 +466,11 @@ proof -
   next
     case Comma_Core_27
     have result:
-      "comma_crt_mdd_eval [3,4,11,7]
+      "comma_crt_mdd_eval [3,4,7,11]
         (comma_frontier24_core_guard_nodes Comma_Core_27 wanted)
         coordinate 3 = Some (comma_frontier24_guard_value_at Comma_Core_27 wanted
           (coordinate 0 mod 3) 0 0 0)"
-      using comma_frontier24_eval_flat_one_axis[where radices="[3,4,11,7]"
+      using comma_frontier24_eval_flat_one_axis[where radices="[3,4,7,11]"
           and nodes="comma_frontier24_core_guard_nodes Comma_Core_27 wanted"
           and coordinate=coordinate and axis=0 and width=3
           and leaf_value="\<lambda>r3. comma_frontier24_guard_value_at
@@ -487,14 +487,14 @@ proof -
   next
     case Comma_Core_29
     have result:
-      "comma_crt_mdd_eval [3,4,11,7]
+      "comma_crt_mdd_eval [3,4,7,11]
         (comma_frontier24_core_guard_nodes Comma_Core_29 wanted)
         coordinate 32 = Some (comma_frontier24_guard_value_at Comma_Core_29 wanted
-          0 (coordinate 1 mod 4) 0 (coordinate 3 mod 7))"
-      using comma_frontier24_eval_flat_two_axes[where radices="[3,4,11,7]"
+          0 (coordinate 1 mod 4) 0 (coordinate 2 mod 7))"
+      using comma_frontier24_eval_flat_two_axes[where radices="[3,4,7,11]"
           and nodes="comma_frontier24_core_guard_nodes Comma_Core_29 wanted"
           and coordinate=coordinate and
-          outer_axis=1 and inner_axis=3 and outer_width=4 and inner_width=7
+          outer_axis=1 and inner_axis=2 and outer_width=4 and inner_width=7
           and leaf_value="\<lambda>r4 r7. comma_frontier24_guard_value_at
             Comma_Core_29 wanted 0 r4 0 r7", OF
           comma_frontier24_core_guard_nodes_wellformed[of Comma_Core_29 wanted]]
@@ -511,12 +511,12 @@ proof -
 qed
 
 lemma comma_frontier24_core_guard_phase_eval:
-  "comma_crt_mdd_eval_phase [3,4,11,7]
+  "comma_crt_mdd_eval_phase [3,4,7,11]
       (comma_frontier24_core_guard_nodes core wanted) phase
       (comma_frontier24_core_guard_root core) =
     Some (comma_crt_eval phase (comma_core_value_guard core wanted))"
 proof -
-  have exact: "comma_crt_mdd_eval [3,4,11,7]
+  have exact: "comma_crt_mdd_eval [3,4,7,11]
       (comma_frontier24_core_guard_nodes core wanted) (\<lambda>axis. phase)
       (comma_frontier24_core_guard_root core) =
       Some (comma_frontier24_core_guard_value core wanted (\<lambda>axis. phase))"

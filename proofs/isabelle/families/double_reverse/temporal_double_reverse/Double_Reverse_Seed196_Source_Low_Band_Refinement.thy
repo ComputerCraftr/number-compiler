@@ -6,53 +6,53 @@ theorem double_reverse_seed196_generation16_low5_anchor:
   "double_reverse_T_run 16 196 mod 100000 = 73488"
 proof -
   have step1: "double_reverse_T 196 = 1382"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step2: "double_reverse_T 1382 = 5662"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step3: "double_reverse_T 5662 = 5330"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step4: "double_reverse_T 5330 = 670"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step5: "double_reverse_T 670 = 152"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step6: "double_reverse_T 152 = 502"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step7: "double_reverse_T 502 = 410"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step8: "double_reverse_T 410 = 28"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step9: "double_reverse_T 28 = 164"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step10: "double_reverse_T 164 = 922"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step11: "double_reverse_T 922 = 458"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step12: "double_reverse_T 458 = 1708"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step13: "double_reverse_T 1708 = 16142"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step14: "double_reverse_T 16142 = 48322"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step15: "double_reverse_T 48322 = 44768"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step16: "double_reverse_T 44768 = 173488"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   let ?suc16 = "Suc ( Suc ( Suc ( Suc (
     Suc ( Suc ( Suc ( Suc (
       Suc ( Suc ( Suc ( Suc (

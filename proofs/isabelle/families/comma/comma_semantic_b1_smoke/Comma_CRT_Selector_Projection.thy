@@ -587,9 +587,9 @@ lemma comma_crt_select1_terminal_quotient:
     and weight2_zero: "comma_crt_axis_weight 2 mod period=0"
     and weight3_zero: "comma_crt_axis_weight 3 mod period=0"
   shows "comma_crt_select1 period offset rows =
-    comma_indexed_phase_union (\<lambda>slot phase. phase mod 3=slot)
+    comma_indexed_phase_union (\<lambda>slot phase. phase mod 4=slot)
       (map (\<lambda>slot. comma_phase_word_cofactor 1 slot
-        (rows!((offset+comma_crt_axis_weight 1*slot) mod period))) [0..<3])"
+        (rows!((offset+comma_crt_axis_weight 1*slot) mod period))) [0..<4])"
 proof -
   have higher:
     "\<And>index. 1<index \<Longrightarrow> index<4 \<Longrightarrow>
@@ -630,9 +630,9 @@ lemma comma_crt_select0_terminal_quotient:
     and weight2_zero: "comma_crt_axis_weight 2 mod period=0"
     and weight3_zero: "comma_crt_axis_weight 3 mod period=0"
   shows "comma_crt_select0 period offset rows =
-    comma_indexed_phase_union (\<lambda>slot phase. phase mod 4=slot)
+    comma_indexed_phase_union (\<lambda>slot phase. phase mod 3=slot)
       (map (\<lambda>slot. comma_phase_word_cofactor 0 slot
-        (rows!((offset+comma_crt_axis_weight 0*slot) mod period))) [0..<4])"
+        (rows!((offset+comma_crt_axis_weight 0*slot) mod period))) [0..<3])"
 proof -
   have higher:
     "\<And>index. 0<index \<Longrightarrow> index<4 \<Longrightarrow>

@@ -144,16 +144,16 @@ definition comma_crt_source_scope_column ::
   "comma_crt_source_scope_column scope =
     (case scope of (period,residue) \<Rightarrow>
       if period=1 then Comma_CRT_Bool True
-      else if period=2 then comma_crt_source_axis_column 0 2 residue
-      else if period=3 then comma_crt_source_axis_column 1 3 residue
+      else if period=2 then comma_crt_source_axis_column 1 2 residue
+      else if period=3 then comma_crt_source_axis_column 0 3 residue
       else if period=6 then comma_crt_apply Comma_CRT_And
-        (comma_crt_source_axis_column 0 2 residue)
-        (comma_crt_source_axis_column 1 3 residue)
+        (comma_crt_source_axis_column 1 2 residue)
+        (comma_crt_source_axis_column 0 3 residue)
       else if period=22 then comma_crt_apply Comma_CRT_And
-        (comma_crt_source_axis_column 0 2 residue)
+        (comma_crt_source_axis_column 1 2 residue)
         (comma_crt_source_axis_column 3 11 residue)
       else if period=28 then comma_crt_apply Comma_CRT_And
-        (comma_crt_source_axis_column 0 4 residue)
+        (comma_crt_source_axis_column 1 4 residue)
         (comma_crt_source_axis_column 2 7 residue)
       else Comma_CRT_Bool False)"
 
@@ -279,9 +279,9 @@ proof -
     next
       assume p2: "p=2"
       have axis:
-          "comma_crt_set (comma_crt_source_axis_column 0 2 r) =
+          "comma_crt_set (comma_crt_source_axis_column 1 2 r) =
             comma_semantic_b1_scope_set 2 r"
-        using comma_crt_source_axis_column_set[of 0 2 r] canonical p2
+        using comma_crt_source_axis_column_set[of 1 2 r] canonical p2
         by (simp add: comma_crt_period_def comma_semantic_b1_scope_set_def)
       show ?thesis
         using axis p2 scope_eq target_scope
@@ -289,9 +289,9 @@ proof -
     next
       assume p3: "p=3"
       have axis:
-          "comma_crt_set (comma_crt_source_axis_column 1 3 r) =
+          "comma_crt_set (comma_crt_source_axis_column 0 3 r) =
             comma_semantic_b1_scope_set 3 r"
-        using comma_crt_source_axis_column_set[of 1 3 r] canonical p3
+        using comma_crt_source_axis_column_set[of 0 3 r] canonical p3
         by (simp add: comma_crt_period_def comma_semantic_b1_scope_set_def)
       show ?thesis
         using axis p3 scope_eq target_scope
@@ -301,11 +301,11 @@ proof -
       have modulus: "(6::nat)=lcm 2 3" by code_simp
       have pair:
           "comma_crt_set (comma_crt_apply Comma_CRT_And
-            (comma_crt_source_axis_column 0 2 r)
-            (comma_crt_source_axis_column 1 3 r)) =
+            (comma_crt_source_axis_column 1 2 r)
+            (comma_crt_source_axis_column 0 3 r)) =
            comma_semantic_b1_scope_set 6 r"
-        using comma_crt_source_axis_pair_set[where level_a=0 and divisor_a=2
-          and level_b=1 and divisor_b=3 and period=6 and residue=r] canonical p6 modulus
+        using comma_crt_source_axis_pair_set[where level_a=1 and divisor_a=2
+          and level_b=0 and divisor_b=3 and period=6 and residue=r] canonical p6 modulus
         by (simp add: comma_crt_period_def)
       show ?thesis using pair p6 scope_eq target_scope
         by (simp add: comma_crt_source_scope_column_def)
@@ -314,10 +314,10 @@ proof -
       have modulus: "(22::nat)=lcm 2 11" by code_simp
       have pair:
           "comma_crt_set (comma_crt_apply Comma_CRT_And
-            (comma_crt_source_axis_column 0 2 r)
+            (comma_crt_source_axis_column 1 2 r)
             (comma_crt_source_axis_column 3 11 r)) =
            comma_semantic_b1_scope_set 22 r"
-        using comma_crt_source_axis_pair_set[where level_a=0 and divisor_a=2
+        using comma_crt_source_axis_pair_set[where level_a=1 and divisor_a=2
           and level_b=3 and divisor_b=11 and period=22 and residue=r] canonical p22 modulus
         by (simp add: comma_crt_period_def)
       show ?thesis using pair p22 scope_eq target_scope
@@ -327,10 +327,10 @@ proof -
       have modulus: "(28::nat)=lcm 4 7" by code_simp
       have pair:
           "comma_crt_set (comma_crt_apply Comma_CRT_And
-            (comma_crt_source_axis_column 0 4 r)
+            (comma_crt_source_axis_column 1 4 r)
             (comma_crt_source_axis_column 2 7 r)) =
            comma_semantic_b1_scope_set 28 r"
-        using comma_crt_source_axis_pair_set[where level_a=0 and divisor_a=4
+        using comma_crt_source_axis_pair_set[where level_a=1 and divisor_a=4
           and level_b=2 and divisor_b=7 and period=28 and residue=r] canonical p28 modulus
         by (simp add: comma_crt_period_def)
       show ?thesis using pair p28 scope_eq target_scope

@@ -309,17 +309,17 @@ definition comma_crt_select2 :: "nat \<Rightarrow> nat \<Rightarrow> nat list \<
 
 definition comma_crt_select1 :: "nat \<Rightarrow> nat \<Rightarrow> nat list \<Rightarrow> nat" where
   "comma_crt_select1 period offset rows=
-    comma_indexed_phase_union (\<lambda>slot phase. phase mod 3=slot)
+    comma_indexed_phase_union (\<lambda>slot phase. phase mod 4=slot)
       (map (\<lambda>slot. comma_crt_select2 period
         ((offset+comma_crt_axis_weight 1*slot) mod period)
-        (map (comma_phase_word_cofactor 1 slot) rows)) [0..<3])"
+        (map (comma_phase_word_cofactor 1 slot) rows)) [0..<4])"
 
 definition comma_crt_select0 :: "nat \<Rightarrow> nat \<Rightarrow> nat list \<Rightarrow> nat" where
   "comma_crt_select0 period offset rows=
-    comma_indexed_phase_union (\<lambda>slot phase. phase mod 4=slot)
+    comma_indexed_phase_union (\<lambda>slot phase. phase mod 3=slot)
       (map (\<lambda>slot. comma_crt_select1 period
         ((offset+comma_crt_axis_weight 0*slot) mod period)
-        (map (comma_phase_word_cofactor 0 slot) rows)) [0..<4])"
+        (map (comma_phase_word_cofactor 0 slot) rows)) [0..<3])"
 
 lemma comma_crt_select4_equation:
   shows "comma_crt_select4 period offset rows=rows!(offset mod period)"
@@ -343,18 +343,18 @@ lemma comma_crt_select2_equation:
 
 lemma comma_crt_select1_equation:
   shows "comma_crt_select1 period offset rows=
-    comma_indexed_phase_union (\<lambda>slot phase. phase mod 3=slot)
+    comma_indexed_phase_union (\<lambda>slot phase. phase mod 4=slot)
       (map (\<lambda>slot. comma_crt_select2 period
         ((offset+comma_crt_axis_weight 1*slot) mod period)
-        (map (comma_phase_word_cofactor 1 slot) rows)) [0..<3])"
+        (map (comma_phase_word_cofactor 1 slot) rows)) [0..<4])"
   by (simp add: comma_crt_select1_def)
 
 lemma comma_crt_select0_equation:
   shows "comma_crt_select0 period offset rows=
-    comma_indexed_phase_union (\<lambda>slot phase. phase mod 4=slot)
+    comma_indexed_phase_union (\<lambda>slot phase. phase mod 3=slot)
       (map (\<lambda>slot. comma_crt_select1 period
         ((offset+comma_crt_axis_weight 0*slot) mod period)
-        (map (comma_phase_word_cofactor 0 slot) rows)) [0..<4])"
+        (map (comma_phase_word_cofactor 0 slot) rows)) [0..<3])"
   by (simp add: comma_crt_select0_def)
 
 lemma comma_crt_select4_bit:
@@ -475,7 +475,7 @@ lemma comma_crt_select1_bit:
     bit (rows!((offset+comma_crt_suffix 1 phase) mod period)) phase"
   unfolding comma_crt_select1_def
   apply (rule comma_crt_cofactored_step_bit
-    [where axis=1 and q=3 and lower="comma_crt_select2 period"])
+    [where axis=1 and q=4 and lower="comma_crt_select2 period"])
   using assms
   by (simp_all add: comma_crt_axis_radix_def comma_crt_suffix_def
     comma_crt_select2_bit)
@@ -487,7 +487,7 @@ lemma comma_crt_select0_bit:
     bit (rows!((offset+comma_crt_suffix 0 phase) mod period)) phase"
   unfolding comma_crt_select0_def
   apply (rule comma_crt_cofactored_step_bit
-    [where axis=0 and q=4 and lower="comma_crt_select1 period"])
+    [where axis=0 and q=3 and lower="comma_crt_select1 period"])
   using assms
   by (simp_all add: comma_crt_axis_radix_def comma_crt_suffix_def
     comma_crt_select1_bit)
@@ -753,23 +753,23 @@ proof -
       comma_crt_axis_weight (3::nat) mod period=0"
     using weights[of "3::nat"] by simp
   have t0: "axis\<le>(0::nat) \<Longrightarrow>
-      (comma_crt_axis_weight (0::nat)*(phase mod 4)) mod period=0"
+      (comma_crt_axis_weight (0::nat)*(phase mod 3)) mod period=0"
   proof -
     assume active: "axis\<le>(0::nat)"
     have coefficient:
       "comma_crt_axis_weight (0::nat) mod period=0"
       by (rule w0[OF active])
-    show "(comma_crt_axis_weight (0::nat)*(phase mod 4)) mod period=0"
+    show "(comma_crt_axis_weight (0::nat)*(phase mod 3)) mod period=0"
       using comma_crt_weighted_term[OF coefficient] by simp
   qed
   have t1: "axis\<le>(1::nat) \<Longrightarrow>
-      (comma_crt_axis_weight (1::nat)*(phase mod 3)) mod period=0"
+      (comma_crt_axis_weight (1::nat)*(phase mod 4)) mod period=0"
   proof -
     assume active: "axis\<le>(1::nat)"
     have coefficient:
       "comma_crt_axis_weight (1::nat) mod period=0"
       by (rule w1[OF active])
-    show "(comma_crt_axis_weight (1::nat)*(phase mod 3)) mod period=0"
+    show "(comma_crt_axis_weight (1::nat)*(phase mod 4)) mod period=0"
       using comma_crt_weighted_term[OF coefficient] by simp
   qed
   have t2: "axis\<le>(2::nat) \<Longrightarrow>
@@ -864,23 +864,23 @@ proof (rule comma_crt_select1_suffix_collapse[OF positive row_length])
   proof -
     fix phase :: nat
     assume phase_bound: "phase<924"
-    have coefficient1: "(616::nat) mod period=0"
+    have coefficient1: "(693::nat) mod period=0"
       using weight1 by (simp add: comma_crt_axis_weight_def)
     have coefficient2: "(792::nat) mod period=0"
       using weight2 by (simp add: comma_crt_axis_weight_def)
     have coefficient3: "(672::nat) mod period=0"
       using weight3 by (simp add: comma_crt_axis_weight_def)
-    have term1: "(616*(phase mod 3)) mod period=0"
+    have term1: "(693*(phase mod 4)) mod period=0"
       using comma_crt_weighted_term[OF coefficient1] by simp
     have term2: "(792*(phase mod 7)) mod period=0"
       using comma_crt_weighted_term[OF coefficient2] by simp
     have term3: "(672*(phase mod 11)) mod period=0"
       using comma_crt_weighted_term[OF coefficient3] by simp
     have prefix:
-      "(616*(phase mod 3)+792*(phase mod 7)) mod period=0"
+      "(693*(phase mod 4)+792*(phase mod 7)) mod period=0"
       by (rule comma_crt_mod_zero_add[OF term1 term2])
     have suffix:
-      "(616*(phase mod 3)+792*(phase mod 7)+672*(phase mod 11))
+      "(693*(phase mod 4)+792*(phase mod 7)+672*(phase mod 11))
         mod period=0"
       by (rule comma_crt_mod_zero_add[OF prefix term3])
     show "comma_crt_suffix 1 phase mod period=0"
@@ -905,31 +905,31 @@ proof (rule comma_crt_select0_suffix_collapse[OF positive row_length])
   proof -
     fix phase :: nat
     assume phase_bound: "phase<924"
-    have coefficient0: "(693::nat) mod period=0"
+    have coefficient0: "(616::nat) mod period=0"
       using weight0 by (simp add: comma_crt_axis_weight_def)
-    have coefficient1: "(616::nat) mod period=0"
+    have coefficient1: "(693::nat) mod period=0"
       using weight1 by (simp add: comma_crt_axis_weight_def)
     have coefficient2: "(792::nat) mod period=0"
       using weight2 by (simp add: comma_crt_axis_weight_def)
     have coefficient3: "(672::nat) mod period=0"
       using weight3 by (simp add: comma_crt_axis_weight_def)
-    have term0: "(693*(phase mod 4)) mod period=0"
+    have term0: "(616*(phase mod 3)) mod period=0"
       using comma_crt_weighted_term[OF coefficient0] by simp
-    have term1: "(616*(phase mod 3)) mod period=0"
+    have term1: "(693*(phase mod 4)) mod period=0"
       using comma_crt_weighted_term[OF coefficient1] by simp
     have term2: "(792*(phase mod 7)) mod period=0"
       using comma_crt_weighted_term[OF coefficient2] by simp
     have term3: "(672*(phase mod 11)) mod period=0"
       using comma_crt_weighted_term[OF coefficient3] by simp
     have prefix01:
-      "(693*(phase mod 4)+616*(phase mod 3)) mod period=0"
+      "(616*(phase mod 3)+693*(phase mod 4)) mod period=0"
       by (rule comma_crt_mod_zero_add[OF term0 term1])
     have prefix012:
-      "(693*(phase mod 4)+616*(phase mod 3)+792*(phase mod 7))
+      "(616*(phase mod 3)+693*(phase mod 4)+792*(phase mod 7))
         mod period=0"
       by (rule comma_crt_mod_zero_add[OF prefix01 term2])
     have suffix:
-      "(693*(phase mod 4)+616*(phase mod 3)+
+      "(616*(phase mod 3)+693*(phase mod 4)+
         792*(phase mod 7)+672*(phase mod 11)) mod period=0"
       by (rule comma_crt_mod_zero_add[OF prefix012 term3])
     show "comma_crt_suffix 0 phase mod period=0"

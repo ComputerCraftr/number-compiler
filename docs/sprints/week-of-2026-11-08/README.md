@@ -9,7 +9,7 @@ Period: 2026-11-08 through 2026-11-14 (Sunday–Saturday).
 <!-- sprint-topics:start -->
 | Topic | Records |
 | --- | ---: |
-| [Harmonic carry consumers and compressed-word audits](harmonic-carry-consumers.md) | 0 |
+| [Harmonic carry consumers and compressed-word audits](harmonic-carry-consumers.md) | 1 |
 <!-- sprint-topics:end -->
 
 ## Provenance

@@ -30,6 +30,7 @@ from number_compiler.resources.ledger_records import (
     ResourceInventory as ResourceInventory,
 )
 from number_compiler.resources.ledger_records import ResourceScope as ResourceScope
+from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.metric_keys import resources as _resources_keys
 from number_compiler.resources.owned_memo import (
     LedgerReservation,
@@ -782,6 +783,15 @@ class ResourceLedger(PayloadContractRegistry):
     def mark_disposed(self, owner: int) -> None:
         """Mark a cleared owner closed; no live payload may be hidden by disposal."""
         account = self._account(owner)
+        retired = tuple(
+            item.close
+            for item, state in self._reservations.items()
+            if state[0] == owner
+            and isinstance(item, LedgerReservation)
+            and item.retired
+        )
+        if retired:
+            cleanup_all(retired)
         if any(state[0] == owner for state in self._reservations.values()):
             raise ValueError("dispose requires closing the owner's reservations")
         if (

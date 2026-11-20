@@ -95,18 +95,12 @@ audit and repairs.
 
 [Implementation and validation record](../sprints/week-of-2026-09-20/shared.md#memo-authority-and-accounting-audit).
 
-## Production and reproduction
+## Construction scope
 
-- **Implemented owner:** [hashlife/execution/tile_scheduler.py](../../src/number_compiler/hashlife/execution/tile_scheduler.py).
-- **Checked theorem:** the named Isabelle results above apply with their explicit premises; use the [proof index](../proofs.md) for source statements, sessions and oracle audits.
-- **Finite experiment:** bounded test comparisons establish only the tested sources and horizons.
-- **Construction-cost status:** The scheduler authenticates construction and reuse; it does not supply a universal family construction bound.
+Action composition does not supply a universal family construction bound.
 
-Run the exact executable checks (including validation-marked assertions):
+[Implementation and validation record](../sprints/week-of-2026-09-20/shared.md).
 
-```console
-python -m devtools.checks.release --suite unit --select tests/hashlife/execution/test_source_bound_images.py --select tests/arithmetic/fields/test_consumer_pullback.py
-```
 ## Eager-work audit scope
 
 Avoiding repeated validation, observer folds and allocation is an implementation

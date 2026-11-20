@@ -3,19 +3,19 @@ theory Comma_CRT_Phase_Clock
 begin
 
 text \<open>
-The four selector coordinates are the external CRT clock C4 x C3 x C7 x C11.
+The four selector coordinates are the external CRT clock C3 x C4 x C7 x C11.
 The weights below are CRT idempotents: each is one on its own coordinate and
 zero on the other three. The rebase operation changes exactly one coordinate.
 \<close>
 
 definition comma_crt_axis_radix :: "nat \<Rightarrow> nat" where
   "comma_crt_axis_radix axis =
-    (if axis=0 then 4 else if axis=1 then 3 else if axis=2 then 7 else
+    (if axis=0 then 3 else if axis=1 then 4 else if axis=2 then 7 else
       if axis=3 then 11 else 1)"
 
 definition comma_crt_axis_weight :: "nat \<Rightarrow> nat" where
   "comma_crt_axis_weight axis =
-    (if axis=0 then 693 else if axis=1 then 616 else if axis=2 then 792 else
+    (if axis=0 then 616 else if axis=1 then 693 else if axis=2 then 792 else
       if axis=3 then 672 else 0)"
 
 lemma comma_crt_axis_cases:
@@ -38,9 +38,9 @@ definition comma_crt_rebase :: "nat \<Rightarrow> nat \<Rightarrow> nat \<Righta
 
 definition comma_crt_suffix :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
   "comma_crt_suffix axis phase =
-    (if axis=0 then 693*(phase mod 4)+616*(phase mod 3)+
+    (if axis=0 then 616*(phase mod 3)+693*(phase mod 4)+
         792*(phase mod 7)+672*(phase mod 11)
-     else if axis=1 then 616*(phase mod 3)+792*(phase mod 7)+672*(phase mod 11)
+     else if axis=1 then 693*(phase mod 4)+792*(phase mod 7)+672*(phase mod 11)
      else if axis=2 then 792*(phase mod 7)+672*(phase mod 11)
      else if axis=3 then 672*(phase mod 11)
      else 0)"
@@ -56,7 +56,7 @@ lemma comma_crt_suffix_step:
 
 lemma comma_crt_suffix_zero_is_clock:
   "comma_crt_suffix 0 phase mod 924=comma_crt_clock phase"
-  by (simp add: comma_crt_suffix_def comma_crt_clock_def)
+  by (simp add: comma_crt_suffix_def comma_crt_clock_def add.commute)
 
 lemma comma_crt_axis_radices_divide_924:
   "comma_crt_axis_radix axis dvd 924" if "axis<4"
@@ -228,10 +228,10 @@ lemma comma_crt_clock_reconstruct:
   "comma_crt_clock phase=phase mod 924"
 proof -
   have c4: "comma_crt_clock phase mod 4=phase mod 4"
-    using comma_crt_clock_axis_residue[where axis=0 and phase=phase]
+    using comma_crt_clock_axis_residue[where axis=1 and phase=phase]
     by (simp add: comma_crt_axis_radix_def)
   have c3: "comma_crt_clock phase mod 3=phase mod 3"
-    using comma_crt_clock_axis_residue[where axis=1 and phase=phase]
+    using comma_crt_clock_axis_residue[where axis=0 and phase=phase]
     by (simp add: comma_crt_axis_radix_def)
   have c7: "comma_crt_clock phase mod 7=phase mod 7"
     using comma_crt_clock_axis_residue[where axis=2 and phase=phase]

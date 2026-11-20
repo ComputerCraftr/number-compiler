@@ -55,22 +55,33 @@ def _string_list(value: object) -> tuple[str, ...] | None:
     return tuple(result)
 
 
-def _lines(text: str) -> list[tuple[int, str]]:
-    """Ignore fenced code, where Markdown-looking links are literal examples."""
+def _markdown_lines(text: str) -> tuple[list[tuple[int, str]], int | None]:
+    """Find prose outside code fences and report an unclosed opener."""
     result: list[tuple[int, str]] = []
     fence = ""
+    opening: int | None = None
     for number, line in enumerate(text.splitlines(), 1):
-        stripped = line.lstrip()
-        if stripped.startswith(("```", "~~~")):
-            marker = stripped[:3]
-            if not fence:
-                fence = marker
-            elif marker == fence:
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if fence:
+            if (
+                marker
+                and marker[1][0] == fence[0]
+                and len(marker[1]) >= len(fence)
+                and not marker[2].strip()
+            ):
                 fence = ""
+                opening = None
             continue
-        if not fence:
-            result.append((number, line))
-    return result
+        if marker and not (marker[1][0] == "`" and "`" in marker[2]):
+            fence = marker[1]
+            opening = number
+            continue
+        result.append((number, line))
+    return result, opening
+
+
+def _lines(text: str) -> list[tuple[int, str]]:
+    return _markdown_lines(text)[0]
 
 
 def _anchors(text: str) -> set[str]:
@@ -145,7 +156,10 @@ def _sprint_errors(name: str, kind: str, week_start: object, text: str) -> list[
 def _link_errors(root: Path, path: Path, *, durable: bool) -> list[str]:
     errors: list[str] = []
     relative = path.relative_to(root)
-    for number, line in _lines(path.read_text()):
+    lines, opening = _markdown_lines(path.read_text())
+    if opening is not None:
+        errors.append(f"{relative}:{opening}: unclosed Markdown code fence")
+    for number, line in lines:
         targets = [match.group(1) for match in _LINK.finditer(line)]
         reference = _REFERENCE.match(line)
         if reference:

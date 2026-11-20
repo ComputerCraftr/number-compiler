@@ -14,8 +14,8 @@ definition comma_crt_phase_point :: "nat \<Rightarrow> comma_crt_column" where
   "comma_crt_phase_point phase =
     comma_crt_apply Comma_CRT_And
       (comma_crt_apply Comma_CRT_And
-        (comma_crt_source_axis_column 0 4 phase)
-        (comma_crt_source_axis_column 1 3 phase))
+        (comma_crt_source_axis_column 1 4 phase)
+        (comma_crt_source_axis_column 0 3 phase))
       (comma_crt_apply Comma_CRT_And
         (comma_crt_source_axis_column 2 7 phase)
         (comma_crt_source_axis_column 3 11 phase))"
@@ -81,21 +81,21 @@ lemma comma_crt_phase_point_set:
   "comma_crt_set (comma_crt_phase_point p) =
     {phase. phase<924 \<and> phase mod 924=p mod 924}"
 proof -
-  have a0: "comma_crt_admitted 0 (comma_crt_source_axis_column 0 4 p)"
+  have a0: "comma_crt_admitted 0 (comma_crt_source_axis_column 1 4 p)"
     by (rule comma_crt_source_axis_column_admitted) simp
-  have a1: "comma_crt_admitted 0 (comma_crt_source_axis_column 1 3 p)"
+  have a1: "comma_crt_admitted 0 (comma_crt_source_axis_column 0 3 p)"
     by (rule comma_crt_source_axis_column_admitted) simp
   have a2: "comma_crt_admitted 0 (comma_crt_source_axis_column 2 7 p)"
     by (rule comma_crt_source_axis_column_admitted) simp
   have a3: "comma_crt_admitted 0 (comma_crt_source_axis_column 3 11 p)"
     by (rule comma_crt_source_axis_column_admitted) simp
-  have s0: "comma_crt_set (comma_crt_source_axis_column 0 4 p) =
+  have s0: "comma_crt_set (comma_crt_source_axis_column 1 4 p) =
       {phase. phase<924 \<and> phase mod 4=p mod 4}"
-    using comma_crt_source_axis_column_set[of 0 4 p]
+    using comma_crt_source_axis_column_set[of 1 4 p]
     by (simp add: comma_crt_period_def)
-  have s1: "comma_crt_set (comma_crt_source_axis_column 1 3 p) =
+  have s1: "comma_crt_set (comma_crt_source_axis_column 0 3 p) =
       {phase. phase<924 \<and> phase mod 3=p mod 3}"
-    using comma_crt_source_axis_column_set[of 1 3 p]
+    using comma_crt_source_axis_column_set[of 0 3 p]
     by (simp add: comma_crt_period_def)
   have s2: "comma_crt_set (comma_crt_source_axis_column 2 7 p) =
       {phase. phase<924 \<and> phase mod 7=p mod 7}"
@@ -108,8 +108,8 @@ proof -
   have a01:
       "comma_crt_admitted 0
         (comma_crt_apply Comma_CRT_And
-          (comma_crt_source_axis_column 0 4 p)
-          (comma_crt_source_axis_column 1 3 p))"
+          (comma_crt_source_axis_column 1 4 p)
+          (comma_crt_source_axis_column 0 3 p))"
     by (rule comma_crt_apply_admitted[OF a0 a1])
   have a23:
       "comma_crt_admitted 0
@@ -119,8 +119,8 @@ proof -
     by (rule comma_crt_apply_admitted[OF a2 a3])
   have s01:
       "comma_crt_set (comma_crt_apply Comma_CRT_And
-          (comma_crt_source_axis_column 0 4 p)
-          (comma_crt_source_axis_column 1 3 p)) =
+          (comma_crt_source_axis_column 1 4 p)
+          (comma_crt_source_axis_column 0 3 p)) =
         {phase. phase<924 \<and>
           phase mod 4=p mod 4 \<and> phase mod 3=p mod 3}"
     using comma_crt_apply_and_set[OF a0 a1] s0 s1 by auto
@@ -134,8 +134,8 @@ proof -
   have combined_set:
     "comma_crt_set (comma_crt_phase_point p) =
       comma_crt_set (comma_crt_apply Comma_CRT_And
-          (comma_crt_source_axis_column 0 4 p)
-          (comma_crt_source_axis_column 1 3 p)) \<inter>
+          (comma_crt_source_axis_column 1 4 p)
+          (comma_crt_source_axis_column 0 3 p)) \<inter>
       comma_crt_set (comma_crt_apply Comma_CRT_And
           (comma_crt_source_axis_column 2 7 p)
           (comma_crt_source_axis_column 3 11 p))"
@@ -150,8 +150,8 @@ proof -
       assume point: "phase\<in>comma_crt_set (comma_crt_phase_point p)"
       have left:
         "phase\<in>comma_crt_set (comma_crt_apply Comma_CRT_And
-          (comma_crt_source_axis_column 0 4 p)
-          (comma_crt_source_axis_column 1 3 p))"
+          (comma_crt_source_axis_column 1 4 p)
+          (comma_crt_source_axis_column 0 3 p))"
         and right:
         "phase\<in>comma_crt_set (comma_crt_apply Comma_CRT_And
           (comma_crt_source_axis_column 2 7 p)
@@ -180,8 +180,8 @@ proof -
         using residues by blast+
       have left:
         "phase\<in>comma_crt_set (comma_crt_apply Comma_CRT_And
-          (comma_crt_source_axis_column 0 4 p)
-          (comma_crt_source_axis_column 1 3 p))"
+          (comma_crt_source_axis_column 1 4 p)
+          (comma_crt_source_axis_column 0 3 p))"
         using s01 phase_bound r4 r3 by simp
       have right:
         "phase\<in>comma_crt_set (comma_crt_apply Comma_CRT_And

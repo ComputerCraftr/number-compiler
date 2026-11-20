@@ -6,6 +6,7 @@ sig
   type replay
   val make: Comma_CRT_MDD_Certificate_Store.store -> replay
   val certify_bind: replay -> Comma_CRT_MDD_Arena.bind_key -> thm
+  val certify_cover: replay -> int -> int list -> thm
   val bind_eval_phase: replay -> Comma_CRT_MDD_Arena.bind_key -> thm
   val statistics: replay -> string
 end
@@ -44,21 +45,18 @@ struct
   fun nat n = HOLogic.mk_number natT n
   fun optionT typ = Type (@{type_name option}, [typ])
   fun some typ value = Const (@{const_name Some}, typ --> optionT typ) $ value
-  fun ball set predicate =
-    Const (@{const_name Ball}, HOLogic.mk_setT natT -->
-      (natT --> boolT) --> boolT) $ set $ predicate
+  val ball = Utils.ball_nat
   fun nat_list xs = HOLogic.mk_list natT (map nat xs)
   fun pair_term (x, y) = HOLogic.mk_prod (nat x, nat y)
   fun pair_list xs = HOLogic.mk_list pairT (map pair_term xs)
-  fun set_nat xs =
-    Const (@{const_name set}, nat_listT --> HOLogic.mk_setT natT) $ nat_list xs
+  val set_nat = Utils.set_nat
   fun nth listT elementT list index =
     Const (@{const_name nth}, listT --> natT --> elementT) $ list $ index
   fun list_all predicate values =
     Const (@{const_name list_all}, fastype_of predicate -->
       fastype_of values --> boolT) $ predicate $ values
-  fun mk_less (x, y) = HOLogic.mk_binrel @{const_name less} (x, y)
 
+  fun mk_less (x,y) = Utils.mk_less x y
   type cofactor_family = {theorem: thm}
   type mapping_family = {theorem: thm}
 
@@ -82,7 +80,8 @@ struct
      radix_fact_builds: int Unsynchronized.ref,
      proof_timings: (string * int * Time.time) list Unsynchronized.ref}
 
-  type replay = {state: state, certify: Arena.bind_key -> thm}
+  type replay = {state: state, certify: Arena.bind_key -> thm,
+    certify_cover: int -> int list -> thm}
 
   fun table_size ({store, ...}: state) =
     Const (@{const_name size}, nodesT --> natT) $ Store.table store
@@ -976,11 +975,12 @@ struct
                 (input_key, (#result witness, theorem)) (!(#public_bind_certificates state))
             in theorem end)
 
-      val public: replay = {state=state, certify=certify_public}
+      val public: replay = {state=state, certify=certify_public, certify_cover=cover}
     in public end
 
   fun certify_bind ({certify, ...}: replay) key = certify key
-  fun bind_eval_phase ({state={store, ctxt, ...}, certify}: replay) key =
+  fun certify_cover ({certify_cover, ...}: replay) root labels = certify_cover root labels
+  fun bind_eval_phase ({state={store, ctxt, ...}, certify, ...}: replay) key =
     let
       val certificate = certify key
       val theorem = @{thm comma_crt_mdd_bind_certificate_eval_phase} OF

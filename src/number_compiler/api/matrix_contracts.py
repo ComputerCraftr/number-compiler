@@ -11,12 +11,17 @@ from number_compiler.api.observation_types import (
     OptionSpec,
     OptionValueKind,
 )
-from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_integer_tuple,
+    require_integer,
+)
 
 
 class MatrixKind(StrEnum):
     SOURCE_TRANSFER = "source-transfer"
     INNOVATION = "innovation"
+    CARRY_CONTINUANT = "carry-continuant"
+    DIGIT_BAND = "digit-band"
 
 
 class MatrixCoordinate(StrEnum):
@@ -33,6 +38,9 @@ class MatrixLaw(StrEnum):
     ORDERED_TRIPLING_CARRY = "ordered-tripling-carry"
     INNOVATION_MOMENT = "innovation-moment"
     NORM_ONE_TRACE = "norm-one-trace"
+    ORDERED_CARRY_CONTINUANT = "ordered-carry-continuant"
+    ORDERED_DIGIT_CONTINUANT = "ordered-digit-continuant"
+    GUARDED_REVERSAL_PORT = "guarded-reversal-port"
 
 
 class MatrixClock(StrEnum):
@@ -75,7 +83,46 @@ class InnovationMatrixRequest:
                 raise ValueError("temporal matrix modulus exceeds bit budget")
 
 
-MatrixRequest = SourceTransferRequest | InnovationMatrixRequest
+@dataclass(frozen=True, slots=True)
+class OrderedMatrixRequest:
+    kind: MatrixKind
+    steps: int
+    precision: int = 32
+    band_width: int = 2
+    modulus: int = 1_000_000_007
+    coefficients: tuple[int, ...] | None = None
+    trace: bool = False
+
+    def __post_init__(self) -> None:
+        if type(self.kind) is not MatrixKind or self.kind not in {
+            MatrixKind.CARRY_CONTINUANT,
+            MatrixKind.DIGIT_BAND,
+        }:
+            raise ValueError("ordered matrix requires an ordered output kind")
+        require_integer(self.steps, "--temporal-matrix-steps", 1, 4096)
+        require_integer(self.precision, "--temporal-matrix-precision", 1, 133)
+        require_integer(self.band_width, "--temporal-matrix-band-width", 1, 90)
+        require_integer(self.modulus, "--temporal-matrix-modulus", 2)
+        if self.modulus.bit_length() > 4096:
+            raise ValueError("matrix modulus exceeds bit budget")
+        if type(self.trace) is not bool:
+            raise TypeError("matrix trace demand must be Boolean")
+        if self.trace and self.steps > 128:
+            raise ValueError("matrix trace exceeds 128 physical ticks")
+        if self.coefficients is not None and (
+            type(self.coefficients) is not tuple
+            or not 1 <= len(self.coefficients) <= 9
+            or any(
+                type(c) is not int or abs(c).bit_length() > 128
+                for c in self.coefficients
+            )
+        ):
+            raise ValueError(
+                "matrix coefficients require degree 0..8 and 128-bit integers"
+            )
+
+
+MatrixRequest = SourceTransferRequest | InnovationMatrixRequest | OrderedMatrixRequest
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,8 +142,24 @@ class MatrixCapability:
     law: MatrixLaw = MatrixLaw.GUARDED_PAIR_RELATION
     clock: MatrixClock = MatrixClock.PHYSICAL
     max_trace_steps: int | None = None
+    ordered_kinds: tuple[MatrixKind, ...] = ()
+    digit_band_step_multiple: int = 1
 
     def __post_init__(self) -> None:
+        if (
+            type(self.ordered_kinds) is not tuple
+            or any(
+                type(kind) is not MatrixKind
+                or kind
+                not in {
+                    MatrixKind.CARRY_CONTINUANT,
+                    MatrixKind.DIGIT_BAND,
+                }
+                for kind in self.ordered_kinds
+            )
+            or len(set(self.ordered_kinds)) != len(self.ordered_kinds)
+        ):
+            raise ValueError("matrix ordered kinds must be distinct declared kinds")
         if (
             type(self.module) is not str
             or not self.module
@@ -117,6 +180,7 @@ class MatrixCapability:
         require_integer(self.max_coordinate, "matrix maximum coordinate", 0)
         require_integer(self.minimum_coordinate, "matrix minimum coordinate", 0)
         require_integer(self.step_multiple, "matrix step multiple", 1)
+        require_integer(self.digit_band_step_multiple, "digit-band step multiple", 1)
         if self.minimum_coordinate > self.max_coordinate:
             raise ValueError("matrix coordinate interval is empty")
         if self.default_coordinate is not None:
@@ -165,9 +229,38 @@ class MatrixCapability:
                     ),
                 ),
             )
-        if not self.innovation:
+        if not self.innovation and not self.ordered_kinds:
             return common
-        kinds = tuple(kind.value for kind in MatrixKind)
+        kinds: tuple[str, ...] = (MatrixKind.SOURCE_TRANSFER.value,)
+        if self.innovation:
+            kinds += (MatrixKind.INNOVATION.value,)
+        kinds += tuple(kind.value for kind in self.ordered_kinds)
+        if MatrixKind.CARRY_CONTINUANT in self.ordered_kinds:
+            common += (
+                (
+                    "temporal_matrix_precision",
+                    OptionSpec(32, info, help="carry precision in bits"),
+                ),
+            )
+        if MatrixKind.DIGIT_BAND in self.ordered_kinds:
+            common += (
+                (
+                    "temporal_matrix_band_width",
+                    OptionSpec(2, info, help="decimal band digits"),
+                ),
+            )
+        if self.ordered_kinds:
+            common += (
+                (
+                    "temporal_matrix_coefficients",
+                    OptionSpec(
+                        None,
+                        info,
+                        value_kind=OptionValueKind.INTEGER_VECTOR,
+                        help="degree 0..8 coefficients in increasing p degree",
+                    ),
+                ),
+            )
         return (
             (
                 (
@@ -177,7 +270,7 @@ class MatrixCapability:
                         info,
                         value_kind=OptionValueKind.CHOICE,
                         choices=kinds,
-                        help="source-guarded transfer or diagnostic innovation",
+                        help="mathematical matrix output kind",
                     ),
                 ),
             )
@@ -189,7 +282,7 @@ class MatrixCapability:
         self, values: Mapping[str, object], *, trace: bool = False
     ) -> MatrixRequest:
         raw_kind = values.get("temporal_matrix_kind")
-        if self.innovation:
+        if self.innovation or self.ordered_kinds:
             if not isinstance(raw_kind, str):
                 raise ValueError("unsupported temporal matrix kind")
             try:
@@ -200,6 +293,51 @@ class MatrixCapability:
             if raw_kind not in (None, MatrixKind.SOURCE_TRANSFER.value):
                 raise ValueError("this family has no temporal matrix kind selector")
             kind = MatrixKind.SOURCE_TRANSFER
+        if kind in self.ordered_kinds:
+            specified = values.get("_specified", {})
+            if isinstance(specified, Mapping):
+                incompatible = (
+                    "temporal_matrix_band_width"
+                    if kind is MatrixKind.CARRY_CONTINUANT
+                    else "temporal_matrix_precision"
+                )
+                if incompatible in specified or self.coordinate_option in specified:
+                    raise ValueError("coordinate option belongs to another matrix kind")
+            coefficients = values.get("temporal_matrix_coefficients")
+            if coefficients is not None and not is_exact_integer_tuple(coefficients):
+                raise ValueError("matrix coefficients must be an integer tuple")
+            modulus = values.get("temporal_matrix_modulus")
+            ordered_request = OrderedMatrixRequest(
+                kind,
+                require_integer(
+                    values.get("temporal_matrix_steps"), "--temporal-matrix-steps", 1
+                ),
+                require_integer(
+                    values.get("temporal_matrix_precision", 32), "matrix precision", 1
+                ),
+                require_integer(
+                    values.get("temporal_matrix_band_width", 2), "matrix band width", 1
+                ),
+                require_integer(
+                    1_000_000_007 if modulus is None else modulus, "matrix modulus", 2
+                ),
+                coefficients,
+                trace,
+            )
+            self.validate(ordered_request)
+            return ordered_request
+        if kind not in {MatrixKind.SOURCE_TRANSFER, MatrixKind.INNOVATION}:
+            raise ValueError("this family does not support the ordered matrix kind")
+        specified = values.get("_specified", {})
+        if isinstance(specified, Mapping) and any(
+            name in specified
+            for name in (
+                "temporal_matrix_precision",
+                "temporal_matrix_band_width",
+                "temporal_matrix_coefficients",
+            )
+        ):
+            raise ValueError("ordered matrix options require an ordered matrix kind")
         if kind == MatrixKind.INNOVATION:
             if trace:
                 raise ValueError("matrix.trace requires source-transfer kind")
@@ -235,6 +373,29 @@ class MatrixCapability:
         return request
 
     def validate(self, request: MatrixRequest) -> None:
+        if type(request) is OrderedMatrixRequest:
+            request.__post_init__()
+            if request.kind not in self.ordered_kinds:
+                raise ValueError("this family does not support the ordered matrix kind")
+            multiple = (
+                self.digit_band_step_multiple
+                if request.kind is MatrixKind.DIGIT_BAND
+                else 1
+            )
+            if request.steps > self.max_steps or request.steps % multiple:
+                raise ValueError(
+                    f"ordered matrix requires at most {self.max_steps} physical ticks "
+                    f"in multiples of {multiple}"
+                )
+            if (
+                request.trace
+                and self.max_trace_steps is not None
+                and request.steps > self.max_trace_steps
+            ):
+                raise ValueError(
+                    f"matrix trace requires at most {self.max_trace_steps} steps"
+                )
+            return
         if type(request) is InnovationMatrixRequest:
             if not self.innovation:
                 raise ValueError("innovation matrix is unavailable for this family")

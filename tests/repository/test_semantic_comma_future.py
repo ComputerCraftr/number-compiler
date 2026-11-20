@@ -2,7 +2,6 @@
 
 from devtools.checks.isabelle_registry import discover_sessions
 from devtools.checks.isabelle_source_analysis import (
-    IsabelleDeclaration,
     extract_isabelle_declarations,
 )
 from devtools.checks.isabelle_syntax import (
@@ -18,18 +17,6 @@ THEORY_PATH = (
     / "families/comma/comma_semantic_future"
     / "Comma_Semantic_Future.thy"
 )
-
-
-def _future_theory(name: str) -> tuple[str, dict[str, IsabelleDeclaration]]:
-    path = (
-        isabelle_root(repository_root())
-        / "families/comma/comma_semantic_future_instance"
-        / f"{name}.thy"
-    )
-    source = path.read_text(encoding="utf-8")
-    return source, {
-        item.name: item for item in extract_isabelle_declarations(source, path)
-    }
 
 
 def test_semantic_future_owner_uses_only_foundational_imports() -> None:
@@ -198,163 +185,6 @@ def test_semantic_stop_occurrence_bridge_has_no_concrete_sparse_authority() -> N
     assert "require_native_clean" in source
 
 
-def test_semantic_boundary_bridge_consumes_direct_round_refinement() -> None:
-    path = (
-        isabelle_root(repository_root())
-        / "families/comma/comma_semantic_future_instance"
-        / "Comma_Semantic_Future_Instance.thy"
-    )
-    declarations = {
-        item.name: item
-        for item in extract_isabelle_declarations(path.read_text(), path)
-    }
-    bridge = declarations["comma_semantic_boundary_step_decisive_round"].body
-    assert "comma_decisive_endpoint_round_refines[" in bridge
-    assert "comma_round_control_germ_refines" in bridge
-    assert "comma_round_close" in bridge
-
-
-def test_semantic_future_checker_context_is_private_and_entry_open_scoped() -> None:
-    root = isabelle_root(repository_root())
-    instance_path = (
-        root
-        / "families/comma/comma_semantic_future_instance"
-        / "Comma_Semantic_Future_Instance.thy"
-    )
-    source = instance_path.read_text(encoding="utf-8")
-    checker = next(
-        body
-        for body in ml_cartouches(source)
-        if "structure Comma_Semantic_Future_Candidate_Check" in body
-    )
-    private = checker.split("\nlocal\n", 1)[1].split("\nin\n", 1)[0]
-    assert "val checker_cache" in private
-    assert "fun access_checker operation" in private
-    assert "val entry_open_theory_name =" in private
-    assert "Long_Name.qualify (Resources.theory_qualifier owner_theory_name)" in private
-    assert '"Comma_Semantic_Entry_Open"' in private
-
-    context_tac = checker.split("fun context_tac ctxt operation i state =", 1)[1].split(
-        "fun class_table_tac", 1
-    )[0]
-    assert "Context.subthy_id (owner_theory_id, requested_theory_id)" in context_tac
-    assert (
-        "Context.theory_long_name requested_theory = entry_open_theory_name"
-        in context_tac
-    )
-    assert "Seq.list_of (operation (#proof_context checker) i state)" in context_tac
-    assert "Seq.of_list results" in context_tac
-
-    # Provider admission now comes from the checked 16-source normal-form
-    # action, rather than a second theorem-construction cache in this checker.
-    # Keep the cache private-context contract above, and assert the new
-    # source-to-provider proof path at its theorem owner.
-    _source_bridge, source_bridge_declarations = _future_theory(
-        "Comma_Semantic_Future_Source_NF_Bridge"
-    )
-    boundary_action = source_bridge_declarations[
-        "comma_semantic_future_initial_nf_direct_boundary_exact"
-    ].body
-    assert "comma_boundary_valid q" in boundary_action
-    assert "comma_semantic_graph_initial_nf_actions" in boundary_action
-    assert "comma_semantic_future_initial_source_index q" in boundary_action
-    assert "delta\\<le>27" in boundary_action
-    assert "(snd (snd q)+delta) mod 924" in boundary_action
-    assert "Comma_Semantic_B1_CRT_Stop J delta" in boundary_action
-    assert "actual_delta=1+H" in boundary_action
-    assert "comma_semantic_boundary_children" in boundary_action
-    assert boundary_action.index("(Comma_N,a,") < boundary_action.index("(Comma_Z,a,")
-    assert "comma_semantic_future_candidate_" not in boundary_action
-    assert "comma_semantic_future_projected_key_apply" not in boundary_action
-
-    _candidate_bridge, candidate_declarations = _future_theory(
-        "Comma_Semantic_Future_Candidate_Bridge"
-    )
-    candidate_action = candidate_declarations[
-        "comma_semantic_future_initial_nf_action_boundary_exact"
-    ].body
-    assert "comma_semantic_future_initial_nf_direct_boundary_exact[OF valid]" in (
-        candidate_action
-    )
-    assert "comma_semantic_future_candidate_child_ids_at" in candidate_action
-    assert "comma_semantic_future_candidate_class_ids" in candidate_action
-    assert "comma_semantic_future_projected_key_apply" in candidate_action
-    assert "comma_semantic_future_candidate_child_receiver" not in candidate_action
-    assert "J<9" in candidate_action and "delta\\<le>27" in candidate_action
-    assert "(snd (snd q)+delta) mod 924" in candidate_action
-    assert "ordered_children" in candidate_action
-    assert candidate_action.index("(Comma_N,a,") < candidate_action.index("(Comma_Z,a,")
-    assert "comma_semantic_future_initial_nf_source_key_action_result" in (
-        candidate_action
-    )
-    assert "source_J=J" in candidate_action and "source_delta=delta" in candidate_action
-
-    closure, closure_declarations = _future_theory(
-        "Comma_Semantic_Future_Candidate_Provider_Closure"
-    )
-    row_proof = closure_declarations[
-        "comma_semantic_future_candidate_provider_row_of_initial_nf_boundary"
-    ].body
-    assert "comma_semantic_future_initial_nf_action_boundary_exact" in row_proof
-    assert "boundary_control" in row_proof and "boundary_children" in row_proof
-    assert "comma_semantic_future_candidate_provider_check_checked" in closure
-    assert "comma_semantic_future_provider_check_lifts_rank" in closure
-    assert "comma_semantic_concrete_future_rank_check" in closure
-
-    compare_path = (
-        root
-        / "families/comma/comma_semantic_future_instance"
-        / "Comma_Semantic_Future_Action_Compare.thy"
-    )
-    weighted_transport_path = (
-        root
-        / "families/comma/comma_semantic_future_instance"
-        / "Comma_Semantic_Future_Weighted_Transport.thy"
-    )
-    compare_source = compare_path.read_text(encoding="utf-8")
-    weighted_transport = weighted_transport_path.read_text(encoding="utf-8")
-    projected_declarations = {
-        item.name: item
-        for item in extract_isabelle_declarations(
-            weighted_transport, weighted_transport_path
-        )
-    }
-    projected_apply = projected_declarations[
-        "comma_semantic_future_projected_key_apply"
-    ].body
-    assert "Comma_Future_Fork target" in projected_apply
-    assert "north_weight" in projected_apply and "south_weight" in projected_apply
-    assert "Comma_Future_Landmine" in projected_apply
-    assert "comma_semantic_future_action_children_shape Comma_Future_Landmine []" in (
-        projected_apply
-    )
-    compare_declarations = {
-        item.name: item
-        for item in extract_isabelle_declarations(compare_source, compare_path)
-    }
-    north_receiver = compare_declarations[
-        "comma_semantic_future_candidate_child_receiver_north"
-    ].body
-    south_receiver = compare_declarations[
-        "comma_semantic_future_candidate_child_receiver_south"
-    ].body
-    for receiver in (north_receiver, south_receiver):
-        assert "Comma_Future_Fork target_family_digit" in receiver
-        assert r"_ \<Rightarrow> Comma_Weighted_CRT_Leaf 0" in receiver
-    provider_nf_path = (
-        root
-        / "families/comma/comma_semantic_future_instance"
-        / "Comma_Semantic_Future_Candidate_Provider_NF.thy"
-    )
-    provider_nf = provider_nf_path.read_text(encoding="utf-8")
-    assert "comma_semantic_future_candidate_parent_key_action_apply" in (compare_source)
-    assert 'assumes table: "comma_semantic_future_candidate_class_table_check"' in (
-        compare_source
-    )
-    assert "comma_semantic_future_candidate_parent_source_key_nf" in provider_nf
-    assert "comma_semantic_future_projected_key_apply" in provider_nf
-
-
 def test_semantic_graph_reuses_the_canonical_packet_recurrence() -> None:
     root = isabelle_root(repository_root())
     graph = root / "families/comma/comma_semantic_b1" / "Comma_Semantic_Graph.thy"
@@ -454,13 +284,13 @@ def test_stop_occurrence_bridge_covers_offsets_and_preserves_exponent_weight() -
     assert "comma_summary_ordered_children terminal (p+h)" in projection
 
 
-def test_concrete_summary_consumes_graph_power_and_instantiates_boundary_bridge() -> (
+def test_concrete_summary_consumes_checked_weight_and_instantiates_boundary_bridge() -> (
     None
 ):
     root = isabelle_root(repository_root())
     path = (
         root
-        / "families/comma/comma_semantic_graph_instance"
+        / "families/comma/comma_semantic_b1_instance"
         / "Comma_Semantic_Summary_Instance.thy"
     )
     source_text = path.read_text(encoding="utf-8")
@@ -487,11 +317,12 @@ def test_concrete_summary_consumes_graph_power_and_instantiates_boundary_bridge(
     bound = declarations["comma_semantic_b1_action_power_b32_stop242"].body
     assert "comma_semantic_b1_action_b32_stop242_checked" in bound
     assert "D\\<le>242" in bound
-    assert "comma_semantic_graph_action_power_refines" in source
     code = declarations["comma_semantic_decade_summary_code"].body
-    assert "comma_semantic_graph_action_power 5 r (comma_offset_orbit x)" in code
-    assert "Comma_Semantic_B1_Stop D" in code
-    assert "comma_terminal_weight_decode D" in code
+    assert "comma_frontier_m204_weight r (comma_offset_orbit x)" in code
+    assert "comma_terminal_weight_decode" in code
+    assert "comma_decade_admitted s" in code
+    assert "comma_frontier_m204_exact_weight_from_checked_bellman" in code
+    assert "comma_frontier_m204_bellman_native" in code
     assert "comma_semantic_decade_summary_code[code]" in source
     assert "comma_semantic_decade_summary_total_exact_for_bound" in executable_text(
         source
@@ -510,39 +341,7 @@ def test_concrete_summary_consumes_graph_power_and_instantiates_boundary_bridge(
     }.intersection(closure)
 
 
-def test_b32_instance_uses_the_demand_driven_graph_action_certificate() -> None:
-    path = (
-        isabelle_root(repository_root())
-        / "families/comma/comma_semantic_graph_instance"
-        / "Comma_Semantic_Graph_B32_Instance.thy"
-    )
-    text = path.read_text(encoding="utf-8")
-    declarations = {
-        item.name: item for item in extract_isabelle_declarations(text, path)
-    }
-    stop = declarations["comma_semantic_graph_b32_stop242_checked"].body
-    for condition in (
-        "root<46",
-        "phase<924",
-        "comma_semantic_graph_action_power 5 phase root",
-        "D\\<le>242",
-    ):
-        assert condition in stop
-    assert 'ML_file "semantic_graph_action_certificate.ML"' in text
-    assert "Comma_Semantic_Graph_Action_Certificate.make" in text
-    assert "comma_semantic_graph_action_power_refines" in text
-    graph_power_path = (
-        isabelle_root(repository_root())
-        / "families/comma/comma_semantic_graph_instance"
-        / "Comma_Semantic_Graph_Action_Power.thy"
-    )
-    graph_power = executable_text(graph_power_path.read_text(encoding="utf-8"))
-    assert "comma_semantic_graph_valid_checked" in graph_power
-    assert "comma_semantic_graph_root_binding_exact" in graph_power
-    assert "comma_semantic_graph_action_power_refines" in graph_power
-
-    # The Continue image supplies exact output and its physical Stop bound.
-    # The graph projector consumes that theorem after its own refinement.
+def test_b32_instance_uses_checked_bellman_exact_output() -> None:
     rank_path = (
         isabelle_root(repository_root())
         / "families/comma/comma_semantic_b1_instance"
@@ -566,12 +365,9 @@ def test_b32_instance_uses_the_demand_driven_graph_action_certificate() -> None:
     ):
         assert condition in exact_bound
     assert "Comma_Continue_Frontier24_Source_Bridge" in rank_source
-    assert "comma_continue24_image_implies_direct_certificate" in rank_source
-    assert "comma_continue_frontier_empty_implies_image" in rank_source
-    assert "comma_semantic_phase_continue24_image_checked" in exact_bound
-    semantic_path = (
-        path.parent.parent / "comma_semantic_b1_instance/Comma_Semantic_B1_Instance.thy"
-    )
+    assert "comma_frontier_m204_exact_stop_from_checked_bellman" in exact_bound
+    assert "comma_frontier_m204_bellman_native" in exact_bound
+    semantic_path = rank_path.parent / "Comma_Semantic_B1_Instance.thy"
     semantic_declarations = {
         item.name: item
         for item in extract_isabelle_declarations(
@@ -583,137 +379,47 @@ def test_b32_instance_uses_the_demand_driven_graph_action_certificate() -> None:
     ].body
     assert "comma_semantic_phase_class_B32_exact_output_checked" in semantic_bound
     assert "comma_semantic_graph_action_power" not in semantic_bound
-    assert "comma_semantic_b1_action_b32_stop242_checked" in stop
 
 
-def test_release_consumers_project_the_graph_power_refinement() -> None:
-    root = isabelle_root(repository_root())
-    summary_path = (
-        root
-        / "families/comma/comma_semantic_graph_instance/Comma_Semantic_Summary_Instance.thy"
-    )
-    future_path = (
-        root
-        / "families/comma/comma_semantic_future_instance/Comma_Semantic_Future_Instance.thy"
-    )
-    entry_path = (
-        root
-        / "families/comma/comma_semantic_future_instance/Comma_Semantic_Entry_Open.thy"
-    )
-    global_path = (
-        root
-        / "families/comma/comma_semantic_future_instance/Comma_Semantic_Global_Safety.thy"
-    )
-    release_path = (
-        root
-        / "families/comma/comma_semantic_future_instance/Comma_Semantic_Release.thy"
-    )
-
-    summary_text = summary_path.read_text(encoding="utf-8")
-    summary_declarations = {
+def test_future_source_bridge_preserves_physical_outputs_and_child_order() -> None:
+    path = THEORY_PATH.parent / "Comma_Future_M204_Source_Bridge.thy"
+    declarations = {
         item.name: item
-        for item in extract_isabelle_declarations(summary_text, summary_path)
+        for item in extract_isabelle_declarations(path.read_text(), path)
     }
-    assert "comma_semantic_graph_action_power 5 r (comma_offset_orbit x)" in (
-        summary_declarations["comma_semantic_decade_summary_code"].body
-    )
-    assert "comma_semantic_graph_action_power_refines" in summary_text
+    bridge = declarations["comma_future_m204_source_output_exact"].body
+    assert "comma_frontier_m204_bellman D" in bridge
+    assert "comma_boundary_valid q" in bridge
+    assert "J<9" in bridge
+    assert "comma_semantic_boundary_control_step" in bridge
+    assert "comma_semantic_boundary_children" in bridge
+    assert "(snd (snd q)+delta) mod 924" in bridge
+    assert bridge.index("(Comma_N,J+2,") < bridge.index("(Comma_Z,J+2,")
 
-    future_text = future_path.read_text(encoding="utf-8")
-    assert "Comma_Semantic_Future_Source_NF_Bridge" in future_text
-    assert "comma_semantic_future_candidate_class_table_checked" in future_text
 
-    closure_text, closure_declarations = _future_theory(
-        "Comma_Semantic_Future_Candidate_Provider_Closure"
-    )
-    provider_row = closure_declarations[
-        "comma_semantic_future_candidate_provider_row_of_initial_nf_boundary"
-    ].body
-    assert "comma_semantic_future_initial_nf_action_boundary_exact" in provider_row
-    assert "boundary_control" in provider_row and "boundary_children" in provider_row
-    assert "comma_semantic_future_candidate_provider_check_checked" in closure_text
+def test_future_rank_publication_consumes_checked_family_transports() -> None:
+    owner = THEORY_PATH.parent.parent / "comma_semantic_future_instance"
+    source = (owner / "semantic_future_m204_final_publication.ML").read_text()
+    assert "length family_facts=16" in source
+    assert "comma_future_m204_boundary_cases" in source
+    assert "comma_future_m204_source_rank_lift" in source
+    assert "[bellman,rows_checked,bound_fact,join_fact]" in source
+    assert "require_native_clean" in source
+    instance = (owner / "Comma_Semantic_Future_Instance.thy").read_text()
+    assert "Comma_Future_M204_Component_Loader.prepare" in instance
+    assert "comma_semantic_concrete_future_rank_check" in instance
+    assert "comma_semantic_concrete_source20_unranked" in instance
+    assert "comma_semantic_concrete_source20_z_ranked_value" in instance
 
-    # The entry-open slice remains a separate, bounded projection request. Its
-    # checked list still uses the graph-action projector; the all-family future
-    # provider is certified through Source_NF_Bridge above.
-    entry_consumer = executable_text(entry_path.read_text(encoding="utf-8"))
-    assert "Comma_Semantic_Graph_Action_Certificate.make" in entry_consumer
-    assert "comma_semantic_b1_action_power 5 phase root" in entry_consumer
-    assert "Comma_Selected_List_Conversion.schematize" in entry_consumer
 
-    # Source admission and class-row validity remain separate prerequisites.
-    _source_nf_text, source_nf_declarations = _future_theory(
-        "Comma_Semantic_Future_Source_NF_Bridge"
-    )
-    initial_action = source_nf_declarations[
-        "comma_semantic_future_initial_nf_direct_boundary_exact"
-    ].body
-    assert "comma_semantic_graph_initial_nf_actions" in initial_action
-    assert "J<9" in initial_action and "delta\\<le>27" in initial_action
-    assert "(snd (snd q)+delta) mod 924" in initial_action
-    assert "comma_semantic_boundary_children" in initial_action
-    assert "comma_semantic_future_candidate_" not in initial_action
-    _, source_imports = parse_theory_header(
-        _source_nf_text,
-        root
-        / "families/comma/comma_semantic_future_instance"
-        / "Comma_Semantic_Future_Source_NF_Bridge.thy",
-    )
-    assert source_imports == ("Comma_Semantic_Future_Source_Action",)
-    assert "Comma_Semantic_Future_Candidate_Bridge" in closure_text
-
-    provider_nf_path = (
-        root
-        / "families/comma/comma_semantic_future_instance"
-        / "Comma_Semantic_Future_Candidate_Provider_NF.thy"
-    )
-    provider_nf = provider_nf_path.read_text(encoding="utf-8")
-    provider_nf_ml = (
-        provider_nf_path.parent / "semantic_future_candidate_provider_nf.ML"
-    ).read_text(encoding="utf-8")
-    assert "comma_semantic_graph_initial_nf_actions_length" in provider_nf
-    assert "comma_semantic_future_candidate_provider_nf_actions_equal" in provider_nf
-    assert "comma_semantic_future_candidate_source_key_nf_all_phases" in provider_nf
-    assert "comma_semantic_graph_initial_nf_actions_def" in provider_nf_ml
-    assert "length source_nf_terms = 16" in provider_nf_ml
-    assert "comma_semantic_future_projected_key_apply" in provider_nf_ml
-    assert "key_dagT" not in provider_nf_ml
-    assert "temporary" not in provider_nf_ml
-    assert "val child_serializer = Data.make_serializer arena natT" in provider_nf_ml
-    assert "Data.erase_weights arena" in provider_nf_ml
-    assert "terminal = 8 then Data.leaf arena (payload_of (nat 0))" in provider_nf_ml
-    provider_functions = {
-        declaration.name: declaration.body
-        for declaration in extract_isabelle_declarations(
-            provider_nf_ml,
-            provider_nf_path.parent / "semantic_future_candidate_provider_nf.ML",
-        )
-    }
-    # The checked combined output owns both children. Admission retains their
-    # order and rejects malformed terminal shapes before either projection.
-    components = provider_functions["parse_candidate_output_components"]
-    assert "[north, south] => (north, south)" in components
-    assert "Provider_Landmine =>" in components
-    assert "if null children then (0, 0)" in components
-    assert "payload ctxt class_count (nat north_id)" in components
-    assert "payload ctxt class_count (nat south_id)" in components
-    lookup = provider_functions["candidate_output"]
-    assert "exact_closed ctxt theorem" in lookup
-    assert "Context.subthy" in lookup
-    publisher = provider_functions["publish"]
-    assert publisher.count("candidate_output ctxt") == 1
-    assert "comma_semantic_future_candidate_class_output_key" in publisher
-    assert publisher.index("candidate_output ctxt") < publisher.index(
-        "parse_candidate_output_components"
-    )
-    assert "candidate_child_projection true id_action" in publisher
-    assert "candidate_child_projection false id_action" in publisher
-
-    global_text = executable_text(global_path.read_text(encoding="utf-8"))
-    assert "comma_semantic_concrete_boundary_strong_occurrence_bridge" in global_text
-    assert "comma_semantic_global_release_safety" in global_text
-    assert "comma_semantic_future_candidate_provider_check_checked" in global_text
-    assert "comma_semantic_concrete_future_rank_check" in global_text
-    release_text = executable_text(release_path.read_text(encoding="utf-8"))
-    assert "comma_semantic_graph_action_power_refines" in release_text
-    assert "comma_semantic_graph_b32_stop242_checked" in release_text
+def test_decimal_root_gate_uses_authenticated_points_and_exact_fixture() -> None:
+    owner = THEORY_PATH.parent.parent / "comma_semantic_future_instance"
+    source = (owner / "semantic_future_m204_entry_open.ML").read_text()
+    assert "Comma_CRT_MDD_Point_Eval.prove" in source
+    assert "Store.action_index" in source
+    assert "exact_prop" in source
+    assert "require_native_clean" in source
+    assert '"[0..<91::nat]"' in source
+    assert '"[3,34,75::nat]"' in source
+    assert "comma_semantic_decade_summary_code" in source
+    assert "comma_future_m204_rank_def" in source

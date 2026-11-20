@@ -19,12 +19,16 @@ from number_compiler.resources.metric_keys import arithmetic_fields as _fields_k
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
 from number_compiler.resources.metric_keys import comma as _comma_keys
 from number_compiler.resources.metric_keys import double_reverse as _double_reverse_keys
+from number_compiler.resources.metric_keys import five_reverse as _five_reverse_keys
 from number_compiler.resources.metric_keys import hashlife_execution as _execution_keys
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.metric_keys import shared as _shared_keys
 from number_compiler.resources.reuse_diagnostics import (
     TemporalReuseLane,
     collect_complete_action_reuse,
+)
+from number_compiler.resources.reuse_diagnostics import (
+    measured_count as _count,
 )
 from number_compiler.resources.temporal_diagnostic_records import (
     METRICS_SCHEMA_VERSION,
@@ -65,15 +69,6 @@ def _named_work(
         )
         or None
     )
-
-
-def _count(counters: Mapping[str, int], key: str) -> int | None:
-    value = counters.get(key)
-    if value is None:
-        return None
-    if type(value) is not int or value < 0:
-        raise ValueError(f"temporal counter {key} is not a nonnegative integer")
-    return value
 
 
 def _macrocell_reuse(
@@ -501,6 +496,9 @@ def collect_temporal_diagnostics(
             ),
         ),
         construction=TemporalConstruction(
+            five_reverse_work=_named_work(
+                counters, _five_reverse_keys.FIVE_REVERSE_PREFIX
+            ),
             postorder_frames=_count(
                 counters, _execution_keys.SOURCE_IMAGE_POSTORDER_FRAMES
             ),

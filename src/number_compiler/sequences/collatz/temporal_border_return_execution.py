@@ -22,6 +22,7 @@ from number_compiler.sequences.collatz.boundary_macro_prefixes import (
 from number_compiler.sequences.collatz.boundary_macros import (
     AdmittedBoundaryMacroPlan,
     CollatzBoundaryMacro,
+    admit_boundary_macro_plan,
     admit_routed_boundary_macro_plan,
     boundary_macro_26847_phase,
     boundary_metric_key,
@@ -45,6 +46,33 @@ def admit_physical_boundary_plan(
 ) -> AdmittedBoundaryMacroPlan | None:
     """Admit and account one source/clock-bound named boundary candidate."""
     plan = admit_routed_boundary_macro_plan(source, remaining)
+    return _record_physical_boundary_plan(source, remaining, ledger, plan)
+
+
+def admit_physical_matrix_boundary_plan(
+    source: int, remaining: int, ledger: ResourceLedger
+) -> AdmittedBoundaryMacroPlan | None:
+    """Admit one exact macro prefix for a matrix chain at its source seam.
+
+    The execution scheduler requires a repeated action or one that covers its
+    remaining query. A demanded matrix can instead compose separately issued
+    one-repeat macros, provided every physical seam is authenticated.
+    """
+    plan = admit_boundary_macro_plan(
+        source,
+        remaining,
+        minimum_repetitions=1,
+        ledger=ledger,
+    )
+    return _record_physical_boundary_plan(source, remaining, ledger, plan)
+
+
+def _record_physical_boundary_plan(
+    source: int,
+    remaining: int,
+    ledger: ResourceLedger,
+    plan: AdmittedBoundaryMacroPlan | None,
+) -> AdmittedBoundaryMacroPlan | None:
     ledger.bump(_collatz_keys.COLLATZ_PHYSICAL_BOUNDARY_PLAN_CHECKS)
     ledger.bump(
         _collatz_keys.COLLATZ_PHYSICAL_BOUNDARY_PLAN_OPERAND_BITS,
@@ -404,6 +432,7 @@ def consume_named_boundary(
 
 __all__ = [
     "admit_physical_boundary_plan",
+    "admit_physical_matrix_boundary_plan",
     "consume_border_return",
     "consume_named_boundary",
     "minimum_useful_border_extent",

@@ -131,7 +131,8 @@ class MahlerFutureCarryPort:
         if type(places) is not int or not 1 <= places <= 4096:
             raise ValueError("nested band width must be in 1..4096")
         width = 10**places
-        return source % width, (source // width) & 1, self.parity
+        upper, lower = divmod(source, width)
+        return lower, upper & 1, source & 1
 
 
 @dataclass(frozen=True, slots=True)

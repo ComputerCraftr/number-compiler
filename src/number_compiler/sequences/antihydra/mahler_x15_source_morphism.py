@@ -18,6 +18,13 @@ from dataclasses import dataclass
 from operator import add, mul
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.fields.dyadic_unit_phase import (
+    DyadicBorrowFrontier,
+    DyadicUnitPhase,
+)
+from number_compiler.arithmetic.fields.dyadic_unit_phase import (
+    dyadic_borrow_frontier as compute_dyadic_borrow_frontier,
+)
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 
 _X15_MORPHISM_ISSUANCE_SEAL = object()
@@ -180,6 +187,10 @@ class X15CarryMorphism:
         parents: tuple[X15CarryMorphism, X15CarryMorphism] | None,
         owner: IssuedWeightedCarry,
     ) -> X15CarryMorphism:
+        from number_compiler.sequences.antihydra.mahler_carry_quotient import (
+            IssuedWeightedCarry,
+        )
+
         if (
             type(source) is not int
             or source < 0
@@ -196,6 +207,29 @@ class X15CarryMorphism:
             or skew.lower.bit_length() - 1 != ticks
         ):
             raise ValueError("x15 morphism has incompatible exact coefficients")
+        if carry is not None:
+            if type(carry) is not IssuedWeightedCarry:
+                raise TypeError("x15 source requires an issued weighted carry")
+            carry.require_issued()
+            if carry.width != ticks or carry.gain != skew.upper or carry.skew != skew:
+                raise ValueError("x15 source changed its issued tripling action")
+        else:
+            if (
+                parents is None
+                or type(parents) is not tuple
+                or len(parents) != 2
+                or any(type(parent) is not cls for parent in parents)
+            ):
+                raise TypeError("composed x15 morphism requires two issued parents")
+            before, after = parents
+            before.require_issued()
+            after.require_issued()
+            if (
+                ticks != before.ticks + after.ticks
+                or skew.upper != before.gain * after.gain
+                or skew.lower != before.denominator * after.denominator
+            ):
+                raise ValueError("x15 composition changed the authenticated power")
         numerator = skew.upper * source + skew.offset
         if numerator & (skew.lower - 1) or endpoint != numerator >> ticks:
             raise ArithmeticError("x15 morphism lost its centered endpoint")
@@ -354,6 +388,46 @@ class X15CarryMorphism:
         if raw - floor != physical:
             raise ArithmeticError("scaled x15 pair lost its physical correction")
         return X15ScaledIntegerPair(raw, floor, physical)
+
+    def dyadic_borrow_frontier(
+        self,
+        positions: tuple[int, ...],
+        *,
+        chunk_width: int,
+        reserve_bits: Callable[[int], None],
+    ) -> DyadicBorrowFrontier:
+        """Project the issued x15/five correction into exact dyadic chunks.
+
+        The shared arithmetic reports the finite subtraction word
+        ``15**ticks * H - 5**ticks * K``.  This morphism's sealed action and
+        exact scaled endpoint identity establish that this word is
+        ``10**ticks * H_ticks``; the phase object itself carries no source
+        admission or future-period authority.
+        """
+        self.require_issued()
+        if not callable(reserve_bits):
+            raise TypeError("dyadic borrow projection requires scratch reservation")
+        if type(chunk_width) is not int or not 1 <= chunk_width <= 4096:
+            raise ValueError("dyadic borrow chunk width must be in 1..4096")
+        if type(positions) is not tuple or any(
+            type(position) is not int or position < 0 for position in positions
+        ):
+            raise ValueError("dyadic borrow positions must be nonnegative integers")
+        precision = max(positions, default=0) + chunk_width
+        if precision > 4096:
+            raise ValueError("dyadic borrow projection exceeds 4096 bits")
+        raw_phase = DyadicUnitPhase.from_exponent(15, self.ticks, precision)
+        correction_phase = DyadicUnitPhase.from_exponent(5, self.ticks, precision)
+        frontier = compute_dyadic_borrow_frontier(
+            raw_phase,
+            self.integer_source,
+            correction_phase,
+            self.floor_correction,
+            positions,
+            chunk_width=chunk_width,
+            reserve_bits=reserve_bits,
+        )
+        return frontier
 
     def then(
         self,

@@ -654,7 +654,7 @@ lemma double_reverse_three_cell_fourth_carry_locality:
   by (cases high; cases low; simp add: double_reverse_three_cell_high_def)
 lemma double_reverse_three_cell_source_step:
   fixes n source_low a b c :: nat
-  assumes source_low_def: "source_low = double_reverse_reverse10 n mod 1000"
+  assumes source_low_def: "source_low = decimal_reverse n mod 1000"
     and a_def: "a = source_low mod 10"
     and b_def: "b = (source_low div 10) mod 10"
     and c_def: "c = source_low div 100"

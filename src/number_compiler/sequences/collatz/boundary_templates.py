@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
-from contextlib import AbstractContextManager
+from collections.abc import Generator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Self, TypeAlias
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.hashlife.interfaces.border_macros import BorderWireValue
 from number_compiler.resources.construction_scope import RuntimeConstruction
-from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.ledger import (
+    LedgerReservation,
+    OwnedMemo,
+    ResourceLedger,
+)
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.resources.stores import LedgerDict
 from number_compiler.sequences.collatz.border_identity import (
     BOUNDARY_SELECTOR_IDENTITIES,
     CLOSED_BORDER_CYCLE_TAG,
@@ -89,6 +96,25 @@ def _template_identity_cost(identity: BorderWireValue) -> int:
     if tag == CLOSED_BORDER_CYCLE_TAG and type(word) is tuple:
         return len(word)
     return 1
+
+
+def _template_construction_scratch_nodes(
+    identity: BoundaryTemplateIdentity, repetitions: int
+) -> int:
+    """Bound live coefficient and temporary storage before a cold template build."""
+    if type(identity) is MixedParityMotif:
+        identity.require_valid()
+        steps = len(identity.bits) * repetitions
+        odds = sum(identity.bits) * repetitions
+    else:
+        # Every registered border template has at most five normalized letters
+        # and two odd events per repetition. This deliberately bounds all
+        # action coefficients without duplicating the family-specific formulas
+        # used by the action constructor.
+        steps = 5 * repetitions + 1
+        odds = 2 * repetitions
+    coefficient_bits = 4 * (steps + 2 * odds + 8)
+    return 128 + 32 * ((coefficient_bits + 63) // 64)
 
 
 def boundary_macro_26847_phase(identity: BoundaryActionIdentity) -> int | None:
@@ -174,6 +200,12 @@ def build_boundary_action_template(
     return fields, odd, ticks, fields.source_residue
 
 
+@dataclass(slots=True)
+class _ScratchLease:
+    reservation: LedgerReservation
+    nodes: int
+
+
 class BoundaryActionTemplateMemo:
     """Per-query, ledger-accounted templates for exact guarded parity actions."""
 
@@ -184,6 +216,8 @@ class BoundaryActionTemplateMemo:
         self._closed = False
         self._closing = False
         self._scratch_owner: int | None = None
+        self._scratch_reservations: tuple[_ScratchLease, ...] = ()
+        self._scratch_store: LedgerDict[int, None] | None = None
         self._templates: (
             OwnedMemo[
                 BoundaryTemplateKey,
@@ -205,6 +239,9 @@ class BoundaryActionTemplateMemo:
         if self._closed:
             return
         self._closing = True
+        for lease in tuple(reversed(self._scratch_reservations)):
+            lease.reservation.close()
+            self._remove_scratch_lease(lease)
         if self._templates is not None:
             self._templates.dispose()
         if self._scratch_owner is not None:
@@ -212,16 +249,61 @@ class BoundaryActionTemplateMemo:
         self._closing = False
         self._closed = True
 
-    def scratch(self, *, nodes: int) -> AbstractContextManager[None]:
+    def _scratch_account(self) -> int:
+        owner = self._scratch_owner
+        if owner is not None:
+            return owner
+        owner = self.ledger.register(
+            f"collatz-boundary-template-scratch-{self.ledger.owner_count}",
+            "temporary",
+        )
+        try:
+            store = self.ledger.make_dict(owner, key_type=int, value_type=type(None))
+            self.ledger.register_container(
+                owner,
+                store,
+                node_count=self._scratch_node_count,
+            )
+        except BaseException:
+            self.ledger.mark_disposed(owner)
+            raise
+        self._scratch_owner = owner
+        self._scratch_store = store
+        return owner
+
+    def _scratch_node_count(self) -> int:
+        return sum(lease.nodes for lease in self._scratch_reservations)
+
+    def _remove_scratch_lease(self, lease: _ScratchLease) -> None:
+        self._scratch_reservations = tuple(
+            current for current in self._scratch_reservations if current is not lease
+        )
+
+    @contextmanager
+    def scratch(self, *, nodes: int) -> Generator[None, None, None]:
         """Reserve bounded selector/construction temporaries on the query ledger."""
         if self._closed or self._closing:
             raise RuntimeError("boundary action template memo is closed")
-        if self._scratch_owner is None:
-            self._scratch_owner = self.ledger.register(
-                f"collatz-boundary-template-scratch-{self.ledger.owner_count}",
-                "temporary",
-            )
-        return self.ledger.reservation(self._scratch_owner, nodes=nodes)
+        owner = self._scratch_account()
+        reservation = LedgerReservation(self.ledger, owner)
+        lease = _ScratchLease(reservation, 0)
+        self._scratch_reservations = (*self._scratch_reservations, lease)
+        try:
+            reservation.reserve(nodes=nodes)
+            lease.nodes = nodes
+        except BaseException as error:
+            try:
+                reservation.close()
+            except BaseException as cleanup_error:
+                raise error from cleanup_error
+            else:
+                self._remove_scratch_lease(lease)
+            raise
+        try:
+            yield
+        finally:
+            reservation.close()
+            self._remove_scratch_lease(lease)
 
     def _memo(
         self,
@@ -326,25 +408,24 @@ class BoundaryActionTemplateMemo:
             self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_HITS)
             return template
         self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_MISSES)
-        if isinstance(identity, MixedParityMotif):
-            width = len(identity.bits) * repetitions
-            with self.scratch(nodes=128 + 32 * ((2 * width + 63) // 64)):
+        scratch_nodes = _template_construction_scratch_nodes(identity, repetitions)
+        with self.scratch(nodes=scratch_nodes):
+            if isinstance(identity, MixedParityMotif):
+                width = len(identity.bits) * repetitions
                 self.ledger.bump(
                     _collatz_keys.COLLATZ_MIXED_CLOCK_COEFFICIENT_CONSTRUCTIONS
                 )
                 self.ledger.bump(
                     _collatz_keys.COLLATZ_MIXED_CLOCK_REQUESTED_GUARD_BITS, width
                 )
-                template = build_boundary_action_template(identity, repetitions)
-        else:
             template = build_boundary_action_template(identity, repetitions)
-        bound_template: BoundaryTemplateValue = semantic, repetitions, template
-        try:
-            memo[key] = bound_template
-        except BlockContextBudgetExceeded:
-            self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_BYPASSES)
-        else:
-            self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_PUBLICATIONS)
+            bound_template: BoundaryTemplateValue = semantic, repetitions, template
+            try:
+                memo[key] = bound_template
+            except BlockContextBudgetExceeded:
+                self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_BYPASSES)
+            else:
+                self.ledger.bump(_collatz_keys.COLLATZ_BOUNDARY_TEMPLATE_PUBLICATIONS)
         return template
 
 

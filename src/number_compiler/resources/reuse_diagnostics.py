@@ -52,6 +52,14 @@ class CompleteActionReuse:
     validation_operand_bits: int | None = None
 
 
+def measured_count(counters: Mapping[str, int], key: str) -> int | None:
+    """Read one measured count without turning absence into zero."""
+    value = counters.get(key)
+    if value is not None and (type(value) is not int or value < 0):
+        raise ValueError(f"{key} must be a nonnegative measured count")
+    return value
+
+
 def collect_complete_action_reuse(
     counters: Mapping[str, int], prefix: str
 ) -> CompleteActionReuse:
@@ -59,10 +67,7 @@ def collect_complete_action_reuse(
     values: dict[str, int | None] = {}
     for field in fields(CompleteActionReuse):
         name = field.name
-        value = counters.get(prefix + name)
-        if value is not None and (type(value) is not int or value < 0):
-            raise ValueError(f"{prefix}{name} must be a nonnegative measured count")
-        values[name] = value
+        values[name] = measured_count(counters, prefix + name)
     lane = CompleteActionReuse(**values)
     for smaller, larger in (
         (lane.applied_hits, lane.admitted),

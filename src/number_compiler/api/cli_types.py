@@ -170,6 +170,30 @@ class DoubleReverseObservationOptions:
 
 
 @dataclass(frozen=True, slots=True)
+class FiveReverseObservationOptions:
+    info: tuple[ObservationId, ...] = ()
+    modulus: int = 45
+    temporal_digit_field_places: int = 2
+    temporal_closed_form_places: int = 32
+    temporal_closed_form_digits: int = 0
+
+    def __post_init__(self) -> None:
+        _validate_info_names(self.info)
+        require_integer(self.modulus, "--modulus", 1, 45)
+        if 45 % self.modulus:
+            raise ValueError("5rev10 modular observation requires a divisor of 45")
+        require_integer(
+            self.temporal_digit_field_places, "--temporal-digit-field-places", 1, 128
+        )
+        require_integer(
+            self.temporal_closed_form_places, "--temporal-closed-form-places", 1, 128
+        )
+        require_integer(
+            self.temporal_closed_form_digits, "--temporal-closed-form-digits", 0, 128
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class CollatzTermObservationOptions:
     info: tuple[ObservationId, ...] = ()
     accumulator_modulus: int = 257
@@ -326,6 +350,7 @@ ObservationOptions: TypeAlias = (
     NoObservations
     | ReverseAddObservationOptions
     | DoubleReverseObservationOptions
+    | FiveReverseObservationOptions
     | CollatzTermObservationOptions
     | CollatzEventObservationOptions
     | AntihydraObservationOptions
@@ -488,6 +513,7 @@ __all__ = [
     "CollatzTermObservationOptions",
     "CommaObservationOptions",
     "DoubleReverseObservationOptions",
+    "FiveReverseObservationOptions",
     "IndexPresentation",
     "NoObservations",
     "ObservationOptions",

@@ -9,7 +9,7 @@ from typing import Never
 import pytest
 
 from number_compiler.api import cli, cli_context, cli_render, cli_requests
-from number_compiler.api.family_registry import CAPABILITIES
+from number_compiler.api.family_registry import CAPABILITIES, family_spec
 from number_compiler.api.json_output import is_string_object_mapping
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.api.query_types import FermatTermQuery, TermQuery
@@ -29,7 +29,9 @@ def _json_object(text: str) -> dict[str, object]:
 
 
 def family_options(family: FamilyId) -> list[str]:
-    return ["--seed", "27"] if family in {"reverse-add", "2rev10", "collatz"} else []
+    return (
+        ["--seed", "27"] if "seed" in family_spec(family).capability.parameters else []
+    )
 
 
 @pytest.mark.parametrize("family", CAPABILITIES)
@@ -336,13 +338,13 @@ def test_projected_symbolic_constructor_keyword_remains_supported() -> None:
 @pytest.mark.parametrize(
     "family,expected",
     (
-        ("a367620", "A367620[1]"),
-        ("reverse-add", "reverse_add(seed=27,base=10)[1]"),
-        ("collatz", "collatz(seed=27)[1]"),
-        ("prime", "prime_at_or_after(start=2)[1]"),
-        ("fermat", "2^(2^1)+1"),
-        ("mersenne", "2^1-1"),
-        ("antihydra", "antihydra_arithmetic(source=blank)[1]"),
+        (FamilyId.A367620, "A367620[1]"),
+        (FamilyId.REVERSE_ADD, "reverse_add(seed=27,base=10)[1]"),
+        (FamilyId.COLLATZ, "collatz(seed=27)[1]"),
+        (FamilyId.PRIME, "prime_at_or_after(start=2)[1]"),
+        (FamilyId.FERMAT, "2^(2^1)+1"),
+        (FamilyId.MERSENNE, "2^1-1"),
+        (FamilyId.ANTIHYDRA, "antihydra_arithmetic(source=blank)[1]"),
     ),
 )
 def test_ordinary_symbolic_text_remains_unchanged(
@@ -352,7 +354,14 @@ def test_ordinary_symbolic_text_remains_unchanged(
 ) -> None:
     assert (
         cli.main(
-            [family, "--nth", "1", *family_options(family), "--format", "symbolic"]
+            [
+                family.value,
+                "--nth",
+                "1",
+                *family_options(family),
+                "--format",
+                "symbolic",
+            ]
         )
         == 0
     )

@@ -6,12 +6,14 @@ from devtools.verification.comma_b1_quotient import B1State, observe_b1
 from devtools.verification.comma_frontier_candidate import (
     CLASS_COUNT,
     ENDPOINTS,
+    RADICES,
     FrontierCandidate,
 )
 
 
 def _document(nodes: list[object], root: int) -> dict[str, object]:
     return {
+        "crt_axis_order": list(RADICES),
         "rounds": 24,
         "bad_terminal_endpoints": [list(pair) for pair in ENDPOINTS],
         "one_step_nodes": nodes,
@@ -51,8 +53,8 @@ def test_skipped_axes_keep_eleven_and_seven_coordinates_distinct() -> None:
             [
                 [4, -1],
                 [4, 5],
-                [3, [0, 0, 1, 0, 0, 0, 0]],
-                [2, [0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0]],
+                [3, [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]],
+                [2, [0, 0, 2, 0, 0, 0, 0]],
             ],
             3,
         )
@@ -124,3 +126,13 @@ def test_external_state_admission_rejects_aliases(source: B1State) -> None:
     candidate = FrontierCandidate.from_document(_document([[4, -1]], 0))
     with pytest.raises((ValueError, TypeError)):
         candidate.target(source)
+
+
+def test_missing_or_old_crt_axis_order_is_rejected() -> None:
+    document = _document([[4, -1]], 0)
+    document["crt_axis_order"] = [3, 4, 11, 7]
+    with pytest.raises(ValueError, match="axis order"):
+        FrontierCandidate.from_document(document)
+    del document["crt_axis_order"]
+    with pytest.raises(ValueError, match="JSON array"):
+        FrontierCandidate.from_document(document)

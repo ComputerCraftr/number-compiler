@@ -2,11 +2,7 @@ session Comma_Proof_Dependency_Audit_Smoke in "audit/comma_dependency_audit_smok
   options [document = false, quick_and_dirty = false]
   theories
     Comma_Proof_Dependency_Audit_Smoke
-session Comma_Schur_Carry in comma_schur_carry = Shared_Carry_Dynamics +
-  options [document = false, quick_and_dirty = false]
-  theories
-    Comma_Schur_Carry
-session Comma_Native19_Carry in comma_native19_carry = Comma_Schur_Carry +
+session Comma_Native19_Carry in comma_native19_carry = Shared_Carry_Dynamics +
   options [document = false, quick_and_dirty = false]
   theories
     Comma_Native19_Carry
@@ -123,6 +119,7 @@ session Comma_Short_Phase in comma_short_phase = Comma_Round_Totality +
     Comma_Short_Phase
 session Comma_Entry_Arithmetic in comma_entry_arithmetic = Comma_Short_Phase +
   options [document = false, quick_and_dirty = false]
+  sessions Shared_Carry_Dynamics
   theories
     Comma_Entry_Arithmetic
 session Comma_Round_Witness_Check in comma_rank = Comma_Weighted_Round +
@@ -259,9 +256,22 @@ session Comma_Semantic_Future in comma_semantic_future = Comma_Semantic_B1 +
     Comma_Semantic_Boundary
     Comma_Semantic_Initial_Prefix
     Comma_Semantic_Future_Class_Boundary
+    Comma_Future_M204_Source_Bridge
+    Comma_Future_M204_Direct_Source
+    Comma_Future_M204_Source_Code
+    Comma_Future_M204_Source_Join
+    Comma_Future_M204_Select_Fold
+    Comma_Future_M204_Select_Step
+    Comma_Future_M204_Select_Map
+    Comma_Future_M204_Select_Chain
+    Comma_Future_M204_Periodic
+    Comma_Future_M204_Class_Rank
+    Comma_Future_M204_Class_Bridge
+    Comma_Future_M204_Class_Rank_Lift
+    Comma_Future_M204_Class_Decoder
 session Comma_Semantic_B1 in comma_semantic_b1 = Comma_Terminal_Weight +
   options [document = false, quick_and_dirty = false]
-  sessions Shared_S_Arithmetic Comma_C1_Occurrence Comma_Decade_Orbit
+  sessions Shared_S_Arithmetic Comma_C1_Occurrence Comma_Decade_Orbit Comma_Entry_Port
     Comma_Terminal_Event "HOL-Library"
   theories
     Comma_Semantic_B1
@@ -313,13 +323,19 @@ session Comma_Semantic_B1 in comma_semantic_b1 = Comma_Terminal_Weight +
     Comma_Semantic_Phase_Program_Source_Specialization
     Comma_Semantic_Phase_Program_Round
     Comma_Symbolic_Class_Step
+    Comma_Frontier_M204_Generic
+    Comma_Frontier_M204_Checker
+    Comma_Frontier_M204_Direct_Source_Morphism
     Comma_Continue_Image_Bridge
     Comma_Program_Continue_Guard
     Comma_Program_Continue_Guard_Exact
     Comma_Parametric_Continue_Action
     Comma_Parametric_Continue_Closure
+    Comma_Parametric_Typed_Output
+    Comma_Parametric_Continue_Constructors
     Comma_Parametric_Entry_Closure
-    Comma_Parametric_Continue_Closure_Soundness
+    Comma_Parametric_Typed_Entry
+    Comma_Parametric_Typed_Soundness
     Comma_Continue_Core_Fold
     Comma_Class_Continue_Columns
     Comma_Targeted_Continue_Power
@@ -327,7 +343,12 @@ session Comma_Semantic_B1 in comma_semantic_b1 = Comma_Terminal_Weight +
     Comma_Targeted_Continue_Observer_Refinement
     Comma_Targeted_Continue_Certificate
     Comma_Continue_Frontier_Certificate
-    Comma_CRT_MDD_Frontier_DAG
+    Comma_CRT_MDD_Zip
+    Comma_CRT_MDD_Multiway
+    Comma_Direct_Action_Constructors
+    Comma_Direct_Action_Simulation
+    Comma_Direct_Action_MDD
+    Comma_Direct_Bellman_Projection
     Comma_Core_Value_Guards
     Comma_Semantic_Port_Program_Congruence
     Comma_Semantic_Phase_Class_Rank_Check
@@ -337,7 +358,7 @@ session Comma_Semantic_B1 in comma_semantic_b1 = Comma_Terminal_Weight +
     Comma_Guarded_Source_Row_Transport
     Comma_Guarded_Source_Mask_Evaluator
     Comma_Semantic_B1_CRT_Source_Binding
-session Comma_Semantic_Certificate_Smoke in comma_semantic_b1_smoke = Comma_Semantic_B1 +
+session Comma_Semantic_Certificate_Smoke in comma_semantic_b1_smoke = Comma_Semantic_Future +
   options [document = false, quick_and_dirty = false]
   theories
     Comma_CRT_Cofactor_Selection
@@ -349,6 +370,7 @@ session Comma_Semantic_Certificate_Smoke in comma_semantic_b1_smoke = Comma_Sema
     Comma_Targeted_Continue_Guarded_Observer
     Comma_Frontier24_Exit_Shift_Regression
     Comma_Frontier24_Certificate_Smoke
+    Comma_Future_M204_Certificate_Smoke
     Comma_CRT_MDD_Certificate_Smoke
     Comma_Semantic_Certificate_Smoke
 session Comma_Semantic_B1_Instance in comma_semantic_b1_instance = Comma_Semantic_Future +
@@ -357,43 +379,12 @@ session Comma_Semantic_B1_Instance in comma_semantic_b1_instance = Comma_Semanti
     Comma_Continue_Frontier24_Source_Bridge
     Comma_Continue_Image_Instance
     Comma_Semantic_B1_Instance
-session Comma_Semantic_Graph_Instance in comma_semantic_graph_instance = Comma_Semantic_B1_Instance +
-  options [document = false, quick_and_dirty = false]
-  theories
-    Comma_Phase_Class_Rank_Source_Bridge
-    Comma_Phase_Class_Rank_Local_Coverage
-    Comma_Phase_Class_Rank_Linear_WF
-    Comma_Phase_Class_Rank_Rotation
-    Comma_Phase_Class_Rank_Source_Family_Adapter
-    Comma_Phase_Class_Rank_Local_B32_Bridge
-    Comma_Semantic_Graph_Instance
-    Comma_Semantic_Graph_Action_Power
-    Comma_Semantic_Graph_Stop_Transport
-    Comma_Semantic_Graph_B32_Instance
     Comma_Semantic_Summary_Instance
-session Comma_Semantic_Future_Instance in comma_semantic_future_instance = Comma_Semantic_Graph_Instance +
+session Comma_Semantic_Future_Instance in comma_semantic_future_instance = Comma_Semantic_B1_Instance +
   options [document = false, quick_and_dirty = false]
   sessions Comma_Source_Entry Comma_Source_Uniqueness Comma_C1_Occurrence
   theories
-    "../comma_semantic_b1_instance/Comma_Semantic_Phase_Class_Instance"
-    "../comma_semantic_b1_instance/Comma_Semantic_Graph_CRT_Compilation"
-    "../comma_semantic_b1_instance/Comma_Semantic_Graph_CRT_Local_Node_Compilation"
-    "../comma_semantic_b1_instance/Comma_Semantic_Predecessor_Action"
-    "../comma_semantic_b1_instance/Comma_Semantic_Predecessor_Certificate"
-    Comma_Semantic_Future_Candidate_Data
-    Comma_Semantic_Future_Candidate_Integrity
-    Comma_Semantic_Future_Candidate_Selector
-    Comma_Semantic_Future_Weighted_Transport
-    Comma_Semantic_Future_Rank_B1_Transport
-    Comma_Semantic_Future_Prefix_Transport
-    Comma_Semantic_Future_Prefix_Boundary
-    Comma_Semantic_Future_Source_Action
-    Comma_Semantic_Future_Source_NF_Bridge
-    Comma_Semantic_Future_Action_Compare
-    Comma_Semantic_Future_Candidate_Provider_NF
-    Comma_Semantic_Future_Candidate_Bridge
     Comma_Semantic_Future_Instance
-    Comma_Semantic_Future_Candidate_Provider_Closure
     Comma_Semantic_Future_Path_Results
     Comma_Semantic_Entry_Open
     Comma_Semantic_Global_Root_Bridge
@@ -707,3 +698,10 @@ session Comma_Global_Future_Safety in comma_future_global = Comma_Native_Future_
   theories
     Comma_Global_Future_Safety
     Comma_Global_Root_Safety
+
+(* Audit trial; not a production or CLI dependency before native acceptance. *)
+session Comma_Frontier_M204_Direct_Trial in comma_m204_direct_trial = Comma_Semantic_B1 +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Comma_Frontier_M204_D_Candidate
+    Comma_Frontier_M204_Direct_Bellman_Concrete

@@ -3,6 +3,13 @@
 from __future__ import annotations
 
 
+def outer_digits(phase: int) -> tuple[int, int]:
+    """Return the leading and units digits of a protected outer phase."""
+    if type(phase) is not int or not 0 <= phase < 4:
+        raise ValueError("invalid 2rev10 border phase")
+    return (1 if phase < 2 else 4, 8 if phase in (0, 3) else 2)
+
+
 def edge_phase(upper: tuple[int, int], lower: tuple[int, int]) -> int | None:
     """Classify a source by its exact two digit borders."""
     if upper == (1, 7):
@@ -58,9 +65,33 @@ PHYSICAL_GROWTH_CYCLES: tuple[tuple[int, int, int, int], ...] = tuple(
 )
 
 
+def advance_residue_clock(
+    phase: int, width_parity: int, residue: int, modulus: int = 99
+) -> tuple[int, int, int]:
+    """Apply one step of the authenticated four-phase decimal width clock."""
+    if type(modulus) is not int or modulus not in (99, 198):
+        raise ValueError("source-closed scalar quotient is modulo 99 or 198")
+    if (
+        type(phase) is not int
+        or phase not in range(4)
+        or type(width_parity) is not int
+        or width_parity not in (0, 1)
+        or type(residue) is not int
+        or not 0 <= residue < modulus
+    ):
+        raise ValueError("invalid source-issued residue-clock state")
+    return (
+        (phase + 1) % 4,
+        (width_parity + PHYSICAL_GROWTH_CYCLES[phase][0]) % 2,
+        (residue * (2 if width_parity else 20)) % modulus,
+    )
+
+
 __all__ = [
     "PHYSICAL_GROWTH_CYCLES",
+    "advance_residue_clock",
     "edge_phase",
     "edge_phase_of_integer",
     "growth_ports",
+    "outer_digits",
 ]

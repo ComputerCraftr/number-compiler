@@ -15,6 +15,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 
+def _is_tuple(value: object) -> bool:
+    return isinstance(value, tuple)
+
+
 def _lane_masks(count: int) -> tuple[int, int]:
     if type(count) is not int or count < 1:
         raise ValueError("carry lanes must be nonempty")
@@ -42,6 +46,81 @@ def _prefix_carries(
             live &= live << displacement
         displacement <<= 1
     return result
+
+
+_BYTE_REVERSE = bytes(int(f"{b:08b}"[::-1], 2) for b in range(256))
+
+
+def reverse_dense_bits(bits: int, width: int) -> int:
+    """Reflect a packed Boolean digit plane without visiting decimal columns."""
+    if type(width) is not int or width < 0:
+        raise ValueError("bit-plane width must be nonnegative")
+    if type(bits) is not int or bits < 0 or bits >> width:
+        raise ValueError("bit plane exceeds its width")
+    if not width:
+        return 0
+    nbytes = (width + 7) // 8
+    return int.from_bytes(
+        bits.to_bytes(nbytes, "little").translate(_BYTE_REVERSE), "big"
+    ) >> (8 * nbytes - width)
+
+
+def _compaction_steps(count: int) -> tuple[tuple[int, int], ...]:
+    """Build width-defined masks for the current operation."""
+    if count <= 0:
+        return ()
+    steps: list[tuple[int, int]] = []
+    group = 1
+    while group < count:
+        merged = 2 * group
+        stride = 6 * merged
+        blocks = (count + merged - 1) // merged
+        every_block = ((1 << (stride * blocks)) - 1) // ((1 << stride) - 1)
+        mask = every_block * ((1 << merged) - 1)
+        steps.append((5 * group, mask))
+        group = merged
+    return tuple(steps)
+
+
+def _compact_six_lanes(bits: int, count: int) -> int:
+    """PEXT the low bit of each 6-bit Q19 lane via logarithmic butterflies."""
+    if not count:
+        return 0
+    for shift, mask in _compaction_steps(count):
+        bits = (bits | (bits >> shift)) & mask
+    return bits & ((1 << count) - 1)
+
+
+def _equal_six_lanes(word: int, count: int, value: int) -> int:
+    """Dense Boolean mask of Q19 packed decimal digit lanes equal to value."""
+    if not count:
+        return 0
+    ones, _ = _lane_masks(count)
+    delta = word ^ (value * ones)
+    mismatch = delta
+    for shift in (1, 2, 3, 4, 5):
+        mismatch |= delta >> shift
+    return _compact_six_lanes(ones & ~mismatch, count)
+
+
+@dataclass(frozen=True, slots=True)
+class Q19TransitionPorts:
+    """One physical Q19 step's carry inlet and successor extreme digit planes."""
+
+    carry_in_lsd: int
+    next_zero_lsd: int
+    next_nine_lsd: int
+
+
+def bcd_digit_at(planes: tuple[int, int, int, int], position: int) -> int:
+    """Read one digit from already admitted BCD planes."""
+    ones, twos, fours, eights = planes
+    return (
+        ((ones >> position) & 1)
+        | (((twos >> position) & 1) << 1)
+        | (((fours >> position) & 1) << 2)
+        | (((eights >> position) & 1) << 3)
+    )
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -112,6 +191,85 @@ class PackedQ19:
         center = digits_lsd[count] if width & 1 else None
         return cls(pairs, count, center)
 
+    @classmethod
+    def from_bcd_planes(
+        cls, planes: tuple[int, int, int, int], width: int
+    ) -> PackedQ19:
+        """Consume a fixed-width Boolean BCD source without digit-row assembly.
+
+        The scalar modulus/multiplier phase is not itself a physical
+        reverse/add action.  This bridge only supplies the exact current
+        Q19 pair sums; ``advance`` owns the physical successor.
+        """
+        if type(width) is not int or width < 1 or len(planes) != 4:
+            raise ValueError("invalid Boolean-ring source width")
+        if any(type(b) is not int or b < 0 or b >> width for b in planes):
+            raise ValueError("Boolean-ring source plane exceeds physical width")
+        # A packed BCD nibble >= 10 has its 8-bit set with its 4- or 2-bit.
+        if planes[3] & (planes[2] | planes[1]):
+            raise ValueError("Boolean-ring source contains an illegal BCD digit")
+
+        if bcd_digit_at(planes, width - 1) == 0:
+            raise ValueError("Boolean-ring source has a leading zero")
+        count = width // 2
+        pairs = 0
+        for j in range(count):
+            pair = bcd_digit_at(planes, j) + bcd_digit_at(planes, width - 1 - j)
+            pairs |= pair << (6 * j)
+        center = bcd_digit_at(planes, count) if width & 1 else None
+        return cls(pairs, count, center)
+
+    @classmethod
+    def from_two_five_carry_planes(
+        cls,
+        binary_two_carries: int,
+        complementary_five_remainders: tuple[int, int, int],
+        width: int,
+    ) -> PackedQ19:
+        """Source-owned Q19 pair input from *both* lossless carry tracks.
+
+        Each source decimal digit is d=5*c2+r5 (0<=r5<=4).
+        Neither the binary carry sheet alone nor the packed sum of
+        unrelated carry/no-carry observers is enough to select d.
+        Q19 consumes these two tracks directly, without a decimal word.
+        """
+        if type(width) is not int or width < 1:
+            raise ValueError("invalid complementary-sheet source width")
+        mask = (1 << width) - 1
+        if (
+            type(binary_two_carries) is not int
+            or binary_two_carries < 0
+            or binary_two_carries & ~mask
+        ):
+            raise ValueError("invalid binary multiplier-two carry plane")
+        if (
+            not _is_tuple(complementary_five_remainders)
+            or len(complementary_five_remainders) != 3
+        ):
+            raise ValueError("three base-five remainder bit planes are required")
+        r0, r1, r2 = complementary_five_remainders
+        if any(type(r) is not int or r < 0 or r & ~mask for r in (r0, r1, r2)) or r2 & (
+            r0 | r1
+        ):
+            raise ValueError("base-five remainder bit planes contain an illegal digit")
+
+        def at(j: int) -> int:
+            return (
+                5 * ((binary_two_carries >> j) & 1)
+                + ((r0 >> j) & 1)
+                + 2 * ((r1 >> j) & 1)
+                + 4 * ((r2 >> j) & 1)
+            )
+
+        if at(width - 1) == 0:
+            raise ValueError("two-sheet source has a leading zero")
+        count = width // 2
+        pairs = 0
+        for j in range(count):
+            pairs |= (at(j) + at(width - 1 - j)) << (6 * j)
+        center = at(count) if width & 1 else None
+        return cls(pairs, count, center)
+
     @property
     def width(self) -> int:
         return 2 * self.count + int(self.center is not None)
@@ -128,7 +286,24 @@ class PackedQ19:
         if type(emit_digits) is not bool:
             raise TypeError("Q19 physical endpoint selection must be Boolean")
         ones, lane_mask = _lane_masks(self.count) if self.count else (0, 0)
-        return self._advance_with_masks(ones, lane_mask, emit_digits=emit_digits)
+        target, digits, _ports = self._advance_with_masks(
+            ones, lane_mask, emit_digits=emit_digits
+        )
+        return target, digits
+
+    def advance_with_ports(
+        self, *, emit_digits: bool = False
+    ) -> tuple[PackedQ19, tuple[int, ...] | None, Q19TransitionPorts]:
+        """Advance once and return the physical carry and digit sidebands."""
+        if type(emit_digits) is not bool:
+            raise TypeError("Q19 physical endpoint selection must be Boolean")
+        ones, lane_mask = _lane_masks(self.count) if self.count else (0, 0)
+        target, digits, ports = self._advance_with_masks(
+            ones, lane_mask, emit_digits=emit_digits, emit_ports=True
+        )
+        if ports is None:
+            raise AssertionError("Q19 physical transition failed to issue carry ports")
+        return target, digits, ports
 
     def advance_repeated(
         self,
@@ -154,7 +329,7 @@ class PackedQ19:
             if before_step is not None:
                 before_step(frame.count, rounds)
             previous_count = frame.count
-            frame, _digits = frame._advance_with_masks(ones, lane_mask)
+            frame, _digits, _ports = frame._advance_with_masks(ones, lane_mask)
             if frame.count != previous_count:
                 ones, lane_mask = _lane_masks(frame.count) if frame.count else (0, 0)
         return frame
@@ -165,7 +340,8 @@ class PackedQ19:
         lane_mask: int,
         *,
         emit_digits: bool = False,
-    ) -> tuple[PackedQ19, tuple[int, ...] | None]:
+        emit_ports: bool = False,
+    ) -> tuple[PackedQ19, tuple[int, ...] | None, Q19TransitionPorts | None]:
         """Advance with request-local masks for the current pair width."""
         count = self.count
         center = self.center
@@ -180,7 +356,12 @@ class PackedQ19:
                 else PackedQ19._from_trusted(0, 0, digit)
             )
             emitted = (digit, 1) if growth else (digit,)
-            return target, emitted if emit_digits else None
+            ports = (
+                Q19TransitionPorts(0, int(digit == 0), int(digit == 9))
+                if emit_ports
+                else None
+            )
+            return target, emitted if emit_digits else None, ports
 
         source = self.pairs
         # Since s<=18, the bit-5 threshold comparison cannot spill lanes.
@@ -191,6 +372,7 @@ class PackedQ19:
         lower_out = _prefix_carries(forced, propagate, count)
         lower_in = (lower_out << 6) & ones
         inner_carry = (lower_out >> (6 * (count - 1))) & 1
+        center_in = inner_carry
         center_digit: int | None = None
         if center is not None:
             middle = 2 * center + inner_carry
@@ -235,7 +417,25 @@ class PackedQ19:
             )
             if growth:
                 digits += (1,)
-        return target, digits
+        ports: Q19TransitionPorts | None = None
+        if emit_ports:
+            lower_cin = _compact_six_lanes(lower_in & ones, count)
+            upper_cin = _compact_six_lanes(upper_in & ones, count)
+            high_shift = count + int(center is not None)
+            cin = lower_cin | (reverse_dense_bits(upper_cin, count) << high_shift)
+            if center is not None:
+                cin |= center_in << count
+
+            def extremes(value: int) -> int:
+                low = _equal_six_lanes(lower_digits, count, value)
+                high = _equal_six_lanes(upper_digits, count, value)
+                both = low | (reverse_dense_bits(high, count) << high_shift)
+                if center_digit == value:
+                    both |= 1 << count
+                return both
+
+            ports = Q19TransitionPorts(cin, extremes(0), extremes(9))
+        return target, digits, ports
 
 
-__all__ = ["PackedQ19"]
+__all__ = ["PackedQ19", "Q19TransitionPorts"]

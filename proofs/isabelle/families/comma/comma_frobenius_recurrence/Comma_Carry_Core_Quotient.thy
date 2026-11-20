@@ -202,6 +202,18 @@ lemma comma_core_lift_parameters:
   by (simp_all add: comma_core_primary_def comma_core_modulus_def
     comma_core_period_def gcd_nat.simps)
 
+lemma comma_core_seed_parameters:
+  "comma_core_seed 60=2" "comma_core_seed 80=0"
+  "comma_core_seed 100=0" "comma_core_seed 120=1"
+  "comma_core_seed 140=2" "comma_core_seed 210=4"
+  "comma_core_seed 220=6" "comma_core_seed 230=18"
+  "comma_core_seed 240=2" "comma_core_seed 260=8"
+  "comma_core_seed 270=10" "comma_core_seed 280=1"
+  "comma_core_seed 290=24" "comma_core_seed 460=9"
+  "comma_core_seed 480=1" "comma_core_seed 520=4"
+  "comma_core_seed 540=5"
+  by (simp_all add: comma_core_seed_def comma_core_lift_parameters)
+
 lemma comma_core_lift_period_powers:
   "mod_exp (10::nat) 1 1=1 mod 1"
   "mod_exp (10::nat) 1 3=1 mod 3"

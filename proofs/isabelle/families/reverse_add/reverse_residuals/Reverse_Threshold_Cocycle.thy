@@ -11,31 +11,45 @@ one forward domain fold. A growth appends the CRT encoding of digit one before
 reflection. These word semantics specify the rope gates; their proof does not
 assert a bound on newly constructed rope nodes.\<close>
 
-fun native_emit :: "bool \<Rightarrow> native_cocycle list \<Rightarrow> (nat * nat) list" where
-  "native_emit c [] = []"
-| "native_emit c ((g,a,e)#xs) =
-    ((a + (if c then 1 else 0)) mod 5,
-     (e + (if c then 1 else 0)) mod 2) # native_emit (carry_apply g c) xs"
+fun native_emit_carry :: "bool \<Rightarrow> native_cocycle list \<Rightarrow> (nat * nat) list * bool" where
+  "native_emit_carry c [] = ([], c)"
+| "native_emit_carry c ((g,a,e)#xs) =
+    (let result = native_emit_carry (carry_apply g c) xs
+     in (((a + (if c then 1 else 0)) mod 5,
+          (e + (if c then 1 else 0)) mod 2) # fst result, snd result))"
+
+definition native_emit :: "bool \<Rightarrow> native_cocycle list \<Rightarrow> (nat * nat) list" where
+  "native_emit c xs = fst (native_emit_carry c xs)"
+
+definition native_growth :: "native_cocycle list \<Rightarrow> bool" where
+  "native_growth xs = snd (native_emit_carry False xs)"
+
+lemma native_emit_carry_final:
+  "snd (native_emit_carry c xs) = fold (\<lambda>(g,a,e) carry. carry_apply g carry) xs c"
+  by (induction xs arbitrary: c) (auto simp: Let_def split: prod.splits)
 
 lemma native_emit_refines:
   "native_emit c (map encode_cocycle ss) = map digit_channels (emit c ss)"
   by (induction ss arbitrary: c)
-    (simp_all add: encode_cocycle_def digit_channels_def
-      mod_mod_cancel mod_add_left_eq)
-
-definition native_growth :: "native_cocycle list \<Rightarrow> bool" where
-  "native_growth xs = fold (\<lambda>(g,a,e) c. carry_apply g c) xs False"
+    (simp_all add: native_emit_def encode_cocycle_def digit_channels_def Let_def
+      mod_mod_cancel mod_add_left_eq split: prod.splits)
 
 lemma native_growth_refines:
   "native_growth (map encode_cocycle ss) = carry_out False ss"
-  by (simp add: native_growth_def carry_out_def encode_cocycle_def fold_map comp_def)
+  by (simp add: native_growth_def native_emit_carry_final carry_out_def
+      encode_cocycle_def fold_map comp_def)
 
 definition native_digits :: "native_cocycle list \<Rightarrow> (nat * nat) list" where
+  "native_digits xs = (let result = native_emit_carry False xs
+    in fst result @ (if snd result then [(1,1)] else []))"
+
+lemma native_digits_projections:
   "native_digits xs = native_emit False xs @ (if native_growth xs then [(1,1)] else [])"
+  by (simp add: native_digits_def native_emit_def native_growth_def Let_def)
 
 lemma native_digits_refines:
   "native_digits (map encode_cocycle ss) = map digit_channels (digits ss)"
-  by (simp add: native_digits_def digits_def native_emit_refines
+  by (simp add: native_digits_projections digits_def native_emit_refines
       native_growth_refines digit_channels_def)
 
 definition native_add :: "(nat * nat) \<Rightarrow> (nat * nat) \<Rightarrow> native_cocycle" where
@@ -51,8 +65,8 @@ lemma native_add_refines:
   by (simp add: native_add_def digit_channels_def encode_cocycle_def mod_add_eq)
 
 definition native_step :: "native_cocycle list \<Rightarrow> native_cocycle list" where
-  "native_step xs = map (\<lambda>(a,b). native_add a b)
-    (zip (native_digits xs) (rev (native_digits xs)))"
+  "native_step xs = (let emitted = native_digits xs
+    in map (\<lambda>(a,b). native_add a b) (zip emitted (rev emitted)))"
 
 theorem native_step_refines:
   "native_step (map encode_cocycle ss) = map encode_cocycle (step ss)"
@@ -62,7 +76,7 @@ proof -
     using that digits_bounded set_zip_leftD set_zip_rightD
     by (intro native_add_refines) fastforce+
   show ?thesis
-    unfolding native_step_def step_def native_digits_refines rev_map zip_map_map map_map
+    unfolding native_step_def Let_def step_def native_digits_refines rev_map zip_map_map map_map
     by (rule map_cong; auto simp: comp_def split: prod.splits; metis add)
 qed
 
@@ -98,26 +112,26 @@ lemma native_emit_length:
   "length (native_emit c xs) = length xs"
 proof (induction xs arbitrary: c)
   case Nil
-  then show ?case by simp
+  then show ?case by (simp add: native_emit_def)
 next
   case (Cons x xs)
   obtain g a e where x: "x = (g,a,e)" by (cases x) auto
   have ih: "length (native_emit (carry_apply g c) xs) = length xs"
     using Cons.IH[of "carry_apply g c"] .
-  show ?case using x ih by simp
+  show ?case using x ih by (simp add: native_emit_def Let_def split: prod.splits)
 qed
 
 lemma native_digits_length:
   "length (native_digits xs) = length xs +
     (if native_growth xs then 1 else 0)"
-  unfolding native_digits_def
+  unfolding native_digits_projections
   by (simp add: native_emit_length)
 
 lemma native_step_length:
   "length (native_step xs) = length xs +
     (if native_growth xs then 1 else 0)"
   unfolding native_step_def
-  by (simp add: native_digits_length)
+  by (simp add: Let_def native_digits_length)
 
 text \<open>The growth count is the chronological sum of producer growth flags
 along the actual native successor states. It is not defined as an endpoint
@@ -189,7 +203,8 @@ ML \<open>
       parity_addition_coordinates parity_normalization_exact
       decimal_sum_digit_mod kappa_and_eq_domain_exact
       output_crt_threshold_exact normalized_output_crt_threshold_exact
-      decimal_kappa_cocycle native_emit_refines native_growth_refines
+      decimal_kappa_cocycle native_emit_carry_final native_digits_projections
+      native_emit_refines native_growth_refines
       native_emit_length native_digits_length native_step_length
       native_growth_count_add native_iteration_length
       native_source_growth_count_add native_source_width

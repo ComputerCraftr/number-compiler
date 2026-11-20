@@ -16,7 +16,7 @@ datatype comma_crt_column =
   | Comma_CRT_Node nat "comma_crt_column list"
 
 definition comma_crt_period :: "nat \<Rightarrow> nat" where
-  "comma_crt_period level = (if level<4 then [4,3,7,11]!level else 0)"
+  "comma_crt_period level = (if level<4 then [3,4,7,11]!level else 0)"
 
 lemma comma_crt_period_positive:
   assumes "level<4"

@@ -6,7 +6,10 @@ from typing import cast
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.ledger import LedgerReservation, ResourceLedger
+from number_compiler.sequences.collatz.boundary_templates import (
+    BoundaryActionTemplateMemo,
+)
 from number_compiler.sequences.collatz.temporal_dyadic import (
     D8CylinderFrame,
     D8TemporalTable,
@@ -239,6 +242,39 @@ def test_failed_d8_discovery_releases_both_reservations(
         ledger.counters.get("collatz_physical_temporal_d8_table_publications", 0) == 0
     )
     assert all(row.accounting_delta == 0 for row in ledger.inventory())
+
+
+def test_boundary_template_scratch_close_failure_is_retried_on_dispose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    memo = BoundaryActionTemplateMemo(ledger)
+    original_close = LedgerReservation.close
+    attempts = 0
+
+    def fail_once(reservation: LedgerReservation) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("injected scratch reservation close failure")
+        original_close(reservation)
+
+    monkeypatch.setattr(LedgerReservation, "close", fail_once)
+    with pytest.raises(RuntimeError, match="scratch reservation close failure"):
+        with memo.scratch(nodes=7):
+            pass
+
+    assert ledger.nodes == 7
+    assert all(row.accounting_delta == 0 for row in ledger.inventory())
+    memo.dispose()
+    assert ledger.nodes == 0
+    assert all(row.accounting_delta == 0 for row in ledger.inventory())
+    scratch = next(
+        row
+        for row in ledger.inventory()
+        if row.name.startswith("collatz-boundary-template-scratch")
+    )
+    assert scratch.disposed
 
 
 @pytest.mark.parametrize("seed,entry", [(1, 0), (2, 1), (4, 2), (27, 111)])

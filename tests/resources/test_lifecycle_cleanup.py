@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 
 import pytest
 
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
+from number_compiler.resources.stores import LedgerDict
 
 
 def test_cleanup_all_attempts_every_owner_and_keeps_failure_chain() -> None:
@@ -169,3 +171,144 @@ def test_owned_memo_clear_retries_exact_accounting_after_release_failure(
     assert ledger.inventory_owner(owner).entries == 0
     assert ledger.inventory_owner(owner).nodes == 0
     memo.dispose()
+
+
+def _memo_with_one_entry(
+    ledger: ResourceLedger,
+    owner: int,
+    *,
+    dynamic_cost: bool,
+) -> tuple[OwnedMemo[str, tuple[int, ...]], tuple[int, ...], int]:
+    payload = (2, 3, 5)
+    charged_nodes = 4
+    if dynamic_cost:
+        memo: OwnedMemo[str, tuple[int, ...]] = OwnedMemo(
+            ledger, owner, node_cost=lambda _key, value: len(value)
+        )
+    else:
+        memo = OwnedMemo(ledger, owner, nodes_per_entry=charged_nodes)
+    memo["entry"] = payload
+    return memo, payload, charged_nodes
+
+
+def _assert_memo_owner_released(ledger: ResourceLedger, owner: int) -> None:
+    assert ledger.account_usage(owner) == (0, 0)
+    assert ledger.entries == ledger.nodes == 0
+
+
+@pytest.mark.parametrize("failure_timing", ("before", "after"))
+def test_dynamic_memo_replacement_reconciles_release_failure(
+    failure_timing: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledger = ResourceLedger()
+    owner = ledger.register("replace-retry", "query_memo")
+    memo = OwnedMemo[str, str](ledger, owner, node_cost=lambda _key, value: len(value))
+    memo["entry"] = "long"
+    original_release = ledger.release
+    failures = 0
+
+    def fail_release(target: int, entries: int = 0, nodes: int = 0) -> None:
+        nonlocal failures
+        if target == owner and nodes == 3:
+            failures += 1
+            if failure_timing == "after":
+                original_release(target, entries, nodes)
+            raise RuntimeError("injected replacement release failure")
+        original_release(target, entries, nodes)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ledger, "release", fail_release)
+        with pytest.raises(RuntimeError, match="replacement release failure"):
+            memo["entry"] = "x"
+
+    assert memo["entry"] == "x"
+    assert failures >= 1
+    memo.dispose()
+    _assert_memo_owner_released(ledger, owner)
+
+
+@pytest.mark.parametrize("dynamic_cost", (False, True))
+@pytest.mark.parametrize("failure_timing", ("before", "after"))
+def test_owned_memo_delete_reconciles_release_failure_before_disposal(
+    dynamic_cost: bool,
+    failure_timing: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    owner = ledger.register("delete-retry", "query_memo")
+    memo, _payload, charged_nodes = _memo_with_one_entry(
+        ledger, owner, dynamic_cost=dynamic_cost
+    )
+    original_release = ledger.release
+
+    def fail_selected_release(target: int, entries: int = 0, nodes: int = 0) -> None:
+        if target == owner and entries == 1 and nodes == charged_nodes:
+            if failure_timing == "after":
+                original_release(target, entries, nodes)
+            raise RuntimeError("injected memo delete release failure")
+        original_release(target, entries, nodes)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ledger, "release", fail_selected_release)
+        with pytest.raises(RuntimeError, match="memo delete release failure"):
+            del memo["entry"]
+
+    assert len(memo) == 0
+    pending = memo.audit_snapshot()
+    if failure_timing == "before":
+        assert ledger.account_usage(owner) == (1, charged_nodes)
+        assert (pending.pending_clear_entries, pending.pending_clear_nodes) == (
+            1,
+            charged_nodes,
+        )
+    else:
+        assert ledger.account_usage(owner) == (0, 0)
+        assert (pending.pending_clear_entries, pending.pending_clear_nodes) == (0, 0)
+
+    memo.dispose()
+    _assert_memo_owner_released(ledger, owner)
+
+
+@pytest.mark.parametrize("dynamic_cost", (False, True))
+@pytest.mark.parametrize("after_delete", (False, True))
+def test_owned_memo_delete_reconciles_store_mutation_failure(
+    dynamic_cost: bool,
+    after_delete: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    owner = ledger.register("store-delete-retry", "query_memo")
+    memo, payload, charged_nodes = _memo_with_one_entry(
+        ledger, owner, dynamic_cost=dynamic_cost
+    )
+    store = memo.audit_snapshot().container
+    original_delete: Callable[[LedgerDict[object, object], object], None] = LedgerDict[
+        object, object
+    ].__delitem__
+
+    def delete_then_fail(target: LedgerDict[object, object], key: object) -> None:
+        if target is store and key == "entry":
+            if after_delete:
+                original_delete(target, key)
+            raise RuntimeError("injected memo store deletion failure")
+        original_delete(target, key)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(LedgerDict, "__delitem__", delete_then_fail)
+        with pytest.raises(RuntimeError, match="memo store deletion failure"):
+            del memo["entry"]
+
+    if after_delete:
+        assert len(memo) == 0
+        assert ledger.account_usage(owner) == (0, 0)
+        assert memo.audit_snapshot().dynamic_nodes == 0
+    else:
+        assert len(memo) == 1
+        assert memo["entry"] == payload
+        assert ledger.account_usage(owner) == (1, charged_nodes)
+        assert memo.audit_snapshot().dynamic_nodes == (
+            charged_nodes if dynamic_cost else 0
+        )
+
+    memo.dispose()
+    _assert_memo_owner_released(ledger, owner)

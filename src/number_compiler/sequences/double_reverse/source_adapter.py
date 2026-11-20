@@ -546,12 +546,9 @@ class DoubleReverseSourceAdapter:
                 root,
                 reverse=False,
                 on_task=record_visit,
-                reserve_task=lambda: self.ledger.reserve(
-                    self.scratch_owner, entries=1, nodes=1
-                ),
-                release_tasks=lambda count: self.ledger.release(
-                    self.scratch_owner, entries=count, nodes=count
-                ),
+                ledger=self.ledger,
+                owner=self.scratch_owner,
+                task_entries=1,
             )
         ) as symbols:
             for index, symbol in enumerate(symbols):

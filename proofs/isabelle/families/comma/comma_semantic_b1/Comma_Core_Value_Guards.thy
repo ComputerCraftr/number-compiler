@@ -14,7 +14,7 @@ definition comma_core_value_guard_leaf ::
     Comma_CRT_Bool
       (comma_cyclotomic_clock_core_value C (comma_phase_core_modulus core) = wanted)"
 
-text \<open>One active clock axis. The node level chooses the existing C4/C3/C7/C11
+text \<open>One active clock axis. The node level chooses the existing C3/C4/C7/C11
 coordinate; its branch values come from the shared core evaluator.\<close>
 definition comma_core_value_guard_one_axis ::
     "nat \<Rightarrow> (nat \<Rightarrow> comma_cyclotomic_clock) \<Rightarrow> comma_phase_core_id \<Rightarrow> nat \<Rightarrow>
@@ -24,19 +24,17 @@ definition comma_core_value_guard_one_axis ::
       (map (\<lambda>digit. comma_core_value_guard_leaf core wanted (clock_at digit))
         [0..<comma_crt_period level])"
 
-text \<open>The C4 character is the first axis for every two-character core. A
-single shared constructor takes the second CRT level and the corresponding
-clock-coordinate constructor, so no per-core branch table is stored.\<close>
+text \<open>A shared ordered constructor for the two active clock axes.\<close>
 definition comma_core_value_guard_two_axes ::
-    "nat \<Rightarrow> (nat \<Rightarrow> nat \<Rightarrow> comma_cyclotomic_clock) \<Rightarrow>
+    "nat \<Rightarrow> nat \<Rightarrow> (nat \<Rightarrow> nat \<Rightarrow> comma_cyclotomic_clock) \<Rightarrow>
       comma_phase_core_id \<Rightarrow> nat \<Rightarrow> comma_crt_column" where
-  "comma_core_value_guard_two_axes second_level clock_at core wanted =
-    Comma_CRT_Node 0
-      (map (\<lambda>r4. Comma_CRT_Node second_level
+  "comma_core_value_guard_two_axes first_level second_level clock_at core wanted =
+    Comma_CRT_Node first_level
+      (map (\<lambda>first. Comma_CRT_Node second_level
         (map (\<lambda>second.
-          comma_core_value_guard_leaf core wanted (clock_at r4 second))
+          comma_core_value_guard_leaf core wanted (clock_at first second))
           [0..<comma_crt_period second_level]))
-        [0..<comma_crt_period 0])"
+        [0..<comma_crt_period first_level])"
 
 lemma comma_core_value_guard_one_axis_admitted:
   assumes level: "level<4"
@@ -48,10 +46,10 @@ lemma comma_core_value_guard_one_axis_admitted:
       comma_crt_period_def list_all_iff)
 
 lemma comma_core_value_guard_two_axes_admitted:
-  assumes second_level: "0<second_level" "second_level<4"
+  assumes levels: "first_level<second_level" "second_level<4"
   shows "comma_crt_admitted 0
-    (comma_core_value_guard_two_axes second_level clock_at core wanted)"
-  using second_level
+    (comma_core_value_guard_two_axes first_level second_level clock_at core wanted)"
+  using levels
   by (simp add: comma_core_value_guard_two_axes_def
       comma_core_value_guard_leaf_def comma_crt_admitted.simps
       comma_crt_period_def list_all_iff)
@@ -68,42 +66,46 @@ lemma comma_core_value_guard_one_axis_eval:
       comma_crt_eval_node_selected nth_map)
 
 lemma comma_core_value_guard_two_axes_eval:
-  assumes second_level: "0<second_level" "second_level<4"
+  assumes levels: "first_level<second_level" "second_level<4"
   shows "comma_crt_eval phase
-      (comma_core_value_guard_two_axes second_level clock_at core wanted) =
+      (comma_core_value_guard_two_axes first_level second_level clock_at core wanted) =
     comma_crt_eval phase
       (comma_core_value_guard_leaf core wanted
-        (clock_at (phase mod comma_crt_period 0)
+        (clock_at (phase mod comma_crt_period first_level)
           (phase mod comma_crt_period second_level)))"
-  using second_level comma_crt_period_positive[OF second_level(2)]
-    comma_crt_period_positive[of 0]
-  by (simp add: comma_core_value_guard_two_axes_def
-      comma_crt_eval_node_selected nth_map)
+proof -
+  have first: "first_level<4" using levels by arith
+  show ?thesis
+    using levels first comma_crt_period_positive[OF first]
+      comma_crt_period_positive[OF levels(2)]
+    by (simp add: comma_core_value_guard_two_axes_def
+        comma_crt_eval_node_selected nth_map)
+qed
 
 fun comma_core_value_guard ::
     "comma_phase_core_id \<Rightarrow> nat \<Rightarrow> comma_crt_column" where
   "comma_core_value_guard Comma_Core_1 wanted = Comma_CRT_Bool (wanted=0)"
 | "comma_core_value_guard Comma_Core_3 wanted = Comma_CRT_Bool (wanted=1)"
 | "comma_core_value_guard Comma_Core_7 wanted =
-    comma_core_value_guard_two_axes 1
-      (\<lambda>r4 r3. comma_core_guard_clock r4 r3 0 0) Comma_Core_7 wanted"
+    comma_core_value_guard_two_axes 0 1
+      (\<lambda>r3 r4. comma_core_guard_clock r4 r3 0 0) Comma_Core_7 wanted"
 | "comma_core_value_guard Comma_Core_11 wanted =
-    comma_core_value_guard_one_axis 0
+    comma_core_value_guard_one_axis 1
       (\<lambda>r4. comma_core_guard_clock r4 0 0 0) Comma_Core_11 wanted"
 | "comma_core_value_guard Comma_Core_13 wanted =
-    comma_core_value_guard_two_axes 1
-      (\<lambda>r4 r3. comma_core_guard_clock r4 r3 0 0) Comma_Core_13 wanted"
+    comma_core_value_guard_two_axes 0 1
+      (\<lambda>r3 r4. comma_core_guard_clock r4 r3 0 0) Comma_Core_13 wanted"
 | "comma_core_value_guard Comma_Core_21 wanted =
-    comma_core_value_guard_two_axes 1
-      (\<lambda>r4 r3. comma_core_guard_clock r4 r3 0 0) Comma_Core_21 wanted"
+    comma_core_value_guard_two_axes 0 1
+      (\<lambda>r3 r4. comma_core_guard_clock r4 r3 0 0) Comma_Core_21 wanted"
 | "comma_core_value_guard Comma_Core_23 wanted =
-    comma_core_value_guard_two_axes 3
+    comma_core_value_guard_two_axes 1 3
       (\<lambda>r4 r11. comma_core_guard_clock r4 0 0 r11) Comma_Core_23 wanted"
 | "comma_core_value_guard Comma_Core_27 wanted =
-    comma_core_value_guard_one_axis 1
+    comma_core_value_guard_one_axis 0
       (\<lambda>r3. comma_core_guard_clock 0 r3 0 0) Comma_Core_27 wanted"
 | "comma_core_value_guard Comma_Core_29 wanted =
-    comma_core_value_guard_two_axes 2
+    comma_core_value_guard_two_axes 1 2
       (\<lambda>r4 r7. comma_core_guard_clock r4 0 r7 0) Comma_Core_29 wanted"
 
 lemma comma_core_value_guard_admitted:

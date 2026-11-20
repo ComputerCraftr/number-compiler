@@ -26,7 +26,12 @@ from number_compiler.arithmetic.formula.skew_residue_laws import (
     pair_growth_interior,
     pair_no_growth,
 )
-from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
+from number_compiler.resources.ledger import (
+    LedgerReservation,
+    OwnedMemo,
+    ResourceLedger,
+)
+from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.output_stream_metrics import closing_output_stream
 from number_compiler.resources.owned_memo import OwnedMemoAuditSnapshot
@@ -41,11 +46,12 @@ class _IntervalFrame:
 class _QueryWorkspace:
     """Explicitly charged, nonretained references for one interval query."""
 
-    __slots__ = ("created", "ledger", "owner", "pruned", "stack")
+    __slots__ = ("created", "ledger", "owner", "pruned", "stack", "reservation")
 
     def __init__(self, ledger: ResourceLedger, owner: int) -> None:
         self.ledger = ledger
         self.owner = owner
+        self.reservation = LedgerReservation(ledger, owner)
         self.stack: list[_IntervalFrame] = []
         self.created: dict[tuple[int, int, int], None] = {}
         self.pruned: dict[tuple[int, int, int], None] = {}
@@ -61,25 +67,25 @@ class _QueryWorkspace:
             )
 
     def push(self, frame: _IntervalFrame) -> None:
-        self.ledger.reserve(self.owner, nodes=1)
+        self.reservation.reserve(nodes=1)
         try:
             self.stack.append(frame)
         except BaseException:
-            self.ledger.release(self.owner, nodes=1)
+            self.reservation.release(nodes=1)
             raise
         self._note_peak()
 
     def pop(self) -> _IntervalFrame:
         frame = self.stack.pop()
-        self.ledger.release(self.owner, nodes=1)
+        self.reservation.release(nodes=1)
         return frame
 
     def record(self, key: tuple[int, int, int]) -> None:
-        self.ledger.reserve(self.owner, nodes=1)
+        self.reservation.reserve(nodes=1)
         try:
             self.created[key] = None
         except BaseException:
-            self.ledger.release(self.owner, nodes=1)
+            self.reservation.release(nodes=1)
             raise
         self._note_peak()
 
@@ -87,21 +93,16 @@ class _QueryWorkspace:
         if key not in self.created:
             return
         del self.created[key]
-        self.ledger.release(self.owner, nodes=1)
-
-    def pop_created(self) -> tuple[int, int, int]:
-        key, _value = self.created.popitem()
-        self.ledger.release(self.owner, nodes=1)
-        return key
+        self.reservation.release(nodes=1)
 
     def prune(self, key: tuple[int, int, int]) -> None:
         if key in self.pruned:
             return
-        self.ledger.reserve(self.owner, nodes=1)
+        self.reservation.reserve(nodes=1)
         try:
             self.pruned[key] = None
         except BaseException:
-            self.ledger.release(self.owner, nodes=1)
+            self.reservation.release(nodes=1)
             raise
         self._note_peak()
 
@@ -120,21 +121,13 @@ class _QueryWorkspace:
                 raise ValueError("identity carry interval has a nonidentity child")
         while self.pruned:
             key, _value = self.pruned.popitem()
-            self.ledger.release(self.owner, nodes=1)
+            self.reservation.release(nodes=1)
             if key in cache:
                 del cache[key]
                 self.forget(key)
                 self.ledger.bump(
                     _reverse_add_keys.REVERSE_SOURCE_PORTS_IDENTITY_CHILDREN_PRUNED
                 )
-
-    def close(self) -> None:
-        nodes = len(self.stack) + len(self.created) + len(self.pruned)
-        self.stack.clear()
-        self.created.clear()
-        self.pruned.clear()
-        if nodes:
-            self.ledger.release(self.owner, nodes=nodes)
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,9 +152,11 @@ class SourceCarryPorts:
     __slots__ = (
         "__weakref__",
         "_audit_cache",
+        "_active_reservations",
         "_authority",
         "_cache",
         "_cache_owner",
+        "_cleanup_failed",
         "_closed",
         "_ledger",
         "_source",
@@ -205,6 +200,8 @@ class SourceCarryPorts:
         )
         self._source = source
         self._ledger = ledger
+        self._active_reservations = 0
+        self._cleanup_failed = False
         self._width = len(source.digits)
         # Preserve the established seven ExactSource fields for read-only audit.
         self._authority = (
@@ -285,12 +282,16 @@ class SourceCarryPorts:
     def check_open(self) -> None:
         if self._closed:
             raise ValueError("disposed source carry ports")
+        if self._cleanup_failed:
+            raise RuntimeError("source carry cleanup must finish before reuse")
         self.check_source(self._source)
 
     def check_source(self, source: ExactSource) -> None:
         """Authenticate the exact original object and immutable binding in O(1)."""
         if self._closed:
             raise ValueError("disposed source carry ports")
+        if self._cleanup_failed:
+            raise RuntimeError("source carry cleanup must finish before reuse")
         if type(source) is not ExactSource:
             raise TypeError("source carry ports require an exact source")
         authority = self._authority
@@ -397,6 +398,14 @@ class SourceCarryPorts:
                 workspace.prune(child)
         self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_INTERVAL_PUBLICATIONS)
 
+    def _close_reservation(self, reservation: LedgerReservation) -> None:
+        self._active_reservations -= 1
+        try:
+            reservation.retire()
+        except BaseException:
+            self._cleanup_failed = True
+            raise
+
     def _first_interval(self, start: int, span: int) -> CarryFn:
         return self._carry_interval(
             1,
@@ -423,6 +432,7 @@ class SourceCarryPorts:
         if found is not None:
             return found
         workspace = _QueryWorkspace(self._ledger, self._workspace_owner)
+        self._active_reservations += 1
         try:
             workspace.push(_IntervalFrame(root))
             while workspace.stack:
@@ -469,13 +479,29 @@ class SourceCarryPorts:
                 workspace.pop()
             workspace.commit_pruning(self._cache)
         except BaseException:
-            while workspace.created:
-                key = workspace.pop_created()
-                del self._cache[key]
-            self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_PORTS_FAILED_QUERIES)
+
+            def remove(key: tuple[int, int, int]) -> None:
+                if key in self._cache:
+                    del self._cache[key]
+
+            try:
+                cleanup_all(
+                    (
+                        *((lambda key=key: remove(key)) for key in workspace.created),
+                        lambda: self._ledger.bump(
+                            _reverse_add_keys.REVERSE_SOURCE_PORTS_FAILED_QUERIES
+                        ),
+                    )
+                )
+            except BaseException:
+                self._cleanup_failed = True
+                raise
             raise
         finally:
-            workspace.close()
+            workspace.stack.clear()
+            workspace.created.clear()
+            workspace.pruned.clear()
+            self._close_reservation(workspace.reservation)
         published = self._exact_cached(root)
         if published is None:
             raise AssertionError(f"{label} carry interval was not published")
@@ -520,26 +546,28 @@ class SourceCarryPorts:
         """
         self.check_open()
         stack: list[tuple[int, int, int, bool]] = []
+        reservation = LedgerReservation(self._ledger, self._workspace_owner)
+        self._active_reservations += 1
 
         def push(start: int, span: int, incoming: int, neutral: bool) -> None:
-            self._ledger.reserve(self._workspace_owner, nodes=1)
+            reservation.reserve(nodes=1)
             try:
                 stack.append((start, span, incoming, neutral))
             except BaseException:
-                self._ledger.release(self._workspace_owner, nodes=1)
+                reservation.release(nodes=1)
                 raise
 
-        root_span = 1 << (self._width - 1).bit_length()
-        root_neutral = (
-            root_span == self._width
-            and self._exact_cached((1, 0, root_span)) is CarryFn.ID
-        )
-        push(0, root_span, 0, root_neutral)
         try:
+            root_span = 1 << (self._width - 1).bit_length()
+            root_neutral = (
+                root_span == self._width
+                and self._exact_cached((1, 0, root_span)) is CarryFn.ID
+            )
+            push(0, root_span, 0, root_neutral)
             while stack:
                 self.check_open()
                 start, span, incoming, neutral = stack.pop()
-                self._ledger.release(self._workspace_owner, nodes=1)
+                reservation.release(nodes=1)
                 if start >= self._width:
                     continue
                 self._ledger.bump(
@@ -571,9 +599,8 @@ class SourceCarryPorts:
                     push(start + half, half, middle, neutral)
                     push(start, half, incoming, left_effect is CarryFn.ID)
         finally:
-            if stack:
-                self._ledger.release(self._workspace_owner, nodes=len(stack))
-                stack.clear()
+            stack.clear()
+            self._close_reservation(reservation)
 
     def _raw_second_pair(self, position: int, growth: int) -> int:
         self._ledger.bump(_reverse_add_keys.REVERSE_SOURCE_LENGTH_PAIR_READS)
@@ -771,8 +798,15 @@ class SourceCarryPorts:
     def dispose(self) -> None:
         if self._closed:
             return
-        self._cache.dispose()
-        self._ledger.mark_disposed(self._workspace_owner)
+        if self._active_reservations:
+            raise RuntimeError("cannot dispose source carry ports with active streams")
+        self._cleanup_failed = True
+        cleanup_all(
+            (
+                self._cache.dispose,
+                lambda: self._ledger.mark_disposed(self._workspace_owner),
+            )
+        )
         self._closed = True
 
 

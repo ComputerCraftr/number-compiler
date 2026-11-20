@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 from collections.abc import Callable, Mapping
@@ -12,14 +11,12 @@ from typing import Protocol, cast
 
 import pytest
 
-from devtools.paths import isabelle_root
-from devtools.verification.comma_semantic_future_artifact import (
-    runtime_candidate_record_from_isabelle_data,
-)
+from devtools.verification.comma_semantic_future_artifact import source_mdd_fields
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.comma import future_provider, future_provider_codec
 from number_compiler.sequences.comma.boundary_quotient import BoundaryState
 from tests.support.comma_future_provider_fixture import (
+    authored_candidate_record,
     candidate_record,
     canonical_bytes,
     install_synthetic_registry,
@@ -90,20 +87,15 @@ def test_file_loader_charges_bytes_read_when_stat_underreports(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class_count = 2_048
-    encoded_classes = bytearray()
-    for source_index in range(future_provider_codec.SOURCE_COUNT):
-        value = min(source_index, class_count - 1)
-        while value >= 0x80:
-            encoded_classes.append((value & 0x7F) | 0x80)
-            value >>= 7
-        encoded_classes.append(value)
+    source_classes = [
+        min(source_index, class_count - 1)
+        for source_index in range(future_provider_codec.SOURCE_COUNT)
+    ]
     record = {
         "format": future_provider.FUTURE_CANDIDATE_FORMAT,
         "authority": future_provider.FUTURE_CANDIDATE_AUTHORITY,
         "state_universe": future_provider.FUTURE_SOURCE_UNIVERSE,
-        "class_of_state_varint_base64": base64.b64encode(encoded_classes).decode(
-            "ascii"
-        ),
+        **source_mdd_fields(source_classes),
         "controls": [["landmine", None] for _ in range(class_count)],
         "ordered_children": [[None, None] for _ in range(class_count)],
         "class_rank_candidate": [0] * class_count,
@@ -181,19 +173,12 @@ def test_authored_candidate_fits_default_comma_state_budget(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = (
-        isabelle_root()
-        / "families/comma/comma_semantic_future_instance"
-        / "Comma_Semantic_Future_Candidate_Data.thy"
-    )
     # This is test-only admission evidence, not a claim that the kernel release
     # theorem has admitted the artifact.
-    record = runtime_candidate_record_from_isabelle_data(
-        source.read_text(encoding="utf-8"), source
-    )
+    record = authored_candidate_record()
     _charges, charge_work = work_log()
     digest = install_synthetic_registry(monkeypatch, record, charge_work)
-    candidate_path = tmp_path / "authored-candidate-v2.json"
+    candidate_path = tmp_path / "authored-candidate-v3.json"
     candidate_path.write_bytes(canonical_bytes(record))
 
     ledger = ResourceLedger(max_nodes=131_072, max_cache_entries=131_072)

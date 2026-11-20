@@ -602,6 +602,70 @@ next
   qed
 qed
 
+lemma comma_entry_supported_selected_step:
+  assumes admitted: "comma_phase_program_structurally_admitted
+      (Comma_Entry_Core_Program f d residue core)"
+  obtains wanted where
+    "wanted \<in> set (comma_core_supported_values core)"
+    "comma_crt_eval (phase+shift) (comma_core_value_guard core wanted)"
+    "\<forall>x\<in>set (comma_core_supported_values core).
+      \<forall>y\<in>set (comma_core_supported_values core).
+        comma_crt_eval (phase+shift) (comma_core_value_guard core x) \<longrightarrow>
+        comma_crt_eval (phase+shift) (comma_core_value_guard core y) \<longrightarrow> x=y"
+    "comma_phase_program_step_at (Comma_Entry_Core_Program f d residue core) phase shift =
+      comma_phase_program_step_of_action (comma_source_continuation_transport shift
+        (comma_phase_program_entry_core_value_action f residue core wanted))"
+proof -
+  let ?effective = "(phase+shift) mod 924"
+  let ?modulus = "comma_phase_core_modulus core"
+  let ?value = "comma_cyclotomic_clock_core_value
+    (comma_cyclotomic_clock_of ?effective) ?modulus"
+  have parameters: "1\<le>f" "f\<le>9" "d<10" "residue mod 10=d"
+    "?modulus=comma_core_modulus (comma_finite_period_fast f d)"
+    using admitted by (auto simp: comma_phase_program_structurally_admitted_def)
+  have value_bound: "?value < ?modulus" by (rule comma_phase_core_clock_value_bound)
+  have clock: "comma_cyclotomic_clock_of (phase+shift) =
+      comma_cyclotomic_clock_of ?effective"
+  proof -
+    have d4: "(4::nat) dvd 924" by presburger
+    have d3: "(3::nat) dvd 924" by presburger
+    have d7: "(7::nat) dvd 924" by presburger
+    have d11: "(11::nat) dvd 924" by presburger
+    show ?thesis by (simp add: comma_cyclotomic_clock_of_def
+      mod_mod_cancel[OF d4] mod_mod_cancel[OF d3]
+      mod_mod_cancel[OF d7] mod_mod_cancel[OF d11])
+  qed
+  have guard_eval: "comma_crt_eval (phase+shift) (comma_core_value_guard core wanted) =
+      (wanted=?value)" for wanted
+    using comma_core_value_guard_eval[of "phase+shift" core wanted] clock
+    by (simp add: eq_commute)
+  have active: "comma_crt_eval (phase+shift) (comma_core_value_guard core ?value)"
+    using guard_eval by simp
+  have supported: "comma_crt_supported (comma_core_value_guard core ?value)"
+    using active comma_core_value_guard_unsupported_no_eval by blast
+  have member: "?value \<in> set (comma_core_supported_values core)"
+    using value_bound supported by (auto simp: comma_core_supported_values_def)
+  have unique: "\<forall>x\<in>set (comma_core_supported_values core).
+      \<forall>y\<in>set (comma_core_supported_values core).
+        comma_crt_eval (phase+shift) (comma_core_value_guard core x) \<longrightarrow>
+        comma_crt_eval (phase+shift) (comma_core_value_guard core y) \<longrightarrow> x=y"
+    using comma_core_value_guard_unique by blast
+  have select: "comma_crt_eval ?effective (comma_core_value_guard core ?value)"
+    using comma_core_value_guard_eval[of ?effective core ?value] by simp
+  have effective_bound: "?effective < 924" by simp
+  have digit: "d = residue mod 10" using parameters(4) by simp
+  have selected_action: "comma_phase_program_entry_core_value_action f residue core ?value =
+      comma_phase_program_operator_nf (Comma_Entry_Core_Program f d residue core) ?effective"
+    using comma_entry_guard_selects_action[OF effective_bound select digit parameters(5)]
+    by (simp add: comma_phase_program_entry_core_value_action_def)
+  have step: "comma_phase_program_step_at (Comma_Entry_Core_Program f d residue core)
+      phase shift = comma_phase_program_step_of_action
+        (comma_source_continuation_transport shift
+          (comma_phase_program_entry_core_value_action f residue core ?value))"
+    using admitted selected_action by (simp add: comma_phase_program_step_at_def)
+  show thesis by (rule that[OF member active unique step])
+qed
+
 lemma comma_phase_program_full_action_class_exact:
   assumes phase: "phase < 924"
     and cid: "cid < 46"

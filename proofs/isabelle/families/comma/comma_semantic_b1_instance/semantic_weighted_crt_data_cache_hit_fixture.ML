@@ -127,7 +127,7 @@ struct
       val _ = check_reflexive_scalar "zero" zero_offset
       val _ = check_reflexive_scalar "one" one_offset
       val direct = Comma_Semantic_Weighted_CRT_Selector_Transport.action_meta_equation
-        ctxt profile natT one_action one_action
+        ctxt profile natT (K NONE) one_action one_action
       val _ = if Thm.term_of (Thm.lhs_of direct) aconv one_action andalso
           Thm.term_of (Thm.rhs_of direct) aconv one_action then ()
         else error "Weighted CRT reflexive action fixture changed exact endpoints"
@@ -135,7 +135,7 @@ struct
         @{const_name plus} (zero_offset, one_offset)
       val arithmetic_action = HOLogic.mk_prod (equal_offset_different_syntax, one_tree)
       val arithmetic = Comma_Semantic_Weighted_CRT_Selector_Transport.action_meta_equation
-        ctxt profile natT arithmetic_action one_action
+        ctxt profile natT (K NONE) arithmetic_action one_action
       val _ = if Thm.term_of (Thm.lhs_of arithmetic) aconv arithmetic_action andalso
           Thm.term_of (Thm.rhs_of arithmetic) aconv one_action then ()
         else error "Weighted CRT arithmetic-offset fixture lost its exact endpoints"
@@ -143,13 +143,13 @@ struct
       val _ = expect_rejection "an action with a different child"
         (fn () => ignore
           (Comma_Semantic_Weighted_CRT_Selector_Transport.action_meta_equation
-            ctxt profile natT different_child one_action))
+            ctxt profile natT (K NONE) different_child one_action))
       val two = Data.with_offset arena 2 one
       val two_action = Data.action serializer two
       val _ = expect_rejection "an action with a different weight"
         (fn () => ignore
           (Comma_Semantic_Weighted_CRT_Selector_Transport.action_meta_equation
-            ctxt profile natT one_action two_action))
+            ctxt profile natT (K NONE) one_action two_action))
       val _ = Output.information
         "weighted_crt_action_meta_fixture=passed reflexivity=true scalar_normalization=true endpoint_rejection=true"
     in () end
@@ -162,9 +162,9 @@ struct
       val zero = Data.leaf arena {key="late-cache:nat:0", value=nat 0}
       val one = Data.leaf arena {key="late-cache:nat:1", value=nat 1}
       val repeated_axis = Data.raw_branch arena 0
-        [(0,zero), (2,one), (3,zero), (1,one)]
+        [(0,zero), (2,one), (3,zero)]
       val outer = Data.raw_branch arena 0
-        [(4,repeated_axis), (1,repeated_axis), (0,zero), (5,repeated_axis)]
+        [(4,repeated_axis), (1,repeated_axis), (0,zero)]
       val initial = Data.with_offset arena 9 outer
       val published = Unsynchronized.ref (NONE: (Data.diagram * thm) option)
       (* A private sentinel distinguishes the intended late failure from any
@@ -191,7 +191,7 @@ struct
 
       (* A new parent may inspect its immediate cached child, but must not
          rediscover or serialize that child's already-certified descendants. *)
-      val parent = Data.raw_branch arena 1 [(0,outer),(2,outer),(3,outer)]
+      val parent = Data.raw_branch arena 1 [(0,outer),(2,outer),(3,outer),(1,outer)]
       val before_parent = Data.stats arena
       val _ = Data.certify_normalization ctxt arena natT serializer cache parent
       val after_parent = Data.stats arena
@@ -246,7 +246,7 @@ struct
       val foreign = Data.make_arena 32
       val zero = Data.leaf arena {key="plan:nat:0", value=nat 0}
       val one = Data.leaf arena {key="plan:nat:1", value=nat 1}
-      val action = Data.raw_branch arena 0 [(0,zero), (2,one), (1,zero), (3,one)]
+      val action = Data.raw_branch arena 0 [(0,zero), (2,one), (1,zero)]
       val escaped = Unsynchronized.ref (NONE: Data.normalization_plan option)
       val _ = Data.with_normalization_plan arena action (fn plan =>
         let
@@ -282,7 +282,7 @@ struct
       val exception_one = Data.leaf exceptional
         {key="plan-exception:nat:1", value=nat 1}
       val exception_action = Data.raw_branch exceptional 0
-        [(0,exception_zero), (1,exception_one), (2,exception_zero), (3,exception_one)]
+        [(0,exception_zero), (1,exception_one), (2,exception_zero)]
       val exception_plan = Unsynchronized.ref (NONE: Data.normalization_plan option)
       val sentinel_seen =
         ((Data.with_normalization_plan exceptional exception_action (fn plan =>
@@ -314,8 +314,8 @@ struct
       fun child_action entries = Data.branch arena 0
         (map (fn (weight,value) =>
           Data.with_offset arena weight (value_leaf value)) entries)
-      val child_a = child_action [(0,0),(1,1),(2,2),(3,0)]
-      val child_b = child_action [(5,2),(0,0),(4,1),(1,1)]
+      val child_a = child_action [(0,0),(1,1),(2,2)]
+      val child_b = child_action [(5,2),(0,0),(4,1)]
       val certified_a = Data.certify_normalization ctxt arena natT serializer cache child_a
       val certified_b = Data.certify_normalization ctxt arena natT serializer cache child_b
       val _ = if Data.same_action arena child_a (#normalized certified_a) andalso
@@ -324,14 +324,14 @@ struct
           Thm.nprems_of (#equation certified_b) = 0 then ()
         else error "Weighted CRT lower-axis children were not retained as certified canonical rows"
 
-      (* Axis 1 has three source rows.  Their axis 0 children have different
+      (* Axis 1 has four source rows.  Their axis 0 children have different
          phase values and weights, forcing the selector plan to use a genuine
          Lower_Axis_Port and restore a nonzero common row weight. *)
       val source = Data.raw_branch arena 1
-        [(17,child_a),(19,child_b),(18,child_a)]
+        [(17,child_a),(19,child_b),(18,child_a),(20,child_a)]
       val initial = Data.with_offset arena 2 source
-      val expected_columns = [[0,7,1],[1,2,2],[2,6,3],[3,3,4]]
-      val expected_commons = [0,1,2,3]
+      val expected_columns = [[0,7,1,3],[1,2,2,4],[2,6,3,5]]
+      val expected_commons = [0,1,2]
       val _ = Data.with_normalization_plan arena initial (fn plan =>
         let
           val selector = Data.plan_selector arena plan
@@ -342,16 +342,16 @@ struct
                 (case piece of
                   Data.Lower_Axis_Port
                     {slot=recorded,restricted_rows,child_common,...} =>
-                      recorded = slot andalso length restricted_rows = 3 andalso
+                      recorded = slot andalso length restricted_rows = 4 andalso
                       map Data.offset restricted_rows = List.nth (expected_columns,slot) andalso
                       child_common = List.nth (expected_commons,slot)
                 | Data.Same_Axis_Port _ => false)
               val pieces = #pieces view
               val correct = #axis view = 1 andalso #split_axis view = 0 andalso
-                common = 17 andalso length pieces = 4 andalso
-                map Data.offset (#input_rows view) = [0,2,1] andalso
+                common = 17 andalso length pieces = 3 andalso
+                map Data.offset (#input_rows view) = [0,2,1,3] andalso
                 ListPair.allEq (fn (slot,piece) => check_piece slot piece)
-                  (0 upto 3,pieces)
+                  (0 upto 2,pieces)
             in
               if correct then ()
               else error "Weighted CRT Lower_Axis_Port did not preserve selector commons"
@@ -387,12 +387,13 @@ struct
         in theorem end
       fun expected_point phase =
         let
-          val row = phase mod 3
-          val slot = phase mod 4
+          val row = phase mod 4
+          val slot = phase mod 3
           val (parent_weight,values) = List.nth
-            ([(17,[(0,0),(1,1),(2,2),(3,0)]),
-              (19,[(5,2),(0,0),(4,1),(1,1)]),
-              (18,[(0,0),(1,1),(2,2),(3,0)])],row)
+            ([(17,[(0,0),(1,1),(2,2)]),
+              (19,[(5,2),(0,0),(4,1)]),
+              (18,[(0,0),(1,1),(2,2)]),
+              (20,[(0,0),(1,1),(2,2)])],row)
           val (child_weight,value) = List.nth (values,slot)
           val elapsed = 2 + parent_weight + child_weight
         in (value,elapsed) end
@@ -424,10 +425,10 @@ struct
       fun child entries = Data.branch arena 0
         (map (fn (weight,value) => Data.with_offset arena weight
           (if value = 0 then zero else if value = 1 then one else two)) entries)
-      val child_a = child [(0,0),(1,1),(2,2),(3,0)]
-      val child_b = child [(5,2),(0,0),(4,1),(1,1)]
+      val child_a = child [(0,0),(1,1),(2,2)]
+      val child_b = child [(5,2),(0,0),(4,1)]
       val root = Data.raw_branch arena 1
-        [(17,child_a),(19,child_b),(18,child_a)]
+        [(17,child_a),(19,child_b),(18,child_a),(20,child_a)]
       val initial = Data.with_offset arena 2 root
       val certified = Data.certify_normalization ctxt arena natT serializer cache initial
       val normalized = #normalized certified
@@ -465,12 +466,13 @@ struct
           else error "Weighted CRT bounded selector point retained premises" end
       fun expected_point phase =
         let
-          val row = phase mod 3
-          val slot = phase mod 4
+          val row = phase mod 4
+          val slot = phase mod 3
           val (parent_weight,values) = List.nth
-            ([(17,[(0,0),(1,1),(2,2),(3,0)]),
-              (19,[(5,2),(0,0),(4,1),(1,1)]),
-              (18,[(0,0),(1,1),(2,2),(3,0)])],row)
+            ([(17,[(0,0),(1,1),(2,2)]),
+              (19,[(5,2),(0,0),(4,1)]),
+              (18,[(0,0),(1,1),(2,2)]),
+              (20,[(0,0),(1,1),(2,2)])],row)
           val (child_weight,value) = List.nth (values,slot)
         in (value,2 + parent_weight + child_weight) end
       val source_action = Data.action serializer initial
@@ -501,11 +503,11 @@ struct
       val one = Data.leaf arena {key="cache-hit:nat:1", value=nat 1}
       val two = Data.leaf arena {key="cache-hit:nat:2", value=nat 2}
       val inner = Data.raw_branch arena 0
-        [(0,zero), (3,one), (1,two), (4,zero)]
+        [(0,zero), (3,one), (1,two)]
       val alternate_inner = Data.raw_branch arena 0
-        [(2,two), (0,zero), (5,one), (1,two)]
+        [(2,two), (0,zero), (5,one)]
       val raw = Data.raw_branch arena 0
-        [(5,inner), (0,alternate_inner), (3,inner), (2,alternate_inner)]
+        [(5,inner), (0,alternate_inner), (3,inner)]
       val initial = Data.with_offset arena 7 raw
       val first = Data.certify_normalization ctxt arena natT serializer cache initial
       val after_first = Data.stats arena

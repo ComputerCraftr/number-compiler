@@ -7,11 +7,15 @@ from typing import TypeAlias
 
 import pytest
 
+from number_compiler.arithmetic.contracts.block_effect import (
+    BlockContextBudgetExceeded,
+)
 from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _collatz_keys
+from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.sequences.collatz import border_identity as border_identity_module
 from number_compiler.sequences.collatz import boundary_templates
 from number_compiler.sequences.collatz.border_identity import (
@@ -73,6 +77,16 @@ def _physical(source: int, ticks: int) -> int:
     for _ in range(ticks):
         source = 3 * source + 1 if source & 1 else source // 2
     return source
+
+
+def test_boundary_template_scratch_retains_only_factory_owned_containers() -> None:
+    ledger = ResourceLedger()
+    memo = BoundaryActionTemplateMemo(ledger)
+    ledger.register_execution_root(memo)
+    with memo.scratch(nodes=7):
+        audit = audit_execution_ownership(ledger)
+        assert audit.unregistered_containers == 0
+    memo.dispose()
 
 
 def test_guarded_macro_is_exact_and_issued_only_by_the_selector() -> None:
@@ -476,6 +490,28 @@ def test_template_memo_warm_hit_bypasses_exact_cold_constructor(
         assert memo.get(ENTRY_4721, 2) is cold
     assert ledger.counters["collatz_boundary_template_publications"] == 1
     assert ledger.counters["collatz_boundary_template_hits"] == 1
+
+
+def test_named_template_construction_reserves_before_build(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger(max_nodes=1)
+    built = False
+
+    def forbidden_build(
+        _identity: BoundaryTemplateIdentity, _repetitions: int
+    ) -> tuple[DyadicTerminalFieldAction, int, int, int]:
+        nonlocal built
+        built = True
+        raise AssertionError("template constructor ran before scratch admission")
+
+    monkeypatch.setattr(
+        boundary_templates, "build_boundary_action_template", forbidden_build
+    )
+    with BoundaryActionTemplateMemo(ledger) as memo:
+        with pytest.raises(BlockContextBudgetExceeded):
+            memo.get(ENTRY_421, 2)
+    assert not built
 
 
 def test_template_memo_cleanup_failure_blocks_use_and_can_be_retried(

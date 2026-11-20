@@ -557,17 +557,17 @@ theorem double_reverse_seed_168_four_step_rotation_correction:
    (25::nat) * 16188 \<noteq> (4::nat) * ((100::nat) * 168)"
 proof -
   have step1: "double_reverse_T 168 = 1722"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step2: "double_reverse_T 1722 = 4542"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step3: "double_reverse_T 4542 = 4908"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have step4: "double_reverse_T 4908 = 16188"
-    by (simp add: double_reverse_T_def double_reverse_reverse10.simps
-        double_reverse_decimal_digits.simps)
+    by (simp add: double_reverse_T_def decimal_reverse.simps
+        decimal_digit_count.simps)
   have four_as_suc: "(4::nat) = Suc (Suc (Suc (Suc 0)))" by simp
   have iterated:
     "(double_reverse_T ^^ Suc (Suc (Suc (Suc 0)))) 168 = 16188"

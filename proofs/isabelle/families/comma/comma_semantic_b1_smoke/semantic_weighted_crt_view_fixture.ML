@@ -54,7 +54,7 @@ struct
       val arena = Data.make_arena 32
       fun payload n = {key="view-fixture:" ^ Int.toString n,
         value=HOLogic.mk_number @{typ nat} n}
-      val children = map (Data.leaf arena o payload) [0,1,2,3]
+      val children = map (Data.leaf arena o payload) [0,1,2]
       val edges = map_index (fn (weight,child) => (weight,child)) children
       val root = Data.with_offset arena 9 (Data.raw_branch arena 0 edges)
       val initial = Data.stats arena
@@ -67,7 +67,7 @@ struct
         else error "Weighted CRT shallow memo erased the root offset"
       val _ = (case Data.view arena root of
         Data.View_Branch {offset,axis,children=actual} =>
-          if offset=9 andalso axis=0 andalso length actual=4 andalso
+          if offset=9 andalso axis=0 andalso length actual=3 andalso
               ListPair.allEq (fn ((weight,child),(expected,original)) =>
                 weight=expected andalso Data.offset child=0 andalso
                 Data.same_action arena child original) (actual,edges)
@@ -95,13 +95,13 @@ struct
       val _ = rejects "an exterior clock axis" (fn () => Data.axis_weight 4)
       val _ = if Data.stats arena=initial then ()
         else error "Weighted CRT shallow access traversed or mutated its store"
-      val _ = if Data.view_stats arena={node_visits=2,edge_visits=4} then ()
+      val _ = if Data.view_stats arena={node_visits=2,edge_visits=3} then ()
         else error "Weighted CRT shallow inspection work was not charged exactly"
       fun check_collapsed_parent () =
         let
           val collapsed_arena = Data.make_arena 32
           val child = Data.leaf collapsed_arena (payload 99)
-          val children = [child,child,child,child]
+          val children = [child,child,child]
           val collapse_initial = Data.stats collapsed_arena
           val direct = Data.normalized_branch collapsed_arena 0 children
           val after_direct = Data.stats collapsed_arena
@@ -121,7 +121,7 @@ struct
         let
           val scoped_arena = Data.make_arena 64
           val child = Data.leaf scoped_arena (payload 102)
-          val children = [child,child,child,child]
+          val children = [child,child,child]
           val initial = Data.stats scoped_arena
           val escaped = Data.with_normalized_branch scoped_arena 0 children
             (fn (result,selector) =>
@@ -129,7 +129,7 @@ struct
                 val _ = if Data.same_action scoped_arena result child then ()
                   else error "Scoped selector changed collapsed parent"
                 val _ = Data.with_selector_view scoped_arena selector (fn view =>
-                  if #axis view=0 andalso length (#input_rows view)=4 then ()
+                  if #axis view=0 andalso length (#input_rows view)=3 then ()
                   else error "Scoped selector lost its exact ordered input view")
               in selector end)
           val _ = rejects "an escaped selector scope" (fn () =>
@@ -150,7 +150,7 @@ struct
           fun ordering_leaf n = Data.leaf ordering_arena
             {key="global-child-order-fixture:" ^ Int.toString n,
              value=HOLogic.mk_number @{typ nat} n}
-          val leaves = map ordering_leaf [0,1,2,3]
+          val leaves = map ordering_leaf [0,1,2]
           val child_a = Data.branch ordering_arena 0 leaves
           val child_b = Data.branch ordering_arena 0 (rev leaves)
           val children = map (fn slot => if slot mod 2=0 then child_a else child_b)
@@ -172,7 +172,7 @@ struct
             (map (fn child => (0,child)) children)
           val local_leaf = Data.leaf ordering_arena
             {key="global-child-rejection",value=HOLogic.mk_number @{typ nat} 90}
-          val rejection_children = [noncanonical,local_leaf,local_leaf,local_leaf]
+          val rejection_children = [noncanonical,local_leaf,local_leaf]
           val before_rejections = Data.stats ordering_arena
           val _ = rejects "a noncanonical child" (fn () =>
             Data.normalized_branch ordering_arena 0 rejection_children)
@@ -181,7 +181,7 @@ struct
             {key="foreign-normalized-branch",value=HOLogic.mk_number @{typ nat} 91}
           val _ = rejects "a foreign normalized-branch child" (fn () =>
             Data.normalized_branch ordering_arena 0
-              [foreign_child,local_leaf,local_leaf,local_leaf])
+              [foreign_child,local_leaf,local_leaf])
           val after_rejections = Data.stats ordering_arena
           val _ = if before_rejections=after_rejections then ()
             else error "Normalized branch rejection mutated its arena before admission"
@@ -194,12 +194,13 @@ struct
             {key="normalized-weighted-child:" ^ Int.toString n,
              value=HOLogic.mk_number @{typ nat} n}
           fun row start weights =
-            let val leaves = map weighted_leaf (start upto (start+3))
+            let val leaves = map weighted_leaf (start upto (start+2))
             in Data.raw_branch weighted_arena 0 (ListPair.zip (weights,leaves)) end
-          val rows = [row 20 [0,1,0,2],row 24 [0,2,1,0],row 28 [1,0,2,0]]
+          val rows = [row 20 [0,1,2],row 24 [0,2,1],row 28 [1,0,2],row 32 [2,1,0]]
           val children = [Data.with_offset weighted_arena 3 (hd rows),
             Data.with_offset weighted_arena 1 (hd (tl rows)),
-            Data.with_offset weighted_arena 2 (hd (tl (tl rows)))]
+            Data.with_offset weighted_arena 2 (hd (tl (tl rows))),
+            Data.with_offset weighted_arena 4 (List.nth (rows,3))]
           val initial = Data.stats weighted_arena
           val direct = Data.normalized_branch weighted_arena 1 children
           val direct_stats = Data.stats weighted_arena
@@ -214,14 +215,14 @@ struct
       val _ = check_weighted_normalized_branch ()
       fun check_selector_scratch_rollback () =
         let
-          val rollback_arena = Data.make_arena 8
+          val rollback_arena = Data.make_arena 2
           val source_leaf = Data.leaf rollback_arena
             {key="normalized-branch-scratch-rollback",
              value=HOLogic.mk_number @{typ nat} 101}
           val initial = Data.stats rollback_arena
           val _ = rejects "selector scratch exhaustion" (fn () =>
             Data.normalized_branch rollback_arena 0
-              [source_leaf,source_leaf,source_leaf,source_leaf])
+              [source_leaf,source_leaf,source_leaf])
           val after_failure = Data.stats rollback_arena
           val _ = if #nodes after_failure = #nodes initial andalso
               #proof_entries after_failure = #proof_entries initial andalso
@@ -238,14 +239,14 @@ struct
           fun branch0 start weights =
             let
               val leaves = map (Data.leaf compare_arena o compare_payload)
-                (start upto (start+3))
+                (start upto (start+2))
             in Data.raw_branch compare_arena 0 (ListPair.zip (weights,leaves)) end
-          val crossed_rows = [branch0 10 [0,1,0,2],branch0 14 [0,2,1,0],
-            branch0 18 [1,0,2,0]]
+          val crossed_rows = [branch0 10 [0,1,2],branch0 14 [0,2,1],
+            branch0 18 [1,0,2],branch0 22 [2,1,0]]
           val weighted_root = Data.with_offset compare_arena 5
             (Data.raw_branch compare_arena 1
               [(0,hd crossed_rows),(2,hd (tl crossed_rows)),
-                (1,hd (tl (tl crossed_rows)))])
+                (1,hd (tl (tl crossed_rows))),(3,List.nth (crossed_rows,3))])
           val normalization_initial = Data.stats compare_arena
           val compact = Data.normalize compare_arena weighted_root
           val compact_stats = Data.stats compare_arena

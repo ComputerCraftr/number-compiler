@@ -24,6 +24,80 @@ from tests.support.reverse_source_ports import (
 )
 
 
+@pytest.mark.parametrize("after_apply", (False, True))
+@pytest.mark.parametrize("during_reserve", (False, True))
+def test_carry_stream_failure_reconciles_its_own_reservation(
+    after_apply: bool, during_reserve: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledger = ResourceLedger()
+    ports = SourceCarryPorts(source_from_value(12345678, 10), ledger)
+    owner = ports.audit_snapshot().workspace_owner
+    operation = "reserve" if during_reserve else "release"
+    original = getattr(ledger, operation)
+    failed = False
+
+    def injected(target: int, entries: int = 0, nodes: int = 0) -> None:
+        nonlocal failed
+        if target == owner and nodes and not failed:
+            failed = True
+            if after_apply:
+                original(target, entries, nodes)
+            raise RuntimeError("injected stream accounting failure")
+        original(target, entries, nodes)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ledger, operation, injected)
+        with pytest.raises(RuntimeError, match="injected stream accounting failure"):
+            next(ports.iter_first_ports())
+    assert failed
+    ports.dispose()
+    assert ledger.account_usage(owner) == (0, 0)
+
+
+def test_two_carry_streams_keep_independent_reservations() -> None:
+    ledger = ResourceLedger()
+    ports = SourceCarryPorts(source_from_value(12345678, 10), ledger)
+    forward = ports.iter_first_ports()
+    backward = ports.iter_first_ports(reflected=True)
+    next(forward)
+    next(backward)
+    with pytest.raises(RuntimeError, match="active streams"):
+        ports.dispose()
+    forward.close()
+    assert tuple(backward)
+    backward.close()
+    owner = ports.audit_snapshot().workspace_owner
+    ports.dispose()
+    assert ledger.account_usage(owner) == (0, 0)
+
+
+def test_stream_cleanup_failure_can_be_retried_by_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    ports = SourceCarryPorts(source_from_value(12345678, 10), ledger)
+    owner = ports.audit_snapshot().workspace_owner
+    stream = ports.iter_first_ports()
+    next(stream)
+    release = ledger.release
+
+    def fail(target: int, entries: int = 0, nodes: int = 0) -> None:
+        if target == owner and nodes:
+            raise RuntimeError("persistent cleanup failure")
+        release(target, entries, nodes)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ledger, "release", fail)
+        with pytest.raises(RuntimeError, match="persistent cleanup failure"):
+            stream.close()
+        with pytest.raises(RuntimeError, match="persistent cleanup failure"):
+            ports.dispose()
+    with pytest.raises(RuntimeError, match="cleanup must finish"):
+        ports.carry(0)
+    ports.dispose()
+    assert ledger.account_usage(owner) == (0, 0)
+
+
 def test_neutral_source_ports_do_not_make_the_successor_a_temporal_identity() -> None:
     ports = SourceCarryPorts(source_from_value(18, 10), ResourceLedger())
     assert ports.range_transfer(1, 0, 2) is CarryFn.ID

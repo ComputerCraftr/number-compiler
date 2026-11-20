@@ -1,7 +1,7 @@
 """Scoped output cleanup preserves failures without inheriting caller errors."""
 
 from collections.abc import Generator, Iterator
-from typing import cast
+from typing import Literal, cast
 
 import pytest
 
@@ -78,15 +78,17 @@ def test_measured_stream_cancel_records_close_failure() -> None:
     ledger = ResourceLedger()
     stream = measured_output_stream(ledger, "test", lambda: source)
     assert next(stream) == 1
-    stream.close()
+    with pytest.raises(RuntimeError, match="cleanup failed"):
+        stream.close()
     assert source.closes == 1
     assert ledger.counters["test_cancellations"] == 1
     assert ledger.counters["test_failures"] == 1
 
 
-@pytest.mark.parametrize("consumer_failure", (False, True))
+@pytest.mark.parametrize("termination", ("exhaust", "consumer-error", "cancel"))
 def test_failed_instrumentation_preserves_output_and_cleanup_errors(
-    consumer_failure: bool, monkeypatch: pytest.MonkeyPatch
+    termination: Literal["exhaust", "consumer-error", "cancel"],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = _ClosableDigits(fail_close=True)
     ledger = ResourceLedger()
@@ -101,7 +103,7 @@ def test_failed_instrumentation_preserves_output_and_cleanup_errors(
 
     monkeypatch.setattr(ledger, "bump", fail_recording)
     primary: BaseException
-    if consumer_failure:
+    if termination == "consumer-error":
         primary = ValueError("consumer failed")
         with pytest.raises(ValueError) as caught:
             stream.throw(primary)
@@ -109,10 +111,15 @@ def test_failed_instrumentation_preserves_output_and_cleanup_errors(
         assert any("cleanup failed" in note for note in primary.__notes__)
     else:
         with pytest.raises(RuntimeError, match="cleanup failed") as cleanup:
-            tuple(stream)
+            if termination == "cancel":
+                stream.close()
+            else:
+                tuple(stream)
         primary = cleanup.value
     assert any("counter failed" in note for note in primary.__notes__)
     assert source.closes == 1
+    if termination == "cancel":
+        assert ledger.counters["test_cancellations"] == 1
 
 
 @pytest.mark.parametrize("measured", (False, True))

@@ -49,10 +49,10 @@ def _join(
 
 
 def _pointed_zero_tail_join(
-    returns: int, *, source_slack: int = 0
+    returns: int, *, source_slack: int = 0, phase_multiplier: int = 1
 ) -> tuple[int, DyadicTerminalFieldAction, GuardedPortJoin]:
     steps = 2 * returns
-    source_value = (1 << (steps + source_slack)) - 1
+    source_value = phase_multiplier * (1 << (steps + source_slack)) - 1
     source = CollatzTwoSidedCylinder(source_value, source_value, 0, 1)
     action = DyadicTerminalFieldAction.one_run(2).power(returns)
     return source_value, action, _join(source, action, steps, (0,) * returns)
@@ -151,11 +151,8 @@ def test_five_return_power_requires_source_wide_two_and_five_guards(
         result.matrix_compositions,
         result.matrix_squarings,
         result.scalar_steps,
-    ) == (
-        23,
-        3,
-        0,
-    )
+    ) == (10, 0, 0)
+    assert 0 < result.matrix_row_evaluations < steps
 
     # Force the exact bounded chronology on the same admitted source. The
     # production fast path reports successful products/squarings from calls;
@@ -165,11 +162,12 @@ def test_five_return_power_requires_source_wide_two_and_five_guards(
 
     monkeypatch.setattr(GuardedPortJoin, "powered_zero_tail_carries", skip_proved_power)
     exact = joined.authenticate_weighted_ports(source_value, max_steps=steps)
-    assert (exact.matrix_compositions, exact.matrix_squarings, exact.scalar_steps) == (
-        0,
-        0,
-        steps,
-    )
+    assert (
+        exact.matrix_compositions,
+        exact.matrix_squarings,
+        exact.scalar_steps,
+        exact.matrix_row_evaluations,
+    ) == (0, 0, steps, steps)
     assert (exact.carry_tens, exact.carry_hundreds, exact.last_pair) == (
         result.carry_tens,
         result.carry_hundreds,
@@ -210,6 +208,18 @@ def test_insufficient_v2_plus_one_never_upgrades_to_powered_inlets() -> None:
     assert joined.powered_zero_tail_carries(source_value) is None
     with pytest.raises(BlockContextBudgetExceeded):
         joined.authenticate_weighted_ports(source_value, max_steps=8)
+
+
+def test_generated_inlet_matrix_period_can_collapse_to_one() -> None:
+    returns = 32
+    source_value, _action, joined = _pointed_zero_tail_join(
+        returns, source_slack=2, phase_multiplier=5
+    )
+    assert source_value % 25 == 19
+    result = joined.authenticate_weighted_ports(source_value, max_steps=8)
+    assert result.matrix_power_period == 1
+    assert result.scalar_steps == 0
+    assert result.matrix_row_evaluations < result.steps
 
 
 def test_plain_conditional_candidate_keeps_radix6_and_matrix_ports_lazy() -> None:

@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.ledger_records import ResourceInventory
 from number_compiler.resources.stores import LedgerDict
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.named_border_carry_matrix import (
+        UnitsCarryMatrix,
+    )
+    from number_compiler.sequences.collatz.parity_carry_tape import ParityCarryTape
 
 
 def assert_empty_ledger_account(
@@ -79,3 +85,22 @@ def inject_release_failure(
 
     expected_entries = entries
     monkeypatch.setattr(ledger, "release", fail_selected_release)
+
+
+def observe_parity_prefix_reservation(
+    monkeypatch: pytest.MonkeyPatch,
+    ledger: ResourceLedger,
+    owner: int,
+) -> list[tuple[int, int]]:
+    """Capture ledger scratch at the entry to weighted parity-prefix work."""
+    from number_compiler.sequences.collatz.parity_carry_tape import ParityCarryTape
+
+    original_prefix = ParityCarryTape.prefix_units
+    reservations: list[tuple[int, int]] = []
+
+    def observe_prefix(tape: ParityCarryTape, time: int) -> UnitsCarryMatrix:
+        reservations.append(ledger.account_usage(owner))
+        return original_prefix(tape, time)
+
+    monkeypatch.setattr(ParityCarryTape, "prefix_units", observe_prefix)
+    return reservations

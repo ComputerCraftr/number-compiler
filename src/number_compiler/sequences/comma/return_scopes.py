@@ -29,10 +29,10 @@ ReturnColumn: TypeAlias = tuple[int, tuple[ReturnScope, ...]]
 WorkCharge: TypeAlias = Callable[[str, int], None]
 _Cube: TypeAlias = tuple[int, ...]
 
-CLOCK_COMPONENTS = (("r4", 4), ("r3", 3), ("r7", 7), ("r11", 11))
-COMPONENT_DOMAINS = (4, 3, 7, 11)
+CLOCK_COMPONENTS = (("r3", 3), ("r4", 4), ("r7", 7), ("r11", 11))
+COMPONENT_DOMAINS = (3, 4, 7, 11)
 VALID_MASKS = tuple((1 << domain) - 1 for domain in COMPONENT_DOMAINS)
-_COMPONENT_MODULI = (4, 3, 7, 11)
+_COMPONENT_MODULI = COMPONENT_DOMAINS
 REMAINING_CLOCK_PERIODS = tuple(
     prod(_COMPONENT_MODULI[level:]) for level in range(len(_COMPONENT_MODULI) + 1)
 )
@@ -61,8 +61,8 @@ class ReturnColumnKey:
 FALSE_COLUMN = ReturnColumnKey(0)
 TRUE_COLUMN = ReturnColumnKey(1)
 _ALLOWED_CYLINDER_MASKS = (
-    (0b1111, 0b0101, 0b1010, 0b0001, 0b0010, 0b0100, 0b1000),
     (0b111, 0b001, 0b010, 0b100),
+    (0b1111, 0b0101, 0b1010, 0b0001, 0b0010, 0b0100, 0b1000),
     (0b1111111, *(1 << value for value in range(7))),
     (0b11111111111, *(1 << value for value in range(11))),
 )
@@ -269,14 +269,14 @@ def validate_scopes(scopes: tuple[ReturnScope, ...]) -> tuple[ReturnScope, ...]:
 def _scope_cube(scope: ReturnScope) -> _Cube:
     _validate_scope(scope)
     period, residue = scope
-    factors: list[int] = []
+    factors = [3 if period % 3 == 0 else 1]
     if period % 4 == 0:
         factors.append(4)
     elif period % 2 == 0:
         factors.append(2)
     else:
         factors.append(1)
-    for component_modulus in (3, 7, 11):
+    for component_modulus in (7, 11):
         factors.append(component_modulus if period % component_modulus == 0 else 1)
     masks: list[int] = []
     for factor, valid_mask, domain in zip(
@@ -356,7 +356,25 @@ def scope_column_key(
     return results[(0, cubes)]
 
 
+def require_return_column_shape(key: ReturnColumnKey) -> None:
+    """Check one node; publication validates complete untrusted graphs once."""
+    if type(key) is not ReturnColumnKey:
+        raise TypeError("comma return-column operations require an exact MDD key")
+    if type(key.kind) is not int or type(key.level) is not int:
+        raise ValueError("invalid comma return-column node kind or level")
+    if type(key.children) is not tuple:
+        raise ValueError("invalid comma return-column child vector")
+    if key.kind in (0, 1):
+        if key.level != 0 or key.children:
+            raise ValueError("invalid comma return-column terminal")
+    elif key.kind != 2 or not 0 <= key.level < len(COMPONENT_DOMAINS):
+        raise ValueError("invalid comma return-column decision node")
+    elif len(key.children) != COMPONENT_DOMAINS[key.level]:
+        raise ValueError("invalid comma return-column child vector")
+
+
 def mdd_child(key: ReturnColumnKey, level: int, value: int) -> ReturnColumnKey:
+    require_return_column_shape(key)
     if key.kind in (0, 1):
         return key
     if key.kind != 2:
@@ -393,6 +411,7 @@ def translated_column_key(
     visits = 0
     while pending:
         level, key, ready = pending.pop()
+        require_return_column_shape(key)
         state = level, key, shift % REMAINING_CLOCK_PERIODS[level]
         if state in memo:
             if charge is not None:
@@ -500,6 +519,8 @@ def _mdd_boolean_combine(
     pending = [(level, left, right, False)]
     while pending:
         current_level, first, second, ready = pending.pop()
+        require_return_column_shape(first)
+        require_return_column_shape(second)
         first, second = _mdd_pair(first, second)
         state = current_level, first, second
         if state in cache:
@@ -695,18 +716,16 @@ def _maximal_cylinder_cubes(
 
 def _cube_scope(cube: _Cube) -> ReturnScope:
     factors: list[tuple[int, int]] = []
-    for level, (mask, valid_mask, domain, modulus) in enumerate(
-        zip(
-            cube,
-            VALID_MASKS,
-            COMPONENT_DOMAINS,
-            (4, 3, 7, 11),
-            strict=True,
-        )
+    for mask, valid_mask, domain, modulus in zip(
+        cube,
+        VALID_MASKS,
+        COMPONENT_DOMAINS,
+        _COMPONENT_MODULI,
+        strict=True,
     ):
         if mask == valid_mask:
             factors.append((1, 0))
-        elif level == 0 and mask in (0b0101, 0b1010):
+        elif modulus == 4 and mask in (0b0101, 0b1010):
             factors.append((2, 0 if mask == 0b0101 else 1))
         else:
             values = tuple(value for value in range(domain) if mask >> value & 1)

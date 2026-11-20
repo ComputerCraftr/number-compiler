@@ -291,12 +291,6 @@ positive tails and `{521,777,2569}`. Boundary-only refinement through depth 500
 keeps two to five cylinders from depth six onward. Neither a uniform frontier
 bound nor exclusion of positive natural sources follows from this experiment.
 
-Use the existing research driver for the sign query:
-
-```console
-python -m devtools.experiments.antihydra.barrier_search --mode tail --depth 500 --max-nodes 20000
-```
-
 Positive current-tail terminals must **not** replace all-shift fractional
 safety: the word `0011` has a positive time-zero tail but an empty fractional
 guard. The full interval census below remains a separate oracle and theorem.
@@ -433,12 +427,6 @@ checks, not a claimed Isabelle safety quotient.
 
 ### Bounded refinement and the all-time boundary
 
-Use the existing search tool to compose only surviving source intervals:
-
-```console
-python -m devtools.experiments.antihydra.barrier_search --mode fractional --rounds 4 --max-nodes 100000
-```
-
 This covers all high fibers of every retained residue, without enumerating
 every integer source. It reports work and partial results on budget refusal.
 Its result remains `FINITE_PREFIXES_ONLY` or `BUDGET_EXHAUSTED`, never an
@@ -534,13 +522,6 @@ constructor. It does not formalize the Python valuation routine, prove a general
 future-language quotient, or decide original Mahler safety. The public CLI and
 Antihydra ledger/non-halting gates are unchanged.
 
-Reproduce the bounded grammar and its joint finite witnesses with:
-
-```console
-python -m devtools.experiments.antihydra.barrier_search --mode grammar --rounds 4 --max-event 4 --max-nodes 100000
-python -m devtools.checks.release --suite unit --select tests/validation/proofs/test_mahler_future_grammar.py
-```
-
 Finite grammar validation includes supplied-word powering and exact source
 obstructions. Larger event exponents remain unexplored; the source-seven
 certificate and reverse/add construction failures were retained.
@@ -554,7 +535,7 @@ to that rule by this search. A successful general grammar closure and its
 construction bound remain obligations, as they do for the unfinished 196
 pumped grammar.
 
-## Production and reproduction
+## Source transport
 
 ### Source parameters and finite safe/fail queries
 
@@ -719,13 +700,6 @@ predicates and obligations.
 - **Checked theorem:** the repository Isabelle results named earlier apply with their explicit premises; use the [proof index](../proofs.md) for source statements, sessions and oracle audits. They do not yet refine the proposed mixed-coordinate tile or formalize the external papers.
 - **Finite experiment:** bounded test comparisons establish only the tested sources and horizons.
 - **Construction-cost status:** Composed arithmetic and retained projection fragments do not prove cheap all-time source discovery or non-halting.
-
-Run the current support/projection checks (including validation-marked assertions).
-These do not validate the proposed mixed-coordinate bridge:
-
-```console
-python -m devtools.checks.release --suite unit --select tests/api/test_antihydra_support_cache.py --select tests/api/test_antihydra_projection_occurrences.py
-```
 
 ## Demanded history and the shared joint-adic chart
 

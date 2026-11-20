@@ -725,6 +725,7 @@ def test_same_source_memo_hit_rejects_mutated_nested_carry_counts() -> None:
                     "matrix_compositions",
                     "matrix_squarings",
                     "scalar_steps",
+                    "matrix_row_evaluations",
                 )
                 if getattr(candidate.carry_program, name) == 0
             )

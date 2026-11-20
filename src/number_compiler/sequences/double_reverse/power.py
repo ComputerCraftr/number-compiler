@@ -17,6 +17,9 @@ from number_compiler.arithmetic.automata.slp import BimachineSLPProjector
 from number_compiler.arithmetic.automata.slp_walks import iter_symbols, symbol_at
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.contracts.ordered_output import (
+    OrderedBandOutput,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.execution.source_image_inventory import SourceImageID
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
@@ -36,6 +39,9 @@ from number_compiler.resources.output_stream_metrics import (
     measured_output_stream,
 )
 from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
+from number_compiler.sequences.double_reverse.ordered_digit_band import (
+    source_issued_ordered_digit_band,
+)
 from number_compiler.sequences.double_reverse.protected_temporal_bank import (
     MAX_PROTECTED_PERIOD,
     ProtectedPeriodicBank,
@@ -75,6 +81,9 @@ from number_compiler.sequences.double_reverse.temporal_carry_safety_audit import
     carry_safety_result_node_cost,
     temporal_carry_safety_for_term,
 )
+from number_compiler.sequences.double_reverse.temporal_closed_form_observation import (
+    publish_temporal_closed_form,
+)
 from number_compiler.sequences.double_reverse.temporal_digit_affine import (
     seed196_low_four_digits_at_even_generation,
 )
@@ -94,7 +103,6 @@ from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
 from number_compiler.sequences.double_reverse.temporal_ports import (
     DecimalCarryPort,
     DoubleReverseClosedForm,
-    closed_form_from_roots,
     decimal_carry_port,
 )
 from number_compiler.sequences.double_reverse.temporal_square import (
@@ -754,6 +762,34 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         except ValueError as exc:
             raise UncertifiedPointedStencilError(str(exc)) from exc
 
+    def ordered_digit_band(
+        self,
+        steps: int,
+        width: int,
+        modulus: int,
+        *,
+        coefficients: tuple[int, ...] | None = None,
+        trace: bool = False,
+    ) -> OrderedBandOutput:
+        """Compose exact lower/upper decimal bands over issued source ticks."""
+        self.check_open()
+        self.validate_source_binding()
+        return source_issued_ordered_digit_band(
+            self.generation,
+            self.max_steps,
+            steps,
+            width,
+            modulus,
+            self._scheduler,
+            self._adapter,
+            self._source,
+            self._arena,
+            self._ledger,
+            self._scratch_owner,
+            coefficients=coefficients,
+            trace=trace,
+        )
+
     def digit(self, position: int) -> int:
         position = require_integer(position, "digit coordinate")
         self.check_open()
@@ -818,12 +854,9 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
                     root,
                     reverse=reverse,
                     on_task=record_visit,
-                    reserve_task=lambda: self._ledger.reserve(
-                        self._scratch_owner, entries=1, nodes=1
-                    ),
-                    release_tasks=lambda count: self._ledger.release(
-                        self._scratch_owner, entries=count, nodes=count
-                    ),
+                    ledger=self._ledger,
+                    owner=self._scratch_owner,
+                    task_entries=1,
                     check_open=self.check_open,
                 )
             finally:
@@ -894,53 +927,20 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
     def temporal_closed_form(
         self, *, modulus: int | None = None, max_bits: int = 4096
     ) -> DoubleReverseClosedForm:
-        """Publish exact endpoint moments and any certified suffix affine law.
-
-        Unlike NC13, a seed outside the cylinder does not discard the exact
-        later entry-phase action. Prefix and suffix are never confused: the
-        suffix shift is relative to the authenticated *entry source*, and its
-        linear gain does not claim to cover the uncertified prefix.
-        """
+        """Publish exact endpoint moments and any certified suffix affine law."""
         self.check_open()
-        entry_root: int | None = None
-        prefix_steps: int | None = None
-        source_phase = self._adapter.temporal_hashlife.certify(self._source.root)
-        if self.generation >= 2 and (source_phase is None or self.generation % 2 != 0):
-            try:
-                entry = self._certified_prefix_entry(
-                    max_prefix=min(32, self.generation - 2),
-                    require_even_remainder=True,
-                )
-            except UncertifiedPointedStencilError:
-                pass
-            else:
-                entry_root = self._adapter.temporal_hashlife.root_of(entry.target)
-                prefix_steps = entry.physical_steps
-        endpoint = self.endpoint_root()
-        result = closed_form_from_roots(
-            self._arena,
+        return publish_temporal_closed_form(
             self._source.root,
-            endpoint,
             self.generation,
+            self.endpoint_root,
+            self._certified_prefix_entry,
+            self._adapter.temporal_hashlife,
+            self._arena,
+            self._ledger,
+            self._scratch_owner,
             modulus=modulus,
             max_bits=max_bits,
-            ledger=self._ledger,
-            scratch_owner=self._scratch_owner,
-            entry_root=entry_root,
-            prefix_steps=prefix_steps,
         )
-        if result.suffix_affine_gain is not None:
-            self._ledger.bump(
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_CERTIFIED_SUFFIX_PUBLICATIONS
-            )
-        self._ledger.bump(
-            _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_MOMENT_PORT_PUBLICATIONS
-        )
-        if result.affine_gain is not None or result.suffix_affine_gain is not None:
-            self._ledger.bump(
-                _double_reverse_keys.DOUBLE_REVERSE_TEMPORAL_AFFINE_PORT_PUBLICATIONS
-            )
-        return result
 
     def dispose(self) -> None:
         if self._cleanup_complete:

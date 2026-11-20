@@ -54,6 +54,7 @@ qed
 
 ML_file "crt_mdd_arena.ML"
 ML_file "crt_mdd_proof_utils.ML"
+ML_file "crt_balanced_table.ML"
 ML_file "crt_mdd_certificate_store.ML"
 ML_file "crt_mdd_operation_replay.ML"
 ML_file "crt_mdd_bind_replay.ML"

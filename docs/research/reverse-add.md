@@ -457,10 +457,8 @@ The checked spatial obligations are constant-run carry idempotence,
 `residue_constant_run_first_reset`, interval concatenation and
 `residue_initial_carry_zero_correction` in the theory above. These concern
 supplied spatial runs. They do not prove source discovery, the full executable
-constructor, or a temporal compression bound. Tests poison the old SLP owner,
-compare bounded literal orbits, and check a span of `2^200` with four domain
-actions and two signed resets. The canonical diagnostic is
-`python -m devtools.benchmarks.field_image_growth_probe --research-events --seed 196 --horizon 20`.
+constructor, or a temporal compression bound. A span of `2^200` can be
+expressed with four domain actions and two signed resets.
 
 Bounded D20 emits `70446464506`, but each research advance still discovers
 new boundaries. Spatial reset recovery improves that work without proving a
@@ -1019,18 +1017,11 @@ obligation, not a counterexample to the complete cylinder proposal.
 
 [Implementation and validation record](../sprints/week-of-2026-09-20/reverse-add.md#spatial-residual-bisimulation-and-repeated-work-fixes).
 
-## Production and reproduction
+## Construction scope
 
-- **Implemented owner:** [sequences/reverse_add/source_images.py](../../src/number_compiler/sequences/reverse_add/source_images.py).
-- **Checked theorem:** the named Isabelle results above apply with their explicit premises; use the [proof index](../proofs.md) for source statements, sessions and oracle audits.
-- **Finite experiment:** bounded test comparisons establish only the tested sources and horizons.
-- **Construction-cost status:** Generic temporal closure and a successful construction bound remain open. These positive acceptance tests must fail until the constructor exists.
+Generic temporal closure and its construction bound remain open.
 
-Run the exact executable checks (including validation-marked assertions):
-
-```console
-python -m devtools.checks.release --suite unit --select tests/validation/proofs/test_reverse_generic_range_constructor.py --select tests/validation/proofs/test_reverse_temporal_publisher_cutover.py
-```
+[Implementation and validation record](../sprints/week-of-2026-09-20/reverse-add.md).
 
 ## Demand-specific forcing retention
 
@@ -1071,13 +1062,6 @@ context-free recoding rule, not a complete source-bound cylinder.
   the left image without primitive advances. The new Q95 spatial idempotence
   test is explicitly not the missing temporal D4/D8 test. Generic production
   refusal and positive cutover assertions remain unchanged.
-
-Reproduce the interface and authority checks with:
-
-```console
-python -m devtools.checks.release --suite unit --select tests/arithmetic/functions/test_complete_finite_transform.py --select tests/sequences/reverse_add/test_active_output_morphisms.py --select tests/sequences/reverse_add/test_threshold_cocycle.py
-isabelle build -d proofs/isabelle Temporal_Clock_Jumps
-```
 
 ### Three-cell temporal boundary candidate
 

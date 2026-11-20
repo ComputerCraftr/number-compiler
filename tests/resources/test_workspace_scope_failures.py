@@ -11,6 +11,7 @@ from number_compiler.arithmetic.fields.branch_quotients import PrimeBucketWorksp
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnImageWorkspace,
 )
+from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.closed_interface_workspace import (
     ClosedInterfaceWorkspace,
 )
@@ -21,6 +22,31 @@ from number_compiler.sequences.antihydra.arithmetic_images import (
     ANTIHYDRA_ARITHMETIC_LAW,
 )
 from number_compiler.sequences.prime.select import PrimePrefixRank
+from tests.support.ledger_failures import inject_release_failure
+
+
+@pytest.mark.parametrize("after_apply", (False, True))
+def test_run_arithmetic_scope_releases_only_its_remaining_scratch(
+    after_apply: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledger = ResourceLedger()
+    scratch = RunArithmeticWorkspace.for_ledger(ledger, "failed-close")
+    neighbour = ledger.register("neighbour", "run_arithmetic_workspace")
+    ledger.reserve(neighbour, nodes=5)
+    with monkeypatch.context() as patch:
+        inject_release_failure(
+            patch, ledger, scratch.owner, entries=0, after_apply=after_apply
+        )
+        with pytest.raises(RuntimeError, match="injected ledger release failure"):
+            with scratch.scope():
+                scratch.require_bits(64)
+    assert not scratch.active
+    assert scratch.nodes == ledger.account_usage(scratch.owner)[1]
+    with scratch.scope():
+        assert scratch.nodes == 0
+        scratch.require_bits(128)
+    assert ledger.nodes == 5
+    assert ledger.account_usage(neighbour) == (0, 5)
 
 
 @pytest.mark.parametrize("fused", (False, True))

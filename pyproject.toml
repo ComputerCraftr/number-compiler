@@ -32,7 +32,7 @@ where = ["src"]
 number_compiler = [
     "kernels/*.zlib",
     "kernels/*.gz",
-    "kernels/comma_semantic_future_v2.json",
+    "kernels/comma_semantic_future_v3.json",
     "py.typed",
 ]
 

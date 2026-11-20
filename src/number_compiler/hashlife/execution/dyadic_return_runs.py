@@ -70,13 +70,23 @@ class RunArithmeticWorkspace:
     def scope(self) -> Generator[RunArithmeticWorkspace, None, None]:
         if self.active:
             raise RuntimeError("run arithmetic workspace is already active")
+        self.close()
         self.active = True
         try:
             yield self
         finally:
-            self.ledger.release(self.owner, nodes=self.nodes)
-            self.nodes = 0
             self.active = False
+            self.close()
+
+    def close(self) -> None:
+        """Release scratch, retaining only the live charge on a failed debit."""
+        if self.active:
+            raise RuntimeError("cannot close active run arithmetic scratch")
+        if self.nodes:
+            try:
+                self.ledger.release(self.owner, nodes=self.nodes)
+            finally:
+                self.nodes = self.ledger.account_usage(self.owner)[1]
 
     def require_bits(self, bits: int) -> None:
         if not self.active:
@@ -85,8 +95,10 @@ class RunArithmeticWorkspace:
             raise ValueError("run arithmetic needs a nonnegative bit bound")
         nodes = 16 + (bits + 63) // 64
         if nodes > self.nodes:
-            self.ledger.reserve(self.owner, nodes=nodes - self.nodes)
-            self.nodes = nodes
+            try:
+                self.ledger.reserve(self.owner, nodes=nodes - self.nodes)
+            finally:
+                self.nodes = self.ledger.account_usage(self.owner)[1]
         name = f"{self.prefix}_temporal_scratch_peak_bits"
         previous = self.ledger.counters.get(name, 0)
         if bits > previous:

@@ -54,7 +54,7 @@ struct
           val term = Const (@{const_name Comma_Weighted_CRT_Leaf},
             @{typ nat} --> treeT) $ nat n
         in (diagram,{term=term,definition=Thm.reflexive (Thm.cterm_of ctxt term)}) end
-      val children = map leaf [0,1,2,3]
+      val children = map leaf [0,1,2]
       val root = Data.raw_branch arena 0 (map (fn (child,_) => (0,child)) children)
       val root_term = Const (@{const_name Comma_Weighted_CRT_Branch},
         @{typ nat} --> HOLogic.listT edgeT --> treeT) $ nat 0 $
@@ -94,8 +94,8 @@ struct
         not (Thm_Deps.has_skip_proof [theorem])
       fun same_theorems (left,right) = length left=length right andalso
         ListPair.allEq (fn (a,b) => Thm.eq_thm (a,b)) (left,right)
-      val _ = if length (#children bind_result)=4 andalso
-          length (#apply_slots bind_result)=4 andalso
+      val _ = if length (#children bind_result)=3 andalso
+          length (#apply_slots bind_result)=3 andalso
           List.all closed (#apply_slots bind_result) then ()
         else error "Named selector/bind apply slots are not closed checked results"
       val bind_stats = #stats factory ()
@@ -114,15 +114,14 @@ struct
         then () else error "Named bind memo hit rediscovered its checked child DAG"
       val _ = rejects "reordered named bind children" (fn () =>
         #named_bind factory 0 [#1 (List.nth (children,1)),
-          #1 (List.nth (children,0)),#1 (List.nth (children,2)),
-          #1 (List.nth (children,3))] root)
+          #1 (List.nth (children,0)),#1 (List.nth (children,2))] root)
       val foreign_bind_arena = Data.make_arena 8
       val foreign_bind_child = Data.leaf foreign_bind_arena
         {key="foreign-bind-child",value=nat 0}
       val _ = rejects "a foreign named bind child" (fn () =>
         #named_bind factory 0
           [foreign_bind_child,#1 (List.nth (children,1)),
-            #1 (List.nth (children,2)),#1 (List.nth (children,3))] root)
+            #1 (List.nth (children,2))] root)
       val nonzero_edge_root = Data.raw_branch arena 0
         (map_index (fn (slot,child) => (if slot=2 then 1 else 0,child))
           ordered_children)
@@ -204,7 +203,7 @@ struct
           val _ = rejects "swapped children inside a shallow cache scope" (fn () =>
             #named_bind scoped_factory 0
               [#1 (List.nth (children,1)),#1 (List.nth (children,0)),
-               #1 (List.nth (children,2)),#1 (List.nth (children,3))] root)
+               #1 (List.nth (children,2))] root)
           val _ = #end_scope scoped_factory token
         in () end)
       val failed_scope_after = Data.stats arena
@@ -246,9 +245,9 @@ struct
       val multi_leaves = map multi_leaf (0 upto 11)
       fun rotated_child shift = Data.raw_branch multi_arena 0
         (map (fn slot => (0,List.nth (multi_leaves,shift+slot)))
-          (0 upto 3))
-      val multi_children = map rotated_child [0,4,8]
-      val repeated_children = multi_children @ [List.hd multi_children]
+          (0 upto 2))
+      val multi_children = map rotated_child [0,3,6,9]
+      val repeated_children = take 3 multi_children
       val collapsed_selected_leaf = Data.leaf multi_arena
         {key="multi-collapse-selected",value=nat 99}
       fun selected_column_child selected =
@@ -257,8 +256,8 @@ struct
             if slot=selected then collapsed_selected_leaf
             else Data.leaf multi_arena
               {key="multi-collapse:" ^ Int.toString selected ^ ":" ^ Int.toString slot,
-               value=nat (100 + selected*3 + slot)})) (0 upto 2))
-      val selected_column_children = map selected_column_child (0 upto 2)
+               value=nat (100 + selected*4 + slot)})) (0 upto 3))
+      val selected_column_children = map selected_column_child (0 upto 3)
       fun make_selector axis = Data.raw_branch multi_arena axis
         (map (fn slot => (0,Data.leaf multi_arena
           {key="multi-selector:" ^ Int.toString axis ^ ":" ^ Int.toString slot,
@@ -328,7 +327,7 @@ struct
         #normalization_node_visits (Data.stats multi_arena)
       val _ = if multi_normalization_visits_after=multi_normalization_visits_before then ()
         else error "Canonical named bind rewalked its already-normalized target"
-      val _ = if length (#apply_slots multi_result)=3 andalso
+      val _ = if length (#apply_slots multi_result)=4 andalso
           List.all closed (#apply_slots multi_result) then ()
         else error "Earlier-axis named bind did not issue closed apply equations"
       val multi_before_hit = Data.stats multi_arena
@@ -346,17 +345,17 @@ struct
         else error "Multi-axis named-bind hit repeated checked graph work"
       val collapsed_result = #named_bind multi_factory 1
         selected_column_children collapsed_target
-      val _ = if length (#apply_slots collapsed_result)=3 andalso
+      val _ = if length (#apply_slots collapsed_result)=4 andalso
           List.all closed (#apply_slots collapsed_result) then ()
         else error "Collapsed parent selector lost its universal child equations"
       val repeated_result = #named_bind multi_factory 0 repeated_children repeated_target
-      val _ = if length (#apply_slots repeated_result)=4 andalso
+      val _ = if length (#apply_slots repeated_result)=3 andalso
           List.all closed (#apply_slots repeated_result) then ()
         else error "Repeated-axis named bind did not certify its selected cofactors"
       val _ = rejects "reordered earlier-axis named-bind children" (fn () =>
         #named_bind multi_factory 1
           [List.nth (multi_children,1),List.nth (multi_children,0),
-            List.nth (multi_children,2)] multi_target)
+            List.nth (multi_children,2),List.nth (multi_children,3)] multi_target)
       val wrong_multi_target = Data.leaf multi_arena
         {key="multi-wrong-target",value=nat 99}
       val _ = rejects "a wrong earlier-axis named-bind target" (fn () =>
@@ -385,7 +384,7 @@ struct
             @{typ nat} --> treeT) $ nat n
         in (diagram,{term=term,
           definition=Thm.reflexive (Thm.cterm_of ctxt term)}) end
-      val retry_children = map retry_leaf [10,11,12,13]
+      val retry_children = map retry_leaf [10,11,12]
       val retry_root = Data.raw_branch retry_arena 0
         (map (fn (diagram,_) => (0,diagram)) retry_children)
       val retry_root_term = Const (@{const_name Comma_Weighted_CRT_Branch},

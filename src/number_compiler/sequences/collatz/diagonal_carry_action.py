@@ -17,6 +17,10 @@ from number_compiler.arithmetic.carry.carry_normalization import (
     linear_normalization_fields,
 )
 from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.fields.dyadic_unit_phase import (
+    DyadicUnitPhase,
+    dyadic_carry_frontier,
+)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
@@ -520,23 +524,21 @@ class CollatzDiagonalSeam:
         _validate_query_width(max_width)
         if width > max_width:
             raise ValueError("macro carry width exceeds its requested width")
-        reserve_bits(
-            8
-            * (
-                self.source.bit_length()
-                + self._action.gain.bit_length()
-                + self._action.offset.bit_length()
-                + width * (self._action.gain.bit_length() + 64)
-                + 64
-            )
+        if width == 0:
+            return ()
+        if self._action.gain != pow(3, self.odd_symbols):
+            raise ValueError("issued Collatz action has an incompatible odd count")
+        carry_width = self._action.gain.bit_length()
+        phase = DyadicUnitPhase.from_exponent(3, self.odd_symbols, width + carry_width)
+        frontier = dyadic_carry_frontier(
+            phase,
+            self.source,
+            self._action.offset,
+            tuple(range(1, width + 1)),
+            carry_width=carry_width,
+            reserve_bits=reserve_bits,
         )
-        coefficients = tuple(
-            self._action.gain * ((self.source >> position) & 1)
-            + ((self._action.offset >> position) & 1)
-            for position in range(width)
-        )
-        _, carry_boundaries = linear_normalization_fields(coefficients, base=2)
-        return carry_boundaries[1:]
+        return tuple(cut.carry for cut in frontier.cuts)
 
     def macro_laurent_defect(
         self,

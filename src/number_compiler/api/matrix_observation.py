@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 from dataclasses import asdict
 from importlib import import_module
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -12,6 +13,7 @@ from number_compiler.api.matrix_contracts import (
     MatrixKind,
     MatrixLaw,
     MatrixRequest,
+    OrderedMatrixRequest,
     SourceTransferRequest,
 )
 from number_compiler.api.observation_types import ObservationId
@@ -48,12 +50,21 @@ def observe_matrix(
         packet.pop("trace", None)
     packet.setdefault("status", "available")
     packet["matrix_kind"] = (
-        MatrixKind.INNOVATION.value
-        if isinstance(request, InnovationMatrixRequest)
-        else MatrixKind.SOURCE_TRANSFER.value
+        request.kind.value
+        if isinstance(request, OrderedMatrixRequest)
+        else (
+            MatrixKind.INNOVATION.value
+            if isinstance(request, InnovationMatrixRequest)
+            else MatrixKind.SOURCE_TRANSFER.value
+        )
     )
     packet["law"] = (
-        MatrixLaw.INNOVATION_MOMENT.value
+        MatrixLaw.ORDERED_CARRY_CONTINUANT.value
+        if isinstance(request, OrderedMatrixRequest)
+        and request.kind is MatrixKind.CARRY_CONTINUANT
+        else MatrixLaw.ORDERED_DIGIT_CONTINUANT.value
+        if isinstance(request, OrderedMatrixRequest)
+        else MatrixLaw.INNOVATION_MOMENT.value
         if isinstance(request, InnovationMatrixRequest)
         else capability.law.value
     )
@@ -69,6 +80,25 @@ def observe_matrix(
             "value": request.coordinate,
         }
         # A finite observation packet cannot be fed back as an issuer token.
+        packet["execution_authority"] = False
+        packet["source_index"] = context.request.presentation_index
+    elif isinstance(request, OrderedMatrixRequest):
+        packet["horizon"] = {"ticks": request.steps, "unit": MatrixClock.PHYSICAL.value}
+        packet["orientation"] = "later-column-actions-multiply-on-left"
+        packet["coefficient_ring"] = {
+            "kind": "integers-modulo",
+            "modulus": request.modulus,
+        }
+        packet["authority_scope"] = "detached-source-guarded-observation"
+        packet["requested_physical_ticks"] = request.steps
+        packet["coordinate"] = {
+            "kind": "carry-bits"
+            if request.kind is MatrixKind.CARRY_CONTINUANT
+            else "decimal-band-digits",
+            "value": request.precision
+            if request.kind is MatrixKind.CARRY_CONTINUANT
+            else request.band_width,
+        }
         packet["execution_authority"] = False
         packet["source_index"] = context.request.presentation_index
     return publish_observation(
@@ -95,6 +125,10 @@ def reverse_transfer(
     payload = context.term.payload
     if not isinstance(payload, PoweredReverseAddTermPayload):
         raise TypeError("reverse matrix received a foreign projected occurrence")
+    if isinstance(request, OrderedMatrixRequest):
+        from number_compiler.api.ordered_matrix_observation import reverse_ordered
+
+        return reverse_ordered(context, request)
     if isinstance(request, InnovationMatrixRequest):
         result = (
             payload.term.temporal_matrix(
@@ -124,6 +158,10 @@ def double_reverse_transfer(
         source_transfer_packet,
     )
 
+    if isinstance(request, OrderedMatrixRequest):
+        from number_compiler.api.ordered_matrix_observation import double_ordered
+
+        return double_ordered(context, request)
     demand = source_request(request)
     payload = context.term.payload
     if not isinstance(payload, DoubleReverseTermPayload):
@@ -167,30 +205,47 @@ def collatz_transfer(
     payload = context.term.payload
     if not isinstance(payload, PoweredCollatzTermPayload):
         raise TypeError("Collatz matrix received a foreign projected occurrence")
-    joined = powered_from_term(payload.term, demand.steps)
-    if joined is None:
+    # Keep the one-macro no-trace tape/binding workspace charged through
+    # construction of its immutable observation packet. Longer spans and
+    # traces instead retain the query-owned parity action cache.
+    with ExitStack() as single_macro_scope:
+        joined = powered_from_term(
+            payload.term,
+            demand.steps,
+            parity_actions_factory=lambda: context.collatz_parity_actions(
+                payload.term.resource_ledger
+            ),
+            trace_required=demand.trace,
+            single_macro_scope=single_macro_scope,
+        )
+        if joined is None:
+            return {
+                "status": "unavailable",
+                "reason": "no admitted border macro covers the requested endpoint horizon",
+            }
         return {
-            "status": "unavailable",
-            "reason": "no admitted border macro covers the requested endpoint horizon",
+            "status": "available",
+            "source": joined.source,
+            "endpoint": joined.endpoint,
+            "physical_ticks": joined.physical_ticks,
+            "normalized_steps": joined.units.steps,
+            "odd_events": joined.units.odds,
+            "units_carry_transfer": asdict(joined.units),
+            "forced_tens_carries": joined.forced_tens_carries,
+            "source_guard_admitted": True,
+            "scope": "source-admitted normalized decimal units transfer; higher inlets remain guarded",
+            "physical_repeat_certified": False,
+            **(
+                joined.trace_packet(
+                    normalized_steps=min(joined.units.steps, 64),
+                    parity_actions=context.collatz_parity_actions(
+                        payload.term.resource_ledger
+                    ),
+                )
+                if demand.trace
+                else {}
+            ),
         }
-    return {
-        "status": "available",
-        "source": joined.macro.source,
-        "endpoint": joined.macro.endpoint,
-        "physical_ticks": joined.macro.physical_ticks,
-        "normalized_steps": joined.units.steps,
-        "odd_events": joined.units.odds,
-        "units_carry_transfer": asdict(joined.units),
-        "forced_tens_carries": joined.forced_tens_carries,
-        "source_guard_admitted": True,
-        "scope": "source-admitted normalized decimal units transfer; higher inlets remain guarded",
-        "physical_repeat_certified": False,
-        **(
-            joined.trace_packet(normalized_steps=min(joined.units.steps, 64))
-            if demand.trace
-            else {}
-        ),
-    }
 
 
 def fermat_transfer(context: QueryContext, request: MatrixRequest) -> dict[str, object]:

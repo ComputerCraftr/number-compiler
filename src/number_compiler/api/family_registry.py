@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 from types import MappingProxyType
 from typing import Final
 
@@ -29,10 +30,12 @@ from number_compiler.api.family_types import (
     SizeBound,
     VerificationAdapter,
 )
+from number_compiler.api.five_reverse_registry import five_reverse_spec
 from number_compiler.api.matrix_contracts import (
     MatrixCapability,
     MatrixClock,
     MatrixCoordinate,
+    MatrixKind,
     MatrixLaw,
 )
 from number_compiler.api.observation_types import (
@@ -266,6 +269,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
             12,
             innovation=True,
             minimum_coordinate=1,
+            ordered_kinds=(MatrixKind.DIGIT_BAND,),
         ),
     ),
     FamilyId.DOUBLE_REVERSE: FamilySpec(
@@ -278,6 +282,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 ObservationId.TEMPORAL_CLOSED_FORM,
                 ObservationId.TEMPORAL_RESIDUE99,
                 ObservationId.TEMPORAL_SEED_MORPHISM,
+                ObservationId.TEMPORAL_MIXED_ADIC,
                 ObservationId.TEMPORAL_DEFECT_CLOCK,
                 ObservationId.TEMPORAL_CARRY_SAFETY,
                 ObservationId.SPATIAL_STENCIL,
@@ -294,7 +299,9 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
         ),
         DoubleReverseTermQuery,
         AdapterBinding("number_compiler.api.projections.double_reverse", "project"),
-        _observation(observe="observe_double_reverse"),
+        _observation(
+            observe="observe", module="number_compiler.api.double_reverse_observation"
+        ),
         term_observation=ObservationValueBinding(
             DoubleReverseObservationOptions,
             (
@@ -502,7 +509,16 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
             step_multiple=2,
             minimum_coordinate=1,
             max_trace_steps=128,
+            ordered_kinds=(MatrixKind.DIGIT_BAND,),
+            digit_band_step_multiple=4,
         ),
+    ),
+    FamilyId.FIVE_REVERSE: five_reverse_spec(
+        replace(
+            _COMMON_OBSERVER_OPTIONS["modulus"],
+            default=45,
+            information=(ObservationId.ARITHMETIC_MODULAR,),
+        )
     ),
     FamilyId.COLLATZ: FamilySpec(
         FamilyCapability(

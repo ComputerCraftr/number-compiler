@@ -18,6 +18,37 @@ WeightedEntry = tuple[int, ...]
 WeightedRows = tuple[tuple[WeightedEntry, ...], ...]
 
 
+@dataclass(frozen=True, slots=True)
+class WeightedRowPowerResult:
+    """Exact pointed result and separate work for a transfer power."""
+
+    row: tuple[WeightedEntry, ...]
+    row_evaluations: int
+    matrix_compositions: int
+    matrix_squarings: int
+    used_branching_fallback: bool
+
+    def __post_init__(self) -> None:
+        if type(self.row) is not tuple or any(
+            type(entry) is not tuple
+            or not entry
+            or any(type(value) is not int for value in entry)
+            for entry in self.row
+        ):
+            raise ValueError("pointed weighted result has a malformed row")
+        if any(
+            type(work) is not int or work < 0
+            for work in (
+                self.row_evaluations,
+                self.matrix_compositions,
+                self.matrix_squarings,
+            )
+        ):
+            raise ValueError("pointed weighted result has invalid work counters")
+        if type(self.used_branching_fallback) is not bool:
+            raise TypeError("pointed weighted fallback marker must be Boolean")
+
+
 def _compose_entry(first: WeightedEntry, later: WeightedEntry) -> WeightedEntry:
     return (
         later[0],
@@ -165,10 +196,91 @@ class WeightedTransfer(Generic[_State]):
                 squarings += 1
         return result, compositions, squarings
 
+    def power_row_with_work(
+        self,
+        source: int,
+        exponent: int,
+        *,
+        max_row_entries: int = 512,
+    ) -> WeightedRowPowerResult:
+        """Power one row, cycling deterministic paths and exactly falling back.
+
+        If every encountered row is deterministic, a repeated state gives an
+        exact weighted cycle whose additive payload can be multiplied without
+        constructing the full powered matrix. If any encountered row branches,
+        the general matrix power is used and retains every weighted outcome.
+        The row probe work and matrix-product work are reported separately.
+        """
+        if type(source) is not int or not 0 <= source < self.state_space.size:
+            raise ValueError("pointed weighted source lies outside its state space")
+        if type(exponent) is not int or exponent < 0:
+            raise ValueError("pointed weighted power needs a natural exponent")
+        if type(max_row_entries) is not int or not 1 <= max_row_entries <= 10000:
+            raise ValueError("pointed weighted power has an invalid row budget")
+        if exponent == 0:
+            return WeightedRowPowerResult(
+                ((source,) + (0,) * len(self.law.weight_names),),
+                0,
+                0,
+                0,
+                False,
+            )
+
+        seen: dict[int, tuple[int, tuple[int, ...]]] = {}
+        accumulated = [0] * len(self.law.weight_names)
+        state = source
+        elapsed = 0
+        row_evaluations = 0
+        while elapsed < exponent:
+            previous = seen.get(state)
+            if previous is not None:
+                cycle_start, start_weights = previous
+                cycle_length = elapsed - cycle_start
+                if cycle_length <= 0:
+                    raise ArithmeticError("weighted deterministic cycle is empty")
+                repeats = (exponent - elapsed) // cycle_length
+                if repeats:
+                    for index, start_weight in enumerate(start_weights):
+                        accumulated[index] += (
+                            accumulated[index] - start_weight
+                        ) * repeats
+                    elapsed += cycle_length * repeats
+                    if elapsed == exponent:
+                        break
+                # At most one unskipped suffix shorter than a cycle remains.
+                seen.clear()
+                continue
+            seen[state] = (elapsed, tuple(accumulated))
+            row = self.rows[state]
+            row_evaluations += 1
+            if len(row) > 1:
+                powered, compositions, squarings = self.power_with_work(
+                    exponent, max_row_entries=max_row_entries
+                )
+                return WeightedRowPowerResult(
+                    powered.rows[source],
+                    row_evaluations,
+                    compositions,
+                    squarings,
+                    True,
+                )
+            if not row:
+                return WeightedRowPowerResult((), row_evaluations, 0, 0, False)
+            edge = row[0]
+            state = edge[0]
+            for index, weight in enumerate(edge[1:]):
+                accumulated[index] += weight
+            elapsed += 1
+
+        return WeightedRowPowerResult(
+            ((state, *accumulated),), row_evaluations, 0, 0, False
+        )
+
 
 __all__ = [
     "WeightedEntry",
     "WeightedRows",
+    "WeightedRowPowerResult",
     "WeightedTransfer",
     "WeightedTransferLaw",
 ]

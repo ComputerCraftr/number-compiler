@@ -592,25 +592,3 @@ def residue_clock_class_of(
     if residue % 11 == 0:
         return 8 * residue - 7 * multiples_below
     return 8 * residue - 7 * (multiples_below + 1) + 2 * phase + width_parity
-
-
-def advance_residue_clock(
-    phase: int, width_parity: int, residue: int, modulus: int = 99
-) -> tuple[int, int, int]:
-    """One physical-step quotient transition, independent of the digit SLP."""
-    if modulus not in (99, 198):
-        raise ValueError("source-closed scalar quotient is modulo 99 or 198")
-    if (
-        type(phase) is not int
-        or phase not in range(4)
-        or type(width_parity) is not int
-        or width_parity not in (0, 1)
-        or type(residue) is not int
-        or not 0 <= residue < modulus
-    ):
-        raise ValueError("invalid source-issued residue-clock state")
-    return (
-        (phase + 1) % 4,
-        (width_parity + PHYSICAL_GROWTH_CYCLES[0][phase]) % 2,
-        (residue * (2 if width_parity else 20)) % modulus,
-    )

@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from number_compiler.arithmetic.fields.morphism_core import binary_power
-
 
 def _require_int(value: int, description: str, minimum: int = 0) -> None:
     if type(value) is not int or value < minimum:
@@ -66,14 +64,19 @@ class SkewMoment:
         return self.then(self)
 
     def power_formal(self, exponent: int) -> SkewMoment:
-        """Exponentiate in logarithmically many matrix products."""
+        """Apply the closed triangular power law without repeated products."""
         _require_int(exponent, "formal exponent")
-        return binary_power(
-            self,
-            exponent,
-            identity=SkewMoment(0, 0, 0, self.modulus),
-            compose=lambda first, second: first.then(second),
-        ).value
+        if exponent == 0:
+            return SkewMoment(0, 0, 0, self.modulus)
+        duration = self.duration * exponent
+        u = self.U * exponent
+        v = self.V * exponent + (
+            self.duration * self.U * exponent * (exponent - 1) // 2
+        )
+        if self.modulus is not None:
+            u %= self.modulus
+            v %= self.modulus
+        return SkewMoment(duration, u, v, self.modulus)
 
     def apply(self, source: int, source_reverse: int) -> tuple[int, int]:
         """Evaluate the formal matrix on supplied initial coordinates."""

@@ -1,5 +1,6 @@
 theory Comma_Program_Continue_Guard
   imports Comma_Continue_Image_Bridge Comma_CRT_Support
+    Comma_Entry_Port.Comma_Entry_Port_Refinement
 begin
 
 text \<open>
@@ -79,6 +80,112 @@ definition comma_phase_program_entry_core_value_action ::
        Some (active,residual,h) \<Rightarrow>
          comma_semantic_b1_near_control_port_action f 0 h
      | None \<Rightarrow> Comma_Continuation_Invalid)"
+
+lemma comma_entry_core_value_action_tree_refines:
+  assumes sector: "1\<le>f" "f\<le>9"
+    and digit: "fst (comma_decisive_entry_clock_key_from_core_residue
+      f residue (comma_phase_core_modulus core) wanted)<10"
+  shows "comma_phase_program_entry_core_value_action f residue core wanted =
+    (let key=comma_decisive_entry_clock_key_from_core_residue f residue
+         (comma_phase_core_modulus core) wanted
+     in case comma_entry_stored_tree_locator f (fst key) (snd key) of
+       Some (active,residual,h) \<Rightarrow>
+         comma_semantic_b1_near_control_port_action f 0 h
+     | None \<Rightarrow> Comma_Continuation_Invalid)"
+  using comma_entry_stored_tree_locator_refines[OF sector digit]
+  by (simp only: comma_phase_program_entry_core_value_action_def Let_def)
+
+text \<open>The row action consumes the stored port selector's exact row.
+Its continuation result retains the full physical payload.\<close>
+
+definition comma_entry_row_action :: "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow>
+    comma_source_continuation_action" where
+  "comma_entry_row_action f d row =
+    (case comma_entry_row_locator f d row of
+       Some (active,residual,h) \<Rightarrow>
+         comma_semantic_b1_near_control_port_action f 0 h
+     | None \<Rightarrow> Comma_Continuation_Invalid)"
+
+definition comma_entry_core_action_key ::
+    "nat \<Rightarrow> nat \<Rightarrow> comma_phase_core_id \<Rightarrow> nat \<Rightarrow> nat \<times> nat \<times> nat" where
+  "comma_entry_core_action_key f residue core wanted =
+    (f, residue mod 10,
+      comma_entry_port_row f (residue mod 10)
+        (snd (comma_decisive_entry_clock_key_from_core_residue
+          f residue (comma_phase_core_modulus core) wanted)))"
+
+text \<open>Scalar equations shared by the selector-key and Entry-operator
+consumers. The named port potential and period facts are supplied by the
+checked per-port plan; this bundle does not unfold the orbit search.\<close>
+lemmas comma_entry_core_common_rules =
+  comma_decisive_entry_clock_key_from_core_residue_def
+  comma_finite_period_fast_def comma_phase_core_modulus.simps
+  comma_core_seed_def comma_core_lift_parameters nth_Cons'
+
+lemmas comma_entry_core_key_simp_rules =
+  comma_entry_core_action_key_def comma_entry_core_common_rules
+  comma_entry_diagonal_def comma_entry_port_row_def Let_def fst_conv snd_conv
+
+text \<open>Closed row-action reduction uses checked fixed-port equations
+provided by the consumer; it does not unfold the search that builds them.\<close>
+lemmas comma_entry_row_action_simp_rules =
+  comma_entry_row_action_def comma_entry_row_locator_def
+  comma_prefix_tree_port_select.simps comma_port_low_def
+  comma_semantic_b1_near_control_port_action_def
+  comma_semantic_b1_next_port_action_def comma_round_crossing_def
+  comma_source_continuation_base.simps comma_source_continuation_shift.simps
+  comma_finite_position.case option.case prod.case Let_def
+
+lemma comma_entry_core_action_row_factor:
+  assumes sector: "1 \<le> f" "f \<le> 9"
+  shows "comma_phase_program_entry_core_value_action f residue core wanted =
+    (case comma_entry_core_action_key f residue core wanted of (sf,d,row) \<Rightarrow>
+      comma_entry_row_action sf d row)"
+proof -
+  let ?key = "comma_decisive_entry_clock_key_from_core_residue
+    f residue (comma_phase_core_modulus core) wanted"
+  have first: "fst ?key = residue mod 10"
+    by (simp add: comma_decisive_entry_clock_key_from_core_residue_def Let_def)
+  have digit: "fst ?key < 10" by (simp add: first)
+  have source: "comma_phase_program_entry_core_value_action f residue core wanted =
+    (case comma_entry_stored_tree_locator f (fst ?key) (snd ?key) of
+       Some (active,residual,h) \<Rightarrow>
+         comma_semantic_b1_near_control_port_action f 0 h
+     | None \<Rightarrow> Comma_Continuation_Invalid)"
+    using comma_entry_core_value_action_tree_refines[OF sector digit] by (simp only: Let_def)
+  show ?thesis using source
+    by (simp only: comma_entry_core_action_key_def comma_entry_row_action_def
+        comma_entry_stored_tree_locator_def first Let_def prod.case)
+qed
+
+
+lemma comma_phase_program_entry_core_value_action_tree_code [code]:
+  "comma_phase_program_entry_core_value_action f residue core wanted =
+    (let key=comma_decisive_entry_clock_key_from_core_residue f residue
+         (comma_phase_core_modulus core) wanted;
+         locator=(if 1\<le>f \<and> f\<le>9
+           then comma_entry_stored_tree_locator f (fst key) (snd key)
+           else comma_entry_port_refined_locator f (fst key) (snd key))
+     in case locator of
+       Some (active,residual,h) \<Rightarrow>
+         comma_semantic_b1_near_control_port_action f 0 h
+     | None \<Rightarrow> Comma_Continuation_Invalid)"
+proof (cases "1\<le>f \<and> f\<le>9")
+  case True
+  have sector: "1\<le>f" "f\<le>9" using True by auto
+  have digit: "fst (comma_decisive_entry_clock_key_from_core_residue
+      f residue (comma_phase_core_modulus core) wanted)<10"
+    by (simp add: comma_decisive_entry_clock_key_from_core_residue_def Let_def)
+  have both: "(True \<and> True) = True" by simp
+  show ?thesis
+    using comma_entry_core_value_action_tree_refines[OF sector digit]
+    by (simp only: Let_def sector(1) sector(2) both if_True)
+next
+  case False
+  show ?thesis using False
+    by (simp only: comma_phase_program_entry_core_value_action_def Let_def if_False)
+qed
+
 
 definition comma_phase_continue_exit_target ::
     "nat \<Rightarrow> comma_finite_position \<Rightarrow> nat \<Rightarrow> bool" where
@@ -721,6 +828,9 @@ qed
 
 ML \<open>
   val published = @{thms
+    comma_entry_core_value_action_tree_refines
+    comma_entry_core_action_row_factor
+    comma_phase_program_entry_core_value_action_tree_code
     comma_phase_continue_exit_target_partition
     comma_phase_continue_compile_job_admitted
     comma_phase_continue_action_observer_step_exact}

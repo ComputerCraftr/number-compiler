@@ -20,6 +20,9 @@ from number_compiler.hashlife.execution.dyadic_return_runs import (
     RunArithmeticWorkspace,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.antihydra import (
+    mahler_x15_source_morphism as x15_module,
+)
 from number_compiler.sequences.antihydra.arithmetic_images import (
     AntihydraArithmeticImageWorkspace,
 )
@@ -34,6 +37,7 @@ from number_compiler.sequences.antihydra.mahler_x15_source_morphism import (
     X15LaurentCarryInProjection,
     two_parent_x15_floor,
 )
+from number_compiler.sequences.antihydra.runtime import AntihydraArithmeticTerm
 
 
 def _literal(ticks: int) -> tuple[int, int, int, int]:
@@ -115,6 +119,38 @@ def test_weighted_carry_matches_literal_centered_and_physical_orbits(
         numerator = physical.upper * 8 + physical.offset
         assert not numerator & (physical.lower - 1)
         assert numerator >> ticks == workspace.endpoint() == endpoint + 1
+
+
+def test_issued_weighted_carry_projects_physical_prefixes_without_replay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ticks = 3072
+    positions = (0, 1, 2, 511, 1536, 2049, ticks - 1, ticks)
+    with _issued(ticks) as (_workspace, carry, scratch):
+
+        def no_new_action(*_args: object, **_kwargs: object) -> NoReturn:
+            pytest.fail("a physical prefix projection requested a new action")
+
+        monkeypatch.setattr(
+            AntihydraArithmeticImageWorkspace, "action_for_extent", no_new_action
+        )
+        for position in positions:
+            assert (
+                carry.centered_state_at(position, reserve_bits=scratch.require_bits)
+                == _literal(position)[0]
+            )
+        for position in (-1, ticks + 1, True):
+            with pytest.raises(ValueError, match="outside the issued carry extent"):
+                carry.centered_state_at(position, reserve_bits=scratch.require_bits)
+
+
+def test_physical_prefix_does_not_require_a_strict_half_tail() -> None:
+    term = AntihydraArithmeticTerm(64, shared_cache=False)
+    assert term.value() == _literal(64)[0] + 1
+    # Physical A=7 has two initial odd steps, which require U >= 5/9.
+    assert term.physical_value_at(2) == 18
+    for position in (0, 2, 31, 64):
+        assert term.physical_value_at(position) == _literal(position)[0] + 1
 
 
 @pytest.mark.parametrize("ticks", (0, 1, 6, 64, 128))
@@ -199,6 +235,36 @@ def test_issued_next_decimal_projection_does_not_build_a_second_x15_action(
         assert projection.target == endpoint
         assert projection.lower_residue == endpoint % (10**5)
         assert projection.next_endpoint_parity == next_endpoint & 1
+
+
+@pytest.mark.parametrize("ticks", (0, 1, 7, 31))
+def test_issued_x15_borrow_frontier_matches_physical_binary_chunks(ticks: int) -> None:
+    with _issued(ticks) as (_workspace, carry, scratch):
+        morphism = X15CarryMorphism.from_carry(carry, reserve_bits=scratch.require_bits)
+        positions = (ticks, 0, 5, ticks)
+        frontier = morphism.dyadic_borrow_frontier(
+            positions,
+            chunk_width=6,
+            reserve_bits=scratch.require_bits,
+        )
+        raw = 15**ticks * morphism.integer_source
+        correction = 5**ticks * morphism.floor_correction
+        physical = 10**ticks * morphism.integer_endpoint
+        assert raw - correction == physical
+        assert tuple(cut.position for cut in frontier.cuts) == positions
+        for cut in frontier.cuts:
+            chunk_mask = (1 << cut.width) - 1
+            lower_mask = (1 << cut.position) - 1
+            upper_mask = (1 << (cut.position + cut.width)) - 1
+            assert cut.borrow_in == int(
+                raw % (lower_mask + 1) < correction % (lower_mask + 1)
+            )
+            assert cut.borrow_out == int(
+                raw % (upper_mask + 1) < correction % (upper_mask + 1)
+            )
+            assert cut.raw_chunk == (raw >> cut.position) & chunk_mask
+            assert cut.correction_chunk == (correction >> cut.position) & chunk_mask
+            assert cut.physical_chunk == (physical >> cut.position) & chunk_mask
 
 
 def test_laurent_carry_projection_is_snapshot_and_rejects_mutated_action() -> None:
@@ -332,6 +398,25 @@ def test_x15_morphism_keeps_raw_floor_and_physical_iteration_distinct() -> None:
         assert scaled.raw_numerator - scaled.floor_numerator == (
             scaled.physical_numerator
         )
+
+
+def test_issued_x15_morphism_reuses_authenticated_tripling_gain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _issued(32) as (_workspace, carry, scratch):
+        issued_gain = carry.gain
+        issued_skew = carry.skew
+        width = carry.width
+
+        def forbid_duplicate_gain(*args: object, **kwargs: object) -> NoReturn:
+            if args == (3, width) and not kwargs:
+                raise AssertionError("X15 issuer recomputed the issued 3^width gain")
+            raise AssertionError("unexpected exponentiation during X15 issuance")
+
+        monkeypatch.setattr(x15_module, "pow", forbid_duplicate_gain, raising=False)
+        morphism = carry.x15_morphism(reserve_bits=scratch.require_bits)
+        assert morphism.gain == issued_gain
+        assert morphism.centered_skew == issued_skew
 
 
 def test_two_parent_x15_recurrence_checks_both_polynomial_forms() -> None:

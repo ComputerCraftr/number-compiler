@@ -8,6 +8,7 @@ from typing import TypeGuard, cast
 
 import pytest
 
+from devtools.verification.comma_semantic_future_artifact import source_mdd_fields
 from number_compiler.arithmetic.contracts.input_validation import object_mapping
 from number_compiler.resources.immutable_signature import ScalarSignature
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
@@ -19,6 +20,10 @@ from number_compiler.sequences.comma.boundary_quotient import BoundaryState
 from number_compiler.sequences.comma.future_authority import class_row_signature
 from number_compiler.sequences.comma.future_provider_memory import (
     RetainedSemanticFutureProvider,
+)
+from number_compiler.sequences.comma.future_source_mdd import (
+    FutureSourceMDD,
+    SourceLeaf,
 )
 from tests.support.comma_future_provider_fixture import (
     candidate_record,
@@ -71,14 +76,23 @@ def _swap_provider_source_classes(
     provider: future_provider.SemanticFutureProvider,
     first_index: int,
     second_index: int,
-) -> tuple[tuple[int, ...], tuple[int, ...]]:
+) -> tuple[FutureSourceMDD, FutureSourceMDD]:
     original = provider_source_classes(provider)
-    changed_values = list(original)
+    changed_values = [
+        original.lookup(BoundaryState(kind, digit, phase))
+        for kind in ("N", "Z")
+        for digit in range(2, 10)
+        for phase in range(924)
+    ]
     changed_values[first_index], changed_values[second_index] = (
         changed_values[second_index],
         changed_values[first_index],
     )
-    changed = tuple(changed_values)
+    record = candidate_record()
+    record.update(source_mdd_fields(changed_values))
+    changed = future_provider.parse_future_candidate(
+        record, charge_work=lambda _amount: None
+    ).source_classes
     object.__setattr__(provider, "_source_classes", changed)
     object.__setattr__(provider, "_source_classes_binding", changed)
     return original, changed
@@ -86,10 +100,31 @@ def _swap_provider_source_classes(
 
 def _restore_provider_source_classes(
     provider: future_provider.SemanticFutureProvider,
-    sources: tuple[int, ...],
+    sources: FutureSourceMDD,
 ) -> None:
     object.__setattr__(provider, "_source_classes", sources)
     object.__setattr__(provider, "_source_classes_binding", sources)
+
+
+def test_in_place_mdd_forgery_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = candidate_record()
+    _charges, charge_work = work_log()
+    install_synthetic_registry(monkeypatch, record, charge_work)
+    store = future_provider.SemanticFutureProviderStore(ResourceLedger())
+    lease = store.load_record(record, charge_work=charge_work)
+    provider = lease.resolve_provider()
+    source = provider_source_classes(provider)
+    zero = next(
+        node for node in source.nodes if type(node) is SourceLeaf and node.cid == 0
+    )
+    try:
+        with pytest.raises(AttributeError):
+            object.__setattr__(zero, "cid", 1)
+        assert provider.runtime_admitted
+    finally:
+        store.close()
 
 
 def _assert_workspace_binding_rejected(
@@ -205,8 +240,8 @@ def test_retained_source_anchor_and_cost_wrapper_are_immutable(
     retained = stored.value
     provider = retained.provider
     original_sources, changed_sources = _swap_provider_source_classes(provider, 0, 1)
-    assert original_sources[0] != original_sources[1]
-    assert set(changed_sources) == set(original_sources)
+    assert original_sources.lookup(BoundaryState("N", 2, 0)) == 0
+    assert changed_sources.lookup(BoundaryState("N", 2, 0)) == 1
 
     try:
         forged_retained = retained._replace(source_classes=changed_sources)
@@ -247,7 +282,9 @@ def test_retained_store_rejects_source_map_and_matching_self_binding_tamper(
 
     _restore_provider_source_classes(provider, original_sources)
     assert provider.runtime_admitted
-    assert lease.source_class(source, charge_work=charge_work) == original_sources[3]
+    assert lease.source_class(source, charge_work=charge_work) == (
+        original_sources.lookup(source)
+    )
     _assert_fresh_payload_audit_clean(store.ledger)
     store.close()
 
@@ -322,8 +359,7 @@ def test_provider_store_payload_contract_checks_rows_charges_and_lifecycle(
     _assert_fresh_payload_audit_clean(ledger)
 
     original_sources = provider_source_classes(provider)
-    changed_head = 0 if original_sources[0] != 0 else 1
-    changed_sources = (changed_head, *original_sources[1:])
+    changed_sources = FutureSourceMDD(original_sources.nodes, original_sources.roots)
     object.__setattr__(provider, "_source_classes", changed_sources)
     try:
         _assert_family_payload_invalid(ledger)

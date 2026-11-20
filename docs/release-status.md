@@ -1,19 +1,25 @@
 # Current release gates
 
 Version **0.60.0 is prepared; release remains blocked**.
-Reviewed 2026-11-09. This is the current disposition, not a run log.
+Reviewed 2026-11-19.
 The [comma forest deletion](sprints/week-of-2026-11-01/comma-global-cutover.md)
-is applied. B1 now consumes the symbolic Continue-image contract; the old
-full-table construction dependency and 2,019-line source/scalar proof owner
-are removed. The generic B1 session and universal guarded contract pass,
-including the exact sorted short-generator support equation for at most 28
-residues. The latest native smoke also passes, including index-2,
-wrapped-locator, named-table guard/poison and exact row-38 coverage. The latest
-concrete B1 publisher attempt still timed out after 311 cold locator equations;
-partial proof-construction work improved, but the image is not certified. No
-concrete image or global artifact is accepted;
+is applied. The active B1 replacement checks an exact M204 Bellman equation
+over symbolic roots in CRT order `(3,4,7,11)`, replacing the accumulating
+24-round frontier history. Generic B1/Future and native smoke runs accept
+source transport, priority certificates, the shared mapped-shift law and its
+current Continue consumer, including cache failure/reuse checks. These checks
+do not certify the complete concrete Bellman candidate.
+Concrete B1 remains unaccepted. Its source now selects direct projected Bellman
+certification for 46 class programs in one checked store. The sixteen physical
+source actions belong to the downstream Future consumer. The generic
+constructor, source-morphism, physical-source and Bellman projection laws pass
+native checking. The latest concrete trial passed Entry program binding and
+reached projected evaluation before the 300-second session limit.
+No concrete Bellman or global artifact is accepted;
 public comma values refuse, and B32, Future, global, physical-weight, positive
-CLI and package gates remain blocked. The sprint has the run-level evidence.
+CLI and package gates remain blocked. The
+[current harmonic sprint](sprints/week-of-2026-11-08/harmonic-carry-consumers.md)
+owns the run-level evidence.
 The bounded NC19/NC26 integration and adversarial authority/lifecycle repairs
 based on `b2878647` pass native runtime, quality and applicable family kernel
 sessions. The follow-up rejects forged accumulator fields, incompatible warm

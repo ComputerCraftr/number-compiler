@@ -688,8 +688,8 @@ definition comma_weighted_crt_cofactor_adversarial_tree ::
                 Comma_Weighted_CRT_Branch 0
                   (map (\<lambda>inner.
                     (100*inner, Comma_Weighted_CRT_Leaf
-                      (100*outer+10*middle+inner))) [0..<4])))
-              [0..<3]))) [0..<4])"
+                      (100*outer+10*middle+inner))) [0..<3])))
+              [0..<4]))) [0..<3])"
 
 lemma comma_weighted_crt_cofactor_adversarial_tree_wellformed:
   "comma_weighted_crt_wellformed
@@ -713,7 +713,8 @@ lemma comma_weighted_crt_cofactor_guard_rejects_invalid_shapes:
       (Comma_Weighted_CRT_Branch 0
         [(0,Comma_Weighted_CRT_Leaf 1),
          (0,Comma_Weighted_CRT_Leaf 2),
-         (0,Comma_Weighted_CRT_Leaf 3)]) = None"
+         (0,Comma_Weighted_CRT_Leaf 3),
+         (0,Comma_Weighted_CRT_Leaf 4)]) = None"
   unfolding comma_weighted_crt_cofactor_all_def
     comma_weighted_crt_cofactor_adversarial_tree_def
   by code_simp

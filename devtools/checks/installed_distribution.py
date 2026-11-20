@@ -75,7 +75,7 @@ def verify_wheel(
         raise ValueError("installed distribution has no immutable kernel resources")
     if any(Path(name).name.startswith("base10_t2_") for name in resources):
         raise ValueError("retired reverse/add proof-machine resource was packaged")
-    required_future_asset = "number_compiler/kernels/comma_semantic_future_v2.json"
+    required_future_asset = "number_compiler/kernels/comma_semantic_future_v3.json"
     if required_future_asset not in members:
         raise ValueError("installed distribution lacks the admitted comma future")
     environment = dict(os.environ)
@@ -170,7 +170,7 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.comma import future_provider
 global_digest = future_provider.registered_global_release_artifact_sha256()
 assert global_digest is not None
-future_asset = files('number_compiler').joinpath('kernels/comma_semantic_future_v2.json')
+future_asset = files('number_compiler').joinpath('kernels/comma_semantic_future_v3.json')
 future_record = json.loads(future_asset.read_text())
 provider_store = future_provider.SemanticFutureProviderStore(ResourceLedger())
 future_instance = provider_store.load_record(

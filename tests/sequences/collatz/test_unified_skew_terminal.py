@@ -170,6 +170,27 @@ class UnifiedSkewTerminalRegression(unittest.TestCase):
                     self.assertEqual(clock.value, field.offset % (1 << 24))
                     self.assertEqual(clock.steps, field.steps)
 
+    def test_closed_skew_power_matches_chronological_composition(self) -> None:
+        for motif in ((1,), (0, 1), (1, 0, 1, 1)):
+            block = SkewQuadraticClock.factors(((motif, 1),), precision=24)
+            expected = SkewQuadraticClock.identity(24)
+            for count in range(17):
+                self.assertEqual(block.power(count), expected)
+                expected = expected.then(block)
+
+    def test_large_closed_skew_power_does_not_recompose_the_word(self) -> None:
+        block = SkewQuadraticClock.factors((((0, 1, 1), 1),), precision=24)
+
+        def forbidden_then(
+            _self: SkewQuadraticClock, _other: SkewQuadraticClock
+        ) -> SkewQuadraticClock:
+            raise AssertionError("closed-form clock power recomposed its block")
+
+        with patch.object(SkewQuadraticClock, "then", forbidden_then):
+            powered = block.power(10**12)
+        self.assertEqual(powered.steps, block.steps * 10**12)
+        self.assertEqual(powered.odds, block.odds * 10**12)
+
     def test_unified_skew_chain_is_one_guarded_action_with_both_clocks(self) -> None:
         expectations = {
             13: (

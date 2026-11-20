@@ -9,7 +9,7 @@ period, or that a supplied list of source words is a physical trajectory.\<close
 
 definition double_reverse_normalized_middle :: "nat \<Rightarrow> nat" where
   "double_reverse_normalized_middle source =
-    double_reverse_reverse10 (double_reverse_T source)"
+    decimal_reverse (double_reverse_T source)"
 
 definition double_reverse_accumulator_pair_step ::
     "nat \<Rightarrow> int \<times> int \<Rightarrow> int \<times> int" where

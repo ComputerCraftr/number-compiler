@@ -433,7 +433,7 @@ proof -
         "sum_list (map (\<lambda>axis. comma_crt_axis_weight axis*
           (phase mod comma_crt_axis_radix axis)) [0,1,2,3])"]
     by (simp add: comma_crt_clock_def comma_crt_axis_radix_def
-      comma_crt_axis_weight_def add.assoc)
+      comma_crt_axis_weight_def algebra_simps)
   show "comma_weighted_crt_eval
       (comma_weighted_crt_selector_aux [0,1,2,3] period 0 values) phase =
       Some (values!(phase mod period),0)"

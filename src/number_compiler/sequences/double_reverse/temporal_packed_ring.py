@@ -472,21 +472,14 @@ def _evaluate_causal_window(
     with engine.ledger.reservation(
         engine.scratch_owner, entries=reservation, nodes=reservation
     ):
-
-        def reserve_task() -> None:
-            engine.ledger.reserve(engine.scratch_owner, entries=1, nodes=1)
-
-        def release_tasks(count: int) -> None:
-            engine.ledger.release(engine.scratch_owner, entries=count, nodes=count)
-
         digits = bytearray()
         try:
             with closing(
                 iter_symbols(
                     engine.arena,
                     causal_root,
-                    reserve_task=reserve_task,
-                    release_tasks=release_tasks,
+                    ledger=engine.ledger,
+                    owner=engine.scratch_owner,
                 )
             ) as symbols:
                 for symbol in symbols:

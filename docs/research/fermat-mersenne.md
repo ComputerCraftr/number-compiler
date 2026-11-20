@@ -109,15 +109,8 @@ equals that exact fold and satisfies the signed carry chain. A refinement of
 the Python streamed coefficient recurrence and certificate encoding remains
 separate; the theorem is not an unconditional production-checker refinement.
 
-## Production and reproduction
+## Construction scope
 
-- **Implemented owner:** [sequences/power_numbers/transverse_pullback.py](../../src/number_compiler/sequences/power_numbers/transverse_pullback.py).
-- **Checked theorem:** the named Isabelle results above apply with their explicit premises; use the [proof index](../proofs.md) for source statements, sessions and oracle audits.
-- **Finite experiment:** bounded test comparisons establish only the tested sources and horizons.
-- **Construction-cost status:** The semantic progression criterion is conditional on terminal evidence. Compact candidate-derived extraction and its construction bound remain open.
+Compact candidate-derived terminal extraction remains an open construction.
 
-Run the exact executable checks (including validation-marked assertions):
-
-```console
-.venv/bin/python -m devtools.checks.release --suite unit --select tests/validation/proofs/test_shadow_jet_primality_release.py
-```
+[Implementation and validation record](../sprints/week-of-2026-11-08/harmonic-carry-consumers.md).

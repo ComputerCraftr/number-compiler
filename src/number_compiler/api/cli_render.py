@@ -33,6 +33,7 @@ def _term_ledger(term: ProjectedNumberTerm) -> ResourceLedger | None:
         AntihydraTermPayload,
         CommaTermPayload,
         DoubleReverseTermPayload,
+        FiveReverseTermPayload,
         PoweredCollatzTermPayload,
         PoweredReverseAddTermPayload,
     )
@@ -44,6 +45,7 @@ def _term_ledger(term: ProjectedNumberTerm) -> ResourceLedger | None:
             PoweredReverseAddTermPayload,
             PoweredCollatzTermPayload,
             DoubleReverseTermPayload,
+            FiveReverseTermPayload,
         ),
     ):
         return owner.term.resource_ledger
@@ -183,6 +185,7 @@ def _render_value_body(
         CommaTermPayload,
         DoubleReverseTermPayload,
         FermatTermPayload,
+        FiveReverseTermPayload,
         FormulaTermPayload,
         MersenneTermPayload,
         PoweredCollatzTermPayload,
@@ -205,7 +208,10 @@ def _render_value_body(
         bit_extent = (
             upper_bound if upper_bound <= max_bits else term.payload.term.width()
         )
-    elif isinstance(term.payload, (CommaTermPayload, DoubleReverseTermPayload)):
+    elif isinstance(
+        term.payload,
+        (CommaTermPayload, DoubleReverseTermPayload, FiveReverseTermPayload),
+    ):
         upper_bound = term.payload.estimated_bit_length
         bit_extent = (
             upper_bound
@@ -226,6 +232,7 @@ def _render_value_body(
                 FormulaTermPayload,
                 PoweredReverseAddTermPayload,
                 DoubleReverseTermPayload,
+                FiveReverseTermPayload,
             ),
         )
         and term.source_radix == output_base
@@ -233,12 +240,17 @@ def _render_value_body(
         if not 2 <= output_base <= len(_DIGITS):
             raise ValueError("text output base must be between 2 and 36")
         if isinstance(
-            term.payload, (PoweredReverseAddTermPayload, DoubleReverseTermPayload)
+            term.payload,
+            (
+                PoweredReverseAddTermPayload,
+                DoubleReverseTermPayload,
+                FiveReverseTermPayload,
+            ),
         ):
             return radix_string_from_lsd(term.payload.iter_digits(), output_base)
-        return (
-            "".join(_DIGITS[d] for d in term.payload.iter_digits(reverse=True)) or "0"
-        )
+        with closing_output_stream(term.payload.iter_digits(reverse=True)) as stream:
+            encoded = bytearray(_DIGIT_BYTES[d] for d in stream)
+        return encoded.decode("ascii") or "0"
 
     if not output_base & (output_base - 1):
         chunk_bits = output_base.bit_length() - 1
@@ -268,6 +280,7 @@ def _render_value_body(
                     FormulaTermPayload,
                     PoweredReverseAddTermPayload,
                     DoubleReverseTermPayload,
+                    FiveReverseTermPayload,
                 ),
             )
             and source_base is not None

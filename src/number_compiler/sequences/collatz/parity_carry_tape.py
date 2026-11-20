@@ -27,6 +27,57 @@ if TYPE_CHECKING:
 _Effect = TypeVar("_Effect")
 
 
+def prefix_units_scratch_envelope(
+    root: ParityCarryTape, live_nodes: int
+) -> tuple[int, int]:
+    """Bound transient weighted-prefix chunks, memo entries and arithmetic."""
+    if (
+        type(root) is not ParityCarryTape
+        or type(live_nodes) is not int
+        or live_nodes < 1
+    ):
+        raise ValueError("weighted-prefix scratch needs a live immutable tape")
+    depth = root.traversal_depth
+    coefficient_words = max(1, (root.steps.bit_length() + 63) // 64)
+    entries = live_nodes + 2 * depth + 2
+    nodes = 96 + 16 * live_nodes + 12 * depth + 4 * coefficient_words * live_nodes
+    return entries, nodes
+
+
+def prefix_action_odds_under_owner(
+    root: ParityCarryTape,
+    time: int,
+    owner: LedgeredParityTapeActions,
+) -> tuple[DyadicTerminalFieldAction, int]:
+    """Authenticate and charge affine prefix traversal on its owning ledger."""
+    from number_compiler.resources.ledger import LedgerReservation
+    from number_compiler.sequences.collatz.parity_carry_tape_actions import (
+        LedgeredParityTapeActions,
+    )
+
+    if (
+        type(root) is not ParityCarryTape
+        or type(time) is not int
+        or not 0 <= time <= root.steps
+        or type(owner) is not LedgeredParityTapeActions
+    ):
+        raise ValueError("owned parity prefix requires an admitted root and time")
+    owner.action(root)
+    # A prefix of t letters can visit at most 2t segment/leaf nodes; nested
+    # repeat frames are covered by the tape's full traversal depth. Affine
+    # gain/offset coefficients can each grow to 2t bits (3^t < 2^(2t)); the
+    # weighted envelope's root.steps bit length alone would undercount them.
+    prefix_nodes = max(1, 2 * time + root.traversal_depth)
+    entries, nodes = prefix_units_scratch_envelope(root, prefix_nodes)
+    affine_words = max(1, (2 * time + 63) // 64)
+    nodes += 4 * affine_words * prefix_nodes
+    with LedgerReservation(owner.ledger, owner.scratch_owner) as reservation:
+        # Both effect walks run in sequence, and the affine result of the
+        # first walk remains live while the odds walk runs.
+        reservation.reserve(entries=2 * entries, nodes=2 * nodes)
+        return root.prefix_action(time), root.prefix_odds(time)
+
+
 def _full_effect(
     root: ParityCarryTape,
     *,
@@ -384,7 +435,12 @@ class ParityCarryTape(tuple[_ParityTapePayload, ...]):
         )
 
     @classmethod
-    def from_named_macro(cls, macro: object) -> ParityCarryTape:
+    def from_named_macro(
+        cls,
+        macro: object,
+        *,
+        cache: LedgeredParityTapeActions | None = None,
+    ) -> ParityCarryTape:
         """Retain the canonical producer-issued factor grammar of a macro."""
         from number_compiler.sequences.collatz.border_identity import (
             ENTRY_0563,
@@ -434,7 +490,7 @@ class ParityCarryTape(tuple[_ParityTapePayload, ...]):
 
         factors = tuple((word, count) for word, count in factors if count)
         tape = cls.factors(factors)
-        action = tape.action()
+        action = tape.action(cache=cache)
         if (
             tape.steps != macro.fields.steps
             or tape.odds != macro.odd_symbols

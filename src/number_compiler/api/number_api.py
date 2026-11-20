@@ -17,6 +17,7 @@ from number_compiler.api.elementary_payloads import (
 from number_compiler.api.query_types import TermQuery
 from number_compiler.api.reverse_payloads import (
     DoubleReverseTermPayload,
+    FiveReverseTermPayload,
     PoweredReverseAddTermPayload,
 )
 from number_compiler.api.symbolic_terms import SymbolicExpression, initialize_projected
@@ -285,6 +286,7 @@ class AntihydraTermPayload:
 TermPayload = (
     PoweredReverseAddTermPayload
     | DoubleReverseTermPayload
+    | FiveReverseTermPayload
     | PoweredCollatzTermPayload
     | AntihydraTermPayload
     | CommaTermPayload
@@ -343,6 +345,7 @@ class ProjectedNumberTerm:
                 FormulaTermPayload,
                 PoweredReverseAddTermPayload,
                 DoubleReverseTermPayload,
+                FiveReverseTermPayload,
                 PoweredCollatzTermPayload,
                 AntihydraTermPayload,
                 CommaTermPayload,
@@ -353,7 +356,7 @@ class ProjectedNumberTerm:
 
     def digit(self, index: int) -> int:
         """Evaluate one source-radix digit without materializing the word."""
-        if isinstance(self.payload, DoubleReverseTermPayload):
+        if isinstance(self.payload, (DoubleReverseTermPayload, FiveReverseTermPayload)):
             return self.payload.digit(index)
         if isinstance(self.payload, PoweredReverseAddTermPayload):
             index = require_integer(index, "digit coordinate")
@@ -586,6 +589,7 @@ __all__ = [
     "AntihydraTermPayload",
     "CommaTermPayload",
     "DoubleReverseTermPayload",
+    "FiveReverseTermPayload",
     "FermatTermPayload",
     "FormulaTermPayload",
     "MersenneTermPayload",

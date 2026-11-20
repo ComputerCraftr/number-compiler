@@ -92,3 +92,40 @@ def test_bad_native_digit_closes_consumer_stream_immediately(regroup: bool) -> N
     assert ledger.counters["test_output_stream_cancellations"] == 1
     assert ledger.counters["test_output_stream_failures"] == 0
     assert list(stream) == []
+
+
+def test_formula_render_closes_reverse_iterator_on_invalid_digit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from collections.abc import Iterator
+    from types import SimpleNamespace
+    from typing import cast
+
+    from number_compiler.api.number_api import FormulaTermPayload, ProjectedNumberTerm
+    from number_compiler.arithmetic.formula.formula import (
+        FormulaArena,
+        root_from_values,
+    )
+    from number_compiler.arithmetic.formula.types import RadixSpec
+
+    payload = FormulaTermPayload(
+        root_from_values((1,), FormulaArena(), RadixSpec(2)), 2
+    )
+    closed: list[bool] = []
+
+    def digits(_self: FormulaTermPayload, *, reverse: bool = False) -> Iterator[int]:
+        assert reverse
+        try:
+            yield 1
+            yield 999
+        finally:
+            closed.append(True)
+
+    monkeypatch.setattr(FormulaTermPayload, "iter_digits", digits)
+    term = cast(
+        ProjectedNumberTerm,
+        SimpleNamespace(payload=payload, source_radix=2, estimated_bit_length=1),
+    )
+    with pytest.raises(IndexError):
+        cli_render.render_value(term, output_base=2, max_bits=16)
+    assert closed == [True]

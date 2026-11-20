@@ -20,6 +20,7 @@ from number_compiler.resources.process_cache import (
     ImmutableValue,
     ProcessCache,
 )
+from tests.support.ledger_failures import inject_release_failure
 
 
 def _lease_token_for_test(lease: CacheLease) -> int:
@@ -443,6 +444,109 @@ def test_failed_close_keeps_lease_recoverable_and_releases_its_pin() -> None:
     lease.close()
     assert cache.stats().active_leases == 0
     assert cache.stats().lease_partitions == 0
+    assert cache.ledger.entries == cache.ledger.nodes == 0
+
+
+@pytest.mark.parametrize("after_apply", (False, True))
+@pytest.mark.parametrize("operation", ("close", "reset", "shrink", "evict"))
+def test_cache_byte_cleanup_retries_without_spending_live_credit(
+    operation: str, after_apply: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = ProcessCache(max_entries=4, max_bytes=100_000)
+    lease = cache.acquire("prime", "1", ("source",))
+    assert lease.put(("large",), "x" * 500)
+    byte_owner = next(
+        item.owner
+        for item in cache.ledger.inventory()
+        if item.name == "process-cache-accounted-bytes"
+    )
+    if operation == "evict":
+        lease.close()
+        cache.max_entries = 2
+
+    with monkeypatch.context() as patch:
+        inject_release_failure(
+            patch, cache.ledger, byte_owner, entries=0, after_apply=after_apply
+        )
+        with pytest.raises(RuntimeError, match="injected ledger release failure"):
+            if operation == "close":
+                lease.close()
+            elif operation == "reset":
+                cache.reset()
+            elif operation == "shrink":
+                lease.put(("large",), 5)
+            else:
+                cache.acquire("prime", "1", ("other",))
+
+    if operation == "close":
+        with pytest.raises(RuntimeError, match="closed"):
+            lease.get(("large",))
+        lease.close()
+        with cache.acquire("prime", "1", ("source",)) as receiver:
+            assert receiver.get(("large",)) == "x" * 500
+    elif operation == "reset":
+        with pytest.raises(RuntimeError, match="stale"):
+            lease.get(("large",))
+        lease.close()
+    elif operation == "shrink":
+        assert lease.get(("large",)) == 5
+        lease.close()
+    else:
+        with cache.acquire("prime", "1", ("other",)) as receiver:
+            assert receiver.get(("large",)) is MISSING
+        assert cache.stats().evictions == 1
+
+    cache.reset()
+    assert cache.stats().active_leases == cache.stats().bytes == 0
+    assert cache.ledger.entries == cache.ledger.nodes == 0
+
+
+def test_failed_reset_clears_independent_stores_and_revokes_pending_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = ProcessCache()
+    lease = cache.acquire("prime", "1", ("source",))
+    assert lease.put(("key",), 3)
+    entry_owner = next(
+        item.owner
+        for item in cache.ledger.inventory()
+        if item.name == "process-cache-entries"
+    )
+    with monkeypatch.context() as patch:
+        inject_release_failure(
+            patch, cache.ledger, entry_owner, entries=1, after_apply=False
+        )
+        with pytest.raises(RuntimeError, match="injected ledger release failure"):
+            cache.reset()
+    assert cache.stats().entries == cache.stats().lease_partitions == 0
+    with pytest.raises(RuntimeError, match="reset must finish"):
+        lease.get(("key",))
+    cache.reset()
+    lease.close()
+    assert cache.ledger.entries == cache.ledger.nodes == 0
+
+
+@pytest.mark.parametrize("after_apply", (False, True))
+@pytest.mark.parametrize("name", ("process-cache-leases", "process-cache-authorities"))
+def test_failed_lease_memo_release_finishes_retirement(
+    name: str, after_apply: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = ProcessCache()
+    live = cache.acquire("prime", "1", ("other",))
+    lease = cache.acquire("prime", "1", ("source",))
+    owner = next(item.owner for item in cache.ledger.inventory() if item.name == name)
+    with monkeypatch.context() as patch:
+        inject_release_failure(
+            patch, cache.ledger, owner, entries=1, after_apply=after_apply
+        )
+        with pytest.raises(RuntimeError, match="injected ledger release failure"):
+            lease.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        lease.get(("key",))
+    lease.close()
+    assert cache.stats().active_leases == cache.stats().lease_partitions == 1
+    assert live.get(("key",)) is MISSING
+    live.close()
     assert cache.ledger.entries == cache.ledger.nodes == 0
 
 

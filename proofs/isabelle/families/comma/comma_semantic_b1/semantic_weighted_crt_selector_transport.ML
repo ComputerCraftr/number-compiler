@@ -9,7 +9,7 @@ struct
         {slot: int, restricted_rows: term list, child_common: int,
          child_result: term, child_equation: thm}
 
-  val radices = [4,3,7,11]
+  val radices = [3,4,7,11]
   val natT = @{typ nat}
 
   fun numeral value = HOLogic.mk_number natT value

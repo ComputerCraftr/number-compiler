@@ -152,9 +152,9 @@ retains chronological children for mixed actions; an admitted cycle power may
 use its summed displacement directly. Endpoint demands reuse the resulting
 image and do not reconstruct the orbit.
 
-Implementation: [arithmetic](../../src/number_compiler/sequences/comma/arithmetic.py),
-[source-image adapter](../../src/number_compiler/sequences/comma/power.py).
-The finite owner intentionally does not assert OEIS membership.
+The finite action does not establish OEIS membership. The
+[integration record](../sprints/week-of-2026-11-01/comma-global-cutover.md)
+tracks its implementation and acceptance.
 
 ### Punctured decimal ports
 
@@ -415,10 +415,11 @@ proves the zero-inclusive center
 `mu = (d + 10 - (f+1) div 2) mod 5` by parity and wrap cases.
 `comma_pair_center_next` then derives `mu - f` modulo five, or `mu - 2*f`
 when the raw predecessor is zero, without unfolding pair-field arithmetic.
-The [Schur owner](../../proofs/isabelle/families/comma/comma_schur_carry/Comma_Schur_Carry.thy)
-proves the executable binary/radix-five split equals decimal quotient and
-remainder, reusing the shared carry monoid. These local laws do not supply the
-compact decade classifier or its occurrence reconstruction.
+The [shared decimal arithmetic core](../../proofs/isabelle/shared/arithmetic/carry_dynamics/Shared_Decimal_Cocycle_Core.thy)
+proves the family-independent binary/radix-five split and exact quotient and
+remainder laws. The [Native19 consumer](../../proofs/isabelle/families/comma/comma_native19_carry/Comma_Native19_Carry.thy)
+uses that owner for its admitted coefficient codec. These local laws do not
+supply the compact decade classifier or its occurrence reconstruction.
 The [Native19 bridge](../../proofs/isabelle/families/comma/comma_native19_carry/Comma_Native19_Carry.thy)
 reuses the shared decimal codec; the
 [factored port](../../proofs/isabelle/families/comma/comma_factored_port/Comma_Factored_Port_Carrier.thy)
@@ -554,6 +555,24 @@ not a replacement for it. The runtime `WeightedBoundaryAction` already adds
 exact exponent deltas chronologically; the unweighted future Moore observer
 erases these coefficients. Exact C1/borrow amounts likewise belong to the
 receiving occurrence and cannot be copied between residue-equivalent exponents.
+
+### Ordered future-control congruence
+
+For a boundary state `s`, let `sigma_0(s)` be its Fork digit or Landmine
+label, and let `sigma_(d+1)(s)` pair that label with the depth-`d` signatures
+of its ordered N/Z children. If the partitions induced by consecutive
+signatures coincide, equality of signatures is a successor-closed right
+congruence. Distinct signatures have a distinguishing ordered continuation
+within the signature depth. Elapsed weights are excluded from this observer
+and require the exact occurrence transport above.
+
+A CRT decision diagram can represent this class map using the character
+order `(3,4,7,11)`. Reordering axes changes the representation, not the
+physical phase: each decision must still read the corresponding residue.
+The source-to-class morphism must relate the diagram to the actual boundary
+transition and both ordered children. A candidate class graph, or a
+Continue-only diagram that merges all stopping outcomes, does not establish
+that relation.
 
 **Checked physical C1 occurrence.**
 [Comma_C1_Occurrence](../../proofs/isabelle/families/comma/comma_c1_occurrence/Comma_C1_Occurrence.thy)
@@ -870,6 +889,25 @@ The expanded B1 Moore census is available only by explicitly requesting
 `--expanded-moore-baseline` from the developer audit; it is not a production
 classifier or a default minimization pass.
 
+**Exact Continue/terminal trace quotient.** A different observation can retain
+the complete deterministic Continue/terminal trace without retaining the
+intermediate successor-orbit label. Write `D=9h+J`, where `h` counts complete
+continuing decades, `J=a-2` for a terminal Fork `a`, and `J=8` for Landmine.
+Its defining equations are `D=J` at a terminal and `D=9+D(successor)` at a
+Continue. Equal `D` therefore gives equal next abstract observations and,
+for continuing states, equal successor values `D-9`. This is a right
+congruence for that specified observation alphabet. Distinct heights or
+terminal labels are distinguishable by a finite Continue/terminal trace.
+
+This use of `D` does not turn physical elapsed time, headroom or receiving
+phase into semantic identifiers. The exponent selector advances externally
+by one modulo 924 on Continue; physical duration and ordered global fork
+children require separate refinements. A bound `D≤242` supplies the decreasing
+rank `D div 9`, but a candidate decoder must satisfy the exact Bellman
+equations against the source action before that rank has proof authority.
+The 204-class trace quotient consequently does not replace the global
+ordered-child quotient or authenticate a source by itself.
+
 **External selector clock.** The [clock owner](../../src/number_compiler/sequences/comma/cyclotomic_clock.py)
 stores occurrence characters `(r mod 4,r mod 3,r mod 7,r mod 11)`. The local
 periods 1, 2, 3, 6, 22 and 28 are projections of that clock, not six action
@@ -908,9 +946,8 @@ exact-action reconstruction theorem: the certificate proves termination,
 while the admitted carry/clock/action algebra supplies terminal identity and
 symbolic physical weights. This separation does not require concrete headroom
 in semantic IDs or a physical-result table indexed by source occurrence.
-The [terminal audit](../../devtools/verification/comma_b1_terminal_audit.py)
-constructs the weight from source transitions without rank/terminal tables:
-`python -m devtools.verification.comma_b1_terminal_audit --full --full-future`.
+The terminal audit constructs the weight from source transitions without
+rank or terminal tables.
 Its finite experiment and the weighted refinement remain distinct from global
 infinite-path admission and sparse-publisher performance. The current Future
 release proof still consumes literal source-to-class and candidate control,

@@ -20,8 +20,9 @@ from number_compiler.arithmetic.contracts.input_validation import (
     string_keyed_mapping,
 )
 from number_compiler.sequences.comma.boundary_chart import PERIOD
+from number_compiler.sequences.comma.return_scopes import COMPONENT_DOMAINS
 
-RADICES = (3, 4, 11, 7)
+RADICES = COMPONENT_DOMAINS
 CLASS_COUNT = 46
 ENDPOINTS = ((299, 33), (66, 10), (298, 12), (67, 32), (68, 1))
 
@@ -94,6 +95,11 @@ class FrontierCandidate:
         document = string_keyed_mapping(value)
         if document is None:
             raise ValueError("candidate must be a JSON object")
+        axes = _integers(document.get("crt_axis_order"), 1, PERIOD)
+        if axes != RADICES:
+            raise ValueError(
+                "candidate CRT axis order differs from the canonical order"
+            )
         if require_integer(document.get("rounds"), "rounds") != 24:
             raise ValueError("candidate must describe the 24-step obligation")
         endpoints = tuple(

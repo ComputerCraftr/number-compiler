@@ -1,6 +1,6 @@
 # Number Compiler
 
-Number Compiler provides exact terms and radix projections for reverse-add, decimal double-reversal (`2rev10`),
+Number Compiler provides exact terms and radix projections for reverse-add, decimal reversal products (`2rev10` and `5rev10`),
 Collatz, Antihydra, prime blocks, Fermat numbers, Mersenne numbers and an A367620 comma interface.
 
 Comma production output awaits the checked global proof artifact. See the
@@ -63,9 +63,9 @@ not share caches between standalone CLI processes.
 - [Research and proof history](docs/history.md)
 - [Executable source policy](devtools/checks/repository_policy.py) and [policy tests](tests/repository/test_repository_policy.py)
 
-The HashLife production cutover is unfinished. Structural cleanup does not prove
-sublinear execution or satisfy the five-minute runtime release gate. The
-[current release status](docs/release-status.md) records the remaining blockers.
+The latest default Python suite completed within its five-minute limit. Six
+comma CLI assertions remain blocked by the missing global proof artifact.
+The [current release status](docs/release-status.md) records the remaining gates.
 
 For development, `python -m devtools.checks.release --suite unit` runs the unit
 suite; `--suite all` includes exhaustive and release workloads. Repeated

@@ -190,6 +190,13 @@ struct
          val _ = if 0 <= root_expected andalso root_expected < length seeds then ()
            else error "Reflected guard root is outside its candidate table"
        in (seeds,root_expected) end),
+     entry_action_key = (fn f => fn residue => fn core => fn wanted =>
+       let
+         val (sector,(digit,row)) = Data.comma_entry_core_action_key
+           (code_nat f) (code_nat residue) (core_value core) (code_nat wanted)
+       in HOLogic.mk_prod (nat (from_nat "Entry key sector" sector),
+         HOLogic.mk_prod (nat (from_nat "Entry key digit" digit),
+           nat (from_nat "Entry key row" row))) end),
      entry_action = (fn f => fn residue => fn core => fn wanted =>
        action_term (Data.comma_phase_program_entry_core_value_action
          (code_nat f) (code_nat residue) (core_value core)
@@ -254,7 +261,7 @@ struct
         error "Frontier24 named action table is not a closed typed value"
     in ({table=table,definition=definition}: named_actions,lthy') end
 
-  fun serialize ctxt nodes_term (result: Compiler.result)
+  fun prepare_bundle ctxt nodes_term (result: Compiler.result)
       ({table=action_table,...}: named_actions) =
     let
       val selector_caseT = @{typ comma_frontier24_selector_case}
@@ -293,19 +300,11 @@ struct
          ("cf24_closure_case_shifted_guard_root",natT),
          ("cf24_closure_case_action_token",natT),
          ("cf24_closure_case_action_output_root",natT),
-         ("cf24_closure_case_selected_root",natT),
-         ("cf24_closure_case_bind_key",HOLogic.mk_prodT (natT,
-           HOLogic.mk_prodT (natT,HOLogic.listT (HOLogic.mk_prodT (natT,natT))))),
          ("cf24_closure_case_child",Type (@{type_name option},[natT]))]
-      fun bind_key_term (source,fallback,mapping) =
-        pair (nat source) (pair (nat fallback)
-          (list (HOLogic.mk_prodT (natT,natT))
-            (map (fn (label,root) => pair (nat label) (nat root)) mapping)))
       fun closure_case_term (row: Compiler.closure_case) =
         apply_builder closure_case_builder
           [nat (#wanted row),nat (#guard_root row),nat (#shifted_guard_root row),
            nat (#action_token row),nat (#action_output_root row),
-           nat (#selected_root row),bind_key_term (#bind_key row),
            option natT (Option.map nat (#child_closure row))]
       val closure_builder = record_builder ctxt
         [("cf24_closure_program_ref",natT),("cf24_closure_full_shift",natT),
@@ -343,19 +342,34 @@ struct
       val zero_root = Arena.action_index arena (Arena.action_none arena)
       val _ = if length roots = 46 andalso length radices = 4 then ()
         else error "Frontier24 candidate has an incomplete class/radix vector"
-    in
-      apply_builder bundle_builder
-        [list programT programs,
-         list selectorT (map selector_term selectors),
-         action_table,
-         list guardT (map guard_term guards),
-         list closureT (map closure_term closures),
-         list_nat (Compiler.class_program_refs result),list_nat roots,
-         list_nat radices,nodes_term,nat zero_root]
-    end
+    in {builder=bundle_builder,programs=programs,
+      selectors=map selector_term selectors,actions=action_table,
+      guards=list guardT (map guard_term guards),closures=map closure_term closures,
+      class_programs=list_nat (Compiler.class_program_refs result),
+      roots=list_nat roots,radices=list_nat radices,nodes=nodes_term,zero=nat zero_root} end
 
-  type candidate = {result: Compiler.result, bundle: term, statistics: string,
-    named_actions: named_actions}
+  fun assemble_bundle {builder,programs,selectors,actions,guards,closures,
+      class_programs,roots,radices,nodes,zero} named_rows =
+    let
+      val (program_table,selector_table,closure_table) = (case named_rows of
+          NONE => (list programT programs,list @{typ comma_frontier24_selector_recipe} selectors,
+            list @{typ comma_frontier24_closure} closures)
+        | SOME tables => tables)
+    in apply_builder builder [program_table,selector_table,actions,guards,closure_table,
+      class_programs,roots,radices,nodes,zero] end
+
+  fun serialize ctxt nodes_term result named_actions named_rows =
+    assemble_bundle (prepare_bundle ctxt nodes_term result named_actions) named_rows
+
+  type named_table = {table:term, size:thm, lookup:int -> thm, rows:term list,
+    statistics:unit -> string, procedure:Simplifier.simproc,
+    select:Proof.context -> cterm -> thm option,
+    selected_elapsed:Time.time Unsynchronized.ref,segment_elapsed:Time.time Unsynchronized.ref,
+    bound_elapsed:Time.time Unsynchronized.ref,offset_elapsed:Time.time Unsynchronized.ref}
+  type candidate = {result: Compiler.result, bundle: term, bundle_definition: thm,
+    field_projections: (string * thm) list, statistics: string,
+    named_actions: named_actions, named_programs:named_table,
+    named_selectors:named_table, named_closures:named_table}
 
   (* Canonical interning is a producer invariant, not a premise of the
      mathematical action refinement. Exact table indices remain checked by
@@ -367,9 +381,8 @@ struct
         else Termtab.update (term,()) seen
     in ignore (fold insert terms Termtab.empty) end
 
-  fun compile_data ctxt =
+  fun validate_compiled result =
     let
-      val result = Compiler.compile ctxt computation
       val _ = require_distinct_terms "Frontier24 canonical programs"
         (Compiler.programs result)
       val _ = require_distinct_terms "Frontier24 canonical actions"
@@ -380,12 +393,82 @@ struct
           (Compiler.closures result))
     in result end
 
-  fun candidate ctxt nodes_term (result: Compiler.result)
-      (named_actions: named_actions) : candidate =
+  fun compile_data ctxt = validate_compiled (Compiler.compile ctxt computation)
+
+  fun compile_source_data ctxt sources =
+    validate_compiled (Compiler.compile_sources ctxt computation sources)
+
+  (* The physical boundary family order is N2..N9 followed by Z2..Z9. *)
+  fun physical_initial_sources () =
     let
-      val bundle = serialize ctxt nodes_term result named_actions
-    in {result=result,bundle=bundle,statistics=Compiler.statistics result,
-        named_actions=named_actions} end
+      fun position ctor f x = app ctor positionT [nat f,nat 0,nat x]
+    in map (fn a => position @{const_name Comma_Near} (a-1) 1) (2 upto 9) @
+       map (fn a => position @{const_name Comma_Entry} a 0) (2 upto 9) end
+
+  fun compile_combined_data ctxt =
+    validate_compiled (Compiler.compile_with_sources ctxt computation (physical_initial_sources ()))
+
+  fun candidate lthy nodes_term (result: Compiler.result)
+      (named_actions: named_actions) : candidate * local_theory =
+    let
+      val ctxt0 = Local_Theory.target_of lthy
+      val prepared = prepare_bundle ctxt0 nodes_term result named_actions
+      val bundleT = @{typ comma_frontier24_parametric_bundle}
+      val selectorT = @{typ comma_frontier24_selector_recipe}
+      val closureT = @{typ comma_frontier24_closure}
+      val (named_programs,lthy0) = Comma_CRT_Balanced_Table.make
+        "comma_frontier24_programs" programT (#programs prepared) lthy
+      val (named_selectors,lthy1) = Comma_CRT_Balanced_Table.make
+        "comma_frontier24_selectors" selectorT (#selectors prepared) lthy0
+      val (named_closures,lthy2) = Comma_CRT_Balanced_Table.make
+        "comma_frontier24_closures" closureT (#closures prepared) lthy1
+      val literal = assemble_bundle prepared
+        (SOME (#table named_programs,#table named_selectors,#table named_closures))
+      val ((local_bundle,(_,local_definition)),lthy') = Local_Theory.define
+        ((Binding.name "comma_frontier24_parametric_bundle",NoSyn),
+         ((Binding.name "comma_frontier24_parametric_bundle_def",[]),literal)) lthy2
+      val morphism = Local_Theory.target_morphism lthy'
+      val bundle = Morphism.term morphism local_bundle
+      val definition = Morphism.thm morphism local_definition
+      val ctxt = Local_Theory.target_of lthy'
+      val _ = Comma_CRT_MDD_Proof_Utils.exact_prop ctxt "Named Frontier24 bundle"
+        (Logic.mk_equals (bundle,literal)) definition
+      val fields =
+        [(@{const_name cf24_programs},HOLogic.listT programT),
+         (@{const_name cf24_selectors},HOLogic.listT @{typ comma_frontier24_selector_recipe}),
+         (@{const_name cf24_action_tokens},HOLogic.listT actionT),
+         (@{const_name cf24_guard_entries},HOLogic.listT @{typ comma_frontier24_guard_entry}),
+         (@{const_name cf24_closures},HOLogic.listT @{typ comma_frontier24_closure}),
+         (@{const_name cf24_class_program_refs},HOLogic.listT natT),
+         (@{const_name cf24_class_roots},HOLogic.listT natT),
+         (@{const_name cf24_radices},HOLogic.listT natT),
+         (@{const_name cf24_nodes},HOLogic.listT @{typ "nat comma_crt_mdd_node"}),
+         (@{const_name cf24_zero_root},natT)]
+      fun projection (name,T) =
+        let
+          val field = Const (name,bundleT --> T)
+          val lifted = Thm.combination (Thm.reflexive (Thm.cterm_of ctxt field)) definition
+          val selected = Conv.rewrs_conv
+            (map (fn theorem => theorem RS @{thm eq_reflection})
+              @{thms comma_frontier24_parametric_bundle.select_convs}) (Thm.rhs_of lifted)
+          val theorem = Thm.transitive lifted selected
+          val _ = Comma_CRT_MDD_Proof_Utils.exact_prop ctxt "Named bundle field"
+            (Logic.mk_equals (field $ bundle,Thm.term_of (Thm.rhs_of theorem))) theorem
+        in (name,theorem) end
+      val field_projections = map projection fields
+      fun require_named field table =
+        (case AList.lookup (op =) field_projections field of
+          SOME theorem => ignore (Comma_CRT_MDD_Proof_Utils.exact_prop ctxt
+            "Named balanced bundle field"
+            (Logic.mk_equals (Const (field,bundleT --> fastype_of table) $ bundle,table)) theorem)
+        | NONE => error "Named balanced bundle field is missing")
+      val _ = require_named @{const_name cf24_programs} (#table named_programs)
+      val _ = require_named @{const_name cf24_selectors} (#table named_selectors)
+      val _ = require_named @{const_name cf24_closures} (#table named_closures)
+    in ({result=result,bundle=bundle,bundle_definition=definition,
+        field_projections=field_projections,statistics=Compiler.statistics result,
+        named_actions=named_actions,named_programs=named_programs,named_selectors=named_selectors,
+        named_closures=named_closures},lthy') end
 
   fun statistics ({statistics,...}: candidate) = statistics
 

@@ -35,6 +35,16 @@ from number_compiler.sequences.collatz.temporal_run_quotient import (
 )
 
 
+def _assert_parity_action_owners_disposed(ledger: ResourceLedger) -> None:
+    owners = tuple(
+        item
+        for item in ledger.snapshot().inventory
+        if item.name.startswith("collatz-parity-slp-")
+    )
+    assert owners
+    assert all(item.disposed and item.entries == item.nodes == 0 for item in owners)
+
+
 def test_local_boolean_pair_matrices_exhaust_all_100_pairs_and_both_upper_parities() -> (
     None
 ):
@@ -271,20 +281,45 @@ def test_existing_short_border_macro_uses_pair_matrix_only_on_demand() -> None:
         assert disabled.counters.get("collatz_low_border_pair_matrix_checks", 0) == 0
 
 
-def test_powered_carry_join_starts_at_authenticated_term_endpoint() -> None:
+def test_powered_carry_join_starts_at_authenticated_term_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+    from number_compiler.sequences.collatz.guarded_parity_binding import (
+        ParityTapeActionBinding,
+    )
     from number_compiler.sequences.collatz.named_border_carry_matrix import (
         powered_from_term,
     )
 
+    def reject_second_full_fold(
+        _cls: type[ParityTapeActionBinding], *_args: object
+    ) -> None:
+        raise AssertionError("named matrix consumer repeated the full parity fold")
+
+    monkeypatch.setattr(
+        ParityTapeActionBinding,
+        "issue_from_fold",
+        classmethod(reject_second_full_fold),
+    )
+
     initial = PoweredCollatzTerm(7, 0)
+    assert not any(
+        item.name.startswith("collatz-parity-slp-")
+        for item in initial.resource_ledger.snapshot().inventory
+    )
     at_seed = powered_from_term(initial, 2)
     assert at_seed is not None
-    assert at_seed.macro.source == 7
-    assert at_seed.macro.endpoint == 11
+    assert (at_seed.source, at_seed.endpoint) == (7, 11)
+    assert at_seed.trace_packet(normalized_steps=1).get("trace") is not None
+    _assert_parity_action_owners_disposed(initial.resource_ledger)
 
     unprepared = PoweredCollatzTerm(11, 2)
     assert powered_from_term(unprepared, 2) is None
+    assert not any(
+        item.name.startswith("collatz-parity-slp-")
+        for item in unprepared.resource_ledger.snapshot().inventory
+    )
 
     occurrence = PoweredCollatzTerm(11, 2)
     occurrence.prepare_joint_cocycle()
@@ -292,6 +327,165 @@ def test_powered_carry_join_starts_at_authenticated_term_endpoint() -> None:
     assert endpoint == 17
     after_query = powered_from_term(occurrence, 2)
     assert after_query is not None
-    assert after_query.macro.source == endpoint
-    assert after_query.macro.endpoint == 26
-    assert after_query.macro.physical_ticks == 2
+    assert (after_query.source, after_query.endpoint) == (endpoint, 26)
+    assert after_query.physical_ticks == 2
+    _assert_parity_action_owners_disposed(occurrence.resource_ledger)
+
+
+def test_powered_carry_join_consumes_query_owned_parity_cache() -> None:
+    from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+    from number_compiler.sequences.collatz.named_border_carry_matrix import (
+        powered_from_term,
+    )
+    from number_compiler.sequences.collatz.parity_carry_tape_actions import (
+        LedgeredParityTapeActions,
+    )
+
+    term = PoweredCollatzTerm(7, 0)
+    with LedgeredParityTapeActions(term.resource_ledger) as actions:
+        result = powered_from_term(term, 2, parity_actions=actions)
+        assert result is not None
+        assert (result.source, result.endpoint) == (7, 11)
+        assert actions.retained_entries > 0
+
+        tape = result.joined.parity_tape_for_action(cache=actions)
+        assert tape is not None
+        hits = actions.cache_hits
+        assert result.joined.parity_tape_for_action(cache=actions) is tape
+        assert actions.cache_hits == hits + 1
+
+    inventory = term.resource_ledger.snapshot().inventory
+    parity_owners = tuple(
+        item for item in inventory if item.name.startswith("collatz-parity-slp-")
+    )
+    assert parity_owners
+    assert all(
+        item.disposed and item.entries == item.nodes == 0 for item in parity_owners
+    )
+
+
+def test_adjacent_guarded_macro_join_publishes_cached_composite_under_ledger() -> None:
+    from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
+        DyadicTerminalFieldAction,
+    )
+    from number_compiler.sequences.collatz.guarded_port_join import (
+        certify_pointed_port_join,
+    )
+    from number_compiler.sequences.collatz.parity_carry_tape_actions import (
+        LedgeredParityTapeActions,
+    )
+
+    ledger = ResourceLedger()
+    left_source = CollatzTwoSidedCylinder(7, 7, 0, 1)
+    left_action = DyadicTerminalFieldAction.one_run(1)
+    right_source = CollatzTwoSidedCylinder(11, 11, 0, 1)
+    right_action = DyadicTerminalFieldAction.one_run(1)
+    factors = (((1,), 1),)
+    left = certify_pointed_port_join(
+        7,
+        left_action,
+        1,
+        ledger=ledger,
+        source_cylinder=left_source,
+        factor_grammar=factors,
+    )
+    right = certify_pointed_port_join(
+        11,
+        right_action,
+        1,
+        ledger=ledger,
+        source_cylinder=right_source,
+        factor_grammar=factors,
+    )
+    assert left.port.endpoint(7) == right.source.first == 11
+    assert right.port.endpoint(11) == 17
+
+    with LedgeredParityTapeActions(ledger) as actions:
+        joined = left.then(right, ledger=ledger, parity_cache=actions)
+        assert joined is not None
+        assert joined.source.contains(7)
+        assert joined.port.endpoint(7) == 17
+        assert joined.bridge.target.contains(17)
+        _first, final = joined.require_pointed(7)
+        assert final is not None and final.output_pair == 17
+        assert actions.is_current_root(joined.parity_tape)
+        assert actions.compositions == 4
+        assert ledger.inventory_owner(actions.owner).accounting_delta == 0
+
+    assert ledger.entries == ledger.nodes == 0
+
+
+def test_join_reuses_noncoalescing_adjacent_parent_actions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
+        DyadicTerminalFieldAction,
+    )
+    from number_compiler.sequences.collatz.guarded_port_join import (
+        certify_pointed_port_join,
+    )
+    from number_compiler.sequences.collatz.parity import (
+        collatz_parity_word,
+        normalized_collatz,
+    )
+    from number_compiler.sequences.collatz.parity_carry_tape import ParityCarryTape
+    from number_compiler.sequences.collatz.parity_carry_tape_actions import (
+        LedgeredParityTapeActions,
+    )
+
+    left_factors = (((1, 0), 40),)
+    left_tape = ParityCarryTape.factors(left_factors)
+    left_action = left_tape.action()
+    source = left_action.source_residue + left_action.source_modulus
+    assert left_action.certifies(source)
+    endpoint = left_action.endpoint(source)
+    right_word = collatz_parity_word(endpoint, 64)
+    right_bits = tuple((right_word >> index) & 1 for index in range(64))
+    value = endpoint
+    for _ in range(64):
+        value = normalized_collatz(value)
+    right_factors = ((right_bits, 1),)
+    right_tape = ParityCarryTape.factors(right_factors)
+    right_action = right_tape.action()
+    assert right_action.certifies(endpoint)
+
+    ledger = ResourceLedger()
+    left = certify_pointed_port_join(
+        source,
+        left_action,
+        left_tape.odds,
+        ledger=ledger,
+        source_cylinder=CollatzTwoSidedCylinder(source, source, 0, 1),
+        factor_grammar=left_factors,
+    )
+    right = certify_pointed_port_join(
+        endpoint,
+        right_action,
+        right_tape.odds,
+        ledger=ledger,
+        source_cylinder=CollatzTwoSidedCylinder(endpoint, endpoint, 0, 1),
+        factor_grammar=right_factors,
+    )
+
+    with LedgeredParityTapeActions(ledger) as actions:
+        admitted_left = left.parity_tape_for_action(cache=actions)
+        assert admitted_left is not None
+        compositions_before_join = actions.compositions
+
+        def reject_full_fold(*_args: object) -> DyadicTerminalFieldAction:
+            raise AssertionError("adjacent join refolded an authenticated parent")
+
+        monkeypatch.setattr(ParityCarryTape, "action", reject_full_fold)
+        joined = left.then(right, ledger=ledger, parity_cache=actions)
+        assert joined is not None
+        assert joined.port.endpoint(source) == value
+        assert joined.bridge.target.contains(value)
+        assert actions.cache_hits == 1
+        # The right parent is admitted once (64 letter compositions), and the
+        # composite contributes two ordered child compositions. The 80-step
+        # left parent is not rebuilt during the parent hit.
+        assert actions.compositions - compositions_before_join == 66
+        assert actions.is_current_root(joined.parity_tape)
+        assert ledger.inventory_owner(actions.owner).accounting_delta == 0
+
+    assert ledger.entries == ledger.nodes == 0

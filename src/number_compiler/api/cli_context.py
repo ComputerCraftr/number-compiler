@@ -21,8 +21,14 @@ from number_compiler.api.registry_adapters import resolve_observation_adapter
 from number_compiler.arithmetic.contracts.unresolved_term import UnresolvedSequenceTerm
 
 if TYPE_CHECKING:
+    from types import TracebackType
+
     from number_compiler.api.cylinder_observation import CollatzObservationContext
     from number_compiler.api.registry_adapters import ResolvedObservationAdapter
+    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.sequences.collatz.parity_carry_tape_actions import (
+        LedgeredParityTapeActions,
+    )
 
 
 class QueryContext:
@@ -44,6 +50,51 @@ class QueryContext:
         self._info: dict[ObservationId, dict[str, JsonValue]] = {}
         self._matrix_observation: dict[str, object] | None = None
         self.unresolved_boundary: UnresolvedSequenceTerm | None = None
+        self._parity_actions: LedgeredParityTapeActions | None = None
+        self._closed = False
+
+    def _require_open(self) -> None:
+        if self._closed:
+            raise RuntimeError("query context has been closed")
+
+    def collatz_parity_actions(
+        self, ledger: ResourceLedger
+    ) -> LedgeredParityTapeActions:
+        """Own one lazily demanded parity cache on the selected term's ledger."""
+        self._require_open()
+        from number_compiler.api.number_api import PoweredCollatzTermPayload
+        from number_compiler.sequences.collatz.parity_carry_tape_actions import (
+            LedgeredParityTapeActions,
+        )
+
+        payload = self.raw_projected_term().payload
+        if (
+            not isinstance(payload, PoweredCollatzTermPayload)
+            or payload.term.resource_ledger is not ledger
+        ):
+            raise ValueError("parity cache requires the selected Collatz source ledger")
+        if self._parity_actions is None:
+            self._parity_actions = LedgeredParityTapeActions(ledger)
+        return self._parity_actions
+
+    def close(self) -> None:
+        """Revoke query-owned actions; failed cleanup remains retryable."""
+        self._closed = True
+        if self._parity_actions is not None:
+            self._parity_actions.dispose()
+            self._parity_actions = None
+
+    def __enter__(self) -> QueryContext:
+        self._require_open()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
 
     def _detailed_observation_names(self) -> tuple[ObservationId, ...]:
         return tuple(
@@ -71,6 +122,7 @@ class QueryContext:
 
     def admit_observation_extents(self) -> None:
         """Admit observer-specific extents before rendering or observation."""
+        self._require_open()
         if self._observation_extents_admitted:
             return
         if self._adapter_observation_names():
@@ -79,6 +131,7 @@ class QueryContext:
 
     def raw_projected_term(self) -> ProjectedNumberTerm:
         """Return the projected occurrence without preparing demanded observers."""
+        self._require_open()
         if self.request.selector is not SelectorId.NTH:
             raise ValueError(
                 "event/certificate requests do not select an ordinary term"
@@ -107,6 +160,7 @@ class QueryContext:
 
     def information(self) -> dict[str, dict[str, JsonValue]]:
         """Evaluate demanded observers once and report metrics last."""
+        self._require_open()
         requested_info = self.request.observations.info
         # A source-certified seed-orbit observer may authorize a longer exact
         # prefix than older 32-tick observations.  Issue that same-source
@@ -180,6 +234,7 @@ class QueryContext:
         self, build: Callable[[], dict[str, object]]
     ) -> dict[str, object]:
         """Build one demanded matrix packet at most once for this query."""
+        self._require_open()
         if self._matrix_observation is None:
             self._matrix_observation = build()
         return self._matrix_observation
@@ -190,6 +245,7 @@ class QueryContext:
         build: Callable[[], CollatzObservationContext],
     ) -> CollatzObservationContext:
         """Reuse only an observer context bound to the exact event request."""
+        self._require_open()
         if self._events is None:
             self._events = build()
         if self._events.binding != binding:
@@ -200,21 +256,25 @@ class QueryContext:
         self, build: Callable[[], dict[str, object]]
     ) -> dict[str, object]:
         """Resolve the selected special-number result once per query."""
+        self._require_open()
         if self._special is None:
             self._special = build()
         return self._special
 
     def cached_information(self, name: ObservationId) -> dict[str, JsonValue] | None:
+        self._require_open()
         return self._info.get(name)
 
     def remember_information(
         self, name: ObservationId, packet: dict[str, JsonValue]
     ) -> None:
+        self._require_open()
         self._info[name] = packet
 
     def remember_information_many(
         self, packets: Mapping[ObservationId, dict[str, JsonValue]]
     ) -> None:
+        self._require_open()
         self._info.update(packets)
 
     def _temporal_summary(self) -> dict[str, JsonValue]:

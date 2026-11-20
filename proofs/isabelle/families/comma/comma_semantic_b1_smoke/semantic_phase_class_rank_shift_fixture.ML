@@ -28,7 +28,7 @@ struct
       val leaves = map (fn n => Data.leaf arena
         {key="shift-fixture:" ^ Int.toString n,
          value=HOLogic.mk_number natT n}) [0,1,2,3]
-      val source = Data.raw_branch_diagrams arena 0 leaves
+      val source = Data.raw_branch_diagrams arena 1 leaves
       val target = Data.shift arena 1 source
       fun named diagram =
         let val term = literal ctxt arena diagram

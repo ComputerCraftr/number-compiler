@@ -36,6 +36,7 @@ from number_compiler.sequences.comma.return_mdd import (
     translate_return_column,
     translate_return_columns,
     union_return_columns,
+    validate_return_column,
     validate_return_mdd_partition,
 )
 from number_compiler.sequences.comma.return_scope_observer import (
@@ -47,6 +48,7 @@ from number_compiler.sequences.comma.return_scopes import (
     ReturnMDDPartition,
     continuation_return_partition,
     scope_column_key,
+    scopes_from_key,
 )
 from number_compiler.sequences.comma.semantic_continuation import (
     ContinuationID,
@@ -855,3 +857,57 @@ def test_source_output_template_keeps_chart_shift_as_occurrence_data(
                 (phase + additional_shift) % PERIOD,
             )
         )
+
+
+@pytest.mark.parametrize(
+    "scopes",
+    [((2, 1),), ((3, 2), (4, 1)), ((28, 5), (33, 8)), ((924, 517),)],
+)
+def test_return_mdd_axis_migration_preserves_all_clock_phases(
+    scopes: tuple[tuple[int, int], ...],
+) -> None:
+    column = scope_column_key(scopes)
+    reconstructed = scopes_from_key(column, None)
+    for shift in (0, 1, 113, 923):
+        shifted = translate_return_column(column, shift)
+        for phase in range(924):
+            expected = any(phase % period == residue for period, residue in scopes)
+            assert evaluate_return_column(column, phase) == expected
+            assert (
+                any(phase % period == residue for period, residue in reconstructed)
+                == expected
+            )
+            assert evaluate_return_column(shifted, phase) == any(
+                (phase + shift) % period == residue for period, residue in scopes
+            )
+
+
+def test_return_mdd_rejects_old_axis_branch_width() -> None:
+    false = ReturnColumnKey(0)
+    true = ReturnColumnKey(1)
+    old_mod4_root = ReturnColumnKey(2, 0, (false, true, false, false))
+    with pytest.raises(ValueError, match="child"):
+        evaluate_return_column(old_mod4_root, 0)
+    with pytest.raises(ValueError, match="child"):
+        translate_return_column(old_mod4_root, 1)
+    with pytest.raises(ValueError, match="child"):
+        translate_return_columns(
+            (old_mod4_root,),
+            0,
+            charge=lambda _name, _amount: None,
+            reserve_workspace=lambda _nodes: None,
+            release_workspace=lambda _nodes: None,
+        )
+    with pytest.raises(ValueError, match="child"):
+        union_return_columns(old_mod4_root, true)
+    with pytest.raises(ValueError, match="child"):
+        intersect_return_columns(old_mod4_root, false)
+
+
+def test_return_mdd_publication_rejects_nested_old_axis_shape() -> None:
+    false = ReturnColumnKey(0)
+    true = ReturnColumnKey(1)
+    old_mod3_child = ReturnColumnKey(2, 1, (false, true, false))
+    root = ReturnColumnKey(2, 0, (old_mod3_child, false, true))
+    with pytest.raises(ValueError, match="shape"):
+        validate_return_column(root)

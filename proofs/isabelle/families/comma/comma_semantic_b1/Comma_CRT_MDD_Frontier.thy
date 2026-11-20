@@ -36,11 +36,6 @@ proof -
   show ?thesis by (rule iffD2[OF map_of_zip_is_None[OF widths] absent])
 qed
 
-lemma comma_frontier_radices_divide:
-  assumes "axis < length ([3,4,11,7] :: nat list)"
-  shows "[3,4,11,7] ! axis dvd (924 :: nat)"
-  using nth_mem[OF assms] by auto
-
 lemma comma_crt_mdd_frontier_action_option:
   fixes radices :: "nat list"
     and nodes :: "nat comma_crt_mdd_node list"
@@ -170,13 +165,13 @@ proof -
 qed
 
 lemma comma_crt_mdd_frontier_action_option_needs_clock:
-  "(\<forall>target. (comma_crt_mdd_eval_phase [3,4,11,7]
+  "(\<forall>target. (comma_crt_mdd_eval_phase [3,4,7,11]
         [Comma_CRT_MDD_Leaf (0::nat)] 0 0 = Some (Suc target)) =
       ((\<lambda>(_::nat) (_::nat). Comma_Phase_Class_Continue 0 0) 0 0 =
         Comma_Phase_Class_Continue ((0+1) mod 924) target)) \<and>
     comma_phase_class_continue_option_step
       (\<lambda>(_::nat) (_::nat). Comma_Phase_Class_Continue 0 0) (Some (0,0)) \<noteq>
-      (case comma_crt_mdd_eval_phase [3,4,11,7]
+      (case comma_crt_mdd_eval_phase [3,4,7,11]
           [Comma_CRT_MDD_Leaf (0::nat)] 0 0 of
          None \<Rightarrow> None
        | Some 0 \<Rightarrow> None
@@ -187,7 +182,7 @@ proof -
       "0 < length ([Comma_CRT_MDD_Leaf (0::nat)] :: nat comma_crt_mdd_node list)"
     by simp
   have table_wf:
-      "comma_crt_mdd_table_wellformed [3,4,11,7]
+      "comma_crt_mdd_table_wellformed [3,4,7,11]
         [Comma_CRT_MDD_Leaf (0::nat)]"
     by (simp add: comma_crt_mdd_table_wellformed_def
         comma_crt_mdd_node_ordered_def)
@@ -196,7 +191,7 @@ proof -
         Comma_CRT_MDD_Leaf 0"
     by simp
   have eval:
-      "comma_crt_mdd_eval_phase [3,4,11,7]
+      "comma_crt_mdd_eval_phase [3,4,7,11]
         [Comma_CRT_MDD_Leaf (0::nat)] 0 0 = Some 0"
     unfolding comma_crt_mdd_eval_phase_def comma_crt_mdd_eval_def
     using comma_crt_mdd_eval_raw_leaf[OF root_bound binding] table_wf

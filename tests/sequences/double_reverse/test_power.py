@@ -358,7 +358,10 @@ def test_cancelled_walk_defers_and_retries_scratch_retirement(
         original_mark_disposed(owner)
 
     monkeypatch.setattr(term.resource_ledger, "mark_disposed", fail_scratch_once)
-    stream.close()
+    with pytest.raises(
+        RuntimeError, match="injected deferred scratch disposal failure"
+    ):
+        stream.close()
     after_close = next(
         item for item in term.resource_ledger.inventory() if item.owner == scratch.owner
     )

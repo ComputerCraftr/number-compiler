@@ -2,6 +2,12 @@ theory Comma_CRT_MDD
   imports Main
 begin
 
+lemma comma_frontier_radices_divide:
+  assumes "axis < length ([3,4,7,11] :: nat list)"
+  shows "[3,4,7,11] ! axis dvd (924 :: nat)"
+  using nth_mem[OF assms] by auto
+
+
 lemma comma_crt_mdd_indexed_allD:
   assumes checked: "list_all P [0..<n]" and index: "i<n"
   shows "P i"
@@ -12,7 +18,7 @@ ML_file "../comma_entry_arithmetic/Proof_Dependency_Audit.ML"
 text \<open>
 Compact reduced ordered MDDs use a flat, immutable node table.  Branches refer
 to earlier node identifiers, retaining DAG sharing.  Axis numbers index an
-explicit radix list, so [3,4,11,7] is represented directly rather than being
+explicit radix list, so [3,4,7,11] is represented directly rather than being
 coerced into the legacy comma_crt_column ordering.  Evaluation returns an
 outer option: None means malformed table/root; a valid leaf may itself carry
 None to mean that the certified one-step action is not Continue.

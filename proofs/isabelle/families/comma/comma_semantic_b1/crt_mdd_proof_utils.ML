@@ -1,16 +1,28 @@
 (* Shared checks for proofs issued from the immutable MDD certificate store. *)
 signature COMMA_CRT_MDD_PROOF_UTILS =
 sig
+  val mk_less: term -> term -> term
+  val ball_nat: term -> term -> term
+  val set_nat: int list -> term
   val closed: term -> bool
   val ensure_closed_context: Proof.context -> string -> thm -> thm
   val exact_prop: Proof.context -> string -> term -> thm -> thm
   val prove_exact: Proof.context -> string -> term -> (Proof.context -> tactic) -> thm
+  val literal_list_all: Proof.context -> string -> term -> term list -> thm list -> thm
   val predicate_application: Proof.context -> string -> term -> term -> thm -> thm
   val dest_nat: string -> typ -> term -> int
 end
 
 structure Comma_CRT_MDD_Proof_Utils:> COMMA_CRT_MDD_PROOF_UTILS =
 struct
+  fun mk_less left right = HOLogic.mk_binrel @{const_name less} (left,right)
+  fun ball_nat set predicate =
+    Const (@{const_name Ball}, HOLogic.mk_setT @{typ nat} -->
+      (@{typ nat} --> HOLogic.boolT) --> HOLogic.boolT) $ set $ predicate
+  fun set_nat xs = Const (@{const_name set}, @{typ "nat list"} -->
+    HOLogic.mk_setT @{typ nat}) $
+      HOLogic.mk_list @{typ nat} (map (HOLogic.mk_number @{typ nat}) xs)
+
   fun closed term = not (Term.is_open term) andalso
     null (Term.add_frees term []) andalso null (Term.add_vars term [])
 
@@ -32,6 +44,33 @@ struct
     Goal.prove_internal ctxt [] (Thm.cterm_of ctxt expected)
       (fn _ => tactic ctxt)
     |> exact_prop ctxt label expected
+
+  (* Fold only already-checked literal facts; neither the predicate nor its
+     items are evaluated by this generic list constructor. *)
+  fun literal_list_all ctxt label predicate items facts =
+    let
+      val itemT = Term.domain_type (fastype_of predicate)
+      val _ = if closed predicate andalso
+          Term.range_type (fastype_of predicate) = HOLogic.boolT then ()
+        else error (label ^ " requires a closed Boolean predicate")
+      val _ = if length items = length facts then ()
+        else error (label ^ " has missing or excess facts")
+      fun check (item,fact) =
+        if fastype_of item = itemT andalso closed item then
+          exact_prop ctxt label
+            (HOLogic.mk_Trueprop (Envir.beta_norm (predicate $ item))) fact
+        else error (label ^ " contains an open or ill-typed item")
+      val checked = map check (items ~~ facts)
+      fun rule theorem = Drule.infer_instantiate ctxt
+        [(("P",0),Thm.cterm_of ctxt predicate)] theorem
+      val empty = @{thm iffD2} OF [rule @{thm list_all_Nil_iff},@{thm TrueI}]
+      fun prepend head tail = @{thm iffD2} OF
+        [rule @{thm list_all_Cons_iff},@{thm conjI} OF [head,tail]]
+      val theorem = fold_rev prepend checked empty
+      val list_all = Const (@{const_name list_all},
+        (itemT --> HOLogic.boolT) --> HOLogic.listT itemT --> HOLogic.boolT)
+      val expected = HOLogic.mk_Trueprop (list_all $ predicate $ HOLogic.mk_list itemT items)
+    in exact_prop ctxt label expected theorem end
 
   fun predicate_application ctxt label predicate index normalized =
     let

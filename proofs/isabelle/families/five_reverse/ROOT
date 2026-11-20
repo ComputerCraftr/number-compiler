@@ -1,0 +1,10 @@
+session Five_Reverse in five_reverse = Shared_Carry_Dynamics +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Five_Reverse
+    Five_Reverse_Prefix_Bridge
+    Five_Reverse_Mod45
+    Five_Reverse_Digit_Field
+    Five_Reverse_Reflected_H
+    Five_Reverse_Bounds
+    Five_Reverse_Window_Consumer

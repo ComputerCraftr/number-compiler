@@ -318,12 +318,8 @@ cap remain distinct retained consumers.
   occurrence still owns its exact endpoint and branch admission. This change
   does not claim fewer source-discovery steps for unmatched CLI cylinders.
 
-Reproduce the finite census and cross-family transport checks:
-
-```console
-.venv/bin/python -m devtools.checks.release --suite unit --select tests/validation/research/collatz/test_harmonic_ports.py --select tests/arithmetic/polynomials/test_primary_jet.py --select tests/validation/proofs/test_mahler_f5_production_bridge.py
-isabelle build -d proofs/isabelle -j 1 -o threads=1 -o parallel_proofs=0 Reverse_Residuals
-```
+The [development guide](../development.md) describes guarded validation of the
+finite census and cross-family transport.
 
 ## Generator macros, spatial phase and birth emissions
 
@@ -365,12 +361,6 @@ phase-zero closure, and the exact repetition formula. These are spatial laws;
 source occurrence admission, Hensel gap selection and Mahler's ordered guard
 remain separate consumers.
 
-Reproduce the finite closure, minimality, census and shared-consumer checks:
-
-```console
-python -m devtools.checks.release --suite unit --select tests/sequences/collatz/test_f5_directional_quotient.py --select tests/validation/research/collatz/test_radix5_future_grammar.py --select tests/validation/proofs/test_mahler_f5_production_bridge.py
-```
-
 ## Counterexample scope
 
 Equal endpoint/weight examples refute that compressed key only. They do not
@@ -409,18 +399,11 @@ not a successful performance gate.
 
 [Dated evidence](../sprints/week-of-2026-09-20/collatz.md#source-only-macro-construction-measurements).
 
-## Production and reproduction
+## Construction scope
 
-- **Implemented owner:** [sequences/collatz/physical_images.py](../../src/number_compiler/sequences/collatz/physical_images.py).
-- **Checked theorem:** the named Isabelle results above apply with their explicit premises; use the [proof index](../proofs.md) for source statements, sessions and oracle audits.
-- **Finite experiment:** bounded test comparisons establish only the tested sources and horizons.
-- **Construction-cost status:** Admitted cycle compression bounds repeated-cycle work. General source discovery, event projections and output-sensitive rendering have separate costs.
+Cycle compression bounds repeated-cycle work while source discovery and output rendering have separate costs.
 
-Run the exact executable checks (including validation-marked assertions):
-
-```console
-python -m devtools.checks.release --suite unit --select tests/hashlife/execution/test_collatz_tile_cycle.py --select tests/projection/test_collatz_binary_radix_limbs.py
-```
+[Implementation and validation record](../sprints/week-of-2026-09-20/collatz.md).
 
 ## Joint-adic endpoint projection and source admission
 
@@ -519,16 +502,6 @@ were not accepted as replacements for the source-bound scheduler.
   proves that every Collatz source reaches a cycle, or supplies a general
   sublinear cold source-discovery bound. Generic reverse D4+ and global
   Mahler/Antihydra safety remain independent obligations.
-
-Reproduce the public path, exact admission, negative drift and short-operand
-regressions:
-
-```console
-python -m devtools.checks.release --suite unit --select tests/api/test_shared_skew_cli.py --select tests/resources/test_dyadic_return_audit.py --select tests/hashlife/execution/test_dyadic_effect_reuse.py --select tests/arithmetic/fields/test_threshold_envelope.py
-python -m number_compiler collatz --seed 27 --nth 1000000000000
-```
-
-The final command emits `4`. It does not request optional observers.
 
 Cycle-specific measurements confirm bounded primitive discovery after exact
 cycle entry, with logarithmic scheduler overhead. They are not a general

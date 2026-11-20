@@ -63,8 +63,7 @@ struct
         (leaf @{typ comma_phase_rank_mask_action})
         [@{term "Comma_Phase_Rank_Mask_Fork 2 0"},
          @{term "Comma_Phase_Rank_Mask_Fork 3 0"},
-         @{term "Comma_Phase_Rank_Mask_Fork 4 0"},
-         @{term "Comma_Phase_Rank_Mask_Fork 5 0"}]
+         @{term "Comma_Phase_Rank_Mask_Fork 4 0"}]
       val rank_leaf = leaf natT (numeral 0)
       val successors = Abs ("child",natT,
         Const (@{const_name None},Type (@{type_name option},[rankT])))
@@ -109,7 +108,7 @@ struct
         {action=continue_action,current=rank_leaf,
          target=rank_leaf,child=0,later=0,definitions=[]})
       val action_branch = branch actionT action_leaves
-      val rank_branch = branch rankT (replicate 4 rank_leaf)
+      val rank_branch = branch rankT (replicate 3 rank_leaf)
       val shape_action = shape_equation ctxt actionT action_branch
       val shape_rank = shape_equation ctxt rankT rank_branch
       val child_var = Free ("child",natT)

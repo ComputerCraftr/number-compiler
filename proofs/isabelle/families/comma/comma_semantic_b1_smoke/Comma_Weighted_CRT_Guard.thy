@@ -1,5 +1,6 @@
 theory Comma_Weighted_CRT_Guard
-  imports Comma_Semantic_B1.Comma_Semantic_Graph_Weighted_CRT_DAG
+  imports Comma_Semantic_B1.Comma_Weighted_CRT_Data
+    Comma_Semantic_B1.Comma_Semantic_Graph_Weighted_CRT_DAG
     Comma_Semantic_B1.Comma_CRT_Columns
     Comma_Semantic_B1.Comma_Phase_Class_Rank
 begin
@@ -208,5 +209,8 @@ ML \<open>
       comma_weighted_crt_project_bool_eval
       comma_weighted_crt_continue_column_true_iff};
 \<close>
+
+ML_file "../comma_semantic_b1_instance/semantic_weighted_crt_data_cache_hit_fixture.ML"
+ML \<open>Comma_Weighted_CRT_Data_Cache_Hit_Fixture.run @{context}\<close>
 
 end

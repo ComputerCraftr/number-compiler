@@ -190,7 +190,7 @@ class ReverseRecursiveTemporalCutover:
                     "recursive construction authority differs from source digits"
                 )
         else:
-            from number_compiler.sequences.reverse_add.power import (
+            from number_compiler.sequences.reverse_add.pair_field import (
                 pair_field_from_digits,
             )
 

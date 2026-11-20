@@ -34,6 +34,8 @@ class SymbolicExpression:
             return f"reverse_add(seed={self.parameter},base={self.radix})[{coordinate}]"
         if self.family is FamilyId.DOUBLE_REVERSE:
             return f"double_reverse10(seed={self.parameter})[{coordinate}]"
+        if self.family is FamilyId.FIVE_REVERSE:
+            return f"five_reverse10(seed={self.parameter})[{coordinate}]"
         if self.family is FamilyId.COLLATZ:
             return f"collatz(seed={self.parameter})[{coordinate}]"
         if self.family is FamilyId.ANTIHYDRA:

@@ -1,25 +1,10 @@
-"""Bounded runtime access to an admitted semantic FutureCID table.
+"""Ledger-scoped providers and selections for kernel-admitted FutureCID data.
 
-The codec owns bounded candidate parsing and this module owns admitted runtime
-providers, selection seals, and their ledger-scoped lifecycle. It never
-constructs the semantic graph or derives a classification from arithmetic.
-Candidate JSON is untrusted input: a private immutable registry must bind the
-exact canonical artifact digest to the accepted kernel theorem before a
-provider is returned. That registry is deliberately empty today.
-
-The required kernel contract is the producer-level release theorem: it joins
-the decade writer and prefix-selection model with the semantic global-safety
-result. This model theorem is not an executable proof of Python source; an
-artifact remains unregistered until its producer/runtime bridge is reviewed.
-
-The table contains classifier observations only.  It does not contain an
-occurrence weight, width, phase advance, endpoint, or C1 seam.  A selected
-slot can be applied to the caller's exact ordered literal children, preserving
-those occurrence values unchanged. Finite synthetic fixtures have a separate
-test-only scope and cannot satisfy the global release contract. Public
-queries can consume an explicitly supplied, revalidated global lease;
-default activation still requires an accepted kernel registry entry and
-loading its exact artifact.
+The codec parses untrusted candidates. The immutable registry binds their exact
+bytes to the reviewed producer/runtime release contract; synthetic fixtures
+cannot grant global authority. The registry remains empty until that gate passes.
+Selections choose among the caller's ordered literal children, preserving their
+physical weights, phases, endpoints and seam data without reconstructing them.
 """
 
 from __future__ import annotations
@@ -69,7 +54,6 @@ from number_compiler.sequences.comma.future_provider_codec import (
     MAX_CANDIDATE_BYTES,
     MAX_CANDIDATE_JSON_DEPTH,
     MAX_CANDIDATE_JSON_NODES,
-    MAX_CID_VARINT_BYTES,
     SOURCE_COUNT,
     ParsedFutureCandidate,
     future_candidate_sha256,
@@ -105,8 +89,9 @@ from number_compiler.sequences.comma.future_provider_memory import (
     resolve_provider_lease_locked,
     retained_provider_entry_matches,
 )
+from number_compiler.sequences.comma.future_source_mdd import FutureSourceMDD
 
-FUTURE_PROVIDER_ASSET: Final[str] = "comma_semantic_future_v2.json"
+FUTURE_PROVIDER_ASSET: Final[str] = "comma_semantic_future_v3.json"
 FUTURE_PROVIDER_CONTRACT: Final[str] = "comma-semantic-future-provider-exact-v1"
 FUTURE_PROVIDER_AUDIT_FAMILY: Final[str] = "comma"
 FUTURE_PROVIDER_STORE_ROLE: Final[str] = "semantic_future_provider"
@@ -264,11 +249,11 @@ class UnrankedChildSelection:
 class SemanticFutureProvider:
     """Bounded FutureCID data with execution authority only while store-retained."""
 
-    _source_classes: tuple[int, ...]
+    _source_classes: FutureSourceMDD
     _classes: tuple[FutureClass, ...]
     _digest: str
     _admission: KernelInstanceAdmission
-    _source_classes_binding: tuple[int, ...] = field(
+    _source_classes_binding: FutureSourceMDD = field(
         repr=False, compare=False, hash=False
     )
     _classes_binding: tuple[FutureClass, ...] = field(
@@ -317,7 +302,7 @@ class SemanticFutureProvider:
 
     def __init__(
         self,
-        source_classes: tuple[int, ...],
+        source_classes: FutureSourceMDD,
         classes: tuple[FutureClass, ...],
         digest: str,
         *,
@@ -349,6 +334,7 @@ class SemanticFutureProvider:
         _before_parse: _BeforeFutureParse | None = None,
         _reserve_nodes: NodeReserver | None = None,
         _reserve_decoded_shape: _ReserveDecodedShape | None = None,
+        _finish_snapshot: Callable[[int], None] | None = None,
     ) -> SemanticFutureProvider:
         """Read a registered candidate; the ledger store issues runtime authority."""
         snapshot = preflight_future_candidate(
@@ -364,12 +350,17 @@ class SemanticFutureProvider:
             snapshot,
             charge_work=charge_work,
         )
+        del snapshot
+        if _finish_snapshot is not None:
+            _finish_snapshot(len(parsed.classes))
         return cls._from_parsed(parsed)
 
     @classmethod
     def _from_parsed(cls, parsed: ParsedFutureCandidate) -> SemanticFutureProvider:
         registered = _ADMITTED_KERNEL_INSTANCES.get(parsed.artifact_sha256)
-        if registered is None or not _admission_matches(registered, parsed):
+        if registered is None or not registered_admission_matches(
+            registered, parsed.artifact_sha256
+        ):
             raise PermissionError(
                 "no kernel-admitted semantic future artifact is registered"
             )
@@ -391,6 +382,7 @@ class SemanticFutureProvider:
         _before_parse: _BeforeFutureParse | None = None,
         _reserve_nodes: NodeReserver | None = None,
         _reserve_decoded_shape: _ReserveDecodedShape | None = None,
+        _finish_snapshot: Callable[[int], None] | None = None,
     ) -> SemanticFutureProvider:
         """Load a bounded canonical artifact and require registry admission."""
         parsed = _parse_future_candidate_file(
@@ -400,6 +392,8 @@ class SemanticFutureProvider:
             reserve_nodes=_reserve_nodes,
             reserve_decoded_shape=_reserve_decoded_shape,
         )
+        if _finish_snapshot is not None:
+            _finish_snapshot(len(parsed.classes))
         return cls._from_parsed(parsed)
 
     @property
@@ -432,9 +426,9 @@ class SemanticFutureProvider:
 
     @property
     def source_class_count(self) -> int:
-        """Return the validated number of retained source-class rows."""
+        """Return the size of the authenticated boundary source universe."""
         self._require_table_bindings()
-        return len(self._source_classes)
+        return SOURCE_COUNT
 
     def _tables_bound(self, *, allow_closing: bool = False) -> bool:
         if not self._tables_bound_without_store():
@@ -534,8 +528,9 @@ class SemanticFutureProvider:
         if type(source) is not BoundaryState:
             raise TypeError("future lookup requires a validated BoundaryState")
         self._require_table_bindings()
-        _charge_work(charge_work, 1)
-        return self._source_classes[boundary_source_index(source)]
+        return self._source_classes.lookup(
+            source, charge_work=lambda amount: _charge_work(charge_work, amount)
+        )
 
     def class_row(self, cid: int, *, charge_work: WorkCharger) -> FutureClass:
         _charge_work(charge_work, 1)
@@ -555,7 +550,9 @@ class SemanticFutureProvider:
         if type(source) is not BoundaryState:
             raise TypeError("future lookup requires a validated BoundaryState")
         self._require_table_bindings()
-        source_cid = self._source_classes[boundary_source_index(source)]
+        source_cid = self._source_classes.lookup(
+            source, charge_work=lambda amount: _charge_work(charge_work, amount)
+        )
         row = self._checked_class_row(source_cid)
         if row.control.kind != "fork" or row.control.fork_coefficient is None:
             raise ValueError("future source is not a Fork class")
@@ -581,7 +578,8 @@ class SemanticFutureProvider:
 
 
 _FutureProviderLoader = Callable[
-    [WorkCharger, NodeReserver, _ReserveDecodedShape], SemanticFutureProvider
+    [WorkCharger, NodeReserver, _ReserveDecodedShape, Callable[[int], None]],
+    SemanticFutureProvider,
 ]
 
 
@@ -788,12 +786,23 @@ class SemanticFutureProviderStore:
                 with ExitStack() as reservations:
                     workspace = LedgerReservation(self.ledger, self._workspace_owner)
                     reservations.callback(workspace.close)
+                    snapshot_nodes = 0
 
                     def reserve_snapshot_nodes(amount: int) -> None:
+                        nonlocal snapshot_nodes
                         workspace.reserve(nodes=amount)
+                        snapshot_nodes += amount
+
+                    def finish_snapshot(class_count: int) -> None:
+                        nonlocal snapshot_nodes
+                        workspace.release(nodes=snapshot_nodes)
+                        snapshot_nodes = 0
+                        workspace.reserve(nodes=6 * class_count + 5)
 
                     def reserve_decoded_shape(record: Mapping[str, object]) -> None:
-                        nodes = candidate_workspace_cost(record, SOURCE_COUNT)
+                        nodes = candidate_workspace_cost(
+                            record, SOURCE_COUNT, charge_work=charge_once
+                        )
                         if nodes:
                             workspace.reserve(nodes=nodes)
 
@@ -807,6 +816,7 @@ class SemanticFutureProviderStore:
                         charge_once,
                         reserve_snapshot_nodes,
                         reserve_decoded_shape,
+                        finish_snapshot,
                     )
                     return self._retain(provider, workspace)
             except Exception:
@@ -848,12 +858,13 @@ class SemanticFutureProviderStore:
     ) -> SemanticFutureProviderLease:
         """Validate, admit, and retain a supplied in-memory candidate."""
         return self._load_provider(
-            lambda charged, reserve_nodes, reserve_shape: (
+            lambda charged, reserve_nodes, reserve_shape, finish_snapshot: (
                 SemanticFutureProvider.from_record(
                     record,
                     charge_work=charged,
                     _reserve_nodes=reserve_nodes,
                     _reserve_decoded_shape=reserve_shape,
+                    _finish_snapshot=finish_snapshot,
                 )
             ),
             charge_work,
@@ -867,12 +878,13 @@ class SemanticFutureProviderStore:
     ) -> SemanticFutureProviderLease:
         """Verify supplied bytes before admitting and retaining their provider."""
         return self._load_provider(
-            lambda charged, reserve_nodes, reserve_shape: (
+            lambda charged, reserve_nodes, reserve_shape, finish_snapshot: (
                 SemanticFutureProvider.load_file(
                     path,
                     charge_work=charged,
                     _reserve_nodes=reserve_nodes,
                     _reserve_decoded_shape=reserve_shape,
+                    _finish_snapshot=finish_snapshot,
                 )
             ),
             charge_work,
@@ -965,12 +977,6 @@ class SemanticFutureProviderStore:
         self.close()
 
 
-def _admission_matches(
-    admission: KernelInstanceAdmission, parsed: ParsedFutureCandidate
-) -> bool:
-    return registered_admission_matches(admission, parsed.artifact_sha256)
-
-
 __all__ = [
     "FUTURE_CANDIDATE_AUTHORITY",
     "FUTURE_CANDIDATE_FORMAT",
@@ -981,7 +987,6 @@ __all__ = [
     "MAX_CANDIDATE_BYTES",
     "MAX_CANDIDATE_JSON_DEPTH",
     "MAX_CANDIDATE_JSON_NODES",
-    "MAX_CID_VARINT_BYTES",
     "ParsedFutureCandidate",
     "registered_admission_metadata_matches",
     "SemanticFutureProvider",

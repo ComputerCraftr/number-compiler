@@ -98,6 +98,19 @@ def cli_integer(text: str) -> int:
         raise argparse.ArgumentTypeError("integer token exceeds parser budget") from exc
 
 
+def cli_integer_vector(text: str) -> tuple[int, ...]:
+    """Bounded exact polynomial coefficients, in increasing p-degree order."""
+    if len(text) > 1200:
+        raise argparse.ArgumentTypeError("coefficient vector exceeds parser budget")
+    pieces = text.split(",")
+    if not 1 <= len(pieces) <= 9:
+        raise argparse.ArgumentTypeError("coefficient degree must lie in 0..8")
+    values = tuple(cli_integer(piece.strip()) for piece in pieces)
+    if any(abs(value).bit_length() > 128 for value in values):
+        raise argparse.ArgumentTypeError("coefficient exceeds 128 bits")
+    return values
+
+
 class UniqueValue(argparse.Action):
     def __call__(
         self,
@@ -188,6 +201,16 @@ def _add_family_options(command: argparse.ArgumentParser, spec: FamilySpec) -> N
         if not option.name:
             raise ValueError(f"registry option {name!r} has no canonical name")
         if option.value_kind is not OptionValueKind.INTEGER:
+            if option.value_kind is OptionValueKind.INTEGER_VECTOR:
+                command.add_argument(
+                    option.flag,
+                    dest=option.name,
+                    type=cli_integer_vector,
+                    default=option.default,
+                    action=UniqueValue,
+                    help=option.help,
+                )
+                continue
             if option.value_kind is OptionValueKind.BOOLEAN:
                 command.add_argument(
                     option.flag,

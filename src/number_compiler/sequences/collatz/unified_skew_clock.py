@@ -139,13 +139,63 @@ class SkewQuadraticClock:
     def power(self, count: int) -> SkewQuadraticClock:
         if type(count) is not int or count < 0:
             raise ValueError("skew clock power must be nonnegative")
-        powered = binary_power(
-            self,
-            count,
-            identity=self.identity(self.precision),
-            compose=lambda first, second: first.then(second),
+        if count == 0:
+            return self.identity(self.precision)
+        if count == 1:
+            return self
+        if self.steps == 0:
+            # An empty-step formal clock has no invertible 2-adic divisor.
+            # Preserve exact algebra for such externally constructed values.
+            return binary_power(
+                self,
+                count,
+                identity=self.identity(self.precision),
+                compose=lambda first, second: first.then(second),
+            ).value
+
+        modulus = 1 << self.precision
+        a = pow(2, self.steps, modulus)
+        b = pow(3, self.odds, modulus)
+        difference = (a - b) % modulus
+        if difference & 1 == 0:
+            return binary_power(
+                self,
+                count,
+                identity=self.identity(self.precision),
+                compose=lambda first, second: first.then(second),
+            ).value
+        inverse = pow(difference, -1, modulus)
+        a_power = pow(a, count, modulus)
+        b_power = pow(b, count, modulus)
+        zeroth = (a_power - b_power) * inverse % modulus
+        first = (count * a_power - a * zeroth) * inverse % modulus
+        second = (
+            (count * count * a_power - a * zeroth - 2 * a * first) * inverse % modulus
         )
-        return powered.value
+
+        value = self.value * zeroth % modulus
+        linear = (self.linear * zeroth + self.steps * self.value * first) % modulus
+        quadratic = (
+            self.quadratic * zeroth
+            + 2 * self.steps * self.linear * first
+            + self.steps * self.steps * self.value * second
+        ) % modulus
+        first_odd = self.first_odd
+        last_odd = (
+            None if self.last_odd is None else (count - 1) * self.steps + self.last_odd
+        )
+        return SkewQuadraticClock(
+            self.precision,
+            count * self.steps,
+            count * self.odds,
+            value,
+            linear,
+            quadratic,
+            count * self.position_sum
+            + self.steps * self.odds * count * (count - 1) // 2,
+            first_odd,
+            last_odd,
+        )
 
     @classmethod
     def factors(

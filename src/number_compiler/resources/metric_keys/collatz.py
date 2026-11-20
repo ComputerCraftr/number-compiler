@@ -615,6 +615,9 @@ COLLATZ_LOW_BORDER_NUMERATOR_PHASE_CHECKS: Final = (
 COLLATZ_CONDITIONAL_POWER_PAIR_MATRIX_CHECKS: Final = (
     "collatz_conditional_power_pair_matrix_checks"
 )
+COLLATZ_CONDITIONAL_POWER_PAIR_MATRIX_ROW_EVALUATIONS: Final = (
+    "collatz_conditional_power_pair_matrix_row_evaluations"
+)
 
 # Source-certified two-odd Boolean/cyclotomic harmonic production path.
 COLLATZ_PHYSICAL_TEMPORAL_JOINT_HARMONIC_BAND_PUMPS: Final = (

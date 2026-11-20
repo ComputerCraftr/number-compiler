@@ -1,30 +1,11 @@
 (* Closed, oracle-free compilation of the existing arithmetic definitions. *)
 structure Comma_Entry_Arithmetic =
 struct
-  fun numeral n = HOLogic.mk_number @{typ nat} n
-  fun numeral_context ctxt = put_simpset HOL_basic_ss ctxt |> Simplifier.add_simps
-    @{thms One_nat_def[symmetric] Suc_1 Suc_numeral add_num_simps}
-  (* Closed natural arithmetic: no family transition or recursive observer rules. *)
-  fun natural_context ctxt = (put_simpset HOL_ss ctxt
-    |> Simplifier.add_cong @{thm if_weak_cong}) |> Simplifier.add_simps
-    @{thms arith_simps arith_special rel_simps Let_def
-      One_nat_def[symmetric] Suc_1 Suc_numeral
-      diff_nat_numeral nat_numeral_diff_1 nat_numeral nat_0 nat_1 diff_zero
-      diff_self_eq_0 diff_0_eq_0
-      div_0 mod_0 div_by_0 mod_by_0 div_by_1 mod_by_1
-      one_div_numeral one_mod_numeral numeral_div_numeral numeral_mod_numeral
-      divmod_trivial divmod_cancel divmod_steps divmod_step_def
-      fst_conv snd_conv numeral_One case_prod_beta
-      euclidean_size_nat_less_eq_iff euclidean_size_int_less_eq_iff
-      mod_self mult_1_left mult_1_right}
-  (* Clock rebasing and diagonal ports cross nat/int at signed modular seams.
-     Keep those scalar conversions at the arithmetic owner, independently of
-     source admission and transition definitions. *)
-  val signed_scalar_rules = @{thms
-    of_nat_0 of_nat_1 of_nat_numeral zmod_zminus1_eq_if zmod_zminus2_eq_if
-    zmod_numeral_Bit0 zmod_numeral_Bit1 more_arith_simps}
-  fun signed_context ctxt = natural_context ctxt
-    |> Simplifier.add_simps signed_scalar_rules
+  val numeral = Shared_Closed_Arithmetic.numeral
+  val numeral_context = Shared_Closed_Arithmetic.numeral_context
+  val natural_context = Shared_Closed_Arithmetic.natural_context
+  val signed_scalar_rules = Shared_Closed_Arithmetic.signed_scalar_rules
+  val signed_context = Shared_Closed_Arithmetic.signed_context
 
   (* Dependency nodes are immutable and identified by Isabelle's proof serial.
      Each root is inspected on every call. A node certificate is committed only

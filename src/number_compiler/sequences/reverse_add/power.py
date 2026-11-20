@@ -18,6 +18,9 @@ from number_compiler.arithmetic.contracts.exact_tree_context import (
     source_reads_only,
 )
 from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.contracts.ordered_output import (
+    OrderedBandOutput,
+)
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.arithmetic.fields.radix import (
     bit_width,
@@ -36,9 +39,18 @@ from number_compiler.resources.output_stream_metrics import (
 )
 from number_compiler.resources.owned_memo import OwnedMemo
 from number_compiler.resources.stores import LedgerList
+from number_compiler.sequences.reverse_add.ordered_digit_band import (
+    source_issued_ordered_digit_band,
+)
+from number_compiler.sequences.reverse_add.pair_field import (
+    pair_field_from_integer,
+)
 from number_compiler.sequences.reverse_add.palindrome import (
     mirror_obstruction_from_output,
     mirror_palindrome_from_output,
+)
+from number_compiler.sequences.reverse_add.temporal_accumulator99_snapshot import (
+    accumulator99_snapshot,
 )
 
 if TYPE_CHECKING:
@@ -48,6 +60,9 @@ if TYPE_CHECKING:
     from number_compiler.resources.reverse_power_metrics import ReverseAddPowerMetrics
     from number_compiler.sequences.reverse_add.boundary_window import (
         ReverseBoundaryWindowObservation,
+    )
+    from number_compiler.sequences.reverse_add.mixed_adic_period import (
+        CheckedFiniteForcing,
     )
     from number_compiler.sequences.reverse_add.q19_output import (
         ReversePairOutputOccurrence,
@@ -103,78 +118,6 @@ class _TermBoundLaurentCacheEntry:
     term_token: object
     result: SourceBoundLaurentResult
     result_snapshot: tuple[int, ...]
-
-
-def _accumulator99_snapshot(result: PoweredAccumulator99) -> tuple[object, ...]:
-    from .temporal_accumulator99 import (
-        AccumulatorMooreState99,
-        PoweredAccumulator99,
-        RankOneAccumulatorAction99,
-    )
-
-    if type(result) is not PoweredAccumulator99:
-        raise TypeError("mod-99 cache result has a foreign type")
-    state = result.state
-    if type(state) is not AccumulatorMooreState99:
-        raise TypeError("mod-99 cache state has a foreign type")
-    phase = require_integer(state.phase, "accumulator phase", 0, 1)
-    state_a = require_integer(state.a, "first accumulator residue", 0, 98)
-    state_b = require_integer(state.b, "second accumulator residue", 0, 98)
-    AccumulatorMooreState99.__post_init__(state)
-
-    action = result.action
-    if type(action) is not RankOneAccumulatorAction99:
-        raise TypeError("mod-99 cache action has a foreign type")
-    multiplier = require_integer(action.multiplier, "rank-one multiplier", 0, 98)
-    coupling = require_integer(action.coupling, "rank-one coupling", 0, 98)
-    RankOneAccumulatorAction99.__post_init__(action)
-
-    source_reverse = result.source_reverse_mod99
-    if source_reverse is not None:
-        source_reverse = require_integer(
-            source_reverse, "source reverse residue", 0, 98
-        )
-    source_certified = result.source_certified
-    if type(source_certified) is not bool or not source_certified:
-        raise ValueError("mod-99 cache result lost source certification")
-    absorbed = result.absorbed_mod11
-    if type(absorbed) is not bool:
-        raise TypeError("mod-99 absorbed flag must be Boolean")
-    complete_integer_certified = result.complete_integer_certified
-    if type(complete_integer_certified) is not bool:
-        raise TypeError("mod-99 integer certificate flag must be Boolean")
-
-    return (
-        require_integer(result.generation, "accumulator generation", 0),
-        require_integer(result.bootstrap_generation, "bootstrap generation", 0),
-        phase,
-        state_a,
-        state_b,
-        require_integer(result.integer_mod99, "integer residue", 0, 98),
-        require_integer(result.reverse_mod99, "reverse residue", 0, 98),
-        absorbed,
-        require_integer(result.even_blocks_powered, "powered even blocks", 0),
-        multiplier,
-        coupling,
-        require_integer(result.source_mod99, "source residue", 0, 98),
-        require_integer(result.generation_mod99, "generation residue", 0, 98),
-        source_certified,
-        complete_integer_certified,
-        source_reverse,
-    )
-
-
-def pair_field_from_integer(value: int, base: int) -> tuple[int, ...]:
-    """Original-source encoding retained for independent kernel consumers."""
-    value = require_integer(value, "seed", 0)
-    base = require_integer(base, "base", 2)
-    return pair_field_from_digits(digits_lsd(value, base))
-
-
-def pair_field_from_digits(digits: tuple[int, ...]) -> tuple[int, ...]:
-    if type(digits) is not tuple or not digits:
-        raise ValueError("reverse pair source requires original digits")
-    return tuple(digits[i] + digits[-1 - i] for i in range(len(digits)))
 
 
 class ReverseAddPoweredTerm:
@@ -526,14 +469,14 @@ class ReverseAddPoweredTerm:
                     or entry.source_binding != self._binding
                     or type(base_result) is not PoweredAccumulator99
                     or base_result.source_reverse_mod99 is not None
-                    or _accumulator99_snapshot(base_result) != entry.base_snapshot
+                    or accumulator99_snapshot(base_result) != entry.base_snapshot
                     or (enriched_result is None) != (entry.enriched_snapshot is None)
                 ):
                     raise ValueError("mod-99 cache lost its source-bound result")
                 if enriched_result is not None and (
                     type(enriched_result) is not PoweredAccumulator99
                     or enriched_result.source_reverse_mod99 is None
-                    or _accumulator99_snapshot(enriched_result)
+                    or accumulator99_snapshot(enriched_result)
                     != entry.enriched_snapshot
                 ):
                     raise ValueError("mod-99 cache lost its enriched result")
@@ -557,7 +500,7 @@ class ReverseAddPoweredTerm:
                     base_result,
                     entry.base_snapshot,
                     enriched_result,
-                    _accumulator99_snapshot(enriched_result),
+                    accumulator99_snapshot(enriched_result),
                 )
                 return enriched_result
 
@@ -608,11 +551,11 @@ class ReverseAddPoweredTerm:
                 self._binding,
                 self._accumulator99_cache_token,
                 base_result,
-                _accumulator99_snapshot(base_result),
+                accumulator99_snapshot(base_result),
                 computed_enriched,
                 None
                 if computed_enriched is None
-                else _accumulator99_snapshot(computed_enriched),
+                else accumulator99_snapshot(computed_enriched),
             )
         except BlockContextBudgetExceeded as publication_error:
             try:
@@ -840,6 +783,16 @@ class ReverseAddPoweredTerm:
 
         return from_seed(self.seed, self.generation)
 
+    def certify_finite_period(
+        self, *, period: int, repeats: int, precision: int
+    ) -> CheckedFiniteForcing:
+        """Read and verify a finite mixed-adic forcing window on issued Q19 roots."""
+        from .mixed_adic_period import certify_finite_period
+
+        return certify_finite_period(
+            self, period=period, repeats=repeats, precision=precision
+        )
+
     def temporal_matrix(self, *, max_bits: int = 16384) -> SourceBoundMoment:
         """Project the authenticated endpoint into its exact skew matrix."""
         from number_compiler.sequences.reverse_add.temporal_matrix import (
@@ -847,6 +800,29 @@ class ReverseAddPoweredTerm:
         )
 
         return source_bound_temporal_matrix(self, max_bits=max_bits)
+
+    def ordered_digit_band(
+        self,
+        steps: int,
+        width: int,
+        modulus: int,
+        *,
+        coefficients: tuple[int, ...] | None = None,
+        trace: bool = False,
+    ) -> OrderedBandOutput:
+        """Compose fixed-width digit bands from exact issued Q19 children."""
+        self.validate_source_binding()
+        return source_issued_ordered_digit_band(
+            self.generation,
+            self.base,
+            steps,
+            width,
+            modulus,
+            self._ledger,
+            self.source_workspace,
+            coefficients=coefficients,
+            trace=trace,
+        )
 
     def temporal_moments(self, *, modulus: int) -> SkewMoment:
         """Project modular U,V through the exact modulus-specific source owner."""

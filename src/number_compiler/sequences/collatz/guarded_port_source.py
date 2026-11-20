@@ -58,3 +58,35 @@ __all__ = [
     "restrict_forced_five_suffix",
     "restrict_source",
 ]
+
+
+def forced_prefix_from_cylinder(
+    source: CollatzTwoSidedCylinder, time: int
+) -> tuple[DyadicTerminalFieldAction, int]:
+    """Decode a bounded literal prefix and check its complete source guard.
+
+    Issued grammar consumers use their retained tape instead. This exact
+    fallback carries no cache or repetition authority.
+    """
+    if type(time) is not int or time < 0:
+        raise ValueError("source prefix time must be a nonnegative exact integer")
+    x = source.first
+    action = DyadicTerminalFieldAction.identity()
+    odds = 0
+    for _ in range(time):
+        odd = x & 1
+        action = action.then(
+            DyadicTerminalFieldAction.one_run(1)
+            if odd
+            else DyadicTerminalFieldAction.zero_run(1)
+        )
+        x = ((3 * x + 1) // 2) if odd else (x // 2)
+        odds += odd
+    if not action.certifies(source.first) or not action.certifies(source.last):
+        raise ArithmeticError("prefix parity was not forced on the complete source")
+    # The full issuing guard implies this prefix, not merely a sample.
+    if source.count > 1 and source.modulus % action.source_modulus:
+        raise ArithmeticError(
+            "source cylinder does not force the decoded parity prefix"
+        )
+    return action, odds

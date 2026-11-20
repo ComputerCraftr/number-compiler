@@ -7,6 +7,8 @@ from enum import StrEnum
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, TypeAlias
 
+from number_compiler.arithmetic.contracts.input_validation import is_exact_integer_tuple
+
 if TYPE_CHECKING:
     from number_compiler.api.output_schema import ObservationPacket
 
@@ -67,9 +69,10 @@ class OptionValueKind(StrEnum):
     INTEGER = "integer"
     BOOLEAN = "boolean"
     CHOICE = "choice"
+    INTEGER_VECTOR = "integer-vector"
 
 
-OptionDefault: TypeAlias = int | bool | str | StrEnum | None
+OptionDefault: TypeAlias = int | bool | str | StrEnum | tuple[int, ...] | None
 
 
 def option_default(value: object) -> OptionDefault:
@@ -83,6 +86,8 @@ def option_default(value: object) -> OptionDefault:
     if type(value) is str:
         return value
     if isinstance(value, StrEnum):
+        return value
+    if is_exact_integer_tuple(value):
         return value
     raise TypeError("registered parser option has an unsupported default")
 
@@ -103,6 +108,8 @@ class ObservationId(StrEnum):
     TEMPORAL_GRAMMAR = "temporal.grammar"
     TEMPORAL_RADIX_WALSH = "temporal.radix-walsh"
     TEMPORAL_CLOSED_FORM = "temporal.closed-form"
+    TEMPORAL_DIGIT_FIELD = "temporal.digit-field"
+    TEMPORAL_MIXED_ADIC = "temporal.mixed-adic"
     TEMPORAL_RESIDUE99 = "temporal.residue99"
     TEMPORAL_ACCUMULATOR99 = "temporal.accumulator99"
     TEMPORAL_SEED_MORPHISM = "temporal.seed-morphism"
@@ -176,6 +183,9 @@ class OptionSpec:
                 raise TypeError("choice option default must be a string value")
             if self.default is not None and self.default not in self.choices:
                 raise ValueError("choice option default must be one of its choices")
+        elif self.value_kind is OptionValueKind.INTEGER_VECTOR:
+            if self.default is not None and not is_exact_integer_tuple(self.default):
+                raise TypeError("integer vector default must be an integer tuple")
 
     @property
     def flag(self) -> str:
@@ -242,6 +252,8 @@ _CATEGORIES: Final[dict[ObservationCategory, tuple[ObservationId, ...]]] = {
         ObservationId.TEMPORAL_GRAMMAR,
         ObservationId.TEMPORAL_RADIX_WALSH,
         ObservationId.TEMPORAL_CLOSED_FORM,
+        ObservationId.TEMPORAL_DIGIT_FIELD,
+        ObservationId.TEMPORAL_MIXED_ADIC,
         ObservationId.TEMPORAL_RESIDUE99,
         ObservationId.TEMPORAL_ACCUMULATOR99,
         ObservationId.TEMPORAL_SEED_MORPHISM,

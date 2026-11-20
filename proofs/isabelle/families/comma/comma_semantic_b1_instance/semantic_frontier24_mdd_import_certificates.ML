@@ -7,6 +7,10 @@ sig
     {source_nodes: term, source_root: int,
      source_seeds: Comma_CRT_MDD_Arena.seed_node list,
      arena_roots: Comma_CRT_MDD_Arena.boolean_root list, arena_nodes: int list}
+  val make_guard_plan: Proof.context ->
+    {certify: Comma_CRT_MDD_Certificate_Store.store -> Comma_CRT_MDD_Arena.arena ->
+      Comma_Frontier24_Parametric_Compiler.guard_entry -> thm,
+     statistics: unit -> string}
   val root_map_certificate:
     Comma_CRT_MDD_Certificate_Store.store -> Comma_CRT_MDD_Arena.arena ->
     guard_import -> thm
@@ -108,6 +112,10 @@ struct
       val cache = Unsynchronized.ref (Inttab.empty: thm Inttab.table)
       val source_context = Store.context store
       val lookup_simp = @{thms nth_Cons' nth_Cons_0 list.simps list.size}
+      val source_length_prop = Logic.mk_equals
+        (Const (@{const_name size}, source_nodesT --> natT) $ source_nodes, nat count)
+      val source_length = exact_prop source_context "Local core-guard table length"
+        source_length_prop (prove source_context source_length_prop [] lookup_simp)
 
       fun source_binding index =
         let
@@ -134,7 +142,7 @@ struct
           val proposition = HOLogic.mk_Trueprop
             (HOLogic.mk_binrel @{const_name less}
               (nat index, Const (@{const_name size}, source_nodesT --> natT) $ source_nodes))
-          val theorem = prove source_context proposition [] lookup_simp
+          val theorem = prove source_context proposition [source_length] []
         in exact_prop source_context "Local core-guard node bound" proposition theorem end
 
       fun relation source target = HOLogic.mk_Trueprop
@@ -289,5 +297,105 @@ struct
 
   fun root_map_certificate store arena import =
     certify_root_map (Store.context store) store arena import
+
+  (* One context-scoped finite conversion serves all demanded semantic guards.
+     The root-map proof and exact symbolic endpoints remain mandatory. *)
+  fun make_guard_plan ctxt =
+    let
+      val calls = Unsynchronized.ref 0
+      val templates = Unsynchronized.ref (Termtab.empty: thm Termtab.table)
+      val started = Time.now ()
+      val _ = Comma_Proof_Profile.report "Core guard finite converter setup-start"
+      val scalar_context = Shared_Closed_Arithmetic.signed_context ctxt
+        |> Simplifier.add_simps
+          (@{thms comma_frontier24_core_guard_nodes_def comma_phase_core_id.case
+             comma_frontier24_core_guard_root.simps
+             comma_frontier24_guard_3x4_nodes_def comma_frontier24_guard_leaf_def
+             comma_frontier24_guard_value_at_def comma_core_guard_clock_def
+             comma_cyclotomic_clock_core_value_def comma_phase_core_modulus.simps
+             comma_core_period_def comma_cyclotomic_phase_def
+             comma_recursive_core_residue_def comma_core_seven_def comma_core_halfcycle_def
+             Let_def list.simps list.size list.map append.simps upt_rec nth_Cons_0 nth_Cons_Suc
+             nth_Cons_numeral nth_Cons'} @ @{thms comma_cyclotomic_clock.select_convs})
+      val _ = Comma_Proof_Profile.report ("Core guard finite converter setup-complete elapsed_ms=" ^
+        Comma_Proof_Profile.elapsed_ms started)
+      fun checkpoint ordinal stage = if ordinal<=3 orelse ordinal mod 16=0 then
+        Comma_Proof_Profile.report ("Core guard import=" ^ Int.toString ordinal ^
+          " stage=" ^ stage ^ " elapsed_ms=" ^ Comma_Proof_Profile.elapsed_ms started)
+        else ()
+      fun certify store arena (entry: Comma_Frontier24_Parametric_Compiler.guard_entry) =
+        let
+          val _ = Utils.ensure_closed_context ctxt "Core guard Store" (Store.wellformed store)
+          val _ = calls := !calls + 1
+          val ordinal = !calls
+          val core = #core entry
+          val wanted = nat (#wanted entry)
+          val _ = if ordinal <= 3 then Comma_Proof_Profile.report
+            ("Core guard import=" ^ Int.toString ordinal ^ " core=" ^
+              Long_Name.base_name (#1 (Term.dest_Const core)) ^ " wanted=" ^ Int.toString (#wanted entry) ^
+              " source_nodes=" ^ Int.toString (length (#source_seeds entry))) else ()
+          fun const name T args = list_comb
+            (Const (name,fold_rev (curry (op -->)) (map fastype_of args) T),args)
+          fun code_equation label request expected =
+            let
+              val _ = checkpoint ordinal (label ^ " scalar-start")
+              val equation = Simplifier.rewrite scalar_context (Thm.cterm_of ctxt request)
+              val _ = checkpoint ordinal (label ^ " scalar-complete exact-start")
+              val exact = Utils.exact_prop ctxt label (Logic.mk_equals (request,expected)) equation
+              val _ = checkpoint ordinal (label ^ " exact-complete")
+            in exact end
+          val nodes_request = const @{const_name comma_frontier24_core_guard_nodes}
+            @{typ "bool comma_crt_mdd_node list"} [core,wanted]
+          val _ = checkpoint ordinal "nodes-start"
+          val template = (case Termtab.lookup (!templates) core of
+              SOME theorem => theorem
+            | NONE =>
+                let
+                  val variable = Free ("core_guard_wanted",natT)
+                  val symbolic_request = const @{const_name comma_frontier24_core_guard_nodes}
+                    @{typ "bool comma_crt_mdd_node list"} [core,variable]
+                  val _ = checkpoint ordinal "nodes-template-start"
+                  val converted = Simplifier.rewrite scalar_context
+                    (Thm.cterm_of ctxt symbolic_request)
+                  val theorem = Thm.forall_intr (Thm.cterm_of ctxt variable) converted
+                  val _ = templates := Termtab.update (core,theorem) (!templates)
+                  val _ = checkpoint ordinal "nodes-template-complete"
+                in theorem end)
+          val specialized = Thm.forall_elim (Thm.cterm_of ctxt wanted) template
+          val specialized_scalar = Simplifier.rewrite scalar_context (Thm.rhs_of specialized)
+          val nodes_equation = Utils.exact_prop ctxt "Core guard source table"
+            (Logic.mk_equals (nodes_request,#source_nodes entry))
+            (Thm.transitive specialized specialized_scalar)
+          val _ = checkpoint ordinal "nodes-complete"
+          val root_request = const @{const_name comma_frontier24_core_guard_root} natT [core]
+          val _ = checkpoint ordinal "root-start"
+          val root_equation = code_equation "Core guard source root"
+            root_request (nat (#source_root entry))
+          val _ = checkpoint ordinal "root-complete"
+          val import: guard_import =
+            {source_nodes= #source_nodes entry,source_root= #source_root entry,
+             source_seeds= #source_seeds entry,arena_roots= #arena_roots entry,
+             arena_nodes= #arena_nodes entry}
+          val _ = checkpoint ordinal "root-map-start"
+          val literal_map = root_map_certificate store arena import
+          val _ = checkpoint ordinal "root-map-complete"
+          fun argument index conversion =
+            funpow (6-index-1) Conv.fun_conv (Conv.arg_conv conversion)
+          val source_nodes = Conv.arg_conv (argument 1
+            (Conv.rewr_conv (Thm.symmetric nodes_equation)))
+          val source_root = Conv.arg_conv (argument 4
+            (Conv.rewr_conv (Thm.symmetric root_equation)))
+          val theorem = literal_map
+            |> Conv.fconv_rule source_nodes
+            |> Conv.fconv_rule source_root
+          val encode = Abs ("value",@{typ bool},
+            Const (@{const_name If},@{typ "bool => nat => nat => nat"}) $
+              Bound 0 $ nat 1 $ nat 0)
+          val relation = const @{const_name comma_crt_mdd_root_map_certificate} boolT
+            [HOLogic.mk_list natT (map nat (Arena.radices arena)),nodes_request,
+             Store.table store,encode,root_request,nat (#root entry)]
+        in Utils.exact_prop ctxt "Canonical core guard root-map certificate"
+          (HOLogic.mk_Trueprop relation) theorem end
+    in {certify=certify,statistics=fn () => "core_guard_imports=" ^ Int.toString (!calls)} end
 
 end

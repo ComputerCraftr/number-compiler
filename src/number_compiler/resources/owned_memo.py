@@ -76,10 +76,11 @@ class LedgerReservation:
     unbacked node credit or adopt another workspace's unrelated reservation.
     """
 
-    __slots__ = ("_ledger",)
+    __slots__ = ("_ledger", "_retired")
+    _retired: bool
 
     def __setattr__(self, name: str, value: object) -> None:
-        if name != "_ledger" or hasattr(self, "_ledger"):
+        if name not in ("_ledger", "_retired") or hasattr(self, name):
             raise AttributeError("ledger reservation binding is immutable")
         object.__setattr__(self, name, value)
 
@@ -92,10 +93,18 @@ class LedgerReservation:
         if type(ledger) is not ResourceLedger:
             raise TypeError("reservation needs its exact ResourceLedger")
         self._ledger = ledger
+        self._retired = False
         ledger.register_reservation(self, owner)
 
     def _check_open(self) -> None:
+        if self._retired:
+            raise RuntimeError("ledger reservation has been retired")
         self._ledger.validate_reservation(self)
+
+    @property
+    def retired(self) -> bool:
+        """Whether the scope dropped its storage and only cleanup remains."""
+        return self._retired
 
     def belongs_to(self, ledger: ResourceLedger) -> bool:
         """Check ledger identity without exposing the reservation binding."""
@@ -127,6 +136,11 @@ class LedgerReservation:
 
     def close(self) -> None:
         self._ledger.close_reservation(self)
+
+    def retire(self) -> None:
+        """Close a finished scope, allowing its owner to retry a failed debit."""
+        object.__setattr__(self, "_retired", True)
+        self.close()
 
     def __enter__(self) -> Self:
         self._check_open()
@@ -424,7 +438,23 @@ class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
                 raise
             self._dynamic_nodes += difference
             if difference < 0:
-                self.ledger.release(self.owner, nodes=-difference)
+                before = self.ledger.account_usage(self.owner)
+                try:
+                    self.ledger.release(self.owner, nodes=-difference)
+                except BaseException as error:
+                    after = self.ledger.account_usage(self.owner)
+                    if after == before:
+                        try:
+                            self._release_failed_publication_charge(
+                                entries=0, nodes=-difference
+                            )
+                        except BaseException as replacement_cleanup_error:
+                            raise error from replacement_cleanup_error
+                    elif after != (before[0], before[1] + difference):
+                        raise RuntimeError(
+                            "memo replacement release changed unrelated accounting"
+                        ) from error
+                    raise
             return
         nodes = self.entry_nodes(key, value)
         self.ledger.reserve(self.owner, entries=1, nodes=nodes)
@@ -548,10 +578,98 @@ class OwnedMemo(MutableMapping[_K, _V], Generic[_K, _V]):
             nodes = value.nodes
         else:
             nodes = self.nodes_per_entry
-        del self._data[key]
+        usage_before_release = self.ledger.account_usage(self.owner)
+        deletion_error: BaseException | None = None
+        try:
+            del self._data[key]
+        except BaseException as error:
+            marker = object()
+            try:
+                current: object = self._data.get(key, marker)
+            except BaseException as inspection_error:
+                raise error from inspection_error
+            if current is value:
+                # The store rejected deletion before changing the row.
+                raise
+            if current is not marker:
+                raise RuntimeError(
+                    "memo deletion failure changed another retained value"
+                ) from error
+            # The mapping removed the exact row and then raised (for example,
+            # from a post-mutation audit hook). Finish accounting exactly once
+            # before preserving that original failure.
+            deletion_error = error
         if self.node_cost is not None:
             self._dynamic_nodes -= nodes
-        self.ledger.release(self.owner, entries=1, nodes=nodes)
+        try:
+            self.ledger.release(self.owner, entries=1, nodes=nodes)
+        except BaseException as error:
+            usage_after_release = self.ledger.account_usage(self.owner)
+            released_usage = (
+                usage_before_release[0] - 1,
+                usage_before_release[1] - nodes,
+            )
+            if usage_after_release == released_usage:
+                # A release hook may raise after committing. The store and
+                # account already agree, so do not create a retry charge.
+                if deletion_error is not None:
+                    raise deletion_error from error
+                raise
+            if usage_after_release == usage_before_release:
+                # The row is gone but its reservation remains. Reuse the
+                # existing pending-clear path; it retries the exact delta and
+                # retains it if release fails again.
+                try:
+                    self._release_failed_publication_charge(entries=1, nodes=nodes)
+                except BaseException as cleanup_error:
+                    if deletion_error is not None:
+                        raise deletion_error from cleanup_error
+                    raise error from cleanup_error
+                if deletion_error is not None:
+                    raise deletion_error from error
+                raise
+
+            partial_release_usages = {
+                (usage_before_release[0] - 1, usage_before_release[1]),
+                (usage_before_release[0], usage_before_release[1] - nodes),
+            }
+            if usage_after_release not in partial_release_usages:
+                if deletion_error is not None:
+                    raise deletion_error from error
+                raise RuntimeError(
+                    "memo deletion release changed unrelated accounting"
+                ) from error
+
+            # ResourceLedger.release is atomic. If a fault injector violates
+            # that contract by changing just one dimension, preserve only the
+            # exact residual charge. A full store measurement is exceptional-
+            # path work only.
+            store_entries, store_nodes = self._measure_store()
+            pending_entries = usage_after_release[0] - store_entries
+            pending_nodes = usage_after_release[1] - store_nodes
+            if pending_entries < 0 or pending_nodes < 0:
+                raise RuntimeError(
+                    "memo deletion release changed unrelated accounting"
+                ) from error
+            self._record_pending_clear(pending_entries, pending_nodes)
+            try:
+                clear_accounted_store(
+                    self.ledger,
+                    self.owner,
+                    lambda: None,
+                    self._measure_store,
+                    (pending_entries, pending_nodes),
+                    self._record_pending_clear,
+                )
+            except BaseException as cleanup_error:
+                if deletion_error is not None:
+                    raise deletion_error from cleanup_error
+                raise error from cleanup_error
+            if deletion_error is not None:
+                raise deletion_error from error
+            raise
+        if deletion_error is not None:
+            raise deletion_error
 
     def __len__(self) -> int:
         self._check_open()

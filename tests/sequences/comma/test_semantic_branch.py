@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 from collections.abc import Callable
 from types import MappingProxyType
 from typing import cast
@@ -40,6 +39,7 @@ from number_compiler.sequences.comma.semantic_branch import (
     select_semantic_macro_child,
 )
 from number_compiler.sequences.comma.weighted_return import WeightedBoundaryAction
+from tests.support.comma_future_provider_fixture import source_mdd_fields
 
 
 def _work_log() -> Callable[[int], None]:
@@ -74,9 +74,7 @@ def _candidate_for_prefix(
         "format": future_provider.FUTURE_CANDIDATE_FORMAT,
         "authority": future_provider.FUTURE_CANDIDATE_AUTHORITY,
         "state_universe": future_provider.FUTURE_SOURCE_UNIVERSE,
-        "class_of_state_varint_base64": base64.b64encode(source_classes).decode(
-            "ascii"
-        ),
+        **source_mdd_fields(source_classes),
         "controls": [
             ["landmine", None],
             ["landmine", None],

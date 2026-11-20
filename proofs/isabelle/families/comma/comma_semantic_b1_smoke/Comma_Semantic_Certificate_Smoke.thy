@@ -124,7 +124,7 @@ lemma comma_empty_denotation_does_not_authenticate_malformed_column:
   by (simp add: comma_crt_equiv_check_iff comma_crt_set_def comma_crt_period_def)
 
 lemma comma_survival_guard_clock_shift_counterexample:
-  defines "even_column \<equiv> Comma_CRT_Node 0
+  defines "even_column \<equiv> Comma_CRT_Node 1
     [Comma_CRT_Bool True, Comma_CRT_Bool False,
      Comma_CRT_Bool True, Comma_CRT_Bool False]"
   shows "comma_crt_eval 0 even_column \<and>
@@ -151,22 +151,18 @@ ML_file "semantic_weighted_crt_shallow_fixture.ML"
 ML_file "semantic_phase_class_rank_joint_fixture.ML"
 ML_file "semantic_phase_class_rank_relation_fixture.ML"
 ML_file "semantic_phase_class_rank_shift_fixture.ML"
-ML_file "../comma_semantic_b1_instance/semantic_continue_column_proofs.ML"
-ML_file "../comma_semantic_b1_instance/semantic_continue_observer_contract.ML"
-ML_file "../comma_semantic_b1_instance/semantic_continue_masked_columns.ML"
-ML_file "../comma_semantic_b1_instance/semantic_continue_application_transport.ML"
-ML_file "semantic_continue_apply_memo_fixture.ML"
-ML_file "semantic_continue_application_transport_fixture.ML"
 ML \<open>
   Comma_Proof_Profile.report "CRT certificate smoke stage=view-start";
   Comma_Weighted_CRT_View_Fixture.run @{context};
   Comma_Proof_Profile.report "CRT certificate smoke stage=view-done";
   Comma_Weighted_CRT_Shallow_Fixture.run @{context};
+  Comma_Proof_Profile.report "CRT certificate smoke stage=shallow-done";
   Comma_Semantic_Phase_Class_Rank_Joint_Fixture.run @{context};
+  Comma_Proof_Profile.report "CRT certificate smoke stage=rank-joint-done";
   Comma_Semantic_Phase_Class_Rank_Relation_Fixture.run @{context};
+  Comma_Proof_Profile.report "CRT certificate smoke stage=rank-relation-done";
   Comma_Semantic_Phase_Class_Rank_Shift_Fixture.run @{context};
-  Comma_Semantic_Continue_Apply_Memo_Fixture.run @{context};
-  Comma_Semantic_Continue_Application_Transport_Fixture.run @{context};
+  Comma_Proof_Profile.report "CRT certificate smoke stage=rank-shift-done";
 \<close>
 
 ML \<open>

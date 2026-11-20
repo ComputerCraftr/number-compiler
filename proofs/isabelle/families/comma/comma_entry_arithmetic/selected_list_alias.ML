@@ -1,10 +1,11 @@
-(* Exact request-local bridges for natural numerals in Code_Simp's code form.
+(* Exact request-local bridges for natural and signed numerals in Code_Simp's code form.
    Root aliases and selected results are checked against their HOL endpoint. *)
 structure Comma_Selected_List_Alias =
 struct
   fun make_codec {ctxt, validate_equation} =
     let
       val natT = @{typ nat}
+      val intT = @{typ int}
       val numT = @{typ num}
       val integerT = @{typ Code_Numeral.integer}
       fun num_literal value =
@@ -21,6 +22,9 @@ struct
         Const (@{const_name Code_Numeral.nat_of_integer}, integerT --> natT) $
           (Const (@{const_name Code_Numeral.Pos}, numT --> integerT) $
             num_literal value)
+      fun code_signed value =
+        Const (if value > 0 then @{const_name Int.Pos} else @{const_name Int.Neg},
+          numT --> intT) $ num_literal (IntInf.abs value)
       fun map_term rewrite term =
         (case rewrite term of
           SOME replacement => replacement
@@ -35,13 +39,14 @@ struct
         Const (Axclass.unoverload_const thy (name, typ), typ) | atom => atom) term
       fun explicit_alias term =
         let
-          fun replace_natural candidate =
+          fun replace_numeral candidate =
             (case try HOLogic.dest_number candidate of
               SOME (typ, value) =>
                 if typ = natT andalso value >= 2 then SOME (code_natural value)
+                else if typ = intT andalso value <> 0 then SOME (code_signed value)
                 else NONE
             | NONE => NONE)
-        in unoverload_term (map_term replace_natural term) end
+        in unoverload_term (map_term replace_numeral term) end
       val plain_alias = unoverload_term
       val inverse_ss = put_simpset HOL_basic_ss ctxt
         |> Simplifier.add_simps

@@ -3,7 +3,6 @@
 import base64
 import json
 import sys
-from copy import deepcopy
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
@@ -14,13 +13,11 @@ import pytest
 from devtools.paths import isabelle_root, repository_root
 from devtools.verification.comma_c1_audit import candidate_c1_return
 from devtools.verification.comma_semantic_future_artifact import (
-    CANDIDATE_TABLE_NAMES,
-    assert_candidate_data_theory_matches,
-    candidate_table_definitions,
     canonical_candidate_bytes,
+    decode_unsigned_varints,
     encode_unsigned_varints,
     runtime_candidate_bytes,
-    runtime_candidate_record_from_isabelle_data,
+    runtime_candidate_record_from_m204_data,
     runtime_candidate_sha256,
     write_runtime_candidate_from_native_export,
 )
@@ -28,12 +25,9 @@ from devtools.verification.comma_semantic_future_candidate import (
     Control,
     build_semantic_future_candidate,
     class_rank_candidate,
-    decode_unsigned_varints,
     reencode_candidate,
     refine_with_witnesses,
-    render_candidate_data_theory,
     validate_class_rows,
-    verify_runtime_candidate_hol_data_binding,
     write_new,
 )
 from devtools.verification.comma_semantic_future_candidate import (
@@ -49,38 +43,6 @@ from number_compiler.sequences.comma.occurrence import (
     BoundaryOccurrence,
     OccurrencePrefixReturn,
 )
-
-
-def _assert_candidate_theory_data_matches(
-    checked_text: str,
-    checked_path: Path,
-    generated_text: str,
-    generated_path: Path,
-) -> None:
-    assert_candidate_data_theory_matches(
-        checked_text, checked_path, generated_text, generated_path
-    )
-
-
-def test_candidate_table_comparison_ignores_masked_ml_audit_suffix() -> None:
-    definitions = "\n".join(
-        f'definition {name} :: "nat list" where "{name} = [{index}]"'
-        for index, name in enumerate(CANDIDATE_TABLE_NAMES)
-    )
-
-    def theory(suffix: str) -> str:
-        return (
-            "theory Candidate_Table_Fixture imports Main begin\n\n"
-            f"{definitions}\n\n{suffix}end\n"
-        )
-
-    checked_path = Path("Candidate_Table_Fixture.thy")
-    generated_path = Path("Generated_Candidate_Table_Fixture.thy")
-    checked = theory('ML ‹val _ = if true then () else error "audit"›\n')
-    generated = theory("")
-    _assert_candidate_theory_data_matches(
-        checked, checked_path, generated, generated_path
-    )
 
 
 def test_candidate_varint_map_round_trips_and_rejects_forged_values() -> None:
@@ -158,8 +120,10 @@ def test_runtime_candidate_bytes_use_the_consumer_digest_contract() -> None:
     record = {
         "format": "comma-semantic-future-candidate-v1",
         "authority": "untrusted-source-derived-candidate",
-        "state_universe": "small test fixture",
-        "class_of_state_varint_base64": "AA==",
+        "state_universe": future_provider.FUTURE_SOURCE_UNIVERSE,
+        "class_of_state_varint_base64": base64.b64encode(bytes(SOURCE_COUNT)).decode(
+            "ascii"
+        ),
         "controls": [["landmine", None]],
         "ordered_children": [[None, None]],
         "class_rank_candidate": [0],
@@ -174,7 +138,9 @@ def test_runtime_candidate_bytes_use_the_consumer_digest_contract() -> None:
         "format",
         "authority",
         "state_universe",
-        "class_of_state_varint_base64",
+        "source_radices",
+        "source_roots",
+        "source_nodes",
         "controls",
         "ordered_children",
         "class_rank_candidate",
@@ -189,42 +155,6 @@ def test_runtime_candidate_bytes_use_the_consumer_digest_contract() -> None:
         runtime_candidate_bytes(
             {**record, "format": future_provider.FUTURE_CANDIDATE_FORMAT}
         )
-
-
-def test_runtime_candidate_hol_binding_checks_complete_source_map(
-    tmp_path: Path,
-) -> None:
-    """Keep source-map and table binding covered without rebuilding the audit."""
-    source_classes = (0,) * SOURCE_COUNT
-    controls: tuple[Control, ...] = (("landmine", None),)
-    children = ((None, None),)
-    ranks = (0,)
-    record: dict[str, object] = {
-        "format": future_provider.FUTURE_CANDIDATE_FORMAT,
-        "authority": future_provider.FUTURE_CANDIDATE_AUTHORITY,
-        "state_universe": future_provider.FUTURE_SOURCE_UNIVERSE,
-        "class_of_state_varint_base64": base64.b64encode(bytes(source_classes)).decode(
-            "ascii"
-        ),
-        "controls": [["landmine", None]],
-        "ordered_children": [[None, None]],
-        "class_rank_candidate": [0],
-    }
-    checked_path = tmp_path / "Comma_Semantic_Future_Candidate_Data.thy"
-    checked_path.write_text(
-        render_candidate_data_theory(source_classes, controls, children, ranks),
-        encoding="utf-8",
-    )
-
-    digest = verify_runtime_candidate_hol_data_binding(record, checked_path)
-    assert digest == future_provider.future_candidate_sha256(record)
-
-    changed = deepcopy(record)
-    changed["controls"] = [["fork", 2]]
-    changed["ordered_children"] = [[0, 0]]
-    changed["class_rank_candidate"] = [None]
-    with pytest.raises(ValueError, match="candidate table definitions differ"):
-        verify_runtime_candidate_hol_data_binding(changed, checked_path)
 
 
 @pytest.mark.validation
@@ -253,23 +183,47 @@ def test_candidate_c1_projection_matches_independent_fragment_accumulation(
 
 
 @pytest.mark.validation
-def test_reencoded_runtime_bytes_bind_to_the_checked_hol_candidate(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_full_candidate_m204_graph_matches_independent_source_rebuild(
+    tmp_path: Path,
 ) -> None:
-    """Rebuild the complete 14,784-source audit candidate and bind its tables.
-
-    This is an exhaustive development-artifact integration audit, not a
-    production runtime contract. The unit selection retains small tests for
-    canonical bytes, malformed records, class-row validation, and exact HOL
-    table comparison; this full source-derived rebuild remains available in
-    the explicit validation selection.
-    """
+    """Compare every source and ordered edge without assuming matching CID numbers."""
     candidate = build_semantic_future_candidate()
+    directory = (
+        isabelle_root(repository_root())
+        / "families/comma/comma_semantic_future_instance"
+    )
+    proposal = runtime_candidate_record_from_m204_data(
+        (directory / "semantic_future_m204_candidate_data.ML").read_text(
+            encoding="utf-8"
+        ),
+        (directory / "semantic_future_m204_graph_data.ML").read_text(encoding="utf-8"),
+    )
+    parsed = future_provider.parse_future_candidate(
+        proposal, charge_work=lambda _amount: None
+    )
+    actual_ids = tuple(
+        parsed.source_classes.lookup(state) for state in candidate.states
+    )
+    forward: dict[int, int] = {}
+    reverse: dict[int, int] = {}
+    for expected, actual in zip(candidate.class_ids, actual_ids, strict=True):
+        assert forward.setdefault(expected, actual) == actual
+        assert reverse.setdefault(actual, expected) == expected
+    assert len(forward) == len(candidate.class_controls) == len(parsed.classes)
+    for expected, actual in forward.items():
+        row = parsed.classes[actual]
+        assert (
+            row.control.kind,
+            row.control.fork_coefficient,
+        ) == candidate.class_controls[expected]
+        assert row.ordered_children == tuple(
+            None if child is None else forward[child]
+            for child in candidate.class_children[expected]
+        )
+        assert row.rank == candidate.class_ranks[expected]
+
     v1 = candidate.certificate_record()
     occurrence = candidate.occurrence_payload_record()
-    assert v1["format"] == "comma-semantic-future-candidate-v1"
-    assert v1["authority"] == "untrusted-source-derived-candidate"
-
     raw = {
         "format": v1["format"],
         "states": [
@@ -284,34 +238,14 @@ def test_reencoded_runtime_bytes_bind_to_the_checked_hol_candidate(
         "seam_is_projected_from_cid": v1["seam_is_projected_from_cid"],
         "seam_projection_collision": v1["seam_projection_collision"],
     }
-    raw_path = tmp_path / "raw-v1.json"
-    write_new(raw_path, json.dumps(raw, sort_keys=True, separators=(",", ":")))
-    runtime_path = tmp_path / "runtime-v2.json"
+    raw_path = tmp_path / "raw.json"
+    runtime_path = tmp_path / "runtime.json"
     occurrence_path = tmp_path / "occurrence.json"
-    hol_path = tmp_path / "Comma_Semantic_Future_Candidate_Data.thy"
-    result = reencode_candidate(raw_path, runtime_path, occurrence_path, hol_path)
-
-    runtime_bytes = candidate.runtime_candidate_bytes()
-    runtime_record = json.loads(runtime_bytes)
-    assert runtime_path.read_bytes() == runtime_bytes
-    assert runtime_bytes == candidate.runtime_candidate_bytes()
-    assert candidate.runtime_candidate_sha256() == sha256(runtime_bytes).hexdigest()
-    assert result["candidate_sha256"] == future_provider.future_candidate_sha256(
-        runtime_record
-    )
-    assert runtime_record["format"] == future_provider.FUTURE_CANDIDATE_FORMAT
-    assert (
-        runtime_record["class_of_state_varint_base64"]
-        == v1["class_of_state_varint_base64"]
-    )
-    assert base64.b64decode(runtime_record["class_of_state_varint_base64"]) == (
-        encode_unsigned_varints(
-            candidate.class_ids, max_value=len(candidate.states) - 1
-        )
-    )
-    assert runtime_record["controls"] == v1["controls"]
-    assert runtime_record["ordered_children"] == v1["ordered_children"]
-    assert runtime_record["class_rank_candidate"] == v1["class_rank_candidate"]
+    write_new(raw_path, json.dumps(raw, sort_keys=True, separators=(",", ":")))
+    result = reencode_candidate(raw_path, runtime_path, occurrence_path)
+    assert runtime_path.read_bytes() == candidate.runtime_candidate_bytes()
+    assert result["candidate_sha256"] == candidate.runtime_candidate_sha256()
+    assert json.loads(occurrence_path.read_text(encoding="utf-8")) == occurrence
     assert (
         not {
             "refinement_rounds",
@@ -319,158 +253,49 @@ def test_reencoded_runtime_bytes_bind_to_the_checked_hol_candidate(
             "seam_is_projected_from_cid",
             "seam_projection_collision",
         }
-        & runtime_record.keys()
-    )
-    assert "theorem_id" not in runtime_record and "instance_id" not in runtime_record
-
-    checked_hol = (
-        isabelle_root(repository_root())
-        / "families/comma/comma_semantic_future_instance"
-        / "Comma_Semantic_Future_Candidate_Data.thy"
-    ).read_text(encoding="utf-8")
-    generated_hol = hol_path.read_text(encoding="utf-8")
-    checked_path = (
-        isabelle_root(repository_root())
-        / "families/comma/comma_semantic_future_instance"
-        / "Comma_Semantic_Future_Candidate_Data.thy"
-    )
-    assert generated_hol == candidate.isabelle_candidate_data()
-    _assert_candidate_theory_data_matches(
-        checked_hol, checked_path, generated_hol, hol_path
-    )
-    assert (
-        verify_runtime_candidate_hol_data_binding(runtime_record, checked_path)
-        == candidate.runtime_candidate_sha256()
+        & proposal.keys()
     )
 
-    changed_record = deepcopy(runtime_record)
-    changed_controls = changed_record["controls"]
-    fork_index = next(
-        index for index, control in enumerate(changed_controls) if control[0] == "fork"
-    )
-    old_coefficient = changed_controls[fork_index][1]
-    changed_controls[fork_index][1] = 3 if old_coefficient != 3 else 4
-    with pytest.raises(ValueError, match="candidate table definitions differ"):
-        verify_runtime_candidate_hol_data_binding(changed_record, checked_path)
 
-    changed_raw = deepcopy(raw)
-    changed_raw["controls"] = deepcopy(changed_record["controls"])
-    changed_raw_path = tmp_path / "changed-raw-v1.json"
-    write_new(
-        changed_raw_path,
-        json.dumps(changed_raw, sort_keys=True, separators=(",", ":")),
-    )
-    rejected_outputs = (
-        tmp_path / "rejected-runtime-v2.json",
-        tmp_path / "rejected-occurrence.json",
-        tmp_path / "rejected-candidate-data.thy",
-    )
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        [
-            "comma-semantic-future-candidate",
-            "--output",
-            str(rejected_outputs[0]),
-            "--occurrence-output",
-            str(rejected_outputs[1]),
-            "--isabelle-data-output",
-            str(rejected_outputs[2]),
-            "--reencode-input",
-            str(changed_raw_path),
-            "--checked-isabelle-data",
-            str(checked_path),
-        ],
-    )
-    with pytest.raises(ValueError, match="candidate table definitions differ"):
-        candidate_main()
-    assert all(not path.exists() for path in rejected_outputs)
-
-    extra_record = deepcopy(runtime_record)
-    extra_record["controls"].append(list(extra_record["controls"][0]))
-    extra_record["ordered_children"].append(list(extra_record["ordered_children"][0]))
-    extra_record["class_rank_candidate"].append(extra_record["class_rank_candidate"][0])
-    with pytest.raises(ValueError):
-        verify_runtime_candidate_hol_data_binding(extra_record, checked_path)
-
-    truncated_record = deepcopy(runtime_record)
-    for field in ("controls", "ordered_children", "class_rank_candidate"):
-        truncated_record[field] = truncated_record[field][:-1]
-    with pytest.raises(ValueError):
-        verify_runtime_candidate_hol_data_binding(truncated_record, checked_path)
-
-    changed_format = deepcopy(runtime_record)
-    changed_format["format"] = "comma-semantic-future-candidate-v1"
-    with pytest.raises(ValueError, match="unsupported semantic future candidate"):
-        verify_runtime_candidate_hol_data_binding(changed_format, checked_path)
-
-    changed_controls = list(candidate.class_controls)
-    first_control = changed_controls[0]
-    changed_controls[0] = (
-        ("fork", 2) if first_control[0] == "landmine" else ("landmine", None)
-    )
-    altered_hol = render_candidate_data_theory(
-        candidate.class_ids,
-        tuple(changed_controls),
-        candidate.class_children,
-        candidate.class_ranks,
-    )
-    altered_path = tmp_path / "Altered_Comma_Semantic_Future_Candidate_Data.thy"
-    checked_tables = candidate_table_definitions(checked_hol, checked_path)
-    altered_tables = candidate_table_definitions(altered_hol, altered_path)
-    assert altered_tables.keys() == checked_tables.keys()
-    assert (
-        altered_tables["comma_semantic_future_candidate_controls"]
-        != (checked_tables["comma_semantic_future_candidate_controls"])
-    )
-    assert {
-        name: body
-        for name, body in altered_tables.items()
-        if name != "comma_semantic_future_candidate_controls"
-    } == {
-        name: body
-        for name, body in checked_tables.items()
-        if name != "comma_semantic_future_candidate_controls"
-    }
-    with pytest.raises(ValueError, match="candidate table definitions differ"):
-        _assert_candidate_theory_data_matches(
-            checked_hol, checked_path, altered_hol, altered_path
-        )
-
-
-def test_runtime_candidate_exports_authored_hol_tables_without_rebuilding(
+def test_runtime_candidate_exports_compact_m204_literals_without_rebuilding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    source = (
+    directory = (
         isabelle_root(repository_root())
         / "families/comma/comma_semantic_future_instance"
-        / "Comma_Semantic_Future_Candidate_Data.thy"
     )
+    source = directory / "semantic_future_m204_candidate_data.ML"
+    graph = directory / "semantic_future_m204_graph_data.ML"
     source_text = source.read_text(encoding="utf-8")
+    graph_text = graph.read_text(encoding="utf-8")
     monkeypatch.setattr(
         "devtools.verification.comma_semantic_future_candidate.build_semantic_future_candidate",
         _reject_candidate_rebuild,
     )
-    record = runtime_candidate_record_from_isabelle_data(source_text, source)
+    record = runtime_candidate_record_from_m204_data(source_text, graph_text)
     assert future_provider.parse_future_candidate(
         record, charge_work=lambda _amount: None
-    ).source_classes
-
-    output = tmp_path / "candidate-v2.json"
+    )
+    output = tmp_path / "candidate-v3.json"
     monkeypatch.setattr(
         sys,
         "argv",
         [
-            "comma-semantic-future-candidate",
+            "candidate",
             "--output",
             str(output),
-            "--from-isabelle-data",
+            "--from-m204-source",
             str(source),
+            "--from-m204-graph",
+            str(graph),
         ],
     )
     candidate_main()
     assert output.read_bytes() == canonical_candidate_bytes(record)
-    assert json.loads(output.read_text(encoding="ascii")) == record
+    with pytest.raises(ValueError):
+        runtime_candidate_record_from_m204_data(
+            source_text.replace("0 upto", "0 + 0 upto", 1), graph_text
+        )
 
 
 def _native_export_candidate_record() -> dict[str, object]:
@@ -478,9 +303,9 @@ def _native_export_candidate_record() -> dict[str, object]:
         "format": future_provider.FUTURE_CANDIDATE_FORMAT,
         "authority": future_provider.FUTURE_CANDIDATE_AUTHORITY,
         "state_universe": future_provider.FUTURE_SOURCE_UNIVERSE,
-        "class_of_state_varint_base64": base64.b64encode(bytes(SOURCE_COUNT)).decode(
-            "ascii"
-        ),
+        "source_radices": [3, 4, 7, 11],
+        "source_nodes": [[0]],
+        "source_roots": [0] * 16,
         "controls": [["landmine", None]],
         "ordered_children": [[None, None]],
         "class_rank_candidate": [0],
@@ -552,40 +377,14 @@ def test_runtime_candidate_native_export_cli_rejects_combined_modes(
             str(output),
             "--from-native-export",
             str(tmp_path / "native-export.json"),
-            "--from-isabelle-data",
-            str(tmp_path / "candidate-data.thy"),
+            "--from-m204-source",
+            str(tmp_path / "candidate-data.ML"),
         ],
     )
 
     with pytest.raises(ValueError, match="cannot be combined"):
         candidate_main()
     assert not output.exists()
-
-
-def test_runtime_candidate_hol_literal_parser_rejects_computed_or_changed_tables() -> (
-    None
-):
-    source = (
-        isabelle_root(repository_root())
-        / "families/comma/comma_semantic_future_instance"
-        / "Comma_Semantic_Future_Candidate_Data.thy"
-    )
-    text = source.read_text(encoding="utf-8")
-    changed_type = text.replace(
-        'comma_semantic_future_candidate_ranks :: "nat option list"',
-        'comma_semantic_future_candidate_ranks :: "nat list"',
-        1,
-    )
-    with pytest.raises(ValueError, match="canonical literal list"):
-        runtime_candidate_record_from_isabelle_data(changed_type, source)
-
-    computed_map = text.replace(
-        "      1432, 1062, 1061,",
-        "      1432 + 0, 1062, 1061,",
-        1,
-    )
-    with pytest.raises(ValueError, match="nonliteral natural"):
-        runtime_candidate_record_from_isabelle_data(computed_map, source)
 
 
 def _reject_candidate_rebuild() -> object:

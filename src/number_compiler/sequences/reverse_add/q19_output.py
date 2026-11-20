@@ -784,12 +784,9 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
                     root,
                     reverse=reverse,
                     on_task=record_visit,
-                    reserve_task=lambda: self.ledger.reserve(
-                        self._scratch_owner, nodes=1
-                    ),
-                    release_tasks=lambda count: self.ledger.release(
-                        self._scratch_owner, nodes=count
-                    ),
+                    ledger=self.ledger,
+                    owner=self._scratch_owner,
+                    task_entries=0,
                     check_open=self.validate_open,
                 )
 

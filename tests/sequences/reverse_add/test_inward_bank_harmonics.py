@@ -162,6 +162,78 @@ def test_owner_source_bound_port_requires_no_completed_target(
             assert ledger.entries == ledger.nodes == 0
 
 
+@pytest.mark.parametrize("seed", (17071, 99999, 12302, 1234567891))
+def test_window_folds_shared_high_border_once(
+    seed: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    width, pairs, carries, growth, target = reverse_add_source_data(seed)
+    count = min(width // 2, 4)
+    expected = tuple(
+        inward_bank_select(
+            width=width,
+            coordinate=i,
+            growth=growth,
+            pair_at=_pair_accessor(tuple(pairs)),
+            low_carry=carries[i],
+            high_border_carries=(carries[width - 1],),
+            inward_lookahead=8,
+        )
+        for i in range(count)
+    )
+    boundaries: list[int] = []
+    carry_at = GuardedPairStencil.carry_at
+
+    def tracked_carry(
+        stencil: GuardedPairStencil,
+        owner: ReversePairQ19OutputOwner,
+        boundary: int,
+    ) -> int:
+        boundaries.append(boundary)
+        return carry_at(stencil, owner, boundary)
+
+    monkeypatch.setattr(GuardedPairStencil, "carry_at", tracked_carry)
+    ledger = ResourceLedger()
+    owner = ReversePairQ19OutputOwner(ledger, digits_lsd(seed, 10), base=10)
+    try:
+        stencil = GuardedPairStencil.from_occurrence(owner, owner.initial)
+        window = stencil.inward_bank_window(
+            owner, start=0, count=count, inward_lookahead=8
+        )
+        assert window.selections == expected
+        assert all(
+            target[i] in selected.possible_coefficients
+            for i, selected in enumerate(expected)
+        )
+        assert boundaries.count(width - 1) == 1
+        assert sorted(boundaries) == [*range(count), width - 1]
+    finally:
+        owner.dispose()
+        assert ledger.entries == ledger.nodes == 0
+
+
+def test_window_rejects_invalid_lookahead_and_foreign_or_disposed_owner() -> None:
+    ledger = ResourceLedger()
+    foreign_ledger = ResourceLedger()
+    owner = ReversePairQ19OutputOwner(ledger, digits_lsd(17071, 10), base=10)
+    foreign = ReversePairQ19OutputOwner(foreign_ledger, digits_lsd(17071, 10), base=10)
+    stencil = GuardedPairStencil.from_occurrence(owner, owner.initial)
+    try:
+        for lookahead in (-1, True):
+            with pytest.raises(ValueError, match="lookahead"):
+                stencil.inward_bank_window(
+                    owner, start=0, count=1, inward_lookahead=lookahead
+                )
+        with pytest.raises(ValueError):
+            stencil.inward_bank_window(foreign, start=0, count=1)
+    finally:
+        owner.dispose()
+        foreign.dispose()
+        assert ledger.entries == ledger.nodes == 0
+        assert foreign_ledger.entries == foreign_ledger.nodes == 0
+    with pytest.raises(ValueError, match="disposed"):
+        stencil.inward_bank_window(owner, start=0, count=1)
+
+
 def test_symbolic_walsh_is_issued_only_for_forced_64_lanes() -> None:
     # Pair coefficient 2 is an LT-low reset. Every next cell is 4 under
     # nongrowth, so the LT-low Walsh packet is (64 mod5,0,...,0).

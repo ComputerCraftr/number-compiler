@@ -1,15 +1,9 @@
-"""Source-preserving, demand-punctured Collatz boundary/carry relation.
+"""Demand-punctured Collatz boundary relation on one authenticated source.
 
-The *one* source cylinder is the authority for the affine, base-6, decimal
-100-state, upper-digit and future-border ports. A row is admitted only after
-all requested constraints have been pulled back to that original cylinder.
-This avoids unguarded Boolean matrix products and treating a forced base-6
-carry as a decimal carry. No port supplies an unknown future parity word.
-
-A puncture at normalized time t takes at most 200 decimal-inlet alternatives.
-No full 100x100 matrix, digit forest, or speculative scheduler search is built.
-One may use a compressed action for large powers and demand only its boundary
-cuts; intermediate weighted arrivals require a certified finite inlet program.
+Affine, base-6, decimal, upper-digit and future-border ports pull every
+requested constraint back to that cylinder. A puncture admits at most 200
+decimal inlets; it never infers an unknown future parity or builds a full
+100x100 matrix. Intermediate weighted arrivals need a certified inlet program.
 """
 
 from __future__ import annotations
@@ -44,6 +38,9 @@ from number_compiler.sequences.collatz.guarded_port_source import (
     ceil_div as _ceil_div,
 )
 from number_compiler.sequences.collatz.guarded_port_source import (
+    forced_prefix_from_cylinder as _forced_prefix_from_cylinder,
+)
+from number_compiler.sequences.collatz.guarded_port_source import (
     merge_five_source_bands as _merge_five_source_bands,
 )
 from number_compiler.sequences.collatz.guarded_port_source import (
@@ -63,7 +60,6 @@ from number_compiler.sequences.collatz.guarded_radix6_bridge import (
     certify_guarded_radix6_bridge,
     common_plus_one_valuation,
     merge_bands,
-    trace_is_zero_tail,
     transport_bands,
 )
 from number_compiler.sequences.collatz.source_closed_port_action import (
@@ -74,6 +70,9 @@ from number_compiler.sequences.collatz.source_closed_port_action import (
 
 if TYPE_CHECKING:
     from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.sequences.collatz.guarded_port_weighted_counts import (
+        PoweredZeroTailCarries,
+    )
     from number_compiler.sequences.collatz.guarded_radix6_bridge import (
         GuardedTemporalCarryCounts,
     )
@@ -82,6 +81,9 @@ if TYPE_CHECKING:
     )
     from number_compiler.sequences.collatz.parity_carry_tape import (
         ParityCarryTape,
+    )
+    from number_compiler.sequences.collatz.parity_carry_tape_actions import (
+        LedgeredParityTapeActions,
     )
 
 
@@ -105,6 +107,9 @@ class GuardedPortJoin:
     # Internal proof token used only for the ordered two-parent join path.
     _composed_parity: InitVar[_JoinedParityComposition | None] = None
     _parity_binding: _ParityTapeActionBinding | None = field(
+        default=None, init=False, compare=False, repr=False
+    )
+    _parity_composition: _JoinedParityComposition | None = field(
         default=None, init=False, compare=False, repr=False
     )
 
@@ -225,16 +230,46 @@ class GuardedPortJoin:
                     self.parity_tape, self.port.action, _composed_parity
                 )
             object.__setattr__(self, "_parity_binding", binding)
+            if _composed_parity is not None:
+                object.__setattr__(self, "_parity_composition", _composed_parity)
         elif _composed_parity is not None:
             raise ValueError("composed parity proof has no associated tape")
 
-    def parity_tape_for_action(self) -> ParityCarryTape | None:
+    def parity_composition_parents(
+        self,
+    ) -> tuple[ParityCarryTape, ParityCarryTape] | None:
+        """Return the exact roots whose checked actions formed this result."""
+        proof = self._parity_composition
+        if proof is None:
+            return None
+        tape = self.parity_tape
+        if tape is None:
+            raise ValueError("composed parity result lost its retained tape")
+        proof.verify(tape, self.port.action)
+        return proof.left, proof.right
+
+    def parity_tape_for_action(
+        self, *, cache: LedgeredParityTapeActions | None = None
+    ) -> ParityCarryTape | None:
         """Return only an already-retained, source-validated parity grammar."""
         if self.parity_tape is not None:
             binding = self._parity_binding
             if binding is None:
                 raise ValueError("retained parity tape has no action binding")
             binding.verify(self.parity_tape, self.port.action)
+            if cache is not None:
+                from number_compiler.sequences.collatz.parity_carry_tape_actions import (
+                    LedgeredParityTapeActions,
+                )
+
+                if type(cache) is not LedgeredParityTapeActions:
+                    raise TypeError("parity cache requires its exact ledger owner")
+                cached_action = cache.action(self.parity_tape)
+                if (
+                    cached_action.coefficient_snapshot()
+                    != self.port.action.coefficient_snapshot()
+                ):
+                    raise ArithmeticError("cached parity action differs from port")
             return self.parity_tape
         from number_compiler.sequences.collatz.parity_carry_tape import (
             ParityCarryTape,
@@ -248,26 +283,46 @@ class GuardedPortJoin:
             macro = self.named_macro
             if macro is None:
                 return None
-            tape = ParityCarryTape.from_named_macro(macro)
-        binding = _ParityTapeActionBinding.issue_from_fold(tape, self.port.action)
+            tape = ParityCarryTape.from_named_macro(macro, cache=cache)
+        binding = (
+            _ParityTapeActionBinding.issue_from_fold(tape, self.port.action)
+            if cache is None
+            else _ParityTapeActionBinding.issue_from_owned_action(
+                tape, self.port.action, cache
+            )
+        )
         object.__setattr__(self, "parity_tape", tape)
         object.__setattr__(self, "_parity_binding", binding)
         return tape
 
-    def _prefix(self, time: int) -> tuple[DyadicTerminalFieldAction, int]:
-        """Recover a *proved* prefix from the issued parity residue, not a guess.
-
-        The producer's full source guard is what authorizes the parity path;
-        its integer representative is only used to decode the local letters.
-        """
+    def _prefix(
+        self,
+        time: int,
+        *,
+        parity_cache: LedgeredParityTapeActions | None = None,
+    ) -> tuple[DyadicTerminalFieldAction, int]:
+        """Decode an already-issued parity prefix and check its source guard."""
         if type(time) is not int or not 0 <= time <= self.port.action.steps:
             raise ValueError("time puncture outside issued normalized action")
+        if time == 0:
+            # Empty prefix: don't demand the grammar for a zero-time row.
+            return DyadicTerminalFieldAction.identity(), 0
         if time == self.port.action.steps:
             return self.port.action, self.port.odd_events
-        tape = self.parity_tape_for_action()
+        tape = (
+            self.parity_tape_for_action(cache=parity_cache)
+            if parity_cache is not None and self.parity_tape is None
+            else self.parity_tape_for_action()
+        )
         if tape is not None:
-            action = tape.prefix_action(time)
-            odds = tape.prefix_odds(time)
+            if parity_cache is None:
+                action, odds = tape.prefix_action(time), tape.prefix_odds(time)
+            else:
+                from number_compiler.sequences.collatz.parity_carry_tape import (
+                    prefix_action_odds_under_owner,
+                )
+
+                action, odds = prefix_action_odds_under_owner(tape, time, parity_cache)
             if (
                 not action.certifies(self.source.first)
                 or not action.certifies(self.source.last)
@@ -280,28 +335,9 @@ class GuardedPortJoin:
                     "retained parity grammar violates its source guard"
                 )
             return action, odds
-        x = self.source.first
-        action = DyadicTerminalFieldAction.identity()
-        odds = 0
-        for _ in range(time):
-            odd = x & 1
-            action = action.then(
-                DyadicTerminalFieldAction.one_run(1)
-                if odd
-                else DyadicTerminalFieldAction.zero_run(1)
-            )
-            x = ((3 * x + 1) // 2) if odd else (x // 2)
-            odds += odd
-        if not action.certifies(self.source.first) or not action.certifies(
-            self.source.last
-        ):
-            raise ArithmeticError("prefix parity was not forced on the complete source")
-        # The full issuing guard implies this prefix, not merely a sample.
-        if self.source.count > 1 and self.source.modulus % action.source_modulus:
-            raise ArithmeticError(
-                "source cylinder does not force the decoded parity prefix"
-            )
-        return action, odds
+        if parity_cache is not None:
+            raise ValueError("owned puncture requires its retained parity grammar")
+        return _forced_prefix_from_cylinder(self.source, time)
 
     def _base_fives(
         self,
@@ -344,6 +380,7 @@ class GuardedPortJoin:
         pointed_source: int | None = None,
         max_rows: int = 200,
         max_prefix_steps: int = 512,
+        parity_cache: LedgeredParityTapeActions | None = None,
     ) -> GuardedPortCut:
         """Exact guarded matrix intersection for one demanded temporal port.
 
@@ -367,7 +404,7 @@ class GuardedPortJoin:
             raise BlockContextBudgetExceeded(
                 "intermediate source prefix exceeds the puncture budget"
             )
-        prefix, odds = self._prefix(time)
+        prefix, odds = self._prefix(time, parity_cache=parity_cache)
         prefix_scalar_steps = time if time not in (0, self.port.action.steps) else 0
         current = self.source.transport(prefix)
         base: CollatzTwoSidedCylinder | None = self.source
@@ -594,73 +631,138 @@ class GuardedPortJoin:
         self,
         after: GuardedPortJoin,
         *,
-        ledger: ResourceLedger | None = None,
+        ledger: ResourceLedger,
+        parity_cache: LedgeredParityTapeActions,
     ) -> GuardedPortJoin | None:
-        """Source-pulled guard join, retaining intermediate 5 births.
+        """Atomically join adjacent ports and their source-issued parity SLPs.
 
-        The pure join path is not a resource-certified allocation transaction.
-        An explicitly budgeted join therefore fails before source, bridge, or
-        SLP construction until all of those owners participate in one ledger
-        reservation and rollback protocol.
-
-        If the next source fiber is only a subcylinder of this action's
-        target, rebuild both certificates on that smaller fiber BEFORE
-        composing.  Mere coincident Moore labels are never a valid join.
+        The query ledger preflights the affine/CRT/bridge workspace; the parity
+        owner temporarily pins the left parent while admitting the right root.
+        A composite action and retained result publish only after both guards,
+        the exact seam, both parent bindings, and the joined bridge pass.
         """
         if type(after) is not GuardedPortJoin:
             raise TypeError("guarded port composition requires another joint port")
-        if ledger is not None:
-            from number_compiler.resources.ledger import ResourceLedger
-
-            if type(ledger) is not ResourceLedger:
-                raise TypeError("budgeted guarded join requires its exact query ledger")
-            raise BlockContextBudgetExceeded(
-                "guarded port join has no complete ledger-owned source/bridge/SLP "
-                "transaction; resource-certified composition is disabled"
-            )
-        combined = self.port.then(after.port)
-        if combined is None:
-            return None
-        root = _restrict(self.source, combined.guard)
-        if root is None:
-            return None
-        seam = root.transport(self.port.action)
-        if (
-            seam.first < after.source.first
-            or seam.last > after.source.last
-            or (seam.count > 1 and seam.modulus % after.source.modulus != 0)
-            or not after.source.contains(seam.first)
-            or not after.source.contains(seam.last)
-        ):
-            raise ValueError("guarded port join has no complete authenticated seam")
-        # A proof on a wider cylinder remains valid on its source subset;
-        # algebraically enrich only newly forced 6-adic suffixes. Re-running
-        # radix-6 upper coverage at every seam used to dominate the CLI.
-        first = self.bridge.restrict_to(root)
-        second = after.bridge.restrict_to(seam)
-        first_tape = self.parity_tape_for_action()
-        second_tape = after.parity_tape_for_action()
-        tape = None
-        proof = None
-        if first_tape is not None and second_tape is not None:
-            first_binding = self._parity_binding
-            second_binding = after._parity_binding
-            if first_binding is None or second_binding is None:
-                raise ValueError("joined parity parent lost its action binding")
-            proof = _JoinedParityComposition.issue(
-                first_tape,
-                first_binding,
-                second_tape,
-                second_binding,
-            )
-            tape = proof.root
-        return GuardedPortJoin(
-            root,
-            combined,
-            first.then(second),
-            parity_tape=tape,
-            _composed_parity=proof,
+        from number_compiler.resources.ledger import LedgerReservation, ResourceLedger
+        from number_compiler.sequences.collatz.parity_carry_tape_actions import (
+            LedgeredParityTapeActions,
         )
+
+        if type(ledger) is not ResourceLedger:
+            raise TypeError("guarded port join requires its exact query ledger")
+        if (
+            type(parity_cache) is not LedgeredParityTapeActions
+            or parity_cache.ledger is not ledger
+        ):
+            raise ValueError("guarded port join requires the exact query parity owner")
+        first_tape = self.parity_tape_for_action(cache=parity_cache)
+        if first_tape is None:
+            return None
+        scratch_nodes, retained_nodes = self._join_resource_bounds(after)
+        result: GuardedPortJoin
+        with parity_cache.temporary_root_pin(first_tape) as lease:
+            with LedgerReservation(ledger, parity_cache.scratch_owner) as reservation:
+                reservation.reserve(nodes=scratch_nodes)
+                combined = self.port.then(after.port, ledger=ledger)
+                if combined is None:
+                    return None
+                root = _restrict(self.source, combined.guard)
+                if root is None:
+                    return None
+                seam = root.transport(self.port.action)
+                if (
+                    seam.first < after.source.first
+                    or seam.last > after.source.last
+                    or (seam.count > 1 and seam.modulus % after.source.modulus != 0)
+                    or not after.source.contains(seam.first)
+                    or not after.source.contains(seam.last)
+                ):
+                    raise ValueError(
+                        "guarded port join has no complete authenticated seam"
+                    )
+                first = self.bridge.restrict_to(root)
+                second = after.bridge.restrict_to(seam)
+                second_tape = after.parity_tape_for_action(cache=parity_cache)
+                if second_tape is None:
+                    return None
+                first_binding = self._parity_binding
+                second_binding = after._parity_binding
+                if first_binding is None or second_binding is None:
+                    raise ValueError("joined parity parent lost its action binding")
+                proof = _JoinedParityComposition.issue(
+                    first_tape,
+                    first_binding,
+                    second_tape,
+                    second_binding,
+                )
+                tape = proof.root
+                joined_bridge = first.then(second)
+                joined_result = GuardedPortJoin(
+                    root,
+                    combined,
+                    joined_bridge,
+                    parity_tape=tape,
+                    _composed_parity=proof,
+                )
+                action = parity_cache.action(tape)
+                if (
+                    action.coefficient_snapshot()
+                    != combined.action.coefficient_snapshot()
+                ):
+                    raise ArithmeticError(
+                        "cached composite parity action differs from joined port"
+                    )
+                if not parity_cache.is_current_root(tape):
+                    raise ArithmeticError("composite parity root did not publish")
+                result = joined_result
+                lease.commit()
+            parity_cache.retain_guarded_join(joined_result, nodes=retained_nodes)
+        return result
+
+    def _join_resource_bounds(self, after: GuardedPortJoin) -> tuple[int, int]:
+        """Conservative 64-bit-word budgets for join scratch and its result."""
+        values: list[int] = []
+        band_count = 0
+        for joined in (self, after):
+            source = joined.source
+            trace = joined.port.trace
+            trace_extent = (
+                trace.length if isinstance(trace, MacroTraceGrammar) else len(trace)
+            )
+            values.extend(
+                (
+                    source.first,
+                    source.last,
+                    source.lower,
+                    source.upper,
+                    source.residue,
+                    source.modulus,
+                    source.count,
+                    joined.port.guard.residue,
+                    joined.port.guard.modulus,
+                    joined.port.guard.minimum_source,
+                    joined.port.action.steps,
+                    joined.port.odd_events,
+                    trace_extent,
+                    *joined.port.action.coefficient_snapshot(),
+                    *joined.bridge.centered_defect_range,
+                )
+            )
+            bands = (
+                joined.bridge.source_fives
+                + joined.bridge.inherited_fives
+                + joined.bridge.born_fives
+                + joined.bridge.target_fives
+            )
+            band_count += len(bands)
+            values.extend(
+                endpoint for band in bands for endpoint in (band.lower, band.upper)
+            )
+        operand_words = sum(max(1, abs(value).bit_length()) for value in values)
+        words = (operand_words + 63) // 64
+        scratch_nodes = 512 + 64 * words + 24 * band_count
+        retained_nodes = 96 + 12 * words + 12 * band_count
+        return scratch_nodes, retained_nodes
 
     def prefix_units(self, time: int) -> UnitsCarryMatrix:
         """Demand the authenticated five-state weighted prefix of this tape."""
@@ -729,11 +831,18 @@ class GuardedPortJoin:
         )
 
     def require_pointed(
-        self, source: int, *, check_last: bool = True
+        self,
+        source: int,
+        *,
+        check_last: bool = True,
+        parity_cache: LedgeredParityTapeActions | None = None,
     ) -> tuple[GuardedCarryRow, GuardedCarryRow | None]:
         """Authenticate local carry inlet and powered pair outlet before admission."""
         first = self.puncture(
-            0, PortPuncture(input_pair=source % 100), pointed_source=source
+            0,
+            PortPuncture(input_pair=source % 100),
+            pointed_source=source,
+            parity_cache=parity_cache,
         ).pointed(source)
         if first is None:
             raise ArithmeticError("joined source guard refused the first carry row")
@@ -744,6 +853,7 @@ class GuardedPortJoin:
                 self.port.action.steps,
                 PortPuncture(input_pair=target % 100, future_border=target % 10),
                 pointed_source=source,
+                parity_cache=parity_cache,
             ).pointed(source)
             if last is None or last.output_pair != target % 100:
                 raise ArithmeticError(
@@ -754,75 +864,13 @@ class GuardedPortJoin:
     def powered_zero_tail_carries(
         self,
         source: int,
-    ) -> tuple[int, int, int, int, int, int] | None:
-        """Power a *proved* five-phase 100x100 carry inlet program.
-
-        For N successive zero-tail 6305 returns x'+1=9(x+1)/4.
-        A source-wide valuation v2(x+1)>=2*N+2 forces x_k=-1 mod16
-        at the start of EVERY return, including the last. Meanwhile
-        (x_k+1) mod25 multiplies by 21, an element of order 5. CRT(16,25)
-        determines x_k mod400 and therefore both upper-parity inlets of
-        the two normalized odd steps in each return. The ten inlet matrices
-        repeat after five returns, and only *then* is temporal squaring
-        authorized. For any shorter valuation or mixed trace, return None.
-
-        This is a genuine guarded weighted 100x100 matrix power; no scalar
-        trajectory is enumerated, and no guessed carry-arrival period is used.
-        """
-        if not self.source.contains(source):
-            raise ValueError("powered carry source is outside its original guard")
-        from number_compiler.sequences.collatz.guarded_radix6_bridge import (
-            common_plus_one_valuation,
+    ) -> PoweredZeroTailCarries | None:
+        """Use the single source-guarded weighted carry implementation."""
+        from number_compiler.sequences.collatz.guarded_port_weighted_counts import (
+            power_zero_tail_carries,
         )
 
-        trace = self.port.trace
-        if type(trace) is not MacroTraceGrammar or trace.length == 0:
-            return None
-        n = trace.length
-        if n > 8192 or self.port.action.steps != 2 * n or self.port.odd_events != 2 * n:
-            return None
-        if not self.bridge.centered_at_minus_one:
-            return None
-        if not trace_is_zero_tail(trace):
-            return None
-        if common_plus_one_valuation(self.source, 2) < 2 * n + 2:
-            return None
-        # The full source class must force x mod25, or be a singleton.
-        phase = self.source.forced_residue(25)
-        if phase is None:
-            return None
-        # A five-return cycle is determined entirely by the forced 2-adic
-        # suffix and this mod25 phase. 21^5=1 (mod 25).
-        if pow(21, 5, 25) != 1:
-            raise ArithmeticError("low cyclotomic carry clock is not period five")
-        inv16 = pow(16, -1, 25)
-        cycle = WeightedPairMatrix.identity()
-        letters: list[WeightedPairMatrix] = []
-        compositions = 0
-        for k in range(5):
-            residue25 = (pow(21, k, 25) * (phase + 1) - 1) % 25
-            source400 = 15 + 16 * (((residue25 - 15) * inv16) % 25)
-            after_first200 = ((3 * source400 + 1) // 2) % 200
-            one = WeightedPairMatrix.odd_half((source400 // 100) & 1)
-            two = WeightedPairMatrix.odd_half((after_first200 // 100) & 1)
-            cycle = cycle.then(one).then(two)
-            compositions += 2
-            letters.extend((one, two))
-        q, r = divmod(n, 5)
-        powered, power_compositions, squarings = cycle.power_with_work(q)
-        compositions += power_compositions
-        for matrix in letters[: 2 * r]:
-            powered = powered.then(matrix)
-            compositions += 1
-        row = powered.successors(source % 100)
-        if len(row) != 1:
-            raise ArithmeticError(
-                "five-phase 100-state source row is not deterministic"
-            )
-        last, c1, c2 = row[0]
-        if last != self.port.endpoint(source) % 100:
-            raise ArithmeticError("guarded five-phase carry matrix lost the endpoint")
-        return c1, c2, 2 * n, last, compositions, squarings
+        return power_zero_tail_carries(self, source)
 
     def authenticate_weighted_ports(
         self,
@@ -862,6 +910,7 @@ def certify_pointed_port_join(
     source_cylinder: CollatzTwoSidedCylinder | None = None,
     factor_grammar: tuple[tuple[tuple[int, ...], int], ...] | None = None,
     factor_repetitions: int = 1,
+    parity_cache: LedgeredParityTapeActions | None = None,
     pointed_pair: GuardedPairEntry | None = None,
 ) -> GuardedPortJoin:
     """Rejoin a named 6305/8/9 macro to its actual source carry rows."""
@@ -902,8 +951,20 @@ def certify_pointed_port_join(
         factor_grammar=factor_grammar,
         factor_repetitions=factor_repetitions,
     )
+    if parity_cache is not None:
+        from number_compiler.sequences.collatz.parity_carry_tape_actions import (
+            LedgeredParityTapeActions,
+        )
+
+        if type(parity_cache) is not LedgeredParityTapeActions:
+            raise TypeError("pointed parity cache requires its exact ledger owner")
+        if ledger is None or parity_cache.ledger is not ledger:
+            raise ValueError("pointed parity cache must share its source ledger")
+        # Do not materialize the parity SLP yet.  require_pointed only needs
+        # the empty prefix and the already-issued full action; its positive
+        # prefix consumer must not run before source and bridge admission.
     if pointed_pair is None:
-        joined.require_pointed(source)
+        joined.require_pointed(source, parity_cache=parity_cache)
     else:
         endpoint = validate_pointed_pair_action(pointed_pair, source, action)
         if not joined.bridge.target.contains(endpoint):

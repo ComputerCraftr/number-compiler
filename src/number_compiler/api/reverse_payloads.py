@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generic, Protocol, TypeVar
 
 from number_compiler.arithmetic.contracts.exact_tree_context import source_reads_only
 from number_compiler.arithmetic.contracts.input_validation import require_integer
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
         ReverseAddPowerMetrics,
     )
     from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
+    from number_compiler.sequences.five_reverse.term import FiveReverseTerm
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 
@@ -65,17 +66,25 @@ class PoweredReverseAddTermPayload:
         return self.term.metrics()
 
 
+class _DecimalReversalOwner(Protocol):
+    @property
+    def maximum_width(self) -> int: ...
+
+    def iter_digits(self) -> Iterator[int]: ...
+
+    def digit(self, index: int, /) -> int: ...
+
+    def materialize(self, *, max_bits: int) -> int: ...
+
+
+_ReversalOwner = TypeVar("_ReversalOwner", bound=_DecimalReversalOwner)
+
+
 @dataclass(frozen=True, slots=True)
-class DoubleReverseTermPayload:
-    """Demand adapter for the fixed decimal U(n)=2*reverse(n) recurrence."""
+class _DecimalReversalPayload(Generic[_ReversalOwner]):
+    """Common demanded output; concrete subclasses authenticate their owner."""
 
-    term: DoubleReverseTerm
-
-    def __post_init__(self) -> None:
-        from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
-
-        if type(self.term) is not DoubleReverseTerm:
-            raise TypeError("double-reverse payload requires its exact term type")
+    term: _ReversalOwner
 
     @property
     def estimated_bit_length(self) -> int:
@@ -92,3 +101,29 @@ class DoubleReverseTermPayload:
 
     def materialize(self, *, max_bits: int) -> int:
         return self.term.materialize(max_bits=max_bits)
+
+
+@dataclass(frozen=True, slots=True)
+class DoubleReverseTermPayload(_DecimalReversalPayload["DoubleReverseTerm"]):
+    """Demand adapter for the fixed decimal U(n)=2*reverse(n) recurrence."""
+
+    term: DoubleReverseTerm
+
+    def __post_init__(self) -> None:
+        from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
+
+        if type(self.term) is not DoubleReverseTerm:
+            raise TypeError("double-reverse payload requires its exact term type")
+
+
+@dataclass(frozen=True, slots=True)
+class FiveReverseTermPayload(_DecimalReversalPayload["FiveReverseTerm"]):
+    """Demand adapter for the bounded five-times-decimal-reversal owner."""
+
+    term: FiveReverseTerm
+
+    def __post_init__(self) -> None:
+        from number_compiler.sequences.five_reverse.term import FiveReverseTerm
+
+        if type(self.term) is not FiveReverseTerm:
+            raise TypeError("five-reverse payload requires its exact term type")

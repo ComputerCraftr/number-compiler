@@ -1,6 +1,5 @@
 theory Comma_Native19_Carry
   imports Shared_Carry_Dynamics.Shared_Decimal_Cocycle_Core
-    Comma_Schur_Carry.Comma_Schur_Carry
 begin
 
 text \<open>
@@ -99,64 +98,74 @@ lemma comma_native19_encode_injective:
     comma_native19_decode_encode[OF assms(2)] assms(3) by metis
 
 text \<open>
-The Schur high-half \<open>beta\<close> is the quotient bit in
-\<open>q = alpha + 5 * beta\<close>.  Native19 stores instead the ordinary parity
-of \<open>q\<close>; the conversion below makes their relation explicit and reuses
-the common decimal encoder.
+The radix-five coordinate \<open>alpha\<close> and binary quotient \<open>beta\<close>
+jointly encode the decimal value \<open>alpha + 5 * beta\<close>.  Native19 stores
+the value's ordinary parity alongside its radix-five residue; the conversion
+below reuses the shared decimal split laws and encoder.
 \<close>
 
-lemma comma_schur_to_native19:
+lemma comma_binary_quinary_to_native19:
   assumes "alpha < 5" "beta < 2"
-  shows "comma_schur_quotient alpha beta < 10"
-    "comma_schur_quotient alpha beta mod 5 = alpha"
-    "comma_schur_quotient alpha beta mod 2 = (alpha + beta) mod 2"
-    "encode_cocycle (comma_schur_quotient alpha beta) =
-      (domain (comma_schur_quotient alpha beta), alpha,
+  shows "digit_value alpha beta < 10"
+    "digit_value alpha beta mod 5 = alpha"
+    "digit_value alpha beta mod 2 = (alpha + beta) mod 2"
+    "encode_cocycle (digit_value alpha beta) =
+      (domain (digit_value alpha beta), alpha,
         (alpha + beta) mod 2)"
 proof -
-  show "comma_schur_quotient alpha beta < 10"
-    using assms by (simp add: comma_schur_quotient_def; arith)
-  have mod5: "comma_schur_quotient alpha beta mod 5 = alpha"
-    using assms(1) by (simp add: comma_schur_quotient_def)
-  then show "comma_schur_quotient alpha beta mod 5 = alpha" .
+  show "digit_value alpha beta < 10"
+    using assms by (simp add: decimal_binary_quinary_value; arith)
+  have mod5: "digit_value alpha beta mod 5 = alpha"
+    using assms(1) by (simp add: decimal_binary_quinary_value)
+  then show "digit_value alpha beta mod 5 = alpha" .
   have beta_mod: "(5 * beta) mod 2 = beta mod 2"
     by (subst mod_mult_left_eq[symmetric]; simp)
-  have mod2: "comma_schur_quotient alpha beta mod 2 = (alpha + beta) mod 2"
-    unfolding comma_schur_quotient_def
+  have mod2: "digit_value alpha beta mod 2 = (alpha + beta) mod 2"
+    unfolding decimal_binary_quinary_value
     by (rule mod_add_cong[OF refl beta_mod])
-  then show "comma_schur_quotient alpha beta mod 2 = (alpha + beta) mod 2" .
-  show "encode_cocycle (comma_schur_quotient alpha beta) =
-      (domain (comma_schur_quotient alpha beta), alpha,
+  then show "digit_value alpha beta mod 2 = (alpha + beta) mod 2" .
+  show "encode_cocycle (digit_value alpha beta) =
+      (domain (digit_value alpha beta), alpha,
         (alpha + beta) mod 2)"
     using mod5 mod2 by (simp add: encode_cocycle_def)
 qed
 
-lemma comma_native19_to_schur:
+text \<open>
+This polarity distinction is used by the comma reset-germ observer.  It is
+kept at the family boundary because the richer comma state observes the
+polarity even though the shared Boolean carry action also has generic laws.
+\<close>
+
+lemma comma_reset_polarities_distinct:
+  "carry_apply Below False \<noteq> carry_apply Above False"
+  by simp
+
+lemma comma_native19_to_binary_quinary:
   assumes "q < 10"
-  shows "comma_schur_quotient (q mod 5) (q div 5) = q"
+  shows "digit_value (q mod 5) (q div 5) = q"
     "q div 5 < 2"
     "crt_digit (q mod 5) (q mod 2) = q"
 proof -
-  show "comma_schur_quotient (q mod 5) (q div 5) = q"
-    unfolding comma_schur_quotient_def
+  show "digit_value (q mod 5) (q div 5) = q"
+    unfolding digit_value_def
     using div_mult_mod_eq[of q 5] by arith
   show "q div 5 < 2" using assms by (simp add: div_less_iff_less_mult)
   show "crt_digit (q mod 5) (q mod 2) = q"
     by (rule crt_digit_inverse[OF assms])
 qed
 
-lemma comma_schur_native19_parity:
+lemma comma_native19_binary_quinary_parity:
   assumes "alpha < 5" "beta < 2"
   shows "crt_digit alpha ((alpha + beta) mod 2) =
-    comma_schur_quotient alpha beta"
+    digit_value alpha beta"
 proof -
-  have q_bound: "comma_schur_quotient alpha beta < 10"
-    by (rule comma_schur_to_native19(1)[OF assms])
-  have alpha_residue: "comma_schur_quotient alpha beta mod 5 = alpha"
-    by (rule comma_schur_to_native19(2)[OF assms])
+  have q_bound: "digit_value alpha beta < 10"
+    by (rule comma_binary_quinary_to_native19(1)[OF assms])
+  have alpha_residue: "digit_value alpha beta mod 5 = alpha"
+    by (rule comma_binary_quinary_to_native19(2)[OF assms])
   have parity_residue:
-    "comma_schur_quotient alpha beta mod 2 = (alpha + beta) mod 2"
-    by (rule comma_schur_to_native19(3)[OF assms])
+    "digit_value alpha beta mod 2 = (alpha + beta) mod 2"
+    by (rule comma_binary_quinary_to_native19(3)[OF assms])
   show ?thesis
     using crt_digit_inverse[OF q_bound] alpha_residue parity_residue by simp
 qed
@@ -206,8 +215,10 @@ ML \<open>
   val checked = @{thms comma_native19_decode_encode
     comma_native19_encode_admitted comma_native19_range
     comma_native19_encode_decode comma_native19_encode_injective
-    comma_schur_to_native19 comma_native19_to_schur
-    comma_schur_native19_parity comma_native19_full_adder_coordinates};
+    comma_binary_quinary_to_native19 comma_native19_to_binary_quinary
+    comma_native19_binary_quinary_parity
+    comma_reset_polarities_distinct
+    comma_native19_full_adder_coordinates};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Native19 carry proof depends on an oracle";
 \<close>

@@ -4,8 +4,8 @@
 structure Comma_Semantic_Weighted_CRT_Data_Transport =
 struct
   val natT = @{typ nat}
-  val radices = [4,3,7,11]
-  val clock_weights = [693,616,792,672]
+  val radices = [3,4,7,11]
+  val clock_weights = [616,693,792,672]
 
   (* The rule database is immutable and contains no source or occurrence
      facts. Install it into the receiving context rather than rebuilding its
@@ -383,39 +383,6 @@ struct
             else error (label ^ " left its source compiler receiving context")
         in #check checker label proposition theorem end
     | NONE => checked_closed_default ctxt label proposition theorem)
-
-  fun checked_tuple_projections ctxt label bundle tuple paths =
-    let
-      val _ = if List.all (List.all (fn 0 => true | 1 => true | _ => false)) paths
-        then () else error "Tuple projection path contains an unsupported selector"
-      fun project [] value = value
-        | project (0::rest) value = project rest (HOLogic.mk_fst value)
-        | project (_::rest) value = project rest (HOLogic.mk_snd value)
-      fun component [] value = value
-        | component (0::rest) value = component rest (#1 (HOLogic.dest_prod value))
-        | component (_::rest) value = component rest (#2 (HOLogic.dest_prod value))
-      val context = put_simpset HOL_basic_ss ctxt
-        |> Simplifier.add_simps @{thms fst_conv snd_conv}
-      fun projection path =
-        let
-          val left = component path tuple
-          val tuple_rhs = Thm.term_of (Thm.rhs_of bundle)
-          val right = component path tuple_rhs
-          val free = Free ("checked_tuple",fastype_of tuple)
-          val selector = Term.lambda free (project path free)
-          val applied = Thm.combination
-            (Thm.reflexive (Thm.cterm_of ctxt selector)) bundle
-          val left_conversion = Simplifier.rewrite context
-            (Thm.cterm_of ctxt (selector $ tuple))
-          val right_conversion = Simplifier.rewrite context
-            (Thm.cterm_of ctxt (selector $ tuple_rhs))
-          val _ = if Thm.term_of (Thm.rhs_of left_conversion) aconv left andalso
-              Thm.term_of (Thm.rhs_of right_conversion) aconv right then ()
-            else error (label ^ " did not reduce to the selected tuple components")
-          val theorem = Thm.transitive (Thm.symmetric left_conversion)
-            (Thm.transitive applied right_conversion)
-        in checked_closed ctxt label (Logic.mk_equals (left,right)) theorem end
-    in map projection paths end
 
   fun closed_head_subterms name arity resultT term =
     let

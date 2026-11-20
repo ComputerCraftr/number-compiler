@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from number_compiler.api.number_api import ProjectedNumberTerm, ProjectionMetrics
+from number_compiler.api.projections.decimal_reversal import matches_bounded_query
 from number_compiler.api.reverse_payloads import DoubleReverseTermPayload
 from number_compiler.api.symbolic_terms import SymbolicExpression
 from number_compiler.arithmetic.contracts.family_identity import FamilyId
@@ -19,15 +20,6 @@ def project(
 ) -> ProjectedNumberTerm:
     from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 
-    def valid(owner: DoubleReverseTerm) -> bool:
-        return (
-            (owner.seed, owner.generation, owner.max_steps, owner.max_state_bits)
-            == (query.seed, query.index, query.max_steps, query.max_state_bits)
-            and owner.resource_ledger.max_nodes == compiler.max_context_nodes
-            and owner.resource_ledger.max_cache_entries == compiler.max_cache_entries
-            and owner.is_usable
-        )
-
     term = compiler.powered_term(
         query,
         DoubleReverseTerm,
@@ -39,7 +31,7 @@ def project(
             max_context_nodes=compiler.max_context_nodes,
             max_cache_entries=compiler.max_cache_entries,
         ),
-        valid,
+        lambda owner: matches_bounded_query(owner, query, compiler),
     )
     return ProjectedNumberTerm(
         FamilyId.DOUBLE_REVERSE,

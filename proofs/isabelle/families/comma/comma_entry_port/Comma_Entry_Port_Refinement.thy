@@ -635,10 +635,10 @@ qed
 text \<open>This executable consumer reads only the stored leaf payload.
 The trace owner appears solely in the refinement proof, not its definition.\<close>
 
-definition comma_entry_stored_tree_locator ::
+definition comma_entry_row_locator ::
   "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> (nat\<times>nat\<times>nat) option" where
-  "comma_entry_stored_tree_locator f d eta=
-    (let seed=comma_entry_port_seed f d; row=comma_entry_port_row f d eta;
+  "comma_entry_row_locator f d row=
+    (let seed=comma_entry_port_seed f d;
       tree=comma_entry_port_search_tree f d in
       if row<comma_finite_period f seed div 10 then
         (let (active,lower,upper)=comma_prefix_tree_port_select row tree;
@@ -647,6 +647,12 @@ definition comma_entry_stored_tree_locator ::
             10*active+f+(if f<9 then 1 else 0)-
               (comma_port_low f active+10*residual)))
       else None)"
+
+
+definition comma_entry_stored_tree_locator ::
+  "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> (nat\<times>nat\<times>nat) option" where
+  "comma_entry_stored_tree_locator f d eta =
+    comma_entry_row_locator f d (comma_entry_port_row f d eta)"
 
 lemma comma_entry_stored_tree_locator_refines:
   assumes sector: "1\<le>f" "f\<le>9" and digit: "d<10"
@@ -670,7 +676,7 @@ proof -
     by (simp only: comma_port_tree_locator_def row if_True)
   have stored: "comma_entry_stored_tree_locator f d eta=
     comma_entry_tree_refined_locator f d eta ?tree"
-    by (simp only: comma_entry_stored_tree_locator_def
+    by (simp only: comma_entry_stored_tree_locator_def comma_entry_row_locator_def
       comma_entry_tree_refined_locator_def Let_def row if_True payload index
       comma_port_action_power_trace option.map;
       cases "comma_port_weighted_trace f ?seed ?k"; simp)
@@ -696,6 +702,51 @@ proof -
     by (simp only: comma_entry_stored_tree_locator_refines[OF sector digit])
 qed
 
+lemma comma_entry_stored_tree_interval_affine:
+  assumes sector: "1\<le>f" "f\<le>9" and digit: "d<10"
+  obtains active lower upper where
+    "comma_prefix_tree_port_select (comma_entry_port_row f d eta)
+       (comma_entry_port_search_tree f d) = (active,lower,upper)"
+    "lower \<le> comma_entry_port_row f d eta"
+    "comma_entry_port_row f d eta < upper"
+    "comma_entry_stored_tree_locator f d eta =
+       Some (active, comma_entry_port_row f d eta-lower,
+         10*active+f+(if f<9 then 1 else 0) -
+           (comma_port_low f active+10*(comma_entry_port_row f d eta-lower)))"
+proof -
+  let ?seed = "comma_entry_port_seed f d"
+  let ?row = "comma_entry_port_row f d eta"
+  let ?tree = "comma_entry_port_search_tree f d"
+  let ?index = "comma_prefix_tree_select ?row ?tree"
+  let ?active = "fst (comma_port_weighted_trace f ?seed ?index)"
+  let ?lower = "snd (comma_port_weighted_trace f ?seed ?index)"
+  let ?upper = "snd (comma_port_weighted_trace f ?seed (Suc ?index))"
+  have row_bound: "?row < comma_finite_period f ?seed div 10"
+    by (rule comma_entry_port_row_bound[OF sector digit])
+  obtain k where bound:
+    "comma_port_tree_locator f ?seed ?tree ?row = Some k"
+    "snd (comma_port_weighted_trace f ?seed k) \<le> ?row"
+    "?row < snd (comma_port_weighted_trace f ?seed (Suc k))"
+    using comma_entry_static_tree_locator_bounds[OF sector digit, of eta] by blast
+  have index: "k = ?index"
+    using bound(1) row_bound by (simp add: comma_port_tree_locator_def)
+  have payload: "comma_prefix_tree_port_select ?row ?tree = (?active,?lower,?upper)"
+    by (rule comma_port_tree_payload_refines[OF
+      comma_entry_port_search_tree_payloads[OF sector digit]])
+  have lower: "?lower \<le> ?row" and upper: "?row < ?upper"
+    using bound index by simp_all
+  have exact: "comma_entry_stored_tree_locator f d eta =
+       Some (?active, ?row-?lower,
+         10*?active+f+(if f<9 then 1 else 0) -
+           (comma_port_low f ?active+10*(?row-?lower)))"
+    by (simp only: comma_entry_stored_tree_locator_def comma_entry_row_locator_def Let_def row_bound if_True
+        payload prod.case)
+  show thesis by (rule that[OF payload lower upper exact])
+qed
+
+
+ML_file "entry_port_fixed_facts.ML"
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms comma_port_action_power_trace comma_port_action_locator_refines
@@ -710,8 +761,12 @@ ML \<open>
       comma_entry_static_tree_locator_bounds
       comma_entry_static_tree_locator_refines_source
       comma_port_tree_payload_refines comma_entry_port_search_tree_payloads
+      comma_entry_stored_tree_interval_affine
       comma_entry_stored_tree_locator_refines
       comma_entry_stored_tree_locator_refines_source}) then ()
     else error "Comma Entry action locator refinement depends on an oracle";
+  val new_facts = @{thms comma_entry_stored_tree_interval_affine};
+  val _ = if Thm_Deps.has_skip_proof new_facts
+    then error "Skipped comma Entry interval refinement" else ();
 \<close>
 end

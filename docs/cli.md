@@ -7,6 +7,7 @@ number-compiler --list-families
 number-compiler antihydra --help
 number-compiler reverse-add --seed 196 --nth 8
 number-compiler 2rev10 --seed 10 --nth 1
+number-compiler 5rev10 --seed 196 --nth 2
 number-compiler collatz --nth 64 --seed 27
 number-compiler antihydra --nth 64 --info safety.ledger --info temporal.clock
 number-compiler fermat --nth 5 --info number-theory.primality --info number-theory.factor --format json
@@ -40,12 +41,51 @@ binary integer. For example, `--nth-power10 6 --max-index-bits 19` refuses
 before sequence construction: one million requires 20 bits.
 
 
-Reverse/add, double-reversal and Collatz count iterations from the supplied
+Reverse/add, double-reversal, five-reversal and Collatz count iterations from the supplied
 source at index zero. Antihydra counts macro returns after startup, starting at 8.
 Prime queries use zero-based positions at or above `--start`; Fermat uses its
 zero-based sequence index, Mersenne uses a positive exponent, and A367620 uses
 positive OEIS indices with global-provider admission. The generated capability
 table below owns the supported source parameters and observations.
+
+`5rev10` uses `x(0) = seed` and `x(n+1) = 5 * reverse10(x(n))` for a nonnegative
+seed. It preserves decimal normalization, for example `120 → 105`.
+Exact bounded execution defaults to 4,096 physical steps and 4,096 state bits.
+`arithmetic.modular` projects the all-source mod-45 clock without constructing
+the full term; its modulus must divide 45. A finite source certificate does not
+authorize repeating a border cycle beyond that certificate's horizon.
+
+`5rev10 --info temporal.digit-field` reports the variable-width concatenation
+of the blocks `decimal(5*d)` modulo \(9\cdot5^k\).
+`--temporal-digit-field-places k` defaults to 2, which uses the universal
+mod-225 action without constructing a physical term. Higher precision reads
+a bounded physical suffix. `temporal.closed-form` reports the unnormalized
+reflected H action at `--temporal-closed-form-places` decimal places.
+`--temporal-closed-form-digits` separately requests exact normalized low digits
+and their carry masks, subject to the source and moving-cut budgets.
+
+```sh
+number-compiler 5rev10 --seed 196 --nth-power10 60 --no-value --info temporal.digit-field --format json
+number-compiler 5rev10 --seed 196 --nth 209 --no-value --info temporal.closed-form --temporal-closed-form-digits 4 --format json
+```
+
+The reversal families use `temporal.matrix` for demanded ordered outputs as
+well as source transfer. `--temporal-matrix-kind digit-band` uses
+`--temporal-matrix-band-width` in decimal digits (default 2).
+The horizon `--temporal-matrix-steps` always counts physical ticks. `2rev10`
+digit-band requests require multiples of four; reverse/add retains its
+128-tick limit. Source certificates can impose tighter limits than the public
+4,096-tick ceiling.
+`temporal.matrix.trace` requests bounded chronological detail, at most 128
+ticks. Ordered outputs use `--temporal-matrix-modulus` (default 1,000,000,007)
+and optional `--temporal-matrix-coefficients=1,-2,3` for a degree-zero through
+degree-eight covector. Coefficients are ordered by the power of the first
+coordinate. Later chronological column actions multiply on the left. These
+are finite mathematical observations, not selectable execution algorithms or
+certificates of unrestricted future closure. Reverse/add's existing innovation
+kind retains its own default modulus behavior. Bit-fibre `carry-continuant`
+outputs are not advertised until their concrete source-period refinement is
+accepted. A base-five port is not a bit-fibre certificate.
 
 `2rev10` uses `U(n) = 2 * reverse10(n)`, including decimal normalization: `10 → 2`. Its decimal grammar is applied through the shared scheduler. Admitted four-phase boundary cylinders use temporal HashLife composition of the exact two-step cellular rule; other source regions retain charged exact transitions. `--max-steps` and `--max-state-bits` both default to 4096. It accepts `--info metrics`, `--info temporal.closed-form`, `--info spatial.stencil`, `--info temporal.bank`, `--info spatial.pair-bank` and `--info temporal.grammar`, output formats and output bases, but no input base, radix or event selector. The demanded closed-form packet reports source-bound carry and moment ports from the completed endpoint; `--temporal-closed-form-modulus M` projects them modulo a positive integer. Modular output does not authorize an approximate branch or phase decision. Metrics alone never constructs these ports. `--info spatial.stencil --spatial-stencil-position P` demands one LSD-indexed digit from an admitted temporal cylinder. `--info temporal.bank` reports the admitted border’s forced growth/carry word and separately labeled bounds for conditional observers. Both share bounded, charged entry discovery; neither renders the full endpoint. A source without a certified entry returns an unavailable observation (exit 3), rather than guessing a digit or treating a bound as exact. The `pair-bank` observation uses a final outer-to-inner pair coordinate. The `temporal-grammar` observation uses an entry-source coordinate and `--temporal-grammar-period` (1–8) to certify both finite causal halos before publishing a repeated motif. Their coordinate units are explicit in JSON. A `closed-form` request retains original-source fields and separately reports an admitted transient prefix and affine suffix; the suffix shift is endpoint-derived, not a new predictive source certificate.
 
@@ -119,9 +159,18 @@ normalized Laurent accumulator projection modulo 198 and its first decimal
 jet modulo 1980. Its modular powering does not construct the full output or
 establish arbitrary-depth digit periodicity.
 
+`2rev10 --info temporal.mixed-adic` admits a bounded source prefix into the
+closed outer border and powers its phase, width parity and residue modulo 99.
+It returns the exact residue modulo 1980, the four oriented digit fields and
+a set of possible residues modulo 9900. The latter is an enclosure.
+The mod-18/90 field returns after 72 and 576 ticks on that border. The
+mixed state can have a different period. A source outside the admitted border
+returns an unavailable observation.
+
 ```sh
 number-compiler reverse-add --seed 196 --nth 64 --no-value --info temporal.seed-orbit --format json
 number-compiler 2rev10 --seed 196 --nth 128 --no-value --info temporal.seed-morphism --format json
+number-compiler 2rev10 --seed 196 --nth-power10 80 --no-value --info temporal.mixed-adic --format json
 ```
 
 `--info spatial.bank-morphism` emits a compressed output for an authenticated
@@ -244,7 +293,8 @@ The ordinary `temporal.open-ring` demand retains its 32-F-step limit.
 | Family | Index unit | Parameters | Term information | Event information |
 | --- | --- | --- | --- | --- |
 | `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `temporal.residue99`, `temporal.accumulator99`, `temporal.mirrored-diagonal`, `temporal.open-ring`, `temporal.seed-orbit`, `temporal.stencil`, `spatial.bank-morphism`, `temporal.matrix.trace` | — |
-| `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.matrix`, `temporal.closed-form`, `temporal.residue99`, `temporal.seed-morphism`, `temporal.defect-clock`, `temporal.carry-safety`, `spatial.stencil`, `temporal.bank`, `temporal.open-ring`, `temporal.birth-layers`, `spatial.pair-bank`, `spatial.bank-morphism`, `spatial.bank-window`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift`, `temporal.matrix.trace` | — |
+| `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.matrix`, `temporal.closed-form`, `temporal.residue99`, `temporal.seed-morphism`, `temporal.mixed-adic`, `temporal.defect-clock`, `temporal.carry-safety`, `spatial.stencil`, `temporal.bank`, `temporal.open-ring`, `temporal.birth-layers`, `spatial.pair-bank`, `spatial.bank-morphism`, `spatial.bank-window`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift`, `temporal.matrix.trace` | — |
+| `5rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.bank`, `arithmetic.modular`, `temporal.digit-field`, `temporal.closed-form`, `temporal.matrix`, `temporal.matrix.trace` | — |
 | `collatz` | `physical_iterations` | `--seed`, `--radix` | `temporal`, `metrics`, `temporal.matrix`, `temporal.clock`, `temporal.accumulator`, `temporal.double-accumulator`, `temporal.diagonal-carry`, `temporal.macro`, `temporal.innovation-borrow`, `temporal.matrix.trace` | `temporal`, `temporal.clock`, `arithmetic.modular`, `arithmetic.twisted`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.tropical`, `arithmetic.factor`, `safety.execution` |
 | `antihydra` | `macro_returns_after_startup` | — | `temporal`, `metrics`, `temporal.matrix`, `safety.ledger`, `temporal.clock`, `arithmetic.modular`, `spatial.tape`, `arithmetic.twisted`, `temporal.spacetime`, `temporal.diagonal-carry`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.mahler`, `arithmetic.tropical`, `arithmetic.factor`, `temporal.matrix.trace` | — |
 | `a367620` | `oeis_index` | — | `temporal`, `metrics`, `temporal.clock`, `arithmetic.tropical`, `safety.certificate` | — |

@@ -160,3 +160,25 @@ def test_cli_example_validation_never_executes_arithmetic(tmp_path: Path) -> Non
     errors = check_cli_docs(tmp_path)
     assert len(errors) == 1
     assert "invalid CLI example" in errors[0]
+
+
+def test_long_fences_keep_short_fence_examples_literal(tmp_path: Path) -> None:
+    _fixture(tmp_path)
+    (tmp_path / "docs/paper.md").write_text(
+        "# Paper\n\n## Proof\n\n````md\n```md\n[Literal](absent.md)\n"
+        "```\n````\n[Broken](missing.md)\n"
+    )
+    errors = check_docs(tmp_path)
+    assert any("missing.md" in error for error in errors)
+    assert not any("absent.md" in error for error in errors)
+
+
+@pytest.mark.parametrize("false_closer", ["```python", "~~~", "``"])
+def test_unclosed_fence_cannot_hide_document_links(
+    tmp_path: Path, false_closer: str
+) -> None:
+    _fixture(tmp_path)
+    (tmp_path / "docs/paper.md").write_text(
+        f"# Paper\n\n## Proof\n\n```md\nliteral\n{false_closer}\n"
+    )
+    assert any("unclosed Markdown code fence" in e for e in check_docs(tmp_path))

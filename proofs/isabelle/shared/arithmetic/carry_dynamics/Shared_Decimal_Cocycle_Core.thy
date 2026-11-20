@@ -10,6 +10,245 @@ theories.\<close>
 definition digit_value :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
   "digit_value a b = a + 5*b"
 
+text \<open>
+The decimal digit coordinates are the product of a binary quotient and a
+radix-five residue.  The following laws belong to this shared arithmetic
+owner: the names describe the radix split and do not encode a family.
+\<close>
+
+lemma decimal_binary_quinary_value:
+  "digit_value alpha beta = alpha + 5 * beta"
+  by (simp add: digit_value_def)
+
+lemma decimal_binary_quinary_split:
+  assumes binary: "2 * u = beta * c + t"
+      and radix_five: "5 * t = alpha * c + u'"
+  shows "10 * u = digit_value alpha beta * c + u'"
+proof -
+  have "10 * u = 5 * (2 * u)" by simp
+  also have "... = 5 * (beta * c + t)" using binary by simp
+  also have "... = 5 * beta * c + 5 * t"
+    by (simp add: algebra_simps)
+  also have "... = 5 * beta * c + (alpha * c + u')"
+    using radix_five by simp
+  also have "... = digit_value alpha beta * c + u'"
+    by (simp add: decimal_binary_quinary_value algebra_simps)
+  finally show ?thesis .
+qed
+
+lemma decimal_binary_quinary_split_ranges:
+  assumes c_pos: "0 < c"
+      and u_range: "u < c"
+      and binary: "2 * u = beta * c + t"
+      and t_range: "t < c"
+      and radix_five: "5 * t = alpha * c + u'"
+      and u'_range: "u' < c"
+  shows "beta < 2"
+    and "alpha < 5"
+    and "digit_value alpha beta < 10"
+proof -
+  have beta_le: "beta * c \<le> 2 * u"
+    using binary by arith
+  have twice_u_lt: "2 * u < 2 * c"
+    using u_range by simp
+  have two_c_le: "2 * c \<le> beta * c"
+    if "2 \<le> beta"
+    using mult_le_mono1[OF that, of c] by (simp add: mult.commute)
+  show "beta < 2"
+  proof (rule ccontr)
+    assume not_less: "\<not> beta < 2"
+    then have "2 \<le> beta" by arith
+    then have "2 * c \<le> beta * c" by (rule two_c_le)
+    with beta_le twice_u_lt show False by arith
+  qed
+
+  have alpha_le: "alpha * c \<le> 5 * t"
+    using radix_five by arith
+  have five_t_lt: "5 * t < 5 * c"
+    using t_range by simp
+  have five_c_le: "5 * c \<le> alpha * c"
+    if "5 \<le> alpha"
+    using mult_le_mono1[OF that, of c] by (simp add: mult.commute)
+  show "alpha < 5"
+  proof (rule ccontr)
+    assume not_less: "\<not> alpha < 5"
+    then have "5 \<le> alpha" by arith
+    then have "5 * c \<le> alpha * c" by (rule five_c_le)
+    with alpha_le five_t_lt show False by arith
+  qed
+
+  show "digit_value alpha beta < 10"
+    using \<open>beta < 2\<close> \<open>alpha < 5\<close>
+    by (simp add: decimal_binary_quinary_value; arith)
+qed
+
+lemma decimal_binary_quinary_exact_quotient:
+  assumes c_pos: "0 < c"
+      and split: "10 * u = digit_value alpha beta * c + u'"
+      and u'_range: "u' < c"
+  shows "(10 * u) div c = digit_value alpha beta"
+    and "(10 * u) mod c = u'"
+proof -
+  have quotient: "(digit_value alpha beta * c + u') div c =
+      digit_value alpha beta"
+    using c_pos u'_range by simp
+  have remainder: "(digit_value alpha beta * c + u') mod c = u'"
+    using u'_range by simp
+  show "(10 * u) div c = digit_value alpha beta"
+    using arg_cong[OF split, of "\<lambda>value. value div c"] quotient by metis
+  show "(10 * u) mod c = u'"
+    using arg_cong[OF split, of "\<lambda>value. value mod c"] remainder by metis
+qed
+
+corollary decimal_binary_quinary_split_exact_quotient:
+  assumes c_pos: "0 < c"
+      and u_range: "u < c"
+      and binary: "2 * u = beta * c + t"
+      and t_range: "t < c"
+      and radix_five: "5 * t = alpha * c + u'"
+      and u'_range: "u' < c"
+  shows "digit_value alpha beta < 10"
+    and "(10 * u) div c = digit_value alpha beta"
+    and "(10 * u) mod c = u'"
+proof -
+  have split: "10 * u = digit_value alpha beta * c + u'"
+    by (rule decimal_binary_quinary_split[OF binary radix_five])
+  show "digit_value alpha beta < 10"
+    by (rule decimal_binary_quinary_split_ranges(3)[OF c_pos u_range binary t_range
+        radix_five u'_range])
+  show "(10 * u) div c = digit_value alpha beta"
+    and "(10 * u) mod c = u'"
+    by (rule decimal_binary_quinary_exact_quotient[OF c_pos split u'_range])+
+qed
+
+lemma decimal_binary_quinary_construct_refines:
+  fixes u c :: nat
+  assumes positive: "0 < c"
+  shows "digit_value ((5*((2*u) mod c)) div c) ((2*u) div c)
+      = (10*u) div c"
+    "(5*((2*u) mod c)) mod c = (10*u) mod c"
+proof -
+  have binary: "2*u = ((2*u) div c)*c + (2*u) mod c" by simp
+  have radix_five: "5*((2*u) mod c) =
+      ((5*((2*u) mod c)) div c)*c + (5*((2*u) mod c)) mod c" by simp
+  have split: "10*u =
+      digit_value ((5*((2*u) mod c)) div c) ((2*u) div c)*c
+      + (5*((2*u) mod c)) mod c"
+    by (rule decimal_binary_quinary_split[OF binary radix_five])
+  have bound: "(5*((2*u) mod c)) mod c < c"
+    by (rule mod_less_divisor[OF positive])
+  show "digit_value ((5*((2*u) mod c)) div c) ((2*u) div c)
+      = (10*u) div c"
+    "(5*((2*u) mod c)) mod c = (10*u) mod c"
+    using decimal_binary_quinary_exact_quotient[OF positive split bound] by simp_all
+qed
+
+text \<open>
+This is the family-independent decimal representation owner used by numeric
+reverse actions.  Reversal here drops leading zeroes in the reversed value,
+as ordinary integer decimal reversal does; recurrence-specific multipliers
+and source guards remain in their family theories.
+\<close>
+
+function decimal_digit_count :: "nat \<Rightarrow> nat" where
+  "decimal_digit_count n =
+    (if n < 10 then 1 else Suc (decimal_digit_count (n div 10)))"
+  by pat_completeness auto
+termination
+  by (relation "measure id") auto
+
+function decimal_reverse :: "nat \<Rightarrow> nat" where
+  "decimal_reverse n =
+    (if n < 10 then n else
+      n mod 10 * 10 ^ (decimal_digit_count n - 1) +
+        decimal_reverse (n div 10))"
+  by pat_completeness auto
+termination
+  by (relation "measure id") auto
+
+lemma decimal_reverse_ignores_trailing_zero:
+  "decimal_reverse (10*n) = decimal_reverse n"
+proof (cases n)
+  case 0
+  then show ?thesis by (simp add: decimal_reverse.simps)
+next
+  case (Suc m)
+  then show ?thesis by (simp add: decimal_reverse.simps)
+qed
+
+lemma decimal_reverse_ignores_zero_suffix:
+  "decimal_reverse (n * 10^zeros) = decimal_reverse n"
+proof (induction zeros)
+  case 0
+  then show ?case by simp
+next
+  case (Suc zeros)
+  have factor: "n * 10 ^ Suc zeros = 10 * (n * 10 ^ zeros)"
+    by (simp add: power_Suc algebra_simps)
+  have contraction:
+    "decimal_reverse (n * 10 ^ Suc zeros) = decimal_reverse (n * 10 ^ zeros)"
+    unfolding factor by (rule decimal_reverse_ignores_trailing_zero)
+  show ?case using contraction Suc.IH by simp
+qed
+
+function decimal_reverse_acc :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
+  "decimal_reverse_acc n accumulator =
+    (if n < 10 then 10 * accumulator + n
+     else decimal_reverse_acc (n div 10)
+       (10 * accumulator + n mod 10))"
+  by pat_completeness auto
+termination
+  by (relation "measure fst") auto
+
+lemma decimal_reverse_accumulator_correct:
+  "decimal_reverse_acc n accumulator =
+    accumulator * 10^(decimal_digit_count n) + decimal_reverse n"
+proof (induction n arbitrary: accumulator rule: less_induct)
+  case (less n)
+  show ?case
+  proof (cases "n < 10")
+    case True
+    then show ?thesis
+      by (simp add: decimal_reverse_acc.simps decimal_reverse.simps
+          decimal_digit_count.simps)
+  next
+    case False
+    let ?quotient = "n div 10"
+    let ?remainder = "n mod 10"
+    have quotient_less: "?quotient < n" using False by simp
+    have recursive:
+      "decimal_reverse_acc ?quotient
+          (10 * accumulator + ?remainder) =
+        (10 * accumulator + ?remainder) *
+            10^(decimal_digit_count ?quotient) +
+          decimal_reverse ?quotient"
+      by (rule less.IH[OF quotient_less])
+    have count_step:
+      "decimal_digit_count n = Suc (decimal_digit_count ?quotient)"
+      using False by (simp add: decimal_digit_count.simps)
+    have reverse_step:
+      "decimal_reverse n =
+        ?remainder * 10^(decimal_digit_count ?quotient) +
+          decimal_reverse ?quotient"
+      using False count_step
+      by (simp add: decimal_reverse.simps)
+    show ?thesis
+      using False recursive count_step reverse_step
+      by (simp add: decimal_reverse_acc.simps power_Suc algebra_simps)
+  qed
+qed
+
+text \<open>Keep the logical reversal equations transparent while compiling the
+implementation through the single-pass accumulator.  This avoids recomputing
+the suffix digit count at every recursive call without changing the denotation
+used by family proofs.\<close>
+
+declare decimal_reverse.simps [code drop]
+
+lemma decimal_reverse_accumulator_code [code]:
+  "decimal_reverse n = decimal_reverse_acc n 0"
+  using decimal_reverse_accumulator_correct[of n 0] by simp
+
 definition normalize_alpha :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
   "normalize_alpha a c = (a+c) mod 5"
 
@@ -673,9 +912,13 @@ ML \<open>
     decimal_base_z_cyclic_inverse_root
     decimal_base_z_mod32_inverse_is_unit
     decimal_base_z_mod32_carry_reconstruction_from_inverse
-    decimal_base_z_mod32_carry_reconstruction encode_cocycle_def};
+    decimal_base_z_mod32_carry_reconstruction encode_cocycle_def
+    decimal_reverse_ignores_trailing_zero decimal_reverse_ignores_zero_suffix
+    decimal_reverse_accumulator_correct decimal_reverse_accumulator_code};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Shared decimal-cocycle proof depends on an oracle";
+  val _ = if Thm_Deps.has_skip_proof checked
+    then error "Skipped shared decimal-cocycle proof" else ();
 \<close>
 
 end

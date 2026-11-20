@@ -13,20 +13,31 @@ sig
      supported_values: term -> int list,
      core_modulus: term -> int,
      guard_table: term -> int -> Comma_CRT_MDD_Arena.seed_node list * int,
+     entry_action_key: int -> int -> term -> int -> term,
      entry_action: int -> int -> term -> int -> term,
      operator_action: term -> term,
      exit_code: term -> int -> int}
+  datatype program_shape =
+      Entry of {sector: int, digit: int, residue: int, core: term}
+    | Near_Residual of {sector: int, digit: int, residual: int}
+    | Near_Boundary of {sector: int}
+  datatype action_shape =
+      Goto of term * int | Exit of term * int | Fork of int * int
+    | Landmine of int | Invalid
+  val parse_program: term -> program_shape
+  val parse_action: term -> action_shape
   type selector_case =
     {wanted: int, guard_root: Comma_CRT_MDD_Arena.boolean_root,
      action_token: int}
+  type entry_representative =
+    {sector: int, residue: int, core: term, wanted: int, action: term}
   datatype selector_recipe =
       Near_Selector of {token: int}
     | Entry_Selector of
         {f: int, d: int, residue: int, core: term, cases: selector_case list}
   type closure_case =
     {wanted: int, guard_root: int, shifted_guard_root: int,
-     action_token: int, action_output_root: int, selected_root: int,
-     bind_key: Comma_CRT_MDD_Arena.bind_key,
+     action_token: int, action_output_root: int,
      child_closure: int option}
   type closure =
     {program_ref: int, full_shift: int, cases: closure_case list,
@@ -38,15 +49,19 @@ sig
      arena_roots: Comma_CRT_MDD_Arena.boolean_root list, arena_nodes: int list}
   type result
   val compile: Proof.context -> computation -> result
+  val compile_with_sources: Proof.context -> computation -> term list -> result
+  val compile_sources: Proof.context -> computation -> term list -> result
   val arena: result -> arena
   val programs: result -> term list
   val selectors: result -> selector_recipe list
   val action_tokens: result -> term list
+  val entry_representatives: result -> (term * entry_representative) list
   val guard_entries: result -> guard_entry list
   val closures: result -> closure list
   val class_program_refs: result -> int list
   val class_roots: result -> Comma_CRT_MDD_Arena.action_root list
-  val bind_keys: result -> Comma_CRT_MDD_Arena.bind_key list
+  val source_bindings: result -> (term * int * int * Comma_CRT_MDD_Arena.action_root) list
+  val priority_keys: result -> Comma_CRT_MDD_Arena.priority_key list
   val statistics: result -> string
 end
 
@@ -54,7 +69,6 @@ structure Comma_Frontier24_Parametric_Compiler:
   COMMA_FRONTIER24_PARAMETRIC_COMPILER =
 struct
   structure Arena = Comma_CRT_MDD_Arena
-  structure Proposal = Comma_Frontier24_MDD_Proposal
 
   type arena = Arena.arena
   type computation =
@@ -64,19 +78,21 @@ struct
      supported_values: term -> int list,
      core_modulus: term -> int,
      guard_table: term -> int -> Arena.seed_node list * int,
+     entry_action_key: int -> int -> term -> int -> term,
      entry_action: int -> int -> term -> int -> term,
      operator_action: term -> term,
      exit_code: term -> int -> int}
   type selector_case =
     {wanted: int, guard_root: Arena.boolean_root, action_token: int}
+  type entry_representative =
+    {sector: int, residue: int, core: term, wanted: int, action: term}
   datatype selector_recipe =
       Near_Selector of {token: int}
     | Entry_Selector of
         {f: int, d: int, residue: int, core: term, cases: selector_case list}
   type closure_case =
     {wanted: int, guard_root: int, shifted_guard_root: int,
-     action_token: int, action_output_root: int, selected_root: int,
-     bind_key: Arena.bind_key, child_closure: int option}
+     action_token: int, action_output_root: int, child_closure: int option}
   type closure =
     {program_ref: int, full_shift: int, cases: closure_case list,
      near_token: int option, near_action_output_root: int option,
@@ -88,10 +104,12 @@ struct
   type result =
     {arena: arena, programs: term list, selectors: selector_recipe list,
      action_tokens: term list, guard_entries: guard_entry list,
+     entry_representatives: (term * entry_representative) list,
      closures: closure list, class_program_refs: int list,
-     class_roots: Arena.action_root list, bind_keys: Arena.bind_key list,
+     class_roots: Arena.action_root list,
+     source_bindings: (term * int * int * Arena.action_root) list,
+     priority_keys: Arena.priority_key list,
      statistics: string}
-
   val natT = @{typ nat}
   val programT = @{typ comma_semantic_port_program}
   val actionT = @{typ comma_source_continuation_action}
@@ -137,6 +155,8 @@ struct
      action_count: int Unsynchronized.ref,
      action_ids: int Termtab.table Unsynchronized.ref,
      action_values: term Inttab.table Unsynchronized.ref,
+     entry_actions: entry_representative Termtab.table Unsynchronized.ref,
+     entry_action_transports: int Unsynchronized.ref,
      guards_rev: guard_entry list Unsynchronized.ref,
      guard_roots: Arena.boolean_root Termtab.table Unsynchronized.ref,
      source_programs: term option Termtab.table Unsynchronized.ref,
@@ -145,8 +165,8 @@ struct
      closure_ids: int Termtab.table Unsynchronized.ref,
      closure_roots: Arena.action_root Termtab.table Unsynchronized.ref,
      active_closures: term list Unsynchronized.ref,
-     bind_keys_rev: Arena.bind_key list Unsynchronized.ref,
-     bind_key_ids: unit Termtab.table Unsynchronized.ref,
+     priority_keys_rev: Arena.priority_key list Unsynchronized.ref,
+     priority_key_ids: unit Termtab.table Unsynchronized.ref,
      class_requests: int Unsynchronized.ref,
      source_requests: int Unsynchronized.ref,
      guard_requests: int Unsynchronized.ref,
@@ -183,7 +203,9 @@ struct
   datatype action_shape =
       Goto of term * int
     | Exit of term * int
-    | Stop
+    | Fork of int * int
+    | Landmine of int
+    | Invalid
 
   fun parse_action action =
     (case Term.strip_comb action of
@@ -193,43 +215,33 @@ struct
         else if name = @{const_name Comma_Continuation_Exit} then
           Exit (source, checked_int "Exit delta" delta)
         else if name = @{const_name Comma_Continuation_Fork} then
-          Stop
+          Fork (checked_int "Fork digit" source, checked_int "Fork delta" delta)
         else error "Unknown binary continuation constructor"
-    | (Const (name, _), [_]) =>
-        if name = @{const_name Comma_Continuation_Landmine} then Stop
+    | (Const (name, _), [delta]) =>
+        if name = @{const_name Comma_Continuation_Landmine} then
+          Landmine (checked_int "Landmine delta" delta)
         else error "Unknown unary continuation constructor"
     | (Const (name, _), []) =>
-        if name = @{const_name Comma_Continuation_Invalid} then Stop
+        if name = @{const_name Comma_Continuation_Invalid} then Invalid
         else error "Unknown nullary continuation constructor"
     | _ => error "Malformed continuation action")
 
-  fun intern_bind_key (state: build_state) key =
+  fun intern_priority_key (state: build_state) key =
     let
-      val keys = #bind_keys_rev state
+      val keys = #priority_keys_rev state
       val key_term =
         let
-          val (source, fallback, mapping) = key
+          val (mapping, fallback) = key
           val pairT = HOLogic.mk_prodT (natT, natT)
-          val mappingT = HOLogic.listT pairT
           val mapping_term = HOLogic.mk_list pairT
             (map (fn (a,b) => HOLogic.mk_prod (nat a, nat b)) mapping)
-        in HOLogic.mk_prod (nat source,
-          HOLogic.mk_prod (nat fallback, mapping_term)) end
-      val old = Termtab.lookup (!(#bind_key_ids state)) key_term
+        in HOLogic.mk_prod (mapping_term,nat fallback) end
+      val old = Termtab.lookup (!(#priority_key_ids state)) key_term
     in
       (case old of SOME _ => ()
-      | NONE => (#bind_key_ids state := Termtab.update (key_term, ())
-          (!(#bind_key_ids state)); keys := key :: !keys))
+      | NONE => (#priority_key_ids state := Termtab.update (key_term, ())
+          (!(#priority_key_ids state)); keys := key :: !keys))
     end
-
-  fun selection_key arena guard yes no =
-    let
-      val source = Arena.boolean_index arena guard
-      val fallback = Arena.action_index arena no
-      val selected = Arena.action_index arena yes
-      val witness = Arena.bind_witness arena
-        (source, fallback, [(0, fallback), (1, selected)])
-    in #key witness end
 
   fun import_guard (state: build_state) core wanted =
     let
@@ -278,7 +290,7 @@ struct
     let
       val {program_ids, programs_rev, selectors_rev, program_requests,
         computation, action_requests, ...} = state
-      val {supported_values, core_modulus, entry_action, operator_action,
+      val {supported_values, core_modulus, entry_action_key, entry_action, operator_action,
         program_admitted, ...} =
         computation
       val _ = program_requests := !program_requests + 1
@@ -307,8 +319,20 @@ struct
                     let
                       val guard = import_guard state core wanted
                       val _ = action_requests := !action_requests + 1
-                      val action = dest_action "Entry selector action"
-                        (entry_action f residue core wanted)
+                      val key = entry_action_key f residue core wanted
+                      val action = (case Termtab.lookup (!(#entry_actions state)) key of
+                          SOME prior =>
+                            (#entry_action_transports state :=
+                              !(#entry_action_transports state) + 1; #action prior)
+                        | NONE =>
+                            let
+                              val value = dest_action "Entry selector action"
+                                (entry_action f residue core wanted)
+                              val representative: entry_representative =
+                                {sector=f,residue=residue,core=core,wanted=wanted,action=value}
+                              val _ = #entry_actions state := Termtab.update
+                                (key,representative) (!(#entry_actions state))
+                            in value end)
                       val token = intern_action state action
                     in {wanted=wanted, guard_root=guard, action_token=token} end
                   val cases = map one values
@@ -357,7 +381,7 @@ struct
   fun closure_key program_ref full_shift =
     HOLogic.mk_prod (nat program_ref, nat full_shift)
 
-  fun build (state: build_state) =
+  fun build (state: build_state) include_classes requested_sources =
     let
       val {arena, closures_rev, closure_ids, active_closures,
         computation, class_requests, ...} = state
@@ -384,7 +408,14 @@ struct
           | NONE => error "Action-token reference is outside the canonical table")
         in
           (case parse_action action of
-            Stop => {root=Arena.action_none arena, child=NONE}
+            Invalid => {root=Arena.action_none arena, child=NONE}
+          | Fork (digit,delta) =>
+              if 2 <= digit andalso digit <= 9 andalso full_shift + delta = 0 then
+                {root=Arena.action_some arena (44+digit), child=NONE}
+              else {root=Arena.action_none arena, child=NONE}
+          | Landmine delta =>
+              if full_shift + delta = 0 then {root=Arena.action_some arena 54, child=NONE}
+              else {root=Arena.action_none arena, child=NONE}
           | Exit (source, delta) =>
               (case exit_code state source (full_shift+delta) of
                 0 => {root=Arena.action_none arena, child=NONE}
@@ -441,18 +472,12 @@ struct
                           SOME (Arena.action_index arena root), #child action) end
                     | Entry_Selector {f,d,residue,core,cases=selector_cases} =>
                         let
-                          fun add_case (selector_case: selector_case)
-                              (fallback, steps_rev) =
+                          fun make_case (selector_case: selector_case) =
                             let
                               val shifted_guard = Arena.shift_boolean arena
                                 (#guard_root selector_case) full_shift
                               val action = compile_token program_ref full_shift
                                 (#action_token selector_case)
-                              val selected = Arena.select_boolean_action arena
-                                shifted_guard (#root action) fallback
-                              val key' = selection_key arena shifted_guard
-                                (#root action) fallback
-                              val _ = intern_bind_key state key'
                               val step: closure_case =
                                 {wanted= #wanted selector_case,
                                  guard_root=Arena.boolean_index arena
@@ -460,11 +485,13 @@ struct
                                  shifted_guard_root=Arena.boolean_index arena shifted_guard,
                                  action_token= #action_token selector_case,
                                  action_output_root=Arena.action_index arena (#root action),
-                                 selected_root=Arena.action_index arena selected,
-                                 bind_key=key', child_closure= #child action}
-                            in (selected, step::steps_rev) end
-                          val (root, steps) = fold_rev add_case selector_cases
-                            (Arena.action_none arena, [])
+                                 child_closure= #child action}
+                            in (step,(shifted_guard,#root action)) end
+                          val entries = map make_case selector_cases
+                          val (root,key) = Arena.priority_select arena (map #2 entries)
+                            (Arena.action_none arena)
+                          val _ = intern_priority_key state key
+                          val steps = map #1 entries
                         in (root, steps, NONE, NONE, NONE) end)
                   val _ = active_closures := filter (fn active => not (active aconv key))
                     (!active_closures)
@@ -489,34 +516,55 @@ struct
           val program = (case class_program cid of
             SOME candidate => dest_program "Canonical class program" candidate
           | NONE => error "Class domain contains an unavailable program")
-        in intern_program state program end) (0 upto 45)
+        in intern_program state program end) (if include_classes then 0 upto 45 else [])
       val class_roots = map (fn reference => #2 (compile_full reference 0)) class_refs
+      (* A source occurrence is an application binding, never a semantic key.
+         Its requested program and zero-shift closure still need kernel replay. *)
+      fun compile_source source =
+        let
+          val _ = if fastype_of source = @{typ comma_finite_position} andalso closed source
+            then () else error "Requested source is not a closed finite position"
+          val program = (case source_program state source of
+              SOME candidate => candidate
+            | NONE => error "Requested source has no admitted program")
+          val program_ref = intern_program state program
+          val (closure_ref, root) = compile_full program_ref 0
+        in (source, program_ref, closure_ref, root) end
+      val _ = Comma_Proof_Profile.report
+        ("Frontier24 source nodes before physical requests=" ^ Int.toString (Arena.node_count arena))
+      val source_bindings = map compile_source requested_sources
+      val _ = Comma_Proof_Profile.report
+        ("Frontier24 source nodes after physical requests=" ^ Int.toString (Arena.node_count arena))
       val stats = Arena.statistics arena ^
         " canonical_programs=" ^ Int.toString (length (!(#programs_rev state))) ^
         " selector_cases=" ^ Int.toString (fold (fn recipe => fn n => n +
           (case recipe of Near_Selector _ => 0 | Entry_Selector {cases,...} => length cases))
           (!(#selectors_rev state)) 0) ^
         " unique_action_tokens=" ^ Int.toString (length (!(#actions_rev state))) ^
+        " entry_action_representatives=" ^ Int.toString (Termtab.size (!(#entry_actions state))) ^
+        " entry_action_transports=" ^ Int.toString (!(#entry_action_transports state)) ^
         " core_guard_roots=" ^ Int.toString (length (!(#guards_rev state))) ^
         " closure_applications=" ^ Int.toString (!(#closure_count state)) ^
         " closure_requests=" ^ Int.toString (!(#closure_requests state)) ^
         " closure_cache_hits=" ^ Int.toString (!(#closure_hits state)) ^
-        " unique_bind_keys=" ^ Int.toString (length (!(#bind_keys_rev state))) ^
+        " unique_priority_keys=" ^ Int.toString (length (!(#priority_keys_rev state))) ^
         " program_lookup_requests=" ^ Int.toString (!(#program_requests state)) ^
         " class_program_queries=" ^ Int.toString (!(#class_requests state)) ^
         " source_program_queries=" ^ Int.toString (!(#source_requests state)) ^
         " guard_queries=" ^ Int.toString (!(#guard_requests state)) ^
         " action_queries=" ^ Int.toString (!(#action_requests state)) ^
-        " class_roots=46"
-      val _ = if length class_refs = 46 andalso length class_roots = 46 then ()
+        " class_roots=" ^ Int.toString (length class_roots)
+      val _ = if length class_refs = length class_roots andalso
+          (not include_classes orelse length class_refs = 46) then ()
         else error "Parametric compiler did not publish 46 class roots"
     in
-      {class_program_refs=class_refs, class_roots=class_roots, statistics=stats}
+      {class_program_refs=class_refs, class_roots=class_roots,
+       source_bindings=source_bindings, statistics=stats}
     end
 
-  fun compile ctxt computation : result =
+  fun compile_requested ctxt computation include_classes requested_sources : result =
     let
-      val arena = Proposal.new_arena ()
+      val arena = Arena.create [3,4,7,11]
       val state: build_state =
         {ctxt=ctxt, computation=computation,
          arena=arena, programs_rev=Unsynchronized.ref [], program_count=Unsynchronized.ref 0,
@@ -527,37 +575,51 @@ struct
          actions_rev=Unsynchronized.ref [], action_count=Unsynchronized.ref 0,
          action_ids=Unsynchronized.ref Termtab.empty,
          action_values=Unsynchronized.ref Inttab.empty,
+         entry_actions=Unsynchronized.ref Termtab.empty,
+         entry_action_transports=Unsynchronized.ref 0,
          guards_rev=Unsynchronized.ref [],
         guard_roots=Unsynchronized.ref Termtab.empty,
          source_programs=Unsynchronized.ref Termtab.empty,
          closures_rev=Unsynchronized.ref [], closure_count=Unsynchronized.ref 0,
          closure_ids=Unsynchronized.ref Termtab.empty,
          closure_roots=Unsynchronized.ref Termtab.empty,
-         active_closures=Unsynchronized.ref [], bind_keys_rev=Unsynchronized.ref [],
-         bind_key_ids=Unsynchronized.ref Termtab.empty,
+         active_closures=Unsynchronized.ref [], priority_keys_rev=Unsynchronized.ref [],
+         priority_key_ids=Unsynchronized.ref Termtab.empty,
          class_requests=Unsynchronized.ref 0,
          source_requests=Unsynchronized.ref 0,
          guard_requests=Unsynchronized.ref 0,
          action_requests=Unsynchronized.ref 0,
          program_requests=Unsynchronized.ref 0,
          closure_requests=Unsynchronized.ref 0, closure_hits=Unsynchronized.ref 0}
-      val {class_program_refs,class_roots,statistics} = build state
+      val {class_program_refs,class_roots,source_bindings,statistics} =
+        build state include_classes requested_sources
     in {arena=arena, programs=List.rev (!(#programs_rev state)),
         selectors=List.rev (!(#selectors_rev state)),
         action_tokens=List.rev (!(#actions_rev state)),
+        entry_representatives=Termtab.dest (!(#entry_actions state)),
         guard_entries=List.rev (!(#guards_rev state)),
         closures=List.rev (!(#closures_rev state)),
         class_program_refs=class_program_refs, class_roots=class_roots,
-        bind_keys=List.rev (!(#bind_keys_rev state)), statistics=statistics}:result end
+        source_bindings=source_bindings,
+        priority_keys=List.rev (!(#priority_keys_rev state)), statistics=statistics}:result end
+
+  fun compile_with_sources ctxt computation requested_sources =
+    compile_requested ctxt computation true requested_sources
+  fun compile_sources ctxt computation requested_sources =
+    compile_requested ctxt computation false requested_sources
+  fun compile ctxt computation = compile_with_sources ctxt computation []
 
   fun arena (r: result) = #arena r
   fun programs (r: result) = #programs r
   fun selectors (r: result) = #selectors r
   fun action_tokens (r: result) = #action_tokens r
+  fun entry_representatives (r: result) = #entry_representatives r
   fun guard_entries (r: result) = #guard_entries r
   fun closures (r: result) = #closures r
   fun class_program_refs (r: result) = #class_program_refs r
   fun class_roots (r: result) = #class_roots r
-  fun bind_keys (r: result) = #bind_keys r
+  fun source_bindings (r: result) = #source_bindings r
+  fun priority_keys (r: result) = #priority_keys r
   fun statistics (r: result) = #statistics r
+
 end

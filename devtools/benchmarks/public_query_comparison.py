@@ -15,7 +15,7 @@ from typing import Literal, TypedDict, TypeVar
 from devtools.paths import report_output
 from number_compiler.api.cli import main as cli_main
 from number_compiler.api.cli_render import radix_string
-from number_compiler.api.cli_requests import parse_request
+from number_compiler.api.cli_requests import cli_integer_vector, parse_request
 from number_compiler.api.family_registry import CAPABILITIES, family_spec
 from number_compiler.api.json_output import (
     is_object_sequence,
@@ -238,7 +238,9 @@ def compare(
         if declaration.value_kind is OptionValueKind.BOOLEAN:
             if option_text not in ("true", "false"):
                 raise ValueError("Boolean observation option requires true or false")
-            parsed: str | bool = option_text == "true"
+            parsed: str | bool | tuple[int, ...] = option_text == "true"
+        elif declaration.value_kind is OptionValueKind.INTEGER_VECTOR:
+            parsed = cli_integer_vector(option_text)
         else:
             parsed = option_text
         observation_arguments.extend(option_argv(declaration.flag, parsed))

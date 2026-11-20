@@ -7,6 +7,12 @@ sig
   val make: Comma_CRT_MDD_Certificate_Store.store -> replay
   val certify_shift: replay -> int -> int -> int -> thm
   val shift_eval_phase: replay -> int -> int -> int -> thm
+  type mapped_replay
+  val make_mapped: Comma_CRT_MDD_Certificate_Store.store -> term ->
+    (int -> int -> thm) -> mapped_replay
+  val certify_mapped_shift: mapped_replay -> int -> int -> int -> thm
+  val mapped_shift_eval_phase: mapped_replay -> int -> int -> int -> thm
+  val mapped_statistics: mapped_replay -> string
   val statistics: replay -> string
 end
 
@@ -25,7 +31,12 @@ struct
     {store: Store.store, ctxt: Proof.context, radices: int list,
      axis_facts: (thm * thm) Vector.vector,
      shifts: thm Shift_Key.table Unsynchronized.ref,
-     shift_visits: int Unsynchronized.ref, slot_rows: int Unsynchronized.ref}
+     slot_templates: thm Shift_Key.table Unsynchronized.ref,
+     slot_template_hits: int Unsynchronized.ref, slot_template_misses: int Unsynchronized.ref,
+     shift_visits: int Unsynchronized.ref, slot_rows: int Unsynchronized.ref,
+     zero_identity_hits: int Unsynchronized.ref}
+  type mapped_replay = {base:replay,encode:term,leaf:int -> int -> thm,
+    certificates:thm Shift_Key.table Unsynchronized.ref, visits:int Unsynchronized.ref}
 
   val natT = @{typ nat}
   val boolT = HOLogic.boolT
@@ -65,7 +76,10 @@ struct
       val replay = {store=store, ctxt=ctxt, radices=radices,
         axis_facts=axis_facts,
         shifts=Unsynchronized.ref Shift_Key.empty,
-        shift_visits=Unsynchronized.ref 0, slot_rows=Unsynchronized.ref 0}
+        slot_templates=Unsynchronized.ref Shift_Key.empty,
+        slot_template_hits=Unsynchronized.ref 0, slot_template_misses=Unsynchronized.ref 0,
+        shift_visits=Unsynchronized.ref 0, slot_rows=Unsynchronized.ref 0,
+        zero_identity_hits=Unsynchronized.ref 0}
       val _ = Proof_Utils.ensure_closed_context ctxt "Frozen MDD wellformedness"
         (Store.wellformed store)
     in replay end
@@ -87,7 +101,7 @@ struct
       val expected = Thm.prop_of theorem
     in Proof_Utils.exact_prop ctxt "Frozen MDD root bound" expected theorem end
 
-  fun mk_less left right = HOLogic.mk_binrel @{const_name less} (left,right)
+  val mk_less = Proof_Utils.mk_less
 
   fun prove_closed ctxt label expected tactic =
     Proof_Utils.prove_exact ctxt label expected
@@ -106,20 +120,6 @@ struct
       val shift = Const (@{const_name comma_crt_mdd_root_shift_certificate}, shift_type)
     in shift $ Store.radices store $ Store.table store $ nat amount $ nat source $ nat target end
 
-  fun intro_certificate ({ctxt, ...}: replay) label intro proposition facts =
-    let
-      fun solve {context, ...} =
-        resolve_tac context [intro] 1 THEN
-        ALLGOALS (fn i =>
-          FIRST (map (fn fact =>
-            (resolve_tac context [Thm.forall_elim_vars 0 fact]
-              THEN_ALL_NEW assume_tac context) i) facts @
-            [assume_tac context i,
-             Simplifier.asm_full_simp_tac
-               (arithmetic_context context) i]))
-    in prove_closed ctxt ("MDD root-shift " ^ label)
-      (HOLogic.mk_Trueprop proposition) solve end
-
   fun nth_nat_list items index =
     Const (@{const_name nth}, nat_listT --> natT --> natT) $
       HOLogic.mk_list natT (map nat items) $ index
@@ -128,177 +128,268 @@ struct
     Const (@{const_name nth}, nat_listT --> natT --> natT) $
       Store.radices store $ axis
 
-  fun universal_slots ({ctxt, slot_rows, ...}: replay)
-      radix radix_term proposition_at proofs =
+  (* The arithmetic and list selection are independent of the receiving
+     node IDs and of the relation being replayed.  Prove that finite shape
+     once, then instantiate it with the checked child certificates. *)
+  fun mapped_slots (base as {ctxt,store,slot_templates,slot_template_hits,
+        slot_template_misses,slot_rows,...}:replay)
+      axis amount children target_children target proofs predicate =
     let
-      val slot = Free ("mdd_slot", natT)
-      val predicate = Term.lambda slot (proposition_at slot)
-      val _ = if fastype_of predicate = @{typ "nat => bool"} then ()
-        else error "MDD slot predicate has the wrong type"
-      val successor_cache = Comma_Selected_List_Conversion.make_successor_cache ctxt radix
-      val reduction_context =
-        Comma_Entry_Arithmetic.natural_context ctxt
-        |> Simplifier.add_simps
-          (@{thms nth_Cons_0 nth_Cons_Suc nth_Cons' list.simps list.size
-            option.simps set_simps ball_simps mod_simps})
-      fun proof_item index =
+      val radix = length children
+      val branch = is_some target_children
+      val key = (axis,amount,if branch then 1 else 0)
+      val source_names = map (fn i => "mdd_s" ^ Int.toString i) (0 upto (radix-1))
+      val target_names = if branch then
+          map (fn i => "mdd_t" ^ Int.toString i) (0 upto (radix-1))
+        else ["mdd_t0"]
+      val sources = map (fn n => Free (n,natT)) source_names
+      val targets = map (fn n => Free (n,natT)) target_names
+      val relT = natT --> natT --> boolT
+      val rel = Free ("mdd_rel",relT)
+      val slot = Free ("mdd_slot",natT)
+      fun select terms index = Const (@{const_name nth}, nat_listT --> natT --> natT) $
+        HOLogic.mk_list natT terms $ index
+      fun target_at index = if branch then select targets index else hd targets
+      val index = HOLogic.mk_binop @{const_name modulo}
+        (HOLogic.mk_binop @{const_name plus} (slot,nat amount),radix_at store (nat axis))
+      val result = rel $ select sources index $ target_at slot
+      val premises = map (fn i => HOLogic.mk_Trueprop
+        (rel $ List.nth (sources,(i+amount) mod radix) $
+          (if branch then List.nth (targets,i) else hd targets))) (0 upto (radix-1))
+      val conclusion = Logic.all slot (Logic.mk_implies
+        (HOLogic.mk_Trueprop (mk_less slot (radix_at store (nat axis))),
+         HOLogic.mk_Trueprop result))
+      fun create () =
         let
-          val expected = HOLogic.mk_Trueprop (proposition_at (nat index))
-          val child = List.nth (proofs,index)
-          (* Reduce only the literal child indices.  The semantic child
-             certificate is already checked; do not search for its proof
-             again under a slot-specific goal. *)
-          val indices = Simplifier.rewrite reduction_context
-            (Thm.cterm_of ctxt expected)
-          val child = Proof_Utils.exact_prop ctxt
-            "MDD selected child certificate"
-            (Thm.term_of (Thm.rhs_of indices)) child
-          val normalized = Thm.equal_elim (Thm.symmetric indices) child
-          val normalized = Proof_Utils.exact_prop ctxt
-            "MDD concrete child certificate" expected normalized
-        in Proof_Utils.predicate_application ctxt
-          "MDD concrete child predicate application" predicate (nat index) normalized end
-      val all = Comma_Selected_List_Conversion.prove_indexed_list_all
-        {ctxt=ctxt, predicate=predicate, bound=radix, prove_item=proof_item,
-         zero_fact = @{thm comma_indexed_all_zero},
-         step_fact = @{thm comma_indexed_all_Suc},
-         successor_equation= #equation successor_cache}
-      val universal = Logic.all slot
-        (Logic.mk_implies
-          (HOLogic.mk_Trueprop (mk_less slot radix_term),
-           HOLogic.mk_Trueprop (proposition_at slot)))
-      val selected = @{thm comma_crt_mdd_indexed_allD} OF [all]
-      val theorem = Proof_Utils.prove_exact ctxt
-        "Finite MDD child certificate rows" universal
-        (fn context => resolve_tac context [selected] 1 THEN
-          Simplifier.asm_full_simp_tac (arithmetic_context context) 1)
+          val alternatives = foldr1 HOLogic.mk_disj
+            (map (fn i => HOLogic.mk_eq (slot,nat i)) (0 upto (radix-1)))
+          val disjunction = Goal.prove ctxt ["mdd_slot"] []
+            (Logic.mk_implies (HOLogic.mk_Trueprop (mk_less slot (radix_at store (nat axis))),
+              HOLogic.mk_Trueprop alternatives))
+            (fn {context,...} =>
+              Simplifier.full_simp_tac (arithmetic_context context) 1 THEN
+              TRY (Arith_Data.arith_tac context 1))
+          val scalar = arithmetic_context ctxt |> Simplifier.add_simps
+            (@{thms mod_simps})
+          val theorem = Goal.prove ctxt ("mdd_rel" :: source_names @ target_names)
+            premises conclusion (fn {context,prems} =>
+              Method.insert_tac context prems 1 THEN
+              dresolve_tac context [disjunction] 1 THEN
+              REPEAT_DETERM (FIRSTGOAL (eresolve_tac context [@{thm disjE}])) THEN
+              ALLGOALS (Simplifier.asm_full_simp_tac scalar))
+          val _ = if null (Thm.hyps_of theorem) andalso null (Thm.tpairs_of theorem)
+            then () else error "Mapped slot template has open assumptions"
+        in theorem end
+      val template = (case Shift_Key.lookup (!slot_templates) key of
+          SOME th => (slot_template_hits := !slot_template_hits + 1; th)
+        | NONE => let val th = create ()
+            val _ = slot_template_misses := !slot_template_misses + 1
+            val _ = slot_templates := Shift_Key.update (key,th) (!slot_templates)
+          in th end)
+      val target_values = (case target_children of SOME cs => cs | NONE => [target])
+      val assignments = (("mdd_rel",predicate) ::
+        (source_names ~~ map nat children) @ (target_names ~~ map nat target_values))
+      val specialized = Drule.infer_instantiate ctxt
+        (map (fn (name,value) => ((name,0),Thm.cterm_of ctxt value)) assignments) template
+      val theorem = Thm.forall_intr_vars (specialized OF proofs)
+      val expected = Logic.all slot (Logic.mk_implies
+        (HOLogic.mk_Trueprop (mk_less slot (radix_at store (nat axis))),
+         HOLogic.mk_Trueprop (Envir.beta_norm (predicate $
+           nth_nat_list children (HOLogic.mk_binop @{const_name modulo}
+             (HOLogic.mk_binop @{const_name plus} (slot,nat amount),radix_at store (nat axis))) $
+           (case target_children of SOME cs => nth_nat_list cs slot | NONE => nat target)))))
       val _ = slot_rows := !slot_rows + radix
-      val theorem = Proof_Utils.exact_prop ctxt "Finite MDD child certificate rows" universal theorem
+    in Proof_Utils.exact_prop ctxt "Mapped shift instantiated slot template" expected theorem end
+
+  fun make_mapped store encode leaf : mapped_replay =
+    let val ctxt = Store.context store
+        val _ = if Proof_Utils.closed encode andalso fastype_of encode = @{typ "nat => nat"}
+          then () else error "Mapped shift encoding must be a closed natural function"
+        val _ = Thm.cterm_of ctxt encode
+    in {base=make store,encode=encode,leaf=leaf,
+      certificates=Unsynchronized.ref Shift_Key.empty,visits=Unsynchronized.ref 0} end
+
+  fun mapped_prop ({base={store,...},encode,...}:mapped_replay) amount source target =
+    @{term "comma_crt_mdd_root_shift_map_certificate :: nat list => nat comma_crt_mdd_node list => (nat => nat) => nat => nat => nat => bool"} $
+      Store.radices store $ Store.table store $ encode $ nat amount $ nat source $ nat target
+
+  (* Resolve a fully instantiated mapped certificate against ordered checked facts. *)
+  fun mapped_intro ({ctxt,store,...}:replay) label intro encode amount source target extra facts proposition =
+    let
+      val bindings = [("radices", Store.radices store), ("nodes", Store.table store),
+        ("encode",encode), ("amount",nat amount), ("source",nat source),
+        ("target",nat target)] @ extra
+      val instantiated = Drule.infer_instantiate ctxt
+        (map (fn (name,term) => ((name,0),Thm.cterm_of ctxt term)) bindings) intro
+      fun normalize theorem = Conv.fconv_rule Drule.beta_eta_conversion theorem
+      fun discharge original theorem =
+        let
+          val fact = normalize original
+          val (premise,_) = Logic.dest_implies (Thm.prop_of theorem)
+          val _ = if premise aconv Thm.prop_of fact then ()
+            else error ("Mapped shift " ^ label ^ " premise differs from checked fact")
+        in Thm.implies_elim theorem fact end
+      val result = fold discharge facts (normalize instantiated)
+    in Proof_Utils.exact_prop ctxt ("Mapped shift " ^ label)
+      (HOLogic.mk_Trueprop proposition) result end
+
+  fun certify_mapped_shift (mapped as {base,encode,leaf,certificates,visits}:mapped_replay)
+      amount source target =
+    let
+      val {ctxt,radices,store,...} = base
+      val _ = if amount >= 0 then () else error "Mapped MDD shift amount is negative"
+      val _ = ignore (bound base source)
+      val _ = ignore (bound base target)
+      val key = (amount,source,target)
+      val proposition = mapped_prop mapped amount source target
+    in case Shift_Key.lookup (!certificates) key of
+      SOME theorem => Proof_Utils.exact_prop ctxt "Reused mapped shift certificate"
+        (HOLogic.mk_Trueprop proposition) theorem
+    | NONE =>
+        let
+          val _ = visits := !visits+1
+          val source_node = node_at base source
+          val target_node = node_at base target
+          val source_bound = bound base source
+          val target_bound = bound base target
+          val source_eq = lookup_equation base source
+          val target_eq = lookup_equation base target
+          val theorem = (case (source_node,target_node) of
+              (Store.Leaf input,Store.Leaf output) =>
+                let
+                  val equation = leaf input output |> Proof_Utils.exact_prop ctxt
+                    "Mapped shift leaf encoding" (HOLogic.mk_Trueprop
+                      (HOLogic.mk_eq (Envir.beta_norm (encode $ nat input),nat output)))
+                  val target_expected = Envir.beta_norm (HOLogic.mk_Trueprop (HOLogic.mk_eq
+                    (Const (@{const_name nth},node_listT --> natT --> nodeT) $
+                      Store.table store $ nat target,
+                     Const (@{const_name Comma_CRT_MDD_Leaf},natT --> nodeT) $ (encode $ nat input))))
+                  val target_fact = Proof_Utils.prove_exact ctxt "Mapped shift target leaf"
+                    target_expected (fn context => Method.insert_tac context [target_eq,equation] 1 THEN
+                      Simplifier.asm_full_simp_tac (put_simpset HOL_basic_ss context) 1)
+                in mapped_intro base "leaf"
+                  @{thm comma_crt_mdd_root_shift_map_certificate.root_shift_map_leaf}
+                  encode amount source target [("payload",nat input)]
+                  [source_bound,target_bound,source_eq,target_fact] proposition end
+            | (Store.Branch (axis,children),_) =>
+                let
+                  val radix = List.nth (radices,axis)
+                  val _ = if length children=radix then () else error "Mapped shift source width differs"
+                  val target_children = (case target_node of
+                      Store.Branch (other,cs) =>
+                        if other=axis then (if length cs=radix then SOME cs
+                          else error "Mapped shift target width differs")
+                        else if other>axis then NONE
+                        else error "Mapped shift target precedes source axis"
+                    | Store.Leaf _ => NONE)
+                  fun source_child slot = List.nth (children,(slot+amount) mod radix)
+                  fun target_child slot = (case target_children of SOME cs => List.nth (cs,slot)
+                    | NONE => target)
+                  val child_proofs = map (fn slot => certify_mapped_shift mapped amount
+                    (source_child slot) (target_child slot)) (0 upto (radix-1))
+                  val relation = @{term "comma_crt_mdd_root_shift_map_certificate :: nat list => nat comma_crt_mdd_node list => (nat => nat) => nat => nat => nat => bool"} $
+                    Store.radices store $ Store.table store $ encode $ nat amount
+                  val all_children = mapped_slots base axis amount children target_children target child_proofs relation
+                  val (axis_bound,positive) = Vector.sub (#axis_facts base,axis)
+                  fun width label items = prove_scalar base label (HOLogic.mk_eq
+                    (Const (@{const_name size},nat_listT --> natT) $
+                      HOLogic.mk_list natT (map nat items),radix_at store (nat axis)))
+                  val source_width = width "Mapped shift source width" children
+                in case target_children of
+                  SOME cs => mapped_intro base "branch"
+                    @{thm comma_crt_mdd_root_shift_map_certificate.root_shift_map_branch}
+                    encode amount source target [("axis",nat axis),
+                      ("children",HOLogic.mk_list natT (map nat children)),
+                      ("shifted_children",HOLogic.mk_list natT (map nat cs))]
+                    [source_bound,target_bound,source_eq,target_eq,axis_bound,positive,
+                      source_width,width "Mapped shift target width" cs,all_children] proposition
+                | NONE => mapped_intro base "alias"
+                    @{thm comma_crt_mdd_root_shift_map_certificate.root_shift_map_alias}
+                    encode amount source target [("axis",nat axis),
+                      ("children",HOLogic.mk_list natT (map nat children))]
+                    [source_bound,target_bound,source_eq,axis_bound,positive,
+                      source_width,all_children] proposition
+                end
+            | _ => error "Mapped MDD shift changed leaf/branch shape")
+          val theorem = Proof_Utils.exact_prop ctxt "Mapped shift certificate"
+            (HOLogic.mk_Trueprop proposition) theorem
+          val _ = certificates := Shift_Key.update (key,theorem) (!certificates)
+        in theorem end
+    end
+
+  fun mapped_shift_eval_phase mapped amount source target =
+    let val {base={store,ctxt,...},...} = mapped
+        val certificate = certify_mapped_shift mapped amount source target
+        val theorem = @{thm comma_crt_mdd_root_shift_map_certificate_eval_phase} OF
+          [Store.wellformed store,certificate]
+        val _ = if Thm.nprems_of theorem = 0 andalso null (Thm.hyps_of theorem) andalso
+          null (Thm.tpairs_of theorem) andalso
+          Context.subthy (Thm.theory_of_thm theorem,Proof_Context.theory_of ctxt)
+          then () else error "Mapped shift phase transport is not closed"
     in theorem end
 
-  fun certify_shift replay amount source target =
+  fun mapped_statistics ({base,certificates,visits,...}:mapped_replay) =
+    "mapped_shift_certificates=" ^ Int.toString (Shift_Key.size (!certificates)) ^
+    " mapped_shift_visits=" ^ Int.toString (!visits) ^
+    " mapped_shift_slot_rows=" ^ Int.toString (!(#slot_rows base)) ^
+    " mapped_slot_template_hits=" ^ Int.toString (!(#slot_template_hits base)) ^
+    " mapped_slot_template_misses=" ^ Int.toString (!(#slot_template_misses base))
+
+  fun certify_shift (replay as {ctxt,store,shifts,shift_visits,...}:replay) amount source target =
     let
-      val {ctxt, radices, shifts, shift_visits, ...} = replay
-      val _ = if amount >= 0 then () else error "MDD shift amount is negative"
-      val _ = ignore (bound replay source)
-      val _ = ignore (bound replay target)
-      val key = (amount,source,target)
-    in
-      (case Shift_Key.lookup (!shifts) key of
-        SOME theorem => Proof_Utils.exact_prop ctxt "Reused MDD root shift certificate"
-          (HOLogic.mk_Trueprop (mk_shift_prop replay amount source target)) theorem
-      | NONE =>
-          let
-            val _ = shift_visits := !shift_visits + 1
-            val source_node = node_at replay source
-            val target_node = node_at replay target
-            val source_bound = bound replay source
-            val target_bound = bound replay target
-            val source_equation = lookup_equation replay source
-            val target_equation = lookup_equation replay target
-            val theorem =
-              (case (source_node,target_node) of
-                (Store.Leaf source_payload, Store.Leaf target_payload) =>
-                  if source_payload = target_payload then
-                    intro_certificate replay "leaf"
-                      @{thm comma_crt_mdd_root_shift_certificate.root_shift_leaf}
-                      (mk_shift_prop replay amount source target)
-                      [source_bound,target_bound,source_equation,target_equation]
-                  else error "MDD shift leaf payload changed"
-              | (Store.Branch (axis, children), Store.Branch (target_axis, shifted_children)) =>
-                  if axis <> target_axis then error "MDD shift changed a branch axis"
-                  else
-                    let
-                      val radix = List.nth (radices,axis)
-                      val _ = if length children = radix andalso
-                          length shifted_children = radix then ()
-                        else error "MDD shift branch width disagrees with its radix"
-                      fun source_child slot = List.nth (children,(slot+amount) mod radix)
-                      fun target_child slot = List.nth (shifted_children,slot)
-                      val child_proofs = map (fn slot =>
-                        certify_shift replay amount (source_child slot) (target_child slot))
-                        (0 upto (radix - 1))
-                      val slot_prop = fn slot =>
-                        let
-                          val source_index = HOLogic.mk_binop @{const_name modulo}
-                            (HOLogic.mk_binop @{const_name plus} (slot,nat amount),
-                             radix_at (#store replay) (nat axis))
-                          val source_child_term = nth_nat_list children source_index
-                          val target_child_term = nth_nat_list shifted_children slot
-                        in Const (@{const_name comma_crt_mdd_root_shift_certificate},
-                          nat_listT --> node_listT --> natT --> natT --> natT --> boolT) $
-                          Store.radices (#store replay) $ Store.table (#store replay) $
-                          nat amount $ source_child_term $ target_child_term end
-                      val all_children = universal_slots replay radix
-                        (radix_at (#store replay) (nat axis)) slot_prop child_proofs
-                      val (axis_bound,positive) = Vector.sub (#axis_facts replay,axis)
-                      val source_width = prove_scalar replay "MDD source branch width"
-                        (HOLogic.mk_eq (Const (@{const_name size}, nat_listT --> natT) $
-                          HOLogic.mk_list natT (map nat children),
-                          Const (@{const_name nth}, nat_listT --> natT --> natT) $
-                            Store.radices (#store replay) $ nat axis))
-                      val target_width = prove_scalar replay "MDD target branch width"
-                        (HOLogic.mk_eq (Const (@{const_name size}, nat_listT --> natT) $
-                          HOLogic.mk_list natT (map nat shifted_children),
-                          Const (@{const_name nth}, nat_listT --> natT --> natT) $
-                            Store.radices (#store replay) $ nat axis))
-                    in intro_certificate replay "branch"
-                      @{thm comma_crt_mdd_root_shift_certificate.root_shift_branch}
-                      (mk_shift_prop replay amount source target)
-                      [source_bound,target_bound,source_equation,target_equation,
-                       axis_bound,positive,source_width,target_width,all_children] end
-              | (Store.Branch (axis,children), _) =>
-                  let
-                    val radix = List.nth (radices,axis)
-                    val source_children = map (fn slot =>
-                      List.nth (children,(slot+amount) mod radix)) (0 upto (radix - 1))
-                    val child_proofs = map (fn child => certify_shift replay amount child target)
-                      source_children
-                    val slot_prop = fn slot =>
-                      let
-                        val source_index = HOLogic.mk_binop @{const_name modulo}
-                          (HOLogic.mk_binop @{const_name plus} (slot,nat amount),
-                           radix_at (#store replay) (nat axis))
-                        val source_child_term = nth_nat_list children source_index
-                      in Const (@{const_name comma_crt_mdd_root_shift_certificate},
-                        nat_listT --> node_listT --> natT --> natT --> natT --> boolT) $
-                        Store.radices (#store replay) $ Store.table (#store replay) $
-                        nat amount $ source_child_term $ nat target end
-                    val all_children = universal_slots replay radix
-                      (radix_at (#store replay) (nat axis)) slot_prop child_proofs
-                    val (axis_bound,positive) = Vector.sub (#axis_facts replay,axis)
-                    val source_width = prove_scalar replay "MDD alias source width"
-                      (HOLogic.mk_eq (Const (@{const_name size}, nat_listT --> natT) $
-                          HOLogic.mk_list natT (map nat children),
-                        Const (@{const_name nth}, nat_listT --> natT --> natT) $
-                          Store.radices (#store replay) $ nat axis))
-                  in intro_certificate replay "alias"
-                    @{thm comma_crt_mdd_root_shift_certificate.root_shift_alias}
-                    (mk_shift_prop replay amount source target)
-                    [source_bound,target_bound,source_equation,axis_bound,positive,
-                     source_width,all_children] end
-              | _ => error "MDD root shift changed leaf/branch shape")
-            val theorem = Proof_Utils.exact_prop ctxt "MDD root shift certificate"
-              (HOLogic.mk_Trueprop (mk_shift_prop replay amount source target)) theorem
-            val _ = shifts := Shift_Key.update (key,theorem) (!shifts)
-          in theorem end)
-    end
+      val encode = @{term "id :: nat => nat"}
+      fun identity input output =
+        if input <> output then error "MDD identity shift changed leaf payload" else
+          Proof_Utils.prove_exact ctxt "MDD identity shift leaf"
+            (HOLogic.mk_Trueprop (HOLogic.mk_eq (encode $ nat input,nat output)))
+            (fn context => Simplifier.asm_full_simp_tac
+              (put_simpset HOL_basic_ss context |> Simplifier.add_simp @{thm id_apply}) 1)
+      val mapped:mapped_replay = {base=replay,encode=encode,leaf=identity,
+        certificates=shifts,visits=shift_visits}
+      val theorem = certify_mapped_shift mapped amount source target
+      val plain = Simplifier.rewrite_rule (put_simpset HOL_basic_ss ctxt)
+        [Thm.symmetric (@{thm comma_crt_mdd_root_shift_certificate_def} RS @{thm eq_reflection})] theorem
+    in Proof_Utils.exact_prop ctxt "MDD root shift certificate"
+      (HOLogic.mk_Trueprop (mk_shift_prop replay amount source target)) plain end
 
   fun shift_eval_phase replay amount source target =
     let
-      val {ctxt, store, ...} = replay
-      val cert = certify_shift replay amount source target
-      val rule = @{thm comma_crt_mdd_root_shift_certificate_eval_phase} OF
-        [Store.wellformed store, cert]
+      val {ctxt, store, zero_identity_hits, ...} = replay
+      val rule = if amount=0 andalso source=target then
+        let
+          val _ = ignore (Store.bound store source)
+          val phase = Var (("phase",0),natT)
+          val eval = @{term "comma_crt_mdd_eval_phase :: nat list => nat comma_crt_mdd_node list => nat => nat => nat option"}
+          fun at p = eval $ Store.radices store $ Store.table store $ p $ nat source
+          val shifted = HOLogic.mk_binop @{const_name Groups.plus} (phase,nat 0)
+          val conversion = Simplifier.rewrite
+            (Comma_Entry_Arithmetic.natural_context ctxt) (Thm.cterm_of ctxt (at shifted))
+          val _ = if Thm.term_of (Thm.rhs_of conversion) aconv at phase then ()
+            else error "Zero-shift evaluation did not reduce to the same root"
+          val theorem = Drule.zero_var_indexes
+            (Thm.symmetric conversion RS @{thm meta_eq_to_obj_eq})
+          val expected = HOLogic.mk_Trueprop (HOLogic.mk_eq (at phase,at shifted))
+          val _ = if Thm.prop_of theorem aconv expected then ()
+            else error ("Zero-shift evaluation proposition mismatch: expected " ^
+              Syntax.string_of_term ctxt expected ^ " actual " ^
+              Syntax.string_of_term ctxt (Thm.prop_of theorem))
+          val _ = zero_identity_hits := !zero_identity_hits + 1
+        in theorem end
+      else
+        let
+          val cert = certify_shift replay amount source target
+        in @{thm comma_crt_mdd_root_shift_certificate_eval_phase} OF
+          [Store.wellformed store, cert] end
       val _ = if Thm.nprems_of rule = 0 andalso null (Thm.hyps_of rule) andalso
           null (Thm.tpairs_of rule) andalso
           Context.subthy (Thm.theory_of_thm rule, Proof_Context.theory_of ctxt)
         then () else error "MDD root-shift phase transport is not closed"
     in rule end
 
-  fun statistics ({shift_visits,slot_rows,store,axis_facts,...}: replay) =
+  fun statistics ({shift_visits,slot_rows,store,axis_facts,zero_identity_hits,...}: replay) =
     Store.statistics store ^
     " shift_axis_fact_pairs=" ^ Int.toString (Vector.length axis_facts) ^
+    " zero_shift_identity_hits=" ^ Int.toString (!zero_identity_hits) ^
     " shift_certificate_nodes=" ^ Int.toString (!shift_visits) ^
     " shift_slot_rows=" ^ Int.toString (!slot_rows)
 end

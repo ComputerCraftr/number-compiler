@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import copy
 from collections.abc import Callable, Mapping
 from dataclasses import FrozenInstanceError, replace
@@ -12,6 +11,7 @@ from typing import cast
 
 import pytest
 
+from devtools.verification.comma_semantic_future_artifact import source_mdd_fields
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
@@ -28,6 +28,7 @@ from number_compiler.sequences.comma.boundary_quotient import (
 from number_compiler.sequences.comma.future_provider_memory import (
     RetainedSemanticFutureProvider,
 )
+from number_compiler.sequences.comma.future_source_mdd import FutureSourceMDD
 from number_compiler.sequences.comma.power import CommaTerm
 from tests.support.comma_future_provider_fixture import (
     candidate_record as _candidate_record,
@@ -89,15 +90,14 @@ def test_structural_parser_decodes_nested_boundary_binding_without_authority() -
         _candidate_record(), charge_work=charge_work
     )
 
-    assert len(parsed.source_classes) == future_provider_codec.SOURCE_COUNT
+    assert len(parsed.source_classes.roots) == 16
     assert parsed.classes[2].control == future_provider.FutureControl("fork", 2)
     assert parsed.classes[2].ordered_children == (1, 2)
     assert parsed.classes[2].rank is None
-    assert parsed.source_classes[BoundaryState("N", 2, 0).exponent_residue] == 0
-    assert parsed.source_classes[BoundaryState("N", 2, 1).exponent_residue] == 1
-    z_index = 8 * PERIOD
-    assert parsed.source_classes[z_index] == 2
-    assert sum(charges) >= future_provider_codec.SOURCE_COUNT
+    assert parsed.source_classes.lookup(BoundaryState("N", 2, 0)) == 0
+    assert parsed.source_classes.lookup(BoundaryState("N", 2, 1)) == 1
+    assert parsed.source_classes.lookup(BoundaryState("Z", 2, 0)) == 2
+    assert sum(charges) >= len(parsed.source_classes.nodes)
 
 
 def test_read_only_root_mapping_uses_the_same_bounded_canonical_digest() -> None:
@@ -306,9 +306,8 @@ def test_provider_leases_reject_altered_tables_and_rows(
     provider = store.get(digest).resolve_provider()
 
     if mutation == "source_tuple":
-        altered = tuple(
-            1 if cid == 0 else cid for cid in provider_source_classes(provider)
-        )
+        original = provider_source_classes(provider)
+        altered = FutureSourceMDD(original.nodes, original.roots)
         object.__setattr__(provider, "_source_classes", altered)
     elif mutation == "class_tuple":
         object.__setattr__(
@@ -345,6 +344,7 @@ def test_warm_class_row_guard_checks_only_its_signature(
         raise AssertionError("warm lookup must not reparse or hash the full table")
 
     monkeypatch.setattr(future_provider, "validate_record", reject_full_validation)
+    monkeypatch.setattr(FutureSourceMDD, "validate", reject_full_validation)
     monkeypatch.setattr(
         future_provider,
         "future_candidate_sha256",
@@ -352,6 +352,7 @@ def test_warm_class_row_guard_checks_only_its_signature(
     )
     row = lease.class_row(2, charge_work=charge_work)
     assert row.control == future_provider.FutureControl("fork", 2)
+    assert lease.source_class(BoundaryState("N", 2, 0), charge_work=charge_work) == 0
     store.close()
 
 
@@ -454,7 +455,7 @@ def test_admitted_provider_selects_one_slot_and_preserves_literal_children(
     assert selection.selected_slot == 1
     assert selection.selected_class == 2
     assert selection.select_literal((n_child, z_child)) is z_child
-    assert sum(charges) >= 2 * future_provider_codec.SOURCE_COUNT
+    assert sum(charges) >= len(provider_source_classes(provider).nodes)
     store.close()
 
 
@@ -468,16 +469,13 @@ def test_selection_rejects_a_foreign_provider_with_matching_queried_rows(
 
     record_a = _candidate_record()
     record_b = _candidate_record()
-    source_map = bytearray(
-        base64.b64decode(cast(str, record_b["class_of_state_varint_base64"]))
-    )
+    source_map = bytearray([2]) * future_provider_codec.SOURCE_COUNT
+    source_map[0], source_map[1] = 0, 1
     # Change an unrelated source entry.  The queried source and both queried
     # child rows retain their class values, but the artifact authority changes.
     assert source_map[4] == 2
     source_map[4] = 1
-    record_b["class_of_state_varint_base64"] = base64.b64encode(source_map).decode(
-        "ascii"
-    )
+    record_b.update(source_mdd_fields(source_map))
 
     _charges, charge_work = _work_log()
     digest_a, admission_a = _fixture_admission(record_a, charge_work)
@@ -713,36 +711,23 @@ def test_parser_rejects_malformed_control_and_ordered_child_rows(
     _assert_rejected_candidate_field(field, replacement, message)
 
 
-def test_parser_rejects_truncated_noncanonical_and_out_of_range_source_maps() -> None:
+def test_parser_rejects_malformed_and_out_of_range_source_maps() -> None:
     record = _candidate_record()
-    original = base64.b64decode(
-        cast(str, record["class_of_state_varint_base64"]), validate=True
-    )
     _charges, charge_work = _work_log()
 
     truncated = copy.deepcopy(record)
-    truncated["class_of_state_varint_base64"] = base64.b64encode(original[:-1]).decode(
-        "ascii"
-    )
-    with pytest.raises(ValueError, match="truncated or has extra"):
+    truncated["source_roots"] = [0]
+    with pytest.raises(ValueError, match="node bound"):
         future_provider.parse_future_candidate(truncated, charge_work=charge_work)
 
     noncanonical = copy.deepcopy(record)
-    payload = bytearray(original)
-    payload[0:1] = b"\x80\x00"
-    noncanonical["class_of_state_varint_base64"] = base64.b64encode(payload).decode(
-        "ascii"
-    )
-    with pytest.raises(ValueError, match="noncanonical CID varint"):
+    noncanonical["source_radices"] = [4, 3, 7, 11]
+    with pytest.raises(ValueError, match="radices"):
         future_provider.parse_future_candidate(noncanonical, charge_work=charge_work)
 
     out_of_range = copy.deepcopy(record)
-    payload = bytearray(original)
-    payload[0] = 3
-    out_of_range["class_of_state_varint_base64"] = base64.b64encode(payload).decode(
-        "ascii"
-    )
-    with pytest.raises(ValueError, match="out-of-range CID"):
+    out_of_range["source_roots"] = [65_536] * 16
+    with pytest.raises(ValueError, match="structural contract"):
         future_provider.parse_future_candidate(out_of_range, charge_work=charge_work)
 
 
@@ -816,13 +801,19 @@ def test_store_budget_refusal_and_reset_reclaim_all_provider_nodes(
 
     publish_limited = ResourceLedger(max_nodes=29_500, max_cache_entries=1)
     publish_refused = future_provider.SemanticFutureProviderStore(publish_limited)
-    with pytest.raises(BlockContextBudgetExceeded):
-        publish_refused.load_record(record, charge_work=charge_work)
+    occupied = publish_limited.register("publication-test-occupant", "test")
+    publish_limited.reserve(occupied, entries=1)
+    try:
+        with pytest.raises(BlockContextBudgetExceeded):
+            publish_refused.load_record(record, charge_work=charge_work)
+        assert publish_limited.entries == 1 and publish_limited.nodes == 0
+        workspace = publish_limited.inventory_owner(workspace_owner(publish_limited))
+        assert workspace.nodes == 0
+        assert publish_limited.counters["comma_future_provider_load_failures"] == 1
+    finally:
+        publish_limited.release(occupied, entries=1)
+        publish_refused.close()
     assert publish_limited.entries == publish_limited.nodes == 0
-    workspace = publish_limited.inventory_owner(workspace_owner(publish_limited))
-    assert workspace.nodes == 0
-    assert publish_limited.counters["comma_future_provider_load_failures"] == 1
-    publish_refused.close()
 
     ledger = ResourceLedger(max_nodes=49_152, max_cache_entries=4)
     store = future_provider.SemanticFutureProviderStore(ledger)

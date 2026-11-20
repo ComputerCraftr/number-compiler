@@ -1,5 +1,6 @@
 theory Comma_Entry_Arithmetic
   imports Comma_Short_Phase.Comma_Short_Phase
+    Shared_Carry_Dynamics.Shared_Closed_Arithmetic
 begin
 
 text \<open>The selected-list evaluator consumes these structural equations

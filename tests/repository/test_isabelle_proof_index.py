@@ -874,13 +874,13 @@ def test_direct_summary_semantics_does_not_depend_on_fuel_or_concrete_tables(
         sessions["Comma_Decade_Summary_Transport"].parent
         == "Comma_Decade_Summary_Semantic"
     )
-    # Local Schur arithmetic reuses the shared carry monoid, without acquiring
-    # comma trajectory, summary-table or future-certificate dependencies.
-    assert sessions["Comma_Schur_Carry"].parent == "Shared_Carry_Dynamics"
+    # Native19 consumes the family-independent decimal split laws directly,
+    # without acquiring comma trajectory or future-certificate dependencies.
+    assert sessions["Comma_Native19_Carry"].parent == "Shared_Carry_Dynamics"
     assert not any(
         name.startswith("Comma_")
-        for name in _session_ancestors(sessions, "Comma_Schur_Carry")
-        - {"Comma_Schur_Carry"}
+        for name in _session_ancestors(sessions, "Comma_Native19_Carry")
+        - {"Comma_Native19_Carry"}
     )
 
 
@@ -927,7 +927,7 @@ def test_direct_summary_semantics_does_not_depend_on_fuel_or_concrete_tables(
         ),
         ("Comma_Prefix_Selection", "Comma_Closed_Near", "Comma_Closed_Near"),
         ("Comma_Future_Selector", "Comma_Cylinder", "Comma_Arithmetic"),
-        ("Comma_Native19_Carry", "Comma_Schur_Carry", "Shared_Carry_Dynamics"),
+        ("Comma_Native19_Carry", "Shared_Carry_Dynamics", "Shared_Carry_Dynamics"),
         ("Comma_Reset_Germ", "Reverse_Residuals", "Reverse_Residuals"),
         ("Comma_Factored_Port_Carrier", "Comma_Vieta_Root", "Shared_Carry_Dynamics"),
         (

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import json
 from collections.abc import Callable, Mapping
 from types import MappingProxyType
@@ -12,7 +11,8 @@ import pytest
 
 from devtools.paths import isabelle_root
 from devtools.verification.comma_semantic_future_artifact import (
-    runtime_candidate_record_from_isabelle_data,
+    runtime_candidate_record_from_m204_data,
+    source_mdd_fields,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.comma import (
@@ -20,6 +20,7 @@ from number_compiler.sequences.comma import (
     future_provider,
     future_provider_codec,
 )
+from number_compiler.sequences.comma.future_source_mdd import FutureSourceMDD
 
 
 def candidate_record() -> dict[str, object]:
@@ -30,7 +31,7 @@ def candidate_record() -> dict[str, object]:
         "format": future_provider.FUTURE_CANDIDATE_FORMAT,
         "authority": "untrusted-source-derived-candidate",
         "state_universe": future_provider.FUTURE_SOURCE_UNIVERSE,
-        "class_of_state_varint_base64": base64.b64encode(class_ids).decode("ascii"),
+        **source_mdd_fields(class_ids),
         "controls": [["landmine", None], ["fork", 2], ["fork", 2]],
         "ordered_children": [[None, None], [0, 0], [1, 2]],
         "class_rank_candidate": [0, 1, None],
@@ -93,8 +94,8 @@ def provider_classes(
 
 def provider_source_classes(
     provider: future_provider.SemanticFutureProvider,
-) -> tuple[int, ...]:
-    return cast(tuple[int, ...], object.__getattribute__(provider, "_source_classes"))
+) -> FutureSourceMDD:
+    return cast(FutureSourceMDD, object.__getattribute__(provider, "_source_classes"))
 
 
 def workspace_owner(ledger: ResourceLedger) -> int:
@@ -106,13 +107,11 @@ def workspace_owner(ledger: ResourceLedger) -> int:
 
 
 def authored_candidate_record() -> dict[str, object]:
-    source = (
-        isabelle_root()
-        / "families/comma/comma_semantic_future_instance"
-        / "Comma_Semantic_Future_Candidate_Data.thy"
-    )
-    return runtime_candidate_record_from_isabelle_data(
-        source.read_text(encoding="utf-8"), source
+    directory = isabelle_root() / "families/comma/comma_semantic_future_instance"
+    source = directory / "semantic_future_m204_candidate_data.ML"
+    graph = directory / "semantic_future_m204_graph_data.ML"
+    return runtime_candidate_record_from_m204_data(
+        source.read_text(encoding="utf-8"), graph.read_text(encoding="utf-8")
     )
 
 

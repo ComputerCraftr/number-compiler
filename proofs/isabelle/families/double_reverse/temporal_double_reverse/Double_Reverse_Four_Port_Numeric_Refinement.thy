@@ -101,8 +101,8 @@ lemma double_reverse_decimal_split:
 lemma double_reverse_decimal_digits_shift:
   fixes digit q :: nat
   assumes digit_bound: "digit < 10" and q_positive: "q > 0"
-  shows "double_reverse_decimal_digits (digit + 10 * q) =
-    Suc (double_reverse_decimal_digits q)"
+  shows "decimal_digit_count (digit + 10 * q) =
+    Suc (decimal_digit_count q)"
 proof -
   have quotient_remainder:
     "(digit + 10 * q) div 10 = q"
@@ -114,14 +114,14 @@ proof -
     using digit_bound q_positive by arith
   show ?thesis
     using quotient_remainder(1) at_least_ten
-    by (simp add: double_reverse_decimal_digits.simps)
+    by (simp add: decimal_digit_count.simps)
 qed
 
 lemma double_reverse_decimal_digits_lsf_value:
   assumes decimal: "list_all (\<lambda>digit. digit < 10) digits"
       and nonempty: "digits \<noteq> []"
       and high: "last digits > 0"
-  shows "double_reverse_decimal_digits
+  shows "decimal_digit_count
       (double_reverse_lsf_value digits) = length digits"
   using decimal nonempty high
 proof (induction digits)
@@ -137,7 +137,7 @@ next
   have rest_ih:
     "list_all (\<lambda>item. item < 10) rest \<Longrightarrow>
       rest \<noteq> [] \<Longrightarrow> last rest > 0 \<Longrightarrow>
-      double_reverse_decimal_digits (double_reverse_lsf_value rest) =
+      decimal_digit_count (double_reverse_lsf_value rest) =
         length rest"
     using Cons.IH .
   show ?case
@@ -152,12 +152,12 @@ next
     have rest_positive: "double_reverse_lsf_value rest > 0"
       by (rule double_reverse_lsf_value_positive[OF rest_nonempty rest_high])
     have tail_digits:
-      "double_reverse_decimal_digits (double_reverse_lsf_value rest) = length rest"
+      "decimal_digit_count (double_reverse_lsf_value rest) = length rest"
       by (rule rest_ih[OF rest_decimal rest_nonempty rest_high])
     have shifted:
-      "double_reverse_decimal_digits
+      "decimal_digit_count
         (digit + 10 * double_reverse_lsf_value rest) =
-       Suc (double_reverse_decimal_digits (double_reverse_lsf_value rest))"
+       Suc (decimal_digit_count (double_reverse_lsf_value rest))"
       by (rule double_reverse_decimal_digits_shift[OF digit_bound rest_positive])
     show ?thesis using shifted tail_digits by simp
   qed
@@ -167,7 +167,7 @@ lemma double_reverse_reverse10_lsf_value:
   assumes decimal: "list_all (\<lambda>digit. digit < 10) digits"
       and nonempty: "digits \<noteq> []"
       and high: "last digits > 0"
-  shows "double_reverse_reverse10 (double_reverse_lsf_value digits) =
+  shows "decimal_reverse (double_reverse_lsf_value digits) =
     double_reverse_lsf_value (rev digits)"
   using decimal nonempty high
 proof (induction digits)
@@ -183,7 +183,7 @@ next
   have rest_ih:
     "list_all (\<lambda>item. item < 10) rest \<Longrightarrow>
       rest \<noteq> [] \<Longrightarrow> last rest > 0 \<Longrightarrow>
-      double_reverse_reverse10 (double_reverse_lsf_value rest) =
+      decimal_reverse (double_reverse_lsf_value rest) =
         double_reverse_lsf_value (rev rest)"
     using Cons.IH .
   show ?case
@@ -198,11 +198,11 @@ next
     have rest_positive: "double_reverse_lsf_value rest > 0"
       by (rule double_reverse_lsf_value_positive[OF rest_nonempty rest_high])
     have rest_reverse:
-      "double_reverse_reverse10 (double_reverse_lsf_value rest) =
+      "decimal_reverse (double_reverse_lsf_value rest) =
         double_reverse_lsf_value (rev rest)"
       by (rule rest_ih[OF rest_decimal rest_nonempty rest_high])
     have rest_digits:
-      "double_reverse_decimal_digits (double_reverse_lsf_value rest) = length rest"
+      "decimal_digit_count (double_reverse_lsf_value rest) = length rest"
       by (rule double_reverse_decimal_digits_lsf_value
         [OF rest_decimal rest_nonempty rest_high])
     have number_split:
@@ -221,34 +221,34 @@ next
       "digit + 10 * double_reverse_lsf_value rest \<ge> 10"
       using rest_positive by arith
     have shifted_digits:
-      "double_reverse_decimal_digits
+      "decimal_digit_count
         (digit + 10 * double_reverse_lsf_value rest) =
-       Suc (double_reverse_decimal_digits (double_reverse_lsf_value rest))"
+       Suc (decimal_digit_count (double_reverse_lsf_value rest))"
       by (rule double_reverse_decimal_digits_shift[OF digit_bound rest_positive])
     have reverse_step:
-      "double_reverse_reverse10
+      "decimal_reverse
           (digit + 10 * double_reverse_lsf_value rest) =
-        digit * 10 ^ double_reverse_decimal_digits
+        digit * 10 ^ decimal_digit_count
           (double_reverse_lsf_value rest) +
-        double_reverse_reverse10 (double_reverse_lsf_value rest)"
+        decimal_reverse (double_reverse_lsf_value rest)"
     proof -
       have equation:
-        "double_reverse_reverse10
+        "decimal_reverse
             (digit + 10 * double_reverse_lsf_value rest) =
           (if digit + 10 * double_reverse_lsf_value rest < 10
            then digit + 10 * double_reverse_lsf_value rest
            else (digit + 10 * double_reverse_lsf_value rest) mod 10 *
-             10 ^ (double_reverse_decimal_digits
+             10 ^ (decimal_digit_count
                (digit + 10 * double_reverse_lsf_value rest) - 1) +
-             double_reverse_reverse10
+             decimal_reverse
                ((digit + 10 * double_reverse_lsf_value rest) div 10))"
-        by (rule double_reverse_reverse10.simps)
+        by (rule decimal_reverse.simps)
       have not_less:
         "\<not> digit + 10 * double_reverse_lsf_value rest < 10"
         using value_large by arith
       show ?thesis
         using equation not_less quotient_remainder shifted_digits
-        by (simp del: double_reverse_reverse10.simps)
+        by (simp del: decimal_reverse.simps)
     qed
     show ?thesis
       using number_split rest_reverse rest_digits reverse_step
@@ -516,6 +516,202 @@ proof -
       pass_relation by simp
 qed
 
+lemma double_reverse_forward_pass_suffix_two:
+  assumes decimal: "list_all (\<lambda>d. d < 10) prefix"
+      and y: "y < 10" and z: "z < 10"
+  defines "partial \<equiv> double_reverse_forward_pass prefix 0"
+  shows "snd partial \<le> 1 \<and>
+    double_reverse_forward_pass (prefix @ [y,z]) 0 =
+      (fst partial @ [(2*y + snd partial) mod 10,
+         (2*z + threshold5_digit y) mod 10], threshold5_digit z)"
+proof -
+  have bound: "snd partial \<le> 1"
+    unfolding partial_def
+    using double_reverse_forward_pass_final_carry[OF decimal, of 0]
+    by (cases "prefix = []") (simp_all add: threshold5_digit_def)
+  have first: "double_reverse_forward_pass [y] (snd partial) =
+      ([(2*y + snd partial) mod 10], threshold5_digit y)"
+    using double_reverse_forward_single_digit[OF y bound]
+    by (simp only: threshold5_digit_def)
+  have carry: "threshold5_digit y \<le> 1" by (simp add: threshold5_digit_def)
+  have second: "double_reverse_forward_pass [z] (threshold5_digit y) =
+      ([(2*z + threshold5_digit y) mod 10], threshold5_digit z)"
+    using double_reverse_forward_single_digit[OF z carry]
+    by (simp only: threshold5_digit_def)
+  have suffix: "double_reverse_forward_pass [y,z] (snd partial) =
+      ([(2*y + snd partial) mod 10, (2*z + threshold5_digit y) mod 10],
+        threshold5_digit z)"
+    using double_reverse_forward_pass_append[of "[y]" "[z]" "snd partial"]
+      first second by (simp add: Let_def)
+  show ?thesis using bound
+    double_reverse_forward_pass_append[of prefix "[y,z]" 0] suffix
+    unfolding partial_def by (cases "double_reverse_forward_pass prefix 0") (simp add: Let_def)
+qed
+
+lemma double_reverse_forward_pass_first_two:
+  assumes a: "a < 10" and b: "b < 10"
+  shows "\<exists>tail carry. double_reverse_forward_pass (a # b # rest) 0 =
+    ((2*a mod 10) # ((2*b + threshold5_digit a) mod 10) # tail, carry)"
+proof -
+  have first: "(2*a) div 10 = threshold5_digit a"
+    using double_reverse_digit_quotient[OF a, of 0] by simp
+  have ca: "threshold5_digit a \<le> 1" by (simp add: threshold5_digit_def)
+  have second: "(2*b + threshold5_digit a) div 10 = threshold5_digit b"
+    by (rule double_reverse_digit_quotient[OF b ca])
+  obtain tail carry where pass:
+    "double_reverse_forward_pass rest (threshold5_digit b) = (tail,carry)"
+    by (cases "double_reverse_forward_pass rest (threshold5_digit b)") auto
+  show ?thesis
+    by (intro exI[of _ tail] exI[of _ carry])
+       (simp only: double_reverse_forward_pass.simps Let_def Nat.add_0_right first second pass
+          prod.case)
+qed
+
+theorem double_reverse_forward_physical_border:
+  assumes a: "a < 10" and b: "b < 10" and y: "y < 10" and z: "z < 10"
+      and interior: "list_all (\<lambda>d. d < 10) interior"
+  shows "\<exists>middle_output inward.
+    inward \<le> 1 \<and>
+    double_reverse_forward_pass ([a,b] @ interior @ [y,z]) 0 =
+      (((2*a mod 10) # ((2*b + threshold5_digit a) mod 10) # middle_output) @
+          [(2*y + inward) mod 10, (2*z + threshold5_digit y) mod 10],
+       threshold5_digit z)"
+proof -
+  let ?prefix = "[a,b] @ interior"
+  have decimal: "list_all (\<lambda>d. d < 10) ?prefix"
+    using a b interior by simp
+  obtain partial_output partial_carry where partial:
+    "double_reverse_forward_pass ?prefix 0 = (partial_output,partial_carry)"
+    by (cases "double_reverse_forward_pass ?prefix 0") auto
+  obtain output_tail final_carry where first:
+    "double_reverse_forward_pass (a # b # interior) 0 =
+      ((2*a mod 10) # ((2*b + threshold5_digit a) mod 10) # output_tail, final_carry)"
+    using double_reverse_forward_pass_first_two[where rest=interior, OF a b]
+    by blast
+  have carry: "partial_carry \<le> 1"
+    using double_reverse_forward_pass_final_carry[OF decimal, of 0] partial
+    by (cases "?prefix = []") (simp_all add: threshold5_digit_def)
+  have suffix:
+    "double_reverse_forward_pass (?prefix @ [y,z]) 0 =
+      (partial_output @ [(2*y + partial_carry) mod 10,
+        (2*z + threshold5_digit y) mod 10], threshold5_digit z)"
+    using double_reverse_forward_pass_suffix_two[OF decimal y z] partial by simp
+  show ?thesis using partial first suffix carry by auto
+qed
+
+theorem double_reverse_canonical_successor_decimal_word:
+  assumes canonical: "double_reverse_canonical_source source"
+  shows "\<exists>output. output = fst (double_reverse_forward_pass source 0) @
+      (if snd (double_reverse_forward_pass source 0) = 1 then [1] else []) \<and>
+    list_all (\<lambda>digit. digit < 10) output \<and>
+    output \<noteq> [] \<and> last output > 0 \<and>
+    double_reverse_lsf_value output = double_reverse_T (double_reverse_msf_value source) \<and>
+    length output = length source + threshold5_digit (last source)"
+proof -
+  have source_nonempty: "source \<noteq> []"
+    using canonical unfolding double_reverse_canonical_source_def by simp
+  have source_decimal: "list_all (\<lambda>digit. digit < 10) source"
+    using canonical unfolding double_reverse_canonical_source_def by simp
+  have source_high: "hd source > 0"
+    using canonical unfolding double_reverse_canonical_source_def by simp
+  have source_last: "last source > 0"
+    using canonical unfolding double_reverse_canonical_source_def by simp
+  have reverse_source_decimal:
+    "list_all (\<lambda>digit. digit < 10) (rev source)"
+    using source_decimal by simp
+  have reverse_source_nonempty: "rev source \<noteq> []"
+    using source_nonempty by simp
+  have reverse_source_high: "last (rev source) > 0"
+    using source_high source_nonempty by (cases source) simp_all
+  have first_reverse:
+    "decimal_reverse (double_reverse_msf_value source) =
+      double_reverse_lsf_value source"
+    unfolding double_reverse_msf_value_def
+    using double_reverse_reverse10_lsf_value
+      [OF reverse_source_decimal reverse_source_nonempty reverse_source_high]
+    by simp
+  have first_value:
+    "double_reverse_T (double_reverse_msf_value source) =
+      2 * double_reverse_lsf_value source"
+    using first_reverse by (simp add: double_reverse_T_def)
+
+  let ?middle = "fst (double_reverse_forward_pass source 0)"
+  let ?forward = "snd (double_reverse_forward_pass source 0)"
+  let ?middle_word = "?middle @ (if ?forward = 1 then [1] else [])"
+  have forward_bound: "?forward \<le> 1"
+    using double_reverse_forward_pass_final_carry[OF source_decimal, of 0]
+      source_nonempty by (simp add: threshold5_digit_def)
+  have forward_value:
+    "double_reverse_lsf_value ?middle +
+      10 ^ length source * ?forward =
+       2 * double_reverse_lsf_value source"
+    using double_reverse_forward_pass_value[OF source_decimal, of 0] by simp
+  have middle_length: "length ?middle = length source"
+    using double_reverse_forward_pass_length[of source 0] by simp
+  have intermediate_value:
+    "double_reverse_lsf_value ?middle_word =
+       2 * double_reverse_lsf_value source"
+    using forward_bound forward_value middle_length
+    by (cases ?forward) (simp_all add: double_reverse_lsf_value_append_digit)
+  have middle_decimal:
+    "list_all (\<lambda>digit. digit < 10) ?middle"
+    by (rule double_reverse_forward_pass_output_digits[OF source_decimal]) simp
+  have intermediate_decimal:
+    "list_all (\<lambda>digit. digit < 10) ?middle_word"
+    using middle_decimal forward_bound
+    by (cases ?forward) (simp_all add: list_all_iff)
+  have intermediate_nonempty: "?middle_word \<noteq> []"
+    using source_nonempty middle_length by (cases source) auto
+  have forward_is_threshold:
+    "?forward = threshold5_digit (last source)"
+    using double_reverse_forward_pass_final_carry[OF source_decimal, of 0]
+      source_nonempty by simp
+  have intermediate_high: "last ?middle_word > 0"
+  proof (cases ?forward)
+    case 0
+    have last_small: "last source < 5"
+    proof (cases "5 \<le> last source")
+      case True
+      then show ?thesis
+        using forward_is_threshold 0 by (simp add: threshold5_digit_def)
+    next
+      case False
+      then show ?thesis by arith
+    qed
+    have middle_high: "last ?middle > 0"
+      by (rule double_reverse_forward_pass_last_nonzero
+        [OF source_decimal source_nonempty source_last last_small]) simp
+    show ?thesis using middle_high 0 by simp
+  next
+    case (Suc count)
+    have forward_is_one: "?forward = 1"
+      using forward_bound Suc by simp
+    show ?thesis using forward_is_one by simp
+  qed
+  have word_value: "double_reverse_lsf_value ?middle_word =
+      double_reverse_T (double_reverse_msf_value source)"
+    using first_value intermediate_value by simp
+  have word_length: "length ?middle_word = length source + threshold5_digit (last source)"
+    using middle_length forward_bound forward_is_threshold by (cases ?forward) simp_all
+  show ?thesis using intermediate_decimal intermediate_nonempty intermediate_high
+      word_value word_length by blast
+qed
+
+theorem double_reverse_canonical_source_step_width:
+  assumes canonical: "double_reverse_canonical_source source"
+  shows "decimal_digit_count (double_reverse_T (double_reverse_msf_value source)) =
+    length source + threshold5_digit (last source)"
+proof -
+  obtain digits_out where decimal: "list_all (\<lambda>d. d < 10) digits_out"
+      and nonempty: "digits_out \<noteq> []" and high: "last digits_out > 0"
+      and value_fact: "double_reverse_lsf_value digits_out = double_reverse_T (double_reverse_msf_value source)"
+      and extent: "length digits_out = length source + threshold5_digit (last source)"
+    using double_reverse_canonical_successor_decimal_word[OF canonical] by blast
+  have count: "decimal_digit_count (double_reverse_lsf_value digits_out) = length digits_out"
+    by (rule double_reverse_decimal_digits_lsf_value[OF decimal nonempty high])
+  show ?thesis using count value_fact extent by simp
+qed
+
 theorem double_reverse_four_port_closed_word_numeric_t2:
   assumes canonical: "double_reverse_canonical_source source"
   shows "double_reverse_msf_value
@@ -539,7 +735,7 @@ proof -
   have reverse_source_high: "last (rev source) > 0"
     using source_high source_nonempty by (cases source) simp_all
   have first_reverse:
-    "double_reverse_reverse10 (double_reverse_msf_value source) =
+    "decimal_reverse (double_reverse_msf_value source) =
       double_reverse_lsf_value source"
     unfolding double_reverse_msf_value_def
     using double_reverse_reverse10_lsf_value
@@ -604,7 +800,7 @@ proof -
     show ?thesis using forward_is_one by simp
   qed
   have second_reverse:
-    "double_reverse_reverse10 (double_reverse_lsf_value ?middle_word) =
+    "decimal_reverse (double_reverse_lsf_value ?middle_word) =
       double_reverse_lsf_value (rev ?middle_word)"
     by (rule double_reverse_reverse10_lsf_value
       [OF intermediate_decimal intermediate_nonempty intermediate_high])
@@ -763,6 +959,11 @@ lemmas double_reverse_four_port_numeric_refinement_audit_bundle =
   double_reverse_reverse_pass_is_reverse_forward_pass
   double_reverse_reverse_pass_value
   double_reverse_forward_pass_length
+  double_reverse_forward_pass_suffix_two
+  double_reverse_forward_pass_first_two
+  double_reverse_forward_physical_border
+  double_reverse_canonical_successor_decimal_word
+  double_reverse_canonical_source_step_width
   double_reverse_reverse_pass_length
   double_reverse_four_port_closed_word_numeric_t2
   double_reverse_four_port_closed_word_numeric_t2_zero_suffix
@@ -770,9 +971,7 @@ lemmas double_reverse_four_port_numeric_refinement_audit_bundle =
 ML \<open>
   val checked = @{thms double_reverse_four_port_numeric_refinement_audit_bundle};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
-    else error "Double-reverse four-port numeric refinement depends on an oracle";
-  val _ = if Thm_Deps.has_skip_proof checked
-    then error "Skipped double-reverse four-port numeric refinement proof" else ();
+    else error "Double-reverse four-port numeric refinement depends on an oracle, including skip_proof";
 \<close>
 
 end

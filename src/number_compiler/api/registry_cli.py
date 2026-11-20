@@ -12,6 +12,7 @@ from number_compiler.api.observation_types import (
     OutputFormat,
     option_default,
 )
+from number_compiler.arithmetic.contracts.input_validation import is_exact_integer_tuple
 
 
 def family_listing() -> tuple[str, ...]:
@@ -71,6 +72,8 @@ def option_argv(name: str, value: object) -> list[str]:
     flag = name if name.startswith("--") else "--" + name.replace("_", "-")
     if isinstance(value, bool):
         return [flag] if value else []
+    if is_exact_integer_tuple(value):
+        return [flag + "=" + ",".join(str(item) for item in value)]
     return [flag, str(value)]
 
 

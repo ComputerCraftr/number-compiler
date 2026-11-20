@@ -8,7 +8,7 @@ import pytest
 
 from number_compiler.api import cli, cli_render
 from number_compiler.api.cli_requests import parse_request
-from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+from number_compiler.api.number_api import NumberCompiler
 
 
 def test_reverse_add_temporal_residue99_cli_is_predictive(
@@ -18,7 +18,7 @@ def test_reverse_add_temporal_residue99_cli_is_predictive(
         raise AssertionError("no whole-number publisher is permitted")
 
     monkeypatch.setattr(cli_render, "render_value", forbidden)
-    monkeypatch.setattr(ReverseAddPoweredTerm, "source_workspace", forbidden)
+    monkeypatch.setattr(NumberCompiler, "project", forbidden)
     assert (
         cli.main(
             [

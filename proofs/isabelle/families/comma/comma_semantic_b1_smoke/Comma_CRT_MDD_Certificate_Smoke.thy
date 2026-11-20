@@ -69,6 +69,24 @@ local_setup \<open>fn lthy =>
       else error "MDD bind witness changed the published result"
     val _ = writeln "MDD certificate fixture: checking shift"
     val replay = Comma_CRT_MDD_Operation_Replay.make store
+    fun shift_counter name =
+      let val prefix = name ^ "="
+      in case List.find (String.isPrefix prefix) (String.tokens (fn c => c = #" ")
+          (Comma_CRT_MDD_Operation_Replay.statistics replay)) of
+        SOME value => String.extract (value,String.size prefix,NONE)
+      | NONE => error ("Missing shift counter " ^ name) end
+    val zero_nodes_before = shift_counter "shift_certificate_nodes"
+    val zero_slots_before = shift_counter "shift_slot_rows"
+    val zero_exact = Comma_CRT_MDD_Operation_Replay.shift_eval_phase replay 0 index index
+    val _ = if zero_nodes_before = shift_counter "shift_certificate_nodes" andalso
+        zero_slots_before = shift_counter "shift_slot_rows" then ()
+      else error "Zero shift reconstructed recursive shift certificates"
+    fun reject_zero label operation = (case Exn.capture operation () of
+        Exn.Exn _ => () | Exn.Res _ => error ("Zero shift accepted " ^ label))
+    val _ = reject_zero "invalid root" (fn () =>
+      Comma_CRT_MDD_Operation_Replay.shift_eval_phase replay 0 (~1) (~1))
+    val _ = reject_zero "different target" (fn () =>
+      Comma_CRT_MDD_Operation_Replay.shift_eval_phase replay 0 index shifted_index)
     val shift_exact = Comma_CRT_MDD_Operation_Replay.shift_eval_phase
       replay 1 index shifted_index
       handle ERROR message => error ("MDD fixture shift: " ^ message)
@@ -174,6 +192,7 @@ local_setup \<open>fn lthy =>
   in fold note
     [("comma_mdd_certificate_example_wellformed",theorem),
      ("comma_mdd_certificate_example_shift",shift_exact),
+     ("comma_mdd_certificate_example_zero_shift",zero_exact),
      ("comma_mdd_certificate_example_bind",bind_exact),
      ("comma_mdd_certificate_example_bind_branch_alias",alias_exact),
      ("comma_mdd_certificate_example_phase_leaf",leaf_phase)] lthy' end\<close>
@@ -393,7 +412,7 @@ lemma frontier24_fixture_exit_exact_full_shift_accepted:
       0 0 None"
   unfolding frontier24_fixture_exit_bundle_def
       frontier24_fixture_exit_closure_def
-      comma_frontier24_action_output_linked_def
+      comma_frontier24_action_output_linked_def comma_frontier24_action_output_linked_scalar_def
       comma_parametric_exit_continue_code_def
   by code_simp
 
@@ -404,7 +423,7 @@ lemma frontier24_fixture_exit_wrong_full_shift_rejected:
       0 0 None"
   unfolding frontier24_fixture_exit_bundle_def
       frontier24_fixture_exit_closure_def
-      comma_frontier24_action_output_linked_def
+      comma_frontier24_action_output_linked_def comma_frontier24_action_output_linked_scalar_def
       comma_parametric_exit_continue_code_def
   by code_simp
 
@@ -420,7 +439,7 @@ lemma frontier24_fixture_exit_wrong_leaf_payload_rejected:
   unfolding frontier24_fixture_exit_bundle_def
       frontier24_fixture_wrong_exit_leaf_bundle_def
       frontier24_fixture_exit_closure_def
-      comma_frontier24_action_output_linked_def
+      comma_frontier24_action_output_linked_def comma_frontier24_action_output_linked_scalar_def
       comma_parametric_exit_continue_code_def
   by code_simp
 
@@ -449,7 +468,7 @@ lemma frontier24_fixture_goto_exact_child_program_ref_accepted:
   "comma_frontier24_action_output_linked frontier24_fixture_goto_bundle
       1 (cf24_closures frontier24_fixture_goto_bundle ! 1) 0 0 (Some 0)"
   unfolding frontier24_fixture_goto_bundle_def
-      comma_frontier24_action_output_linked_def
+      comma_frontier24_action_output_linked_def comma_frontier24_action_output_linked_scalar_def
   by code_simp
 
 definition frontier24_fixture_goto_wrong_program_ref_bundle ::
@@ -467,21 +486,73 @@ lemma frontier24_fixture_goto_wrong_program_ref_rejected:
       0 0 (Some 0)"
   unfolding frontier24_fixture_goto_bundle_def
       frontier24_fixture_goto_wrong_program_ref_bundle_def
-      comma_frontier24_action_output_linked_def
+      comma_frontier24_action_output_linked_def comma_frontier24_action_output_linked_scalar_def
   by code_simp
 
 lemma frontier24_fixture_goto_out_of_bounds_child_rejected:
   "\<not> comma_frontier24_action_output_linked frontier24_fixture_goto_bundle
       1 (cf24_closures frontier24_fixture_goto_bundle ! 1) 0 0 (Some 2)"
   unfolding frontier24_fixture_goto_bundle_def
-      comma_frontier24_action_output_linked_def
+      comma_frontier24_action_output_linked_def comma_frontier24_action_output_linked_scalar_def
   by code_simp
 
 lemma frontier24_fixture_goto_nonpostorder_child_rejected:
   "\<not> comma_frontier24_action_output_linked frontier24_fixture_goto_bundle
       1 (cf24_closures frontier24_fixture_goto_bundle ! 1) 0 0 (Some 1)"
   unfolding frontier24_fixture_goto_bundle_def
-      comma_frontier24_action_output_linked_def
+      comma_frontier24_action_output_linked_def comma_frontier24_action_output_linked_scalar_def
+  by code_simp
+
+definition frontier24_fixture_typed_terminal_bundle ::
+    "comma_frontier24_parametric_bundle" where
+  "frontier24_fixture_typed_terminal_bundle =
+    frontier24_fixture_exit_bundle\<lparr>
+      cf24_action_tokens := [Comma_Continuation_Fork 5 0, Comma_Continuation_Landmine 0],
+      cf24_nodes := [Comma_CRT_MDD_Leaf 0, Comma_CRT_MDD_Leaf 50,
+        Comma_CRT_MDD_Leaf 55]\<rparr>"
+
+lemma frontier24_fixture_typed_terminal_labels:
+  "comma_frontier24_action_output_linked frontier24_fixture_typed_terminal_bundle
+      0 frontier24_fixture_exit_closure 0 1 None \<and>
+    comma_frontier24_action_output_linked frontier24_fixture_typed_terminal_bundle
+      0 frontier24_fixture_exit_closure 1 2 None \<and>
+    \<not> comma_frontier24_action_output_linked frontier24_fixture_typed_terminal_bundle
+      0 frontier24_fixture_exit_closure 0 2 None \<and>
+    \<not> comma_frontier24_action_output_linked frontier24_fixture_typed_terminal_bundle
+      0 frontier24_fixture_exit_closure 1 1 None"
+  unfolding frontier24_fixture_typed_terminal_bundle_def
+    frontier24_fixture_exit_bundle_def frontier24_fixture_exit_closure_def
+    comma_frontier24_action_output_linked_def comma_frontier24_action_output_linked_scalar_def
+  by code_simp
+
+lemma frontier24_fixture_terminal_nonzero_shift_is_invalid:
+  "\<not> comma_frontier24_action_output_linked frontier24_fixture_typed_terminal_bundle
+      0 (frontier24_fixture_exit_closure\<lparr>cf24_closure_full_shift := 1\<rparr>) 0 1 None \<and>
+    \<not> comma_frontier24_action_output_linked frontier24_fixture_typed_terminal_bundle
+      0 (frontier24_fixture_exit_closure\<lparr>cf24_closure_full_shift := 1\<rparr>) 1 2 None \<and>
+    comma_frontier24_action_output_linked frontier24_fixture_typed_terminal_bundle
+      0 (frontier24_fixture_exit_closure\<lparr>cf24_closure_full_shift := 1\<rparr>) 0 0 None \<and>
+    comma_frontier24_action_output_linked frontier24_fixture_typed_terminal_bundle
+      0 (frontier24_fixture_exit_closure\<lparr>cf24_closure_full_shift := 1\<rparr>) 1 0 None"
+  unfolding frontier24_fixture_typed_terminal_bundle_def
+    frontier24_fixture_exit_bundle_def frontier24_fixture_exit_closure_def
+    comma_frontier24_action_output_linked_def comma_frontier24_action_output_linked_scalar_def
+  by code_simp
+
+lemma frontier24_fixture_terminal_nonzero_delta_is_invalid:
+  defines "bad \<equiv> frontier24_fixture_typed_terminal_bundle\<lparr>
+    cf24_action_tokens := [Comma_Continuation_Fork 5 1, Comma_Continuation_Landmine 1]\<rparr>"
+  shows "\<not> comma_frontier24_action_output_linked bad
+      0 frontier24_fixture_exit_closure 0 1 None \<and>
+    \<not> comma_frontier24_action_output_linked bad
+      0 frontier24_fixture_exit_closure 1 2 None \<and>
+    comma_frontier24_action_output_linked bad
+      0 frontier24_fixture_exit_closure 0 0 None \<and>
+    comma_frontier24_action_output_linked bad
+      0 frontier24_fixture_exit_closure 1 0 None"
+  unfolding bad_def frontier24_fixture_typed_terminal_bundle_def
+    frontier24_fixture_exit_bundle_def frontier24_fixture_exit_closure_def
+    comma_frontier24_action_output_linked_def comma_frontier24_action_output_linked_scalar_def
   by code_simp
 
 ML \<open>
@@ -493,7 +564,10 @@ ML \<open>
       frontier24_fixture_goto_exact_child_program_ref_accepted
       frontier24_fixture_goto_wrong_program_ref_rejected
       frontier24_fixture_goto_out_of_bounds_child_rejected
-      frontier24_fixture_goto_nonpostorder_child_rejected};
+      frontier24_fixture_goto_nonpostorder_child_rejected
+      frontier24_fixture_typed_terminal_labels
+      frontier24_fixture_terminal_nonzero_shift_is_invalid
+      frontier24_fixture_terminal_nonzero_delta_is_invalid};
 \<close>
 
 

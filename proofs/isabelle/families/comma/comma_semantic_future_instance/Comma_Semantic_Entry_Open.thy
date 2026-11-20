@@ -1,65 +1,11 @@
 theory Comma_Semantic_Entry_Open
-  imports Comma_Semantic_Future_Candidate_Provider_Closure
+  imports Comma_Semantic_Future_Instance
 begin
 
-text \<open>
-The 91 exponent-5 entry states are classified from the checked semantic B32
-provider and its checked class-rank map.  This theory keeps the entry
-occurrence data (the exact terminal height and ordered children) separate
-from the future-control class.  The list check below projects only the
-requested B32 phases through shared exact graph-power equations.
-\<close>
-
-definition comma_semantic_p5_entry_future_open :: "nat \<Rightarrow> bool" where
-  "comma_semantic_p5_entry_future_open x =
-    (case comma_semantic_decade_summary (Comma_Decade 5 x) of
-       Some (h,Comma_Terminal_Fork a) \<Rightarrow>
-         (comma_boundary_valid (Comma_N,a,(5+h) mod 924) \<and>
-          comma_boundary_valid (Comma_Z,a,(5+h) mod 924) \<and>
-          (comma_semantic_concrete_future_rank
-             (Comma_N,a,(5+h) mod 924) = None \<or>
-           comma_semantic_concrete_future_rank
-             (Comma_Z,a,(5+h) mod 924) = None))
-     | _ \<Rightarrow> False)"
-
-ML \<open>
-structure Comma_Semantic_Entry_Open_Check =
-struct
-  fun projection_proc ctxt =
-    let
-      val projector = Comma_Semantic_Graph_Action_Certificate.make ctxt
-      val project = #convert projector
-    in
-      Simplifier.make_simproc ctxt
-        {name = "semantic_p5_entry_b32_projection",
-         kind = Simplifier.Simproc,
-         lhss = [Comma_Selected_List_Conversion.schematize
-           @{term "comma_semantic_b1_action_power 5 phase root"}],
-         proc = fn _ => fn _ => project, identifier = []}
-    end
-
-  fun filter_tac ctxt i =
-    Comma_Semantic_Future_Candidate_Check.context_tac ctxt
-      (fn base_context => fn target =>
-        let
-          val context = base_context
-            |> Simplifier.add_proc (projection_proc ctxt)
-            |> Simplifier.add_simps @{thms
-              comma_semantic_p5_entry_future_open_def
-              comma_semantic_decade_summary_def
-              comma_decade_admitted.simps
-              comma_terminal_weight_decode_def
-              comma_terminal_weight_terminal_def
-              comma_offset_orbit_def
-              comma_digit_orbit_sum_def
-              filter.simps upt_rec}
-        in Simplifier.asm_full_simp_tac context target end) i
-end
-\<close>
-
-theorem comma_semantic_p5_entry_future_open_checked:
-  "filter comma_semantic_p5_entry_future_open [0..<91] = [3,34,75]"
-  by (tactic \<open>Comma_Semantic_Entry_Open_Check.filter_tac @{context} 1\<close>)
+text \<open>The fixed exponent-five root classification is published by the
+checked M204 instance. Its finite demand follows authenticated weight and class
+paths and retains the exact [3,34,75] result. The path arguments below consume
+the same physical summary and ordered class-rank refinement.\<close>
 
 lemma comma_semantic_infinite_boundary_path_unranked:
   assumes path: "comma_semantic_infinite_path comma_boundary_value q p stream"

@@ -2,6 +2,7 @@
 
 import pytest
 
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.collatz.boundary_macros import select_boundary_macro
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
@@ -10,6 +11,10 @@ from number_compiler.sequences.collatz.named_border_carry_matrix import (
     UnitsCarryMatrix,
 )
 from number_compiler.sequences.collatz.parity_carry_tape import ParityCarryTape
+from number_compiler.sequences.collatz.parity_carry_tape_actions import (
+    LedgeredParityTapeActions,
+)
+from tests.support.ledger_failures import observe_parity_prefix_reservation
 
 
 def test_nested_concat_repeat_prefixes_match_the_literal_letters() -> None:
@@ -52,6 +57,28 @@ def test_tuple_backing_preserves_exact_class_equality() -> None:
     assert payload_tuple != tape
     with pytest.raises(AttributeError):
         object.__setattr__(tape, "word", (0, 1))
+
+
+def test_ledgered_weighted_prefix_reserves_before_traversal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    tape = ParityCarryTape.sequence(
+        (
+            ParityCarryTape.repeated(ParityCarryTape.letters((1, 0)), 3),
+            ParityCarryTape.letters((0, 1, 1)),
+        )
+    )
+    expected = UnitsCarryMatrix.word((1, 0, 1, 0, 1, 0, 0, 1, 1))
+    with LedgeredParityTapeActions(ledger) as actions:
+        actions.action(tape)
+        reservations = observe_parity_prefix_reservation(
+            monkeypatch, ledger, actions.scratch_owner
+        )
+        assert actions.prefix_units(tape, tape.steps) == expected
+        assert reservations
+        assert reservations[0][0] > 0 and reservations[0][1] > 0
+        assert ledger.account_usage(actions.scratch_owner) == (0, 0)
 
 
 def _deep_concat_fixture() -> tuple[ParityCarryTape, tuple[int, ...]]:
@@ -110,12 +137,16 @@ def test_named_macro_parity_grammar_folds_its_issued_action_once(
     original_action = ParityCarryTape.action
     calls = 0
 
-    def poison_second_fold(tape: ParityCarryTape) -> DyadicTerminalFieldAction:
+    def poison_second_fold(
+        tape: ParityCarryTape,
+        *,
+        cache: LedgeredParityTapeActions | None = None,
+    ) -> DyadicTerminalFieldAction:
         nonlocal calls
         calls += 1
         if calls > 1:
             raise AssertionError("named macro parity action was recomputed")
-        return original_action(tape)
+        return original_action(tape, cache=cache)
 
     monkeypatch.setattr(ParityCarryTape, "action", poison_second_fold)
     tape = ParityCarryTape.from_named_macro(macro)
