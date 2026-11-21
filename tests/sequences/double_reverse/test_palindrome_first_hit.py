@@ -89,3 +89,54 @@ def test_endpoint_prefix_does_not_prove_event_absence() -> None:
         engine.advance_source_prefix()
         engine.advance_source_prefix()
         assert term.first_palindrome_within(2) == 1
+
+
+def test_prefix_event_coverage_is_demanded_and_sealed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.double_reverse.temporal_hashlife import (
+        DoubleReverseTemporalHashlife,
+    )
+
+    with DoubleReverseTerm(11, 0, max_steps=4) as term:
+        engine = term.source_adapter.temporal_hashlife
+        with monkeypatch.context() as guard:
+
+            def forbidden(_self: DoubleReverseTemporalHashlife, _root: int) -> bool:
+                pytest.fail("undemanded prefix performed a palindrome search")
+
+            guard.setattr(
+                DoubleReverseTemporalHashlife, "_physical_palindrome_at", forbidden
+            )
+            engine.advance_source_prefix()
+            old = engine.advance_source_prefix()
+        assert not old.palindrome_covered
+        assert term.first_palindrome_within(2) == 1
+        covered = engine.source_prefix()
+        assert covered is not None and covered.palindrome_covered
+        assert covered.first_palindrome == 1
+        with pytest.raises(ValueError, match="owner-issued"):
+            engine.validate_source_prefix(old)
+        object.__setattr__(covered, "first_palindrome", None)
+        with pytest.raises(ValueError, match="stale|binding"):
+            engine.source_prefix()
+
+
+def test_warm_endpoint_issues_event_coverage_without_integer_replay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.double_reverse import palindrome_event_cursor
+
+    with DoubleReverseTerm(196, 128, max_steps=128, max_state_bits=2000) as term:
+        term.endpoint_root()
+
+        def forbid(*_args: object, **_kwargs: object) -> None:
+            pytest.fail("event search reconstructed a decimal source history")
+
+        monkeypatch.setattr(
+            palindrome_event_cursor, "advance_palindrome_cursor", forbid
+        )
+        assert term.first_palindrome_within(128) is None
+        entry = term.temporal_engine.source_prefix()
+        assert entry is not None and entry.certified_phase is not None
+        assert entry.palindrome_covered and entry.physical_steps == 16

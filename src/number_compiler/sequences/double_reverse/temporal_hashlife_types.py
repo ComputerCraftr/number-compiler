@@ -106,6 +106,8 @@ class DoubleReverseSourcePrefix:
     target: DoubleReverseSLPID
     physical_steps: int
     certified_phase: int | None
+    palindrome_covered: bool = False
+    first_palindrome: int | None = None
 
 
 class UncertifiedPointedStencilError(ValueError):
@@ -133,6 +135,8 @@ def source_prefix_binding(
         entry.target.local_id,
         entry.physical_steps,
         entry.certified_phase,
+        int(entry.palindrome_covered),
+        entry.first_palindrome,
     )
 
 
@@ -151,6 +155,8 @@ def source_prefix_node_cost(key: object, value: object) -> int:
         entry.target.local_id,
         entry.physical_steps,
         0 if entry.certified_phase is None else entry.certified_phase,
+        int(entry.palindrome_covered),
+        0 if entry.first_palindrome is None else entry.first_palindrome,
         *(component for component in value.binding if type(component) is int),
     )
     if any(type(component) is not int or component < 0 for component in integers):

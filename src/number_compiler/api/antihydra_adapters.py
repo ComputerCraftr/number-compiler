@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import TYPE_CHECKING
 
 from number_compiler.api.antihydra_observation import (
@@ -13,8 +14,10 @@ from number_compiler.api.observation_adapters import (
     Packet,
     observation_options,
     publish_observation,
+    publish_views,
 )
-from number_compiler.api.observation_types import ObservationId
+from number_compiler.api.observation_types import ObservationId, OutputStatus
+from number_compiler.api.observation_views import ObservationView as View
 from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.resources.metric_keys.api import QUERY_OBSERVER_REUSES
 
@@ -93,8 +96,6 @@ def observe_antihydra(context: QueryContext, name: ObservationId) -> Packet:
     if not isinstance(payload, AntihydraTermPayload):
         raise TypeError("Antihydra query published a foreign term payload")
     if name is ObservationId.TEMPORAL_DIAGONAL_CARRY:
-        from dataclasses import asdict
-
         from number_compiler.api.json_output import json_value
         from number_compiler.api.output_schema import AntihydraDiagonalPacket
         from number_compiler.hashlife.execution.dyadic_return_runs import (
@@ -155,7 +156,7 @@ def observe_antihydra(context: QueryContext, name: ObservationId) -> Packet:
             if name is ObservationId.SAFETY_LEDGER
             else {"h": result.h % options.modulus, "modulus": options.modulus}
         )
-        return publish_observation(
+        packet = publish_observation(
             context,
             name,
             {
@@ -167,6 +168,26 @@ def observe_antihydra(context: QueryContext, name: ObservationId) -> Packet:
             },
             coordinates=(("requested_returns",),),
         )
+        if name is ObservationId.ARITHMETIC_MODULAR:
+            return publish_views(context, name, {View.ENDPOINT_RESIDUE: packet})
+        if View.FINITE_GUARD in context.views_for(name):
+            projection = result.finite_safety_guard()
+            guard = publish_observation(
+                context,
+                name,
+                {
+                    **asdict(projection),
+                    "status": (
+                        OutputStatus.AVAILABLE
+                        if projection.complete
+                        else OutputStatus.UNKNOWN
+                    ).value,
+                },
+            )
+            packet["views"] = publish_views(context, name, {View.FINITE_GUARD: guard})[
+                "views"
+            ]
+        return packet
 
     from number_compiler.api.antihydra_observation import (
         observe_arithmetic_many,

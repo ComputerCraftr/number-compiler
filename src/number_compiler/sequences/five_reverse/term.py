@@ -40,6 +40,7 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.ledger_records import ResourceScope
 from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
 from number_compiler.resources.metric_keys import five_reverse as _keys
+from number_compiler.resources.owned_memo import LedgerReservation
 
 from .ports import (
     MAX_FIVE_REVERSE_MATRIX_STEPS,
@@ -250,6 +251,65 @@ class FiveReverseTerm:
                 "five-reversal input exceeds its admitted state-bit budget"
             )
         return self._next(value)
+
+    def packed_value(self, value: int, steps: int) -> int:
+        """Evaluate a bounded value with the packed recurrence candidate."""
+        from .packed_two_step import PackedFiveWork, execute_packed_five
+
+        self.check_open()
+        value = require_integer(value, "five-reversal input", 0)
+        if value.bit_length() > self.max_state_bits:
+            raise BlockContextBudgetExceeded(
+                "five-reversal input exceeds its admitted state-bit budget"
+            )
+        steps = require_integer(steps, "packed physical steps", 0)
+        if steps > self.max_steps:
+            raise BlockContextBudgetExceeded("packed action exceeds its step budget")
+        work = PackedFiveWork()
+        held = 0
+        try:
+            with LedgerReservation(
+                self.resource_ledger, self._scratch_owner
+            ) as reserve:
+
+                def reserve_capacity(capacity: int) -> None:
+                    nonlocal held
+                    required = 6 * (capacity + 4)
+                    if required > held:
+                        amount = required - held
+                        reserve.reserve(entries=amount, nodes=amount)
+                        held = required
+
+                try:
+                    return execute_packed_five(
+                        value,
+                        steps,
+                        self.max_state_bits,
+                        work,
+                        reserve_capacity=reserve_capacity,
+                    )
+                finally:
+                    cleanup_all(
+                        (
+                            lambda: self.resource_ledger.bump(
+                                _keys.FIVE_REVERSE_EXACT_STEPS, work.attempted
+                            ),
+                            lambda: self.resource_ledger.bump(
+                                _keys.FIVE_REVERSE_PACKED_LOGICAL_DIGIT_READS,
+                                work.digit_reads,
+                            ),
+                            lambda: self.resource_ledger.bump(
+                                _keys.FIVE_REVERSE_PACKED_EXECUTED_PAIRS,
+                                work.executed_pairs,
+                            ),
+                        )
+                    )
+        except BaseException as error:
+            try:
+                self.resource_ledger.bump(_keys.FIVE_REVERSE_FAILED_STEPS)
+            except BaseException as accounting_error:
+                raise accounting_error from error
+            raise
 
     def padded_source_value(self, steps: int) -> int:
         """Compile an exact padded candidate from this term's bound source."""

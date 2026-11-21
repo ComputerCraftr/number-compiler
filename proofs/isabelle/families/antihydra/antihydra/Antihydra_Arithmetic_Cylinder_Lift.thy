@@ -318,6 +318,37 @@ corollary antihydra_admitted_leaf_loop_fields:
   using antihydra_admitted_leaf_loop_refinement[of residue width]
   by (simp_all add: antihydra_family_balance_def antihydra_family_minimum_def)
 
+theorem antihydra_transient_leaf_source_fields:
+  "antihydra_family_orbit (residue + 2^width*lift) width =
+    leaf_q (antihydra_admitted_leaf_loop residue width) + 3^width*lift"
+  "antihydra_family_bits (residue + 2^width*lift) width =
+    leaf_bits (antihydra_admitted_leaf_loop residue width)"
+  "antihydra_family_balance (residue + 2^width*lift) 0 width =
+    leaf_delta (antihydra_admitted_leaf_loop residue width)"
+  "antihydra_family_minimum (residue + 2^width*lift) 0 width =
+    leaf_minimum (antihydra_admitted_leaf_loop residue width)"
+  using antihydra_admitted_leaf_loop_fields[of residue width]
+    antihydra_family_orbit_cylinder_transport[of residue width lift]
+    antihydra_family_bits_cylinder_transport[of residue width lift]
+    antihydra_family_balance_cylinder_transport[of residue width lift]
+    antihydra_family_minimum_cylinder_transport[of residue width lift]
+  by simp_all
+
+theorem antihydra_transient_upper_moving_cut:
+  fixes low upper :: nat
+  shows "antihydra_family_orbit (low + 2^(width + extra)*upper) width
+      div 2^extra =
+    3^width*upper + antihydra_family_orbit low width div 2^extra"
+proof -
+  have lifted:
+    "antihydra_family_orbit (low + 2^(width + extra)*upper) width =
+      antihydra_family_orbit low width + (3^width*upper)*2^extra"
+    using antihydra_family_orbit_cylinder_transport
+      [of low width "2^extra*upper"]
+    by (simp add: power_add algebra_simps)
+  show ?thesis by (simp only: lifted; simp add: div_add_self2 add.commute)
+qed
+
 corollary antihydra_family_funpow_cylinder_transport:
   "(antihydra_family_step ^^ n) (r + 2^n*q) =
     (antihydra_family_step ^^ n) r + 3^n*q"
@@ -527,6 +558,8 @@ ML \<open>
       antihydra_family_bits_cylinder_transport
       antihydra_family_balance_cylinder_transport
       antihydra_family_minimum_cylinder_transport
+      antihydra_transient_leaf_source_fields
+      antihydra_transient_upper_moving_cut
       ledger_word_delta_append ledger_word_minprefix_append
       ledger_word_minprefix_le_delta ledger_word_append_binary_step
       antihydra_family_orbit_Suc_right antihydra_family_bits_Suc_right

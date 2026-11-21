@@ -21,6 +21,11 @@ probes; its `metrics_schema_version` is also 8.
   a saturated extensional macrocell or count its semantic equivalence classes.
 - `construction` reports scheduler operations; finite source discovery is
   reported separately under `family_work`.
+- `construction.five_reverse_work` reports the source owner's measured
+  `exact_steps` and its packed `packed_executed_pairs` separately from
+  `packed_logical_digit_reads`. The last count describes represented decimal
+  digit reads, while packed pairs are executed word operations. Missing
+  counters are omitted from the work list.
 - `family_work.finite_block_*` separates finite-cylinder lookups, hits, misses,
   publications, evictions and cold arithmetic (atoms and transitions) from
   action interning and the outer balanced-effect memo. These are read-only

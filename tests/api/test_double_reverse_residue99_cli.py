@@ -7,6 +7,7 @@ import json
 import pytest
 
 from number_compiler.api import cli
+from tests.support.observation_views import information_only_view
 
 
 def test_cli_source_only_residue99_closed_form(
@@ -22,7 +23,9 @@ def test_cli_source_only_residue99_closed_form(
                 "64",
                 "--no-value",
                 "--info",
-                "temporal.residue99",
+                "arithmetic.modular",
+                "--arithmetic-modular-kind",
+                "residue",
                 "--format",
                 "json",
             ]
@@ -30,8 +33,7 @@ def test_cli_source_only_residue99_closed_form(
         == 0
     )
     data = json.loads(capsys.readouterr().out)
-    port = data["info"]["temporal.residue99"]
-    assert data["value"] is None
+    port = information_only_view(data, "arithmetic.modular", "residue")
     assert port["prefix_steps"] == 16
     assert port["duration"] == 48
     assert port["width_out"] == 30

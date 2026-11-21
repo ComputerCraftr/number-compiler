@@ -59,13 +59,43 @@ corresponding port; the other ports use canonical representatives `0/3` and
 odd-generation and pointed-source checks. The quotient checks outer admission;
 candidate-specific inner output digits remain exact.
 
-The existing `temporal.residue99` CLI demand publishes a source-bound return
-period for the joint border phase and mod-99/mod-198 projection. One bounded
-mod-198 orbit supplies both residue lassos; it does not construct the future
-digit word. Four physical ticks restore the border phase and add two digits
-of width, so width drift is reported separately. The transient is an aligned
-upper bound in physical ticks, while the period is exact for this projection.
-Neither this descriptor nor a cyclotomic residue supplies full-word authority.
+The source-bound return period joins the border phase with the mod-99 and
+mod-198 projections. One bounded mod-198 orbit supplies both residue lassos
+without constructing the future digit word. Four physical ticks restore the
+border phase and add two digits of width, so width drift is tracked separately.
+The transient is an aligned upper bound in physical ticks, while the period is
+exact for this projection. Residue values and lasso data are separate
+observations, each limited to the admitted projection. The [CLI reference](../cli.md#grouped-result-views)
+gives the corresponding requests.
+
+### Reflected multipliers and packed two-step actions
+
+For `T_m(x)=m*reverse10(x)` with `m` equal to 2 or 5, a padded base-100
+carry sheet represents finite dyadic segments. Its inlet includes the source
+digits and its complete halo. Each stage normalizes the preceding word before
+the next stage is applied. The registered
+[`Double_Reverse_Reflected_SLP_Endpoint`](../../proofs/isabelle/families/double_reverse/temporal_double_reverse/Double_Reverse_Reflected_SLP_Endpoint.thy)
+theory proves exact numerical endpoints for odd and even physical clocks,
+including the two multipliers' different even inlets. The theorem preserves
+padding equivalence and requires the stated decimal source assumptions. It
+does not establish an unrestricted future period or a complexity bound.
+
+For multiplier 5, encode least-significant-first decimal digits as nibbles in
+`P`. Let `L` have one low bit in each nibble and set `U=14L`. The packed
+ordinary product and reflected digit action are
+
+```text
+M(P) = 5*(P & L) + 8*(P & U)
+E(P) = ((P & U) >> 1) + 80*(P & L)
+```
+
+Apply `M` to `E(P)` after removing its low zero nibbles. Decoding the
+resulting word gives exactly two physical `5rev10` steps. This normalization
+accounts for width changes caused by trailing zeros at the seam. The
+[`Five_Reverse_Packed_Word_Consumer`](../../proofs/isabelle/families/five_reverse/five_reverse/Five_Reverse_Packed_Word_Consumer.thy)
+theory establishes the word and first-refusal laws for valid packed decimal
+digits. Runtime admission and measured performance are recorded in the
+[integration record](../sprints/week-of-2026-11-15/november-20-performance-ports.md).
 
 ### Finite Pascal summaries and carry-event evaluation
 
@@ -206,7 +236,7 @@ bound with midpoint realization forbidden.
 
 [Measured spatial change and temporal boundary](../sprints/week-of-2026-09-27/reverse-add.md#demanded-reverse-carry-regions).
 
-### Bounded completed-child migration
+### Bounded completed-child construction
 
 The decimal source-image adapter now has a bounded recursive fallback for rejected
 same-carry chambers through 128 steps. Spatial parents combine admitted child
@@ -214,11 +244,10 @@ images; output consumes the resulting pair occurrence with forward carry.
 This restores bounded exact queries, including seed-196 D20, without restoring
 the deleted universal machine. The same-carry clause retains its existing scope.
 
-This is not the completed temporal quotient: higher-interface construction and
-observation still expand work, and the imported D32/D64/D128 controls show roughly
-fourfold higher-operation counts per doubling. The checked terminal-fold lemmas
-assume a valid pair stream; they do not refine the Python completed-child
-constructor. These performance and executable-refinement obligations remain open.
+The checked terminal-fold lemmas assume a valid pair stream. A full temporal
+quotient also needs source-bound construction and an executable refinement of
+the completed-child constructor. Historical measurements and their scope are
+recorded with the implementation evidence.
 [Integration and adversarial checks](../sprints/week-of-2026-09-27/reverse-add.md#september-30--bounded-completed-child-parent-joins).
 
 ## Source authority and publication
@@ -891,44 +920,24 @@ No paper above supplies items 1–4 for this source language. Their role is to
 provide spatial primitives and sharpen the exact source-specific theorem to
 prove. The observed temporal node growth remains a release blocker.
 
-## Archived output quotient: implementation connection
+## Local output quotient and temporal authority
 
-Audit date: 2026-09-20. The
-[decimal pair quotient review](../archive/reverse-add/DECIMAL_PAIR_QUOTIENT_RESEARCH.md)
+The [decimal pair quotient review](../archive/reverse-add/DECIMAL_PAIR_QUOTIENT_RESEARCH.md)
 specifies more than the three-element carry monoid. Its complete local output
-contains the F5 phase and both binary channels. The following pieces already
-exist; the remaining constructor must reuse them.
+contains the F5 phase and both binary channels, including the decomposition
+`S = alpha + 5 beta + 10 nu`. The full-adder law supplies the local binary
+output. Frobenius transport requires admitted growth counts, and F5 equality
+alone does not identify the complete output. A successor substitution also
+needs its supplied continuation profile.
 
-| Review component | Executable owner | Checked statement or boundary |
-| --- | --- | --- |
-| `S = alpha + 5 beta + 10 nu`, normalized phase and binary wrap | `arithmetic/formula/decimal_pair_coordinates.py` | `Reverse_Factored_Channels.normalization_gate_exact` |
-| F5 addition and binary full-adder output | `decimal_add_normalized`, `decimal_add_factored`; symbolic `ReverseActiveOutputArena.pair` | `full_adder_gate_exact`, `full_adder_domain_exact`; exhaustive symbolic local-law test |
-| Frobenius transport, birth cancellation, complete local interning | `CenteredF5Transport`, `ReverseActiveOutputArena.transported_alpha`, `from_coordinates` | Transport requires admitted growth counts; F5 equality alone does not identify complete output |
-| Simultaneous symbol/port substitution in all thirteen local channels | `ReversePrimitiveOutputMorphism.pullback_channels` | Correlated-input and partial-admission tests; local activity is not cumulative temporal extent |
-| Consumer-relative successor substitution | `ReverseContextualResidualArena.pullback`, `certify` | Certification covers the supplied continuation profile, not an unspecified whole-field continuation |
-
-The production connection currently loses information at
-[`ReverseMorphismTransferArena`](../../src/number_compiler/sequences/reverse_add/reverse_morphism_transfer.py):
-its leaf compiler evaluates the primitive output at known producer ports and
-retains `ReverseBoundOutput`, a carry-consumer projection. Its spatial joins
-retain that projection. This is correct for its stated consumer, but cannot
-serve as an exact recursive output morphism for subsequent temporal actions.
-`ReverseImagePayload` still contains an action rather than such a complete
-admitted return, and its generic chronological hook refuses construction.
-
-The missing integration therefore needs a source-bound recursive range
-identity preserving coordinate output, the complete channels, and input/output
-extent and chart transport. Temporal substitution must construct that return
-without interpreting future points or constructing midpoint words. Simply
-retaining more leaf data establishes neither this substitution nor its cost
-bound. `Decimal_Publisher_Constructor` explicitly excludes recursive occurrence
-substitution and first-use DAG bounds from its 25-slot theorem.
-
-The symbolic pair operation's local decimal-digit sort is a finite function,
-not a materialized digit word. Local arithmetic equivalence does not establish
-generic D4/D8 temporal closure. Rejected implementation experiments and their
-historical test results belong to the dated audit, not the current research
-contract.
+A source-bound recursive range identity must preserve coordinate output,
+complete channels, input and output extent, and chart transport. Its temporal
+substitution must construct the admitted return with a justified cost bound.
+The local digit operation is finite, but its correctness does not establish
+generic D4/D8 temporal closure. The
+[`Decimal_Publisher_Constructor`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Decimal_Publisher_Constructor.thy)
+theorem has its own stated assumptions and does not establish recursive
+occurrence substitution or first-use DAG bounds.
 
 [Dated evidence](../sprints/week-of-2026-09-20/reverse-add.md#archived-output-quotient-audit-validation).
 

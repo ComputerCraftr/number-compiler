@@ -511,14 +511,14 @@ def certified_residue_action(
     # This is the exact width-dependent temporal action, not an endpoint
     # arithmetic check.  10**2 = 1 modulo 99; the modulo-198 formula retains
     # the doubled reversal congruence for all positive durations.
-    power2_99 = _residue_power(2, duration, 99, ledger)
-    power10_99 = _residue_power(10, exponent, 99, ledger)
-    mul99 = _residue_product_mod(power2_99, power10_99, 99, ledger)
     power2_198 = _residue_power(2, duration, 198, ledger)
     power10_198 = _residue_power(10, exponent, 198, ledger)
     mul198 = _residue_product_mod(power2_198, power10_198, 198, ledger)
-    target_mod99 = _residue_product_mod(source_mod99, mul99, 99, ledger)
     target_mod198 = _residue_product_mod(source_mod198, mul198, 198, ledger)
+    if ledger is not None:
+        _charge_residue_arithmetic(ledger, (mul198, 99))
+        _charge_residue_arithmetic(ledger, (target_mod198, 99))
+    mul99, target_mod99 = mul198 % 99, target_mod198 % 99
     return CertifiedResidueTemporalAction(
         phase,
         width,

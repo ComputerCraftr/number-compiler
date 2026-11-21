@@ -243,31 +243,9 @@ class DoubleReverseTemporalHashlife(TemporalHashlifeAuditBase):
             raise ValueError("2rev10 source transition returned an invalid root")
         return target_root
 
-    def advance_source_prefix(self) -> DoubleReverseSourcePrefix:
-        """Issue the initial cursor or advance it through the bound exact T map."""
-        current = self.source_prefix()
-        if current is None:
-            target_root = self.source_root
-            physical_steps = 0
-        else:
-            physical_steps = current.physical_steps + 1
-            if physical_steps > self.prefix_limit:
-                raise ValueError("2rev10 source-prefix cursor exceeds its horizon")
-            if self._source_advancer is None:
-                raise ValueError("2rev10 source transition owner is unavailable")
-            previous_root = self._root(current.target)
-            target_root = self._source_advancer(previous_root)
-            if type(target_root) is not int or not 0 <= target_root < len(
-                self.arena.nodes
-            ):
-                raise ValueError("2rev10 source transition returned an invalid root")
-        certified_phase = self.certify(target_root)
-        entry = DoubleReverseSourcePrefix(
-            self.scoped_handle(self.source_root),
-            self.scoped_handle(target_root),
-            physical_steps,
-            certified_phase,
-        )
+    def _issue_source_prefix(
+        self, entry: DoubleReverseSourcePrefix
+    ) -> DoubleReverseSourcePrefix:
         issued = IssuedDoubleReverseSourcePrefix(entry, source_prefix_binding(entry))
         self._prefixes[self.source_root] = issued
         self._prefix_issued = issued
@@ -276,6 +254,87 @@ class DoubleReverseTemporalHashlife(TemporalHashlifeAuditBase):
             _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_PREFIX_CURSOR_PUBLICATIONS
         )
         return entry
+
+    def _physical_palindrome_at(self, root: int) -> bool:
+        width = self.arena.nodes[root].length
+        for offset in range(width // 2):
+            if symbol_at(self.arena, root, offset) != symbol_at(
+                self.arena, root, width - offset - 1
+            ):
+                return False
+        return True
+
+    def _initial_source_prefix(
+        self, *, track_palindrome: bool
+    ) -> DoubleReverseSourcePrefix:
+        seed = self.scoped_handle(self.source_root)
+        return self._issue_source_prefix(
+            DoubleReverseSourcePrefix(
+                seed, seed, 0, self.certify(self.source_root), track_palindrome, None
+            )
+        )
+
+    def cover_source_prefix_palindromes(self) -> DoubleReverseSourcePrefix:
+        """Authenticate event coverage for an existing exact prefix on demand."""
+        current = self.source_prefix()
+        if current is None:
+            return self._initial_source_prefix(track_palindrome=True)
+        if current.palindrome_covered:
+            return current
+        target = self._root(current.target)
+        root = self.source_root
+        first_hit: int | None = None
+        for step in range(1, current.physical_steps + 1):
+            root = self.advance_source_root(root)
+            if first_hit is None and self._physical_palindrome_at(root):
+                first_hit = step
+        if root != target:
+            raise ValueError("2rev10 palindrome coverage lost its source seam")
+        return self._issue_source_prefix(
+            DoubleReverseSourcePrefix(
+                current.source,
+                current.target,
+                current.physical_steps,
+                current.certified_phase,
+                True,
+                first_hit,
+            )
+        )
+
+    def advance_source_prefix(
+        self, *, track_palindrome: bool = False
+    ) -> DoubleReverseSourcePrefix:
+        """Issue the initial cursor or advance it through the bound exact T map."""
+        if type(track_palindrome) is not bool:
+            raise TypeError("palindrome coverage demand must be Boolean")
+        current = self.source_prefix()
+        if current is None:
+            return self._initial_source_prefix(track_palindrome=track_palindrome)
+        if track_palindrome and not current.palindrome_covered:
+            current = self.cover_source_prefix_palindromes()
+        physical_steps = current.physical_steps + 1
+        if physical_steps > self.prefix_limit:
+            raise ValueError("2rev10 source-prefix cursor exceeds its horizon")
+        target_root = self.advance_source_root(self._root(current.target))
+        certified_phase = self.certify(target_root)
+        covered = track_palindrome or current.palindrome_covered
+        first_hit = current.first_palindrome
+        if (
+            covered
+            and certified_phase is None
+            and first_hit is None
+            and self._physical_palindrome_at(target_root)
+        ):
+            first_hit = physical_steps
+        entry = DoubleReverseSourcePrefix(
+            self.scoped_handle(self.source_root),
+            self.scoped_handle(target_root),
+            physical_steps,
+            certified_phase,
+            covered,
+            first_hit,
+        )
+        return self._issue_source_prefix(entry)
 
     def _validate_source_prefix(self, issued: IssuedDoubleReverseSourcePrefix) -> None:
         if type(issued) is not IssuedDoubleReverseSourcePrefix:
@@ -290,6 +349,13 @@ class DoubleReverseTemporalHashlife(TemporalHashlifeAuditBase):
             and (
                 type(entry.certified_phase) is not int
                 or entry.certified_phase not in (0, 1, 2, 3)
+            )
+            or type(entry.palindrome_covered) is not bool
+            or entry.first_palindrome is not None
+            and (
+                not entry.palindrome_covered
+                or type(entry.first_palindrome) is not int
+                or not 1 <= entry.first_palindrome <= entry.physical_steps
             )
             or issued.binding != source_prefix_binding(entry)
             or issued.binding != self._prefix_binding_snapshot

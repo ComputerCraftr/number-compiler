@@ -23,6 +23,7 @@ from number_compiler.api.observation_types import (
     SelectorId,
     output_status,
 )
+from number_compiler.api.observation_views import ObservationView as View
 from number_compiler.api.output_schema import (
     CollatzCarryBellmanPacket,
     JsonValue,
@@ -149,6 +150,43 @@ def publish_observation(
     return result
 
 
+def publish_views(
+    context: QueryContext, name: ObservationId, packets: Mapping[View, Packet]
+) -> Packet:
+    """Assemble independently admitted views under one information envelope."""
+    from number_compiler.api.family_registry import family_spec
+
+    specs = {
+        spec.view: spec
+        for spec in family_spec(context.request.family).views
+        if spec.selector is context.request.selector
+    }
+    views: dict[str, JsonValue] = {}
+    status = OutputStatus.AVAILABLE
+    for view, packet in packets.items():
+        spec = specs[view]
+        view_status = packet["status"]
+        if view_status == OutputStatus.UNAVAILABLE:
+            status = OutputStatus.UNAVAILABLE
+        elif view_status == OutputStatus.UNKNOWN and status is OutputStatus.AVAILABLE:
+            status = OutputStatus.UNKNOWN
+        views[view.label] = {
+            "law": spec.law,
+            "clock_unit": spec.clock_unit,
+            "coordinate": spec.coordinate,
+            "authority_scope": spec.authority_scope,
+            "status": view_status,
+            "value": {
+                key: value
+                for key, value in packet.items()
+                if key not in {"family", "kind", "index", "index_unit", "status"}
+            },
+        }
+    result = publish_observation(context, name, {"status": status.value})
+    result["views"] = views
+    return result
+
+
 def _common_metadata(
     context: QueryContext,
     name: ObservationId,
@@ -209,18 +247,19 @@ def admit_reverse(context: QueryContext) -> None:
 
 def observe_reverse(context: QueryContext, name: ObservationId) -> Packet:
     options = observation_options(context, ReverseAddObservationOptions)
-    if name is ObservationId.TEMPORAL_RESIDUE99:
+    if name is ObservationId.ARITHMETIC_MODULAR:
         from number_compiler.sequences.reverse_add.temporal_residue99 import from_seed
 
         query = context.request.execution
         if not isinstance(query, ReverseAddTermQuery) or query.base != 10:
             raise ValueError("temporal residue99 requires a decimal reverse/add query")
-        return publish_observation(
+        packet = publish_observation(
             context,
             name,
             asdict(from_seed(query.seed, query.index)),
             coordinates=(("duration",),),
         )
+        return publish_views(context, name, {View.RESIDUE: packet})
     from number_compiler.api.number_api import PoweredReverseAddTermPayload
 
     payload = context.term.payload
@@ -244,12 +283,13 @@ def observe_reverse(context: QueryContext, name: ObservationId) -> Packet:
         return publish_observation(
             context, name, payload.term.temporal_mirrored_diagonal()
         )
-    if name is ObservationId.TEMPORAL_SEED_ORBIT:
+    if name is ObservationId.TEMPORAL_CLOSED_FORM:
         from number_compiler.api.bank_observation import reverse_seed_orbit_packet
 
-        return publish_observation(
+        packet = publish_observation(
             context, name, reverse_seed_orbit_packet(payload.term)
         )
+        return publish_views(context, name, {View.SOURCE_ACTION: packet})
     if name is ObservationId.TEMPORAL_OPEN_RING:
         from number_compiler.api.bank_observation import reverse_open_ring_packet
 
@@ -260,13 +300,14 @@ def observe_reverse(context: QueryContext, name: ObservationId) -> Packet:
         return publish_observation(
             context, name, asdict(payload.term.observe_boundary_macro())
         )
-    if name is ObservationId.TEMPORAL_ACCUMULATOR99:
-        return publish_observation(
+    if name is ObservationId.TEMPORAL_ACCUMULATOR:
+        packet = publish_observation(
             context,
             name,
             payload.term.temporal_accumulator99().packet(),
             coordinates=(("generation",),),
         )
+        return publish_views(context, name, {View.ALTERNATING: packet})
     if name is ObservationId.SPATIAL_BANK_MORPHISM:
         from number_compiler.api.bank_observation import reverse_bank_packet
 
@@ -319,17 +360,18 @@ def prepare_collatz(context: QueryContext, term: ProjectedNumberTerm) -> None:
         term.payload.term.prepare_width_spine()
     if {
         ObservationId.TEMPORAL_ACCUMULATOR,
-        ObservationId.TEMPORAL_DOUBLE_ACCUMULATOR,
         ObservationId.TEMPORAL_DIAGONAL_CARRY,
-        ObservationId.TEMPORAL_CARRY_BELLMAN,
         ObservationId.TEMPORAL_MATRIX,
         ObservationId.TEMPORAL_MATRIX_TRACE,
-    }.intersection(options.info):
+    }.intersection(options.info) or (
+        ObservationId.TEMPORAL_CARRY_BELLMAN in options.info
+        and options.carry_bellman_horizon == 0
+    ):
         term.payload.term.prepare_joint_cocycle()
-    if {
-        ObservationId.TEMPORAL_MACRO,
-        ObservationId.TEMPORAL_INNOVATION_BORROW,
-    }.intersection(options.info):
+    if ObservationId.TEMPORAL_INNOVATION_BORROW in options.info or (
+        ObservationId.TEMPORAL_MACRO in options.info
+        and View.EXECUTED_MACROS not in context.request.views
+    ):
         term.payload.term.prepare_innovation_tape(
             complete_word=ObservationId.TEMPORAL_INNOVATION_BORROW in options.info,
             modulus=options.innovation_modulus
@@ -410,9 +452,12 @@ def observe_collatz(context: QueryContext, name: ObservationId) -> Packet:
             _context=_event_context(context),
             _include_metrics=False,
         )
-        return publish_observation(
+        event_packet = publish_observation(
             context, name, packet, coordinates=(("requested_events",),)
         )
+        if name is ObservationId.ARITHMETIC_MODULAR:
+            return publish_views(context, name, {View.ENDPOINT_RESIDUE: event_packet})
+        return event_packet
 
     term_options = observation_options(context, CollatzTermObservationOptions)
     execution = request.execution
@@ -448,18 +493,26 @@ def observe_collatz(context: QueryContext, name: ObservationId) -> Packet:
         )
     if name is ObservationId.TEMPORAL_CARRY_BELLMAN:
         from number_compiler.sequences.collatz.future_carry_bellman import (
-            first_simultaneous_even_carries,
+            centered_carry_signal,
         )
 
-        seam = payload.term.diagonal_carry_seam()
-        if seam.phase:
-            raise ValueError("carry Bellman requires a completed normalized step")
-        source = seam.normalized_endpoint
         cuts = term_options.carry_bellman_cuts
         horizon = term_options.carry_bellman_horizon
-        hit = first_simultaneous_even_carries(
+        if horizon:
+            # A pending odd half-step emits an even value. Positive all-odd
+            # admission therefore needs only the authenticated physical endpoint.
+            source = payload.term.source_image().endpoint()
+            if source % 2 == 0:
+                raise ValueError("carry Bellman requires an odd normalized source")
+        else:
+            seam = payload.term.diagonal_carry_seam()
+            if seam.phase:
+                raise ValueError("carry Bellman requires a completed normalized step")
+            source = seam.normalized_endpoint
+        signal = centered_carry_signal(
             source, cuts, horizon=horizon, ledger=payload.term.resource_ledger
         )
+        hit, corrected = signal.hits.homogeneous, signal.hits.corrected
         bellman_packet: CollatzCarryBellmanPacket = {
             "law": "homogeneous-centered-carry",
             "multipliers": (3, 5, 15),
@@ -469,34 +522,57 @@ def observe_collatz(context: QueryContext, name: ObservationId) -> Packet:
             "physical_horizon": 2 * horizon,
             "first_normalized_offset": hit,
             "first_physical_offset": None if hit is None else 2 * hit,
+            "corrected": {
+                "law": "centered-minus-power-of-two",
+                "numerator_bits": signal.numerator_bits,
+                "terminal_numerator_residue": signal.numerator_residue,
+                "first_normalized_offset": corrected,
+                "first_physical_offset": None if corrected is None else 2 * corrected,
+            },
         }
         return publish_observation(context, name, bellman_packet)
-    if name is ObservationId.TEMPORAL_DOUBLE_ACCUMULATOR:
-        weight = payload.term.double_accumulators()
-        joint = payload.term.source_image().joint_action if execution.index else None
-        if execution.index and joint is None:
-            raise ValueError("weighted Collatz observer lost its joint field action")
-        return publish_observation(
-            context,
-            name,
-            {
-                "source": execution.seed,
-                "added": weight.added,
-                "subtracted": weight.subtracted,
-                "normalized_endpoint": weight.normalized_endpoint,
-                "physical_endpoint": weight.physical_endpoint,
-                "conservation_difference": weight.added - weight.subtracted,
-                "normalized_steps": 0 if joint is None else joint.normalized_steps,
-                "physical_ticks": execution.index,
-                "phase": 0 if joint is None else joint.phase,
-            },
-        )
     if name is ObservationId.TEMPORAL_ACCUMULATOR:
-        return publish_observation(
-            context,
-            name,
-            asdict(payload.term.accumulator(term_options.accumulator_modulus)),
+        packets: dict[View, Packet] = {}
+        views = context.views_for(name)
+        if View.SINGLE in views:
+            packets[View.SINGLE] = publish_observation(
+                context,
+                name,
+                asdict(payload.term.accumulator(term_options.accumulator_modulus)),
+            )
+        if View.ALTERNATING in views:
+            weight = payload.term.double_accumulators()
+            joint = (
+                payload.term.source_image().joint_action if execution.index else None
+            )
+            if execution.index and joint is None:
+                raise ValueError(
+                    "weighted Collatz observer lost its joint field action"
+                )
+            packets[View.ALTERNATING] = publish_observation(
+                context,
+                name,
+                {
+                    "source": execution.seed,
+                    "added": weight.added,
+                    "subtracted": weight.subtracted,
+                    "normalized_endpoint": weight.normalized_endpoint,
+                    "physical_endpoint": weight.physical_endpoint,
+                    "conservation_difference": weight.added - weight.subtracted,
+                    "normalized_steps": 0 if joint is None else joint.normalized_steps,
+                    "physical_ticks": execution.index,
+                    "phase": 0 if joint is None else joint.phase,
+                },
+            )
+        return publish_views(context, name, {view: packets[view] for view in views})
+    if (
+        name is ObservationId.TEMPORAL_MACRO
+        and View.EXECUTED_MACROS in context.request.views
+    ):
+        executed_packet = publish_observation(
+            context, name, payload.term.observe_executed_macros()
         )
+        return publish_views(context, name, {View.EXECUTED_MACROS: executed_packet})
     if name in {
         ObservationId.TEMPORAL_MACRO,
         ObservationId.TEMPORAL_INNOVATION_BORROW,

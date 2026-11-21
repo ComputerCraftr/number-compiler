@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 
 
 FIVE_REVERSE_IMAGE_VERSION: Final[str] = "five-reverse-decimal-source-v1"
+# Matched source-owner measurements show savings beginning at this horizon.
+_MIN_PACKED_STEPS: Final = 1024
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -262,6 +264,12 @@ class FiveReverseSourceAdapter:
 
     def _apply_steps(self, source: int, steps: int) -> int:
         self.validate_payload(source)
+        if (
+            steps >= _MIN_PACKED_STEPS
+            and self.ledger.max_nodes is None
+            and self.ledger.max_cache_entries is None
+        ):
+            return self.term.packed_value(source, steps)
         value = source
         for _ in range(steps):
             value = self.term.step_value(value)

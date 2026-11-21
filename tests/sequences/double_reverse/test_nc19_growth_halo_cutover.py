@@ -10,6 +10,7 @@ from typing import Never
 import pytest
 
 from number_compiler.api import cli
+from number_compiler.api.json_output import is_object_sequence, is_string_object_mapping
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
@@ -31,6 +32,7 @@ from number_compiler.sequences.double_reverse.temporal_hashlife_pointed import (
 from number_compiler.sequences.double_reverse.temporal_residue_quotient import (
     certified_width_moments,
 )
+from tests.support.observation_views import view_value
 
 
 def _step(value: int) -> int:
@@ -86,9 +88,13 @@ def test_both_cli_observers_reuse_one_authenticated_defect_cone(
                 "--format",
                 "json",
                 "--info",
-                "temporal.defect-clock",
+                "temporal.clock",
+                "--temporal-clock-detail",
+                "defect-samples",
                 "--info",
-                "temporal.seed-morphism",
+                "temporal.closed-form",
+                "--temporal-closed-form-kind",
+                "source-action",
                 "--temporal-period-samples",
                 "24",
                 "--temporal-defect-digits",
@@ -98,15 +104,14 @@ def test_both_cli_observers_reuse_one_authenticated_defect_cone(
         == 0
     )
     payload = json.loads(capsys.readouterr().out)["info"]
-    direct = payload["temporal.defect-clock"]
-    seed = payload["temporal.seed-morphism"]
+    direct = view_value(payload["temporal.clock"], "defect-samples")
+    seed = view_value(payload["temporal.closed-form"], "source-action")
     assert direct["status"] == "available"
-    assert seed["period_observations"]["full_endpoint_suffix_verified"] is True
-    assert direct["rows"] == seed["period_observations"]["rows"]
-    assert (
-        direct["composed_signed_action"]
-        == seed["period_observations"]["composed_signed_action"]
-    )
+    period = seed["period_observations"]
+    assert is_string_object_mapping(period)
+    assert period["full_endpoint_suffix_verified"] is True
+    assert direct["rows"] == period["rows"]
+    assert direct["composed_signed_action"] == period["composed_signed_action"]
     assert direct["source_halo_segments"] == 1
 
 
@@ -186,7 +191,9 @@ def test_cli_defect_observer_consumes_streamed_tape(
                 "--format",
                 "json",
                 "--info",
-                "temporal.defect-clock",
+                "temporal.clock",
+                "--temporal-clock-detail",
+                "defect-samples",
                 "--temporal-defect-digits",
                 "12",
                 "--temporal-period-samples",
@@ -326,7 +333,9 @@ def test_segmented_source_halo_not_single_sample_cones(
                 "--format",
                 "json",
                 "--info",
-                "temporal.defect-clock",
+                "temporal.clock",
+                "--temporal-clock-detail",
+                "defect-samples",
                 "--temporal-defect-digits",
                 "24",
                 "--temporal-period-samples",
@@ -339,7 +348,9 @@ def test_segmented_source_halo_not_single_sample_cones(
         )
         == 0
     )
-    result = json.loads(capsys.readouterr().out)["info"]["temporal.defect-clock"]
+    result = view_value(
+        json.loads(capsys.readouterr().out)["info"]["temporal.clock"], "defect-samples"
+    )
     assert result["status"] == "available"
     assert result["source_halo_segments"] == 2
     assert result["segmented_source_halo"] is True
@@ -348,26 +359,32 @@ def test_segmented_source_halo_not_single_sample_cones(
     assert result["samples"] == 20
     assert result["infinite_period_certified"] is False
     # The exact temporal seam still comes from authenticated scalar probes.
-    assert len(result["rows"]) == 20
-    assert all(len(row["carry_first"]) == 24 for row in result["rows"])
+    rows = result["rows"]
+    assert is_object_sequence(rows) and len(rows) == 20
+    for row in rows:
+        assert is_string_object_mapping(row)
+        carries = row["carry_first"]
+        assert type(carries) is str and len(carries) == 24
 
 
 def test_canonical_cli_repeated_request_shares_one_certificate(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from number_compiler.api import bank_observation
+    from number_compiler.sequences.double_reverse.temporal_residue_quotient import (
+        CertifiedResidueTemporalAction,
+    )
 
-    original = bank_observation.double_reverse_residue_packet
+    original = DoubleReverseTerm.temporal_residue_quotient
     calls: list[DoubleReverseTerm] = []
 
-    def once(term: DoubleReverseTerm) -> dict[str, object]:
+    def once(term: DoubleReverseTerm) -> tuple[int, CertifiedResidueTemporalAction]:
         calls.append(term)
         if len(calls) != 1:
             raise AssertionError("duplicate residue / growth-quotient source fold")
         return original(term)
 
-    monkeypatch.setattr(bank_observation, "double_reverse_residue_packet", once)
+    monkeypatch.setattr(DoubleReverseTerm, "temporal_residue_quotient", once)
     assert (
         cli.main(
             [
@@ -380,14 +397,20 @@ def test_canonical_cli_repeated_request_shares_one_certificate(
                 "--format",
                 "json",
                 "--info",
-                "temporal.residue99",
+                "arithmetic.modular",
+                "--arithmetic-modular-kind",
+                "residue",
                 "--info",
-                "temporal.residue99",
+                "arithmetic.modular",
+                "--arithmetic-modular-kind",
+                "residue",
             ]
         )
         == 0
     )
     packets = json.loads(capsys.readouterr().out)["info"]
-    assert tuple(packets) == ("temporal.residue99",)
-    assert packets["temporal.residue99"]["target_generation"] == 512
+    assert tuple(packets) == ("arithmetic.modular",)
+    assert (
+        view_value(packets["arithmetic.modular"], "residue")["target_generation"] == 512
+    )
     assert len(calls) == 1

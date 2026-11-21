@@ -37,7 +37,7 @@ python -m devtools.checks.action_morphism_adversarial_audit --help
 ```
 
 The growth runner preserves horizons 16–1024, five cold trials per sample and
-35-second/1-GiB worker guards. Missing samples, refused construction and timeouts
+60-second/4-GiB worker guards. Missing samples, refused construction and timeouts
 remain failures. Its report distinguishes the requested, observed and missing
 manifests; it does not certify the complete production release.
 

@@ -11,7 +11,7 @@ are intentional API declarations, not compatibility dispatchers.
 | `hashlife.interfaces` and `hashlife.behavior` | Certified transfer and observation semantics |
 | `hashlife.execution` | Iterative dependency execution |
 | `hashlife.observation` | Point and extent observation |
-| `sequences` | Reverse-add, Collatz, primes and shared Fermat/Mersenne laws |
+| `sequences` | Family recurrences, source admission and adapters, including reverse/add, `2rev10`, `5rev10`, Collatz, Antihydra, primes and Fermat/Mersenne |
 | `projection` | Radix conversion, explicit output and capped microblocks |
 | `resources` | Budgets, ownership and measured execution accounting |
 
@@ -40,7 +40,7 @@ in projection; it does not authorize eager intermediate construction in points.
 Package boundaries are checked from imports and the actual file tree. Generated
 build inventories and historical migration lists are not sources of truth.
 
-The [cutover optimization plan](hashlife-optimization.md) records remaining
+The [scheduler optimization guide](hashlife-optimization.md) records remaining
 execution and measurement gates. The [reverse/add research synthesis](research/reverse-add.md)
 maps the local carry/output and radial research to these owners without reviving
 the old image/provider runtime.

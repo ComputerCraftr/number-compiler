@@ -13,6 +13,7 @@ from number_compiler.api.observation_types import (
     OutputFormat,
     SelectorId,
 )
+from number_compiler.api.observation_views import ObservationView
 from number_compiler.api.query_types import ExecutionQuery, FirstPalindromeQuery
 from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.arithmetic.contracts.input_validation import (
@@ -176,7 +177,7 @@ class DoubleReverseObservationOptions:
 class FiveReverseObservationOptions:
     info: tuple[ObservationId, ...] = ()
     modulus: int = 45
-    temporal_digit_field_places: int = 2
+    arithmetic_modular_places: int = 2
     temporal_closed_form_places: int = 32
     temporal_closed_form_digits: int = 0
 
@@ -186,7 +187,7 @@ class FiveReverseObservationOptions:
         if 45 % self.modulus:
             raise ValueError("5rev10 modular observation requires a divisor of 45")
         require_integer(
-            self.temporal_digit_field_places, "--temporal-digit-field-places", 1, 128
+            self.arithmetic_modular_places, "--arithmetic-modular-places", 1, 128
         )
         require_integer(
             self.temporal_closed_form_places, "--temporal-closed-form-places", 1, 128
@@ -384,6 +385,7 @@ class QueryRequest:
     observations: ObservationOptions = NoObservations()
     max_index_bits: int = 1_000_000
     matrix: MatrixRequest | None = None
+    views: tuple[ObservationView, ...] = ()
 
     def __post_init__(self) -> None:
         if type(self.presentation) is not PresentationOptions:
@@ -450,6 +452,13 @@ class QueryRequest:
                     "requested information is unavailable for this selector"
                 )
             spec.validate_observation_request(self.execution, self.observations)
+        if type(self.views) is not tuple:
+            raise TypeError("observation views must be an immutable tuple")
+        object.__setattr__(
+            self,
+            "views",
+            spec.selected_views(selector, self.observations.info, self.views),
+        )
         if {
             ObservationId.TEMPORAL_MATRIX,
             ObservationId.TEMPORAL_MATRIX_TRACE,

@@ -68,6 +68,7 @@ class TemporalHashlifeAuditBase:
     arena: LedgerSLPArena
     source_root: int
     max_steps: int
+    prefix_limit: int
     _slices: OwnedMemo[tuple[int, int, int], int]
     _cone: OwnedMemo[tuple[int, int], int]
     _actions: OwnedMemo[tuple[int, int, int], IssuedDoubleReversePortAction]
@@ -300,13 +301,20 @@ class TemporalHashlifeAuditBase:
                 entry = issued.entry
                 valid = (
                     type(entry.physical_steps) is int
-                    and 0 <= entry.physical_steps <= min(32, self.max_steps)
+                    and 0 <= entry.physical_steps <= self.prefix_limit
                     and self._root(entry.source) == self.source_root
                     and 0 <= self._root(entry.target) < len(self.arena.nodes)
                     and (
                         entry.certified_phase is None
                         or type(entry.certified_phase) is int
                         and entry.certified_phase in (0, 1, 2, 3)
+                    )
+                    and type(entry.palindrome_covered) is bool
+                    and (
+                        entry.first_palindrome is None
+                        or entry.palindrome_covered
+                        and type(entry.first_palindrome) is int
+                        and 1 <= entry.first_palindrome <= entry.physical_steps
                     )
                     and issued.binding == source_prefix_binding(entry)
                     and issued.binding == self._prefix_binding_snapshot

@@ -15,6 +15,7 @@ from number_compiler.api.observation_types import (
     OutputStatus,
     SelectorId,
 )
+from number_compiler.api.observation_views import ObservationView
 from number_compiler.api.output_schema import JsonValue
 from number_compiler.api.query_types import is_term_query
 from number_compiler.api.registry_adapters import resolve_observation_adapter
@@ -28,6 +29,12 @@ if TYPE_CHECKING:
     from number_compiler.resources.ledger import ResourceLedger
     from number_compiler.sequences.collatz.parity_carry_tape_actions import (
         LedgeredParityTapeActions,
+    )
+    from number_compiler.sequences.double_reverse.temporal_residue_quotient import (
+        CertifiedResidueTemporalAction,
+    )
+    from number_compiler.sequences.double_reverse.temporal_seed_morphism import (
+        CertifiedSeedOrbitMorphism,
     )
 
 
@@ -48,6 +55,10 @@ class QueryContext:
         self._events: CollatzObservationContext | None = None
         self._special: dict[str, object] | None = None
         self._info: dict[ObservationId, dict[str, JsonValue]] = {}
+        self._double_reverse_morphism: CertifiedSeedOrbitMorphism | None = None
+        self._double_reverse_residue: (
+            tuple[int, CertifiedResidueTemporalAction] | None
+        ) = None
         self._matrix_observation: dict[str, object] | None = None
         self.unresolved_boundary: UnresolvedSequenceTerm | None = None
         self._parity_actions: LedgeredParityTapeActions | None = None
@@ -80,6 +91,8 @@ class QueryContext:
     def close(self) -> None:
         """Revoke query-owned actions; failed cleanup remains retryable."""
         self._closed = True
+        self._double_reverse_morphism = None
+        self._double_reverse_residue = None
         if self._parity_actions is not None:
             self._parity_actions.dispose()
             self._parity_actions = None
@@ -167,11 +180,12 @@ class QueryContext:
         # certificate first so requested observers do not depend on --info
         # command-line order.  Output still follows requested_info below.
         if (
-            ObservationId.TEMPORAL_SEED_MORPHISM in requested_info
-            and ObservationId.TEMPORAL_SEED_MORPHISM not in self._info
+            ObservationView.SOURCE_ACTION in self.request.views
+            and ObservationId.TEMPORAL_CLOSED_FORM in requested_info
+            and ObservationId.TEMPORAL_CLOSED_FORM not in self._info
         ):
-            self._info[ObservationId.TEMPORAL_SEED_MORPHISM] = self._observe(
-                ObservationId.TEMPORAL_SEED_MORPHISM
+            self._info[ObservationId.TEMPORAL_CLOSED_FORM] = self._observe(
+                ObservationId.TEMPORAL_CLOSED_FORM
             )
         for name in requested_info:
             if name is ObservationId.METRICS or name in self._info:
@@ -222,6 +236,54 @@ class QueryContext:
                 }
             )
         return {name.value: self._info[name] for name in requested_info}
+
+    def remember_double_reverse_morphism(
+        self, morphism: CertifiedSeedOrbitMorphism
+    ) -> None:
+        self._require_open()
+        from number_compiler.api.reverse_payloads import DoubleReverseTermPayload
+
+        payload = self.term.payload
+        authority = morphism.validate_source_authority()
+        if (
+            not isinstance(payload, DoubleReverseTermPayload)
+            or authority.arena is not payload.term.source_arena
+            or morphism.physical_interval[1]
+            not in (payload.term.generation, payload.term.generation - 1)
+        ):
+            raise ValueError(
+                "morphism differs from the selected 2rev10 source or generation"
+            )
+        self._double_reverse_morphism = morphism
+
+    def double_reverse_morphism(self) -> CertifiedSeedOrbitMorphism | None:
+        self._require_open()
+        return self._double_reverse_morphism
+
+    def double_reverse_residue(self) -> tuple[int, CertifiedResidueTemporalAction]:
+        self._require_open()
+        from number_compiler.api.reverse_payloads import DoubleReverseTermPayload
+
+        payload = self.term.payload
+        if not isinstance(payload, DoubleReverseTermPayload):
+            raise TypeError("residue action requires the selected 2rev10 owner")
+        if self._double_reverse_residue is None:
+            morphism = self._double_reverse_morphism
+            if (
+                morphism is not None
+                and morphism.physical_interval[1] == payload.term.generation
+            ):
+                self._double_reverse_residue = (
+                    morphism.physical_prefix,
+                    morphism.issued_residue_projection(),
+                )
+            else:
+                self._double_reverse_residue = payload.term.temporal_residue_quotient()
+        self._double_reverse_residue[1].validate_source_authority()
+        return self._double_reverse_residue
+
+    def views_for(self, name: ObservationId) -> tuple[ObservationView, ...]:
+        return tuple(view for view in self.request.views if view.category is name)
 
     def _observe(self, name: ObservationId) -> dict[str, JsonValue]:
         if name in {ObservationId.TEMPORAL_MATRIX, ObservationId.TEMPORAL_MATRIX_TRACE}:

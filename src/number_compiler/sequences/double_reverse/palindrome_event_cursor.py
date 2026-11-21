@@ -1,7 +1,10 @@
 """Ledger-owned exact evidence for demanded physical palindrome prefixes."""
 
+from contextlib import closing
 from dataclasses import dataclass
 
+from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
+from number_compiler.arithmetic.automata.slp_walks import iter_symbols
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.radix import reverse_decimal_and_width
 from number_compiler.resources.ledger import ResourceLedger
@@ -25,6 +28,34 @@ class PalindromeCursor:
 def cursor_nodes(_key: int, cursor: PalindromeCursor) -> int:
     """Account for the retained physical value and evidence."""
     return 8 + (0 if cursor.value is None else (cursor.value.bit_length() + 29) // 30)
+
+
+def cursor_from_issued_prefix(
+    seed: int,
+    generation: int,
+    root: int,
+    first_hit: int | None,
+    arena: LedgerSLPArena,
+    ledger: ResourceLedger,
+    scratch_owner: int,
+    max_state_bits: int,
+) -> PalindromeCursor:
+    """Resume an authenticated finite prefix from its exact SLP endpoint."""
+    width = arena.nodes[root].length
+    with ledger.reservation(scratch_owner, entries=2 * width, nodes=2 * width):
+        value = 0
+        with closing(
+            iter_symbols(arena, root, ledger=ledger, owner=scratch_owner)
+        ) as digits:
+            for digit in digits:
+                value = value * 10 + digit
+                if value.bit_length() > max_state_bits:
+                    raise BlockContextBudgetExceeded(
+                        "palindrome bridge exceeds the source bit budget"
+                    )
+    return PalindromeCursor(
+        seed, generation, arena.node_id_generation, value, first_hit
+    )
 
 
 def advance_palindrome_cursor(

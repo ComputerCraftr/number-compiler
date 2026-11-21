@@ -21,6 +21,7 @@ from number_compiler.sequences.double_reverse.temporal_mixed_adic_consumer impor
     certified_mixed_adic_packet,
     source_entry,
 )
+from tests.support.observation_views import view_value
 
 
 def physical_next(x: int) -> int:
@@ -179,7 +180,9 @@ def test_mixed_adic_cli_must_not_project_full_term(
                 "80",
                 "--no-value",
                 "--info",
-                "temporal.mixed-adic",
+                "arithmetic.modular",
+                "--arithmetic-modular-kind",
+                "mixed-adic",
                 "--format",
                 "json",
             ],
@@ -188,7 +191,7 @@ def test_mixed_adic_cli_must_not_project_full_term(
         == 0
     )
     obj = json.loads(capsys.readouterr().out)
-    data = obj["info"]["temporal.mixed-adic"]
+    data = view_value(obj["info"]["arithmetic.modular"], "mixed-adic")
     assert data["status"] == "available"
     assert data["temporal_powered_without_source_scheduler"] is True
     assert data["full_endpoint_materialized"] is False
@@ -210,9 +213,15 @@ def test_mix_does_not_replace_existing_seed_morphism(
                 "40",
                 "--no-value",
                 "--info",
-                "temporal.mixed-adic",
+                "arithmetic.modular",
+                "--arithmetic-modular-kind",
+                "mixed-adic",
                 "--info",
-                "temporal.seed-morphism",
+                "temporal.closed-form",
+                "--temporal-closed-form-kind",
+                "source-action",
+                "--info",
+                "temporal.accumulator",
                 "--format",
                 "json",
             ],
@@ -221,9 +230,11 @@ def test_mix_does_not_replace_existing_seed_morphism(
         == 0
     )
     obj = json.loads(capsys.readouterr().out)
-    data = obj["info"]["temporal.mixed-adic"]
+    data = view_value(obj["info"]["arithmetic.modular"], "mixed-adic")
     assert data["physical_residue1980"] == 508
-    assert "normalized_laurent_accumulator" in obj["info"]["temporal.seed-morphism"]
+    assert "target_normalized_mod198" in view_value(
+        obj["info"]["temporal.accumulator"], "alternating"
+    )
 
 
 def test_five_digit_field225_survives_two_reverse_cutover(
@@ -243,8 +254,10 @@ def test_five_digit_field225_survives_two_reverse_cutover(
                 "45",
                 "--no-value",
                 "--info",
-                "temporal.digit-field",
-                "--temporal-digit-field-places",
+                "arithmetic.modular",
+                "--arithmetic-modular-kind",
+                "digit-field",
+                "--arithmetic-modular-places",
                 "2",
                 "--format",
                 "json",
@@ -254,7 +267,7 @@ def test_five_digit_field225_survives_two_reverse_cutover(
         == 0
     )
     obj = json.loads(capsys.readouterr().out)
-    packet = obj["info"]["temporal.digit-field"]
+    packet = view_value(obj["info"]["arithmetic.modular"], "digit-field")
     assert packet["source_occurrences_materialized"] is False
     assert packet["field_residue"] == 80 * pow(5, 10**45, 225) % 225
 

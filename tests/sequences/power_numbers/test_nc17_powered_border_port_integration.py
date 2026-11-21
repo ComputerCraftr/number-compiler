@@ -651,7 +651,41 @@ def test_mersenne_compile_reuses_checked_endpoint_and_puncture_powers(
     # final puncture, so its checked power is performed exactly once.
     assert calls.count((expected_root, steps, base, places)) == 1
     assert (initial, offset + steps, base, places) not in calls
-    assert len(calls) == 14
+    selected_digit = expected_root // (base**position)
+    extra_children = 1 if selected_digit in (0, 1) else 2
+    assert len(calls) == len(dyadic_puncture_offsets(steps)) + extra_children
+
+
+@pytest.mark.parametrize("position", (0, 1, 2))
+def test_mersenne_children_use_exact_low_digit_or_two_child_lift(
+    position: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from number_compiler.sequences.power_numbers import mersenne_trace_port_matrix
+
+    original = mersenne_trace_port_matrix.trace_squaring_power
+    calls: list[tuple[int, int]] = []
+
+    def counted_power(start: int, steps: int, base: int, places: int) -> int:
+        calls.append((start, steps))
+        return original(start, steps, base, places)
+
+    monkeypatch.setattr(
+        mersenne_trace_port_matrix, "trace_squaring_power", counted_power
+    )
+    matrix = MersenneNumberSpec(31).demand_mersenne_trace_matrix(
+        1, base=10, position=position
+    )
+    lower = 10**position
+    modulus = 10 * lower
+    low = matrix.source_residue % lower
+    assert matrix.conditional_endpoints == tuple(
+        ((low + digit * lower) ** 2 - 2) % modulus for digit in range(10)
+    )
+    child_calls = sum(count == 1 for _, count in calls)
+    if position:
+        assert child_calls <= 3
+    else:
+        assert child_calls == 10
 
 
 def test_fermat_clock_declarations_share_construction_and_recheck_puncture(

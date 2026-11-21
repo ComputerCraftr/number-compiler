@@ -56,6 +56,21 @@ Five-bit folded-square, radix-64 mirror, and deck measurements are bounded
 research observations. Class counts or a supplied compatible residue do not
 authorize the candidate's terminal bit.
 
+For a finite Fermat-width ring, put `W=2^n` and `M=2^W+1`. If an admitted
+source has canonical residue `s` modulo `M`, the ordinary-tripling action
+after `h` ticks has residue `r=3^h*s mod M`. Its quotient bits through
+precision `b` can be obtained from the unique `v` with
+`v=3^h*s mod (M*2^b)` and `0<=v<M*2^b`: Euclidean division gives
+`v=M*q+r` with `0<=q<2^b`. This is a quotient relative to the canonical
+source residue. The signed correction at the first binary seam uses
+`2^W=-1 mod M`.
+
+The source-conditioned endpoint and quotient are established by
+[`Fermat_Source_Matrix_Refinement`](../../proofs/isabelle/integration/temporal_cylinders/temporal_clocks/Fermat_Source_Matrix_Refinement.thy)
+under its stated assumptions. This finite tripling observation has no
+primality authority. Its admitted bounds and measurements are in the
+[integration record](../sprints/week-of-2026-11-15/november-20-performance-ports.md).
+
 ## Production gate
 
 Production needs a candidate-derived, source-clock-bound compact evaluator for

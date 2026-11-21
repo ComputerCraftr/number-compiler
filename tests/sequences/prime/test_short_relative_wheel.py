@@ -23,7 +23,7 @@ from number_compiler.sequences.prime.select import (
 from tests.support.prime_actions import primes_through
 
 if TYPE_CHECKING:
-    from number_compiler.sequences.prime.coprime_rank import PrimeFactorSourceIdentity
+    from number_compiler.sequences.prime.factor_source import PrimeFactorSourceIdentity
 
 
 def test_short_scan_executes_before_rank_or_xor(

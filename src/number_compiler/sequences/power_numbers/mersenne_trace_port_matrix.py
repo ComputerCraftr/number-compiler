@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import cast
 
+from number_compiler.arithmetic.automata.affine_port_action import AffinePortAction
 from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.arithmetic.fields.radix import compose_radix_endpoint_rows
 from number_compiler.hashlife.interfaces.border_macros import (
@@ -512,12 +513,34 @@ def _compile(
     root = trace_squaring_power(initial, offset, base, position + 1)
     endpoint = trace_squaring_power(root, steps, base, position + 1)
     low = root % lower
-    conditional = tuple(
-        endpoint
-        if d == root // lower
-        else trace_squaring_power(low + d * lower, steps, base, position + 1)
-        for d in range(base)
-    )
+    if position:
+        # The iterated integer polynomial has an affine response in the high
+        # digit because lower**2 is divisible by base*lower.
+        selected = root // lower
+        first = (
+            endpoint
+            if selected == 0
+            else trace_squaring_power(low, steps, base, position + 1)
+        )
+        second = (
+            endpoint
+            if selected == 1
+            else trace_squaring_power(low + lower, steps, base, position + 1)
+        )
+        if first % lower != second % lower:
+            raise ArithmeticError("trace child lift lost its common lower source")
+        response = AffinePortAction.reduced(
+            base, (second - first) // lower, first // lower
+        )
+        common_low = first % lower
+        conditional = tuple(
+            common_low + lower * response.apply(digit) for digit in range(base)
+        )
+    else:
+        conditional = tuple(
+            endpoint if digit == root else trace_squaring_power(digit, steps, base, 1)
+            for digit in range(base)
+        )
     if endpoint != conditional[root // lower]:
         raise ArithmeticError("trace pointed endpoint not in conditional source")
     punctures: list[TracePortPuncture] = []

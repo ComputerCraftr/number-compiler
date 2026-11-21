@@ -17,6 +17,7 @@ from number_compiler.api.cli_types import (
     ReverseAddObservationOptions,
     SpecialObservationOptions,
 )
+from number_compiler.api.family_observation_views import family_observation_views
 from number_compiler.api.family_types import (
     AdapterBinding,
     AdmitObserver,
@@ -138,11 +139,11 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 ObservationId.SPATIAL_MIRROR,
                 ObservationId.TEMPORAL_MACRO,
                 ObservationId.TEMPORAL_MATRIX,
-                ObservationId.TEMPORAL_RESIDUE99,
-                ObservationId.TEMPORAL_ACCUMULATOR99,
+                ObservationId.ARITHMETIC_MODULAR,
+                ObservationId.TEMPORAL_ACCUMULATOR,
                 ObservationId.TEMPORAL_MIRRORED_DIAGONAL,
                 ObservationId.TEMPORAL_OPEN_RING,
-                ObservationId.TEMPORAL_SEED_ORBIT,
+                ObservationId.TEMPORAL_CLOSED_FORM,
                 ObservationId.TEMPORAL_STENCIL,
                 ObservationId.SPATIAL_BANK_MORPHISM,
             ),
@@ -151,6 +152,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
         AdapterBinding("number_compiler.api.projections.reverse_add", "project"),
         _observation("prepare_reverse", "admit_reverse", "observe_reverse"),
         palindrome_search=True,
+        views=family_observation_views(FamilyId.REVERSE_ADD),
         term_observation=ObservationValueBinding(
             ReverseAddObservationOptions,
             (
@@ -214,7 +216,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 "temporal open ring requires decimal base",
             ),
             (
-                ObservationId.TEMPORAL_SEED_ORBIT,
+                ObservationId.TEMPORAL_CLOSED_FORM,
                 "base",
                 10,
                 "seed-orbit Q19 morphism requires decimal base",
@@ -244,13 +246,13 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 "temporal-stencil requires decimal base",
             ),
             (
-                ObservationId.TEMPORAL_RESIDUE99,
+                ObservationId.ARITHMETIC_MODULAR,
                 "base",
                 10,
                 "temporal residue99 requires decimal base",
             ),
             (
-                ObservationId.TEMPORAL_ACCUMULATOR99,
+                ObservationId.TEMPORAL_ACCUMULATOR,
                 "base",
                 10,
                 "temporal accumulator99 requires decimal base",
@@ -281,10 +283,9 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 ObservationId.METRICS,
                 ObservationId.TEMPORAL_MATRIX,
                 ObservationId.TEMPORAL_CLOSED_FORM,
-                ObservationId.TEMPORAL_RESIDUE99,
-                ObservationId.TEMPORAL_SEED_MORPHISM,
-                ObservationId.TEMPORAL_MIXED_ADIC,
-                ObservationId.TEMPORAL_DEFECT_CLOCK,
+                ObservationId.ARITHMETIC_MODULAR,
+                ObservationId.TEMPORAL_ACCUMULATOR,
+                ObservationId.TEMPORAL_CLOCK,
                 ObservationId.TEMPORAL_CARRY_SAFETY,
                 ObservationId.SPATIAL_STENCIL,
                 ObservationId.TEMPORAL_BANK,
@@ -304,6 +305,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
             observe="observe", module="number_compiler.api.double_reverse_observation"
         ),
         palindrome_search=True,
+        views=family_observation_views(FamilyId.DOUBLE_REVERSE),
         term_observation=ObservationValueBinding(
             DoubleReverseObservationOptions,
             (
@@ -331,8 +333,8 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 OptionSpec(
                     128,
                     (
-                        ObservationId.TEMPORAL_SEED_MORPHISM,
-                        ObservationId.TEMPORAL_DEFECT_CLOCK,
+                        ObservationId.TEMPORAL_CLOSED_FORM,
+                        ObservationId.TEMPORAL_CLOCK,
                     ),
                     flag_name="temporal_prefix_horizon",
                     help="maximum exact chronological prefix before dyadic powering",
@@ -343,8 +345,8 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 OptionSpec(
                     0,
                     (
-                        ObservationId.TEMPORAL_SEED_MORPHISM,
-                        ObservationId.TEMPORAL_DEFECT_CLOCK,
+                        ObservationId.TEMPORAL_CLOSED_FORM,
+                        ObservationId.TEMPORAL_CLOCK,
                     ),
                     flag_name="temporal_period_samples",
                     help="number of four-phase center samples (0 omits scan)",
@@ -355,8 +357,8 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 OptionSpec(
                     0,
                     (
-                        ObservationId.TEMPORAL_DEFECT_CLOCK,
-                        ObservationId.TEMPORAL_SEED_MORPHISM,
+                        ObservationId.TEMPORAL_CLOCK,
+                        ObservationId.TEMPORAL_CLOSED_FORM,
                     ),
                     flag_name="temporal_defect_digits",
                     help="decimal suffix digits in a joined four-symbol carry-defect clock",
@@ -367,8 +369,8 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 OptionSpec(
                     1,
                     (
-                        ObservationId.TEMPORAL_SEED_MORPHISM,
-                        ObservationId.TEMPORAL_DEFECT_CLOCK,
+                        ObservationId.TEMPORAL_CLOSED_FORM,
+                        ObservationId.TEMPORAL_CLOCK,
                     ),
                     flag_name="temporal_period_stride",
                     help="spacing in four-generation blocks",
@@ -378,7 +380,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 "period_depth",
                 OptionSpec(
                     2,
-                    (ObservationId.TEMPORAL_SEED_MORPHISM,),
+                    (ObservationId.TEMPORAL_CLOSED_FORM,),
                     flag_name="temporal_period_depth",
                     help="maximum inward center-window radius",
                 ),
@@ -388,8 +390,8 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 OptionSpec(
                     16,
                     (
-                        ObservationId.TEMPORAL_SEED_MORPHISM,
-                        ObservationId.TEMPORAL_DEFECT_CLOCK,
+                        ObservationId.TEMPORAL_CLOSED_FORM,
+                        ObservationId.TEMPORAL_CLOCK,
                     ),
                     flag_name="temporal_period_max_lag",
                     help="maximum sampled lag to check for finite-window returns",
@@ -399,7 +401,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 "period_drivers",
                 OptionSpec(
                     False,
-                    (ObservationId.TEMPORAL_SEED_MORPHISM,),
+                    (ObservationId.TEMPORAL_CLOSED_FORM,),
                     value_kind=OptionValueKind.BOOLEAN,
                     flag_name="temporal_period_drivers",
                     help="also certify actual four-tick carry/F5 center drivers",
@@ -531,7 +533,6 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 ObservationId.TEMPORAL_MATRIX,
                 ObservationId.TEMPORAL_CLOCK,
                 ObservationId.TEMPORAL_ACCUMULATOR,
-                ObservationId.TEMPORAL_DOUBLE_ACCUMULATOR,
                 ObservationId.TEMPORAL_DIAGONAL_CARRY,
                 ObservationId.TEMPORAL_CARRY_BELLMAN,
                 ObservationId.TEMPORAL_MACRO,
@@ -553,6 +554,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
         AdapterBinding("number_compiler.api.projections.collatz", "project"),
         _observation("prepare_collatz", "admit_collatz", "observe_collatz"),
         event_query_type=CollatzEventQuery,
+        views=family_observation_views(FamilyId.COLLATZ),
         term_observation=ObservationValueBinding(
             CollatzTermObservationOptions,
             (
@@ -774,6 +776,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
             "antihydra: --nth uses macro_returns_after_startup; term zero is the seed. "
             "Certificate verification is a separate selector."
         ),
+        views=family_observation_views(FamilyId.ANTIHYDRA),
         term_observation=ObservationValueBinding(
             AntihydraObservationOptions,
             (
@@ -901,6 +904,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
             law=MatrixLaw.ORDERED_TRIPLING_CARRY,
             clock=MatrixClock.TRIPLING,
             max_trace_steps=64,
+            negacyclic=True,
         ),
     ),
     FamilyId.MERSENNE: FamilySpec(

@@ -9,11 +9,16 @@ session Double_Reverse_Temporal_Refinement in temporal_double_reverse = Shared_C
     Double_Reverse_F_Port_Refinement
     Double_Reverse_Bitplane_Refinement
     Double_Reverse_Source_Window_Refinement
+    Double_Reverse_Reflected_SLP_Seams
+    Double_Reverse_Reflected_SLP_Emission
+    Double_Reverse_Reflected_SLP_Normalization
+    Double_Reverse_Reflected_SLP_Blocks
     Double_Reverse_Group_Ring_Carry_Cut
     Double_Reverse_Group_Ring_Four_Port
     Double_Reverse_Four_Port_Numeric_Refinement
     Double_Reverse_Reflected_Physical
     Double_Reverse_Reflected_Writer
+    Double_Reverse_Reflected_SLP_Endpoint
     Double_Reverse_Four_Port_Defect_Refinement
     Double_Reverse_Decimal_Source_Carry_Mask
     Double_Reverse_Seed196_Low_Band_Refinement

@@ -28,9 +28,9 @@ from number_compiler.resources.process_cache import (
 )
 from number_compiler.sequences.prime.coprime_rank import (
     MAX_SHARED_FACTOR_STAGES,
-    CachedPrimePrefixCapability,
     CoprimeRankDAG,
 )
+from number_compiler.sequences.prime.factor_source import CachedPrimePrefixCapability
 from number_compiler.sequences.prime.ordered_rank import (
     ORDERED_WHEEL_210_FACTORS,
     ORDERED_WHEEL_210_RESIDUES,

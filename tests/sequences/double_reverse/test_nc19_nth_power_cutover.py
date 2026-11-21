@@ -26,6 +26,7 @@ from tests.sequences.double_reverse.packet_helpers import (
     object_mapping,
     string_field,
 )
+from tests.support.observation_views import view_value
 
 
 def test_completed_scheduler_image_is_transported_not_repowered(
@@ -178,7 +179,9 @@ def test_combined_value_and_observer_uses_one_source_image(
                 "--nth",
                 "64",
                 "--info",
-                "temporal.seed-morphism",
+                "temporal.closed-form",
+                "--temporal-closed-form-kind",
+                "source-action",
                 "--format",
                 "json",
             ],
@@ -194,7 +197,7 @@ def test_combined_value_and_observer_uses_one_source_image(
         x = 2 * int(str(x)[::-1])
     assert value == x
     info = object_mapping(packet["info"])
-    morphism = object_mapping(info["temporal.seed-morphism"])
+    morphism = object_mapping(view_value(info["temporal.closed-form"], "source-action"))
     endpoint = object_mapping(morphism["endpoint"])
     assert integer_field(endpoint, "width") == len(str(x))
 

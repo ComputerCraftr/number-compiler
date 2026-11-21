@@ -1,13 +1,17 @@
 # Executable local reverse/add morphisms
 
-Scope: **retained bounded research design, not the current production constructor**. Its algebra and experiments remain useful; descriptions of execution below refer to that historical prototype. The current [reverse/add synthesis](../research/reverse-add.md) identifies the implemented owner and unresolved temporal grammar.
+This note records a bounded local research design and the primitive carry
+projection it supports. The [reverse/add synthesis](../research/reverse-add.md)
+describes the current source-bound constructor and the remaining temporal
+grammar obligations.
 
 The September 10 output-morphism implementation supplies executable arithmetic
-arrows for a bounded, declared coordinate-port profile. It does not establish
-an active future-behavior quotient for 196. The historical causal prototype connected a decimal primitive producer's output to a decimal primitive
-consumer's carry response through the bounded morphism described below.
+arrows for a bounded, declared coordinate-port profile. The causal prototype
+connected a decimal primitive producer's output to a primitive consumer's carry
+response through that morphism. A future-behavior quotient for seed 196 needs
+additional successor and admission laws.
 
-The [contextual residual extension](reverse-contextual-residuals.md) now derives
+The [contextual residual extension](reverse-contextual-residuals.md) derives
 carries from domain geometry and minimizes declared successor observations
 together with their updated context. Its finite continuation certificate does
 not discharge the whole-profile scheduler obligations listed below.
@@ -30,10 +34,9 @@ different profiles, coordinate reflection, unused-port removal, or geometric
 admissibility conditions. The arena does not inspect port names to certify their
 intended geometric meaning.
 
-The existing `ReverseCoordinateProgramArena` still owns source-independent
-temporal descriptions. Existing `FieldCellActionID`, `ReverseFrobeniusPlan`,
-and quiescent `FutureBehaviorClassID` contracts are unchanged. An executable
-local output function is not an admission certificate for a temporal program.
+`ReverseCoordinateProgramArena` owns source-independent temporal descriptions.
+The local output function needs a separate admission certificate before it can
+be used in a temporal program.
 
 ## Implemented arrows
 
@@ -62,10 +65,10 @@ functions use the existing resource ledger.
 
 ## Connected primitive carry consumer
 
-`finite_pair_transfer` routes decimal `BaseBlockEffect` producer/consumer
-edges through `ReverseMorphismTransferArena`. Other effects and composed
-consumers keep their existing execution paths. Public powered reverse/add
-queries encounter these primitive edges inside the causal recurrence.
+The causal recurrence routes admitted decimal `BaseBlockEffect` primitive
+pairs through `ReverseMorphismTransferArena`. This describes a bounded carry
+projection for those edges. The [source-bound construction](../research/reverse-add.md)
+covers the separate temporal and output authority.
 
 The original source carry domains determine the producer's spatial midpoint
 ports. Known producer ports specialize `ReversePrimitiveOutputMorphism`

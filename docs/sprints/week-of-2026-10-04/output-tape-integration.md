@@ -181,15 +181,15 @@ in a redundant saturated aggregate. Its action, reuse and cache tests passed
 126 cases in 1.28 seconds
 (`20261006T034944Z-a181251660e04f8f9961b005db120ad8`).
 
-| Shared proof session | Result | Scope |
-| --- | --- | --- |
-| `Prefix_Effect_Core` | 13 seconds | Dual-prefix blank-ledger append and repetition |
-| `Comma_C1_Borrow_Cocycle` | 15 seconds | Native innovation word, transported append and shared ledger |
-| `Shared_S_Arithmetic` | 33 seconds | Existing dyadic lower/delta projection and full word-summary append |
-| `Reverse_Residuals` | 19 seconds | Source-generated growth-count composition, pair width and terminal carry |
+| Shared proof session | Result | Development run | Scope |
+| --- | --- | --- | --- |
+| `Prefix_Effect_Core` | 13 seconds | `20261006T035426Z-fa2cefa96bee4de78ea54117a7525b42` | Dual-prefix blank-ledger append and repetition |
+| `Comma_C1_Borrow_Cocycle` | 15 seconds | `20261006T035905Z-35325afc192a4b918eebd4c9c1d1ff88` | Native innovation word, transported append and shared ledger |
+| `Shared_S_Arithmetic` | 33 seconds | `20261006T035935Z-1828ec575bb341d88c6a447fa518590b` | Existing dyadic lower/delta projection and full word-summary append |
+| `Reverse_Residuals` | 19 seconds | `20261006T040930Z-d19d058fa0e5462786c4ee2ab8708476` | Source-generated growth-count composition, pair width and terminal carry |
 
 See the [executable refinement map](../../proofs/balanced-dyadic-refinement.md)
-for theorem names, development run IDs and hypotheses. These successful kernel
+for theorem names and hypotheses. These successful kernel
 builds establish neither the reverse sequential constructor's powered bound nor
 Comma's global forest deletion.
 

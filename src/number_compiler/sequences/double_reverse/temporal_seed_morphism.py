@@ -12,7 +12,7 @@ word is assumed here.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -473,6 +473,17 @@ class CertifiedSeedOrbitMorphism(SourceAuthorizedRecord):
 
     def validate_source_authority(self) -> SourceRecordAuthority:
         return validate_source_record(self)
+
+    def issued_residue_projection(self) -> CertifiedResidueTemporalAction:
+        """Bind the already computed width/residue response to this source."""
+        authority = self.validate_source_authority()
+        return issue_source_record(
+            replace(self.residue_action),
+            require_source_arena(authority),
+            authority.root,
+            parent=authority,
+            source_generation=authority.source_generation,
+        )
 
     @property
     def pascal_order(self) -> int | None:

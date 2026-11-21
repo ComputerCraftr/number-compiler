@@ -30,10 +30,8 @@ from number_compiler.resources.payload_contracts import (
 
 def audit_prime_action_arena(ledger: object, root: object) -> PayloadAuditContribution:
     """Validate one arena's exact action stores, without traversing image records."""
-    from number_compiler.sequences.prime.coprime_rank import (
-        CoprimeRankDAG,
-        PrimeFactorSourceIdentity,
-    )
+    from number_compiler.sequences.prime.coprime_rank import CoprimeRankDAG
+    from number_compiler.sequences.prime.factor_source import PrimeFactorSourceIdentity
     from number_compiler.sequences.prime.successor_action import (
         PrimeSuccessorActionArena,
     )

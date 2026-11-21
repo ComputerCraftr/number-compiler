@@ -11,7 +11,6 @@ from __future__ import annotations
 from bisect import bisect_right
 from collections.abc import Generator, MutableMapping
 from contextlib import ExitStack, contextmanager
-from dataclasses import dataclass
 from itertools import islice
 from math import isqrt
 from typing import TYPE_CHECKING
@@ -20,6 +19,10 @@ from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import prime as _prime_keys
 from number_compiler.resources.process_cache import MISSING, CacheLease
 from number_compiler.resources.stores import LedgerList
+from number_compiler.sequences.prime.factor_source import (
+    CachedPrimePrefixCapability,
+    PrimeFactorSourceIdentity,
+)
 from number_compiler.sequences.prime.ordered_rank import (
     ORDERED_BOUNDARY_NODE_COST,
     ORDERED_WHEEL_210_TERMS,
@@ -39,49 +42,6 @@ MAX_SHARED_FACTOR_STAGES = 4096
 _ORDERED_WHEEL_2310_LENGTH = 2310
 _ORDERED_SUFFIX_PACKET_NODES = 64
 _ORDERED_WHEEL_2310_BUILD_WORK = 4 * 210 + 11 * 48 + 37
-
-
-@dataclass(frozen=True, slots=True)
-class PrimeFactorSourceIdentity:
-    """Read-only identity for one append-only prime-factor source."""
-
-    _owner_token: object
-    mutation_stamp: tuple[object, int]
-    factor_count: int
-
-    def belongs_to(self, owner_token: object) -> bool:
-        """Check the opaque issuer identity without exposing it to callers."""
-        return self._owner_token is owner_token
-
-
-@dataclass(frozen=True, slots=True)
-class CachedPrimePrefixCapability:
-    """Owner-bound permission to import the next factor of one issued prefix."""
-
-    _owner_token: object
-    _issuer: object
-    _factors: tuple[object, ...]
-
-    def next_factor(
-        self,
-        *,
-        owner_token: object,
-        issuer: object,
-        prefix: tuple[int, ...],
-    ) -> int:
-        """Return exactly the next item after validating the issued prefix."""
-        if (
-            self._owner_token is not owner_token
-            or self._issuer is not issuer
-            or type(prefix) is not tuple
-            or len(prefix) >= len(self._factors)
-            or self._factors[: len(prefix)] != prefix
-        ):
-            raise ValueError("cached prime prefix is not bound to this source")
-        value = self._factors[len(prefix)]
-        if type(value) is not int:
-            raise ValueError("cached prime prefix contains a noninteger factor")
-        return value
 
 
 class CoprimeRankDAG:
@@ -843,6 +803,29 @@ class CoprimeRankDAG:
                 ):
                     # This progression is entirely forbidden by this factor.
                     result = 0
+                elif (cut := self._birth_core_depth(x, d)) < d:
+                    # Complete square-root coverage excludes every composite.
+                    # Each later prime removes only its own progression value.
+                    if child_residue is None:
+                        stack.append((d, x, r, -2))
+                        if (cut, x, modulus, r) not in memo:
+                            stack.append((cut, x, r, None))
+                        else:
+                            self.cache_hits += 1
+                        continue
+                    if child_residue != -2:
+                        raise RuntimeError("prime progression birth lost its frame")
+                    self.charge_many(
+                        d - cut,
+                        (d - cut) * (x.bit_length() + modulus.bit_length()),
+                    )
+                    lost = sum(
+                        self._primes[i] <= x and self._primes[i] % modulus == r
+                        for i in range(cut, d)
+                    )
+                    result = memo[(cut, x, modulus, r)] - lost
+                    self.ledger.bump(_prime_keys.PRIME_BIRTH_INNOVATION_COLLAPSES)
+                    self.ledger.bump(_prime_keys.PRIME_BIRTH_INNOVATION_STAGES, d - cut)
                 elif d == 0:
                     result = self._base_progression_count(x, modulus, r)
                     self.arithmetic_bit_work += (

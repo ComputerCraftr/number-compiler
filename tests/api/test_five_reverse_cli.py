@@ -11,6 +11,7 @@ from number_compiler.api.cli_context import QueryContext
 from number_compiler.api.cli_requests import parse_request
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.api.query_types import FiveReverseTermQuery
+from tests.support.observation_views import view_value
 
 
 @pytest.mark.parametrize(
@@ -53,7 +54,7 @@ def test_five_reverse_modular_only_has_no_execution_owner(
     )
     assert request is not None
     context = QueryContext(request, NumberCompiler())
-    packet = context.information()["arithmetic.modular"]
+    packet = view_value(context.information()["arithmetic.modular"], "endpoint")
     assert packet["modulus"] == 45
     # Decimal reversal preserves residue modulo 9; every positive-index
     # result is divisible by 5. 5**4096 == 4 (mod 9), and 196 == 7 (mod 9).
@@ -94,15 +95,17 @@ def test_five_reverse_reflected_projection_uses_the_moving_cut(
             "--temporal-closed-form-digits",
             "4",
             "--info",
-            "temporal.digit-field",
-            "--temporal-digit-field-places",
+            "arithmetic.modular",
+            "--arithmetic-modular-kind",
+            "digit-field",
+            "--arithmetic-modular-places",
             "3",
         ]
     )
     assert request is not None
     with QueryContext(request, NumberCompiler()) as context:
         info = context.information()
-    form = info["temporal.closed-form"]
+    form = view_value(info["temporal.closed-form"], "endpoint")
     assert form["h_source"] == 691
     assert form["h_exponent"] == 104
     assert form["unnormalized_residue"] == 0
@@ -112,7 +115,7 @@ def test_five_reverse_reflected_projection_uses_the_moving_cut(
         256,
         152,
     )
-    field = info["temporal.digit-field"]
+    field = view_value(info["arithmetic.modular"], "digit-field")
     x = 196
     for _ in range(209):
         x = 5 * int(str(x)[::-1])

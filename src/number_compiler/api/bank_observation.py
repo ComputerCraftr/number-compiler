@@ -17,36 +17,26 @@ if TYPE_CHECKING:
         ReverseAddObservationOptions,
     )
     from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
+    from number_compiler.sequences.double_reverse.temporal_residue_quotient import (
+        CertifiedResidueTemporalAction,
+    )
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
 
 _PAIR_DOMAINS = DECIMAL_PAIR_BAND_NAMES
 _PAIR_CHANNELS = (*_PAIR_DOMAINS, "carry_xor")
 
 
-def double_reverse_residue_packet(term: DoubleReverseTerm) -> dict[str, object]:
+def double_reverse_residue_packet(
+    prefix: int,
+    action: CertifiedResidueTemporalAction,
+) -> dict[str, object]:
     from number_compiler.sequences.double_reverse.temporal_residue_quotient import (
-        projected_residue_temporal_quotient,
         residue_clock_class_count,
         residue_clock_class_of,
     )
 
-    prefix, action = term.temporal_residue_quotient()
     action.validate_source_authority()
-    projected = projected_residue_temporal_quotient(
-        action,
-        ledger=term.resource_ledger,
-        scratch_owner=term.scratch_owner,
-    )
-    # The certified source action also owns the exact, binary-powered
-    # normal/mirrored accumulator Laurent factor. Reuse it; do not start
-    # another period scan or independent source-fold/halo observer.
-    from number_compiler.sequences.double_reverse.temporal_laurent_return import (
-        source_laurent_accumulator_packet,
-    )
-
-    accumulator = source_laurent_accumulator_packet(term, prefix, action)
     packet: dict[str, object] = asdict(action)
-    packet["normalized_laurent_accumulator"] = accumulator
     packet.update(
         moore_class99=residue_clock_class_of(
             action.phase, action.width_in % 2, action.source_mod99, 99
@@ -59,10 +49,29 @@ def double_reverse_residue_packet(term: DoubleReverseTerm) -> dict[str, object]:
         prefix_steps=prefix,
         source_generation=prefix,
         target_generation=prefix + action.duration,
-        projected_period=projected.packet(),
         scope="source-bound mod-99/198 width quotient; not full digit-word authority",
     )
     return packet
+
+
+def double_reverse_residue_period_packet(
+    term: DoubleReverseTerm,
+    prefix: int,
+    action: CertifiedResidueTemporalAction,
+) -> dict[str, object]:
+    from number_compiler.sequences.double_reverse.temporal_residue_quotient import (
+        projected_residue_temporal_quotient,
+    )
+
+    projected = projected_residue_temporal_quotient(
+        action,
+        ledger=term.resource_ledger,
+        scratch_owner=term.scratch_owner,
+    )
+    return {
+        "projected_period": projected.packet(),
+        "target_generation": prefix + action.duration,
+    }
 
 
 def double_reverse_bank_packet(

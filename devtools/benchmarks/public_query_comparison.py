@@ -234,10 +234,15 @@ def compare(
         or "seed" not in spec.parameters
     ):
         raise ValueError("cross-source priming requires an admitted seed parameter")
-    declared_options = spec.observer_options_map()
+    declared_options = spec.observer_options_map() | spec.view_options()
     if any(name not in declared_options for name, _ in observation_options):
         raise ValueError("benchmark option is not declared by the family observer")
-    if len({name for name, _ in observation_options}) != len(observation_options):
+    scalar_options = [
+        name
+        for name, _ in observation_options
+        if declared_options[name].value_kind is not OptionValueKind.REPEATED_CHOICE
+    ]
+    if len(set(scalar_options)) != len(scalar_options):
         raise ValueError("benchmark observation options must be unique")
     observation_arguments: list[str] = []
     for name, option_text in observation_options:

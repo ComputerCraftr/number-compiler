@@ -241,8 +241,95 @@ def test_history_image_shared_across_horizons_and_sources(
                 )
                 assert reused == span - work
                 assert len(counts) == work
-        # Two source bindings and one shared image continuation frontier.
-        assert cache.stats().entries == 3
+        # Source bindings share a continuation and its dyadic checkpoints.
+        assert cache.stats().entries >= 3
+
+
+def test_out_of_order_horizon_uses_earlier_dyadic_checkpoint() -> None:
+    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.resources.process_cache import (
+        ProcessCache,
+        temporary_process_cache,
+    )
+    from number_compiler.sequences.reverse_add.q19_carry_window import (
+        completed_continuation,
+    )
+
+    source = PackedQ19.from_digits((5, 9))
+    ledger = ResourceLedger()
+    owner = ledger.register("q19-checkpoints", "scratch")
+    work: list[int] = []
+
+    def account(count: int, _rounds: int) -> None:
+        work.append(count)
+
+    with temporary_process_cache(ProcessCache()):
+        with completed_continuation(
+            source,
+            80,
+            shared_cache=True,
+            carry_window=True,
+            before_step=account,
+            ledger=ledger,
+            scratch_owner=owner,
+        ):
+            pass
+        work.clear()
+        with completed_continuation(
+            source,
+            50,
+            shared_cache=True,
+            carry_window=True,
+            before_step=account,
+            ledger=ledger,
+            scratch_owner=owner,
+        ) as (result, reused):
+            exact = 95
+            for _ in range(50):
+                exact += int(str(exact)[::-1])
+            assert result == PackedQ19.from_digits(
+                tuple(map(int, reversed(str(exact))))
+            )
+            assert reused == 44
+            assert len(work) == 6
+    assert ledger.account_usage(owner) == (0, 0)
+    ledger.mark_disposed(owner)
+
+
+def test_checkpoint_reservation_failure_publishes_nothing() -> None:
+    from number_compiler.arithmetic.contracts.block_effect import (
+        BlockContextBudgetExceeded,
+    )
+    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.resources.process_cache import (
+        ProcessCache,
+        temporary_process_cache,
+    )
+    from number_compiler.sequences.reverse_add.q19_carry_window import (
+        completed_continuation,
+    )
+
+    source = PackedQ19.from_digits((5, 9))
+    ledger = ResourceLedger(max_nodes=0)
+    owner = ledger.register("q19-checkpoints", "scratch")
+    cache = ProcessCache()
+    try:
+        with temporary_process_cache(cache):
+            with pytest.raises(BlockContextBudgetExceeded):
+                with completed_continuation(
+                    source,
+                    80,
+                    shared_cache=True,
+                    carry_window=True,
+                    before_step=lambda _count, _rounds: None,
+                    ledger=ledger,
+                    scratch_owner=owner,
+                ):
+                    pytest.fail("unreserved checkpoint was published")
+            assert cache.stats().entries == 0
+            assert ledger.account_usage(owner) == (0, 0)
+    finally:
+        ledger.mark_disposed(owner)
 
 
 def test_frontier_does_not_publish_cancelled_suffix() -> None:

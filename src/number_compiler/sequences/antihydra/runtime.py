@@ -39,6 +39,9 @@ if TYPE_CHECKING:
         AntihydraArithmeticImageWorkspace,
     )
     from number_compiler.sequences.antihydra.mahler_action import MahlerWorkspace
+    from number_compiler.sequences.antihydra.mahler_joint_future import (
+        MahlerFiniteSafetyProjection,
+    )
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -189,6 +192,11 @@ class ArithmeticResult:
     def source_term(self) -> AntihydraArithmeticTerm:
         """Owner reference, without validating or constructing another result."""
         return self._term
+
+    def finite_safety_guard(self) -> MahlerFiniteSafetyProjection:
+        """Project this issued arithmetic result to its finite safety guard."""
+        self.require_source()
+        return self._term.finite_safety_guard()
 
     def require_source(self) -> None:
         if (
@@ -527,6 +535,53 @@ class AntihydraArithmeticTerm:
         if symbol == 2:
             raise IndexError(index)
         return symbol
+
+    def finite_safety_guard(self) -> MahlerFiniteSafetyProjection:
+        """Project the issued source action without constructing a parity word."""
+        from number_compiler.hashlife.execution.dyadic_return_runs import (
+            RunArithmeticWorkspace,
+        )
+        from number_compiler.sequences.antihydra.mahler_joint_future import (
+            MahlerJointFutureAction,
+        )
+        from number_compiler.sequences.antihydra.mahler_source_actions import (
+            MahlerSourceBoundSafetyAction,
+        )
+
+        result = self.result()
+        result.require_source()
+        workspace = self.arithmetic_image()
+        summary = workspace.saturated_summary()
+        transfer = summary.transfer
+        with RunArithmeticWorkspace.for_ledger(
+            self.ledger, "antihydra_finite_safety"
+        ).scope() as scratch:
+            scratch.require_bits(
+                8
+                * (
+                    transfer.upper.bit_length()
+                    + abs(transfer.offset).bit_length()
+                    + self.requested
+                    + 32
+                )
+            )
+            innovation = transfer.upper + transfer.offset - transfer.lower
+            safety = (
+                MahlerSourceBoundSafetyAction(
+                    self.requested,
+                    -12 * innovation,
+                    6 * transfer.upper - 12 * innovation,
+                )
+                if self.requested
+                else MahlerSourceBoundSafetyAction()
+            )
+            action = MahlerJointFutureAction.from_admitted_root_workspace(
+                workspace, result.h, safety, transfer
+            )
+            projected = action.finite_safety_projection(interval_complete=True)
+            if projected.source_residue != 7 % projected.source_modulus:
+                raise ArithmeticError("finite safety guard lost its issued source")
+            return projected
 
     def result(self) -> ArithmeticResult:
         if self._result is not None:

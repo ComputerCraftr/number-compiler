@@ -99,14 +99,28 @@ def test_seed_morphism_packet_reuses_completed_scheduler_endpoint(
 
     monkeypatch.setattr(temporal_seed_cli, "certified_seed_orbit_morphism", checked)
     with DoubleReverseTerm(168, 256) as term:
-        packet = temporal_seed_cli.seed_morphism_cli_packet(term)
+        from number_compiler.sequences.double_reverse.temporal_laurent_return import (
+            source_laurent_accumulator_packet,
+        )
+
+        morphisms: list[CertifiedSeedOrbitMorphism] = []
+        packet = temporal_seed_cli.seed_morphism_cli_packet(
+            term, on_morphism=morphisms.append
+        )
         endpoint = object_mapping(packet["endpoint"])
         assert endpoint["full_digit_slp"] is True
         assert witnessed == [term.issued_completed_endpoint_root()]
         value = 168
         for _ in range(256):
             value = 2 * _reverse(value)
-        laurent = object_mapping(packet["normalized_laurent_accumulator"])
+        assert len(morphisms) == 1
+        issued = morphisms[0]
+        laurent = source_laurent_accumulator_packet(
+            term,
+            issued.physical_prefix,
+            issued.residue_action,
+            authenticated_morphism=issued,
+        )
         clock = object_mapping(laurent["physical_carry_field_borrow_clock"])
         assert integer_field(clock, "physical_target_mod990") == value % 990
         assert integer_field(clock, "carry_field_mod90") == _uncarried_field(value) % 90

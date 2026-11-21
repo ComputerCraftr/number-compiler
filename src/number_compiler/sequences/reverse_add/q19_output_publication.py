@@ -190,6 +190,8 @@ class Q19OutputPublicationMixin:
                     carry_window=carry_window,
                     shared_cache=shared_cache,
                     before_step=record_step_work,
+                    ledger=self.ledger,
+                    scratch_owner=self._scratch_owner,
                 ) as (target, reused):
                     if reused:
                         self.ledger.bump(

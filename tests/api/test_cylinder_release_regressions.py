@@ -170,6 +170,8 @@ def test_source_derived_observer_cli(
         "factor": "arithmetic.factor",
     }[kind]
     row = json.loads(capsys.readouterr().out)["info"][public_name]
+    if kind == "modular":
+        row = row["views"]["endpoint"]["value"]
     assert row["discovered_events"] == 3 and row["discovery_digit_work"] > 0
     if kind == "modular":
         assert row["value"] == {"upper": 27, "offset": 23, "lower": 16}

@@ -8,6 +8,7 @@ import pytest
 
 from number_compiler.api import cli
 from number_compiler.api.cli_requests import parse_request
+from tests.support.observation_views import view_value
 from tests.support.reverse_add_source_data import iterate_reverse_add
 
 
@@ -27,7 +28,7 @@ def test_source_bound_cli_outputs_actual_center_and_carry_ports(
                 str(n),
                 "--no-value",
                 "--info",
-                "temporal.seed-orbit",
+                "temporal.closed-form",
                 "--format",
                 "json",
             ]
@@ -35,7 +36,7 @@ def test_source_bound_cli_outputs_actual_center_and_carry_ports(
         == 0
     )
     packet = json.loads(capsys.readouterr().out)
-    record = packet["info"]["temporal.seed-orbit"]
+    record = packet["info"]["temporal.closed-form"]["views"]["source-action"]["value"]
     value = iterate_reverse_add(seed, n)
     digits = str(value)
     center = digits[
@@ -56,7 +57,10 @@ def test_source_bound_cli_outputs_actual_center_and_carry_ports(
     assert record["terminal_occurrence_reused"] is False
     assert record["whole_word_slp_certified"]
     assert not record["logarithmic_q19_power_certified"]
-    assert record["status"] == "available"
+    assert (
+        packet["info"]["temporal.closed-form"]["views"]["source-action"]["status"]
+        == "available"
+    )
     assert packet["value"] is None
 
 
@@ -75,14 +79,17 @@ def test_cli_does_not_pretend_to_power_unbounded_future(
                 str(n),
                 "--no-value",
                 "--info",
-                "temporal.seed-orbit",
+                "temporal.closed-form",
                 "--format",
                 "json",
             ]
         )
         == 3
     )
-    packet = json.loads(capsys.readouterr().out)["info"]["temporal.seed-orbit"]
+    packet = view_value(
+        json.loads(capsys.readouterr().out)["info"]["temporal.closed-form"],
+        "source-action",
+    )
     assert packet["status"] == "unavailable"
     assert not packet["logarithmic_q19_power_certified"]
 
@@ -99,6 +106,6 @@ def test_nondecimal_cli_sees_quarantined_q19_port_before_execution() -> None:
                 "--nth",
                 "15",
                 "--info",
-                "temporal.seed-orbit",
+                "temporal.closed-form",
             ]
         )

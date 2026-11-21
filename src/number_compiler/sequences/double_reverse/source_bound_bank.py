@@ -562,6 +562,7 @@ class DoubleReverseBankMixin(CarrySafetyAuditBase):
         from .palindrome_event_cursor import (
             PalindromeCursor,
             advance_palindrome_cursor,
+            cursor_from_issued_prefix,
         )
 
         self.validate_source_binding()
@@ -572,12 +573,44 @@ class DoubleReverseBankMixin(CarrySafetyAuditBase):
             )
         if horizon == 0:
             return None
+        engine = self._adapter.temporal_hashlife
+        entry = engine.source_prefix()
+        if entry is None:
+            entry = engine.advance_source_prefix(track_palindrome=True)
+        else:
+            entry = engine.cover_source_prefix_palindromes()
+        if entry.first_palindrome is not None:
+            return entry.first_palindrome if entry.first_palindrome <= horizon else None
+        if entry.certified_phase is not None or entry.physical_steps >= horizon:
+            return None
+        limit = min(horizon, self.max_steps, 512)
+        engine.admit_extended_prefix(limit)
+        while entry.physical_steps < limit:
+            entry = engine.advance_source_prefix(track_palindrome=True)
+            if entry.first_palindrome is not None:
+                return entry.first_palindrome
+            if entry.certified_phase is not None:
+                return None
+        if entry.physical_steps >= horizon:
+            return None
         cache = self._palindrome_memo()
         cursor = cache.get(0)
         if cursor is None:
-            cursor = PalindromeCursor(
-                self.seed, 0, self._arena.node_id_generation, self.seed
-            )
+            if entry.physical_steps:
+                cursor = cursor_from_issued_prefix(
+                    self.seed,
+                    entry.physical_steps,
+                    engine.root_of(entry.target),
+                    entry.first_palindrome,
+                    self._arena,
+                    self._ledger,
+                    self._scratch_owner,
+                    self.max_state_bits,
+                )
+            else:
+                cursor = PalindromeCursor(
+                    self.seed, 0, self._arena.node_id_generation, self.seed
+                )
         elif (
             cursor.seed != self.seed
             or cursor.arena_generation != self._arena.node_id_generation

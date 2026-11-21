@@ -103,7 +103,7 @@ def test_modular_matrix_and_accumulator_cli_do_not_construct_q19(
     monkeypatch.setattr(cli_render, "render_value", forbidden)
     n = 10**12
     for info, extra in [
-        ("temporal.accumulator99", []),
+        ("temporal.accumulator", []),
         (
             "temporal.matrix",
             ["--temporal-matrix-kind", "innovation", "--temporal-matrix-modulus", "99"],
@@ -129,8 +129,8 @@ def test_modular_matrix_and_accumulator_cli_do_not_construct_q19(
         )
         packet = json.loads(capsys.readouterr().out)
         assert packet["value"] is None
-        if info == "temporal.accumulator99":
-            row = packet["info"][info]
+        if info == "temporal.accumulator":
+            row = packet["info"][info]["views"]["alternating"]["value"]
             assert row["bootstrap_generation"] == 4
             assert row["even_blocks_powered"] == (n - 4) // 2
             assert row["complete_integer_certified"] is False
@@ -154,7 +154,7 @@ def test_nondecimal_rejected_for_accumulator_projection() -> None:
                 "--nth",
                 "17",
                 "--info",
-                "temporal.accumulator99",
+                "temporal.accumulator",
             ]
         )
 

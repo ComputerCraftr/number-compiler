@@ -291,7 +291,7 @@ def test_boolean_observer_probe_uses_registry_flag_kind(
     ) -> tuple[float, dict[str, object]]:
         assert ("--temporal-period-drivers" in arguments) is enabled
         assert "true" not in arguments and "false" not in arguments
-        return 0.01, {"value": None, "info": {"temporal.seed-morphism": {}}}
+        return 0.01, {"value": None, "info": {"temporal.closed-form": {}}}
 
     monkeypatch.setattr(module, "cli_sample", observe)
     rows = compare(
@@ -300,9 +300,12 @@ def test_boolean_observer_probe_uses_registry_flag_kind(
         1,
         ["bypass"],
         seed=196,
-        info=("temporal.seed-morphism",),
+        info=("temporal.closed-form",),
         no_value=True,
-        observation_options=(("period_drivers", "true" if enabled else "false"),),
+        observation_options=(
+            ("temporal_closed_form_kind", "source-action"),
+            ("period_drivers", "true" if enabled else "false"),
+        ),
     )
     assert len(rows) == 1
     with pytest.raises(ValueError, match="true or false"):

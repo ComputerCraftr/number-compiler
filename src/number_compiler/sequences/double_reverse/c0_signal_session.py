@@ -66,6 +66,7 @@ class C0SignalSession:
         self._bank = TemporalSignalBank(
             arena, scratch_owner, transitions, required_events
         )
+        self._states = len(transitions[0])
         owner: int | None = None
         try:
             owner = arena.ledger.register(
@@ -120,9 +121,25 @@ class C0SignalSession:
         found = self._bank.first_simultaneous(root, inlet)
         return None if found is None else origin + stride * found
 
-    def first(self, origin: int, samples: int, inlet: int = 0) -> int | None:
+    def first(
+        self,
+        origin: int,
+        samples: int,
+        inlet: int = 0,
+        *,
+        require_palindrome: bool = False,
+    ) -> int | None:
         """Find a simultaneous event on the exact physical generation grid."""
         entry = self._claim(origin, samples, 1)
+        if type(require_palindrome) is not bool:
+            raise TypeError("palindrome event selector must be Boolean")
+        if type(inlet) is not int or not 0 <= inlet < self._states:
+            raise ValueError("signal inlet is outside its state alphabet")
+        if require_palindrome:
+            certified_edge_action()
+            if any(edge[0] == edge[3] for edge in CANDIDATE_COMPONENTS[0]):
+                raise AssertionError("C0 boundary permits a palindrome")
+            return None
         assert entry.certified_phase is not None
         phase = (entry.certified_phase + origin - entry.physical_steps) % 4
         key = "mixed", 0, phase, samples

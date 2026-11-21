@@ -7,9 +7,10 @@ and converts demanded bounded leaves to the existing guarded roof consumer.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Hashable, Iterator
+from collections.abc import Callable, Generator, Hashable, Iterator
 from typing import TYPE_CHECKING, Final
 
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.consumer_pullback import (
     compose_prefix_safety_values,
 )
@@ -26,6 +27,9 @@ from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnLaw,
     DyadicReturnSourceID,
     DyadicReturnSupportID,
+)
+from number_compiler.hashlife.execution.dyadic_return_records import (
+    DyadicReturnSupportRecord,
 )
 from number_compiler.hashlife.execution.dyadic_return_runs import (
     RunArithmeticWorkspace,
@@ -73,6 +77,8 @@ ANTIHYDRA_ARITHMETIC_LAW = DyadicReturnLaw(
 
 class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
     """Pinned blank-tape arithmetic source; physical roofs remain demanded."""
+
+    MAX_TRANSIENT_FOLD_STEPS = 128
 
     def __init__(
         self,
@@ -247,6 +253,89 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         self.bump_metric("temporal_zero_run_pumps")
         self.bump_metric("temporal_run_actions")
         self.bump_metric("temporal_run_operand_bits", length.bit_length())
+
+    def transient_leaf_effect(
+        self, width: int, residue: int
+    ) -> DyadicReturnSupportRecord | None:
+        """Fold one low cylinder without publishing its intermediate sources."""
+        from number_compiler.sequences.antihydra.mahler_transient_carry_sheet import (
+            LEAF_BITS,
+            LEAF_GAIN,
+            eight_step_carry_sheet,
+        )
+
+        self.validate_law()
+        if (
+            self.closed
+            or type(width) is not int
+            or not 0 < width <= self.MAX_TRANSIENT_FOLD_STEPS
+            or type(residue) is not int
+            or not 0 <= residue < (1 << width)
+        ):
+            raise ValueError("invalid transient Antihydra source cylinder")
+
+        scratch = RunArithmeticWorkspace.for_ledger(
+            self.ledger, f"{self.counter_prefix}-transient"
+        )
+        with scratch.scope() as work:
+            try:
+                work.require_bits(8 * (6 * width + 128))
+            except BlockContextBudgetExceeded:
+                return None
+            h = residue
+            remaining = width
+            delta = minimum = odd_steps = 0
+            if h and remaining >= _SHORT_REPEAT_ATOM_STEPS * _REPEAT_MIN_COPIES:
+                segments = self.punctured_steps(h, remaining, work, repeat_only=True)
+                try:
+                    repeated = next(segments, None)
+                finally:
+                    segments.close()
+                if repeated is not None:
+                    length, delta, minimum, odd_steps, centered = repeated
+                    h = centered + 1
+                    remaining -= length
+            sheet = eight_step_carry_sheet() if remaining >= LEAF_BITS else ()
+            while remaining >= LEAF_BITS:
+                correction, local_delta, local_minimum, local_odd = sheet[h & 255]
+                prior_bits = h.bit_length()
+                h = (LEAF_GAIN * h - correction) >> LEAF_BITS
+                minimum = min(minimum, delta + local_minimum)
+                delta += local_delta
+                odd_steps += local_odd
+                remaining -= LEAF_BITS
+                self.bump_metric("bounded_leaf_run_actions")
+                self.bump_metric(
+                    "transient_leaf_operand_bits",
+                    prior_bits + h.bit_length() + LEAF_BITS,
+                )
+            while remaining:
+                parity = h & 1
+                h = (3 * h - parity) >> 1
+                delta += 2 - 3 * parity
+                minimum = min(minimum, delta)
+                odd_steps += parity
+                remaining -= 1
+                self.bump_metric("transient_leaf_operand_bits", h.bit_length() + 1)
+            gain = 3**width
+            denominator = 1 << width
+            offset = denominator * h - gain * residue
+            self.bump_metric("finite_block_lookups")
+            self.bump_metric("finite_block_misses")
+            self.bump_metric("transient_leaf_steps", width)
+            self.bump_metric("finite_block_cold_atoms")
+            return DyadicReturnSupportRecord(
+                width,
+                residue,
+                SkewTransfer(gain, offset, denominator),
+                odd_steps,
+                delta,
+                minimum,
+                None,
+                None,
+                None,
+                True,
+            )
 
     def _run_candidate(
         self,
@@ -548,8 +637,13 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             self.bump_metric("temporal_odd_macro_selector_operand_bits", operand_bits)
 
     def punctured_steps(
-        self, h: int, width: int, scratch: RunArithmeticWorkspace
-    ) -> Iterator[tuple[int, int, int, int, int]]:
+        self,
+        h: int,
+        width: int,
+        scratch: RunArithmeticWorkspace,
+        *,
+        repeat_only: bool = False,
+    ) -> Generator[tuple[int, int, int, int, int], None, None]:
         """Contract bounded source events inside the scheduler's exact leaf.
 
         A complete ``0**(q-1) 1`` occurrence has endpoint
@@ -558,6 +652,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         is needed. Consecutive q=1 occurrences still share one powered odd
         run; a final incomplete zero run retains its own powered action.
         Long mixed sources remain owned by balanced scheduler composition.
+        A transient carry sheet uses only the optional repeated prefix.
         """
         d = self._centered_source(h, scratch)
         remaining = width
@@ -629,6 +724,8 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                 yield length, delta, minimum, repetitions * block_odd, endpoint
                 d = endpoint
                 remaining -= length
+        if repeat_only:
+            return
         while remaining:
             source_bits = d.bit_length()
             scratch.require_bits(8 * (source_bits + 16))

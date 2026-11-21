@@ -42,6 +42,19 @@ _MAHLER_WINDOW_ISSUER = object()
 
 
 @dataclass(frozen=True, slots=True)
+class MahlerFiniteSafetyProjection:
+    """Source-bound finite action and its available fractional interval."""
+
+    steps: int
+    source_modulus: int
+    source_residue: int
+    weighted_innovation: int
+    gain: int
+    admitted_interval: Interval | None
+    complete: bool
+
+
+@dataclass(frozen=True, slots=True)
 class _MahlerWindowProvenance:
     issuer: object
     record: ReferenceType[object]
@@ -370,6 +383,25 @@ class MahlerJointFutureAction:
     def endpoint_residue(self) -> int:
         return (self.gain * self.residue + self.innovation) // self.source_modulus
 
+    def finite_safety_projection(
+        self, *, interval_complete: bool
+    ) -> MahlerFiniteSafetyProjection:
+        """Project the issued finite action while preserving guard completeness."""
+        if type(interval_complete) is not bool:
+            raise TypeError("fractional guard completeness must be Boolean")
+        self.__post_init__()
+        if self.gain != 3**self.extent:
+            raise ValueError("finite safety projection requires the physical gain")
+        return MahlerFiniteSafetyProjection(
+            self.extent,
+            self.source_modulus,
+            self.residue,
+            self.innovation,
+            self.gain,
+            self.guard if interval_complete else None,
+            interval_complete,
+        )
+
     @property
     def semantic_id(self) -> tuple[object, ...]:
         """Lossless guarded future-action ID, *not* a claimed finite index."""
@@ -617,7 +649,18 @@ class MahlerJointFutureAction:
         residue = (-innovation * pow(p, -1, q)) % q
         if residue != 7 % q or innovation < 0:
             raise ValueError("admitted root action contradicts centered source seven")
-        guard = cls.bit(1).guard if extent == 1 else Interval(_ZERO, _ZERO)
+        # The authenticated centered source is 7.  Its first two emitted
+        # bits are both one (7 -> 11), whose chronological fractional guards
+        # have empty intersection.  Every longer guard is a subset of that
+        # prefix; computing further source occurrences cannot restore it.
+        if extent == 1:
+            guard = cls.bit(1).guard
+        else:
+            if residue % 4 != 3:
+                raise ValueError("root action lost its two-bit source prefix")
+            guard = cls.bit(1).then(cls.bit(1)).guard
+            if not guard.empty:
+                raise ArithmeticError("source-seven fractional prefix is not empty")
         result = cls.with_gain(
             extent,
             residue,

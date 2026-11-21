@@ -13,6 +13,7 @@ from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.double_reverse.temporal_seed_cli import (
     seed_morphism_cli_packet,
 )
+from tests.support.observation_views import view_value
 from tests.support.reverse_add_source_data import iterate_double_reverse as literal
 
 
@@ -56,13 +57,17 @@ def cli_packet(
         "--format",
         "json",
         "--info",
-        "temporal.seed-morphism",
+        "temporal.closed-form",
+        "--temporal-closed-form-kind",
+        "source-action",
         *args,
     ]
     assert cli.main(argv) == 0
     wire = _mapping(json.loads(capsys.readouterr().out))
     assert wire["index"] == n
-    return _mapping(_mapping(wire["info"])["temporal.seed-morphism"])
+    return _mapping(
+        view_value(_mapping(wire["info"])["temporal.closed-form"], "source-action")
+    )
 
 
 @pytest.mark.parametrize(
@@ -141,7 +146,9 @@ def test_power10_seed_coordinates_keep_the_compact_index_encoding(
                 "--format",
                 "json",
                 "--info",
-                "temporal.seed-morphism",
+                "temporal.closed-form",
+                "--temporal-closed-form-kind",
+                "source-action",
             ]
         )
         == 0
@@ -150,7 +157,9 @@ def test_power10_seed_coordinates_keep_the_compact_index_encoding(
     encoded = {"encoding": "power10", "exponent": 3}
     assert wire["index"] == encoded
     assert wire["value"] is None
-    packet = _mapping(_mapping(wire["info"])["temporal.seed-morphism"])
+    packet = _mapping(
+        view_value(_mapping(wire["info"])["temporal.closed-form"], "source-action")
+    )
     assert packet["target_generation"] == encoded
     power = _mapping(packet["power"])
     assert power["source_prefix_generation"] == encoded
@@ -172,7 +181,9 @@ def test_huge_power10_seed_query_refuses_without_expanding_index(
                 "--format",
                 "json",
                 "--info",
-                "temporal.seed-morphism",
+                "temporal.closed-form",
+                "--temporal-closed-form-kind",
+                "source-action",
             ]
         )
         == 2
@@ -339,7 +350,9 @@ def test_cli_rejects_oversized_observer_demand(bad: list[str]) -> None:
                 "--nth",
                 "256",
                 "--info",
-                "temporal.seed-morphism",
+                "temporal.closed-form",
+                "--temporal-closed-form-kind",
+                "source-action",
                 *bad,
             ]
         )
@@ -350,14 +363,43 @@ def test_residue_and_seed_morphism_observers_are_order_independent(
 ) -> None:
     root = ["2rev10", "--seed", "139", "--nth", "128", "--no-value", "--format", "json"]
     for flags in (
-        ["--info", "temporal.residue99", "--info", "temporal.seed-morphism"],
-        ["--info", "temporal.seed-morphism", "--info", "temporal.residue99"],
+        [
+            "--info",
+            "arithmetic.modular",
+            "--arithmetic-modular-kind",
+            "residue",
+            "--info",
+            "temporal.closed-form",
+            "--temporal-closed-form-kind",
+            "source-action",
+        ],
+        [
+            "--info",
+            "temporal.closed-form",
+            "--temporal-closed-form-kind",
+            "source-action",
+            "--info",
+            "arithmetic.modular",
+            "--arithmetic-modular-kind",
+            "residue",
+        ],
     ):
         assert cli.main([*root, *flags]) == 0
         packet = _mapping(json.loads(capsys.readouterr().out))["info"]
         packet = _mapping(packet)
         assert (
-            _mapping(packet["temporal.residue99"])["target_mod99"]
-            == _mapping(_mapping(packet["temporal.seed-morphism"])["endpoint"])["mod99"]
+            _mapping(view_value(packet["arithmetic.modular"], "residue"))[
+                "target_mod99"
+            ]
+            == _mapping(
+                _mapping(view_value(packet["temporal.closed-form"], "source-action"))[
+                    "endpoint"
+                ]
+            )["mod99"]
         )
-        assert _mapping(packet["temporal.residue99"])["prefix_steps"] == 34
+        assert (
+            _mapping(view_value(packet["arithmetic.modular"], "residue"))[
+                "prefix_steps"
+            ]
+            == 34
+        )

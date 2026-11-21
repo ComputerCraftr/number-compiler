@@ -9,6 +9,7 @@ import pytest
 from number_compiler.api import cli, cli_render
 from number_compiler.api.cli_requests import parse_request
 from number_compiler.api.number_api import NumberCompiler
+from tests.support.observation_views import information_only_view
 
 
 def test_reverse_add_temporal_residue99_cli_is_predictive(
@@ -29,7 +30,9 @@ def test_reverse_add_temporal_residue99_cli_is_predictive(
                 str(10**12),
                 "--no-value",
                 "--info",
-                "temporal.residue99",
+                "arithmetic.modular",
+                "--arithmetic-modular-kind",
+                "residue",
                 "--format",
                 "json",
             ]
@@ -37,8 +40,7 @@ def test_reverse_add_temporal_residue99_cli_is_predictive(
         == 0
     )
     result = json.loads(capsys.readouterr().out)
-    packet = result["info"]["temporal.residue99"]
-    assert result["value"] is None
+    packet = information_only_view(result, "arithmetic.modular", "residue")
     assert packet["target_mod99"] == 22
     assert packet["source_certified"] is True
     assert packet["complete_integer_certified"] is False
@@ -56,6 +58,8 @@ def test_nondecimal_source_rejected_before_term_execution() -> None:
                 "--nth",
                 "7",
                 "--info",
-                "temporal.residue99",
+                "arithmetic.modular",
+                "--arithmetic-modular-kind",
+                "residue",
             ]
         )

@@ -195,11 +195,22 @@ def try_consume_joint_harmonic_band(
     if pointed is None or pointed.v2_center < 16:
         return False
 
+    from number_compiler.sequences.collatz.centered_carry_future import (
+        GuardedCenteredValuationBellman,
+    )
+
+    complete_returns = pointed.v2_center // 2
+    remainder = GuardedCenteredValuationBellman(pointed.v2_center).after_returns(
+        complete_returns
+    )
+    if remainder is None or remainder not in (0, 1):
+        raise AssertionError("centered headroom lost its authenticated return")
+
     before_normalized = control.normalized
     consume_homogeneous_run(
         control,
         seed=seed,
-        available=pointed.v2_center,
+        available=2 * complete_returns + remainder,
         control_bits=control_bits,
         include_joint_cocycle=False,
         ledger=ledger,

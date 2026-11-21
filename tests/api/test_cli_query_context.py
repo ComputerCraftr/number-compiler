@@ -332,7 +332,12 @@ def test_multiple_collatz_event_views_discover_one_prefix(
     assert row["index_unit"] == "accelerated_odd_events" and row["value"] is None
     assert set(row["info"]) == {"temporal.clock", "arithmetic.modular"}
     assert row["info"]["temporal.clock"]["discovered_events"] == 4
-    assert row["info"]["arithmetic.modular"]["discovered_events"] == 4
+    assert (
+        row["info"]["arithmetic.modular"]["views"]["endpoint"]["value"][
+            "discovered_events"
+        ]
+        == 4
+    )
 
 
 def test_collatz_event_cli_consumes_published_support_without_digit_replay(

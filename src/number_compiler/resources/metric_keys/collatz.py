@@ -53,6 +53,16 @@ COLLATZ_BOUNDARY_TEMPLATE_VALIDATION_OPERAND_BITS: Final = (
     "collatz_boundary_template_validation_operand_bits"
 )
 COLLATZ_BOUNDARY_TEMPLATE_VALIDATIONS: Final = "collatz_boundary_template_validations"
+COLLATZ_CYCLIC_GRAMMAR_SOURCE_QUERIES: Final = "collatz_cyclic_grammar_source_queries"
+COLLATZ_CYCLIC_GRAMMAR_ADMITTED_ACTIONS: Final = (
+    "collatz_cyclic_grammar_admitted_actions"
+)
+COLLATZ_CYCLIC_GRAMMAR_BUDGET_REFUSALS: Final = "collatz_cyclic_grammar_budget_refusals"
+COLLATZ_CYCLIC_GRAMMAR_CLASSIFICATIONS_ELIDED: Final = (
+    "collatz_cyclic_grammar_classifications_elided"
+)
+COLLATZ_CYCLIC_GRAMMAR_SHORTCUT_STEPS: Final = "collatz_cyclic_grammar_shortcut_steps"
+COLLATZ_CYCLIC_GRAMMAR_PHYSICAL_TICKS: Final = "collatz_cyclic_grammar_physical_ticks"
 COLLATZ_DECIMAL_BOUNDARY_OPERAND_BITS: Final = "collatz_decimal_boundary_operand_bits"
 COLLATZ_DECIMAL_BOUNDARY_SOURCE_CLASSIFICATIONS: Final = (
     "collatz_decimal_boundary_source_classifications"

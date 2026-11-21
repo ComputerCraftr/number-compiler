@@ -716,6 +716,25 @@ class PoweredCollatzTerm(RadixProjectionSourceAuditor):
             position_moore_walsh64=position_moore_walsh64,
         )
 
+    def observe_executed_macros(self) -> dict[str, object]:
+        """Read executed action counts from this term's authenticated ledger."""
+        if self.steps:
+            self.source_image()
+        counters = self._ledger.counters
+        return {
+            "status": "available",
+            "scope": "source-admitted complete cyclic word copies",
+            "actions": counters.get(
+                _collatz_keys.COLLATZ_CYCLIC_GRAMMAR_ADMITTED_ACTIONS, 0
+            ),
+            "normalized_steps": counters.get(
+                _collatz_keys.COLLATZ_CYCLIC_GRAMMAR_SHORTCUT_STEPS, 0
+            ),
+            "physical_ticks": counters.get(
+                _collatz_keys.COLLATZ_CYCLIC_GRAMMAR_PHYSICAL_TICKS, 0
+            ),
+        }
+
     @source_reads_only
     def s_arithmetic_clock(self) -> SArithmeticClock:
         """Derive the slope places from this physical, source-bound application.

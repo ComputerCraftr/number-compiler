@@ -15,6 +15,7 @@ from number_compiler.sequences.reverse_add.q19_bank_boolean import (
     CoupledBooleanBankFrame,
 )
 from number_compiler.sequences.reverse_add.q19_output import ReversePairQ19OutputOwner
+from tests.support.observation_views import view_value
 from tests.support.reverse_add_sources import periodic_reverse_add_source
 
 
@@ -76,7 +77,9 @@ def test_residue_compact_metadata_without_endpoint(
                 "2",
                 "--no-value",
                 "--info",
-                "temporal.residue99",
+                "arithmetic.modular",
+                "--arithmetic-modular-kind",
+                "residue",
                 "--format",
                 "json",
             ]
@@ -85,7 +88,7 @@ def test_residue_compact_metadata_without_endpoint(
     )
     packet = json.loads(capsys.readouterr().out)
     encoded = {"encoding": "power10", "exponent": 2}
-    port = packet["info"]["temporal.residue99"]
+    port = view_value(packet["info"]["arithmetic.modular"], "residue")
     assert packet["index"] == port["index"] == encoded
     coordinate = "target_generation" if family == "2rev10" else "duration"
     assert port[coordinate] == encoded

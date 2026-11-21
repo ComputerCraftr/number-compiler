@@ -1,110 +1,34 @@
 # Current release gates
 
-Version **0.60.0 is prepared; release remains blocked**.
-Reviewed 2026-11-19.
-The [comma forest deletion](sprints/week-of-2026-11-01/comma-global-cutover.md)
-is applied. The active B1 replacement checks an exact M204 Bellman equation
-over symbolic roots in CRT order `(3,4,7,11)`, replacing the accumulating
-24-round frontier history. Generic B1/Future and native smoke runs accept
-source transport, priority certificates, the shared mapped-shift law and its
-current Continue consumer, including cache failure/reuse checks. These checks
-do not certify the complete concrete Bellman candidate.
-Concrete B1 remains unaccepted. Its source now selects direct projected Bellman
-certification for 46 class programs in one checked store. The sixteen physical
-source actions belong to the downstream Future consumer. The generic
-constructor, source-morphism, physical-source and Bellman projection laws pass
-native checking. The latest concrete trial passed Entry program binding and
-reached projected evaluation before the 300-second session limit.
-No concrete Bellman or global artifact is accepted;
-public comma values refuse, and B32, Future, global, physical-weight, positive
-CLI and package gates remain blocked. The
-[current harmonic sprint](sprints/week-of-2026-11-08/harmonic-carry-consumers.md)
-owns the run-level evidence.
-The bounded NC19/NC26 integration and adversarial authority/lifecycle repairs
-based on `b2878647` pass native runtime, quality and applicable family kernel
-sessions. The follow-up rejects forged accumulator fields, incompatible warm
-actions and mutated results, and repairs exception cleanup accounting.
-[Current integration gates](sprints/week-of-2026-10-25/carry-period-cli.md)
-record the new runtime, proof and performance results.
-The [Antihydra carry repair](sprints/week-of-2026-11-01/antihydra-carry-morphism.md)
-adds the source-bound diagonal consumer and accepted multiplication/carry
-refinements, preserves the balanced construction bounds, and fixes root-source
-reuse and failed-work reporting. It does not establish an additional general
-CLI speedup or a non-halting certificate.
-The [diagonal and modular follow-up](sprints/week-of-2026-11-01/diagonal-modular-cli.md)
-connects issued Collatz windows, shared reverse carry projections and 2rev10
-endpoint reuse to their CLI consumers. Its Python, quality and applicable P0
-checks pass, with measured cold improvements on eligible demands. Its concrete
-reverse/add carry producer and modular observer bridge also pass kernel checking.
-Its finite ordinary-nth follow-up reduces intermediate reverse/add publication
-and uses a bounded packed diagonal evaluator inside issued 2rev10 actions.
-Fresh complete-suite, quality and CLI comparisons pass. The finite-native
-reverse/add and packed-nibble refinements are accepted under the standard
-session limits.
-The [prime rank and effective-return follow-up](sprints/week-of-2026-11-01/prime-rank-effective-returns.md)
-adds bounded prime rank reuse and lazy scalar CLI consumption, shares affine
-congruence arithmetic with Collatz, and corrects the bounded 2rev10 return audit.
-Prime CLI comparisons improve; the prime refinement chain and corrected 2rev10
-counterexample pass kernel checking. Finite return diagnostics do not establish
-infinite source closure.
-The November 6 prime-birth follow-up further reduces exact rank DAG construction
-and cold public-query time under the authenticated complete-prefix guard. Its
-square-root guard-to-prefix and finite suffix laws pass in the registered prime
-session. The packed
-double-reverse Boolean-predicate refinement also passes; ordinary 16–1,024-step
-query timings do not establish an additional speedup from that change.
-The [centered-carry follow-up](sprints/week-of-2026-11-01/centered-carry-cli.md)
-shares source windows and carry halos, removes retained observer histories,
-and repairs charged scratch lifetimes, including retained-exception paths.
-Its earlier complete default Python suite passed within its limit, before the
-subsequent comma deletion and Pascal changes. Demanded center-driver
-CLI observations improve; this does not establish an ordinary-nth speedup from
-those observer changes. The reverse/add centered source refinement and
-double-reverse finite centered word/source-window kernel gates pass. These
-finite arithmetic refinements do not establish unrestricted repetition or
-authenticate Python-issued cursors by themselves.
-The November 6 shared SLP/Pascal and carry-suffix follow-up passes focused
-runtime and typing checks. The complete default suite meets its time and
-memory limits; comma CLI assertions remain release holds as described above.
-The [harmonic carry follow-up](sprints/week-of-2026-11-08/harmonic-carry-consumers.md)
-removes expanded coefficient auditing, joins an admitted Collatz odd run to its
-forced even exit, and shares compact radix ports with demanded Mahler consumers.
-The November 10 follow-up adds balanced signed-carry plans, validated
-cyclotomic multiplier identities, ledger-owned AVL action storage and a
-bounded packed reverse/add endpoint publisher. The packed path improves
-construction on measured workloads; startup dominates its cold CLI timing.
-Its shared, reverse, Antihydra and Collatz kernel gates pass. The audit-parser
-repair and explicit smoke-definition audit also pass generic B1 and native
-smoke checking without granting global theorem credit to local checks. The default suite
-meets its time and memory limits; comma CLI and installed-artifact holds remain.
-The measured Collatz and Mahler harmonic ablations do not establish a general
-CLI speedup. The packed reverse encoder and fully budgeted Collatz port joins
-still need their complete implementation refinements; scalar arithmetic
-lemmas alone do not close those obligations.
-Current integration evidence is scoped development evidence from a dirty
-checkout based on Git `2994b2841317fd141cd7913142c53f38685838a7`; it does not
-certify a release commit. Earlier evidence remains scoped to its linked source.
+Version **0.60.0 is prepared**. Release remains blocked. The latest development
+checks use a dirty checkout based on Git `02fefff9f484de9169aa11f4938b623afb8a08b5`.
+They describe that checkout and do not certify a committed release. The
+[November 20 integration record](sprints/week-of-2026-11-15/november-20-performance-ports.md)
+owns the scoped runtime, proof and performance evidence.
 
-| Gate | Current disposition | Evidence owner / next requirement |
+The comma forest deletion is applied, but the concrete B1 Bellman certificate,
+global future artifact and public admission remain unaccepted. Positive comma
+CLI assertions and the installed-wheel release gate remain blocked. The
+[comma cutover record](sprints/week-of-2026-11-01/comma-global-cutover.md)
+tracks its proof dependencies and remaining obligations.
+
+| Gate | Current disposition | Evidence or next requirement |
 | --- | --- | --- |
-| Strict mypy, Ruff, Pyright and formatting | Pass across maintained Python sources; Pylance extension execution is separate | [Current harmonic follow-up](sprints/week-of-2026-11-08/harmonic-carry-consumers.md#validation-provenance) |
-| Repository source policy | Pass including the registered parametric checker and deletion of the per-round proof publishers | [Current comma gate](sprints/week-of-2026-11-01/comma-global-cutover.md#validation-provenance) |
-| Pylance | Editor-specific review remains separate from the guarded Pyright batch | [October 25 evidence](sprints/week-of-2026-10-18/strict-toolchain-macro-identities.md#current-status--2026-10-26) |
-| Installed wheel and minimum Python | BLOCKED: the replacement comma artifact and admission are absent. Prior wheel and minimum-Python results predate forest deletion | [Required artifact finalization](../devtools/cutovers/README.md) |
-| Complete default Python suite | Meets the runtime/memory limits; positive comma CLI assertions remain blocked | [Current harmonic follow-up](sprints/week-of-2026-11-08/harmonic-carry-consumers.md#validation-provenance) |
-| P0 release assertions | The comma CLI assertions are included and remain blocked on global admission. Earlier reverse/add and Collatz results remain scoped to their selections; source-7 non-halting and candidate prime-bit holds remain | [Current comma gate](sprints/week-of-2026-11-01/comma-global-cutover.md#validation-provenance) and [family holds](sprints/week-of-2026-11-01/prime-rank-effective-returns.md#validation-provenance) |
-| Bounded prime rank and scalar CLI | Source-prefix and signed rank refinements pass; eligible cold CLI requests improve with bounded retained storage. Packed Python boundary encoding has independent executable coverage, not a kernel extraction theorem | [Current proof and performance scope](sprints/week-of-2026-11-01/prime-rank-effective-returns.md#established-results) |
-| Shared carry, reverse and double-reverse refinements | Concrete reverse half-run successor/carry-mask/modular projection, mod-99 rank-one power, double-reverse mod-90/990 and Collatz source-window refinements pass. Unrestricted selection and full polynomial/signed-cut refinements stay open | [Current kernel evidence and scope](sprints/week-of-2026-11-01/diagonal-modular-cli.md#established-results) |
-| Antihydra/Mahler cold integration | Source-bound carry and demanded diagonal integration pass finite runtime/kernel checks without the archive's quadratic left fold. The current comparison does not establish an extra general CLI or cold matrix-constructor speedup | [Current carry/CLI evidence](sprints/week-of-2026-11-01/antihydra-carry-morphism.md#validation-provenance) and [earlier observer improvement](sprints/week-of-2026-10-25/carry-period-cli.md#measured-cli-performance) |
-| Powered CLI integration and performance | Cold reverse modular, 2rev10 seed-morphism and guarded Collatz requests improve. The finite ordinary-nth follow-up also measures fewer reverse/add publications and faster reverse/add and 2rev10 decimal CLI requests. Both finite reverse/add and packed-nibble refinements are accepted. No comma speedup or unrestricted logarithmic full-word construction is established | [Current CLI evidence](sprints/week-of-2026-11-01/diagonal-modular-cli.md#finite-ordinary-nth-follow-up) |
-| 2rev10 bounded temporal carry square | Bounded cone/worklist, exact source seams and finite scalar-weight refinements pass; cold/warm CLI improvements are measured. Unrestricted future closure remains open | [Current integration evidence](sprints/week-of-2026-10-25/carry-period-cli.md#measured-cli-performance) |
-| Standalone 2rev10 macro summary | Open: no term-owned published occurrence cursor; explicit matrix traces are available | [Demand-laziness boundary](sprints/week-of-2026-10-18/strict-toolchain-macro-identities.md#remaining-work) |
-| Comma B1/B32/global and forest/fuel retirement | Forest source, prefix asset and verifier removed. Generic B1 contract and native smoke pass; concrete image, Future authority, physical weights, global artifact and public CLI remain unaccepted | [Current B1 and global gates](sprints/week-of-2026-11-01/comma-global-cutover.md#validation-provenance) and [required cutover](sprints/week-of-2026-11-01/comma-global-cutover.md#remaining-work) |
-| Unrestricted constructors, primality and global non-halting | Open mathematical/production obligations | [Research scope](index.md#research-syntheses) and [formal proof index](proofs.md) |
+| Python units | The default suite completed within its time and memory limits. Six comma admission assertions failed. | [Current integration evidence](sprints/week-of-2026-11-15/november-20-performance-ports.md) |
+| P0 release assertions | Comma admission, source-7 non-halting and candidate prime-bit obligations remain release holds. | [Comma gate](sprints/week-of-2026-11-01/comma-global-cutover.md) and [family holds](sprints/week-of-2026-11-01/prime-rank-effective-returns.md) |
+| Typing, lint, formatting and source policy | Strict mypy, Ruff, formatting and source policy passed. The affected Pyright batch passed. Pylance extension diagnostics need separate editor review. | [Current integration evidence](sprints/week-of-2026-11-15/november-20-performance-ports.md) |
+| Documentation and dependencies | Documentation checks and dependency consistency passed for the development checkout. | [Current integration evidence](sprints/week-of-2026-11-15/november-20-performance-ports.md) |
+| Installed wheel and minimum Python | The affected Fermat and `5rev10` routes passed isolated wheel smoke checks. The full wheel gate needs the admitted comma future. A current minimum-Python release check remains required. | [Current integration evidence](sprints/week-of-2026-11-15/november-20-performance-ports.md) and [required artifact](../devtools/cutovers/README.md) |
+| Reflected reversal | The registered Double Reverse session checked normalization and both physical parity endpoints. Automatic SLP selection remains subject to the measured performance gate. | [Reversal integration](sprints/week-of-2026-11-15/november-20-performance-ports.md) |
+| `2rev10` standalone macro summary | A term-owned macro occurrence cursor remains open. The CLI offers bounded chronological detail through `temporal.matrix.trace`. | [Macro catalogue scope](cli.md#reverse-boundary-certificates) |
+| `5rev10` packed pairs | The source adapter uses the checked packed physical pair on eligible bounded actions. The registered Five Reverse session checked the arithmetic and first-refusal bounds. The executable prefix comparison has differential coverage. | [Packed integration](sprints/week-of-2026-11-15/november-20-performance-ports.md) |
+| Fermat halo | The source-bound finite negacyclic projection is available through `temporal.matrix`. Its finite arithmetic is kernel checked and does not grant primality authority. | [Fermat integration](sprints/week-of-2026-11-15/november-20-performance-ports.md) |
+| Collatz and Antihydra/Mahler | Finite source-bound carry and safety refinements passed their applicable focused checks. General future closure and non-halting remain open. | [Current family integration](sprints/week-of-2026-11-15/november-20-performance-ports.md) and [research scope](index.md#research-syntheses) |
+| Bounded prime rank and scalar CLI | The source-prefix rank and finite suffix refinements cover admitted requests. The packed Python boundary encoding has executable coverage. | [Prime scope](sprints/week-of-2026-11-01/prime-rank-effective-returns.md#established-results) |
+| Comma B1/B32/global | Generic source and Bellman laws are checked. The concrete certificate, global artifact, physical weights and public admission remain unaccepted. | [Current comma proof gate](sprints/week-of-2026-11-01/comma-global-cutover.md) |
+| Unrestricted constructors, primality and global non-halting | Mathematical and production obligations remain open. | [Research scope](index.md#research-syntheses) and [proof index](proofs.md) |
 
 Validation uses the [shared execution policy](development.md#reproducible-release-commands).
-Release acceptance requires a clean committed source, the isolated acceptance
+Release acceptance requires a clean committed source, an isolated acceptance
 worktree, complete required selections and their applicable kernel builds.
-
-Run counts, timings and run identifiers belong only in the linked sprint record.
-Superseded dispositions are recoverable through Git; they are not active gates.
+Dated run counts and timings belong in the linked sprint records.

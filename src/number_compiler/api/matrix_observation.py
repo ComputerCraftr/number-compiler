@@ -13,6 +13,7 @@ from number_compiler.api.matrix_contracts import (
     MatrixKind,
     MatrixLaw,
     MatrixRequest,
+    NegacyclicMatrixRequest,
     OrderedMatrixRequest,
     SourceTransferRequest,
 )
@@ -49,36 +50,31 @@ def observe_matrix(
     if name is ObservationId.TEMPORAL_MATRIX:
         packet.pop("trace", None)
     packet.setdefault("status", "available")
-    packet["matrix_kind"] = (
-        request.kind.value
-        if isinstance(request, OrderedMatrixRequest)
-        else (
-            MatrixKind.INNOVATION.value
-            if isinstance(request, InnovationMatrixRequest)
-            else MatrixKind.SOURCE_TRANSFER.value
+    kind, law = MatrixKind.SOURCE_TRANSFER, capability.law
+    if isinstance(request, OrderedMatrixRequest):
+        kind = request.kind
+        law = (
+            MatrixLaw.ORDERED_CARRY_CONTINUANT
+            if kind is MatrixKind.CARRY_CONTINUANT
+            else MatrixLaw.ORDERED_DIGIT_CONTINUANT
         )
-    )
-    packet["law"] = (
-        MatrixLaw.ORDERED_CARRY_CONTINUANT.value
-        if isinstance(request, OrderedMatrixRequest)
-        and request.kind is MatrixKind.CARRY_CONTINUANT
-        else MatrixLaw.ORDERED_DIGIT_CONTINUANT.value
-        if isinstance(request, OrderedMatrixRequest)
-        else MatrixLaw.INNOVATION_MOMENT.value
-        if isinstance(request, InnovationMatrixRequest)
-        else capability.law.value
-    )
-    if isinstance(request, SourceTransferRequest):
+    elif isinstance(request, InnovationMatrixRequest):
+        kind, law = MatrixKind.INNOVATION, MatrixLaw.INNOVATION_MOMENT
+    elif isinstance(request, NegacyclicMatrixRequest):
+        kind, law = MatrixKind.NEGACYCLIC, MatrixLaw.NEGACYCLIC_AFFINE
+    packet["matrix_kind"], packet["law"] = kind.value, law.value
+    if isinstance(request, (SourceTransferRequest, NegacyclicMatrixRequest)):
         if capability.clock is MatrixClock.PHYSICAL:
             packet["requested_physical_ticks"] = request.steps
         packet["horizon"] = {
             "ticks": request.steps,
             "unit": capability.clock.value,
         }
-        packet["coordinate"] = {
-            "kind": request.coordinate_kind.value,
-            "value": request.coordinate,
-        }
+        if isinstance(request, SourceTransferRequest):
+            packet["coordinate"] = {
+                "kind": request.coordinate_kind.value,
+                "value": request.coordinate,
+            }
         # A finite observation packet cannot be fed back as an issuer token.
         packet["execution_authority"] = False
         packet["source_index"] = context.request.presentation_index
@@ -142,11 +138,12 @@ def reverse_transfer(
         source_transfer_packet,
     )
 
+    demand = source_request(request)
     return source_transfer_packet(
         payload.term,
-        steps=request.steps,
-        pair_depth=coordinate_value(request),
-        trace=request.trace,
+        steps=demand.steps,
+        pair_depth=coordinate_value(demand),
+        trace=demand.trace,
     )
 
 
@@ -251,13 +248,21 @@ def collatz_transfer(
 def fermat_transfer(context: QueryContext, request: MatrixRequest) -> dict[str, object]:
     from number_compiler.api.elementary_payloads import FermatTermPayload
 
-    demand = source_request(request)
     payload = context.term.payload
     if not isinstance(payload, FermatTermPayload):
         raise TypeError("Fermat matrix received a foreign projected occurrence")
     if context.request.index > 16:
         raise ValueError("Fermat matrix source index exceeds the admitted bound 16")
     level = (1 << context.request.index) - 1
+    if isinstance(request, NegacyclicMatrixRequest):
+        from number_compiler.sequences.power_numbers.fermat_negacyclic_halo import (
+            demand_fixed_multiplier_halo,
+        )
+
+        return demand_fixed_multiplier_halo(
+            payload.spec.index, level, request.steps
+        ).packet()
+    demand = source_request(request)
     result = payload.spec.demand_fermat_powered_port_matrix(
         level,
         demand.steps,

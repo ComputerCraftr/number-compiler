@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from typing import Literal
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
-from number_compiler.arithmetic.automata.slp_walks import iter_symbols
+from number_compiler.arithmetic.automata.slp_interval import fold_slp_interval
+from number_compiler.arithmetic.automata.slp_walks import iter_symbols, symbol_at
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.owned_memo import LedgerReservation
 
@@ -198,6 +199,8 @@ class CarrySpacetimePower:
         "_tiles",
         "_cell_action",
         "_four_cell_action",
+        "_slp_tiles",
+        "_slp_tile_entries",
     )
 
     def __init__(
@@ -228,6 +231,8 @@ class CarrySpacetimePower:
         self._reused_cones = 0
         self._canonical_tile_reuses = 0
         self._source_traversal_tasks = 0
+        self._slp_tiles: dict[tuple[LedgerSLPArena, int, int], int] = {}
+        self._slp_tile_entries = 0
 
     @property
     def stats(self) -> TemporalSquareStats:
@@ -245,10 +250,12 @@ class CarrySpacetimePower:
         self._powers.clear()
         self._intern.clear()
         self._tiles.clear()
+        self._slp_tiles.clear()
         self._scratch.release(
-            self._retained_graph_entries,
-            self._retained_graph_nodes,
+            self._retained_graph_entries + self._slp_tile_entries,
+            self._retained_graph_nodes + self._slp_tile_entries,
         )
+        self._slp_tile_entries = 0
         self._retained_graph_entries = 0
         self._retained_graph_nodes = 0
 
@@ -540,6 +547,157 @@ class CarrySpacetimePower:
             pending.clear()
             row.clear()
             self._scratch.release(workspace, workspace)
+
+    def _tile_from_cell_slp(self, arena: LedgerSLPArena, root: int) -> int:
+        """Compile one power-of-two cell SLP by exact semantic subtree IDs.
+
+        Full REPEAT nodes and equal halves are compiled once and reused across
+        every requested block and dyadic time split. No physical occurrence
+        expansion is needed for repeated input segments.
+        """
+        length = arena.nodes[root].length
+        if length < 1 or length & (length - 1) or length > _MAX_CELLS:
+            raise ValueError("H cell tile needs dyadic SLP extent")
+        memo = self._slp_tiles
+        generation = arena.node_id_generation
+
+        def key(node: int) -> tuple[LedgerSLPArena, int, int]:
+            return arena, generation, node
+
+        tasks: list[tuple[int, int, int, bool]] = [(root, 0, 0, False)]
+        frame_budget = 4 * (length.bit_length() + 1)
+        self._scratch.acquire(frame_budget, frame_budget)
+        try:
+            while tasks:
+                node, left, right, ready = tasks.pop()
+                if key(node) in memo:
+                    continue
+                n = arena.nodes[node].length
+                if n == 1:
+                    value = symbol_at(arena, node, 0)
+                    if type(value) is not int or not 0 <= value < 100:
+                        raise ValueError("H source SLP contains a non-base-100 cell")
+                    tile = value
+                    self._source_traversal_tasks += 1
+                elif not ready:
+                    half = n // 2
+                    left = fold_slp_interval(
+                        arena,
+                        node,
+                        0,
+                        half,
+                        identity=arena.empty_id,
+                        length=lambda index: arena.nodes[index].length,
+                        full_value=lambda index, _rev: index,
+                        compose=arena.concat,
+                        repeat=arena.repeat,
+                    )
+                    right = fold_slp_interval(
+                        arena,
+                        node,
+                        half,
+                        n,
+                        identity=arena.empty_id,
+                        length=lambda index: arena.nodes[index].length,
+                        full_value=lambda index, _rev: index,
+                        compose=arena.concat,
+                        repeat=arena.repeat,
+                    )
+                    tasks.append((node, left, right, True))
+                    if key(right) not in memo:
+                        tasks.append((right, 0, 0, False))
+                    if key(left) not in memo:
+                        tasks.append((left, 0, 0, False))
+                    continue
+                else:
+                    tile = self.pair(memo[key(left)], memo[key(right)])
+                self._scratch.acquire()
+                self._slp_tile_entries += 1
+                memo[key(node)] = tile
+            return memo[key(root)]
+        finally:
+            tasks.clear()
+            self._scratch.release(frame_budget, frame_budget)
+
+    def advance_blocks_slp(
+        self, arena: LedgerSLPArena, source_root: int, span: int
+    ) -> int:
+        """Power H on a base-100 SLP without forming an intermediate whole row.
+
+        The SLP is LSD-first. Each demanded dyadic inlet is sliced from the
+        existing CONCAT/REPEAT grammar, compiled into the *same* semantic tile
+        interner as ``advance_blocks``, and its output tile is published to an
+        SLP immediately. Only one bounded dyadic inlet is expanded at a time.
+        The result remains a root usable by the next selected temporal power.
+        """
+        if (
+            self._cell_action is None
+            or type(arena) is not LedgerSLPArena
+            or type(source_root) is not int
+            or not 0 <= source_root < len(arena.nodes)
+            or type(span) is not int
+            or span < 1
+            or span & (span - 1)
+            or span > _MAX_CELLS // 2
+        ):
+            raise ValueError("padded H SLP advancement needs a dyadic cell action")
+        cells = arena.nodes[source_root].length
+        if not cells:
+            raise ValueError("padded H source SLP must contain cells")
+        blocks = (cells + span - 1) // span
+        endpoint_cells = cells + span
+        reserve = 2 * (blocks + 1) + span.bit_length() + 16
+        self._scratch.acquire(reserve, reserve)
+        pieces: list[int] = []
+
+        def interval(begin: int, end: int) -> int:
+            return fold_slp_interval(
+                arena,
+                source_root,
+                begin,
+                end,
+                identity=arena.empty_id,
+                length=lambda node: arena.nodes[node].length,
+                full_value=lambda node, _reverse: node,
+                compose=arena.concat,
+                repeat=arena.repeat,
+            )
+
+        try:
+            zero = 0
+            for _ in range(span.bit_length() - 1):
+                zero = self.pair(zero, zero)
+            previous = zero
+            for start in range(0, (blocks + 1) * span, span):
+                current = zero
+                if start < cells:
+                    section = interval(start, min(cells, start + span))
+                    missing = span - arena.nodes[section].length
+                    if missing:
+                        section = arena.concat(
+                            section, arena.repeat(arena.terminal(0), missing)
+                        )
+                    current = self._tile_from_cell_slp(arena, section)
+                tile = self.middle(self.pair(previous, current))
+                pieces.append(self.publish(arena, tile))
+                previous = current
+            output = arena.concat_many(pieces)
+            # A final non-full block was right-padded. Exclude just that
+            # excess via a structural SLP interval, not a full-cell replay.
+            return fold_slp_interval(
+                arena,
+                output,
+                0,
+                endpoint_cells,
+                identity=arena.empty_id,
+                length=lambda node: arena.nodes[node].length,
+                full_value=lambda node, _reverse: node,
+                compose=arena.concat,
+                repeat=arena.repeat,
+            )
+        finally:
+            pieces.clear()
+            self._scratch.release(reserve, reserve)
 
     def publish(self, arena: LedgerSLPArena, root: int) -> int:
         """Publish the computed center into the same SLP arena transactionally."""

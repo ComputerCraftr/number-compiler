@@ -20,6 +20,7 @@ from tests.sequences.double_reverse.packet_helpers import (
     object_mapping,
     string_field,
 )
+from tests.support.observation_views import view_value
 
 
 def reverse_double(x: int) -> int:
@@ -154,7 +155,9 @@ def test_production_defect_clock_matches_exact_integer_oracle(
                 "--format",
                 "json",
                 "--info",
-                "temporal.defect-clock",
+                "temporal.clock",
+                "--temporal-clock-detail",
+                "defect-samples",
                 "--temporal-defect-digits",
                 "12",
                 "--temporal-period-samples",
@@ -166,7 +169,7 @@ def test_production_defect_clock_matches_exact_integer_oracle(
     raw_packet: object = json.loads(capsys.readouterr().out)
     packet = object_mapping(raw_packet)
     info = object_mapping(packet["info"])
-    out = object_mapping(info["temporal.defect-clock"])
+    out = object_mapping(view_value(info["temporal.clock"], "defect-samples"))
     assert out["status"] == "available"
     assert out["infinite_period_certified"] is False
     assert out["independent_intermediate_cones"] == 0
@@ -210,7 +213,9 @@ def test_contraction_does_not_issue_false_defect_clock(
                 "--format",
                 "json",
                 "--info",
-                "temporal.defect-clock",
+                "temporal.clock",
+                "--temporal-clock-detail",
+                "defect-samples",
             ]
         )
         == 3
@@ -218,7 +223,7 @@ def test_contraction_does_not_issue_false_defect_clock(
     raw_packet: object = json.loads(capsys.readouterr().out)
     packet = object_mapping(raw_packet)
     info = object_mapping(packet["info"])
-    out = object_mapping(info["temporal.defect-clock"])
+    out = object_mapping(view_value(info["temporal.clock"], "defect-samples"))
     assert out["status"] == "unavailable"
     assert out["infinite_period_certified"] is False
 
@@ -239,7 +244,9 @@ def test_shared_halo_reproduces_64_source_defects_and_hierarchy(
                 "--format",
                 "json",
                 "--info",
-                "temporal.defect-clock",
+                "temporal.clock",
+                "--temporal-clock-detail",
+                "defect-samples",
                 "--temporal-defect-digits",
                 str(digits),
                 "--temporal-period-samples",
@@ -253,7 +260,7 @@ def test_shared_halo_reproduces_64_source_defects_and_hierarchy(
     raw_packet: object = json.loads(capsys.readouterr().out)
     outer = object_mapping(raw_packet)
     info = object_mapping(outer["info"])
-    packet = object_mapping(info["temporal.defect-clock"])
+    packet = object_mapping(view_value(info["temporal.clock"], "defect-samples"))
     assert packet["shared_source_halo"] is True
     assert packet["local_t_squared_steps"] == 2 * (count - 1)
     assert packet["samples"] == count
@@ -304,7 +311,9 @@ def test_existing_seed_morphism_period_path_uses_same_defect_action(
                 "--format",
                 "json",
                 "--info",
-                "temporal.seed-morphism",
+                "temporal.closed-form",
+                "--temporal-closed-form-kind",
+                "source-action",
                 "--temporal-period-samples",
                 "24",
                 "--temporal-defect-digits",
@@ -316,7 +325,7 @@ def test_existing_seed_morphism_period_path_uses_same_defect_action(
     raw_packet: object = json.loads(capsys.readouterr().out)
     packet = object_mapping(raw_packet)
     info = object_mapping(packet["info"])
-    morphism = object_mapping(info["temporal.seed-morphism"])
+    morphism = object_mapping(view_value(info["temporal.closed-form"], "source-action"))
     clock = object_mapping(morphism["period_observations"])
     assert clock["status"] == "available"
     assert clock["shared_source_halo"] is True

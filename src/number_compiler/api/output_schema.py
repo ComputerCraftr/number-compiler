@@ -148,8 +148,18 @@ class CollatzDiagonalPacket(TypedDict):
     all_time_claim: Literal[False]
 
 
+class CollatzCorrectedCarryPacket(TypedDict):
+    """The ×3 carry lane with the moving correction in the scaled endpoint."""
+
+    law: Literal["centered-minus-power-of-two"]
+    numerator_bits: int
+    terminal_numerator_residue: int
+    first_normalized_offset: int | None
+    first_physical_offset: int | None
+
+
 class CollatzCarryBellmanPacket(TypedDict):
-    """The nearest same-time homogeneous carry event at an admitted seam."""
+    """Same-time carry events at an admitted receiving seam."""
 
     law: Literal["homogeneous-centered-carry"]
     multipliers: tuple[Literal[3], Literal[5], Literal[15]]
@@ -159,6 +169,7 @@ class CollatzCarryBellmanPacket(TypedDict):
     physical_horizon: int
     first_normalized_offset: int | None
     first_physical_offset: int | None
+    corrected: CollatzCorrectedCarryPacket
 
 
 class AntihydraRunAvailablePacket(AntihydraSourceFields):

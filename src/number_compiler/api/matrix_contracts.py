@@ -22,6 +22,7 @@ class MatrixKind(StrEnum):
     INNOVATION = "innovation"
     CARRY_CONTINUANT = "carry-continuant"
     DIGIT_BAND = "digit-band"
+    NEGACYCLIC = "negacyclic"
 
 
 class MatrixCoordinate(StrEnum):
@@ -41,6 +42,7 @@ class MatrixLaw(StrEnum):
     ORDERED_CARRY_CONTINUANT = "ordered-carry-continuant"
     ORDERED_DIGIT_CONTINUANT = "ordered-digit-continuant"
     GUARDED_REVERSAL_PORT = "guarded-reversal-port"
+    NEGACYCLIC_AFFINE = "negacyclic-affine"
 
 
 class MatrixClock(StrEnum):
@@ -84,6 +86,16 @@ class InnovationMatrixRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class NegacyclicMatrixRequest:
+    """Fixed-multiplier transfer on the selected source's own signed ring."""
+
+    steps: int
+
+    def __post_init__(self) -> None:
+        require_integer(self.steps, "--temporal-matrix-steps", 1)
+
+
+@dataclass(frozen=True, slots=True)
 class OrderedMatrixRequest:
     kind: MatrixKind
     steps: int
@@ -122,7 +134,12 @@ class OrderedMatrixRequest:
             )
 
 
-MatrixRequest = SourceTransferRequest | InnovationMatrixRequest | OrderedMatrixRequest
+MatrixRequest = (
+    SourceTransferRequest
+    | InnovationMatrixRequest
+    | OrderedMatrixRequest
+    | NegacyclicMatrixRequest
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +161,7 @@ class MatrixCapability:
     max_trace_steps: int | None = None
     ordered_kinds: tuple[MatrixKind, ...] = ()
     digit_band_step_multiple: int = 1
+    negacyclic: bool = False
 
     def __post_init__(self) -> None:
         if (
@@ -174,8 +192,8 @@ class MatrixCapability:
             raise TypeError("matrix law must use a declared law")
         if type(self.clock) is not MatrixClock:
             raise TypeError("matrix clock must use a declared clock")
-        if type(self.innovation) is not bool:
-            raise TypeError("innovation capability must be Boolean")
+        if type(self.innovation) is not bool or type(self.negacyclic) is not bool:
+            raise TypeError("matrix kind capabilities must be Boolean")
         require_integer(self.max_steps, "matrix maximum steps", 1)
         require_integer(self.max_coordinate, "matrix maximum coordinate", 0)
         require_integer(self.minimum_coordinate, "matrix minimum coordinate", 0)
@@ -229,11 +247,13 @@ class MatrixCapability:
                     ),
                 ),
             )
-        if not self.innovation and not self.ordered_kinds:
+        if not (self.innovation or self.ordered_kinds or self.negacyclic):
             return common
         kinds: tuple[str, ...] = (MatrixKind.SOURCE_TRANSFER.value,)
         if self.innovation:
             kinds += (MatrixKind.INNOVATION.value,)
+        if self.negacyclic:
+            kinds += (MatrixKind.NEGACYCLIC.value,)
         kinds += tuple(kind.value for kind in self.ordered_kinds)
         if MatrixKind.CARRY_CONTINUANT in self.ordered_kinds:
             common += (
@@ -261,28 +281,26 @@ class MatrixCapability:
                     ),
                 ),
             )
+        if self.innovation or self.ordered_kinds:
+            common += (("temporal_matrix_modulus", OptionSpec(None, info)),)
         return (
             (
-                (
-                    "temporal_matrix_kind",
-                    OptionSpec(
-                        MatrixKind.SOURCE_TRANSFER.value,
-                        info,
-                        value_kind=OptionValueKind.CHOICE,
-                        choices=kinds,
-                        help="mathematical matrix output kind",
-                    ),
+                "temporal_matrix_kind",
+                OptionSpec(
+                    MatrixKind.SOURCE_TRANSFER.value,
+                    info,
+                    value_kind=OptionValueKind.CHOICE,
+                    choices=kinds,
+                    help="mathematical matrix output kind",
                 ),
-            )
-            + common
-            + (("temporal_matrix_modulus", OptionSpec(None, info)),)
-        )
+            ),
+        ) + common
 
     def build(
         self, values: Mapping[str, object], *, trace: bool = False
     ) -> MatrixRequest:
         raw_kind = values.get("temporal_matrix_kind")
-        if self.innovation or self.ordered_kinds:
+        if self.innovation or self.ordered_kinds or self.negacyclic:
             if not isinstance(raw_kind, str):
                 raise ValueError("unsupported temporal matrix kind")
             try:
@@ -293,8 +311,8 @@ class MatrixCapability:
             if raw_kind not in (None, MatrixKind.SOURCE_TRANSFER.value):
                 raise ValueError("this family has no temporal matrix kind selector")
             kind = MatrixKind.SOURCE_TRANSFER
+        specified = values.get("_specified", {})
         if kind in self.ordered_kinds:
-            specified = values.get("_specified", {})
             if isinstance(specified, Mapping):
                 incompatible = (
                     "temporal_matrix_band_width"
@@ -326,9 +344,12 @@ class MatrixCapability:
             )
             self.validate(ordered_request)
             return ordered_request
-        if kind not in {MatrixKind.SOURCE_TRANSFER, MatrixKind.INNOVATION}:
+        if kind not in {
+            MatrixKind.SOURCE_TRANSFER,
+            MatrixKind.INNOVATION,
+            MatrixKind.NEGACYCLIC,
+        }:
             raise ValueError("this family does not support the ordered matrix kind")
-        specified = values.get("_specified", {})
         if isinstance(specified, Mapping) and any(
             name in specified
             for name in (
@@ -347,7 +368,6 @@ class MatrixCapability:
                 raise ValueError(
                     "innovation matrix describes the selected term, not a future horizon"
                 )
-            specified = values.get("_specified", {})
             if isinstance(specified, Mapping) and self.coordinate_option in specified:
                 raise ValueError("innovation matrix has no source-transfer coordinate")
             modulus = values.get("temporal_matrix_modulus")
@@ -358,7 +378,17 @@ class MatrixCapability:
             raise ValueError("--temporal-matrix-modulus requires innovation kind")
         steps = values.get("temporal_matrix_steps")
         if steps is None:
-            raise ValueError("source-transfer requires --temporal-matrix-steps")
+            raise ValueError(f"{kind.value} requires --temporal-matrix-steps")
+        if kind is MatrixKind.NEGACYCLIC:
+            if trace:
+                raise ValueError("matrix.trace requires source-transfer kind")
+            if isinstance(specified, Mapping) and self.coordinate_option in specified:
+                raise ValueError("negacyclic matrix uses the selected source width")
+            negacyclic_request = NegacyclicMatrixRequest(
+                require_integer(steps, "--temporal-matrix-steps", 1)
+            )
+            self.validate(negacyclic_request)
+            return negacyclic_request
         request = SourceTransferRequest(
             require_integer(steps, "--temporal-matrix-steps", 1),
             self.coordinate,
@@ -400,6 +430,11 @@ class MatrixCapability:
             if not self.innovation:
                 raise ValueError("innovation matrix is unavailable for this family")
             request.__post_init__()
+            return
+        if type(request) is NegacyclicMatrixRequest:
+            if not self.negacyclic:
+                raise ValueError("negacyclic matrix is unavailable for this family")
+            require_integer(request.steps, "--temporal-matrix-steps", 1, self.max_steps)
             return
         if type(request) is not SourceTransferRequest:
             raise TypeError("matrix request must be an admitted matrix record")

@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
+from number_compiler.arithmetic.automata.affine_port_action import AffinePortAction
 from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.arithmetic.fields.radix import compose_radix_endpoint_rows
 from number_compiler.hashlife.interfaces.border_macros import (
@@ -344,8 +345,6 @@ def _compile_at(
     offset: int,
     steps: int,
 ) -> FermatPoweredPortMatrix:
-    if not macro.producer_verified:
-        raise ValueError("unissued source-bound macro")
     if (
         type(base) is not int
         or base not in _SUPPORTED_BASES
@@ -359,6 +358,8 @@ def _compile_at(
         or (base == 7 and position >= 19)
     ):
         raise ValueError("Fermat powered carry request exceeds its admitted domain")
+    offsets = tuple(offset + tick for tick in dyadic_puncture_offsets(steps))
+    issued_ports = macro.certified_checkpoint_ports(offsets)
     lower = base**position
     modulus = base ** (position + 1)
     phi = _totient_prime_power_base(base, position + 1)
@@ -368,8 +369,10 @@ def _compile_at(
     factor = int.__pow__(3, steps, modulus)
     end: int = start * factor % modulus
     low: int = start % lower
+    response = AffinePortAction.reduced(base, factor, factor * low // lower)
+    endpoint_low = low * factor % lower
     endpoints: tuple[int, ...] = tuple(
-        (low + digit * lower) * factor % modulus for digit in range(base)
+        endpoint_low + lower * response.apply(digit) for digit in range(base)
     )
     selected: int = start // lower
     if endpoints[selected] != end:
@@ -387,11 +390,14 @@ def _compile_at(
         ):
             raise ArithmeticError("root radial carry ingress is forbidden")
     points: list[FermatPuncturedPort] = []
-    for tick in dyadic_puncture_offsets(steps):
-        absolute = offset + tick
-        value = root * int.__pow__(3, absolute, modulus) % modulus
+    for absolute, (clocks, radial) in zip(offsets, issued_ports, strict=True):
+        if absolute == offset:
+            value = start
+        elif absolute == offset + steps:
+            value = end
+        else:
+            value = root * int.__pow__(3, absolute, modulus) % modulus
         digit, cin, cout = _carry_port(value, base, lower, modulus)
-        clocks = macro.puncture(absolute)
         clock_values = dict(clocks)
         if (
             base == 10
@@ -421,7 +427,6 @@ def _compile_at(
             != clock_values[FermatClockId.SEPTENARY_SQUARED]
         ):
             raise ArithmeticError("7-adic physical clock violates matrix port")
-        radial = macro.radial_at(absolute)
         points.append(
             FermatPuncturedPort(absolute, digit, cin, cout, value, clocks, radial)
         )

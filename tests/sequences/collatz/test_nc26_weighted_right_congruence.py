@@ -24,6 +24,7 @@ from number_compiler.sequences.collatz.weighted_right_congruence import (
     transport_weighted_right_binding,
 )
 from tests.support.collatz_finite_trace import normalized_trace
+from tests.support.observation_views import view_value
 
 
 def _physical(source: int, steps: int) -> tuple[int, int, int, int]:
@@ -303,7 +304,9 @@ def test_production_cli_publishes_both_exact_accumulators(
                     "--nth",
                     str(ticks),
                     "--info",
-                    "temporal.double-accumulator",
+                    "temporal.accumulator",
+                    "--temporal-accumulator-kind",
+                    "alternating",
                     "--format",
                     "json",
                 ],
@@ -312,7 +315,7 @@ def test_production_cli_publishes_both_exact_accumulators(
             == 0
         )
     packet = json.loads(output.getvalue())
-    info = packet["info"]["temporal.double-accumulator"]
+    info = view_value(packet["info"]["temporal.accumulator"], "alternating")
     assert int(packet["value"]) == endpoint
     assert info["added"] == a
     assert info["subtracted"] == b

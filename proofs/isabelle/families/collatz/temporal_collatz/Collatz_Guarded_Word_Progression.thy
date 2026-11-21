@@ -7,6 +7,41 @@ text \<open>Bounded image and full-stride refinement for an already admitted
 normalized parity word. This consumer theorem is separate from the core
 skew-cylinder squaring algebra.\<close>
 
+theorem collatz_cyclic_source_consumer:
+  assumes source_word:
+    "bits = dyadic_source_word collatz_temporal_source_step odd source (length bits)"
+    and defect:
+      "(2::int)^(repetitions * length bits) dvd
+        collatz_temporal_word_defect bits source"
+  defines "word \<equiv> concat (replicate repetitions bits)"
+  shows "collatz_guarded_normalized_word_admitted word source"
+    "collatz_guarded_normalized_word_endpoint word source =
+      (physical_collatz ^^ (repetitions * collatz_physical_ticks bits)) source"
+    "collatz_normalized_clock word =
+      (repetitions * count_list bits True, repetitions * length bits)"
+proof -
+  have initial: "collatz_guarded_normalized_word_admitted bits source"
+    using source_word collatz_guarded_word_admitted_iff_temporal_word by blast
+  have repeated: "collatz_guarded_normalized_word_admitted word source"
+    using collatz_guarded_word_repetition_dyadic_cylinder[OF initial]
+      defect by (simp add: word_def)
+  show "collatz_guarded_normalized_word_admitted word source"
+    by (rule repeated)
+  have physical:
+    "collatz_guarded_normalized_word_endpoint word source =
+      (physical_collatz ^^ collatz_physical_ticks word) source"
+    using collatz_guarded_normalized_word_refines_physical[OF repeated]
+    by (simp add: collatz_physical_ticks_def)
+  show "collatz_guarded_normalized_word_endpoint word source =
+      (physical_collatz ^^ (repetitions * collatz_physical_ticks bits)) source"
+    using physical collatz_repeated_word_clock(2)[of repetitions bits]
+    by (simp add: word_def)
+  show "collatz_normalized_clock word =
+      (repetitions * count_list bits True, repetitions * length bits)"
+    using collatz_repeated_word_clock(1)[of repetitions bits]
+    by (simp add: word_def)
+qed
+
 theorem collatz_guarded_word_endpoint_progression:
   assumes admitted: "collatz_guarded_normalized_word_admitted bits source"
   defines "action \<equiv> collatz_joint_dyadic_word bits"
@@ -262,6 +297,7 @@ qed
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms collatz_guarded_word_endpoint_progression
+      collatz_cyclic_source_consumer
       collatz_guarded_word_midpoint_composition
       collatz_6305_mixed_return_clocks
       collatz_6305_mixed_returns_refine_physical}) then ()

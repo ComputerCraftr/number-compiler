@@ -56,6 +56,22 @@ def test_c0_signal_reports_same_time_intersection() -> None:
             assert signal.first(16, 20) is None
 
 
+def test_c0_palindrome_intersection_does_not_build_a_signal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transitions = tuple(((0, 1),) for _ in range(10))
+    with DoubleReverseTerm(196, 64) as term:
+        with term.c0_signal_session(transitions, 1) as signal:
+
+            def forbidden(*_args: object, **_kwargs: object) -> None:
+                pytest.fail("a closed C0 palindrome event built its signal")
+
+            monkeypatch.setattr(c0_signal_session, "periodic_word", forbidden)
+            assert signal.first(16, 20, require_palindrome=True) is None
+            with pytest.raises(ValueError, match="state alphabet"):
+                signal.first(16, 20, inlet=1, require_palindrome=True)
+
+
 def test_c0_signal_consumes_an_already_issued_late_entry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -76,6 +92,26 @@ def test_c0_signal_consumes_an_already_issued_late_entry(
             assert signal.first(72, 1) == 72
             with pytest.raises(ValueError, match="before its admitted source"):
                 signal.first(71, 1)
+
+
+def test_palindrome_demand_issues_late_c0_signal_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transitions = tuple(((0, 1),) for _ in range(10))
+    with DoubleReverseTerm(903939, 128, max_steps=128, max_state_bits=3000) as term:
+        term.endpoint_root()
+        assert term.first_palindrome_within(128) is None
+        entry = term.temporal_engine.source_prefix()
+        assert entry is not None and entry.physical_steps == 72
+        assert entry.palindrome_covered and entry.certified_phase is not None
+        with term.c0_signal_session(transitions, 1) as signal:
+
+            def forbidden() -> None:
+                pytest.fail("late C0 entry was discovered again")
+
+            monkeypatch.setattr(signal, "_prefix", forbidden)
+            assert signal.first(72, 32) == 72
+            assert signal.first(72, 32, require_palindrome=True) is None
 
 
 def test_seed196_low_digit_signal_covers_transient_and_stride_two(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,7 @@ from number_compiler.api.observation_adapters import (
     Packet,
     observation_options,
     publish_observation,
+    publish_views,
 )
 from number_compiler.api.observation_adapters import (
     admit_noop as admit_noop,
@@ -19,6 +21,7 @@ from number_compiler.api.observation_adapters import (
     prepare_noop as prepare_noop,
 )
 from number_compiler.api.observation_types import ObservationId
+from number_compiler.api.observation_views import ObservationView as View
 from number_compiler.api.query_types import DoubleReverseTermQuery
 
 if TYPE_CHECKING:
@@ -28,7 +31,16 @@ if TYPE_CHECKING:
 
 def observe(context: QueryContext, name: ObservationId) -> Packet:
     """Demand either an admitted pointed cylinder or completed endpoint ports."""
-    if name is ObservationId.TEMPORAL_MIXED_ADIC:
+    views = context.views_for(name)
+    if views:
+        return publish_views(
+            context, name, {view: _observe(context, name, view) for view in views}
+        )
+    return _observe(context, name, None)
+
+
+def _observe(context: QueryContext, name: ObservationId, view: View | None) -> Packet:
+    if view is View.MIXED_ADIC:
         from number_compiler.sequences.double_reverse.temporal_mixed_adic_consumer import (
             certified_mixed_adic_packet,
         )
@@ -77,19 +89,27 @@ def observe(context: QueryContext, name: ObservationId) -> Packet:
         return publish_observation(
             context, name, double_reverse_open_ring_packet(payload.term, options)
         )
-    if name is ObservationId.TEMPORAL_DEFECT_CLOCK:
+    if view is View.DEFECT_SAMPLES:
         # QueryContext deliberately emits seed-morphism before other temporal
         # observations. If it has already authenticated and sampled the SAME
         # defect dimensions, reuse the issued payload. Do not build a second
         # source cone or independently reconstruct the temporal quotient.
-        existing = context.cached_information(ObservationId.TEMPORAL_SEED_MORPHISM)
+        existing: Mapping[str, object] | None = None
+        cached = context.cached_information(ObservationId.TEMPORAL_CLOSED_FORM)
+        if cached is not None and is_string_object_mapping(
+            views := cached.get("views")
+        ):
+            source = views.get(View.SOURCE_ACTION.label)
+            if is_string_object_mapping(source) and source.get("status") == "available":
+                source_value = source.get("value")
+                if is_string_object_mapping(source_value):
+                    existing = source_value
         shared: dict[str, object] | None = None
         if options.defect_digits > 0 and options.period_samples > 0 and existing:
             period = existing.get("period_observations")
             power = existing.get("power")
             if (
-                existing.get("status") == "available"
-                and existing.get("seed") == payload.term.seed
+                existing.get("seed") == payload.term.seed
                 and existing.get("target_generation") == payload.term.generation
                 and is_string_object_mapping(period)
                 and period.get("status") == "available"
@@ -125,7 +145,7 @@ def observe(context: QueryContext, name: ObservationId) -> Packet:
         return publish_observation(
             context, name, shared, coordinates=(("target_generation",),)
         )
-    if name is ObservationId.TEMPORAL_SEED_MORPHISM:
+    if view is View.SOURCE_ACTION:
         from number_compiler.sequences.double_reverse.temporal_seed_cli import (
             seed_morphism_cli_packet,
         )
@@ -142,19 +162,62 @@ def observe(context: QueryContext, name: ObservationId) -> Packet:
                 period_max_lag=options.period_max_lag,
                 period_drivers=options.period_drivers,
                 prefix_horizon=options.prefix_horizon,
+                on_morphism=(
+                    context.remember_double_reverse_morphism
+                    if {
+                        View.RESIDUE,
+                        View.RESIDUE_PERIOD,
+                        View.ALTERNATING,
+                    }.intersection(context.request.views)
+                    else None
+                ),
             ),
             coordinates=(
                 ("target_generation",),
                 ("power", "source_prefix_generation"),
             ),
         )
-    if name is ObservationId.TEMPORAL_RESIDUE99:
+    if view is View.RESIDUE:
         from number_compiler.api.bank_observation import double_reverse_residue_packet
 
+        prefix, action = context.double_reverse_residue()
         return publish_observation(
             context,
             name,
-            double_reverse_residue_packet(payload.term),
+            double_reverse_residue_packet(prefix, action),
+            coordinates=(("target_generation",),),
+        )
+    if view is View.RESIDUE_PERIOD:
+        from number_compiler.api.bank_observation import (
+            double_reverse_residue_period_packet,
+        )
+
+        prefix, action = context.double_reverse_residue()
+        return publish_observation(
+            context,
+            name,
+            double_reverse_residue_period_packet(payload.term, prefix, action),
+            coordinates=(("target_generation",),),
+        )
+    if view is View.ALTERNATING:
+        from number_compiler.sequences.double_reverse.temporal_laurent_return import (
+            source_laurent_accumulator_packet,
+        )
+
+        morphism = context.double_reverse_morphism()
+        if morphism is None:
+            prefix, action = context.double_reverse_residue()
+        else:
+            prefix, action = morphism.physical_prefix, morphism.residue_action
+        return publish_observation(
+            context,
+            name,
+            source_laurent_accumulator_packet(
+                payload.term,
+                prefix,
+                action,
+                authenticated_morphism=morphism,
+            ),
             coordinates=(("target_generation",),),
         )
     if name is ObservationId.TEMPORAL_CARRY_SAFETY:

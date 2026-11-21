@@ -30,10 +30,12 @@ from number_compiler.api.observation_types import (
     ObservationId,
     ObservationSpec,
     OptionSpec,
+    OptionValueKind,
     OutputFormat,
     SelectorId,
     option_default,
 )
+from number_compiler.api.observation_views import VIEW_FLAGS, ObservationView, ViewSpec
 from number_compiler.api.query_types import (
     AntihydraVerifyQuery,
     CollatzEventQuery,
@@ -188,8 +190,13 @@ class FamilySpec:
     matrix: MatrixCapability | None = None
     scalar_value: AdapterBinding | None = None
     palindrome_search: bool = False
+    views: tuple[ViewSpec, ...] = ()
 
     def __post_init__(self) -> None:
+        if type(self.views) is not tuple or any(
+            type(view) is not ViewSpec for view in self.views
+        ):
+            raise TypeError("family views must be immutable ViewSpec declarations")
         if type(self.capability) is not FamilyCapability:
             raise TypeError("family specification requires a FamilyCapability")
         if type(self.query_type) is not type or not is_dataclass(self.query_type):
@@ -468,6 +475,50 @@ class FamilySpec:
             ):
                 raise QueryOptionError(field_name, error)
 
+    def view_options(self) -> dict[str, OptionSpec]:
+        options: dict[str, OptionSpec] = {}
+        for category, flag in VIEW_FLAGS.items():
+            choices = tuple(
+                dict.fromkeys(
+                    view.view.label for view in self.views if view.category is category
+                )
+            )
+            if choices:
+                name = flag.replace("-", "_")
+                options[name] = OptionSpec(
+                    None,
+                    (category,),
+                    name=name,
+                    choices=choices,
+                    value_kind=OptionValueKind.REPEATED_CHOICE,
+                    help=f"view of --info {category}; repeat to select more than one",
+                )
+        return options
+
+    def selected_views(
+        self,
+        selector: SelectorId,
+        information: tuple[ObservationId, ...],
+        selections: tuple[ObservationView, ...],
+    ) -> tuple[ObservationView, ...]:
+        admitted = tuple(
+            spec
+            for spec in self.views
+            if spec.selector is selector and spec.category in information
+        )
+        if any(type(view) is not ObservationView for view in selections):
+            raise TypeError("observation views require typed identities")
+        if set(selections) - {spec.view for spec in admitted}:
+            raise ValueError("an observation view is unavailable for this selector")
+        result = list(dict.fromkeys(selections))
+        requested = {view.category for view in result}
+        result.extend(
+            spec.view
+            for spec in admitted
+            if spec.default and spec.category not in requested
+        )
+        return tuple(result)
+
     def validate_request(
         self, request: QueryRequest, specified: frozenset[str]
     ) -> None:
@@ -533,6 +584,25 @@ class FamilySpec:
             ):
                 raise ValueError(
                     f"--{name.replace('_', '-')} ({name}) requires its matching --info"
+                )
+        selected_view_options = {
+            option
+            for view in self.views
+            if view.view in request.views and view.selector is request.selector
+            for option in view.options
+        }
+        for option_name in sorted(
+            specified & {option for view in self.views for option in view.options}
+        ):
+            scoped = {
+                view.category for view in self.views if option_name in view.options
+            }
+            option = self.parser_options()[option_name]
+            if option_name not in selected_view_options and not (
+                info & (set(option.information) - scoped)
+            ):
+                raise ValueError(
+                    f"{option.flag} requires a compatible observation view"
                 )
         self._validate_clock_budget(request)
         self._validate_candidate_budget(request)

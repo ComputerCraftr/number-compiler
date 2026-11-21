@@ -13,6 +13,176 @@ carry and scheduler improvements into the existing query owners.
 
 ## Changes
 
+### NC41 reconciliation
+
+The port starts from `02fefff9`. The guarded baseline selection recorded
+1,585 passes and two existing compact comma admission failures. Performance
+comparisons use the same baseline source and exact receiving queries.
+
+- The C0 and upper-band donors overlap on reflected-H transport. Reversal
+  keeps the latest packed producer and admits the palindrome scan only on
+  event demand. Reusable Q19 checkpoints retain exact source-qualified
+  continuations under the receiving owner's scratch budget.
+- The Antihydra nonretaining leaf combines the live repeat probe with the
+  bounded eight-step sheet. The upper affine action projects the value.
+  Its lower support graph still owns source admission and ordered safety.
+  The NC31 donor contributes a finite guard projection through the existing
+  arithmetic owner. An unavailable fractional guard remains incomplete.
+- The Collatz donors contribute bounded cyclic rows before scalar discovery
+  and a single demanded carry evaluator for the simultaneous event. Complete
+  repeat copies use the defect certificate. The exact executor handles the
+  remaining ticks.
+- Prime retains the short-relative scan and reduces progression rank only
+  over its certified consecutive prime prefix. The power-number consumers
+  share an ordered affine response and retain their distinct source guards.
+- The CLI registry groups residue, clock, accumulator and closed-form
+  results by view. The 2rev10 residue, period and Laurent views share one
+  issued source action when the selected endpoint agrees. A residue-only
+  request builds neither the period walk nor the accumulator.
+
+### NC41 validation and measured work
+
+These are development runs against Git `02fefff9` with the integration
+changes in the working tree. The guarded default suite
+`results/nc41-final-units` completed in 230.05 seconds under the 300-second
+limit. Collection took 13.94 seconds. Peak aggregate memory was 465.8 MiB
+and descendant cleanup was confirmed. The suite
+recorded 13,049 passes and six failures from missing global comma admission.
+The affected-family selection
+`20261121T034922Z-8054e1e0f74341bc86a747d32261dee1` passed all 3,575 tests.
+The guarded P0 run `20261121T034027Z-4bd8d3cb89774cf39626e5f85d9a3d56`
+recorded 75 passes and 15 failures across comma admission, Antihydra
+non-halting, and the Fermat and Mersenne prime-bit obligations. The same
+15 cases failed in the fresh detached baseline at `02fefff9`.
+
+Strict Pyright covered all 2,572 maintained Python files in 103 serial
+batches with zero diagnostics. Strict mypy, Ruff, formatting,
+dependency consistency, source policy, and documentation checks passed.
+The built wheel passed independent installed CLI checks for prime,
+2rev10, Collatz, and Antihydra. The official package gate still requires
+the admitted global comma future. The proof index still reports an
+unsupported comma dependency-audit invocation.
+
+The combined native run `20261121T033725Z-26d18c69ed454452bdeed65358e7c8ef`
+rebuilt `Temporal_Clock_Jumps` in 39 seconds. The Fermat affine row and
+Mersenne two-child lift passed with the theorem-oracle audit active. The
+combined run reused the other requested heaps. Earlier focused builds rebuilt
+`Double_Reverse_Temporal_Refinement` in 199 seconds,
+`Collatz_Cylinder_Refinement` in 41 seconds, `Antihydra` in 25 seconds, and
+`Prime_Selection_Initialization` in 8 seconds.
+
+Five interleaved matched trials compared identical successful results with
+the baseline. The performance claims apply to these receiving workloads.
+
+| Workload | Baseline median | Integrated median | Executed work |
+| --- | ---: | ---: | --- |
+| Q19 receiving horizon 532 after priming 1,024 | 1.65 ms | 0.12 ms | 520 → 8 physical transitions |
+| Prime progression through 1,000,000, modulus 16 and residue 3 | 171.64 ms | 78.11 ms | 42,071 → 16,634 memo states |
+| Mersenne exponent 31, 128 trace ticks, decimal place 8 | 9.19 ms | 7.28 ms | 18 → 11 trace power calls |
+| Collatz simultaneous carry event, odd headroom 128 | 0.95 ms | 0.28 ms | One ordered source fold, earliest hit 128 |
+| Antihydra return 3,072, embedded cache bypass | 6.78 ms | 3.52 ms | Exact value matched the warmed query |
+| 2rev10 generation 512 with residue, period and accumulator | 168.77 ms | 162.20 ms | One shared source admission |
+
+Ordinary fresh CLI results matched across all six measured families. Their
+query CPU medians were within 3.3 ms of the baseline with variable startup
+times. The Q19 and prime progression results measure specific reuse and
+rank paths.
+
+### Guarded carry and checkpoint follow-up
+
+The live Fermat matrix authenticates its source once per ordered batch,
+checks the CRT and radial ports at each checkpoint, and reuses the matrix's
+computed endpoint residues. The binary SLP join folds the signed high and
+low components in one pass and keeps the canonical minus-one residue.
+`Temporal_Clock_Jumps` rebuilt in 38 seconds with the source, congruence and
+canonical-range theorems. The matched nine-checkpoint probe cut source
+authentications from 18 to one and the median from 70.79 ms to 3.95 ms.
+At width 1,024, 300 signed joins took 0.321 ms with the generic fold and
+0.255 ms with the direct fold.
+
+The bounded Fermat fixed-multiplier halo now publishes through
+`temporal.matrix` with kind `negacyclic`. It authenticates the selected
+exact exponent root, then computes the endpoint residue and wrap quotient
+bits together. `results/nc41-phase3-fermat-proof-8` rebuilt
+`Temporal_Clock_Jumps` in 63 seconds with the packed quotient, signed inlet
+and source endpoint theorems. The guarded `results/nc41-phase3-cli-focused`
+development run passed 159 tests, including the public 4,096-tick endpoint
+and the lazy ordinary-matrix and metrics routes. The wrap is relative to the
+canonical source residue. Raw unreduced carry, cyclic motif discovery and
+primality remain separate obligations.
+
+The reflected SLP publisher now searches the demanded zero edges without
+walking a nonzero grammar interior. The even `2rev10` emission uses both
+edge counts for a single slice before the final multiply. The registered
+`Double_Reverse_Temporal_Refinement` session passed in 169 seconds in
+`results/nc41-reflected-native-endpoints-2`. It checked decimal inlet packing,
+ordered carry seams, padding normalization, and the exact odd and even
+physical endpoints for both multipliers. Five interleaved fresh-process
+trials per workload matched all endpoint hashes and widths. The SLP
+publisher was 2–47% slower on the measured 3-, 135- and 800-digit sources at
+128–257 ticks. Automatic dispatch retains the existing publisher.
+
+The `5rev10` adapter uses packed pairs from the authenticated receiving value
+for spans of at least 1,024 ticks on uncapped ledgers, after the padded-cone
+selection. It checks the original state-bit bound at each physical tick and
+reports executed pairs separately from logical digit counts. The registered
+`Five_Reverse` build in `results/nc41-packed-five-native-budget-final`
+finished in 126 seconds. It checked the whole-word masks, normalization,
+pair result, first refusal, BCD preservation, bit-width bounds and physical
+odd reflection. Differential tests cover the runtime's lexicographic prefix
+check using the proved interval bounds. The guarded
+`results/nc41-packed-live-adversarial.log` matched 6,012 exact values, first
+refusals and work-counter cases against literal stepping.
+
+Five-trial public query comparisons matched all 150 CLI values at 16, 64,
+256, 1,024 and 4,096 ticks on seeds 73 and 196. At 4,096 ticks, cold medians
+fell from 166.40 to 133.25 ms and from 161.74 to 135.10 ms. Warm and cache
+bypass medians fell by about 84%. At 1,024 ticks, warm and bypass medians
+fell by about 60% and cold medians were within 0.4% of baseline. The short
+requests still use the scalar route.
+
+The broader `results/nc41-reversal-fermat-guarded` selection passed 1,286
+tests in 23.43 seconds under the guard. This covered the shared carry
+arithmetic, both reversal families, local reflected transitions and the
+Fermat CLI.
+
+After the packed CLI cutover, the guarded default suite
+`results/nc41-packed-live-full-units` finished in 236.77 seconds, including
+14.24 seconds of collection, with 457.0 MiB peak aggregate memory and
+confirmed descendant cleanup. It recorded 13,198 passes. The six failed
+test nodes matched the prior missing-global-comma failures exactly.
+Strict mypy, the affected Pyright batch, Ruff, formatting, source policy,
+documentation and dependency checks passed. An isolated wheel installation
+matched the packed `5rev10` value and counters and the Fermat halo output in
+`results/nc41-packed-live-installed-final.log`. The full wheel gate still
+requires the global comma future asset.
+
+`temporal.carry-bellman` now reports the corrected Collatz ×3 lane alongside
+the homogeneous event. The same ordered fold serves both result fields.
+The exact dyadic headroom determines the correction to the carry at each
+cut. The terminal numerator retains the moving subtraction. The physical
+endpoint and carry theorems rebuilt in `Collatz_Cylinder_Refinement` in
+27 seconds. A cold query-CPU probe against `02fefff9` measured 196 ms
+before and 209 ms with the additional corrected result.
+
+The demanded Antihydra ledger guard now returns the exact empty fractional
+interval for every authenticated source-7 horizon of at least two. The
+two-step interval collapse removes the need to replay a longer source.
+`Mahler_Source_Transport` rebuilt in 11 seconds, after its safety
+prerequisite rebuilt. The arithmetic first-failure calculation still
+describes the physical ledger.
+
+The guarded affected-family selection in `results/nc41-phase2-affected`
+passed all 2,272 tests. It includes the corrected carry event at the
+function and CLI boundaries, the complete longer fractional guard, and
+the checkpoint and signed-phase regression suites.
+The earlier P0 run reproduced the baseline's 75 passes and 15 failures.
+Strict mypy,
+four serial changed-file Pyright batches, Ruff, formatting, source
+policy and documentation passed.
+
+### Earlier ports in the same sprint
+
 - Shared dyadic carry observations transport the full inlet through disjoint
   intervals, then reduce at the requested cuts. A single subtraction provides
   the internal borrow bits. The highest outlet uses the full-window underflow.
@@ -184,7 +354,7 @@ in 32.47 seconds. The regressions count one orientation construction per
 field, one mod-198 fold per Mahler exterior segment, and one Antihydra tape
 projection and field assembly per combined request.
 
-The final default unit run
+The earlier default unit run
 `20261121T002919Z-7628ca3afc754936a14668cef46d59dd` completed in 235.60 seconds
 under the guard and peaked at 439.7 MiB. It recorded 12,913 passes and the six
 existing global comma admission failures. Strict mypy, the affected Pyright

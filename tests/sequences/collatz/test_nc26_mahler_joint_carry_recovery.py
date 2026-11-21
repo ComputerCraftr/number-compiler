@@ -317,43 +317,22 @@ def test_issued_future_carry_bellman_reuses_period_and_checks_headroom(
         BlockContextBudgetExceeded,
     )
     from number_compiler.resources.ledger import ResourceLedger
-    from number_compiler.sequences.collatz import future_carry_bellman
 
     source = (1 << 20) - 1
     port = _source_window(source, 0, 1).mahler_future_carry_port()
-    from collections.abc import Callable
+    from number_compiler.arithmetic.carry.carry_normalization import RadixCarryBlock
 
-    from number_compiler.arithmetic.fields.dyadic_unit_phase import (
-        DyadicCarryFrontier,
-        DyadicUnitPhase,
-        dyadic_carry_frontier,
-    )
+    consumed_inlets: list[int] = []
+    original = RadixCarryBlock.outgoing_carry
 
-    phase_ticks: list[int] = []
+    def counted_inlet(block: RadixCarryBlock, incoming: int) -> int:
+        consumed_inlets.append(incoming)
+        return original(block, incoming)
 
-    def counted_frontier(
-        phase: DyadicUnitPhase,
-        source: int,
-        offset: int,
-        positions: tuple[int, ...],
-        *,
-        carry_width: int,
-        reserve_bits: Callable[[int], None],
-    ) -> DyadicCarryFrontier:
-        phase_ticks.append(phase.phase)
-        return dyadic_carry_frontier(
-            phase,
-            source,
-            offset,
-            positions,
-            carry_width=carry_width,
-            reserve_bits=reserve_bits,
-        )
-
-    monkeypatch.setattr(future_carry_bellman, "dyadic_carry_frontier", counted_frontier)
+    monkeypatch.setattr(RadixCarryBlock, "outgoing_carry", counted_inlet)
     ledger = ResourceLedger()
     assert port.first_simultaneous_even_carries((21,), horizon=20, ledger=ledger) == 2
-    assert len(phase_ticks) == 4
+    assert len(consumed_inlets) == 4
     assert ledger.entries == ledger.nodes == 0
     with pytest.raises(ValueError, match="headroom"):
         port.first_simultaneous_even_carries((21,), horizon=21, ledger=ledger)

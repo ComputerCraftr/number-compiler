@@ -8,6 +8,118 @@ recurrence. These facts describe the source and the one-step Cayley--Hamilton
 identity; they do not authorize primality conclusions or assume that a
 candidate group-order exponent is valid.\<close>
 
+fun mersenne_trace_gradient :: "nat \<Rightarrow> int \<Rightarrow> int" where
+  "mersenne_trace_gradient 0 x = 1"
+| "mersenne_trace_gradient (Suc n) x =
+    2 * (lucas_trace_step ^^ n) x * mersenne_trace_gradient n x"
+
+lemma mersenne_trace_child_gradient:
+  fixes base block x digit :: int
+  assumes divides: "base dvd block"
+  shows "(lucas_trace_step ^^ n) (x + digit * block) mod (base * block) =
+    ((lucas_trace_step ^^ n) x +
+      digit * block * mersenne_trace_gradient n x) mod (base * block)"
+  using divides
+proof (induction n)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  let ?y = "(lucas_trace_step ^^ n) x"
+  let ?g = "mersenne_trace_gradient n x"
+  let ?v = "(lucas_trace_step ^^ n) (x + digit * block)"
+  let ?M = "base * block"
+  have square_vanish: "?M dvd (digit * block * ?g)^2"
+  proof -
+    obtain k where block: "block = base * k" using Suc.prems by (auto elim: dvdE)
+    have "(digit * block * ?g)^2 = ?M * (digit^2 * k * ?g^2)"
+      unfolding block by (simp add: power2_eq_square algebra_simps)
+    then show ?thesis by auto
+  qed
+  have square_identity: "\<And>a z::int. (a+z)^2 = (a^2 + 2*a*z) + z^2"
+  proof -
+    fix a z :: int
+    show "(a+z)^2 = (a^2 + 2*a*z) + z^2"
+      by (simp add: power2_eq_square algebra_simps mult_2 mult.commute)
+  qed
+  have square_expansion:
+    "(?y + digit * block * ?g)^2 =
+      (?y^2 + digit * block * (2 * ?y * ?g)) +
+        (digit * block * ?g)^2"
+    using square_identity[of ?y "digit * block * ?g"]
+    by (simp add: algebra_simps)
+  have zero: "(digit * block * ?g)^2 mod ?M = 0"
+    using square_vanish by simp
+  have cancel:
+    "((?y^2 + digit * block * (2 * ?y * ?g)) +
+      (digit * block * ?g)^2) mod ?M =
+      ((?y^2 + digit * block * (2 * ?y * ?g)) + 0) mod ?M"
+    by (rule mod_add_cong[OF refl]) (simp add: zero)
+  have square:
+    "(?y + digit * block * ?g)^2 mod ?M =
+      (?y^2 + digit * block * (2 * ?y * ?g)) mod ?M"
+    using square_expansion cancel by simp
+  have previous: "?v mod ?M = (?y + digit * block * ?g) mod ?M"
+    by (rule Suc.IH[OF Suc.prems])
+  have congruent: "?v^2 mod ?M = (?y + digit * block * ?g)^2 mod ?M"
+    by (simp only: power2_eq_square; rule mod_mult_cong[OF previous previous])
+  have next_square:
+    "(?v^2 - 2) mod ?M =
+      ((?y + digit * block * ?g)^2 - 2) mod ?M"
+    by (rule mod_diff_cong[OF congruent refl])
+  also have "\<dots> = (?y^2 + digit * block * (2 * ?y * ?g) - 2) mod ?M"
+    by (rule mod_diff_cong[OF square refl])
+  finally have next_result:
+    "(?v^2 - 2) mod ?M =
+      (?y^2 + digit * block * (2 * ?y * ?g) - 2) mod ?M" .
+  have selected_step:
+    "(lucas_trace_step ^^ Suc n) (x + digit * block) = ?v^2 - 2"
+    by (simp only: funpow.simps(2) comp_apply lucas_trace_step_def
+        power2_eq_square)
+  have source_step: "(lucas_trace_step ^^ Suc n) x = ?y^2 - 2"
+    by (simp only: funpow.simps(2) comp_apply lucas_trace_step_def
+        power2_eq_square)
+  show ?case
+    using next_result
+    by (simp only: selected_step source_step mersenne_trace_gradient.simps;
+        simp add: algebra_simps)
+qed
+
+theorem mersenne_trace_two_child_affine:
+  fixes base block x digit :: int
+  assumes divides: "base dvd block"
+  shows "(lucas_trace_step ^^ n) (x + digit * block) mod (base * block) =
+    ((lucas_trace_step ^^ n) x + digit *
+      ((lucas_trace_step ^^ n) (x + block) - (lucas_trace_step ^^ n) x))
+      mod (base * block)"
+proof -
+  let ?M = "base * block"
+  let ?y = "(lucas_trace_step ^^ n) x"
+  let ?g = "mersenne_trace_gradient n x"
+  have first:
+    "(lucas_trace_step ^^ n) (x + block) mod ?M = (?y + block * ?g) mod ?M"
+    using mersenne_trace_child_gradient[OF divides, of n x 1] by simp
+  have difference:
+    "((lucas_trace_step ^^ n) (x + block) - ?y) mod ?M = (block * ?g) mod ?M"
+  proof -
+    have "((lucas_trace_step ^^ n) (x + block) - ?y) mod ?M =
+        ((?y + block * ?g) - ?y) mod ?M"
+      by (rule mod_diff_cong[OF first refl])
+    then show ?thesis by simp
+  qed
+  have scaled:
+    "(digit * ((lucas_trace_step ^^ n) (x + block) - ?y)) mod ?M =
+      (digit * (block * ?g)) mod ?M"
+    by (rule mod_mult_cong[OF refl difference])
+  have linear:
+    "(?y + digit * ((lucas_trace_step ^^ n) (x + block) - ?y)) mod ?M =
+      (?y + digit * (block * ?g)) mod ?M"
+    by (rule mod_add_cong[OF refl scaled])
+  show ?thesis
+    using mersenne_trace_child_gradient[OF divides, of n x digit] linear
+    by (simp add: mult.assoc)
+qed
+
 definition mersenne_trace_source_residue :: "nat \<Rightarrow> nat \<Rightarrow> nat"
     where
   "mersenne_trace_source_residue modulus exponent =
@@ -355,7 +467,8 @@ corollary checked_mersenne_dyadic_matrix_power_reduction:
       [OF period_positive period_checked])
 
 ML \<open>
-  val checked = @{thms mersenne_trace_source_residue_power_form
+  val checked = @{thms mersenne_trace_child_gradient mersenne_trace_two_child_affine
+    mersenne_trace_source_residue_power_form
     mersenne_matrix2_determinant_square_iterate
     mersenne_companion_trace_square
     mersenne_matrix2_determinant_one_trace_squaring

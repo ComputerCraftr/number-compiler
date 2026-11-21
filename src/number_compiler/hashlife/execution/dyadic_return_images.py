@@ -1,11 +1,4 @@
-"""Law-parameterized bounded source images for dyadic return systems.
-
-The branch word of ``n`` dyadic returns is determined by the low ``n`` source bits.  This module keeps that fact local to the source-bound scheduler:
-bounded leaves compose memoized residue macros, while images retain an exact
-affine skew transfer and chronological support. Equal admitted source cylinders
-share complete effects under transported occurrence bindings. Unmatched source
-discovery still costs linear work in the requested physical extent.
-"""
+"""Law-parameterized bounded source images for dyadic return systems."""
 
 from __future__ import annotations
 
@@ -71,6 +64,7 @@ class DyadicReturnImageWorkspace(
     SUPPORT_KIND = "dyadic-return-support"
     IMAGE_KIND = "dyadic-return-image"
     MAX_LEAF_STEPS = 64
+    MAX_TRANSIENT_FOLD_STEPS = MAX_LEAF_STEPS
 
     def __init__(
         self, ledger: ResourceLedger, seed: int, steps: int, law: DyadicReturnLaw
@@ -371,6 +365,12 @@ class DyadicReturnImageWorkspace(
 
     def bump_metric(self, suffix: str, amount: int = 1) -> None:
         self.ledger.bump(f"{self.counter_prefix}_{suffix}", amount)
+
+    def transient_leaf_effect(
+        self, width: int, residue: int
+    ) -> DyadicReturnSupportRecord | None:
+        """Offer an exact bounded family fold for a nonretained child."""
+        return None
 
     def retain_chronological_support(self) -> bool:
         """Whether complete composite publication retains its support tree."""

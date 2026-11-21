@@ -28,6 +28,7 @@ from number_compiler.api.observation_types import (
 from number_compiler.api.observation_types import (
     OutputFormat as OutputFormatId,
 )
+from number_compiler.api.observation_views import select_views
 from number_compiler.api.query_types import (
     DoubleReverseTermQuery,
     ExecutionQuery,
@@ -208,6 +209,10 @@ def _add_family_options(command: argparse.ArgumentParser, spec: FamilySpec) -> N
             metavar="PATH",
         )
     _add_information_option(command, spec)
+    for option in spec.view_options().values():
+        command.add_argument(
+            option.flag, action="append", choices=option.choices, help=option.help
+        )
     _add_presentation_options(command)
     for name, option in spec.parser_options().items():
         if not option.name:
@@ -415,7 +420,12 @@ def _request_from_args(
             else None
         )
         request = QueryRequest(
-            execution, presentation, observations, max_index_bits, matrix
+            execution,
+            presentation,
+            observations,
+            max_index_bits,
+            matrix,
+            select_views(spec.views, selector, observations.info, vars(args)),
         )
     except QueryOptionError as exc:
         flag = spec.option_flag(

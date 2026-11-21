@@ -230,7 +230,7 @@ lemma distinct_safe_candidates_in_cell_impossible:
 proof -
   have positive: "0 < y-x" using order by linarith
   obtain n :: nat where large: "(1/2)/(y-x) < (3/2::real)^n"
-    using real_arch_pow[of "3/2" "(1/2)/(y-x)"] by auto
+    using arch_pow[of "3/2::real" "(1/2)/(y-x)"] by auto
   have growth: "1/2 < (y-x)*(3/2)^n"
     using large positive by (simp add: pos_divide_less_eq algebra_simps)
   have X: "of_nat (mahler_orbit D n) \<le> x*(3/2)^n"

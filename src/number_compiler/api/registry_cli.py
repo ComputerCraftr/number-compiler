@@ -23,6 +23,8 @@ def family_listing() -> tuple[str, ...]:
         lines.append(
             f"{family}: --nth N ({spec.unit}); info: {', '.join(spec.nth_info)}"
         )
+        for option in spec.view_options().values():
+            lines.append(f"  {option.flag} {'|'.join(option.choices)}")
         lines.append("  --nth-power10 K (exact index 10^K, K >= 0)")
         if spec.event_query_type is not None:
             lines.append(

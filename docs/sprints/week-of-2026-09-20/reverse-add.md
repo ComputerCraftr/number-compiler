@@ -20,7 +20,7 @@ Rejected proposals and withdrawn findings remain in their original records.
 
 ## Validation provenance
 
-Original dates, fingerprints, commands, outcomes and raw evidence paths are preserved below. An exact day is not inferred when only the weekly context was recorded.
+Original dates, fingerprints, commands, outcomes and raw evidence paths are preserved below. An exact day is not inferred when only the weekly context was recorded. The commands describe the recorded environment. Use the [current validation guide](../../development.md) for runnable checks.
 
 ## Remaining work
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from operator import add, mul
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.automata.affine_port_action import AffinePortAction
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
@@ -17,6 +18,9 @@ from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnLaw,
     DyadicReturnSupportID,
     DyadicReturnSupportRecord,
+)
+from number_compiler.hashlife.execution.dyadic_upper_band import (
+    certified_lower_upper_action,
 )
 
 if TYPE_CHECKING:
@@ -177,6 +181,59 @@ def _balanced_residue_build(
         tuple[int, int], tuple[DyadicReturnSupportRecord, DyadicReturnSupportID | None]
     ] = {}
     MAX_MEMO = 64
+    upper_memo: dict[AffinePortAction, AffinePortAction] = {}
+
+    def upper_band_transport(
+        lower: DyadicReturnSupportRecord, source: int, after_width: int
+    ) -> int:
+        """Apply a projected response after authenticating the lower seam."""
+        cut = lower.width
+        if source.bit_length() <= cut:
+            return transport_low(workspace, lower.transfer, source, after_width)
+        action = certified_lower_upper_action(
+            lower, low_bits(source, cut), cut=cut, demand_width=after_width
+        )
+        workspace.bump_metric("upper_band_action_lookups")
+        retained = upper_memo.get(action)
+        if retained is None:
+            workspace.bump_metric("upper_band_action_misses")
+            if len(upper_memo) >= 64:
+                oldest = next(iter(upper_memo))
+                del upper_memo[oldest]
+                workspace.ledger.release(
+                    workspace.balanced_stack_owner, entries=1, nodes=3
+                )
+                workspace.bump_metric("upper_band_action_evictions")
+            try:
+                workspace.ledger.reserve(
+                    workspace.balanced_stack_owner, entries=1, nodes=3
+                )
+            except BlockContextBudgetExceeded:
+                workspace.bump_metric("upper_band_action_uncached")
+            else:
+                try:
+                    upper_memo[action] = action
+                except BaseException:
+                    workspace.ledger.release(
+                        workspace.balanced_stack_owner, entries=1, nodes=3
+                    )
+                    raise
+        else:
+            action = retained
+            workspace.bump_metric("upper_band_action_hits")
+        workspace.bump_metric("upper_band_action_applications")
+        workspace.bump_metric(
+            "transport_operand_bits",
+            max(
+                1,
+                cut,
+                after_width,
+                source.bit_length(),
+                lower.transfer.upper.bit_length(),
+                abs(lower.transfer.offset).bit_length(),
+            ),
+        )
+        return action.apply(source >> cut)
 
     def remember(
         result: tuple[DyadicReturnSupportRecord, DyadicReturnSupportID | None],
@@ -270,7 +327,11 @@ def _balanced_residue_build(
                 current_result = cached
                 workspace.bump_metric("balanced_effect_memo_hits")
                 workspace.bump_metric("reused_temporal_extent", span)
-            elif span <= workspace.MAX_LEAF_STEPS:
+            elif span <= (
+                workspace.MAX_LEAF_STEPS
+                if retain
+                else workspace.MAX_TRANSIENT_FOLD_STEPS
+            ) and (span != width or width <= workspace.MAX_LEAF_STEPS):
                 workspace.bump_metric("balanced_effect_memo_misses")
                 if retain:
                     identity = residue_macro(workspace, span, source, retain_cache=True)
@@ -279,8 +340,15 @@ def _balanced_residue_build(
                         identity,
                     )
                 else:
+                    transient = workspace.transient_leaf_effect(span, source)
+                    if transient is None and span > workspace.MAX_LEAF_STEPS:
+                        push(span, source, None)
+                        span, source = _first_half_residue(span, source)
+                        continue
                     current_result = (
-                        finite_residue_effect(
+                        transient
+                        if transient is not None
+                        else finite_residue_effect(
                             workspace, span, source, retain_cache=True
                         ),
                         None,
@@ -302,9 +370,7 @@ def _balanced_residue_build(
                 if left is None:
                     push(parent_span, parent_source, result)
                     span = parent_span - result[0].width
-                    source = transport_low(
-                        workspace, result[0].transfer, parent_source, span
-                    )
+                    source = upper_band_transport(result[0], parent_source, span)
                     break
                 right = result
                 left_node, left_id = left
@@ -362,20 +428,36 @@ def _balanced_residue_build(
             else:
                 return result
     finally:
-        if not keep_memo:
-            clear_finite_support_cache(workspace)
-        pending = len(stack)
-        if pending:
-            stack.clear()
-            workspace.ledger.release(
-                workspace.balanced_stack_owner, entries=pending, nodes=pending
-            )
-        retained = len(memo)
-        if retained:
-            memo.clear()
-            workspace.ledger.release(
-                workspace.balanced_stack_owner, entries=retained, nodes=retained
-            )
+        try:
+            if not keep_memo:
+                clear_finite_support_cache(workspace)
+        finally:
+            try:
+                pending = len(stack)
+                if pending:
+                    stack.clear()
+                    workspace.ledger.release(
+                        workspace.balanced_stack_owner, entries=pending, nodes=pending
+                    )
+            finally:
+                try:
+                    retained = len(memo)
+                    if retained:
+                        memo.clear()
+                        workspace.ledger.release(
+                            workspace.balanced_stack_owner,
+                            entries=retained,
+                            nodes=retained,
+                        )
+                finally:
+                    upper_retained = len(upper_memo)
+                    if upper_retained:
+                        upper_memo.clear()
+                        workspace.ledger.release(
+                            workspace.balanced_stack_owner,
+                            entries=upper_retained,
+                            nodes=3 * upper_retained,
+                        )
 
 
 def balanced_residue_effect(

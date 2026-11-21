@@ -20,6 +20,7 @@ from number_compiler.api.observation_adapters import (
     prepare_noop as prepare_noop,
 )
 from number_compiler.api.observation_types import ObservationId, OutputStatus
+from number_compiler.api.observation_views import ObservationView as View
 from number_compiler.api.query_types import FiveReverseTermQuery
 from number_compiler.api.reverse_payloads import FiveReverseTermPayload
 
@@ -29,7 +30,10 @@ if TYPE_CHECKING:
 
 
 def observe(context: QueryContext, name: ObservationId) -> dict[str, JsonValue]:
-    from number_compiler.api.observation_adapters import publish_observation
+    from number_compiler.api.observation_adapters import (
+        publish_observation,
+        publish_views,
+    )
     from number_compiler.sequences.five_reverse.ports import source_residue45
 
     options = context.request.observations
@@ -39,17 +43,32 @@ def observe(context: QueryContext, name: ObservationId) -> dict[str, JsonValue]:
     if not isinstance(query, FiveReverseTermQuery):
         raise TypeError("five-reversal observer received a foreign query")
     if name is ObservationId.ARITHMETIC_MODULAR:
-        return publish_observation(
-            context,
-            name,
-            {
-                "modulus": options.modulus,
-                "residue": source_residue45(query.seed, query.index) % options.modulus,
-                "source_index": context.request.presentation_index,
-                "clock_unit": "physical-recurrence-ticks",
-                "execution_authority": False,
-            },
-        )
+        packets: dict[View, dict[str, JsonValue]] = {}
+        for view in context.views_for(name):
+            if view is View.ENDPOINT_RESIDUE:
+                packet: dict[str, object] = {
+                    "modulus": options.modulus,
+                    "residue": source_residue45(query.seed, query.index)
+                    % options.modulus,
+                    "source_index": context.request.presentation_index,
+                    "execution_authority": False,
+                }
+            else:
+                from number_compiler.sequences.five_reverse.quotients import (
+                    MovingCutBudgetExceeded,
+                )
+
+                try:
+                    packet = _digit_field(
+                        context, query, options.arithmetic_modular_places
+                    )
+                except MovingCutBudgetExceeded as exc:
+                    packet = {
+                        "status": OutputStatus.UNAVAILABLE.value,
+                        "reason": str(exc),
+                    }
+            packets[view] = publish_observation(context, name, packet)
+        return publish_views(context, name, packets)
     if name is ObservationId.TEMPORAL_BANK:
         payload = context.term.payload
         if not isinstance(payload, FiveReverseTermPayload):
@@ -57,20 +76,20 @@ def observe(context: QueryContext, name: ObservationId) -> dict[str, JsonValue]:
         return publish_observation(
             context, name, asdict(payload.term.source_transfer(0))
         )
-    if name in {ObservationId.TEMPORAL_DIGIT_FIELD, ObservationId.TEMPORAL_CLOSED_FORM}:
+    if name is ObservationId.TEMPORAL_CLOSED_FORM:
         from number_compiler.sequences.five_reverse.quotients import (
             MovingCutBudgetExceeded,
         )
 
         try:
-            packet = (
-                _digit_field(context, query, options.temporal_digit_field_places)
-                if name is ObservationId.TEMPORAL_DIGIT_FIELD
-                else _closed_form(context, query, options)
-            )
+            result = _closed_form(context, query, options)
         except MovingCutBudgetExceeded as exc:
-            packet = {"status": OutputStatus.UNAVAILABLE.value, "reason": str(exc)}
-        return publish_observation(context, name, packet)
+            result = {"status": OutputStatus.UNAVAILABLE.value, "reason": str(exc)}
+        return publish_views(
+            context,
+            name,
+            {View.CLOSED_ENDPOINT: publish_observation(context, name, result)},
+        )
     raise ValueError(f"unsupported five-reversal observation: {name}")
 
 

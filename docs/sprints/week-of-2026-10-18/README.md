@@ -6,12 +6,13 @@ Period: 2026-10-18 through 2026-10-24 (Sunday–Saturday).
 
 ## Current status — 2026-10-25
 
-The complete default Python suite passes. The Colima Linux selection, scoped
-Python quality checks, generic guarded source-action session, and
-production source graph session pass. Concrete `B1_Instance` selector
-normalization remains unaccepted; the symbolic rank probe is discovery evidence
-only. The forest/fuel patch remains unapplied and its artifact registry empty.
-Current receipts and measurements belong only to the
+On October 25, the complete default Python suite passed. The Colima Linux
+selection, scoped Python quality checks, generic guarded source-action session,
+and production source graph session also passed. At that point, concrete
+`B1_Instance` selector normalization had not been accepted. The symbolic rank
+probe supplied discovery evidence, and the forest/fuel patch and artifact
+registry remained unapplied and empty respectively.
+Receipts and measurements for that snapshot belong to the
 [topic record](strict-toolchain-macro-identities.md); the
 [release status](../../release-status.md) records the gates without repeating
 run counts.

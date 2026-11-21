@@ -12,11 +12,12 @@ weakening source, lifecycle, arithmetic, or performance assertions.
 
 ## Current status — 2026-10-26
 
-This is the current development snapshot for the dirty checkout based on
-`f33a96c0a34491d33361ad5b6e92781a82850a72`; it is not clean-commit release
-acceptance. Current receipts and timings are recorded here once.
+This October 26 development snapshot records the dirty checkout based on
+`f33a96c0a34491d33361ad5b6e92781a82850a72`. The receipts and timings below
+apply to that source and run. Consult the [current release status](../../release-status.md)
+for the current checkout.
 
-| Gate | Current result | Evidence and limit |
+| Gate | October 26 result | Evidence and limit |
 | --- | --- | --- |
 | Full default Python suite | PASS | Final native and Colima full selections meet the 300-second limit; [current runtime evidence](#adversarial-identity-lifecycle-and-source-analysis-audit--2026-10-26) |
 | Colima Linux full suite | PASS | Full default selection passed; temporary environment cleaned up. [Current Linux evidence](#adversarial-identity-lifecycle-and-source-analysis-audit--2026-10-26) |

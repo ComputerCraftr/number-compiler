@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from heapq import heapify, heappop, heappush
 from math import gcd, isqrt
 
 from number_compiler.arithmetic.number_theory import (
@@ -66,18 +67,23 @@ class AdditiveTranslation:
             if e < 0:
                 raise ValueError(e)
             counts[e] = counts.get(e, 0) + 1
-        if not counts:
-            return ()
-        e = min(counts)
-        top = max(counts)
-        while e <= top:
-            count = counts.get(e, 0)
-            if count >= 2:
-                counts[e] = count & 1
-                counts[e + 1] = counts.get(e + 1, 0) + (count >> 1)
-                top = max(top, e + 1)
-            e += 1
-        return tuple(k for k in sorted(counts) if counts[k] & 1)
+        pending = list(counts)
+        heapify(pending)
+        result: list[int] = []
+        while pending:
+            exponent = heappop(pending)
+            count = counts.pop(exponent)
+            if count & 1:
+                result.append(exponent)
+            carry = count >> 1
+            if carry:
+                successor = exponent + 1
+                if successor in counts:
+                    counts[successor] += carry
+                else:
+                    counts[successor] = carry
+                    heappush(pending, successor)
+        return tuple(result)
 
     def then(self, other: AdditiveTranslation) -> AdditiveTranslation:
         return AdditiveTranslation(

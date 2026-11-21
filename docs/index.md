@@ -44,7 +44,7 @@ records below; see the [placement guide](development.md#documentation-placement)
 Weeks run **Sunday–Saturday**, named by their Sunday start date. Each weekly
 index links to categorized implementation and validation records.
 
-- [November 15–21 — current week](sprints/week-of-2026-11-15/README.md)
+- [November 15–21](sprints/week-of-2026-11-15/README.md)
 - [November 8–14](sprints/week-of-2026-11-08/README.md)
 - [November 1–7](sprints/week-of-2026-11-01/README.md)
 - [October 25–31](sprints/week-of-2026-10-25/README.md)

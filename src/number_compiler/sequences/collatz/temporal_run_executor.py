@@ -420,6 +420,21 @@ def execute_collatz_temporal_run(
         ):
             continue
 
+        from number_compiler.sequences.collatz.cyclic_abc_execution import (
+            consume_source_cyclic_abc_row,
+        )
+
+        if consume_source_cyclic_abc_row(
+            control,
+            ledger=ledger,
+            scratch=scratch,
+            width_spine=width_spine,
+            macros_present=macros is not None,
+            require_mixed_prefix=require_mixed_prefix,
+            parity_requested=parity_builder is not None,
+        ):
+            continue
+
         # The root consumer may request an exact bounded source-window cut.
         # Cached parents and terminal powers were already offered above.
         # Only after a negative registered-parent check can endpoint/joint

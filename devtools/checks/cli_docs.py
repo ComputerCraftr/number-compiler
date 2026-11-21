@@ -9,9 +9,12 @@ from pathlib import Path
 
 from number_compiler.api.cli_requests import parse_request
 from number_compiler.api.family_registry import CAPABILITIES
+from number_compiler.api.observation_views import VIEW_FLAGS
 
 START = "<!-- cli-capabilities:start -->"
 END = "<!-- cli-capabilities:end -->"
+VIEWS_START = "<!-- cli-views:start -->"
+VIEWS_END = "<!-- cli-views:end -->"
 
 
 def capability_table() -> str:
@@ -29,6 +32,28 @@ def capability_table() -> str:
     return "\n".join(rows)
 
 
+def observation_view_table() -> str:
+    rows = [
+        "| Category | View flag | Views |",
+        "| --- | --- | --- |",
+    ]
+    for category, flag in VIEW_FLAGS.items():
+        by_view: dict[str, list[str]] = {}
+        for family, spec in CAPABILITIES.items():
+            for view in spec.views:
+                if view.category is category:
+                    families = by_view.setdefault(view.view.label, [])
+                    if family.value not in families:
+                        families.append(family.value)
+        if by_view:
+            descriptions = ", ".join(
+                f"`{label}` ({', '.join(families)})"
+                for label, families in by_view.items()
+            )
+            rows.append(f"| `{category}` | `--{flag}` | {descriptions} |")
+    return "\n".join(rows)
+
+
 def check_cli_docs(root: Path) -> list[str]:
     errors: list[str] = []
     guide = root / "docs/cli.md"
@@ -37,6 +62,11 @@ def check_cli_docs(root: Path) -> list[str]:
         expected = f"{START}\n{capability_table()}\n{END}"
         if expected not in text:
             errors.append("docs/cli.md:1: generated CLI capability table is stale")
+        expected = f"{VIEWS_START}\n{observation_view_table()}\n{VIEWS_END}"
+        if expected not in text:
+            errors.append(
+                "docs/cli.md:1: generated CLI observation view table is stale"
+            )
     for path in (root / "README.md", guide):
         if not path.exists():
             continue

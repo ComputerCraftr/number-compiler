@@ -35,6 +35,8 @@ from .temporal_seed_morphism import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from .power import DoubleReverseTerm
     from .source_bound_bank import PointedBankSource
     from .temporal_seed_morphism import CertifiedSeedOrbitMorphism
@@ -558,6 +560,7 @@ def seed_morphism_cli_packet(
     period_drivers: bool = False,
     depth_matrix: bool = False,
     prefix_horizon: int = 128,
+    on_morphism: Callable[[CertifiedSeedOrbitMorphism], None] | None = None,
 ) -> dict[str, object]:
     """Run source-verified full-word powering on any CLI seed when admitted.
 
@@ -700,17 +703,8 @@ def seed_morphism_cli_packet(
         ):
             raise AssertionError("CLI global ring disagrees with exact word endpoint")
         packet["global_four_block_order"] = morphism.global_four_block_order
-        # The complete-word source morphism already owns the residue action.
-        # Project the same action into the two Laurent accumulation channels;
-        # no second source fold or chronology beyond the finite entry prefix.
-        from .temporal_laurent_return import source_laurent_accumulator_packet
-
-        packet["normalized_laurent_accumulator"] = source_laurent_accumulator_packet(
-            term,
-            source.physical_prefix,
-            morphism.residue_action,
-            authenticated_morphism=morphism,
-        )
+        if on_morphism is not None:
+            on_morphism(morphism)
         if period_samples:
             if defect_digits:
                 # The same source-issued alternating-frame transducer powers

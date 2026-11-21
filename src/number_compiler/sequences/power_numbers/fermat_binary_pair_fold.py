@@ -18,7 +18,6 @@ from number_compiler.arithmetic.contracts.input_validation import require_intege
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.sequences.power_numbers.fermat_signed_reducer import (
     MAX_FERMAT_FOLD_WIDTH,
-    fold_signed_fermat,
 )
 
 MAX_BINARY_SLP_NODES = 65_536
@@ -319,8 +318,14 @@ class FermatBinaryFoldAction:
         if type(higher) is not FermatBinaryFoldAction or self.width != higher.width:
             raise ValueError("Fermat fold actions require matching widths")
         quotient, remainder = divmod(self.phase, self.width)
-        shift = (1 << remainder) * (-1 if quotient else 1)
-        residue = fold_signed_fermat(self.residue + shift * higher.residue, self.width)
+        block = 1 << self.width
+        shifted = higher.residue << remainder
+        folded = (shifted & (block - 1)) - (shifted >> self.width)
+        residue = self.residue + (-folded if quotient else folded)
+        if residue < 0:
+            residue += block + 1
+        elif residue > block:
+            residue -= block + 1
         return FermatBinaryFoldAction(self.width, self.length + higher.length, residue)
 
     def repeat(self, count: int) -> FermatBinaryFoldAction:

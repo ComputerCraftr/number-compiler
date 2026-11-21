@@ -9,7 +9,10 @@ from typing import TypeGuard
 import pytest
 
 from number_compiler.api import cli
-from number_compiler.api.bank_observation import double_reverse_residue_packet
+from number_compiler.api.bank_observation import (
+    double_reverse_residue_packet,
+    double_reverse_residue_period_packet,
+)
 from number_compiler.resources.metric_keys.arithmetic_fields import (
     GROWTH_ARITHMETIC_WORK,
 )
@@ -21,6 +24,7 @@ from number_compiler.sequences.double_reverse.temporal_residue_quotient import (
     projected_residue_return_lassos,
     projected_residue_temporal_quotient,
 )
+from tests.support.observation_views import view_value
 
 
 def test_slp_repeat_uses_one_residue_law(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -95,7 +99,10 @@ def test_residue_packet_publishes_source_bound_projected_return_without_endpoint
     generation = 128
     with DoubleReverseTerm(seed, generation) as term:
         term.temporal_engine.admit_extended_prefix(generation)
-        packet = double_reverse_residue_packet(term)
+        prefix, action = term.temporal_residue_quotient()
+        packet = double_reverse_residue_packet(
+            prefix, action
+        ) | double_reverse_residue_period_packet(term, prefix, action)
         target_value = _literal(seed, generation)
         projected = _mapping(packet["projected_period"])
         assert projected["scope"] == (
@@ -185,7 +192,13 @@ def test_cli_residue_projection_is_lazy_and_source_bound(
                 "512",
                 "--no-value",
                 "--info",
-                "temporal.residue99",
+                "arithmetic.modular",
+                "--arithmetic-modular-kind",
+                "residue",
+                "--info",
+                "temporal.clock",
+                "--temporal-clock-detail",
+                "residue-period",
                 "--format",
                 "json",
             ]
@@ -194,8 +207,11 @@ def test_cli_residue_projection_is_lazy_and_source_bound(
     )
     result = _mapping(json.loads(capsys.readouterr().out))
     info = _mapping(result["info"])
-    residue = _mapping(info["temporal.residue99"])
-    projected = _mapping(residue["projected_period"])
+    residue = view_value(info["arithmetic.modular"], "residue")
+    assert "projected_period" not in residue
+    projected = _mapping(
+        view_value(info["temporal.clock"], "residue-period")["projected_period"]
+    )
     assert result["value"] is None
     assert projected["full_digit_word_authority"] is False
     assert projected["width_is_periodic"] is False

@@ -14,10 +14,13 @@ and a reviewed Python mapping are distinct from verification of Python itself.
   `(2, -1)`. A change of law invalidates an image; a matching low residue does
   not authorize a different source occurrence.
 - `_balanced_residue_build(width, residue, retain)` requires an exact integer
-  `0 <= residue < 2**width` and a positive width. It splits a span greater than
-  64 at the largest power of two *strictly below* that span. The right child's
-  low residue is `transport_low(left.transfer, parent_residue, right_span)`.
-  This rule also covers unequal and non-power-of-two spans.
+  `0 <= residue < 2**width` and a positive width. Retained leaves and the root
+  leaf path are limited to 64 ticks. Nonretaining Antihydra children can fold
+  up to 128 ticks through the bounded carry sheet. If that fold is unavailable
+  above 64 ticks, the builder splits the span at the largest power of two
+  *strictly below* it. Each right child receives the low residue from the
+  left child's transfer, through direct transport or the certified upper-band
+  action. This rule also covers unequal and non-power-of-two spans.
 - A bounded leaf records chronological branch bits and the complete transfer
   `(upper, offset, lower)`, odd-bit count, weighted sum `delta`, and minimum
   prefix including the initial zero. A parent composes transfer left then
@@ -32,7 +35,7 @@ and a reviewed Python mapping are distinct from verification of Python itself.
   has at most 64 entries, shares the ledger's transient stack owner, and is
   cleared on every return or exception. A memo hit does not merge source-image
   identities.
-- Bounded leaves now share a finite arithmetic memo: cold atoms classify at
+- Bounded leaves share a finite arithmetic memo. Cold atoms classify at
   most four branches, and chronological composition constructs effects of at
   most eight source bits. Keys include owner, the complete pinned law, width
   and residue. The existing ledger-owned macro store admits at most 256
@@ -48,6 +51,9 @@ and a reviewed Python mapping are distinct from verification of Python itself.
 
 ## Theorem-to-runtime map
 
+Build evidence for the prefix, borrow, dyadic arithmetic, and reverse width
+theorems is recorded in the [October 5 successor and shared-proof follow-up](../sprints/week-of-2026-10-04/output-tape-integration.md#october-5-successor-and-shared-proof-follow-up).
+
 `Prefix_Effect.blank_ledger_word_append` and
 `blank_ledger_repeat_closed_form` model the shared Python `BlankLedger`:
 displacement, minimum prefix and maximum prefix, with chronological composition
@@ -56,36 +62,25 @@ the upper lane uses its negation. The word and repetition theorems describe an
 already authenticated sequence of displacements. They do not authorize repeating
 a source action or merging occurrences that share a width summary.
 
-The focused `Prefix_Effect_Core` build passed in 13 seconds under the standard
-guard in development run `20261006T035426Z-fa2cefa96bee4de78ea54117a7525b42`.
-This does not discharge the reverse successor constructor or global Comma
-release obligations.
-
 `Comma_C1_Borrow_Cocycle.comma_c1_borrow_ledger_append` applies this shared
 composition to the native C1 one-step innovation word, transporting both source
 phases at the split. Its delta theorem recovers the existing accumulated borrow
-innovation; its one-step formula keeps phase admission and adjacent-sector
-hypotheses. This session passed in 15 seconds in
-`20261006T035905Z-35325afc192a4b918eebd4c9c1d1ff88`.
+innovation. Its one-step formula retains the phase admission and adjacent-sector
+hypotheses.
 
 `Dyadic_Balanced_Arithmetic.source_effect_blank_ledger_projection` identifies
 the shared lower/delta projection with the existing constructed source safety
 summary. `source_effect_blank_ledger_append` composes the full summary across
-source-word segments. The existing dyadic effect has no upper-extremum field;
-the theorem does not invent that field. `Shared_S_Arithmetic` passed in 33
-seconds in `20261006T035935Z-1828ec575bb341d88c6a447fa518590b`.
-These bridges share the algebra without identifying Comma innovations with
-Collatz width increments or Mahler safety predicates.
+source-word segments. The dyadic effect records the lower extremum and delta.
+Comma innovations, Collatz width increments, and Mahler safety predicates
+each keep their own semantic authority when they use this algebra.
 
 `Reverse_Threshold_Cocycle.native_source_width` proves that pair width is
 source width plus `native_growth_count`, defined by producer growth flags along
-actual successors rather than by subtracting endpoint lengths.
-`native_source_growth_count_add` composes that count at the returned successor;
-`native_terminal_output_length` keeps final digit carry separate. The
-`Reverse_Residuals` session passed in 19 seconds in
-`20261006T040930Z-d19d058fa0e5462786c4ee2ab8708476`. The model still uses exact
-list successors; this proves the width equation, not a compressed temporal
-transducer implementation or its cost.
+actual successors. `native_source_growth_count_add` composes that count at the
+returned successor. `native_terminal_output_length` keeps final digit carry
+separate. The model proves the width equation for exact list successors.
+Compressed temporal construction and its cost require separate refinements.
 
 `Maximal_Run_Arithmetic` models the homogeneous contractions used by
 `collatz/temporal_run_quotient.py` and `antihydra/arithmetic_images.py`:
@@ -102,8 +97,8 @@ transducer implementation or its cost.
 - `antihydra_punctured_event_bits`, `antihydra_punctured_event_endpoint` and
   `antihydra_punctured_event_ledger` contract `0^k1` in centered coordinates.
   From `D=2^k(2M+1)` the endpoint is `3^(k+1)M+(3^(k+1)+1)/2`, the ledger
-  delta is `2-k` and its minimum is `-k`. These are the formulas used by
-  `_punctured_steps` inside the existing bounded scheduler leaf.
+  delta is `2-k` and its minimum is `-k`. The bounded scheduler leaf uses
+  these formulas through `punctured_steps`.
 
 These lemmas justify arithmetic within one admitted run. They do not prove the
 Python run-discovery loop, routing heuristic, allocation bounds, anonymous

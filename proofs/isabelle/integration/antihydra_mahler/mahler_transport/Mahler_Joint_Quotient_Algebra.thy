@@ -313,6 +313,16 @@ proof -
     by (simp add: root_shell_guard_def)
 qed
 
+theorem source7_fractional_guard_empty_after_prefix:
+  assumes "2 \<le> n"
+  shows "\<not> cylinder_guard 7 n t"
+proof -
+  obtain k where "n = 2 + k" using assms by (metis le_add_diff_inverse)
+  then show ?thesis
+    using root_shell_source7_empty_after_two[of k "2*t"]
+    by (simp add: root_shell_guard_def)
+qed
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms branch_suffix_then branch_then_assoc encoded_branch_then_python
@@ -322,7 +332,8 @@ ML \<open>
       joint_lanes_use_source_event
       joint_lanes_bind_both_sources
       joint_observer_source_scope
-      source7_arithmetic_successor_without_safe_fraction})
+      source7_arithmetic_successor_without_safe_fraction
+      source7_fractional_guard_empty_after_prefix})
     then () else error "Joint quotient algebra depends on an oracle";
 \<close>
 

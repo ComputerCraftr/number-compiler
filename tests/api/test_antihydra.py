@@ -230,6 +230,8 @@ def test_cli_real_execution(kind: str, capsys: pytest.CaptureFixture[str]) -> No
     )
     info = json.loads(capsys.readouterr().out)["info"]
     output = info[kind]
+    if kind == "arithmetic.modular":
+        output = output["views"]["endpoint"]["value"]
     assert output["completed_returns"] == 4
     assert output["nonhalting_certified"] is False
     assert (

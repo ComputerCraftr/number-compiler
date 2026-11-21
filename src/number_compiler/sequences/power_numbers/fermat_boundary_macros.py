@@ -293,7 +293,7 @@ class FermatBorderMacro:
                 return item
         raise KeyError(identity)
 
-    def radial_at(self, offset: int) -> FermatRadialPort:
+    def _radial_at_issued(self, offset: int) -> FermatRadialPort:
         """Conservatively transport a certified high border through 3**offset.
 
         If the source has leading P of h places and U unknown lower places,
@@ -306,11 +306,7 @@ class FermatBorderMacro:
         the missing middle, digitizing the huge source, or treating a
         dyadic-periodic suffix as a physical-periodic leading word.
         """
-        if (
-            not self.producer_verified
-            or type(offset) is not int
-            or not 0 <= offset <= 4096
-        ):
+        if type(offset) is not int or not 0 <= offset <= 4096:
             raise ValueError("unissued or unbounded radial source offset")
         if not self.radial_guard_verified:
             return FermatRadialPort(offset, None, None, 0, None)
@@ -355,10 +351,8 @@ class FermatBorderMacro:
         )
         return FermatRadialPort(offset, width, word, len(word), family)
 
-    def puncture(self, offset: int) -> tuple[tuple[FermatClockId, int], ...]:
+    def _puncture_issued(self, offset: int) -> tuple[tuple[FermatClockId, int], ...]:
         """All modular source residues at ONE physical port, from one root."""
-        if not self.producer_verified:
-            raise ValueError("unissued Fermat border macro")
         physical = (
             FermatOuterCyclotomicClock.from_level(self.source.level, offset)
             if self.source.level >= 1
@@ -396,6 +390,34 @@ class FermatBorderMacro:
         ):
             raise ArithmeticError("physical clock / modular port join failed")
         return output
+
+    def radial_at(self, offset: int) -> FermatRadialPort:
+        if not self.producer_verified:
+            raise ValueError("unissued Fermat border macro")
+        return self._radial_at_issued(offset)
+
+    def puncture(self, offset: int) -> tuple[tuple[FermatClockId, int], ...]:
+        if not self.producer_verified:
+            raise ValueError("unissued Fermat border macro")
+        return self._puncture_issued(offset)
+
+    def certified_checkpoint_ports(
+        self, offsets: tuple[int, ...]
+    ) -> tuple[tuple[tuple[tuple[FermatClockId, int], ...], FermatRadialPort], ...]:
+        """Authenticate one source and check every chronological port."""
+        if (
+            type(offsets) is not tuple
+            or not offsets
+            or any(type(tick) is not int or not 0 <= tick <= 4096 for tick in offsets)
+            or offsets != tuple(sorted(set(offsets)))
+        ):
+            raise ValueError("canonical bounded chronological checkpoints required")
+        if not self.producer_verified:
+            raise ValueError("unissued Fermat border macro")
+        return tuple(
+            (self._puncture_issued(tick), self._radial_at_issued(tick))
+            for tick in offsets
+        )
 
 
 _MACRO_ISSUER = new_harmonic_issuer(FermatBorderMacro)

@@ -22,11 +22,13 @@ from number_compiler.api.observation_types import (
     OptionSpec,
     option_default,
 )
+from number_compiler.api.observation_views import ObservationView as View
+from number_compiler.api.observation_views import ViewSpec
 from number_compiler.api.query_types import FiveReverseTermQuery
 
 _QUOTIENT_OPTIONS = {
-    "temporal_digit_field_places": (
-        ObservationId.TEMPORAL_DIGIT_FIELD,
+    "arithmetic_modular_places": (
+        ObservationId.ARITHMETIC_MODULAR,
         "number of base-five places in the digit-field residue",
     ),
     "temporal_closed_form_places": (
@@ -63,7 +65,6 @@ def five_reverse_spec(modulus: OptionSpec) -> FamilySpec:
                 ObservationId.METRICS,
                 ObservationId.TEMPORAL_BANK,
                 ObservationId.ARITHMETIC_MODULAR,
-                ObservationId.TEMPORAL_DIGIT_FIELD,
                 ObservationId.TEMPORAL_CLOSED_FORM,
                 ObservationId.TEMPORAL_MATRIX,
             ),
@@ -75,6 +76,34 @@ def five_reverse_spec(modulus: OptionSpec) -> FamilySpec:
             "prepare_noop",
             "admit_noop",
             "observe",
+        ),
+        views=(
+            ViewSpec(
+                View.ENDPOINT_RESIDUE,
+                "five-reversal-mod45",
+                "physical-recurrence-ticks",
+                "divisor-of-45",
+                "finite-residue",
+                default=True,
+                options=("modulus",),
+            ),
+            ViewSpec(
+                View.DIGIT_FIELD,
+                "fivefold-digit-field",
+                "physical-recurrence-ticks",
+                "base-five-places",
+                "digit-field",
+                options=("arithmetic_modular_places",),
+            ),
+            ViewSpec(
+                View.CLOSED_ENDPOINT,
+                "unnormalized-reflected-h",
+                "physical-recurrence-ticks",
+                "decimal-places",
+                "bounded-projection",
+                default=True,
+                options=("temporal_closed_form_places", "temporal_closed_form_digits"),
+            ),
         ),
         term_observation=ObservationValueBinding(
             FiveReverseObservationOptions, ("modulus", *_QUOTIENT_OPTIONS)

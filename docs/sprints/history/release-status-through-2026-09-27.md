@@ -4,7 +4,9 @@
 
 Preserved former release-status evidence. Each row applies only to its recorded source; no historical pass certifies the current checkout. The recorded dates and local raw evidence paths retain their original scope.
 
-# Current release gates
+# Release gates recorded through September 27
+
+For the current checkout, see the [release status](../../release-status.md).
 
 The latest [canonical Near and temporal-cylinder audit](../week-of-2026-09-27/comma.md#canonical-near-proofs-and-temporal-cylinder-review)
 uses source `748666a2de9ebf37aa154478d30ba76d1ae608788f726336d6a9221a2907d718`.

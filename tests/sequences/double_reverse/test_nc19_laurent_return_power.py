@@ -9,6 +9,7 @@ from random import Random
 import pytest
 
 from number_compiler.api import cli
+from number_compiler.api.json_output import is_string_object_mapping
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.double_reverse.source_adapter import decimal_digits_lsd
 from number_compiler.sequences.double_reverse.temporal_hashlife import (
@@ -29,6 +30,7 @@ from tests.sequences.double_reverse.packet_helpers import (
     object_list,
     object_mapping,
 )
+from tests.support.observation_views import view_value
 
 
 def _reverse(x: int) -> int:
@@ -195,16 +197,22 @@ def test_cli_source_anchored_power_matches_independent_integer_path(
                 str(target),
                 "--no-value",
                 "--info",
-                "temporal.residue99",
+                "arithmetic.modular",
+                "--arithmetic-modular-kind",
+                "residue",
+                "--info",
+                "temporal.accumulator",
                 "--format",
                 "json",
             ]
         )
         == 0
     )
-    data = json.loads(capsys.readouterr().out)["info"]["temporal.residue99"]
+    info = json.loads(capsys.readouterr().out)["info"]
+    data = info["arithmetic.modular"]["views"]["residue"]["value"]
+    assert data["target_mod198"] == _physical_after(seed, target) % 198
     _assert_laurent_packet_matches_integer_path(
-        seed, target, data["normalized_laurent_accumulator"]
+        seed, target, view_value(info["temporal.accumulator"], "alternating")
     )
 
 
@@ -223,16 +231,21 @@ def test_full_powered_source_morphism_shares_laurent_action(
                 str(target),
                 "--no-value",
                 "--info",
-                "temporal.seed-morphism",
+                "temporal.closed-form",
+                "--temporal-closed-form-kind",
+                "source-action",
+                "--info",
+                "temporal.accumulator",
                 "--format",
                 "json",
             ]
         )
         == 0
     )
-    data = json.loads(capsys.readouterr().out)["info"]["temporal.seed-morphism"]
+    info = json.loads(capsys.readouterr().out)["info"]
+    data = info["temporal.closed-form"]["views"]["source-action"]["value"]
     assert data["power"]["mode"] == "source_certified_hashlife_dyadic"
-    clock = data["normalized_laurent_accumulator"]
+    clock = view_value(info["temporal.accumulator"], "alternating")
     _assert_laurent_packet_matches_integer_path(seed, target, clock)
     if target % 2 == 0:
         assert data["endpoint"]["mod198"] == clock["target_normalized_mod198"]
@@ -252,17 +265,25 @@ def test_long_jump_does_not_expand_full_word(
                 str(target),
                 "--no-value",
                 "--info",
-                "temporal.residue99",
+                "arithmetic.modular",
+                "--arithmetic-modular-kind",
+                "residue",
+                "--info",
+                "temporal.accumulator",
                 "--format",
                 "json",
             ]
         )
         == 0
     )
-    data = json.loads(capsys.readouterr().out)["info"]["temporal.residue99"]
-    clock = data["normalized_laurent_accumulator"]
-    assert clock["powered_macros"] >= 1000
-    assert clock["primitive_period"]["primitive_joint_macros"] == 30
+    info = json.loads(capsys.readouterr().out)["info"]
+    data = info["arithmetic.modular"]["views"]["residue"]["value"]
+    clock = view_value(info["temporal.accumulator"], "alternating")
+    macro_count = clock["powered_macros"]
+    period = clock["primitive_period"]
+    assert type(macro_count) is int and macro_count >= 1000
+    assert is_string_object_mapping(period)
+    assert period["primitive_joint_macros"] == 30
     assert clock["target_generation"] == target
     assert data["target_mod198"] == clock["target_normalized_mod198"]
 

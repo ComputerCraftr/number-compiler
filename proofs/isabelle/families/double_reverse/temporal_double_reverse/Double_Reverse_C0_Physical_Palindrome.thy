@@ -1,5 +1,5 @@
 theory Double_Reverse_C0_Physical_Palindrome
-  imports Double_Reverse_Mixed_Adic_Quotient
+  imports Double_Reverse_Mixed_Adic_Quotient Double_Reverse_Periodic_Ring_Action
 begin
 
 text \<open>The mixed-adic physical run theorem obtains each successor from the
@@ -75,6 +75,54 @@ proof -
     by blast
   show ?thesis using double_reverse_closed_word_nonpalindrome[OF final(1-3)] final(4)
     by simp
+qed
+
+theorem double_reverse_c0_source_prefix_excludes_future_palindromes:
+  assumes source: "double_reverse_msf_value admitted =
+    double_reverse_T_run prefix seed"
+    and canonical: "double_reverse_canonical_source admitted"
+    and long: "4 \<le> length admitted"
+    and border: "double_reverse_word_border admitted \<in> double_reverse_closed_border"
+    and later: "prefix \<le> generation"
+  shows "decimal_reverse (double_reverse_T_run generation seed) \<noteq>
+    double_reverse_T_run generation seed"
+proof -
+  obtain remaining where generation: "generation = prefix + remaining"
+    using later by (auto simp: le_iff_add)
+  have absence: "decimal_reverse
+      (double_reverse_T_run remaining (double_reverse_msf_value admitted)) \<noteq>
+      double_reverse_T_run remaining (double_reverse_msf_value admitted)"
+    by (rule double_reverse_c0_physical_palindrome_absence[OF canonical long border])
+  have same: "double_reverse_T_run generation seed =
+      double_reverse_T_run remaining (double_reverse_msf_value admitted)"
+    by (simp only: generation double_reverse_T_run_source_root_square source)
+  show ?thesis unfolding same by (rule absence)
+qed
+
+theorem double_reverse_checked_prefix_and_c0_exclude_positive_hits:
+  assumes source: "double_reverse_msf_value admitted =
+    double_reverse_T_run prefix seed"
+    and canonical: "double_reverse_canonical_source admitted"
+    and long: "4 \<le> length admitted"
+    and border: "double_reverse_word_border admitted \<in> double_reverse_closed_border"
+    and checked: "\<And>i. 0 < i \<Longrightarrow> i < prefix \<Longrightarrow>
+      decimal_reverse (double_reverse_T_run i seed) \<noteq> double_reverse_T_run i seed"
+  shows "\<And>i. 0 < i \<Longrightarrow>
+    decimal_reverse (double_reverse_T_run i seed) \<noteq> double_reverse_T_run i seed"
+proof -
+  fix i :: nat
+  assume positive: "0 < i"
+  show "decimal_reverse (double_reverse_T_run i seed) \<noteq> double_reverse_T_run i seed"
+  proof (cases "i < prefix")
+    case True
+    show ?thesis by (rule checked[OF positive True])
+  next
+    case False
+    then have "prefix \<le> i" by simp
+    then show ?thesis
+      by (rule double_reverse_c0_source_prefix_excludes_future_palindromes
+          [OF source canonical long border])
+  qed
 qed
 
 end

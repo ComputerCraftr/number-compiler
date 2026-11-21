@@ -423,12 +423,79 @@ proof -
     using quotient_identity by (simp add: j_def)
 qed
 
+theorem prime_birth_progression_suffix_card:
+  assumes prefix: "complete_prime_prefix core x"
+    and primes: "\<forall>p\<in>set suffix. prime p"
+    and separate: "distinct (core@suffix)"
+  shows "card (progression_wheel (core@suffix) x m r) =
+    card (progression_wheel core x m r) -
+      length (filter (\<lambda>p. p\<le>x \<and> p mod m = r mod m) suffix)"
+proof -
+  let ?lost = "{p\<in>set suffix. p\<le>x \<and> p mod m = r mod m}"
+  have disjoint: "set core \<inter> set suffix = {}"
+    using separate by simp
+  have survives: "{p\<in>set suffix. p\<le>x} \<subseteq> wheel_sift core {1..x}"
+    by (rule prime_birth_suffix_survives_core[OF prefix primes disjoint])
+  have subset: "?lost \<subseteq> progression_wheel core x m r"
+    using survives by (auto simp: progression_wheel_def)
+  have finite_lost: "finite ?lost" by simp
+  have count: "card ?lost =
+      length (filter (\<lambda>p. p\<le>x \<and> p mod m = r mod m) suffix)"
+    using separate
+      distinct_card[of "filter (\<lambda>p. p\<le>x \<and> p mod m = r mod m) suffix"]
+    by simp
+  have wheel: "progression_wheel (core@suffix) x m r =
+      progression_wheel core x m r - ?lost"
+    using prime_birth_suffix_sift[OF prefix primes]
+    by (auto simp: progression_wheel_def)
+  show ?thesis
+    using card_Diff_subset[OF finite_lost subset] count wheel by simp
+qed
+
+theorem prime_birth_progression_square_cut:
+  assumes depth: "d \<le> length ps"
+    and admitted: "consecutive_prime_descriptor (take d ps)"
+    and short: "prime_birth_square_cut (take d ps) x < d"
+  defines "j \<equiv> prime_birth_square_cut (take d ps) x"
+  shows "card (progression_wheel (take d ps) x m r) =
+    card (progression_wheel (take j ps) x m r) -
+      length (filter (\<lambda>p. p \<le> x \<and> p mod m = r mod m)
+        (drop j (take d ps)))"
+proof -
+  let ?whole = "take d ps"
+  have bound: "j \<le> d"
+    using numerical_Phi_prime_birth_square_cut(1)[OF depth admitted short] j_def
+    by simp
+  have complete: "complete_prime_prefix (take j ps) x"
+    using numerical_Phi_prime_birth_square_cut(3)[OF depth admitted short] j_def
+    by simp
+  have whole_prefix: "?whole = primes_upto (last ?whole)"
+    using admitted by (auto simp: consecutive_prime_descriptor_def)
+  have distinct_rhs: "distinct (primes_upto (last ?whole))" by simp
+  have distinct: "distinct ?whole" using whole_prefix distinct_rhs by metis
+  have primes_rhs: "\<forall>p \<in> set (primes_upto (last ?whole)). prime p"
+    by (auto simp: set_primes_upto)
+  have primes: "\<forall>p \<in> set ?whole. prime p" using whole_prefix primes_rhs by metis
+  have take_same: "take j ?whole = take j ps"
+    using bound by (simp add: take_take min.absorb1)
+  have split: "take j ps @ drop j ?whole = ?whole"
+    using take_same by (metis append_take_drop_id)
+  have separate: "distinct (take j ps @ drop j ?whole)"
+    using distinct split by simp
+  have suffix_primes: "\<forall>p \<in> set (drop j ?whole). prime p"
+    using primes set_drop_subset[of j ?whole] by blast
+  show ?thesis
+    using prime_birth_progression_suffix_card[OF complete suffix_primes separate,
+        of m r] split by simp
+qed
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms prime_birth_suffix_sift prime_birth_suffix_card
       numerical_Phi_prime_birth_innovation
       consecutive_square_cut_is_complete
-      numerical_Phi_prime_birth_square_cut}) then ()
+      numerical_Phi_prime_birth_square_cut
+      prime_birth_progression_suffix_card prime_birth_progression_square_cut}) then ()
     else error "Prime birth innovation contains an oracle";
 \<close>
 

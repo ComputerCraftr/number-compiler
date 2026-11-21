@@ -33,7 +33,7 @@ def test_closed_form_cli_reads_exact_and_modular_endpoint_ports(
     assert cli.main(arguments) == 0
     exact = json.loads(capsys.readouterr().out)
     assert exact["value"] is None
-    port = exact["info"]["temporal.closed-form"]
+    port = exact["info"]["temporal.closed-form"]["views"]["endpoint"]["value"]
     assert port["source"] == 173488
     assert port["target"] == 17631568
     assert port["carry_word"] == 10011
@@ -45,7 +45,9 @@ def test_closed_form_cli_reads_exact_and_modular_endpoint_ports(
     assert port["phase_in"] == port["phase_out"] == 0
 
     assert cli.main([*arguments, "--temporal-closed-form-modulus", "97"]) == 0
-    modular = json.loads(capsys.readouterr().out)["info"]["temporal.closed-form"]
+    modular = json.loads(capsys.readouterr().out)["info"]["temporal.closed-form"][
+        "views"
+    ]["endpoint"]["value"]
     for field in ("source", "target", "carry_correction", "U", "H"):
         assert modular[field] == port[field] % 97
     assert modular["carry_word"] == port["carry_word"] % 970
@@ -100,10 +102,11 @@ def test_closed_form_compact_index_has_no_expanded_request_coordinate(
         == 0
     )
     packet = json.loads(capsys.readouterr().out)
-    port = packet["info"]["temporal.closed-form"]
+    observation = packet["info"]["temporal.closed-form"]
+    port = observation["views"]["endpoint"]["value"]
     assert (
         packet["index"]
-        == port["index"]
+        == observation["index"]
         == port["steps"]
         == {
             "encoding": "power10",
@@ -136,7 +139,9 @@ def test_closed_form_retains_decimal_contraction(
         )
         == 0
     )
-    port = json.loads(capsys.readouterr().out)["info"]["temporal.closed-form"]
+    port = json.loads(capsys.readouterr().out)["info"]["temporal.closed-form"]["views"][
+        "endpoint"
+    ]["value"]
     assert port["target"] == expected
     assert port["phase_in"] is None
     assert port["affine_gain"] is None

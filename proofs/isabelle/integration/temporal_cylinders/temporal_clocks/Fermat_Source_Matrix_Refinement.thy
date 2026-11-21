@@ -177,6 +177,34 @@ proof -
     using outer_projection raw_projection by simp
 qed
 
+theorem fermat_conditional_digit_affine_row:
+  assumes place: "0 < place"
+  shows "fermat_conditional_digit_transfer (base * place) place low digit steps =
+    (3^steps * low) mod place +
+      place * ((3^steps * digit + (3^steps * low) div place) mod base)"
+proof -
+  let ?factor = "(3::nat)^steps"
+  let ?product = "?factor * low"
+  have decomposition:
+    "?factor * (low + digit * place) =
+      (?product div place + ?factor * digit) * place + ?product mod place"
+    using div_mult_mod_eq[of ?product place]
+    by (simp add: algebra_simps)
+  have quotient:
+    "((?product div place + ?factor * digit) * place +
+      ?product mod place) div place = ?product div place + ?factor * digit"
+    using place by simp
+  have remainder:
+    "((?product div place + ?factor * digit) * place +
+      ?product mod place) mod place = ?product mod place"
+    by simp
+  show ?thesis
+    unfolding fermat_conditional_digit_transfer_def
+    using mod_mult2_eq[of "?factor * (low + digit * place)" place base]
+      decomposition quotient remainder
+    by (simp add: mult.commute add.commute)
+qed
+
 lemma fermat_source_residue_lower_projection:
   assumes base: "0 < base"
       and place: "0 < place"
@@ -432,6 +460,173 @@ lemma fermat_matrix_puncture_projection:
   unfolding fermat_matrix_source_residue_def
   by (rule mod_mod_cancel[OF divides])
 
+lemma fermat_matrix_checkpoint_batch_exact:
+  "map (\<lambda>offset. ((3^(2^level) mod modulus) *
+      (3^offset mod modulus)) mod modulus) offsets =
+    map (fermat_matrix_source_residue level modulus) offsets"
+  by (simp add: fermat_matrix_source_residue_from_root)
+
+lemma fermat_matrix_checkpoint_batch_projection:
+  assumes "clock_modulus dvd modulus"
+  shows "map (\<lambda>offset. fermat_matrix_source_residue level modulus offset
+      mod clock_modulus) offsets =
+    map (\<lambda>offset. 3^(2^level + offset) mod clock_modulus) offsets"
+  using fermat_matrix_puncture_projection[OF assms, of level] by simp
+
+lemma fermat_signed_phase_projection:
+  fixes source low high block sign :: int
+  shows "(source + sign * (low + block * high)) mod (block + 1) =
+    (source + sign * (low - high)) mod (block + 1)"
+proof -
+  have split: "source + sign * (low + block * high) =
+      (source + sign * (low - high)) + (sign * high) * (block + 1)"
+    by (simp add: algebra_simps)
+  show ?thesis unfolding split by (rule mod_mult_self1)
+qed
+
+definition fermat_signed_phase_canonical :: "int \<Rightarrow> int \<Rightarrow> int" where
+  "fermat_signed_phase_canonical block candidate =
+    (if candidate < 0 then candidate + (block + 1)
+     else if candidate > block then candidate - (block + 1)
+     else candidate)"
+
+lemma fermat_signed_phase_candidate_bounds:
+  fixes source low high block sign :: int
+  assumes "0 \<le> source" "source \<le> block" "0 \<le> low" "low < block"
+      "0 \<le> high" "high \<le> block" "sign = 1 \<or> sign = -1"
+  shows "- block \<le> source + sign * (low - high) \<and>
+    source + sign * (low - high) \<le> 2 * block"
+  using assms by (auto; arith)
+
+lemma fermat_signed_phase_one_adjustment:
+  fixes block candidate :: int
+  assumes "0 \<le> block" "- block \<le> candidate" "candidate \<le> 2 * block"
+  shows "0 \<le> fermat_signed_phase_canonical block candidate \<and>
+    fermat_signed_phase_canonical block candidate \<le> block"
+  using assms unfolding fermat_signed_phase_canonical_def by (auto; arith)
+
+lemma fermat_signed_phase_canonical_congruence:
+  fixes block candidate :: int
+  shows "fermat_signed_phase_canonical block candidate mod (block + 1) =
+    candidate mod (block + 1)"
+  unfolding fermat_signed_phase_canonical_def
+  by (auto simp: mod_add_eq mod_diff_eq split: if_splits)
+
+theorem fermat_signed_phase_canonical_projection:
+  fixes source low high block sign :: int
+  assumes "0 \<le> source" "source \<le> block" "0 \<le> low" "low < block"
+      "0 \<le> high" "high \<le> block" "sign = 1 \<or> sign = -1"
+  defines "candidate \<equiv> source + sign * (low - high)"
+  shows "0 \<le> fermat_signed_phase_canonical block candidate \<and>
+    fermat_signed_phase_canonical block candidate \<le> block \<and>
+    fermat_signed_phase_canonical block candidate mod (block + 1) =
+      (source + sign * (low + block * high)) mod (block + 1)"
+proof -
+  have block: "0 \<le> block" using assms(1,2) by arith
+  have bounds: "- block \<le> candidate \<and> candidate \<le> 2 * block"
+    using fermat_signed_phase_candidate_bounds[OF assms(1-7)]
+    by (simp add: candidate_def)
+  have canonical: "0 \<le> fermat_signed_phase_canonical block candidate \<and>
+      fermat_signed_phase_canonical block candidate \<le> block"
+    using fermat_signed_phase_one_adjustment[OF block] bounds by blast
+  have congruence:
+    "fermat_signed_phase_canonical block candidate mod (block + 1) =
+      (source + sign * (low + block * high)) mod (block + 1)"
+    using fermat_signed_phase_projection[of source sign low block high]
+      fermat_signed_phase_canonical_congruence[of block candidate]
+    by (simp add: candidate_def)
+  show ?thesis using canonical congruence by blast
+qed
+
+definition fermat_negacyclic_packed :: "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat" where
+  "fermat_negacyclic_packed width bits source steps =
+    (source * (3^steps mod ((2^width + 1) * 2^bits))) mod
+      ((2^width + 1) * 2^bits)"
+
+theorem fermat_negacyclic_packed_residue:
+  "fermat_negacyclic_packed width bits source steps mod (2^width + 1) =
+    (source * 3^steps) mod (2^width + 1)"
+proof -
+  let ?modulus = "(2::nat)^width + 1"
+  let ?packed = "?modulus * 2^bits"
+  have factor: "(source * (3^steps mod ?packed)) mod ?packed =
+      (source * 3^steps) mod ?packed"
+    by (rule mod_mult_right_eq)
+  have projection: "((source * 3^steps) mod ?packed) mod ?modulus =
+      (source * 3^steps) mod ?modulus"
+    by (rule mod_mod_cancel[OF dvd_triv_left])
+  show ?thesis
+    unfolding fermat_negacyclic_packed_def using factor projection by simp
+qed
+
+theorem fermat_negacyclic_packed_wrap:
+  "fermat_negacyclic_packed width bits source steps div (2^width + 1) =
+    ((source * 3^steps) div (2^width + 1)) mod 2^bits"
+proof -
+  let ?modulus = "(2::nat)^width + 1"
+  let ?packed = "?modulus * 2^bits"
+  have factor: "(source * (3^steps mod ?packed)) mod ?packed =
+      (source * 3^steps) mod ?packed"
+    by (rule mod_mult_right_eq)
+  have split:
+    "(source * 3^steps) mod ?packed =
+      ?modulus * (((source * 3^steps) div ?modulus) mod 2^bits) +
+        (source * 3^steps) mod ?modulus"
+    by (rule mod_mult2_eq)
+  have modulus_nonzero: "?modulus \<noteq> 0" by simp
+  have remainder_bound: "(source * 3^steps) mod ?modulus < ?modulus"
+    by (rule mod_less_divisor) simp
+  have remainder_zero: "((source * 3^steps) mod ?modulus) div ?modulus = 0"
+    by (rule div_less[OF remainder_bound])
+  have quotient:
+    "((source * 3^steps) mod ?packed) div ?modulus =
+      ((source * 3^steps) div ?modulus) mod 2^bits"
+    unfolding split
+    apply (subst div_mult_self4[OF modulus_nonzero])
+    by (simp only: remainder_zero add.right_neutral)
+  show ?thesis
+    unfolding fermat_negacyclic_packed_def
+    by (simp only: factor quotient)
+qed
+
+theorem fermat_negacyclic_source_endpoint:
+  assumes "source = fermat_matrix_source_residue level (2^width + 1) 0"
+  shows "fermat_negacyclic_packed width bits source steps mod (2^width + 1) =
+    fermat_matrix_source_residue level (2^width + 1) steps"
+  using fermat_negacyclic_packed_residue[of width bits source steps]
+    fermat_matrix_source_residue_advance[of "2^width + 1" level 0 steps]
+    assms by (simp add: mult.commute)
+
+theorem fermat_negacyclic_inlet_signed_split:
+  fixes source width :: nat
+  shows "(int ((3 * source) mod 2^width) - int ((3 * source) div 2^width))
+      mod int (2^width + 1) = int (3 * source) mod int (2^width + 1)"
+proof -
+  have nat_decomposition:
+    "3 * source = (3 * source) mod 2^width +
+      2^width * ((3 * source) div 2^width)"
+    by (simp add: mod_mult_div_eq)
+  have cast_decomposition:
+    "int (3 * source) = int ((3 * source) mod 2^width +
+      2^width * ((3 * source) div 2^width))"
+    by (rule arg_cong[OF nat_decomposition])
+  have decomposition:
+    "int (3 * source) = int ((3 * source) mod 2^width) +
+      int (2^width) * int ((3 * source) div 2^width)"
+    using cast_decomposition
+    by (simp only: of_nat_add of_nat_mult of_nat_power of_nat_numeral)
+  have projection:
+    "(int ((3 * source) mod 2^width) - int ((3 * source) div 2^width))
+      mod (int (2^width) + 1) =
+    (int ((3 * source) mod 2^width) +
+      int (2^width) * int ((3 * source) div 2^width)) mod (int (2^width) + 1)"
+    using fermat_signed_phase_projection[
+      of 0 1 "int ((3 * source) mod 2^width)" "int (2^width)"
+        "int ((3 * source) div 2^width)"] by simp
+  show ?thesis using projection unfolding decomposition
+    by (simp only: of_nat_add of_nat_1)
+qed
+
 text \<open>The runtime \<open>then\<close> loop enumerates the first conditional endpoint
 vector, divides each midpoint by the lower-place modulus, and indexes the
 later endpoint vector.  The indexed form below is that same operation with
@@ -557,6 +752,7 @@ ML \<open>
     fermat_source_transfer_pointed_endpoint
     fermat_conditional_digit_transfer_join
     fermat_conditional_transfer_lower_projection
+    fermat_conditional_digit_affine_row
     fermat_source_residue_lower_projection
     fermat_source_matrix_selected_row
     fermat_source_matrix_adjacent_seam
@@ -567,7 +763,12 @@ ML \<open>
     fermat_source_matrix_join_rows_matches_iteration
     fermat_source_matrix_join_admitted
     fermat_source_matrix_join_admitted_selected
-    fermat_matrix_puncture_projection};
+    fermat_matrix_puncture_projection fermat_matrix_checkpoint_batch_exact
+    fermat_matrix_checkpoint_batch_projection fermat_signed_phase_projection
+    fermat_signed_phase_candidate_bounds fermat_signed_phase_one_adjustment
+    fermat_signed_phase_canonical_congruence fermat_signed_phase_canonical_projection
+    fermat_negacyclic_packed_residue fermat_negacyclic_packed_wrap
+    fermat_negacyclic_source_endpoint fermat_negacyclic_inlet_signed_split};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Fermat source matrix refinement depends on an oracle";
   val _ = if not (Thm_Deps.has_skip_proof checked) then ()

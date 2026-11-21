@@ -148,7 +148,9 @@ def test_closed_form_retains_certified_suffix_from_non_cylinder_seed(
         )
         == 0
     )
-    form = json.loads(capsys.readouterr().out)["info"]["temporal.closed-form"]
+    form = json.loads(capsys.readouterr().out)["info"]["temporal.closed-form"]["views"][
+        "endpoint"
+    ]["value"]
     assert form["phase_in"] is None
     assert form["affine_gain"] is None
     assert form["prefix_steps"] == 16

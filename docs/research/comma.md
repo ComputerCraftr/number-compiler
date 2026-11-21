@@ -464,12 +464,10 @@ six. This residue does not recover an arbitrary block or its midpoint.
 
 **Finite experiment:** the bounded joint-observer audit includes endpoints,
 nine core responses, Q21, F9, reset and first-defect outputs. Its declared clock
-pairs one fixed-sector port move with one harmonic tick. It tests 13,863
-arbitrary signatures and 62 dyadic signatures, including the two transient
-separation witnesses. The separate 46-orbit-word observer is not included.
-These counts are audit evidence, not native decade semantics or a release
-certificate. The universal F9 temporal-period theorem and native clock bridge
-remain open.
+pairs one fixed-sector port move with one harmonic tick. Transient separation
+witnesses show that the observed components need their stated clock and seam
+conditions. The separate 46-orbit-word observer is outside this experiment.
+The universal F9 temporal-period theorem and native clock bridge remain open.
 
 **Cutover obligations.** Construct the native decade classifier and prove its
 complete ordered child semantics across chart changes. Prove a structural
@@ -772,17 +770,13 @@ in the packed recurrence.
   absorbing left stops and adding the first span to right-stop heights.
   `comma_orbit_word_square` proves that law for the actual orbit owner.
   Encoding the span in binary preserves this arithmetic but does not compute
-  the live target, stopping height or terminal kind from a source. The reported
-  counts `2,3,5,9,17,27` describe observed elapsed-time outputs, not a complete
-  successor action or a checked B5 instance. Literal weights belong to the
-  separate weighted-germ refinement.
-- **Finite observer experiments:** the reported 15 port classes preserve
-  zero/nonzero observations; the same report requires 81 classes when exact
-  dwell is observed. Moving dwell into a cocycle requires a joint refinement,
-  not erasing it. The 29 homogeneous-run actions are not established as a
-  monoid closed under mixed runs: the reported two-run experiment has 44
-  distinct transformations. Those historical counts are superseded for the
-  NC5 future alphabet by the executable audit below. None is an Isabelle premise.
+  the live target, stopping height or terminal kind from a source. Literal
+  weights belong to the separate weighted-germ refinement.
+- **Finite observer experiments:** classes that preserve zero/nonzero
+  observations can split when exact dwell is observed. Moving dwell into a
+  cocycle requires a joint refinement. A collection of homogeneous-run actions
+  also needs a closure proof before it can represent mixed runs. The bounded
+  experiments do not supply these Isabelle premises.
 - **Checked forwarding:** a period-one, noncrossing sector clause preserves
   the entire existing `comma_round_result` function at every phase. Its child
   masks can therefore be reused after exact source rebinding. The theorem

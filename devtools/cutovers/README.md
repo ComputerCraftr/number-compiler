@@ -6,17 +6,16 @@ history remains in Git. The finite public forest admission path, verifier,
 prefix data and legacy forest session have been removed. The replacement uses
 the existing authenticated global-provider interface.
 
-There is still **no global artifact or production admission entry**. The source
-registry in `future_provider.py` remains empty.
+The source registry in `future_provider.py` remains empty. Production admission
+requires a registered global artifact.
 The package-data declaration reserves the exact
 `kernels/comma_semantic_future_v3.json` path, and the positive installed-wheel
 checks require that asset to match the registered digest. The removed JSON
 candidate was not a kernel artifact and must not be restored or trusted. With
-the registry empty, applying the cutover before release finalization fails
-closed for all public comma values; the positive release checks are expected to
-remain red. Source deletion is applied, but production activation is incomplete.
-Unmocked positive CLI output assertions remain in default units; empty-registry
-refusal tests are negative coverage, not cutover acceptance.
+the registry empty, the CLI refuses requests that require the global provider.
+The default unit suite retains the positive CLI output assertions. The
+empty-registry tests exercise refusal, and public activation requires the
+positive checks to pass.
 
 ## Required release-artifact finalization
 
@@ -63,13 +62,10 @@ closure or B32 acceptance. Do not treat fail-closed tests as positive acceptance
 The deletion retires forest-verifier and finite-certificate memo tests with their
 implementation. Independent literal seam comparisons remain; provider authority,
 generation, malformed input, metadata laziness and later-fork tests protect the
-replacement. Current public API names, strict test typing and resource-lifecycle fixes are
-retained in the rebase, including the sealed `ChartSegment` graph and closed
-Entry carry-count consumer. The carry-clock integration remains in the working
-sources; this patch does not replace it with archived occurrence code.
-Developer-only trace audits retain explicit work bounds and reject exhaustion;
-those bounds do not supply production fuel or prove termination outside an
-admitted source domain.
+replacement. The sealed `ChartSegment` graph and closed Entry carry-count
+consumer remain part of the carry-clock integration. Developer trace audits
+use explicit work bounds and reject exhaustion. Termination and production
+admission require the kernel refinement for the admitted source domain.
 
 Current evidence and remaining proof work are recorded in the
 [cutover sprint](../../docs/sprints/week-of-2026-11-01/comma-global-cutover.md).

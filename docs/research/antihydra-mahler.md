@@ -3,8 +3,8 @@
 [Current release gates](../release-status.md) own validation status; this page
 records mathematical scope and source connections.
 
-Status: **Finite arithmetic and safety laws are checked; complete literal/macro
-refinement and the source-7 all-time barrier remain open.**
+**Finite arithmetic and safety laws are checked.** Complete literal/macro
+refinement and the source-7 all-time barrier remain open.
 
 ## Reading guide
 
@@ -228,28 +228,19 @@ counterexample is currently present.
 
 ## Production boundary
 
-The [shared temporal-reuse adapter](collatz.md#shared-temporal-effect-reuse)
-now shares complete admitted cylinder effects across compatible source
-occurrences. The minimum-prefix ledger and first-failure descent remain part
-of the reused support. A synthetic repeated negative-ledger macro still fails
-at its first return while total arithmetic continues exactly.
+The [shared temporal-reuse law](collatz.md#shared-temporal-effect-reuse)
+allows compatible admitted sources to share complete cylinder effects. Reuse
+preserves the minimum-prefix ledger and first-failure descent. A repeated
+macro whose first return makes the ledger negative still fails at that return.
+The total arithmetic sequence continues.
 
-[`mahler_action.source_action`](../../src/number_compiler/sequences/antihydra/mahler_action.py)
-now reads the authenticated root skew from `arithmetic_workspace.summary()`.
-It no longer recomposes every retained segment to recover that same action.
-The ledger reports `mahler_source_composed_image_reads`; the retired
-`mahler_source_cylinder_compositions` count stays zero. Source validation,
-fractional predicates and ledger safety remain distinct checks. This eliminates
-the redundant arithmetic fold, not all source validation or rational-integer work.
-
-Complete-effect reuse on aligned sources does not establish F5-based
-normalization across changing source residues. Measurements of a particular
-blank source belong to the dated evidence, not a permanent production status.
-
-Finite `--nth` arithmetic and selected projections are available with bounded
-ownership. Reusing retained parity avoids rediscovery, but folding every
-retained step is still linear in the represented source. Batch aliases share
-one authenticated discovery result; Hensel and Mahler packets remain distinct.
+Mahler's finite associated action is a projection of the authenticated root
+skew. The projection retains separate source, fractional safety, and ledger
+conditions. Across changing residues, F5-based normalization requires its
+own transport law. Reusing a retained parity word saves branch discovery,
+while a fold over every represented step still takes linear work. See the
+[dated carry integration](../sprints/week-of-2026-11-01/antihydra-carry-morphism.md)
+for the implementation and measured scope.
 
 Finite bounded barrier searches and observed nonhalting prefixes are evidence
 only. They neither prove all-time nonhalting nor refute a future source-global
@@ -298,8 +289,8 @@ guard. The full interval census below remains a separate oracle and theorem.
 
 ### All-shift fractional intervals
 
-The supplied September 20 research folder contains a separate, exact safety
-result for real numbers. Write `x = D + t`, with `0 ≤ t < 1/2`. Safety through
+The all-shift condition concerns real numbers. Write `x = D + t`, with
+`0 ≤ t < 1/2`. Safety through
 `N` means `frac(x (3/2)^n) < 1/2` for every `0 ≤ n ≤ N`. It is equivalent to
 the interval constraints
 

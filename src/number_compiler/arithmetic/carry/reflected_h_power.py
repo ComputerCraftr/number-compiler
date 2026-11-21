@@ -3,18 +3,30 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import closing
+from dataclasses import dataclass
+from itertools import count
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
-from number_compiler.arithmetic.automata.slp_interval import fold_slp_dag
+from number_compiler.arithmetic.automata.slp_interval import (
+    fold_slp_dag,
+    fold_slp_interval,
+)
+from number_compiler.arithmetic.automata.slp_walks import iter_symbols, symbol_at
 from number_compiler.arithmetic.automata.temporal_cone import (
     CarrySpacetimePower,
     TemporalSquareScratchReservation,
 )
 from number_compiler.arithmetic.carry.decimal_slp_action import multiply_decimal_slp
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
-from number_compiler.arithmetic.fields.radix import digits_lsd
+from number_compiler.arithmetic.fields.radix import (
+    digits_lsd,
+    reverse_decimal_and_width,
+)
 from number_compiler.resources.ledger import LedgerReservation, ResourceLedger
 from number_compiler.resources.metric_keys import arithmetic_carry as carry_keys
+
+_CELL_ARENA_SERIAL = count()
 
 
 def padded_h_workload(seed: int, steps: int, max_state_bits: int) -> bool:
@@ -92,6 +104,429 @@ def _normalize(source: tuple[int, ...]) -> tuple[int, ...]:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _AdjacentCellSummary:
+    """First/last inlet and all internal adjacent-cell outputs as a cell SLP."""
+
+    first: int | None
+    last: int | None
+    internal: int
+
+
+def _cell_interval(arena: LedgerSLPArena, root: int, start: int, end: int) -> int:
+    """Select a cell interval without enumerating CONCAT/REPEAT occurrences."""
+    return fold_slp_interval(
+        arena,
+        root,
+        start,
+        end,
+        identity=arena.empty_id,
+        length=lambda node: arena.nodes[node].length,
+        full_value=lambda node, _reverse: node,
+        compose=arena.concat,
+        repeat=arena.repeat,
+    )
+
+
+def _adjacent_cell_summary(
+    arena: LedgerSLPArena,
+    root: int,
+    pair_output: Callable[[int, int], int],
+    ledger: ResourceLedger,
+    owner: int,
+) -> _AdjacentCellSummary:
+    """Apply a one-sided cell transducer to a shared SLP in graph order.
+
+    CONCAT creates one bridge symbol; REPEAT creates one repeated bridge
+    action. Neither operation visits the repeated physical occurrences.
+    """
+    empty = _AdjacentCellSummary(None, None, arena.empty_id)
+
+    def join(
+        left: _AdjacentCellSummary, right: _AdjacentCellSummary
+    ) -> _AdjacentCellSummary:
+        if left.first is None:
+            return right
+        if right.first is None:
+            return left
+        assert left.last is not None and right.last is not None
+        bridge = arena.terminal(pair_output(left.last, right.first))
+        return _AdjacentCellSummary(
+            left.first,
+            right.last,
+            arena.concat_many((left.internal, bridge, right.internal)),
+        )
+
+    def repeat(node: _AdjacentCellSummary, count: int) -> _AdjacentCellSummary:
+        if node.first is None or count == 0:
+            return empty
+        if count == 1:
+            return node
+        assert node.last is not None
+        bridge = arena.terminal(pair_output(node.last, node.first))
+        unit = arena.concat(bridge, node.internal)
+        return _AdjacentCellSummary(
+            node.first,
+            node.last,
+            arena.concat(node.internal, arena.repeat(unit, count - 1)),
+        )
+
+    # Charge each in-flight fold task and each retained node summary before
+    # constructing the corresponding dictionaries. The output SLP nodes are
+    # independently charged by the arena's canonical stores.
+    with LedgerReservation(ledger, owner) as reserve:
+        values = fold_slp_dag(
+            arena,
+            root,
+            empty_value=empty,
+            terminal_value=lambda cell: _AdjacentCellSummary(
+                cell, cell, arena.empty_id
+            ),
+            concatenate=join,
+            repeat=repeat,
+            on_schedule=lambda _node: reserve.reserve(entries=1, nodes=1),
+            on_unschedule=lambda _node: reserve.release(entries=1, nodes=1),
+            on_evaluate=lambda _node: reserve.reserve(entries=1, nodes=1),
+        )
+        try:
+            return values[root]
+        finally:
+            values.clear()
+
+
+def _slp_zero_edges(
+    arena: LedgerSLPArena,
+    root: int,
+    ledger: ResourceLedger,
+    owner: int,
+) -> tuple[int, int]:
+    """Count zero edges without visiting grammar interior after a nonzero cell."""
+
+    def edge(reverse: bool) -> int:
+        count = 0
+        # A repeat marker is reached only if its first child copy was all
+        # zero. A completion marker authenticates a zero-only subtree, so a
+        # shared DAG of zero cells never expands like a tree.
+        visit, repeat_remainder, complete = range(3)
+        tasks: list[tuple[int, int]] = []
+        zero_nodes: set[int] = set()
+        with LedgerReservation(ledger, owner) as reserve:
+
+            def push(kind: int, value: int) -> None:
+                reserve.reserve(entries=1, nodes=1)
+                tasks.append((kind, value))
+
+            try:
+                push(visit, root)
+                while tasks:
+                    kind, value = tasks.pop()
+                    reserve.release(entries=1, nodes=1)
+                    if kind == repeat_remainder:
+                        count += value
+                        continue
+                    if kind == complete:
+                        if value not in zero_nodes:
+                            reserve.reserve(entries=1, nodes=1)
+                            zero_nodes.add(value)
+                        continue
+                    node_id = value
+                    node = arena.nodes[node_id]
+                    if node_id in zero_nodes:
+                        count += node.length
+                        continue
+                    if node.kind == "EMPTY":
+                        continue
+                    if node.kind == "TERM":
+                        if node.symbol != 0:
+                            break
+                        count += 1
+                    elif node.kind == "CONCAT":
+                        first, second = (
+                            (node.right, node.left)
+                            if reverse
+                            else (node.left, node.right)
+                        )
+                        push(complete, node_id)
+                        push(visit, second)
+                        push(visit, first)
+                    elif node.kind == "REPEAT":
+                        push(complete, node_id)
+                        push(
+                            repeat_remainder,
+                            (node.count - 1) * arena.nodes[node.child].length,
+                        )
+                        push(visit, node.child)
+                    else:
+                        raise ValueError("invalid SLP node kind")
+            finally:
+                tasks.clear()
+                zero_nodes.clear()
+        return count
+
+    start = edge(False)
+    return start, start if start == arena.nodes[root].length else edge(True)
+
+
+def normalize_reflected_cell_slp(
+    arena: LedgerSLPArena, root: int, ledger: ResourceLedger, owner: int
+) -> int:
+    """Exact physical base-100 normalization on SLP roots, including 10 shifts."""
+    width = arena.nodes[root].length
+    start, suffix = _slp_zero_edges(arena, root, ledger, owner)
+    if start == width:
+        return arena.terminal(0)
+    end = width - suffix
+    if start or end != width:
+        root = _cell_interval(arena, root, start, end)
+    if symbol_at(arena, root, 0) % 10:
+        return root
+    # A one-decimal-digit shift is a radius-one action on base-100 cells.
+    # Pair actions commute with SLP concatenation modulo the seam digit.
+    summary = _adjacent_cell_summary(
+        arena,
+        root,
+        lambda left, right: left // 10 + 10 * (right % 10),
+        ledger,
+        owner,
+    )
+    assert summary.last is not None
+    if summary.last < 10:
+        return summary.internal
+    return arena.concat(summary.internal, arena.terminal(summary.last // 10))
+
+
+def _decimal_slp_from_cells(
+    cells: LedgerSLPArena,
+    root: int,
+    multiplier: int,
+    output: LedgerSLPArena,
+    owner: int,
+    *,
+    even: bool,
+) -> int:
+    """Publish final decimal word without allocating the full cell vector."""
+    divisor = 100 // multiplier
+    summary = _adjacent_cell_summary(
+        cells,
+        root,
+        lambda previous, current: multiplier * current % 100 + previous // divisor,
+        output.ledger,
+        owner,
+    )
+    assert summary.first is not None and summary.last is not None
+    scaled = cells.concat(
+        cells.terminal(multiplier * summary.first % 100), summary.internal
+    )
+    carry = summary.last // divisor
+    if carry:
+        scaled = cells.concat(scaled, cells.terminal(carry))
+    # Physical digits are MSD-first. Each full base-100 cell has two decimal
+    # places, including internal zeros; only one *global* leading zero may go.
+    with LedgerReservation(output.ledger, owner) as reserve:
+
+        def reserve_slot(_node: int) -> None:
+            reserve.reserve(entries=1, nodes=1)
+
+        values = fold_slp_dag(
+            cells,
+            scaled,
+            empty_value=output.empty_id,
+            terminal_value=lambda c: output.word((c // 10, c % 10)),
+            concatenate=lambda a, b: output.concat(b, a),
+            repeat=output.repeat,
+            on_schedule=reserve_slot,
+            on_unschedule=lambda _node: reserve.release(entries=1, nodes=1),
+            on_evaluate=reserve_slot,
+        )
+        try:
+            decimal = values[scaled]
+        finally:
+            values.clear()
+    if not even:
+        if symbol_at(output, decimal, 0) == 0:
+            decimal = _cell_interval(output, decimal, 1, output.nodes[decimal].length)
+        return decimal
+    # The physical even endpoint is 2*reverse10(N(2*odd_track)). The
+    # normalization is applied before this final multiplication, preserving
+    # real trailing zeros such as 50 -> 10 on the physical odd track.
+    decimal_width = output.nodes[decimal].length
+    leading_zeros, trailing_zeros = _slp_zero_edges(
+        output, decimal, output.ledger, owner
+    )
+    if leading_zeros == decimal_width:
+        return output.terminal(0)
+    end = decimal_width - trailing_zeros
+    if leading_zeros or end != decimal_width:
+        decimal = _cell_interval(output, decimal, leading_zeros, end)
+    action = multiply_decimal_slp(output, decimal, multiplier, output.ledger, owner)
+    multiplied, final_carry = action.resolve(output, 0)
+    if final_carry:
+        multiplied = output.concat(multiplied, output.terminal(final_carry))
+    with LedgerReservation(output.ledger, owner) as reserve:
+        rows = fold_slp_dag(
+            output,
+            multiplied,
+            empty_value=output.empty_id,
+            terminal_value=output.terminal,
+            concatenate=lambda left, right: output.concat(right, left),
+            repeat=output.repeat,
+            on_schedule=lambda _node: reserve.reserve(entries=1, nodes=1),
+            on_unschedule=lambda _node: reserve.release(entries=1, nodes=1),
+            on_evaluate=lambda _node: reserve.reserve(entries=1, nodes=1),
+        )
+        try:
+            return rows[multiplied]
+        finally:
+            rows.clear()
+
+
+def _padded_h_inlet(
+    digits: tuple[int, ...], generation: int, multiplier: int
+) -> tuple[tuple[int, ...], int]:
+    """One physical odd/even inlet authority for both exact H executors."""
+    if multiplier == 5 and generation % 2 == 0:
+        previous = 0
+        inlet: list[int] = []
+        for digit in digits:
+            inlet.append(digit // 2 + 5 * (previous % 2))
+            previous = digit
+        inlet.append(5 * (previous % 2))
+        source = tuple(
+            inlet[i] + (10 * inlet[i + 1] if i + 1 < len(inlet) else 0)
+            for i in range(0, len(inlet), 2)
+        )
+        return source, generation // 2 - 1
+    # The 2rev10 even projection reads the same odd track backwards.
+    source = tuple(
+        digits[-1 - i] + (10 * digits[-2 - i] if i + 1 < len(digits) else 0)
+        for i in range(0, len(digits), 2)
+    )
+    return source, ((generation - 1) // 2 if generation % 2 else generation // 2 - 1)
+
+
+def _admit_padded_h_inlet(
+    seed: int, generation: int, multiplier: int, max_state_bits: int
+) -> tuple[tuple[int, ...], int]:
+    digits = digits_lsd(seed, 10)
+    bound_bits = (3322 * (len(digits) + generation + 1) + 999) // 1000
+    if bound_bits > max_state_bits:
+        raise BlockContextBudgetExceeded("padded cone exceeds proved width envelope")
+    return _padded_h_inlet(digits, generation, multiplier)
+
+
+def _retire_padded_h_power(
+    bank: CarrySpacetimePower, ledger: ResourceLedger, transitions: int
+) -> None:
+    try:
+        stats = bank.stats
+        ledger.bump(carry_keys.REFLECTED_H_PRIMITIVE_TRANSITIONS, transitions)
+        ledger.bump(carry_keys.REFLECTED_H_COMPUTED_CONES, stats.temporal_cones)
+        ledger.bump(carry_keys.REFLECTED_H_REUSED_CONES, stats.reused_cones)
+    finally:
+        bank.release_temporary_storage()
+
+
+def _padded_h_execute_slp(
+    seed: int,
+    generation: int,
+    multiplier: int,
+    *,
+    ledger: ResourceLedger,
+    scratch_owner: int,
+    max_state_bits: int,
+    emit: Callable[[LedgerSLPArena, int, bool], int],
+) -> int:
+    """Execute selected dyadic H powers through a *single* cell-SLP arena."""
+    if (
+        type(seed) is not int
+        or seed < 0
+        or type(generation) is not int
+        or generation < 0
+        or type(multiplier) is not int
+        or multiplier not in (2, 5)
+        or type(max_state_bits) is not int
+        or max_state_bits < 1
+    ):
+        raise ValueError("invalid reflected source, generation or budget")
+    if seed.bit_length() > max_state_bits:
+        raise BlockContextBudgetExceeded("reflected source exceeds state-bit budget")
+    width_bound = (seed.bit_length() * 30103 + 99999) // 100000 + 1
+    if seed == 0 or generation == 0:
+        return _padded_h_execute(
+            seed,
+            generation,
+            multiplier,
+            ledger=ledger,
+            scratch_owner=scratch_owner,
+            max_state_bits=max_state_bits,
+            emit=lambda items, even: _single_cell_slp_emit(
+                items, even, ledger, scratch_owner, emit
+            ),
+        )
+    with ledger.reservation(
+        scratch_owner,
+        entries=4 * (width_bound + generation + 1),
+        nodes=4 * (width_bound + generation + 1),
+    ):
+        source, steps = _admit_padded_h_inlet(
+            seed, generation, multiplier, max_state_bits
+        )
+        cell_arena = LedgerSLPArena(
+            ledger, f"reflected-h-cell-{next(_CELL_ARENA_SERIAL)}", "reflected_h"
+        )
+        reservation = LedgerReservation(ledger, scratch_owner)
+        transitions = 0
+        kernel = padded_h_kernel(multiplier)
+
+        def transition(a: int, b: int) -> int:
+            nonlocal transitions
+            transitions += 1
+            return kernel(a, b)
+
+        try:
+            cell_root = normalize_reflected_cell_slp(
+                cell_arena, cell_arena.word(source), ledger, scratch_owner
+            )
+            with TemporalSquareScratchReservation(reservation) as scratch:
+                bank = CarrySpacetimePower(scratch, None, None, cell_action=transition)
+                try:
+                    for bit in range(steps.bit_length() - 1, -1, -1):
+                        if steps & (1 << bit):
+                            cell_root = normalize_reflected_cell_slp(
+                                cell_arena,
+                                bank.advance_blocks_slp(
+                                    cell_arena, cell_root, 1 << bit
+                                ),
+                                ledger,
+                                scratch_owner,
+                            )
+                    return emit(
+                        cell_arena,
+                        cell_root,
+                        multiplier == 2 and generation % 2 == 0,
+                    )
+                finally:
+                    _retire_padded_h_power(bank, ledger, transitions)
+        finally:
+            cell_arena.dispose()
+
+
+def _single_cell_slp_emit(
+    items: list[int],
+    even: bool,
+    ledger: ResourceLedger,
+    owner: int,
+    emit: Callable[[LedgerSLPArena, int, bool], int],
+) -> int:
+    arena = LedgerSLPArena(
+        ledger, f"reflected-h-single-{next(_CELL_ARENA_SERIAL)}", "reflected_h"
+    )
+    try:
+        return emit(arena, arena.word(items), even)
+    finally:
+        arena.dispose()
+
+
 def _padded_h_execute(
     seed: int,
     generation: int,
@@ -130,31 +565,9 @@ def _padded_h_execute(
         entries=4 * (width_bound + generation + 1),
         nodes=4 * (width_bound + generation + 1),
     ):
-        digits = digits_lsd(seed, 10)
-        if (3322 * (len(digits) + generation + 1) + 999) // 1000 > max_state_bits:
-            raise BlockContextBudgetExceeded(
-                "padded cone exceeds proved width envelope"
-            )
-        if multiplier == 5 and generation % 2 == 0:
-            # E_5(seed) is the established even inlet, in LSD-first order.
-            previous = 0
-            inlet: list[int] = []
-            for digit in digits:
-                inlet.append(digit // 2 + 5 * (previous % 2))
-                previous = digit
-            inlet.append(5 * (previous % 2))
-            source = tuple(
-                inlet[i] + (10 * inlet[i + 1] if i + 1 < len(inlet) else 0)
-                for i in range(0, len(inlet), 2)
-            )
-            steps = generation // 2 - 1
-        else:
-            # The 2rev10 even projection reads the same odd track backwards.
-            source = tuple(
-                digits[-1 - i] + (10 * digits[-2 - i] if i + 1 < len(digits) else 0)
-                for i in range(0, len(digits), 2)
-            )
-            steps = (generation - 1) // 2 if generation % 2 else generation // 2 - 1
+        source, steps = _admit_padded_h_inlet(
+            seed, generation, multiplier, max_state_bits
+        )
         source = _normalize(source)
         reservation = LedgerReservation(ledger, scratch_owner)
         transitions = 0
@@ -192,17 +605,7 @@ def _padded_h_execute(
                     output.append(carry)
                 return emit(output, multiplier == 2 and generation % 2 == 0)
             finally:
-                try:
-                    stats = bank.stats
-                    ledger.bump(
-                        carry_keys.REFLECTED_H_PRIMITIVE_TRANSITIONS, transitions
-                    )
-                    ledger.bump(
-                        carry_keys.REFLECTED_H_COMPUTED_CONES, stats.temporal_cones
-                    )
-                    ledger.bump(carry_keys.REFLECTED_H_REUSED_CONES, stats.reused_cones)
-                finally:
-                    bank.release_temporary_storage()
+                _retire_padded_h_power(bank, ledger, transitions)
 
 
 def padded_h_endpoint(
@@ -213,8 +616,45 @@ def padded_h_endpoint(
     ledger: ResourceLedger,
     scratch_owner: int,
     max_state_bits: int,
+    use_slp_power: bool = False,
 ) -> int:
     """Compute a bounded physical endpoint via the ledgered cone arena."""
+
+    # The H track is SLP-persistent across dyadic powers. Only the requested
+    # final integer must be constructed; the intermediate rows are never
+    # materialized into whole-base-100 tuples.
+    if type(use_slp_power) is not bool:
+        raise TypeError("SLP powering selector must be Boolean")
+    if use_slp_power and generation >= 128:
+
+        def emit_slp(cells: LedgerSLPArena, root: int, even: bool) -> int:
+            number = 0
+            with closing(
+                iter_symbols(
+                    cells,
+                    root,
+                    reverse=True,
+                    ledger=ledger,
+                    owner=scratch_owner,
+                )
+            ) as symbols:
+                for digit in symbols:
+                    number = number * 100 + digit
+            number *= multiplier
+            if even:
+                reflected, _width = reverse_decimal_and_width(number)
+                return multiplier * reflected
+            return number
+
+        return _padded_h_execute_slp(
+            seed,
+            generation,
+            multiplier,
+            ledger=ledger,
+            scratch_owner=scratch_owner,
+            max_state_bits=max_state_bits,
+            emit=emit_slp,
+        )
 
     def emit(cells: list[int], even: bool) -> int:
         result = cells[-1]
@@ -248,10 +688,35 @@ def padded_h_publish(
     arena: LedgerSLPArena,
     scratch_owner: int,
     max_state_bits: int,
+    use_slp_power: bool = False,
 ) -> int:
     """Publish an exact MSD-first endpoint in the receiving SLP arena."""
     arena.empty()
     checkpoint = len(arena.nodes)
+    if type(use_slp_power) is not bool:
+        raise TypeError("SLP powering selector must be Boolean")
+    # Keep the lower-cost tuple kernel for ordinary short/medium endpoints.
+    # Explicit source-SLP consumers select the compressed intermediate path;
+    # its cost is not universally lower for small physical words.
+    if use_slp_power and generation >= 128:
+        try:
+            return _padded_h_execute_slp(
+                seed,
+                generation,
+                multiplier,
+                ledger=arena.ledger,
+                scratch_owner=scratch_owner,
+                max_state_bits=max_state_bits,
+                emit=lambda cells, root, even: _decimal_slp_from_cells(
+                    cells, root, multiplier, arena, scratch_owner, even=even
+                ),
+            )
+        except BaseException as error:
+            try:
+                arena.rollback_unpublished_suffix(checkpoint)
+            except BaseException as cleanup_error:
+                raise error from cleanup_error
+            raise
 
     def emit(cells: list[int], even: bool) -> int:
         top = cells[-1]
