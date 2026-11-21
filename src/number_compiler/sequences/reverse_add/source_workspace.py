@@ -93,6 +93,7 @@ class ReverseSourceImageWorkspace:
         *,
         base: int = 10,
         source_construction: OriginalSourceConstruction | None = None,
+        shared_cache: bool = False,
     ) -> None:
         if type(ledger) is not ResourceLedger:
             raise TypeError("reverse source workspace requires a resource ledger")
@@ -119,7 +120,7 @@ class ReverseSourceImageWorkspace:
             root_action = actions.action(steps)
             scheduler = TileScheduler.source_only(ledger)
             rollback.callback(scheduler.dispose_source_images)
-            adapter = ReverseSourceImageAdapter(actions)
+            adapter = ReverseSourceImageAdapter(actions, shared_cache=shared_cache)
             rollback.callback(adapter.dispose)
             pointed_owner = ledger.register(
                 f"reverse-source-pointed-bank-{ledger.owner_count}",

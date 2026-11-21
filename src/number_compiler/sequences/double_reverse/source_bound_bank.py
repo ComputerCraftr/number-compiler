@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.hashlife.execution.source_image_inventory import SourceImageID
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
@@ -65,6 +66,13 @@ from number_compiler.sequences.double_reverse.temporal_residue_quotient import (
 )
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.double_reverse.c0_signal_session import (
+        C0SignalSession,
+    )
+    from number_compiler.sequences.double_reverse.palindrome_event_cursor import (
+        PalindromeCursor,
+    )
+
     from .temporal_center_cyclotomic import (
         CertifiedCyclotomicCenter,
         CertifiedCyclotomicCenterDriver,
@@ -468,6 +476,7 @@ class DoubleReverseBankMixin(CarrySafetyAuditBase):
     _image: SourceImageID | None
     _cleanup_complete: bool
     _threshold_memo: OwnedMemo[int, bytes]
+    _palindrome_cache: OwnedMemo[int, PalindromeCursor] | None
 
     @property
     def source_adapter(self) -> DoubleReverseSourceAdapter:
@@ -516,6 +525,73 @@ class DoubleReverseBankMixin(CarrySafetyAuditBase):
     generation: int
     max_steps: int
     max_state_bits: int
+
+    seed: int
+
+    def validate_source_binding(self) -> None:
+        raise NotImplementedError
+
+    def c0_signal_session(
+        self,
+        transitions: tuple[tuple[tuple[int, int], ...], ...],
+        required_events: int,
+    ) -> C0SignalSession:
+        """Compile source-bound C0 low-two mask events within this query."""
+        from .c0_signal_session import C0SignalSession
+
+        self.validate_source_binding()
+        return C0SignalSession(
+            self._arena,
+            self._scratch_owner,
+            self._adapter.temporal_hashlife,
+            lambda: self._certified_prefix_entry(
+                max_prefix=64, require_even_remainder=False
+            ),
+            self.validate_source_binding,
+            self.seed,
+            self.generation,
+            transitions,
+            required_events,
+        )
+
+    def _palindrome_memo(self) -> OwnedMemo[int, PalindromeCursor]:
+        raise NotImplementedError
+
+    def first_palindrome_within(self, horizon: int) -> int | None:
+        """Search positive generations using owner-bound, demand-only evidence."""
+        from .palindrome_event_cursor import (
+            PalindromeCursor,
+            advance_palindrome_cursor,
+        )
+
+        self.validate_source_binding()
+        horizon = require_integer(horizon, "palindrome horizon", 0)
+        if horizon > self.max_steps:
+            raise BlockContextBudgetExceeded(
+                "palindrome horizon exceeds the double-reverse step budget"
+            )
+        if horizon == 0:
+            return None
+        cache = self._palindrome_memo()
+        cursor = cache.get(0)
+        if cursor is None:
+            cursor = PalindromeCursor(
+                self.seed, 0, self._arena.node_id_generation, self.seed
+            )
+        elif (
+            cursor.seed != self.seed
+            or cursor.arena_generation != self._arena.node_id_generation
+        ):
+            raise ValueError("palindrome cursor has stale source authority")
+        if cursor.first_hit is not None:
+            return cursor.first_hit if cursor.first_hit <= horizon else None
+        if cursor.c0_closed or cursor.generation >= horizon:
+            return None
+        result = advance_palindrome_cursor(
+            cursor, horizon, self._ledger, self._scratch_owner, self.max_state_bits
+        )
+        cache[0] = result
+        return result.first_hit
 
     def check_open(self) -> None:
         raise NotImplementedError

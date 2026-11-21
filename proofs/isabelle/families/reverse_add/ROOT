@@ -53,6 +53,14 @@ session Reverse_Digit_Terminal in reverse_terminal = Reverse_Residuals +
 session Reverse_Growth_Admission in reverse_growth = Reverse_Residuals +
   options [document = false, quick_and_dirty = false]
   theories
+    Reverse_First_Hit_Composition
+    Reverse_Palindrome_Preimage_Seams
+    Reverse_Palindrome_Physical_Bridge
+    Reverse_Palindrome_Physical_Iff
+    Reverse_Palindrome_Growth_Iff
+    Reverse_Q19_Packed_Lanes
+    Reverse_Palindrome_Joint_Source
+    Reverse_Joint_Output_Inverse
     Reverse_Growth_Run_Admission
     Reverse_Carry_Suffix_Refinement
     Weighted_Partial_Growth_Action

@@ -13,9 +13,12 @@ from number_compiler.api.observation_types import (
     OutputFormat,
     SelectorId,
 )
-from number_compiler.api.query_types import ExecutionQuery
+from number_compiler.api.query_types import ExecutionQuery, FirstPalindromeQuery
 from number_compiler.arithmetic.contracts.family_identity import FamilyId
-from number_compiler.arithmetic.contracts.input_validation import require_integer
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_exact_integer_tuple,
+    require_integer,
+)
 
 if TYPE_CHECKING:
     from number_compiler.api.output_schema import IndexValue
@@ -200,9 +203,21 @@ class CollatzTermObservationOptions:
     innovation_modulus: int = 257
     clock_max_events: int = 4096
     clock_max_digits: int = 4096
+    carry_bellman_cuts: tuple[int, ...] = (1,)
+    carry_bellman_horizon: int = 1
 
     def __post_init__(self) -> None:
         _validate_info_names(self.info)
+        if ObservationId.TEMPORAL_CARRY_BELLMAN in self.info:
+            require_integer(
+                self.carry_bellman_horizon, "--temporal-bellman-horizon", 0, 4096
+            )
+            if (
+                not is_exact_integer_tuple(self.carry_bellman_cuts)
+                or not 1 <= len(self.carry_bellman_cuts) <= 16
+                or any(not 1 <= cut <= 4095 for cut in self.carry_bellman_cuts)
+            ):
+                raise ValueError("carry Bellman requires 1..16 binary cuts in 1..4095")
         accumulator_modulus = require_integer(
             self.accumulator_modulus, "--temporal-accumulator-modulus", 2
         )
@@ -383,6 +398,9 @@ class QueryRequest:
 
         spec = family_spec(family)
         expected_query = {
+            SelectorId.FIRST_PALINDROME: FirstPalindromeQuery
+            if spec.palindrome_search
+            else None,
             SelectorId.NTH: spec.query_type,
             SelectorId.EVENTS: spec.event_query_type,
             SelectorId.VERIFY: spec.verify_query_type,
@@ -411,7 +429,10 @@ class QueryRequest:
                 if selector is SelectorId.EVENTS
                 else spec.term_observation
             )
-            if selector is SelectorId.VERIFY or binding is None:
+            if (
+                selector in (SelectorId.VERIFY, SelectorId.FIRST_PALINDROME)
+                or binding is None
+            ):
                 raise ValueError("execution selector does not accept observations")
             if type(self.observations) is not binding.options_type:
                 raise TypeError("observations must match the registered option type")

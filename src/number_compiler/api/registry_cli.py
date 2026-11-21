@@ -10,6 +10,7 @@ from number_compiler.api.observation_types import (
     OptionSpec,
     OptionValueKind,
     OutputFormat,
+    SelectorId,
     option_default,
 )
 from number_compiler.arithmetic.contracts.input_validation import is_exact_integer_tuple
@@ -27,6 +28,10 @@ def family_listing() -> tuple[str, ...]:
             lines.append(
                 "  --events E (accelerated_odd_events); info: "
                 + ", ".join(spec.event_info)
+            )
+        if spec.palindrome_search:
+            lines.append(
+                f"  --{SelectorId.FIRST_PALINDROME.value} N (positive physical generations through N)"
             )
         if spec.verify_flag is not None:
             lines.append(f"  --{spec.verify_flag.replace('_', '-')} PATH")

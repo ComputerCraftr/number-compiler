@@ -737,6 +737,7 @@ class MahlerCertifiedCenterDepthTransfer:
             for i in range(len(sources) - 1)
             if len(str(sources[i])) != len(str(sources[i + 1]))
         )
+        radix198 = tuple(source % 198 for source in sources)
         # Issue only after deriving every public field from the validated
         # source path above. No private factory accepts arbitrary field values.
         return cls._issue(
@@ -746,8 +747,8 @@ class MahlerCertifiedCenterDepthTransfer:
             pointed_sources=sources,
             pointed_centers=pointed_centers,
             center_positions=positions,
-            radix99=tuple(d % 99 for d in sources),
-            radix198=tuple(d % 198 for d in sources),
+            radix99=tuple(residue % 99 for residue in radix198),
+            radix198=radix198,
             rejected_source_paths=refused,
             width_births=births,
             conditional_composition=conditional,

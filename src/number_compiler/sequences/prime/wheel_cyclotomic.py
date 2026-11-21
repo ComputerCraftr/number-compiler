@@ -27,7 +27,7 @@ from functools import lru_cache
 from math import gcd, prod
 
 from number_compiler.arithmetic.fields.integer_congruence import affine_preimage
-from number_compiler.arithmetic.fields.morphism_core import binary_power, modular_power
+from number_compiler.arithmetic.fields.morphism_core import modular_power
 from number_compiler.arithmetic.fields.radix import bit_width
 from number_compiler.sequences.prime.set import MultiplicativeLane, is_prime_u64
 
@@ -241,23 +241,50 @@ class PrimeWheelPhaseBlock:
         )
 
     def power_block(self, exponent: int) -> PrimeWheelPhaseBlock:
-        base = PrimeWheelPhaseBlock(
-            self.prime, self.alpha, self.length, self.phase_shift, self.circular, 0
-        )
-        powered = binary_power(
-            base,
-            exponent,
-            identity=PrimeWheelPhaseBlock.identity(self.prime, self.alpha),
-            compose=PrimeWheelPhaseBlock.then,
-        )
-        result = powered.value
+        """Power the exact cyclotomic phase action by its finite rotation orbit.
+
+        A block entering at phase r contributes ``h[r]``; consecutive copies
+        rotate that histogram by ``phase_shift``.  Along each orbit of the
+        rotation permutation, complete circuits contribute a uniform total,
+        and the remaining moving window is accumulated in O(orbit length).
+        This is an exact quotient of repeated *certified* phase blocks and
+        needs no binary sequence of O(log exponent) full-histogram additions.
+        It does not infer an unknown next prime from this phase.
+        """
+        if type(exponent) is not int:
+            raise TypeError("prime cyclotomic repeat count must be an exact integer")
+        if exponent < 0:
+            raise ValueError("prime cyclotomic repeat count must be nonnegative")
+        q = self.prime
+        shift = self.phase_shift
+        h = self.circular.histogram()
+        counts = [0] * q
+        if not shift:
+            counts = [exponent * v for v in h]
+        elif exponent:
+            # This also handles composite phase moduli: each residue orbit
+            # closes after q/gcd(q, shift) steps, not necessarily q.
+            orbit_length = q // gcd(q, shift)
+            full, tail = divmod(exponent, orbit_length)
+            for origin in range(gcd(q, shift)):
+                orbit = tuple((origin + i * shift) % q for i in range(orbit_length))
+                ring = [h[pos] for pos in orbit]
+                uniform = full * sum(ring)
+                window = sum(ring[-i % orbit_length] for i in range(tail))
+                for index, pos in enumerate(orbit):
+                    counts[pos] = uniform + window
+                    if tail:
+                        window += ring[(index + 1) % orbit_length]
+                        window -= ring[(index + 1 - tail) % orbit_length]
+        # ``compositions`` counts executed calls to ``then``; this closed
+        # rotation reduction performs none, and its O(q) field work is exact.
         return PrimeWheelPhaseBlock(
-            result.prime,
-            result.alpha,
-            result.length,
-            result.phase_shift,
-            result.circular,
-            powered.compositions,
+            q,
+            self.alpha,
+            self.length * exponent,
+            (shift * exponent) % q,
+            PrimeWheelCircularQuotient.from_histogram(counts),
+            0,
         )
 
     def phase_histogram(self, *, entering_phase: int = 0) -> tuple[int, ...]:

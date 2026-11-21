@@ -81,16 +81,18 @@ def certified_width_moments(phase: int, steps: int) -> SkewMoment:
 
 @dataclass(frozen=True, slots=True)
 class SLPResidues:
-    """A concatenation monoid with two numerical residues, no digit expansion."""
+    """A decimal word length and its strongest residue for both projections."""
 
     length: int
-    modulo99: int
     modulo198: int
+
+    @property
+    def modulo99(self) -> int:
+        return self.modulo198 % 99
 
     def then(self, later: SLPResidues) -> SLPResidues:
         return SLPResidues(
             self.length + later.length,
-            (self.modulo99 * pow(10, later.length, 99) + later.modulo99) % 99,
             (self.modulo198 * pow(10, later.length, 198) + later.modulo198) % 198,
         )
 
@@ -100,7 +102,7 @@ class SLPResidues:
         return binary_power(
             self,
             times,
-            identity=SLPResidues(0, 0, 0),
+            identity=SLPResidues(0, 0),
             compose=lambda first, second: first.then(second),
         ).value
 
@@ -127,8 +129,8 @@ def decimal_residues_from_slp(
         values = fold_slp_dag(
             arena,
             root,
-            empty_value=SLPResidues(0, 0, 0),
-            terminal_value=lambda d: SLPResidues(1, d % 99, d % 198),
+            empty_value=SLPResidues(0, 0),
+            terminal_value=lambda d: SLPResidues(1, d % 198),
             concatenate=lambda a, b: a.then(b),
             repeat=lambda a, count: a.power(count),
             on_reduce=(

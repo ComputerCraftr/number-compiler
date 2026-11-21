@@ -165,7 +165,7 @@ class _WordFiberSummary:
             else PascalWordMoments.empty(pascal_order, modulus=11)
         )
         mod70 = DecimalMod70WordSummary.identity() if mod70_projection else None
-        return cls(SLPResidues(0, 0, 0), pascal, mod70)
+        return cls(SLPResidues(0, 0), pascal, mod70)
 
     @classmethod
     def symbol(
@@ -182,7 +182,7 @@ class _WordFiberSummary:
             )
         )
         mod70 = DecimalMod70WordSummary.digit(digit) if mod70_projection else None
-        return cls(SLPResidues(1, digit % 99, digit % 198), pascal, mod70)
+        return cls(SLPResidues(1, digit % 198), pascal, mod70)
 
     def then(self, later: _WordFiberSummary) -> _WordFiberSummary:
         if type(later) is not _WordFiberSummary:
@@ -379,15 +379,10 @@ def word_fiber_from_root(
     center_value = 0
     for digit in center:
         center_value = 10 * center_value + digit
-    exterior99 = (
-        left.residues.modulo99 * pow(10, width - s, 99) + right.residues.modulo99
-    ) % 99
     exterior198 = (
         left.residues.modulo198 * pow(10, width - s, 198) + right.residues.modulo198
     ) % 198
-    if (exterior99 + center_value * pow(10, s, 99)) % 99 != full.modulo99 or (
-        exterior198 + center_value * pow(10, s, 198)
-    ) % 198 != full.modulo198:
+    if (exterior198 + center_value * pow(10, s, 198)) % 198 != full.modulo198:
         raise AssertionError("punctured exterior failed whole-word SLP identity")
     return SeedWordFiber(
         root,
@@ -396,7 +391,7 @@ def word_fiber_from_root(
         band_moore().class_for((center[0], center[1])) if center_width == 2 else None,
         full.modulo99,
         full.modulo198,
-        exterior99,
+        exterior198 % 99,
         exterior198,
         pascal_order if pascal_levels else None,
         pascal_levels,

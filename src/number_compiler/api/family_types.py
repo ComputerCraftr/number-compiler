@@ -187,6 +187,7 @@ class FamilySpec:
     output_bound: SizeBound | None = None
     matrix: MatrixCapability | None = None
     scalar_value: AdapterBinding | None = None
+    palindrome_search: bool = False
 
     def __post_init__(self) -> None:
         if type(self.capability) is not FamilyCapability:
@@ -291,6 +292,8 @@ class FamilySpec:
         return self.capability.event_unit
 
     def unit_for(self, selector: SelectorId) -> IndexUnit | None:
+        if selector is SelectorId.FIRST_PALINDROME and self.palindrome_search:
+            return IndexUnit.PHYSICAL_ITERATIONS
         if selector is SelectorId.NTH:
             return self.unit
         if selector is SelectorId.EVENTS:
@@ -468,6 +471,20 @@ class FamilySpec:
     def validate_request(
         self, request: QueryRequest, specified: frozenset[str]
     ) -> None:
+        if request.selector is SelectorId.FIRST_PALINDROME:
+            allowed_source_options = {
+                "palindrome_horizon",
+                "format",
+                "max_index_bits",
+                *self.query_options(),
+            }
+            if specified - allowed_source_options or request.observations.info:
+                raise ValueError(
+                    "palindrome search accepts source options and value or JSON format"
+                )
+            if request.presentation.format is OutputFormat.SYMBOLIC:
+                raise ValueError("palindrome search requires value or JSON format")
+            return
         if request.selector is SelectorId.VERIFY:
             allowed = {self.verify_flag, "format"}
             if (

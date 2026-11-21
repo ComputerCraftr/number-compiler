@@ -100,6 +100,27 @@ class Q19OutputPublicationMixin:
         spatial state. The method still applies every requested transition;
         it does not infer a temporal period or skip source steps.
         """
+        return self._publish_broadword_source(temporal_steps, carry_window=False)
+
+    def publish_carry_window_continuation(
+        self, temporal_steps: int, *, shared_cache: bool = False
+    ) -> ReversePairOutputOccurrence:
+        """Issue a physical endpoint through the source's twelve-row forcing image."""
+        from number_compiler.sequences.reverse_add.q19_carry_window import (
+            DECIMAL_CARRY_WINDOW,
+        )
+
+        if type(temporal_steps) is not int or temporal_steps <= DECIMAL_CARRY_WINDOW:
+            raise ValueError(
+                "a carry-window endpoint needs twelve source steps and an output tick"
+            )
+        return self._publish_broadword_source(
+            temporal_steps, carry_window=True, shared_cache=shared_cache
+        )
+
+    def _publish_broadword_source(
+        self, temporal_steps: int, *, carry_window: bool, shared_cache: bool = False
+    ) -> ReversePairOutputOccurrence:
         from number_compiler.resources.lifecycle import cleanup_on_error
         from number_compiler.sequences.reverse_add.q19_broadword_publisher import (
             PackedQ19,
@@ -108,6 +129,10 @@ class Q19OutputPublicationMixin:
         self.validate_open()
         if type(temporal_steps) is not int or temporal_steps < 1:
             raise ValueError("physical Q19 endpoint requires positive duration")
+
+        from number_compiler.sequences.reverse_add.q19_carry_window import (
+            completed_continuation,
+        )
 
         hint = self._broadword_last
         if hint is not None and hint[0] == temporal_steps:
@@ -123,6 +148,7 @@ class Q19OutputPublicationMixin:
         previous_publication: ReversePairOutputOccurrence | None = None
 
         def rollback() -> None:
+            self._broadword_last = hint
             self.rollback_punctured_application(
                 first_new_node, rollback_publication, previous_publication
             )
@@ -146,42 +172,52 @@ class Q19OutputPublicationMixin:
                     )
                     self.ledger.bump(
                         _reverse_add_keys.REVERSE_Q19_BROADWORD_PREFIX_ROUNDS,
-                        2 * rounds,
+                        rounds,
                     )
                     # This is a documented logical-bit estimate: ten fixed
-                    # lane-width passes plus four prefix-network passes per
+                    # lane-width passes plus two prefix-network passes per
                     # doubling round. It is not an allocation or op counter.
-                    logical_operand_bits = 6 * count * (10 + 4 * rounds)
+                    logical_operand_bits = 6 * count * (10 + 2 * rounds)
                     self.ledger.bump(
                         _reverse_add_keys.REVERSE_Q19_BROADWORD_OPERAND_BITS,
                         logical_operand_bits,
                     )
 
-                frame = frame.advance_repeated(
-                    temporal_steps - 1, before_step=record_step_work
-                )
+                remaining = temporal_steps - 1
+                with completed_continuation(
+                    frame,
+                    remaining,
+                    carry_window=carry_window,
+                    shared_cache=shared_cache,
+                    before_step=record_step_work,
+                ) as (target, reused):
+                    if reused:
+                        self.ledger.bump(
+                            _reverse_add_keys.REVERSE_Q19_REUSED_CONTINUATION_STEPS,
+                            reused,
+                        )
 
-                # The ordinary Q19 source-to-output grammar represents the
-                # source frame before its final addition. The terminal result
-                # is therefore issued at temporal_steps from frame X_(n-1).
-                def symbols() -> Iterator[int]:
-                    yield 19 + (frame.width & 1)
-                    for index in range(frame.count):
-                        yield (frame.pairs >> (6 * index)) & 63
-                    if frame.center is not None:
-                        yield 2 * frame.center
-                    yield 21
+                    # The ordinary Q19 source-to-output grammar represents the
+                    # source frame before its final addition. The terminal result
+                    # is therefore issued at temporal_steps from frame X_(n-1).
+                    def symbols() -> Iterator[int]:
+                        yield 19 + (target.width & 1)
+                        for index in range(target.count):
+                            yield (target.pairs >> (6 * index)) & 63
+                        if target.center is not None:
+                            yield 2 * target.center
+                        yield 21
 
-                root = self._word(symbols())
-                issue_key = (root, temporal_steps)
-                previous_publication = self.issued_occurrence(issue_key)
-                published = self._issue(*issue_key)
-                rollback_publication = published
-                self.ledger.bump(
-                    _reverse_add_keys.REVERSE_Q19_BROADWORD_ENDPOINT_PUBLICATIONS
-                )
-                self._broadword_last = (temporal_steps, published.root)
-                return published
+                    root = self._word(symbols())
+                    issue_key = (root, temporal_steps)
+                    previous_publication = self.issued_occurrence(issue_key)
+                    published = self._issue(*issue_key)
+                    rollback_publication = published
+                    self.ledger.bump(
+                        _reverse_add_keys.REVERSE_Q19_BROADWORD_ENDPOINT_PUBLICATIONS
+                    )
+                    self._broadword_last = (temporal_steps, published.root)
+                    return published
 
     def symbol_at(self, root: int, index: int) -> int:
         return slp_symbol_at(self.arena, root, index)

@@ -24,6 +24,7 @@ from number_compiler.api.observation_types import (
     output_status,
 )
 from number_compiler.api.output_schema import (
+    CollatzCarryBellmanPacket,
     JsonValue,
     ObservationPacket,
     VerificationResult,
@@ -320,6 +321,7 @@ def prepare_collatz(context: QueryContext, term: ProjectedNumberTerm) -> None:
         ObservationId.TEMPORAL_ACCUMULATOR,
         ObservationId.TEMPORAL_DOUBLE_ACCUMULATOR,
         ObservationId.TEMPORAL_DIAGONAL_CARRY,
+        ObservationId.TEMPORAL_CARRY_BELLMAN,
         ObservationId.TEMPORAL_MATRIX,
         ObservationId.TEMPORAL_MATRIX_TRACE,
     }.intersection(options.info):
@@ -444,6 +446,31 @@ def observe_collatz(context: QueryContext, name: ObservationId) -> Packet:
             diagonal_packet(payload.term, max_width=term_options.clock_max_digits),
             coordinates=(("physical_ticks",),),
         )
+    if name is ObservationId.TEMPORAL_CARRY_BELLMAN:
+        from number_compiler.sequences.collatz.future_carry_bellman import (
+            first_simultaneous_even_carries,
+        )
+
+        seam = payload.term.diagonal_carry_seam()
+        if seam.phase:
+            raise ValueError("carry Bellman requires a completed normalized step")
+        source = seam.normalized_endpoint
+        cuts = term_options.carry_bellman_cuts
+        horizon = term_options.carry_bellman_horizon
+        hit = first_simultaneous_even_carries(
+            source, cuts, horizon=horizon, ledger=payload.term.resource_ledger
+        )
+        bellman_packet: CollatzCarryBellmanPacket = {
+            "law": "homogeneous-centered-carry",
+            "multipliers": (3, 5, 15),
+            "normalized_source": source,
+            "cuts": cuts,
+            "normalized_horizon": horizon,
+            "physical_horizon": 2 * horizon,
+            "first_normalized_offset": hit,
+            "first_physical_offset": None if hit is None else 2 * hit,
+        }
+        return publish_observation(context, name, bellman_packet)
     if name is ObservationId.TEMPORAL_DOUBLE_ACCUMULATOR:
         weight = payload.term.double_accumulators()
         joint = payload.term.source_image().joint_action if execution.index else None

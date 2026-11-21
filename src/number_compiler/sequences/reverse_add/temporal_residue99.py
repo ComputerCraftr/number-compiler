@@ -16,9 +16,10 @@ S(10) = X_0 + reverse10(X_0) = 2*X_0 (mod 9).
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
+
+from number_compiler.arithmetic.fields.radix import reverse_decimal_and_width
 
 if TYPE_CHECKING:
     from .q19_border_control import CertifiedBorderGrowth
@@ -74,29 +75,6 @@ class ReverseAddResidue99:
 def _check_duration(duration: int) -> None:
     if type(duration) is not int or duration < 0:
         raise ValueError("temporal duration must be a nonnegative integer")
-
-
-def reverse_decimal_and_width(
-    value: int, *, before_digit: Callable[[int, int], None] | None = None
-) -> tuple[int, int]:
-    """Return exact decimal reversal and width without string conversion.
-
-    An optional callback runs before each digit operation with the current
-    input and accumulated output bit lengths. Production bounded observers
-    use it to account for operand work; ordinary arithmetic callers stay pure.
-    """
-    if type(value) is not int or value < 0:
-        raise ValueError("decimal source must be a nonnegative exact integer")
-    if value == 0:
-        return 0, 1
-    reversed_value, width = 0, 0
-    while value:
-        if before_digit is not None:
-            before_digit(value.bit_length(), reversed_value.bit_length())
-        value, digit = divmod(value, 10)
-        reversed_value = reversed_value * 10 + digit
-        width += 1
-    return reversed_value, width
 
 
 def from_seed(seed: int, duration: int) -> ReverseAddResidue99:

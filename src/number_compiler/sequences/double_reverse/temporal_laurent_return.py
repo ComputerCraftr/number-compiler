@@ -34,10 +34,12 @@ from number_compiler.arithmetic.fields.radix import reverse_radix_integer
 from ._temporal_bank_authority import validate_source_record
 from .source_adapter import decimal_digits_lsd
 from .temporal_hashlife import PHYSICAL_GROWTH_CYCLES, edge_phase_of_integer
+from .temporal_hashlife_borders import outer_digits
 from .temporal_residue_quotient import (
     CertifiedResidueTemporalAction,
     certified_residue_action,
 )
+from .two_rev10_digit_field import MODULUS as FIELD_MODULUS
 from .two_rev10_digit_field import TwoReverseDualDigitField18
 
 if TYPE_CHECKING:
@@ -101,15 +103,15 @@ def physical_carry_field_borrow_projection(
         raise ValueError("physical carry field needs an issued mod-198 residue")
     if type(seed_mod9) is not int or not 0 <= seed_mod9 < 9:
         raise ValueError("physical carry field needs an authenticated seed modulo 9")
-    last_digit = 8 if target_phase in (0, 3) else 2
-    next_last_digit = 2 if target_phase in (0, 1) else 8
+    _, last_digit = outer_digits(target_phase)
+    _, next_last_digit = outer_digits((target_phase + 1) % 4)
     physical_mod990 = physical_mod198 + 198 * (2 * (last_digit - physical_mod198) % 5)
     carry_field_mod90 = 2 * physical_mod990 % 90
-    dual_field_mod18 = TwoReverseDualDigitField18.from_border(
-        physical_mod198=physical_mod198, phase=target_phase
-    )
+    digit_field = TwoReverseDualDigitField18(
+        carry_field_mod90 % FIELD_MODULUS, target_phase
+    ).packet()
     if (
-        dual_field_mod18.four_field_orientations_mod90["high_first_mod90"]
+        digit_field["four_field_orientations_mod90"]["high_first_mod90"]
         != carry_field_mod90
     ):
         raise ArithmeticError("joint digit-field mod-90 projection lost its parent")
@@ -129,7 +131,7 @@ def physical_carry_field_borrow_projection(
         "target_phase": target_phase,
         "physical_target_mod990": physical_mod990,
         "carry_field_mod90": carry_field_mod90,
-        "dual_digit_field18_temporal_quotient": dual_field_mod18.packet(),
+        "dual_digit_field18_temporal_quotient": digit_field,
         "carry_field_primitive_period_physical_steps": lcm(4, period9),
         "physical_subtraction_borrow_low_digit": int(next_last_digit < last_digit),
         "physical_subtraction_borrow_low_digit_period": 4,

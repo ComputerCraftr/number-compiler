@@ -269,7 +269,35 @@ class AntihydraVerifyQuery:
             )
 
 
-ExecutionQuery: TypeAlias = TermQuery | CollatzEventQuery | AntihydraVerifyQuery
+@dataclass(frozen=True, slots=True)
+class FirstPalindromeQuery:
+    """First positive physical generation in a finite source-bound interval."""
+
+    source: ReverseAddTermQuery | DoubleReverseTermQuery
+    horizon: int
+    selector: ClassVar[SelectorId] = SelectorId.FIRST_PALINDROME
+
+    def __post_init__(self) -> None:
+        require_query_integer(self.horizon, "horizon", 0)
+        if type(self.source) not in (ReverseAddTermQuery, DoubleReverseTermQuery):
+            raise TypeError("palindrome search requires an admitted reversal source")
+        if self.source.index != 0:
+            raise ValueError("palindrome search starts at generation zero")
+        if isinstance(self.source, ReverseAddTermQuery) and self.source.base != 10:
+            raise QueryOptionError("base", "palindrome search requires decimal input")
+
+    @property
+    def family(self) -> FamilyId:
+        return self.source.family
+
+    @property
+    def index(self) -> int:
+        return self.horizon
+
+
+ExecutionQuery: TypeAlias = (
+    TermQuery | CollatzEventQuery | AntihydraVerifyQuery | FirstPalindromeQuery
+)
 
 _TERM_QUERY_TYPES = (
     ReverseAddTermQuery,
@@ -298,6 +326,7 @@ __all__ = [
     "DoubleReverseTermQuery",
     "FiveReverseTermQuery",
     "ExecutionQuery",
+    "FirstPalindromeQuery",
     "FermatTermQuery",
     "MersenneTermQuery",
     "PrimeTermQuery",

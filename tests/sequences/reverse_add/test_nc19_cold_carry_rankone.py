@@ -10,6 +10,7 @@ import pytest
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
+from number_compiler.arithmetic.fields.radix import reverse_decimal_and_width
 from number_compiler.arithmetic.fields.run_pairing import pair_mirror_digit_runs
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add import temporal_accumulator99
@@ -26,9 +27,6 @@ from number_compiler.sequences.reverse_add.temporal_port_quotient import (
     DecimalRunProjection,
     SymmetricCoefficientPort,
     decimal_run_residues,
-)
-from number_compiler.sequences.reverse_add.temporal_residue99 import (
-    reverse_decimal_and_width,
 )
 from tests.support.reverse_add_accumulator import (
     assert_accumulator99_cache_lifecycle,

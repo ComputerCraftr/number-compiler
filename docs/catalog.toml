@@ -574,3 +574,27 @@ kind = "sprint-topic"
 topic = "harmonic-carry-consumers"
 status = "current"
 week_start = "2026-11-08"
+
+[[document]]
+id = "sprint-2026-11-15-readme"
+path = "docs/sprints/week-of-2026-11-15/README.md"
+kind = "sprint"
+topic = "readme"
+status = "current"
+week_start = "2026-11-15"
+
+[[document]]
+id = "sprint-2026-11-15-reversal-carry-sheets"
+path = "docs/sprints/week-of-2026-11-15/reversal-carry-sheets.md"
+kind = "sprint-topic"
+topic = "reversal-carry-sheets"
+status = "current"
+week_start = "2026-11-15"
+
+[[document]]
+id = "sprint-2026-11-15-november-20-performance-ports"
+path = "docs/sprints/week-of-2026-11-15/november-20-performance-ports.md"
+kind = "sprint-topic"
+topic = "november-20-performance-ports"
+status = "current"
+week_start = "2026-11-15"

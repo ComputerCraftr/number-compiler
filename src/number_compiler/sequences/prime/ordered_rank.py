@@ -24,7 +24,12 @@ ORDERED_WHEEL_210_TERMS: tuple[tuple[int, int], ...] = (
     (210, 1),
 )
 
-_FACTORS_210 = (2, 3, 5, 7)
+ORDERED_WHEEL_210_FACTORS = (2, 3, 5, 7)
+ORDERED_WHEEL_210_RESIDUES = tuple(
+    candidate
+    for candidate in range(1, 211)
+    if all(candidate % factor for factor in ORDERED_WHEEL_210_FACTORS)
+)
 _BOUNDARY_LENGTH = 2310
 _BOUNDARY_SURVIVORS = 480
 _BOUNDARY_CHUNKS = 37
@@ -73,11 +78,7 @@ class OrderedRankBoundary2310:
         The caller owns resource reservation and source admission. This helper
         only constructs the small immutable mathematical action.
         """
-        residues = tuple(
-            candidate
-            for candidate in range(1, 211)
-            if all(candidate % factor for factor in _FACTORS_210)
-        )
+        residues = ORDERED_WHEEL_210_RESIDUES
         if len(residues) != 48:
             raise RuntimeError("fixed 210-period boundary is malformed")
         chunks = [0] * _BOUNDARY_CHUNKS
@@ -180,6 +181,8 @@ def ordered_cyclotomic_suffix_rank(
 __all__ = (
     "MAX_SUFFIX_FACTORS",
     "ORDERED_BOUNDARY_NODE_COST",
+    "ORDERED_WHEEL_210_FACTORS",
+    "ORDERED_WHEEL_210_RESIDUES",
     "ORDERED_WHEEL_210_TERMS",
     "OrderedRankBoundary2310",
     "OrderedRankBoundaryStore",

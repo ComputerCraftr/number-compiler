@@ -43,6 +43,7 @@ def project(
             query.seed,
             query.index,
             base=query.base,
+            shared_cache=compiler.shared_cache,
             max_context_nodes=compiler.max_context_nodes,
             max_cache_entries=compiler.max_cache_entries,
         ),

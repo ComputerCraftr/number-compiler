@@ -919,10 +919,7 @@ ML \<open>
     double_reverse_bitplane_row_periodic_ring_exact
     double_reverse_bitplane_window_periodic_ring_exact};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
-    else error "Double-reverse bitplane refinement depends on an oracle";
-  val _ = if Thm_Deps.has_skip_proof checked
-    then error "Double-reverse bitplane refinement contains skip_proof"
-    else ();
+    else error "Double-reverse bitplane refinement depends on an oracle, including skip_proof";
 \<close>
 
 end

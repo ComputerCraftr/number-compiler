@@ -105,7 +105,7 @@ def test_two_five_boolean_planes_feed_same_q19_repeat_action() -> None:
 
 def test_source_196_successor_masks_remain_valid_for_512_steps() -> None:
     state = Q19RepeatPortState.from_digits((6, 9, 1))
-    source = (6, 9, 1)
+    source: tuple[int, ...] = (6, 9, 1)
     repeats = 0
     for _ in range(512):
         nxt, action, _unused = state.advance()

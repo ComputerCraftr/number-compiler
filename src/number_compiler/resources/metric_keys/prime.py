@@ -23,3 +23,7 @@ PRIME_SUCCESSOR_PREFIX_VALIDATION_FACTORS: Final = (
 PRIME_SUCCESSOR_SCHEDULER_WORK: Final = "prime_successor_scheduler_work"
 PRIME_BIRTH_INNOVATION_COLLAPSES: Final = "prime_birth_innovation_collapses"
 PRIME_BIRTH_INNOVATION_STAGES: Final = "prime_birth_innovation_stages"
+
+PRIME_SUCCESSOR_SHORT_WHEEL_PROBES: Final = "prime_successor_short_wheel_probes"
+PRIME_SUCCESSOR_SHORT_WHEEL_DIVISIONS: Final = "prime_successor_short_wheel_divisions"
+PRIME_SUCCESSOR_SHORT_WHEEL_BATCHES: Final = "prime_successor_short_wheel_batches"

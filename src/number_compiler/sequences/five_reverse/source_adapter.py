@@ -242,6 +242,20 @@ class FiveReverseSourceAdapter:
         self._validate_view_source(source)
         exact = cast(FiveReverseAction, action)
         cumulative = self.compose_actions(source.binding.action, exact)
+        if (
+            exact.steps >= 256
+            and self.source.seed.bit_length() >= 425
+            and source.binding.action == FiveReverseAction(0)
+            and source.payload == self.source.seed
+        ):
+            from number_compiler.arithmetic.carry.reflected_h_power import (
+                padded_h_workload,
+            )
+
+            if padded_h_workload(
+                self.source.seed, exact.steps, self.term.max_state_bits
+            ):
+                return self.padded_source_candidate(exact, source)
         return self._candidate(
             self._apply_steps(cast(int, source.payload), exact.steps), cumulative
         )
@@ -252,6 +266,20 @@ class FiveReverseSourceAdapter:
         for _ in range(steps):
             value = self.term.step_value(value)
         return value
+
+    def padded_source_candidate(
+        self, action: Hashable, source: SourceImageView
+    ) -> SourceImageCandidate:
+        """Compile an explicit candidate from this owner's initial source."""
+        self.validate_action(action)
+        self._validate_view_source(source)
+        if (
+            source.binding.action != FiveReverseAction(0)
+            or source.payload != self.source.seed
+        ):
+            raise ValueError("padded action requires its original source image")
+        exact = cast(FiveReverseAction, action)
+        return self._candidate(self.term.padded_source_value(exact.steps), exact)
 
     def _candidate(self, value: int, action: FiveReverseAction) -> SourceImageCandidate:
         self.validate_payload(value)

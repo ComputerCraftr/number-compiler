@@ -885,6 +885,69 @@ fixed word is considered again at a later endpoint.  The defect recurrence
 tracks its exact affine displacement.  A caller may combine these facts with
 its own source-issued repeat budget; this theory does not convert a parity
 continuation into a named-family transition.\<close>
+
+lemma collatz_all_odd_word_admitted:
+  assumes "2^n dvd source + 1"
+  shows "collatz_guarded_normalized_word_admitted (replicate n True) source"
+  using assms
+proof (induction n arbitrary: source)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  obtain k where factor: "source + 1 = 2^(Suc n) * k"
+    using Suc.prems by (auto elim: dvdE)
+  have nonzero: "k \<noteq> 0"
+  proof
+    assume "k = 0"
+    with factor show False by simp
+  qed
+  have positive: "0 < 2^n * k" using nonzero by simp
+  obtain h where successor: "2^n * k = Suc h"
+    using positive by (cases "2^n * k") auto
+  have factor2: "source + 1 = 2 * (2^n * k)"
+    using factor by (simp add: power_Suc algebra_simps)
+  have source: "source = 2*h + 1" using factor2 successor by arith
+  have odd_source: "odd source" using source by simp
+  have step0: "collatz_guarded_normalized_source_step True source =
+      collatz_temporal_source_step source"
+    using collatz_guarded_temporal_step_matches[of source] odd_source by simp
+  have step1: "collatz_guarded_normalized_source_step True source =
+      (3*source + 1) div 2"
+    using step0 odd_source by (simp add: collatz_temporal_source_step_def)
+  have numerator: "3*source + 1 = (3*h + 2)*2"
+    using source by (simp add: algebra_simps)
+  have step: "collatz_guarded_normalized_source_step True source = 3*h + 2"
+    using step1 numerator by simp
+  have next_plus: "collatz_guarded_normalized_source_step True source + 1 =
+      3 * (2^n * k)"
+    using successor step by simp
+  have divides_product: "2^n dvd 2^n * (3*k)" by simp
+  have divisibility: "2^n dvd collatz_guarded_normalized_source_step True source + 1"
+    using divides_product next_plus by (simp add: algebra_simps)
+  have tail: "collatz_guarded_normalized_word_admitted (replicate n True)
+      (collatz_guarded_normalized_source_step True source)"
+    by (rule Suc.IH[OF divisibility])
+  show ?case using odd_source tail by simp
+qed
+
+theorem collatz_all_odd_word_physical_clock:
+  assumes "2^n dvd source + 1"
+  shows "collatz_guarded_normalized_word_admitted (replicate n True) source \<and>
+    collatz_guarded_normalized_word_endpoint (replicate n True) source =
+      (physical_collatz ^^ (2*n)) source"
+proof -
+  have admitted: "collatz_guarded_normalized_word_admitted (replicate n True) source"
+    by (rule collatz_all_odd_word_admitted[OF assms])
+  note exact = collatz_guarded_normalized_word_refines_physical[OF admitted]
+  have endpoint: "collatz_guarded_normalized_word_endpoint (replicate n True) source =
+      (physical_collatz ^^ (n+n)) source"
+    using exact by simp
+  have clock: "2*n = n+n" by arith
+  show ?thesis
+    by (subst clock) (intro conjI; fact)
+qed
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms collatz_temporal_source_step_translation
@@ -900,6 +963,7 @@ ML \<open>
       collatz_temporal_word_defect_power_shift
       collatz_guarded_word_repetition_cylinder
       collatz_guarded_word_repetition_dyadic_cylinder
+      collatz_all_odd_word_admitted collatz_all_odd_word_physical_clock
       collatz_repeated_word_clock collatz_6305_return_action_exact
       collatz_6305_return_affine_endpoint
       collatz_6305_return_powered_source_cylinder}) then ()

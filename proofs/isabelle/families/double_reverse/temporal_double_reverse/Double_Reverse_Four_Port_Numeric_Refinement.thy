@@ -1,5 +1,5 @@
 theory Double_Reverse_Four_Port_Numeric_Refinement
-  imports Double_Reverse_Group_Ring_Four_Port
+  imports Double_Reverse_Group_Ring_Four_Port Shared_Carry_Dynamics.Decimal_Word_Reversal
 begin
 
 text \<open>This theory connects one canonical, finite four-port source action to
@@ -61,61 +61,18 @@ lemma double_reverse_msf_value_leading_zero:
   by (simp add: double_reverse_msf_value_def
       double_reverse_lsf_value_append_digit)
 
+lemma double_reverse_lsf_value_shared:
+  "double_reverse_lsf_value source = decimal_lsd_value source"
+  by (induction source) simp_all
+
 lemma double_reverse_lsf_value_positive:
   assumes nonempty: "digits \<noteq> []" and high: "last digits > 0"
   shows "double_reverse_lsf_value digits > 0"
-  using nonempty high
-proof (induction digits)
-  case Nil
-  then show ?case by simp
-next
-  case (Cons digit rest)
-  have source_high: "last (digit # rest) > 0"
-    using Cons.prems(2) .
-  have rest_ih:
-    "rest \<noteq> [] \<Longrightarrow> last rest > 0 \<Longrightarrow>
-      double_reverse_lsf_value rest > 0"
-    using Cons.IH .
-  show ?case
-  proof (cases rest)
-    case Nil
-    then show ?thesis using source_high by simp
-  next
-    case (Cons next_digit tail)
-    have rest_nonempty: "rest \<noteq> []" using Cons by simp
-    have rest_high: "last rest > 0" using source_high Cons by simp
-    have rest_positive: "double_reverse_lsf_value rest > 0"
-      by (rule rest_ih[OF rest_nonempty rest_high])
-    show ?thesis using rest_positive by simp
-  qed
-qed
+  using decimal_lsd_value_positive[OF assms] by (simp only: double_reverse_lsf_value_shared)
 
-lemma double_reverse_decimal_split:
-  fixes q r :: nat
-  assumes r_small: "r < 10"
-  shows "(10 * q + r) div 10 = q"
-    and "(10 * q + r) mod 10 = r"
-  using r_small
-  by (simp_all add: div_add1_eq mod_add_left_eq mult.commute)
+lemmas double_reverse_decimal_split = decimal_word_split
 
-lemma double_reverse_decimal_digits_shift:
-  fixes digit q :: nat
-  assumes digit_bound: "digit < 10" and q_positive: "q > 0"
-  shows "decimal_digit_count (digit + 10 * q) =
-    Suc (decimal_digit_count q)"
-proof -
-  have quotient_remainder:
-    "(digit + 10 * q) div 10 = q"
-    "(digit + 10 * q) mod 10 = digit"
-    using double_reverse_decimal_split
-      [where q=q and r=digit, OF digit_bound]
-    by (simp_all add: add.commute)
-  have at_least_ten: "digit + 10 * q \<ge> 10"
-    using digit_bound q_positive by arith
-  show ?thesis
-    using quotient_remainder(1) at_least_ten
-    by (simp add: decimal_digit_count.simps)
-qed
+lemmas double_reverse_decimal_digits_shift = decimal_word_digits_shift
 
 lemma double_reverse_decimal_digits_lsf_value:
   assumes decimal: "list_all (\<lambda>digit. digit < 10) digits"
@@ -123,45 +80,7 @@ lemma double_reverse_decimal_digits_lsf_value:
       and high: "last digits > 0"
   shows "decimal_digit_count
       (double_reverse_lsf_value digits) = length digits"
-  using decimal nonempty high
-proof (induction digits)
-  case Nil
-  then show ?case by simp
-next
-  case (Cons digit rest)
-  have digit_bound: "digit < 10" using Cons.prems(1) by simp
-  have rest_decimal: "list_all (\<lambda>item. item < 10) rest"
-    using Cons.prems(1) by simp
-  have source_high: "last (digit # rest) > 0"
-    using Cons.prems(3) .
-  have rest_ih:
-    "list_all (\<lambda>item. item < 10) rest \<Longrightarrow>
-      rest \<noteq> [] \<Longrightarrow> last rest > 0 \<Longrightarrow>
-      decimal_digit_count (double_reverse_lsf_value rest) =
-        length rest"
-    using Cons.IH .
-  show ?case
-  proof (cases rest)
-    case Nil
-    have digit_positive: "digit > 0" using source_high Nil by simp
-    show ?thesis using digit_bound digit_positive Nil by simp
-  next
-    case (Cons next_digit tail)
-    have rest_nonempty: "rest \<noteq> []" using Cons by simp
-    have rest_high: "last rest > 0" using source_high Cons by simp
-    have rest_positive: "double_reverse_lsf_value rest > 0"
-      by (rule double_reverse_lsf_value_positive[OF rest_nonempty rest_high])
-    have tail_digits:
-      "decimal_digit_count (double_reverse_lsf_value rest) = length rest"
-      by (rule rest_ih[OF rest_decimal rest_nonempty rest_high])
-    have shifted:
-      "decimal_digit_count
-        (digit + 10 * double_reverse_lsf_value rest) =
-       Suc (decimal_digit_count (double_reverse_lsf_value rest))"
-      by (rule double_reverse_decimal_digits_shift[OF digit_bound rest_positive])
-    show ?thesis using shifted tail_digits by simp
-  qed
-qed
+  using decimal_word_digits_lsd_value[OF assms] by (simp only: double_reverse_lsf_value_shared)
 
 lemma double_reverse_reverse10_lsf_value:
   assumes decimal: "list_all (\<lambda>digit. digit < 10) digits"
@@ -169,92 +88,7 @@ lemma double_reverse_reverse10_lsf_value:
       and high: "last digits > 0"
   shows "decimal_reverse (double_reverse_lsf_value digits) =
     double_reverse_lsf_value (rev digits)"
-  using decimal nonempty high
-proof (induction digits)
-  case Nil
-  then show ?case by simp
-next
-  case (Cons digit rest)
-  have digit_bound: "digit < 10" using Cons.prems(1) by simp
-  have rest_decimal: "list_all (\<lambda>item. item < 10) rest"
-    using Cons.prems(1) by simp
-  have source_high: "last (digit # rest) > 0"
-    using Cons.prems(3) .
-  have rest_ih:
-    "list_all (\<lambda>item. item < 10) rest \<Longrightarrow>
-      rest \<noteq> [] \<Longrightarrow> last rest > 0 \<Longrightarrow>
-      decimal_reverse (double_reverse_lsf_value rest) =
-        double_reverse_lsf_value (rev rest)"
-    using Cons.IH .
-  show ?case
-  proof (cases rest)
-    case Nil
-    have digit_positive: "digit > 0" using source_high Nil by simp
-    show ?thesis using digit_bound digit_positive Nil by simp
-  next
-    case (Cons next_digit tail)
-    have rest_nonempty: "rest \<noteq> []" using Cons by simp
-    have rest_high: "last rest > 0" using source_high Cons by simp
-    have rest_positive: "double_reverse_lsf_value rest > 0"
-      by (rule double_reverse_lsf_value_positive[OF rest_nonempty rest_high])
-    have rest_reverse:
-      "decimal_reverse (double_reverse_lsf_value rest) =
-        double_reverse_lsf_value (rev rest)"
-      by (rule rest_ih[OF rest_decimal rest_nonempty rest_high])
-    have rest_digits:
-      "decimal_digit_count (double_reverse_lsf_value rest) = length rest"
-      by (rule double_reverse_decimal_digits_lsf_value
-        [OF rest_decimal rest_nonempty rest_high])
-    have number_split:
-      "double_reverse_lsf_value (digit # rest) =
-        digit + 10 * double_reverse_lsf_value rest"
-      by simp
-    have quotient_remainder:
-      "(digit + 10 * double_reverse_lsf_value rest) div 10 =
-          double_reverse_lsf_value rest"
-      "(digit + 10 * double_reverse_lsf_value rest) mod 10 = digit"
-      using double_reverse_decimal_split
-        [where q="double_reverse_lsf_value rest" and r=digit,
-          OF digit_bound]
-      by (simp_all add: add.commute)
-    have value_large:
-      "digit + 10 * double_reverse_lsf_value rest \<ge> 10"
-      using rest_positive by arith
-    have shifted_digits:
-      "decimal_digit_count
-        (digit + 10 * double_reverse_lsf_value rest) =
-       Suc (decimal_digit_count (double_reverse_lsf_value rest))"
-      by (rule double_reverse_decimal_digits_shift[OF digit_bound rest_positive])
-    have reverse_step:
-      "decimal_reverse
-          (digit + 10 * double_reverse_lsf_value rest) =
-        digit * 10 ^ decimal_digit_count
-          (double_reverse_lsf_value rest) +
-        decimal_reverse (double_reverse_lsf_value rest)"
-    proof -
-      have equation:
-        "decimal_reverse
-            (digit + 10 * double_reverse_lsf_value rest) =
-          (if digit + 10 * double_reverse_lsf_value rest < 10
-           then digit + 10 * double_reverse_lsf_value rest
-           else (digit + 10 * double_reverse_lsf_value rest) mod 10 *
-             10 ^ (decimal_digit_count
-               (digit + 10 * double_reverse_lsf_value rest) - 1) +
-             decimal_reverse
-               ((digit + 10 * double_reverse_lsf_value rest) div 10))"
-        by (rule decimal_reverse.simps)
-      have not_less:
-        "\<not> digit + 10 * double_reverse_lsf_value rest < 10"
-        using value_large by arith
-      show ?thesis
-        using equation not_less quotient_remainder shifted_digits
-        by (simp del: decimal_reverse.simps)
-    qed
-    show ?thesis
-      using number_split rest_reverse rest_digits reverse_step
-      by (simp add: double_reverse_lsf_value_append_digit algebra_simps)
-  qed
-qed
+  using decimal_reverse_lsd_value[OF assms] by (simp only: double_reverse_lsf_value_shared)
 
 lemma double_reverse_forward_pass_value:
   assumes decimal: "list_all (\<lambda>digit. digit < 10) source"

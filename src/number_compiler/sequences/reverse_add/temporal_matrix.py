@@ -30,14 +30,14 @@ from number_compiler.arithmetic.carry.carry_monoid import (
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
-from number_compiler.arithmetic.fields.radix import digits_lsd
+from number_compiler.arithmetic.fields.radix import (
+    digits_lsd,
+    reverse_decimal_and_width,
+)
 from number_compiler.arithmetic.fields.skew_moments import SkewMoment
 from number_compiler.arithmetic.fields.walsh import LOW_WALSH_WIDTH, walsh64_signed
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
-from number_compiler.sequences.reverse_add.temporal_residue99 import (
-    reverse_decimal_and_width,
-)
 
 if TYPE_CHECKING:
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm

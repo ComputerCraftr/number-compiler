@@ -1,5 +1,6 @@
 """Exact source tests for the width-growing Q19 pair-sum publisher."""
 
+from itertools import product
 from random import Random
 
 import pytest
@@ -38,6 +39,72 @@ def test_packed_q19_successor_matches_independent_decimal_oracle() -> None:
             expected = literal_reverse_add_digits(seed, steps)
             assert emitted == expected
             assert frame == PackedQ19.from_digits(expected)
+
+
+def test_native_lower_carry_sweep_covers_every_three_pair_chain() -> None:
+    from tests.support.reference_arithmetic import literal_pair_sum_successor
+
+    for outer, middle, inner in product(range(1, 19), range(19), range(19)):
+        packed = outer | (middle << 6) | (inner << 12)
+        frame = PackedQ19(packed, 3, None)
+        target, emitted = frame.advance(emit_digits=True)
+        pair_field = (outer, middle, inner, inner, middle, outer)
+        expected_pairs, _ = literal_pair_sum_successor(pair_field)
+        expected_value = sum(pair * 10**index for index, pair in enumerate(pair_field))
+        assert emitted is not None
+        assert emitted == radix_digits_lsd(expected_value, 10)
+        assert target == PackedQ19.from_digits(emitted)
+        assert expected_pairs == tuple(
+            digit + reflected
+            for digit, reflected in zip(emitted, reversed(emitted), strict=True)
+        )
+
+
+def test_q19_palindrome_preimage_matches_literal_successor() -> None:
+    for seed in range(10000):
+        frame = PackedQ19.from_digits(radix_digits_lsd(seed, 10))
+        target = seed + int(str(seed)[::-1])
+        assert frame.next_is_palindrome() == (str(target) == str(target)[::-1])
+
+
+def test_wide_growth_preimage_checks_each_pair_and_odd_center() -> None:
+    count = 1024
+    pairs = sum((11 if index % 3 else 0) << (6 * index) for index in range(count)) | 11
+    assert PackedQ19(pairs, count, 0).next_is_palindrome()
+    position = 713
+    corrupted = (pairs & ~(63 << (6 * position))) | (10 << (6 * position))
+    assert not PackedQ19(corrupted, count, 0).next_is_palindrome()
+    assert not PackedQ19(pairs, count, 1).next_is_palindrome()
+
+
+def test_joint_ordinary_xor_inverse_authenticates_one_reflected_source() -> None:
+    from number_compiler.arithmetic.carry.joint_output_inverse import (
+        recover_joint_operands,
+    )
+
+    for source in range(256):
+        for reflected in range(256):
+            ordinary = source + reflected
+            xor = source + (source ^ reflected)
+            assert recover_joint_operands(ordinary, xor) == (source, reflected)
+    for source in (0, 10, 92, 98, 196, 216, 480):
+        reflected = int(str(source)[::-1])
+        frame = PackedQ19.from_joint_outputs(
+            source + reflected, source + (source ^ reflected)
+        )
+        assert frame == PackedQ19.from_digits(radix_digits_lsd(source, 10))
+    with pytest.raises(ValueError, match="decimal reflection"):
+        PackedQ19.from_joint_outputs(12 + 34, 12 + (12 ^ 34))
+
+
+def test_bounded_palindrome_search_reports_first_positive_arrival() -> None:
+    from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+
+    term = ReverseAddPoweredTerm(196, 0)
+    assert term.first_palindrome_within(0) is None
+    assert term.first_palindrome_within(10) is None
+    assert ReverseAddPoweredTerm(92, 0).first_palindrome_within(1) == 1
+    assert ReverseAddPoweredTerm(98, 0).first_palindrome_within(1) is None
 
 
 @pytest.mark.parametrize("seed", (1, 196))
@@ -145,3 +212,17 @@ def test_broadword_publication_failure_rolls_back_endpoint_and_suffix(
     finally:
         owner.dispose()
         assert ledger.entries == ledger.nodes == 0
+
+
+def test_palindrome_outer_and_center_rejections_skip_lane_masks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.reverse_add import q19_broadword_publisher
+
+    def fail(_count: int) -> tuple[int, int]:
+        pytest.fail("rejected source constructed the full lane mask")
+
+    frames = (PackedQ19(18, 1, None), PackedQ19(11, 1, 3), PackedQ19(8, 1, 5))
+    monkeypatch.setattr(q19_broadword_publisher, "_lane_masks", fail)
+    for frame in frames:
+        assert not frame.next_is_palindrome()

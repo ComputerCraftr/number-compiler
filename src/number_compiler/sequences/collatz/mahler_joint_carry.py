@@ -20,6 +20,7 @@ from number_compiler.arithmetic.contracts.input_validation import require_intege
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 
 if TYPE_CHECKING:
+    from number_compiler.resources.ledger import ResourceLedger
     from number_compiler.sequences.collatz.diagonal_source_window import (
         CollatzDiagonalWindow,
     )
@@ -124,6 +125,30 @@ class MahlerFutureCarryPort:
         self._require_window()
         if type(source) is not int or source != self._window.normalized_endpoint:
             raise ValueError("future carry port does not belong to this source seam")
+
+    def first_simultaneous_even_carries(
+        self,
+        cuts: tuple[int, ...],
+        *,
+        horizon: int,
+        ledger: ResourceLedger,
+        max_phase_states: int = 4096,
+    ) -> int | None:
+        """Find aligned carries on the source's certified all-odd suffix."""
+        self._require_window()
+        if self._window.phase != 0:
+            raise ValueError("future carry query requires a normalized physical seam")
+        from number_compiler.sequences.collatz.future_carry_bellman import (
+            first_simultaneous_even_carries,
+        )
+
+        return first_simultaneous_even_carries(
+            self.target,
+            cuts,
+            horizon=horizon,
+            ledger=ledger,
+            max_phase_states=max_phase_states,
+        )
 
     def nested_band(self, source: int, places: int) -> tuple[int, int, int]:
         """Return lower decimal band, upper binary carry-in and parity."""
@@ -236,15 +261,13 @@ def recover_chronological_cocycle(
             coefficient //= 15
     else:
         cursor = source
+        weight = pow(15, max(0, action.steps - 1))
         for step in range(action.steps):
-            # Keep only one cumulative innovation polynomial (not a cochain
-            # list). Its new injection is at moving-cut exponent 'step'.
-            for j in range(len(innovation)):
-                innovation[j] *= 15
+            # Each injected coefficient receives one final chronological weight.
             if cursor & 1:
                 if len(innovation) <= step:
                     innovation.extend([0] * (step + 1 - len(innovation)))
-                innovation[step] += 5
+                innovation[step] += 5 * weight
                 cursor = (3 * cursor + 1) >> 1
             else:
                 digits = _decimal_digits(cursor, max_columns)
@@ -254,8 +277,9 @@ def recover_chronological_cocycle(
                 if len(innovation) < needed:
                     innovation.extend([0] * (needed - len(innovation)))
                 for j, digit in enumerate(digits):
-                    innovation[step + j] -= 10 * digit
+                    innovation[step + j] -= 10 * digit * weight
                 cursor >>= 1
+            weight //= 15
         if cursor != endpoint:
             raise AssertionError("issued Mahler source action does not match its word")
 

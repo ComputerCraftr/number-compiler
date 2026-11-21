@@ -23,6 +23,7 @@ from number_compiler.arithmetic.automata.slp_interval import (
     fold_slp_dag,
     fold_slp_interval,
 )
+from number_compiler.arithmetic.automata.word_period import primitive_period
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.sequences.reverse_add.q19_conditional_stencil import (
@@ -212,14 +213,23 @@ def periodic_guard(
     hi: int,
     pattern: tuple[int, ...],
 ) -> bool:
-    w = source.pair_width
-    half = (w + 1) // 2
-    if lo < half and not _match_region(owner, source.root, lo, min(hi, half), pattern):
-        return False
-    if hi > half:
-        mirror = tuple(pattern[(w - 1 - j) % len(pattern)] for j in range(len(pattern)))
-        return _match_region(owner, source.root, w - hi, w - max(half, lo), mirror)
-    return True
+    if not pattern:
+        raise ValueError("periodic guard requires a nonempty pattern")
+    with owner.ledger.reservation(owner.scratch_owner, nodes=2 * len(pattern)):
+        period, _comparisons = primitive_period(pattern)
+        pattern = pattern[:period]
+        w = source.pair_width
+        half = (w + 1) // 2
+        if lo < half and not _match_region(
+            owner, source.root, lo, min(hi, half), pattern
+        ):
+            return False
+        if hi > half:
+            mirror = tuple(
+                pattern[(w - 1 - j) % len(pattern)] for j in range(len(pattern))
+            )
+            return _match_region(owner, source.root, w - hi, w - max(half, lo), mirror)
+        return True
 
 
 @dataclass(frozen=True, slots=True)

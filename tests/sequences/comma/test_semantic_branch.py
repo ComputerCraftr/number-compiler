@@ -6,6 +6,7 @@ from typing import cast
 
 import pytest
 
+from devtools.verification.comma_semantic_future_artifact import source_mdd_fields
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.comma import (
     future_authority,
@@ -39,7 +40,6 @@ from number_compiler.sequences.comma.semantic_branch import (
     select_semantic_macro_child,
 )
 from number_compiler.sequences.comma.weighted_return import WeightedBoundaryAction
-from tests.support.comma_future_provider_fixture import source_mdd_fields
 
 
 def _work_log() -> Callable[[int], None]:

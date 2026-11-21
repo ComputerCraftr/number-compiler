@@ -309,7 +309,7 @@ def test_seed_196_8256_nth_uses_bounded_q19_publications() -> None:
             )
             <= 32
         )
-        assert counters.get(metric_keys.REVERSE_Q19_PUNCTURED_WIDE_APPLICATIONS, 0) > 0
+        assert counters.get(metric_keys.REVERSE_Q19_BROADWORD_SEMANTIC_STEPS, 0) == 8255
         exact_transitions = (
             counters.get(metric_keys.REVERSE_Q19_PUNCTURED_NATIVE_DECIMAL_TICKS, 0)
             + counters.get(metric_keys.REVERSE_Q19_BROADWORD_SEMANTIC_STEPS, 0)

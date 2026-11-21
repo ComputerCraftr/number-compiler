@@ -3,6 +3,7 @@
 from typing import Final
 
 REVERSE_Q19_BROADWORD_SEMANTIC_STEPS: Final = "reverse_q19_broadword_semantic_steps"
+REVERSE_Q19_REUSED_CONTINUATION_STEPS: Final = "reverse_q19_reused_continuation_steps"
 REVERSE_Q19_BROADWORD_PREFIX_ROUNDS: Final = "reverse_q19_broadword_prefix_rounds"
 REVERSE_Q19_BROADWORD_OPERAND_BITS: Final = "reverse_q19_broadword_operand_bits"
 REVERSE_Q19_BROADWORD_ENDPOINT_PUBLICATIONS: Final = (

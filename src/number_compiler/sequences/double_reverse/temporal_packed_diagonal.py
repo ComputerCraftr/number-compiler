@@ -3,34 +3,22 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
-from dataclasses import dataclass
-from typing import Literal, overload
+from typing import overload
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp_walks import iter_symbols
-from number_compiler.arithmetic.contracts.block_effect import (
-    BlockContextBudgetExceeded,
+from number_compiler.arithmetic.automata.temporal_cone import (
+    TemporalSquarePublicationFailed,
+    TemporalSquareScratchCapacityRefused,
+    TemporalSquareScratchReservation,
+    TemporalSquareStats,
+    release_charged_container,
 )
 from number_compiler.resources.metric_keys import (
     double_reverse as _double_reverse_keys,
 )
-from number_compiler.resources.owned_memo import LedgerReservation
 
 PACKED_DIAGONAL_MIN_STEPS = 64
-
-
-@dataclass(slots=True)
-class TemporalSquareStats:
-    """Executed work; packed operand bits are a conservative logical charge."""
-
-    semantic_tiles: int
-    temporal_cones: int
-    reused_cones: int
-    source_traversal_tasks: int
-    canonical_tile_reuses: int
-    packed_row_evaluations: int = 0
-    packed_row_operand_bits: int = 0
-    packed_output_digit_visits: int = 0
 
 
 class _CountedDigits(Sequence[int]):
@@ -211,25 +199,6 @@ def packed_diagonal_middle(
         center_high = left_high = right_carry = candidate = overflow = 0
 
 
-class TemporalSquareScratchCapacityRefused(BlockContextBudgetExceeded):
-    """The bounded semantic compiler refused its temporary scratch budget."""
-
-
-class TemporalSquarePublicationFailed(BlockContextBudgetExceeded):
-    """A completed semantic cone could not be published into the SLP arena."""
-
-
-def release_charged_container(
-    scratch: TemporalSquareScratchReservation,
-    clear: Callable[[], None],
-    retained: int,
-) -> None:
-    """Clear one charged temporary container and return its live count."""
-    if retained:
-        scratch.release(retained, retained)
-        clear()
-
-
 def pack_source_window(
     arena: LedgerSLPArena,
     root: int,
@@ -240,16 +209,40 @@ def pack_source_window(
 ) -> int:
     """Read one exact SLP source window into high-digit-first nibbles."""
     count = 0
+    arena.empty()
+    if type(root) is not int or not 0 <= root < len(arena.nodes):
+        raise ValueError("invalid packed source root")
+    node = arena.nodes[root]
+    if node.length != width:
+        raise ValueError("packed source width differs from the admitted window")
+    # A complete repeated root is a source-issued spatial period. Pack its
+    # motif once, including leading zero lanes, and copy the resulting bits.
+    # Visitors that explicitly request occurrence traversal retain that view.
     # A spatial word is two packed decimal nibbles per byte. Allocate one
     # charged buffer and hand the conversion to CPython's C-level big-int
     # constructor, instead of creating O(width) ever-larger big integers.
     # This is an exact source-word packing optimization, not another stencil.
     buffer_bytes = (width + 1) // 2
-    leading_nibble = width & 1
     scratch.acquire(buffer_bytes, buffer_bytes)
     packed_bytes: bytearray | None = None
+    extra_capacity = 0
     try:
         packed_bytes = bytearray(buffer_bytes)
+        read_width = width
+        if node.kind == "REPEAT" and on_source_task is None:
+            child_width = arena.nodes[node.child].length
+            if child_width < 1 or node.count < 1 or child_width * node.count != width:
+                raise ValueError("packed repeat does not cover its admitted window")
+            try:
+                scratch.acquire(3 * buffer_bytes, 3 * buffer_bytes)
+            except TemporalSquareScratchCapacityRefused:
+                pass  # The reserved streaming buffer still covers the full word.
+            else:
+                extra_capacity = 3 * buffer_bytes
+                read_width = child_width
+                root = node.child
+                stats.source_traversal_tasks += 1
+        leading_nibble = read_width & 1
 
         def record_task(is_node: bool) -> None:
             stats.source_traversal_tasks += 1
@@ -267,7 +260,7 @@ def pack_source_window(
             for digit in symbols:
                 if type(digit) is not int or not 0 <= digit <= 9:
                     raise ValueError("temporal cone source contains a nondecimal digit")
-                if count >= width:
+                if count >= read_width:
                     raise ValueError("temporal cone source exceeds its admitted window")
                 nibble_index = count + leading_nibble
                 index = nibble_index >> 1
@@ -276,16 +269,21 @@ def pack_source_window(
                 else:
                     packed_bytes[index] = digit << 4
                 count += 1
-            if count != width:
+            if count != read_width:
                 raise ValueError("temporal cone traversal did not cover its source")
             # An odd-width word uses only the low nibble of its first byte.
-            return int.from_bytes(packed_bytes, "big")
+            with memoryview(packed_bytes) as buffer:
+                packed = int.from_bytes(buffer[: (read_width + 1) // 2], "big")
+            if read_width == width or packed == 0:
+                return packed
+            copies = ((1 << (4 * width)) - 1) // ((1 << (4 * read_width)) - 1)
+            return packed * copies
         finally:
             symbols.close()
     finally:
         if packed_bytes is not None:
             packed_bytes.clear()
-        scratch.release(buffer_bytes, buffer_bytes)
+        scratch.release(buffer_bytes + extra_capacity, buffer_bytes + extra_capacity)
 
 
 def publish_packed_diagonal(
@@ -350,114 +348,6 @@ def publish_packed_diagonal(
         middle = 0
         digits.clear()
         scratch.release(workspace, workspace)
-
-
-class TemporalSquareScratchReservation:
-    """Batch ledger reservations while tracking exact live scratch use."""
-
-    __slots__ = (
-        "_growth_chunk",
-        "_held_entries",
-        "_held_nodes",
-        "_live_entries",
-        "_live_nodes",
-        "_reservation",
-    )
-
-    def __init__(self, reservation: LedgerReservation) -> None:
-        self._reservation = reservation
-        self._growth_chunk = 64
-        self._held_entries = 0
-        self._held_nodes = 0
-        self._live_entries = 0
-        self._live_nodes = 0
-
-    def acquire(self, entries: int = 1, nodes: int = 1) -> None:
-        if (
-            type(entries) is not int
-            or entries < 0
-            or type(nodes) is not int
-            or nodes < 0
-        ):
-            raise ValueError("scratch reservation increments must be nonnegative")
-        next_entries = self._live_entries + entries
-        next_nodes = self._live_nodes + nodes
-        if next_entries <= self._held_entries and next_nodes <= self._held_nodes:
-            # Reuse previously reserved chunk capacity.
-            self._live_entries = next_entries
-            self._live_nodes = next_nodes
-            return
-        missing_entries = max(0, next_entries - self._held_entries)
-        missing_nodes = max(0, next_nodes - self._held_nodes)
-        if missing_entries or missing_nodes:
-            extra_entries = max(
-                missing_entries,
-                self._growth_chunk if missing_entries else 0,
-            )
-            extra_nodes = max(
-                missing_nodes,
-                self._growth_chunk if missing_nodes else 0,
-            )
-            try:
-                self._reservation.reserve(
-                    entries=extra_entries,
-                    nodes=extra_nodes,
-                )
-            except BlockContextBudgetExceeded:
-                try:
-                    self._reservation.reserve(
-                        entries=missing_entries,
-                        nodes=missing_nodes,
-                    )
-                except BlockContextBudgetExceeded as exact_error:
-                    raise TemporalSquareScratchCapacityRefused(
-                        str(exact_error)
-                    ) from exact_error
-                self._held_entries += missing_entries
-                self._held_nodes += missing_nodes
-            else:
-                self._held_entries += extra_entries
-                self._held_nodes += extra_nodes
-        self._live_entries = next_entries
-        self._live_nodes = next_nodes
-
-    def release(self, entries: int = 1, nodes: int = 1) -> None:
-        if (
-            entries < 0
-            or nodes < 0
-            or entries > self._live_entries
-            or nodes > self._live_nodes
-        ):
-            raise ValueError("scratch release exceeds live temporary storage")
-        self._live_entries -= entries
-        self._live_nodes -= nodes
-
-    def release_unused_capacity(self) -> None:
-        """Return chunk slack before retained SLP output competes for budget."""
-        unused_entries = self._held_entries - self._live_entries
-        unused_nodes = self._held_nodes - self._live_nodes
-        if unused_entries or unused_nodes:
-            self._reservation.release(entries=unused_entries, nodes=unused_nodes)
-            self._held_entries = self._live_entries
-            self._held_nodes = self._live_nodes
-
-    def use_exact_growth(self) -> None:
-        """Stop over-reserving while publishing output nodes to the SLP arena."""
-        self.release_unused_capacity()
-        self._growth_chunk = 1
-
-    def __enter__(self) -> TemporalSquareScratchReservation:
-        self._reservation.__enter__()
-        return self
-
-    def __exit__(
-        self,
-        exc_type: object,
-        exc_value: object,
-        traceback: object,
-    ) -> Literal[False]:
-        self._reservation.__exit__(exc_type, exc_value, traceback)
-        return False
 
 
 __all__ = [

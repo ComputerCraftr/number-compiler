@@ -237,11 +237,14 @@ def test_direct_bellman_owner_comment_cannot_satisfy_wiring() -> None:
       val _ = comma_frontier_m204_bellman_native
       val _ = require_native_clean
     """
-    assert re.search(
-        r"Comma_M204_Direct_Candidate_Publication\.publish\s+"
-        r"Comma_Direct_Bellman_Issuer\.prepare\b",
-        executable_text(source),
-    ) is None
+    assert (
+        re.search(
+            r"Comma_M204_Direct_Candidate_Publication\.publish\s+"
+            r"Comma_Direct_Bellman_Issuer\.prepare\b",
+            executable_text(source),
+        )
+        is None
+    )
 
 
 def test_shared_selected_list_checks_nested_extent_before_memo_lookup() -> None:

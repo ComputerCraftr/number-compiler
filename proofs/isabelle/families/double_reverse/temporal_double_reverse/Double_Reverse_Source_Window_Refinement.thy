@@ -988,10 +988,7 @@ ML \<open>
     double_reverse_source_window_certificate_refines_ring
     double_reverse_source_window_bitplane_point_refines_ring};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
-    else error "Double-reverse source-window refinement depends on an oracle";
-  val _ = if Thm_Deps.has_skip_proof checked
-    then error "Double-reverse source-window refinement contains skip_proof"
-    else ();
+    else error "Double-reverse source-window refinement depends on an oracle, including skip_proof";
 \<close>
 
 end

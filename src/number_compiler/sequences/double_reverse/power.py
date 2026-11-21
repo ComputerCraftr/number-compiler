@@ -42,6 +42,10 @@ from number_compiler.resources.payload_contracts import PayloadAuditStoreBinding
 from number_compiler.sequences.double_reverse.ordered_digit_band import (
     source_issued_ordered_digit_band,
 )
+from number_compiler.sequences.double_reverse.palindrome_event_cursor import (
+    PalindromeCursor,
+    cursor_nodes,
+)
 from number_compiler.sequences.double_reverse.protected_temporal_bank import (
     MAX_PROTECTED_PERIOD,
     ProtectedPeriodicBank,
@@ -128,6 +132,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         "_image",
         "_issuer",
         "_ledger",
+        "_palindrome_cache",
         "_projector",
         "_reverse_memo",
         "_scheduler",
@@ -164,6 +169,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
                 "double-reverse source exceeds the admitted state-bit budget"
             )
         self._ledger = ResourceLedger(max_context_nodes, max_cache_entries)
+        self._palindrome_cache: OwnedMemo[int, PalindromeCursor] | None = None
         self._issuer = ArenaToken("double-reverse-term")
         self._closed = False
         self._cleanup_complete = False
@@ -421,7 +427,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         if any(len(memo) for memo in self._adapter.projector_memos) or len(
             self._reverse_memo
         ):
-            discarded = self._release_ephemeral_projection_tables()
+            discarded = self._adapter.release_ephemeral_projection_tables()
             self._ledger.bump(
                 _double_reverse_keys.DOUBLE_REVERSE_ENDPOINT_PROJECTOR_DISCARDS,
                 discarded,
@@ -451,16 +457,6 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         ):
             raise ValueError("double-reverse source binding changed")
         self._adapter.validate_source(source)
-
-    def _release_ephemeral_projection_tables(self) -> int:
-        """Drop transient transducer dictionaries after retaining exact SLP roots."""
-        released = 0
-        for memo in self._adapter.projector_memos:
-            released += len(memo)
-            memo.clear()
-        released += len(self._reverse_memo)
-        self._reverse_memo.clear()
-        return released
 
     def endpoint_root(self) -> int:
         self.prepare_endpoint()
@@ -542,60 +538,12 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
     def _certified_prefix_entry(
         self, *, max_prefix: int, require_even_remainder: bool
     ) -> DoubleReverseSourcePrefix:
-        """Reuse one exact owner-issued chronological source-prefix cursor."""
         self.check_open()
-        if type(require_even_remainder) is not bool:
-            raise TypeError("prefix parity selector must be Boolean")
-        engine = self._adapter.temporal_hashlife
-        limit = min(
-            require_integer(max_prefix, "prefix limit", 0),
-            engine.prefix_limit,
+        return self._adapter.certified_prefix_entry(
             self.generation,
+            max_prefix=max_prefix,
+            require_even_remainder=require_even_remainder,
         )
-        cursor = engine.source_prefix()
-        explored = 0
-        if cursor is None:
-            self._ledger.bump(
-                _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_ATTEMPTS
-            )
-            cursor = self._adapter.advance_temporal_prefix()
-        else:
-            self._ledger.bump(
-                _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_CACHE_HITS
-            )
-            if cursor.physical_steps > limit:
-                raise UncertifiedPointedStencilError(
-                    "cached exact prefix exceeds this request's admission bound"
-                )
-        try:
-            while True:
-                prefix = cursor.physical_steps
-                phase = cursor.certified_phase
-                even_suffix = (self.generation - prefix) % 2 == 0
-                positive_suffix = self.generation > prefix
-                if phase is not None and (
-                    not require_even_remainder or even_suffix and positive_suffix
-                ):
-                    return cursor
-                if prefix >= limit:
-                    raise UncertifiedPointedStencilError(
-                        "no admitted certified 2rev10 prefix was found"
-                    )
-                self._ledger.bump(
-                    _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_ATTEMPTS
-                )
-                explored += 1
-                cursor = self._adapter.advance_temporal_prefix()
-                self._ledger.bump(
-                    _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_STEPS
-                )
-        finally:
-            if explored:
-                discarded = self._release_ephemeral_projection_tables()
-                self._ledger.bump(
-                    _double_reverse_keys.DOUBLE_REVERSE_POINTED_PREFIX_CACHE_DISCARDS,
-                    discarded,
-                )
 
     def pointed_stencil(self, position: int) -> PointedDigitStencil:
         """Resolve one LSD-first digit from its certified local temporal cone."""
@@ -942,6 +890,27 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
             max_bits=max_bits,
         )
 
+    def _palindrome_memo(self) -> OwnedMemo[int, PalindromeCursor]:
+        cache = self._palindrome_cache
+        if cache is None:
+            owner = self._ledger.register(
+                f"double-reverse-{self._ledger.owner_count}-palindrome",
+                "double_reverse_palindrome_cursor",
+            )
+            try:
+                cache = OwnedMemo(self._ledger, owner, node_cost=cursor_nodes)
+            except BaseException:
+                self._ledger.mark_disposed(owner)
+                raise
+            self._palindrome_cache = cache
+        return cache
+
+    def _dispose_palindrome_cache(self) -> None:
+        cache = self._palindrome_cache
+        if cache is not None:
+            cache.dispose()
+            self._palindrome_cache = None
+
     def dispose(self) -> None:
         if self._cleanup_complete:
             return
@@ -953,6 +922,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
                         self, "double_reverse"
                     ),
                     self._carry_safety_cache.dispose,
+                    self._dispose_palindrome_cache,
                     self._scheduler.dispose_source_images,
                     self._adapter.dispose,
                     self._arena.dispose,

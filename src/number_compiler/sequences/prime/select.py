@@ -7,8 +7,10 @@ this is not a claim of logarithmic source discovery for unbounded prime queries.
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from contextlib import ExitStack, closing
 from dataclasses import dataclass
+from itertools import islice
 from math import isqrt
 from os import urandom
 from typing import TYPE_CHECKING, Final
@@ -29,6 +31,10 @@ from number_compiler.sequences.prime.coprime_rank import (
     CachedPrimePrefixCapability,
     CoprimeRankDAG,
 )
+from number_compiler.sequences.prime.ordered_rank import (
+    ORDERED_WHEEL_210_FACTORS,
+    ORDERED_WHEEL_210_RESIDUES,
+)
 
 if TYPE_CHECKING:
     from number_compiler.sequences.prime.partial_successor_image import (
@@ -45,6 +51,9 @@ _PRIME_CACHE_SOURCE = (
     _PRIME_CACHE_ISSUER,
 )
 _PREFIX_KEY = ("admitted-prefix",)
+_SHORT_SCAN_MIN_START: Final = 10_000
+_SHORT_SCAN_MAX_RELATIVE_INDEX: Final = 128
+_SHORT_SCAN_MAX_INITIAL_ODD_WINDOW: Final = 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -401,17 +410,22 @@ class PrimePrefixRank:
                 self._partial_query = None
         self._lease = None
 
-    def publish(self) -> None:
-        """Publish only admitted source metadata; selected endpoints stay local."""
+    def require_coverage(self, root: int) -> None:
+        """Recheck the committed root and its exact factor-source binding."""
         if (
             not self._coverage_publishable
             or type(self.covered_root) is not int
             or self.covered_root != self._committed_covered_root
+            or root > self.covered_root
             or not self.dag.is_current_factor_source(self._covered_factor_authority)
             or self.dag.factor_count != self._covered_factor_count
             or self.dag.last_factor != self._covered_last_factor
         ):
             raise RuntimeError("prime prefix coverage is incomplete")
+
+    def publish(self) -> None:
+        """Publish only admitted source metadata; selected endpoints stay local."""
+        self.require_coverage(self.covered_root)
         if self._lease is None or self.dag.factor_count > MAX_SHARED_FACTOR_STAGES:
             return
         if self.covered_root < self._cached_covered_root:
@@ -442,6 +456,90 @@ class PrimePrefixRank:
             current.bypasses - self._cache_start.bypasses,
             current.puts - self._cache_start.puts,
         )
+
+
+def _select_by_certified_short_wheel(
+    context: PrimePrefixRank,
+    odd_start: int,
+    index: int,
+    length: int,
+) -> tuple[int, int, int]:
+    """Select the ordered short interval using an admitted factor prefix."""
+    remaining = index
+    rounds = max_window = probes = divisions = batches = 0
+    while True:
+        max_window = max(max_window, length)
+        high = odd_start + 2 * (length - 1)
+        context.cover(high)
+        context.require_coverage(isqrt(high))
+        dag = context.dag
+        identity = dag.factor_source_identity()
+        scratch_owner = dag.ledger.register(
+            f"prime.short-wheel-{dag.ledger.owner_count}", "prime_short_wheel"
+        )
+        try:
+            with dag.ledger.reservation(
+                scratch_owner, entries=dag.factor_count, nodes=dag.factor_count
+            ):
+                factors = dag.primes
+                try:
+                    if factors[:4] != ORDERED_WHEEL_210_FACTORS:
+                        raise RuntimeError(
+                            "short wheel scan requires the certified 210-wheel"
+                        )
+                    block = (odd_start // 210) * 210
+                    slot = bisect_left(ORDERED_WHEEL_210_RESIDUES, odd_start % 210)
+                    batches += 1
+                    while True:
+                        if slot == len(ORDERED_WHEEL_210_RESIDUES):
+                            block += 210
+                            slot = 0
+                        candidate = block + ORDERED_WHEEL_210_RESIDUES[slot]
+                        slot += 1
+                        if candidate > high:
+                            break
+                        dag.charge(candidate.bit_length())
+                        probes += 1
+                        is_prime = True
+                        for factor in islice(
+                            factors, len(ORDERED_WHEEL_210_FACTORS), None
+                        ):
+                            if factor * factor > candidate:
+                                break
+                            dag.charge(candidate.bit_length() + factor.bit_length())
+                            divisions += 1
+                            if candidate % factor == 0:
+                                is_prime = False
+                                break
+                        if is_prime:
+                            if remaining == 0:
+                                if not dag.is_current_factor_source(identity):
+                                    raise RuntimeError(
+                                        "short wheel lost its factor-source seam"
+                                    )
+                                dag.ledger.bump(
+                                    _prime_keys.PRIME_SUCCESSOR_SHORT_WHEEL_PROBES,
+                                    probes,
+                                )
+                                dag.ledger.bump(
+                                    _prime_keys.PRIME_SUCCESSOR_SHORT_WHEEL_DIVISIONS,
+                                    divisions,
+                                )
+                                dag.ledger.bump(
+                                    _prime_keys.PRIME_SUCCESSOR_SHORT_WHEEL_BATCHES,
+                                    batches,
+                                )
+                                return candidate, rounds, max_window
+                            remaining -= 1
+                finally:
+                    del factors
+        finally:
+            dag.ledger.mark_disposed(scratch_owner)
+        if not dag.is_current_factor_source(identity):
+            raise RuntimeError("short wheel lost its factor-source seam")
+        odd_start = high + 2
+        length *= 2
+        rounds += 1
 
 
 def nth_prime_at_or_after(
@@ -497,15 +595,27 @@ def nth_prime_at_or_after(
         high = block_start + 2 * (block_length - 1)
         return context.count_prime_interval(block_start, high + 1)
 
+    short_scan = (
+        start >= _SHORT_SCAN_MIN_START
+        and index <= _SHORT_SCAN_MAX_RELATIVE_INDEX
+        and length <= _SHORT_SCAN_MAX_INITIAL_ODD_WINDOW
+    )
     with closing(context):
-        while True:
-            count = compile_count(odd_start, length)
-            if count > remaining:
-                break
-            remaining -= count
-            odd_start += 2 * length
-            length *= 2
-            expansions += 1
+        if short_scan:
+            odd_start, expansions, max_length = _select_by_certified_short_wheel(
+                context, odd_start, remaining, length
+            )
+            remaining = 0
+            length = 1
+        else:
+            while True:
+                count = compile_count(odd_start, length)
+                if count > remaining:
+                    break
+                remaining -= count
+                odd_start += 2 * length
+                length *= 2
+                expansions += 1
         while length > 1:
             left_length = length // 2
             left_count = compile_count(odd_start, left_length)
@@ -518,12 +628,14 @@ def nth_prime_at_or_after(
             descents += 1
         dag = context.dag
         partial = context.partial_successor_query
-        if partial is None:
+        if partial is None and not short_scan:
             raise RuntimeError("prime selection did not publish its partial successor")
         scheduler_work = dag.ledger.counters.get(
             _prime_keys.PRIME_SUCCESSOR_SCHEDULER_WORK, 0
         )
-        scheduler_allocations = partial.peak_scheduler_entries
+        scheduler_allocations = (
+            partial.peak_scheduler_entries if partial is not None else 0
+        )
         context.publish()
         (
             shared_hits,

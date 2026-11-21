@@ -175,18 +175,34 @@ def dyadic_carry_frontier(
     )
     multiplier = phase.multiplier_at(required_precision)
     mask = (1 << carry_width) - 1
-    low_source = source & ((1 << max_position) - 1)
-    low_offset = offset & ((1 << max_position) - 1)
+    byte_count = (max_position + 7) // 8
+    low_mask = (1 << max_position) - 1
+    source_bytes = (source & low_mask).to_bytes(byte_count, "little")
+    offset_bytes = (offset & low_mask).to_bytes(byte_count, "little")
     carries_by_position: dict[int, int] = {}
+    start = 0
+    inlet = 0
     for position in sorted(set(positions)):
-        numerator_precision = position + carry_width
-        local_mask = (1 << numerator_precision) - 1
-        input_mask = (1 << position) - 1
-        local_multiplier = multiplier & local_mask
-        numerator = (
-            local_multiplier * (low_source & input_mask) + (low_offset & input_mask)
-        ) & local_mask
-        carries_by_position[position] = (numerator >> position) & mask
+        gap = position - start
+        byte, bit = divmod(start, 8)
+        if gap == 1:
+            source_bit = (source_bytes[byte] >> bit) & 1
+            offset_bit = (offset_bytes[byte] >> bit) & 1
+            inlet = (inlet + (multiplier if source_bit else 0) + offset_bit) >> 1
+        elif gap:
+            stop_byte = (position + 7) // 8
+            chunk_mask = (1 << gap) - 1
+            source_chunk = (
+                int.from_bytes(source_bytes[byte:stop_byte], "little") >> bit
+            ) & chunk_mask
+            offset_chunk = (
+                int.from_bytes(offset_bytes[byte:stop_byte], "little") >> bit
+            ) & chunk_mask
+            inlet = (inlet + multiplier * source_chunk + offset_chunk) >> gap
+        # Only the observation is truncated. High inlet planes may reach a
+        # later cut after a right shift.
+        carries_by_position[position] = inlet & mask
+        start = position
     cuts = tuple(
         DyadicCarryCut(position, carries_by_position[position])
         for position in positions
@@ -270,22 +286,19 @@ def dyadic_borrow_frontier(
         correction_multiplier * (correction_source & prefix_mask)
     ) & prefix_mask
     width_mask = (1 << chunk_width) - 1
-    chunk_modulus = 1 << chunk_width
+    physical_window = (raw_prefix_window - correction_prefix_window) & prefix_mask
+    borrow_bits = raw_prefix_window ^ correction_prefix_window ^ physical_window
+    terminal_borrow = int(raw_prefix_window < correction_prefix_window)
     chunks_by_position: dict[int, DyadicBorrowCut] = {}
-    for position in sorted(set(positions)):
-        low_mask = (1 << position) - 1
-        raw_low = raw_prefix_window & low_mask
-        correction_low = correction_prefix_window & low_mask
-        borrow_in = int(raw_low < correction_low)
-        upper_mask = (1 << (position + chunk_width)) - 1
-        raw_prefix = raw_prefix_window & upper_mask
-        correction_prefix = correction_prefix_window & upper_mask
-        raw_chunk = (raw_prefix >> position) & width_mask
-        correction_chunk = (correction_prefix >> position) & width_mask
-        physical_chunk = (raw_chunk - correction_chunk - borrow_in) & width_mask
-        borrow_out = int((raw_prefix & upper_mask) < (correction_prefix & upper_mask))
-        if physical_chunk != (raw_chunk - correction_chunk - borrow_in) % chunk_modulus:
-            raise ArithmeticError("dyadic borrow chunk lost modular subtraction")
+    for position in set(positions):
+        borrow_in = (borrow_bits >> position) & 1
+        raw_chunk = (raw_prefix_window >> position) & width_mask
+        correction_chunk = (correction_prefix_window >> position) & width_mask
+        physical_chunk = (physical_window >> position) & width_mask
+        high = position + chunk_width
+        borrow_out = (
+            terminal_borrow if high == max_precision else (borrow_bits >> high) & 1
+        )
         chunks_by_position[position] = DyadicBorrowCut(
             position,
             chunk_width,

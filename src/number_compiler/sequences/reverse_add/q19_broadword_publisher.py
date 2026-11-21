@@ -144,6 +144,23 @@ class PackedQ19:
         object.__setattr__(self, "count", count)
         object.__setattr__(self, "center", center)
 
+    @classmethod
+    def from_record(cls, value: object) -> PackedQ19:
+        """Decode the full arithmetic field after its cache issuer was checked."""
+        from number_compiler.arithmetic.contracts.input_validation import (
+            is_exact_object_tuple,
+        )
+
+        if is_exact_object_tuple(value) and len(value) == 3:
+            pairs, count, center = value
+            if (
+                type(pairs) is int
+                and type(count) is int
+                and (center is None or type(center) is int)
+            ):
+                return cls(pairs, count, center)
+        raise ValueError("invalid packed Q19 record")
+
     @staticmethod
     def _validate_shape(pairs: int, count: int, center: int | None) -> None:
         if (
@@ -190,6 +207,23 @@ class PackedQ19:
         )
         center = digits_lsd[count] if width & 1 else None
         return cls(pairs, count, center)
+
+    @classmethod
+    def from_joint_outputs(cls, ordinary: int, xor: int) -> PackedQ19:
+        """Admit Q19 only after both outputs recover a reflected source pair."""
+        from number_compiler.arithmetic.carry.joint_output_inverse import (
+            recover_joint_operands,
+        )
+        from number_compiler.arithmetic.fields.radix import digits_lsd
+
+        source, reflected = recover_joint_operands(ordinary, xor)
+        digits = digits_lsd(source, 10)
+        exact_reflection = 0
+        for digit in digits:
+            exact_reflection = 10 * exact_reflection + digit
+        if reflected != exact_reflection:
+            raise ValueError("joint outputs do not share a decimal reflection source")
+        return cls.from_digits(digits)
 
     @classmethod
     def from_bcd_planes(
@@ -274,6 +308,22 @@ class PackedQ19:
     def width(self) -> int:
         return 2 * self.count + int(self.center is not None)
 
+    def next_is_palindrome(self) -> bool:
+        """Decide the next decimal palindrome from the complete pair field."""
+        if self.count == 0:
+            assert self.center is not None
+            return self.center < 5
+        outer = self.pairs & 63
+        if outer < 10:
+            if self.center is not None and self.center >= 5:
+                return False
+            ones, _ = _lane_masks(self.count)
+            return not ((self.pairs + 22 * ones) & (ones << 5))
+        if outer != 11 or self.center not in (None, 0):
+            return False
+        ones, _ = _lane_masks(self.count)
+        return self.pairs == 11 * (self.pairs & ones)
+
     def advance(
         self, *, emit_digits: bool = False
     ) -> tuple[PackedQ19, tuple[int, ...] | None]:
@@ -356,12 +406,12 @@ class PackedQ19:
                 else PackedQ19._from_trusted(0, 0, digit)
             )
             emitted = (digit, 1) if growth else (digit,)
-            ports = (
+            center_ports = (
                 Q19TransitionPorts(0, int(digit == 0), int(digit == 9))
                 if emit_ports
                 else None
             )
-            return target, emitted if emit_digits else None, ports
+            return target, emitted if emit_digits else None, center_ports
 
         source = self.pairs
         # Since s<=18, the bit-5 threshold comparison cannot spill lanes.
@@ -369,7 +419,9 @@ class PackedQ19:
         forced = ((source + 22 * ones) & threshold_bit) >> 5
         propagate = (((source + 23 * ones) & threshold_bit) >> 5) ^ forced
 
-        lower_out = _prefix_carries(forced, propagate, count)
+        # A radix-64 addition carries directly between packed lanes. Adding
+        # 54 makes a lane overflow exactly when pair + incoming carry >= 10.
+        lower_out = (~(source + 54 * ones) & threshold_bit) >> 5
         lower_in = (lower_out << 6) & ones
         inner_carry = (lower_out >> (6 * (count - 1))) & 1
         center_in = inner_carry

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Never, cast
+from typing import Never, cast
 
 import pytest
 
@@ -16,17 +16,10 @@ from number_compiler.arithmetic.functions.finite_port_action import PortVariable
 from number_compiler.hashlife.interfaces.semantic_bit_records import BitSubstitutionKey
 from number_compiler.hashlife.interfaces.semantic_bits import (
     BitFunctionArena,
+    FactoredFunctionID,
 )
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_collection import collect_ledger_metrics
-
-if TYPE_CHECKING:
-    from number_compiler.hashlife.interfaces.semantic_bit_records import (
-        BitSubstitutionKey,
-    )
-from number_compiler.hashlife.interfaces.semantic_bits import (
-    FactoredFunctionID,
-)
 
 
 def _compositions(

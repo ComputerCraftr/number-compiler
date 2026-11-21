@@ -414,7 +414,8 @@ class Mixed211Phase:
 
     def phase_period_after_saturation(self) -> int:
         """Temporal period for q and g increasing together after q>=k."""
-        return 4 * (5 ** (self.k - 1))
+        pentadic_order: int = 5 ** (self.k - 1)
+        return 4 * pentadic_order
 
 
 Matrix2 = tuple[tuple[int, int], tuple[int, int]]

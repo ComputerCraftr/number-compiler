@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Hashable
 from dataclasses import replace
 
@@ -8,6 +9,7 @@ import pytest
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.api.projections.decimal_reversal import matches_bounded_query
 from number_compiler.api.query_types import FiveReverseTermQuery
+from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.ordered_output import (
     OrderedPhaseCoordinate,
@@ -47,6 +49,24 @@ def _scratch_owner(term: FiveReverseTerm) -> int:
 def test_five_reverse_recurrence_uses_decimal_reversal_before_factor_five() -> None:
     assert FiveReverseTerm(1, 1).materialize(max_bits=8) == 5
     assert FiveReverseTerm(196, 1).materialize(max_bits=16) == 3455
+
+
+def test_five_reverse_exact_fallback_respects_python_decimal_limit() -> None:
+    limit = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(640)
+        source = 10**699 + 2
+        with FiveReverseTerm(source, 1, max_state_bits=2400) as term:
+            assert term.step_value(source) == 5 * (2 * 10**699 + 1)
+    finally:
+        sys.set_int_max_str_digits(limit)
+
+
+def test_five_reverse_preserves_tight_scratch_budget() -> None:
+    with FiveReverseTerm(512, 0) as term:
+        ledger = term.resource_ledger
+        ledger.tighten_limits(ledger.nodes + 8, ledger.entries + 8)
+        assert term.step_value(512) == 1075
 
 
 def test_five_reverse_small_exact_state_budget_is_not_rejected_by_a_loose_bound() -> (
@@ -181,6 +201,58 @@ def test_five_reverse_adapter_revalidates_mutated_source_and_action() -> None:
                 adapter.validate_source(source)
         finally:
             object.__setattr__(source, "seed", original_seed)
+
+
+def test_five_reverse_padded_candidate_uses_authenticated_initial_image() -> None:
+    with FiveReverseTerm(196, 0, max_steps=128) as term:
+        initial = term.issued_endpoint_view()
+        source = initial.binding.source
+        assert type(source) is FiveReverseSource
+        adapter = FiveReverseSourceAdapter(
+            term, term.resource_ledger, source, source.issuer
+        )
+        candidate = adapter.padded_source_candidate(FiveReverseAction(128), initial)
+        expected = 196
+        for _ in range(128):
+            expected = 5 * int(str(expected)[::-1])
+        assert candidate.payload == expected
+        assert candidate.extent == 128
+        with pytest.raises(ValueError):
+            adapter.padded_source_candidate(
+                FiveReverseAction(2), replace(initial, payload=197)
+            )
+
+
+def test_five_reverse_wide_source_production_avoids_chronological_replay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seed = 10**143 + 12345
+    expected = seed
+    for _ in range(256):
+        expected = 5 * int(str(expected)[::-1])
+
+    def poisoned(*_args: object, **_kwargs: object) -> int:
+        raise AssertionError("production replayed the source")
+
+    monkeypatch.setattr(FiveReverseSourceAdapter, "_apply_steps", poisoned)
+    with FiveReverseTerm(seed, 256, max_steps=256) as term:
+        assert term.materialize(max_bits=4096) == expected
+
+
+def test_five_reverse_padded_source_uses_same_ledger_and_msd_order() -> None:
+    with FiveReverseTerm(196, 0, max_steps=128) as term:
+        with FiveReverseTerm(196, 0, max_steps=128) as other:
+            arena = LedgerSLPArena(term.resource_ledger, "five-padded", "five_test")
+            foreign = LedgerSLPArena(other.resource_ledger, "five-foreign", "five_test")
+            expected = 196
+            for _ in range(128):
+                expected = 5 * int(str(expected)[::-1])
+            root = term.publish_padded_source(arena, 128)
+            assert arena.materialize(root) == tuple(int(d) for d in str(expected))
+            with pytest.raises(ValueError, match="another source ledger"):
+                term.publish_padded_source(foreign, 128)
+            arena.dispose()
+            foreign.dispose()
 
 
 def test_five_reverse_owner_cache_admission_rejects_boolean_state_tampering() -> None:

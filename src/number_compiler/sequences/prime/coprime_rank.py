@@ -13,7 +13,8 @@ from collections.abc import Generator, MutableMapping
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from itertools import islice
-from math import gcd, isqrt
+from math import isqrt
+from typing import TYPE_CHECKING
 
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import prime as _prime_keys
@@ -26,6 +27,12 @@ from number_compiler.sequences.prime.ordered_rank import (
     OrderedRankBoundaryStore,
     ordered_cyclotomic_suffix_rank,
 )
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.prime.two_adic_xor_bellman import (
+        PrimeBellmanMode,
+        PrimeXorBellmanWitness,
+    )
 
 MAX_SHARED_FACTOR_STAGES = 4096
 
@@ -746,6 +753,21 @@ class CoprimeRankDAG:
             if not self.retain_queries:
                 memo.clear()
 
+    def first_survivor_xor_bellman(
+        self,
+        lower: int,
+        upper: int,
+        *,
+        depth: int | None = None,
+        mode: PrimeBellmanMode = "rank",
+    ) -> PrimeXorBellmanWitness | None:
+        """Execute exact 2-adic min-plus selection on this source's ranks."""
+        from number_compiler.sequences.prime.two_adic_xor_bellman import (
+            first_survivor_xor_bellman,
+        )
+
+        return first_survivor_xor_bellman(self, lower, upper, depth=depth, mode=mode)
+
     @staticmethod
     def _base_progression_count(limit: int, modulus: int, residue: int) -> int:
         """Positive integers ``<= limit`` in one canonical residue class."""
@@ -767,10 +789,11 @@ class CoprimeRankDAG:
 
         The result is the number of positive ``n <= limit`` that are coprime
         to the first ``depth`` descriptor factors and satisfy
-        ``n == residue (mod modulus)``.  The progression modulus must be
-        coprime to the admitted factor prefix.  ``modulus == 1`` is exactly
-        the canonical :meth:`count` owner, so ordinary prime selection keeps
-        the established Phi implementation and cache behavior.
+        ``n == residue (mod modulus)``.  Factors shared with the modulus
+        are *not* inverted: a forbidden residue gives zero, while any
+        other residue automatically survives that factor.  Only coprime
+        factors require an inverse.  ``modulus == 1`` delegates to the
+        canonical Phi count owner.
         """
         if self._closed:
             raise RuntimeError("prime rank workspace is closed")
@@ -789,8 +812,6 @@ class CoprimeRankDAG:
         residue %= modulus
         if modulus == 1:
             return self.count(limit, depth)
-        if any(gcd(modulus, p) != 1 for p in islice(self._primes, depth)):
-            raise ValueError("progression modulus must be coprime to wheel factors")
         if limit < 1:
             self.charge()
             return 0
@@ -812,14 +833,33 @@ class CoprimeRankDAG:
                     continue
                 if x < 1:
                     result = 0
+                elif d <= self._consecutive_depth and d and x <= self._primes[d - 1]:
+                    # Only 1 survives below the d-th certified prime.
+                    result = int(r == (1 % modulus))
+                elif (
+                    d > 0
+                    and modulus % self._primes[d - 1] == 0
+                    and r % self._primes[d - 1] == 0
+                ):
+                    # This progression is entirely forbidden by this factor.
+                    result = 0
                 elif d == 0:
                     result = self._base_progression_count(x, modulus, r)
                     self.arithmetic_bit_work += (
                         x.bit_length() + modulus.bit_length() + r.bit_length()
                     )
                 else:
+                    p = self._primes[d - 1]
                     if child_residue is None:
-                        p = self._primes[d - 1]
+                        if modulus % p == 0:
+                            # This class excludes p*Z already. Its exact
+                            # continuation is the unmodified parent rank.
+                            stack.append((d, x, r, -1))
+                            if (d - 1, x, modulus, r) not in memo:
+                                stack.append((d - 1, x, r, None))
+                            else:
+                                self.cache_hits += 1
+                            continue
                         child_residue = 0
                         if r:
                             inverse = self._progression_inverses.get(d)
@@ -854,20 +894,28 @@ class CoprimeRankDAG:
                         else:
                             self.cache_hits += 1
                         continue
-                    p = self._primes[d - 1]
                     left = (d - 1, x, modulus, r)
-                    right = (d - 1, x // p, modulus, child_residue)
-                    self.arithmetic_bit_work += x.bit_length() + p.bit_length()
-                    try:
-                        left_value, right_value = memo[left], memo[right]
-                    except KeyError as error:
-                        raise RuntimeError(
-                            "prime progression traversal lost a dependency"
-                        ) from error
-                    result = left_value - right_value
-                    self.arithmetic_bit_work += (
-                        left_value.bit_length() + right_value.bit_length()
-                    )
+                    if child_residue == -1:
+                        # Shared-factor lane not inverted or subtracted.
+                        try:
+                            result = memo[left]
+                        except KeyError as error:
+                            raise RuntimeError(
+                                "shared-factor progression lost its parent"
+                            ) from error
+                    else:
+                        right = (d - 1, x // p, modulus, child_residue)
+                        self.arithmetic_bit_work += x.bit_length() + p.bit_length()
+                        try:
+                            left_value, right_value = memo[left], memo[right]
+                        except KeyError as error:
+                            raise RuntimeError(
+                                "prime progression traversal lost a dependency"
+                            ) from error
+                        result = left_value - right_value
+                        self.arithmetic_bit_work += (
+                            left_value.bit_length() + right_value.bit_length()
+                        )
                 if (
                     self.max_states is not None
                     and self.ledger.entries - self.factor_count >= self.max_states

@@ -26,10 +26,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final
 
+from number_compiler.arithmetic.fields.radix import reverse_decimal_and_width
 from number_compiler.resources.ledger import ResourceLedger, ResourceScope
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
-
-from .temporal_residue99 import reverse_decimal_and_width
 
 _MOD = 99
 _MAX_SOURCE_DIGITS: Final[int] = 4096

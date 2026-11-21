@@ -227,11 +227,13 @@ def test_seed196_generation64_pointed_and_full_work_counters(
             guard.setattr(DoubleReverseTerm, "prepare_endpoint", forbid_endpoint)
             assert pointed.width() == len(str(expected))
             assert pointed.digit(3) == (expected // 1_000) % 10
+            assert pointed.digit(4) == (expected // 10_000) % 10
         pointed_metrics = pointed.metrics()
         assert pointed.published_image is None
         assert pointed_metrics["double_reverse_pointed_border_entry_steps"] == 16
         assert pointed_metrics["double_reverse_binary_shift_primitives"] == 16
         assert pointed_metrics["double_reverse_spatial_transducer_applications"] == 0
+        assert pointed_metrics["double_reverse_low_band_projections"] == 1
         assert pointed_metrics["double_reverse_pointed_stencil_publications"] == 1
         assert pointed_metrics["double_reverse_pointed_stencil_tiles"] > 0
 

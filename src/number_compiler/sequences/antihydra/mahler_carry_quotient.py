@@ -253,6 +253,8 @@ class IssuedWeightedCarry:
         # them. The caller owns scratch for the operation and its result.
         bits = 6 * (self.gain.bit_length() + source.bit_length() + 1)
         reserve_bits(bits)
+        prefix_gain: int
+        suffix_gain: int
         if ticks <= self.width - ticks:
             prefix_gain = 3**ticks
             suffix_gain = self.gain // prefix_gain

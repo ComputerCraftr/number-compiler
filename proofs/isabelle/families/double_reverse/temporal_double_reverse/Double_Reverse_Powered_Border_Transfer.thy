@@ -41,6 +41,19 @@ theorem double_reverse_powered_border_endpoint_closed:
   using transfer_finite_prefix_safe[
       OF double_reverse_closed_border_relation_preserves source path] .
 
+lemma double_reverse_closed_border_unequal_ends:
+  assumes "(a,b,c,d) \<in> double_reverse_closed_border"
+  shows "a \<noteq> d"
+  using assms by (auto simp: double_reverse_closed_border_def)
+
+theorem double_reverse_powered_border_unequal_ends:
+  assumes "source \<in> double_reverse_closed_border"
+    and "(source,(a,b,c,d)) \<in>
+      double_reverse_closed_border_relation ^^ ticks"
+  shows "a \<noteq> d"
+  using double_reverse_powered_border_endpoint_closed[OF assms]
+  by (rule double_reverse_closed_border_unequal_ends)
+
 theorem double_reverse_binary_border_power_exact:
   "transfer_binary_power double_reverse_closed_border_relation bits =
     double_reverse_closed_border_relation ^^ transfer_binary_value bits"
@@ -55,6 +68,8 @@ ML \<open>
   val checked = @{thms double_reverse_closed_border_relation_target
     double_reverse_closed_border_relation_preserves
     double_reverse_powered_border_endpoint_closed
+    double_reverse_closed_border_unequal_ends
+    double_reverse_powered_border_unequal_ends
     double_reverse_binary_border_power_exact};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Powered double-reverse border transfer depends on an oracle";

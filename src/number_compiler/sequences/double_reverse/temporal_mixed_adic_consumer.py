@@ -197,9 +197,7 @@ class MixedAdicState:
 
     @property
     def field(self) -> TwoReverseDualDigitField18:
-        return TwoReverseDualDigitField18.from_border(
-            physical_mod198=self.residue1980 % 198, phase=self.phase
-        )
+        return TwoReverseDualDigitField18(2 * self.residue99 % 18, self.phase)
 
     def successor(self) -> MixedAdicState:
         return type(self)(
@@ -245,15 +243,17 @@ def _valuation_certificate(
     return {"at_least": valuation, "exact": valuation, "precision": known_exponent}
 
 
-def _period_certificate(state: MixedAdicState, length: int) -> dict[str, object]:
+def _period_certificate(
+    state: MixedAdicState,
+    length: int,
+    source_mod1980: int,
+    source_field: TwoReverseDualDigitField18,
+) -> dict[str, object]:
     target = state.power(length)
-    base_field = state.field
-    target_field = target.field
-    field_return = (
-        base_field.four_field_orientations_mod90
-        == target_field.four_field_orientations_mod90
-    )
-    mixed_delta = (target.residue1980 - state.residue1980) % 1980
+    # The high/low last digits identify the guarded phase; the common mod-9
+    # class and even parity recover the temporal mod-18 state.
+    field_return = target.field == source_field
+    mixed_delta = (target.residue1980 - source_mod1980) % 1980
     return {
         "duration": length,
         "field_mod18_mod90_and_outer_carry_return": field_return,
@@ -295,6 +295,7 @@ def certified_mixed_adic_packet(
         }
     initial = MixedAdicState(entry.phase, entry.width_parity, entry.residue99)
     target = initial.power(generation - entry.generation)
+    target_mod1980 = target.residue1980
     mask, transient, subset_period = _edge_subset_at(
         entry.edge_index, generation - entry.generation
     )
@@ -308,12 +309,13 @@ def certified_mixed_adic_packet(
             }
         )
     )
-    if not candidates9900 or any(
-        z % 1980 != target.residue1980 for z in candidates9900
-    ):
+    if not candidates9900 or any(z % 1980 != target_mod1980 for z in candidates9900):
         raise AssertionError("mixed CRT lifted candidates fail their canonical parent")
-    period_returns = tuple(_period_certificate(target, length) for length in (72, 576))
     field = target.field
+    period_returns = tuple(
+        _period_certificate(target, length, target_mod1980, field)
+        for length in (72, 576)
+    )
     return {
         "status": "available",
         "scope": "exact guarded mod1980 quotient and safe mod9900 candidate enclosure; not full physical carry",
@@ -332,7 +334,7 @@ def certified_mixed_adic_packet(
             "width_parity": target.width_parity,
             "residue99": target.residue99,
         },
-        "physical_residue1980": target.residue1980,
+        "physical_residue1980": target_mod1980,
         "certified_exact_mixed_prime_powers": {"2": 2, "5": 1, "3": 2, "11": 1},
         "mod20_port_from_phase": _LAST_MOD20[target.phase],
         "physical_mod9900_candidates": list(candidates9900),

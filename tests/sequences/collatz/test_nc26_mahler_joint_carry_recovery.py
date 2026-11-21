@@ -120,6 +120,15 @@ def test_randomized_chronological_recovery_and_twisted_composition() -> None:
         assert _trim(list(row.total_defect)) == row.total_defect
 
 
+def test_long_mixed_cocycle_matches_chronological_oracle() -> None:
+    source = 196
+    action, endpoint, innovation, carries = _direct_oracle(source, 256)
+    row = action.mahler_chronological_cocycle(source, max_columns=512)
+    assert row.endpoint == endpoint
+    assert row.innovation == innovation
+    assert row.chronological_carries == carries
+
+
 def test_known_carry_difference_and_future_6305_program() -> None:
     word = Field.one_run(2)
     result = word.mahler_chronological_cocycle(23)
@@ -265,3 +274,94 @@ def test_window_carry_view_uses_issued_endpoint_without_replay(
     assert type(port) is MahlerFutureCarryPort
     assert port.target == 53
     assert port.first_6305_carry(53) == (16, 4)
+
+
+def test_issued_future_carry_bellman_matches_same_time_oracle() -> None:
+    from number_compiler.resources.ledger import ResourceLedger
+
+    empty = _source_window(2, 0, 1).mahler_future_carry_port()
+    ledger = ResourceLedger()
+    assert empty.first_simultaneous_even_carries((1,), horizon=0, ledger=ledger) is None
+    assert ledger.entries == ledger.nodes == 0
+
+    rng = Random(20261120)
+    sources = [7, 15, 23, 31, 63]
+    for _ in range(25):
+        sources.append(((2 * rng.randrange(1, 32) + 1) << rng.randrange(1, 8)) - 1)
+    for source in sources:
+        port = _source_window(source, 0, 1).mahler_future_carry_port()
+        centered = source + 1
+        depth = (centered & -centered).bit_length() - 1
+        for cuts in ((1,), (3, 5), (5, 4, 5)):
+            expected = None
+            for tick in range(1, depth + 1):
+                if all(
+                    ((pow(base, tick) * (centered % (1 << cut))) >> cut) % 2 == 0
+                    for base in (3, 5, 15)
+                    for cut in cuts
+                ):
+                    expected = tick
+                    break
+            ledger = ResourceLedger()
+            assert (
+                port.first_simultaneous_even_carries(cuts, horizon=depth, ledger=ledger)
+                == expected
+            )
+            assert ledger.entries == ledger.nodes == 0
+
+
+def test_issued_future_carry_bellman_reuses_period_and_checks_headroom(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.contracts.block_effect import (
+        BlockContextBudgetExceeded,
+    )
+    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.sequences.collatz import future_carry_bellman
+
+    source = (1 << 20) - 1
+    port = _source_window(source, 0, 1).mahler_future_carry_port()
+    from collections.abc import Callable
+
+    from number_compiler.arithmetic.fields.dyadic_unit_phase import (
+        DyadicCarryFrontier,
+        DyadicUnitPhase,
+        dyadic_carry_frontier,
+    )
+
+    phase_ticks: list[int] = []
+
+    def counted_frontier(
+        phase: DyadicUnitPhase,
+        source: int,
+        offset: int,
+        positions: tuple[int, ...],
+        *,
+        carry_width: int,
+        reserve_bits: Callable[[int], None],
+    ) -> DyadicCarryFrontier:
+        phase_ticks.append(phase.phase)
+        return dyadic_carry_frontier(
+            phase,
+            source,
+            offset,
+            positions,
+            carry_width=carry_width,
+            reserve_bits=reserve_bits,
+        )
+
+    monkeypatch.setattr(future_carry_bellman, "dyadic_carry_frontier", counted_frontier)
+    ledger = ResourceLedger()
+    assert port.first_simultaneous_even_carries((21,), horizon=20, ledger=ledger) == 2
+    assert len(phase_ticks) == 4
+    assert ledger.entries == ledger.nodes == 0
+    with pytest.raises(ValueError, match="headroom"):
+        port.first_simultaneous_even_carries((21,), horizon=21, ledger=ledger)
+    with pytest.raises(ValueError, match="phase budget"):
+        port.first_simultaneous_even_carries(
+            (21,), horizon=20, ledger=ledger, max_phase_states=1
+        )
+    limited = ResourceLedger(max_nodes=0)
+    with pytest.raises(BlockContextBudgetExceeded):
+        port.first_simultaneous_even_carries((21,), horizon=20, ledger=limited)
+    assert limited.entries == limited.nodes == 0

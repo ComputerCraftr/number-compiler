@@ -17,6 +17,7 @@ class SelectorId(StrEnum):
     NTH = "nth"
     EVENTS = "events"
     VERIFY = "verify"
+    FIRST_PALINDROME = "first-palindrome-within"
 
 
 class IndexUnit(StrEnum):
@@ -120,6 +121,7 @@ class ObservationId(StrEnum):
     TEMPORAL_INNOVATION_BORROW = "temporal.innovation-borrow"
     TEMPORAL_SPACETIME = "temporal.spacetime"
     TEMPORAL_DIAGONAL_CARRY = "temporal.diagonal-carry"
+    TEMPORAL_CARRY_BELLMAN = "temporal.carry-bellman"
     SPATIAL_MIRROR = "spatial.mirror"
     SPATIAL_STENCIL = "spatial.stencil"
     SPATIAL_PAIR_BANK = "spatial.pair-bank"
@@ -264,6 +266,7 @@ _CATEGORIES: Final[dict[ObservationCategory, tuple[ObservationId, ...]]] = {
         ObservationId.TEMPORAL_INNOVATION_BORROW,
         ObservationId.TEMPORAL_SPACETIME,
         ObservationId.TEMPORAL_DIAGONAL_CARRY,
+        ObservationId.TEMPORAL_CARRY_BELLMAN,
     ),
     ObservationCategory.SPATIAL: (
         ObservationId.SPATIAL_MIRROR,

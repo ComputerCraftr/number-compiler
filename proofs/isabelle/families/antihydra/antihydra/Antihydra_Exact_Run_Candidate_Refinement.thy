@@ -104,10 +104,219 @@ theorem antihydra_exact_run_candidate_composes:
         (antihydra_family_orbit h left) right)"
   by (rule antihydra_arithmetic_block_composition)
 
+theorem antihydra_rotated_phase_ordered_correction:
+  "sk_J (skew_word (suffix @ prefix)) =
+    3^(length prefix) * sk_J (skew_word suffix) +
+      2^(length suffix) * sk_J (skew_word prefix)"
+  by (simp add: skew_word_append skew_then_def mult.commute)
+
+theorem antihydra_rotated_source_guard_pullback:
+  fixes h endpoint prefix_correction rotated inverse :: nat
+  assumes physical: "3^cut * h = 2^cut * endpoint + prefix_correction"
+    and seam: "endpoint mod 2^width = rotated mod 2^width"
+    and inverse: "(inverse * 3^cut) mod 2^(width + cut) = 1"
+  shows "h mod 2^(width + cut) =
+    (inverse * (prefix_correction + 2^cut * rotated)) mod 2^(width + cut)"
+proof -
+  let ?M = "2^(width + cut)"
+  have blocks: "(2^cut * endpoint) mod ?M = (2^cut * rotated) mod ?M"
+    using seam by (simp only: add.commute power_add mod_mult_mult1)
+  have transport: "(3^cut * h) mod ?M =
+      (prefix_correction + 2^cut * rotated) mod ?M"
+  proof -
+    have "(3^cut * h) mod ?M = (2^cut * endpoint + prefix_correction) mod ?M"
+      by (simp only: physical)
+    also have "... = (2^cut * rotated + prefix_correction) mod ?M"
+      by (rule mod_add_cong[OF blocks refl])
+    also have "... = (prefix_correction + 2^cut * rotated) mod ?M"
+      by (simp only: add.commute)
+    finally show ?thesis .
+  qed
+  have source:
+      "(inverse * 3^cut * h) mod ?M = h mod ?M"
+  proof -
+    have "(inverse * 3^cut * h) mod ?M = (((inverse * 3^cut) mod ?M) * h) mod ?M"
+      by (rule mod_mult_left_eq[symmetric])
+    also have "... = h mod ?M" using inverse by simp
+    finally show ?thesis .
+  qed
+  have multiplied: "(inverse * (3^cut * h)) mod ?M =
+      (inverse * (prefix_correction + 2^cut * rotated)) mod ?M"
+    by (rule mod_mult_cong) (simp_all add: transport)
+  show ?thesis using source multiplied by (simp add: mult.assoc)
+qed
+
+theorem antihydra_source_rotated_phase_minimum:
+  assumes word: "antihydra_family_bits h (length suffix + length prefix) =
+    suffix @ prefix"
+  shows "antihydra_family_minimum h 0 (length suffix + length prefix) =
+    min (sk_minprefix (skew_word suffix))
+      (sk_delta (skew_word suffix) + sk_minprefix (skew_word prefix))"
+  using word antihydra_arithmetic_block_ledger_projection(2)
+    [of h "length suffix + length prefix"]
+  by (simp add: antihydra_arithmetic_block_def skew_word_append skew_then_def)
+
+text \<open>For the repeat prefilter, the centered source is inspected at
+24 bits.  Transporting the omitted high part through the physical eight-step
+orbit changes the endpoint by a multiple of 2^16.  The centered and physical
+endpoint differences coincide because both coordinates translate by one.\<close>
+
+lemma antihydra_repeat_low24_endpoint_mod16:
+  "antihydra_family_orbit (d + 1) 8 mod 2^16 =
+    antihydra_family_orbit (d mod 2^24 + 1) 8 mod 2^16"
+proof -
+  have decomposition:
+    "d + 1 = (d mod 2^24 + 1) + 2^8 * (2^16 * (d div 2^24))"
+    using div_mult_mod_eq[of d "2^24"] by (simp add: algebra_simps)
+  have transported:
+    "antihydra_family_orbit (d + 1) 8 =
+      antihydra_family_orbit (d mod 2^24 + 1) 8 +
+        3^8 * (2^16 * (d div 2^24))"
+    using antihydra_family_orbit_cylinder_transport[
+      of "d mod 2^24 + 1" 8 "2^16 * (d div 2^24)"] decomposition
+    by simp
+  have shift:
+    "3^8 * (2^16 * (d div 2^24)) =
+      (3^8 * (d div 2^24)) * 2^16"
+    by (simp only: mult.assoc mult.commute mult.left_commute)
+  show ?thesis by (simp only: transported shift mod_mult_self1)
+qed
+
+theorem antihydra_repeat_low24_difference_mod16:
+  "(int (antihydra_family_orbit (d + 1) 8) - int (d + 1)) mod 2^16 =
+    (int (antihydra_family_orbit (d mod 2^24 + 1) 8) -
+      int (d mod 2^24 + 1)) mod 2^16"
+proof -
+  have reduced:
+    "d mod 2^24 mod 2^16 = d mod 2^16"
+    by (rule mod_mod_cancel) simp
+  have source:
+    "(d + 1) mod 2^16 = (d mod 2^24 + 1) mod 2^16"
+    using mod_add_left_eq[of d "2^16" 1]
+      mod_add_left_eq[of "d mod 2^24" "2^16" 1] reduced
+    by metis
+  have source_int:
+    "int (d + 1) mod (2::int)^16 =
+      int (d mod 2^24 + 1) mod (2::int)^16"
+    using arg_cong[OF source, of int] by (simp add: zmod_int)
+  have endpoint_int:
+    "int (antihydra_family_orbit (d + 1) 8) mod (2::int)^16 =
+      int (antihydra_family_orbit (d mod 2^24 + 1) 8) mod (2::int)^16"
+    using arg_cong[OF antihydra_repeat_low24_endpoint_mod16[of d], of int]
+    by (simp add: zmod_int)
+  let ?x = "int (antihydra_family_orbit (d + 1) 8)"
+  let ?y = "int (d + 1)"
+  let ?x' = "int (antihydra_family_orbit (d mod 2^24 + 1) 8)"
+  let ?y' = "int (d mod 2^24 + 1)"
+  let ?m = "(2::int)^16"
+  have "(?x - ?y) mod ?m = (?x mod ?m - ?y mod ?m) mod ?m"
+    by (rule mod_diff_eq[symmetric])
+  also have "... = (?x' mod ?m - ?y' mod ?m) mod ?m"
+    by (simp only: source_int endpoint_int)
+  also have "... = (?x' - ?y') mod ?m"
+    by (rule mod_diff_eq)
+  finally show ?thesis .
+qed
+
+lemma antihydra_repeat_affine_difference:
+  fixes a b j x y z :: int
+  assumes first: "b * y = a * x + j"
+      and second: "b * z = a * y + j"
+  shows "b * (z - y) = a * (y - x)"
+  using first second by (simp add: algebra_simps)
+
+lemma antihydra_repeat_prefix_extremes:
+  fixes displacement minimum :: int
+  shows "min minimum (minimum + displacement) =
+    minimum + min 0 displacement"
+  by (simp add: min_def)
+
+fun antihydra_repeat_gain :: "nat \<Rightarrow> nat" where
+  "antihydra_repeat_gain 0 = 0"
+| "antihydra_repeat_gain (Suc r) =
+    6561 * antihydra_repeat_gain r + 256^r"
+
+lemma antihydra_repeat_gain_geometric:
+  "6305 * antihydra_repeat_gain r + 256^r = 6561^r"
+proof (induction r)
+  case 0
+  then show ?case by simp
+next
+  case (Suc r)
+  have algebra_generic:
+    "\<And>u v :: nat. 6305 * (6561 * u + v) + v * 256 =
+      6561 * (6305 * u + v)"
+    by (simp add: algebra_simps; linarith)
+  have algebra:
+    "6305 * (6561 * antihydra_repeat_gain r + 256^r) + 256^r * 256 =
+      6561 * (6305 * antihydra_repeat_gain r + 256^r)"
+    by (rule algebra_generic)
+  have step:
+    "6305 * (6561 * antihydra_repeat_gain r + 256^r) + 256^r * 256 =
+      6561^r * 6561"
+    using algebra Suc.IH by (simp only: mult.commute)
+  show ?case using step
+    by (simp only: antihydra_repeat_gain.simps power_Suc)
+qed
+
+
+fun antihydra_cyclic_repeat_gain :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
+  "antihydra_cyclic_repeat_gain atom 0 = 0"
+| "antihydra_cyclic_repeat_gain atom (Suc r) =
+    3^atom * antihydra_cyclic_repeat_gain atom r + (2^atom)^r"
+
+theorem antihydra_cyclic_repeat_source_endpoint:
+  assumes first: "antihydra_family_orbit h atom = h + (2^atom)^r * k"
+  shows "antihydra_family_orbit h (atom * Suc r) =
+    h + antihydra_cyclic_repeat_gain atom (Suc r) * k"
+  using first
+proof (induction r arbitrary: k)
+  case 0
+  then show ?case by simp
+next
+  case (Suc r)
+  have first_previous:
+    "antihydra_family_orbit h atom = h + (2^atom)^r * (2^atom * k)"
+    using Suc.prems by (simp add: power_Suc algebra_simps)
+  have previous:
+    "antihydra_family_orbit h (atom * Suc r) =
+      h + antihydra_cyclic_repeat_gain atom (Suc r) * (2^atom * k)"
+    by (rule Suc.IH[OF first_previous])
+  have transported:
+    "antihydra_family_orbit (h + 2^atom * (antihydra_cyclic_repeat_gain atom (Suc r) * k)) atom =
+      antihydra_family_orbit h atom + 3^atom * (antihydra_cyclic_repeat_gain atom (Suc r) * k)"
+    by (rule antihydra_family_orbit_cylinder_transport)
+  have composition:
+    "antihydra_family_orbit h (atom * Suc (Suc r)) =
+      antihydra_family_orbit (antihydra_family_orbit h (atom * Suc r)) atom"
+    using antihydra_family_orbit_add[of h "atom * Suc r" atom]
+    by (simp add: algebra_simps)
+  show ?case
+    using composition previous transported Suc.prems
+    by (simp add: antihydra_cyclic_repeat_gain.simps algebra_simps)
+qed
+
+lemma antihydra_eight_repeat_gain:
+  "antihydra_cyclic_repeat_gain 8 r = antihydra_repeat_gain r"
+  by (induction r) simp_all
+
+theorem antihydra_repeat_source_endpoint:
+  assumes first: "antihydra_family_orbit h 8 = h + 256^r * k"
+  shows "antihydra_family_orbit h (8 * Suc r) =
+    h + antihydra_repeat_gain (Suc r) * k"
+  using antihydra_cyclic_repeat_source_endpoint[of h 8 r k] first
+  by (simp only: antihydra_eight_repeat_gain; simp)
+
 ML \<open>
   val checked = @{thms antihydra_binary_word_sum_is_one_count
     antihydra_exact_run_candidate_fields
-    antihydra_exact_run_candidate_composes};
+    antihydra_exact_run_candidate_composes
+    antihydra_rotated_phase_ordered_correction antihydra_rotated_source_guard_pullback
+    antihydra_source_rotated_phase_minimum
+    antihydra_repeat_low24_difference_mod16
+    antihydra_repeat_affine_difference antihydra_repeat_prefix_extremes
+    antihydra_repeat_gain_geometric antihydra_cyclic_repeat_source_endpoint
+    antihydra_eight_repeat_gain antihydra_repeat_source_endpoint};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Antihydra exact run candidate refinement depends on an oracle";
   val _ = if Thm_Deps.has_skip_proof checked

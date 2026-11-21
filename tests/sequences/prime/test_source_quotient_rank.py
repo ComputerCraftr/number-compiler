@@ -13,6 +13,7 @@ from number_compiler.sequences.prime.ordered_rank import (
     OrderedRankBoundary2310,
 )
 from number_compiler.sequences.prime.select import PrimePrefixRank
+from tests.support.prime_actions import primes_through
 
 
 @pytest.mark.parametrize("stage", ("boundary", "suffix"))
@@ -38,20 +39,6 @@ def test_optional_rank_failure_releases_scratch_and_keeps_inventory_exact(
     finally:
         owner.close()
     assert owner.ledger.entries == owner.ledger.nodes == 0
-
-
-def _primes_through(limit: int) -> tuple[int, ...]:
-    flags = bytearray(b"\x01") * (limit + 1)
-    if limit >= 0:
-        flags[0] = 0
-    if limit >= 1:
-        flags[1] = 0
-    for candidate in range(2, isqrt(limit) + 1):
-        if flags[candidate]:
-            flags[candidate * candidate : limit + 1 : candidate] = b"\x00" * (
-                (limit - candidate * candidate) // candidate + 1
-            )
-    return tuple(value for value in range(2, limit + 1) if flags[value])
 
 
 def _prefix_rank(limit: int, factors: tuple[int, ...]) -> int:
@@ -93,7 +80,7 @@ def test_prime_prefix_cover_matches_independent_sieve_through_million() -> None:
     )
     try:
         owner.cover(1_000_000)
-        expected = _primes_through(isqrt(1_000_000))
+        expected = primes_through(isqrt(1_000_000))
         assert owner.dag.primes == expected
         assert owner.covered_root == 1_000
         assert owner.discovery_queries > 0

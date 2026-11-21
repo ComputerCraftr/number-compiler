@@ -252,27 +252,33 @@ def _ordinary_port_summary(
     source_boundaries: list[int] | None = [] if include_source_boundaries else None
     carry_digits: list[str] = []
     add = forward = high = low = 0
-    modulus = 1
+    source_remaining = source
+    remainder = 0
+    place_value = 1
+    doubling = tripling = sextupling = 0
+    forward_borrow = False
     for position in range(places):
-        modulus *= base
+        source_remaining, digit = divmod(source_remaining, base)
+        doubling, emitted2 = divmod(2 * digit + doubling, base)
+        sextupling, emitted6 = divmod(6 * digit + sextupling, base)
+        if emitted6 != emitted2:
+            forward_borrow = emitted6 < emitted2
         if boundary_rows is None:
-            remainder = source % modulus
-            tripling, _doubling, add_borrow, _subtraction = _tripling_prefix_components(
-                modulus, remainder
-            )
+            tripling = (3 * digit + tripling) // base
+            add_borrow = tripling - doubling
         else:
             row = boundary_rows[position]
-            remainder = row.source_remainder
             tripling = row.tripling_carry
             add_borrow = row.tripling_sub_borrow
-        forward_borrow = int((6 * remainder) % modulus < (2 * remainder) % modulus)
         add |= add_borrow << position
-        forward |= forward_borrow << position
+        forward |= int(forward_borrow) << position
         high |= int(tripling >= 2) << position
         low |= int(tripling >= 1) << position
         carry_digits.append(str(tripling))
         if source_boundaries is not None:
+            remainder += digit * place_value
             source_boundaries.append(remainder)
+            place_value *= base
     return CompactOrdinaryRadixPorts(
         source,
         None if source_boundaries is None else tuple(source_boundaries),

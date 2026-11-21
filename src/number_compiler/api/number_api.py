@@ -14,7 +14,7 @@ from number_compiler.api.elementary_payloads import (
     MersenneTermPayload,
     ScalarTermPayload,
 )
-from number_compiler.api.query_types import TermQuery
+from number_compiler.api.query_types import FirstPalindromeQuery, TermQuery
 from number_compiler.api.reverse_payloads import (
     DoubleReverseTermPayload,
     FiveReverseTermPayload,
@@ -504,6 +504,24 @@ class NumberCompiler:
 
         adapter = resolve_projection_adapter(query)
         return adapter(self, query)
+
+    def first_palindrome(self, query: FirstPalindromeQuery) -> int | None:
+        """Return the earliest positive generation, or absence through the horizon."""
+        if type(query) is not FirstPalindromeQuery:
+            raise TypeError("first_palindrome requires a FirstPalindromeQuery")
+        if query.horizon == 0:
+            return None
+        source = self.project(query.source).payload
+        if isinstance(source, PoweredReverseAddTermPayload):
+            return source.term.first_palindrome_within(
+                query.horizon, shared_cache=self.shared_cache
+            )
+        if not isinstance(source, DoubleReverseTermPayload):
+            raise TypeError("palindrome search requires a reversal producer")
+        if not self._max_cached_terms:
+            with source.term as term:
+                return term.first_palindrome_within(query.horizon)
+        return source.term.first_palindrome_within(query.horizon)
 
     def project_digit(self, query: TermQuery, coordinate: int) -> int:
         """Demand one digit from a typed query without a parameter bag."""

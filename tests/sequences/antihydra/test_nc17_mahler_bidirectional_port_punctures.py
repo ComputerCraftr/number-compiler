@@ -138,13 +138,24 @@ def test_100007_and_109907_aliases_keep_distinct_source_ports_and_rows() -> None
     assert separations[0]
 
 
-def test_compressed_source_motif_carry_is_reused_at_the_center() -> None:
+def test_compressed_source_motif_carry_is_reused_at_the_center(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     motif = "64646"
     copies = 4
     low = int(motif * copies)
     width = len(motif) * copies
     source = low + 99 * 10**width + 37 * 10 ** (width + 2)
-    join = MahlerCenterExteriorJoin.from_source(
+    literal_exterior = low + 37 * 10 ** (width + 2)
+    original_residue = MahlerExteriorMotif.residue
+    moduli: list[int] = []
+
+    def residue_once(segment: MahlerExteriorMotif, modulus: int) -> int:
+        moduli.append(modulus)
+        return original_residue(segment, modulus)
+
+    monkeypatch.setattr(MahlerExteriorMotif, "residue", residue_once)
+    evidence = MahlerCenterExteriorEvidence.from_source(
         source,
         center_places=2,
         center_start=width,
@@ -153,11 +164,15 @@ def test_compressed_source_motif_carry_is_reused_at_the_center() -> None:
             MahlerExteriorMotif(width + 2, "37"),
         ),
     )
-    low_border = MahlerLowBorderCarryCertificate.from_exterior(join)
-    port = MahlerCenterPortPuncture.from_exterior(join, 99)
+    join = evidence.join
+    low_border = MahlerLowBorderCarryCertificate.from_exterior(evidence)
+    port = MahlerCenterPortPuncture.from_exterior(evidence, 99)
     assert low_border.carry_map.responses == port.punctures[0].carry_responses
     assert port.punctures[0].width == width
     assert port.next_source == _successor(port.source)
+    assert moduli == [198, 198]
+    assert join.outer99 == literal_exterior % 99
+    assert join.outer198 == literal_exterior % 198
 
 
 def test_667000_width_birth_uses_authenticated_next_center_position() -> None:

@@ -6,5 +6,7 @@ session Five_Reverse in five_reverse = Shared_Carry_Dynamics +
     Five_Reverse_Mod45
     Five_Reverse_Digit_Field
     Five_Reverse_Reflected_H
+    Five_Reverse_Padded_H_Consumer
+    Five_Reverse_Compiled_Word
     Five_Reverse_Bounds
     Five_Reverse_Window_Consumer

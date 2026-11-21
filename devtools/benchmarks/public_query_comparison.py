@@ -23,7 +23,7 @@ from number_compiler.api.json_output import (
 )
 from number_compiler.api.number_api import NumberCompiler
 from number_compiler.api.observation_types import OptionValueKind
-from number_compiler.api.query_types import AntihydraVerifyQuery, CollatzEventQuery
+from number_compiler.api.query_types import is_term_query
 from number_compiler.api.registry_cli import option_argv
 from number_compiler.arithmetic.contracts.family_identity import family_id
 
@@ -196,6 +196,7 @@ def compare(
     modes: Sequence[Mode],
     *,
     seed: int = 27,
+    warm_from_seed: int | None = None,
     start: int | None = None,
     bases: Sequence[int] = (2, 10),
     position: int = 2,
@@ -227,6 +228,12 @@ def compare(
     if any(type(name) is not str for name in info) or (not info and no_value):
         raise ValueError("comparison requires a value or named CLI observation")
     spec = family_spec(selected_family)
+    if warm_from_seed is not None and (
+        type(warm_from_seed) is not int
+        or warm_from_seed < 0
+        or "seed" not in spec.parameters
+    ):
+        raise ValueError("cross-source priming requires an admitted seed parameter")
     declared_options = spec.observer_options_map()
     if any(name not in declared_options for name, _ in observation_options):
         raise ValueError("benchmark option is not declared by the family observer")
@@ -253,7 +260,8 @@ def compare(
         raise ValueError("output bases must be between 2 and 36")
     if not modes or any(mode not in ("cold", "warm", "bypass") for mode in modes):
         raise ValueError("invalid comparison mode")
-    source_arguments = option_argv("seed", seed) if "seed" in spec.parameters else []
+    seed_arguments = option_argv("seed", seed) if "seed" in spec.parameters else []
+    source_arguments: list[str] = []
     for name, limit in (("max_steps", max_steps), ("max_state_bits", max_state_bits)):
         if limit is not None:
             source_arguments.extend(option_argv(name, limit))
@@ -272,11 +280,11 @@ def compare(
 
     for horizon in horizons:
         source_request = parse_request(
-            [family, *option_argv("nth", horizon), *source_arguments]
+            [family, *option_argv("nth", horizon), *seed_arguments, *source_arguments]
         )
         assert source_request is not None
         query = source_request.execution
-        assert not isinstance(query, (AntihydraVerifyQuery, CollatzEventQuery))
+        assert is_term_query(query)
         if no_value:
             expected_digit: int | None = None
             expected_outputs: dict[int, str] = {}
@@ -298,7 +306,11 @@ def compare(
                 max_cached_terms=0 if mode == "bypass" else 8,
                 shared_cache=mode != "bypass",
             )
-            samples = range(-1, trials) if mode == "warm" else range(trials)
+            samples = (
+                range(-1, trials)
+                if mode == "warm" and warm_from_seed is None
+                else range(trials)
+            )
             for trial in samples:
                 phase = "priming" if trial == -1 else "measured"
                 ordered_bases = (
@@ -318,11 +330,42 @@ def compare(
                             for name in requested_info
                             for argument in option_argv("info", name)
                         ],
-                        *source_arguments,
-                        *observation_arguments,
                     ]
                     if no_value:
                         arguments.extend(option_argv("no_value", True))
+                    if mode == "warm" and warm_from_seed is not None:
+                        # Always start with only the donor in the bank. A preceding
+                        # receiving query would turn this into same-source reuse.
+                        NumberCompiler.clear_shared_cache()
+                        prime_time, prime_packet = cli_sample(
+                            [
+                                *arguments,
+                                *option_argv("seed", warm_from_seed),
+                                *source_arguments,
+                                *observation_arguments,
+                            ],
+                            fresh=False,
+                        )
+                        prime_value = prime_packet.get("value")
+                        record(
+                            {
+                                "family": family,
+                                "horizon": horizon,
+                                "trial": trial,
+                                "mode": mode,
+                                "phase": "donor",
+                                "route": "cli",
+                                "output_base": base,
+                                "seconds": prime_time,
+                                "value": prime_value
+                                if isinstance(prime_value, str)
+                                else None,
+                                "info": prime_packet.get("info"),
+                            }
+                        )
+                    arguments.extend(
+                        (*seed_arguments, *source_arguments, *observation_arguments)
+                    )
                     elapsed, packet = cli_sample(
                         arguments, fresh=mode == "cold", shared_cache=mode != "bypass"
                     )
@@ -413,6 +456,11 @@ def main() -> int:
         default=["cold", "warm", "bypass"],
     )
     parser.add_argument("--seed", type=int, default=27)
+    parser.add_argument(
+        "--warm-from-seed",
+        type=int,
+        help="prime each warm CLI trial with this other seed",
+    )
     parser.add_argument("--start", type=int)
     parser.add_argument("--value-only", action="store_true")
     parser.add_argument("--bases", type=int, nargs="+", default=[2, 10])
@@ -497,6 +545,7 @@ def main() -> int:
                 options.trials,
                 modes,
                 seed=options.seed,
+                warm_from_seed=options.warm_from_seed,
                 start=options.start,
                 bases=options.bases,
                 position=options.position,

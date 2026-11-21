@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from threading import RLock
 from typing import Self
 
+from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.ordered_output import (
@@ -198,20 +199,34 @@ class FiveReverseTerm:
 
     def _next(self, value: int) -> int:
         self.resource_ledger.bump(_keys.FIVE_REVERSE_EXACT_STEPS)
-        width = self._decimal_width(value)
-        scratch = max(1, 2 * width + 2)
+        width_bound = max(1, (value.bit_length() * 30103 + 99999) // 100000)
+        if (
+            self.resource_ledger.max_nodes is not None
+            or self.resource_ledger.max_cache_entries is not None
+        ):
+            # A loose decimal-width bound could reject an allocation that
+            # fits an explicitly limited ledger under the original contract.
+            width_bound = self._decimal_width(value)
+        scratch = 2 * width_bound + 2
         try:
-            # Reserve both the radix digit tuple and the two live integer
-            # accumulators before constructing either.  Carry words are not
-            # retained or assembled on an ordinary exact term request.
+            # Account for the decimal buffers and both integer accumulators
+            # before attempting conversion or the exact digit fallback.
             with self.resource_ledger.reservation(
                 self._scratch_owner, entries=scratch, nodes=scratch
             ):
-                digits = digits_lsd(value, 10)
-                reversed_value = 0
-                # Horner over LSD-first source digits constructs reverse10.
-                for digit in digits:
-                    reversed_value = reversed_value * 10 + digit
+                try:
+                    decimal = str(value)
+                    reversed_value = int(decimal[::-1])
+                except ValueError:
+                    # Python can impose a decimal-conversion limit. Keep the
+                    # exact arithmetic fallback without changing that limit.
+                    width = self._decimal_width(value)
+                    digits = digits_lsd(value, 10)
+                    reversed_value = 0
+                    for digit in digits:
+                        reversed_value = reversed_value * 10 + digit
+                else:
+                    width = len(decimal)
                 following = 5 * reversed_value
                 if following.bit_length() > self.max_state_bits:
                     raise BlockContextBudgetExceeded(
@@ -235,6 +250,48 @@ class FiveReverseTerm:
                 "five-reversal input exceeds its admitted state-bit budget"
             )
         return self._next(value)
+
+    def padded_source_value(self, steps: int) -> int:
+        """Compile an exact padded candidate from this term's bound source."""
+        from number_compiler.arithmetic.carry.reflected_h_power import padded_h_endpoint
+
+        self.check_open()
+        self._adapter.validate_source(self._source)
+        steps = require_integer(steps, "padded physical steps", 0)
+        if steps > self.max_steps:
+            raise BlockContextBudgetExceeded("padded action exceeds its step budget")
+        return padded_h_endpoint(
+            self.seed,
+            steps,
+            5,
+            ledger=self.resource_ledger,
+            scratch_owner=self._scratch_owner,
+            max_state_bits=self.max_state_bits,
+        )
+
+    def publish_padded_source(self, arena: LedgerSLPArena, steps: int) -> int:
+        """Publish this source's padded endpoint into a same-ledger arena."""
+        from number_compiler.arithmetic.carry.reflected_h_power import padded_h_publish
+
+        self.check_open()
+        self._adapter.validate_source(self._source)
+        steps = require_integer(steps, "padded physical steps", 0)
+        if steps > self.max_steps:
+            raise BlockContextBudgetExceeded("padded action exceeds its step budget")
+        if (
+            type(arena) is not LedgerSLPArena
+            or arena.ledger is not self.resource_ledger
+        ):
+            raise ValueError("padded output arena belongs to another source ledger")
+        arena.empty()
+        return padded_h_publish(
+            self.seed,
+            steps,
+            5,
+            arena=arena,
+            scratch_owner=self._scratch_owner,
+            max_state_bits=self.max_state_bits,
+        )
 
     def source_port(self, value: int) -> FiveBorderPort:
         """Return the exact bounded source port used by this term's adapter."""

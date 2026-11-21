@@ -12,6 +12,7 @@ from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp import BimachineSLPProjector
 from number_compiler.arithmetic.automata.slp_walks import iter_symbols, symbol_at
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageBinding,
@@ -41,6 +42,7 @@ from number_compiler.sequences.double_reverse.temporal_hashlife import (
 )
 from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
     DoubleReverseSourcePrefix,
+    UncertifiedPointedStencilError,
 )
 
 DOUBLE_REVERSE_SOURCE_IMAGE_VERSION: Final[str] = "decimal-2rev-source-image-v1"
@@ -293,6 +295,74 @@ class DoubleReverseSourceAdapter:
             _double_reverse_keys.DOUBLE_REVERSE_SPATIAL_TRANSDUCER_APPLICATIONS
         )
         return result
+
+    def release_ephemeral_projection_tables(self) -> int:
+        """Drop transient transducer dictionaries after retaining exact SLP roots."""
+        released = 0
+        for memo in self.projector_memos:
+            released += len(memo)
+            memo.clear()
+        released += len(self._reverse_owner)
+        self._reverse_owner.clear()
+        return released
+
+    def certified_prefix_entry(
+        self, generation: int, *, max_prefix: int, require_even_remainder: bool
+    ) -> DoubleReverseSourcePrefix:
+        """Reuse one exact owner-issued chronological source-prefix cursor."""
+        self.validate_action(DoubleReverseAction(generation))
+        if type(require_even_remainder) is not bool:
+            raise TypeError("prefix parity selector must be Boolean")
+        engine = self.temporal_hashlife
+        limit = min(
+            require_integer(max_prefix, "prefix limit", 0),
+            engine.prefix_limit,
+            generation,
+        )
+        cursor = engine.source_prefix()
+        explored = 0
+        if cursor is None:
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_ATTEMPTS
+            )
+            cursor = self.advance_temporal_prefix()
+        else:
+            self.ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_CACHE_HITS
+            )
+            if cursor.physical_steps > limit:
+                raise UncertifiedPointedStencilError(
+                    "cached exact prefix exceeds this request's admission bound"
+                )
+        try:
+            while True:
+                prefix = cursor.physical_steps
+                phase = cursor.certified_phase
+                even_suffix = (generation - prefix) % 2 == 0
+                positive_suffix = generation > prefix
+                if phase is not None and (
+                    not require_even_remainder or even_suffix and positive_suffix
+                ):
+                    return cursor
+                if prefix >= limit:
+                    raise UncertifiedPointedStencilError(
+                        "no admitted certified 2rev10 prefix was found"
+                    )
+                self.ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_ATTEMPTS
+                )
+                explored += 1
+                cursor = self.advance_temporal_prefix()
+                self.ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_POINTED_BORDER_ENTRY_STEPS
+                )
+        finally:
+            if explored:
+                discarded = self.release_ephemeral_projection_tables()
+                self.ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_POINTED_PREFIX_CACHE_DISCARDS,
+                    discarded,
+                )
 
     def advance_temporal_prefix(self) -> DoubleReverseSourcePrefix:
         """Advance the owner cursor through this adapter's exact one-T map."""
@@ -633,6 +703,34 @@ class DoubleReverseSourceAdapter:
         exact_action = cast(DoubleReverseAction, action)
         result: int | None = None
         powered_action: DoubleReversePortAction | None = None
+        if (
+            exact_action.steps >= 256
+            and self.source.seed.bit_length() >= 425
+            and prior.action.steps == 0
+            and prior.root == self.source.root
+        ):
+            from number_compiler.arithmetic.carry.reflected_h_power import (
+                padded_h_workload,
+            )
+
+            if padded_h_workload(
+                self.source.seed, exact_action.steps, self.max_state_bits
+            ):
+                cursor = self.temporal_hashlife.source_prefix()
+                if not (
+                    cursor is not None
+                    and cursor.physical_steps <= exact_action.steps
+                    and cursor.certified_phase is not None
+                ):
+                    width = self.arena.nodes[prior.root].length
+                    try:
+                        self.certified_prefix_entry(
+                            exact_action.steps,
+                            max_prefix=min(exact_action.steps, 512 // width),
+                            require_even_remainder=False,
+                        )
+                    except UncertifiedPointedStencilError:
+                        return self.padded_source_candidate(exact_action, source)
         if exact_action.steps >= 2 and exact_action.steps % 2 == 0:
             phase = self.temporal_hashlife.certify(prior.root)
             if phase is not None:
@@ -688,6 +786,37 @@ class DoubleReverseSourceAdapter:
         return SourceImageCandidate(
             payload,
             combined.steps,
+            radix=10,
+            precision=self.arena.nodes[result].length,
+        )
+
+    def padded_source_candidate(
+        self, action: object, source: SourceImageView
+    ) -> SourceImageCandidate:
+        """Compile a padded candidate from this adapter's exact source image.
+
+        The scheduler owns candidate issuance. This explicit constructor is
+        separate from default selection until its consumer proof is admitted.
+        """
+        from number_compiler.arithmetic.carry.reflected_h_power import padded_h_publish
+
+        self.validate_action(action)
+        prior = self.view_payload(source)
+        if prior.action.steps != 0 or prior.root != self.source.root:
+            raise ValueError("padded action requires its original source image")
+        exact_action = cast(DoubleReverseAction, action)
+        result = padded_h_publish(
+            self.source.seed,
+            exact_action.steps,
+            2,
+            arena=self.arena,
+            scratch_owner=self.scratch_owner,
+            max_state_bits=self.max_state_bits,
+        )
+        payload = _DoubleReverseImage(self.issuer, self.source, exact_action, result)
+        return SourceImageCandidate(
+            payload,
+            exact_action.steps,
             radix=10,
             precision=self.arena.nodes[result].length,
         )

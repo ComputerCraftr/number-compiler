@@ -16,6 +16,7 @@ from number_compiler.api.observation_adapters import (
 )
 from number_compiler.api.observation_types import ObservationId
 from number_compiler.arithmetic.contracts.family_identity import FamilyId
+from number_compiler.resources.metric_keys.api import QUERY_OBSERVER_REUSES
 
 if TYPE_CHECKING:
     from number_compiler.api.cli_context import QueryContext
@@ -37,6 +38,10 @@ _RUN_KIND_BY_OBSERVATION = {
     ObservationId.ARITHMETIC_TROPICAL: AntihydraRunKind.TROPICAL,
     ObservationId.ARITHMETIC_FACTOR: AntihydraRunKind.FACTOR,
 }
+_TAPE_OBSERVATIONS = frozenset(
+    {ObservationId.ARITHMETIC_TWISTED, ObservationId.SPATIAL_TAPE}
+)
+_TAPE_AND_FACTOR_OBSERVATIONS = _TAPE_OBSERVATIONS | {ObservationId.ARITHMETIC_FACTOR}
 
 
 def prepare_antihydra(context: QueryContext, term: ProjectedNumberTerm) -> None:
@@ -79,7 +84,7 @@ def observe_antihydra(context: QueryContext, name: ObservationId) -> Packet:
         payload = context.term.payload
         if not isinstance(payload, AntihydraTermPayload):
             raise TypeError("Antihydra query published a foreign term payload")
-        payload.term.engine.count("query_observer_reuses")
+        payload.term.engine.count(QUERY_OBSERVER_REUSES)
         packet = dict(cached_alias)
         packet["kind"] = name.value
         return packet
@@ -166,7 +171,38 @@ def observe_antihydra(context: QueryContext, name: ObservationId) -> Packet:
     from number_compiler.api.antihydra_observation import (
         observe_arithmetic_many,
         observe_run,
+        observe_tape_and_factor,
     )
+
+    if (
+        name in _TAPE_AND_FACTOR_OBSERVATIONS
+        and ObservationId.ARITHMETIC_FACTOR in options.info
+        and not _TAPE_OBSERVATIONS.isdisjoint(options.info)
+    ):
+        selected = tuple(
+            requested
+            for requested in options.info
+            if requested in _TAPE_AND_FACTOR_OBSERVATIONS
+        )
+        shared = observe_tape_and_factor(
+            payload.term.physical_run(),
+            kinds=tuple(_RUN_KIND_BY_OBSERVATION[requested] for requested in selected),
+            modulus=options.modulus,
+            width=options.width,
+            sign=options.sign,
+        )
+        tape_packets = {
+            requested: publish_observation(
+                context,
+                requested,
+                shared[_RUN_KIND_BY_OBSERVATION[requested]],
+                coordinates=(("requested_returns",),),
+            )
+            for requested in selected
+        }
+        payload.term.engine.count(QUERY_OBSERVER_REUSES, len(tape_packets) - 1)
+        context.remember_information_many(tape_packets)
+        return tape_packets[name]
 
     if name in {
         ObservationId.ARITHMETIC_MAHLER,

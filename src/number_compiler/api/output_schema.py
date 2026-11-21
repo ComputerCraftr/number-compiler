@@ -148,6 +148,19 @@ class CollatzDiagonalPacket(TypedDict):
     all_time_claim: Literal[False]
 
 
+class CollatzCarryBellmanPacket(TypedDict):
+    """The nearest same-time homogeneous carry event at an admitted seam."""
+
+    law: Literal["homogeneous-centered-carry"]
+    multipliers: tuple[Literal[3], Literal[5], Literal[15]]
+    normalized_source: int
+    cuts: tuple[int, ...]
+    normalized_horizon: int
+    physical_horizon: int
+    first_normalized_offset: int | None
+    first_physical_offset: int | None
+
+
 class AntihydraRunAvailablePacket(AntihydraSourceFields):
     status: Literal["available"]
     halted: Literal[False]

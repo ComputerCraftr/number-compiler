@@ -29,8 +29,11 @@ from number_compiler.api.observation_types import (
     OutputFormat as OutputFormatId,
 )
 from number_compiler.api.query_types import (
+    DoubleReverseTermQuery,
     ExecutionQuery,
+    FirstPalindromeQuery,
     QueryOptionError,
+    ReverseAddTermQuery,
 )
 from number_compiler.api.registry_cli import presentation_options
 from number_compiler.arithmetic.contracts.family_identity import (
@@ -182,6 +185,15 @@ def _add_family_options(command: argparse.ArgumentParser, spec: FamilySpec) -> N
         metavar="K",
         help="exact term index 10^K, with K >= 0",
     )
+    if spec.palindrome_search:
+        selectors.add_argument(
+            f"--{SelectorId.FIRST_PALINDROME.value}",
+            dest="palindrome_horizon",
+            type=cli_index_token,
+            action=UniqueValue,
+            metavar="N",
+            help="first palindrome in physical generations 1 through N",
+        )
     if spec.event_query_type is not None:
         selectors.add_argument(
             "--events",
@@ -356,14 +368,19 @@ def _request_from_args(
         if power10_token is None
         else bounded_index(power10_token, max_index_bits.bit_length())
     )
+    palindrome_token = getattr(args, "palindrome_horizon", None)
     selector = (
-        SelectorId.VERIFY
+        SelectorId.FIRST_PALINDROME
+        if palindrome_token is not None
+        else SelectorId.VERIFY
         if certificate is not None
         else SelectorId.EVENTS
         if event_count is not None
         else SelectorId.NTH
     )
-    if selector is SelectorId.VERIFY:
+    if palindrome_token is not None:
+        index = bounded_index(palindrome_token, max_index_bits)
+    elif selector is SelectorId.VERIFY:
         index = 0
     elif selector is SelectorId.EVENTS:
         if event_count is None:
@@ -425,6 +442,11 @@ def _execution_query(
             return spec.build_verify_query(certificate)
         if selector is SelectorId.EVENTS:
             return spec.build_event_query(index, vars(args))
+        if selector is SelectorId.FIRST_PALINDROME:
+            source = spec.build_term_query(0, vars(args))
+            if not isinstance(source, (ReverseAddTermQuery, DoubleReverseTermQuery)):
+                raise TypeError("palindrome selector requires a reversal source")
+            return FirstPalindromeQuery(source, index)
         return spec.build_term_query(index, vars(args))
     except QueryOptionError as exc:
         flag = spec.option_flag(

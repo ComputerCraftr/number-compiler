@@ -60,7 +60,7 @@ def _assert_failure_traceback_has_no_semantic_graph(error: BaseException) -> Non
     power = None
     while trace is not None:
         candidate = trace.tb_frame.f_locals.get("power")
-        if type(candidate).__name__ == "_CarrySpacetimePower":
+        if type(candidate).__name__ == "CarrySpacetimePower":
             power = candidate
         trace = trace.tb_next
     if power is None:

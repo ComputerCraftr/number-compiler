@@ -16,10 +16,28 @@ from number_compiler.resources.metric_keys.arithmetic_fields import (
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.double_reverse.temporal_residue_quotient import (
     ProjectedResidueTemporalQuotient,
+    SLPResidues,
     certified_residue_action,
     projected_residue_return_lassos,
     projected_residue_temporal_quotient,
 )
+
+
+def test_slp_repeat_uses_one_residue_law(monkeypatch: pytest.MonkeyPatch) -> None:
+    from number_compiler.sequences.double_reverse import temporal_residue_quotient
+
+    def one_modulus(base: int, exponent: int, modulus: int) -> int:
+        assert modulus == 198
+        return pow(base, exponent, modulus)
+
+    monkeypatch.setattr(temporal_residue_quotient, "pow", one_modulus, raising=False)
+    low_word = SLPResidues(3, 42)
+    high_word = SLPResidues(2, 17)
+    summary = high_word.then(low_word.power(7))
+    literal = int("17" + "042" * 7)
+    assert summary.length == 23
+    assert summary.modulo198 == literal % 198
+    assert summary.modulo99 == literal % 99
 
 
 def _no_endpoint(*_args: object, **_kwargs: object) -> object:

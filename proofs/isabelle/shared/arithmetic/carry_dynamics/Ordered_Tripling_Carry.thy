@@ -61,6 +61,42 @@ proof -
     unfolding split using assms by simp
 qed
 
+lemma ordered_radix_prefix_comparison:
+  fixes left right modulus left_digit right_digit :: nat
+  assumes left: "left < modulus" and right: "right < modulus"
+  shows "(left_digit * modulus + left < right_digit * modulus + right) =
+    (if left_digit = right_digit then left < right else left_digit < right_digit)"
+proof (cases "left_digit = right_digit")
+  case True
+  then show ?thesis by simp
+next
+  case False
+  have extend: "\<And>a b x y. a < b \<Longrightarrow> x < modulus \<Longrightarrow>
+      a * modulus + x < b * modulus + y"
+  proof -
+    fix a b x y :: nat
+    assume digits: "a < b" and low: "x < modulus"
+    have "a * modulus + x < Suc a * modulus" using low by simp
+    also have "... \<le> b * modulus" using digits by (intro mult_right_mono; simp)
+    also have "... \<le> b * modulus + y" by simp
+    finally show "a * modulus + x < b * modulus + y" .
+  qed
+  show ?thesis
+  proof (cases "left_digit < right_digit")
+    case True
+    have "left_digit * modulus + left < right_digit * modulus + right"
+      by (rule extend[OF True left])
+    then show ?thesis using False True by simp
+  next
+    case False
+    then have digits: "right_digit < left_digit"
+      using \<open>left_digit \<noteq> right_digit\<close> by simp
+    have "right_digit * modulus + right < left_digit * modulus + left"
+      by (rule extend[OF digits right])
+    then show ?thesis using digits by simp
+  qed
+qed
+
 lemma tripling_digit_with_ordered_inlet:
   fixes source boundary radix :: nat
   assumes "0 < boundary"
@@ -133,6 +169,7 @@ qed
 
 ML \<open>
   val checked = @{thms tripling_source_step tripling_source_split
+    ordered_radix_prefix_comparison
     tripling_source_period tripling_source_repeated_period
     tripling_quotient_carry tripling_digit_with_ordered_inlet
     tripling_carry_boolean_borrow};

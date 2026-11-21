@@ -266,6 +266,99 @@ def test_cli_factor_and_source_rejection(capsys: pytest.CaptureFixture[str]) -> 
     assert main(["antihydra", "--nth", "5000"]) == 2
 
 
+@pytest.mark.parametrize(
+    "kinds",
+    (
+        ("arithmetic.factor", "spatial.tape"),
+        ("spatial.tape", "arithmetic.factor"),
+        ("arithmetic.twisted", "arithmetic.factor", "spatial.tape"),
+        ("spatial.tape", "arithmetic.twisted", "arithmetic.factor"),
+    ),
+)
+def test_combined_tape_and_factor_share_one_projection(
+    kinds: tuple[str, ...],
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dataclasses import asdict
+
+    import number_compiler.api.antihydra_observation as observation
+    import number_compiler.sequences.antihydra.observers as observers
+    from number_compiler.arithmetic.polynomials.twisted_observer import (
+        TwistedCylinderProjection,
+    )
+
+    common = [
+        "antihydra",
+        "--nth",
+        "4",
+        "--no-value",
+        "--spatial-width",
+        "3",
+        "--modulus",
+        "9",
+        "--format",
+        "json",
+    ]
+    expected = {}
+    for kind in kinds:
+        assert main([*common, "--info", kind]) == 0
+        expected[kind] = json.loads(capsys.readouterr().out)["info"][kind]
+
+    original = observers.tape_projection
+    calls = 0
+    projections_serialized = 0
+
+    def counted(result: Run, width: int, sign: int, modulus: int) -> object:
+        nonlocal calls
+        calls += 1
+        return original(result, width, sign, modulus)
+
+    def projection_fields(value: object) -> dict[str, object]:
+        assert isinstance(value, TwistedCylinderProjection)
+        nonlocal projections_serialized
+        projections_serialized += 1
+        return asdict(value)
+
+    monkeypatch.setattr(observers, "tape_projection", counted)
+    monkeypatch.setattr(observation, "asdict", projection_fields)
+    arguments = [part for kind in kinds for part in ("--info", kind)]
+    assert main([*common, *arguments]) == 0
+    actual = json.loads(capsys.readouterr().out)["info"]
+    assert actual == expected
+    assert calls == 1
+    assert projections_serialized == 1
+
+
+def test_tape_only_does_not_compute_factor_support(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from number_compiler.arithmetic.polynomials.twisted_observer import (
+        TwistedCylinderProjection,
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("tape-only demand computed factor support")
+
+    monkeypatch.setattr(TwistedCylinderProjection, "support", forbidden)
+    assert (
+        main(
+            [
+                "antihydra",
+                "--nth",
+                "4",
+                "--no-value",
+                "--info",
+                "spatial.tape",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    assert capsys.readouterr().out
+
+
 def test_certificate_checks_arithmetic_and_source_coverage() -> None:
     one, zero = Fraction(1), Fraction(0)
     check_implication([(one, zero, zero)], (2 * one, zero, zero), [2])

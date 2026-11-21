@@ -99,12 +99,28 @@ def test_bulk_source_window_packing_works_for_repeated_spatial_macros(
         assert (
             pack_source_window(arena, source, width, scratch, None, stats) == expected
         )
+        assert stats.source_traversal_tasks < len(motif) * 8
         assert (
             pack_source_window(arena, odd_width_source, 5, scratch, None, stats)
             == 0x12345
         )
     charge = next(item for item in ledger.inventory() if item.owner == owner)
     assert charge.nodes == charge.entries == 0
+
+
+def test_packed_repeat_keeps_odd_motif_alignment_and_leading_zero(
+    packed_source_workspace: tuple[ResourceLedger, LedgerSLPArena, int],
+) -> None:
+    ledger, arena, owner = packed_source_workspace
+    tile = arena.word((0, 9, 2))
+    with TemporalSquareScratchReservation(LedgerReservation(ledger, owner)) as scratch:
+        for repeats in (2, 3, 67):
+            root = arena.repeat(tile, repeats)
+            stats = TemporalSquareStats(0, 0, 0, 0, 0)
+            assert pack_source_window(
+                arena, root, 3 * repeats, scratch, None, stats
+            ) == int("092" * repeats, 16)
+            assert stats.source_traversal_tasks < 20
 
 
 def test_bulk_source_pack_cleans_up_after_visitor_error(

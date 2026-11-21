@@ -6,6 +6,7 @@ Use `number-compiler FAMILY --nth N` for exact terms and demand information with
 number-compiler --list-families
 number-compiler antihydra --help
 number-compiler reverse-add --seed 196 --nth 8
+number-compiler reverse-add --seed 89 --first-palindrome-within 24 --format json
 number-compiler 2rev10 --seed 10 --nth 1
 number-compiler 5rev10 --seed 196 --nth 2
 number-compiler collatz --nth 64 --seed 27
@@ -20,8 +21,8 @@ number-compiler antihydra --verify-nonhalting certificate.json
 ## Indices and parameters
 
 `--nth-power10 K` selects the exact index `10^K` for an integer `K ≥ 0`.
-`K=0` selects index 1. It is mutually exclusive with `--nth`, `--events` and
-certificate verification. `--max-index-bits` defaults to 1,000,000 and bounds
+`K=0` selects index 1. It is mutually exclusive with `--nth`, `--events`,
+`--first-palindrome-within` and certificate verification. `--max-index-bits` defaults to 1,000,000 and bounds
 both explicit and power-of-ten indices before construction; invalid inputs or
 exhausted budgets exit 2. No expression or floating-point parser is involved.
 These selectors retain each family's index unit and do not imply cheap
@@ -32,6 +33,18 @@ number-compiler collatz --seed 27 --nth-power10 6
 number-compiler a367620 --nth-power10 8 --info metrics --format json
 number-compiler fermat --nth-power10 3 --no-value --info metrics --format json
 ```
+
+For decimal `reverse-add` and `2rev10`, `--first-palindrome-within N` searches
+physical generations 1 through N, inclusively. The seed is generation zero.
+A successful value is the earliest generation, or `none` if the entire interval
+has been excluded. JSON reports `first_generation` and `searched_through`
+under `info["first-palindrome-within"]`. At horizon zero these are `null` and
+`0`. Reverse/add can certify a bounded prefix of up to 4,096 physical steps per search.
+An earlier hit answers a longer request. When a longer interval remains open,
+JSON reports the last covered generation in the unresolved result. Double
+reverse uses its source and step budgets. A budget refusal has a nonzero exit
+status. Ordinary term and digit
+requests incur no event search.
 
 Compact queries present the coordinate as
 `{"index": {"encoding": "power10", "exponent": 6}}` in JSON and information
@@ -51,6 +64,7 @@ table below owns the supported source parameters and observations.
 `5rev10` uses `x(0) = seed` and `x(n+1) = 5 * reverse10(x(n))` for a nonnegative
 seed. It preserves decimal normalization, for example `120 → 105`.
 Exact bounded execution defaults to 4,096 physical steps and 4,096 state bits.
+For wide sources and long bounded requests, the endpoint publisher can use overlapping padded digit cones. It preserves zero trimming and the physical generation for both parities.
 `arithmetic.modular` projects the all-source mod-45 clock without constructing
 the full term; its modulus must divide 45. A finite source certificate does not
 authorize repeating a border cycle beyond that certificate's horizon.
@@ -87,7 +101,7 @@ kind retains its own default modulus behavior. Bit-fibre `carry-continuant`
 outputs are not advertised until their concrete source-period refinement is
 accepted. A base-five port is not a bit-fibre certificate.
 
-`2rev10` uses `U(n) = 2 * reverse10(n)`, including decimal normalization: `10 → 2`. Its decimal grammar is applied through the shared scheduler. Admitted four-phase boundary cylinders use temporal HashLife composition of the exact two-step cellular rule; other source regions retain charged exact transitions. `--max-steps` and `--max-state-bits` both default to 4096. It accepts `--info metrics`, `--info temporal.closed-form`, `--info spatial.stencil`, `--info temporal.bank`, `--info spatial.pair-bank` and `--info temporal.grammar`, output formats and output bases, but no input base, radix or event selector. The demanded closed-form packet reports source-bound carry and moment ports from the completed endpoint; `--temporal-closed-form-modulus M` projects them modulo a positive integer. Modular output does not authorize an approximate branch or phase decision. Metrics alone never constructs these ports. `--info spatial.stencil --spatial-stencil-position P` demands one LSD-indexed digit from an admitted temporal cylinder. `--info temporal.bank` reports the admitted border’s forced growth/carry word and separately labeled bounds for conditional observers. Both share bounded, charged entry discovery; neither renders the full endpoint. A source without a certified entry returns an unavailable observation (exit 3), rather than guessing a digit or treating a bound as exact. The `pair-bank` observation uses a final outer-to-inner pair coordinate. The `temporal-grammar` observation uses an entry-source coordinate and `--temporal-grammar-period` (1–8) to certify both finite causal halos before publishing a repeated motif. Their coordinate units are explicit in JSON. A `closed-form` request retains original-source fields and separately reports an admitted transient prefix and affine suffix; the suffix shift is endpoint-derived, not a new predictive source certificate.
+`2rev10` uses `U(n) = 2 * reverse10(n)`, including decimal normalization: `10 → 2`. Its decimal grammar is applied through the shared scheduler. Admitted four-phase boundary cylinders use temporal HashLife composition of the exact two-step cellular rule. A bounded source probe can select a padded cone for a long, wide request outside the cylinder. Short requests keep their packed route. `--max-steps` and `--max-state-bits` both default to 4096. It accepts `--info metrics`, `--info temporal.closed-form`, `--info spatial.stencil`, `--info temporal.bank`, `--info spatial.pair-bank` and `--info temporal.grammar`, output formats, output bases and the bounded `--first-palindrome-within` selector. The recurrence uses decimal source digits. The demanded closed-form packet reports source-bound carry and moment ports from the completed endpoint; `--temporal-closed-form-modulus M` projects them modulo a positive integer. Modular output does not authorize an approximate branch or phase decision. Metrics alone never constructs these ports. `--info spatial.stencil --spatial-stencil-position P` demands one LSD-indexed digit from an admitted temporal cylinder. `--info temporal.bank` reports the admitted border’s forced growth/carry word and separately labeled bounds for conditional observers. Both share bounded, charged entry discovery; neither renders the full endpoint. A source without a certified entry returns an unavailable observation (exit 3), rather than guessing a digit or treating a bound as exact. The `pair-bank` observation uses a final outer-to-inner pair coordinate. The `temporal-grammar` observation uses an entry-source coordinate and `--temporal-grammar-period` (1–8) to certify both finite causal halos before publishing a repeated motif. Their coordinate units are explicit in JSON. A `closed-form` request retains original-source fields and separately reports an admitted transient prefix and affine suffix; the suffix shift is endpoint-derived, not a new predictive source certificate.
 
 `temporal.carry-safety` on `2rev10` reports the source-derived three-cell
 carry constraints and conditional component bounds. It does not construct the
@@ -295,7 +309,7 @@ The ordinary `temporal.open-ring` demand retains its 32-F-step limit.
 | `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `temporal.residue99`, `temporal.accumulator99`, `temporal.mirrored-diagonal`, `temporal.open-ring`, `temporal.seed-orbit`, `temporal.stencil`, `spatial.bank-morphism`, `temporal.matrix.trace` | — |
 | `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.matrix`, `temporal.closed-form`, `temporal.residue99`, `temporal.seed-morphism`, `temporal.mixed-adic`, `temporal.defect-clock`, `temporal.carry-safety`, `spatial.stencil`, `temporal.bank`, `temporal.open-ring`, `temporal.birth-layers`, `spatial.pair-bank`, `spatial.bank-morphism`, `spatial.bank-window`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift`, `temporal.matrix.trace` | — |
 | `5rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.bank`, `arithmetic.modular`, `temporal.digit-field`, `temporal.closed-form`, `temporal.matrix`, `temporal.matrix.trace` | — |
-| `collatz` | `physical_iterations` | `--seed`, `--radix` | `temporal`, `metrics`, `temporal.matrix`, `temporal.clock`, `temporal.accumulator`, `temporal.double-accumulator`, `temporal.diagonal-carry`, `temporal.macro`, `temporal.innovation-borrow`, `temporal.matrix.trace` | `temporal`, `temporal.clock`, `arithmetic.modular`, `arithmetic.twisted`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.tropical`, `arithmetic.factor`, `safety.execution` |
+| `collatz` | `physical_iterations` | `--seed`, `--radix` | `temporal`, `metrics`, `temporal.matrix`, `temporal.clock`, `temporal.accumulator`, `temporal.double-accumulator`, `temporal.diagonal-carry`, `temporal.carry-bellman`, `temporal.macro`, `temporal.innovation-borrow`, `temporal.matrix.trace` | `temporal`, `temporal.clock`, `arithmetic.modular`, `arithmetic.twisted`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.tropical`, `arithmetic.factor`, `safety.execution` |
 | `antihydra` | `macro_returns_after_startup` | — | `temporal`, `metrics`, `temporal.matrix`, `safety.ledger`, `temporal.clock`, `arithmetic.modular`, `spatial.tape`, `arithmetic.twisted`, `temporal.spacetime`, `temporal.diagonal-carry`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.mahler`, `arithmetic.tropical`, `arithmetic.factor`, `temporal.matrix.trace` | — |
 | `a367620` | `oeis_index` | — | `temporal`, `metrics`, `temporal.clock`, `arithmetic.tropical`, `safety.certificate` | — |
 | `prime` | `prime_index` | `--start` | `metrics` | — |
@@ -370,6 +384,19 @@ future parity word or a periodic orbit.
 number-compiler collatz --seed 27 --nth 64 --no-value --info temporal.diagonal-carry --temporal-clock-max-digits 256 --format json
 ```
 
+`--info temporal.carry-bellman` finds the first positive offset at which the
+homogeneous ×3, ×5 and ×15 carries on the centered source `x + 1` are
+simultaneously even at all requested binary cuts.
+`--temporal-bellman-cuts` accepts comma-separated cut positions.
+`--temporal-bellman-horizon` counts normalized odd steps from the selected
+endpoint. The source must force the entire odd interval from a completed
+normalized step. The packet reports the corresponding physical horizon and
+first physical offset, using two physical ticks per odd step.
+
+```sh
+number-compiler collatz --seed 7 --nth 2 --no-value --info temporal.carry-bellman --temporal-bellman-cuts 2,3 --temporal-bellman-horizon 2 --format json
+```
+
 ## Antihydra arithmetic and physical observations
 
 The arithmetic endpoint is the total sequence
@@ -430,11 +457,12 @@ Existing P0 mathematical and performance assertions remain release gates.
 
 ## Prime rank/select resource limits
 
-Prime queries use the shared descriptor-only Legendre count DAG for factor-stage
-construction and rank descent. One query retains intermediate count states across
-all ranks. It discovers the needed consecutive prime prefix through the exact
-square-root boundary, then selects by counts down to a singleton. It does not
-construct parent wheel gaps or a candidate bitmap.
+Prime queries discover a consecutive prime prefix through the exact square-root
+boundary using the shared Legendre count DAG. Short relative queries with
+`--start` at least 10,000 and `--nth` at most 128 can scan candidates in
+the coprime residue classes modulo 210. Each scan batch uses the committed
+factor prefix to test its candidates in increasing order. Other queries use rank
+descent and retain intermediate count states across ranks.
 
 ```sh
 number-compiler prime --nth 1000 --info metrics
@@ -444,17 +472,18 @@ number-compiler prime --nth 0 --start 10000 --max-prime-states 131072 \
 
 These positive prime-only limits default to 131,072 completed DAG states,
 1,000,000 charged work steps, and 4,096 factor stages (including seed 2).
-Refusal returns exit code 2 without a fallback. Work counts DAG-frame visits, factor appends and rank/discovery admission steps,
-including reused memo states. Cache hits count reuse that avoids scheduling or
+Refusal returns exit code 2 without a fallback. Work counts DAG-frame visits,
+factor appends, rank and discovery admission, and wheel probes and trial divisions.
+Cache hits count reuse that avoids scheduling or
 evaluating a state, not every backing-map read. Operand-bit work sums accounted
 operand widths; neither counter is a timing or bit-operation bound. `prime_retained_entries` reports the states
 and factors retained at query completion before disposal; the memo and factors
 are released when selection returns. `prime_peak_pending_frames` reports local
 traversal storage. Historical `prime_block_compilations` now counts finite window
 rank queries; `prime_max_block_length` retains its odd-window units. The Python
-selector's `leaf_length` argument remains an initial-window hint (default now 8);
-final descent is to one candidate. The initial size uses 4 times the requested
-rank, with exact doubling when necessary; it assumes no prime-density bound.
+selector's `leaf_length` argument remains an initial-window hint (default 8).
+Rank descent ends at one candidate. The initial size uses four times the requested
+rank, with exact doubling when necessary. It assumes no prime-density bound.
 
 This finite production bridge does not establish cheap unbounded prime-stage
 discovery or the unresolved cross-family terminal and powered-construction proofs.

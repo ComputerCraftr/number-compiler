@@ -71,7 +71,6 @@ if TYPE_CHECKING:
         NormalizePrimitiveLambda,
     )
     from number_compiler.hashlife.interfaces.diamond_boundary import BoundaryStateID
-    from number_compiler.hashlife.interfaces.diamond_boundary_expr import ExprID
     from number_compiler.hashlife.interfaces.semantic_expression_tasks import (
         CompileStructuredExpression,
         StructuredExpressionTask,

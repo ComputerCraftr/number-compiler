@@ -502,6 +502,12 @@ print(json.dumps({'python_version': list(sys.version_info[:3]), 'public_exports'
             raise ValueError("installed CLI did not print the checked M11 factor")
         _report_stage("installed-cli-contracts:complete")
         commands = [
+            (
+                ["reverse-add", "--seed", "89", "--first-palindrome-within", "24"],
+                0,
+                "24",
+            ),
+            (["2rev10", "--seed", "22", "--first-palindrome-within", "0"], 0, "none"),
             (["prime", "--nth-power10", "0"], 0, "3"),
             (["reverse-add", "--seed", "196", "--nth-power10", "0"], 0, "887"),
             (["2rev10", "--seed", "10", "--nth", "0"], 0, "10"),

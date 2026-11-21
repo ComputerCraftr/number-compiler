@@ -27,7 +27,7 @@ reverse/add has an exact order-20 nonlinear recurrence on binary carry fields.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 
 from number_compiler.arithmetic.formula.skew_residue_laws import (
     pair_growth_edge,
@@ -234,7 +234,7 @@ def endpoint_width_from_event_window(events: Sequence[Sequence[int]]) -> int:
 
 
 def fold_forcing_events(
-    events: Sequence[Sequence[int]],
+    events: Iterable[Sequence[int]],
     *,
     base: int = 10,
     record_updates: Callable[[int], None] | None = None,
@@ -247,48 +247,35 @@ def fold_forcing_events(
     coefficient cells, including initialization, rather than logical Green
     convolution terms.
     """
-    rows = tuple(tuple(map(int, event)) for event in events)
-    if not rows:
-        raise ValueError("a forcing fold requires nonempty event rows")
-    later_growths = growths_from_event_widths(rows)
     modulus = 1 << pair_plane_bits(base)
-    # Horner evaluation of the same chronological operator product. Each
-    # event E_j is added after the transition whose growth is encoded by the
-    # width change from E_(j-1) to E_j. This avoids rebuilding binomial
-    # kernels and convolving every historical event separately.
     updates = 0
-    out: list[int] = []
+    image: list[int] = []
     try:
-        for value in rows[0]:
-            out.append(value % modulus)
-            updates += 1
-        for growth, event in zip(later_growths, rows[1:], strict=True):
-            prior = out
-            out = []
-            if growth:
-                out.append((prior[0] + event[0]) % modulus)
-                updates += 1
-                for i in range(1, len(prior)):
-                    out.append((prior[i] + prior[i - 1] + event[i]) % modulus)
-                    updates += 1
-                out.append((prior[-1] + event[-1]) % modulus)
-                updates += 1
+        for event in events:
+            row = tuple(map(int, event))
+            if not row:
+                raise ValueError("event fields must be nonempty")
+            if not image:
+                image = [value % modulus for value in row]
+            elif len(row) == len(image):
+                for i, value in enumerate(row):
+                    image[i] = (2 * image[i] + value) % modulus
+            elif len(row) == len(image) + 1:
+                image.append((image[-1] + row[-1]) % modulus)
+                for i in range(len(row) - 2, 0, -1):
+                    image[i] = (image[i] + image[i - 1] + row[i]) % modulus
+                image[0] = (image[0] + row[0]) % modulus
             else:
-                for value, addend in zip(prior, event, strict=True):
-                    out.append((2 * value + addend) % modulus)
-                    updates += 1
-        return tuple(out)
+                raise ValueError(
+                    "event widths do not encode a valid reverse/add growth schedule"
+                )
+            updates += len(row)
+        if not image:
+            raise ValueError("a forcing fold requires nonempty event rows")
+        return tuple(image)
     finally:
         if record_updates is not None:
             record_updates(updates)
-
-
-def _exact_carry_rows(carries: Iterable[Sequence[int]]) -> tuple[tuple[int, ...], ...]:
-    """Freeze a carry witness without accepting bools or numeric coercions."""
-    rows = tuple(tuple(row) for row in carries)
-    if any(type(bit) is not int for row in rows for bit in row):
-        raise TypeError("carry bits must be exact integers")
-    return rows
 
 
 def forcing_image_from_certified_carry_suffix(
@@ -313,30 +300,30 @@ def forcing_image_from_certified_carry_suffix(
     if type(base) is not int:
         raise TypeError("base must be an exact integer")
     bits = pair_plane_bits(base)
-    rows = _exact_carry_rows(carries)
-    if not rows:
-        raise ValueError("nonempty certified carry suffix required")
-
-    width = source_width
     quiet = 0
-    events: list[tuple[int, ...]] = []
-    for row in rows:
-        if not row or row[0] != 0 or any(bit not in (0, 1) for bit in row):
-            raise ValueError("invalid forward carry geometry")
-        if len(row) != width + 1:
-            raise ValueError("carry suffix has inconsistent consecutive widths")
-        growth = row[-1]
-        event = forcing_event_from_carry(row, base=base)
-        expected_width = width + growth
-        if len(event) != expected_width:
-            raise AssertionError("signed forcing has incorrect growth geometry")
-        events.append(event)
-        quiet += 1 - growth
-        width = expected_width
 
+    def forcing_rows() -> Iterator[tuple[int, ...]]:
+        nonlocal quiet
+        width = source_width
+        for carry in carries:
+            row = tuple(carry)
+            if any(type(bit) is not int for bit in row):
+                raise TypeError("carry bits must be exact integers")
+            if not row or row[0] != 0 or any(bit not in (0, 1) for bit in row):
+                raise ValueError("invalid forward carry geometry")
+            if len(row) != width + 1:
+                raise ValueError("carry suffix has inconsistent consecutive widths")
+            growth = row[-1]
+            width += growth
+            quiet += 1 - growth
+            event = forcing_event_from_carry(row, base=base)
+            if len(event) != width:
+                raise AssertionError("signed forcing has incorrect growth geometry")
+            yield event
+
+    image = fold_forcing_events(forcing_rows(), base=base)
     if quiet < bits:
         raise ValueError("carry suffix has not annihilated its unknown source")
-    image = fold_forcing_events(events, base=base)
     pair_max = 2 * (base - 1)
     if image != image[::-1] or any(not 0 <= value <= pair_max for value in image):
         raise ValueError("certified suffix does not reconstruct a canonical pair field")

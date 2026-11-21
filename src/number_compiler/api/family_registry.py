@@ -150,6 +150,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
         ReverseAddTermQuery,
         AdapterBinding("number_compiler.api.projections.reverse_add", "project"),
         _observation("prepare_reverse", "admit_reverse", "observe_reverse"),
+        palindrome_search=True,
         term_observation=ObservationValueBinding(
             ReverseAddObservationOptions,
             (
@@ -302,6 +303,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
         _observation(
             observe="observe", module="number_compiler.api.double_reverse_observation"
         ),
+        palindrome_search=True,
         term_observation=ObservationValueBinding(
             DoubleReverseObservationOptions,
             (
@@ -531,6 +533,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 ObservationId.TEMPORAL_ACCUMULATOR,
                 ObservationId.TEMPORAL_DOUBLE_ACCUMULATOR,
                 ObservationId.TEMPORAL_DIAGONAL_CARRY,
+                ObservationId.TEMPORAL_CARRY_BELLMAN,
                 ObservationId.TEMPORAL_MACRO,
                 ObservationId.TEMPORAL_INNOVATION_BORROW,
             ),
@@ -557,6 +560,8 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 "innovation_modulus",
                 "clock_max_events",
                 "clock_max_digits",
+                "carry_bellman_cuts",
+                "carry_bellman_horizon",
             ),
         ),
         event_observation=ObservationValueBinding(
@@ -662,6 +667,23 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                     257,
                     (ObservationId.TEMPORAL_INNOVATION_BORROW,),
                     flag_name="temporal_innovation_borrow_modulus",
+                ),
+            ),
+            (
+                "carry_bellman_cuts",
+                OptionSpec(
+                    (1,),
+                    (ObservationId.TEMPORAL_CARRY_BELLMAN,),
+                    value_kind=OptionValueKind.INTEGER_VECTOR,
+                    flag_name="temporal_bellman_cuts",
+                ),
+            ),
+            (
+                "carry_bellman_horizon",
+                OptionSpec(
+                    1,
+                    (ObservationId.TEMPORAL_CARRY_BELLMAN,),
+                    flag_name="temporal_bellman_horizon",
                 ),
             ),
             (

@@ -30,6 +30,9 @@ from number_compiler.resources.metric_keys import api as _api_metrics
 from number_compiler.sequences.antihydra.machine import MACHINE, MACHINE_SHA256
 
 if TYPE_CHECKING:
+    from number_compiler.arithmetic.polynomials.twisted_observer import (
+        TwistedCylinderProjection,
+    )
     from number_compiler.sequences.antihydra.runtime import ArithmeticResult, Run
 
 
@@ -184,20 +187,7 @@ def observe_run(
         raise ValueError("unsupported Antihydra observation")
     result.require_source()
     if result.halted:
-        unavailable: dict[str, object] = {
-            "family": "antihydra",
-            "kind": kind.value,
-            "status": "unavailable",
-            "reason": "requested returning section reaches or passes the halting boundary",
-            "requested_returns": result.requested,
-            "halt_boundary": result.returns,
-            "halted": True,
-            "physical_ticks_at_halt": result.physical_ticks,
-            "nonhalting_certified": False,
-        }
-        if kind is AntihydraRunKind.MAHLER:
-            return _unavailable_mahler_packet(unavailable)
-        return json_integers(unavailable)
+        return _unavailable_run(result, kind)
     value: object
     if kind in {AntihydraRunKind.CLOCK, AntihydraRunKind.PHYSICAL_CLOCK}:
         value = {
@@ -267,17 +257,100 @@ def observe_run(
         from number_compiler.sequences.antihydra.observers import tape_projection
 
         projection = tape_projection(result, width, sign, modulus)
-        projection_value = asdict(projection)
-        projection_value["modulus"] = modulus
-        if kind is AntihydraRunKind.FACTOR:
-            support = projection.support(radix=2, modulus=modulus)
-            projection_value.update(
-                factor_target=modulus,
-                divisor=support.divisor,
-                factor=support.proper_factor,
-            )
-            result.ledger.counters[_api_metrics.FACTOR_GCD_QUERIES] = 1
-        value = projection_value
+        tape_value = _tape_projection_value(projection, modulus)
+        value = (
+            _factor_projection_value(result, projection, tape_value, modulus)
+            if kind is AntihydraRunKind.FACTOR
+            else tape_value
+        )
+    return _run_packet(result, kind, value, _include_metrics)
+
+
+def _unavailable_run(result: Run, kind: AntihydraRunKind) -> Mapping[str, object]:
+    unavailable: dict[str, object] = {
+        "family": "antihydra",
+        "kind": kind.value,
+        "status": "unavailable",
+        "reason": "requested returning section reaches or passes the halting boundary",
+        "requested_returns": result.requested,
+        "halt_boundary": result.returns,
+        "halted": True,
+        "physical_ticks_at_halt": result.physical_ticks,
+        "nonhalting_certified": False,
+    }
+    if kind is AntihydraRunKind.MAHLER:
+        return _unavailable_mahler_packet(unavailable)
+    return json_integers(unavailable)
+
+
+def _tape_projection_value(
+    projection: TwistedCylinderProjection,
+    modulus: int,
+) -> dict[str, object]:
+    value: dict[str, object] = asdict(projection)
+    value["modulus"] = modulus
+    return value
+
+
+def _factor_projection_value(
+    result: Run,
+    projection: TwistedCylinderProjection,
+    tape_value: Mapping[str, object],
+    modulus: int,
+) -> dict[str, object]:
+    support = projection.support(radix=2, modulus=modulus)
+    result.ledger.counters[_api_metrics.FACTOR_GCD_QUERIES] = 1
+    return {
+        **tape_value,
+        "factor_target": modulus,
+        "divisor": support.divisor,
+        "factor": support.proper_factor,
+    }
+
+
+def observe_tape_and_factor(
+    result: Run,
+    *,
+    kinds: tuple[AntihydraRunKind, ...],
+    modulus: int,
+    width: int,
+    sign: int,
+) -> dict[AntihydraRunKind, Mapping[str, object]]:
+    """Share a source-authenticated tape action across demanded observations."""
+    if not kinds or any(
+        type(kind) is not AntihydraRunKind
+        or kind
+        not in {
+            AntihydraRunKind.TAPE,
+            AntihydraRunKind.TWISTED,
+            AntihydraRunKind.FACTOR,
+        }
+        for kind in kinds
+    ):
+        raise ValueError("unsupported shared tape observation")
+    result.require_source()
+    if result.halted:
+        return {kind: _unavailable_run(result, kind) for kind in kinds}
+    from number_compiler.sequences.antihydra.observers import tape_projection
+
+    projection = tape_projection(result, width, sign, modulus)
+    tape_value = _tape_projection_value(projection, modulus)
+    packets: dict[AntihydraRunKind, Mapping[str, object]] = {
+        kind: _run_packet(result, kind, tape_value, False)
+        for kind in kinds
+        if kind is not AntihydraRunKind.FACTOR
+    }
+    if AntihydraRunKind.FACTOR in kinds:
+        factor_value = _factor_projection_value(result, projection, tape_value, modulus)
+        packets[AntihydraRunKind.FACTOR] = _run_packet(
+            result, AntihydraRunKind.FACTOR, factor_value, False
+        )
+    return packets
+
+
+def _run_packet(
+    result: Run, kind: AntihydraRunKind, value: object, include_metrics: bool
+) -> Mapping[str, object]:
     packet: dict[str, object] = {
         "family": "antihydra",
         "machine": MACHINE,
@@ -297,7 +370,7 @@ def observe_run(
                 "peak_nodes": result.ledger.peak_nodes,
                 "retained_nodes": result.ledger.nodes,
             }
-            if _include_metrics
+            if include_metrics
             else {}
         ),
     }

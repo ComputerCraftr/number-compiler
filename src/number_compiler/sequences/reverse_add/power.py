@@ -126,6 +126,7 @@ class ReverseAddPoweredTerm:
     __slots__ = (
         "__weakref__",
         "_binding",
+        "_share_continuations",
         "_boundary_observer",
         "_boundary_observer_identity",
         "_ledger",
@@ -156,11 +157,15 @@ class ReverseAddPoweredTerm:
         base: int = 10,
         max_context_nodes: int | None = None,
         max_cache_entries: int | None = None,
+        shared_cache: bool = False,
     ) -> None:
         self.seed = require_integer(seed, "seed", 0)
         self.generation = require_integer(generation, "generation", 0)
         self.base = require_integer(base, "base", 2)
         self._binding = (self.seed, self.generation, self.base)
+        if type(shared_cache) is not bool:
+            raise TypeError("shared_cache must be a bool")
+        self._share_continuations = shared_cache
         self._ledger = ResourceLedger(max_context_nodes, max_cache_entries)
         self._accumulator99_cache: (
             OwnedMemo[None, _TermBoundAccumulator99CacheEntry] | None
@@ -192,6 +197,22 @@ class ReverseAddPoweredTerm:
         if (self.seed, self.generation, self.base) != self._binding:
             raise ValueError("reverse/add term source/action binding changed")
 
+    def first_palindrome_within(
+        self, horizon: int, *, shared_cache: bool = True
+    ) -> int | None:
+        """Return the first positive palindrome offset over a bounded span."""
+        from number_compiler.sequences.reverse_add.q19_event_spans import (
+            search_physical_prefix,
+        )
+
+        self.validate_source_binding()
+        horizon = require_integer(horizon, "palindrome horizon", 0)
+        if self.base != 10 or self.generation != 0:
+            raise ValueError("palindrome search requires an original decimal seed")
+        return search_physical_prefix(
+            self.seed, horizon, self._ledger, shared_cache=shared_cache
+        )
+
     def completed_q19_occurrence(
         self,
     ) -> tuple[ReversePairQ19OutputOwner, ReversePairOutputOccurrence, bool, int]:
@@ -212,6 +233,7 @@ class ReverseAddPoweredTerm:
                 self.generation,
                 base=self.base,
                 source_construction=self._source_construction,
+                shared_cache=self._share_continuations,
             )
             self._workspace = found
             self._workspace_identity = found

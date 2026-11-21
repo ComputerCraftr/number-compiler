@@ -414,6 +414,93 @@ proof -
     by (auto simp: complete_prime_prefix_def set_primes_upto)
 qed
 
+theorem covered_prime_trial_division:
+  assumes prefix: "complete_prime_prefix ps H"
+      and lower: "1 < n" and upper: "n \<le> H"
+  shows "prime n \<longleftrightarrow>
+    (\<forall>p \<in> set ps. p * p \<le> n \<longrightarrow> \<not> p dvd n)"
+proof
+  assume prime: "prime n"
+  show "\<forall>p \<in> set ps. p * p \<le> n \<longrightarrow> \<not> p dvd n"
+  proof (intro ballI impI notI)
+    fix p
+    assume pin: "p \<in> set ps" and bound: "p * p \<le> n" and divides: "p dvd n"
+    have pprime: "prime p" using pin complete_prime_prefix_set[OF prefix] by blast
+    have "p = n" by (rule primes_dvd_imp_eq[OF pprime prime divides])
+    then have "n * n \<le> n" using bound by simp
+    moreover have "n < n * n"
+    proof -
+      have positive: "0 < n" using lower by simp
+      have "n * 1 < n * n" by (rule mult_strict_left_mono[OF lower positive])
+      then show ?thesis by simp
+    qed
+    ultimately show False by simp
+  qed
+next
+  assume avoids: "\<forall>p \<in> set ps. p * p \<le> n \<longrightarrow> \<not> p dvd n"
+  show "prime n"
+  proof (rule ccontr)
+    assume not_prime: "\<not> prime n"
+    have n01: "n \<noteq> 0" "n \<noteq> 1" using lower by arith+
+    obtain p where pprime: "prime p" and divides: "p dvd n" and square: "p^2 \<le> n"
+      using not_prime n01 prime_prime_factor_sqrt by blast
+    have root: "p \<le> floor_sqrt H"
+      using square upper by (simp add: le_floor_sqrt_iff)
+    have "p \<in> set ps"
+      using pprime root prefix by (auto simp: complete_prime_prefix_def set_primes_upto)
+    then show False using avoids divides square by (simp add: power2_eq_square)
+  qed
+qed
+
+theorem covered_ordered_trial_selection:
+  assumes prefix: "complete_prime_prefix ps H"
+      and bounds: "\<forall>n \<in> set candidates. 1 < n \<and> n \<le> H"
+  shows "filter (\<lambda>n. \<forall>p \<in> set ps. p * p \<le> n \<longrightarrow> \<not> p dvd n)
+      candidates = filter prime candidates"
+  using bounds covered_prime_trial_division[OF prefix]
+  by (induction candidates) auto
+
+lemma prime_at_most_seven:
+  assumes "prime (p::nat)" "p \<le> 7"
+  shows "p \<in> {2,3,5,7}"
+proof -
+  have cases: "p = 0 \<or> p = 1 \<or> p = 2 \<or> p = 3 \<or> p = 4 \<or>
+      p = 5 \<or> p = 6 \<or> p = 7"
+    using assms(2) by arith
+  show ?thesis using cases assms(1) by (elim disjE; simp)
+qed
+
+definition short_wheel_accept :: "nat list \<Rightarrow> nat \<Rightarrow> bool" where
+  "short_wheel_accept ps n \<longleftrightarrow>
+    (\<forall>p \<in> {2,3,5,7}. \<not> p dvd n) \<and>
+    (\<forall>p \<in> set ps. 7 < p \<and> p * p \<le> n \<longrightarrow> \<not> p dvd n)"
+
+theorem covered_short_wheel_candidate:
+  assumes prefix: "complete_prime_prefix ps H"
+      and low: "{2,3,5,7} \<subseteq> set ps"
+      and bound: "49 \<le> n" "n \<le> H"
+  shows "short_wheel_accept ps n \<longleftrightarrow> prime n"
+proof -
+  have lower: "1 < n" using bound by simp
+  have exact: "prime n \<longleftrightarrow>
+    (\<forall>p \<in> set ps. p * p \<le> n \<longrightarrow> \<not> p dvd n)"
+    by (rule covered_prime_trial_division[OF prefix lower bound(2)])
+  have low_bound: "\<And>p. p \<in> {2,3,5,7} \<Longrightarrow> p * p \<le> n"
+    using bound(1) by auto
+  have low_primes: "\<And>p. p \<in> set ps \<Longrightarrow> p \<le> 7 \<Longrightarrow> p \<in> {2,3,5,7}"
+    using complete_prime_prefix_set[OF prefix] prime_at_most_seven by blast
+  show ?thesis unfolding short_wheel_accept_def
+    using low low_bound low_primes exact by fastforce
+qed
+
+corollary covered_short_wheel_ordered_selection:
+  assumes prefix: "complete_prime_prefix ps H"
+      and low: "{2,3,5,7} \<subseteq> set ps"
+      and bounds: "\<forall>n \<in> set candidates. 49 \<le> n \<and> n \<le> H"
+  shows "filter (short_wheel_accept ps) candidates = filter prime candidates"
+  using bounds covered_short_wheel_candidate[OF prefix low]
+  by (induction candidates) auto
+
 theorem complete_prefix_survivors_are_exact_primes:
   assumes prefix: "complete_prime_prefix ps H" and nonempty: "ps \<noteq> []"
   shows "wheel_survivors ps H =
@@ -840,7 +927,9 @@ ML \<open>
       discovery_stop_covers_all_primes discovery_stop_constructs_complete_prefix
       append_next_prime_preserves_consecutive_descriptor
       consecutive_descriptor_least_survivor_is_next_prime
-      complete_prefix_survivors_are_exact_primes least_survivor_is_next_prime
+      complete_prefix_survivors_are_exact_primes covered_prime_trial_division
+      covered_ordered_trial_selection covered_short_wheel_ordered_selection
+      least_survivor_is_next_prime
       complete_prefix_count_is_prime_count}) then ()
     else error "Prime wheel bridge depends on an oracle";
 \<close>

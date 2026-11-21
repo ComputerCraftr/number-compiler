@@ -2,12 +2,35 @@ from __future__ import annotations
 
 import pytest
 
+from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
+from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.five_reverse.quotients import (
     MovingCutBudgetExceeded,
     digit_field225,
+    digit_field225_signal_word,
     h_power_mod,
     physical_low_band_from_h,
 )
+
+
+def test_settled_digit_field_signal_matches_physical_successors() -> None:
+    ledger = ResourceLedger()
+    scratch = ledger.register("five-field-signal-test", "workspace")
+    arena = LedgerSLPArena(ledger, "five-field-signal-test", "arithmetic")
+    try:
+        value = 196
+        value = 5 * _reverse10(value)
+        state = digit_field225(196, 1)
+        root = digit_field225_signal_word(arena, scratch, state, 20)
+        expected: list[int] = []
+        for _ in range(20):
+            expected.append((_digit_field(value) % 225) // 25)
+            value = 5 * _reverse10(value)
+        assert arena.materialize(root) == tuple(expected)
+    finally:
+        arena.dispose()
+        ledger.mark_disposed(scratch)
+    assert ledger.entries == ledger.nodes == 0
 
 
 def _reverse10(value: int) -> int:

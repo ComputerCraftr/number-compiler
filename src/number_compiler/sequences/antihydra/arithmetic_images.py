@@ -58,6 +58,9 @@ if TYPE_CHECKING:
 ANTIHYDRA_ARITHMETIC_SEMANTIC_VERSION: Final[str] = (
     "antihydra-arithmetic-source-image-v2-dyadic"
 )
+_REPEAT_ATOM_STEPS: Final[int] = 8
+_SHORT_REPEAT_ATOM_STEPS: Final[int] = 4
+_REPEAT_MIN_COPIES: Final[int] = 3
 
 ANTIHYDRA_ARITHMETIC_LAW = DyadicReturnLaw(
     family="antihydra-arithmetic-source-image",
@@ -558,6 +561,74 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         """
         d = self._centered_source(h, scratch)
         remaining = width
+        # One source probe supplies the four-step prefix and the eight-step
+        # action. A short phase is admitted from that same physical prefix.
+        if d and remaining >= _SHORT_REPEAT_ATOM_STEPS * _REPEAT_MIN_COPIES:
+            atom_steps = (
+                _REPEAT_ATOM_STEPS
+                if remaining >= _REPEAT_ATOM_STEPS * _REPEAT_MIN_COPIES
+                else _SHORT_REPEAT_ATOM_STEPS
+            )
+            probe_width = atom_steps * _REPEAT_MIN_COPIES
+            start = d & ((1 << probe_width) - 1)
+            probe = start
+            block_delta = block_minimum = block_odd = 0
+            probe_bits = 0
+            short_phase: tuple[int, int, int, int] | None = None
+            for position in range(atom_steps):
+                probe_bits += probe.bit_length()
+                parity = probe & 1
+                probe = (3 * probe + parity) >> 1
+                block_delta += 2 if parity else -1
+                block_minimum = min(block_minimum, block_delta)
+                block_odd += 1 - parity
+                if position + 1 == _SHORT_REPEAT_ATOM_STEPS:
+                    short_phase = (probe, block_delta, block_minimum, block_odd)
+            self.bump_metric("temporal_run_operand_bits", probe_bits)
+            repeat_bits = atom_steps * (_REPEAT_MIN_COPIES - 1)
+            if (
+                (probe - start) & ((1 << repeat_bits) - 1)
+                and atom_steps == _REPEAT_ATOM_STEPS
+                and short_phase is not None
+            ):
+                atom_steps = _SHORT_REPEAT_ATOM_STEPS
+                probe, block_delta, block_minimum, block_odd = short_phase
+                repeat_bits = atom_steps * (_REPEAT_MIN_COPIES - 1)
+            if (probe - start) & ((1 << repeat_bits) - 1) == 0:
+                scratch.require_bits(8 * (d.bit_length() + probe_width + 16))
+                atom_gain = 3**atom_steps
+                innovation = (probe << atom_steps) - atom_gain * start
+                self.bump_metric(
+                    "temporal_run_operand_bits", d.bit_length() + atom_gain.bit_length()
+                )
+                first = (atom_gain * d + innovation) >> atom_steps
+                difference = first - d
+                repetitions = remaining // atom_steps
+                if difference:
+                    repetitions = min(
+                        repetitions, 1 + v2_positive(difference) // atom_steps
+                    )
+                length = atom_steps * repetitions
+                scratch.require_bits(8 * (d.bit_length() + 3 * length + 64))
+                upper = 3**length
+                geometric, remainder = divmod(
+                    upper - (1 << length), atom_gain - (1 << atom_steps)
+                )
+                if remainder:
+                    raise ArithmeticError("repeat geometric factor is not integral")
+                endpoint = d + geometric * (
+                    difference >> (atom_steps * (repetitions - 1))
+                )
+                delta = repetitions * block_delta
+                minimum = block_minimum + min(0, (repetitions - 1) * block_delta)
+                self.bump_metric("temporal_run_actions")
+                self.bump_metric(
+                    "temporal_run_operand_bits",
+                    endpoint.bit_length() + upper.bit_length() + length,
+                )
+                yield length, delta, minimum, repetitions * block_odd, endpoint
+                d = endpoint
+                remaining -= length
         while remaining:
             source_bits = d.bit_length()
             scratch.require_bits(8 * (source_bits + 16))

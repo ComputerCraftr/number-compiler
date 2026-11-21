@@ -378,6 +378,7 @@ def test_shared_toolchain_settings_are_strict_and_pinned() -> None:
         "B",
         "ANN",
         "RUF100",
+        "TC004",
     ]
     assert ruff_lint.get("preview") is False
 

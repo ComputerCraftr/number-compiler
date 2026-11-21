@@ -140,6 +140,30 @@ def test_reverse_field_alone_is_not_autonomous_even_on_early_seed196_orbit() -> 
     assert records[2] != records[8]
 
 
+def test_laurent_observation_builds_each_orientation_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def crt(field_mod9: int, last_digit: int) -> int:
+        nonlocal calls
+        calls += 1
+        return next(r for r in range(last_digit, 90, 10) if r % 9 == field_mod9)
+
+    monkeypatch.setattr(TwoReverseDualDigitField18, "_crt90", staticmethod(crt))
+    x = 196
+    for _ in range(16):
+        x = _step(x)
+    packet = physical_carry_field_borrow_projection(
+        target_phase=0, physical_mod198=x % 198, seed_mod9=196 % 9
+    )
+    assert calls == 4
+    assert packet["carry_field_mod90"] == int(_field(x, low_first=False)) % 90
+    dual = packet["dual_digit_field18_temporal_quotient"]
+    assert is_string_object_mapping(dual)
+    assert dual["low_first_digit_field_mod18"] == int(_field(x)) % 18
+
+
 @pytest.mark.parametrize("bad_phase", [-1, 4, 7, 1.0, True])
 def test_guard_malformed_phase_is_rejected(bad_phase: int) -> None:
     with pytest.raises(ValueError):

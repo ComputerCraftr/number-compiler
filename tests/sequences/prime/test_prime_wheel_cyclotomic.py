@@ -70,3 +70,40 @@ def test_cyclotomic_wheel_advance_is_random_access_group_action() -> None:
     assert a == b
     assert a.index == 17
     assert automaton.classify_state(a) == automaton.classify_index(17)
+
+
+@pytest.mark.parametrize("modulus", (2, 4, 6, 7, 11))
+def test_powered_phase_rotation_matches_chronological_composition(
+    modulus: int,
+) -> None:
+    from number_compiler.sequences.prime.wheel_cyclotomic import PrimeWheelPhaseBlock
+
+    for shift in range(modulus):
+        block = PrimeWheelPhaseBlock.gap(shift, prime=modulus, alpha=1)
+        expected = PrimeWheelPhaseBlock.identity(modulus, 1)
+        for exponent in range(2 * modulus + 1):
+            actual = block.power_block(exponent)
+            assert actual.phase_histogram() == expected.phase_histogram()
+            assert actual.phase_shift == expected.phase_shift
+            assert actual.length == expected.length
+            assert actual.compositions == 0
+            expected = expected.then(block)
+
+
+def test_large_phase_power_uses_orbit_quotient(monkeypatch: pytest.MonkeyPatch) -> None:
+    from number_compiler.sequences.prime.wheel_cyclotomic import PrimeWheelPhaseBlock
+
+    block = PrimeWheelPhaseBlock.gap(3, prime=7, alpha=1)
+
+    def forbid_then(*_args: object) -> None:
+        pytest.fail("phase power reconstructed a composition history")
+
+    monkeypatch.setattr(PrimeWheelPhaseBlock, "then", forbid_then)
+    exponent = 10**100
+    result = block.power_block(exponent)
+    assert sum(result.phase_histogram()) == exponent
+    assert result.phase_shift == 3 * exponent % 7
+    with pytest.raises(TypeError):
+        block.power_block(True)
+    with pytest.raises(ValueError):
+        block.power_block(-1)

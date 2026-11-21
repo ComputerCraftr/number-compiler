@@ -61,6 +61,30 @@ proof -
   show ?thesis by (rule finite_subset[OF subset finite_wheel])
 qed
 
+lemma progression_shared_factor_divisibility:
+  fixes p m n r :: nat
+  assumes shared: "p dvd m"
+    and residue: "n mod m = r mod m"
+  shows "p dvd n \<longleftrightarrow> p dvd r"
+proof -
+  have "(n mod m) mod p = (r mod m) mod p" using residue by simp
+  then have "n mod p = r mod p" by (simp only: mod_mod_cancel[OF shared])
+  then show ?thesis by (simp add: dvd_eq_mod_eq_0)
+qed
+
+theorem progression_shared_factor_exact:
+  assumes "p dvd m"
+  shows "progression_wheel (p # ps) x m r =
+    (if p dvd r then {} else progression_wheel ps x m r)"
+proof (rule set_eqI)
+  fix n
+  have same: "n mod m = r mod m \<Longrightarrow> (p dvd n \<longleftrightarrow> p dvd r)"
+    by (rule progression_shared_factor_divisibility[OF assms])
+  show "n \<in> progression_wheel (p # ps) x m r \<longleftrightarrow>
+    n \<in> (if p dvd r then {} else progression_wheel ps x m r)"
+    using same by (auto simp: progression_wheel_def)
+qed
+
 lemma residue_transport_by_inverse:
   assumes coprime: "coprime p m"
   shows "(p * k) mod m = r mod m \<longleftrightarrow>

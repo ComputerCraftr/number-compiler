@@ -510,6 +510,14 @@ emission. [`Cascade_Output_Elimination.thy`](../../proofs/isabelle/integration/t
 proves two-stage semantic equality only when the component soundness and
 coverage assumptions hold. Functional overlap is proved separately.
 
+### Carry sheets and finite palindrome searches
+
+For a reflected multiplier $m$ equal to 2 or 5, put $q=10/m$. In multiplication-input order, digit $d$ with inlet $0\le c<m$ emits $m(d\bmod q)+c$ and leaves carry $\lfloor d/q\rfloor$. Consequently the last digit of any nonempty tile fixes its exit carry. In a repeated tile the first copy consumes the incoming seam. Every subsequent copy consumes the exit of the preceding copy. Reading the other end of a word changes the input order. Physical zero trimming occurs before the final multiplication, which may itself produce a trailing zero.
+
+For reverse/add let $S$ be the full symmetric pair-sum field, including twice the middle digit at odd width. A quiet step doubles its homogeneous contribution. A width birth multiplies it by $1+z$. After five quiet steps, the homogeneous contribution vanishes modulo 32. In a source-issued twelve-step interval with this property, the signed carry forcing therefore recovers every endpoint coefficient exactly, since each lies between 0 and 18. Two sources with the same recovered field have equal subsequent emissions at the same positive offset. Equal XOR masks alone do not identify this field.
+
+A first-arrival summary has a duration and either an offset in that interval or certified absence through its end. On adjacent physical intervals, a hit in the left interval is the first hit. After complete left absence, a right hit at offset $j$ has offset $|L|+j$ from the original source. An endpoint or a partially searched prefix alone supplies no absence certificate for its interior.
+
 ### Compressed residue transducer
 
 For pair residue `p` in `0..18` and incoming carry `c` in `{0,1}`, the local

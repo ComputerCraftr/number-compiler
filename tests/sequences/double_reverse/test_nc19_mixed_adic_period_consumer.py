@@ -63,6 +63,7 @@ def test_four_step_multiplication_is_exact_on_every_semantic_class() -> None:
                 assert actual.residue99 == 160 * r99 % 99
                 assert actual.width_parity == (None if r99 % 11 == 0 else parity)
                 assert actual.phase == phase
+                assert state.field.residue == 2 * state.residue1980 % 18
                 assert (
                     state.power(72).field.four_field_orientations_mod90
                     == state.field.four_field_orientations_mod90
@@ -71,6 +72,19 @@ def test_four_step_multiplication_is_exact_on_every_semantic_class() -> None:
                     state.power(576).field.four_field_orientations_mod90
                     == state.field.four_field_orientations_mod90
                 )
+
+
+def test_all_guarded_fields_have_distinct_mod90_orientations() -> None:
+    projections = {
+        tuple(
+            MixedAdicState(
+                phase, 0, residue
+            ).field.four_field_orientations_mod90.values()
+        )
+        for phase in range(4)
+        for residue in range(9)
+    }
+    assert len(projections) == 36
 
 
 def test_binary_power_composes_without_physical_occurrences() -> None:

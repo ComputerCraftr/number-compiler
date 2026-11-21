@@ -31,6 +31,24 @@ def stencil_from_ports(left_high: int, digit: int, right_f5: int) -> int:
     return _stencil_kernel(left_high, digit, right_f5)
 
 
+# Each neighboring output uses the same 100 one-cell responses. Factoring
+# the ordered two-output port this way also preserves its left/right order.
+_STENCIL_ROWS = bytes(
+    stencil_from_ports(left_high, digit, right_f5)
+    for left_high in range(2)
+    for digit in range(10)
+    for right_f5 in range(5)
+)
+
+
+def f_port_cell(a: int, b: int, c: int, d: int) -> tuple[int, int]:
+    """Resolve two adjacent F responses on an admitted four-digit window."""
+    return (
+        _STENCIL_ROWS[((a >= 5) * 10 + b) * 5 + c % 5],
+        _STENCIL_ROWS[((b >= 5) * 10 + c) * 5 + d % 5],
+    )
+
+
 def stencil_cell(left: int, digit: int, right: int) -> int:
     """Exact local action without assuming a border cycle."""
     if any(

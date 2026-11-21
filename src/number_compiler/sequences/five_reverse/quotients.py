@@ -9,8 +9,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
+from number_compiler.arithmetic.automata.periodic_slp import periodic_word
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.radix import digits_lsd, reverse_radix_integer
+from number_compiler.resources.lifecycle import cleanup_on_error
 
 MAX_MOVING_CUT_DIGIT_ACTIONS = 500_000
 
@@ -53,6 +56,40 @@ def digit_field225(seed: int, generation: int) -> DigitField225State:
     seed = require_integer(seed, "five-reversal seed", 0)
     generation = require_integer(generation, "digit-field generation", 0)
     return DigitField225State(_digit_field225_initial(seed)).power(generation)
+
+
+def digit_field225_signal_word(
+    arena: LedgerSLPArena,
+    scratch_owner: int,
+    state: DigitField225State,
+    samples: int,
+) -> int:
+    """Publish the settled mod-225 field's six-phase quotient signal.
+
+    Symbols are ``residue // 25``, not physical digits. The caller owns the
+    source binding and physical clock associated with this field state.
+    """
+    if type(state) is not DigitField225State:
+        raise TypeError("digit-field signal needs its exact quotient state")
+    state.__post_init__()
+    if state.residue % 25:
+        raise ValueError("digit field has not entered its multiple-of-25 band")
+    samples = require_integer(samples, "digit-field samples", 0)
+    if samples.bit_length() > 4096:
+        raise ValueError("digit-field sample count exceeds its work budget")
+    checkpoint = len(arena.nodes)
+    with (
+        cleanup_on_error(lambda: arena.rollback_unpublished_suffix(checkpoint)),
+        arena.ledger.reservation(scratch_owner, nodes=6),
+    ):
+        current = state
+        period: list[int] = []
+        for _ in range(6):
+            period.append(current.residue // 25)
+            current = current.successor()
+        if current != state:
+            raise AssertionError("digit-field six-phase return failed")
+        return periodic_word(arena, period, samples)
 
 
 def _h_step_mod(value: int, modulus: int) -> int:

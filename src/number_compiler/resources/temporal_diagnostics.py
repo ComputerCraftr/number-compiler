@@ -658,7 +658,7 @@ def collect_temporal_diagnostics(
                 counters, _antihydra_keys.MAHLER_CENTER_MATRIX_SPARSE_PRODUCTS
             ),
             physical_roof_evaluations=_count(counters, "physical_roof_evaluations"),
-            query_observer_reuses=_count(counters, "query_observer_reuses"),
+            query_observer_reuses=_count(counters, _api_keys.QUERY_OBSERVER_REUSES),
             higher_concrete_operation_evaluations=_count(
                 counters,
                 _execution_keys.HIGHER_CONCRETE_OPERATION_EVALUATIONS,

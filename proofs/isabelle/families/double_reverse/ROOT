@@ -6,11 +6,14 @@ session Double_Reverse_Temporal_Refinement in temporal_double_reverse = Shared_C
     Double_Reverse_Temporal_Refinement
     Double_Reverse_Powered_Border_Transfer
     Double_Reverse_Periodic_Ring_Action
+    Double_Reverse_F_Port_Refinement
     Double_Reverse_Bitplane_Refinement
     Double_Reverse_Source_Window_Refinement
     Double_Reverse_Group_Ring_Carry_Cut
     Double_Reverse_Group_Ring_Four_Port
     Double_Reverse_Four_Port_Numeric_Refinement
+    Double_Reverse_Reflected_Physical
+    Double_Reverse_Reflected_Writer
     Double_Reverse_Four_Port_Defect_Refinement
     Double_Reverse_Decimal_Source_Carry_Mask
     Double_Reverse_Seed196_Low_Band_Refinement
@@ -39,3 +42,5 @@ session Double_Reverse_Temporal_Refinement in temporal_double_reverse = Shared_C
     Double_Reverse_Birth_Seam_Quotient
     Double_Reverse_Outer_Port_Quotient
     Double_Reverse_Mixed_Adic_Quotient
+    Double_Reverse_C0_Physical_Palindrome
+    Double_Reverse_C0_Mixed_Mask

@@ -1,6 +1,8 @@
 theory Dyadic_Unit_Carry_Frontier
-  imports Main
+  imports Main "HOL.Bit_Operations"
 begin
+
+unbundle bit_operations_syntax
 
 text \<open>
 An exponent phase may be reduced only after an exact unit return has been
@@ -13,6 +15,103 @@ definition dyadic_affine_carry_at ::
   "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat" where
   "dyadic_affine_carry_at a n u b cut bits =
     ((a^n * (u mod 2^cut) + (b mod 2^cut)) mod 2^(cut+bits)) div 2^cut"
+
+lemma radix_affine_carry_after_block:
+  fixes multiplier low_x high_x low_b high_b lower span :: int
+  assumes lower_positive: "0 < lower" and span_nonnegative: "0 \<le> span"
+  shows "(multiplier * (low_x + lower * high_x) + (low_b + lower * high_b))
+      div (lower * span) =
+    ((multiplier * low_x + low_b) div lower + multiplier * high_x + high_b)
+      div span"
+proof -
+  have split: "multiplier * (low_x + lower * high_x) + (low_b + lower * high_b) =
+      (multiplier * high_x + high_b) * lower + (multiplier * low_x + low_b)"
+    by (simp add: algebra_simps)
+  have lower_nonzero: "lower \<noteq> 0" using lower_positive by simp
+  let ?low = "multiplier * low_x + low_b"
+  let ?high = "multiplier * high_x + high_b"
+  have "(multiplier * (low_x + lower * high_x) + (low_b + lower * high_b))
+      div (lower * span) = (?high * lower + ?low) div (lower * span)"
+    by (simp only: split)
+  also have "... = ((?high * lower + ?low) div lower) div span"
+    by (rule zdiv_zmult2_eq[OF span_nonnegative])
+  also have "... = (?high + ?low div lower) div span"
+    by (simp only: div_mult_self3[OF lower_nonzero])
+  also have "... = (?low div lower + multiplier * high_x + high_b) div span"
+    by (simp only: add.assoc add.commute add.left_commute)
+  finally show ?thesis .
+qed
+
+lemma dyadic_affine_carry_shift_source:
+  "dyadic_affine_carry_at a n (2^shift * source) 0 (shift + cut) bits =
+    dyadic_affine_carry_at a n source 0 cut bits"
+proof -
+  let ?scale = "(2::nat)^shift"
+  have prefix: "(?scale * source) mod 2^(shift + cut) = ?scale * (source mod 2^cut)"
+    unfolding power_add by (rule mod_mult_mult1)
+  have factor: "a^n * (?scale * (source mod 2^cut)) = ?scale * (a^n * (source mod 2^cut))"
+    by (simp add: ac_simps)
+  have modulus: "(2::nat)^(shift + cut + bits) = ?scale * 2^(cut + bits)"
+    by (simp only: add.assoc power_add)
+  have positive: "?scale \<noteq> 0" by simp
+  show ?thesis
+    unfolding dyadic_affine_carry_at_def prefix factor modulus power_add
+    by (simp add: mod_mult_mult1 positive)
+qed
+
+lemma int_subtract_prefix_borrow:
+  fixes x y p :: int
+  assumes p: "0 < p"
+  shows "(x - y) div p = x div p - y div p -
+    (if x mod p < y mod p then 1 else 0)"
+proof -
+  have split: "x - y = (x div p - y div p) * p + (x mod p - y mod p)"
+    using div_mult_mod_eq[of x p] div_mult_mod_eq[of y p]
+    by (simp add: algebra_simps)
+  have xb: "0 \<le> x mod p" "x mod p < p" using p by simp_all
+  have yb: "0 \<le> y mod p" "y mod p < p" using p by simp_all
+  have divide: "(x mod p - y mod p) div p = (if x mod p < y mod p then 1 else 0) * (-1)"
+  proof (cases "x mod p < y mod p")
+    case True
+    have bounded: "0 \<le> x mod p - y mod p + p" "x mod p - y mod p + p < p"
+      using xb yb True by linarith+
+    have "(x mod p - y mod p + p) div p = 0"
+      using bounded by (simp add: zdiv_eq_0_iff)
+    then show ?thesis using p True by (simp add: div_add_self2)
+  next
+    case False
+    have bounded: "0 \<le> x mod p - y mod p" "x mod p - y mod p < p"
+      using xb yb False by linarith+
+    have "(x mod p - y mod p) div p = 0"
+      by (rule zdiv_eq_0_iff[THEN iffD2]) (use bounded in blast)
+    then show ?thesis using False by simp
+  qed
+  show ?thesis unfolding split using p divide by simp
+qed
+
+theorem dyadic_subtract_borrow_bit:
+  fixes raw correction :: int
+  assumes within: "cut < precision"
+  shows "bit (raw XOR correction XOR take_bit precision (raw - correction)) cut
+    \<longleftrightarrow> raw mod 2^cut < correction mod 2^cut"
+proof -
+  have truncated: "bit (take_bit precision (raw - correction)) cut = bit (raw - correction) cut"
+    using within by (simp add: bit_take_bit_iff)
+  have "bit (raw XOR correction XOR take_bit precision (raw - correction)) cut =
+      (bit raw cut \<noteq> (bit correction cut \<noteq> bit (raw - correction) cut))"
+    by (simp only: bit_xor_iff truncated)
+  also have "... = (raw mod 2^cut < correction mod 2^cut)"
+  proof (cases "raw mod 2^cut < correction mod 2^cut")
+    case True
+    then show ?thesis
+      by (simp add: bit_iff_odd_drop_bit drop_bit_eq_div int_subtract_prefix_borrow; blast)
+  next
+    case False
+    then show ?thesis
+      by (simp add: bit_iff_odd_drop_bit drop_bit_eq_div int_subtract_prefix_borrow; blast)
+  qed
+  finally show ?thesis .
+qed
 
 lemma dyadic_unit_power_phase_reduction:
   fixes a :: nat
@@ -415,6 +514,8 @@ qed
 
 ML \<open>
   val checked = @{thms dyadic_affine_carry_at_def
+    radix_affine_carry_after_block int_subtract_prefix_borrow dyadic_subtract_borrow_bit
+    dyadic_affine_carry_shift_source
     dyadic_unit_power_phase_reduction dyadic_unit_return_doubles
     dyadic_unit_phase_period_def dyadic_three_return_large
     dyadic_five_return_large dyadic_fifteen_return_large

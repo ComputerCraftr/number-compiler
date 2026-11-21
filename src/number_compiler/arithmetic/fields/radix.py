@@ -213,6 +213,29 @@ def digits_lsd(value: int, base: int, width: int | None = None) -> tuple[int, ..
     return tuple(out)
 
 
+def reverse_decimal_and_width(
+    value: int, *, before_digit: Callable[[int, int], None] | None = None
+) -> tuple[int, int]:
+    """Return exact decimal reversal and width without string conversion.
+
+    An optional callback runs before each digit operation with the current
+    input and accumulated output bit lengths. Production bounded observers
+    use it to account for operand work; ordinary arithmetic callers stay pure.
+    """
+    if type(value) is not int or value < 0:
+        raise ValueError("decimal source must be a nonnegative exact integer")
+    if value == 0:
+        return 0, 1
+    reversed_value, width = 0, 0
+    while value:
+        if before_digit is not None:
+            before_digit(value.bit_length(), reversed_value.bit_length())
+        value, digit = divmod(value, 10)
+        reversed_value = reversed_value * 10 + digit
+        width += 1
+    return reversed_value, width
+
+
 def reverse_radix_integer(value: int, base: int) -> int:
     """Reverse the canonical radix digits of a nonnegative integer."""
     base = int(base)

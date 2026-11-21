@@ -129,6 +129,39 @@ def test_periodic_match_exact_slp_pumping_and_corrupted_leaf() -> None:
         assert ledger.entries == ledger.nodes == 0
 
 
+def test_periodic_guard_uses_primitive_motif_across_reflected_seam(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    owner = ReversePairQ19OutputOwner(ledger, digits_lsd(123321, 10), base=10)
+    original = match_region
+    observed: list[int] = []
+
+    def record_match(
+        source_owner: ReversePairQ19OutputOwner,
+        root: int,
+        lo: int,
+        hi: int,
+        pattern: tuple[int, ...],
+    ) -> bool:
+        observed.append(len(pattern))
+        return original(source_owner, root, lo, hi, pattern)
+
+    try:
+        monkeypatch.setattr(q19_periodic_cone, "_match_region", record_match)
+        pattern = (2, 4, 6, 6, 4, 2)
+        short = q19_periodic_cone.periodic_guard(owner, owner.initial, 0, 6, pattern)
+        observed.clear()
+        repeated = q19_periodic_cone.periodic_guard(
+            owner, owner.initial, 0, 6, pattern * 10
+        )
+        assert short and repeated
+        assert observed == [6, 6]
+    finally:
+        owner.dispose()
+    assert ledger.entries == ledger.nodes == 0
+
+
 def test_mixed_cell_records_are_live_owner_checked_observations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

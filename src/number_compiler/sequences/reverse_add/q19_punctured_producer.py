@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
+from number_compiler.arithmetic.automata.periodic_slp import periodic_word
 from number_compiler.arithmetic.automata.slp import BimachineSLPProjector
 from number_compiler.arithmetic.fields.run_pairing import append_run
 from number_compiler.resources.ledger import ResourceLedger
@@ -357,7 +358,7 @@ class PuncturedPairProducer:
             if type(count) is not int or count < 1:
                 raise ValueError("punctured output run length must be positive")
             half_width += count
-            parts.append(owner.arena.repeat(owner.arena.terminal(symbol), count))
+            parts.append(periodic_word(owner.arena, (symbol,), count))
         if 2 * half_width - (width & 1) != width:
             raise ValueError("punctured output runs disagree with center parity")
         parts.append(owner.arena.terminal(21))

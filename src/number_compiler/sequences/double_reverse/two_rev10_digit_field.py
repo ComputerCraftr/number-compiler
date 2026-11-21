@@ -27,10 +27,44 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import lcm
+from typing import TypedDict
 
 from .temporal_hashlife_borders import outer_digits
 
 MODULUS = 18
+
+
+class _FieldOrientations90(TypedDict):
+    high_first_mod90: int
+    low_first_mod90: int
+    reverse_characters_of_high_first_mod90: int
+    reverse_characters_of_low_first_mod90: int
+
+
+class _DigitFieldPacket(TypedDict):
+    modulus: int
+    scope: str
+    low_first_digit_field_mod18: int
+    high_first_digit_field_mod18: int
+    four_field_orientations_mod90: _FieldOrientations90
+    reversed_characters_of_low_first_mod18: int
+    reversed_characters_of_high_first_mod18: int
+    decoded_low_multiply_carry: int
+    border_phase: int
+    leading_source_digit: int
+    trailing_source_digit: int
+    decimal_width_growth_bit: int
+    centered_phi4_harmonic: int
+    harmonic_annihilator: str
+    successor_low_first_mod18: int
+    successor_reverse_characters_mod18: int
+    temporal_primitive_period: int
+    moore_joint_state_bound: int
+    temporal_powering: str
+    independent_reverse_residue_successor_closed: bool
+    joint_source_guarded_successor_closed: bool
+    full_interior_carry_vector_successor_closed: bool
+    source_occurrences_materialized: int
 
 
 def universal_forward_field_mod18(seed: int, generation: int) -> int:
@@ -84,7 +118,7 @@ class TwoReverseDualDigitField18:
         return (last_digit + 10 * ((field_mod9 - last_digit) % 9)) % 90
 
     @property
-    def four_field_orientations_mod90(self) -> dict[str, int]:
+    def four_field_orientations_mod90(self) -> _FieldOrientations90:
         """All four word/reversal readouts, selected by the certified ports.
 
         The *shared* digit-sum class is self.residue % 9.  The last
@@ -138,23 +172,32 @@ class TwoReverseDualDigitField18:
     def successor(self) -> TwoReverseDualDigitField18:
         return self.power(1)
 
-    def packet(self) -> dict[str, object]:
+    def packet(self) -> _DigitFieldPacket:
         next_state = self.successor()
         lead, trail = outer_digits(self.border_phase)
+        orientations = self.four_field_orientations_mod90
+        forward_mod18 = orientations["high_first_mod90"] % MODULUS
+        low_carry = int(trail >= 5)
         return {
             "modulus": MODULUS,
             "scope": "source-authenticated 2rev10 four-phase border; not full carry-vector",
-            "low_first_digit_field_mod18": self.residue,
-            "high_first_digit_field_mod18": self.residue,
-            "four_field_orientations_mod90": self.four_field_orientations_mod90,
-            "reversed_characters_of_low_first_mod18": self.reversed_characters_mod18,
-            "reversed_characters_of_high_first_mod18": self.residue,
-            "decoded_low_multiply_carry": self.incoming_carry,
+            "low_first_digit_field_mod18": forward_mod18,
+            "high_first_digit_field_mod18": forward_mod18,
+            "four_field_orientations_mod90": orientations,
+            "reversed_characters_of_low_first_mod18": orientations[
+                "reverse_characters_of_low_first_mod90"
+            ]
+            % MODULUS,
+            "reversed_characters_of_high_first_mod18": orientations[
+                "reverse_characters_of_high_first_mod90"
+            ]
+            % MODULUS,
+            "decoded_low_multiply_carry": low_carry,
             "border_phase": self.border_phase,
             "leading_source_digit": lead,
             "trailing_source_digit": trail,
-            "decimal_width_growth_bit": self.incoming_carry,
-            "centered_phi4_harmonic": self.centered_harmonic,
+            "decimal_width_growth_bit": low_carry,
+            "centered_phi4_harmonic": 2 * low_carry - 1,
             "harmonic_annihilator": "S^2+1",
             "successor_low_first_mod18": next_state.residue,
             "successor_reverse_characters_mod18": next_state.reversed_characters_mod18,

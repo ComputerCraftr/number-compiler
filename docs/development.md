@@ -60,8 +60,9 @@ installation makes source changes available immediately without reinstalling.
 Pylance resolves the source tree through `src` and checks open files strictly.
 The guarded sweep supplies whole-repository coverage. Evidence records the
 Pylance extension version separately; a CLI Pyright pass does not certify
-editor diagnostics. Ruff enables `E4`, `E7`, `E9`, `F`, `I`, `UP`, `B`, `ANN`
-and `RUF100`, with preview disabled.
+editor diagnostics. Ruff enables `E4`, `E7`, `E9`, `F`, `I`, `UP`, `B`, `ANN`,
+`RUF100` and `TC004`, with preview disabled. `TC004` catches runtime references to
+`TYPE_CHECKING` imports, including eager annotations on supported Python versions.
 Maintained executable reproductions live under `devtools`; reviewed weekly records live under `docs/sprints`. New raw evidence goes to ignored `results/runs`; old local logs and scripts remain historical evidence, not maintained launchers. Repository-wide Ruff checks include every remaining authored Python file. There are no mypy error exclusions or inline mypy/Ruff suppressions
 in the maintained roots.
 

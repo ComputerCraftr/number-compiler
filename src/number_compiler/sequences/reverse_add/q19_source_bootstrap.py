@@ -10,9 +10,6 @@ from number_compiler.arithmetic.contracts.block_effect import (
 from number_compiler.arithmetic.contracts.scoped_handles import ExactSource
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
-from number_compiler.sequences.reverse_add.punctured_temporal import (
-    MAX_PUNCTURED_TEMPORAL_STEPS,
-)
 from number_compiler.sequences.reverse_add.q19_occurrence import (
     ReversePairOutputOccurrence,
 )
@@ -23,6 +20,8 @@ from number_compiler.sequences.reverse_add.source_actions import (
     ReverseActionArena,
     ReverseActionID,
 )
+
+MAX_BROADWORD_TEMPORAL_STEPS = 65_536
 
 
 def publish_q19_source_root(
@@ -36,6 +35,7 @@ def publish_q19_source_root(
     clear_query_output: Callable[[], None],
     *,
     owner_already_published: bool,
+    shared_cache: bool,
 ) -> tuple[ReverseActionID, ReversePairOutputOccurrence] | None:
     """Publish an exact decimal endpoint from a source-rooted action.
 
@@ -46,10 +46,15 @@ def publish_q19_source_root(
     """
     if steps < 2 or actions.node(payload_action).steps != 0:
         return None
-    if 64 <= steps <= MAX_PUNCTURED_TEMPORAL_STEPS and origin.base == 10:
+    if 64 <= steps <= MAX_BROADWORD_TEMPORAL_STEPS and origin.base == 10:
         try:
             owner = owner_for_source(origin)
-            occurrence = owner.publish_broadword_source(steps)
+            if shared_cache and steps >= 1024:
+                occurrence = owner.publish_carry_window_continuation(
+                    steps, shared_cache=True
+                )
+            else:
+                occurrence = owner.publish_broadword_source(steps)
         except BlockContextBudgetExceeded:
             # Packed publication is an optimization. The scheduler can
             # continue through its exact child route under the remaining

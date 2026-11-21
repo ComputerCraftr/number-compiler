@@ -14,7 +14,7 @@ from number_compiler.api.output_schema import (
     UnresolvedErrorPacket,
     query_result,
 )
-from number_compiler.api.query_types import is_term_query
+from number_compiler.api.query_types import FirstPalindromeQuery, is_term_query
 from number_compiler.api.registry_adapters import (
     resolve_scalar_value_adapter,
     resolve_verification_adapter,
@@ -60,6 +60,25 @@ def _execute(
 ]:
     """Consume a registered scalar path or prepare the demanded query context."""
     execution = request.execution
+    if isinstance(execution, FirstPalindromeQuery):
+        from number_compiler.api.number_api import NumberCompiler
+
+        compiler = NumberCompiler(max_cached_terms=0, shared_cache=shared_cache)
+        hit = compiler.first_palindrome(execution)
+        event: dict[str, JsonValue] = {
+            "first_generation": hit,
+            "searched_through": execution.horizon if hit is None else hit,
+        }
+        return (
+            (None if request.presentation.format is OutputFormat.JSON else "none")
+            if hit is None
+            else _rendering.radix_string(hit, 10),
+            {SelectorId.FIRST_PALINDROME.value: event}
+            if request.presentation.format is OutputFormat.JSON
+            else {},
+            None,
+            False,
+        )
     if (
         is_term_query(execution)
         and not request.observations.info

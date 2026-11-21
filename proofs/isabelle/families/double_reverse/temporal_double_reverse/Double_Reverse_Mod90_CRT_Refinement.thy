@@ -300,6 +300,18 @@ proof -
   show ?thesis using crt residue_nine residue_ten by blast
 qed
 
+corollary double_reverse_doubled_digit_word_mod18:
+  assumes decimal: "list_all (\<lambda>digit. digit < 10) digits"
+  shows "double_reverse_msf_value (double_reverse_digit_word digits) mod 18 =
+    (2 * double_reverse_msf_value digits) mod 18"
+proof -
+  have factor: "(18::nat) dvd 90" by simp
+  have "(double_reverse_msf_value (double_reverse_digit_word digits) mod 90) mod 18 =
+      ((2 * double_reverse_msf_value digits) mod 90) mod 18"
+    by (simp only: double_reverse_doubled_digit_word_mod90[OF decimal])
+  then show ?thesis by (simp only: mod_mod_cancel[OF factor])
+qed
+
 text \<open>The 198-clock and terminal mod-5 projection determine the unique
 modulo-990 source residue.  This is a CRT uniqueness theorem for an already
 authenticated source; it does not supply either projection or a temporal
@@ -336,7 +348,7 @@ qed
 
 ML \<open>
   val checked = @{thms double_reverse_doubled_digit_word_mod90
-    double_reverse_mod990_projection_unique};
+    double_reverse_doubled_digit_word_mod18 double_reverse_mod990_projection_unique};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Double-reverse mod-90/990 refinement depends on an oracle";
   val _ = if Thm_Deps.has_skip_proof checked

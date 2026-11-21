@@ -122,7 +122,10 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
     family = "reverse-add"
     semantic_version = REVERSE_SOURCE_IMAGE_SEMANTIC_VERSION
 
-    def __init__(self, actions: ReverseActionArena) -> None:
+    def __init__(
+        self, actions: ReverseActionArena, *, shared_cache: bool = False
+    ) -> None:
+        self.shared_cache = shared_cache
         self.actions = actions
         self.ledger = actions.ledger
         self._ports: SourceCarryPorts | None = None
@@ -630,6 +633,7 @@ class ReverseSourceImageAdapter(SourceBoundImageAdapter):
             self.q19_output_owner,
             self.clear_query_output,
             owner_already_published=self._q19_owner is not None,
+            shared_cache=self.shared_cache,
         )
         if result is None:
             return None

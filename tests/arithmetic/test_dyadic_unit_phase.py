@@ -117,3 +117,46 @@ def test_frontiers_reject_untrusted_precision_and_noncanonical_phases() -> None:
         )
     with pytest.raises(TypeError):
         DyadicUnitPhase.from_exponent(3, True, 8)
+
+
+def test_signed_carry_frontier_transports_full_inlet_across_unequal_gaps() -> None:
+    source = -(1 << 122) + 71
+    offset = -287
+    width = 5
+    cuts = (121, 3, 53, 52, 53, 8, 9, *range(85, 102), 0)
+    phase = DyadicUnitPhase.from_exponent(15, 65, 126)
+    frontier = dyadic_carry_frontier(
+        phase, source, offset, cuts, carry_width=width, reserve_bits=lambda _bits: None
+    )
+    expected = tuple(
+        ((15**65 * (source % (1 << cut)) + offset % (1 << cut)) >> cut) % (1 << width)
+        for cut in cuts
+    )
+    assert tuple(cut.position for cut in frontier.cuts) == cuts
+    assert tuple(cut.carry for cut in frontier.cuts) == expected
+
+
+def test_packed_borrow_frontier_reports_internal_and_final_outlets_together() -> None:
+    raw_source, correction_source = -(1 << 63) + 41, -3
+    cuts = (29, 8, 14, 29, 0, 23, 8)
+    width = 7
+    precision = max(cuts) + width
+    raw_phase = DyadicUnitPhase.from_exponent(15, 31, precision)
+    correction_phase = DyadicUnitPhase.from_exponent(5, 31, precision)
+    frontier = dyadic_borrow_frontier(
+        raw_phase,
+        raw_source,
+        correction_phase,
+        correction_source,
+        cuts,
+        chunk_width=width,
+        reserve_bits=lambda _bits: None,
+    )
+    raw, correction = raw_source * 15**31, correction_source * 5**31
+    assert tuple(cut.position for cut in frontier.cuts) == cuts
+    for cut in frontier.cuts:
+        low = 1 << cut.position
+        high = low << width
+        assert cut.borrow_in == int(raw % low < correction % low)
+        assert cut.borrow_out == int(raw % high < correction % high)
+        assert cut.physical_chunk == ((raw - correction) // low) % (1 << width)

@@ -1,5 +1,7 @@
 """Run admission remains exact across causal execution and cleanup."""
 
+from __future__ import annotations
+
 from dataclasses import replace
 from typing import TYPE_CHECKING, TypeGuard, cast
 

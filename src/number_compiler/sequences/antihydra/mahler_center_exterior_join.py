@@ -273,17 +273,21 @@ class MahlerCenterExteriorJoin:
                 low_carry_map = low_carry_map.then(span_maps[index])
         if low_carry_map.digits != s:
             raise ArithmeticError("low-border carry map does not reach the center")
-        outside99 = sum(segment.residue(99) for segment in ordered) % 99
         outside198 = sum(segment.residue(198) for segment in ordered) % 198
-        rho99, rho198 = source % 99, source % 198
+        outside99 = outside198 % 99
+        rho396 = source % 396
+        rho198 = rho396 % 198
+        rho99 = rho198 % 99
+        center_place198 = pow(10, s, 198)
+        center_place99 = center_place198 % 99
         # 10 has multiplicative order two modulo 99, but it is not a unit
         # modulo 198. Do not attempt an inverse of ten modulo 198.
-        center_residue = (rho99 - outside99) * pow(pow(10, s, 99), -1, 99) % 99
+        center_residue = (rho99 - outside99) * pow(center_place99, -1, 99) % 99
         all_centers = tuple(
             c
             for c in range(block_mod)
             if c % 99 == center_residue
-            and (outside198 + pow(10, s, 198) * c - rho198) % 198 == 0
+            and (outside198 + center_place198 * c - rho198) % 198 == 0
         )
         if not all_centers or actual not in all_centers:
             raise ArithmeticError("outer/inner residue join lost the pointed center")
@@ -310,9 +314,7 @@ class MahlerCenterExteriorJoin:
             before_value = lower + low_mod * c + low_mod * block_mod * upper
             if next_value != (3 * before_value + eps) // 2:
                 raise ArithmeticError("center conditional carry action lost source")
-            if (outside99 + pow(10, s, 99) * c) % 99 != before_value % 99 or (
-                outside198 + pow(10, s, 198) * c
-            ) % 198 != before_value % 198:
+            if (outside198 + center_place198 * c) % 198 != before_value % 198:
                 raise ArithmeticError("center conditional source lost outer residue")
             bit_changes = _signed_bit_changes(c, next_center, width_bits)
             if sum(sign << bit for bit, sign in bit_changes) != next_center - c:
@@ -323,6 +325,7 @@ class MahlerCenterExteriorJoin:
             output_carry, delta, _ = counter.apply(0)
             if output_carry or delta != (2 * c + low_carry) % counter.modulus:
                 raise ArithmeticError("shared two-carry action lost tripling update")
+            next_mod198 = next_value % 198
             actions.append(
                 MahlerCenterCandidateAction(
                     c,
@@ -330,8 +333,8 @@ class MahlerCenterExteriorJoin:
                     low_carry,
                     high_carry,
                     inlet,
-                    next_value % 99,
-                    next_value % 198,
+                    next_mod198 % 99,
+                    next_mod198,
                     c ^ next_center,
                     bit_changes,
                     counter,
@@ -344,11 +347,8 @@ class MahlerCenterExteriorJoin:
             != pointed_center_after
         ):
             raise ArithmeticError("pointed center differs from conditional ring output")
-        # The next mod-99 clock requires 2*99 source precision, next mod-198
-        # needs 2*198. That additional source bit is deliberately retained.
-        if ((3 * (source % 198) + eps) // 2) % 99 != pointed_next % 99:
-            raise ArithmeticError("mod-99 temporal clock lost dyadic inlet")
-        if ((3 * (source % 396) + eps) // 2) % 198 != pointed_next % 198:
+        # Halving needs source precision 2*198 before either output reduction.
+        if ((3 * rho396 + eps) // 2) % 198 != pointed_next % 198:
             raise ArithmeticError("mod-198 temporal clock lost dyadic inlet")
         return cls(
             width,
@@ -360,8 +360,8 @@ class MahlerCenterExteriorJoin:
             outside198,
             rho99,
             rho198,
-            source % 396,
-            source % 6,
+            rho396,
+            rho396 % 6,
             tuple(actions),
             tuple(admitted),
             actual,
