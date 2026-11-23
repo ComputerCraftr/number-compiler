@@ -701,7 +701,7 @@ The migrated source/authority tests passed 109 cases in 19.40 seconds in
 
 The runner/provenance selection passed 68 tests in 12.49 seconds in
 `20261017T042544Z-3f04d075188b43a7a010f8778fe12890`. Profiling now has a fresh
-run-local file when requested with `COMMA_PROFILE_LOG=1`; explicit paths remain
+run-local file when requested with `ISABELLE_PROOF_PROFILE_LOG=1`; explicit paths remain
 caller-owned. The evidence manifest records the chosen path.
 
 Baseline Git `7e9a85d` was clean. All later results below are dirty-tree
@@ -712,7 +712,7 @@ and one session at a time. Python runs retain 60 seconds per test and 300 second
 per suite under 4 GiB.
 
 Commands use `devtools.checks.release`. Proof selection:
-`--suite proofs --session Comma_Semantic_B1_Instance`, with `COMMA_PROFILE_LOG=1`.
+`--suite proofs --session Comma_Semantic_B1_Instance`, with `ISABELLE_PROOF_PROFILE_LOG=1`.
 Focused unit selections cover column authority, semantic future, producer
 bridge, future provider and global prefix admission. Full suite: `--suite unit`.
 

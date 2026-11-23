@@ -36,4 +36,49 @@ struct
           comma_cyclotomic_phase_def comma_cyclotomic_clock.select_convs
           option.map option.case option.sel nth_Cons'} @ map residual_step (0 upto 8))
     in Comma_Decisive_Endpoint_Kernel.make ctxt step_context end
+
+  (* A caller retains one normalized program context for its checked points.
+     Formatting trace terms belongs to the explicitly requested profile. *)
+  fun class_step_tactic ctxt =
+    let
+      val profiling = Comma_Proof_Profile.enabled ()
+      fun report message =
+        if profiling then Comma_Proof_Profile.report ("Continue tails stage=" ^ message ()) else ()
+      val _ = report (K "setup-start")
+      val arithmetic = Comma_Entry_Arithmetic.signed_context ctxt
+      val expose = arithmetic |> Simplifier.add_simps @{thms
+        comma_semantic_phase_program_class_step_def
+        comma_semantic_phase_program_for_class_def
+        comma_offset_representatives_def nth_Cons'
+        comma_entry_control_program_def comma_finite_period_fast_def
+        comma_core_lift_parameters comma_phase_core_of_modulus_def option.case}
+      val endpoint = make ctxt
+      val step_context = #context endpoint
+      val _ = report (K "arithmetic-ready")
+      fun lhs cv = Conv.arg_conv (Conv.fun_conv (Conv.arg_conv cv))
+      val unfold_round = lhs (Conv.arg_conv (Conv.arg_conv
+        (Conv.rewr_conv (mk_meta_eq @{thm comma_semantic_phase_program_round_unfold}))))
+      fun selected_step ct =
+        let
+          val _ = report (fn () => "step-start term=" ^
+            Syntax.string_of_term ctxt (Thm.term_of ct))
+          val equation = Simplifier.rewrite step_context ct
+          val _ = report (fn () => "step-done result=" ^
+            Syntax.string_of_term ctxt (Thm.term_of (Thm.rhs_of equation)))
+        in equation end
+      val evaluate_step = lhs
+        (Conv.arg_conv (Conv.arg_conv (Conv.arg_conv selected_step)))
+      val finish = ctxt |> Simplifier.add_proc (#simproc endpoint)
+      val _ = report (K "finish-ready")
+      val layer = ALLGOALS
+        (CONVERSION (Conv.try_conv (unfold_round then_conv evaluate_step))
+          THEN' simp_tac finish)
+      fun traced label tactic =
+        if profiling then fn state =>
+          (report (fn () => label ^ "-start");
+           Seq.map (fn result =>
+             (report (fn () => label ^ "-done"); result)) (tactic state))
+        else tactic
+    in traced "expose" (ALLGOALS (simp_tac expose)) THEN
+      REPEAT_DETERM (CHANGED_PROP (traced "layer" layer)) end
 end

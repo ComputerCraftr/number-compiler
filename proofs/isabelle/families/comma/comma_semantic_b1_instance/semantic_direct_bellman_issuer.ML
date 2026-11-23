@@ -9,7 +9,6 @@ struct
   structure Evaluation = Comma_Direct_MDD_Evaluation
   structure Terminal_Proposal = Comma_Direct_Bellman_Terminal_Proposal
   structure Terminal_Proofs = Comma_Direct_Bellman_Terminal_Proofs
-  structure Bind = Comma_CRT_MDD_Bind_Replay
   structure Runtime = Comma_Frontier24_Parametric_Runtime
   structure Utils = Comma_CRT_MDD_Proof_Utils
   structure Program = Comma_Direct_Program_Bindings (
@@ -19,17 +18,55 @@ struct
     expressions:term list, program_bindings:(term * term) list, action_bindings:(term * term) list,
     body:term -> term, definition:term -> thm, expression_hits:int, program_requests:int}
   type projected = {arena:Arena.arena,classes:MDD.application list,sources:MDD.application list,
-    guards:MDD.guard list,applications:int,hits:int}
+    guards:MDD.guard list,applications:int,hits:int,selector_charts:int,
+    phase_statistics:string}
   type terminals = {terminal:Arena.arena -> term -> int -> Arena.action_root option,
     fallback:Arena.action_root,continuations:unit -> Terminal_Proposal.continued list,
     statistics:unit -> string}
-  type prepared = {expressions:expressions,projected:projected,terminals:terminals,
-    labels:int list}
+  type prepared = {expressions:expressions,projected:projected,terminals:terminals}
   type publication = {arena:Arena.arena,store:Store.store,roots:Arena.action_root list,
     roots_term:term,roots_definition:thm,D:term,D_definition:thm,prepared:prepared}
   val natT = @{typ nat}
   fun nat n = HOLogic.mk_number natT n
   fun tp term = HOLogic.mk_Trueprop term
+
+  (* Export the same operands the first Entry proof will consume. This
+     profiling trace is proposal data, outside the theorem dependency chain. *)
+  fun profile_first_bind arena applications =
+    let
+      val destination = getenv "ISABELLE_PROOF_PROFILE_LOG"
+      fun first_entry (MDD.Application {root,step,...}) =
+        (case step of
+            MDD.Entry (rows,selector) => SOME (root,rows,selector)
+          | MDD.Goto child => first_entry child
+          | MDD.Entry_One_Goto child => first_entry child
+          | MDD.Terminal => NONE)
+    in
+      if destination = "" orelse destination = "1" then ()
+      else
+        (case get_first first_entry applications of
+          NONE => ()
+        | SOME (result,rows,selector) =>
+            let
+              val operands = [#root (#chart selector),#fallback selector,result] @
+                map (MDD.root o #child) rows
+              val {seeds,roots,...} = Arena.export_actions arena operands
+              val (source,fallback,output,children) =
+                (case roots of s::f::r::cs => (s,f,r,cs)
+                  | _ => error "Incomplete first Entry bind profiling export")
+              fun array values = "[" ^ commas values ^ "]"
+              fun ints values = array (map Int.toString values)
+              fun node (Arena.Seed_Leaf payload) = ints [payload]
+                | node (Arena.Seed_Branch (axis,ids)) = array [Int.toString axis,ints ids]
+              val mapping = map (fn (row,id) => ints [#wanted row + 1,id]) (rows ~~ children)
+              val packet = "{" ^ commas
+                ["\"radices\":" ^ ints (Arena.radices arena),"\"nodes\":" ^ array (map node seeds),
+                 "\"source\":" ^ Int.toString source,"\"fallback\":" ^ Int.toString fallback,
+                 "\"output\":" ^ Int.toString output,"\"mapping\":" ^ array mapping] ^ "}"
+            in File.write (Path.explode (destination ^ ".first-bind.json"))
+              (packet ^ "\n") end)
+    end
+
   fun prepare {arena,roots} lthy =
     let
       val _ = Comma_Proof_Profile.report "Direct Bellman expression preparation start"
@@ -50,15 +87,14 @@ struct
         if Arena.action_index arena expected = Arena.action_index arena actual
         then () else error "Direct projected Bellman root differs from D")
         (roots ~~ outputs)
-      val labels = sort int_ord (fold (fn root => union (op =) (Arena.action_support arena root)) roots [])
-      val _ = if List.all (fn n => 0<=n andalso n<=242) labels then ()
-        else error "Direct Bellman candidate exceeds its admitted range"
       val _ = Comma_Proof_Profile.report
         ("Direct projected proposal expressions=" ^ Int.toString (length (#expressions expressions)) ^
          " applications=" ^ Int.toString (#applications proposed) ^
-         " nodes=" ^ Int.toString (Arena.node_count arena) ^ " " ^ #statistics terminals ())
-    in ({expressions=expressions,projected=proposed,terminals=terminals,
-      labels=labels},lthy') end
+         " selector_charts=" ^ Int.toString (#selector_charts proposed) ^
+         " nodes=" ^ Int.toString (Arena.node_count arena) ^ " " ^
+         #phase_statistics proposed ^ " " ^ #statistics terminals ())
+      val _ = profile_first_bind arena (#classes proposed)
+    in ({expressions=expressions,projected=proposed,terminals=terminals},lthy') end
 
   fun certify ({arena,store,roots,roots_term,roots_definition,D,D_definition,prepared}:publication) lthy =
     let
@@ -79,24 +115,20 @@ struct
       val phase = Free ("direct_bellman_phase",natT)
       val phase_ct = Thm.cterm_of ctxt phase
       val wf = Store.wellformed store
-      val cover = Bind.make store
-      val labels = #labels prepared
-      val label_term = HOLogic.mk_list natT (map nat labels)
-      val label_prop = @{term "\<lambda>xs::nat list. list_all (\<lambda>x. x\<le>242) xs"} $ label_term
-      val _ = checkpoint "payload-labels-start"
-      val label_fact = Utils.prove_exact ctxt "Direct Bellman payload labels" (tp (Envir.beta_norm label_prop))
-        (fn _ => simp_tac (Comma_Entry_Arithmetic.natural_context ctxt
-          |> Simplifier.add_simps @{thms list_all_Cons_iff list_all_Nil_iff}) 1)
-      val _ = checkpoint "payload-labels-complete"
+      val payload_cap = Store.payload_cap store 242
       val small = Comma_Entry_Arithmetic.natural_context ctxt
         |> Simplifier.add_simp roots_definition
         |> Simplifier.add_simps @{thms list.simps list.size nth_Cons_0 nth_Cons_Suc nth_Cons_numeral nth_Cons'}
       fun row (index,((cid,program,expression),application)) =
-        let
+        Comma_Proof_Profile.progress_scope "Comma_Semantic_B1_Instance" "b1-root"
+          (SOME cid) NONE "root" (fn parent => let
+          fun scope name work = Comma_Proof_Profile.progress_scope
+            "Comma_Semantic_B1_Instance" "b1-root" (SOME cid) parent name (fn _ => work ())
           fun row_checkpoint stage = if cid=0 then checkpoint ("class-0-" ^ stage) else ()
           val _ = row_checkpoint "start"
           val _ = if index=cid then () else error "Direct Bellman class ordering changed"
-          val left = Store.action_index store (List.nth (roots,cid))
+          val root = List.nth (roots,cid)
+          val left = Store.action_index store root
           val right = Store.action_index store (MDD.root application)
           val _ = if left=right then ()
             else error "Checked Bellman projection does not use the candidate root"
@@ -123,19 +155,21 @@ struct
             [selected_equation,Thm.symmetric D_definition] d_eval
           val _ = row_checkpoint "d-evaluation-complete"
           val _ = row_checkpoint "program-action-start"
-          val program_action = #program_action programs program
-            |> Thm.forall_elim phase_ct |> Thm.forall_elim (Thm.cterm_of ctxt (nat 0))
+          val program_action = scope "program-action" (fn () =>
+            #program_action programs program
+              |> Thm.forall_elim phase_ct |> Thm.forall_elim (Thm.cterm_of ctxt (nat 0)))
           val _ = row_checkpoint "program-action-complete"
           val _ = if cid = 0 then Comma_Proof_Profile.report
             ("Direct Bellman first program " ^ #statistics programs ()) else ()
           val _ = row_checkpoint "projected-evaluation-start"
-          val projected_eval = Thm.forall_elim phase_ct (#certify evaluator application)
+          val projected_eval = scope "projected-evaluation" (fn () =>
+            Thm.forall_elim phase_ct (#certify evaluator application))
           val _ = row_checkpoint "projected-evaluation-complete"
           val projected_eval = Simplifier.rewrite_rule (put_simpset HOL_basic_ss ctxt)
             [program_action RS @{thm eq_reflection}] projected_eval
           val value = D $ phase $ nat cid
-          val fold = @{term comma_semantic_phase_program_fold} $
-            @{term comma_phase_program_full_action_output} $ phase $ program $ nat 0
+          val fold = @{term "comma_semantic_phase_program_fold
+            comma_phase_program_full_action_output"} $ phase $ program $ nat 0
           val rhs = @{term comma_direct_bellman_mask_projection} $ D $ phase $ fold
           val projected_goal = tp (HOLogic.mk_eq (value,rhs))
           val point = Goal.prove ctxt [] [] projected_goal (fn {context,...} =>
@@ -143,20 +177,24 @@ struct
             auto_tac (Comma_Entry_Arithmetic.natural_context context
               |> Simplifier.add_simps @{thms option.simps}))
           val projected = Thm.forall_intr phase_ct point
-          val _ = row_checkpoint "payload-cover-start"
-          val payload = Bind.certify_cover cover left labels
-          val _ = row_checkpoint "payload-cover-complete"
-          val bounded_point = @{thm comma_frontier_m204_checked_payload_bound} OF
-            [wf,Store.bound store left,payload,label_fact,d_eval]
+          val _ = row_checkpoint "payload-cap-start"
+          val cap = scope "payload-cap" (fn () => payload_cap root)
+          val _ = row_checkpoint "payload-cap-complete"
+          val bounded_point = @{thm comma_crt_mdd_payload_cap_eval} OF
+            [wf,Store.bound store left,cap,d_eval]
           val bounded = Thm.forall_intr phase_ct bounded_point
           val _ = if (cid+1) mod 4=0 orelse cid=45 then
             Comma_Proof_Profile.report ("Direct Bellman class rows=" ^ Int.toString (cid+1) ^
               " " ^ #statistics evaluator () ^ " " ^ #statistics programs () ^ " " ^
               #statistics terminal_proofs ()) else ()
-        in {cid=cid,program=program,projected=projected,bounded=bounded} end
+        in {cid=cid,program=program,projected=projected,bounded=bounded} end)
       val bindings = map_index row (#classes expressions ~~ #classes proposal)
+      val _ = checkpoint "assembly-start"
       val bellman = Comma_Direct_Bellman_Publication.publish ctxt D bindings
+      val _ = checkpoint "assembly-complete"
+      val _ = checkpoint "dependency-audit-start"
       val _ = Comma_Proof_Dependency_Audit.require_native_clean ctxt "Direct projected Bellman" [bellman]
+      val _ = checkpoint "dependency-audit-complete"
       val (_,lthy') = Local_Theory.note
         ((Binding.name "comma_m204_direct_concrete_bellman_native",[]),[bellman]) lthy
     in lthy' end

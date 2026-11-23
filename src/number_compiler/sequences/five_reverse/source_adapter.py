@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 FIVE_REVERSE_IMAGE_VERSION: Final[str] = "five-reverse-decimal-source-v1"
 # Matched source-owner measurements show savings beginning at this horizon.
-_MIN_PACKED_STEPS: Final = 1024
+_MIN_PACKED_STEPS: Final = 64
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -244,20 +244,6 @@ class FiveReverseSourceAdapter:
         self._validate_view_source(source)
         exact = cast(FiveReverseAction, action)
         cumulative = self.compose_actions(source.binding.action, exact)
-        if (
-            exact.steps >= 256
-            and self.source.seed.bit_length() >= 425
-            and source.binding.action == FiveReverseAction(0)
-            and source.payload == self.source.seed
-        ):
-            from number_compiler.arithmetic.carry.reflected_h_power import (
-                padded_h_workload,
-            )
-
-            if padded_h_workload(
-                self.source.seed, exact.steps, self.term.max_state_bits
-            ):
-                return self.padded_source_candidate(exact, source)
         return self._candidate(
             self._apply_steps(cast(int, source.payload), exact.steps), cumulative
         )

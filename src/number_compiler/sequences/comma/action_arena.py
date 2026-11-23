@@ -158,6 +158,9 @@ class CommaActionArena:
         self._snapshots: LedgerList[tuple[object, ...]] = ledger.make_list(
             self._snapshot_owner, nodes_per_entry=0, append_only=False
         )
+        # Closed cycles and partial phase prefixes have arithmetic authority
+        # that arbitrary generic records must not be able to mint.
+        self._reserved_action_issuer = object()
         self._keys: LedgerDict[tuple[object, ...], CommaActionID] = ledger.make_dict(
             self._key_owner
         )
@@ -210,6 +213,43 @@ class CommaActionArena:
     def intern_record(
         self, key: tuple[object, ...], node: CommaActionRecord
     ) -> CommaActionID:
+        """Intern a generic action record, rejecting arithmetic-authority rows."""
+        return self._intern_record(key, node, reserved_issuer=None)
+
+    def _intern_reserved_record(
+        self,
+        key: tuple[object, ...],
+        node: CommaActionRecord,
+        *,
+        precharged_work: bool = False,
+    ) -> CommaActionID:
+        """Publish a cycle/prefix built by this arena's checked constructors."""
+        return self._intern_record(
+            key,
+            node,
+            reserved_issuer=self._reserved_action_issuer,
+            precharged_work=precharged_work,
+        )
+
+    def _intern_record(
+        self,
+        key: tuple[object, ...],
+        node: CommaActionRecord,
+        *,
+        reserved_issuer: object | None,
+        precharged_work: bool = False,
+    ) -> CommaActionID:
+        if node.kind in {"cycle", "phase-prefix"}:
+            expected_key = (
+                ("cycle", node.leading, node.entering_digit, node.cycles)
+                if node.kind == "cycle"
+                else ("phase-prefix", node.leading, node.entering_digit, node.steps)
+            )
+            if (
+                reserved_issuer is not self._reserved_action_issuer
+                or key != expected_key
+            ):
+                raise ValueError("comma action key aliases a different effect")
         self.ledger.bump(_comma_keys.COMMA_ACTION_REQUESTS)
         old = self._keys.get(key)
         if old is not None:
@@ -225,12 +265,14 @@ class CommaActionArena:
                 existing_snapshot = existing_snapshot[:-2]
             if requested_snapshot != existing_snapshot:
                 raise ValueError("comma action key aliases a different effect")
-            self.charge()
+            if not precharged_work:
+                self.charge()
             self.charge_bits(max(1, node.steps.bit_length()))
             self.ledger.bump(_comma_keys.COMMA_ACTION_HITS)
             return old
         self.ledger.bump(_comma_keys.COMMA_ACTION_MISSES)
-        self.charge()
+        if not precharged_work:
+            self.charge()
         self.charge_bits(
             max(1, node.steps.bit_length())
             + max(1, node.displacement.bit_length())
@@ -261,6 +303,20 @@ class CommaActionArena:
             self.ledger.release(self._snapshot_owner, entries=1)
             raise
         self.ledger.bump(_comma_keys.COMMA_ACTION_PUBLICATIONS)
+        return identifier
+
+    def _return_validated_hit(self, identifier: CommaActionID) -> CommaActionID:
+        """Publish hit counters after its caller checked and charged the row.
+
+        The phase-prefix and same-cycle paths authenticate ``identifier`` with
+        ``node`` and compare the complete fields implied by their inputs before
+        calling this helper. They also charge every potentially wide operation
+        before doing it, so this helper must not add another late refusal point.
+        The paths do not ask ``intern_record`` to load and seal-check the same
+        identifier a second time.
+        """
+        self.ledger.bump(_comma_keys.COMMA_ACTION_REQUESTS)
+        self.ledger.bump(_comma_keys.COMMA_ACTION_HITS)
         return identifier
 
     def node(self, identifier: CommaActionID) -> CommaActionRecord:
@@ -359,14 +415,43 @@ class CommaActionArena:
         Port dwell weights count diagonal rows. They never supply ``steps``:
         the source classifier recovers the physical phase before admission.
         """
-        transfer = self.transfer(leading, digit)
-        if type(steps) is not int or not 0 < steps < transfer.period:
+        if type(leading) is not int or not 1 <= leading <= 9:
+            raise ValueError("cycle leading digit must be 1 through 9")
+        if type(digit) is not int or not 0 <= digit <= 9:
+            raise ValueError("cycle phase must be 0 through 9")
+        phase_period = 10 // gcd(leading, 10)
+        if type(steps) is not int or not 0 < steps < phase_period:
             raise ValueError("comma phase prefix must be a positive partial orbit")
+        key = ("phase-prefix", leading, digit, steps)
+        issued = self._keys.get(key)
+        if issued is not None:
+            saved = self.node(issued)
+            self.charge()
+            self.charge_bits(
+                max(1, saved.steps.bit_length())
+                + max(1, saved.displacement.bit_length())
+                + max(1, saved.maximum_guard.bit_length())
+                + 1
+            )
+            if (
+                saved.kind != "phase-prefix"
+                or saved.leading != leading
+                or saved.entering_digit != digit
+                or saved.steps != steps
+                or saved.cycles != 0
+                or saved.maximum_guard != saved.displacement + int(leading < 9)
+            ):
+                raise ValueError("comma phase-prefix key aliases a different action")
+            return self._return_validated_hit(issued)
+
+        transfer = self.transfer(leading, digit)
+        if steps >= transfer.period:
+            raise ArithmeticError("cycle transfer disagrees with its digit period")
         self.charge(steps + 2)
         self.charge_bits(32 * steps)
         displacement = phase_prefix_displacement(leading, digit, steps)
-        return self.intern_record(
-            ("phase-prefix", leading, digit, steps),
+        return self._intern_reserved_record(
+            key,
             CommaActionRecord(
                 "phase-prefix",
                 steps,
@@ -406,32 +491,69 @@ class CommaActionArena:
             raise ValueError(
                 "occurrence-bound comma returns are applied as complete actions"
             )
-        self.charge_bits(left.steps.bit_length() + right.steps.bit_length())
+        self.charge_bits(left.steps.bit_length() + right.steps.bit_length() + 1)
         if (
             left.kind == right.kind == "cycle"
             and left.leading == right.leading
             and left.entering_digit == right.entering_digit
         ):
-            # Cycle count addition and the two additions / minimum comparison
-            # in PrefixSafety.then use both source operands, not just the
-            # normalized descriptor subsequently passed to the interner.
-            self.charge(4)
+            # Account for the potentially large cycle-counter addition before
+            # computing the normalized lookup key, on both cache-hit and
+            # publication paths.
+            self.charge()
+            self.charge_bits(left.cycles.bit_length() + right.cycles.bit_length() + 1)
+            cycles = left.cycles + right.cycles
+            key = ("cycle", left.leading, left.entering_digit, cycles)
+            issued = self._keys.get(key)
+            if issued is not None:
+                saved = self.node(issued)
+                # The hit check performs three more potentially wide sums.
+                # Reserve their work and the hit accounting before using the
+                # results, so budget refusal cannot follow the arithmetic.
+                self.charge(4)
+                self.charge_bits(
+                    left.steps.bit_length()
+                    + right.steps.bit_length()
+                    + left.displacement.bit_length()
+                    + right.displacement.bit_length()
+                    + left.displacement.bit_length()
+                    + right.maximum_guard.bit_length()
+                    + max(1, saved.steps.bit_length())
+                    + 3
+                )
+                combined_steps = left.steps + right.steps
+                combined_displacement = left.displacement + right.displacement
+                combined_guard = max(
+                    left.maximum_guard,
+                    left.displacement + right.maximum_guard,
+                )
+                if (
+                    saved.kind != "cycle"
+                    or saved.leading != left.leading
+                    or saved.entering_digit != left.entering_digit
+                    or saved.cycles != cycles
+                    or saved.steps != combined_steps
+                    or saved.displacement != combined_displacement
+                    or saved.maximum_guard != combined_guard
+                ):
+                    raise ValueError("comma cycle key aliases a different effect")
+                return self._return_validated_hit(issued)
+            # Reserve the PrefixSafety arithmetic and action publication
+            # before constructing either the safety summary or its row.
+            self.charge(5)
             self.charge_bits(
-                left.cycles.bit_length()
-                + right.cycles.bit_length()
-                + 2 * left.displacement.bit_length()
+                2 * left.displacement.bit_length()
                 + right.displacement.bit_length()
                 + right.maximum_guard.bit_length()
                 + left.maximum_guard.bit_length()
                 + max(left.displacement.bit_length(), right.maximum_guard.bit_length())
                 + 1
             )
-            cycles = left.cycles + right.cycles
             safety = PrefixSafety(-left.displacement, -left.maximum_guard).then(
                 PrefixSafety(-right.displacement, -right.maximum_guard)
             )
-            return self.intern_record(
-                ("cycle", left.leading, left.entering_digit, cycles),
+            return self._intern_reserved_record(
+                key,
                 CommaActionRecord(
                     "cycle",
                     left.steps + right.steps,
@@ -443,6 +565,7 @@ class CommaActionArena:
                     before=before,
                     after=after,
                 ),
+                precharged_work=True,
             )
         # Mixed effects retain chronological children. Equal durations alone
         # do not imply equal future output or admission at a seam.
@@ -479,7 +602,14 @@ class CommaActionArena:
         old = self._keys.get(key)
         if old is not None:
             try:
-                self.node(old)
+                saved = self.node(old)
+                if (
+                    saved.kind != "cycle"
+                    or saved.leading != leading
+                    or saved.entering_digit != phase
+                    or saved.cycles != count
+                ):
+                    raise ValueError("comma cycle key aliases a different effect")
             except Exception:
                 reuse.count("admission_rejections")
                 raise
@@ -487,7 +617,7 @@ class CommaActionArena:
             reuse.count("exact_hits")
             return old, True
         (steps, displacement, guard), hit = reuse.resolve(leading, digit, count)
-        return self.intern_record(
+        return self._intern_reserved_record(
             key,
             CommaActionRecord(
                 "cycle", steps, leading, phase, count, displacement, guard

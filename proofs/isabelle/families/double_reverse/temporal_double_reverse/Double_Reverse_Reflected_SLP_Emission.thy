@@ -51,6 +51,22 @@ theorem reflected_slp_scaled_decimal_exact:
       (rev (reflected_decimal_cells_run multiplier 0 (double_reverse_source_slp_word source))))"
   by (simp only: reflected_slp_cell_digits_exact reflected_slp_scale_cells_exact[OF assms])
 
+text \<open>The fused emitter processes the adjacent cells in reverse order.
+At a concatenation seam it emits the right response, then the seam, then the
+left response. This equation preserves the complete ordered output word.\<close>
+
+definition reflected_fused_interior ::
+  "(nat \<Rightarrow> nat \<Rightarrow> nat) \<Rightarrow> nat list \<Rightarrow> nat list" where
+  "reflected_fused_interior f cells = rev (double_reverse_adjacent f cells)"
+
+lemma reflected_fused_interior_append:
+  assumes "xs \<noteq> []" "ys \<noteq> []"
+  shows "reflected_fused_interior f (xs @ ys) =
+    reflected_fused_interior f ys @ [f (last xs) (hd ys)] @
+      reflected_fused_interior f xs"
+  using double_reverse_adjacent_append[OF assms, of f]
+  by (simp add: reflected_fused_interior_def append.assoc)
+
 theorem reflected_decimal_cells_run_value:
   assumes m: "multiplier = 2 \<or> multiplier = 5"
     and cells: "list_all (\<lambda>cell. cell < 100) source"
@@ -404,6 +420,7 @@ corollary reflected_even_final_arbitrary_msd:
 
 ML \<open>
   val checked = @{thms reflected_slp_scale_cells_exact reflected_slp_scaled_decimal_exact
+    reflected_fused_interior_append
     reflected_decimal_cells_run_value reflected_slp_scaled_decimal_value
     reflected_slp_scaled_trimmed_decimal_value reflected_even_final_reverse_value};
   val _ = if null (Thm_Deps.all_oracles checked) then ()

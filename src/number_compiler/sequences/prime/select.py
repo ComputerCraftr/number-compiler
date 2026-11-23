@@ -10,8 +10,9 @@ from __future__ import annotations
 from bisect import bisect_left
 from contextlib import ExitStack, closing
 from dataclasses import dataclass
+from enum import Enum
 from itertools import islice
-from math import isqrt
+from math import isqrt, log
 from os import urandom
 from typing import TYPE_CHECKING, Final
 
@@ -51,9 +52,26 @@ _PRIME_CACHE_SOURCE = (
     _PRIME_CACHE_ISSUER,
 )
 _PREFIX_KEY = ("admitted-prefix",)
+_WEIGHTED_INTERVAL_KEY: Final[str] = "weighted-interval-v1"
 _SHORT_SCAN_MIN_START: Final = 10_000
 _SHORT_SCAN_MAX_RELATIVE_INDEX: Final = 128
 _SHORT_SCAN_MAX_INITIAL_ODD_WINDOW: Final = 1024
+
+
+class RankPivotMode(Enum):
+    """Internal selection controls for matched exact-rank measurements."""
+
+    BISECTION = "bisection"
+    GUARDED = "guarded"
+
+
+class RankPivotReason(Enum):
+    DENSITY = _prime_keys.PRIME_PIVOT_DENSITY
+    INTERPOLATION = _prime_keys.PRIME_PIVOT_INTERPOLATION
+    FORCED_MIDPOINT = _prime_keys.PRIME_PIVOT_FORCED_MIDPOINT
+    SMALL_MIDPOINT = _prime_keys.PRIME_PIVOT_SMALL_MIDPOINT
+    LARGE_MIDPOINT = _prime_keys.PRIME_PIVOT_LARGE_MIDPOINT
+    INITIAL_SMALL = _prime_keys.PRIME_PIVOT_INITIAL_SMALL
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,10 +160,14 @@ class PrimePrefixRank:
         max_work: int,
         max_stages: int,
         shared_cache: bool = False,
+        _weighted: bool = False,
+        _fused_masks: bool = False,
     ) -> None:
         if type(max_stages) is not int or max_stages < 1:
             raise ValueError("prime stage budget must be a positive integer")
         self.max_stages = max_stages
+        self._weighted = _weighted
+        self._fused_masks = _fused_masks
         if type(shared_cache) is not bool:
             raise TypeError("prime shared-cache flag must be a boolean")
         self._lease: CacheLease | None = None
@@ -155,6 +177,12 @@ class PrimePrefixRank:
         self._cached_covered_root = 2
         self._cached_validated_count = 1
         self.admission_work = 0
+        self._weighted_interval_cache_enabled = (
+            _weighted
+            and max_states == 131_072
+            and max_work == 1_000_000
+            and max_stages == 4096
+        )
         factors: tuple[object, ...] = (2,)
         covered_root, validation_work = 2, 0
         cached_manifest_found = False
@@ -385,6 +413,36 @@ class PrimePrefixRank:
         if lower == upper:
             return 0
         self.cover(upper - 1)
+        if self._weighted and self.dag.factor_count >= 4:
+            self.require_coverage(isqrt(upper - 1))
+            lease = self._lease
+            cacheable = (
+                self._weighted_interval_cache_enabled
+                and lease is not None
+                and self.dag.shared_lease is lease
+            )
+            key = (_WEIGHTED_INTERVAL_KEY, lower, upper)
+            if cacheable and lease is not None:
+                cached = lease.get_issued(key, _PRIME_CACHE_RECORD_ISSUER, MISSING)
+                if cached is not MISSING:
+                    if type(cached) is not int or not 0 <= cached <= upper - lower:
+                        raise RuntimeError("invalid issued prime interval count")
+                    self.dag.charge()
+                    self.dag.ledger.bump(_prime_keys.PRIME_WEIGHTED_INTERVAL_HITS)
+                    return cached
+            prefix = self.dag.factor_rank(upper - 1) - self.dag.factor_rank(lower - 1)
+            survivors = self.dag.count_weighted_interval(
+                lower - 1,
+                upper - 1,
+                self.dag.factor_count,
+                fused_masks=self._fused_masks,
+            )
+            result = survivors + prefix
+            if not 0 <= result <= upper - lower:
+                raise RuntimeError("invalid computed prime interval count")
+            if cacheable and lease is not None:
+                lease.put_issued(key, result, _PRIME_CACHE_RECORD_ISSUER)
+            return result
         from number_compiler.sequences.prime.partial_successor_image import (
             PrimePartialSuccessorQuery,
         )
@@ -542,7 +600,38 @@ def _select_by_certified_short_wheel(
         rounds += 1
 
 
-def nth_prime_at_or_after(
+def guarded_rank_offset(
+    low: int,
+    high: int,
+    low_rank: int,
+    high_rank: int,
+    target: int,
+    physical_left: int,
+    round_index: int,
+) -> tuple[int, RankPivotReason]:
+    """Choose a bounded proposal; only an exact count can update the bracket."""
+    width = high - low
+    if width <= 1 or not (low_rank <= target < high_rank):
+        raise ValueError("prime pivot requires a nontrivial certified rank bracket")
+    midpoint = low + width // 2
+    if width <= 4:
+        return midpoint, RankPivotReason.SMALL_MIDPOINT
+    if round_index % 5 == 4:
+        return midpoint, RankPivotReason.FORCED_MIDPOINT
+    if round_index == 0:
+        distance = target - low_rank + 1
+        if distance.bit_length() > 50:
+            return midpoint, RankPivotReason.LARGE_MIDPOINT
+        offset = low + int(distance * log(physical_left + 2) / 2)
+        reason = RankPivotReason.DENSITY
+    else:
+        offset = low + (target - low_rank + 1) * width // (high_rank - low_rank)
+        reason = RankPivotReason.INTERPOLATION
+    guard = max(1, width // 8)
+    return min(high - guard, max(low + guard, offset)), reason
+
+
+def _nth_prime_at_or_after(
     start: int,
     index: int,
     *,
@@ -551,6 +640,9 @@ def nth_prime_at_or_after(
     max_work: int = 1_000_000,
     max_stages: int = 4096,
     shared_cache: bool = False,
+    _weighted: bool = False,
+    _fused_masks: bool = False,
+    _pivot: RankPivotMode = RankPivotMode.BISECTION,
 ) -> tuple[int, PrimeRankSelectMetrics]:
     """Return zero-based prime index at/above start, with finite work budgets.
 
@@ -568,6 +660,10 @@ def nth_prime_at_or_after(
         )
     if type(shared_cache) is not bool:
         raise TypeError("prime shared-cache flag must be a boolean")
+    if type(_pivot) is not RankPivotMode:
+        raise TypeError("prime rank pivot mode must be a RankPivotMode")
+    if _pivot is RankPivotMode.GUARDED and not _weighted:
+        raise ValueError("guarded rank pivot requires weighted interval admission")
     remaining = index
     if start <= 2:
         if remaining == 0:
@@ -581,11 +677,15 @@ def nth_prime_at_or_after(
     # unnecessary factor stages for the former 16*n odd-candidate overestimate.
     length = max(leaf_length, 4 * (remaining + 1))
     compilations = expansions = descents = max_length = 0
+    count = 0
+    pivot_counts: dict[RankPivotReason, int] = {}
     context = PrimePrefixRank(
         max_states=max_states,
         max_work=max_work,
         max_stages=max_stages,
         shared_cache=shared_cache,
+        _weighted=_weighted,
+        _fused_masks=_fused_masks,
     )
 
     def compile_count(block_start: int, block_length: int) -> int:
@@ -616,19 +716,53 @@ def nth_prime_at_or_after(
                 odd_start += 2 * length
                 length *= 2
                 expansions += 1
-        while length > 1:
-            left_length = length // 2
-            left_count = compile_count(odd_start, left_length)
-            if remaining < left_count:
-                length = left_length
-            else:
-                remaining -= left_count
-                odd_start += 2 * left_length
-                length -= left_length
-            descents += 1
+        if _pivot is RankPivotMode.GUARDED and not short_scan and 2 * length >= 2048:
+            left, right = 0, length
+            left_rank, right_rank = 0, count
+            target, block_start = remaining, odd_start
+            while right - left > 1:
+                pivot, reason = guarded_rank_offset(
+                    left,
+                    right,
+                    left_rank,
+                    right_rank,
+                    target,
+                    block_start + 2 * left,
+                    descents,
+                )
+                pivot_counts[reason] = pivot_counts.get(reason, 0) + 1
+                if not left < pivot < right:
+                    raise RuntimeError("prime pivot left its certified bracket")
+                mid_rank = left_rank + compile_count(
+                    block_start + 2 * left, pivot - left
+                )
+                if target < mid_rank:
+                    right, right_rank = pivot, mid_rank
+                else:
+                    left, left_rank = pivot, mid_rank
+                descents += 1
+            if right_rank - left_rank != 1 or target != left_rank:
+                raise RuntimeError("prime pivot did not isolate a prime")
+            odd_start = block_start + 2 * left
+            remaining = 0
+        else:
+            if _pivot is RankPivotMode.GUARDED and not short_scan:
+                pivot_counts[RankPivotReason.INITIAL_SMALL] = 1
+            while length > 1:
+                left_length = length // 2
+                left_count = compile_count(odd_start, left_length)
+                if remaining < left_count:
+                    length = left_length
+                else:
+                    remaining -= left_count
+                    odd_start += 2 * left_length
+                    length -= left_length
+                descents += 1
         dag = context.dag
+        for reason, count in pivot_counts.items():
+            dag.ledger.bump(reason.value, count)
         partial = context.partial_successor_query
-        if partial is None and not short_scan:
+        if partial is None and not short_scan and not _weighted:
             raise RuntimeError("prime selection did not publish its partial successor")
         scheduler_work = dag.ledger.counters.get(
             _prime_keys.PRIME_SUCCESSOR_SCHEDULER_WORK, 0
@@ -681,6 +815,8 @@ def nth_prime_at_or_after(
                             "source_image_",
                             "prime_partial_successor_",
                             "prime_successor_",
+                            "prime_weighted_",
+                            "prime_pivot_",
                         )
                     )
                 )
@@ -692,6 +828,45 @@ def nth_prime_at_or_after(
                 _prime_keys.PRIME_BIRTH_INNOVATION_STAGES, 0
             ),
         )
+
+
+def nth_prime_at_or_after(
+    start: int,
+    index: int,
+    *,
+    leaf_length: int = 8,
+    max_states: int = 131_072,
+    max_work: int = 1_000_000,
+    max_stages: int = 4096,
+    shared_cache: bool = False,
+) -> tuple[int, PrimeRankSelectMetrics]:
+    """Return the selected prime and its query-owned work measurements."""
+    weighted = (
+        type(start) is int
+        and type(index) is int
+        and 0 <= start < 2**24
+        and 200 <= index <= 4096
+        and leaf_length == 8
+        and max_states == 131_072
+        and max_work == 1_000_000
+        and max_stages == 4096
+    )
+    fused = weighted and 2**17 <= start < 2**21
+    pivot = (
+        RankPivotMode.GUARDED if weighted and start < 2**21 else RankPivotMode.BISECTION
+    )
+    return _nth_prime_at_or_after(
+        start,
+        index,
+        leaf_length=leaf_length,
+        max_states=max_states,
+        max_work=max_work,
+        max_stages=max_stages,
+        shared_cache=shared_cache,
+        _weighted=weighted,
+        _fused_masks=fused,
+        _pivot=pivot,
+    )
 
 
 __all__ = ["PrimeRankSelectMetrics", "nth_prime_at_or_after"]

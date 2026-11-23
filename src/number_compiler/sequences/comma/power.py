@@ -37,8 +37,10 @@ from number_compiler.sequences.comma.arithmetic import (
 )
 from number_compiler.sequences.comma.boundary_quotient import MacroTemplate
 from number_compiler.sequences.comma.boundary_receipt import (
+    BOUNDARY_RECEIPT_NODES,
     SOURCE,
     BoundaryPrefixCursor,
+    BoundaryPrefixWeights,
     BoundarySelectionReceipt,
     BoundarySelectionReceiptID,
     CommaImagePayload,
@@ -142,6 +144,7 @@ class CommaTerm:
         self._future_provider_lock = RLock()
         self._boundary_receipt_lock = RLock()
         self._boundary_receipt_transaction_depth = 0
+        self._boundary_prefix_weights = BoundaryPrefixWeights(self.arena)
         self._boundary_receipts_closing = False
         self._boundary_receipts_closed = False
         self._next_boundary_receipt_id = 0
@@ -180,7 +183,7 @@ class CommaTerm:
             BoundarySelectionReceiptID, BoundarySelectionReceipt
         ] = self.ledger.make_dict(
             self._boundary_receipt_owner,
-            nodes_per_entry=1,
+            nodes_per_entry=BOUNDARY_RECEIPT_NODES,
             write_once=True,
             key_type=BoundarySelectionReceiptID,
             value_type=BoundarySelectionReceipt,
@@ -276,13 +279,10 @@ class CommaTerm:
 
     @contextmanager
     def boundary_receipt_transaction(self) -> Generator[None, None, None]:
-        """Rollback receipts from one failed primitive publication scope.
+        """Roll back receipts from one failed primitive publication.
 
-        The scheduler enters this scope around a primitive candidate and its
-        core image publication. Comma boundary actions are primitive leaves;
-        composite actions finish their own candidate scope before the scheduler
-        visits either child. Reject nesting so a failed outer scope can never
-        roll back a receipt already referenced by a completed inner image.
+        The scope covers the scheduler's primitive candidate and core image.
+        Nesting could revoke a receipt still referenced by a published image.
         """
         with self._boundary_receipt_lock:
             if self._boundary_receipts_closed or self._boundary_receipts_closing:
@@ -316,7 +316,17 @@ class CommaTerm:
                     raise rollback_error from error
                 raise
             finally:
+                self._boundary_prefix_weights.clear()
                 self._boundary_receipt_transaction_depth = 0
+
+    def checked_boundary_prefix_steps(
+        self, template: MacroTemplate, exponent: int
+    ) -> int:
+        with self._boundary_receipt_lock:
+            self.require_open()
+            return self._boundary_prefix_weights.evaluate(
+                template, exponent, retain=self._boundary_receipt_transaction_depth != 0
+            )
 
     def audit_snapshot(self) -> CommaTermPayloadAuditSnapshot:
         """Expose exact retained stores through read-only audit views."""
@@ -637,6 +647,8 @@ class CommaTerm:
         # Its absolute index remains cumulative; the previous result's extent
         # belongs to the preceding action, not this newly admitted source.
         source_extent = 0
+        occurrence_count = len(self._occurrences)
+        seal_count = len(self._occurrence_seals)
         self.ledger.reserve_many(
             (
                 (self._occurrence_owner, 1, 1),
@@ -675,7 +687,7 @@ class CommaTerm:
             next_source = CommaOccurrenceID(
                 self._occurrence_token,
                 self._occurrence_kind,
-                len(self._occurrences),
+                occurrence_count,
             )
             record = CommaOccurrenceRecord(
                 image,
@@ -687,10 +699,8 @@ class CommaTerm:
             self._occurrences.append(record)
             self._occurrence_seals.append(record)
         except BaseException:
-            if len(self._occurrence_seals) > len(self._occurrences):
-                self._occurrence_seals.pop()
-            if len(self._occurrences) > len(self._occurrence_seals):
-                self._occurrences.pop()
+            self._occurrence_seals.rollback_unpublished(seal_count)
+            self._occurrences.rollback_unpublished(occurrence_count)
             self.ledger.release(self._occurrence_owner, entries=1, nodes=1)
             self.ledger.release(self._occurrence_seal_owner, entries=1, nodes=1)
             raise

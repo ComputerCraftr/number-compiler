@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, MutableMapping
+from collections.abc import Mapping, MutableMapping
 from typing import Protocol, cast
 
 import pytest
@@ -59,15 +59,6 @@ def _store_callable(
     arena: SemanticContinuationArena,
 ) -> _ArenaStore:
     return cast(_ArenaStore, object.__getattribute__(arena, "_store"))
-
-
-def _raw_action_callable(
-    module: object,
-) -> Callable[[BoundaryChart, int, CycleTransfer | None], object]:
-    return cast(
-        Callable[[BoundaryChart, int, CycleTransfer | None], object],
-        object.__getattribute__(module, "_raw_action"),
-    )
 
 
 def _next_id(arena: SemanticContinuationArena) -> int:
@@ -171,21 +162,22 @@ def test_failed_discovery_rolls_back_rows_and_reservations(
 ) -> None:
     arena = SemanticContinuationArena()
     source = _root(offset_representatives()[0])
-    original = _raw_action_callable(semantic)
+    original = object.__getattribute__(arena, "_entry_action")
     calls = 0
 
     def poison(
         source_value: BoundaryChart,
         phase: int,
-        transfer: CycleTransfer | None,
+        transfer: CycleTransfer,
+        added_keys: list[object],
     ) -> object:
         nonlocal calls
         calls += 1
         if calls == 3:
             raise RuntimeError("poisoned semantic action")
-        return original(source_value, phase, transfer)
+        return original(source_value, phase, transfer, added_keys)
 
-    monkeypatch.setattr(semantic, "_raw_action", poison)
+    monkeypatch.setattr(arena, "_entry_action", poison)
     with pytest.raises(RuntimeError, match="poisoned"):
         arena.compile(source)
     assert not _arena_mapping(arena, "_raw")
@@ -194,7 +186,7 @@ def test_failed_discovery_rolls_back_rows_and_reservations(
     assert arena.ledger.entries == 0
     assert arena.ledger.nodes == 0
     assert arena.ledger.counters["comma_semantic_action_failures"] == 1
-    monkeypatch.setattr(semantic, "_raw_action", original)
+    monkeypatch.setattr(arena, "_entry_action", original)
     identifier = arena.compile(source)
     assert arena.compile(source) == identifier
     assert arena.ledger.entries > 0

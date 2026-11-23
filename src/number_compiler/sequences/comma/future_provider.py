@@ -546,13 +546,15 @@ class SemanticFutureProvider:
         weights, phases, or extents.
         """
         self.require_runtime_admission()
-        _charge_work(charge_work, 1)
         if type(source) is not BoundaryState:
             raise TypeError("future lookup requires a validated BoundaryState")
-        self._require_table_bindings()
-        source_cid = self._source_classes.lookup(
-            source, charge_work=lambda amount: _charge_work(charge_work, amount)
-        )
+        source_signature = boundary_state_signature(source)
+        source_cid = self.source_class(source, charge_work=charge_work)
+        _charge_work(charge_work, 1)
+        if boundary_state_signature(source) != source_signature:
+            raise ValueError("future selection source changed during lookup")
+        if type(source_cid) is not int:
+            raise ValueError("semantic provider returned a malformed source CID")
         row = self._checked_class_row(source_cid)
         if row.control.kind != "fork" or row.control.fork_coefficient is None:
             raise ValueError("future source is not a Fork class")

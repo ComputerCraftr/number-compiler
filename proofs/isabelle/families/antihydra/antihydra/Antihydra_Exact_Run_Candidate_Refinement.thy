@@ -19,6 +19,62 @@ definition antihydra_exact_run_odd_symbols :: "nat \<Rightarrow> nat \<Rightarro
   "antihydra_exact_run_odd_symbols h width =
     sum_list (antihydra_family_bits h width)"
 
+lemma antihydra_fixed_source_orbit_and_word:
+  "antihydra_family_orbit 1 n = 1"
+  "antihydra_family_bits 1 n = replicate n 1"
+  by (induction n; simp add: antihydra_family_step_def)+
+
+lemma antihydra_fixed_source_word_delta:
+  "ledger_word_delta (replicate n 1) = - int n"
+  by (induction n; simp)
+
+lemma antihydra_fixed_source_word_minimum:
+  "ledger_word_minprefix (replicate n 1) = - int n"
+  by (induction n; simp add: min_def)
+
+lemma antihydra_zero_source_orbit_and_word:
+  "antihydra_family_orbit 0 n = 0"
+  "antihydra_family_bits 0 n = replicate n 0"
+  by (induction n; simp add: antihydra_family_step_def)+
+
+lemma antihydra_zero_source_word_fields:
+  "ledger_word_delta (replicate n 0) = 2 * int n"
+  "ledger_word_minprefix (replicate n 0) = 0"
+  by (induction n; simp add: algebra_simps)+
+
+theorem antihydra_zero_source_leaf_fields:
+  "antihydra_family_orbit 0 n = 0"
+  "antihydra_family_balance 0 0 n = 2 * int n"
+  "antihydra_family_minimum 0 0 n = 0"
+  "antihydra_exact_run_odd_symbols 0 n = 0"
+  by (simp_all only: antihydra_zero_source_orbit_and_word
+      antihydra_zero_source_word_fields antihydra_family_balance_def
+      antihydra_family_minimum_def antihydra_exact_run_odd_symbols_def
+      sum_list_replicate mult_zero_right add.left_neutral)
+
+theorem antihydra_zero_cylinder_leaf_fields:
+  "antihydra_family_orbit (2^n*q) n = 3^n*q"
+  "antihydra_family_balance (2^n*q) 0 n = 2 * int n"
+  "antihydra_family_minimum (2^n*q) 0 n = 0"
+  "antihydra_family_bits (2^n*q) n = replicate n 0"
+  using antihydra_family_orbit_cylinder_transport[of 0 n q]
+    antihydra_family_balance_cylinder_transport[of 0 n q 0]
+    antihydra_family_minimum_cylinder_transport[of 0 n q 0]
+    antihydra_family_bits_cylinder_transport[of 0 n q]
+    antihydra_zero_source_leaf_fields antihydra_zero_source_orbit_and_word
+  by (simp_all only: add.left_neutral)
+
+theorem antihydra_fixed_source_leaf_fields:
+  "antihydra_family_orbit 1 n = 1"
+  "antihydra_family_balance 1 0 n = - int n"
+  "antihydra_family_minimum 1 0 n = - int n"
+  "antihydra_exact_run_odd_symbols 1 n = n"
+  by (simp_all only: antihydra_fixed_source_orbit_and_word
+      antihydra_fixed_source_word_delta antihydra_fixed_source_word_minimum
+      antihydra_family_balance_def antihydra_family_minimum_def
+      antihydra_exact_run_odd_symbols_def sum_list_replicate of_nat_id
+      mult.right_neutral add.left_neutral)
+
 lemma antihydra_binary_word_sum_is_one_count:
   assumes binary: "\<And>b. b \<in> set bits \<Longrightarrow> b < 2"
   shows "sum_list bits = count_list bits 1"
@@ -309,6 +365,9 @@ theorem antihydra_repeat_source_endpoint:
 
 ML \<open>
   val checked = @{thms antihydra_binary_word_sum_is_one_count
+    antihydra_fixed_source_leaf_fields
+    antihydra_zero_source_leaf_fields
+    antihydra_zero_cylinder_leaf_fields
     antihydra_exact_run_candidate_fields
     antihydra_exact_run_candidate_composes
     antihydra_rotated_phase_ordered_correction antihydra_rotated_source_guard_pullback

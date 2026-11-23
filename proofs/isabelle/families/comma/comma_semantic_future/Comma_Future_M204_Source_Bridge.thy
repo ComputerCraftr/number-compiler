@@ -141,6 +141,48 @@ proof -
       comma_semantic_boundary_children_def comma_native_boundary_children_def)
 qed
 
+text \<open>Once a source-bound typed summary is selected, the physical
+crossing has a direct ordered boundary refinement. This bridge does not use
+an M204 value, a numeric Stop code, or a global Bellman certificate.\<close>
+
+lemma comma_future_typed_crossing_ordered_children:
+  fixes q :: comma_boundary_state
+    and provider :: "comma_decade_state \<Rightarrow> comma_decade_residual option"
+  assumes valid: "comma_boundary_valid q"
+    and close: "comma_round_close (snd (snd q)) (comma_finite_initial q) =
+      (steps,final,Comma_Round_Cross (Comma_Entry 1 1 x))"
+    and selected: "provider
+      (Comma_Decade ((snd (snd q)+1) mod 924) x) = Some (h,tau)"
+  shows "comma_semantic_boundary_control_step provider q =
+      Some (comma_semantic_boundary_control_of (comma_summary_outcome (h+1) tau))"
+    and "comma_semantic_boundary_children provider q
+      (comma_semantic_boundary_control_of (comma_summary_outcome (h+1) tau)) =
+      (case tau of Comma_Terminal_Fork a \<Rightarrow>
+        [(Comma_N,a,(snd (snd q)+1+h) mod 924),
+         (Comma_Z,a,(snd (snd q)+1+h) mod 924)]
+       | Comma_Terminal_Landmine \<Rightarrow> [])"
+proof -
+  obtain kind a phase where q: "q=(kind,a,phase)" by (cases q) auto
+  have off: "x \<le> 90"
+    using comma_round_close_crossing_shape[OF close] by auto
+  have boundary: "comma_semantic_boundary_step provider q =
+      Some (comma_summary_outcome (h+1) tau)"
+    using valid close selected off q
+    by (simp add: comma_semantic_boundary_step_def)
+  show "comma_semantic_boundary_control_step provider q =
+      Some (comma_semantic_boundary_control_of (comma_summary_outcome (h+1) tau))"
+    using boundary by (simp add: comma_semantic_boundary_control_step_def)
+  show "comma_semantic_boundary_children provider q
+      (comma_semantic_boundary_control_of (comma_summary_outcome (h+1) tau)) =
+      (case tau of Comma_Terminal_Fork a \<Rightarrow>
+        [(Comma_N,a,(snd (snd q)+1+h) mod 924),
+         (Comma_Z,a,(snd (snd q)+1+h) mod 924)]
+       | Comma_Terminal_Landmine \<Rightarrow> [])"
+    using boundary q by (cases tau)
+      (simp_all add: comma_semantic_boundary_children_def comma_native_boundary_children_def
+        comma_summary_outcome.simps add.assoc add.commute add.left_commute)
+qed
+
 theorem comma_future_m204_crossing_source_exact:
   fixes q :: comma_boundary_state
   assumes cert: "comma_frontier_m204_bellman D"
@@ -185,22 +227,17 @@ proof -
   have digit: "comma_terminal_weight_digit tau = D ?phase (comma_offset_orbit x) mod 9"
     using decoded comma_terminal_weight_terminal_digit[of "D ?phase (comma_offset_orbit x) mod 9"]
     by (simp add: comma_terminal_weight_decode_def)
-  have boundary: "comma_semantic_boundary_step comma_semantic_decade_summary q =
-      Some (comma_summary_outcome (h+1) tau)"
-    using valid close selected off q
-    by (simp add: comma_semantic_boundary_step_def)
   have control: "comma_semantic_boundary_control_step comma_semantic_decade_summary q =
       Some (comma_semantic_boundary_control_of (comma_summary_outcome (h+1) tau))"
-    using boundary by (simp add: comma_semantic_boundary_control_step_def)
-  have children: "comma_semantic_boundary_children comma_semantic_decade_summary q
+    and children: "comma_semantic_boundary_children comma_semantic_decade_summary q
       (comma_semantic_boundary_control_of (comma_summary_outcome (h+1) tau)) =
       (case tau of Comma_Terminal_Fork a \<Rightarrow>
         [(Comma_N,a,(snd (snd q)+1+h) mod 924),
          (Comma_Z,a,(snd (snd q)+1+h) mod 924)]
        | Comma_Terminal_Landmine \<Rightarrow> [])"
-    using boundary q by (cases tau)
-      (simp_all add: comma_semantic_boundary_children_def comma_native_boundary_children_def
-        comma_summary_outcome.simps add.assoc add.commute add.left_commute)
+    using comma_future_typed_crossing_ordered_children
+      [where provider=comma_semantic_decade_summary and q=q and steps=steps
+        and final=final and x=x and h=h and tau=tau, OF valid close selected] by blast+
   show thesis by (rule that[OF off bound summary encoded height digit control children])
 qed
 
@@ -370,6 +407,10 @@ ML \<open>
       comma_future_m204_summary_lookup comma_future_m204_provider_exact
       comma_future_m204_direct_fork_source comma_future_m204_direct_landmine_source
       comma_future_m204_crossing_source_exact comma_future_m204_source_output_exact};
+  val _ = Comma_Proof_Dependency_Audit.require_paths @{context}
+    "Typed crossing ordered children"
+    ["comma_frontier_m204_bellman", "comma_future_m204_summary_lookup"]
+    @{thms comma_future_typed_crossing_ordered_children};
 \<close>
 
 end

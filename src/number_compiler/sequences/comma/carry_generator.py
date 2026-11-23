@@ -213,6 +213,60 @@ def _fixed_sector_displacement(
     return phase_prefix_displacement_from_transfer(transfer, steps)
 
 
+def c1_return_values(
+    start: C1Phase,
+    steps: int,
+    *,
+    charge_work: WorkCharge | None = None,
+    charge_bits: BitsCharge | None = None,
+) -> tuple[C1Phase, int, int]:
+    """Project the target, exact carry count and displacement without issuing a return."""
+    if type(start) is not C1Phase:
+        raise TypeError("comma c1 return requires a C1Phase source")
+    _validate_phase(start)
+    if type(steps) is not int or steps < 0:
+        raise ValueError("comma c1 duration must be a nonnegative integer")
+    charge_carry_work(
+        charge_work,
+        charge_bits,
+        8,
+        steps,
+        start.suffix,
+        extra_bits=4 * steps.bit_length() + 96,
+    )
+    target = start.advance(steps, charge_work=charge_work, charge_bits=charge_bits)
+    displacement = _fixed_sector_displacement(
+        start,
+        steps,
+        charge_work=charge_work,
+        charge_bits=charge_bits,
+    )
+    charge_carry_work(
+        charge_work,
+        charge_bits,
+        1,
+        start.suffix,
+        displacement,
+        target.suffix,
+        extra_bits=2,
+    )
+    numerator = start.suffix + displacement - target.suffix
+    if numerator < 0 or numerator % 100:
+        raise ArithmeticError("powered comma c1 displacement has a bad endpoint")
+    count = numerator // 100
+    charge_carry_work(
+        charge_work,
+        charge_bits,
+        1,
+        displacement,
+        numerator,
+        count,
+        steps,
+        extra_bits=1,
+    )
+    return target, count, displacement
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class C1Return:
     """An immutable powered return whose endpoint and count are derived.
@@ -237,48 +291,8 @@ class C1Return:
         charge_work: WorkCharge | None = None,
         charge_bits: BitsCharge | None = None,
     ) -> None:
-        if type(start) is not C1Phase:
-            raise TypeError("comma c1 return requires a C1Phase source")
-        _validate_phase(start)
-        if type(steps) is not int or steps < 0:
-            raise ValueError("comma c1 duration must be a nonnegative integer")
-        charge_carry_work(
-            charge_work,
-            charge_bits,
-            8,
-            steps,
-            start.suffix,
-            extra_bits=4 * steps.bit_length() + 96,
-        )
-        target = start.advance(steps, charge_work=charge_work, charge_bits=charge_bits)
-        displacement = _fixed_sector_displacement(
-            start,
-            steps,
-            charge_work=charge_work,
-            charge_bits=charge_bits,
-        )
-        charge_carry_work(
-            charge_work,
-            charge_bits,
-            1,
-            start.suffix,
-            displacement,
-            target.suffix,
-            extra_bits=2,
-        )
-        numerator = start.suffix + displacement - target.suffix
-        if numerator < 0 or numerator % 100:
-            raise ArithmeticError("powered comma c1 displacement has a bad endpoint")
-        count = numerator // 100
-        charge_carry_work(
-            charge_work,
-            charge_bits,
-            1,
-            displacement,
-            numerator,
-            count,
-            steps,
-            extra_bits=1,
+        target, count, _displacement = c1_return_values(
+            start, steps, charge_work=charge_work, charge_bits=charge_bits
         )
         _initialize_return(self, start, target, steps, count)
 

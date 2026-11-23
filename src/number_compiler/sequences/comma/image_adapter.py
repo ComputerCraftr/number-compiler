@@ -36,6 +36,7 @@ from number_compiler.sequences.comma.arithmetic import (
 )
 from number_compiler.sequences.comma.boundary_quotient import (
     PERIOD,
+    AffineWeight,
     BoundaryState,
     MacroTemplate,
 )
@@ -575,8 +576,18 @@ class CommaImageAdapter(SourceBoundImageAdapter):
             )
             value = selected.literal_value
             steps = selected.total_transition_count
-            weighted_steps = selected.weighted_action.weight.evaluate(
-                selected.source.exponent, charge_bits=self.arena.charge_bits
+            expected_weight = AffineWeight(
+                template.weight.numerator_scale,
+                template.weight.numerator_offset + template.weight.denominator,
+                template.weight.denominator,
+            )
+            if selected.weighted_action.weight != expected_weight:
+                raise ValueError(
+                    "comma weighted return differs from its exact endpoint"
+                )
+            weighted_steps = (
+                owner.checked_boundary_prefix_steps(template, selected.source.exponent)
+                + 1
             )
             if weighted_steps != steps:
                 raise ValueError(
@@ -588,6 +599,8 @@ class CommaImageAdapter(SourceBoundImageAdapter):
                 source_value=payload.value,
                 source_index=payload.absolute_index,
                 source_extent=source.binding.extent,
+                charge_work=self.arena.charge,
+                charge_bits=self.arena.charge_bits,
             )
             owner = self._term
             if owner is None:

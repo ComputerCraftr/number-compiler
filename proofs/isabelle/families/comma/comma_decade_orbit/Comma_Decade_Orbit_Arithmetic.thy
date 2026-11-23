@@ -8,9 +8,10 @@ struct
   val started = Time.now ()
   fun report stage =
     let
-      val destination = getenv "COMMA_PROFILE_LOG"
+      val destination = getenv "ISABELLE_PROOF_PROFILE_LOG"
       val line = "Decade orbit arithmetic stage=" ^ stage ^ " elapsed_ms=" ^
-        LargeInt.toString (Time.toMilliseconds (Time.- (Time.now (), started)))
+        LargeInt.toString (Time.toMilliseconds (Time.- (Time.now (), started))) ^
+        " family=comma"
     in
       if destination = "" then ()
       else

@@ -30,6 +30,31 @@ class OrderedDigitBandFrame:
     upper_source_letters: int
 
 
+def ordered_digit_band_frame(
+    tick_offset: int,
+    source_width: int,
+    width: int,
+    digit_from_least_significant: Callable[[int], int],
+) -> OrderedDigitBandFrame:
+    """Read an issued source's two padded, MSD-first bands.
+
+    The reader's zero coordinate is the least-significant physical digit.
+    Authentication and accounting remain with the issuing source owner.
+    """
+    lower = tuple(
+        digit_from_least_significant(position) if position < source_width else 0
+        for position in range(width - 1, -1, -1)
+    )
+    upper = tuple(
+        digit_from_least_significant(source_width - position - 1)
+        if position < source_width
+        else 0
+        for position in range(width)
+    )
+    letters = min(width, source_width)
+    return OrderedDigitBandFrame(tick_offset, lower, upper, letters, letters)
+
+
 def ordered_digit_band_output(
     source_index: int,
     steps: int,

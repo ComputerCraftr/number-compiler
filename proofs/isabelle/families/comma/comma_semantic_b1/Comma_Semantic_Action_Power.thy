@@ -109,14 +109,13 @@ next
     using composition_eq semantic_square by simp
 qed
 
-lemma comma_semantic_b1_action_stop_from_exact_summary:
+lemma comma_semantic_b1_action_b32_from_exact_summary:
   assumes phase: "phase<924" and root: "root<46"
     and summary: "comma_decade_exact_summary
       (Comma_Decade phase (comma_offset_representatives!root)) h terminal"
-    and height_bound: "h\<le>26"
+    and height_bound: "h<32"
   shows "comma_semantic_b1_action_power 5 phase root =
-      Comma_Semantic_B1_Stop (comma_terminal_weight_encode h terminal)
-    \<and> comma_terminal_weight_encode h terminal\<le>242"
+      Comma_Semantic_B1_Stop (comma_terminal_weight_encode h terminal)"
 proof -
   let ?source = "Comma_Decade phase (comma_offset_representatives!root)"
   have representative: "comma_offset_representatives!root\<le>90"
@@ -142,24 +141,37 @@ proof -
     "comma_semantic_b1_action_power 5 phase root=
       comma_semantic_b1_of_word (comma_orbit_word 5 phase root)"
     by (rule comma_semantic_b1_action_power_refines_orbit[OF phase root])
-  have action_equation:
-    "comma_semantic_b1_action_power 5 phase root=
+  show ?thesis using semantic_refinement orbit_stop by simp
+qed
+
+
+lemma comma_semantic_b1_action_stop_from_exact_summary:
+  assumes phase: "phase<924" and root: "root<46"
+    and summary: "comma_decade_exact_summary
+      (Comma_Decade phase (comma_offset_representatives!root)) h terminal"
+    and height_bound: "h\<le>26"
+  shows "comma_semantic_b1_action_power 5 phase root =
+      Comma_Semantic_B1_Stop (comma_terminal_weight_encode h terminal)
+    \<and> comma_terminal_weight_encode h terminal\<le>242"
+proof -
+  have action: "comma_semantic_b1_action_power 5 phase root =
       Comma_Semantic_B1_Stop (comma_terminal_weight_encode h terminal)"
-    using semantic_refinement orbit_stop by simp
-  have terminal_admitted:
-    "comma_terminal_weight_admitted terminal"
+    by (rule comma_semantic_b1_action_b32_from_exact_summary[OF phase root summary])
+      (use height_bound in arith)
+  have terminal_admitted: "comma_terminal_weight_admitted terminal"
     by (rule comma_decade_exact_summary_terminal_admitted[OF summary])
   have digit_bound: "comma_terminal_weight_digit terminal<9"
     by (rule comma_terminal_weight_digit_bound[OF terminal_admitted])
   have weight_bound: "comma_terminal_weight_encode h terminal\<le>242"
     using height_bound digit_bound
     by (simp add: comma_terminal_weight_encode_def; arith)
-  show ?thesis using action_equation weight_bound by blast
+  show ?thesis using action weight_bound by blast
 qed
 
 ML \<open>
   val checked = @{thms
     comma_semantic_b1_action_power_refines_orbit
+    comma_semantic_b1_action_b32_from_exact_summary
     comma_semantic_b1_action_stop_from_exact_summary};
   val _ = Thm.consolidate checked;
   val _ = Comma_Proof_Dependency_Audit.require_native_clean @{context}

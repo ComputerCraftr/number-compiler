@@ -13,6 +13,7 @@ def register_reverse_pair_output_contract(
     arena_owners: tuple[int, int, int, int],
     summary_owner: int,
     issued_owner: int,
+    frontier_owner: int,
     word_fibers_owner: int,
     border_owner: int,
     controlled_gt_owner: int,
@@ -74,6 +75,7 @@ def register_reverse_pair_output_contract(
             )
         ),
     )
+    rows += ((frontier_owner, "_audit_frontiers", "observation_memo"),)
     bindings = tuple(PayloadAuditStoreBinding(*row) for row in rows)
     ledger.register_payload_audit_contract(
         root, "reverse_add", bindings, audit_reverse_pair_output_owner

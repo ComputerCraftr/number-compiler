@@ -16,6 +16,7 @@ from number_compiler.sequences.comma.boundary_quotient import (
     PERIOD,
     AffineWeight,
     BoundaryState,
+    CompletedMacroReturn,
     MacroTemplate,
 )
 
@@ -92,10 +93,18 @@ class WeightedBoundaryAction:
 
     @classmethod
     def from_selected_fork(
-        cls, macro: MacroTemplate, selected_child: BoundaryState
+        cls, macro: MacroTemplate | CompletedMacroReturn, selected_child: BoundaryState
     ) -> WeightedBoundaryAction:
         """Add the one fork-choice tick; this does not certify selection."""
-        if type(macro) is not MacroTemplate or macro.outcome != "fork":
+        if type(macro) is CompletedMacroReturn:
+            from number_compiler.sequences.comma.boundary_return import (
+                validate_completed_macro_return,
+            )
+
+            validate_completed_macro_return(macro)
+        elif type(macro) is not MacroTemplate:
+            raise ValueError("weighted boundary return requires a fork macro")
+        if macro.outcome != "fork":
             raise ValueError("weighted boundary return requires a fork macro")
         if (
             type(selected_child) is not BoundaryState
@@ -295,14 +304,22 @@ class RepeatedBoundaryReturn:
 
         if charge is not None:
             charge(1)
+        delta = self.base.exponent_delta
         if charge_bits is not None:
             charge_bits(
                 weight.numerator_offset.bit_length()
                 + self.count.bit_length()
                 + transitions.bit_length()
                 + weight.denominator.bit_length()
+                + delta.bit_length()
             )
-        minimum_constant = min(0, weight.numerator_offset * self.count)
+        # A repeated positive-scale action has positive exponent gain. The
+        # first difference of successive weights is a positive integer; each
+        # later difference is 10**delta times the preceding one. Completing
+        # k >= 2 copies therefore costs at least 10**((k-2)*delta), even with
+        # a negative affine offset. Bound the scratch ladder by what can fit.
+        limit = min(self.count, 2 + (transitions.bit_length() - 1) // (3 * delta))
+        minimum_constant = min(0, weight.numerator_offset * limit)
         threshold = (transitions + 1) * weight.denominator - minimum_constant
         if exponent > threshold.bit_length():
             return 0, transitions
@@ -313,13 +330,6 @@ class RepeatedBoundaryReturn:
         if charge_bits is not None:
             charge_bits(weight.numerator_scale.bit_length() + source_scale.bit_length())
         geometric_cap = max(1, (threshold + a - 1) // a)
-        delta = self.base.exponent_delta
-        if delta == 0:
-            # A zero-duration complete Q-return is the identity and has zero
-            # weight under the action constructor invariant.
-            if transitions:
-                raise ValueError("comma literal offset exceeds repeated return")
-            return self.count, 0
         if delta > geometric_cap.bit_length():
             radix = geometric_cap
         else:
@@ -344,7 +354,7 @@ class RepeatedBoundaryReturn:
 
         block = SkewTransfer(1, 1, radix)
         blocks: list[SkewTransfer[int]] = []
-        for _ in range(self.count.bit_length()):
+        for _ in range(limit.bit_length()):
             if charge is not None:
                 charge(1)
             blocks.append(block)
@@ -356,7 +366,7 @@ class RepeatedBoundaryReturn:
             if charge is not None:
                 charge(1)
             candidate_count = completed + (1 << level)
-            if candidate_count > self.count:
+            if candidate_count > limit:
                 continue
             candidate = compose(prefix, blocks[level])
             candidate_sum = candidate.offset

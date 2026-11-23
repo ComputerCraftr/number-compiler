@@ -48,7 +48,7 @@ local_setup \<open>fn lthy =>
           [#correct (#layer checked), #complete checked]
         val interval = Simplifier.simplify numeral
           (@{thm comma_B5_orbit_interval_singleton} OF [phase_fact])
-        val _ = if getenv "COMMA_PROFILE_LOG" = "" then () else
+        val _ = if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then () else
           Comma_Fast_Kernel.report
             ("B5 orbit checked phase=" ^ Int.toString phase ^ " " ^ #report engine ())
       in push (phase, phase+1, interval) stack end

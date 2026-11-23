@@ -9,6 +9,7 @@ from number_compiler.arithmetic.contracts.block_effect import BlockContextBudget
 from number_compiler.arithmetic.contracts.ordered_output import OrderedSourceCoverage
 from number_compiler.arithmetic.fields.ordered_band import (
     OrderedDigitBandFrame,
+    ordered_digit_band_frame,
     ordered_digit_band_output,
 )
 
@@ -96,3 +97,26 @@ def test_ordered_band_preflights_modulus_before_reserving() -> None:
             source_coverage=OrderedSourceCoverage.SCHEDULER_WINDOW,
         )
     assert not reserved
+
+
+@pytest.mark.parametrize("width", [1, 3, 6])
+def test_source_frames_read_little_endian_positions_with_exact_padding(
+    width: int,
+) -> None:
+    digits = (3, 2, 1, 0)
+    visited: list[int] = []
+
+    def read(position: int) -> int:
+        visited.append(position)
+        return digits[position]
+
+    frame = ordered_digit_band_frame(7, len(digits), width, read)
+    assert frame.tick_offset == 7
+    assert frame.lower_digits == tuple(
+        digits[i] if i < len(digits) else 0 for i in range(width - 1, -1, -1)
+    )
+    assert frame.upper_digits == tuple(
+        digits[len(digits) - 1 - i] if i < len(digits) else 0 for i in range(width)
+    )
+    assert frame.lower_source_letters == frame.upper_source_letters == min(width, 4)
+    assert len(visited) == 2 * min(width, 4)

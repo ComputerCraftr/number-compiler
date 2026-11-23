@@ -33,6 +33,9 @@ struct
       val program_hits = Unsynchronized.ref 0
       val action_proofs = Unsynchronized.ref 0
       val action_hits = Unsynchronized.ref 0
+      (* The local relation stores share already checked proof nodes. The
+         release consumers still audit their complete theorem for banned paths. *)
+      val (certify_native,native_stats) = Comma_Entry_Arithmetic.make_certifier ctxt
       val started = Time.now ()
       fun checkpoint kind count label =
         if count <= 1 orelse count mod 64 = 0 then Comma_Proof_Profile.report
@@ -113,7 +116,7 @@ struct
                       @{thms comma_decade_root_admitted_def}))))
               val theorem = Entry.fold_expression ctxt "Direct source relation"
                 @{term comma_direct_source_relation} action expr expression_definition theorem
-              val _ = Comma_Proof_Dependency_Audit.require_native_clean ctxt "Direct source relation" [theorem]
+                |> certify_native
               val _ = action_cache := Termtab.update (key,theorem) (!action_cache)
               val _ = action_proofs := !action_proofs+1
               val _ = checkpoint "source complete" (!action_proofs) action_kind
@@ -137,11 +140,12 @@ struct
               fun construct () = (case Compiler.parse_program program of
                   Compiler.Entry {sector,residue,core,...} =>
                     let
+                      val chart = #prepare entry sector residue core
                       val inputs = map (fn wanted =>
                         let val representative = #representative entry sector residue core wanted
                         in (representative,prove_source representative) end)
                         (#supported_values computation core)
-                    in #certify entry program expr inputs end
+                    in #certify entry chart program expr inputs end
                 | _ =>
                     let
                       val action = #operator_action computation program
@@ -170,7 +174,7 @@ struct
               val outcome = Exn.capture construct ()
               val _ = active := Termtab.delete_safe program (!active)
               val theorem = checked "Direct program relation" expected (Exn.release outcome)
-              val _ = Comma_Proof_Dependency_Audit.require_native_clean ctxt "Direct program relation" [theorem]
+                |> certify_native
               val _ = program_cache := Termtab.update (key,theorem) (!program_cache)
               val _ = program_proofs := !program_proofs+1
               val _ = checkpoint "program complete" (!program_proofs) program_kind
@@ -187,11 +191,16 @@ struct
           val universal = point |> Thm.forall_intr (Thm.cterm_of ctxt shift)
             |> Thm.forall_intr (Thm.cterm_of ctxt phase)
         in Utils.ensure_closed_context ctxt "Direct program action" universal end
-      fun statistics () = "direct_program_binding_proofs=" ^ Int.toString (!program_proofs) ^
-        " direct_program_binding_hits=" ^ Int.toString (!program_hits) ^
-        " direct_action_binding_proofs=" ^ Int.toString (!action_proofs) ^
-        " direct_action_binding_hits=" ^ Int.toString (!action_hits) ^ " " ^
-        #statistics entry ()
+      fun statistics () =
+        let val native = native_stats () in
+          "direct_program_binding_proofs=" ^ Int.toString (!program_proofs) ^
+          " direct_program_binding_hits=" ^ Int.toString (!program_hits) ^
+          " direct_action_binding_proofs=" ^ Int.toString (!action_proofs) ^
+          " direct_action_binding_hits=" ^ Int.toString (!action_hits) ^
+          " direct_binding_audited_nodes=" ^ Int.toString (#nodes native) ^
+          " direct_binding_audit_ms=" ^ LargeInt.toString (#milliseconds native) ^ " " ^
+          #statistics entry ()
+        end
     in {program_action=program_action,program_relation=prove_program,
       source_relation=prove_source,statistics=statistics} end
 end

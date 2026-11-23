@@ -1,5 +1,6 @@
 """Checks for source-authenticated Fermat checkpoint batches."""
 
+import sys
 from dataclasses import replace
 
 import pytest
@@ -61,3 +62,26 @@ def test_batch_still_checks_each_crt_port(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(NamedFermatClock, "at", corrupted)
     with pytest.raises(ArithmeticError, match="clock / modular port join"):
         matrix.macro.certified_checkpoint_ports((0, 1, 2, 4))
+
+
+def test_radial_checkpoint_renders_only_the_guaranteed_prefix() -> None:
+    macro = FermatNumberSpec(5).demand_fermat_powered_port_matrix(31, 32).macro
+    prefix = macro.root_radial_prefix
+    assert prefix is not None
+    offset = 4096
+    scale = 3**offset
+    lower, upper = str(prefix * scale), str((prefix + 1) * scale)
+    places = macro.root_radial_places
+    expected = next(
+        (lower[:size] for size in range(places, 0, -1) if lower[:size] == upper[:size]),
+        None,
+    )
+    old_limit = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(sys.int_info.str_digits_check_threshold)
+        port = macro.radial_at(offset)
+    finally:
+        sys.set_int_max_str_digits(old_limit)
+    assert port.guaranteed_word == expected
+    assert port.guaranteed_places == len(expected or "")
+    assert port.exact_width is not None

@@ -453,7 +453,7 @@ struct
           val callback_ms_before = #milliseconds (callback_stats ())
           val _ = normalize_calls := !normalize_calls + 1
           val _ = normalize_input_rows := !normalize_input_rows + before_count
-          val trace_call = getenv "COMMA_PROFILE_LOG" <> "" andalso
+          val trace_call = getenv "ISABELLE_PROOF_PROFILE_LOG" <> "" andalso
             (!normalize_calls = 1 orelse !normalize_calls mod 10 = 0)
           fun report_stage stage start = if trace_call then Comma_Fast_Kernel.report
             ("masked_row_normalize_stage call=" ^ Int.toString (!normalize_calls) ^
@@ -484,7 +484,7 @@ struct
           val _ = report_stage "cached_certificate" certificate_started
           val after_rows = Thm.term_of (Thm.rhs_of result)
           val after_count = list_length after_rows
-          val _ = if getenv "COMMA_PROFILE_LOG" = "" then ()
+          val _ = if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then ()
             else Comma_Fast_Kernel.report
               ("masked_row_normalize input_rows=" ^ Int.toString before_count ^
                " output_rows=" ^ Int.toString after_count ^

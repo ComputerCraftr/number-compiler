@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from typing import Literal
+
 import pytest
 
 from number_compiler.sequences.comma import (
     boundary_occurrence_chart as occurrence_chart_module,
 )
+from number_compiler.sequences.comma import boundary_return as boundary_return_module
 from number_compiler.sequences.comma import occurrence as occurrence_module
 from number_compiler.sequences.comma.arithmetic import comma_children, decimal_sector
 from number_compiler.sequences.comma.boundary_quotient import (
@@ -12,11 +16,105 @@ from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
     construct_macro,
 )
+from number_compiler.sequences.comma.boundary_return import (
+    construct_completed_occurrence,
+)
 from number_compiler.sequences.comma.carry_generator import C1Phase
 from number_compiler.sequences.comma.occurrence import (
     BoundaryOccurrence,
     OccurrencePrefixReturn,
 )
+
+
+@pytest.mark.parametrize("kind,a,exponent", [("Z", 3, 41), ("N", 2, 5), ("Z", 9, 5)])
+def test_streamed_completed_occurrence_matches_indexed_return(
+    kind: Literal["N", "Z"], a: int, exponent: int
+) -> None:
+    state = BoundaryState(kind, a, exponent % 924)
+    source = BoundaryOccurrence(state, exponent)
+    template = construct_macro(state, grouped_near=True)
+    prefix = OccurrencePrefixReturn(source, template)
+    completed, observed = construct_completed_occurrence(source, grouped_near=True)
+    assert observed == (
+        prefix.terminal_value,
+        prefix.transition_count,
+        prefix.c1_count,
+        prefix.width_delta,
+        prefix.terminal_c1_phase.sector,
+    )
+    assert completed.outcome == template.outcome
+    assert completed.ordered_children == template.ordered_children
+
+
+def test_streamed_occurrence_rejects_forged_seam() -> None:
+    source = BoundaryOccurrence(BoundaryState("Z", 3, 5), 5)
+    template = construct_macro(source.state, grouped_near=True)
+    fragment = template.sector_fragments[0]
+    segment = template.chart_segments[0]
+    stream = occurrence_chart_module.macro_prefix_stream(
+        source, check_endpoint=True, charge_work=None, charge_bits=None
+    )
+    next(stream)
+    try:
+        with pytest.raises((ValueError, AssertionError)):
+            stream.send((replace(fragment, entering_digit=9), segment))
+    finally:
+        stream.close()
+
+
+def test_streamed_occurrence_rejects_foreign_terminal_source() -> None:
+    source = BoundaryOccurrence(BoundaryState("Z", 3, 5), 5)
+    template = construct_macro(source.state, grouped_near=True)
+    foreign = construct_macro(BoundaryState("Z", 2, 5), grouped_near=True)
+    stream = occurrence_chart_module.macro_prefix_stream(
+        source, check_endpoint=True, charge_work=None, charge_bits=None
+    )
+    next(stream)
+    try:
+        for fragment, segment in zip(
+            template.sector_fragments, template.chart_segments, strict=True
+        ):
+            stream.send((fragment, segment))
+        stream.send(None)
+        with pytest.raises(ValueError, match="another boundary occurrence"):
+            stream.send((foreign, template.terminal_chart))
+    finally:
+        stream.close()
+
+
+def test_streamed_occurrence_rejects_mutated_completed_return() -> None:
+    source = BoundaryOccurrence(BoundaryState("Z", 3, 5), 5)
+    template = construct_macro(source.state, grouped_near=True)
+    completed, _ = construct_completed_occurrence(source, grouped_near=True)
+    object.__setattr__(completed, "exponent_delta", completed.exponent_delta + 1)
+    stream = occurrence_chart_module.macro_prefix_stream(
+        source, check_endpoint=True, charge_work=None, charge_bits=None
+    )
+    next(stream)
+    try:
+        for fragment, segment in zip(
+            template.sector_fragments, template.chart_segments, strict=True
+        ):
+            stream.send((fragment, segment))
+        stream.send(None)
+        with pytest.raises(ValueError, match="snapshot mismatch"):
+            stream.send((completed, template.terminal_chart))
+    finally:
+        stream.close()
+
+
+def test_streamed_occurrence_does_not_construct_indexed_macro(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = BoundaryOccurrence(BoundaryState("Z", 3, 5), 5)
+
+    def poisoned(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("compact occurrence constructed an indexed macro")
+
+    monkeypatch.setattr(boundary_return_module, "construct_macro", poisoned)
+    completed, observed = construct_completed_occurrence(source, grouped_near=True)
+    assert completed.outcome in ("fork", "landmine")
+    assert observed[0] == completed.endpoint.evaluate(5)
 
 
 def test_boundary_occurrence_derives_low_phase_and_high_from_exact_exponent(
@@ -271,7 +369,7 @@ def test_prefix_template_point_checks_only_the_selected_sealed_fragment() -> Non
     # selection validates its logarithmically selected component rows.
     assert prefix.terminal_value > 0
     with pytest.raises(ValueError, match="publication was altered"):
-        prefix.template.point(exponent, transition_offset)
+        template.point(exponent, transition_offset)
 
 
 def test_child_occurrence_composition_uses_shared_exact_width_action() -> None:

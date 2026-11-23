@@ -15,6 +15,7 @@ from number_compiler.arithmetic.contracts.ordered_output import (
 )
 from number_compiler.arithmetic.fields.ordered_band import (
     OrderedDigitBandFrame,
+    ordered_digit_band_frame,
     ordered_digit_band_output,
 )
 from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
@@ -68,23 +69,14 @@ def source_issued_ordered_digit_band(
                 raise ValueError("ordered band image has a foreign source action")
             root = payload.root
             source_width = arena.nodes[root].length
-            lower_digits = tuple(
-                symbol_at(arena, root, source_width - position - 1)
-                if position < source_width
-                else 0
-                for position in range(width - 1, -1, -1)
-            )
-            upper_digits = tuple(
-                symbol_at(arena, root, position) if position < source_width else 0
-                for position in range(width)
-            )
-            letters = min(width, source_width)
-            yield OrderedDigitBandFrame(
-                tick_offset=offset,
-                lower_digits=lower_digits,
-                upper_digits=upper_digits,
-                lower_source_letters=letters,
-                upper_source_letters=letters,
+
+            def digit_from_least_significant(
+                position: int, bound_root: int = root, bound_width: int = source_width
+            ) -> int:
+                return symbol_at(arena, bound_root, bound_width - position - 1)
+
+            yield ordered_digit_band_frame(
+                offset, source_width, width, digit_from_least_significant
             )
 
     return ordered_digit_band_output(

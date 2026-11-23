@@ -80,6 +80,26 @@ def test_abc_parameters_compile_without_letter_expansion() -> None:
         huge.short_word(limit=256)
 
 
+def test_issued_field_prefix_builds_motif_grammar_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = issue_cyclic_row(1486, 24)
+    assert plan is not None
+    evaluations = 0
+
+    def counted(row: CyclicGuardedRow) -> ParameterizedABC:
+        nonlocal evaluations
+        evaluations += 1
+        if evaluations > 1:
+            raise AssertionError("issued row reconstructed its grammar")
+        return ParameterizedABC.from_motif(row.word)
+
+    monkeypatch.setattr(CyclicGuardedRow, "abc", property(counted))
+    field = issued_field_prefix(plan)
+    assert field.endpoint(plan.source) == plan.endpoint
+    assert evaluations == 1
+
+
 def test_powers_and_temporal_splits_vs_literal() -> None:
     rng = Random(43)
     for _ in range(500):

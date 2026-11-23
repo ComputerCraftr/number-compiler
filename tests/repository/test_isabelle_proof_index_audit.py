@@ -263,6 +263,23 @@ def test_local_setup_runtime_dependency_audit_has_no_global_theorem_credit(
     assert isabelle_oracle_audit.audited_theorems(source) == ()
 
 
+def test_local_setup_can_audit_before_more_local_declarations() -> None:
+    source = (
+        'lemma exported_endpoint: "True" by simp\n'
+        "local_setup \\<open>fn lthy => let\n"
+        "  val ctxt = Local_Theory.target_of lthy\n"
+        "  val endpoint = @{thm exported_endpoint}\n"
+        "  val _ = Comma_Proof_Dependency_Audit.require_native_clean ctxt\n"
+        '    "before publication" [endpoint]\n'
+        "  val result = let val candidate = lthy in candidate end\n"
+        "  val later_ctxt = Local_Theory.target_of result\n"
+        "  val _ = Comma_Proof_Dependency_Audit.require_native_clean later_ctxt\n"
+        '    "after publication" [endpoint]\n'
+        "in result end\\<close>"
+    )
+    assert isabelle_oracle_audit.audited_theorems(source) == ()
+
+
 def test_local_runtime_audit_rejects_shadowed_context_and_delayed_calls() -> None:
     shadowed_context = (
         "ML \\<open>val _ = let\n"

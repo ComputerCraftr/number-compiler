@@ -124,6 +124,140 @@ def test_owner_publishes_carry_continuation_and_reuses_completed_root(
     assert ledger.nodes == ledger.entries == 0
 
 
+def test_owner_resumes_largest_issued_q19_frontier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.sequences.reverse_add.q19_output import (
+        ReversePairQ19OutputOwner,
+    )
+    from tests.support.reference_arithmetic import literal_reverse_add_digits
+
+    ledger = ResourceLedger()
+    owner = ReversePairQ19OutputOwner(ledger, (6, 9, 1), base=10)
+    try:
+        first = owner.publish_broadword_source(32)
+        assert tuple(owner.iter_digits(first)) == literal_reverse_add_digits(196, 32)
+
+        def reject_source(*_args: object, **_kwargs: object) -> object:
+            raise AssertionError("issued Q19 frontier reopened the source")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(PackedQ19, "from_digits", reject_source)
+            later = owner.publish_broadword_source(48)
+        assert tuple(owner.iter_digits(later)) == literal_reverse_add_digits(196, 48)
+
+        earlier = owner.publish_broadword_source(24)
+        assert tuple(owner.iter_digits(earlier)) == literal_reverse_add_digits(196, 24)
+        with monkeypatch.context() as patch:
+            patch.setattr(PackedQ19, "from_digits", reject_source)
+            final = owner.publish_broadword_source(56)
+        assert tuple(owner.iter_digits(final)) == literal_reverse_add_digits(196, 56)
+    finally:
+        owner.dispose()
+    assert ledger.nodes == ledger.entries == 0
+
+
+def test_owner_uses_nearest_earlier_q19_frontier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.sequences.reverse_add.q19_output import (
+        ReversePairQ19OutputOwner,
+    )
+    from tests.support.reference_arithmetic import literal_reverse_add_digits
+
+    ledger = ResourceLedger()
+    owner = ReversePairQ19OutputOwner(ledger, (6, 9, 1), base=10)
+    advance = PackedQ19.advance_repeated
+    work: list[int] = []
+
+    def count(
+        self: PackedQ19,
+        steps: int,
+        *,
+        before_step: Callable[[int, int], None] | None = None,
+    ) -> PackedQ19:
+        work.append(steps)
+        return advance(self, steps, before_step=before_step)
+
+    try:
+        owner.publish_broadword_source(40)
+        owner.publish_broadword_source(55)
+        owner.publish_broadword_source(80)
+        issued = owner.issued_occurrence
+
+        def with_reclaimed(key: tuple[int, int]) -> object:
+            return None if key[1] == 55 else issued(key)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(owner, "issued_occurrence", with_reclaimed)
+            patch.setattr(PackedQ19, "advance_repeated", count)
+            result = owner.publish_broadword_source(60)
+        assert sum(work) == 20
+        assert tuple(owner.iter_digits(result)) == literal_reverse_add_digits(196, 60)
+    finally:
+        owner.dispose()
+    assert ledger.nodes == ledger.entries == 0
+
+
+def test_guarded_owner_resumes_only_a_guarded_frontier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.sequences.reverse_add import q19_carry_window
+    from number_compiler.sequences.reverse_add.q19_output import (
+        ReversePairQ19OutputOwner,
+    )
+    from tests.support.reference_arithmetic import literal_reverse_add_digits
+
+    ledger = ResourceLedger()
+    owner = ReversePairQ19OutputOwner(ledger, (6, 9, 1), base=10)
+    advance = PackedQ19.advance_repeated
+    work: list[int] = []
+
+    def count(
+        self: PackedQ19,
+        steps: int,
+        *,
+        before_step: Callable[[int, int], None] | None = None,
+    ) -> PackedQ19:
+        work.append(steps)
+        return advance(self, steps, before_step=before_step)
+
+    try:
+        owner.publish_carry_window_continuation(40)
+        owner.publish_broadword_source(48)
+        from number_compiler.resources.metric_keys.reverse_add import (
+            REVERSE_Q19_REUSED_CONTINUATION_STEPS,
+        )
+
+        before_reused = ledger.counters.get(REVERSE_Q19_REUSED_CONTINUATION_STEPS, 0)
+
+        def reject_h12(
+            _source: PackedQ19,
+            _before_step: Callable[[int, int], None] | None = None,
+        ) -> PackedQ19:
+            raise AssertionError("H12 prefix replayed")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(PackedQ19, "advance_repeated", count)
+            patch.setattr(
+                q19_carry_window,
+                "physical_carry_image",
+                reject_h12,
+            )
+            result = owner.publish_carry_window_continuation(60)
+        assert sum(work) == 20
+        assert (
+            ledger.counters[REVERSE_Q19_REUSED_CONTINUATION_STEPS] - before_reused == 39
+        )
+        assert tuple(owner.iter_digits(result)) == literal_reverse_add_digits(196, 60)
+    finally:
+        owner.dispose()
+    assert ledger.nodes == ledger.entries == 0
+
+
 def test_distinct_cli_sources_consume_same_completed_q19_future(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

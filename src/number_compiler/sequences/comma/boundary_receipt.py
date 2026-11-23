@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Hashable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, TypeVar
 
@@ -17,7 +17,9 @@ from number_compiler.sequences.comma.arithmetic import decimal_sector
 from number_compiler.sequences.comma.boundary_quotient import (
     PERIOD,
     BoundaryState,
+    CompletedMacroReturn,
     MacroTemplate,
+    affine_weight_signature,
     boundary_state_signature,
 )
 
@@ -33,8 +35,43 @@ if TYPE_CHECKING:
     from number_compiler.sequences.comma.semantic_branch import SemanticMacroChild
 
 SOURCE: Final[int] = 20
+# The receipt retains the provider's freshly issued selection for validation.
+BOUNDARY_RECEIPT_NODES: Final[int] = 2
 _OccurrenceRecord = TypeVar("_OccurrenceRecord")
 _BOUNDARY_SELECTION_RECEIPT_SEAL = object()
+
+
+class BoundaryPrefixWeights:
+    """One arithmetic result scoped to the owning receipt transaction."""
+
+    def __init__(self, arena: CommaActionArena) -> None:
+        self._arena = arena
+        self._cached: tuple[BoundaryState, int, tuple[int, int, int], int] | None = None
+
+    def clear(self) -> None:
+        self._cached = None
+
+    def evaluate(self, template: MacroTemplate, exponent: int, *, retain: bool) -> int:
+        if type(template) is not MacroTemplate:
+            raise TypeError("comma checked boundary weight needs a macro template")
+        if (
+            type(exponent) is not int
+            or exponent < 5
+            or exponent % PERIOD != template.source.exponent_residue
+        ):
+            raise ValueError("comma boundary weight has another source phase")
+        if self._arena.boundary_template(template.source) is not template:
+            raise ValueError("comma boundary weight has another template")
+        key = (template.source, exponent, affine_weight_signature(template.weight))
+        cached = self._cached
+        if cached is not None and cached[:3] == key:
+            return cached[3]
+        steps = template.weight.evaluate(exponent, charge_bits=self._arena.charge_bits)
+        if steps < 0:
+            raise ValueError("comma boundary weight is negative")
+        if retain:
+            self._cached = (*key, steps)
+        return steps
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,7 +95,9 @@ def issue_boundary_selection_receipt_entry(
         raise TypeError("comma receipt issuance requires its exact receipt sort")
     receipt.validate_shape()
     identifier = BoundarySelectionReceiptID(token, kind, local_id)
-    ledger.reserve_many(((receipt_owner, 1, 1), (seal_owner, 1, 1)))
+    ledger.reserve_many(
+        ((receipt_owner, 1, BOUNDARY_RECEIPT_NODES), (seal_owner, 1, 1))
+    )
     try:
         receipts[identifier] = receipt
         seals[identifier] = receipt
@@ -116,6 +155,7 @@ class BoundarySelectionReceipt:
     target_exponent: int
     target_value: int
     transitions: int
+    completed: bool
     _selection_binding: UnrankedChildSelection
     _snapshot: tuple[object, ...]
     _seal: object
@@ -134,6 +174,7 @@ class BoundarySelectionReceipt:
         target_value: int,
         transitions: int,
         *,
+        completed: bool,
         _seal: object,
     ) -> None:
         if _seal is not _BOUNDARY_SELECTION_RECEIPT_SEAL:
@@ -150,6 +191,7 @@ class BoundarySelectionReceipt:
             ("target_exponent", target_exponent),
             ("target_value", target_value),
             ("transitions", transitions),
+            ("completed", completed),
         ):
             object.__setattr__(self, name, value)
         object.__setattr__(self, "_selection_binding", selection)
@@ -173,6 +215,7 @@ class BoundarySelectionReceipt:
             self.target_exponent,
             self.target_value,
             self.transitions,
+            self.completed,
         )
 
     def validate_shape(self) -> None:
@@ -191,6 +234,7 @@ class BoundarySelectionReceipt:
             or not valid_artifact_digest(self.artifact_sha256)
             or type(self.source_state) is not BoundaryState
             or type(self.target_state) is not BoundaryState
+            or type(self.completed) is not bool
             or any(
                 type(value) is not int
                 for value in (
@@ -290,6 +334,8 @@ class BoundarySelectionReceipt:
         source_value: int,
         source_index: int,
         source_extent: int,
+        charge_work: Callable[[int], None] | None = None,
+        charge_bits: Callable[[int], None] | None = None,
     ) -> BoundarySelectionReceipt:
         from number_compiler.sequences.comma.future_provider import (
             SemanticFutureProvider,
@@ -310,6 +356,7 @@ class BoundarySelectionReceipt:
             raise PermissionError("comma selection belongs to another provider")
         source = selected.source
         target = selected.target
+        completed = type(selected.prefix.template) is CompletedMacroReturn
         if (
             type(source_value) is not int
             or type(source_index) is not int
@@ -318,6 +365,12 @@ class BoundarySelectionReceipt:
             or source.state != selected.selection.source
             or selected.selection.fork_coefficient
             != selected.prefix.template.destination_a
+        ):
+            raise ValueError("comma selected child has another source binding")
+        if (
+            completed
+            and source.value(charge_work=charge_work, charge_bits=charge_bits)
+            != source_value
         ):
             raise ValueError("comma selected child has another source binding")
         return cls(
@@ -332,6 +385,7 @@ class BoundarySelectionReceipt:
             target.exponent,
             selected.literal_value,
             selected.total_transition_count,
+            completed=completed,
             _seal=_BOUNDARY_SELECTION_RECEIPT_SEAL,
         )
 
@@ -449,21 +503,6 @@ def validate_action_result(
     source_exponent = decimal_sector(source_payload.value).exponent
     if source_cursor.exponent != source_exponent:
         raise ValueError("comma global return has another source phase")
-    selected_template = arena.boundary_template(state) if template is None else template
-    if (
-        type(selected_template) is not MacroTemplate
-        or selected_template.source != state
-        or selected_template.outcome != "fork"
-    ):
-        raise ValueError("comma global return source is not a fork")
-    exact_transitions = (
-        selected_template.weight.evaluate(
-            source_exponent, charge_bits=arena.charge_bits
-        )
-        + 1
-    )
-    if expected_transitions is not None and expected_transitions != exact_transitions:
-        raise ValueError("comma global return changed its admitted macro extent")
     cursor = result_payload.boundary_cursor
     if (
         type(cursor) is not BoundaryPrefixCursor
@@ -482,12 +521,46 @@ def validate_action_result(
     )
     selection = receipt.selection
     slot = selection.selected_slot
+    if receipt.completed:
+        # The transaction-owned receipt was issued only from a sealed complete
+        # occurrence after checking both physical arms and the provider slot.
+        # Its source and provider bindings above authenticate these retained
+        # coordinates without reconstructing an indexed prefix.
+        exact_transitions = receipt.transitions
+        expected_kind = "N" if slot == 0 else "Z"
+        if (
+            slot not in (0, 1)
+            or receipt.target_state.kind != expected_kind
+            or receipt.target_state.a != selection.fork_coefficient
+            or receipt.target_exponent < source_exponent
+        ):
+            raise ValueError("comma completed return changed its ordered child")
+    else:
+        selected_template = (
+            arena.boundary_template(state) if template is None else template
+        )
+        if (
+            type(selected_template) is not MacroTemplate
+            or selected_template.source != state
+            or selected_template.outcome != "fork"
+        ):
+            raise ValueError("comma global return source is not a fork")
+        exact_transitions = (
+            owner.checked_boundary_prefix_steps(selected_template, source_exponent) + 1
+        )
+        if (
+            selection.fork_coefficient != selected_template.destination_a
+            or slot not in (0, 1)
+            or receipt.target_state != selected_template.ordered_children[slot]
+            or receipt.target_exponent
+            != source_exponent + selected_template.exponent_delta
+        ):
+            raise ValueError("comma global return differs from its issued child slot")
+    if expected_transitions is not None and expected_transitions != exact_transitions:
+        raise ValueError("comma global return changed its admitted macro extent")
     if (
         selection.source != state
-        or selection.fork_coefficient != selected_template.destination_a
         or slot not in (0, 1)
-        or receipt.target_state != selected_template.ordered_children[slot]
-        or receipt.target_exponent != source_exponent + selected_template.exponent_delta
         or receipt.transitions != exact_transitions
         or result_payload.value != receipt.target_value
         or result_payload.absolute_index
@@ -580,13 +653,15 @@ def rollback_boundary_selection_receipt_entry(
             if not store.rollback_unpublished(identifier, receipt):
                 raise RuntimeError("comma receipt rollback lost its exact entry")
         elif current is None:
-            ledger.release(owner, entries=1, nodes=1)
+            ledger.release(owner, entries=1, nodes=store.nodes_per_entry)
         else:
             raise RuntimeError("comma receipt rollback found another object")
 
 
 __all__ = [
+    "BOUNDARY_RECEIPT_NODES",
     "BoundaryPrefixCursor",
+    "BoundaryPrefixWeights",
     "BoundarySelectionReceiptID",
     "BoundarySelectionReceipt",
     "issue_boundary_selection_receipt_entry",

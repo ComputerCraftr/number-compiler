@@ -4,7 +4,7 @@ structure Comma_Future_M204_Graph_Proposal =
 struct
   structure Arena = Comma_CRT_MDD_Arena
   structure Zip = Comma_Semantic_Future_Zip_Producer
-  datatype operation = Graph_Control | Graph_N | Graph_Z | Actual_Control | Class_Bound | Equal
+  datatype operation = Graph_Tuple | Actual_Prefix | Actual_Tuple | Class_Bound | Equal
   type row = int * int list
   type comparison = {operation: operation, left: int, right: int, output: int}
   type result = {roots: Arena.action_root list, class_bounds: Arena.action_root list,
@@ -47,15 +47,23 @@ struct
             {operation=operation,left=ai l,right=ai r,output=ai out} :: !records)
             (ListPair.zip (ListPair.zip (left,right),outputs))
         in outputs end
-      val graph_c = zip Graph_Control (#classes join) zeros (fn id => fn _ => graph_control id)
-      val graph_n = zip Graph_N (#classes join) zeros (fn id => fn _ => graph_child 0 id)
-      val graph_z = zip Graph_Z (#classes join) zeros (fn id => fn _ => graph_child 1 id)
+      (* One graph tuple and one actual tuple per family. The pairing is
+         injective over all naturals: unlike modular packing, there is no
+         child-range assumption hidden inside the ordered-child comparison.
+         Two joins assemble the actual tuple, then one equality proves all
+         three fields in their original N/Z order. *)
+      fun pair a b = let val sum = a+b in sum*(sum+1)+2*b end
+      fun graph_tuple id = pair (pair (graph_control id) (graph_child 0 id))
+        (graph_child 1 id)
+      val expected = zip Graph_Tuple (#classes join) zeros
+        (fn id => fn _ => graph_tuple id)
+      val actual_prefix = zip Actual_Prefix (#outputs join) (#children_n join)
+        (fn output => fn n => pair (actual_control output) n)
+      val actual_tuple = zip Actual_Tuple actual_prefix (#children_z join) pair
       val class_bounds = zip Class_Bound (#classes join) zeros
         (fn id => fn _ => if id<count then 1 else 0)
-      val actual_c = zip Actual_Control (#outputs join) zeros (fn x => fn _ => actual_control x)
-      fun equal xs ys = zip Equal xs ys (fn x => fn y => if x=y then 1 else 0)
-      val roots = equal actual_c graph_c @ equal (#children_n join) graph_n @
-        equal (#children_z join) graph_z
+      val roots = zip Equal actual_tuple expected
+        (fn observed => fn wanted => if observed=wanted then 1 else 0)
       val _ = List.app (fn root =>
         if Arena.action_support arena root = [1] then ()
         else error "Future class graph does not match the source join") (roots @ class_bounds)

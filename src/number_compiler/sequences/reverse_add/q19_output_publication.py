@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, closing
+from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp import BimachineSLPProjector, SLPNode
 from number_compiler.arithmetic.automata.slp_interval import fold_slp_dag
+from number_compiler.arithmetic.automata.slp_walks import iter_symbols
 from number_compiler.arithmetic.automata.slp_walks import symbol_at as slp_symbol_at
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
@@ -27,11 +29,14 @@ from number_compiler.sequences.reverse_add.q19_word_summary import (
     WordSummary,
 )
 
+if TYPE_CHECKING:
+    from number_compiler.sequences.reverse_add.q19_broadword_publisher import PackedQ19
+
 
 class Q19OutputPublicationMixin:
     """Build, validate, and publish exact Q19 grammar occurrences."""
 
-    __slots__ = ("_broadword_last",)
+    __slots__ = ()
 
     ledger: ResourceLedger
     base: int
@@ -42,7 +47,7 @@ class Q19OutputPublicationMixin:
     _summaries: OwnedMemo[int, WordSummary]
     _issued: OwnedMemo[tuple[int, int], ReversePairOutputOccurrence]
     _scratch_owner: int
-    _broadword_last: tuple[int, int] | None
+    _frontiers: OwnedMemo[int, tuple[int, bool]]
 
     def validate_open(self) -> None:
         raise NotImplementedError
@@ -118,10 +123,57 @@ class Q19OutputPublicationMixin:
             temporal_steps, carry_window=True, shared_cache=shared_cache
         )
 
+    def _resume_owned_broadword_frame(
+        self, occurrence: ReversePairOutputOccurrence
+    ) -> PackedQ19:
+        """Decode the complete pair state from one authenticated endpoint."""
+        from number_compiler.sequences.reverse_add.q19_broadword_publisher import (
+            PackedQ19,
+        )
+
+        self.validate_issued_occurrence(occurrence)
+        count = occurrence.pair_width // 2
+        odd = bool(occurrence.pair_width & 1)
+        packed = bytearray()
+        accumulator = 0
+        bits = 0
+        with closing(
+            iter_symbols(
+                self.arena,
+                occurrence.root,
+                ledger=self.ledger,
+                owner=self._scratch_owner,
+            )
+        ) as symbols:
+            if next(symbols, None) != 19 + int(odd):
+                raise ValueError("issued Q19 frontier has another width or parity")
+            for _ in range(count):
+                coefficient = next(symbols, None)
+                if type(coefficient) is not int or not 0 <= coefficient <= 18:
+                    raise ValueError("issued Q19 frontier has an invalid coefficient")
+                accumulator |= coefficient << bits
+                bits += 6
+                if bits >= 8:
+                    packed.append(accumulator & 255)
+                    accumulator >>= 8
+                    bits -= 8
+            center = None
+            if odd:
+                middle = next(symbols, None)
+                if type(middle) is not int or middle % 2 or not 0 <= middle <= 18:
+                    raise ValueError("issued Q19 frontier has an invalid center")
+                center = middle // 2
+            if next(symbols, None) != 21 or next(symbols, None) is not None:
+                raise ValueError("issued Q19 frontier has an invalid terminal")
+        if bits:
+            packed.append(accumulator)
+        pairs = int.from_bytes(packed, "little")
+        return PackedQ19.from_record((pairs, count, center))
+
     def _publish_broadword_source(
         self, temporal_steps: int, *, carry_window: bool, shared_cache: bool = False
     ) -> ReversePairOutputOccurrence:
-        from number_compiler.resources.lifecycle import cleanup_on_error
+        from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
         from number_compiler.sequences.reverse_add.q19_broadword_publisher import (
             PackedQ19,
         )
@@ -134,7 +186,21 @@ class Q19OutputPublicationMixin:
             completed_continuation,
         )
 
-        hint = self._broadword_last
+        hint: tuple[int, int] | None = None
+        for age in sorted(self._frontiers, reverse=True):
+            if age > temporal_steps:
+                continue
+            entry = self._frontiers.get(age)
+            if entry is None:
+                continue
+            root_hint, guarded = entry
+            if carry_window and not guarded:
+                continue
+            known = self.issued_occurrence((root_hint, age))
+            if known is not None:
+                self.validate_issued_occurrence(known)
+                hint = (age, root_hint)
+                break
         if hint is not None and hint[0] == temporal_steps:
             existing = self.issued_occurrence((hint[1], temporal_steps))
             if existing is not None:
@@ -147,10 +213,32 @@ class Q19OutputPublicationMixin:
         rollback_publication: ReversePairOutputOccurrence | None = None
         previous_publication: ReversePairOutputOccurrence | None = None
 
+        inserted_frontier = False
+        replaced_frontier: tuple[int, bool] | None = None
+        evicted_frontier: tuple[int, tuple[int, bool]] | None = None
+
         def rollback() -> None:
-            self._broadword_last = hint
-            self.rollback_punctured_application(
-                first_new_node, rollback_publication, previous_publication
+            def remove_inserted() -> None:
+                if inserted_frontier and temporal_steps in self._frontiers:
+                    del self._frontiers[temporal_steps]
+
+            def restore_evicted() -> None:
+                if evicted_frontier is not None:
+                    self._frontiers[evicted_frontier[0]] = evicted_frontier[1]
+
+            def restore_replaced() -> None:
+                if replaced_frontier is not None:
+                    self._frontiers[temporal_steps] = replaced_frontier
+
+            cleanup_all(
+                (
+                    remove_inserted,
+                    restore_evicted,
+                    restore_replaced,
+                    lambda: self.rollback_punctured_application(
+                        first_new_node, rollback_publication, previous_publication
+                    ),
+                )
             )
 
         with cleanup_on_error(rollback):
@@ -162,7 +250,16 @@ class Q19OutputPublicationMixin:
                 entries=4 * (width_bound + 3),
                 nodes=scratch_nodes,
             ):
-                frame = PackedQ19.from_digits(self._digits)
+                resumed_age = 1
+                previous = None
+                if hint is not None and hint[0] < temporal_steps:
+                    previous = self.issued_occurrence((hint[1], hint[0]))
+                if previous is None:
+                    frame = PackedQ19.from_digits(self._digits)
+                else:
+                    frame = self._resume_owned_broadword_frame(previous)
+                    assert hint is not None
+                    resumed_age = hint[0]
 
                 def record_step_work(count: int, rounds: int) -> None:
                     # Count each requested recurrence before running it so an
@@ -183,20 +280,21 @@ class Q19OutputPublicationMixin:
                         logical_operand_bits,
                     )
 
-                remaining = temporal_steps - 1
+                remaining = temporal_steps - resumed_age
                 with completed_continuation(
                     frame,
                     remaining,
-                    carry_window=carry_window,
+                    carry_window=carry_window and previous is None,
                     shared_cache=shared_cache,
                     before_step=record_step_work,
                     ledger=self.ledger,
                     scratch_owner=self._scratch_owner,
                 ) as (target, reused):
-                    if reused:
+                    reused_prefix = resumed_age - 1 + reused
+                    if reused_prefix:
                         self.ledger.bump(
                             _reverse_add_keys.REVERSE_Q19_REUSED_CONTINUATION_STEPS,
-                            reused,
+                            reused_prefix,
                         )
 
                     # The ordinary Q19 source-to-output grammar represents the
@@ -218,7 +316,25 @@ class Q19OutputPublicationMixin:
                     self.ledger.bump(
                         _reverse_add_keys.REVERSE_Q19_BROADWORD_ENDPOINT_PUBLICATIONS
                     )
-                    self._broadword_last = (temporal_steps, published.root)
+                    current_frontier = self._frontiers.get(temporal_steps)
+                    if (
+                        carry_window
+                        and current_frontier is not None
+                        and not current_frontier[1]
+                    ):
+                        replaced_frontier = current_frontier
+                        self._frontiers[temporal_steps] = (published.root, True)
+                    elif current_frontier is None:
+                        self._frontiers[temporal_steps] = (published.root, carry_window)
+                        inserted_frontier = True
+                        if len(self._frontiers) > 64:
+                            oldest = min(self._frontiers)
+                            old_root = self._frontiers[oldest]
+                            if oldest != temporal_steps:
+                                evicted_frontier = (oldest, old_root)
+                            del self._frontiers[oldest]
+                            if oldest == temporal_steps:
+                                inserted_frontier = False
                     return published
 
     def symbol_at(self, root: int, index: int) -> int:

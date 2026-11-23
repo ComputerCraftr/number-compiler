@@ -81,7 +81,7 @@ struct
             [@{thm comma_decade_summary_candidate_checked},computed])
           val _ = if theorem_ok safe then ()
             else error ("Run " ^ Int.toString index ^ " produced an open proof")
-          val _ = if getenv "COMMA_PROFILE_LOG" = "" orelse index mod 20 <> 0 then () else
+          val _ = if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" orelse index mod 20 <> 0 then () else
             Comma_Fast_Kernel.report
               ("Run-Moore progress: run=" ^ Int.toString index ^
                " edges=" ^ Int.toString k ^ " " ^ #stats engine ())

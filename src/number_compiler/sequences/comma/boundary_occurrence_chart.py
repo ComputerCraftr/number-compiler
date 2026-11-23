@@ -6,19 +6,23 @@ template. It does not select a future branch or issue repetition authority.
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from typing import Protocol
 
 from .arithmetic import comma_children
-from .boundary_carry_clock import powered_chart_carry
+from .boundary_carry_clock import powered_chart_values
 from .boundary_chart import (
     BoundaryChart,
+    ChartSegment,
     ChartWeight,
     initial_chart,
     validate_chart,
 )
 from .boundary_quotient import (
     BoundaryState,
+    CompletedMacroReturn,
     MacroTemplate,
+    SectorFragment,
     boundary_state_signature,
     validate_macro_component_read,
 )
@@ -165,24 +169,23 @@ def sum_exact(
     return left + right
 
 
-def macro_prefix_arithmetic(
+def macro_prefix_stream(
     source: BoundaryOccurrenceSource,
-    template: MacroTemplate,
-    component_seal: tuple[object, ...],
     *,
     check_endpoint: bool,
     charge_work: WorkCharge | None,
     charge_bits: BitsCharge | None,
-) -> tuple[int, int, int, int, int]:
-    """Accumulate exact fixed-sector returns and literal chart seams."""
+) -> Generator[
+    tuple[int, int, int, int, int] | None,
+    tuple[SectorFragment, ChartSegment]
+    | tuple[MacroTemplate | CompletedMacroReturn, BoundaryChart]
+    | None,
+    None,
+]:
+    """Validate adjacent physical seams as their common chart walk emits them."""
     value, source_scale, source_high, _source_low = source_coordinates(
         source, charge_work=charge_work, charge_bits=charge_bits
     )
-    if boundary_state_signature(template.source) != boundary_state_signature(
-        source.state
-    ):
-        raise ValueError("macro template is bound to another boundary occurrence")
-
     chart = initial_chart(source.state.kind, source.state.a)
     scale = source_scale
     if (
@@ -192,26 +195,18 @@ def macro_prefix_arithmetic(
         raise AssertionError("source chart does not denote the exact occurrence")
     total_steps = 0
     total_c1 = 0
-    for index, (fragment, segment) in enumerate(
-        zip(template.sector_fragments, template.chart_segments, strict=True)
-    ):
+    while True:
+        item = yield None
+        if item is None:
+            break
+        fragment, segment = item
+        if not isinstance(fragment, SectorFragment) or not isinstance(
+            segment, ChartSegment
+        ):
+            raise TypeError("comma occurrence stream needs a fragment and segment")
+        if type(fragment) is not SectorFragment or type(segment) is not ChartSegment:
+            raise TypeError("comma occurrence stream needs a fragment and segment")
         entry_target_checked = False
-        validate_macro_component_read(
-            template,
-            component_seal,
-            "fragment",
-            index,
-            charge_work=charge_work,
-            charge_bits=charge_bits,
-        )
-        validate_macro_component_read(
-            template,
-            component_seal,
-            "chart_segment",
-            index,
-            charge_work=charge_work,
-            charge_bits=charge_bits,
-        )
         if type(fragment.period) is not int or fragment.period < 0:
             raise ValueError("macro fragment has an invalid C1 period")
         if segment.source != chart:
@@ -326,7 +321,7 @@ def macro_prefix_arithmetic(
             entry_target_checked = True
             total_c1 = sum_exact(total_c1, carry_count, charge_work, charge_bits)
         else:
-            powered = powered_chart_carry(
+            powered_displacement, carry_count, headroom_weight = powered_chart_values(
                 source.state.exponent_residue,
                 segment.source,
                 source.exponent,
@@ -334,25 +329,24 @@ def macro_prefix_arithmetic(
                 charge_work=charge_work,
                 charge_bits=charge_bits,
             )
-            if powered.displacement != displacement:
+            if powered_displacement != displacement:
                 raise AssertionError(
                     "powered C1 return differs from chart displacement"
                 )
-            if powered.headroom_weight.scale:
+            if headroom_weight.scale:
                 target_headroom = weighted_chart_value(
-                    powered.headroom_weight,
+                    headroom_weight,
                     scale,
                     chart.delta,
                     charge_work=charge_work,
                     charge_bits=charge_bits,
                 )
             else:
-                target_headroom = powered.headroom_weight.offset
+                target_headroom = headroom_weight.offset
+            del headroom_weight
             if target_headroom != segment.target.coordinate:
                 raise AssertionError("powered C1 return differs from target headroom")
-            total_c1 = sum_exact(
-                total_c1, powered.carry_count, charge_work, charge_bits
-            )
+            total_c1 = sum_exact(total_c1, carry_count, charge_work, charge_bits)
             value += displacement
         target_delta = segment.target.delta - segment.source.delta
         if target_delta not in (0, 1):
@@ -372,6 +366,31 @@ def macro_prefix_arithmetic(
             raise AssertionError("macro chart action differs from its exact target")
         chart = segment.target
         total_steps = sum_exact(total_steps, steps, charge_work, charge_bits)
+        del fragment, segment, item
+
+    final = yield None
+    if final is None:
+        raise TypeError("comma occurrence stream needs a terminal return and chart")
+    template, terminal_chart = final
+    if not isinstance(
+        template, (MacroTemplate, CompletedMacroReturn)
+    ) or not isinstance(terminal_chart, BoundaryChart):
+        raise TypeError("comma occurrence stream needs a terminal return and chart")
+    if (
+        type(template) not in (MacroTemplate, CompletedMacroReturn)
+        or type(terminal_chart) is not BoundaryChart
+    ):
+        raise TypeError("comma occurrence stream needs a terminal return and chart")
+    if boundary_state_signature(template.source) != boundary_state_signature(
+        source.state
+    ):
+        raise ValueError("macro return is bound to another boundary occurrence")
+    if type(template) is CompletedMacroReturn:
+        from number_compiler.sequences.comma.boundary_return import (
+            validate_completed_macro_return,
+        )
+
+        validate_completed_macro_return(template)
 
     expected_steps = template.weight.evaluate_at_scale(
         source_scale, charge_bits=charge_bits
@@ -385,7 +404,6 @@ def macro_prefix_arithmetic(
         if value != expected_endpoint:
             raise AssertionError("occurrence prefix differs from its chart endpoint")
 
-    terminal_chart = template.terminal_chart
     if terminal_chart != chart or terminal_chart.delta != template.exponent_delta:
         raise AssertionError("macro terminal chart differs from its occurrence")
     validate_chart(source.state.exponent_residue, terminal_chart)
@@ -405,4 +423,48 @@ def macro_prefix_arithmetic(
         raise AssertionError("exact terminal exponent differs from chart width")
     if value // 100 != source_high + total_c1:
         raise AssertionError("C1 count does not bind source and terminal high prefixes")
-    return value, total_steps, total_c1, width_delta, terminal_chart.leading
+    yield value, total_steps, total_c1, width_delta, terminal_chart.leading
+
+
+def macro_prefix_arithmetic(
+    source: BoundaryOccurrenceSource,
+    template: MacroTemplate,
+    component_seal: tuple[object, ...],
+    *,
+    check_endpoint: bool,
+    charge_work: WorkCharge | None,
+    charge_bits: BitsCharge | None,
+) -> tuple[int, int, int, int, int]:
+    """Accumulate exact fixed-sector returns and literal chart seams."""
+    if boundary_state_signature(template.source) != boundary_state_signature(
+        source.state
+    ):
+        raise ValueError("macro template is bound to another boundary occurrence")
+    stream = macro_prefix_stream(
+        source,
+        check_endpoint=check_endpoint,
+        charge_work=charge_work,
+        charge_bits=charge_bits,
+    )
+    next(stream)
+    try:
+        for index, (fragment, segment) in enumerate(
+            zip(template.sector_fragments, template.chart_segments, strict=True)
+        ):
+            for kind in ("fragment", "chart_segment"):
+                validate_macro_component_read(
+                    template,
+                    component_seal,
+                    kind,
+                    index,
+                    charge_work=charge_work,
+                    charge_bits=charge_bits,
+                )
+            stream.send((fragment, segment))
+        stream.send(None)
+        result = stream.send((template, template.terminal_chart))
+    finally:
+        stream.close()
+    if result is None:
+        raise AssertionError("comma occurrence stream did not finish")
+    return result

@@ -212,6 +212,19 @@ lemma comma_crt_mdd_cofactor_mapping_family_from_roots:
   qed
 qed
 
+lemma comma_crt_mdd_cofactor_mapping_family_from_rows:
+  fixes mapping :: "('a::equal \<times> nat) list"
+  assumes rows: "list_all (\<lambda>root. \<forall>slot<radix.
+      comma_crt_mdd_cofactor radices nodes axis slot root =
+        Some (comma_crt_mdd_cofactor_family_child radices nodes axis root slot))
+      (map snd mapping)"
+  shows "\<And>slot. slot < radix \<Longrightarrow>
+    comma_crt_mdd_cofactor_mapping radices nodes axis slot mapping =
+      Some (map (\<lambda>(payload,root).
+        (payload, comma_crt_mdd_cofactor_family_child radices nodes axis root slot)) mapping)"
+  by (rule comma_crt_mdd_cofactor_mapping_family_from_roots)
+     (use rows in \<open>auto simp: list_all_iff\<close>)
+
 lemma comma_crt_mdd_reduced_branch_eval:
   assumes table: "comma_crt_mdd_table_wellformed radices nodes"
     and bound: "result < length nodes"
@@ -296,6 +309,23 @@ inductive comma_crt_mdd_bind_certificate ::
         comma_crt_mdd_bind_certificate radices nodes (mapping_child slot)
           (default_child slot) (source_child slot) (children ! slot))\<rbrakk>
       \<Longrightarrow> comma_crt_mdd_bind_certificate radices nodes mapping fallback_root source result"
+| bind_selected_leaf_branch:
+    "\<lbrakk>source < length nodes;
+      result < length nodes;
+      (nodes ! result = Comma_CRT_MDD_Branch axis children \<or>
+        list_all (\<lambda>child. child=result) children);
+      axis < length radices;
+      0 < radices ! axis;
+      length children = radices ! axis;
+      (\<forall>root\<in>set (source # fallback_root # map snd mapping). root < length nodes);
+      (\<And>slot. slot < radices ! axis \<Longrightarrow>
+        comma_crt_mdd_cofactor radices nodes axis slot source = Some (source_child slot) \<and>
+        source_child slot < length nodes \<and>
+        nodes ! source_child slot = Comma_CRT_MDD_Leaf (payload slot) \<and>
+        comma_crt_mdd_cofactor radices nodes axis slot
+          (comma_crt_mdd_bind_target fallback_root mapping (payload slot)) =
+          Some (children ! slot))\<rbrakk>
+      \<Longrightarrow> comma_crt_mdd_bind_certificate radices nodes mapping fallback_root source result"
 | bind_restrict:
     "\<lbrakk>source < length nodes;
       comma_crt_mdd_payload_cover nodes source labels;
@@ -304,6 +334,26 @@ inductive comma_crt_mdd_bind_certificate ::
         fallback_root source result\<rbrakk>
       \<Longrightarrow> comma_crt_mdd_bind_certificate radices nodes
         mapping fallback_root source result"
+
+lemma comma_crt_mdd_bind_branch_combined_rows:
+  assumes source: "source < length nodes"
+    and result: "result < length nodes"
+    and shape: "nodes ! result = Comma_CRT_MDD_Branch axis children \<or>
+      list_all (\<lambda>child. child=result) children"
+    and axis: "axis < length radices"
+    and positive: "0 < radices ! axis"
+    and width: "length children = radices ! axis"
+    and operands: "\<forall>root\<in>set (source # fallback_root # map snd mapping).
+      root < length nodes"
+    and rows: "\<And>slot. slot < radices ! axis \<Longrightarrow>
+      comma_crt_mdd_cofactor radices nodes axis slot source = Some (source_child slot) \<and>
+      comma_crt_mdd_cofactor radices nodes axis slot fallback_root = Some (default_child slot) \<and>
+      comma_crt_mdd_cofactor_mapping radices nodes axis slot mapping = Some (mapping_child slot) \<and>
+      comma_crt_mdd_bind_certificate radices nodes (mapping_child slot)
+        (default_child slot) (source_child slot) (children ! slot)"
+  shows "comma_crt_mdd_bind_certificate radices nodes mapping fallback_root source result"
+  by (rule comma_crt_mdd_bind_certificate.bind_branch
+      [OF source result shape axis positive width operands]) (use rows in blast)+
 
 lemma comma_crt_mdd_bind_branch_row_transport:
   fixes mapping :: "('a::equal \<times> nat) list"
@@ -558,6 +608,48 @@ next
     by (simp only: source_current[symmetric] default_current[symmetric]
         destination_current[symmetric])
 next
+  case (bind_selected_leaf_branch source result axis children fallback_root mapping source_child payload)
+  let ?slot = "coordinate axis mod radices ! axis"
+  have slot: "?slot < radices ! axis"
+    using bind_selected_leaf_branch.hyps(4,5) by simp
+  have row:
+    "comma_crt_mdd_cofactor radices nodes axis ?slot source = Some (source_child ?slot)"
+    "source_child ?slot < length nodes"
+    "nodes ! source_child ?slot = Comma_CRT_MDD_Leaf (payload ?slot)"
+    "comma_crt_mdd_cofactor radices nodes axis ?slot
+       (comma_crt_mdd_bind_target fallback_root mapping (payload ?slot)) =
+       Some (children ! ?slot)"
+    using bind_selected_leaf_branch.hyps(8)[OF slot] by blast+
+  have source_current:
+    "comma_crt_mdd_eval_raw radices nodes coordinate source =
+      comma_crt_mdd_eval_raw radices nodes coordinate (source_child ?slot)"
+    by (rule comma_crt_mdd_cofactor_current_eval
+      [where coordinate=coordinate,
+        OF bind_selected_leaf_branch.hyps(1) table
+          bind_selected_leaf_branch.hyps(4,5) slot refl row(1)])
+  have source_eval:
+    "comma_crt_mdd_eval_raw radices nodes coordinate source = Some (payload ?slot)"
+    using source_current comma_crt_mdd_eval_raw_leaf[OF row(2,3)] by simp
+  have fallback_bound: "fallback_root < length nodes"
+    and mapping_bound: "\<And>root. root \<in> set (map snd mapping) \<Longrightarrow> root < length nodes"
+    using bind_selected_leaf_branch.hyps(7) by auto
+  have target_bound:
+    "comma_crt_mdd_bind_target fallback_root mapping (payload ?slot) < length nodes"
+    by (rule comma_crt_mdd_bind_target_bound[OF fallback_bound mapping_bound])
+  have target_current:
+    "comma_crt_mdd_eval_raw radices nodes coordinate
+       (comma_crt_mdd_bind_target fallback_root mapping (payload ?slot)) =
+     comma_crt_mdd_eval_raw radices nodes coordinate (children ! ?slot)"
+    by (rule comma_crt_mdd_cofactor_current_eval
+      [where coordinate=coordinate,
+        OF target_bound table bind_selected_leaf_branch.hyps(4,5) slot refl row(4)])
+  have output_current:
+    "comma_crt_mdd_eval_raw radices nodes coordinate result =
+      comma_crt_mdd_eval_raw radices nodes coordinate (children ! ?slot)"
+    by (rule comma_crt_mdd_reduced_branch_eval
+      [where coordinate=coordinate, OF table bind_selected_leaf_branch.hyps(2,4,5,6,3)])
+  show ?case using source_eval target_current output_current by simp
+next
   case (bind_restrict source labels mapping fallback_root result)
   show ?case
   proof (cases "comma_crt_mdd_eval_raw radices nodes coordinate source")
@@ -639,6 +731,8 @@ ML \<open>
       comma_crt_mdd_cofactor_map_nodes
       comma_crt_mdd_cofactor_mapping_map_nodes
       comma_crt_mdd_cofactor_mapping_family_from_roots
+      comma_crt_mdd_cofactor_mapping_family_from_rows
+      comma_crt_mdd_bind_branch_combined_rows
       comma_crt_mdd_bind_branch_row_transport};
 \<close>
 

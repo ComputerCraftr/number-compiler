@@ -106,7 +106,7 @@ def _normalize(source: tuple[int, ...]) -> tuple[int, ...]:
 
 @dataclass(frozen=True, slots=True)
 class _AdjacentCellSummary:
-    """First/last inlet and all internal adjacent-cell outputs as a cell SLP."""
+    """First/last inlet and all internal adjacent-cell outputs as an SLP."""
 
     first: int | None
     last: int | None
@@ -129,18 +129,21 @@ def _cell_interval(arena: LedgerSLPArena, root: int, start: int, end: int) -> in
 
 
 def _adjacent_cell_summary(
-    arena: LedgerSLPArena,
+    source: LedgerSLPArena,
     root: int,
-    pair_output: Callable[[int, int], int],
+    emit_pair: Callable[[int, int], int],
+    output: LedgerSLPArena,
     ledger: ResourceLedger,
     owner: int,
+    *,
+    reverse_output: bool = False,
 ) -> _AdjacentCellSummary:
     """Apply a one-sided cell transducer to a shared SLP in graph order.
 
-    CONCAT creates one bridge symbol; REPEAT creates one repeated bridge
+    CONCAT emits one boundary response and REPEAT creates one repeated bridge
     action. Neither operation visits the repeated physical occurrences.
     """
-    empty = _AdjacentCellSummary(None, None, arena.empty_id)
+    empty = _AdjacentCellSummary(None, None, output.empty_id)
 
     def join(
         left: _AdjacentCellSummary, right: _AdjacentCellSummary
@@ -150,11 +153,16 @@ def _adjacent_cell_summary(
         if right.first is None:
             return left
         assert left.last is not None and right.last is not None
-        bridge = arena.terminal(pair_output(left.last, right.first))
+        bridge = emit_pair(left.last, right.first)
+        first, second = (
+            (right.internal, left.internal)
+            if reverse_output
+            else (left.internal, right.internal)
+        )
         return _AdjacentCellSummary(
             left.first,
             right.last,
-            arena.concat_many((left.internal, bridge, right.internal)),
+            output.concat_many((first, bridge, second)),
         )
 
     def repeat(node: _AdjacentCellSummary, count: int) -> _AdjacentCellSummary:
@@ -163,30 +171,37 @@ def _adjacent_cell_summary(
         if count == 1:
             return node
         assert node.last is not None
-        bridge = arena.terminal(pair_output(node.last, node.first))
-        unit = arena.concat(bridge, node.internal)
+        bridge = emit_pair(node.last, node.first)
+        unit = output.concat(bridge, node.internal)
         return _AdjacentCellSummary(
             node.first,
             node.last,
-            arena.concat(node.internal, arena.repeat(unit, count - 1)),
+            output.concat(node.internal, output.repeat(unit, count - 1)),
         )
 
     # Charge each in-flight fold task and each retained node summary before
     # constructing the corresponding dictionaries. The output SLP nodes are
     # independently charged by the arena's canonical stores.
     with LedgerReservation(ledger, owner) as reserve:
+
+        def reserve_slot(_node: int) -> None:
+            reserve.reserve(entries=1, nodes=1)
+
+        def release_slot(_node: int) -> None:
+            reserve.release(entries=1, nodes=1)
+
         values = fold_slp_dag(
-            arena,
+            source,
             root,
             empty_value=empty,
             terminal_value=lambda cell: _AdjacentCellSummary(
-                cell, cell, arena.empty_id
+                cell, cell, output.empty_id
             ),
             concatenate=join,
             repeat=repeat,
-            on_schedule=lambda _node: reserve.reserve(entries=1, nodes=1),
-            on_unschedule=lambda _node: reserve.release(entries=1, nodes=1),
-            on_evaluate=lambda _node: reserve.reserve(entries=1, nodes=1),
+            on_schedule=reserve_slot,
+            on_unschedule=release_slot,
+            on_evaluate=reserve_slot,
         )
         try:
             return values[root]
@@ -285,7 +300,8 @@ def normalize_reflected_cell_slp(
     summary = _adjacent_cell_summary(
         arena,
         root,
-        lambda left, right: left // 10 + 10 * (right % 10),
+        lambda left, right: arena.terminal(left // 10 + 10 * (right % 10)),
+        arena,
         ledger,
         owner,
     )
@@ -304,44 +320,31 @@ def _decimal_slp_from_cells(
     *,
     even: bool,
 ) -> int:
-    """Publish final decimal word without allocating the full cell vector."""
+    """Publish decimal digits and carry seams in one source-DAG fold."""
+    if type(multiplier) is not int or multiplier not in (2, 5):
+        raise ValueError("reflected multiplier must be 2 or 5")
     divisor = 100 // multiplier
+
+    def two_digits(cell: int) -> int:
+        return output.word((cell // 10, cell % 10))
+
     summary = _adjacent_cell_summary(
         cells,
         root,
-        lambda previous, current: multiplier * current % 100 + previous // divisor,
+        lambda left, right: two_digits(multiplier * right % 100 + left // divisor),
+        output,
         output.ledger,
         owner,
+        reverse_output=True,
     )
-    assert summary.first is not None and summary.last is not None
-    scaled = cells.concat(
-        cells.terminal(multiplier * summary.first % 100), summary.internal
+    if summary.first is None or summary.last is None:
+        return output.terminal(0)
+    decimal = output.concat(
+        summary.internal, two_digits(multiplier * summary.first % 100)
     )
     carry = summary.last // divisor
     if carry:
-        scaled = cells.concat(scaled, cells.terminal(carry))
-    # Physical digits are MSD-first. Each full base-100 cell has two decimal
-    # places, including internal zeros; only one *global* leading zero may go.
-    with LedgerReservation(output.ledger, owner) as reserve:
-
-        def reserve_slot(_node: int) -> None:
-            reserve.reserve(entries=1, nodes=1)
-
-        values = fold_slp_dag(
-            cells,
-            scaled,
-            empty_value=output.empty_id,
-            terminal_value=lambda c: output.word((c // 10, c % 10)),
-            concatenate=lambda a, b: output.concat(b, a),
-            repeat=output.repeat,
-            on_schedule=reserve_slot,
-            on_unschedule=lambda _node: reserve.release(entries=1, nodes=1),
-            on_evaluate=reserve_slot,
-        )
-        try:
-            decimal = values[scaled]
-        finally:
-            values.clear()
+        decimal = output.concat(output.terminal(carry), decimal)
     if not even:
         if symbol_at(output, decimal, 0) == 0:
             decimal = _cell_interval(output, decimal, 1, output.nodes[decimal].length)
@@ -363,6 +366,13 @@ def _decimal_slp_from_cells(
     if final_carry:
         multiplied = output.concat(multiplied, output.terminal(final_carry))
     with LedgerReservation(output.ledger, owner) as reserve:
+
+        def reserve_slot(_node: int) -> None:
+            reserve.reserve(entries=1, nodes=1)
+
+        def release_slot(_node: int) -> None:
+            reserve.release(entries=1, nodes=1)
+
         rows = fold_slp_dag(
             output,
             multiplied,
@@ -370,9 +380,9 @@ def _decimal_slp_from_cells(
             terminal_value=output.terminal,
             concatenate=lambda left, right: output.concat(right, left),
             repeat=output.repeat,
-            on_schedule=lambda _node: reserve.reserve(entries=1, nodes=1),
-            on_unschedule=lambda _node: reserve.release(entries=1, nodes=1),
-            on_evaluate=lambda _node: reserve.reserve(entries=1, nodes=1),
+            on_schedule=reserve_slot,
+            on_unschedule=release_slot,
+            on_evaluate=reserve_slot,
         )
         try:
             return rows[multiplied]

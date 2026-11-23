@@ -140,47 +140,7 @@ lemma comma_continue24_endpoint_steps:
   "comma_semantic_phase_program_class_step 68 1 = Comma_Phase_Class_Fork 5 0"
   "comma_semantic_phase_program_class_step 67 32 = Comma_Phase_Class_Continue 68 1"
   "comma_semantic_phase_program_class_step 66 10 = Comma_Phase_Class_Continue 67 32"
-  by (tactic \<open>
-    let
-      val ctxt = @{context}
-      val _ = Comma_Proof_Profile.report "Continue tails stage=setup-start"
-      val arithmetic = Comma_Entry_Arithmetic.signed_context ctxt
-      val expose = arithmetic |> Simplifier.add_simps @{thms
-        comma_semantic_phase_program_class_step_def
-        comma_semantic_phase_program_for_class_def
-        comma_offset_representatives_def nth_Cons'
-        comma_entry_control_program_def comma_finite_period_fast_def
-        comma_core_lift_parameters comma_phase_core_of_modulus_def option.case}
-      val endpoint = Comma_Semantic_Program_Arithmetic.make ctxt
-      val step_context = #context endpoint
-      val _ = Comma_Proof_Profile.report "Continue tails stage=arithmetic-ready"
-      fun lhs cv = Conv.arg_conv (Conv.fun_conv (Conv.arg_conv cv))
-      val unfold_round = lhs (Conv.arg_conv (Conv.arg_conv
-        (Conv.rewr_conv (mk_meta_eq @{thm comma_semantic_phase_program_round_unfold}))))
-      fun selected_step ct =
-        let
-          val _ = Comma_Proof_Profile.report
-            ("Continue tails stage=step-start term=" ^ Syntax.string_of_term ctxt (Thm.term_of ct))
-          val equation = Simplifier.rewrite step_context ct
-          val _ = Comma_Proof_Profile.report
-            ("Continue tails stage=step-done result=" ^
-              Syntax.string_of_term ctxt (Thm.term_of (Thm.rhs_of equation)))
-        in equation end
-      val evaluate_step = lhs
-        (Conv.arg_conv (Conv.arg_conv (Conv.arg_conv selected_step)))
-      val finish = ctxt |> Simplifier.add_proc (#simproc endpoint)
-      val _ = Comma_Proof_Profile.report "Continue tails stage=finish-ready"
-      val layer = ALLGOALS
-        (CONVERSION (Conv.try_conv (unfold_round then_conv evaluate_step))
-          THEN' simp_tac finish)
-      fun traced label tactic state =
-        (Comma_Proof_Profile.report ("Continue tails stage=" ^ label ^ "-start");
-         Seq.map (fn result =>
-           (Comma_Proof_Profile.report ("Continue tails stage=" ^ label ^ "-done");
-            result)) (tactic state))
-    in traced "expose" (ALLGOALS (simp_tac expose)) THEN
-      REPEAT_DETERM (CHANGED_PROP (traced "layer" layer)) end
-  \<close>)
+  by (tactic \<open>Comma_Semantic_Program_Arithmetic.class_step_tactic @{context}\<close>)
 
 lemma comma_continue24_endpoint_tails:
   assumes "terminal\<in>comma_continue24_endpoints"

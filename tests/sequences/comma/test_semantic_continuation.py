@@ -25,6 +25,10 @@ from number_compiler.sequences.comma import (
 from number_compiler.sequences.comma import (
     semantic_continuation as semantic_owner,
 )
+from number_compiler.sequences.comma.arithmetic import (
+    cycle_transfer,
+    entry_headroom_from_validated_transfer,
+)
 from number_compiler.sequences.comma.boundary_chart import BoundaryChart, ChartMove
 from number_compiler.sequences.comma.cyclotomic_clock import CyclotomicClock
 from number_compiler.sequences.comma.semantic_continuation import (
@@ -114,6 +118,57 @@ def test_near_operator_reuses_residual_action_and_binds_cycle_weight(
         literal = direct_near_event_clock(source.leading, source.coordinate)
         assert action.occurrence.near_physical_steps == literal.elapsed_steps
         assert literal.residual_headroom == 82
+
+
+@pytest.mark.parametrize("near_first", [False, True])
+def test_entry_and_near_share_control_but_keep_complete_occurrence_weights(
+    monkeypatch: pytest.MonkeyPatch, near_first: bool
+) -> None:
+    """Entry phases reuse the exact Near residual without erasing weight data."""
+    entry = BoundaryChart("entry", 5, 0, 0)
+    near = BoundaryChart("near", 5, 0, 40)
+    calls = _record_chart_sources(monkeypatch)
+
+    def forbid_uncached_near(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("Entry bypassed the canonical Near operator")
+
+    monkeypatch.setattr(
+        semantic_owner,
+        "classify_near_port",
+        forbid_uncached_near,
+        raising=False,
+    )
+    arena = SemanticContinuationArena()
+    sources = (near, entry) if near_first else (entry, near)
+    arena.compile_many(sources)
+    view = arena.publish((entry, near))
+
+    assert view.source_ids[entry] == view.source_ids[near]
+    assert calls.count(BoundaryChart("near", 5, 0, 35)) == 1
+    entry_action = view.transitions[entry][0]
+    near_action = view.transitions[near][0]
+    assert entry_action.control == near_action.control
+    assert entry_action.child == near_action.child == BoundaryChart("entry", 6, 0, 21)
+    assert entry_action.occurrence.entry_period == 2
+    assert entry_action.occurrence.entry_displacement == 60
+    assert near_action.occurrence.entry_period == 1
+    assert near_action.occurrence.entry_displacement == 0
+    assert entry_action.occurrence.near_physical_steps == (
+        near_action.occurrence.near_physical_steps
+    )
+    assert entry_action.occurrence == replace(
+        near_action.occurrence, entry_period=2, entry_displacement=60
+    )
+
+    transfer = cycle_transfer(5, 0)
+    assert all(
+        entry_headroom_from_validated_transfer(5, 0, phase, transfer) == 40
+        for phase in range(924)
+    )
+    entry_prefix = (10**5 - 40) // transfer.displacement * transfer.period
+    assert entry_prefix == 3332
+    assert entry_prefix + entry_action.occurrence.near_physical_steps + 1 == 3334
+    assert near_action.occurrence.near_physical_steps + 1 == 2
 
 
 def test_failed_near_operator_publication_rolls_back_before_retry(

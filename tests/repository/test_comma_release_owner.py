@@ -209,3 +209,34 @@ fun compile_program frame memo active env key program source =
     gate = string_keyed_mapping(gate)
     assert gate is not None
     assert gate["status"] == "PASS"
+
+
+@pytest.mark.parametrize("reachable", (False, True))
+def test_release_audit_requires_priority_replay_to_stay_outside_production(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reachable: bool
+) -> None:
+    replay_owner = "structure Comma_CRT_MDD_Multiway_Replay = struct end\n"
+    _release_owner_fixture(
+        tmp_path,
+        monkeypatch,
+        production_compiler=True,
+        audit_compiler=True,
+        production_source_override=(
+            replay_owner
+            if reachable
+            else f'val documentation = "{replay_owner.strip()}"\n'
+        ),
+    )
+    audit = isabelle_root(tmp_path) / "families/comma/audit/audit_action_resource.ML"
+    audit.write_text(replay_owner)
+
+    gate = string_keyed_mapping(index.build_index()["comma_release_owner"])
+    assert gate is not None
+    assert gate["status"] == ("FAIL" if reachable else "PASS")
+    violations = gate["violations"]
+    assert _strings(violations)
+    if reachable:
+        assert len(violations) == 2
+        assert all("recursive CRT priority proof replay" in item for item in violations)
+    else:
+        assert not violations

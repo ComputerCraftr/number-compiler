@@ -14,6 +14,7 @@ grant release authority.\<close>
 
 ML_file "../comma_semantic_future_instance/semantic_future_m204_candidate_data.ML"
 ML_file "../comma_semantic_future_instance/semantic_future_m204_graph_data.ML"
+ML_file "../comma_semantic_future_instance/semantic_future_m204_graph_reachability.ML"
 ML_file "../comma_semantic_future_instance/semantic_future_m204_class_rank.ML"
 ML_file "semantic_future_m204_class_rank_fixture.ML"
 local_setup \<open>Comma_Future_M204_Class_Rank_Fixture.run\<close>

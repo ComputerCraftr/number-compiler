@@ -10,6 +10,19 @@ fun reverse_q19_pack :: "nat list \<Rightarrow> nat" where
   "reverse_q19_pack [] = 0"
 | "reverse_q19_pack (d # ds) = d + 64 * reverse_q19_pack ds"
 
+text \<open>Decoding a complete bounded pair field preserves every lane and its
+order, the information used by the next native carry transition.\<close>
+
+fun reverse_q19_unpack :: "nat \<Rightarrow> nat \<Rightarrow> nat list" where
+  "reverse_q19_unpack 0 packed = []"
+| "reverse_q19_unpack (Suc n) packed =
+    (packed mod 64) # reverse_q19_unpack n (packed div 64)"
+
+lemma reverse_q19_unpack_pack:
+  assumes "list_all (\<lambda>d. d < 64) lanes"
+  shows "reverse_q19_unpack (length lanes) (reverse_q19_pack lanes) = lanes"
+  using assms by (induction lanes) simp_all
+
 lemma reverse_q19_pack_bias:
   "reverse_q19_pack (map (\<lambda>d. d + bias) lanes) =
     reverse_q19_pack lanes + bias * reverse_q19_pack (replicate (length lanes) 1)"
@@ -60,6 +73,13 @@ fun reverse_q19_native_carries :: "nat \<Rightarrow> nat list \<Rightarrow> nat 
 | "reverse_q19_native_carries carry (d # ds) =
     (if 10 \<le> d + carry then 1 else 0) #
     reverse_q19_native_carries (if 10 \<le> d + carry then 1 else 0) ds"
+
+corollary reverse_q19_unpacked_next_carries:
+  assumes "list_all (\<lambda>d. d < 64) lanes"
+  shows "reverse_q19_native_carries carry
+      (reverse_q19_unpack (length lanes) (reverse_q19_pack lanes)) =
+    reverse_q19_native_carries carry lanes"
+  using reverse_q19_unpack_pack[OF assms] by simp
 
 theorem reverse_q19_native_carry_word:
   assumes valid: "\<forall>d \<in> set lanes. d < 19"
@@ -357,7 +377,7 @@ proof -
 qed
 
 ML \<open>
-  val _ = if null (Thm_Deps.all_oracles @{thms reverse_q19_pack_bias
+  val _ = if null (Thm_Deps.all_oracles @{thms reverse_q19_unpack_pack reverse_q19_unpacked_next_carries reverse_q19_pack_bias
     reverse_q19_native_carry_lane reverse_q19_native_carry_word
     reverse_q19_native_carry_production
     reverse_q19_biased_lane_bound reverse_q19_first_lane reverse_q19_remaining_lanes

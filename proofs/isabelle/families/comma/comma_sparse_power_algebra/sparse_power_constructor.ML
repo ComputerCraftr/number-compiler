@@ -12,7 +12,7 @@ struct
   val natT = @{typ nat}
   val wordT = @{typ comma_sparse_word}
   val numT = @{typ num}
-  val profiling = getenv "COMMA_PROFILE_LOG" <> ""
+  val profiling = getenv "ISABELLE_PROOF_PROFILE_LOG" <> ""
 
   fun timed stage operation =
     if not profiling then operation ()

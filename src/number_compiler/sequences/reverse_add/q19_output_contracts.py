@@ -62,6 +62,8 @@ class ReversePairQ19OutputAuditSnapshot:
     summaries: OwnedMemoAuditSnapshot[int, WordSummary]
     issued_owner: int
     issued: OwnedMemoAuditSnapshot[tuple[int, int], ReversePairOutputOccurrence]
+    frontier_owner: int
+    frontiers: OwnedMemoAuditSnapshot[int, tuple[int, bool]]
     word_fibers_owner: int
     word_fibers: OwnedMemoAuditSnapshot[
         tuple[int, int, int], tuple[Q19WordFiber, tuple[object, ...]]

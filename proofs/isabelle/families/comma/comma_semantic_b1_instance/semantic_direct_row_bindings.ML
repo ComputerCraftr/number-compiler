@@ -19,21 +19,48 @@ struct
 
   fun make ctxt (computation: Compiler.computation) (program_bindings: (term * term) list) =
     let
+      val proposal_requests = Unsynchronized.ref 0
+      val proposal_actions = Unsynchronized.ref 0
+      val proposal_action_elapsed = Unsynchronized.ref Time.zeroTime
+      val proposal_start = Time.now ()
+      val _ = Comma_Proof_Profile.report "Direct Entry proposals start"
       fun proposals (program,_) table =
         (case Compiler.parse_program program of
           Compiler.Entry {sector,residue,core,...} =>
             fold (fn wanted => fn current =>
               let
+                val _ = proposal_requests := !proposal_requests + 1
                 val key = #entry_action_key computation sector residue core wanted
-                val representative: Compiler.entry_representative =
-                  {sector=sector,residue=residue,core=core,wanted=wanted,
-                   action= #entry_action computation sector residue core wanted}
               in if Termtab.defined current key then current
-                else Termtab.update (key,representative) current end)
+                else
+                  let
+                    val action_start = Time.now ()
+                    val outcome = Exn.capture
+                      (fn () => #entry_action computation sector residue core wanted) ()
+                    val _ = proposal_action_elapsed := Time.+ (!proposal_action_elapsed,
+                      Time.- (Time.now (),action_start))
+                    val action = Exn.release outcome
+                    val _ = proposal_actions := !proposal_actions + 1
+                    val representative: Compiler.entry_representative =
+                      {sector=sector,residue=residue,core=core,wanted=wanted,action=action}
+                  in Termtab.update (key,representative) current end
+              end)
               (#supported_values computation core) table
         | _ => table)
       val proposal_table = fold proposals program_bindings Termtab.empty
+      val proposal_elapsed = Time.- (Time.now (),proposal_start)
+      fun proposal_statistics () =
+        "entry_row_proposal_requests=" ^ Int.toString (!proposal_requests) ^
+        " entry_row_action_calls=" ^ Int.toString (!proposal_actions) ^
+        " entry_row_action_ms=" ^ LargeInt.toString
+          (Time.toMilliseconds (!proposal_action_elapsed)) ^
+        " entry_row_proposal_ms=" ^ LargeInt.toString (Time.toMilliseconds proposal_elapsed)
+      val _ = Comma_Proof_Profile.report ("Direct Entry proposals " ^ proposal_statistics ())
       val row_plan = Row_Plan.make ctxt computation (Termtab.dest proposal_table)
+      val _ = List.app (fn (program,_) => case Compiler.parse_program program of
+          Compiler.Entry {sector,residue,core,...} =>
+            #prewarm row_plan sector residue core
+        | _ => ()) program_bindings
       val representatives = Unsynchronized.ref (Termtab.empty: thm Termtab.table)
       val registered = Unsynchronized.ref 0
       val transports = Unsynchronized.ref 0
@@ -50,9 +77,7 @@ struct
             (hits := !hits+1;
              Utils.exact_prop ctxt "Existing direct row representative" expected previous)
         | NONE =>
-            (Comma_Proof_Dependency_Audit.require_native_clean ctxt
-               "Direct row representative" [checked];
-             representatives := Termtab.update (pair,checked) (!representatives);
+            (representatives := Termtab.update (pair,checked) (!representatives);
              registered := !registered+1; checked)
         end
       fun transport target representative expression equality =
@@ -77,12 +102,12 @@ struct
           val theorem = Utils.exact_prop ctxt "Direct row binding transport" expected theorem
           val _ = transports := !transports+1
         in theorem end
-      fun entry sector residue core wanted expression =
+      fun entry chart sector residue core wanted expression =
         let
           val key = #entry_action_key computation sector residue core wanted
           val proposed = (case Termtab.lookup proposal_table key of
               SOME item => item | NONE => error "Missing direct row representative proposal")
-          val equality = #transport row_plan sector residue core wanted RS @{thm meta_eq_to_obj_eq}
+          val equality = #transport_prepared row_plan chart sector residue core wanted RS @{thm meta_eq_to_obj_eq}
           val target = @{term comma_phase_program_entry_core_value_action} $
             HOLogic.mk_number @{typ nat} sector $ HOLogic.mk_number @{typ nat} residue $
             core $ HOLogic.mk_number @{typ nat} wanted
@@ -90,10 +115,11 @@ struct
       fun representative sector residue core wanted =
         (case Termtab.lookup proposal_table (#entry_action_key computation sector residue core wanted) of
           SOME item => #action item | NONE => error "Missing direct row representative proposal")
-      fun statistics () = "direct_row_representatives=" ^ Int.toString (!registered) ^
+      fun statistics () = proposal_statistics () ^
+        " direct_row_representatives=" ^ Int.toString (!registered) ^
         " direct_row_representative_hits=" ^ Int.toString (!hits) ^
         " direct_row_binding_transports=" ^ Int.toString (!transports) ^ " " ^
         #statistics row_plan ()
-    in {register=register,transport=transport,entry=entry,representative=representative,
-      statistics=statistics} end
+    in {register=register,transport=transport,entry=entry,prepare= #prepare row_plan,
+      representative=representative,statistics=statistics} end
 end

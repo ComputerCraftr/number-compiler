@@ -93,6 +93,7 @@ def test_root_routes_share_literal_arithmetic_without_sharing_future_authority()
     _, shared_imports = parse_theory_header(shared_source, shared)
     assert shared_imports == (
         "Comma_Source_Entry",
+        "Comma_C1_Occurrence.Comma_C1_First_Sector",
         "Comma_Arithmetic.Comma_Decimal_Parent",
         "Comma_Arithmetic.Comma_Child_Classification",
     )

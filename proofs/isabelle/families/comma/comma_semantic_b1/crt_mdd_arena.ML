@@ -10,6 +10,7 @@ sig
   datatype view = Leaf_Value of int | Branch_At of int * int list
   type bind_key = int * int * (int * int) list
   datatype bind_step = Bind_Leaf of int | Bind_Branch of int * bind_key list
+    | Bind_Selected_Leaf_Branch of int * (int * int * int * int) list
   type bind_witness =
     {key: bind_key, support: int list, result: int, step: bind_step}
 
@@ -22,6 +23,7 @@ sig
   type priority_witness = {key: priority_key, result: int, step: priority_step}
 
   val create: int list -> arena
+  val create_periodic: int list -> arena
   val radices: arena -> int list
   val seed_prefix: arena -> seed_node list -> action_root list
   val import_action_table: arena -> seed_node list -> int -> action_root
@@ -49,6 +51,8 @@ sig
   val shift_boolean: arena -> boolean_root -> int -> boolean_root
   val bind_action_to_boolean: arena -> action_root -> boolean_root ->
     (int * boolean_root) list -> boolean_root
+  val bind_action_to_action: arena -> action_root -> action_root ->
+    (int * action_root) list -> action_root
   val select_boolean_action: arena -> boolean_root -> action_root -> action_root -> action_root
   val bind_witness: arena -> bind_key -> bind_witness
   val priority_select: arena -> (boolean_root * action_root) list -> action_root ->
@@ -64,6 +68,32 @@ sig
   val statistics: arena -> string
 end
 
+(* This computes proposal metadata only.  Consumers of a frozen table still
+   prove the reachable-axis certificate before transporting a theorem. *)
+structure Comma_CRT_MDD_Reachable_Period =
+struct
+  fun find radices cache inspect source =
+    let
+      fun gcd a 0 = a
+        | gcd a b = gcd b (a mod b)
+      fun combine (SOME a) (SOME b) =
+            (SOME ((a div gcd a b) * b) handle Overflow => NONE)
+        | combine _ _ = NONE
+      fun visit id = (case Inttab.lookup (!cache) id of
+          SOME period => period
+        | NONE =>
+            let
+              val period = (case inspect id of
+                  NONE => SOME 1
+                | SOME (axis,children) =>
+                    fold (fn child => fn current => case current of
+                        NONE => NONE | SOME _ => combine current (visit child))
+                      children (SOME (List.nth (radices,axis))))
+              val _ = cache := Inttab.update (id,period) (!cache)
+            in period end)
+    in visit source end
+end
+
 structure Comma_CRT_MDD_Arena:> COMMA_CRT_MDD_ARENA =
 struct
   datatype seed_policy = Canonical_Seed | Ordered_Guard
@@ -75,6 +105,7 @@ struct
   datatype view = Leaf_Value of int | Branch_At of int * int list
   type bind_key = int * int * (int * int) list
   datatype bind_step = Bind_Leaf of int | Bind_Branch of int * bind_key list
+    | Bind_Selected_Leaf_Branch of int * (int * int * int * int) list
   type bind_witness =
     {key: bind_key, support: int list, result: int, step: bind_step}
 
@@ -109,16 +140,20 @@ struct
   type counters =
     {intern_hits: int Unsynchronized.ref, intern_misses: int Unsynchronized.ref,
      shift_requests: int Unsynchronized.ref, shift_completions: int Unsynchronized.ref,
-     shift_hits: int Unsynchronized.ref, bind_requests: int Unsynchronized.ref,
+     shift_hits: int Unsynchronized.ref, shift_normalized: int Unsynchronized.ref,
+     mapped_shift_requests: int Unsynchronized.ref,
+     mapped_shift_completions: int Unsynchronized.ref, mapped_shift_hits: int Unsynchronized.ref,
+     bind_requests: int Unsynchronized.ref,
      bind_completions: int Unsynchronized.ref, bind_hits: int Unsynchronized.ref,
      priority_requests: int Unsynchronized.ref, priority_visits: int Unsynchronized.ref,
      priority_hits: int Unsynchronized.ref, priority_completions: int Unsynchronized.ref}
 
   type arena =
-    {owner: unit Unsynchronized.ref, radices: int list,
+    {owner: unit Unsynchronized.ref, radices: int list, normalize_shift_periods: bool,
      storage: node option Array.array Unsynchronized.ref,
      size: int Unsynchronized.ref, interned: int Node_Table.table Unsynchronized.ref,
      supports: int list Inttab.table Unsynchronized.ref,
+     shift_periods: int option Inttab.table Unsynchronized.ref,
      shift_cache: int Shift_Table.table Unsynchronized.ref,
      bind_cache: bind_witness Bind_Table.table Unsynchronized.ref,
      priority_cache: priority_witness Priority_Table.table Unsynchronized.ref, counters: counters}
@@ -126,7 +161,7 @@ struct
   datatype action_shift_map = Action_Shift_Map of
     {arena:arena, encode:int -> int, cache:int Shift_Table.table Unsynchronized.ref}
 
-  fun create radices =
+  fun create_with_periods normalize_shift_periods radices =
     let
       val _ = if not (null radices) andalso List.all (fn r => r > 0) radices
         then () else error "CRT MDD arena radices must be positive"
@@ -136,6 +171,10 @@ struct
          shift_requests = Unsynchronized.ref 0,
          shift_completions = Unsynchronized.ref 0,
          shift_hits = Unsynchronized.ref 0,
+         shift_normalized = Unsynchronized.ref 0,
+         mapped_shift_requests = Unsynchronized.ref 0,
+         mapped_shift_completions = Unsynchronized.ref 0,
+         mapped_shift_hits = Unsynchronized.ref 0,
          bind_requests = Unsynchronized.ref 0,
          bind_completions = Unsynchronized.ref 0,
          bind_hits = Unsynchronized.ref 0,
@@ -145,14 +184,19 @@ struct
          priority_completions = Unsynchronized.ref 0}
     in
       {owner = Unsynchronized.ref (), radices = radices,
+       normalize_shift_periods = normalize_shift_periods,
        storage = Unsynchronized.ref (Array.array (128, NONE)),
        size = Unsynchronized.ref 0, interned = Unsynchronized.ref Node_Table.empty,
        supports = Unsynchronized.ref Inttab.empty,
+       shift_periods = Unsynchronized.ref Inttab.empty,
        shift_cache = Unsynchronized.ref Shift_Table.empty,
        bind_cache = Unsynchronized.ref Bind_Table.empty,
        priority_cache = Unsynchronized.ref Priority_Table.empty,
        counters = counters}: arena
     end
+
+  val create = create_with_periods false
+  val create_periodic = create_with_periods true
 
   fun node_count ({size, ...}: arena) = !size
   fun radices ({radices, ...}: arena) = radices
@@ -435,9 +479,23 @@ struct
 
   (* Both ordinary and mapped shifts use the same traversal; their leaf and
      branch builders retain the distinct reduction laws of each operation. *)
+  fun shift_period (arena as {shift_periods, radices, ...}: arena) id =
+    Comma_CRT_MDD_Reachable_Period.find radices shift_periods
+      (fn index => case node_at arena index of
+        Leaf _ => NONE | Branch (axis,children) => SOME (axis,children)) id
+
   fun traverse_shift (arena:arena) cache id amount leaf branch on_hit on_complete =
     let
-      fun visit node_id = (case Shift_Table.lookup (!cache) (node_id,amount) of
+      fun visit node_id =
+        let
+          val normalized = if #normalize_shift_periods arena then
+              (case shift_period arena node_id of
+                SOME period => amount mod period | NONE => amount)
+            else amount
+          val _ = if normalized <> amount then
+              #shift_normalized (#counters arena) := !(#shift_normalized (#counters arena)) + 1
+            else ()
+        in (case Shift_Table.lookup (!cache) (node_id,normalized) of
           SOME target => (on_hit (); target)
         | NONE =>
             let
@@ -446,11 +504,11 @@ struct
                 | Branch (axis,children) =>
                     let val radix = List.nth (#radices arena,axis)
                         val shifted = map_index (fn (slot,_) =>
-                          visit (List.nth (children,(slot+amount) mod radix))) children
+                          visit (List.nth (children,(slot + amount mod radix) mod radix))) children
                     in branch axis shifted end)
-              val _ = cache := Shift_Table.update ((node_id,amount),target) (!cache)
+              val _ = cache := Shift_Table.update ((node_id,normalized),target) (!cache)
               val _ = on_complete ()
-            in target end)
+            in target end) end
     in visit id end
 
   fun shift_id (arena as {shift_cache,counters,...}:arena) id amount =
@@ -474,11 +532,15 @@ struct
     let
       val source = check_root arena root
       val _ = if amount >= 0 then () else error "Mapped MDD shift amount is negative"
+      val counters = #counters arena
+      val _ = #mapped_shift_requests counters := !(#mapped_shift_requests counters) + 1
       fun mapped_leaf label = let val mapped = encode label in
         if mapped >= 0 then store_node arena (Leaf mapped)
         else error "Mapped MDD payload is negative" end
       val result = traverse_shift arena cache source amount mapped_leaf
-        (fn axis => fn children => intern_branch arena axis children) (fn () => ()) (fn () => ())
+        (fn axis => fn children => intern_branch arena axis children)
+        (fn () => #mapped_shift_hits counters := !(#mapped_shift_hits counters) + 1)
+        (fn () => #mapped_shift_completions counters := !(#mapped_shift_completions counters) + 1)
     in Action_Root (make_root arena result) end
 
   fun shift_boolean arena (Boolean_Root root) amount =
@@ -527,7 +589,7 @@ struct
                     ((case AList.lookup (op =) mapping' payload of
                       SOME id => id
                     | NONE => default_id), Bind_Leaf payload)
-                | Branch (source_axis, _) =>
+                | Branch (source_axis, source_children) =>
                     let
                       val roots = default_id :: map #2 mapping'
                       val axes = map_filter (top_axis arena) (source_id :: roots)
@@ -537,16 +599,36 @@ struct
                       val _ = if axis <= source_axis then ()
                         else error "CRT MDD bind chose an axis after its source"
                       val width = List.nth (radices, axis)
-                      val child_results = map (fn slot =>
-                        let
-                          val source_child = cofactor arena axis slot source_id
-                          val default_child = cofactor arena axis slot default_id
-                          val mapping_child = map (fn (label,id) =>
-                            (label,cofactor arena axis slot id)) mapping'
-                        in visit source_child default_child mapping_child end)
-                        (0 upto (width - 1))
-                    in (intern_branch arena axis (map #1 child_results),
-                      Bind_Branch (axis,map #2 child_results)) end)
+                      val slots = 0 upto (width - 1)
+                      fun is_leaf child = (case node_at arena child of
+                        Leaf _ => true | Branch _ => false)
+                    in if axis = source_axis andalso List.all is_leaf source_children then
+                      let
+                        fun select (slot, source_child) =
+                          let
+                            val payload = (case node_at arena source_child of
+                              Leaf value => value
+                            | Branch _ => error "CRT MDD selected source is not a leaf")
+                            val target = the_default default_id
+                              (AList.lookup (op =) mapping' payload)
+                            val result_child = cofactor arena axis slot target
+                          in (source_child, payload, target, result_child) end
+                        val selected = map_index select source_children
+                        val children = map (fn (_, _, _, child) => child) selected
+                      in (intern_branch arena axis children,
+                        Bind_Selected_Leaf_Branch (axis, selected)) end
+                    else
+                      let
+                        val child_results = map (fn slot =>
+                          let
+                            val source_child = cofactor arena axis slot source_id
+                            val default_child = cofactor arena axis slot default_id
+                            val mapping_child = map (fn (label,id) =>
+                              (label,cofactor arena axis slot id)) mapping'
+                          in visit source_child default_child mapping_child end) slots
+                      in (intern_branch arena axis (map #1 child_results),
+                        Bind_Branch (axis,map #2 child_results)) end
+                    end)
                 val witness: bind_witness =
                   {key=key', support=the (Inttab.lookup (!(#supports arena)) source_id),
                    result=result, step=step}
@@ -564,6 +646,17 @@ struct
         if 0 <= target then (target + 1, root)
         else error "CRT MDD bind target label is outside the supported natural range") mapping
     in Boolean_Root (bind_root arena source fallback encoded) end
+
+  (* A multi-terminal chart selects a child without a priority/cofactor
+     proof. The bind witness is checked later by Bind_Replay in the frozen
+     Store; action identities and label order remain explicit inputs. *)
+  fun bind_action_to_action arena (Action_Root source)
+      (Action_Root fallback) mapping =
+    let
+      val checked = map (fn (payload, Action_Root action) =>
+        (if payload < 0 then error "Negative multi-terminal selector label"
+         else (payload, action))) mapping
+    in Action_Root (bind_root arena source fallback checked) end
 
   fun select_boolean_action arena (Boolean_Root guard)
       (Action_Root if_true) (Action_Root if_false) =
@@ -719,7 +812,7 @@ struct
         (0 upto (node_count arena - 1))
     in HOLogic.mk_list node_type nodes end
 
-  fun statistics ({size, counters, priority_cache, ...}: arena) =
+  fun statistics ({size, counters, priority_cache, shift_periods, ...}: arena) =
     let fun show label counter = label ^ "=" ^ Int.toString (!counter)
     in String.concatWith " "
       ["proposal_nodes=" ^ Int.toString (!size),
@@ -728,6 +821,11 @@ struct
        show "shift_requests" (#shift_requests counters),
        show "shift_completions" (#shift_completions counters),
        show "shift_hits" (#shift_hits counters),
+       show "shift_normalized" (#shift_normalized counters),
+       show "mapped_shift_requests" (#mapped_shift_requests counters),
+       show "mapped_shift_completions" (#mapped_shift_completions counters),
+       show "mapped_shift_hits" (#mapped_shift_hits counters),
+       "shift_period_nodes=" ^ Int.toString (Inttab.size (!shift_periods)),
        show "bind_requests" (#bind_requests counters),
        show "bind_completions" (#bind_completions counters),
        show "bind_hits" (#bind_hits counters),

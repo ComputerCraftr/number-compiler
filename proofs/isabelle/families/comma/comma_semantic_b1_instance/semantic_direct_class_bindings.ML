@@ -41,7 +41,14 @@ struct
             program
           val computed = evaluator (Thm.cterm_of ctxt request)
           val decoded = #decode codec (Thm.rhs_of computed)
-          val equation = Thm.transitive computed decoded
+          val decoded_equation = Thm.transitive computed decoded
+          (* The checked code conversion can retain closed arithmetic in
+             program fields. Normalize it before the exact expected-program
+             check; normalization never supplies or changes authority. *)
+          val normalized = Simplifier.rewrite
+            (Comma_Entry_Arithmetic.natural_context ctxt)
+            (Thm.rhs_of decoded_equation)
+          val equation = Thm.transitive decoded_equation normalized
         in Utils.exact_prop ctxt "Direct class program binding"
           (Logic.mk_equals (request,expected)) equation RS @{thm meta_eq_to_obj_eq} end
     in certify end

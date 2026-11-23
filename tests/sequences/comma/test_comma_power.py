@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from asyncio import CancelledError
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
@@ -355,6 +356,50 @@ def test_refused_work_keeps_last_admitted_source() -> None:
     term.max_work = term.arena.max_work = 100_000
     assert term.materialize() == _literal_term(1_000)
     assert term.ledger.counters["comma_represented_transitions"] == 999
+
+
+@pytest.mark.parametrize("seal", (False, True))
+def test_occurrence_publication_rollback_after_store_write(
+    monkeypatch: pytest.MonkeyPatch, seal: bool
+) -> None:
+    with CommaTerm(3) as term:
+        assert _publish(term, term.arena.step(2)) == 22
+        action = term.arena.step(4)
+        source = _term_source(term)
+        before = term.audit_snapshot()
+        records = tuple(before.occurrences)
+        owner_usage = (
+            term.ledger.account_usage(before.occurrence_owner),
+            term.ledger.account_usage(before.occurrence_seal_owner),
+        )
+        target = cast(
+            LedgerList[CommaOccurrenceRecord],
+            object.__getattribute__(
+                term, "_occurrence_seals" if seal else "_occurrences"
+            ),
+        )
+        append = LedgerList[CommaOccurrenceRecord].append
+
+        def cancel_after_append(
+            store: LedgerList[CommaOccurrenceRecord], record: CommaOccurrenceRecord
+        ) -> None:
+            append(store, record)
+            if store is target:
+                raise CancelledError
+
+        with monkeypatch.context() as patch:
+            patch.setattr(LedgerList, "append", cancel_after_append)
+            with pytest.raises(CancelledError):
+                _publish(term, action)
+
+        after = term.audit_snapshot()
+        assert tuple(after.occurrences) == tuple(after.occurrence_seals) == records
+        assert term.ledger.account_usage(after.occurrence_owner) == owner_usage[0]
+        assert term.ledger.account_usage(after.occurrence_seal_owner) == owner_usage[1]
+        assert _term_source(term) is source
+        assert _current_index(term) == 2
+        assert _publish(term, action) == 46
+        assert len(_occurrences(term)) == len(records) + 1
 
 
 def test_foreign_or_altered_occurrence_cannot_become_a_provider() -> None:

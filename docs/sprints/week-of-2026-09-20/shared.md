@@ -238,8 +238,7 @@ It does not replace the balanced source constructor.
 <details>
 <summary>Germ semantics, production fixes, validation and remaining constructor</summary>
 
-**Input.** The attachment `df0e7f24-5e0c-4b35-a8e9-0862f17a063a/Pasted text.txt`
-has SHA-256 `c2675360712a03b3eadfd4226eb07a8f066dfdaa61a6230bb94e43f3d8ef031d` and
+**Input.** The supplied Collatz conjugacy note has SHA-256 `c2675360712a03b3eadfd4226eb07a8f066dfdaa61a6230bb94e43f3d8ef031d` and
 describes the normalized Collatz parity conjugacy and two-phase physical
 suspension. Its cursor is a supplied shifted parity word. The report explicitly
 separates cursor construction from finite-residue observation.
@@ -336,8 +335,8 @@ not a production cutover or a minimality certificate.
 <details>
 <summary>Candidate, exact counterexamples, measured work and proof scope</summary>
 
-**Input provenance.** The supplied
-`/Users/john/Downloads/196_temporal_boundary_frobenius_candidate.md` has SHA-256
+**Input provenance.** The historical input
+`196_temporal_boundary_frobenius_candidate.md` (not tracked here) has SHA-256
 `17751bcf4045ee8a77c8b334559fe5ea3a35da435b12e28e2392ac8281c36cfc`.
 It supplies a candidate and finite doubled-clock evidence, not an executable
 complete-transformer patch or a universal closure proof.

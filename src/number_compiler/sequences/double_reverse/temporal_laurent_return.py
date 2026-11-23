@@ -81,13 +81,6 @@ def _geometric_160(repetitions: int, modulus: int) -> int:
     return ((pow(160, repetitions, 159 * modulus) - 1) // 159) % modulus
 
 
-def _reverse(value: int) -> int:
-    # Only the finitely many initial source-admission steps require this
-    # scalar oracle. Powers beyond admission use only the matrix. Radix
-    # iteration avoids Python's decimal string conversion digit ceiling.
-    return reverse_radix_integer(value, 10)
-
-
 def _decimal_width(value: int) -> int:
     """Count exact decimal digits without integer-to-string conversion."""
     return sum(1 for _ in decimal_digits_lsd(value))
@@ -424,10 +417,10 @@ def _prefix_accumulators(
     norm = seed % MODULUS
     rev = 0
     for n in range(1, physical_generation + 1):
-        x = 2 * _reverse(x)
+        x = 2 * reverse_radix_integer(x, 10)
         if n == checkpoint:
             physical_checkpoint = x
-        u = x if n % 2 == 0 else _reverse(x)
+        u = x if n % 2 == 0 else reverse_radix_integer(x, 10)
         if n % 2:
             rev = (rev + u - previous) % MODULUS
         else:

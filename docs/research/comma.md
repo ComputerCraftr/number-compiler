@@ -902,6 +902,13 @@ equations against the source action before that rank has proof authority.
 The 204-class trace quotient consequently does not replace the global
 ordered-child quotient or authenticate a source by itself.
 
+When the source cofactor at an ordered decision-diagram slot is a
+leaf, the exact bind combines that leaf with the cofactor of the target
+selected by its label. An absent label selects the declared default.
+Equality transport preserves the slot, ordered mapping and frozen
+table in the resulting row. The Bellman equation still needs the
+checked rows for every admitted class.
+
 **External selector clock.** The [clock owner](../../src/number_compiler/sequences/comma/cyclotomic_clock.py)
 stores occurrence characters `(r mod 4,r mod 3,r mod 7,r mod 11)`. The local
 periods 1, 2, 3, 6, 22 and 28 are projections of that clock, not six action

@@ -459,6 +459,28 @@ def test_admitted_provider_selects_one_slot_and_preserves_literal_children(
     store.close()
 
 
+def test_future_source_uses_one_phase_during_charging(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = _candidate_record()
+    _charges, charge_work = _work_log()
+    _install_synthetic_registry(monkeypatch, record, charge_work)
+    with future_provider.SemanticFutureProviderStore(ResourceLedger()) as store:
+        provider = store.load_record(record, charge_work=charge_work)
+        source = BoundaryState("N", 2, 3)
+
+        def shift_during_lookup(_amount: int) -> None:
+            object.__setattr__(source, "exponent_residue", 0)
+
+        assert provider.source_class(source, charge_work=shift_during_lookup) == 2
+        assert provider.source_class(source, charge_work=charge_work) == 0
+        source = BoundaryState("N", 2, 3)
+        with pytest.raises(ValueError, match="selection source changed during lookup"):
+            provider.select_unique_unranked_child(
+                source, charge_work=shift_during_lookup
+            )
+
+
 def test_selection_rejects_a_foreign_provider_with_matching_queried_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

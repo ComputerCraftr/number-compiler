@@ -16,6 +16,7 @@ struct
   structure Arena = Comma_CRT_MDD_Arena
   structure Store = Comma_CRT_MDD_Certificate_Store
   structure Utils = Comma_CRT_MDD_Proof_Utils
+  structure Slots = Comma_CRT_MDD_Indexed_Slots
 
   structure Key_Table = Table(
     type key = Arena.bind_key
@@ -31,6 +32,12 @@ struct
   structure Mapping_Family_Table = Table(
     type key = int * (int * int) list
     val ord = prod_ord int_ord (list_ord (prod_ord int_ord int_ord)))
+  structure Selected_Cofactor_Table = Table(
+    type key = int * (int * int)
+    val ord = prod_ord int_ord (prod_ord int_ord int_ord))
+  structure Selected_Target_Table = Table(
+    type key = int * (int * (int * int) list)
+    val ord = prod_ord int_ord (prod_ord int_ord (list_ord (prod_ord int_ord int_ord))))
 
   val natT = @{typ nat}
   val boolT = HOLogic.boolT
@@ -63,11 +70,15 @@ struct
   type state =
     {store: Store.store, ctxt: Proof.context, simp_ctxt: Proof.context,
      radices: int list,
+     slot_successor: int -> thm,
+     slot_vectors: thm Termtab.table Unsynchronized.ref,
      bind_certificates: (int * thm) Key_Table.table Unsynchronized.ref,
      public_bind_certificates: (int * thm) Key_Table.table Unsynchronized.ref,
      cover_certificates: thm Cover_Table.table Unsynchronized.ref,
      cofactor_families: cofactor_family Cofactor_Family_Table.table Unsynchronized.ref,
      mapping_families: mapping_family Mapping_Family_Table.table Unsynchronized.ref,
+     selected_cofactors: (int * thm) Selected_Cofactor_Table.table Unsynchronized.ref,
+     selected_targets: (int * thm) Selected_Target_Table.table Unsynchronized.ref,
      radix_facts: (thm * thm * thm) Inttab.table Unsynchronized.ref,
      support_cache: int list Inttab.table Unsynchronized.ref,
      active: unit Key_Table.table Unsynchronized.ref,
@@ -78,6 +89,17 @@ struct
      mapping_family_builds: int Unsynchronized.ref,
      radix_fact_hits: int Unsynchronized.ref,
      radix_fact_builds: int Unsynchronized.ref,
+     identity_restrictions: int Unsynchronized.ref,
+     direct_branch_shapes: int Unsynchronized.ref,
+     direct_indexed_slots: int Unsynchronized.ref,
+     indexed_vector_builds: int Unsynchronized.ref,
+     selected_leaf_branches: int Unsynchronized.ref,
+     selected_leaf_rows: int Unsynchronized.ref,
+     selected_cofactor_hits: int Unsynchronized.ref,
+     selected_cofactor_builds: int Unsynchronized.ref,
+     selected_target_hits: int Unsynchronized.ref,
+     selected_target_builds: int Unsynchronized.ref,
+     first_public_checkpoint: bool Unsynchronized.ref,
      proof_timings: (string * int * Time.time) list Unsynchronized.ref}
 
   type replay = {state: state, certify: Arena.bind_key -> thm,
@@ -138,9 +160,24 @@ struct
             else (name, count, total) :: update rest
     in proof_timings := update (!proof_timings) end
 
+  (* Inclusive aggregates are collected only when the existing proof profiler
+     is enabled.  Exceptions remain observable after their cost is recorded. *)
+  fun profile_stage state label operation =
+    if Comma_Proof_Profile.enabled () then
+      let
+        val started = Time.now ()
+        val result = Exn.capture operation ()
+        val _ = update_proof_timing state label (Time.- (Time.now (), started))
+      in Exn.release result end
+    else operation ()
+
   fun proof_profile_summary ({bind_visits, cover_visits, cofactor_family_hits,
       cofactor_family_builds, mapping_family_hits, mapping_family_builds,
       radix_fact_hits, radix_fact_builds,
+      identity_restrictions, direct_branch_shapes, selected_leaf_branches,
+      direct_indexed_slots, indexed_vector_builds,
+      selected_leaf_rows, selected_cofactor_hits, selected_cofactor_builds,
+      selected_target_hits, selected_target_builds,
       proof_timings, ...}: state) =
     let
       fun timing (label, count, elapsed) =
@@ -156,6 +193,16 @@ struct
       " mapping_family_builds=" ^ Int.toString (!mapping_family_builds) ^
       " radix_fact_hits=" ^ Int.toString (!radix_fact_hits) ^
       " radix_fact_builds=" ^ Int.toString (!radix_fact_builds) ^
+      " identity_restrictions=" ^ Int.toString (!identity_restrictions) ^
+      " direct_branch_shapes=" ^ Int.toString (!direct_branch_shapes) ^
+      " direct_indexed_slots=" ^ Int.toString (!direct_indexed_slots) ^
+      " indexed_vector_builds=" ^ Int.toString (!indexed_vector_builds) ^
+      " selected_leaf_branches=" ^ Int.toString (!selected_leaf_branches) ^
+      " selected_leaf_rows=" ^ Int.toString (!selected_leaf_rows) ^
+      " selected_cofactor_hits=" ^ Int.toString (!selected_cofactor_hits) ^
+      " selected_cofactor_builds=" ^ Int.toString (!selected_cofactor_builds) ^
+      " selected_target_hits=" ^ Int.toString (!selected_target_hits) ^
+      " selected_target_builds=" ^ Int.toString (!selected_target_builds) ^
       " prove_bool={" ^ timings ^ "}"
     end
 
@@ -184,7 +231,7 @@ struct
     in Exn.release result end
 
   fun prove_closed state label expected facts rule =
-    let
+    profile_stage state ("prove_closed/" ^ label) (fn () => let
       val {ctxt, simp_ctxt, ...} = state
       val theorem = Goal.prove ctxt [] [] expected
         (fn {context = goal_ctxt, ...} =>
@@ -196,10 +243,10 @@ struct
              [assume_tac goal_ctxt i,
               Simplifier.asm_full_simp_tac
                 (Simplifier.add_simps facts simp_ctxt) i])))
-    in Utils.exact_prop ctxt label expected theorem end
+    in Utils.exact_prop ctxt label expected theorem end)
 
-  fun intro_closed ({ctxt, ...}: state) label expected intro facts =
-    let
+  fun intro_closed (state as {ctxt, ...}: state) label expected intro facts =
+    profile_stage state ("intro_closed/" ^ label) (fn () => let
       val (type_instantiation, term_instantiation) = Thm.match
         (Thm.cterm_of ctxt (Thm.concl_of intro), Thm.cterm_of ctxt expected)
       val intro = Thm.instantiate
@@ -208,20 +255,21 @@ struct
       val facts = map (Conv.fconv_rule Drule.beta_eta_conversion) facts
       val theorem = fold
         (fn fact => fn theorem => Thm.implies_elim theorem fact) facts intro
-    in Utils.exact_prop ctxt label expected theorem end
+    in Utils.exact_prop ctxt label expected theorem end)
 
-  fun lookup_equation ({store, ctxt, ...}: state) index =
-    let
+  fun lookup_equation (state as {store, ctxt, ...}: state) index =
+    profile_stage state "frozen_lookup_equation" (fn () => let
       val theorem = Store.lookup store index
       val object_theorem = theorem RS @{thm meta_eq_to_obj_eq}
       val expected = HOLogic.mk_Trueprop (HOLogic.mk_eq
         (Const (@{const_name nth}, nodesT --> natT --> nodeT) $
           Store.table store $ nat index, Store.node_term (Store.node store index)))
-    in Utils.exact_prop ctxt "Frozen MDD node equation" expected object_theorem end
+    in Utils.exact_prop ctxt "Frozen MDD node equation" expected object_theorem end)
 
-  fun root_bound ({store, ctxt, ...}: state) root =
-    let val theorem = Store.bound store root
-    in Utils.exact_prop ctxt "Frozen MDD root bound" (Thm.prop_of theorem) theorem end
+  fun root_bound (state as {store, ctxt, ...}: state) root =
+    profile_stage state "frozen_root_bound" (fn () =>
+      let val theorem = Store.bound store root
+      in Utils.exact_prop ctxt "Frozen MDD root bound" (Thm.prop_of theorem) theorem end)
 
   fun unique xs = length xs = length (distinct (op =) xs)
   fun same_set xs ys = unique xs andalso unique ys andalso
@@ -233,34 +281,38 @@ struct
   fun mk_intro state label proposition intro facts =
     prove_closed state label (HOLogic.mk_Trueprop proposition) facts intro
 
-  fun indexed_slots (state as {ctxt, ...}: state)
-      radix predicate proofs item_context =
+  fun indexed_slots (state as {ctxt, slot_successor, direct_indexed_slots, ...}: state)
+      radix predicate proofs convert =
     let
-      val _ = if fastype_of predicate = @{typ "nat => bool"} then ()
-        else error "MDD bind slot predicate has the wrong type"
-      val successor_cache = Comma_Selected_List_Conversion.make_successor_cache ctxt radix
-      fun proof_item index =
-        let
-          val index_term = nat index
-          val application = Thm.apply (Thm.cterm_of ctxt predicate)
-            (Thm.cterm_of ctxt index_term)
-          val conversion = Simplifier.rewrite item_context application
-          val trueprop_ct = Thm.cterm_of ctxt
-            (Const (@{const_name Trueprop}, boolT --> @{typ prop}))
-          val proposition_conversion = Thm.combination
-            (Thm.reflexive trueprop_ct) conversion
-          val normalized_prop = HOLogic.mk_Trueprop (Thm.term_of (Thm.rhs_of conversion))
-          val normalized = Utils.exact_prop ctxt "Concrete MDD bind slot normalization"
-            normalized_prop (List.nth (proofs, index))
-          val item = Thm.equal_elim (Thm.symmetric proposition_conversion) normalized
-          val expected = HOLogic.mk_Trueprop (predicate $ index_term)
-        in Utils.exact_prop ctxt "Concrete MDD bind predicate application" expected item end
-      val all = Comma_Selected_List_Conversion.prove_indexed_list_all
-        {ctxt=ctxt, predicate=predicate, bound=radix, prove_item=proof_item,
+      val _ = if fastype_of predicate = @{typ "nat => bool"} andalso
+          length proofs = radix then ()
+        else error "MDD bind slot predicate or row count is invalid"
+      val pred_ct = Thm.cterm_of ctxt predicate
+      val items = profile_stage state "indexed_slot_adaptation" (fn () =>
+        Vector.fromList (map_index (fn (index, proof) =>
+          Slots.adapt ctxt pred_ct convert index proof) proofs))
+      val _ = direct_indexed_slots := !direct_indexed_slots + radix
+    in profile_stage state "indexed_row_assembly" (fn () =>
+      Comma_Selected_List_Conversion.prove_indexed_list_all
+        {ctxt=ctxt, predicate=predicate, bound=radix,
+         prove_item=fn index => Vector.sub (items, index),
          zero_fact = @{thm comma_indexed_all_zero},
          step_fact = @{thm comma_indexed_all_Suc},
-         successor_equation= #equation successor_cache}
-    in all end
+         successor_equation=slot_successor}) end
+
+  fun slot_vector (state as {ctxt, slot_vectors, indexed_vector_builds, ...}: state)
+      item_context term =
+    case Termtab.lookup (!slot_vectors) term of
+      SOME equation => equation
+    | NONE =>
+        let
+          val context = item_context ()
+          val equation = profile_stage state "indexed_vector_preparation"
+            (fn () => Simplifier.rewrite context (Thm.cterm_of ctxt term))
+          val _ = ignore (HOLogic.dest_list (Thm.term_of (Thm.rhs_of equation)))
+          val _ = slot_vectors := Termtab.update (term, equation) (!slot_vectors)
+          val _ = indexed_vector_builds := !indexed_vector_builds + 1
+        in equation end
 
   fun make store =
     let
@@ -269,13 +321,20 @@ struct
         (HOLogic.dest_list (Store.radices store))
       val _ = if not (null radices) andalso List.all (fn radix => radix > 0) radices
         then () else error "Frozen MDD table has an invalid radix vector"
+      val successor_cache = Comma_Selected_List_Conversion.make_successor_cache
+        ctxt (fold (curry Int.max) radices 1)
+      val _ = List.app (ignore o #equation successor_cache)
+        (0 upto (fold (curry Int.max) radices 1 - 1))
       val state: state =
         {store=store, ctxt=ctxt, simp_ctxt=simp_context ctxt, radices=radices,
+         slot_successor= #equation successor_cache, slot_vectors=Unsynchronized.ref Termtab.empty,
          bind_certificates=Unsynchronized.ref Key_Table.empty,
          public_bind_certificates=Unsynchronized.ref Key_Table.empty,
          cover_certificates=Unsynchronized.ref Cover_Table.empty,
          cofactor_families=Unsynchronized.ref Cofactor_Family_Table.empty,
          mapping_families=Unsynchronized.ref Mapping_Family_Table.empty,
+         selected_cofactors=Unsynchronized.ref Selected_Cofactor_Table.empty,
+         selected_targets=Unsynchronized.ref Selected_Target_Table.empty,
          radix_facts=Unsynchronized.ref Inttab.empty,
          support_cache=Unsynchronized.ref Inttab.empty,
          active=Unsynchronized.ref Key_Table.empty,
@@ -286,6 +345,17 @@ struct
          mapping_family_builds=Unsynchronized.ref 0,
          radix_fact_hits=Unsynchronized.ref 0,
          radix_fact_builds=Unsynchronized.ref 0,
+         identity_restrictions=Unsynchronized.ref 0,
+         direct_branch_shapes=Unsynchronized.ref 0,
+         direct_indexed_slots=Unsynchronized.ref 0,
+         indexed_vector_builds=Unsynchronized.ref 0,
+         selected_leaf_branches=Unsynchronized.ref 0,
+         selected_leaf_rows=Unsynchronized.ref 0,
+         selected_cofactor_hits=Unsynchronized.ref 0,
+         selected_cofactor_builds=Unsynchronized.ref 0,
+         selected_target_hits=Unsynchronized.ref 0,
+         selected_target_builds=Unsynchronized.ref 0,
+         first_public_checkpoint=Unsynchronized.ref false,
          proof_timings=Unsynchronized.ref []}
       val wf = Store.wellformed store
       val _ = Utils.ensure_closed_context ctxt "Frozen MDD table wellformedness" wf
@@ -522,24 +592,21 @@ struct
 
       fun mapping_family axis mapping =
         let
-          val roots = distinct (op =) (map #2 mapping)
+          val roots = map #2 mapping
           val width = nat (List.nth (radices, axis))
           val family_root = Free ("mdd_mapping_family_root", natT)
           val family_slot = Free ("mdd_mapping_family_slot", natT)
           val mapped_roots = Const (@{const_name map},
             (pairT --> natT) --> pair_listT --> nat_listT) $
               Const (@{const_name snd}, pairT --> natT) $ pair_list mapping
-          val root_set = Const (@{const_name set}, nat_listT --> HOLogic.mk_setT natT) $
-            mapped_roots
-          val family_prop = Logic.all family_root (Logic.all family_slot
-            (Logic.mk_implies
-              (HOLogic.mk_Trueprop
-                (HOLogic.mk_mem (family_root, root_set)),
-               Logic.mk_implies
-                (HOLogic.mk_Trueprop (mk_less (family_slot, width)),
-                 HOLogic.mk_Trueprop (HOLogic.mk_eq
-                   (cofactor_term state (nat axis) family_slot family_root,
-                    some natT (family_child_at axis family_root family_slot)))))))
+          val root_body = HOLogic.mk_imp
+            (mk_less (family_slot, width),
+             HOLogic.mk_eq
+               (cofactor_term state (nat axis) family_slot family_root,
+                some natT (family_child_at axis family_root family_slot)))
+          val root_predicate = Term.lambda family_root
+            (Const (@{const_name All}, (natT --> boolT) --> boolT) $
+              Term.lambda family_slot root_body)
           val expected = mapping_family_prop axis mapping
         in
           case Mapping_Family_Table.lookup (!(#mapping_families state))
@@ -552,19 +619,41 @@ struct
               in {theorem=theorem}: mapping_family end
           | NONE =>
               let
-                val families = map (cofactor_family axis) roots
-                val family_theorems = map #theorem families
-                val root_families = Utils.prove_exact ctxt
-                  "MDD mapping-root cofactor families" family_prop
-                  (fn context =>
-                    let
-                      val family_ctxt = put_simpset HOL_basic_ss context
-                        |> Simplifier.add_simps
-                          @{thms list.map list.set snd_conv insert_iff empty_iff}
-                    in Method.insert_tac context family_theorems 1 THEN
-                      asm_full_simp_tac family_ctxt 1 THEN
-                      TRY (auto_tac family_ctxt)
-                    end)
+                fun add_family root table =
+                  if Inttab.defined table root then table
+                  else Inttab.update (root, cofactor_family axis root) table
+                val families = fold add_family roots Inttab.empty
+                val root_families = profile_stage state "mapping_root_families" (fn () =>
+                  let
+                    fun add_object_family root table =
+                      if Inttab.defined table root then table
+                      else
+                        let
+                          val family = the (Inttab.lookup families root)
+                          val theorem = Conv.fconv_rule (Object_Logic.atomize ctxt)
+                            (#theorem family)
+                        in Inttab.update (root, theorem) table end
+                    val object_table = fold add_object_family roots Inttab.empty
+                    val object_families = map (fn root =>
+                      the (Inttab.lookup object_table root)) roots
+                    val literal = Utils.literal_list_all ctxt
+                      "MDD ordered mapping-root cofactor families" root_predicate
+                      (map nat roots) object_families
+                    val roots_ctxt = put_simpset HOL_basic_ss ctxt
+                      |> Simplifier.add_simps @{thms list.map snd_conv}
+                    val roots_conversion = Simplifier.rewrite roots_ctxt
+                      (Thm.cterm_of ctxt mapped_roots)
+                    val _ = if Thm.term_of (Thm.rhs_of roots_conversion) aconv nat_list roots
+                      then () else error "MDD mapping root vector changed during transport"
+                    val all_head = Const (@{const_name list_all},
+                      (natT --> boolT) --> nat_listT --> boolT) $ root_predicate
+                    val all_conversion = Thm.combination
+                      (Thm.reflexive (Thm.cterm_of ctxt all_head)) roots_conversion
+                    val proposition_conversion = Thm.combination
+                      (Thm.reflexive (Thm.cterm_of ctxt
+                        (Const (@{const_name Trueprop}, boolT --> @{typ prop}))))
+                      all_conversion
+                  in Thm.equal_elim (Thm.symmetric proposition_conversion) literal end)
                 val radix = width
                 val rule = Drule.infer_instantiate ctxt
                   [( ("radices",0), Thm.cterm_of ctxt (Store.radices store)),
@@ -573,7 +662,7 @@ struct
                    (("mapping",0), Thm.cterm_of ctxt (pair_list mapping)),
                    (("radix",0), Thm.cterm_of ctxt radix),
                    (("slot",0), Thm.cterm_of ctxt family_slot)]
-                  @{thm comma_crt_mdd_cofactor_mapping_family_from_roots}
+                  @{thm comma_crt_mdd_cofactor_mapping_family_from_rows}
                 val theorem = Thm.implies_elim rule root_families
                 val theorem = Thm.forall_intr
                   (Thm.cterm_of ctxt family_slot) theorem
@@ -628,21 +717,193 @@ struct
             else error "Arena bind witness has duplicate source labels"
         in () end
 
-      fun restrict_certificate source labels full_mapping fallback result inner cover_thm =
+      fun admit_witness (key as (source, fallback, mapping)) =
+        let
+          val _ = validate_key key
+        in profile_stage state "bind_source_admission" (fn () => let
+          val witness = Store.bind_witness store key
+          val labels = #support witness
+          val normalized = (source, fallback, restrict_mapping labels mapping)
+          val _ = if #key witness = normalized andalso
+              same_set labels (support_of source) andalso
+              List.all (fn label => label >= 0) labels then ()
+            else error "Arena bind witness differs from requested support-normalized key"
+        in witness end) end
+
+      fun publish_bind table label (key as (source, fallback, mapping)) result certificate =
+        profile_stage state "bind_publication" (fn () => let
+          val expected = HOLogic.mk_Trueprop (bind_prop state mapping fallback source result)
+          val theorem = Utils.exact_prop ctxt label expected certificate
+          val _ = table := Key_Table.update (key, (result, theorem)) (!table)
+        in theorem end)
+
+      val slot_bounds = Unsynchronized.ref (Inttab.empty: thm Inttab.table Inttab.table)
+      fun slot_bound axis slot =
+        let
+          val by_slot = the_default Inttab.empty (Inttab.lookup (!slot_bounds) axis)
+        in case Inttab.lookup by_slot slot of
+          SOME theorem => theorem
+        | NONE => let
+            val (_, _, radix_equation) = axis_facts axis
+            val numeric = prove_bool state "Selected branch numeric slot bound"
+              (mk_less (nat slot, nat (List.nth (radices, axis)))) []
+            val theorem = Thm.equal_elim
+              (Thm.symmetric (radix_bound_conversion radix_equation (nat slot))) numeric
+            val _ = slot_bounds := Inttab.update
+              (axis, Inttab.update (slot, theorem) by_slot) (!slot_bounds)
+          in theorem end
+        end
+
+      fun selected_cofactor axis slot root child =
+        profile_stage state "selected_cofactor" (fn () => let
+          val key = (axis, (slot, root))
+          val expected = HOLogic.mk_Trueprop (HOLogic.mk_eq
+            (cofactor_term state (nat axis) (nat slot) (nat root), some natT (nat child)))
+        in
+          case Selected_Cofactor_Table.lookup (!(#selected_cofactors state)) key of
+            SOME (cached_child, theorem) =>
+              let
+                val _ = if cached_child = child then ()
+                  else error "Cached selected cofactor has a different child"
+                val _ = #selected_cofactor_hits state := !(#selected_cofactor_hits state) + 1
+              in Utils.exact_prop ctxt "Cached selected cofactor" expected theorem end
+          | NONE =>
+              let
+                val (axis_fact, positive_fact, radix_equation) = axis_facts axis
+                val theorem = (case node_at root of
+                  Store.Branch (node_axis, children) =>
+                    if node_axis = axis then
+                      let
+                        val _ = if slot >= 0 andalso slot < length children andalso
+                            List.nth (children, slot) = child then ()
+                          else error "Selected cofactor child/slot mismatch"
+                        val child_list = Thm.cterm_of ctxt (nat_list children)
+                        val slot_ct = Thm.cterm_of ctxt (nat slot)
+                        val lookup = Slots.literal_nth (#slot_successor state) slot
+                          (Slots.nth_ct ctxt child_list slot_ct)
+                        val selected = lookup RS @{thm meta_eq_to_obj_eq}
+                        val result = @{thm comma_crt_mdd_selected_branch_cofactor} OF
+                          [axis_fact, positive_fact, slot_bound axis slot,
+                           root_bound state root, lookup_equation state root,
+                           Store.branch_width store root, selected]
+                      in Utils.exact_prop ctxt "Selected branch cofactor" expected result end
+                    else prove_bool state "Selected bind cofactor"
+                      (HOLogic.dest_Trueprop expected)
+                      [root_bound state root, lookup_equation state root,
+                       axis_fact, positive_fact, radix_equation]
+                | Store.Leaf _ => prove_bool state "Selected bind cofactor"
+                    (HOLogic.dest_Trueprop expected)
+                    [root_bound state root, lookup_equation state root,
+                     axis_fact, positive_fact, radix_equation])
+                val _ = #selected_cofactors state := Selected_Cofactor_Table.update
+                  (key, (child, theorem)) (!(#selected_cofactors state))
+                val _ = #selected_cofactor_builds state :=
+                  !(#selected_cofactor_builds state) + 1
+              in theorem end
+        end)
+
+      fun selected_target fallback mapping payload target =
+        profile_stage state "selected_target" (fn () => let
+          val key = (fallback, (payload, mapping))
+          val expected = HOLogic.mk_Trueprop (HOLogic.mk_eq
+            (bind_target_term (nat fallback) (pair_list mapping) (nat payload), nat target))
+        in
+          case Selected_Target_Table.lookup (!(#selected_targets state)) key of
+            SOME (cached_target, theorem) =>
+              let
+                val _ = if cached_target = target then ()
+                  else error "Cached selected mapping has a different target"
+                val _ = #selected_target_hits state := !(#selected_target_hits state) + 1
+              in Utils.exact_prop ctxt "Cached selected target" expected theorem end
+          | NONE =>
+              let
+                val theorem = prove_bool state "Selected bind target"
+                  (HOLogic.dest_Trueprop expected) []
+                val _ = #selected_targets state := Selected_Target_Table.update
+                  (key, (target, theorem)) (!(#selected_targets state))
+                val _ = #selected_target_builds state :=
+                  !(#selected_target_builds state) + 1
+              in theorem end
+        end)
+
+      fun branch_facts source fallback mapping result_root axis children result_eq =
+        let
+          val radix = (case try List.nth (#radices state, axis) of
+            SOME width => width
+          | NONE => error "MDD bind axis is outside the radix vector")
+          val _ = if radix > 0 andalso length children = radix then ()
+            else error "MDD bind output count disagrees with radix"
+          val branch_matches = (case node_at result_root of
+            Store.Branch (result_axis, result_children) =>
+              result_axis = axis andalso result_children = children
+          | Store.Leaf _ => false)
+          val alias_matches = List.all (fn child => child = result_root) children
+          val _ = if branch_matches orelse alias_matches then ()
+            else error "MDD bind output is neither the branch nor its alias"
+          val children_term = nat_list children
+          val shape_term = HOLogic.mk_disj
+            (HOLogic.mk_eq
+              (Const (@{const_name nth}, nodesT --> natT --> nodeT) $
+                Store.table store $ nat result_root,
+               Const (@{const_name Comma_CRT_MDD_Branch},
+                 natT --> nat_listT --> nodeT) $ nat axis $ children_term),
+             list_all
+               (Term.lambda (Free ("bind_result_child", natT))
+                 (HOLogic.mk_eq
+                   (Free ("bind_result_child", natT), nat result_root)))
+               children_term)
+          val shape = if branch_matches then
+              let
+                val _ = #direct_branch_shapes state := !(#direct_branch_shapes state) + 1
+              in intro_closed state "MDD bind output shape"
+                (HOLogic.mk_Trueprop shape_term) @{thm disjI1} [result_eq] end
+            else prove_bool state "MDD bind output shape" shape_term [result_eq]
+          val (axis_fact, positive_fact, radix_equation) = axis_facts axis
+          val width_fact = prove_bool state "MDD bind output width"
+            (HOLogic.mk_eq
+              (Const (@{const_name size}, nat_listT --> natT) $ children_term,
+               radix_at axis)) []
+          val operand_roots = source :: fallback :: map #2 mapping
+          val operand = Free ("bind_operand", natT)
+          val mapped_roots = Const (@{const_name map},
+            (pairT --> natT) --> pair_listT --> nat_listT) $
+              Const (@{const_name snd}, pairT --> natT) $ pair_list mapping
+          val operand_terms = HOLogic.cons_const natT $ nat source $
+            (HOLogic.cons_const natT $ nat fallback $ mapped_roots)
+          val operand_set = Const (@{const_name set}, nat_listT --> HOLogic.mk_setT natT) $
+            operand_terms
+          val upper = fold (fn n => fn m => Int.max (n,m)) operand_roots 0
+          val below = prove_bool state "MDD bind operand ceiling"
+            (ball operand_set
+              (Term.lambda operand (HOLogic.mk_binrel @{const_name less_eq}
+                (operand, nat upper)))) []
+          val operands = (@{thm comma_crt_mdd_operands_bounded_by_ceiling} OF
+            [root_bound state upper, below])
+            |> Utils.exact_prop ctxt "MDD bind operand bounds"
+              (HOLogic.mk_Trueprop (ball operand_set
+                (Term.lambda operand (mk_less (operand, table_size state)))))
+        in (radix, children_term, shape, axis_fact, positive_fact,
+            radix_equation, width_fact, operands) end
+
+      fun restrict_certificate source labels full_mapping fallback result inner =
         let
           val reduced = restrict_mapping labels full_mapping
           val expected_inner = HOLogic.mk_Trueprop
             (bind_prop state reduced fallback source result)
           val _ = if Thm.prop_of inner aconv expected_inner then ()
             else error "MDD bind restriction inner certificate has the wrong mapping"
-          val proposition = bind_prop state full_mapping fallback source result
-          val intro = Drule.infer_instantiate ctxt
-            [(("labels",0),Thm.cterm_of ctxt (nat_list labels))]
-            @{thm comma_crt_mdd_bind_certificate.bind_restrict}
         in
-          if reduced = full_mapping then inner
-          else mk_intro state "MDD bind support restriction" proposition intro
-            [root_bound state source, cover_thm, inner]
+          if reduced = full_mapping then
+            (#identity_restrictions state := !(#identity_restrictions state) + 1; inner)
+          else
+            let
+              val proposition = bind_prop state full_mapping fallback source result
+              val intro = Drule.infer_instantiate ctxt
+                [(("labels",0),Thm.cterm_of ctxt (nat_list labels))]
+                @{thm comma_crt_mdd_bind_certificate.bind_restrict}
+              val cover_thm = cover source labels
+            in mk_intro state "MDD bind support restriction" proposition intro
+              [root_bound state source, cover_thm, inner] end
         end
 
       fun certify_key (key as (source, fallback, mapping): Arena.bind_key) =
@@ -666,18 +927,9 @@ struct
                     val visits = !(#bind_visits state)
                     val _ = if visits mod 256 = 0 then
                       checkpoint state ("cold-bind-start-" ^ Int.toString visits) else ()
-                    val witness = Store.bind_witness store key
+                    val witness = admit_witness key
                     val _ = if #key witness = key then ()
                       else error "Arena bind witness key is not support-normalized"
-                    val _ = validate_key key
-                    val labels = #support witness
-                    val actual_support = support_of source
-                    val _ = if same_set labels actual_support then ()
-                      else error "Arena bind witness support differs from frozen source leaves"
-                    val _ = if List.all (fn label => label >= 0) labels then ()
-                      else error "Arena bind witness contains a negative label"
-                    val _ = if restrict_mapping labels mapping = mapping then ()
-                      else error "Arena bind witness mapping is not support-restricted"
                     val result_root = #result witness
                     val source_bound = root_bound state source
                     val source_eq = lookup_equation state source
@@ -716,6 +968,102 @@ struct
                           (HOLogic.mk_Trueprop proposition) intro
                           [source_bound, source_eq, chosen_fact, result_bound,
                            fallback_bound, all_mapped] end
+                    | Arena.Bind_Selected_Leaf_Branch (axis, selected) =>
+                        let
+                          val _ = #selected_leaf_branches state :=
+                            !(#selected_leaf_branches state) + 1
+                          val _ = #selected_leaf_rows state :=
+                            !(#selected_leaf_rows state) + length selected
+                          val radix = (case try List.nth (#radices state, axis) of
+                            SOME width => width
+                          | NONE => error "Selected bind axis is outside the radix vector")
+                          val _ = if radix > 0 andalso length selected = radix then ()
+                            else error "Selected bind row count disagrees with radix"
+                          fun validate_row (slot,(child,payload,target,out)) =
+                            let
+                              val _ = if node_cofactor axis slot source = child then ()
+                                else error "Selected bind source cofactor differs from witness"
+                              val _ = (case node_at child of
+                                Store.Leaf value => if value = payload then ()
+                                  else error "Selected bind source payload differs from witness"
+                              | Store.Branch _ => error "Selected bind source is not a leaf")
+                              val chosen = the_default fallback (AList.lookup (op =) mapping payload)
+                              val _ = if target = chosen andalso
+                                  node_cofactor axis slot target = out then ()
+                                else error "Selected bind target differs from its cofactor"
+                            in () end
+                          val _ = List.app validate_row (map_index I selected)
+                          val children = map (fn (_,_,_,out) => out) selected
+                          val child_sources = map (fn (child,_,_,_) => child) selected
+                          val payloads = map (fn (_,payload,_,_) => payload) selected
+                          val source_term = nat_list child_sources
+                          val payload_term = nat_list payloads
+                          val (_, child_term, shape, axis_fact, positive_fact,
+                            radix_equation, width_fact, operands) =
+                            branch_facts source fallback mapping result_root axis children result_eq
+                          val slot = Free ("selected_bind_slot", natT)
+                          val source_at = nth nat_listT natT source_term slot
+                          val payload_at = nth nat_listT natT payload_term slot
+                          val result_at = nth nat_listT natT child_term slot
+                          val source_node = Const (@{const_name nth}, nodesT --> natT --> nodeT) $
+                            Store.table store $ source_at
+                          val target = bind_target_term (nat fallback) (pair_list mapping) payload_at
+                          val row_body = HOLogic.mk_conj
+                            (HOLogic.mk_eq (cofactor_term state (nat axis) slot (nat source),
+                               some natT source_at),
+                             HOLogic.mk_conj
+                              (mk_less (source_at, table_size state),
+                               HOLogic.mk_conj
+                                (HOLogic.mk_eq
+                                  (source_node, Const (@{const_name Comma_CRT_MDD_Leaf},
+                                    natT --> nodeT) $ payload_at),
+                                 HOLogic.mk_eq (cofactor_term state (nat axis) slot target,
+                                   some natT result_at))))
+                          val predicate = Term.lambda slot row_body
+                          fun row_proof (index,(child,payload,target,out)) =
+                            let
+                              val source_cofactor = selected_cofactor axis index source child
+                              val target_cofactor = selected_cofactor axis index target out
+                              val selection = selected_target fallback mapping payload target
+                            in profile_stage state "selected_row_packaging" (fn () =>
+                              let
+                                val target_equation = Thm.symmetric (selection RS @{thm eq_reflection})
+                                val selected = Conv.fconv_rule
+                                  (Conv.arg_conv (Conv.arg1_conv (Conv.arg_conv
+                                    (Conv.rewr_conv target_equation)))) target_cofactor
+                              in @{thm conjI} OF [source_cofactor,
+                                @{thm conjI} OF [root_bound state child,
+                                  @{thm conjI} OF [lookup_equation state child, selected]]] end) end
+                          val proofs = map_index row_proof selected
+                          val vector = Thm.reflexive o Thm.cterm_of ctxt
+                          val fields = (vector source_term, vector payload_term, vector child_term)
+                          val all_rows = indexed_slots state radix predicate proofs
+                            (Slots.selected_conversion ctxt (#slot_successor state) fields)
+                          val point_rule = Drule.infer_instantiate ctxt
+                            [(("P",0),Thm.cterm_of ctxt predicate),
+                             (("n",0),Thm.cterm_of ctxt (nat radix)),
+                             (("i",0),Thm.cterm_of ctxt slot)]
+                            @{thm comma_crt_mdd_indexed_allD}
+                          val point_rule = Thm.implies_elim point_rule all_rows
+                          val axis_guard = HOLogic.mk_Trueprop (mk_less (slot, radix_at axis))
+                          val guard_ct = Thm.cterm_of ctxt axis_guard
+                          val guard = Thm.assume guard_ct
+                          val numeric_guard = Thm.equal_elim
+                            (radix_bound_conversion radix_equation slot) guard
+                          val point = Thm.implies_elim point_rule numeric_guard
+                            |> Conv.fconv_rule Drule.beta_eta_conversion
+                          val rows = Thm.forall_intr (Thm.cterm_of ctxt slot)
+                            (Thm.implies_intr guard_ct point)
+                          val rule = Drule.infer_instantiate ctxt
+                            [(("axis",0),Thm.cterm_of ctxt (nat axis)),
+                             (("children",0),Thm.cterm_of ctxt child_term),
+                             (("source_child",0),Thm.cterm_of ctxt (Term.lambda slot source_at)),
+                             (("payload",0),Thm.cterm_of ctxt (Term.lambda slot payload_at))]
+                            @{thm comma_crt_mdd_bind_certificate.bind_selected_leaf_branch}
+                        in intro_closed state "Selected bind branch certificate"
+                          (HOLogic.mk_Trueprop proposition) rule
+                          [source_bound, result_bound, shape, axis_fact,
+                           positive_fact, width_fact, operands, rows] end
                     | Arena.Bind_Branch (axis, child_keys) =>
                         let
                           val radix = (case try List.nth (#radices state, axis) of
@@ -744,57 +1092,18 @@ struct
                                   child_mapping = restrict_mapping child_labels raw_mapping_child
                                 then () else error "Arena bind child key differs from its cofactors"
                               val inner = certify_key child_key
-                              val child_cover = cover child_source child_labels
                               val child_cert = restrict_certificate child_source child_labels
                                 raw_mapping_child child_fallback (#result child_witness)
-                                inner child_cover
+                                inner
                             in {result= #result child_witness,
                                 certificate=child_cert} end
                           val infos = map_index child_info child_keys
                           val results = map #result infos
-                          val result_node = node_at result_root
-                          val branch_matches = (case result_node of
-                            Store.Branch (result_axis, children) =>
-                              result_axis = axis andalso children = results
-                          | Store.Leaf _ => false)
-                          val alias_matches = List.all
-                            (fn child => child = result_root) results
-                          val _ = if branch_matches orelse alias_matches then ()
-                            else error "Arena bind output is neither the witnessed branch nor its alias"
-                          val results_term = nat_list results
-                          val result_shape = HOLogic.mk_disj
-                            (HOLogic.mk_eq
-                              (Const (@{const_name nth}, nodesT --> natT --> nodeT) $
-                                Store.table store $ nat result_root,
-                               Const (@{const_name Comma_CRT_MDD_Branch},
-                                 natT --> nat_listT --> nodeT) $ nat axis $ results_term),
-                             list_all
-                               (Term.lambda (Free ("bind_result_child", natT))
-                                 (HOLogic.mk_eq
-                                   (Free ("bind_result_child", natT), nat result_root)))
-                               results_term)
-                          val shape_fact = prove_bool state "MDD bind output shape"
-                            result_shape [result_eq]
-                          val (axis_fact, positive_fact, radix_equation) = axis_facts axis
+                          val (_, results_term, shape_fact, axis_fact, positive_fact,
+                            radix_equation, width_fact, all_operands) =
+                            branch_facts source fallback mapping result_root axis results result_eq
                           val radix_axis_term = radix_at axis
                           val radix_term = nat radix
-                          val width_fact = prove_bool state "MDD bind output width"
-                            (HOLogic.mk_eq
-                              (Const (@{const_name size}, nat_listT --> natT) $ results_term,
-                               radix_axis_term)) []
-                          val operands = source :: fallback :: map #2 mapping
-                          val operand_bounds = map (root_bound state) operands
-                          val operand = Free ("bind_operand", natT)
-                          val mapped_roots = Const (@{const_name map},
-                            (pairT --> natT) --> pair_listT --> nat_listT) $
-                              Const (@{const_name snd}, pairT --> natT) $ pair_list mapping
-                          val operand_terms = HOLogic.cons_const natT $ nat source $
-                            (HOLogic.cons_const natT $ nat fallback $ mapped_roots)
-                          val all_operands = prove_bool state "MDD bind operand bounds"
-                            (ball (Const (@{const_name set}, nat_listT --> HOLogic.mk_setT natT) $
-                              operand_terms)
-                              (Term.lambda operand (mk_less (operand, table_size state))))
-                            operand_bounds
                           val slot = Free ("bind_slot", natT)
                           val source_children_term = mapped_slots
                             (fn child_slot => family_child_term axis source child_slot)
@@ -815,10 +1124,14 @@ struct
                             Term.lambda slot child_certificate
                           val operand_roots = distinct (op =)
                             (source :: fallback :: map #2 mapping)
-                          val item_context = Simplifier.add_simps
+                          fun item_context () = Simplifier.add_simps
                             (map (lookup_equation state) operand_roots) (#simp_ctxt state)
+                          val field_equations = map (slot_vector state item_context)
+                            [mapping_children_term, fallback_children_term, source_children_term] @
+                            [Thm.reflexive (Thm.cterm_of ctxt results_term)]
                           val child_certificates = indexed_slots state radix
-                            child_certificate_predicate (map #certificate infos) item_context
+                            child_certificate_predicate (map #certificate infos)
+                            (Slots.bind_conversion ctxt (#slot_successor state) field_equations)
                           val source_children_exact = reflexive_prop
                             "MDD source cofactor-family vector" source_children_term
                           val fallback_children_exact = reflexive_prop
@@ -889,40 +1202,11 @@ struct
                           val numeric_guard_fact = Thm.equal_elim
                             (radix_bound_conversion radix_equation row_slot) axis_guard_fact
                           val row_point = Thm.implies_elim row_at numeric_guard_fact
-                          fun abstract_row project expected_body label =
-                            let
-                              val point = project row_point
-                              val implication = Thm.implies_intr axis_guard_ct point
-                              val universal = Thm.forall_intr
-                                (Thm.cterm_of ctxt row_slot) implication
-                              val expected = Logic.all row_slot
-                                (Logic.mk_implies (axis_guard,
-                                  HOLogic.mk_Trueprop expected_body))
-                            in Utils.exact_prop ctxt label expected universal end
-                          val source_rows = abstract_row
-                            (fn theorem => theorem RS @{thm conjunct1})
-                            (HOLogic.mk_eq
-                              (cofactor_term state (nat axis) row_slot (nat source),
-                               some natT row_source))
-                            "MDD source cofactor row"
-                          val fallback_rows = abstract_row
-                            (fn theorem => (theorem RS @{thm conjunct2}) RS @{thm conjunct1})
-                            (HOLogic.mk_eq
-                              (cofactor_term state (nat axis) row_slot (nat fallback),
-                               some natT row_fallback))
-                            "MDD fallback cofactor row"
-                          val mapping_rows = abstract_row
-                            (fn theorem => ((theorem RS @{thm conjunct2})
-                              RS @{thm conjunct2}) RS @{thm conjunct1})
-                            (HOLogic.mk_eq
-                              (mapping_cofactor_term state (nat axis) row_slot
-                                (pair_list mapping), some pair_listT row_mapping))
-                            "MDD mapping cofactor row"
-                          val certificate_rows = abstract_row
-                            (fn theorem => ((theorem RS @{thm conjunct2})
-                              RS @{thm conjunct2}) RS @{thm conjunct2})
-                            (bind_term state row_mapping row_fallback row_source row_result)
-                            "MDD child bind certificate row"
+                          val combined_rows = Thm.forall_intr (Thm.cterm_of ctxt row_slot)
+                            (Thm.implies_intr axis_guard_ct row_point)
+                          val _ = Utils.exact_prop ctxt "MDD combined bind rows"
+                            (Logic.all row_slot (Logic.mk_implies
+                              (axis_guard, HOLogic.mk_Trueprop row_body))) combined_rows
                           val rule = Drule.infer_instantiate ctxt
                             [(("axis",0),Thm.cterm_of ctxt (nat axis)),
                              (("children",0),Thm.cterm_of ctxt results_term),
@@ -932,17 +1216,13 @@ struct
                                (Term.lambda row_slot row_fallback)),
                              (("mapping_child",0),Thm.cterm_of ctxt
                                (Term.lambda row_slot row_mapping))]
-                            @{thm comma_crt_mdd_bind_certificate.bind_branch}
+                            @{thm comma_crt_mdd_bind_branch_combined_rows}
                         in intro_closed state "MDD bind branch certificate"
                           (HOLogic.mk_Trueprop proposition) rule
                           [source_bound, result_bound, shape_fact, axis_fact,
-                           positive_fact, width_fact, all_operands, source_rows,
-                           fallback_rows, mapping_rows, certificate_rows] end)
-                    val theorem = Utils.exact_prop ctxt "MDD bind certificate"
-                      (HOLogic.mk_Trueprop proposition) certificate
-                    val _ = #bind_certificates state :=
-                      Key_Table.update (key, (result_root, theorem))
-                      (!(#bind_certificates state))
+                           positive_fact, width_fact, all_operands, combined_rows] end)
+                    val theorem = publish_bind (#bind_certificates state)
+                      "MDD bind certificate" key result_root certificate
                     val _ = if visits mod 256 = 0 then
                       checkpoint state ("cold-bind-complete-" ^ Int.toString visits) else ()
                   in theorem end) ()
@@ -956,23 +1236,17 @@ struct
               (HOLogic.mk_Trueprop (bind_prop state full_mapping fallback source result_root)) theorem
         | NONE =>
             let
-              val _ = validate_key input_key
-              val witness = Store.bind_witness store input_key
-              val (norm_source, norm_fallback, norm_mapping) = #key witness
+              val witness = admit_witness input_key
               val labels = #support witness
-              val _ = if norm_source = source andalso norm_fallback = fallback andalso
-                  same_set labels (support_of source) andalso
-                  restrict_mapping labels full_mapping = norm_mapping then ()
-                else error "Arena bind witness differs from requested support-normalized key"
               val inner = certify_key (#key witness)
-              val support_fact = cover source labels
               val theorem = restrict_certificate source labels full_mapping fallback
-                (#result witness) inner support_fact
-              val expected = HOLogic.mk_Trueprop
-                (bind_prop state full_mapping fallback source (#result witness))
-              val theorem = Utils.exact_prop ctxt "Public MDD bind certificate" expected theorem
-              val _ = #public_bind_certificates state := Key_Table.update
-                (input_key, (#result witness, theorem)) (!(#public_bind_certificates state))
+                (#result witness) inner
+              val theorem = publish_bind (#public_bind_certificates state)
+                "Public MDD bind certificate" input_key (#result witness) theorem
+              val _ = if not (!(#first_public_checkpoint state)) then
+                (#first_public_checkpoint state := true;
+                 checkpoint state "first-public-bind-complete")
+                else ()
             in theorem end)
 
       val public: replay = {state=state, certify=certify_public, certify_cover=cover}

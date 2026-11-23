@@ -14,6 +14,7 @@ struct
   type mask = {source: int, label: int, output: int}
   type shift = {source: int, amount: int, output: int}
   type zip = {left: int, right: int, output: int, add: int}
+  type mapped_weight = {source: int, output: int, amount: int, add: int}
   datatype fold_stage = Source | Child_N | Child_Z
   type fold_step = {stage: fold_stage, source: int, label: int,
     guard: int, yes: int, no: int, output: int}
@@ -23,6 +24,7 @@ struct
     sources: Arena.action_root list, weights: Arena.action_root list, classes: Arena.action_root list,
     class_import_equalities: Arena.action_root list,
     masks: mask list, selections: selection list, shifts: shift list, zips: zip list,
+    mapped_weights: mapped_weight list,
     fold_steps: fold_step list}
 
   fun build source_arena source_roots weight_arena weight_roots class_arena class_roots : result =
@@ -33,7 +35,7 @@ struct
         else error "Future join inputs have incompatible CRT axes"
       val _ = if length source_roots=16 andalso length weight_roots=46 andalso
           length class_roots=16 then () else error "Future join has wrong root counts"
-      val work = Arena.create axes
+      val work = Arena.create_periodic axes
       fun import arena roots =
         let val export = Arena.export_actions arena roots
             val imported = Arena.import_action_table_with_roots work (#seeds export)
@@ -51,6 +53,10 @@ struct
       val selections = Unsynchronized.ref ([]: selection list)
       val shifts = Unsynchronized.ref ([]: shift list)
       val zips = Unsynchronized.ref ([]: zip list)
+      val mapped_weights = Unsynchronized.ref ([]: mapped_weight list)
+      (* One traversal shifts the phase and adds the Future-specific +10.
+         This is deliberately not the Bellman +9 encoding. *)
+      val shifted_weight_map = Arena.make_action_shift_map work (fn x => x+10)
       val fold_steps = Unsynchronized.ref ([]: fold_step list)
       val shift_cache = Unsynchronized.ref Pair_Table.empty
       val mask_cache = Unsynchronized.ref Pair_Table.empty
@@ -105,8 +111,12 @@ struct
         | NONE => let val root = make index
             val _ = cache := Inttab.update (index,root) (!cache)
           in root end)
-      fun shifted_weight index = demanded weight_cache
-        (fn i => add 10 (shift 1 (List.nth (weights,i)))) index
+      fun shifted_weight index = demanded weight_cache (fn i =>
+        let val source = List.nth (weights,i)
+            val out = Arena.shift_map_action shifted_weight_map source 1
+            val _ = mapped_weights := {source=ai source, output=ai out,
+              amount=1, add=10} :: !mapped_weights
+        in out end) index
       fun normalized_class index = demanded class_cache
         (fn i => add 1 (List.nth (classes,i))) index
       fun source_output root =
@@ -145,5 +155,6 @@ struct
       outputs=outputs,children_n=map (child false) outputs,
       children_z=map (child true) outputs,masks=List.rev (!masks),
       selections=List.rev (!selections),shifts=List.rev (!shifts),zips=List.rev (!zips),
+      mapped_weights=List.rev (!mapped_weights),
       fold_steps=List.rev (!fold_steps)} end
 end

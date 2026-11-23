@@ -13,12 +13,16 @@ from number_compiler.arithmetic.contracts.ordered_output import (
 )
 from number_compiler.arithmetic.fields.ordered_band import (
     OrderedDigitBandFrame,
+    ordered_digit_band_frame,
     ordered_digit_band_output,
 )
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.ledger_records import ResourceScope
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.reverse_add.q19_output import (
+        ReversePairOutputOccurrence,
+    )
     from number_compiler.sequences.reverse_add.source_workspace import (
         ReverseSourceImageWorkspace,
     )
@@ -71,22 +75,14 @@ def source_issued_ordered_digit_band(
 
         for offset in range(steps):
             source_width = current.output_width
-            lower_digits = tuple(
-                q19_owner.digit(current, position) if position < source_width else 0
-                for position in range(width - 1, -1, -1)
-            )
-            upper_digits = tuple(
-                q19_owner.digit(current, source_width - position - 1)
-                if position < source_width
-                else 0
-                for position in range(width)
-            )
-            yield OrderedDigitBandFrame(
-                tick_offset=offset,
-                lower_digits=lower_digits,
-                upper_digits=upper_digits,
-                lower_source_letters=min(width, source_width),
-                upper_source_letters=min(width, source_width),
+
+            def digit_from_least_significant(
+                position: int, occurrence: ReversePairOutputOccurrence = current
+            ) -> int:
+                return q19_owner.digit(occurrence, position)
+
+            yield ordered_digit_band_frame(
+                offset, source_width, width, digit_from_least_significant
             )
             if offset + 1 < steps:
                 current = q19_owner.apply_pair_step(current)

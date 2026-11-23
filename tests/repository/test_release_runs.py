@@ -29,6 +29,8 @@ from devtools.git_source import (
 from devtools.runs import EvidenceRun
 from tests.support.git_repositories import commit_fixture, git
 
+LEGACY_PROOF_PROFILE_ENV = "COMMA_PROFILE_LOG"
+
 
 def test_python_tool_versions_do_not_probe_foreign_path_installations(
     monkeypatch: pytest.MonkeyPatch,
@@ -315,6 +317,8 @@ def test_release_proof_selection_preserves_aggregate_and_limits(
     from devtools.checks import release
 
     source(tmp_path)
+    monkeypatch.delenv("NUMBER_COMPILER_PROOF_PROGRESS", raising=False)
+    monkeypatch.delenv("ISABELLE_PROOF_PROFILE_LOG", raising=False)
     calls: list[tuple[str, tuple[str, ...], int, int]] = []
     watchdogs: list[IsabelleSessionWatchdog] = []
 
@@ -328,6 +332,7 @@ def test_release_proof_selection_preserves_aggregate_and_limits(
         pytest_run: bool = False,
         record_fields: Mapping[str, object] | None = None,
         progress_watchdog: IsabelleSessionWatchdog | None = None,
+        proof_generation: str | None = None,
     ) -> bool:
         del acceptance, pytest_run, record_fields
         calls.append(
@@ -346,6 +351,10 @@ def test_release_proof_selection_preserves_aggregate_and_limits(
             )
         elif name == "proofs":
             assert progress_watchdog is not None
+            progress = progress_watchdog.proof_progress
+            assert progress is not None
+            assert proof_generation == progress.progress.run_id
+            assert "NUMBER_COMPILER_PROOF_PROGRESS=coarse" in command
             watchdogs.append(progress_watchdog)
             proof_log = run.path / "proofs.log"
             proof_log.write_text(
@@ -426,7 +435,8 @@ def test_release_proof_selection_preserves_aggregate_and_limits(
             "-Djava.awt.headless=true -Xms128m -Xmx1024m -Xss16m"
         )
         assert command[3] == "ML_OPTIONS=--minheap 128 --maxheap 4096"
-        assert command[4:6] == ("isabelle", "build")
+        build = command.index("build")
+        assert command[build - 1 : build + 1] == ("isabelle", "build")
         assert ("-o", f"timeout={ISABELLE_SESSION_SECONDS}") in tuple(pairwise(command))
 
 
@@ -436,6 +446,8 @@ def test_release_proofs_records_live_session_timeout(
     from devtools.checks import release
 
     source(tmp_path)
+    monkeypatch.delenv("NUMBER_COMPILER_PROOF_PROGRESS", raising=False)
+    monkeypatch.delenv("ISABELLE_PROOF_PROFILE_LOG", raising=False)
 
     def execute(
         run: EvidenceRun,
@@ -447,14 +459,19 @@ def test_release_proofs_records_live_session_timeout(
         pytest_run: bool = False,
         record_fields: Mapping[str, object] | None = None,
         progress_watchdog: IsabelleSessionWatchdog | None = None,
+        proof_generation: str | None = None,
     ) -> bool:
-        del command, policy, acceptance, pytest_run, record_fields
+        del policy, acceptance, pytest_run, record_fields
         if name == "isabelle-version":
             (run.path / "isabelle-version.log").write_text("Isabelle2026-1\n")
         elif name == "proof-session-inventory":
             (run.path / "proof-session-inventory.log").write_text("Base\n")
         elif name == "proofs":
             assert progress_watchdog is not None
+            progress = progress_watchdog.proof_progress
+            assert progress is not None
+            assert proof_generation == progress.progress.run_id
+            assert "NUMBER_COMPILER_PROOF_PROGRESS=coarse" in command
             (run.path / "proofs.log").write_text("Building Base ...\n")
             progress_watchdog.observe_output(b"Building Base ...\n", 0.0)
             assert progress_watchdog.check(ISABELLE_SESSION_SECONDS) is not None
@@ -483,6 +500,8 @@ def test_release_proofs_profiles_to_fresh_run_file_and_honors_explicit_path(
     from devtools.checks import release
 
     source(tmp_path)
+    monkeypatch.delenv("NUMBER_COMPILER_PROOF_PROGRESS", raising=False)
+    monkeypatch.delenv("ISABELLE_PROOF_PROFILE_LOG", raising=False)
     explicit_path = tmp_path / "caller-profile.log"
     explicit_path.write_text("existing evidence\n", encoding="utf-8")
     observed_commands: list[tuple[str, ...]] = []
@@ -497,6 +516,7 @@ def test_release_proofs_profiles_to_fresh_run_file_and_honors_explicit_path(
         pytest_run: bool = False,
         record_fields: Mapping[str, object] | None = None,
         progress_watchdog: IsabelleSessionWatchdog | None = None,
+        proof_generation: str | None = None,
     ) -> bool:
         del policy, acceptance, pytest_run
         observed_commands.append(command)
@@ -510,10 +530,26 @@ def test_release_proofs_profiles_to_fresh_run_file_and_honors_explicit_path(
                 "Finished Base (0:00:01 elapsed time)\n"
             )
             assignments = [
-                item.removeprefix("COMMA_PROFILE_LOG=")
+                item.removeprefix("ISABELLE_PROOF_PROFILE_LOG=")
                 for item in command
-                if item.startswith("COMMA_PROFILE_LOG=")
+                if item.startswith("ISABELLE_PROOF_PROFILE_LOG=")
             ]
+            mode = run.manifest["proof_progress_mode"]
+            if mode == "off":
+                assert proof_generation is None
+                assert progress_watchdog.proof_progress is None
+                assert not any(
+                    item.startswith("NUMBER_COMPILER_PROOF_PROGRESS")
+                    for item in command
+                )
+            else:
+                progress = progress_watchdog.proof_progress
+                assert progress is not None
+                assert proof_generation == progress.progress.run_id
+                assert (
+                    f"NUMBER_COMPILER_PROOF_PROGRESS_RUN={proof_generation}" in command
+                )
+                assert f"NUMBER_COMPILER_PROOF_PROGRESS={mode}" in command
             if assignments:
                 with Path(assignments[0]).open("a", encoding="utf-8") as profile:
                     profile.write("profile event\n")
@@ -522,7 +558,7 @@ def test_release_proofs_profiles_to_fresh_run_file_and_honors_explicit_path(
 
     monkeypatch.setattr(release, "execute", execute)
 
-    monkeypatch.setenv("COMMA_PROFILE_LOG", "1")
+    monkeypatch.setenv("ISABELLE_PROOF_PROFILE_LOG", "1")
     with EvidenceRun(root=tmp_path) as automatic:
         assert release.proofs(automatic, "isabelle", ("Base",))
     automatic_path = automatic.manifest["profile_path"]
@@ -532,18 +568,20 @@ def test_release_proofs_profiles_to_fresh_run_file_and_honors_explicit_path(
     build_step = manifest_steps_named(automatic, "proofs")[0]
     assert build_step["profile_path"] == automatic_path
     assert build_step["profile_enabled"] is True
-    assert f"COMMA_PROFILE_LOG={automatic_path}" in observed_commands[-1]
+    assert f"ISABELLE_PROOF_PROFILE_LOG={automatic_path}" in observed_commands[-1]
 
-    monkeypatch.setenv("COMMA_PROFILE_LOG", str(explicit_path))
+    monkeypatch.setenv("ISABELLE_PROOF_PROFILE_LOG", str(explicit_path))
     with EvidenceRun(root=tmp_path) as explicit:
         assert release.proofs(explicit, "isabelle", ("Base",))
     assert explicit.manifest["profile_path"] == str(explicit_path)
     assert explicit_path.read_text(encoding="utf-8") == (
         "existing evidence\nprofile event\n"
     )
-    assert f"COMMA_PROFILE_LOG={explicit_path}" in observed_commands[-1]
+    assert f"ISABELLE_PROOF_PROFILE_LOG={explicit_path}" in observed_commands[-1]
 
-    monkeypatch.delenv("COMMA_PROFILE_LOG")
+    monkeypatch.delenv("ISABELLE_PROOF_PROFILE_LOG")
+    # The retired spelling must not activate instrumentation on its own.
+    monkeypatch.setenv(LEGACY_PROOF_PROFILE_ENV, "1")
     with EvidenceRun(root=tmp_path) as disabled:
         assert release.proofs(disabled, "isabelle", ("Base",))
     assert disabled.manifest["profile_path"] is None
@@ -554,8 +592,41 @@ def test_release_proofs_profiles_to_fresh_run_file_and_honors_explicit_path(
         "profile_path": None,
     }
     assert not any(
-        item.startswith("COMMA_PROFILE_LOG=") for item in observed_commands[-1]
+        item.startswith("ISABELLE_PROOF_PROFILE_LOG=") for item in observed_commands[-1]
     )
+
+    monkeypatch.setenv("NUMBER_COMPILER_PROOF_PROGRESS", "off")
+    with EvidenceRun(root=tmp_path) as off:
+        assert release.proofs(off, "isabelle", ("Base",))
+    assert off.manifest["proof_progress_mode"] == "off"
+    assert off.manifest["proof_progress_path"] is None
+
+    monkeypatch.setenv("NUMBER_COMPILER_PROOF_PROGRESS", "detailed")
+    with EvidenceRun(root=tmp_path) as detailed:
+        assert release.proofs(detailed, "isabelle", ("Base",))
+    assert detailed.manifest["proof_progress_mode"] == "detailed"
+    assert isinstance(detailed.manifest["profile_path"], str)
+
+
+def test_isabelle_profile_readers_use_shared_name_and_family_labels() -> None:
+    root = Path(__file__).resolve().parents[2] / "proofs/isabelle/families"
+    for family in ("comma", "five_reverse"):
+        for path in (root / family).rglob("*"):
+            if path.suffix in (".ML", ".thy"):
+                contents = path.read_text(encoding="utf-8")
+                assert LEGACY_PROOF_PROFILE_ENV not in contents, path
+
+    readers = {
+        "comma/comma_entry_arithmetic/proof_profile.ML": "family=comma",
+        "comma/comma_decade_orbit/Comma_Decade_Orbit_Arithmetic.thy": "family=comma",
+        "comma/comma_fast_control/Comma_Fast_Kernel.thy": "family=comma",
+        "comma/comma_fast_totality_smoke/Comma_Fast_Totality_Smoke.thy": "family=comma",
+        "five_reverse/five_reverse/Five_Reverse_Prefix_Bridge.thy": "family=5rev10",
+    }
+    for name, family in readers.items():
+        source_text = (root / name).read_text(encoding="utf-8")
+        assert 'getenv "ISABELLE_PROOF_PROFILE_LOG"' in source_text
+        assert family in source_text
 
 
 @pytest.mark.parametrize("acceptance", [False, True])

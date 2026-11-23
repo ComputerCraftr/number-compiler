@@ -10,13 +10,13 @@ and decade control is exactly equal on equal orbit classes.  This layer keeps
 one result per orbit class and reconstructs every admitted physical offset by
 lookup.  No candidate rank or termination fact is introduced here.\<close>
 
-ML \<open>if getenv "COMMA_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit proof: length"\<close>
+ML \<open>if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit proof: length"\<close>
 
 lemma comma_offset_representatives_length [simp]:
   "length comma_offset_representatives = 46"
   by (simp add: comma_offset_representatives_def)
 
-ML \<open>if getenv "COMMA_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit proof: comma_offset_representative_slot"\<close>
+ML \<open>if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit proof: comma_offset_representative_slot"\<close>
 
 lemma comma_offset_representative_slot:
   assumes "i<46"
@@ -25,7 +25,7 @@ lemma comma_offset_representative_slot:
   using comma_offset_representatives_checked assms
   by (auto simp: list_all_iff)
 
-ML \<open>if getenv "COMMA_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit proof: comma_decade_block_atom_orbit_congruent"\<close>
+ML \<open>if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit proof: comma_decade_block_atom_orbit_congruent"\<close>
 
 lemma comma_decade_block_atom_orbit_congruent:
   assumes x: "x\<le>90" and y: "y\<le>90"
@@ -45,7 +45,7 @@ proof -
     by (simp only: reps)
 qed
 
-ML \<open>if getenv "COMMA_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit proof: comma_decade_block_power_orbit_congruent"\<close>
+ML \<open>if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit proof: comma_decade_block_power_orbit_congruent"\<close>
 
 lemma comma_decade_block_power_orbit_congruent:
   assumes x: "x\<le>90" and y: "y\<le>90"
@@ -65,7 +65,7 @@ next
   show ?case by (simp only: comma_decade_block_power.simps prior)
 qed
 
-ML \<open>if getenv "COMMA_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit layer: comma_decade_orbit_layer_lookup"\<close>
+ML \<open>if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit layer: comma_decade_orbit_layer_lookup"\<close>
 
 definition comma_decade_orbit_layer_lookup ::
   "comma_decade_block_result list \<Rightarrow> nat \<Rightarrow> comma_decade_block_result" where
@@ -96,7 +96,7 @@ lemma comma_decade_orbit_base_layer_valueI:
   shows "comma_decade_orbit_layer_correct 0 r layer"
   using comma_decade_orbit_base_layer_correct[of r] assms by simp
 
-ML \<open>if getenv "COMMA_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit layer: local_setup"\<close>
+ML \<open>if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit layer: local_setup"\<close>
 
 local_setup \<open>fn lthy =>
   let
@@ -129,7 +129,7 @@ local_setup \<open>fn lthy =>
   in #2 (Local_Theory.note
     ((Binding.name "comma_orbit_layer_slot_constants", []), map orbit (0 upto 90)) next) end\<close>
 
-ML \<open>if getenv "COMMA_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit layer: comma_decade_orbit_layer_lookup_correct"\<close>
+ML \<open>if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit layer: comma_decade_orbit_layer_lookup_correct"\<close>
 
 lemma comma_decade_orbit_layer_lookup_correct:
   assumes correct: "comma_decade_orbit_layer_correct k r layer"
@@ -176,7 +176,7 @@ definition comma_decade_orbit_layer_square ::
         (comma_decade_orbit_layer_resume ((r+2^k) mod 924) right)) left
      else [])"
 
-ML \<open>if getenv "COMMA_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit layer: comma_decade_orbit_layer_square_correct"\<close>
+ML \<open>if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit layer: comma_decade_orbit_layer_square_correct"\<close>
 
 theorem comma_decade_orbit_layer_square_correct:
   assumes phase: "r<924"
@@ -229,7 +229,7 @@ proof -
 qed
 
 
-ML \<open>if getenv "COMMA_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit layer: comma_decade_orbit_square_layer_valueI"\<close>
+ML \<open>if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit layer: comma_decade_orbit_square_layer_valueI"\<close>
 
 lemma comma_decade_orbit_square_layer_valueI:
   assumes level_eq: "next=Suc k" and shifted: "phase=(r+2^k) mod 924"
@@ -324,7 +324,7 @@ lemma comma_decade_orbit_layer_square_weak_cong:
       comma_decade_orbit_layer_square k' r' left right"
   by simp
 
-ML \<open>if getenv "COMMA_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit layer: ML_file"\<close>
+ML \<open>if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then () else Comma_Fast_Kernel.report "Orbit layer: ML_file"\<close>
 
 ML_file "orbit_layer_check.ML"
 

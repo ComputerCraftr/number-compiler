@@ -675,7 +675,10 @@ def test_structural_future_instance_avoids_legacy_checked_instance(
         "Comma_Decade_Summary_Transport",
         "Comma_Future_Rank_Data",
     } <= ancestors
-    assert "Comma_Future_Checked_Instance" not in ancestors
+    assert {
+        "Comma_Frontier_M204_Direct_Trial",
+        "Comma_Future_Checked_Instance",
+    }.isdisjoint(sessions)
 
 
 def _session_ancestors(sessions: Mapping[str, syntax.Session], target: str) -> set[str]:

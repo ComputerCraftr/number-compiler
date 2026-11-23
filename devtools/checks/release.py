@@ -17,6 +17,10 @@ from pathlib import Path
 from types import FrameType
 from uuid import uuid4
 
+from devtools.checks.isabelle_proof_progress import (
+    ProofProgressFile,
+    proof_progress_mode,
+)
 from devtools.checks.isabelle_session_watchdog import (
     SESSION_DURATION as _SESSION_DURATION,
 )
@@ -71,6 +75,9 @@ from devtools.checks.validation_policy import (
 from devtools.git_source import acceptance_checkout, git_source
 from devtools.paths import isabelle_root, repository_root
 from devtools.runs import EvidenceRun
+from number_compiler.arithmetic.contracts.input_validation import (
+    is_object_list_instance,
+)
 
 # Canonical P0 owners. Runtime gates live with their family or shared runtime,
 # while theorem/release obligations retain their proof-owner modules.
@@ -241,14 +248,18 @@ def _isabelle_environment_command(
     return (executable, "env", *assignments, executable, *arguments)
 
 
-def _profile_log_path(run: EvidenceRun) -> tuple[str | None, bool]:
-    """Resolve COMMA_PROFILE_LOG, reserving a fresh run-local file for ``1``.
+def _profile_log_path(
+    run: EvidenceRun, *, force: bool = False
+) -> tuple[str | None, bool]:
+    """Resolve ISABELLE_PROOF_PROFILE_LOG, reserving a fresh run-local file for ``1``.
 
     Explicit nonempty values remain caller-owned paths.  The sentinel ``1``
     requests an exclusive file under this evidence run so timeout diagnostics
     can be inspected even if the guarded process is terminated.
     """
-    setting = os.environ.get("COMMA_PROFILE_LOG", "")
+    setting = os.environ.get("ISABELLE_PROOF_PROFILE_LOG", "")
+    if not setting and force:
+        setting = "1"
     if not setting:
         return None, False
     if setting != "1":
@@ -339,10 +350,11 @@ def execute(
     pytest_run: bool = False,
     record_fields: Mapping[str, object] | None = None,
     progress_watchdog: IsabelleSessionWatchdog | None = None,
+    proof_generation: str | None = None,
     output_limit_bytes: int = 8 * 1024**2,
 ) -> bool:
     before = git_source(run.root).as_dict()
-    generation = uuid4().hex
+    generation = proof_generation if proof_generation is not None else uuid4().hex
     environment = pytest_environment()
     environment[PROOF_GENERATION_ENV] = generation
     deadline = time.monotonic() + policy.timeout_seconds
@@ -720,7 +732,9 @@ def proofs(
         return False
     # Preserve the active theory in the log even if the external guard must
     # terminate Poly/ML before Isabelle can write its session database.
-    profile_path, profiling = _profile_log_path(run)
+    profile_path, profiling = _profile_log_path(
+        run, force=os.environ.get("NUMBER_COMPILER_PROOF_PROGRESS") == "detailed"
+    )
     run.manifest["profile_path"] = profile_path
     run.record(
         {
@@ -729,17 +743,61 @@ def proofs(
             "profile_path": profile_path,
         }
     )
+    # Coarse checkpoints use the existing diagnostic sidecar. Detailed proof
+    # timing is still opt-in and the acceptance policy is independent.
+    progress_mode = proof_progress_mode(os.environ)
+    progress: ProofProgressFile | None = None
+    progress_error: str | None = None
+    if progress_mode not in {"off", "coarse", "detailed"}:
+        progress_error = "unknown proof progress mode"
+    elif progress_mode != "off":
+        progress_id = uuid4().hex
+        progress_path = run.path / f"isabelle-progress-{progress_id}.jsonl"
+        try:
+            with progress_path.open("x", encoding="utf-8"):
+                pass
+        except OSError as error:
+            progress_error = str(error)
+        else:
+            progress = ProofProgressFile(
+                progress_path,
+                progress_id,
+                frozenset(inventory_roots),
+                frozenset(inventory),
+            )
+    run.manifest["proof_progress_mode"] = progress_mode
+    run.manifest["proof_progress_path"] = str(progress.path) if progress else None
+    run.record(
+        {
+            "name": "proof-progress-configuration",
+            "outcome": "observed",
+            "mode": progress_mode,
+            "error": progress_error,
+        }
+    )
     build = [executable, "build", "-v", "-b", "-j", str(ISABELLE_JOBS)]
     for option in ISABELLE_OPTIONS:
         build.extend(("-o", option))
     build.extend(selection)
     build_environment: tuple[str, ...] = tool_environment[1:]
     if profile_path is not None:
-        build_environment = (*build_environment, f"COMMA_PROFILE_LOG={profile_path}")
+        build_environment = (
+            *build_environment,
+            f"ISABELLE_PROOF_PROFILE_LOG={profile_path}",
+        )
+    if progress is not None:
+        build_environment = (
+            *build_environment,
+            f"NUMBER_COMPILER_PROOF_PROGRESS={progress_mode}",
+            f"NUMBER_COMPILER_PROOF_PROGRESS_RUN={progress.progress.run_id}",
+            f"NUMBER_COMPILER_PROOF_PROGRESS_PATH={progress.path}",
+        )
     command = _isabelle_environment_command(
         executable, build_environment, tuple(build[1:])
     )
-    session_watchdog = IsabelleSessionWatchdog(inventory, ISABELLE_SESSION_SECONDS)
+    session_watchdog = IsabelleSessionWatchdog(
+        inventory, ISABELLE_SESSION_SECONDS, proof_progress=progress
+    )
     completed = execute(
         run,
         "proofs",
@@ -754,8 +812,36 @@ def proofs(
             "profile_enabled": profiling,
         },
         progress_watchdog=session_watchdog,
+        proof_generation=progress.progress.run_id if progress is not None else None,
     )
     watchdog_report = session_watchdog.report()
+    if progress is not None:
+        started_sessions = watchdog_report["started_sessions"]
+        observed = (
+            [name for name in started_sessions if isinstance(name, str)]
+            if is_object_list_instance(started_sessions)
+            else []
+        )
+        active_sessions = watchdog_report["active_sessions"]
+        active_at_termination = (
+            [name for name in active_sessions if isinstance(name, str)]
+            if is_object_list_instance(active_sessions)
+            else []
+        )
+        run.record(
+            {
+                "name": "proof-progress-summary",
+                "outcome": "observed",
+                "records": [
+                    {
+                        **progress.report(session),
+                        "session_active_at_termination": session
+                        in active_at_termination,
+                    }
+                    for session in sorted(observed)
+                ],
+            }
+        )
     timed_out_session = watchdog_report["timed_out_session"]
     if isinstance(timed_out_session, str):
         run.record(

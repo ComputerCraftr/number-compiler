@@ -43,6 +43,7 @@ def audit_reverse_pair_output_owner(
         state.temporal_ring_banks_owner,
         state.diagonal_comparisons_owner,
         *state.projector_owners,
+        state.frontier_owner,
     )
     containers: dict[int, object] = {}
     for owner in owners:
@@ -70,6 +71,7 @@ def audit_reverse_pair_output_owner(
             state.diagonal_comparisons_owner,
         ),
         *(("reverse_pair_projector_memo", owner) for owner in state.projector_owners),
+        ("observation_memo", state.frontier_owner),
     )
     if len(state.audit_bindings) != len(bindings):
         return PayloadAuditContribution(
@@ -89,6 +91,7 @@ def audit_reverse_pair_output_owner(
         14: state.projector_block,
         15: state.projector_forward_power,
         16: state.projector_reverse_power,
+        17: state.frontiers,
     }
     arena_interner_stores = state.arena.audit_interner_stores
     expected_audit_bindings = (
@@ -107,6 +110,7 @@ def audit_reverse_pair_output_owner(
         state.projector_block.container,
         state.projector_forward_power.container,
         state.projector_reverse_power.container,
+        state.frontiers.container,
     )
     if len(state.audit_bindings) != len(expected_audit_bindings) or any(
         actual is not expected

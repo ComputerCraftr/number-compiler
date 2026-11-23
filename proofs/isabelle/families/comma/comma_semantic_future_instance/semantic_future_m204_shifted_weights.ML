@@ -8,7 +8,7 @@ struct
   fun nat n = HOLogic.mk_number natT n
 
   fun prove work_store (join: Join.result) weight weight_period weight_evals
-      weight_import_evals shift_evals zip_evals =
+      weight_import_evals mapped_weight_evals =
     let
       val ctxt = Store.context work_store
       val phase = Free ("future_shifted_weight_phase",natT)
@@ -26,20 +26,14 @@ struct
           val weight_eval = (case lookup cid of SOME theorem => theorem
             | NONE => error "Demanded M204 weight lacks its checked evaluation")
           val source = Store.action_index work_store (List.nth (#weights join,cid))
-          val candidates = maps (fn (zip_index,zip_row: Join.zip) =>
-            if #output zip_row=output andalso #add zip_row=10 then
-              map_filter (fn (shift_index,shift_row: Join.shift) =>
-                if #output shift_row= #left zip_row andalso #amount shift_row=1 andalso
-                    #source shift_row=source then SOME (zip_index,zip_row,shift_index)
-                else NONE) (map_index I (#shifts join))
-            else []) (map_index I (#zips join))
-          val (zip_index,zip_row,shift_index) = (case candidates of first::_ => first
-            | [] => error "Shifted weight lacks an authenticated source/shift/zip chain")
-          val _ = (case Store.node work_store (#right zip_row) of Store.Leaf 0 => ()
-            | _ => error "Shifted weight zip does not use the zero leaf")
-          val facts = [List.nth (zip_evals,zip_index),List.nth (shift_evals,shift_index),
-            List.nth (weight_import_evals,cid),weight_eval,weight_period,
-            Store.phase_leaf work_store (#right zip_row)]
+          val candidates = map_filter (fn (i,row: Join.mapped_weight) =>
+            if #output row=output andalso #source row=source andalso
+                #amount row=1 andalso #add row=10 then SOME i else NONE)
+            (map_index I (#mapped_weights join))
+          val mapped_index = (case candidates of first::_ => first
+            | [] => error "Shifted weight lacks its authenticated mapped +10 phase shift")
+          val facts = [List.nth (mapped_weight_evals,mapped_index),
+            List.nth (weight_import_evals,cid),weight_eval,weight_period]
           val plus = Const (@{const_name plus},natT --> natT --> natT)
           val modulo = Const (@{const_name modulo},natT --> natT --> natT)
           val next_phase = modulo $ (plus $ phase $ nat 1) $ nat 924

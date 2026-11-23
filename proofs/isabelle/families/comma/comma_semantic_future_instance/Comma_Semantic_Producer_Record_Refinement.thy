@@ -2,7 +2,7 @@ theory Comma_Semantic_Producer_Record_Refinement
   imports Comma_Semantic_Fragment_Refinement
     Comma_C1_Occurrence.Comma_C1_Entry_Chart_Refinement
     Comma_Semantic_B1.Comma_C1_B1_Source_Action
-    Comma_Semantic_B1_Table_Transform
+    Comma_Semantic_B1.Comma_Semantic_B1_Table_Transform
 begin
 
 text \<open>

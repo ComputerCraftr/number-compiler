@@ -19,11 +19,13 @@ from typing import Never, Protocol, cast
 import pytest
 
 from number_compiler.api.cli import main
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageCandidate,
     SourceImageView,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.comma import boundary_return as boundary_return_module
 from number_compiler.sequences.comma import future_provider
 from number_compiler.sequences.comma import power as comma_power
 from number_compiler.sequences.comma.action_arena import (
@@ -39,6 +41,7 @@ from number_compiler.sequences.comma.boundary_quotient import (
 )
 from number_compiler.sequences.comma.boundary_receipt import (
     BoundaryPrefixCursor,
+    BoundarySelectionReceipt,
     BoundarySelectionReceiptID,
     CommaImagePayload,
 )
@@ -48,6 +51,7 @@ from number_compiler.sequences.comma.future_authority import (
     SOURCE20_FIRST_FORK_VALUE,
     SOURCE20_SELECTED_CHILD_INDEX,
 )
+from number_compiler.sequences.comma.future_source_mdd import FutureSourceMDD
 from number_compiler.sequences.comma.occurrence import (
     BoundaryOccurrence,
     OccurrencePrefixReturn,
@@ -142,6 +146,213 @@ def _literal_window(value: int, steps: int) -> tuple[int, ...]:
 
 def _source20_first_child() -> BoundaryOccurrence:
     return BoundaryOccurrence(BoundaryState("N", 2, 10), 10)
+
+
+def test_compact_selection_uses_existing_receipt_transaction(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    record = authored_candidate_record()
+    install_test_only_global_registry(monkeypatch, record)
+    provider = _provider(record, request)
+    source = _source20_first_child()
+
+    def reject_indexed(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("compact receipt constructed an indexed macro")
+
+    monkeypatch.setattr(boundary_return_module, "construct_macro", reject_indexed)
+    prefix = OccurrencePrefixReturn.from_completed_source(source, charge_work=_no_work)
+    literals = prefix.ordered_literal_children(charge_work=_no_work).literal_values
+    assert len(literals) == 2
+    selected = select_global_semantic_macro_child(
+        source,
+        prefix,
+        fork_value=prefix.terminal_value,
+        ordered_literal_children=(literals[0], literals[1]),
+        provider=provider,
+        charge_work=_no_work,
+    )
+    receipt = BoundarySelectionReceipt.from_semantic_child(
+        selected,
+        provider,
+        source_value=source.value(),
+        source_index=SOURCE20_SELECTED_CHILD_INDEX,
+        source_extent=0,
+    )
+    with pytest.raises(ValueError, match="another source binding"):
+        BoundarySelectionReceipt.from_semantic_child(
+            selected,
+            provider,
+            source_value=source.value() + 1,
+            source_index=SOURCE20_SELECTED_CHILD_INDEX,
+            source_extent=0,
+        )
+    receipt.validate_provider(provider)
+    assert (
+        receipt.target_state
+        == prefix.template.ordered_children[selected.selection.selected_slot]
+    )
+    assert receipt.transitions == prefix.transition_count + 1
+
+    with comma_power.CommaTerm(1) as term:
+        identifier: BoundarySelectionReceiptID | None = None
+        snapshot = term.audit_snapshot()
+        initial_nodes = term.ledger.nodes
+        with monkeypatch.context() as context:
+            context.setattr(term.ledger, "max_nodes", initial_nodes + 2)
+            with pytest.raises(
+                BlockContextBudgetExceeded, match="node budget exceeded"
+            ):
+                with term.boundary_receipt_transaction():
+                    term.issue_boundary_selection_receipt(receipt)
+        assert not snapshot.boundary_receipts
+        assert term.ledger.nodes == initial_nodes
+
+        check_capacity = term.ledger.check_store_capacity
+
+        def reject_receipt_write(owner: int, entries: int, nodes: int) -> None:
+            if owner == snapshot.boundary_receipt_owner and entries:
+                assert nodes == 2
+                raise RuntimeError("receipt write failed before insertion")
+            check_capacity(owner, entries, nodes)
+
+        with monkeypatch.context() as context:
+            context.setattr(term.ledger, "check_store_capacity", reject_receipt_write)
+            with pytest.raises(RuntimeError, match="receipt write failed"):
+                with term.boundary_receipt_transaction():
+                    term.issue_boundary_selection_receipt(receipt)
+        assert not snapshot.boundary_receipts
+        assert term.ledger.nodes == initial_nodes
+
+        with pytest.raises(ValueError, match="receipt was altered"):
+            with term.boundary_receipt_transaction():
+                identifier = term.issue_boundary_selection_receipt(receipt)
+                assert term.resolve_boundary_selection_receipt(identifier) is receipt
+                retained = term.ledger.inventory_owner(snapshot.boundary_receipt_owner)
+                assert (retained.entries, retained.nodes) == (1, 2)
+                assert term.ledger.nodes == initial_nodes + 3
+                object.__setattr__(receipt, "transitions", receipt.transitions + 1)
+                term.resolve_boundary_selection_receipt(identifier)
+        snapshot = term.audit_snapshot()
+        assert not snapshot.boundary_receipts
+        for owner in (
+            snapshot.boundary_receipt_owner,
+            snapshot.boundary_receipt_seal_owner,
+        ):
+            account = term.ledger.inventory_owner(owner)
+            assert account.entries == account.nodes == 0
+        assert identifier is not None
+        with pytest.raises(ValueError, match="foreign or stale"):
+            term.resolve_boundary_selection_receipt(identifier)
+
+
+def test_compact_receipt_validates_completed_image_without_index_rebuild(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    record = authored_candidate_record()
+    digest = install_test_only_global_registry(monkeypatch, record)
+    artifact = tmp_path / future_provider.FUTURE_PROVIDER_ASSET
+    artifact.write_bytes(canonical_bytes(record))
+    source = _source20_first_child()
+    with comma_power.CommaTerm(1) as term:
+        stage = cast(
+            Callable[[Path], None],
+            object.__getattribute__(term, "_stage_global_future_provider_artifact"),
+        )
+        stage(artifact)
+        provider = term.require_global_future_provider(digest)
+        action = term.arena.global_boundary_return(source.state, digest)
+        node = term.arena.node(action)
+        prefix = OccurrencePrefixReturn.from_completed_source(
+            source, charge_work=term.arena.charge, charge_bits=term.arena.charge_bits
+        )
+        literals = prefix.ordered_literal_children().literal_values
+        assert len(literals) == 2
+        selected = select_global_semantic_macro_child(
+            source,
+            prefix,
+            fork_value=prefix.terminal_value,
+            ordered_literal_children=(literals[0], literals[1]),
+            provider=provider,
+            charge_work=term.arena.charge,
+        )
+        receipt = BoundarySelectionReceipt.from_semantic_child(
+            selected,
+            provider,
+            source_value=source.value(),
+            source_index=SOURCE20_SELECTED_CHILD_INDEX,
+            source_extent=0,
+            charge_work=term.arena.charge,
+            charge_bits=term.arena.charge_bits,
+        )
+
+        def reject_indexed(*_args: object, **_kwargs: object) -> Never:
+            raise AssertionError("completed receipt rebuilt an indexed prefix")
+
+        monkeypatch.setattr(term.arena, "boundary_template", reject_indexed)
+        with term.boundary_receipt_transaction():
+            identifier = term.issue_boundary_selection_receipt(receipt)
+            cursor = BoundaryPrefixCursor(
+                receipt.target_state, receipt.target_exponent, 0, identifier
+            )
+            source_payload = CommaImagePayload(
+                receipt.source_value,
+                receipt.source_index,
+                term.certificate_version,
+                BoundaryPrefixCursor(source.state, source.exponent, 0),
+            )
+            result = CommaImagePayload(
+                receipt.target_value,
+                receipt.source_index + receipt.transitions,
+                term.certificate_version,
+                cursor,
+            )
+            sector = decimal_sector(result.value)
+            term.adapter.validate_action_result(
+                node,
+                source_payload,
+                0,
+                result,
+                receipt.transitions,
+                (sector.leading, sector.digit, sector.headroom),
+                expected_transitions=receipt.transitions,
+            )
+            with pytest.raises(ValueError, match="source seam"):
+                term.adapter.validate_action_result(
+                    node,
+                    replace(
+                        source_payload, absolute_index=source_payload.absolute_index + 1
+                    ),
+                    0,
+                    result,
+                    receipt.transitions,
+                    (sector.leading, sector.digit, sector.headroom),
+                )
+            with pytest.raises(ValueError, match="macro extent"):
+                term.adapter.validate_action_result(
+                    node,
+                    source_payload,
+                    0,
+                    result,
+                    receipt.transitions,
+                    (sector.leading, sector.digit, sector.headroom),
+                    expected_transitions=receipt.transitions + 1,
+                )
+            other = prefix.template.ordered_children[
+                1 - receipt.selection.selected_slot
+            ]
+            wrong_cursor = BoundaryPrefixCursor(
+                other, receipt.target_exponent, 0, identifier
+            )
+            with pytest.raises(ValueError, match="issued child slot"):
+                term.adapter.validate_action_result(
+                    node,
+                    source_payload,
+                    0,
+                    replace(result, boundary_cursor=wrong_cursor),
+                    receipt.transitions,
+                    (sector.leading, sector.digit, sector.headroom),
+                )
 
 
 def test_authored_provider_selects_two_later_forks_and_transports_exponents(
@@ -290,7 +501,26 @@ def test_authenticated_global_return_crosses_the_selected_fork(
         stage_provider(artifact)
         term.require_certified_public_prefix()
 
+        lookups: list[BoundaryState] = []
+        lookup = FutureSourceMDD.lookup
+
+        def record_lookup(
+            mdd: FutureSourceMDD,
+            state: BoundaryState,
+            *,
+            charge_work: WorkCharge | None = None,
+        ) -> int:
+            lookups.append(state)
+            return lookup(mdd, state, charge_work=charge_work)
+
+        monkeypatch.setattr(FutureSourceMDD, "lookup", record_lookup)
         assert term.materialize() == selected.target.value()
+        checked_boundary_states = [
+            selected.source.state,  # Source-20 entry publication.
+            selected.source.state,  # Issued global selection.
+            *selected.prefix.template.ordered_children,
+        ]
+        assert lookups == checked_boundary_states
         assert object.__getattribute__(term, "_boundary_occurrence") == selected.target
         assert len(term.audit_snapshot().boundary_receipts) == 1
         assert term.ledger.counters["comma_global_branch_action_applications"] == 2
@@ -298,6 +528,7 @@ def test_authenticated_global_return_crosses_the_selected_fork(
         assert term.materialize() == selected.target.value()
         assert term.ledger.counters["comma_global_branch_action_applications"] == 2
         assert len(term.audit_snapshot().boundary_receipts) == receipt_count
+        assert lookups == checked_boundary_states
 
 
 @pytest.mark.validation

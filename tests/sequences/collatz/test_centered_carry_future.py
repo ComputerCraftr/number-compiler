@@ -5,6 +5,9 @@ from __future__ import annotations
 import pytest
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.collatz.centered_carry_future import (
+    CenteredCarryFuture,
+)
 from number_compiler.sequences.collatz.future_carry_bellman import (
     centered_carry_signal,
     first_simultaneous_even_carries,
@@ -57,3 +60,19 @@ def test_same_time_carries_match_independent_integer_oracle(
         first_simultaneous_even_carries(
             source, cuts, horizon=headroom + 1, ledger=ResourceLedger()
         )
+
+
+def test_valuation_covered_cuts_need_no_phase_storage() -> None:
+    future = CenteredCarryFuture.from_normalized_source(127, 8)
+
+    def forbid_reservation(_bits: int) -> None:
+        raise AssertionError("valuation-covered cuts constructed a phase walk")
+
+    hits = future.first_same_time_even(
+        (0, 2, 7),
+        horizon=7,
+        max_phase_states=1,
+        reserve_bits=forbid_reservation,
+        include_correction=True,
+    )
+    assert hits.homogeneous == hits.corrected == 1

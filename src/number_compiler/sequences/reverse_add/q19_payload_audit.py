@@ -306,6 +306,7 @@ def audit_reverse_pair_output_roots(
             state.projector_block.container,
             state.projector_forward_power.container,
             state.projector_reverse_power.container,
+            state.frontiers.container,
         )
         valid = (
             state.ledger is ledger
@@ -410,6 +411,7 @@ def audit_reverse_pair_output_roots(
                 state.diagonal_comparisons_owner,
                 "reverse_pair_q19_directed_diagonal_comparison",
             ),
+            (state.frontiers, state.frontier_owner, "observation_memo"),
             *(
                 (store, store_owner, "reverse_pair_projector_memo")
                 for store, store_owner in zip(
@@ -503,6 +505,17 @@ def audit_reverse_pair_output_roots(
                 valid &= summary_matches(root, index)
             except (KeyError, IndexError, TypeError, ValueError, AttributeError):
                 valid = False
+        for age, frontier in memo_payload_items(state.frontiers):
+            recognized.update((id(age), id(frontier)))
+            valid &= (
+                type(age) is int
+                and age >= 1
+                and is_exact_object_tuple(frontier)
+                and len(frontier) == 2
+                and type(frontier[0]) is int
+                and type(frontier[1]) is bool
+                and (frontier[0], age) in state.issued.container
+            )
         for occurrence_key, occurrence in memo_payload_items(state.issued):
             recognized.add(id(occurrence))
             if type(occurrence) is not ReversePairOutputOccurrence:
@@ -910,6 +923,11 @@ def audit_reverse_pair_output_roots(
                     approved.update(
                         id(value) for pair in retained_mapping.items() for value in pair
                     )
+            approved.update(
+                id(value)
+                for pair in state.frontiers.container.items()
+                for value in pair
+            )
             approved.update(id(summary) for summary in _memo_values(state.summaries))
             approved.update(id(occurrence) for occurrence in _memo_values(state.issued))
             for retained_issue in chain(

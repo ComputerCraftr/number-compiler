@@ -2,6 +2,48 @@ theory Comma_CRT_MDD_Certificate_Smoke
   imports Comma_Frontier24_Certificate_Smoke
 begin
 
+ML_file "semantic_direct_chart_bind_fixture.ML"
+ML_file "semantic_selected_leaf_bind_fixture.ML"
+ML_file "semantic_mixed_mapping_fixture.ML"
+ML_file "semantic_direct_slot_fixture.ML"
+
+local_setup \<open>Comma_Selected_Leaf_Bind_Fixture.run\<close>
+local_setup \<open>Comma_Mixed_Mapping_Fixture.run\<close>
+local_setup \<open>Comma_Direct_Slot_Fixture.run\<close>
+
+local_setup \<open>fn lthy =>
+  let
+    val arena = Comma_CRT_MDD_Arena.create [3,2]
+    val low = Comma_CRT_MDD_Arena.action_none arena
+    val limit = Comma_CRT_MDD_Arena.action_some arena 241
+    val high = Comma_CRT_MDD_Arena.action_some arena 242
+    val allowed = Comma_CRT_MDD_Arena.action_branch arena 0 [low,limit,limit]
+    val forbidden = Comma_CRT_MDD_Arena.action_branch arena 0 [low,high,limit]
+    val foreign_arena = Comma_CRT_MDD_Arena.create [3,2]
+    val foreign = Comma_CRT_MDD_Arena.action_some foreign_arena 241
+    val (store,lthy') = Comma_CRT_MDD_Certificate_Store.make
+      "comma_payload_cap_smoke_nodes" arena lthy
+    val stale = Comma_CRT_MDD_Arena.action_some arena 0
+    val certify = Comma_CRT_MDD_Certificate_Store.payload_cap store 242
+    val fact = certify allowed
+    fun reject label attempt =
+      (case Exn.capture attempt () of
+        Exn.Exn (ERROR _) => ()
+      | Exn.Exn exn => Exn.reraise exn
+      | Exn.Res _ => error ("Payload cap admitted " ^ label))
+    val _ = reject "a reachable payload of 243" (fn () => certify forbidden)
+    val _ = reject "a foreign action" (fn () => certify foreign)
+    val _ = reject "an action issued after freezing" (fn () => certify stale)
+    val _ = reject "a narrower cap"
+      (fn () => Comma_CRT_MDD_Certificate_Store.payload_cap store 241 allowed)
+    val _ = if Thm.prop_of (certify allowed) aconv Thm.prop_of fact then ()
+      else error "Payload cap cache changed its checked proposition after failure"
+    val ctxt = Comma_CRT_MDD_Certificate_Store.context store
+    val _ = Comma_Proof_Dependency_Audit.require_native_clean ctxt
+      "Frozen reachable payload cap" [fact,@{thm comma_crt_mdd_payload_cap_eval}]
+  in lthy' end\<close>
+
+
 text \<open>Small executable authority and reuse regressions for the shared
 MDD certificate API. These fixture tables are not production proof data.\<close>
 
@@ -36,9 +78,11 @@ local_setup \<open>fn lthy =>
     val action = Comma_CRT_MDD_Arena.action_branch arena 0
       [Comma_CRT_MDD_Arena.action_some arena 0, Comma_CRT_MDD_Arena.action_none arena,
        Comma_CRT_MDD_Arena.action_some arena 0, Comma_CRT_MDD_Arena.action_none arena]
+    val sharing_child = Comma_CRT_MDD_Arena.action_branch arena 1
+      [Comma_CRT_MDD_Arena.action_some arena 0, Comma_CRT_MDD_Arena.action_some arena 1]
     val sharing_action = Comma_CRT_MDD_Arena.action_branch arena 0
-      [Comma_CRT_MDD_Arena.action_some arena 0, Comma_CRT_MDD_Arena.action_some arena 1,
-       Comma_CRT_MDD_Arena.action_some arena 0, Comma_CRT_MDD_Arena.action_some arena 1]
+      [sharing_child, Comma_CRT_MDD_Arena.action_some arena 1,
+       sharing_child, Comma_CRT_MDD_Arena.action_some arena 1]
     val bound_root = Comma_CRT_MDD_Arena.bind_action_to_boolean arena action low [(0,root)]
     val reused_root = Comma_CRT_MDD_Arena.bind_action_to_boolean arena action low [(0,root)]
     val alias_root = Comma_CRT_MDD_Arena.bind_action_to_boolean arena action root [(0,root)]
@@ -101,11 +145,6 @@ local_setup \<open>fn lthy =>
     val alias_key = (Comma_CRT_MDD_Certificate_Store.action_index store action,
       index,[(1,index)])
     val alias_exact = Comma_CRT_MDD_Bind_Replay.bind_eval_phase bind_replay alias_key
-    val bind_stats = Comma_CRT_MDD_Bind_Replay.statistics bind_replay
-    val _ = Comma_CRT_MDD_Bind_Replay.bind_eval_phase bind_replay bind_key
-    val _ = Comma_CRT_MDD_Bind_Replay.bind_eval_phase bind_replay alias_key
-    val _ = if bind_stats = Comma_CRT_MDD_Bind_Replay.statistics bind_replay then ()
-      else error "MDD bind parent reuse reconstructed proof data"
     fun statistic name report =
       let
         val prefix = name ^ "="
@@ -114,6 +153,17 @@ local_setup \<open>fn lthy =>
           SOME value => value
         | NONE => error ("MDD bind statistic is missing: " ^ name))
       in String.extract (token, String.size prefix, NONE) end
+    val bind_stats = Comma_CRT_MDD_Bind_Replay.statistics bind_replay
+    val _ = Comma_CRT_MDD_Bind_Replay.bind_eval_phase bind_replay bind_key
+    val _ = Comma_CRT_MDD_Bind_Replay.bind_eval_phase bind_replay alias_key
+    val warm_bind_stats = Comma_CRT_MDD_Bind_Replay.statistics bind_replay
+    val _ = if List.all (fn name =>
+        statistic name bind_stats = statistic name warm_bind_stats)
+        ["bind_certificate_nodes", "payload_cover_nodes",
+         "cofactor_family_builds", "mapping_family_builds",
+         "selected_leaf_branches", "selected_leaf_rows",
+         "selected_cofactor_builds", "selected_target_builds"] then ()
+      else error "MDD bind parent reuse reconstructed proof data"
     val sharing_source = Comma_CRT_MDD_Certificate_Store.action_index store sharing_action
     val sharing_fallback = Comma_CRT_MDD_Certificate_Store.boolean_index store low
     val single_sharing_key_one = (sharing_source, sharing_fallback, [(1,index)])
@@ -569,6 +619,12 @@ ML \<open>
       frontier24_fixture_terminal_nonzero_shift_is_invalid
       frontier24_fixture_terminal_nonzero_delta_is_invalid};
 \<close>
+
+text \<open>The production-style multi-terminal chart selects exact child
+projections at nonzero phases; swapped children and foreign arena roots are
+explicit negative controls.\<close>
+
+local_setup \<open>Comma_Direct_Chart_Bind_Fixture.run\<close>
 
 
 end

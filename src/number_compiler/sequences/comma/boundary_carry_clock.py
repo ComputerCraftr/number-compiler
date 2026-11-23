@@ -24,7 +24,7 @@ from .boundary_chart import (
     near_chart_target,
     validate_chart,
 )
-from .carry_generator import BitsCharge, C1Phase, C1Return, WorkCharge
+from .carry_generator import BitsCharge, C1Phase, C1Return, WorkCharge, c1_return_values
 
 
 def _charge(
@@ -172,6 +172,90 @@ def _chart_weight_signature(weight: ChartWeight) -> tuple[int, int, int, int]:
     return weight.scale, weight.exponent_delta, weight.offset, weight.denominator
 
 
+def _admitted_chart_phase(
+    exponent_phase: int,
+    chart: BoundaryChart,
+    exponent: int,
+    steps: int,
+    *,
+    charge_work: WorkCharge | None,
+    charge_bits: BitsCharge | None,
+) -> C1Phase:
+    """Check one chart segment before evaluating its fixed-sector action."""
+    if type(exponent_phase) is not int or not 0 <= exponent_phase < PERIOD:
+        raise ValueError("invalid comma exponent clock")
+    if type(chart) is not BoundaryChart:
+        raise TypeError("power requires a canonical BoundaryChart")
+    validate_chart(exponent_phase, chart)
+    if type(exponent) is not int or exponent < 5 or exponent % PERIOD != exponent_phase:
+        raise ValueError("chart exponent and external clock disagree")
+    if type(steps) is not int or steps < 0:
+        raise ValueError("chart power requires a nonnegative duration")
+    _charge(charge_work, charge_bits, 1, exponent, exponent_phase, steps)
+
+    if chart.kind == "entry":
+        first_move = chart_step(exponent_phase, chart, charge_bits=charge_bits)
+        if first_move.next_chart is None or first_move.cycle is None:
+            raise ArithmeticError("Entry source has no canonical Near event")
+        if not _duration_at_least(
+            first_move.weight,
+            exponent,
+            steps,
+            charge_work=charge_work,
+            charge_bits=charge_bits,
+        ):
+            raise ValueError("powered C1 exceeds the first Entry/Near event")
+    elif steps:
+        if near_chart_target(chart).next_chart is None:
+            raise ValueError("powered C1 exceeds the first Near terminal event")
+        immediate_border = int(chart.leading < 9)
+        if chart.coordinate <= immediate_border:
+            raise ValueError("powered C1 exceeds the immediate Near event")
+        near_port = classify_near_port(
+            chart.leading,
+            chart.coordinate,
+            charge_work=charge_work,
+            charge_bits=charge_bits,
+        )
+        if steps > near_port.physical_steps:
+            raise ValueError("powered C1 exceeds the first Near port")
+
+    return C1Phase.from_suffix(
+        chart.leading,
+        chart.coordinate if chart.kind == "entry" else (-chart.coordinate) % 100,
+    )
+
+
+def _checked_chart_headroom(
+    chart: BoundaryChart,
+    exponent: int,
+    steps: int,
+    displacement: int,
+    *,
+    charge_work: WorkCharge | None,
+    charge_bits: BitsCharge | None,
+) -> ChartWeight:
+    """Exclude sector exit using the exact displacement of the admitted span."""
+    extra = int(chart.leading < 9)
+    if chart.kind == "entry":
+        # N=f*10**width+x; keep headroom_after>extra to exclude the next
+        # leading-sector transition from this segment.
+        if steps and not _decimal_power_greater_than(
+            exponent + chart.delta,
+            chart.coordinate + displacement + extra,
+            charge_work=charge_work,
+            charge_bits=charge_bits,
+        ):
+            raise ValueError("powered C1 crosses its Entry sector guard")
+        headroom = ChartWeight(1, chart.delta, -(chart.coordinate + displacement), 1)
+    else:
+        headroom_after = chart.coordinate - displacement
+        if steps and headroom_after <= extra:
+            raise ValueError("powered C1 crosses its Near sector guard")
+        headroom = ChartWeight(0, 0, headroom_after, 1)
+    return headroom
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class GuardedC1ChartPower:
     """Exact C1 power contained in one admitted chart segment.
@@ -206,81 +290,25 @@ class GuardedC1ChartPower:
         charge_bits: BitsCharge | None = None,
     ) -> GuardedC1ChartPower:
         """Check and publish one bounded Entry/Near chart segment."""
-        if type(exponent_phase) is not int or not 0 <= exponent_phase < PERIOD:
-            raise ValueError("invalid comma exponent clock")
-        if type(chart) is not BoundaryChart:
-            raise TypeError("power requires a canonical BoundaryChart")
-        validate_chart(exponent_phase, chart)
-        if (
-            type(exponent) is not int
-            or exponent < 5
-            or exponent % PERIOD != exponent_phase
-        ):
-            raise ValueError("chart exponent and external clock disagree")
-        if type(steps) is not int or steps < 0:
-            raise ValueError("chart power requires a nonnegative duration")
-        _charge(charge_work, charge_bits, 1, exponent, exponent_phase, steps)
-
-        if chart.kind == "entry":
-            first_move = chart_step(exponent_phase, chart, charge_bits=charge_bits)
-            if first_move.next_chart is None or first_move.cycle is None:
-                raise ArithmeticError("Entry source has no canonical Near event")
-            if not _duration_at_least(
-                first_move.weight,
-                exponent,
-                steps,
-                charge_work=charge_work,
-                charge_bits=charge_bits,
-            ):
-                raise ValueError("powered C1 exceeds the first Entry/Near event")
-        elif steps:
-            if near_chart_target(chart).next_chart is None:
-                raise ValueError("powered C1 exceeds the first Near terminal event")
-            immediate_border = int(chart.leading < 9)
-            if chart.coordinate <= immediate_border:
-                raise ValueError("powered C1 exceeds the immediate Near event")
-            near_port = classify_near_port(
-                chart.leading,
-                chart.coordinate,
-                charge_work=charge_work,
-                charge_bits=charge_bits,
-            )
-            if steps > near_port.physical_steps:
-                raise ValueError("powered C1 exceeds the first Near port")
-
-        phase = C1Phase.from_suffix(
-            chart.leading,
-            chart.coordinate if chart.kind == "entry" else (-chart.coordinate) % 100,
-        )
-        action = C1Return(
-            phase,
+        phase = _admitted_chart_phase(
+            exponent_phase,
+            chart,
+            exponent,
             steps,
             charge_work=charge_work,
             charge_bits=charge_bits,
         )
-        displacement = action.displacement(
+        action = C1Return(
+            phase, steps, charge_work=charge_work, charge_bits=charge_bits
+        )
+        headroom = _checked_chart_headroom(
+            chart,
+            exponent,
+            steps,
+            action.displacement(charge_work=charge_work, charge_bits=charge_bits),
             charge_work=charge_work,
             charge_bits=charge_bits,
         )
-        extra = int(chart.leading < 9)
-        if chart.kind == "entry":
-            # N=f*10**width+x; keep headroom_after>extra to exclude the next
-            # leading-sector transition from this segment.
-            if steps and not _decimal_power_greater_than(
-                exponent + chart.delta,
-                chart.coordinate + displacement + extra,
-                charge_work=charge_work,
-                charge_bits=charge_bits,
-            ):
-                raise ValueError("powered C1 crosses its Entry sector guard")
-            headroom = ChartWeight(
-                1, chart.delta, -(chart.coordinate + displacement), 1
-            )
-        else:
-            headroom_after = chart.coordinate - displacement
-            if steps and headroom_after <= extra:
-                raise ValueError("powered C1 crosses its Near sector guard")
-            headroom = ChartWeight(0, 0, headroom_after, 1)
         return cls._issue(chart, exponent, exponent_phase, action, headroom)
 
     @classmethod
@@ -723,6 +751,38 @@ def symbolic_entry_carry_clock(
     )
 
 
+def powered_chart_values(
+    exponent_phase: int,
+    chart: BoundaryChart,
+    exponent: int,
+    steps: int,
+    *,
+    charge_work: WorkCharge | None = None,
+    charge_bits: BitsCharge | None = None,
+) -> tuple[int, int, ChartWeight]:
+    """Return checked displacement, C1 count and headroom without a retained power."""
+    phase = _admitted_chart_phase(
+        exponent_phase,
+        chart,
+        exponent,
+        steps,
+        charge_work=charge_work,
+        charge_bits=charge_bits,
+    )
+    _target, count, displacement = c1_return_values(
+        phase, steps, charge_work=charge_work, charge_bits=charge_bits
+    )
+    headroom = _checked_chart_headroom(
+        chart,
+        exponent,
+        steps,
+        displacement,
+        charge_work=charge_work,
+        charge_bits=charge_bits,
+    )
+    return displacement, count, headroom
+
+
 def powered_chart_carry(
     exponent_phase: int,
     chart: BoundaryChart,
@@ -748,5 +808,6 @@ __all__ = [
     "SymbolicEntryCarryClock",
     "WidthCarryFormula",
     "powered_chart_carry",
+    "powered_chart_values",
     "symbolic_entry_carry_clock",
 ]

@@ -96,9 +96,6 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
         self.ledger = ledger
         self.base = base
         self._digits = digits_lsd
-        # One source-scoped key hint only; authenticated output handles remain
-        # exclusively in the issued-occurrence memo.
-        self._broadword_last: tuple[int, int] | None = None
         self._authority = ArenaToken("reverse-pair-q19-output")
         prefix = f"reverse-pair-q19-{ledger.owner_count}"
 
@@ -177,6 +174,12 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
             self._issued = OwnedMemo[tuple[int, int], ReversePairOutputOccurrence](
                 ledger, self._issued_owner, nodes_per_entry=1
             )
+            self._frontier_owner = ledger.register(
+                prefix + "-physical-frontiers", "observation_memo"
+            )
+            self._frontiers = OwnedMemo[int, tuple[int, bool]](
+                ledger, self._frontier_owner, nodes_per_entry=1, evictable=True
+            )
             self.word_fiber_cache_owner = ledger.register(
                 prefix + "-word-fibers", "observation_memo"
             )
@@ -246,6 +249,7 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
         ) = self.arena.audit_interner_stores
         self._audit_summaries = self._summaries.audit_container
         self._audit_issued = self._issued.audit_container
+        self._audit_frontiers = self._frontiers.audit_container
         self._audit_word_fibers = self.word_fiber_cache.audit_container
         self._audit_border_certificates = self._border_certificates.audit_container
         self._audit_controlled_gt_banks = self._controlled_gt_banks.audit_container
@@ -271,6 +275,7 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
             arena_owners=self.arena.owners,
             summary_owner=self._summary_owner,
             issued_owner=self._issued_owner,
+            frontier_owner=self._frontier_owner,
             word_fibers_owner=self.word_fiber_cache_owner,
             border_owner=self._border_certificates_owner,
             controlled_gt_owner=self._controlled_gt_banks_owner,
@@ -313,7 +318,9 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
             summary_owner=self._summary_owner,
             summaries=self._summaries.audit_snapshot(),
             issued_owner=self._issued_owner,
+            frontier_owner=self._frontier_owner,
             issued=self._issued.audit_snapshot(),
+            frontiers=self._frontiers.audit_snapshot(),
             word_fibers_owner=self.word_fiber_cache_owner,
             word_fibers=self.word_fiber_cache.audit_snapshot(),
             word_fibers_binding=self.word_fiber_cache,
@@ -357,6 +364,7 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
                 self._audit_projector_block,
                 self._audit_projector_forward_power,
                 self._audit_projector_reverse_power,
+                self._audit_frontiers,
             ),
         )
 
@@ -875,6 +883,7 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
             cleanup: list[Callable[[], object]] = [
                 self._unregister_payload_audit_contract,
                 self.word_fiber_cache.dispose,
+                self._frontiers.dispose,
                 self._issued.dispose,
                 self._diagonal_comparisons.dispose,
                 self._temporal_ring_banks.dispose,

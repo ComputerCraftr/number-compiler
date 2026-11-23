@@ -80,6 +80,7 @@ ML \<open>Comma_CRT_MDD_Priority_Fixture.run ()\<close>
 local_setup \<open>Comma_CRT_MDD_Point_Eval_Fixture.run\<close>
 ML_file "../comma_semantic_b1_instance/semantic_frontier24_mdd_import_certificates.ML"
 ML_file "../comma_semantic_b1_instance/semantic_direct_action_proposal.ML"
+ML_file "../comma_semantic_b1_instance/semantic_phase_selector_proposal.ML"
 ML_file "../comma_semantic_b1_instance/semantic_direct_mdd_proposal.ML"
 ML_file "../comma_semantic_b1_instance/semantic_direct_terminal_proofs.ML"
 ML_file "semantic_direct_terminal_fixture.ML"
@@ -122,9 +123,12 @@ ML_file "../comma_semantic_b1_instance/semantic_direct_class_bindings.ML"
 ML_file "../comma_semantic_b1_instance/semantic_frontier24_selector_proofs.ML"
 ML_file "../comma_semantic_b1_instance/semantic_frontier24_structure_proofs.ML"
 ML_file "../comma_semantic_b1/crt_mdd_multiway_replay.ML"
+ML_file "../comma_semantic_b1_instance/semantic_phase_selector_replay.ML"
 ML_file "../comma_semantic_b1_instance/semantic_direct_mdd_evaluation.ML"
 ML_file "semantic_direct_mdd_fixture.ML"
 local_setup \<open>Comma_Direct_MDD_Fixture.run\<close>
+ML_file "semantic_phase_selector_fixture.ML"
+local_setup \<open>Comma_Phase_Selector_Application_Fixture.run\<close>
 ML_file "semantic_crt_mdd_priority_checked_fixture.ML"
 local_setup \<open>Comma_CRT_MDD_Priority_Checked_Fixture.run\<close>
 ML_file "../comma_semantic_b1_instance/semantic_frontier24_bundle_publisher.ML"
@@ -603,8 +607,11 @@ ML \<open>
           SOME request => request
         | NONE => error "No distinct Entry occurrence shares the representative key")
       val plan = Comma_Frontier24_Bundle_Publisher.Selector_Proofs.entry_representative_plan ctxt result
-      val first = #transport plan (#sector rep) (#residue rep) (#core rep) (#wanted rep)
-      val second = #transport plan sector residue core wanted
+      val first_chart = #prepare plan (#sector rep) (#residue rep) (#core rep)
+      val second_chart = #prepare plan sector residue core
+      val first = #transport_prepared plan first_chart
+        (#sector rep) (#residue rep) (#core rep) (#wanted rep)
+      val second = #transport_prepared plan second_chart sector residue core wanted
       val request = @{term comma_phase_program_entry_core_value_action} $
         HOLogic.mk_number @{typ nat} sector $ HOLogic.mk_number @{typ nat} residue $
         core $ HOLogic.mk_number @{typ nat} wanted
@@ -632,7 +639,8 @@ ML \<open>
         Comma_Frontier24_Bundle_Publisher.Selector_Proofs.entry_representative_plan ctxt result
       fun check_coverage (candidate: Comma_Frontier24_Parametric_Compiler.entry_representative) =
         let
-          val theorem = #transport coverage_plan (#sector candidate) (#residue candidate)
+          val chart = #prepare coverage_plan (#sector candidate) (#residue candidate) (#core candidate)
+          val theorem = #transport_prepared coverage_plan chart (#sector candidate) (#residue candidate)
             (#core candidate) (#wanted candidate)
           val input = @{term comma_phase_program_entry_core_value_action} $
             HOLogic.mk_number @{typ nat} (#sector candidate) $
@@ -641,7 +649,8 @@ ML \<open>
         in Comma_CRT_MDD_Proof_Utils.exact_prop ctxt "Entry sector/action coverage"
           (Logic.mk_equals (input,#action candidate)) theorem end
       val coverage_facts = map check_coverage coverage
-      val negative_mod = #transport coverage_plan 1 19 @{term Comma_Core_23} 18
+      val negative_chart = #prepare coverage_plan 1 19 @{term Comma_Core_23}
+      val negative_mod = #transport_prepared coverage_plan negative_chart 1 19 @{term Comma_Core_23} 18
       val negative_request = @{term comma_phase_program_entry_core_value_action} $
         HOLogic.mk_number @{typ nat} 1 $ HOLogic.mk_number @{typ nat} 19 $
         @{term Comma_Core_23} $ HOLogic.mk_number @{typ nat} 18

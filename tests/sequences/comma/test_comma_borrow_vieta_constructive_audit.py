@@ -11,10 +11,14 @@ from number_compiler.sequences.comma import (
     boundary_occurrence_chart as chart_occurrence_module,
 )
 from number_compiler.sequences.comma.boundary_carry_clock import (
-    GuardedC1ChartPower,
     powered_chart_carry,
+    powered_chart_values,
 )
-from number_compiler.sequences.comma.boundary_chart import PERIOD, BoundaryChart
+from number_compiler.sequences.comma.boundary_chart import (
+    PERIOD,
+    BoundaryChart,
+    ChartWeight,
+)
 from number_compiler.sequences.comma.boundary_quotient import (
     AffineWeight,
     BoundaryState,
@@ -54,7 +58,7 @@ def test_macro_cycle_fragments_use_the_shared_powered_c1_return(
     macro = construct_macro(state, grouped_near=True)
     assert any(fragment.period for fragment in macro.sector_fragments)
     calls: list[tuple[BoundaryChart, int]] = []
-    shared_powered_chart_carry = powered_chart_carry
+    shared_powered_chart_values = powered_chart_values
 
     def tracked_power(
         exponent_phase: int,
@@ -64,9 +68,9 @@ def test_macro_cycle_fragments_use_the_shared_powered_c1_return(
         *,
         charge_work: WorkCharge | None = None,
         charge_bits: BitsCharge | None = None,
-    ) -> GuardedC1ChartPower:
+    ) -> tuple[int, int, ChartWeight]:
         calls.append((chart, steps))
-        return shared_powered_chart_carry(
+        return shared_powered_chart_values(
             exponent_phase,
             chart,
             exponent,
@@ -75,7 +79,7 @@ def test_macro_cycle_fragments_use_the_shared_powered_c1_return(
             charge_bits=charge_bits,
         )
 
-    monkeypatch.setattr(chart_occurrence_module, "powered_chart_carry", tracked_power)
+    monkeypatch.setattr(chart_occurrence_module, "powered_chart_values", tracked_power)
     result = audit.macro_c1_return_constructive(macro, 10)
     assert calls
     assert any(steps > 1 for _, steps in calls)
@@ -149,7 +153,7 @@ def test_entry_macro_uses_closed_c1_count_without_repowering_entry(
         scale = target_scale
 
     assert expected_entry_count > 0
-    shared_powered_chart_carry = powered_chart_carry
+    shared_powered_chart_values = powered_chart_values
     observed_near_counts: list[int] = []
 
     def reject_entry_repower(
@@ -160,10 +164,10 @@ def test_entry_macro_uses_closed_c1_count_without_repowering_entry(
         *,
         charge_work: WorkCharge | None = None,
         charge_bits: BitsCharge | None = None,
-    ) -> GuardedC1ChartPower:
+    ) -> tuple[int, int, ChartWeight]:
         if chart.kind == "entry":
             pytest.fail("Entry action was rebuilt instead of using its closed C1 count")
-        powered = shared_powered_chart_carry(
+        powered = shared_powered_chart_values(
             exponent_phase,
             chart,
             receiving_exponent,
@@ -171,11 +175,11 @@ def test_entry_macro_uses_closed_c1_count_without_repowering_entry(
             charge_work=charge_work,
             charge_bits=charge_bits,
         )
-        observed_near_counts.append(powered.carry_count)
+        observed_near_counts.append(powered[1])
         return powered
 
     monkeypatch.setattr(
-        chart_occurrence_module, "powered_chart_carry", reject_entry_repower
+        chart_occurrence_module, "powered_chart_values", reject_entry_repower
     )
     result = audit.macro_c1_return_constructive(macro, exponent)
     assert observed_near_counts == expected_near_counts

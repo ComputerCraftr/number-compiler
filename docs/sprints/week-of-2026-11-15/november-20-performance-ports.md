@@ -376,3 +376,1283 @@ stops scanning as soon as the answer is settled. A reusable corrected
 mixed-parity carry DAG still needs source and clock authority. The full
 Antihydra three-ID quotient, prime XOR first-birth theorem and prime
 circular-histogram power theorem also remain open.
+
+## November 21 source-certified ports
+
+The clean baseline was Git `f55418a7cd18a01e9570f4f3d24c59726c2ece5b`.
+The guarded default suite took 247.09 seconds and peaked at 441.4 MiB.
+It recorded 13,198 passes and six existing comma admission failures.
+
+- The reflected SLP compiler uses aligned children and composes a repeated
+  inlet from its leading, interior, seam and trailing responses. Bounded
+  unaligned inlets use a single ledgered walk. The decimal publisher folds
+  multiplication carry and emission together while preserving the even
+  2rev10 normalization.
+- 5rev10 uses the packed decimal path from 64 ticks when its source and
+  resource bounds permit it. Short and capped requests retain the exact
+  scalar route. The padded-H publisher remains available explicitly.
+- Reverse/add retains up to 64 completed Q19 landmarks in the receiving
+  owner and selects the farthest valid preceding entry. A guarded extension
+  resumes a guarded entry at its pre-emission clock. The frontier and
+  occurrence rollback paths attempt each independent cleanup.
+- The Collatz carry observer omits cuts at or below the admitted dyadic
+  valuation and preserves the moving correction. The Antihydra transient
+  leaf emits the exact fixed-point safety summary directly. The general
+  issued SLP carry action and wider cyclic valuation issuer remain open.
+- The prime candidate uses signed cutoff rows, the existing wheel and
+  consecutive factor authority, singleton remainder checks and optional
+  basis-bounded masks. The initial port kept the candidate internal pending
+  the source-count refinement and rollout checks.
+- Isabelle checks Fermat checkpoint squaring, ordered joins and the
+  source-residue refinement. The tested ladder missed the performance
+  threshold and the selected matrix compiler retains its existing
+  checkpoint evaluation. The rotational wrap cutover remains open.
+
+### Matched measurements
+
+Each row uses five interleaved samples with equal successful outputs.
+The embedded CLI trials bypass shared caches. The Q19 rows measure endpoint
+construction in one receiving owner.
+
+| Workload | Baseline median | Candidate median | Executed work or scope |
+| --- | ---: | ---: | --- |
+| Q19 seed 196 at 4,096 after 2,048 | 35.21 ms | 29.22 ms | 4,095 → 2,048 physical steps |
+| Guarded Q19 at 2,048 after 1,024 and 4,096 | 12.97 ms | 11.99 ms | 2,047 → 1,024 physical steps |
+| Reflected ×2 SLP, 128 copies of a 128-cell motif | 41.52 ms | 11.95 ms | Aligned 64-tick cone |
+| Reflected ×5 SLP, same motif and horizon | 42.39 ms | 12.23 ms | Aligned 64-tick cone |
+| 5rev10 seed 73 at 64 | 1.75 ms | 1.65 ms | Scalar → 32 packed pairs |
+| 5rev10 seed 73 at 512 | 2.93 ms | 1.84 ms | Scalar → 256 packed pairs |
+| Collatz signal with all cuts below headroom | 22.60 µs | 14.58 µs | No phase walk |
+| Antihydra fixed-point transient leaf at 128 | 14.23 µs | 4.98 µs | No carry-sheet folds |
+| Weighted prime start 150,000, index 200 | 26.70 ms | 8.57 ms | Internal candidate |
+| Weighted prime start 1,000,000, index 200 | 78.42 ms | 15.45 ms | Internal candidate |
+| Fused masks over weighted rank at start 1,000,000, index 200 | 15.81 ms | 12.77 ms | Internal candidate |
+| Fermat F5 at 4,096, decimal position 8 | 11.59 ms | 11.29 ms | Authenticated matrix phase, ladder withheld |
+
+The measured 5rev10 cutoff bands improved the embedded CLI median by
+5.1–57.8%. The largest cold median increase across those pairs was 4.5%.
+The six ordinary cold CLI controls agreed exactly, with a maximum median
+increase of 1.5%. The warm 153-digit 5rev10 request at 512 ticks went from
+23.16 to 2.23 ms.
+The weighted prime boundary at start 16,777,215 and index 200 produced
+a value where the baseline exhausted its default work budget. That case
+was excluded from the successful timing comparison.
+
+Development evidence is in the `results/nc41-source-macros-*` run
+directories. The proof logs identify rebuilt sessions and reused heaps.
+
+### Guarded verification
+
+The reviewed runtime tree was
+`3788a34f3f58a5efbb3cdba102c0081dec3f2f56` on the baseline revision above.
+The final default suite recorded 13,252 passes in 228.33 seconds and peaked
+at 446.1 MiB. Collection took 14.19 seconds, compared with 14.74 seconds on
+the baseline. The six failing test identities matched the baseline.
+The guarded P0 selection recorded 75 passes and the same 15 failures as
+the clean baseline, covering the existing comma, non-halting and prime-bit
+release holds.
+
+The native selection passed all seven requested sessions. Its final run
+rebuilt `Prime_Deterministic_Refinement` in 13 seconds and
+`Prime_Selection_Initialization` in seven seconds. The other six requested
+heaps were reused. Earlier runs rebuilt the changed double-reversal,
+reverse/add, Collatz, Antihydra and Fermat sessions under the same limits.
+The accepted prime lemmas cover signed arithmetic, strictly decreasing
+quotient bounds and prefix-mask interval counts. The executable worklist
+and fused consumer refinements remain open.
+
+Strict mypy, Ruff, formatting, source policy and documentation passed.
+Whole-tree Pyright checked 2,581 files in 104 serial batches with zero
+diagnostics. The follow-up batch after consolidating the adjacent-cell fold
+and Antihydra assertions also had zero diagnostics. The built wheel passed
+six isolated exact CLI smoke cases. Full packaging remains blocked by the
+missing global comma artifact. The proof-index checker still rejects the
+existing comma dependency-audit invocation.
+
+### Guarded prime cutover
+
+The public selector uses weighted counting for zero-based indices
+200–4,096 with starts below 16,777,216 and the standard rank limits.
+Fused masks apply to starts in [131,072, 2,097,152) with verified basis
+coverage and the existing mask cap. Guarded pivots apply to eligible
+weighted starts below 2,097,152. The short wheel scan and small brackets
+retain their existing precedence.
+
+Each pivot comes from the exact containing bracket. The density and
+interpolation estimates choose a probe. The certified interval count
+chooses the next bracket. A midpoint is forced every fifth round.
+At start 9,948,560 and index 200, interpolation reduced the number of
+count queries from 13 to 12 but increased factor probes from 28,211 to
+31,278 on the unmasked weighted path. That range keeps midpoint selection.
+
+Completed weighted interval counts are published in the existing
+issuer-qualified process lease. The receiving request rechecks source
+coverage and admits the record under the standard budget policy before
+reading it. Same-request warm probes exercise the interval hit before
+weighted child discovery. The selected nth result remains query-local.
+
+The follow-up also removes duplicate construction of the issued Collatz
+F5 motif grammar and skips the Antihydra carry sheet for an admitted
+all-even cylinder. The Fermat radial checkpoints compare integer prefixes
+and render only the guaranteed digits. A checked quotient supplies the
+decimal width even when the initial estimate needs correction. The
+issued F5 prefix step at 4,096 ticks took 35.5 µs, compared with 109.3 µs.
+General Collatz SLP/AVL consumption, broader cyclic Antihydra powering,
+and Fermat rotational reuse remain open.
+
+The guarded Isabelle sessions checked signed weighted expansion over
+`numerical_Phi`, rank-bracket preservation and strict descent from an
+exact odd-window probe, and the Antihydra and Fermat refinements.
+Executable checks exercise the Python worklist, basis masks, warm reuse
+and rollout boundaries.
+
+Five interleaved trials per workload compared the production CLI against
+the earlier reviewed tree `3788a34f3f58a5efbb3cdba102c0081dec3f2f56`.
+The paired outputs agreed exactly. Times are medians in milliseconds.
+
+| Prime start and index | Cold before → after | Warm before → after | Shared cache bypass before → after |
+| --- | ---: | ---: | ---: |
+| 0, 1,000 | 139.33 → 131.94 | 4.83 → 0.67 | 9.00 → 1.70 |
+| 150,000, 200 | 156.99 → 135.26 | 5.82 → 0.78 | 26.20 → 5.13 |
+| 1,000,000, 200 | 211.44 → 140.87 | 6.29 → 1.12 | 79.59 → 10.49 |
+| 9,948,560, 200 | 466.30 → 161.52 | 12.60 → 2.79 | 327.14 → 30.76 |
+| 0, 4,096 | 150.80 → 137.75 | 6.73 → 0.68 | 19.55 → 6.88 |
+
+The largest cold increase among the three out-of-cohort controls was
+1.1%. In the warm 9,948,560 request, 13 issued interval hits eliminated
+weighted refolding. Raw evidence is in `results/nc41-rank-pivot-*`.
+
+At the combined upper boundary, start 16,777,215 and index 4,096
+returned 16,844,827 under the default work limit. An independent
+segmented sieve confirmed the value. The baseline exhausted its budget,
+so this pair is excluded from the timing comparison. Increasing either
+coordinate by one kept the existing refusal under that budget.
+
+The final runtime verification used tree
+`381ba8a78fc13349838bb2140e329681f66c6c48` on `f55418a7`. The guarded
+focused selection passed 468 tests, including affected validation cases.
+The default suite recorded 13,275 passes in 225.82 seconds, with
+14.02 seconds of collection and 454.4 MiB peak memory. The six failing
+comma test identities matched the baseline. P0 recorded 75 passes and
+the same 15 failures in comma admission, Antihydra non-halting, and
+Fermat and Mersenne prime-bit release checks.
+
+The final Isabelle selection rebuilt `Prime_Deterministic_Refinement`
+in 14 seconds and `Prime_Selection_Initialization` in seven seconds.
+It reused the Antihydra and temporal-clock heaps rebuilt earlier in
+the tranche. Strict mypy, bounded Pyright batches for affected files,
+Ruff, formatting, source policy, and documentation passed. The built
+wheel passed six isolated CLI smoke checks. The packaging release
+check still requires the missing admitted global comma future.
+
+### Comma quotient cutover
+
+The direct Bellman publisher now builds and checks a selector chart before
+binding its children. Entries with the same core, shift and supported labels
+share the chart. The concrete proposal used nine charts across 869 applications.
+The release dependency scan excludes the old priority replay from both the
+B1 and Future instances. The independent smoke owner retains that comparison.
+
+The Future replay compares one ordered control and child tuple per source
+root and checks class bounds separately. The shift and weight encoding share
+one replay. The rank checker binds every row to the checked table and shares
+closed arithmetic proofs by the three rank values involved. The independent
+finite model matched all 14,784 source positions and rejected a child swap
+that satisfied the rank check.
+
+Python now checks for sealed phase and cycle actions before reconstructing
+their effects. Entry consumes its phase-selected Near operator while retaining
+the exact Entry clock and displacement in the occurrence. Repeated boundary
+weight checks share a scalar inside a single receipt transaction. A failed
+transaction drops that scalar. The guarded comma runtime and source-audit
+selection passed 1,440 tests in 113.49 seconds. Separate CLI acceptance
+recorded 120 passes and the same eight missing-admission failures as the
+combined earlier unit and P0 selections.
+Strict mypy, bounded Pyright, Ruff, and repository source policy passed.
+The full proof index still reports reachable theories without declared
+audit entries, separately from the scoped release dependency scan.
+
+The generic B1 and Future libraries rebuilt in 121 and 26 seconds. The final
+native smoke session passed in 88 seconds, including guarded chart bindings,
+nonzero phase and fallback outputs, rejected foreign roots, and forged rank
+checks. Its reviewed source tree was
+`f343c7f57fc591d866481ec6218c064ee7e270e8` on `f55418a7`.
+
+The concrete B1 baseline failed on an unimported shifted-value theorem. The
+repaired build reached Entry 10 before the 300-second watchdog stopped it.
+That run spent about 134 seconds building the first program relation before
+checking the projected selector and bind. The follow-up shares proved
+dependency visits within the program owner and retains the aggregate native
+dependency audit at publication. The evidence directories are
+`results/nc-comma-cutover-native-rollout`, `results/nc-comma-final-smoke`,
+and `results/nc-comma-cutover-reuse-audit`.
+
+The follow-up reduced first-program certification from about 134 seconds to
+55.5 seconds. It checked 33,350 dependency nodes in 179 ms of local audit
+time. Concrete B1 still reached the 300-second limit, with 2.40 GiB peak
+memory. Its last recorded checkpoints were 128 completed MDD application
+proofs and 1,792 checked bind states. The first large bind alone took about
+67 seconds after its selector chart was ready. The full Bellman theorem,
+exact B32 consumer, global Future instance, and native export remain
+unaccepted. The admission registry remains empty, and the positive public
+CLI assertions still require the matching kernel artifact.
+
+### November 21 comma proof benchmarks
+
+The starting checkout was `f55418a7` with local changes. The guarded
+baseline used detached snapshot `397e78908ceef78f56c5b7428591e75321fca674`,
+tree `43371d6bb2a480b954b0e47df9c0ae32e36d291b`. The first program proof
+took 56.0 seconds, including 30.4 seconds in exact Entry-key rewrites and
+6.8 seconds in representative action certification. The first selector
+chart took 30.0 seconds and the subsequent bind took 65.3 seconds.
+Concrete B1 timed out with a 2.85 GiB sampled aggregate peak. The last
+completed bind checkpoint recorded 1,792 states. B32 and the concrete
+Future instance had no accepted result in that run.
+
+The guarded Python Future benchmark derived 304 class-and-shift requests
+from exact boundary returns. Its three routes agreed for every phase,
+with 280,896 direct comparisons per route. Over five interleaved trials,
+the split, fused, and node-period models made 121,807, 118,745, and 23,082
+cold node visits, with median construction times of 134.9, 129.3, and
+74.3 milliseconds. The split model skips shift zero and shares its
+construction cache across the derived requests. Those times measure
+Python construction only.
+
+Run the source-derived replay with the guarded module
+`devtools.benchmarks.comma_mdd_shift`. A profiled concrete B1 build also
+exports the first Entry bind's compact operands and expected output beside
+its profile log. Pass that trace to the guarded module
+`devtools.benchmarks.comma_mdd_bind` to check all 924 phases against a
+direct pointwise interpretation and compare the two traversal counts.
+The trace carries no runtime or release authority.
+
+The raw baseline evidence is in `results/nc-comma-nov21-profiled-baseline`.
+
+The Entry lookup confirmed 3,455 proposals and 1,529 action constructions
+in native replay. The proposal pass took about 20 milliseconds. Exact
+source-key rewrites remained the larger part of first-program work.
+The isolated affine-interval trial was stopped after its first symbolic
+tree proof ran for over a minute. The measured bind revision uses the
+established row proof.
+
+The timed Entry and bind snapshot `c4dddb2ed30c00862bb7070176bc2c3aa451f6e2`
+completed the first Entry bind in 18.9 seconds. The preceding chart took
+29.3 seconds. This is one matched native comparison. The witness
+producer and receiving proof check the selected target or fallback on
+all-leaf branches. Mixed branches still check ordered cofactor rows,
+with the row premises bundled into a single theorem.
+
+The Python replay of those exact frozen operands compared every output
+phase against direct pointwise selection. Across five interleaved
+trials, the selected path reduced cold bind keys from 544 to 100 and
+cofactor calls from 13,464 to 3,300. The run exercised 924 selected
+slots. Median replay time was 8.03 milliseconds for eager construction
+and 2.27 milliseconds for selected construction.
+
+The timed native bind build still reached the 300-second concrete B1
+limit at 2.97 GiB sampled aggregate peak. It completed the checkpoint
+for 192 application proofs, up from 128 in the baseline. At the last
+bind checkpoint it had checked 2,412 selected rows, skipped 344 identity
+restrictions, and introduced 453 direct branch shapes. B32, global
+Future, native export, and positive installed-wheel admission therefore
+remain open. The native profile and exact first-bind trace are in
+`results/nc-comma-nov21-entry-bind`.
+
+The separate native certificate smoke build on the same snapshot passed
+in 100 seconds, reusing the generic B1 and Future heaps. It exercised
+duplicate Entry keys, mapped and fallback selection, ordered children,
+and warm replay. The focused Python source-contract selection passed
+38 tests. Both benchmark modules passed strict mypy, the guarded
+Pyright batch, and Ruff.
+
+The integrated snapshot `1b99f1565a768b7ed715e4ad3433da41ed3adea6`
+rebuilt generic B1 in 134 seconds, generic Future in 28 seconds, and
+certificate smoke in 98 seconds. The build sampled a 3.21 GiB aggregate
+peak. The smoke checked nonzero original shifts, nested periods, a
+shared-factor radix example, mapped aliases, distinct encoders, and
+repeated selected-cofactor proofs in the receiving store. Future replay
+uses normalized keys with checked transport of the full shift in the
+consumer theorem. The live class path pairs its existing +1 encoding
+with the normalized shift. The weight path retains its separate fused
++10 law.
+
+Five guarded native proposal trials used the same 304 requests and
+verified all 924 phases in each route and trial. Split, fused, and
+node-period construction visited 121,807, 118,745, and 23,082 cold
+nodes, with medians of 312, 345, and 239 milliseconds. The guarded run
+sampled a 2.11 GiB aggregate peak. This timed the arena and verified
+its proposed outputs. The joined Future release proof was outside the
+benchmark. Raw results are in
+`results/nc-comma-nov21-native-future-proposal.log`.
+
+Five additional interleaved kernel bind trials used the frozen first
+Entry trace and a fresh replay owner for each measurement. They shared
+the frozen store and checked the same closed proposition. The
+selected-cofactor memo reduced median certification time from 17.92
+to 14.84 seconds, with a 2.18 GiB sampled aggregate peak. Raw results
+are in `results/nc-comma-nov21-native-bind-pairs.log`.
+
+The transport trial `3bb32c3106755662e83b2a309e972d9dac49f7db`
+passed certificate smoke. Its first concrete bind took 15.03 seconds.
+The Entry lift quotient was proved 116 times for 2,167 source-key
+requests, with 2,051 reuse hits. The full key phase took 31.96 seconds
+versus 30.39 seconds in the frozen baseline. This trial established
+quotient reuse and preserved the exact source keys, with no measured
+improvement in key certification. Concrete B1 reached 320 completed
+application proofs and the 1,024-bind checkpoint before the 300-second
+timeout. It sampled a 2.60 GiB aggregate peak. Evidence is in
+`results/nc-comma-nov21-transport-release`.
+
+The returning class-0 program proof was sampled with Isabelle2026's
+`ML_Profiling.profile_time_thread`. The proof closed and its native
+dependency audit passed. Poly/ML attributed all 11,025 samples to
+`UNKNOWN`. A named-loop calibration also produced only `UNKNOWN`,
+with 31 thread samples and 18 process-wide samples. Source-level timers
+placed about 35 seconds in Entry-key certification during this replay.
+The matching uninstrumented program proof took 61.58 seconds.
+Hoisting static Entry contexts reduced duplicate-rule warnings from
+1,780 to 150 and took 60.74 seconds in one uninstrumented comparison.
+The sample report is in `results/nc-comma-nov21-entry-cpu-samples.log`.
+
+A second matched uninstrumented comparison used the established key
+evaluator in both arms. `semantic_direct_entry_bindings.ML` moved the
+static support, uniqueness, admission, and product-case contexts
+outside its per-Entry proof. `semantic_direct_entry_row_plan.ML`
+rewrote the already-checked key argument directly, then normalized the
+result in a shared product-case context. These changes retained the
+exact class-0 theorem and reduced duplicate-rule warnings from 1,780
+to 150. Certification took 59.52 seconds before and 58.50 seconds after
+in the matched run. Scalar key certification remained about 32.7
+seconds. The lift memo was left out of the retained path after its
+matched workload failed to show a key-certification improvement.
+
+The retained source snapshot `58568405e24a5799cd39b59603992b27d5c1c34d`
+rebuilt certificate smoke in 89 seconds with generic B1 and Future
+reused. In the guarded concrete run, the first selector chart took
+27.62 seconds and the first bind took 15.40 seconds. Concrete B1 timed
+out at 300 seconds with a 2.61 GiB sampled peak after the 320-application
+and 1,024-bind checkpoints. At those checkpoints, mapping-root family
+construction in `crt_mdd_bind_replay.ML` accounted for 44.7 seconds
+across 242 builds, indexed-slot assembly for 21.1 seconds, and the
+class-0 scalar key evaluator for 30.8 seconds. The proof-operation
+timers are inclusive.
+
+No completed concrete B1 theorem was available to B32, the global
+Future producer, or the native writer. The public CLI admission gate
+therefore still lacks its kernel artifact. Final logs are in
+`results/nc-comma-nov21-retained-smoke` and
+`results/nc-comma-nov21-retained-release`.
+
+### Mixed mapping families and ordered Entry charts
+
+The follow-up starts from `58568405e24a5799cd39b59603992b27d5c1c34d`.
+The reachable Bellman proposal had 869 applications, 430 ordered Entry
+bind requests, and 12,774 reachable operand and result nodes. The
+independent Python bind model reproduced all captured output roots.
+It found 1,355 distinct mixed mapping families. Removing labels from
+the ordered key left 1,355 families, and sorting and deduplicating the
+roots left 1,342. Ordered suffix sharing would reduce 20,297 assembly
+steps to 18,822. Those counts led to retaining the ordered mapping
+key and changing how its proof is constructed.
+The direct action proposal already interns structural expression
+bodies. Its program and source theorems still bind the exact action to
+that body. In the existing owner, each input determines its expression,
+so removing the expression field from those caches would leave their
+cardinalities unchanged.
+
+The root cofactor proof already has a store-scoped identity given by
+axis and frozen root. Replay now composes those checked theorems over
+the ordered mapping-root vector. The kernel transports that vector
+proof through the exact labeled mapping and checks the final proposition.
+Repeated roots reuse the same checked fact. The mapping proof retains
+the original labels and placement. The receiving bind still checks its
+source, fallback, result and ordered slots.
+
+Five alternating native pairs certified the same 48
+captured mixed mapping families, covering 1,006 mapping rows. Each
+trial used a fresh replay owner and shared the frozen store. Both
+routes produced identical closed propositions and built 338 root
+cofactor certificates and 48 mapping certificates. The median
+certification fell from 11.688 to 0.578 seconds. The mapping-root
+assembly timer fell from 11.314 to 0.227 seconds. The mixed regression
+exercises repeated target roots and rejects agreement with the
+original result after a target changes. Raw evidence is in
+`results/nc-comma-nov21-b1-workload-analysis.log` and
+`results/nc-comma-nov21-mapping-family-pairs.log`.
+Two further alternating pairs without phase instrumentation took
+11.742 and 11.741 seconds for the former proof and 0.620 and 0.622
+seconds for the replacement. Those runs also checked exact proposition
+equality. See `results/nc-comma-nov21-mapping-uninstrumented.log`.
+
+The ordered-mapping proof snapshot
+`0d5cad12617b93725c433c797a33aad60fc9f331` passed the registered smoke
+build. It rebuilt generic B1 in 117 seconds, generic Future in 26
+seconds, and certificate smoke in 89 seconds. The remaining dependency
+heaps were reused. The build exercised the mixed mapping, selected
+target and fallback, changed phase, and foreign-root regressions.
+
+On the matched first class, scalar Entry key certification took
+33.110 seconds across 2,167 row transports. The chart trial checked
+17 reusable lift vectors and 430 exact source normalizations, and
+derived each key by selecting its ordered row from the checked chart.
+Preparation plus certification took 46.751 seconds versus 62.973
+seconds for the scalar path. Both runs certified the same closed
+class-0 theorem and passed its native dependency audit. The chart time
+includes the trial's up-front preparation for all 430 sources. In the
+production design, preparation retains only the reusable lift vectors
+across programs. Each receiving program owns its checked source chart.
+See `results/nc-comma-nov21-entry-chart-baseline.log` and
+`results/nc-comma-nov21-entry-chart-unary.log`.
+The program-local trial used 327 source charts for the matched class,
+covering the same 2,167 transports. It took 43.880 seconds including
+preparation and passed the same theorem and dependency checks. The
+lift-vector count stayed at 17. See
+`results/nc-comma-nov21-entry-chart-program-local.log`.
+Prewarming just the 17 source-independent vectors before program
+certification took 43.920 seconds including preparation. The chart
+accounted for 13.940 seconds while the same 1,051 distinct
+representative actions were certified through the existing rule. See
+`results/nc-comma-nov21-entry-chart-prewarm.log`.
+
+The integrated code was tested at
+`a7e84be49a24f1e6a6c27a0afa96c6b6a97aeb43`. Generic B1 and Future were
+rebuilt in 119 and 26 seconds on the preceding snapshot with identical
+producer sources. The final run rebuilt certificate smoke in 92
+seconds and reused its 23 dependency heaps. It checked foreign source
+offsets, swapped wanted rows, changed actions, and shared-vector reuse.
+All 57 focused source and documentation tests passed.
+
+The concrete release build reproduced the 46 Bellman proposal roots
+and reduced class-0 program certification from 55.481 to 35.801
+seconds at the same checkpoint. It reached 384 logged application
+proofs and 1,536 checked bind states before the 300-second watchdog
+stopped the session, with a sampled peak of 2.59 GiB. At the last bind
+checkpoint, mapping-root family assembly took 1.142 seconds for 335
+builds. Indexed slot assembly took 34.906 seconds, including 31.413
+seconds of slot normalization. Selected cofactor rows took 27.530
+seconds. The counters are inclusive.
+
+The incomplete concrete B1 session left B32, global Future and
+release export without an accepted concrete theorem. CLI admission
+remains blocked. The final records are in
+`results/nc-comma-nov21-ordered-entry-smoke-final`,
+`results/nc-comma-nov21-ordered-entry-release-final`, and
+`results/nc-comma-nov21-ordered-entry-source-tests`.
+
+### Small-period CRT selector
+
+The isolated phase-chart trial shared one base for each of the six
+periods. The kernel checked 92 bounded phase points across those bases,
+then transported each ordered relabel table at its exact receiving
+core and support. The real fallback and the absolute application
+shift remain in the checked conclusion.
+
+One matched native pair reproduced all 46 candidate roots across 869
+applications and 430 Entry requests. The nine selector certificates
+took 22.741 seconds with shared period charts, compared with 57.744
+seconds for the Boolean guard construction. The checked bind count for
+these selectors fell from 185 to 24 and the mixed mapping-family count
+from 68 to 5. Boolean guard proofs fell from 75 to zero. Store freezing
+took 28.314 seconds versus 29.462 seconds. The candidate rejected a
+substituted core and swapped slots, and preserved default output for
+incomplete support. Shifts 0 and 924 reused the selector while the
+Fork and Landmine application proofs remained distinct. See
+`results/nc-comma-nov21-phase-selector-baseline.log` and
+`results/nc-comma-nov21-phase-selector-candidate-14.log`.
+
+### Period-one Entry forwarding
+
+The paired alias trial kept the checked period selector in both arms.
+It found 103 eligible zero-shift Gotos and reproduced all 46 Bellman
+roots. On 12 matched typed projection requests it certified 162
+applications and 225 bind states, compared with 174 and 238 for the
+selector alone. The 13 saved binds include the 12 skipped Entry binds
+and one selector bind that became unnecessary in this selection.
+Certification took 26.333 versus 26.485 seconds. The single timing
+pair establishes the work reduction and leaves the wall-clock effect
+uncertain.
+
+The isolated receiver fixture rejected wrong children, foreign
+roots, and a changed absolute shift even when the chart period would
+admit reuse. The guarded continuation selection passed 21 tests,
+including both construction orders for the 3,334-versus-2-tick
+Entry/Near pair. See
+`results/nc-comma-nov21-alias-selector-baseline.log`,
+`results/nc-comma-nov21-alias-selector-candidate.log`,
+`results/nc-comma-nov21-period-one-receiver-2.log`, and
+`results/nc-comma-nov21-near-entry-regressions`.
+
+The receiving law combines the existing physical period-one Goto
+theorem with the authenticated source-to-program binding and the
+checked child projection. It keeps the source observation and its
+elapsed weight under the source owner. The projected Entry reuses the
+child theorem at the unchanged application shift. The combined
+diagnostic exercised both period-one cores, ineligible Fork and
+nonzero-Goto rows, missing and duplicate support, and the phase
+selector's corruption cases. See
+`results/nc-comma-nov21-period-one-source-refinement-2.log` and
+`results/nc-comma-nov21-combined-selector-diagnostic.log`.
+
+The combined snapshot `ba2aa31eb566fde84aa32b3d74c8ce8076bd10ec`
+rebuilt generic B1 in 118 seconds, generic Future in 26 seconds, and
+registered certificate smoke in 89 seconds. It reused 21 dependency
+heaps. The 78 focused tests passed. In the concrete build the first
+Entry selector took 7.690 seconds, versus 26.887 seconds on the
+preceding snapshot. Its subsequent Entry bind took 13.635 seconds,
+compared with 13.412 seconds.
+
+The proposal retained all 46 Bellman roots with 766 applications,
+eight selectors and six period bases. Concrete B1 hit the unchanged
+300-second watchdog after logging 384 application proofs and 1,792
+checked bind states, with a sampled peak of 2.70 GiB. At that checkpoint
+indexed slot assembly accounted for 48.280 seconds, including 43.803
+seconds of slot normalization, and selected cofactor rows took
+40.703 seconds. The concrete B32, global Future, export and installed
+CLI gates continue to require the complete B1 theorem. See
+`results/nc-comma-nov21-phase-alias-smoke`,
+`results/nc-comma-nov21-phase-alias-release`, and
+`results/nc-comma-nov21-phase-alias-source-tests`.
+
+### Behavior-first construction census
+
+The isolated census visits the actual ordered expression graph before
+creating selectors or MDD roots. Its proposal uses aligned core
+periods, ordered child descriptors, exact terminal arguments and
+absolute shifts. Every one of the 46 class roots retained a distinct
+descriptor. The 869 raw application keys produced 384 collision
+groups, all involving zero-shift Goto wrappers. There were zero
+Entry-to-Entry collisions and zero pairs of distinct program terms
+with the same expression. These counts establish the observed work
+distribution in this graph. See
+`results/nc-comma-nov21-behavior-census-refined.log`.
+
+The matched census restricted to the retained proposal's reachable
+requests found 485 descriptors among 766 applications. All 281
+remaining collision groups involve Goto wrappers. The independent
+ordered child-chart transport and exact Entry-program transport
+theorems passed in isolated native checks.
+
+The conditional Goto issuer trial shared one theorem across distinct
+authenticated source bindings in each arrival order. The class-0
+production-shaped comparison certified the identical theorem in
+39.120 seconds with the current issuer and 39.851 seconds with the
+candidate. The candidate built 326 conditional Goto certificates with
+zero hits on that workload. Its cache remains isolated. See
+`results/nc-comma-nov21-goto-behavior-native-2.log`,
+`results/nc-comma-nov21-goto-class0-baseline.log`, and
+`results/nc-comma-nov21-goto-class0-candidate.log`.
+
+Five guarded Python trials in each arrival order measured 253 cold
+raw-action evaluations and zero additional evaluations for the
+equivalent receiving chart. The cold medians were 7.52–7.85 ms and
+the receiving medians were 0.021–0.028 ms. The fixed-sector trial
+reached 600020 in 3,334, 3,332 and 2 ticks from the two Entry offsets
+and the Near source respectively. The checked physical crossing adds
+one to the trial value and publishes 600021. These are separate physical
+occurrence measurements. See
+`results/nc-comma-nov21-behavior-python-pair-final.log`.
+
+### Isolated proof-debt review
+
+Snapshot `e5385f1a1752aa1fdc6859815d677cefa7ab5875` changes two
+sparse-base files, with five lines added and seventeen removed.
+`Comma_Sparse_Base_Instance` still feeds `Comma_Sparse_Power_Instance`,
+the native summary and future proofs, and `Comma_Global_Future_Safety`.
+The checked all-powers theorem now uses the canonical row directly.
+The constructor retains its exact root check and returns the value
+and refinement consumed by callers. The 278-template match remains
+in the sparse-base theory.
+
+`Comma_Fast_Totality` retains its documented finite canonical-rank
+claim. `Comma_Branch_Period_Instance` retains its independent branch
+result and its tested session registration and parent. The audit
+checked the repository's registrations, theory and ML loads, theorem
+references, proof policy, tests and developer tools. It also checked
+local result sources and manifests up to 5 MiB and the two November 21
+benchmark bundles for references to the removed alias. The review
+scope was limited to files available locally.
+
+Registered certificate smoke passed in 88 seconds on the isolated
+revision. The changed and baseline revisions both exhausted the
+300-second sparse-base session limit inside the same `local_setup`
+constructor, before the changed all-powers theorem. The candidate
+passed 166 focused tests. The one proof-inventory failure reported
+the same 27 missing oracle audits as the baseline. The source-policy
+reports also matched byte for byte. The sparse-base cleanup remains
+isolated pending a build that reaches its changed theorem. See
+`results/nc-comma-nov21-debt-proof-gates`,
+`results/nc-comma-nov21-debt-baseline-native`,
+`results/nc-comma-nov21-debt-source-tests`,
+`results/nc-comma-nov21-debt-baseline-inventory`, and
+`results/nc-comma-nov21-debt-baseline-policy.log`.
+
+### Fused Entry-to-Near trial
+
+The isolated runtime and proof revision `e3fd49f2712f52cd606b758578396b0757fa9ba3`
+reuses the Entry cycle in the authenticated boundary-template producer
+and projects decisive endpoints without constructing a second Near
+occurrence. The semantic continuation owner probes the same residual
+operator for Entry and Near before evaluating the bounded physical
+prefix. The exact source clock and Entry weight remain separate from
+the shared operator. Both arrival orders exercise reuse with prefix
+construction disabled on the receiving side.
+
+The independent literal audit matched 2,565 cases at exponents 2–4
+and 27 cases at exponent 5. The runtime tests keep settled-clock
+admission at exponent 5 and check `1991 → 2003` as a Near crossing.
+All 145 tests in the final candidate-root selection passed. Ruff,
+formatting, strict mypy and the eight-file strict Pyright batch passed.
+
+Five interleaved trials matched complete boundary templates for 128
+requests, 720 endpoint results, and semantic continuation results for
+18 roots. Median cold template construction went from 376.3 to
+356.4 ms. Decisive endpoints went from 58.8 to 33.8 ms and semantic
+construction from 51.6 to 34.5 ms. Charged template work rose from
+253,406 to 256,001 while charged operand bits fell from 61,618,554 to
+60,594,536. These timings measure Python construction. See
+`results/nc-comma-nov21-fused-final-matched.log` and
+`results/nc-comma-nov21-fused-final-units`.
+
+The isolated Isabelle check accepted the bounded prefix threshold,
+the Entry and Near physical clocks, and the successful and terminal
+high-wire quotient differences. In particular the successful quotient
+formula covers sector-nine rollover. The check preserves absolute
+source and clock data, including the distinct cost of a terminal fork
+versus a successful crossing. The whole physical C1 composition and
+concrete B1 publication remain separate consumers. See
+`results/nc-comma-nov21-fused-native-lean-7.log`.
+
+The registered `Comma_C1_Occurrence` session completed in 78 seconds,
+including the fused refinement. Registered certificate smoke completed
+in 88 seconds. Concrete B1 reached 1,792 completed bind states before
+the 300-second watchdog fired. See
+`results/nc-comma-nov21-fused-registered`,
+`results/nc-comma-nov21-fused-registered-smoke`, and
+`results/nc-comma-nov21-fused-concrete-b1`.
+
+### Bounded Entry response reuse
+
+Revision `254d105def3ff87060547839c66b7acc88e06b6f` reuses only the
+bounded seam at `(f, h)` and the power residue at `(P, phase)`.
+The phase includes the receiving width delta and is reduced by the
+period for that displacement. The authenticated callers still derive
+the exact source weight, carry, and child order outside the memo.
+An ordinary first template and an exact parent hit allocate no
+response tables. A second distinct template can allocate them through
+the query ledger. Required template publication can evict the memo
+and retry its reservation. An earlier eager allocation increased the
+one-template median from 1.073 to 1.192 ms.
+
+Five interleaved trials reproduced all 6,840 endpoint outputs and
+128 complete templates. With setup and cleanup included, the endpoint
+median fell from 319.0 to 282.3 ms. The same candidate bypassing the
+memo took 320.4 ms. The batch built 116 residue entries and 1,560 seam
+entries. The authenticated template median was 353.7 versus 355.0 ms,
+with charged work falling from 256,001 to 248,387. The one-template
+control was 1.059 versus 1.063 ms. The guarded selection passed 165
+tests, including malformed owners, width shifts, saved child seams,
+eviction, tight publication budgets, and cleanup on exceptions. Ruff,
+formatting, strict mypy, and the ten-file strict Pyright batch passed.
+See `results/nc-comma-nov21-entry-cache-deferred-units` and
+`results/nc-comma-nov21-entry-cache-deferred-matched.log`.
+
+### Direct indexed bind slots
+
+Revision `6413fd7a386efd687e1d2644e491ebedb1fc4dcd` adapts checked
+slot proofs with kernel beta conversion and selected list equations.
+Mixed branches prepare their literal cofactor vectors once for the
+frozen Store. The adapter checks each closed slot proposition before
+assembling the ordered row. Source admission and theorem publication
+are separate operations. The new fixture rejected wrong slots,
+children, labels, and a nominally identical foreign Store.
+
+Five alternating native trials used one frozen Store, the same
+ordered mapping and default, and identical closed bind conclusions.
+Median cold certification went from 13.144 to 9.959 seconds. Both warm
+public lookups took less than one millisecond. Each cold candidate
+adapted 1,023 slots without generic per-slot rewrites. Baseline indexed
+normalization took 3.174 seconds, within 3.456 seconds for assembly.
+The candidate spent 337 ms preparing 23 vectors, 46 ms adapting
+slots, and 118 ms assembling rows. Selected cofactor row certification
+took 3.476 versus 3.510 seconds. Median admission and publication
+were below one millisecond and one millisecond respectively. See
+`results/nc-comma-nov21-direct-slot-pairs.log` and
+`results/nc-comma-nov21-direct-slot-pairs-profile.log`.
+
+The registered certificate smoke session passed in 88 seconds on
+the direct-slot revision. It exercised the same implementation and
+the exact proposition checks in the new corruption fixture. See
+`results/nc-comma-nov21-direct-slot-native-smoke`.
+
+The uninstrumented concrete B1 session reached the 300-second watchdog
+in the Frontier24 source bridge's `local_setup`, with a sampled peak
+of 2.61 GiB and confirmed process cleanup. B32, global Future, and CLI
+admission still require the concrete theorem. See
+`results/nc-comma-nov21-direct-slot-concrete-b1`.
+
+### Selected-row kernel composition
+
+The Frontier24 branch composes the selected source, leaf, and target
+facts directly in Isabelle and transports the result through the
+checked ordered slots. Five matched cold pairs on the same frozen
+Entry bind, each with fresh Store preparation, proved identical
+closed conclusions. The median fell from 14.754 to 10.808 seconds
+at `34ac811`. The selected-row and follow-up proof-stage changes
+remain branch-only. The concrete B1 gate at `322ea184` still
+timed out at 300 seconds. The diagnostic run logged the first
+Bellman root and bind checkpoint 3,584. Comma CLI admission
+stays fail-closed.
+
+The independent fold-type fix from `ea0d8af` is in local main's
+unstaged working tree. It specializes the HOL fold to the mask
+action type at both the row issuer and the publisher.
+
+### Independently validated comma ports
+
+Local main includes the Store-owned width proof reuse from
+`f9e848a`, the ordered Future rank derivation from `fe98c3bd`,
+and the fused Entry and first-sector proofs from `e3fd49` and
+`da81efa`. The width change reduced median frozen 46-root replay
+from 21.233 to 4.174 seconds in five matched pairs. The registered
+source-entry build checked the 4,113-step seed-20 fixture.
+
+The profiling flag is `ISABELLE_PROOF_PROFILE_LOG`. Records carry
+their family label. The uninstrumented B1 gate at `f9e848a` timed out
+at 300 seconds. A matched diagnostic completed nine of 46 roots
+and stopped during class 9 payload set inclusion. See
+`results/nc-comma-mapped-action/b1-merged-profile.log`.
+
+On the same frozen Store, the native payload-bound fixture took
+47.714 seconds for full covers on the first nine roots,
+44.659 seconds with unordered child evidence deduplicated, and
+0.580 seconds for the direct bound. The direct bound checked all
+46 roots in 3.380 seconds, rejected a reachable 243, and preserved
+the exact ordered Store equations. The issuer replacement at
+`9a192b2` remains branch-only. Its uninstrumented concrete B1
+build timed out at 300.022 seconds during certificate checking.
+The registered certificate smoke passed at `28ed9ab`, including
+foreign, post-freeze, and tighter-cap rejection. Live B32, Future,
+and CLI admission remain gated. See
+`results/nc-comma-mapped-action/cover-pair-profile.log` and
+`results/nc-comma-cutover-removal-queue.md`.
+
+The typed B32 bridge at `333fdc5` passed generic B1. Two isolated
+phase barriers checked Continue-only well-foundedness on the admitted
+quotient and exact typed B32 Stop at phase five. The phase-five
+provider probe checked all 46 typed lookup rules. The all-phase
+height check and ordered Future liveness remain open. The matched
+uninstrumented concrete B1 run timed out at 300.044 seconds.
+See `results/nc-comma-first-sector/phase-five-typed-provider-v3.log`
+and `results/nc-comma-first-sector/b1-typed-stop-concrete-gate`.
+
+`comma_first_hit` checked qualitative Continue-only well-foundedness
+from the phase-134 barrier by infinite-chain contradiction. Direct
+well-founded induction also checked the typed physical Stop from
+admission and well-foundedness. The dependency audits exclude the
+old LEAST measure and bounded typed-stop authorities. The exact
+B32 projection requires height below 32. The legacy encoder's
+height-26 bound is stronger. Isabelle checked this separation in
+registered generic B1 at `18844e7` in 126.961 seconds. The proof
+is unstaged on local main. The all-phase projection still needs
+a checked bound in the registered dependency chain. See
+`results/nc-comma-first-sector/generic-qualitative-stop-v1.log`
+and `results/nc-comma-first-sector/b1-b32-bound-native-v1`.
+
+The shared class-step conversion from `357feee` passed registered
+generic B1 and Future and is unstaged on local main. The typed
+phase-five port at `6cbf62e` compiled the root consumer and checked
+all 91 lookup results from 46 typed class proofs. Ordered Future
+liveness still requires the registered concrete chain. See
+`results/nc-comma-first-sector/phase-five-source-smoke-v4.log`.
+
+Registered generic Future at `2326e91` checked the shared class-step
+owner and phase-134 barrier over all 46 roots. It checked 132 action
+proposals and rejected a forged terminal. The generic ordered-liveness
+theorem also passed. The follow-on at `13c3768` checked the qualitative
+typed physical Stop using the barrier and an infinite-chain contradiction.
+It leaves the independent all-phase B32 height bound open. The registered
+follow-on at `0ca5193` checked the generic rank-free finite-order and
+unique ordered live successor rules. The authored graph proposal covers
+4,402 finite rows and 314 uniquely continuing rows. Its finite witness
+and exact source-to-ordered-edge equality still need kernel acceptance.
+The v3 export still authenticates numeric ranks. The combined proof port
+remains isolated because its Class_Rank hunk overlaps local main. See
+`results/nc-comma-first-sector/future-shared-native-v4` and
+`results/nc-comma-first-sector/future-rankfree-native-v1`.
+
+The isolated `6279018` registered Future and certificate smoke
+checked the provider-parametric typed source-to-ordered-row bridge
+and bitmap rules. The two-file source and class bridge is unstaged on
+local main. The witness passed proposal preflight. The physical class
+joins and the full finite/live kernel certificate remain open.
+See `results/nc-comma-first-sector/combined-certificate-smoke-v4`.
+The next bounded smoke stopped at the concrete Z7 fixture before
+checking the finite-order table chunks. The isolated `bf373b4` fix
+composes three sector summaries and projects the physical exact result
+from the existing typed phase-five owner. The registered Future parent
+and bounded Z7 theory passed, with the fixture taking 78.51 seconds.
+Isabelle checked Fork 4 and the physical N/Z children in order. The
+class-row proof still requires the table row and both class joins.
+Local main lacks the phase-five provider files needed to port the fix
+independently. See
+`results/nc-comma-first-sector/z7-bf373b4-fixture-v1.log`.
+The bounded rank-free class bridge passed against the same Future
+parent. It uses row geometry for the typed join, with numeric ranks
+confined to the legacy caller. See
+`results/nc-comma-first-sector/rank-free-class-bf373b4-fixture-v1.log`.
+The isolated concrete Z7 join passed in 89.075 seconds. It checked
+the authored selector paths and the Fork 4 row with ordered child
+classes `[777, 1]`. Exact proposition validation rejected a swapped-arm
+theorem. This authenticates one source in that fixture. See
+`results/nc-comma-first-sector/z7-ordered-bf373b4-v8.log`.
+The bounded Z7 and Z8 fixture passed in 92.804 seconds. For `(Z,8,4)`
+it checked Fork 7 and distinct physical N and Z arms at phase 11.
+Both map to class 1 from source class 31. Isabelle checked the
+rank-free graph join and rejected reversed physical arms and swapped
+slot evidence even when the projected classes coincide. See
+`results/nc-comma-first-sector/z7-z8-equal-arms-bf373b4-v1.log`.
+`comma_first_hit` extended the isolated source join to `(Z,9,4)`.
+The 96.110-second guarded fixture checked rollover to phase five at
+offset 57, the typed Landmine after two further decade crossings, and the
+class-1 terminal with empty children. It rejected a forged Fork and
+retained the Z7/Z8 order checks. See
+`results/nc-comma-first-sector/z7-z8-z9-landmine-bf373b4-v1.log`.
+The source-bound B32 fixture passed in 72.572 seconds. A checked dyadic
+Stop at phase five and offset 27 determines the typed Fork, terminal
+width and ordered literal children. The physical lift keeps elapsed
+time as a witness and has no Bellman-code premise. See
+`results/nc-comma-first-sector/b32-source-bound-bf373b4-v1.log`.
+The 73.344-second elapsed check used one checked 217-cycle Entry packet
+and one Near step. Isabelle certified source 100027, terminal 199918
+at 2,171 physical ticks, and ordered children `[199999, 200000]`. It
+rejected the off-by-one outcome and reversed children. The general
+source-wide Stop and elapsed certificates remain open. See
+`results/nc-comma-first-sector/b32-source-elapsed-bf373b4-v3.log`.
+The receiving Future session checked the generic bitmap-coverage
+theorem for exactly one ordered live child. The isolated three-row
+fixture passed registered certificate smoke. It checked exact table
+selection, ordered chunks and bitmap coverage and rejected reversed
+children, a foreign row, a terminal claimed live and equal live
+children. The full graph check and physical source-to-table joins
+remain open. See
+`results/nc-comma-first-sector/bitmap-receiving-smoke-typed-union`.
+The separate 33-row two-chunk fixture timed out at 300.150 seconds
+against the prebuilt Future heap. The file-backed diagnostic completed
+selector and readiness checks for the first 32 rows and timed out in
+the closed mask fold. Replacing aggregate code simplification with
+checked binary OR rewrites and a checked index-one bit rule let the
+same fixture finish in 20.997 seconds. It checked both chunks, their
+join, and the rejection cases. The isolated Future checker now uses
+the same rules and passed the bounded fixture in 21.468 seconds.
+The full graph remains unverified. See
+`results/nc-comma-first-sector/bitmap-33-bf373b4-durable-v1.progress`
+and `results/nc-comma-first-sector/bitmap-33-bf373b4-ported-v1.json`.
+The sparse fixture uses 65 selected classes in a 1,025-row toy table.
+It checked three chunks through bit 1,024, two balanced joins, and
+the finite/live and rejection cases. The second join previously
+expanded a checked inner append. Direct theorem composition closed
+the same propositions in the 37.299-second guarded fixture. The isolated
+Future checker passed the same fixture in 36.820 seconds after the port.
+See `results/nc-comma-first-sector/bitmap-sparse65-bf373b4-ported-v1.json`.
+`comma_future_reach` extended the isolated check to the first 128
+proposed finite IDs in the authored 4,716-row table. The registered
+`bf373b4` Future parent passed. The baseline fixture published the
+ordered table and checked two complete chunks plus the third chunk's
+readiness. It timed out at 300.181 seconds during the third bitmap fold.
+See `results/nc-comma-first-sector/bitmap-real128-bf373b4-v1.progress`.
+The same 128-class fixture passed in 167.050 seconds after keeping
+`set_bit` updates symbolic during readiness and reusing checked incoming
+bit facts. The second chunk's readiness fell from 93.462 to 5.213 seconds
+against the checked-bit trial that still expanded updates. The revised
+bit-proof setup took 31 ms for that chunk. All four folds, three joins,
+and swapped-child, foreign-row and early-Fork rejection checks passed.
+The checked classes include ID 4,255. Full graph coverage and the
+remaining physical source joins are open. See
+`results/nc-comma-first-sector/bitmap-real128-ordinal-bf373b4-v1.progress`.
+The 84.105-second source-live fixture applies the new selection theorem
+to the checked Z7 crossing under a synthetic three-row live graph. It
+rejects a forged phase and reversed arms and preserves the authored Z8
+finite equal-class arms. The authored global source joins and release
+export remain open. See
+`results/nc-comma-first-sector/source-live-consumer-bf373b4-v2.log`.
+The isolated v4 candidate writer, parser and provider select ordered
+live children from explicit finite/live dispositions. The 72-test
+selection passed, including finite cycles, both-live forks and live
+Landmines. The isolated native writer draft requires the exact checked
+live bitmap, ordered source joins and global release theorem. The current
+loader and release still depend on rank publication. See
+`results/nc-comma-first-sector/future-v4-unit-v2`.
+
+`comma_future_reach` validated the complete-receipt receiver on an
+authored admitted provider. The compact proof uses the existing
+transaction-owned receipt and checks ordered N/Z, source and elapsed
+extent. Its 65 focused tests also passed against the exact receiving
+tree. The receiver and the tested release of checked seam objects
+before generator suspension are unstaged on local main. The
+compact producer remains isolated because its scratch reservation
+omits simultaneously live carry-power records. The public comma P0
+selection passed 14 checks and failed the six positive admission
+checks after the CID and C1 seam changes. See
+`results/nc-comma-future-source-reach/current-main-comma-p0`.
+
+The streamed seam checker now takes displacement, carry count and
+headroom from the same guarded C1 arithmetic without issuing a retained
+power or recalculating displacement. The 45-test receiving selection
+passed, including a test that forbids power issuance. The seam change
+is unstaged on local main. The complete-return producer still has a
+separate scratch gate. See
+`results/nc-comma-future-source-reach/value-only-c1-receiving-unit-v2`.
+
+The value-only C1 caller now shares the return arithmetic before
+publication and avoids the temporary `C1Return` and its witness.
+The 79-test receiving selection forbids either power record and
+passed. This change is unstaged on local main. The isolated complete
+producer adds a tracked reservation for the nested Near C1 check.
+It passed 92 tests, including refusal before and after reservation
+charges. The outer producer scratch bound is still open. See
+`results/nc-comma-future-source-reach/c1-scratch-projection-unit` and
+`results/nc-comma-future-source-reach/c1-scratch-held-unit`.
+The isolated producer now reserves the ordered children, selected
+action and prepublication receipt records before constructing the action.
+It holds the reservation through publication. The 94-test guarded run
+passed, including refusals before and after each scratch charge and
+checks that the scratch owner releases its charges and issues no receipt
+after refusal. Full producer accounting and production admission remain
+open. See
+`results/nc-comma-future-source-reach/c1-selection-scratch-held-unit`.
+The weighted repeat locator now bounds its scratch ladder by copies
+that can fit the requested elapsed weight, including signed affine
+offsets. Over five interleaved arithmetic trials, 182 exact offsets
+matched. Charged work fell from 12,742 to 1,032 per trial and the median
+fell from 394.970 to 36.947 ms. The two verified files are unstaged on
+local main. The weighted 314-edge CLI application still needs a checked
+export binding the physical weights and ordered cycle to its source.
+See `results/nc-comma-future-source-reach/repeat-ladder-matched.log` and
+`results/nc-comma-future-source-reach/cycle-scratch-bound-exact-unit`.
+Under synthetic test admission, both existing arithmetic routes agreed
+on all 314 ordered arcs and the +924 exponent gain. Compiling normalized
+equations took a median 0.505 seconds versus 1.745 seconds for indexed
+literal occurrences over five trials. See
+`results/nc-comma-future-source-reach/weighted-cycle-existing-producer.log`.
+Cancellation after writing the occurrence seal exposed an uncharged
+entry in each store. The publisher now restores the journaled sizes
+before releasing the charges. The receiving tree passed 281 tests,
+including cancellation after either write and exact retry. See
+`results/nc-comma-future-source-reach/cycle-publication-receiving`.
+The isolated lifetime follow-on drops spent chart and affine records
+before the next move and closes the verifier even if priming fails.
+All 92 focused tests passed. The selection stage still needs its own
+live-record bound, including the provider selection retained by the
+receipt. See
+`results/nc-comma-future-source-reach/held-return-lifetimes-unit`.
+The receipt store now charges the retained provider selection alongside
+the receipt and releases that charge on rollback. This separable change
+is unstaged on local main. The capacity and rollback fixture and the
+83-test receiving selection passed, as did scoped Pyright and Ruff.
+An injected failure immediately before receipt insertion also released
+the full receipt and seal charges.
+The isolated compact path also reuses its admitted source occurrence
+and passed 92 focused tests. Its transient selection bound remains open.
+See `results/nc-comma-future-source-reach/main-selection-accounting-unit`
+and `results/nc-comma-future-source-reach/held-selection-accounting-unit`.
+
+The receipt path now consumes the provider's sealed source CID and
+checks both ordered N/Z children. The classifier snapshots its phase
+before charging work, and the issuer rejects a changed source. The
+receiving-tree fixture observed one source walk and two ordered child
+walks per return. All 86 selected tests and scoped typing, lint and
+format passed. The change is unstaged on local main. See
+`results/nc-comma-future-source-reach/source-cid-reuse-unit-v2`.
+
+`comma_mdd_action` checked the same 46 theorem conclusions with
+off, coarse and detailed modes on a prebuilt parent. Coarse and
+detailed each emitted 186 complete structured records. Detailed
+mode also emitted its optional profile log. The registered concrete
+B1 run at `ce15010` timed out at 300.020 seconds after completing 22
+of 46 roots. Its durable checkpoint identified projected evaluation
+at zero-based root 22. At the 20-root checkpoint, cofactor and family
+proofs accounted for 82.523 seconds, including 72.722 seconds for
+35,184 cold selected cofactors. The remaining direct MDD work took
+82.291 seconds and ordered slots took 43.443 seconds. The same-source
+uninstrumented run timed out in the Frontier24 source bridge at 300.029
+seconds. That version of the structured progress port stayed isolated
+because the runner and B1 issuer edits overlapped local main. See
+`results/nc-comma-mapped-action/progress-b1-detailed-ce15010` and
+`results/nc-comma-mapped-action/progress-b1-off-ce15010`.
+
+On `8be533f`, the operand proof keeps the original ordered bind
+conclusion and combines a checked numeric ceiling with one Store
+bound. Registered generic B1 passed. Across five alternating pairs
+on the same 2,266-node bind, median operand time fell from 374 to
+185 ms, cold bind from 4.125 to 3.979 seconds, and total including
+Store preparation from 8.677 to 8.498 seconds. Checked Store-bound
+queries fell from 4,993 to 3,749. The fixture checked exact
+propositions and rejected malformed operands and a foreign Store.
+Registered certificate smoke passed. The uninstrumented concrete B1
+gate timed out in Frontier24 at 300.054 seconds. The candidate remains
+isolated and its certificate-theory hunk conflicts with local main.
+See `results/nc-comma-mapped-action/operand-bound-five.log` and
+`results/nc-comma-mapped-action/operand-bound-b1-8be533f`.
+
+The receiving-tree port passed registered generic B1 and a native
+compile of the 24 adapted producer ML files. In one first-bind pair
+over the same frozen Store, operand time fell from 369 to 183 ms,
+cold bind from 13.085 to 12.830 seconds, and checked Store-bound
+queries from 4,993 to 3,749. The exact theorem and malformed and
+foreign operand checks passed. Receiving certificate smoke passed,
+and the two-file ceiling change is unstaged on local main. See
+`results/nc-comma-mapped-action/receiving-operand-first.log`.
+
+The full receiving-tree detailed run hit the concrete B1 limit at
+300.020 seconds. The structured watchdog recovered zero-based root 0
+in projected evaluation after its program action completed. It reported
+no rejected or partial progress records. The completion checkpoint
+for bind start ordinal 2,048 recorded 50.749 seconds of indexed-slot
+normalization. That ordinal counts starts, and recursive bind proofs
+can finish out of order.
+The same-source uninstrumented run timed out at 300.038 seconds. Its
+reporter was off. The tested receiving reporter is unstaged on local
+main and preserves fail-closed admission. The typed JSON boundary and
+watchdog follow-on passed 45 guarded runner tests and scoped Pyright,
+mypy and Ruff. See
+`results/nc-comma-mapped-action/receiving-progress-operand-b1-detailed`
+and `results/nc-comma-mapped-action/receiving-progress-operand-b1-off`.
+
+On the working tree at `f55418a7`, guarded proofs now enable coarse
+checkpoints by default. A fresh unflagged Isabelle probe emitted all four
+expected records with detailed profiling off. A separate native timeout
+probe retained `verify-input` as the last completed scope and `await-timeout`
+as active. The SIGTERM regression confirmed that late failure records leave
+that snapshot intact. The receiving runner selection and first-arc arithmetic
+fixture passed 49 tests, and the five changed Python files passed strict
+Pyright. See
+`results/nc-comma-progress-default/` for the probe and runner evidence.
+
+On the `bf373b4` proof parent, a 19.402-second guarded fixture checked a
+source-wide typed Stop with fewer than 930 crossings, its ordered physical
+transport and the conditional B32 rule for empty Continue32 support. The
+32-step catalogue support certificate remains open. See
+`results/nc-comma-first-sector/typed-stop-support-bf373b4-v3.log`.
+On the same parent, an 84.613-second fixture checked the ordered Z7,
+Z8 and Z9 source joins and rank-free finite derivations for six authored
+classes. It rejected a forged phase and swapped physical arms. These
+bounded proof changes remain isolated. See
+`results/nc-comma-first-sector/real-finite-source-bf373b4-v3.log`.
+
+The isolated v4 receiving candidate now checks the finite partition with
+an iterative traversal before decoding the immutable source MDD. The two
+scratch allocations have disjoint lifetimes. The authored candidate fits
+the existing 131,072-node budget, and the guarded 113-test selection covers
+codec parity, a deep cycle, provider reuse, corruption and empty-registry
+refusals. See `results/nc-comma-next-replacements/v4-receiving-final/`.
+
+On the same `bf373b4` parent, the checked bitmap walk supplied exact
+geometry for 32 authored classes in 24.909 seconds. A 19.886-second
+synthetic fixture checked the combined finite and live geometry issuer,
+including wrong-mask and ordered-child refusals. The B32 prerequisites
+checked exact class bindings for 0, 1 and 19 and, separately, ordered MDD
+composition with distinct Continue, terminal and unresolved results.
+A bounded sparse-live fixture also checked the exact mask support before
+selecting rows and rejected a missing support ID. Four authored live rows
+passed their ordered checks. The all-314 authored trial hit the 300-second
+guard during numeric support normalization, before selecting rows.
+Local main carries the
+independently checked class-binding correction. It normalizes closed
+decoded arithmetic before the existing exact program check.
+The 191.896-second shared fixture checked the real transition
+`0@5 → 19@6 → 29@7` in one frozen store and rejected the wrong root and
+unshifted child. Its checked typed roots used 718 direct MDD applications,
+compared with 1,239 in the separate-root trial. Catalogue-wide Continue32
+support remains open. See `results/nc-comma-first-sector/` for the guarded
+fixture logs.
+
+The registered grouped first-arc fixture passed in 19.960 seconds using
+three checked round packets. It establishes the unique prefix, the exact
+ordered fork and 143,298,005,693 physical ticks to either child. A separate
+16.470-second build checked the same packet for admitted exponents in
+phase 10, with symbolic elapsed weight and a two-digit width increase.
+The selection theorem for the weighted cycle remains open. See
+`results/nc-comma-mapped-action/weighted-anchor-grouped-v8/build.log`.
+
+The combined eight-file strict Pyright batch and documentation index
+passed on local main. The comma P0 selection passed 14 checks. Six
+positive admission assertions still fail because the packaged global
+artifact is absent. See
+`results/nc-comma-future-source-reach/main-reporter-c1-comma-p0`.
+
+The checked indexed conversion and selected-row composition replace
+per-slot simplification in the receiving bind replay. Five alternating
+pairs on one 2,266-node frozen Store checked the same closed theorem.
+Median cold bind fell from 13.994 to 6.401 seconds after 4.916 seconds
+of shared Store preparation. Each pair replaced 1,023 generic slot
+rewrites with direct conversions. The fixture rejected a wrong slot,
+child, label, foreign Store and malformed operands. Registered
+certificate smoke passed, including exact fallback and order checks.
+The five verified files are unstaged on local main. See
+`results/nc-comma-mapped-action/current-main-indexed-five.log` and
+`results/nc-comma-mapped-action/receiving-indexed-smoke`.
+The receiving candidate based on `f55418a7` had proof-source
+fingerprint `97cbe2e7028b` for its uninstrumented concrete B1 run.
+It timed out at 300.057 seconds in the Frontier24 source bridge. See
+`results/nc-comma-mapped-action/receiving-indexed-b1-off`.
+The detailed run on that same 765-file proof source timed out at
+300.040 seconds. It completed root 0 and root 1's program action. The
+active scope was root 1 projected evaluation. The last sampled bind
+completion was the call with start ordinal 3,328, by which point 3,335
+binds had started. At that checkpoint selected cofactor calls accounted
+for 73.662 seconds, with 20,562 builds and 29,698 hits. These scope
+timers describe recorded calls and can overlap. See
+`results/nc-comma-mapped-action/receiving-indexed-b1-detailed`.
+The direct selected-child rule passed five alternating pairs on the same
+frozen Store. Equal-output slots still require different indexed
+equations. The fixture rejected wrong slot, root, axis and foreign
+Store evidence. Median cold bind fell from 6.645 to 3.900 seconds.
+Shared Store preparation took 4.900 seconds and median replay setup
+took 4 ms in both arms. See
+`results/nc-comma-mapped-action/selected-branch-five.log`.
+The production-form certificate smoke passed. The two verified proof
+files are unstaged on local main. See
+`results/nc-comma-mapped-action/selected-branch-production-smoke`.
+The changed concrete B1 build at proof fingerprint `16142e94066d`
+timed out at 300.000 seconds. It completed roots 0–6 and stopped in
+root 7 payload cover. The trace recovered the active scope without
+rejecting or truncating records. Selected cofactor calls totaled
+10.143 seconds at the sampled completion of bind start ordinal 4,096.
+The same checkpoint recorded 30,629 selected-target proof builds in
+50.715 seconds and 757 indexed vector preparations in 14.401 seconds.
+These timings are separate from payload cover, which took 5.542 seconds
+for class 0. The receiving issuer still calls the full cover checker at
+each root in that run.
+See `results/nc-comma-mapped-action/selected-branch-production-detailed`.
+`comma_mdd_action` ported the reachable payload cap to that receiving
+proof source. Registered smoke passed the reachable-243, tighter-cap,
+foreign-root and stale-root checks. Five alternating native trials on
+root 199 of the same frozen first-bind Store measured 4.306 seconds for
+cover and 0.073 seconds for cap. Both produced closed, audited native
+certificates. A separate one-pair check derived identical conditional
+evaluation bounds from both. The four verified files are unstaged on
+local main. The uninstrumented concrete run at proof fingerprint
+`47dbea66e70c` entered the source-bridge construction and timed out at
+300.065 seconds. The source bridge's `local_setup` was the last recorded
+checkpoint. See
+`results/nc-comma-mapped-action/selected-cap-matched.log`,
+`results/nc-comma-mapped-action/selected-cap-equality-result2.log`,
+`results/nc-comma-mapped-action/selected-cap-smoke` and
+`results/nc-comma-mapped-action/selected-cap-production-off`.
+Two stale source assertions failed before and after the cap port. They
+now check the actual miss-only witness admission and checked issuer
+publication. All 48 receiving source checks passed. See
+`results/nc-comma-mapped-action/selected-cap-receiving-source-checks`.
+The isolated support-first mixed-branch rule and replay passed the
+registered generic B1 build. The focused fixture rejected foreign Store,
+changed target and same-child wrong-slot evidence and passed with
+irrelevant projections poisoned. Five interleaved cold replays on the
+same frozen Store took 3.521 seconds for direct cofactor replay and
+3.802 seconds for support-first. Both arms shared 4.536 seconds of
+source and Store preparation and proved equal conclusions. The
+candidate remains isolated and the concrete B1 gate was skipped.
+See `results/nc-comma-mapped-action/support-replay-matched-five.log`
+and `results/nc-comma-mapped-action/support-replay-mixed-retry.log`.
+
+
+### November 22 symbolic comma release check
+
+On the receiving tree based on `f55418a7`, the independent symbolic
+run proposed zero Continue32 support for all 46 classes and checked
+the frozen 51,716-node Store. The 300-second guard stopped the first
+structural replay layer after the sampled completion at bind 512.
+The generic bridge from exact checked roots to source-bound typed B32
+Stop passed natively in an isolated fixture. It still requires the
+concrete root equalities. The bounded Future support fixture passed
+separately. Source-wide ordered N/Z authentication and the weighted
+cycle receipt remain open.
+
+The isolated v4 wheel installed cleanly. Both comma requests at indices
+1 and 412,987,861 refused with the unresolved-boundary result. The
+positive release check found no admitted v4 artifact. Local main
+retired the two unreferenced Direct Trial and Checked Instance leaf
+sessions, retaining their shared theories. The 79 default proof-index
+tests passed. The exhaustive index still reports 25 pre-existing
+oracle-audit gaps. Guard logs and the Direct Trial local-edit recovery
+patch are in `results/nc-comma-symbolic-cutover`.
+
+The follow-up on proof parent `bf373b4a` checked the typed one-step
+root-to-span bridge. On the same real class-0/class-19 input, omitting
+the unused support projection preserved the bind and shift propositions
+and skipped 94 mapped certificates. The replay scope took 6.722 seconds
+versus 7.398 seconds. Both arms built 977 cofactors and took about 196
+seconds under the guard.
+
+Across all 46 classes and five layers, the proposal comparison matched
+212,520 values and still proposed zero final support. Deferring support
+construction reduced Store nodes from 51,716 to 47,510. The changed
+structural run checked the Store in 147.4 seconds versus 164.1, then
+timed out at 300.178 seconds in the first replay layer. The last sampled
+completion was bind start ordinal 768, versus 512 in the baseline.
+At the matched 512 checkpoint both built 8,168 selected cofactors.
+See `results/nc-comma-symbolic-cutover/authored32-action-profile.log`.
+
+The bounded Future selection receipt checked the Z7 physical crossing
+with fixture liveness and rejected a wrong slot, child or phase.
+A separate bounded graph checked finite/live coverage from exact
+disjointness and size, rejecting a missing class and overlapping lists.
+See `results/nc-comma-first-sector/source-selection-receipt-bf373b4-v1.log`.
+
+The next B32 candidate uses one checked source vector per same-axis
+branch while preserving per-slot target and ordered witnesses. The
+matched real fixture reduced selected cofactor builds from 977 to 53
+and replay from 6.722 to 4.582 seconds, including rejection of
+same-child wrong-slot, wrong-root and wrong-shift evidence. Guarded
+totals, including setup, were 195.390 and 192.259 seconds. On all
+classes it reduced selected cofactor builds at checkpoint 512 from
+8,168 to 3,471. The changed run timed out at 300.205 seconds in the
+first replay layer, with bind 1,024 the last sampled completion.
+See `results/nc-comma-symbolic-cutover/authored32-source-family-profile.log`.
+
+The authored Future graph partition passed in 32.435 seconds.
+Successor-first replay checked all 4,402 finite classes and symbolic
+support checked all 314 live classes. Numeric rank fields were cleared
+before publication. The physical source-wide ordered morphism and
+writer authority remain open. See
+`results/nc-comma-first-sector/authored-live314-partition-bf373b4-v1.log`.
+A 32.101-second bounded build joined the checked weighted N2 phase-10
+anchor to the exact authored class points, Fork7 row and ordered
+phase-12 children. It checked North as the live arm for that row and
+143,298,005,693 physical steps to either child, rejecting a wrong
+phase, swapped order and wrong elapsed weight. This covers one arc.
+See `results/nc-comma-symbolic-cutover/anchor-weighted-receipt-v3-build.log`.
+
+## Cross-family ownership review
+
+The consolidation from `62cbc714760a6f074f5a955f0efeac6afa1e5e27`
+is in local main's unstaged working tree. It replaces duplicated
+digit-band construction, one reversal forwarding
+function, one Isabelle reversal body, and duplicate retained-cost
+arithmetic. Its production and theory diff adds 83 lines and deletes
+76, including the new proof boundary examples. The regressions add
+50 test lines. The changes preserve the existing certificate issuers.
+
+| Area | Canonical owner, migrated consumers, and retained distinctions |
+| --- | --- |
+| Carry logic and ports | `carry_monoid.CarryFn`, `apply_carry_fn`, and `compose_carry_fn` already serve reverse Q19, reflected temporal ports, and downstream carry consumers. Isabelle's `Shared_Carry_Domain` and `Shared_Carry_Tape` supply the shared Boolean laws. The Q19 left/right port bindings, Collatz transition kernel, ordered tripling, and signed wide borrow have different transition and admission rules. |
+| Band construction and transport | `ordered_band.ordered_digit_band_frame` now serves `source_issued_ordered_digit_band` in reverse/add and 2rev10. Their source readers keep separate Q19 and SLP authority. The helper explicitly starts its index at the least-significant digit and emits padded MSD-first frames. `five_reverse.term._ordered_output_reserved` retains its single LSD-first channel and different clock. `Ordered_Matrix_Program_Algebra` already shares the chronological composition laws. |
+| Pascal permutations | `PascalWordMoments` and Isabelle's `Pascal_Word_Moments.fpm_reflect` describe reflected finite carry words and their moments. Prime's exact reference and bounded mod-\(2^n\) binomial row transports use different coefficient arithmetic. Q19's binary parity lanes have a different observation contract. The audit found no equivalent production bodies to replace across these uses. |
+| Digit reversal | The 2rev10 Laurent producer now calls `arithmetic.fields.radix.reverse_radix_integer` directly. The 5rev10 Isabelle border consumer uses `Shared_Decimal_Reversal.decimal_reverse_block3` after its three-digit admission, with the same four source-bound outcomes. The variable-width padded reversal and physical zero trimming retain their separate laws. |
+| SLP packing | `slp_walks.iter_symbols`, `slp_interval.fold_slp_dag`, and `decimal_slp_action.multiply_decimal_slp` already supply shared traversal and emission. The reflected nibble windows, 5rev10 physical BCD state, and Q19 pair sums have different halo, order, and trim contracts. `payload_cost.aggregate_integer_limb_units` now owns the identical aggregate charge used by `ResidueCarrySLPProjector` and `SymbolicInnovationArena`. Independent payload audits retain their own calculation. |
+
+Five interleaved trials kept the same guarded source, emitted packets,
+and source-letter counts. The median for eight 2rev10 band constructions
+was 94.45 to 93.72 ms and the reverse/add median was 308.69 to 309.37 ms.
+These differences are within trial variability. The retained-cost
+comparison matched the full carry output and counters at 30 derived
+nodes for an 84-symbol source and the innovation ledger at 24 entries
+and 14 nodes. The guarded selection passed 264 tests. Ruff and format,
+strict mypy, and the ten-file strict Pyright batch passed. See
+`results/nc-cross-family-debt-units`,
+`results/nc-cross-family-debt-bands.log`, and
+`results/nc-cross-family-debt-packing.log`.
+
+The registered `Five_Reverse` session completed in 113 seconds on
+the cross-family revision. It checked the migrated window consumer,
+its four-stage source outcomes, and the new padding and admission
+examples. See `results/nc-cross-family-debt-native`.

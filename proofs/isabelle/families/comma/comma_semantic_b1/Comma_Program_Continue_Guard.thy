@@ -122,10 +122,6 @@ lemmas comma_entry_core_common_rules =
   comma_finite_period_fast_def comma_phase_core_modulus.simps
   comma_core_seed_def comma_core_lift_parameters nth_Cons'
 
-lemmas comma_entry_core_key_simp_rules =
-  comma_entry_core_action_key_def comma_entry_core_common_rules
-  comma_entry_diagonal_def comma_entry_port_row_def Let_def fst_conv snd_conv
-
 text \<open>Closed row-action reduction uses checked fixed-port equations
 provided by the consumer; it does not unfold the search that builds them.\<close>
 lemmas comma_entry_row_action_simp_rules =
@@ -156,6 +152,58 @@ proof -
   show ?thesis using source
     by (simp only: comma_entry_core_action_key_def comma_entry_row_action_def
         comma_entry_stored_tree_locator_def first Let_def prod.case)
+qed
+
+
+
+text \<open>Authenticate an ordered Entry key chart with one source offset
+and a source-independent lift vector.  Source phase and weights remain in
+the transported action; these equations compute only the exact row keys.\<close>
+
+lemma comma_entry_chart_mod_transport:
+  fixes x y m :: nat and p :: int
+  assumes positive: "0 < m"
+  shows "nat ((int (nat ((int x - int y) mod int m)) - p) mod int m) =
+    nat ((int (nat ((int x - p) mod int m)) - int y) mod int m)"
+proof -
+  have modulus: "0 < int m" using positive by simp
+  have first: "int (nat ((int x - int y) mod int m)) = (int x - int y) mod int m"
+    using modulus by simp
+  have second: "int (nat ((int x - p) mod int m)) = (int x - p) mod int m"
+    using modulus by simp
+  have order: "int x - int y - p = int x - p - int y" by simp
+  show ?thesis
+    by (simp only: first second mod_diff_left_eq order)
+qed
+
+definition comma_entry_lift_chart :: "nat \<Rightarrow> comma_phase_core_id \<Rightarrow> nat list \<Rightarrow> nat list" where
+  "comma_entry_lift_chart P core wanted = map (\<lambda>w.
+    (comma_core_primary P * ((comma_core_seed P * w) mod comma_phase_core_modulus core)) div 10) wanted"
+
+definition comma_entry_source_chart :: "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat" where
+  "comma_entry_source_chart f residue P =
+    nat ((int (residue div 10) - comma_entry_port_potential f (residue mod 10)) mod int (P div 10))"
+
+lemma comma_entry_key_chart_exact:
+  assumes sector: "1 \<le> f" "f \<le> 9"
+    and positive: "0 < comma_finite_period_fast f (residue mod 10) div 10"
+  defines "P \<equiv> comma_finite_period_fast f (residue mod 10)"
+  shows "map (comma_entry_core_action_key f residue core) wanted =
+    map (\<lambda>lift. (f,residue mod 10,
+      nat ((int (comma_entry_source_chart f residue P) - int lift) mod int (P div 10))))
+      (comma_entry_lift_chart P core wanted)"
+proof -
+  have d: "residue mod 10 < 10" by simp
+  have period: "comma_finite_period f (residue mod 10) = P"
+    using comma_finite_period_fast_correct[OF sector d] by (simp add: P_def)
+  have pos: "0 < P div 10" using positive by (simp add: P_def)
+  show ?thesis
+    unfolding comma_entry_core_action_key_def comma_entry_lift_chart_def
+      comma_entry_source_chart_def comma_decisive_entry_clock_key_from_core_residue_def
+      comma_entry_diagonal_def comma_entry_port_row_def
+    using comma_entry_chart_mod_transport[OF pos, of "residue div 10" _
+      "comma_entry_port_potential f (residue mod 10)"]
+    by (simp add: P_def[symmetric] period map_map Let_def)
 qed
 
 

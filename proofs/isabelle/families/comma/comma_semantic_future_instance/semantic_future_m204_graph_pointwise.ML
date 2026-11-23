@@ -59,7 +59,7 @@ struct
       val results = map_filter item (ListPair.zip (#comparisons candidate,certificates))
       val equalities = map_filter (fn Equality theorem => SOME theorem | _ => NONE) results
       val bounds = map_filter (fn Bound theorem => SOME theorem | _ => NONE) results
-      val _ = if length equalities=48 andalso length bounds=16 then ()
+      val _ = if length equalities=16 andalso length bounds=16 then ()
         else error "Future graph replay lacks the complete 16-family comparisons"
       val _ = Comma_Proof_Dependency_Audit.require_native_clean ctxt
         "Future graph pointwise facts" (equalities @ bounds)

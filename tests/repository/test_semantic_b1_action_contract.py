@@ -131,14 +131,22 @@ def test_frontier_parent_reuse_precedes_bind_witness_reconstruction() -> None:
     assert "Utils.exact_prop" in hit
     assert "bind_prop state full_mapping fallback source result_root" in hit
     assert "Store.bind_witness" not in hit
+    assert "admit_witness" not in hit
     assert "certify_key" not in hit
-    assert "validate_key input_key" in miss
-    assert "Store.bind_witness store input_key" in miss
-    assert "restrict_mapping labels full_mapping = norm_mapping" in miss
+    assert "admit_witness input_key" in miss
+    assert "certify_key (#key witness)" in miss
     assert "restrict_certificate" in miss
-    assert application.index("Utils.exact_prop") < application.index(
-        "Store.bind_witness"
+    assert application.index("Utils.exact_prop") < application.index("admit_witness")
+
+    admission = replay.split("fun admit_witness ", 1)[1].split("fun publish_bind ", 1)[
+        0
+    ]
+    assert admission.index("validate_key key") < admission.index(
+        "Store.bind_witness store key"
     )
+    assert "#key witness = normalized" in admission
+    assert "restrict_mapping labels mapping" in admission
+    assert "same_set labels (support_of source)" in admission
 
     fixture = executable_text(
         (
@@ -200,21 +208,33 @@ def test_multiway_source_publisher_uses_authenticated_ordered_actions() -> None:
     assert "comma_frontier24_closure_certified" in soundness
 
 
-def _assert_direct_bellman_owner(source: str) -> None:
+_DIRECT_ISSUER_CALL = (
+    r"\bfun run lthy\s*=\s*Comma_M204_Direct_Candidate_Publication\.publish\s+"
+    r"Issuer\.prepare\s+certify\s+lthy\b"
+)
+
+
+def _assert_direct_bellman_owner(source: str, publication: str) -> None:
     """Check authored wiring; the native build checks theorem authority."""
     code = executable_text(source)
+    owner = executable_text(publication)
     assert re.search(
-        r"Comma_M204_Direct_Candidate_Publication\.publish\s+"
-        r"Comma_Direct_Bellman_Issuer\.prepare\b",
-        code,
+        r"\blocal_setup\s+\\<open>Comma_Direct_B1_Publication\.run\b", code
     )
+    assert re.search(_DIRECT_ISSUER_CALL, owner)
+    assert re.search(r"\bstructure Issuer\s*=\s*Comma_Direct_Bellman_Issuer\b", owner)
+    assert "Issuer.certify input lthy" in owner
+    assert "publish_weight input checked" in owner
     assert "comma_frontier_m204_bellman_native" in code
     assert "require_native_clean" in code
     assert (
-        re.search(r"\b(?:Direct\.run|M204_Transport\.prove|Publisher\.certify)\b", code)
+        re.search(
+            r"\b(?:Direct\.run|M204_Transport\.prove|Publisher\.certify)\b",
+            code + owner,
+        )
         is None
     )
-    assert re.search(r"0\s+upto\s+923", code) is None
+    assert re.search(r"0\s+upto\s+923", code + owner) is None
 
 
 def test_source_publisher_uses_direct_bellman_owner() -> None:
@@ -223,8 +243,11 @@ def test_source_publisher_uses_direct_bellman_owner() -> None:
         / "families/comma/comma_semantic_b1_instance/Comma_Continue_Frontier24_Source_Bridge.thy"
     )
     source = path.read_text()
-    _assert_direct_bellman_owner(source)
-    assert "semantic_direct_bellman_issuer.ML" in ml_file_references(source, path)
+    references = ml_file_references(source, path)
+    publication = path.with_name("semantic_direct_b1_publication.ML")
+    assert publication.name in references
+    _assert_direct_bellman_owner(source, publication.read_text())
+    assert "semantic_direct_bellman_issuer.ML" in references
     issuer = path.with_name("semantic_direct_bellman_issuer.ML")
     code = executable_text(issuer.read_text())
     assert "Comma_Direct_Bellman_Publication.publish" in code
@@ -232,15 +255,14 @@ def test_source_publisher_uses_direct_bellman_owner() -> None:
 
 
 def test_direct_bellman_owner_comment_cannot_satisfy_wiring() -> None:
-    source = """(* Comma_M204_Direct_Candidate_Publication.publish
-      Comma_Direct_Bellman_Issuer.prepare *)
+    source = """(* fun run lthy = Comma_M204_Direct_Candidate_Publication.publish
+      Issuer.prepare certify lthy *)
       val _ = comma_frontier_m204_bellman_native
       val _ = require_native_clean
     """
     assert (
         re.search(
-            r"Comma_M204_Direct_Candidate_Publication\.publish\s+"
-            r"Comma_Direct_Bellman_Issuer\.prepare\b",
+            _DIRECT_ISSUER_CALL,
             executable_text(source),
         )
         is None

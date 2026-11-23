@@ -8,23 +8,19 @@ preconditions do not hold. This theorem only certifies the four source-bound
 rows already proved for seed 196; it does not certify every table row or a
 repeatable action.\<close>
 
-definition five_reverse_reverse_three :: "nat \<Rightarrow> nat" where
-  "five_reverse_reverse_three value =
-    (value mod 10) * 100 + ((value div 10) mod 10) * 10 +
-      (value div 100)"
-
 definition five_reverse_guarded_border_action ::
     "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow>
       ((nat \<times> nat) \<times> nat) option" where
   "five_reverse_guarded_border_action head3 tail3 inlet =
-    (let raw = 5 * five_reverse_reverse_three tail3 + inlet
-     in if 100 \<le> head3 \<and> head3 \<le> 999 \<and>
-          tail3 \<le> 999 \<and> inlet \<le> 4 \<and> 100 \<le> raw
-        then Some
+    (if 100 \<le> head3 \<and> head3 \<le> 999 \<and>
+        tail3 \<le> 999 \<and> inlet \<le> 4
+     then (let raw = 5 * decimal_reverse_block3 tail3 + inlet in
+       if 100 \<le> raw then Some
           ((if 1000 \<le> raw then raw div 10 else raw,
-            (5 * five_reverse_reverse_three head3) mod 1000),
+            (5 * decimal_reverse_block3 head3) mod 1000),
            if 1000 \<le> raw then 1 else 0)
-        else None)"
+       else None)
+     else None)"
 
 definition five_reverse_port_border_action ::
     "nat \<times> (nat \<times> nat) \<times> (nat \<times> nat) \<Rightarrow>
@@ -38,6 +34,13 @@ definition five_reverse_port_action_growth ::
   "five_reverse_port_action_growth port =
     map_option snd (fst (five_reverse_port_border_action port))"
 
+lemma five_reverse_shared_border_reversal_boundaries:
+  "five_reverse_guarded_border_action 100 123 0 = Some ((160,5),1)"
+  "five_reverse_guarded_border_action 1000 123 0 = None"
+  "five_reverse_guarded_border_action 100 1000 0 = None"
+  "five_reverse_guarded_border_action 100 0 0 = None"
+  by (simp_all add: five_reverse_guarded_border_action_def decimal_reverse_block3_def Let_def)
+
 theorem five_reverse_seed196_window_border_actions:
   "map five_reverse_port_border_action
       (map (five_reverse_window_port 196) [180..<184]) =
@@ -49,7 +52,7 @@ theorem five_reverse_seed196_window_border_actions:
   by (tactic \<open>asm_full_simp_tac
       (Shared_Closed_Arithmetic.natural_context \<^context>
         |> Simplifier.add_simps @{thms five_reverse_port_border_action_def
-          five_reverse_guarded_border_action_def five_reverse_reverse_three_def
+          five_reverse_guarded_border_action_def decimal_reverse_block3_def
           list.map upt_rec_numeral}) 1\<close>)
 
 theorem five_reverse_seed196_window_digit_widths:
@@ -91,11 +94,11 @@ theorem five_reverse_seed196_window_action_growth_matches_width:
         |> Simplifier.add_simps @{thms five_reverse_port_action_growth_def
           five_reverse_port_border_action_def
           five_reverse_guarded_border_action_def
-          five_reverse_reverse_three_def map_option_case option.case
+          decimal_reverse_block3_def map_option_case option.case
           five_reverse_seed196_window_digit_widths list.map upt_rec_numeral}) 1\<close>)
 
 ML \<open>
-  val checked = @{thms five_reverse_reverse_three_def
+  val checked = @{thms five_reverse_shared_border_reversal_boundaries decimal_reverse_block3_def
     five_reverse_guarded_border_action_def
     five_reverse_port_border_action_def five_reverse_port_action_growth_def
     five_reverse_seed196_window_border_actions

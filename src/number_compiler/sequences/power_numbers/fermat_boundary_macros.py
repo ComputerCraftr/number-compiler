@@ -11,9 +11,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from math import gcd
+from math import gcd, log10
 from typing import cast
 
+from number_compiler.arithmetic.fields.radix import radix_width
 from number_compiler.sequences.power_numbers._harmonic_authority import (
     harmonic_verified,
     issue_harmonic,
@@ -68,6 +69,7 @@ class FermatClockId(Enum):
 
 
 _LEADING_PREFIXES = ((1, 3, 9), (1, 3), (1, 4), (1, 5), (2, 6), (2, 7), (2, 8))
+_TRIPLING_DECIMAL_LOG = log10(3)
 
 
 class FermatRadialMode(Enum):
@@ -328,19 +330,31 @@ class FermatBorderMacro:
             word, width = str(root_prefix), root_width
         else:
             scale = pow(3, offset)
-            left = str(root_prefix * scale)
-            right = str((root_prefix if exact else root_prefix + 1) * scale)
-            if len(left) != len(right):
-                return FermatRadialPort(offset, None, None, 0, None)
-            width = root_width - root_places + len(left)
-            candidate: str | None = None
-            for digits in range(root_places, 0, -1):
-                if left[:digits] == right[:digits]:
-                    candidate = left[:digits]
-                    break
-            if candidate is None:
+            lower = root_prefix * scale
+            discarded = int(offset * _TRIPLING_DECIMAL_LOG)
+            divisor = pow(10, discarded)
+            limit = pow(10, root_places)
+            left = lower // divisor
+            if left >= limit:
+                discarded += 1
+                divisor *= 10
+                left //= 10
+            # Only the exact quotient authorizes its decimal width.
+            if not limit // 10 <= left < limit:
+                discarded = radix_width(lower, 10) - root_places
+                divisor = pow(10, discarded)
+                left = lower // divisor
+            if not exact:
+                right = (lower + scale) // divisor
+                if right >= limit:
+                    return FermatRadialPort(offset, None, None, 0, None)
+                while left != right:
+                    left //= 10
+                    right //= 10
+            width = root_width + discarded
+            if not left:
                 return FermatRadialPort(offset, width, None, 0, None)
-            word = candidate
+            word = str(left)
         family = next(
             (
                 prefix

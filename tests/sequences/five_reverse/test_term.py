@@ -223,7 +223,7 @@ def test_five_reverse_padded_candidate_uses_authenticated_initial_image() -> Non
             )
 
 
-def test_five_reverse_wide_source_production_avoids_chronological_replay(
+def test_five_reverse_wide_padded_source_avoids_chronological_replay(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     seed = 10**143 + 12345
@@ -231,12 +231,13 @@ def test_five_reverse_wide_source_production_avoids_chronological_replay(
     for _ in range(256):
         expected = 5 * int(str(expected)[::-1])
 
-    def poisoned(*_args: object, **_kwargs: object) -> int:
-        raise AssertionError("production replayed the source")
+    def poisoned(_term: FiveReverseTerm, _source: int, *_steps: int) -> int:
+        raise AssertionError("padded publication replayed the source")
 
-    monkeypatch.setattr(FiveReverseSourceAdapter, "_apply_steps", poisoned)
-    with FiveReverseTerm(seed, 256, max_steps=256) as term:
-        assert term.materialize(max_bits=4096) == expected
+    monkeypatch.setattr(FiveReverseTerm, "step_value", poisoned)
+    monkeypatch.setattr(FiveReverseTerm, "packed_value", poisoned)
+    with FiveReverseTerm(seed, 0, max_steps=256) as term:
+        assert term.padded_source_value(256) == expected
 
 
 def test_five_reverse_padded_source_uses_same_ledger_and_msd_order() -> None:

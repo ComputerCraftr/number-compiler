@@ -97,6 +97,7 @@ session Comma_Source_Entry_Witness in comma_entry_witness = Comma_Literal_Bridge
     Comma_Source_Entry_Witness
 session Comma_Source_Entry in comma_entry = Comma_Source_Entry_Witness +
   options [document = false, quick_and_dirty = false]
+  sessions Comma_C1_Occurrence
   theories
     Comma_Source_Entry
     Comma_Global_Root_Arithmetic
@@ -575,12 +576,6 @@ session Comma_Run_Moore_Instance in comma_run_moore_instance = Comma_Future_Stru
   sessions Comma_Run_Moore
   theories
     Comma_Run_Moore_Instance
-session Comma_Future_Checked_Instance in comma_future_checked = Comma_Future_Check +
-  options [document = false, quick_and_dirty = false]
-  sessions Comma_Future_Rank_Data
-  theories
-    Comma_Future_Instance
-    Comma_Future_Checked_Instance
 session Comma_Future_Source in comma_future_source = Comma_Future_Structural_Check +
   options [document = false, quick_and_dirty = false]
   sessions Comma_Source_Uniqueness
@@ -638,7 +633,7 @@ session Comma_Decade_Occurrence_Lift in comma_decade_occurrence_lift = Comma_Dec
     Comma_Decade_Occurrence_Lift
 session Comma_C1_Occurrence in comma_c1_occurrence = Comma_C1_Borrow_Cocycle +
   options [document = false, quick_and_dirty = false]
-  sessions Comma_Chart_Bridge Comma_Near_Period Shared_Carry_Dynamics
+  sessions Comma_Chart_Bridge Comma_Near_Period Comma_Closed_Near Shared_Carry_Dynamics
   theories
     Comma_C1_Occurrence
     Comma_C1_Source_Coefficients
@@ -646,6 +641,8 @@ session Comma_C1_Occurrence in comma_c1_occurrence = Comma_C1_Borrow_Cocycle +
     Comma_C1_2Primary_Saturation
     Comma_C1_Normalization_Morphism
     Comma_C1_Near_Chart_Refinement
+    Comma_C1_Fused_Entry_Refinement
+    Comma_C1_First_Sector
 session Comma_Native_Summary in comma_native_summary = Comma_Decade_Occurrence_Lift +
   options [document = false, quick_and_dirty = false]
   sessions Comma_Sparse_Core Comma_Terminal_Weight
@@ -698,10 +695,3 @@ session Comma_Global_Future_Safety in comma_future_global = Comma_Native_Future_
   theories
     Comma_Global_Future_Safety
     Comma_Global_Root_Safety
-
-(* Audit trial; not a production or CLI dependency before native acceptance. *)
-session Comma_Frontier_M204_Direct_Trial in comma_m204_direct_trial = Comma_Semantic_B1 +
-  options [document = false, quick_and_dirty = false]
-  theories
-    Comma_Frontier_M204_D_Candidate
-    Comma_Frontier_M204_Direct_Bellman_Concrete

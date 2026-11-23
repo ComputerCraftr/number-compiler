@@ -526,8 +526,9 @@ struct
   fun make ctxt = make_with_transport (fn _ => fn _ => NONE) ctxt
 
   fun report line =
-    let val _ = Output.physical_stderr (line ^ "\n")
-        val destination = getenv "COMMA_PROFILE_LOG"
+    let val line = line ^ " family=comma"
+        val _ = Output.physical_stderr (line ^ "\n")
+        val destination = getenv "ISABELLE_PROOF_PROFILE_LOG"
     in if destination = "" orelse destination = "1" then ()
        else File.append (Path.explode destination) (line ^ "\n") end
 

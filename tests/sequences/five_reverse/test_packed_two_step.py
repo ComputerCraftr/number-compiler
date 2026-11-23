@@ -63,6 +63,25 @@ def test_packed_conversion_preserves_interpreter_digit_limit() -> None:
         sys.set_int_max_str_digits(limit)
 
 
+@pytest.mark.parametrize("steps", [64, 128, 256, 512, 1024, 2048])
+def test_wide_source_does_not_select_padded_h_before_packed(
+    monkeypatch: pytest.MonkeyPatch, steps: int
+) -> None:
+    seed = int("123456789" * 17)
+    expected, _ = _literal(seed, steps)
+
+    def reject(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("unmeasured padded-H selection")
+
+    monkeypatch.setattr(FiveReverseSourceAdapter, "padded_source_candidate", reject)
+    with FiveReverseTerm(seed, steps, max_steps=steps, max_state_bits=16384) as term:
+        assert term.materialize(max_bits=16384) == expected
+        assert (
+            term.resource_ledger.counters[metrics.FIVE_REVERSE_PACKED_EXECUTED_PAIRS]
+            == steps // 2
+        )
+
+
 def test_source_owned_candidate_releases_scratch_and_reports_physical_work() -> None:
     with FiveReverseTerm(73, 128, max_steps=128) as term:
         expected, reads = _literal(73, 128)

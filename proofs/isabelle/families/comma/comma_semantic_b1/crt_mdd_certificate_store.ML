@@ -16,7 +16,9 @@ sig
   val lookup: store -> int -> thm
   val phase_leaf: store -> int -> thm
   val bound: store -> int -> thm
+  val branch_width: store -> int -> thm
   val action_index: store -> Comma_CRT_MDD_Arena.action_root -> int
+  val payload_cap: store -> int -> Comma_CRT_MDD_Arena.action_root -> thm
   val boolean_index: store -> Comma_CRT_MDD_Arena.boolean_root -> int
   val bind_witness: store -> Comma_CRT_MDD_Arena.bind_key -> Comma_CRT_MDD_Arena.bind_witness
   val priority_witness: store -> Comma_CRT_MDD_Arena.priority_key ->
@@ -66,6 +68,7 @@ struct
     {arena: Arena.arena, ctxt: Proof.context, table: term, radices: term,
      count: int, nodes: node Vector.vector,
      wellformed: thm, lookup: int -> thm, bound: int -> thm,
+     branch_width: int -> thm,
      phase_leaf_cache: thm Inttab.table Unsynchronized.ref,
      statistics: unit -> string}
 
@@ -82,6 +85,8 @@ struct
   fun node (store as Store data) index =
     Vector.sub (#nodes data,check_index store index)
   fun bound (store as Store data) index = #bound data (check_index store index)
+  fun branch_width (store as Store data) index =
+    #branch_width data (check_index store index)
   fun phase_leaf (store as Store data) index =
     let
       val index = check_index store index
@@ -120,6 +125,57 @@ struct
     end
   fun action_index (store as Store data) root =
     check_index store (Arena.action_index (#arena data) root)
+  (* The cache belongs to one frozen Store and one cap. The action handle is
+     independently authenticated before any numeric node ID is consulted. *)
+  fun payload_cap store maximum =
+    let
+      val _ = if maximum >= 0 then () else error "MDD payload cap must be nonnegative"
+      val ctxt = context store
+      val limit = nat maximum
+      val scalar = Comma_Entry_Arithmetic.natural_context ctxt
+      val booleans = scalar |> Simplifier.add_simps @{thms ball_simps set_simps list.simps}
+      val predicate = @{term comma_crt_mdd_payload_cap} $ table store
+      fun cap child = predicate $ child $ limit
+      fun prove description simps goal = Proof_Utils.prove_exact ctxt description
+        (HOLogic.mk_Trueprop goal) (fn _ => simp_tac simps 1)
+      val cache = Unsynchronized.ref Inttab.empty
+      fun visit index =
+        let val goal = HOLogic.mk_Trueprop (cap (nat index))
+        in
+          (case Inttab.lookup (!cache) index of
+            SOME theorem => theorem
+          | NONE =>
+              let
+                val within = bound store index
+                val equation = lookup store index RS @{thm meta_eq_to_obj_eq}
+                val theorem =
+                  (case node store index of
+                    Leaf payload =>
+                      let
+                        val _ = if payload <= maximum then ()
+                          else error "Reachable MDD payload exceeds its cap"
+                        val local_bound = prove "MDD leaf payload cap" scalar
+                          (HOLogic.mk_binrel @{const_name less_eq} (nat payload,limit))
+                      in @{thm comma_crt_mdd_payload_cap_leaf} OF [within,equation,local_bound] end
+                  | Branch (_,children) =>
+                      let
+                        val order = @{thm comma_crt_mdd_payload_branch_child_order} OF
+                          [wellformed store,within,equation]
+                        val facts = map visit (distinct (op =) children)
+                        val child = Free ("payload_cap_child",natT)
+                        val set = @{term "set :: nat list => nat set"} $
+                          HOLogic.mk_list natT (map nat children)
+                        val coverage = prove "MDD branch payload cap" (Simplifier.add_simps facts booleans)
+                          (@{term "Ball :: nat set => (nat => bool) => bool"} $ set $
+                            Term.lambda child (cap child))
+                      in @{thm comma_crt_mdd_payload_cap_branch} OF
+                        [within,equation,order,coverage] end)
+                val checked = Proof_Utils.exact_prop ctxt "Frozen MDD payload cap" goal theorem
+                val _ = cache := Inttab.update (index,checked) (!cache)
+              in checked end)
+        end
+    in fn root => visit (action_index store root) end
+
   fun boolean_index (store as Store data) root =
     check_index store (Arena.boolean_index (#arena data) root)
   fun bind_witness (store as Store data) key =
@@ -133,7 +189,10 @@ struct
       val _ = check_index store (#result witness)
       val _ = (case #step witness of
         Arena.Bind_Leaf _ => ()
-      | Arena.Bind_Branch (_,children) => List.app check_key children)
+      | Arena.Bind_Branch (_,children) => List.app check_key children
+      | Arena.Bind_Selected_Leaf_Branch (_,rows) =>
+          List.app (fn (source,_,target,result) =>
+            List.app (fn id => ignore (check_index store id)) [source,target,result]) rows)
     in witness end
 
   fun priority_normalize_trace (store as Store data) key =
@@ -398,10 +457,21 @@ struct
                   Simplifier.asm_full_simp_tac length_context 1))
               val _ = bounds := Inttab.update (index,theorem) (!bounds)
             in theorem end)
+      fun branch_width index =
+        (case Vector.sub (node_views,index) of
+          Leaf _ => error "MDD branch-width request names a leaf"
+        | Branch (axis,children) =>
+            let
+              val (_,_,generic) = branch_shape axis (length children)
+              val expected = HOLogic.mk_Trueprop (HOLogic.mk_eq
+                (list_size (HOLogic.mk_list natT (map nat children)),
+                 Const (@{const_name nth}, @{typ "nat list"} --> natT --> natT) $
+                   radix_term $ nat axis))
+            in exact_closed expected (specialize_branch_width children generic) end)
       val phase_leaf_cache = Unsynchronized.ref (Inttab.empty: thm Inttab.table)
       val store = Store {arena=arena, ctxt=ctxt, table=table,
         radices=radix_term, count=count, nodes=node_views, wellformed=wellformed,
-        lookup=lookup, bound=bound,
+        lookup=lookup, bound=bound, branch_width=branch_width,
         phase_leaf_cache=phase_leaf_cache,
         statistics=fn () => #statistics published () ^
           " ordered_item_ms=" ^ elapsed_ms ordered_elapsed ^

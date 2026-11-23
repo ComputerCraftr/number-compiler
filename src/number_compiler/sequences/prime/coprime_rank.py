@@ -85,6 +85,7 @@ class CoprimeRankDAG:
         self.shared_lease = shared_lease
         self.shared_publication_enabled = True
         self._closed = False
+        self._weighted_owner: int | None = None
         self._factor_owner = self.ledger.register(
             "prime.rank.factors", "factor descriptor"
         )
@@ -226,6 +227,22 @@ class CoprimeRankDAG:
     def factor_rank(self, limit: int) -> int:
         self._validate_factor_source()
         return bisect_right(self._primes, limit)
+
+    def count_weighted_interval(
+        self, lower: int, upper: int, depth: int, *, fused_masks: bool = False
+    ) -> int:
+        """Evaluate one closed-right interval using the admitted prefix."""
+        from number_compiler.sequences.prime.weighted_cutoff import (
+            WeightedCutoffInterval,
+        )
+
+        if self._weighted_owner is None:
+            self._weighted_owner = self.ledger.register(
+                "prime.weighted", "weighted interval scratch"
+            )
+        return WeightedCutoffInterval(
+            self, self._weighted_owner, fused_masks=fused_masks
+        ).count(lower, upper, depth)
 
     def _validate_factor_source(self) -> None:
         """Only this owner's appends may advance numerical memo authority."""
@@ -948,6 +965,8 @@ class CoprimeRankDAG:
         if self._closed:
             return
         with ExitStack() as cleanup:
+            if self._weighted_owner is not None:
+                cleanup.callback(self.ledger.mark_disposed, self._weighted_owner)
             cleanup.callback(self._close_factors)
             cleanup.callback(self._close_ordered_boundary)
             cleanup.callback(self.memo.dispose)

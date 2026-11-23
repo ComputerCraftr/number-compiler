@@ -18,7 +18,7 @@ struct
       val ctxt = Store.context store
       val arena = #arena candidate
       fun ai root = Store.action_index store root
-      val shift = Shift.make store
+      val shift = Shift.make_periodic store
       val bind = Bind.make store
       val equality = @{term "\<lambda>x::nat. \<lambda>y::nat. if x=y then (1::nat) else 0"}
       fun rule opterm x y z =
@@ -53,6 +53,22 @@ struct
           (ListPair.zip (ListPair.zip (source_ids,roots),certificates))
       val source_import_evals = import_evals source_store source_ids (#sources candidate) source_imports
       val weight_import_evals = import_evals weight_store weight_ids (#weights candidate) weight_imports
+      val future_plus_ten = @{term "\<lambda>x::nat. x+10"}
+      fun mapped_leaf source target =
+        Goal.prove ctxt [] [] (HOLogic.mk_Trueprop
+          (HOLogic.mk_eq (Envir.beta_norm (future_plus_ten $ nat source), nat target)))
+          (fn {context,...} => simp_tac (Comma_Entry_Arithmetic.natural_context context) 1)
+      val mapped_shift = Shift.make_mapped_on shift future_plus_ten mapped_leaf
+      val mapped_weights = map (fn ({source,output,amount,add}: Proposal.mapped_weight) =>
+        if amount=1 andalso add=10 then
+          Shift.certify_mapped_shift mapped_shift amount source output
+        else error "Future mapped weight changed its phase or +10 encoding")
+        (#mapped_weights candidate)
+      val mapped_weight_evals = map (fn ({source,output,amount,add}: Proposal.mapped_weight) =>
+        if amount=1 andalso add=10 then
+          Shift.mapped_shift_eval_phase mapped_shift amount source output
+        else error "Future mapped weight has a noncanonical operation")
+        (#mapped_weights candidate)
       val shifts = map (fn ({source,amount,output}: Proposal.shift) =>
         Shift.certify_shift shift amount source output) (#shifts candidate)
       val shift_evals = map (fn ({source,amount,output}: Proposal.shift) =>
@@ -100,13 +116,14 @@ struct
       val source_covers = map support (#sources candidate)
       val output_covers = map support (#outputs candidate)
       val facts = source_imports @ source_import_evals @ weight_imports @ weight_import_evals @
-        shifts @ shift_evals @ zips @ zip_evals @
+        mapped_weights @ mapped_weight_evals @ shifts @ shift_evals @ zips @ zip_evals @
         masks @ mask_evals @ selections @ selection_evals @ source_covers @ output_covers
       val _ = Comma_Proof_Dependency_Audit.require_native_clean ctxt
         "Future M204 join operation replay" facts
     in {source_imports=source_imports,source_import_evals=source_import_evals,
       weight_imports=weight_imports,weight_import_evals=weight_import_evals,
       shifts=shifts,shift_evals=shift_evals,zips=zips,zip_evals=zip_evals,
+      mapped_weights=mapped_weights,mapped_weight_evals=mapped_weight_evals,
       masks=masks,mask_evals=mask_evals,selections=selections,
       selection_evals=selection_evals,source_covers=source_covers,
       output_covers=output_covers} end

@@ -188,14 +188,14 @@ struct
             val outcome = Exn.capture f ()
             val _ = elapsed := Time.+ (!elapsed,Time.- (Time.now (),start))
         in Exn.release outcome end
-      fun prove_case f residue core row =
+      fun prove_case f residue core chart row =
         let
           val predicate = const @{const_name comma_frontier24_selector_case_action_matches}
             boolT [f,residue,core,row,actions]
           val wanted = projected @{const_name cf24_case_wanted} row
           val index = projected @{const_name cf24_case_action_token} row
           val (lookup,bound) = token_binding index
-          val action = #transport entry
+          val action = #transport_prepared entry chart
             (Utils.dest_nat "Entry sector" natT f)
             (Utils.dest_nat "Entry residue" natT residue) core
             (Utils.dest_nat "Entry wanted value" natT wanted)
@@ -234,7 +234,10 @@ struct
                 s = @{const_name Comma_Frontier24_Entry_Selector} then
               let
                 val cases = HOLogic.dest_list rows
-                val facts = measured case_elapsed (fn () => map (prove_case f residue core) cases)
+                val chart = #prepare entry
+                  (Utils.dest_nat "Entry sector" natT f)
+                  (Utils.dest_nat "Entry residue" natT residue) core
+                val facts = measured case_elapsed (fn () => map (prove_case f residue core chart) cases)
                 val all = measured fold_elapsed (fn () =>
                   fold_rev (fn fact => fn tail =>
                     @{thm comma_frontier24_selector_cases_cons} OF [fact,tail]) facts

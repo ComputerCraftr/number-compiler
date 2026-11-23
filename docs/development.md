@@ -342,6 +342,13 @@ Use the existing `devtools.benchmarks.pytest_timing` plugin for separate
 collection/setup/call/teardown evidence. Never share warmed production caches
 between independent tests to improve timings.
 
+Guarded Isabelle runs record coarse checkpoints for instrumented sessions by
+default. Timeout summaries retain the last completed scope and the innermost
+active scope observed before termination. Set `NUMBER_COMPILER_PROOF_PROGRESS=off`
+and leave `ISABELLE_PROOF_PROFILE_LOG` unset for an uninstrumented comparison.
+Set `NUMBER_COMPILER_PROOF_PROGRESS=detailed` to include detailed timings.
+These settings leave the per-session proof budget and acceptance checks unchanged.
+
 Run checks serially through the shared release runner. Standalone probes use the
 same process guard and fixed 60-second / 4-GiB policy; no custom timeout flags are
 needed. Partial selections remain diagnostic and cannot establish a full-suite pass.

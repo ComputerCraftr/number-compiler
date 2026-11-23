@@ -11,11 +11,11 @@ structure Comma_Fast_Totality_Profile =
 struct
   fun progress message =
     let
-      val line = message ^ "\n"
+      val line = message ^ " family=comma\n"
       val _ = Output.physical_stderr line
-      val destination = getenv "COMMA_PROFILE_LOG"
+      val destination = getenv "ISABELLE_PROOF_PROFILE_LOG"
     in
-      if destination = "" then ()
+      if destination = "" orelse destination = "1" then ()
       else File.append (Path.explode destination) line
     end
 

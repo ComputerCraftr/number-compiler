@@ -100,6 +100,7 @@ struct
 
   fun publish thy =
     let
+      val _ = Comma_Proof_Profile.report "Future M204 native export start"
       val ctxt = Proof_Context.init_global thy
       val release = closed thy "Global release" @{thm comma_semantic_producer_global_release_contract}
       val rank = closed thy "M204 rank" @{thm comma_future_m204_compact_rank_native}
@@ -182,8 +183,10 @@ struct
         "\"source_roots\":" ^ array roots ^ "," ^
         "\"state_universe\":\"kind=N,Z; a=2..9; residue=0..923; nested-order\"}\n"
       val _ = if size payload <= max_bytes then () else error "M204 export exceeds the byte bound"
-    in Export.export thy (Path.explode_binding0 "comma-semantic-future-candidate-v3.json")
-      [XML.Text payload] end
+      val _ = Export.export thy (Path.explode_binding0 "comma-semantic-future-candidate-v3.json")
+        [XML.Text payload]
+    in Comma_Proof_Profile.report
+      ("Future M204 native export complete bytes=" ^ Int.toString (size payload)) end
 end;
 
 val _ = Comma_Semantic_Future_Candidate_Native_Export.publish @{theory};

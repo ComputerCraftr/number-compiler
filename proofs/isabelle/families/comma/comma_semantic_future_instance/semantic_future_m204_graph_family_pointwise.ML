@@ -1,5 +1,5 @@
-(* Derive one source-class bound and one physical join theorem per family
-   from its checked source/child outputs and four exact graph zips. *)
+(* Derive ordered class/child morphisms from one injective tuple comparison,
+   independently of the class rank certificate. *)
 structure Comma_Future_M204_Graph_Family_Pointwise =
 struct
   structure Store = Comma_CRT_MDD_Certificate_Store
@@ -30,18 +30,16 @@ struct
         else error "Future graph phase replay has a mismatched transcript"
       val pairs = #comparisons graph ~~ graph_evals
       fun selected predicate = filter (fn ((row:Graph.comparison),_) => predicate (#operation row)) pairs
-      fun control Graph.Graph_Control = true | control _ = false
-      fun north Graph.Graph_N = true | north _ = false
-      fun south Graph.Graph_Z = true | south _ = false
-      fun actual Graph.Actual_Control = true | actual _ = false
-      val controls = selected control
-      val norths = selected north
-      val souths = selected south
-      val actuals = selected actual
-      val _ = if List.all (fn n => n=16) [length controls,length norths,length souths,
-          length actuals,length class_bounds,length source_facts] andalso
-          length equalities=48 andalso length child_facts=32 then ()
-        else error "Future family assembly lacks its 16-family checked inputs"
+      fun graph_kind Graph.Graph_Tuple = true | graph_kind _ = false
+      fun prefix Graph.Actual_Prefix = true | prefix _ = false
+      fun observed Graph.Actual_Tuple = true | observed _ = false
+      val graph_tuples = selected graph_kind
+      val prefixes = selected prefix
+      val actual_tuples = selected observed
+      val _ = if List.all (fn n => n=16) [length graph_tuples,length prefixes,
+          length actual_tuples,length class_bounds,length source_facts,length equalities] andalso
+          length child_facts=32 then ()
+        else error "Future ordered-tuple assembly lacks its 16-family checked inputs"
       fun family i =
         let
           val kind = if i<8 then @{term Comma_N} else @{term Comma_Z}
@@ -73,12 +71,17 @@ struct
               in auto_tac scalar end)
           val join_target = HOLogic.mk_Trueprop (Envir.beta_norm
             (list_comb (join_prop,[nodes,roots,rows,q,J,delta])))
+          (* Only a zero leaf may supply an automatic right-hand fact.
+             The actual tuple has live N/Z child roots, whose authenticated
+             source bindings come from child_facts instead. *)
           fun component ((row:Graph.comparison),fact) =
-            [fact,Store.phase_leaf store (#right row)]
-          val local_facts = maps component [List.nth (controls,i),List.nth (norths,i),
-            List.nth (souths,i),List.nth (actuals,i)] @
-            [List.nth (equalities,i),List.nth (equalities,16+i),List.nth (equalities,32+i),
-             List.nth (source_facts,i),List.nth (child_facts,i),List.nth (child_facts,16+i)]
+            fact :: (case Store.node store (#right row) of
+              Store.Leaf _ => [Store.phase_leaf store (#right row)]
+            | _ => [])
+          val local_facts = maps component [List.nth (graph_tuples,i),
+            List.nth (prefixes,i),List.nth (actual_tuples,i)] @
+            [List.nth (equalities,i),List.nth (source_facts,i),
+             List.nth (child_facts,i),List.nth (child_facts,16+i)]
           val join_theorem = Goal.prove ctxt
             ["future_graph_family_phase","future_graph_family_digit","future_graph_family_delta"]
             [phase_bound,source_output] join_target (fn {context,prems} =>
@@ -94,7 +97,9 @@ struct
                 val scalar = put_simpset HOL_basic_ss context
                   |> Simplifier.add_simps (@{thms option.simps fst_conv snd_conv Let_def
                     comma_future_m204_family_slot_def prod.case comma_boundary_kind.case
-                    nth_Cons_0 nth_Cons_Suc} @
+                    nth_Cons_0 nth_Cons_Suc
+                    comma_future_m204_pair_eq_iff
+                    comma_future_m204_ordered_tuple_eq_iff} @
                     decoded :: inverse @ local_facts @ prems)
               in auto_tac scalar end)
         in (bound_theorem,join_theorem) end

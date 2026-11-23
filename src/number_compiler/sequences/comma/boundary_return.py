@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from math import gcd
-from typing import Literal, Protocol, TypeVar
+from typing import TYPE_CHECKING, Literal, Protocol, TypeVar
 
 from number_compiler.arithmetic.fields.consumer_pullback import (
     ONE as _Q_ONE,
@@ -50,6 +50,11 @@ from number_compiler.sequences.comma.boundary_quotient import (
     macro_template_header,
     sector_fragment_signature,
 )
+
+if TYPE_CHECKING:
+    from number_compiler.sequences.comma.boundary_occurrence_chart import (
+        BoundaryOccurrenceSource,
+    )
 
 Q = ExactRational
 
@@ -485,6 +490,8 @@ def _construct_macro_with_publisher(
     charge: Callable[[int], None] | None = None,
     charge_bits: Callable[[int], None] | None = None,
     grouped_near: bool = False,
+    on_segment: Callable[[SectorFragment, ChartSegment], None] | None = None,
+    on_terminal: Callable[[BoundaryChart], None] | None = None,
 ) -> _MacroResult_co:
     """Accumulate exact weights over the bounded Entry/Near chart machine.
 
@@ -505,14 +512,21 @@ def _construct_macro_with_publisher(
     previous_delta = 0
     near_run: tuple[BoundaryChart, int, int, int, BoundaryChart] | None = None
 
+    def emit(fragment: SectorFragment, segment: ChartSegment) -> None:
+        if publisher.retain_fragments:
+            fragments.append(fragment)
+            chart_segments.append(segment)
+        if on_segment is not None:
+            on_segment(fragment, segment)
+
     def flush_near() -> None:
         nonlocal near_run, weight, displacement
         if near_run is not None:
             source_chart, digit, steps, increment, target_chart = near_run
             weight = weight.plus(_constant(steps))
             displacement = displacement.plus(_constant(increment))
-            if publisher.retain_fragments:
-                fragments.append(
+            if publisher.retain_fragments or on_segment is not None:
+                emit(
                     SectorFragment(
                         source_chart.leading,
                         digit,
@@ -522,15 +536,13 @@ def _construct_macro_with_publisher(
                         0,
                         steps,
                         increment,
-                    )
-                )
-                chart_segments.append(
+                    ),
                     ChartSegment(
                         source_chart,
                         target_chart,
                         ChartWeight(0, 0, steps, 1),
                         ChartWeight(0, 0, increment, 1),
-                    )
+                    ),
                 )
             near_run = None
 
@@ -599,6 +611,8 @@ def _construct_macro_with_publisher(
                 raise AssertionError("comma macro endpoint differs from construction")
             if publisher.retain_fragments and len(chart_segments) != len(fragments):
                 raise AssertionError("comma terminal chart lost fragment alignment")
+            if on_terminal is not None:
+                on_terminal(chart)
             return publisher.publish(
                 source,
                 "landmine" if a is None else "fork",
@@ -684,8 +698,8 @@ def _construct_macro_with_publisher(
                 step_weight.offset / Q(transfer.period),
             )
             displacement = displacement.plus(count.times(transfer.displacement))
-            if publisher.retain_fragments:
-                fragments.append(
+            if publisher.retain_fragments or on_segment is not None:
+                emit(
                     SectorFragment(
                         f,
                         x % 10,
@@ -695,9 +709,7 @@ def _construct_macro_with_publisher(
                         transfer.maximum_guard,
                         0,
                         0,
-                    )
-                )
-                chart_segments.append(
+                    ),
                     ChartSegment(
                         chart,
                         move.next_chart,
@@ -708,13 +720,13 @@ def _construct_macro_with_publisher(
                             -chart.coordinate - move.next_chart.coordinate,
                             1,
                         ),
-                    )
+                    ),
                 )
         else:
             digit = (-x) % 10
             displacement = displacement.plus(_constant(move.literal_increment))
-            if publisher.retain_fragments:
-                fragments.append(
+            if publisher.retain_fragments or on_segment is not None:
+                emit(
                     SectorFragment(
                         f,
                         digit,
@@ -724,15 +736,13 @@ def _construct_macro_with_publisher(
                         0,
                         1,
                         move.literal_increment,
-                    )
-                )
-                chart_segments.append(
+                    ),
                     ChartSegment(
                         chart,
                         move.next_chart,
                         move.weight,
                         ChartWeight(0, 0, move.literal_increment, 1),
-                    )
+                    ),
                 )
     raise AssertionError("comma chart returned without a terminal outcome")
 
@@ -771,7 +781,55 @@ def construct_completed_return(
     )
 
 
+def construct_completed_occurrence(
+    source: BoundaryOccurrenceSource,
+    *,
+    charge: Callable[[int], None] | None = None,
+    charge_bits: Callable[[int], None] | None = None,
+    grouped_near: bool = False,
+) -> tuple[CompletedMacroReturn, tuple[int, int, int, int, int]]:
+    """Build and validate a source-bound return without retaining chart segments."""
+    from number_compiler.sequences.comma.boundary_occurrence_chart import (
+        macro_prefix_stream,
+    )
+    from number_compiler.sequences.comma.occurrence import BoundaryOccurrence
+
+    if type(source) is not BoundaryOccurrence:
+        raise TypeError("comma completed return needs an exact boundary occurrence")
+    source.validate()
+    stream = macro_prefix_stream(
+        source, check_endpoint=True, charge_work=charge, charge_bits=charge_bits
+    )
+    terminal: list[BoundaryChart] = []
+    next(stream)
+
+    def accept_segment(fragment: SectorFragment, segment: ChartSegment) -> None:
+        if stream.send((fragment, segment)) is not None:
+            raise AssertionError("comma occurrence stream finished before its terminal")
+
+    try:
+        completed = _construct_macro_with_publisher(
+            source.state,
+            _CompletedReturnPublisher(),
+            charge=charge,
+            charge_bits=charge_bits,
+            grouped_near=grouped_near,
+            on_segment=accept_segment,
+            on_terminal=terminal.append,
+        )
+        if len(terminal) != 1:
+            raise AssertionError("comma occurrence stream lacks a terminal chart")
+        stream.send(None)
+        observed = stream.send((completed, terminal[0]))
+        if observed is None:
+            raise AssertionError("comma occurrence stream did not finish")
+        return completed, observed
+    finally:
+        stream.close()
+
+
 __all__ = [
+    "construct_completed_occurrence",
     "construct_completed_return",
     "construct_macro",
     "validate_completed_macro_return",

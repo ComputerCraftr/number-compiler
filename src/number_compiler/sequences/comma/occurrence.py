@@ -31,6 +31,7 @@ from .boundary_occurrence_chart import (
 )
 from .boundary_quotient import (
     BoundaryState,
+    CompletedMacroReturn,
     MacroTemplate,
     affine_weight_signature,
     boundary_state_signature,
@@ -190,7 +191,7 @@ class BoundaryOccurrence:
 
 def _prefix_signature(
     source: BoundaryOccurrence,
-    template: MacroTemplate,
+    template: MacroTemplate | CompletedMacroReturn,
     terminal_value: int,
     transition_count: int,
     c1_count: int,
@@ -214,14 +215,19 @@ def _prefix_signature(
 
 
 def _template_signature(
-    template: MacroTemplate,
+    template: MacroTemplate | CompletedMacroReturn,
     *,
     component_seal: tuple[object, ...] | None = None,
 ) -> tuple[object, ...]:
     """Snapshot only the shallow macro fields consumed after publication."""
-    if type(template) is not MacroTemplate:
+    if type(template) is CompletedMacroReturn:
+        from .boundary_return import validate_completed_macro_return
+
+        validate_completed_macro_return(template)
+        component_seal = (template,)
+    elif type(template) is not MacroTemplate:
         raise ValueError("macro template changed after construction")
-    if component_seal is None:
+    elif component_seal is None:
         component_seal = macro_template_component_seal(template)
     source = boundary_state_signature(template.source)
     if (
@@ -250,7 +256,7 @@ def _template_signature(
         raise ValueError("landmine macro unexpectedly carries fork children")
     return (
         id(template),
-        id(component_seal),
+        id(template) if type(template) is CompletedMacroReturn else id(component_seal),
         source,
         template.outcome,
         template.exponent_delta,
@@ -271,7 +277,7 @@ class OccurrencePrefixReturn:
     """
 
     _source: BoundaryOccurrence
-    _template: MacroTemplate
+    _template: MacroTemplate | CompletedMacroReturn
     _terminal_value: int
     _transition_count: int
     _c1_count: int
@@ -350,12 +356,47 @@ class OccurrencePrefixReturn:
         )
         object.__setattr__(self, "_seal", _PREFIX_RETURN_SEAL)
 
+    @classmethod
+    def from_completed_source(
+        cls,
+        source: BoundaryOccurrence,
+        *,
+        charge_work: WorkCharge | None = None,
+        charge_bits: BitsCharge | None = None,
+    ) -> OccurrencePrefixReturn:
+        """Issue one source-bound complete return without indexed prefixes."""
+        from .boundary_return import construct_completed_occurrence
+
+        completed, (terminal, steps, count, width, leading) = (
+            construct_completed_occurrence(
+                source, charge=charge_work, charge_bits=charge_bits, grouped_near=True
+            )
+        )
+        result = object.__new__(cls)
+        object.__setattr__(result, "_source", source)
+        object.__setattr__(result, "_template", completed)
+        object.__setattr__(result, "_terminal_value", terminal)
+        object.__setattr__(result, "_transition_count", steps)
+        object.__setattr__(result, "_c1_count", count)
+        object.__setattr__(result, "_width_delta", width)
+        object.__setattr__(result, "_terminal_leading", leading)
+        object.__setattr__(
+            result,
+            "_witness",
+            _prefix_signature(
+                source, completed, terminal, steps, count, width, leading
+            ),
+        )
+        object.__setattr__(result, "_seal", _PREFIX_RETURN_SEAL)
+        result.validate()
+        return result
+
     def validate(self) -> None:
         if getattr(self, "_seal", None) is not _PREFIX_RETURN_SEAL:
             raise ValueError("invalid or uninitialized occurrence prefix return")
         if (
             type(self._source) is not BoundaryOccurrence
-            or type(self._template) is not MacroTemplate
+            or type(self._template) not in (MacroTemplate, CompletedMacroReturn)
             or type(self._terminal_value) is not int
             or self._terminal_value <= 0
             or type(self._transition_count) is not int
@@ -385,11 +426,13 @@ class OccurrencePrefixReturn:
         return self._source
 
     @property
-    def template(self) -> MacroTemplate:
+    def template(self) -> MacroTemplate | CompletedMacroReturn:
         self.validate()
         return self._template
 
-    def binding_snapshot(self) -> tuple[BoundaryOccurrence, MacroTemplate, int]:
+    def binding_snapshot(
+        self,
+    ) -> tuple[BoundaryOccurrence, MacroTemplate | CompletedMacroReturn, int]:
         """Return the source-bound macro fields after one integrity check."""
         self.validate()
         return self._source, self._template, self._width_delta

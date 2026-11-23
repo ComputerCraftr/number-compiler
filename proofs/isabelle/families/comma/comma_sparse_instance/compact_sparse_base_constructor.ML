@@ -7,7 +7,7 @@ struct
 
   val natT = @{typ nat}
   val wordT = @{typ comma_sparse_word}
-  val profiling = getenv "COMMA_PROFILE_LOG" <> ""
+  val profiling = getenv "ISABELLE_PROOF_PROFILE_LOG" <> ""
 
   fun nat n = HOLogic.mk_number natT n
 

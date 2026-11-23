@@ -114,7 +114,7 @@ struct
           val value = checked_value evaluated
           val correct = certify (@{thm comma_decade_orbit_base_layer_valueI} OF [object evaluated])
           val _ = base_phases := !base_phases + 1
-          val _ = if getenv "COMMA_PROFILE_LOG" = "" then () else
+          val _ = if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then () else
             Comma_Fast_Kernel.report ("Layer base phase=" ^ Int.toString phase ^
               " checked_base_phases=" ^ Int.toString (!base_phases) ^
               " checked_base_atoms=" ^ Int.toString (46 * !base_phases) ^

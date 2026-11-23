@@ -11,6 +11,9 @@ struct
   structure Entry = Comma_Direct_Entry_Bindings (
     val fixed_entry_port_conversion_plan = Arithmetic.fixed_entry_port_conversion_plan
     val core_parameter_conversion_plan = Arithmetic.core_parameter_conversion_plan)
+  structure Rows = Comma_Direct_Entry_Row_Plan (
+    val fixed_entry_port_conversion_plan = Arithmetic.fixed_entry_port_conversion_plan
+    val core_parameter_conversion_plan = Arithmetic.core_parameter_conversion_plan)
   fun run lthy =
     let
       val names = Comma_Direct_Expression_Names.make "direct_binding_fixture" lthy
@@ -83,12 +86,80 @@ struct
       val _ = Comma_Proof_Dependency_Audit.require_native_clean ctxt
         "Direct admitted and rejected Exit binding" [exit_fact,rejected_fact]
       val entry_owner = Entry.make ctxt Runtime.computation [] (#body names) (#definition names)
+      val action_calls = Unsynchronized.ref 0
+      val base = Runtime.computation
+      val repeated_key = @{term "42::nat"}
+      val counted: Compiler.computation =
+        {class_program= #class_program base, source_program= #source_program base,
+         program_admitted= #program_admitted base,
+         supported_values=fn _ => [1,2], core_modulus= #core_modulus base,
+         guard_table= #guard_table base,
+         entry_action_key=fn _ => fn _ => fn _ => fn _ => repeated_key,
+         entry_action=fn _ => fn _ => fn _ => fn _ =>
+           (action_calls := !action_calls + 1;
+            if !action_calls = 1 then action
+            else error "Duplicate Entry proposal reconstructed its action"),
+         operator_action= #operator_action base, exit_code= #exit_code base}
+      val entry1 = @{term "Comma_Entry_Core_Program 1 0 0 Comma_Core_1"}
+      val entry2 = @{term "Comma_Entry_Core_Program 1 1 1 Comma_Core_1"}
+      val counted_owner = Entry.make ctxt counted
+        [(entry1,expression),(entry2,expression)] (#body names) (#definition names)
+      val _ = if !action_calls = 1 andalso
+          #representative counted_owner 1 1 @{term Comma_Core_1} 2 aconv action andalso
+          String.isSubstring "entry_row_proposal_requests=4" (#statistics counted_owner ()) andalso
+          String.isSubstring "entry_row_action_calls=1" (#statistics counted_owner ())
+        then () else error "Entry proposal did not reuse the first action for a repeated key"
       val core27 = #support entry_owner @{term Comma_Core_27} [1,10,19]
       val cores = [@{term Comma_Core_1}, @{term Comma_Core_3}, @{term Comma_Core_7},
         @{term Comma_Core_11}, @{term Comma_Core_13}, @{term Comma_Core_21},
         @{term Comma_Core_23}, @{term Comma_Core_27}, @{term Comma_Core_29}]
       val supports = map (fn core => #support entry_owner core
         (#supported_values Runtime.computation core)) cores
+      val chart_core = @{term Comma_Core_23}
+      val chart_values = #supported_values Runtime.computation chart_core
+      val first_value = List.nth (chart_values,0)
+      val second_value = List.nth (chart_values,1)
+      fun chart_rep residue wanted =
+        let
+          val key = #entry_action_key Runtime.computation 1 residue chart_core wanted
+          val proposed: Compiler.entry_representative =
+            {sector=1,residue=residue,core=chart_core,wanted=wanted,
+             action= #entry_action Runtime.computation 1 residue chart_core wanted}
+        in (key,proposed) end
+      val chart_pairs = maps (fn residue => map (chart_rep residue) chart_values) [0,10]
+      val charts = Rows.make ctxt Runtime.computation chart_pairs
+      val _ = #prewarm charts 1 0 chart_core
+      val first_chart = #prepare charts 1 0 chart_core
+      val second_chart = #prepare charts 1 10 chart_core
+      val first_transport = #transport_prepared charts first_chart 1 0 chart_core first_value
+      val second_transport = #transport_prepared charts second_chart 1 10 chart_core first_value
+      val _ = if not (Thm.prop_of first_transport aconv Thm.prop_of second_transport) then ()
+        else error "Entry chart merged distinct source offsets"
+      val _ = (case Exn.capture
+          (fn () => #transport_prepared charts first_chart 1 10 chart_core first_value) () of
+          Exn.Exn _ => () | Exn.Res _ => error "Entry chart accepted a foreign source offset")
+      val alternate = (case Inttab.lookup first_chart second_value of
+          SOME theorem => theorem | NONE => error "Entry chart fixture lacks the second value")
+      val swapped_chart = Inttab.update (first_value,alternate) first_chart
+      val _ = (case Exn.capture
+          (fn () => #transport_prepared charts swapped_chart 1 0 chart_core first_value) () of
+          Exn.Exn _ => () | Exn.Res _ => error "Entry chart accepted reordered wanted values")
+      val rejected = #entry_action_key Runtime.computation 1 0 chart_core first_value
+      val original = #entry_action Runtime.computation 1 0 chart_core first_value
+      val changed = if original aconv @{term Comma_Continuation_Invalid}
+        then action else @{term Comma_Continuation_Invalid}
+      val bad_rep: Compiler.entry_representative =
+        {sector=1,residue=0,core=chart_core,wanted=first_value,action=changed}
+      val bad_charts = Rows.make ctxt Runtime.computation [(rejected,bad_rep)]
+      val _ = (case Exn.capture
+          (fn () => #transport_prepared bad_charts first_chart 1 0 chart_core first_value) () of
+          Exn.Exn _ => () | Exn.Res _ => error "Entry chart accepted a changed action")
+      val chart_stats = #statistics charts ()
+      val _ = if String.isSubstring "entry_lift_charts=1" chart_stats andalso
+          String.isSubstring "entry_source_charts=2" chart_stats then ()
+        else error ("Entry chart did not share its source-independent vector: " ^ chart_stats)
+      val _ = Comma_Proof_Dependency_Audit.require_native_clean ctxt
+        "Direct checked Entry charts" [first_transport,second_transport]
       val _ = (case Exn.capture (fn () => #support entry_owner @{term Comma_Core_27} [1,10,18]) () of
           Exn.Exn _ => () | Exn.Res _ => error "Direct support accepted changed Core27 row")
       val _ = Comma_Proof_Dependency_Audit.require_native_clean ctxt

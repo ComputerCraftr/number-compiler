@@ -1,5 +1,6 @@
 theory Comma_Global_Root_Arithmetic
   imports Comma_Source_Entry
+    Comma_C1_Occurrence.Comma_C1_First_Sector
     Comma_Arithmetic.Comma_Decimal_Parent
     Comma_Arithmetic.Comma_Child_Classification
 begin
@@ -243,6 +244,34 @@ proof -
 qed
 ML \<open>Comma_Global_Root_Arithmetic_Profile.consolidate_checkpoint
   "source20-entry-children" @{thms comma_source20_entry_children}\<close>
+
+
+text \<open>The low-width source prefix is authenticated separately before
+the source enters the fixed-sector certificate at exponent five.\<close>
+
+lemma comma_source20_first_p5_sector:
+  "comma_literal_path 4113 20 200008"
+proof -
+  have headroom: "comma_finite_headroom (Suc 0) 5 0 3 = 177"
+    by comma_source_control
+  have before: "comma_period_displacement (Suc 0) 3 3 = 123"
+    and at_crossing: "comma_period_displacement (Suc 0) 3 4 = 184"
+    by code_simp+
+  have germ: "comma_near_closed_germ (Suc 0) 177 = (3,54)"
+    using comma_near_germ_from_maximal_displacement[where f=1 and h=177 and d=3 and n=3]
+      comma_near_closed_germ_correct[where f=1 and h=177]
+    by (simp add: before at_crossing)
+  have selected: "comma_c1_first_sector 1 5 0 3 =
+      (2173,54,Comma_Next (Comma_Entry 2 0 8))"
+    by (simp add: comma_c1_first_sector_def Let_def comma_finite_period_def headroom germ
+      comma_cycle_length_def comma_finite_step_def)
+  have suffix: "comma_literal_path 2174 100003 200008"
+    using comma_c1_first_sector_next(1)
+      [where f=1 and p=5 and delta=0 and offset=3 and
+        elapsed=2173 and t=54 and target="Comma_Entry 2 0 8"]
+      selected by (simp add: comma_chart_value_def)
+  show ?thesis using comma_literal_path_append[OF comma_source20_to_p5 suffix] by simp
+qed
 
 lemma comma_p5_open_entries_have_root20:
   assumes "x = 3 \<or> x = 34 \<or> x = 75"

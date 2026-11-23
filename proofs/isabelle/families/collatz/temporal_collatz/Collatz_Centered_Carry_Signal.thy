@@ -7,6 +7,23 @@ physical endpoint has correction -2^t. At every admitted tick t, adding
 its lower bits increments the multiplication carry precisely at the cuts
 above h. The emitted numerator uses the moving correction.\<close>
 
+lemma collatz_centered_cut_below_headroom:
+  fixes center h cut gain tick :: nat
+  assumes "2^h dvd center" "cut \<le> h"
+  shows "center mod 2^cut = 0"
+    and "(gain * (center mod 2^cut)) div 2^cut = 0"
+    and "(gain * (center mod 2^cut) + (2^cut - 2^tick)) div 2^cut = 0"
+proof -
+  have "2^cut dvd center"
+    by (rule dvd_trans[OF dvd_power_le[OF dvd_refl assms(2)] assms(1)])
+  then have zero: "center mod 2^cut = 0" by simp
+  show "center mod 2^cut = 0" by (rule zero)
+  show "(gain * (center mod 2^cut)) div 2^cut = 0" using zero by simp
+  have "(2::nat)^cut - 2^tick < 2^cut" by simp
+  then show "(gain * (center mod 2^cut) + (2^cut - 2^tick)) div 2^cut = 0"
+    using zero by simp
+qed
+
 theorem collatz_centered_carry_correction:
   fixes center gain h cut tick :: nat
   assumes headroom: "2^h dvd center" "\<not> 2^(Suc h) dvd center"
@@ -136,6 +153,17 @@ proof -
   show ?thesis using scaled by (simp only: distrib_left mult_1_right)
 qed
 
+theorem collatz_centered_signal_at_admitted_phase:
+  fixes x tick h gain cut :: nat
+  assumes headroom: "2^h dvd x + 1" "\<not> 2^(Suc h) dvd x + 1"
+    and tick: "tick \<le> h" and gain: "odd gain"
+  shows "(2::nat)^tick * (physical_collatz ^^ (2*tick)) x =
+      3^tick * (x+1) - 2^tick"
+    and "(gain * ((x+1) mod 2^cut) + (2^cut - 2^tick)) div 2^cut =
+      (gain * ((x+1) mod 2^cut)) div 2^cut + (if h < cut then 1 else 0)"
+  using collatz_centered_numerator_physical[OF headroom(1) tick]
+    collatz_centered_carry_correction[OF headroom tick gain] by blast+
+
 lemma collatz_pending_odd_input_has_even_output:
   assumes "odd x"
   shows "even (physical_collatz x)"
@@ -143,7 +171,9 @@ lemma collatz_pending_odd_input_has_even_output:
 
 ML \<open>
   val checked = @{thms collatz_centered_carry_correction
+    collatz_centered_cut_below_headroom
     collatz_carry_cut_multiplier_reduction collatz_centered_numerator_physical
+    collatz_centered_signal_at_admitted_phase
     collatz_pending_odd_input_has_even_output};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Collatz corrected carry signal depends on an oracle";

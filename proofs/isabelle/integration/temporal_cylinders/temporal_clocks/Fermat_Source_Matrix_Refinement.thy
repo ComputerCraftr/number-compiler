@@ -466,12 +466,66 @@ lemma fermat_matrix_checkpoint_batch_exact:
     map (fermat_matrix_source_residue level modulus) offsets"
   by (simp add: fermat_matrix_source_residue_from_root)
 
+lemma fermat_matrix_checkpoint_square:
+  "((3::nat)^(2^level) mod modulus) ^ 2 mod modulus =
+    3^(2^(Suc level)) mod modulus"
+proof -
+  have exponent: "2^(Suc level) = (2::nat)^level * 2"
+    by (simp only: power_Suc mult.commute)
+  have square: "((3::nat)^(2^level))^2 = 3^(2^level * 2)"
+    by (simp only: power_mult)
+  show ?thesis by (simp only: power_mod square exponent)
+qed
+
+lemma fermat_matrix_checkpoint_join:
+  "((3::nat)^left mod modulus) * (3^right mod modulus) mod modulus =
+    3^(left + right) mod modulus"
+  by (simp add: power_add mod_mult_left_eq mod_mult_right_eq)
+
+lemma fermat_matrix_checkpoint_source_join:
+  "((3^(2^level) mod modulus) *
+       ((3::nat)^left mod modulus) * (3^right mod modulus)) mod modulus =
+    fermat_matrix_source_residue level modulus (left + right)"
+proof -
+  have combined:
+    "((3::nat)^left mod modulus) * (3^right mod modulus) mod modulus =
+      3^(left + right) mod modulus"
+    by (rule fermat_matrix_checkpoint_join)
+  have reassoc:
+    "((3^(2^level) mod modulus) * ((3::nat)^left mod modulus) *
+        (3^right mod modulus)) mod modulus =
+      ((3^(2^level) mod modulus) *
+        (((3::nat)^left mod modulus) * (3^right mod modulus) mod modulus))
+        mod modulus"
+    unfolding mult.assoc by (rule mod_mult_right_eq[symmetric])
+  show ?thesis
+    by (simp only: reassoc combined fermat_matrix_source_residue_from_root)
+qed
+
 lemma fermat_matrix_checkpoint_batch_projection:
   assumes "clock_modulus dvd modulus"
   shows "map (\<lambda>offset. fermat_matrix_source_residue level modulus offset
       mod clock_modulus) offsets =
     map (\<lambda>offset. 3^(2^level + offset) mod clock_modulus) offsets"
   using fermat_matrix_puncture_projection[OF assms, of level] by simp
+
+lemma fermat_radial_prefix_in_interval:
+  fixes lower source upper drop :: nat
+  assumes "lower \<le> source" "source \<le> upper"
+    "lower div 10^drop = upper div 10^drop"
+  shows "source div 10^drop = lower div 10^drop"
+proof -
+  have "lower div 10^drop \<le> source div 10^drop"
+    by (rule div_le_mono[OF assms(1)])
+  moreover have "source div 10^drop \<le> upper div 10^drop"
+    by (rule div_le_mono[OF assms(2)])
+  ultimately show ?thesis using assms(3) by simp
+qed
+
+lemma fermat_radial_prefix_drop_digit:
+  fixes source drop :: nat
+  shows "(source div 10^drop) div 10 = source div 10^(Suc drop)"
+  by (simp only: power_Suc2 div_mult2_eq)
 
 lemma fermat_signed_phase_projection:
   fixes source low high block sign :: int
@@ -764,7 +818,10 @@ ML \<open>
     fermat_source_matrix_join_admitted
     fermat_source_matrix_join_admitted_selected
     fermat_matrix_puncture_projection fermat_matrix_checkpoint_batch_exact
-    fermat_matrix_checkpoint_batch_projection fermat_signed_phase_projection
+    fermat_matrix_checkpoint_square fermat_matrix_checkpoint_join
+    fermat_matrix_checkpoint_source_join
+    fermat_matrix_checkpoint_batch_projection fermat_radial_prefix_in_interval
+    fermat_radial_prefix_drop_digit fermat_signed_phase_projection
     fermat_signed_phase_candidate_bounds fermat_signed_phase_one_adjustment
     fermat_signed_phase_canonical_congruence fermat_signed_phase_canonical_projection
     fermat_negacyclic_packed_residue fermat_negacyclic_packed_wrap

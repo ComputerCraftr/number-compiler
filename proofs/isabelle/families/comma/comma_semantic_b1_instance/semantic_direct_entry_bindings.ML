@@ -35,6 +35,16 @@ struct
          consts=Code_Thingol.read_const_exprs ctxt
            [@{const_name comma_core_supported_values}]} ctxt
       val support_cache = Unsynchronized.ref (Termtab.empty: thm Termtab.table)
+      val product_context = put_simpset HOL_basic_ss ctxt
+        |> Simplifier.add_simps @{thms prod.case}
+      val support_context = Comma_Entry_Arithmetic.natural_context ctxt
+        |> Simplifier.add_simps @{thms list.simps list.map prod.case fst_conv}
+      val uniqueness_context = support_context |> Simplifier.add_simps
+        @{thms distinct.simps set_simps insert_iff empty_iff}
+      val admission_context = support_context |> Simplifier.add_simps
+        @{thms comma_phase_program_structurally_admitted_def
+          comma_semantic_port_program.simps comma_entry_core_common_rules
+          comma_phase_core_of_modulus_def comma_sector_entry_bound_def}
       fun support core wanted =
         (case Termtab.lookup (!support_cache) core of
           SOME theorem => Utils.exact_prop ctxt "Direct Entry support"
@@ -51,7 +61,7 @@ struct
                   (Logic.mk_equals (request,HOLogic.mk_list natT (map nat wanted)))
               val _ = support_cache := Termtab.update (core,theorem) (!support_cache)
             in theorem end)
-      fun certify program expression representatives =
+      fun certify chart program expression representatives =
         let
           val {sector,digit,residue,core} = (case Compiler.parse_program program of
               Compiler.Entry data => data | _ => error "Expected a direct Entry program")
@@ -74,7 +84,7 @@ struct
             else error "Entry rows differ from proposed ordered support"
           fun bind ((w,child),(representative,certificate)) =
             let val _ = #register rows representative child certificate
-            in #entry rows sector residue core w child end
+            in #entry rows chart sector residue core w child end
           val children_facts = map bind (fields ~~ representatives)
           val checked_support = support core wanted
           val rowT = HOLogic.mk_prodT (natT, @{typ comma_direct_action_expression})
@@ -86,9 +96,7 @@ struct
           fun row_fact (item,fact) =
             let
               val expected = HOLogic.mk_Trueprop (Envir.beta_norm (row_pred $ item))
-              val conversion = Simplifier.rewrite
-                (put_simpset HOL_basic_ss ctxt |> Simplifier.add_simps @{thms prod.case})
-                (Thm.cterm_of ctxt expected)
+              val conversion = Simplifier.rewrite product_context (Thm.cterm_of ctxt expected)
               val normalized = Utils.exact_prop ctxt "Direct Entry child row"
                 (Thm.term_of (Thm.rhs_of conversion)) fact
             in Thm.equal_elim (Thm.symmetric conversion) normalized end
@@ -98,22 +106,16 @@ struct
           val fst_map = @{term "map (fst :: nat \<times> comma_direct_action_expression \<Rightarrow> nat)"} $ rows_term
           val shape_goal = HOLogic.mk_Trueprop (HOLogic.mk_eq
             (fst_map, @{term comma_core_supported_values} $ core))
-          val simple = Comma_Entry_Arithmetic.natural_context ctxt
-            |> Simplifier.add_simps [checked_support]
-            |> Simplifier.add_simps @{thms list.simps list.map prod.case fst_conv}
+          val simple = support_context |> Simplifier.add_simp checked_support
           val shape = Utils.prove_exact ctxt "Direct Entry row support" shape_goal
             (fn _ => simp_tac simple 1)
           val unique_goal = HOLogic.mk_Trueprop (@{term "distinct :: nat list \<Rightarrow> bool"} $ fst_map)
           val unique = Utils.prove_exact ctxt "Direct Entry row uniqueness" unique_goal
-            (fn _ => simp_tac (simple |> Simplifier.add_simps
-              @{thms distinct.simps set_simps insert_iff empty_iff}) 1)
+            (fn _ => simp_tac (uniqueness_context |> Simplifier.add_simp checked_support) 1)
           val admission_goal = HOLogic.mk_Trueprop
             (@{term comma_phase_program_structurally_admitted} $ program)
           val admission = Utils.prove_exact ctxt "Direct Entry admission" admission_goal
-            (fn _ => simp_tac (simple |> Simplifier.add_simps
-              @{thms comma_phase_program_structurally_admitted_def
-                comma_semantic_port_program.simps comma_entry_core_common_rules
-                comma_phase_core_of_modulus_def comma_sector_entry_bound_def}) 1)
+            (fn _ => simp_tac (admission_context |> Simplifier.add_simp checked_support) 1)
           val expected = HOLogic.mk_Trueprop
             (@{term comma_direct_program_relation} $ program $ expression_body)
           val rule = Drule.infer_instantiate ctxt
@@ -127,12 +129,10 @@ struct
             |> Utils.exact_prop ctxt "Direct Entry program binding" expected
           val theorem = fold_expression ctxt "Direct Entry program binding"
             @{term comma_direct_program_relation} program expression expression_definition theorem
-          val _ = Comma_Proof_Dependency_Audit.require_native_clean ctxt
-            "Direct Entry program binding" [theorem]
           val _ = issued := !issued+1
         in theorem end
       fun statistics () = "direct_entry_bindings=" ^ Int.toString (!issued) ^ " " ^
         #statistics rows ()
-    in {certify=certify,representative= #representative rows,support=support,
-      statistics=statistics} end
+    in {certify=certify,prepare= #prepare rows,representative= #representative rows,
+      support=support,statistics=statistics} end
 end

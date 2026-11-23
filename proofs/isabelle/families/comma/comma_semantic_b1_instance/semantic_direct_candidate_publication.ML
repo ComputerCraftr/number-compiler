@@ -4,7 +4,7 @@ struct
   structure Arena = Comma_CRT_MDD_Arena
   structure Store = Comma_CRT_MDD_Certificate_Store
   structure Data = Comma_Frontier_M204_Candidate_Data
-  fun publish prepare certify lthy =
+  fun prepare_candidate prepare lthy =
   let
     val arena = Arena.create Data.radices
     val _ = Comma_Proof_Profile.report "Direct Bellman candidate seed start"
@@ -45,6 +45,13 @@ struct
     val (_,lthy5) = Local_Theory.note
       ((Binding.name "comma_m204_direct_root_bounds_native",[]),
        map (Store.bound store o Store.action_index store) roots) lthy4
-  in certify {arena=arena,store=store,roots=roots,roots_term=roots_term,
-      roots_definition=roots_definition,D=D,D_definition=D_definition,prepared=prepared} lthy5 end
+  in ({arena=arena,store=store,roots=roots,roots_term=roots_term,
+      roots_definition=roots_definition,D=D,D_definition=D_definition,prepared=prepared},lthy5) end
+
+  fun publish prepare certify lthy =
+    let
+      val (input,prepared_context) = Comma_Proof_Profile.progress_scope
+        "Comma_Semantic_B1_Instance" "b1-stage" NONE NONE "source_store_preparation"
+        (fn _ => prepare_candidate prepare lthy)
+    in certify input prepared_context end
 end

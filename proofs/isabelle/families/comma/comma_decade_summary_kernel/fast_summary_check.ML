@@ -159,7 +159,7 @@ struct
       val _ = if Thm.nprems_of theorem = 0 andalso null (Thm.hyps_of theorem)
           andalso Thm.prop_of theorem aconv proposition then ()
         else error "Decade summary range is not an exact closed theorem"
-      val _ = if getenv "COMMA_PROFILE_LOG" = "" then () else
+      val _ = if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then () else
         Comma_Fast_Kernel.report
           ("Decade summary range lo=" ^ Int.toString lo ^
            " hi=" ^ Int.toString hi ^ " evaluation_ms=" ^

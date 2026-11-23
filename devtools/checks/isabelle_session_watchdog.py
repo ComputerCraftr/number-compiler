@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 import re
 
+from devtools.checks.isabelle_proof_progress import ProofProgressFile
+
 SESSION_STATUS = re.compile(
     r"^\s*(Running|Building|Finished|Failed|FAILED|Unfinished)\s+"
     r"([A-Za-z0-9_][A-Za-z0-9_.+-]*)(?:\s|\(|$)"
@@ -26,7 +28,11 @@ class IsabelleSessionWatchdog:
     """
 
     def __init__(
-        self, admitted_sessions: tuple[str, ...], limit_seconds: float
+        self,
+        admitted_sessions: tuple[str, ...],
+        limit_seconds: float,
+        *,
+        proof_progress: ProofProgressFile | None = None,
     ) -> None:
         if not math.isfinite(limit_seconds) or limit_seconds <= 0:
             raise ValueError("session limit must be positive and finite")
@@ -35,6 +41,7 @@ class IsabelleSessionWatchdog:
             for name in admitted_sessions
         ):
             raise ValueError("session inventory contains an invalid name")
+        self.proof_progress = proof_progress
         self.admitted_sessions = frozenset(admitted_sessions)
         self.limit_seconds = limit_seconds
         self._partial = bytearray()
@@ -53,6 +60,7 @@ class IsabelleSessionWatchdog:
             return
         if not math.isfinite(now):
             raise ValueError("watchdog time must be finite")
+        self._poll_progress(now)
         self._expire(now)
         if self.timed_out_session is not None:
             return
@@ -78,6 +86,7 @@ class IsabelleSessionWatchdog:
         """Return a stable timeout reason once an active session exhausts its budget."""
         if not math.isfinite(now):
             raise ValueError("watchdog time must be finite")
+        self._poll_progress(now)
         self._expire(now)
         if self.timed_out_session is None:
             return None
@@ -92,6 +101,7 @@ class IsabelleSessionWatchdog:
         """Consume a final unterminated line after the child closes its pipe."""
         if not math.isfinite(now):
             raise ValueError("watchdog time must be finite")
+        self._poll_progress(now, final=True)
         self._expire(now)
         if self.timed_out_session is not None:
             self._partial.clear()
@@ -119,6 +129,18 @@ class IsabelleSessionWatchdog:
             "partial_line_bytes": len(self._partial),
         }
 
+    def _poll_progress(self, now: float, *, final: bool = False) -> None:
+        if self.timed_out_session is not None:
+            # Keep the cutoff observation even if termination emits failures.
+            return
+        sessions = self._started if final else self._active
+        if self.proof_progress is not None and sessions:
+            self.proof_progress.poll(
+                frozenset(sessions),
+                now,
+                frozenset(self._finished | self._failed | self._cancelled),
+            )
+
     def _consume_line(self, line: str, now: float) -> None:
         terminal_match = SESSION_NAME_FIRST_TERMINAL.match(line)
         if terminal_match is not None:
@@ -136,12 +158,14 @@ class IsabelleSessionWatchdog:
             if name not in self._finished and name not in self._active:
                 started = self._started.setdefault(name, now)
                 self._active[name] = started
+                self._poll_progress(now)
                 self._expire(now)
             return
         if status not in {"Finished", "Failed", "FAILED", "CANCELLED"} or (
             name not in self._active
         ):
             return
+        self._poll_progress(now)
         started = self._active[name]
         elapsed = max(0.0, now - started)
         duration_match = SESSION_DURATION.search(line)

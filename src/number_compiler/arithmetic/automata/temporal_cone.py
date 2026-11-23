@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import closing, nullcontext
 from dataclasses import dataclass
+from itertools import islice
 from typing import Literal
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp_interval import fold_slp_interval
 from number_compiler.arithmetic.automata.slp_walks import iter_symbols, symbol_at
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.owned_memo import LedgerReservation
 
 _MAX_CELLS = 4096
@@ -119,6 +122,14 @@ class TemporalSquareScratchReservation:
         self._live_entries = next_entries
         self._live_nodes = next_nodes
 
+    def try_acquire(self, entries: int, nodes: int) -> bool:
+        """Reserve before optional construction, or leave the workspace intact."""
+        try:
+            self.acquire(entries, nodes)
+        except TemporalSquareScratchCapacityRefused:
+            return False
+        return True
+
     def release(self, entries: int = 1, nodes: int = 1) -> None:
         if (
             entries < 0
@@ -201,6 +212,8 @@ class CarrySpacetimePower:
         "_four_cell_action",
         "_slp_tiles",
         "_slp_tile_entries",
+        "_slp_published",
+        "_slp_published_entries",
     )
 
     def __init__(
@@ -233,6 +246,8 @@ class CarrySpacetimePower:
         self._source_traversal_tasks = 0
         self._slp_tiles: dict[tuple[LedgerSLPArena, int, int], int] = {}
         self._slp_tile_entries = 0
+        self._slp_published: dict[tuple[LedgerSLPArena, int, int], int] = {}
+        self._slp_published_entries = 0
 
     @property
     def stats(self) -> TemporalSquareStats:
@@ -251,13 +266,25 @@ class CarrySpacetimePower:
         self._intern.clear()
         self._tiles.clear()
         self._slp_tiles.clear()
+        self._slp_published.clear()
         self._scratch.release(
-            self._retained_graph_entries + self._slp_tile_entries,
-            self._retained_graph_nodes + self._slp_tile_entries,
+            self._retained_graph_entries
+            + self._slp_tile_entries
+            + self._slp_published_entries,
+            self._retained_graph_nodes
+            + self._slp_tile_entries
+            + self._slp_published_entries,
         )
         self._slp_tile_entries = 0
+        self._slp_published_entries = 0
         self._retained_graph_entries = 0
         self._retained_graph_nodes = 0
+
+    def _discard_published(self) -> None:
+        retained = self._slp_published_entries
+        self._slp_published.clear()
+        self._slp_published_entries = 0
+        self._scratch.release(retained, retained)
 
     def pair(self, left: int, right: int) -> int:
         """Intern one ordered, equal-level pair by exact child identities."""
@@ -525,13 +552,7 @@ class CarrySpacetimePower:
                 current = zero
                 if start < len(source):
                     row = list(source[start : start + span])
-                    row.extend([0] * (span - len(row)))
-                    count = span
-                    while count > 1:
-                        count //= 2
-                        for j in range(count):
-                            row[j] = self.pair(row[2 * j], row[2 * j + 1])
-                    current = row[0]
+                    current = self._padded_cell_tile(row, span)
                 pending.append(self.middle(self.pair(previous, current)))
                 while pending and len(result) < endpoint_cells:
                     node = self._tiles[pending.pop()]
@@ -547,6 +568,16 @@ class CarrySpacetimePower:
             pending.clear()
             row.clear()
             self._scratch.release(workspace, workspace)
+
+    def _padded_cell_tile(self, row: list[int], span: int) -> int:
+        """Consume one bounded inlet and its right zero padding."""
+        row.extend([0] * (span - len(row)))
+        count = span
+        while count > 1:
+            count //= 2
+            for index in range(count):
+                row[index] = self.pair(row[2 * index], row[2 * index + 1])
+        return row[0]
 
     def _tile_from_cell_slp(self, arena: LedgerSLPArena, root: int) -> int:
         """Compile one power-of-two cell SLP by exact semantic subtree IDs.
@@ -581,28 +612,39 @@ class CarrySpacetimePower:
                     self._source_traversal_tasks += 1
                 elif not ready:
                     half = n // 2
-                    left = fold_slp_interval(
-                        arena,
-                        node,
-                        0,
-                        half,
-                        identity=arena.empty_id,
-                        length=lambda index: arena.nodes[index].length,
-                        full_value=lambda index, _rev: index,
-                        compose=arena.concat,
-                        repeat=arena.repeat,
-                    )
-                    right = fold_slp_interval(
-                        arena,
-                        node,
-                        half,
-                        n,
-                        identity=arena.empty_id,
-                        length=lambda index: arena.nodes[index].length,
-                        full_value=lambda index, _rev: index,
-                        compose=arena.concat,
-                        repeat=arena.repeat,
-                    )
+                    slp_node = arena.nodes[node]
+                    if (
+                        slp_node.kind == "CONCAT"
+                        and arena.nodes[slp_node.left].length == half
+                        and arena.nodes[slp_node.right].length == half
+                    ):
+                        left, right = slp_node.left, slp_node.right
+                    elif slp_node.kind == "REPEAT" and slp_node.count % 2 == 0:
+                        left = arena.repeat(slp_node.child, slp_node.count // 2)
+                        right = left
+                    else:
+                        left = fold_slp_interval(
+                            arena,
+                            node,
+                            0,
+                            half,
+                            identity=arena.empty_id,
+                            length=lambda index: arena.nodes[index].length,
+                            full_value=lambda index, _rev: index,
+                            compose=arena.concat,
+                            repeat=arena.repeat,
+                        )
+                        right = fold_slp_interval(
+                            arena,
+                            node,
+                            half,
+                            n,
+                            identity=arena.empty_id,
+                            length=lambda index: arena.nodes[index].length,
+                            full_value=lambda index, _rev: index,
+                            compose=arena.concat,
+                            repeat=arena.repeat,
+                        )
                     tasks.append((node, left, right, True))
                     if key(right) not in memo:
                         tasks.append((right, 0, 0, False))
@@ -646,8 +688,81 @@ class CarrySpacetimePower:
             raise ValueError("padded H source SLP must contain cells")
         blocks = (cells + span - 1) // span
         endpoint_cells = cells + span
+        checkpoint = len(arena.nodes)
+        node = arena.nodes[source_root]
+        if node.kind == "REPEAT":
+            unit_width = arena.nodes[node.child].length
+            unit_blocks = unit_width // span
+            held = 6 * unit_blocks + span.bit_length() + 32
+            if (
+                0 < unit_blocks <= 256
+                and unit_width % span == 0
+                and self._scratch.try_acquire(held, held)
+            ):
+                try:
+                    zero = 0
+                    for _ in range(span.bit_length() - 1):
+                        zero = self.pair(zero, zero)
+                    unit_tiles: list[int] = []
+                    for start in range(0, unit_width, span):
+                        if unit_width == span:
+                            section = node.child
+                        else:
+                            section = fold_slp_interval(
+                                arena,
+                                node.child,
+                                start,
+                                start + span,
+                                identity=arena.empty_id,
+                                length=lambda index: arena.nodes[index].length,
+                                full_value=lambda index, _reverse: index,
+                                compose=arena.concat,
+                                repeat=arena.repeat,
+                            )
+                        unit_tiles.append(self._tile_from_cell_slp(arena, section))
+
+                    def transition(left: int, right: int) -> int:
+                        return self.publish(arena, self.middle(self.pair(left, right)))
+
+                    first = transition(zero, unit_tiles[0])
+                    interior = [
+                        transition(unit_tiles[index - 1], unit_tiles[index])
+                        for index in range(1, unit_blocks)
+                    ]
+                    seam = transition(unit_tiles[-1], unit_tiles[0])
+                    tail = transition(unit_tiles[-1], zero)
+                    repeated = arena.repeat(
+                        arena.concat_many((seam, *interior)), node.count - 1
+                    )
+                    output = arena.concat_many((first, *interior, repeated, tail))
+                    if arena.nodes[output].length != endpoint_cells:
+                        raise AssertionError("repeated H tile produced a wrong extent")
+                    return output
+                except BaseException as error:
+                    try:
+                        cleanup_all(
+                            (
+                                lambda: arena.rollback_unpublished_suffix(checkpoint),
+                                self._discard_published,
+                            )
+                        )
+                    except BaseException as cleanup_error:
+                        raise error from cleanup_error
+                    raise
+                finally:
+                    self._scratch.release(held, held)
         reserve = 2 * (blocks + 1) + span.bit_length() + 16
-        self._scratch.acquire(reserve, reserve)
+        stream_reserve = reserve + 3 * span
+        stream_inlet = (
+            node.kind != "REPEAT"
+            and cells < _MAX_CELLS
+            and cells % span != 0
+            and self._scratch.try_acquire(stream_reserve, stream_reserve)
+        )
+        if stream_inlet:
+            reserve = stream_reserve
+        else:
+            self._scratch.acquire(reserve, reserve)
         pieces: list[int] = []
 
         def interval(begin: int, end: int) -> int:
@@ -664,47 +779,94 @@ class CarrySpacetimePower:
             )
 
         try:
-            zero = 0
-            for _ in range(span.bit_length() - 1):
-                zero = self.pair(zero, zero)
-            previous = zero
-            for start in range(0, (blocks + 1) * span, span):
-                current = zero
-                if start < cells:
-                    section = interval(start, min(cells, start + span))
-                    missing = span - arena.nodes[section].length
-                    if missing:
-                        section = arena.concat(
-                            section, arena.repeat(arena.terminal(0), missing)
-                        )
-                    current = self._tile_from_cell_slp(arena, section)
-                tile = self.middle(self.pair(previous, current))
-                pieces.append(self.publish(arena, tile))
-                previous = current
-            output = arena.concat_many(pieces)
-            # A final non-full block was right-padded. Exclude just that
-            # excess via a structural SLP interval, not a full-cell replay.
-            return fold_slp_interval(
-                arena,
-                output,
-                0,
-                endpoint_cells,
-                identity=arena.empty_id,
-                length=lambda node: arena.nodes[node].length,
-                full_value=lambda node, _reverse: node,
-                compose=arena.concat,
-                repeat=arena.repeat,
+            symbols = (
+                iter_symbols(
+                    arena,
+                    source_root,
+                    on_task=self._count_cell_source_task,
+                    reserve_task=self._scratch.acquire,
+                    release_tasks=lambda count: self._scratch.release(count, count),
+                )
+                if stream_inlet
+                else None
             )
+            with closing(symbols) if symbols is not None else nullcontext():
+                zero = 0
+                for _ in range(span.bit_length() - 1):
+                    zero = self.pair(zero, zero)
+                previous = zero
+                for start in range(0, (blocks + 1) * span, span):
+                    current = zero
+                    if start < cells:
+                        if symbols is not None:
+                            width = min(cells - start, span)
+                            row = list(islice(symbols, width))
+                            if len(row) != width or any(
+                                type(cell) is not int or not 0 <= cell < 100
+                                for cell in row
+                            ):
+                                raise ValueError(
+                                    "padded H source contains an invalid inlet"
+                                )
+                            current = self._padded_cell_tile(row, span)
+                        else:
+                            section = interval(start, min(cells, start + span))
+                            missing = span - arena.nodes[section].length
+                            if missing:
+                                section = arena.concat(
+                                    section, arena.repeat(arena.terminal(0), missing)
+                                )
+                            current = self._tile_from_cell_slp(arena, section)
+                    tile = self.middle(self.pair(previous, current))
+                    pieces.append(self.publish(arena, tile))
+                    previous = current
+                if symbols is not None and next(symbols, None) is not None:
+                    raise ValueError("padded H source exceeds its admitted extent")
+                output = arena.concat_many(pieces)
+                # A final non-full block was right-padded. Exclude just that
+                # excess via a structural SLP interval, not a full-cell replay.
+                return fold_slp_interval(
+                    arena,
+                    output,
+                    0,
+                    endpoint_cells,
+                    identity=arena.empty_id,
+                    length=lambda node: arena.nodes[node].length,
+                    full_value=lambda node, _reverse: node,
+                    compose=arena.concat,
+                    repeat=arena.repeat,
+                )
+        except BaseException as error:
+            try:
+                cleanup_all(
+                    (
+                        lambda: arena.rollback_unpublished_suffix(checkpoint),
+                        self._discard_published,
+                    )
+                )
+            except BaseException as cleanup_error:
+                raise error from cleanup_error
+            raise
         finally:
             pieces.clear()
             self._scratch.release(reserve, reserve)
 
+    def _count_cell_source_task(self, _is_node: bool) -> None:
+        self._source_traversal_tasks += 1
+
     def publish(self, arena: LedgerSLPArena, root: int) -> int:
         """Publish the computed center into the same SLP arena transactionally."""
         checkpoint = len(arena.nodes)
-        outputs: dict[int, int] = {}
+        generation = arena.node_id_generation
+        outputs = self._slp_published
+
+        def key(tile: int) -> tuple[LedgerSLPArena, int, int]:
+            return arena, generation, tile
+
+        known = outputs.get(key(root))
+        if known is not None:
+            return known
         tasks: list[tuple[int, bool]] = []
-        retained_outputs = 0
         retained_tasks = 0
 
         def push_task(tile: int, done: bool) -> None:
@@ -718,14 +880,13 @@ class CarrySpacetimePower:
             retained_tasks += 1
 
         def remember(tile: int, slp_root: int) -> None:
-            nonlocal retained_outputs
             self._scratch.acquire()
             try:
-                outputs[tile] = slp_root
+                outputs[key(tile)] = slp_root
             except BaseException as error:
                 self._scratch.release()
                 raise error
-            retained_outputs += 1
+            self._slp_published_entries += 1
 
         try:
             push_task(root, False)
@@ -733,25 +894,31 @@ class CarrySpacetimePower:
                 tile, done = tasks.pop()
                 retained_tasks -= 1
                 self._scratch.release()
-                if tile in outputs:
+                if key(tile) in outputs:
                     continue
                 node = self._tiles[tile]
                 if node.level == 0:
                     remember(tile, arena.terminal(node.left))
                 elif done:
                     remember(
-                        tile, arena.concat(outputs[node.left], outputs[node.right])
+                        tile,
+                        arena.concat(outputs[key(node.left)], outputs[key(node.right)]),
                     )
                 else:
                     push_task(tile, True)
-                    if node.right not in outputs:
+                    if key(node.right) not in outputs:
                         push_task(node.right, False)
-                    if node.left not in outputs:
+                    if key(node.left) not in outputs:
                         push_task(node.left, False)
-            return outputs[root]
+            return outputs[key(root)]
         except BaseException as error:
             try:
-                arena.rollback_unpublished_suffix(checkpoint)
+                cleanup_all(
+                    (
+                        lambda: arena.rollback_unpublished_suffix(checkpoint),
+                        self._discard_published,
+                    )
+                )
             except BaseException as cleanup_error:
                 raise error from cleanup_error
             if isinstance(error, TemporalSquareScratchCapacityRefused):
@@ -760,5 +927,4 @@ class CarrySpacetimePower:
                 ) from error
             raise
         finally:
-            release_charged_container(self._scratch, outputs.clear, retained_outputs)
             release_charged_container(self._scratch, tasks.clear, retained_tasks)

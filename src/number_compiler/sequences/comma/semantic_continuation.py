@@ -19,7 +19,6 @@ from number_compiler.sequences.comma.arithmetic import (
     NearPortReturn,
     NearResidualPort,
     classify_near_occurrence,
-    classify_near_port,
     cycle_residue_period,
     cycle_transfer,
     entry_headroom_from_validated_transfer,
@@ -509,54 +508,31 @@ def _source_cycle(source: SourceState) -> tuple[CycleTransfer | None, int]:
 
 def _selected_target(
     source: SourceState,
-    phase: int,
-    transfer: CycleTransfer | None,
-    near_occurrence: NearPortOccurrence | None = None,
-) -> tuple[BoundaryChart, NearPortReturn, int, int]:
-    if source.kind == "entry":
-        if transfer is None:
-            raise ArithmeticError("comma Entry action is missing its source transfer")
-        headroom = entry_headroom_from_validated_transfer(
-            source.leading, source.coordinate, phase, transfer
-        )
-        entry_period = transfer.period
-        entry_displacement = transfer.displacement
-        near_return = classify_near_port(source.leading, headroom)
-    else:
-        if transfer is not None:
-            raise ArithmeticError("comma Near action received an Entry transfer")
-        headroom = source.coordinate
-        entry_period = 1
-        entry_displacement = 0
-        if near_occurrence is None:
-            near_return = classify_near_port(source.leading, headroom)
-        else:
-            if (
-                near_occurrence.port.leading != source.leading
-                or near_occurrence.headroom != headroom
-            ):
-                raise ValueError("Near occurrence does not bind to its source chart")
-            near_return = classify_near_occurrence(
-                near_occurrence, charge_work=None, charge_bits=None
-            )
+    near_occurrence: NearPortOccurrence,
+) -> tuple[BoundaryChart, NearPortReturn]:
+    if source.kind != "near":
+        raise ArithmeticError("Near operator evaluation requires a bound Near port")
+    if (
+        source.delta != 0
+        or near_occurrence.port.leading != source.leading
+        or near_occurrence.headroom != source.coordinate
+    ):
+        raise ValueError("Near occurrence does not bind to its source chart")
+    near_return = classify_near_occurrence(
+        near_occurrence, charge_work=None, charge_bits=None
+    )
     return (
         BoundaryChart("near", source.leading, 0, near_return.terminal_headroom),
         near_return,
-        entry_period,
-        entry_displacement,
     )
 
 
 def _raw_action(
     source: SourceState,
-    phase: int,
-    transfer: CycleTransfer | None,
-    near_occurrence: NearPortOccurrence | None = None,
+    near_occurrence: NearPortOccurrence,
 ) -> _RawAction:
-    target, near_return, entry_period, entry_displacement = _selected_target(
-        source, phase, transfer, near_occurrence
-    )
-    move: ChartMove = chart_step(phase, target)
+    target, near_return = _selected_target(source, near_occurrence)
+    move: ChartMove = chart_step(0, target)
     live_coordinate = (
         move.next_chart.coordinate
         if move.next_chart is not None
@@ -567,8 +543,8 @@ def _raw_action(
     if live_coordinate is not None and not decade_root_coordinate(1, live_coordinate):
         raise ArithmeticError("comma live crossing left the canonical root domain")
     occurrence = OccurrenceWeight(
-        entry_period,
-        entry_displacement,
+        1,
+        0,
         near_return.physical_steps,
         move.literal_increment,
         int(live_coordinate is not None),
@@ -744,12 +720,19 @@ class SemanticContinuationArena:
         occurrence: NearPortOccurrence,
         added_keys: list[NearResidualPort],
     ) -> _RawAction:
+        if (
+            source.kind != "near"
+            or source.delta != 0
+            or source.leading != occurrence.port.leading
+            or source.coordinate != occurrence.headroom
+        ):
+            raise ValueError("Near occurrence does not bind to its source chart")
         # A Near chart action ignores the external clock; its row has period 1.
         key = occurrence.port
         cached = self._near_operators.get(key)
         if cached is not None:
             return self._bind_near_occurrence(cached, occurrence)
-        action = _raw_action(source, 0, None, occurrence)
+        action = _raw_action(source, occurrence)
         repeated_steps = occurrence.cycle_quotient * occurrence.cycle_length
         residual_steps = action.occurrence.near_physical_steps - repeated_steps
         if not 0 <= residual_steps < occurrence.cycle_length:
@@ -766,6 +749,33 @@ class SemanticContinuationArena:
             operator,
         )
         return action
+
+    def _entry_action(
+        self,
+        source: SourceState,
+        phase: int,
+        transfer: CycleTransfer,
+        added_keys: list[NearResidualPort],
+    ) -> _RawAction:
+        """Bind an exact Entry prefix to its shared phase-free Near action."""
+        if source.kind != "entry" or source.delta != 0:
+            raise ValueError("Entry-to-Near binding requires a normalized Entry")
+        headroom = entry_headroom_from_validated_transfer(
+            source.leading, source.coordinate, phase, transfer
+        )
+        occurrence = near_port_occurrence(source.leading, headroom)
+        near_source = BoundaryChart("near", source.leading, 0, headroom)
+        shared = self._near_action(near_source, occurrence, added_keys)
+        # The exact entry clock remains occurrence data. The Near control,
+        # ordered child and physical near prefix are reused without alteration.
+        return replace(
+            shared,
+            occurrence=replace(
+                shared.occurrence,
+                entry_period=transfer.period,
+                entry_displacement=transfer.displacement,
+            ),
+        )
 
     def _intern_new_sources(self, discovered: tuple[SourceState, ...]) -> None:
         ordered = sorted(
@@ -893,7 +903,13 @@ class SemanticContinuationArena:
                     self.ledger.bump(_comma_keys.COMMA_SEMANTIC_ACTION_REQUESTS)
                     try:
                         if near_occurrence is None:
-                            actions.append(_raw_action(source, phase, transfer))
+                            if transfer is None:
+                                raise ArithmeticError("Entry transfer was not bound")
+                            actions.append(
+                                self._entry_action(
+                                    source, phase, transfer, added_near_operators
+                                )
+                            )
                         else:
                             action = self._near_action(
                                 source, near_occurrence, added_near_operators

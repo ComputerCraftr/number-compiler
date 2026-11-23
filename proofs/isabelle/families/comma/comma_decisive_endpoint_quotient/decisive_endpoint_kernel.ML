@@ -8,7 +8,7 @@ struct
       val natT = @{typ nat}
       val intT = @{typ int}
       fun nat n = HOLogic.mk_number natT n
-      val profiling = getenv "COMMA_PROFILE_LOG" <> ""
+      val profiling = getenv "ISABELLE_PROOF_PROFILE_LOG" <> ""
       fun closed term =
         null (Term.add_frees term []) andalso null (Term.add_vars term []) andalso
           not (Term.is_open term)

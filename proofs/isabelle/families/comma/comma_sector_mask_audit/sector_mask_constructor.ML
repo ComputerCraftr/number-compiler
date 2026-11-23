@@ -71,7 +71,7 @@ struct
       val admission_elapsed = Unsynchronized.ref Time.zeroTime
       val merge_elapsed = Unsynchronized.ref Time.zeroTime
       val transport_elapsed = Unsynchronized.ref Time.zeroTime
-      val progress_enabled = getenv "COMMA_PROFILE_LOG" <> ""
+      val progress_enabled = getenv "ISABELLE_PROOF_PROFILE_LOG" <> ""
       val progress_started = Time.now ()
       fun progress stage (f,x) = if progress_enabled then
         Comma_Fast_Kernel.report ("sector_stage=" ^ stage ^

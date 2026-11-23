@@ -16,6 +16,7 @@ constructed here.\<close>
 
 ML_file "semantic_future_m204_candidate_data.ML"
 ML_file "semantic_future_m204_graph_data.ML"
+ML_file "semantic_future_m204_graph_reachability.ML"
 ML_file "semantic_future_m204_class_rank.ML"
 ML_file "semantic_future_zip_producer.ML"
 ML_file "semantic_future_zip_certificates.ML"

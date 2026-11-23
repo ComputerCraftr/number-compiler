@@ -56,8 +56,7 @@ context; listing order is not evidence of execution order.
 
 Record period: 2026-09-20.
 
-- **Objective:** inspect the supplied `referenced-chatgpt-conversation-this-is-an`
-  folder for a complete safe/fail decision and an Antihydra non-halting proof.
+- **Objective:** review the supplied Mahler safety research for a complete safe/fail decision and an Antihydra non-halting proof.
 - **Changes:** integrated three theories in `Mahler_Safety_Cylinders`, inheriting
   the existing Antihydra source orbit. Removed the external package's duplicate
   recurrence and parity proof; retained its exact 64 interval certificates.
@@ -175,8 +174,7 @@ Authored-source fingerprint:
 `18d66988222d91c9b0c12cc06b1d44318a36e6950dc9d0ebdf1554f987f5deb9`.
 Evidence and file/input hashes are local under
 `results/current/mahler-future-grammar-2026-09-20/`; `validation_scope.json`
-records exact scope. The supplied review is the local attachment
-`cdca45fa-051b-40d2-9159-77428c35c3fa/Pasted text.txt`.
+records exact scope. The supplied grammar review is not tracked here.
 
 | Evidence | Scope | Limit | Result |
 | --- | --- | --- | --- |

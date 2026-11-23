@@ -69,14 +69,12 @@ later run.
 | `docs/archive/repository-and-algebra/TECH_DEBT_CLEANUP_RESULTS.md` | `3a14d4339f902712b7ea81217c2da208f4012285ea132658a7e99a02ba1d352b` | No source fingerprint; implementation cleanup inventory, no complete gate outcome | Not recorded | Self-report only | [development](development.md) and [shared synthesis](research/shared.md) |
 | `docs/archive/repository-and-algebra/TEST_RESULTS.md` | `4d3076fa812f747bb19a91da97ad99ba321237dc61bca304e68b9388a602130d` | Source `994fa53f9182`: 4,348 passed / 10 failed in 380.09 s. Source `64244f87626f`: 4,324 passed / 10 failed in 386.08 s. An earlier unidentified tree reported 1,901 passed in 519.85 s. | Serial, unfiltered suite was stated for `64244f87626f`; exact command, memory limit, and tool versions not recorded | No independent reviewer identified; targeted checks were author-run | this table and retained topic reports |
 
-For the removed ISO-week result prose, the path map below preserves scope and
-destination.  Raw JSON/log evidence remains at the old result directory when
-it existed.  Those files are authoritative for their own source fingerprint,
-return code, elapsed time, memory limit, peak sample, and output.  Some ignored
-Markdown summaries had no recoverable baseline copy after consolidation; this
-is recorded as a provenance limitation rather than silently inventing their
-commands or review conclusions.  The repository-hygiene baseline is retained
-at `results/current/repository-hygiene-2026-09-20/`.
+The path map below records where historical summaries moved. Use the tracked
+sprint and research links for evidence available in a checkout. Paths under
+`results/` are historical artifact identifiers, not links to committed logs.
+Any retained local or CI logs describe only the run and source revision they
+record. For the 2026-09-20 hygiene baseline, see the tracked
+[disposition record](sprints/history/hygiene-disposition-2026-09-20.md).
 
 ## Superseded authored paths
 

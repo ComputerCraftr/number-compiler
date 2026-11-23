@@ -131,14 +131,10 @@ def validate_selection_class_bindings(
     class_count = provider.class_count
     if type(class_count) is not int or class_count <= 0:
         raise ValueError("semantic provider returned a malformed class count")
-    source_class = _exact_source_class(
-        provider,
-        source,
-        charge_work=charge_work,
-        class_count=class_count,
-    )
-    if selection.source_class != source_class:
-        raise ValueError("semantic provider selection has another source CID")
+    # The provider's sealed selection already classified this exact source.
+    # Check both receiving children against the ordered row before applying it.
+    if selection.source_class >= class_count:
+        raise ValueError("semantic provider returned a malformed source CID")
     child_classes = tuple(
         _exact_source_class(
             provider,

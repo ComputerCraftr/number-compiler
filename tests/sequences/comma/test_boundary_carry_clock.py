@@ -9,6 +9,7 @@ from number_compiler.sequences.comma.boundary_carry_clock import (
     GuardedC1ChartPower,
     SymbolicEntryCarryClock,
     powered_chart_carry,
+    powered_chart_values,
     symbolic_entry_carry_clock,
 )
 from number_compiler.sequences.comma.boundary_chart import (
@@ -17,6 +18,7 @@ from number_compiler.sequences.comma.boundary_chart import (
     ChartWeight,
     chart_step,
 )
+from number_compiler.sequences.comma.carry_generator import C1Return
 
 
 def _duration_at_exponent(weight: ChartWeight, exponent: int) -> int:
@@ -54,6 +56,43 @@ def test_powered_chart_rejects_first_terminal_fork_or_landmine(
 
     with pytest.raises(ValueError):
         powered_chart_carry(5, chart, 5, 1)
+    with pytest.raises(ValueError):
+        powered_chart_values(5, chart, 5, 1)
+
+
+@pytest.mark.parametrize(
+    ("chart", "steps"),
+    [
+        (BoundaryChart("entry", 2, 0, 0), 0),
+        (BoundaryChart("near", 2, 0, 500), 1),
+        (BoundaryChart("near", 9, 0, 500), 1),
+    ],
+)
+def test_value_only_chart_uses_same_admitted_action(
+    chart: BoundaryChart, steps: int
+) -> None:
+    expected = powered_chart_carry(5, chart, 5, steps)
+    displacement, count, headroom = powered_chart_values(5, chart, 5, steps)
+    assert (displacement, count, headroom) == (
+        expected.displacement,
+        expected.carry_count,
+        expected.headroom_weight,
+    )
+
+
+def test_value_only_chart_does_not_issue_power_or_return(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def reject_issue(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("value-only chart issued a guarded power")
+
+    monkeypatch.setattr(GuardedC1ChartPower, "_issue", reject_issue)
+    monkeypatch.setattr(C1Return, "__init__", reject_issue)
+    displacement, count, _headroom = powered_chart_values(
+        5, BoundaryChart("near", 2, 0, 500), 5, 1
+    )
+    assert displacement >= 0
+    assert count >= 0
 
 
 def test_symbolic_entry_clock_keeps_large_width_symbolic(

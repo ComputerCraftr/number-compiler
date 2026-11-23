@@ -36,6 +36,7 @@ from devtools.verification.comma_semantic_future_candidate import (
 from number_compiler.sequences.comma import future_provider
 from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
+    construct_completed_return,
     construct_macro,
 )
 from number_compiler.sequences.comma.future_provider_codec import SOURCE_COUNT
@@ -98,6 +99,21 @@ def test_candidate_rank_check_has_unique_unranked_child_and_rejects_forged_row()
 
     with pytest.raises(ValueError):
         class_rank_candidate((("fork", 2),), ((None, None),))
+
+
+def test_future_terminal_keeps_width_beyond_b1_code_range() -> None:
+    result = construct_completed_return(BoundaryState("Z", 3, 41))
+
+    assert result.outcome == "fork"
+    assert result.destination_a == 5
+    assert result.exponent_delta == 27
+    assert result.endpoint.evaluate(41) == 5 * 10**68 - 55
+    assert result.ordered_children == (
+        BoundaryState("N", 5, 68),
+        BoundaryState("Z", 5, 68),
+    )
+    # B1's bounded terminal encoding is not the Future event authority.
+    assert 9 * result.exponent_delta + result.destination_a - 2 == 246
 
 
 @pytest.mark.parametrize("payload", [b"\x80", b"\x80\x00", b"\xff\x7f", b"\x00\x00"])

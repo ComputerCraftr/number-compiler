@@ -534,9 +534,8 @@ obligations; no additional independent carry-in coordinate is being requested.
 The focused arithmetic/fragment selection passed **27 tests** in 0.28 seconds
 under the 35-second/1-GiB guard (0.87 seconds including startup;
 41,681,472 bytes sampled peak). Strict mypy passed for the five added files.
-Raw local evidence: `/tmp/f5-class190-integration-2.log` and
-`/tmp/f5-class190-integration-2.json`. These historical measurements do not
-certify later source changes.
+This was a historical run; its raw output is not tracked here. The command
+below reproduces the test selection, not the exact guard or timings.
 
 ```console
 python -m pytest -q -o addopts='' tests/arithmetic/fields/test_f5_innovation.py tests/sequences/reverse_add/test_powered_cocycle_regions.py tests/arithmetic/polynomials/test_f5_transport.py tests/arithmetic/polynomials/test_centered_f5.py

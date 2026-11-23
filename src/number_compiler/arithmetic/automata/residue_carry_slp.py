@@ -23,19 +23,15 @@ from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import (
     arithmetic_automata as _automata_keys,
 )
+from number_compiler.resources.payload_cost import aggregate_integer_limb_units
 from number_compiler.resources.stores import LedgerList
 
 PAIR_RESIDUE_MODULUS = 32
 MAX_DECIMAL_PAIR_RESIDUE = 18
 
 
-def _integer_limb_units(*values: int) -> int:
-    bits = sum(max(1, abs(value).bit_length()) for value in values)
-    return max(1, (bits + 63) // 64)
-
-
 def _slp_node_units(node: SLPNode) -> int:
-    return _integer_limb_units(
+    return aggregate_integer_limb_units(
         node.id,
         node.length,
         node.symbol,

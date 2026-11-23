@@ -12,9 +12,9 @@ local
   val class_roots = replicate 16 (Arena.action_none classes)
   val join = Join.build source source_roots weight weight_roots classes class_roots
   val comparison = Graph.build join [(2,[0,0])]
-  val _ = if length (#roots comparison)=48 andalso
+  val _ = if length (#roots comparison)=16 andalso length (#class_bounds comparison)=16 andalso
       List.all (fn root => Arena.action_support (#arena join) root = [1])
-        (#roots comparison)
+        (#roots comparison @ #class_bounds comparison)
     then () else error "Future M204 tiny graph did not agree"
   val _ = if null (#shifts join) then ()
     else error "Future M204 tiny graph performed an unneeded shift"

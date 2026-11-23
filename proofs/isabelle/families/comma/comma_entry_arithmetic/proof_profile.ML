@@ -1,14 +1,14 @@
 (* Optional source-level checkpoints for proof-session profiling. *)
 structure Comma_Proof_Profile =
 struct
-  fun enabled () = getenv "COMMA_PROFILE_LOG" <> ""
+  fun enabled () = getenv "ISABELLE_PROOF_PROFILE_LOG" <> ""
 
   fun report line =
-    let val destination = getenv "COMMA_PROFILE_LOG" in
+    let val destination = getenv "ISABELLE_PROOF_PROFILE_LOG" in
       if destination = "" then ()
       else
         let
-          val stamped = line ^ " wall_ms=" ^
+          val stamped = line ^ " family=comma wall_ms=" ^
             LargeInt.toString (Time.toMilliseconds (Time.now ()))
           val _ = Output.physical_stderr (stamped ^ "\n")
         in
@@ -16,6 +16,50 @@ struct
           else File.append (Path.explode destination) (stamped ^ "\n")
         end
     end
+
+  (* Coarse records are a diagnostic sidecar only.  The lock serializes both
+     sequence allocation and each complete append within one session process. *)
+  val progress_serial = Synchronized.var "isabelle_proof_progress" 0
+  fun progress_safe text = text <> "" andalso size text <= 256 andalso
+    forall (fn c => Char.isAlphaNum c andalso Char.ord c < 128 orelse
+      member (op =) [#"_", #"-", #"."] c) (String.explode text)
+  fun progress_mode () = getenv "NUMBER_COMPILER_PROOF_PROGRESS"
+  fun progress_enabled () =
+    (progress_mode () = "coarse" orelse progress_mode () = "detailed") andalso
+    progress_safe (getenv "NUMBER_COMPILER_PROOF_PROGRESS_RUN") andalso
+    getenv "NUMBER_COMPILER_PROOF_PROGRESS_PATH" <> ""
+  fun progress_event session lane invocation parent stage root event =
+    if not (progress_enabled ()) orelse not (forall progress_safe
+      ([session,lane,invocation,stage,event] @ the_list parent)) then ()
+    else
+      let
+        val run = getenv "NUMBER_COMPILER_PROOF_PROGRESS_RUN"
+        fun quoted text = "\"" ^ text ^ "\""
+        val outcome = Exn.capture (fn () => Synchronized.change progress_serial (fn sequence =>
+          let
+            val destination = Path.explode (getenv "NUMBER_COMPILER_PROOF_PROGRESS_PATH")
+            val fields = ["\"run\":" ^ quoted run,
+              "\"session\":" ^ quoted session, "\"lane\":" ^ quoted lane,
+              "\"invocation\":" ^ quoted invocation,
+              "\"parent\":" ^ (case parent of NONE => "null" | SOME value => quoted value),
+              "\"stage\":" ^ quoted stage,
+              "\"root\":" ^ (case root of NONE => "null" | SOME value => Int.toString value),
+              "\"event\":" ^ quoted event, "\"sequence\":" ^ Int.toString sequence]
+            val _ = File.append destination ("{" ^ commas fields ^ "}\n")
+          in sequence + 1 end)) ()
+      in if Exn.is_interrupt_exn outcome then Exn.release outcome else () end
+
+  fun progress_scope session lane root parent stage work =
+    if not (progress_enabled ()) then work NONE
+    else
+      let
+        val invocation = Synchronized.change_result progress_serial
+          (fn sequence => ("i" ^ Int.toString sequence,sequence+1))
+        val _ = progress_event session lane invocation parent stage root "start"
+        val result = Exn.capture (fn () => work (SOME invocation)) ()
+        val _ = progress_event session lane invocation parent stage root
+          (case result of Exn.Res _ => "done" | Exn.Exn _ => "fail")
+      in Exn.release result end
 
   fun elapsed_ms started =
     LargeInt.toString (Time.toMilliseconds (Time.- (Time.now (), started)))
@@ -129,7 +173,7 @@ struct
 
   fun timer owner =
     let val started = Time.now () in
-      fn stage => if getenv "COMMA_PROFILE_LOG" = "" then ()
+      fn stage => if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then ()
         else report (owner ^ " stage=" ^ stage ^
           " elapsed_ms=" ^ elapsed_ms started)
     end

@@ -50,6 +50,48 @@ def test_slp_cells_match_exact_tuple_action(
         ledger.mark_disposed(owner)
 
 
+@pytest.mark.parametrize("stream_inlet", [True, False])
+def test_unaligned_literal_slp_streams_or_uses_exact_slices(
+    monkeypatch: pytest.MonkeyPatch, stream_inlet: bool
+) -> None:
+    if not stream_inlet:
+
+        def refuse_optional(
+            _scratch: TemporalSquareScratchReservation, _entries: int, _nodes: int
+        ) -> bool:
+            return False
+
+        monkeypatch.setattr(
+            TemporalSquareScratchReservation, "try_acquire", refuse_optional
+        )
+    ledger = ResourceLedger()
+    owner = ledger.register("reflected-unaligned", "scratch")
+    arena = LedgerSLPArena(ledger, "reflected-cells", "grammar")
+    cells = (12, 98, 20, 31, 57, 4, 8)
+    try:
+        root = arena.word(cells)
+        with TemporalSquareScratchReservation(
+            LedgerReservation(ledger, owner)
+        ) as scratch:
+            bank = CarrySpacetimePower(
+                scratch,
+                None,
+                None,
+                cell_action=lambda a, b: padded_h_cell(a, b, 2),
+            )
+            try:
+                endpoint = bank.advance_blocks_slp(arena, root, 4)
+                assert arena.materialize(endpoint) == bank.advance_blocks(cells, 4)
+                if stream_inlet:
+                    assert bank.stats.source_traversal_tasks == 2 * len(cells) - 1
+            finally:
+                bank.release_temporary_storage()
+        assert ledger.account_usage(owner) == (0, 0)
+    finally:
+        arena.dispose()
+        ledger.mark_disposed(owner)
+
+
 def test_slp_tile_reuse_checks_arena_and_generation() -> None:
     ledger = ResourceLedger()
     owner = ledger.register("reflected-test", "scratch")
@@ -191,6 +233,147 @@ def test_repeated_cell_slab_reuses_semantic_tiles() -> None:
                     (13, 47) * 256, 64
                 )
                 assert bank.stats.source_traversal_tasks < 64
+            finally:
+                bank.release_temporary_storage()
+        assert ledger.account_usage(owner) == (0, 0)
+    finally:
+        arena.dispose()
+        ledger.mark_disposed(owner)
+
+
+@pytest.mark.parametrize("multiplier", [2, 5])
+@pytest.mark.parametrize("span", [1, 2, 4, 8])
+def test_repeated_inlet_slab_matches_literal_cone(multiplier: int, span: int) -> None:
+    ledger = ResourceLedger()
+    owner = ledger.register("slp-slab", "scratch")
+    arena = LedgerSLPArena(ledger, "slp-slab", "grammar")
+    unit = (0, 17, 52, 93, 22, 50, 71, 68)
+    try:
+        root = arena.repeat(arena.word(unit), 23)
+        with TemporalSquareScratchReservation(
+            LedgerReservation(ledger, owner)
+        ) as scratch:
+            bank = CarrySpacetimePower(
+                scratch,
+                None,
+                None,
+                cell_action=lambda a, b: padded_h_cell(a, b, multiplier),
+            )
+            try:
+                powered = bank.advance_blocks_slp(arena, root, span)
+                assert arena.materialize(powered) == bank.advance_blocks(
+                    unit * 23, span
+                )
+            finally:
+                bank.release_temporary_storage()
+        assert ledger.account_usage(owner) == (0, 0)
+    finally:
+        arena.dispose()
+        ledger.mark_disposed(owner)
+
+
+def test_million_cell_repeat_does_not_visit_each_block() -> None:
+    ledger = ResourceLedger()
+    owner = ledger.register("slp-million", "scratch")
+    arena = LedgerSLPArena(ledger, "slp-million", "grammar")
+    try:
+        root = arena.repeat(arena.word((12, 23, 34, 45)), 250_000)
+        before = len(arena.nodes)
+        with TemporalSquareScratchReservation(
+            LedgerReservation(ledger, owner)
+        ) as scratch:
+            bank = CarrySpacetimePower(
+                scratch, None, None, cell_action=lambda a, b: padded_h_cell(a, b, 5)
+            )
+            try:
+                result = bank.advance_blocks_slp(arena, root, 2)
+                reference = bank.advance_blocks((12, 23, 34, 45) * 4, 2)
+                assert arena.nodes[result].length == 1_000_002
+                assert (
+                    tuple(symbol_at(arena, result, index) for index in range(6))
+                    == reference[:6]
+                )
+                assert symbol_at(arena, result, 1_000_001) == reference[-1]
+                assert bank.stats.source_traversal_tasks < 100
+                assert len(arena.nodes) - before < 120
+            finally:
+                bank.release_temporary_storage()
+        assert ledger.account_usage(owner) == (0, 0)
+    finally:
+        arena.dispose()
+        ledger.mark_disposed(owner)
+
+
+def test_repeated_slab_failure_rolls_back_and_allows_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    owner = ledger.register("slp-rollback", "scratch")
+    arena = LedgerSLPArena(ledger, "slp-rollback", "grammar")
+    try:
+        root = arena.repeat(arena.word((12, 23, 34, 45)), 11)
+        checkpoint = len(arena.nodes)
+        source = arena.materialize(root)
+        with TemporalSquareScratchReservation(
+            LedgerReservation(ledger, owner)
+        ) as scratch:
+            bank = CarrySpacetimePower(
+                scratch, None, None, cell_action=lambda a, b: padded_h_cell(a, b, 5)
+            )
+            calls = 0
+            original = LedgerSLPArena.concat
+
+            def failing(self: LedgerSLPArena, left: int, right: int) -> int:
+                nonlocal calls
+                calls += 1
+                if calls == 5:
+                    raise RuntimeError("injected SLP publication failure")
+                return original(self, left, right)
+
+            try:
+                with monkeypatch.context() as patch:
+                    patch.setattr(LedgerSLPArena, "concat", failing)
+                    with pytest.raises(RuntimeError, match="publication failure"):
+                        bank.advance_blocks_slp(arena, root, 2)
+                assert len(arena.nodes) == checkpoint
+                assert arena.materialize(root) == source
+                result = bank.advance_blocks_slp(arena, root, 2)
+                assert arena.materialize(result) == bank.advance_blocks(source, 2)
+            finally:
+                bank.release_temporary_storage()
+        assert ledger.account_usage(owner) == (0, 0)
+    finally:
+        arena.dispose()
+        ledger.mark_disposed(owner)
+
+
+def test_tile_publication_reuses_root_and_rejects_recycled_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    owner = ledger.register("slp-publication", "scratch")
+    arena = LedgerSLPArena(ledger, "slp-publication", "grammar")
+    try:
+        with TemporalSquareScratchReservation(
+            LedgerReservation(ledger, owner)
+        ) as scratch:
+            bank = CarrySpacetimePower(
+                scratch, None, None, cell_action=lambda a, b: padded_h_cell(a, b, 5)
+            )
+            try:
+                tile = bank.pair(12, 53)
+                checkpoint = len(arena.nodes)
+                first = bank.publish(arena, tile)
+
+                def reject(*_args: object, **_kwargs: object) -> int:
+                    raise AssertionError("completed tile was rebuilt")
+
+                with monkeypatch.context() as patch:
+                    patch.setattr(LedgerSLPArena, "concat", reject)
+                    assert bank.publish(arena, tile) == first
+                arena.rollback_unpublished_suffix(checkpoint)
+                second = bank.publish(arena, tile)
+                assert arena.materialize(second) == (12, 53)
             finally:
                 bank.release_temporary_storage()
         assert ledger.account_usage(owner) == (0, 0)

@@ -41,10 +41,11 @@ def issued_field_prefix(admitted: CyclicRowAdmission) -> DyadicTerminalFieldActi
     """
     row = admitted.row
     length = admitted.action.steps
+    grammar = row.abc
     factor = DyadicTerminalFieldAction.identity()
     zero = DyadicTerminalFieldAction.zero_run(1)
     one = DyadicTerminalFieldAction.one_run(1)
-    for word, count in zip(row.abc.words, row.abc.counts, strict=True):
+    for word, count in zip(grammar.words, grammar.counts, strict=True):
         if not count:
             continue
         letter_action = DyadicTerminalFieldAction.identity()

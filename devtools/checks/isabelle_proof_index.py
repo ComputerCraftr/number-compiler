@@ -69,10 +69,13 @@ _RECURSIVE_ENVIRONMENT_COMPILER = (
     re.compile(r"\bCompiler_Table\.lookup\s+\(!memo\)\s+cache_key\b"),
     re.compile(r"(?<!\w)#certify\s+certify_state\s+context\s+child_states\b"),
 )
+_PRIORITY_REPLAY_OWNER = re.compile(
+    r"\bstructure\s+Comma_CRT_MDD_Multiway_Replay\s*=\s*struct\b"
+)
 
 
-def _environment_compiler_findings(source: str) -> tuple[str, ...]:
-    """Recognize the current recursive environment-certification operation.
+def _release_proof_replay_findings(source: str) -> tuple[str, ...]:
+    """Recognize retired proof engines in reachable ML resources.
 
     The check is deliberately structural and bounded. Resource names are not
     used as evidence, so renaming an ML file does not bypass it. Isabelle
@@ -80,6 +83,11 @@ def _environment_compiler_findings(source: str) -> tuple[str, ...]:
     """
     code = mask_comments(source)
     code = re.sub(r'"(?:\\.|[^"\\])*"', lambda match: " " * len(match.group()), code)
+    findings: list[str] = []
+    if _PRIORITY_REPLAY_OWNER.search(code) is not None:
+        findings.append(
+            "recursive CRT priority proof replay is registered in the release closure"
+        )
     for recursive_declaration in _RECURSIVE_ENVIRONMENT_COMPILER[0].finditer(code):
         function_name = recursive_declaration.group("name")
         recursive_call = re.search(
@@ -90,11 +98,12 @@ def _environment_compiler_findings(source: str) -> tuple[str, ...]:
             pattern.search(code) is not None
             for pattern in _RECURSIVE_ENVIRONMENT_COMPILER[1:]
         ):
-            return (
+            findings.append(
                 "recursive environment-keyed action states are certified after child construction "
-                "(bounded ML source signature)",
+                "(bounded ML source signature)"
             )
-    return ()
+            break
+    return tuple(findings)
 
 
 def comma_release_owner_audit(
@@ -106,7 +115,7 @@ def comma_release_owner_audit(
     ml_sources: dict[Path, str],
     repository: Path,
 ) -> dict[str, object]:
-    """Report environment-compiler operations in production Comma closures.
+    """Report retired proof engines in production Comma closures.
 
     The graph is derived from current ROOT session edges, theory imports, and
     ML_file references. Audit-only sessions that are not dependencies of a
@@ -166,7 +175,7 @@ def comma_release_owner_audit(
                     "referenced ML_file resource is absent from the source snapshot",
                 )
             else:
-                findings = _environment_compiler_findings(source)
+                findings = _release_proof_replay_findings(source)
             for finding in findings:
                 relative_resource = resource.relative_to(
                     repository.resolve()
@@ -610,7 +619,7 @@ def main() -> int:
     parser.add_argument(
         "--require-comma-release-owner",
         action="store_true",
-        help="fail unless B1 and future production closures avoid environment-compiled actions",
+        help="fail if B1 or future production reaches retired proof replay engines",
     )
     options = parser.parse_args()
     index = build_index()

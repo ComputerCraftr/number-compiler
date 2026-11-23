@@ -1450,8 +1450,8 @@ The local inputs are research/planning evidence, not passing release evidence:
 | `A367620_NC5_CLI_ISABELLE_CUTOVER_PLAN.md` | `7b3e70a28048eac50112ef957d6fefa297f756431f321282a029c28b0dc9a6ea` |
 | `A367620_number_compiler5_cli_isabelle_plan.patch` | `1d8e315c1217e083c76c9dc87d14773be82307bc1279f700ea4db66cf9e95996` |
 
-Both inputs were read from `/Users/john/Downloads/`; these are machine-local
-provenance paths, not portable evidence links.
+Neither input is tracked here. The names and hashes identify the historical
+inputs without assuming access to a local checkout or download directory.
 
 **Changes.** Complete interior cycles now publish their exact duration,
 displacement and guard directly. The action arena checks a complete local
@@ -2053,7 +2053,7 @@ remove repeated construction from canonical action and theorem lookup paths.
   rebuilding their radial objects or digest; this does not merge complete
   occurrences by radial equality. Coherent forged-record and interrupted
   publication tests cover the new identity caches.
-- `COMMA_PROFILE_LOG=1` no longer creates a file named `1` in a proof source
+- `ISABELLE_PROOF_PROFILE_LOG=1` no longer creates a file named `1` in a proof source
   directory. Existing generated logs were moved to their ignored evidence runs.
 
 ### Established results
@@ -3064,12 +3064,12 @@ These are representation/admission checks, not proof of the candidate data's
 semantic truth. The loader uses Isabelle's `chop_groups`, not another private
 list splitter. No full 84,084-state scan is added to a smoke test.
 
-Review inputs (external local files, not portable evidence links):
+Supplied review inputs (not tracked here):
 
 | Input | SHA-256 |
 | --- | --- |
-| Attachment `252c99cb-76ea-4025-bfc5-15c6d50805e8/Pasted text.txt` | `f60abf279254ee94288c019fae7a0a4045f9e2c4d9db06eb4a9b70bcb472099c` |
-| Attachment `6e1e7c12-4e20-47ef-b2e1-374648b32735/Pasted text.txt` | `c6d1d6d850ede74a5dfc693b4c5e7fbc622d9241517156c96361d49f32383dcb` |
+| Review attachment 1 | `f60abf279254ee94288c019fae7a0a4045f9e2c4d9db06eb4a9b70bcb472099c` |
+| Review attachment 2 | `c6d1d6d850ede74a5dfc693b4c5e7fbc622d9241517156c96361d49f32383dcb` |
 
 Rejected approach: whole-parent-row transport still rebuilt accumulated data
 proofs. The diagnostic run
@@ -3152,8 +3152,7 @@ again. Inheriting the residual-core heap made data definition approximately
 Native summary equality transport also uses direct theorem transitivity instead
 of invoking the full simplifier on powered words.
 
-Review provenance: attachment
-`a52ee60e-99bd-456c-8d61-a5136bde7d8c/Pasted text.txt`, SHA-256
+The supplied review attachment has SHA-256
 `e48d5333efd88ce958609986d39476d7be69ac1dfb0ef4db669b1ed3af3fcb4d`.
 Authors and independent audit workers had separate API, occurrence/global and
 sparse/dependency scopes. Only the coordinator ran serialized builds.

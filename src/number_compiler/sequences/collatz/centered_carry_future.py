@@ -6,7 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
-from number_compiler.arithmetic.carry.carry_normalization import RadixCarryBlock
 from number_compiler.arithmetic.fields.dyadic_unit_phase import DyadicUnitPhase
 
 
@@ -73,10 +72,15 @@ class CenteredCarryFuture:
             raise ValueError("future carry horizon exceeds certified odd headroom")
         if horizon == 0:
             return CarryEventHits()
+        # Below the source valuation every centered input digit is zero and
+        # the moving correction has not crossed the cut.  These cuts cannot
+        # constrain either lane at any tick in the admitted interval.
+        if all(cut <= self.headroom for cut in cuts):
+            return CarryEventHits(1, 1 if include_correction else None)
         reserve_bits(
             8 * (self.precision + self.centered.bit_length() + len(cuts) * 65 + 64)
         )
-        boundaries = sorted(set(cuts))
+        boundaries = sorted({cut for cut in cuts if cut > self.headroom})
         segments: list[tuple[int, int, bool]] = []
         previous = 0
         for cut in boundaries:
@@ -97,9 +101,7 @@ class CenteredCarryFuture:
             corrected_match = include_correction and corrected is None
             carry = 0
             for span, digits, correction in segments:
-                carry = RadixCarryBlock(2, span, multiplier3 * digits).outgoing_carry(
-                    carry
-                )
+                carry = (multiplier3 * digits + carry) >> span
                 parity = carry & 1
                 plain_match = plain_match and parity == 0
                 corrected_match = corrected_match and parity == correction
@@ -126,7 +128,7 @@ class CenteredCarryFuture:
 def _even_carry_row(multiplier: int, segments: list[tuple[int, int, bool]]) -> bool:
     carry = 0
     for span, digits, _correction in segments:
-        carry = RadixCarryBlock(2, span, multiplier * digits).outgoing_carry(carry)
+        carry = (multiplier * digits + carry) >> span
         if carry & 1:
             return False
     return True

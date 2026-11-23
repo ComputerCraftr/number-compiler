@@ -68,5 +68,6 @@ use explicit work bounds and reject exhaustion. Termination and production
 admission require the kernel refinement for the admitted source domain.
 
 Current evidence and remaining proof work are recorded in the
-[cutover sprint](../../docs/sprints/week-of-2026-11-01/comma-global-cutover.md).
-No proof success follows from deleting the legacy implementation.
+[current cutover sprint](../../docs/sprints/week-of-2026-11-15/november-20-performance-ports.md#comma-quotient-cutover).
+The [forest deletion record](../../docs/sprints/week-of-2026-11-01/comma-global-cutover.md)
+preserves the earlier migration evidence.

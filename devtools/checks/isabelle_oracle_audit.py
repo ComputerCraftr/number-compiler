@@ -20,6 +20,7 @@ _COMMAND_START = re.compile(
     r"inductive|record|section|subsection|text(?:_raw)?)\b"
 )
 _LEMMAS_START = re.compile(r"(?m)^[ \t]*lemmas\b")
+_LOCAL_DECLARATION_BOUNDARY = re.compile(r"\b(?:val|fun|in)\b")
 
 
 def _executed_ml_structure(
@@ -44,7 +45,7 @@ def _executed_ml_structure(
     targets = depth_offsets or set()
     offset = 0
     while offset < len(source):
-        if offset in targets:
+        if offset in targets and not delimiters:
             depths[offset] = len(blocks)
         char = source[offset]
         if char.isalpha() or char == "_":
@@ -143,11 +144,19 @@ def _local_runtime_audit(
             return False
         if re.search(r"\bval\s+_\s*=\s*$", block[:call_start]) is None:
             return False
-        suffix = block[head_end:]
-        terminal = re.search(r"\s+in\s+.+\s+end\s*$", suffix, re.DOTALL)
-        if terminal is None:
+        declaration_end = next(
+            (
+                offset
+                for offset, depth in block_depths.items()
+                if offset >= head_end
+                and depth == 1
+                and _LOCAL_DECLARATION_BOUNDARY.match(block, offset) is not None
+            ),
+            None,
+        )
+        if declaration_end is None:
             return False
-        if not closed_local_theorem_expression(suffix[: terminal.start()]):
+        if not closed_local_theorem_expression(block[head_end:declaration_end]):
             return False
         return context_is_locally_bound(block, call_start, 0)
 
@@ -268,7 +277,7 @@ def audited_theorems(
         depth_targets = {
             match.start()
             for match in re.finditer(
-                r"\bval\s+(?:[A-Za-z_][A-Za-z0-9_']*|_)\s*=|"
+                _LOCAL_DECLARATION_BOUNDARY.pattern + "|"
                 r"\bComma_Proof_Dependency_Audit\s*\.\s*[A-Za-z][A-Za-z0-9_']*",
                 block,
             )

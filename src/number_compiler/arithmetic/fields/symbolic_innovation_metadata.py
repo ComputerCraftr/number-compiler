@@ -11,6 +11,9 @@ from number_compiler.arithmetic.fields.radial_innovation import (
     InnovationRadial,
     InnovationScale,
 )
+from number_compiler.resources.payload_cost import (
+    aggregate_integer_limb_units as _integer_limb_units,
+)
 
 MAX_PRIMITIVE_IDENTITY_UNITS = 256
 MAX_PRIMITIVE_IDENTITY_DEPTH = 32
@@ -62,27 +65,21 @@ def validate_bounded_primitive_identity(identity: SemanticIdentity) -> None:
         value.validate()
 
 
-def integer_limb_units(*values: int) -> int:
-    """Return 64-bit ledger units for retained exact-integer metadata."""
-    retained_bits = sum(max(1, abs(value).bit_length()) for value in values)
-    return max(1, (retained_bits + 63) // 64)
-
-
 def innovation_node_units(node: InnovationNode) -> int:
     """Return ledger units retained by one node, including wide integers."""
     if isinstance(node, InnovationInterval):
-        return integer_limb_units(node.length)
+        return _integer_limb_units(node.length)
     if isinstance(node, InnovationRadial):
-        return integer_limb_units(node.multiplier.no_growth, node.multiplier.growth)
+        return _integer_limb_units(node.multiplier.no_growth, node.multiplier.growth)
     if isinstance(node, InnovationCharted):
-        return integer_limb_units(
+        return _integer_limb_units(
             node.chart.slope,
             node.chart.offset,
             node.chart.extent_scale,
             node.chart.growth_scale,
         )
     if isinstance(node, InnovationScale):
-        return integer_limb_units(node.coefficient)
+        return _integer_limb_units(node.coefficient)
     return 1
 
 
@@ -90,6 +87,5 @@ __all__ = [
     "MAX_PRIMITIVE_IDENTITY_DEPTH",
     "MAX_PRIMITIVE_IDENTITY_UNITS",
     "innovation_node_units",
-    "integer_limb_units",
     "validate_bounded_primitive_identity",
 ]

@@ -25,8 +25,8 @@ struct
           val index = nat cid
           val phase = Free ("direct_bellman_phase",natT)
           val value = D $ phase $ index
-          val fold = @{term comma_semantic_phase_program_fold} $
-            @{term comma_phase_program_full_action_output} $ phase $ program $ nat 0
+          val fold = @{term "comma_semantic_phase_program_fold
+            comma_phase_program_full_action_output"} $ phase $ program $ nat 0
           val rhs = @{term comma_direct_bellman_mask_projection} $ D $ phase $ fold
           val projected = Utils.exact_prop ctxt "Direct Bellman program projection"
             (Logic.all phase (tp (HOLogic.mk_eq (value,rhs)))) projected

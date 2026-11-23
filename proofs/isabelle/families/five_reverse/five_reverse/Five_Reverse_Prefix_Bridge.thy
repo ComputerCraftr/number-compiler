@@ -19,9 +19,9 @@ struct
 
   fun report_elapsed stage started =
     let
-      val destination = getenv "COMMA_PROFILE_LOG"
+      val destination = getenv "ISABELLE_PROOF_PROFILE_LOG"
       val line = "Five reverse stage=" ^ stage ^
-        " elapsed_ms=" ^ elapsed_ms started
+        " elapsed_ms=" ^ elapsed_ms started ^ " family=5rev10"
     in
       if destination = "" then ()
       else

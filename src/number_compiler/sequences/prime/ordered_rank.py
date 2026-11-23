@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
@@ -30,6 +31,27 @@ ORDERED_WHEEL_210_RESIDUES = tuple(
     for candidate in range(1, 211)
     if all(candidate % factor for factor in ORDERED_WHEEL_210_FACTORS)
 )
+_WHEEL_210_RANK = tuple(bisect_right(ORDERED_WHEEL_210_RESIDUES, n) for n in range(210))
+
+
+def wheel_210_count(value: int) -> int:
+    """Count positive integers at most value surviving the 210 wheel."""
+    if value < 1:
+        return 0
+    if value < 210:
+        return _WHEEL_210_RANK[value]
+    blocks, remainder = divmod(value, 210)
+    return blocks * len(ORDERED_WHEEL_210_RESIDUES) + _WHEEL_210_RANK[remainder]
+
+
+def wheel_210_value(ordinal: int) -> int:
+    """Return a one-based wheel value, with zero as the empty boundary."""
+    if ordinal < 1:
+        return 0
+    blocks, index = divmod(ordinal - 1, len(ORDERED_WHEEL_210_RESIDUES))
+    return blocks * 210 + ORDERED_WHEEL_210_RESIDUES[index]
+
+
 _BOUNDARY_LENGTH = 2310
 _BOUNDARY_SURVIVORS = 480
 _BOUNDARY_CHUNKS = 37

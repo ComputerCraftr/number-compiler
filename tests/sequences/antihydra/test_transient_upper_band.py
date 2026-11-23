@@ -32,6 +32,28 @@ def _literal(source: int, width: int) -> tuple[int, int, int, int]:
     return source, delta, minimum, odd
 
 
+def _assert_cylinder_lifts(
+    workspace: AntihydraArithmeticImageWorkspace,
+    width: int,
+    residue: int,
+    lifts: tuple[int, ...],
+) -> None:
+    effect = workspace.transient_leaf_effect(width, residue)
+    assert effect is not None
+    for lift in lifts:
+        source = residue + (lift << width)
+        endpoint, delta, minimum, odd = _literal(source, width)
+        assert (
+            effect.transfer.upper * source + effect.transfer.offset
+            == endpoint * effect.transfer.lower
+        )
+        assert (effect.delta, effect.minimum, effect.odd_steps) == (
+            delta,
+            minimum,
+            odd,
+        )
+
+
 def test_sheet_and_wider_cylinders_agree_with_literal_high_lifts() -> None:
     sheet = eight_step_carry_sheet()
     assert len(sheet) == 256
@@ -53,20 +75,7 @@ def test_sheet_and_wider_cylinders_agree_with_literal_high_lifts() -> None:
         rng = random.Random(20261120)
         for width in (8, 12, 64, 65, 96, 128):
             for residue in (0, 1, 8, (1 << width) - 1, rng.getrandbits(width)):
-                effect = workspace.transient_leaf_effect(width, residue)
-                assert effect is not None
-                for lift in (0, 1, 3):
-                    source = residue + (lift << width)
-                    endpoint, delta, minimum, odd = _literal(source, width)
-                    assert (
-                        effect.transfer.upper * source + effect.transfer.offset
-                        == endpoint * effect.transfer.lower
-                    )
-                    assert (effect.delta, effect.minimum, effect.odd_steps) == (
-                        delta,
-                        minimum,
-                        odd,
-                    )
+                _assert_cylinder_lifts(workspace, width, residue, (0, 1, 3))
         with pytest.raises(ValueError):
             workspace.transient_leaf_effect(129, 8)
     finally:
@@ -113,6 +122,52 @@ def test_upper_projection_preserves_phase_safety_and_composition() -> None:
         assert mismatched is not None
         with pytest.raises(ValueError, match="aligned lower cylinder"):
             certified_lower_upper_action(mismatched, 4, cut=3, demand_width=9)
+    finally:
+        workspace.dispose()
+
+
+def test_repeat_prefilter_matches_literal_low_cylinders() -> None:
+    workspace = AntihydraArithmeticImageWorkspace(
+        ResourceLedger(), 0, shared_cache=False
+    )
+    try:
+        rng = random.Random(20261121)
+        for width in (12, 24, 32, 64, 128):
+            sources = (0, 1, 8, (1 << width) - 1) + tuple(
+                rng.getrandbits(width) for _ in range(80)
+            )
+            for source in sources:
+                _assert_cylinder_lifts(workspace, width, source, (0,))
+    finally:
+        workspace.dispose()
+
+
+@pytest.mark.parametrize(
+    "source,delta,minimum,odd", ((0, 256, 0, 0), (1, -128, -128, 128))
+)
+def test_transient_uniform_cylinder_does_not_construct_carry_sheet(
+    monkeypatch: pytest.MonkeyPatch,
+    source: int,
+    delta: int,
+    minimum: int,
+    odd: int,
+) -> None:
+    import number_compiler.sequences.antihydra.mahler_transient_carry_sheet as carry_sheet
+
+    def forbid_sheet() -> tuple[tuple[int, int, int, int], ...]:
+        raise AssertionError("fixed point reconstructed the carry sheet")
+
+    monkeypatch.setattr(carry_sheet, "eight_step_carry_sheet", forbid_sheet)
+    workspace = AntihydraArithmeticImageWorkspace(
+        ResourceLedger(), 0, shared_cache=False
+    )
+    try:
+        effect = workspace.transient_leaf_effect(128, source)
+        assert effect is not None
+        assert effect.transfer.upper * source + effect.transfer.offset == (
+            effect.transfer.lower * source
+        )
+        assert (effect.delta, effect.minimum, effect.odd_steps) == (delta, minimum, odd)
     finally:
         workspace.dispose()
 

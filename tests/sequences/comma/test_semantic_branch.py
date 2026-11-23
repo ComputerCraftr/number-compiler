@@ -279,6 +279,39 @@ def test_semantic_branch_binds_ordered_literal_choice_and_weighted_event(
     assert len(calls) == 2
 
 
+def test_compact_return_uses_existing_ordered_semantic_selection(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> None:
+    source = BoundaryOccurrence(BoundaryState("N", 9, 5), 5)
+    prefix = OccurrencePrefixReturn.from_completed_source(source)
+    charge_work = _work_log()
+    provider = _admitted_provider(
+        monkeypatch,
+        _candidate_for_prefix(prefix, selected_slot=1),
+        charge_work,
+        request,
+    )
+    literals = _literal_children(prefix)
+    selected = select_semantic_macro_child(
+        source,
+        prefix,
+        fork_value=prefix.terminal_value,
+        ordered_literal_children=literals,
+        provider=provider,
+        charge_work=charge_work,
+    )
+    assert selected.selection.selected_slot == 1
+    assert selected.literal_value == literals[1]
+    assert selected.weighted_action.weight.evaluate(source.exponent) == (
+        prefix.transition_count + 1
+    )
+    compact = prefix.template
+    object.__setattr__(compact, "exponent_delta", compact.exponent_delta + 1)
+    with pytest.raises(ValueError, match="snapshot mismatch"):
+        selected.validate()
+
+
 def test_rank_classification_does_not_authorize_wrong_label_or_weight(
     monkeypatch: pytest.MonkeyPatch,
     request: pytest.FixtureRequest,

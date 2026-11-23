@@ -8,7 +8,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Final, NamedTuple
 
-from number_compiler.sequences.comma.boundary_quotient import BoundaryState
+from number_compiler.sequences.comma.boundary_quotient import (
+    BoundaryState,
+    boundary_state_signature,
+)
 
 RADICES: Final = (3, 4, 7, 11)
 MAX_NODES: Final = 65_536
@@ -93,23 +96,13 @@ class FutureSourceMDD(NamedTuple):
         self, source: BoundaryState, *, charge_work: Callable[[int], None] | None = None
     ) -> int:
         """Evaluate the source phase through at most four branch nodes."""
-        if type(source) is not BoundaryState:
-            raise ValueError("malformed comma boundary source state")
-        # Revalidate fields: frozen records can still be forged with object.__setattr__.
-        if (
-            type(source.kind) is not str
-            or source.kind not in ("N", "Z")
-            or type(source.a) is not int
-            or not 2 <= source.a <= 9
-            or type(source.exponent_residue) is not int
-            or not 0 <= source.exponent_residue < 924
-        ):
-            raise ValueError("malformed comma boundary source state")
+        # Capture one canonical coordinate before invoking work callbacks.
+        kind, leading, residue = boundary_state_signature(source)
         if type(self.roots) is not tuple or len(self.roots) != 16:
             raise ValueError("malformed future source roots")
         if type(self.nodes) is not tuple:
             raise ValueError("malformed future source nodes")
-        index = self.roots[(0 if source.kind == "N" else 8) + source.a - 2]
+        index = self.roots[(0 if kind == "N" else 8) + leading - 2]
         previous_axis = -1
         for _ in range(len(RADICES) + 1):
             if charge_work is not None:
@@ -130,7 +123,7 @@ class FutureSourceMDD(NamedTuple):
             ):
                 raise ValueError("malformed future source branch")
             previous_axis = node.axis
-            child = node.children[source.exponent_residue % RADICES[node.axis]]
+            child = node.children[residue % RADICES[node.axis]]
             if type(child) is not int or not 0 <= child < index:
                 raise ValueError("future source child is not topologically ordered")
             index = child

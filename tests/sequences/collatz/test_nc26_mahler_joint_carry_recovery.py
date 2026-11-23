@@ -322,17 +322,12 @@ def test_issued_future_carry_bellman_reuses_period_and_checks_headroom(
     port = _source_window(source, 0, 1).mahler_future_carry_port()
     from number_compiler.arithmetic.carry.carry_normalization import RadixCarryBlock
 
-    consumed_inlets: list[int] = []
-    original = RadixCarryBlock.outgoing_carry
+    def forbid_block_reconstruction(_block: RadixCarryBlock, _incoming: int) -> int:
+        raise AssertionError("carry query reconstructed a block per cut")
 
-    def counted_inlet(block: RadixCarryBlock, incoming: int) -> int:
-        consumed_inlets.append(incoming)
-        return original(block, incoming)
-
-    monkeypatch.setattr(RadixCarryBlock, "outgoing_carry", counted_inlet)
+    monkeypatch.setattr(RadixCarryBlock, "outgoing_carry", forbid_block_reconstruction)
     ledger = ResourceLedger()
     assert port.first_simultaneous_even_carries((21,), horizon=20, ledger=ledger) == 2
-    assert len(consumed_inlets) == 4
     assert ledger.entries == ledger.nodes == 0
     with pytest.raises(ValueError, match="headroom"):
         port.first_simultaneous_even_carries((21,), horizon=21, ledger=ledger)

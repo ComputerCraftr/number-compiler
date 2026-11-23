@@ -12,13 +12,16 @@ struct
   fun replay store rows row_selector row_count (candidate: Proposal.result) =
     let
       val ctxt = Store.context store
-      val control = @{term "\<lambda>rows::comma_future_m204_row list. \<lambda>x::nat. \<lambda>y::nat.
-        comma_future_m204_graph_control rows x"} $ rows
-      val child_n = @{term "\<lambda>rows::comma_future_m204_row list. \<lambda>x::nat. \<lambda>y::nat.
-        comma_future_m204_graph_child rows x 0"} $ rows
-      val child_z = @{term "\<lambda>rows::comma_future_m204_row list. \<lambda>x::nat. \<lambda>y::nat.
-        comma_future_m204_graph_child rows x 1"} $ rows
-      val actual = @{term "\<lambda>x::nat. \<lambda>y::nat. if x=0 then 0 else (x-1) mod 9+1"}
+      val graph_tuple = @{term "\<lambda>rows::comma_future_m204_row list.
+        \<lambda>x::nat. \<lambda>y::nat.
+        comma_future_m204_pair
+          (comma_future_m204_pair (comma_future_m204_graph_control rows x)
+            (comma_future_m204_graph_child rows x 0))
+          (comma_future_m204_graph_child rows x 1)"} $ rows
+      val actual_prefix = @{term "\<lambda>x::nat. \<lambda>y::nat.
+        comma_future_m204_pair (if x=0 then 0 else (x-1) mod 9+1) y"}
+      val actual_tuple = @{term "\<lambda>x::nat. \<lambda>y::nat.
+        comma_future_m204_pair x y"}
       val class_bound = @{term "\<lambda>rows::comma_future_m204_row list. \<lambda>x::nat. \<lambda>y::nat.
         if x < length rows then (1::nat) else 0"} $ rows
       val equal = @{term "\<lambda>x::nat. \<lambda>y::nat. if x=y then (1::nat) else 0"}
@@ -26,22 +29,23 @@ struct
         |> Simplifier.add_proc row_selector
         |> Simplifier.add_simps (row_count :: @{thms fst_conv snd_conv option.simps
              nth_Cons_0 nth_Cons_Suc list.size Let_def
-             comma_future_m204_graph_control_def comma_future_m204_graph_child_def})
+             comma_future_m204_graph_control_def comma_future_m204_graph_child_def
+             comma_future_m204_pair_def})
       fun leaf_rule operation x y z =
         Goal.prove ctxt [] [] (HOLogic.mk_Trueprop
           (HOLogic.mk_eq (operation $ nat x $ nat y,nat z)))
           (fn _ => simp_tac scalar 1)
       fun checker operation = Zip.make ctxt store store store operation (leaf_rule operation)
-      val control_zip = checker control
-      val n_zip = checker child_n
-      val z_zip = checker child_z
-      val actual_zip = checker actual
+      val graph_tuple_zip = checker graph_tuple
+      val actual_prefix_zip = checker actual_prefix
+      val actual_tuple_zip = checker actual_tuple
       val bound_zip = checker class_bound
       val equal_zip = checker equal
       fun certify ({operation,left,right,output}: Proposal.comparison) =
-        Zip.certify (case operation of Proposal.Graph_Control => control_zip
-          | Proposal.Graph_N => n_zip | Proposal.Graph_Z => z_zip
-          | Proposal.Actual_Control => actual_zip | Proposal.Class_Bound => bound_zip
+        Zip.certify (case operation of Proposal.Graph_Tuple => graph_tuple_zip
+          | Proposal.Actual_Prefix => actual_prefix_zip
+          | Proposal.Actual_Tuple => actual_tuple_zip
+          | Proposal.Class_Bound => bound_zip
           | Proposal.Equal => equal_zip)
           left right output
       val comparisons = map certify (#comparisons candidate)

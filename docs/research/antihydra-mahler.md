@@ -330,13 +330,10 @@ states this exact witness. Consequently `source_seven_not_Z` is neither a
 halting witness nor a non-halting certificate for Antihydra. Production
 certificate verification and its all-time source obligation remain unchanged.
 
-Provenance: adapted from `outputs/antihydra_mahler_joint/proofs/` in the local
-folder `referenced-chatgpt-conversation-this-is-an` dated 2026-09-20. Its
-`SAFETY_PROOFS.md`, `REFINEMENT_STATUS.md` and `CAPABILITY_STATUS.md` explicitly
-leave the source-to-branch bridge, global Mahler theorem and Antihydra
-non-halting open. Later carry-transfer and tree-address experiments in that
-folder also leave legal-continuation closure open. Their finite results are
-not evidence of a checked global barrier.
+The supplied September 20, 2026 Mahler safety review left the
+source-to-branch bridge, global Mahler theorem and Antihydra non-halting open.
+Its carry-transfer and tree-address experiments also left legal-continuation
+closure open. These finite results do not establish a global barrier.
 
 ## Joint source, prime and carry transport
 

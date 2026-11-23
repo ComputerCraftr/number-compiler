@@ -285,6 +285,16 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             h = residue
             remaining = width
             delta = minimum = odd_steps = 0
+            if h == 0:
+                # All low input bits are zero for this complete cylinder.
+                delta = 2 * width
+                remaining = 0
+            elif h == 1:
+                # The physical fixed point has an all-odd word.  Its ordered
+                # minimum is reached at the end of the admitted cylinder.
+                delta = minimum = -width
+                odd_steps = width
+                remaining = 0
             if h and remaining >= _SHORT_REPEAT_ATOM_STEPS * _REPEAT_MIN_COPIES:
                 segments = self.punctured_steps(h, remaining, work, repeat_only=True)
                 try:

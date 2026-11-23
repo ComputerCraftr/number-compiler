@@ -37,7 +37,7 @@ struct
       val next = Unsynchronized.ref (max_code + 1)
       val hits = Unsynchronized.ref 0
       fun checkpoint stage =
-        if getenv "COMMA_PROFILE_LOG" = "" then () else
+        if getenv "ISABELLE_PROOF_PROFILE_LOG" = "" then () else
           Comma_Proof_Profile.report
             ("Comma candidate definition " ^ binding ^ " stage=" ^ stage ^
             " elapsed_ms=" ^ Comma_Proof_Profile.elapsed_ms started ^

@@ -13,6 +13,10 @@ from number_compiler.sequences.comma.boundary_quotient import (
     BoundaryState,
     construct_macro,
 )
+from number_compiler.sequences.comma.boundary_return import (
+    construct_completed_occurrence,
+)
+from number_compiler.sequences.comma.occurrence import BoundaryOccurrence
 from number_compiler.sequences.comma.weighted_return import WeightedBoundaryAction
 
 
@@ -61,6 +65,39 @@ def test_selected_fork_adds_exactly_one_transition_without_claiming_survival() -
         assert action.weight.evaluate(10) == macro.weight.evaluate(10) + 1
     with pytest.raises(ValueError, match="not an exact fork alternative"):
         WeightedBoundaryAction.from_selected_fork(macro, BoundaryState("N", 2, 10))
+
+
+def test_streamed_fork_uses_same_ordered_weighted_owner() -> None:
+    source = BoundaryOccurrence(BoundaryState("Z", 3, 41), 41)
+    compact, physical = construct_completed_occurrence(source, grouped_near=True)
+    indexed = construct_macro(source.state, grouped_near=True)
+    assert compact.outcome == "fork"
+    assert tuple(child.kind for child in compact.ordered_children) == ("N", "Z")
+    for slot, child in enumerate(compact.ordered_children):
+        action = WeightedBoundaryAction.from_selected_fork(compact, child)
+        assert action == WeightedBoundaryAction.from_selected_fork(
+            indexed, indexed.ordered_children[slot]
+        )
+        assert action.weight.evaluate(source.exponent) == physical[1] + 1
+    object.__setattr__(compact, "exponent_delta", compact.exponent_delta + 1)
+    with pytest.raises(ValueError, match="snapshot mismatch"):
+        WeightedBoundaryAction.from_selected_fork(compact, indexed.ordered_children[0])
+
+
+def test_equal_weight_and_one_successor_do_not_identify_ordered_future() -> None:
+    first = construct_macro(BoundaryState("Z", 7, 15), grouped_near=True)
+    second = construct_macro(BoundaryState("Z", 7, 675), grouped_near=True)
+    assert first.weight == second.weight
+    assert first.destination_a == second.destination_a == 6
+    assert first.exponent_delta == second.exponent_delta == 1
+    assert first.ordered_children[1].kind == second.ordered_children[1].kind == "Z"
+
+    # Their subsequent N arms are different even though the preceding
+    # weights and Z successor labels agree.
+    left = construct_macro(first.ordered_children[0], grouped_near=True)
+    right = construct_macro(second.ordered_children[0], grouped_near=True)
+    assert (left.destination_a, left.exponent_delta) == (9, 2)
+    assert (right.destination_a, right.exponent_delta) == (3, 3)
 
 
 def test_two_exact_fork_macros_transport_weight_at_shifted_exponents() -> None:
@@ -237,6 +274,31 @@ def test_huge_partial_repetition_uses_capped_binary_descent(
     ) == (1, 17)
     assert sum(charges) < 100
     assert sum(bit_work) > 0
+
+
+@pytest.mark.parametrize("unit_difference", (False, True))
+def test_repeat_locator_bounds_scratch_by_reachable_elapsed_weight(
+    unit_difference: bool,
+) -> None:
+    source = BoundaryState("N", 2, 10)
+    denominator = 10**10 * (10**924 - 1) if unit_difference else 1
+    weight = AffineWeight(1, denominator - 10**10, denominator)
+    repeat = WeightedBoundaryAction(source, source, 924, weight).repeat(1 << 50_000)
+    first_two = weight.evaluate(10) + weight.evaluate(934)
+    for offset, expected in (
+        (1, (1, 0)),
+        (first_two - 1, (1, first_two - 2)),
+        (first_two, (2, 0)),
+        (first_two + 1, (2, 1)),
+    ):
+        work = 0
+
+        def admit(amount: int) -> None:
+            nonlocal work
+            work += amount
+            assert work < 16
+
+        assert repeat.split_at(10, offset, charge=admit) == expected
 
 
 def test_zero_identity_repetition_has_exact_endpoint() -> None:

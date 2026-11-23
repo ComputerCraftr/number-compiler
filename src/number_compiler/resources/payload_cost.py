@@ -6,6 +6,12 @@ from dataclasses import fields, is_dataclass
 from typing import TypeGuard
 
 
+def aggregate_integer_limb_units(*values: int) -> int:
+    """Count 64-bit units after aggregating at least one bit per integer."""
+    retained_bits = sum(max(1, abs(value).bit_length()) for value in values)
+    return max(1, (retained_bits + 63) // 64)
+
+
 def _payload_sequence(value: object) -> TypeGuard[tuple[object, ...] | list[object]]:
     return isinstance(value, (tuple, list))
 

@@ -44,9 +44,6 @@ from number_compiler.arithmetic.fields.symbolic_innovation_metadata import (
     innovation_node_units as _node_units,
 )
 from number_compiler.arithmetic.fields.symbolic_innovation_metadata import (
-    integer_limb_units as _integer_limb_units,
-)
-from number_compiler.arithmetic.fields.symbolic_innovation_metadata import (
     validate_bounded_primitive_identity as _validate_bounded_primitive_identity,
 )
 from number_compiler.arithmetic.polynomials.cyclotomic_ring import CyclotomicRing
@@ -59,6 +56,9 @@ from number_compiler.resources.field_image_audit_contracts import (
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import (
     arithmetic_fields as _fields_keys,
+)
+from number_compiler.resources.payload_cost import (
+    aggregate_integer_limb_units as _integer_limb_units,
 )
 from number_compiler.resources.stores import LedgerDict, LedgerList
 
