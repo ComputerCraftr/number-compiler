@@ -271,6 +271,37 @@ class DyadicTerminalFieldAction:
         )
 
     @classmethod
+    def from_cyclic_admission(cls, admission: object) -> DyadicTerminalFieldAction:
+        """Issue every weighted field from the authenticated cyclic Laurent law.
+
+        The geometric phase sum and predecessor have the same denominator and
+        source guard as the already-issued root. No field SLP is reconstructed.
+        """
+        from number_compiler.sequences.collatz.cyclic_abc_grammar import (
+            CyclicRowAdmission,
+        )
+
+        if type(admission) is not CyclicRowAdmission:
+            raise TypeError("cyclic fields require an issued cyclic admission")
+        admission.require_issued()
+        law = admission.guard.action
+        action = admission.action
+        steps = action.steps
+        gain = action.gain
+        sum_gain, sum_offset = law.successor_sum(steps, gain)
+        previous_gain = gain // (3 if law.odds(steps) != law.odds(steps - 1) else 1)
+        previous_offset = law.prefix_offset(steps - 1, previous_gain)
+        return cls._create(
+            steps,
+            gain,
+            action.offset,
+            sum_gain,
+            sum_offset,
+            previous_gain,
+            previous_offset,
+        )
+
+    @classmethod
     def restore_untrusted_cache_payload(
         cls, steps: int, coefficients: tuple[int, ...]
     ) -> DyadicTerminalFieldAction:

@@ -8,10 +8,12 @@ from a reused heap, another run, or an inactive prerequisite are rejected.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TypedDict, TypeGuard
+from uuid import uuid4
 
 from number_compiler.arithmetic.contracts.input_validation import is_object_dictionary
 
@@ -384,3 +386,28 @@ class ProofProgressFile:
             "consumed_bytes": self.offset,
             "unread_bytes": unread,
         }
+
+
+def profile_log_path(run_path: Path, *, force: bool = False) -> tuple[str | None, bool]:
+    """Resolve ISABELLE_PROOF_PROFILE_LOG, reserving a fresh run-local file for ``1``.
+
+    Explicit nonempty values remain caller-owned paths.  The sentinel ``1``
+    requests an exclusive file under this evidence run so timeout diagnostics
+    can be inspected even if the guarded process is terminated.
+    """
+    setting = os.environ.get("ISABELLE_PROOF_PROFILE_LOG", "")
+    if not setting and force:
+        setting = "1"
+    if not setting:
+        return None, False
+    if setting != "1":
+        return setting, True
+    for _attempt in range(32):
+        path = run_path / f"isabelle-profile-{uuid4().hex}.log"
+        try:
+            with path.open("x", encoding="utf-8"):
+                pass
+        except FileExistsError:
+            continue
+        return str(path), True
+    raise FileExistsError("could not reserve a fresh Isabelle profile log")

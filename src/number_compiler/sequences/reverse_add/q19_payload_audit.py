@@ -550,7 +550,7 @@ def audit_reverse_pair_output_roots(
                 and 0 <= occurrence.growth <= occurrence.temporal_steps
             )
         from number_compiler.sequences.reverse_add.temporal_seed_morphism import (
-            Q19WordFiber,
+            Q19BandPortImage,
         )
 
         checked_seeds: dict[int, bool] = {}
@@ -566,7 +566,7 @@ def audit_reverse_pair_output_roots(
                 invalid.add((state.word_fibers_owner, id(cached)))
                 continue
             fiber_value, fiber_binding_value = cached
-            if type(fiber_value) is not Q19WordFiber or not is_exact_object_tuple(
+            if type(fiber_value) is not Q19BandPortImage or not is_exact_object_tuple(
                 fiber_binding_value
             ):
                 valid = False
@@ -575,7 +575,7 @@ def audit_reverse_pair_output_roots(
             fiber = fiber_value
             fiber_binding = fiber_binding_value
             recognized.update((id(fiber), id(fiber_binding)))
-            occurrence = fiber.occurrence
+            occurrence = _memo_get(state.issued, (fiber_root, fiber_steps))
             if seed not in checked_seeds:
                 checked_seeds[seed] = seed >= 0 and digits_lsd(seed, 10) == state.digits
             fiber_valid = (
@@ -585,12 +585,6 @@ def audit_reverse_pair_output_roots(
                 == (occurrence.root, occurrence.temporal_steps)
                 and seed >= 0
                 and checked_seeds[seed]
-                and _memo_get(
-                    state.issued, (occurrence.root, occurrence.temporal_steps)
-                )
-                is occurrence
-                and fiber.generation == occurrence.temporal_steps
-                and fiber.root == occurrence.root
                 and fiber.width == occurrence.output_width
                 and fiber.pair_width == occurrence.pair_width
                 and type(fiber.center) is tuple

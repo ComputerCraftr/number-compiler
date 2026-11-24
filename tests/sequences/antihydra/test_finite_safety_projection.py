@@ -49,12 +49,31 @@ def test_empty_guard_uses_published_root_without_replaying_future(
         raise AssertionError("fractional guard replayed source occurrences")
 
     monkeypatch.setattr(MahlerJointFutureAction, "from_source_prefix", reject_replay)
+    monkeypatch.setattr(MahlerJointFutureAction, "bit", reject_replay)
     guard = result.finite_safety_guard()
     assert guard.complete
     assert guard.admitted_interval is not None and guard.admitted_interval.empty
     assert (guard.gain * 7 + guard.weighted_innovation) == (result.h - 1) * (
         1 << guard.steps
     )
+
+
+def test_empty_guard_composition_does_not_rebuild_fractional_pullbacks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    action = MahlerJointFutureAction.bit(1).then(MahlerJointFutureAction.bit(1))
+    tail = MahlerJointFutureAction.bit(0)
+
+    def forbidden(*_args: object, **_kwargs: object) -> HalfOpenInterval:
+        raise AssertionError("empty guard recomputed an interval intersection")
+
+    monkeypatch.setattr(HalfOpenInterval, "intersect", forbidden)
+    combined = action.then(tail)
+    assert combined.guard.empty
+    assert combined.innovation == (
+        tail.gain * action.innovation + action.source_modulus * tail.innovation
+    )
+    assert combined.gain == action.gain * tail.gain
 
 
 def test_guard_projection_rejects_a_nonphysical_gain() -> None:

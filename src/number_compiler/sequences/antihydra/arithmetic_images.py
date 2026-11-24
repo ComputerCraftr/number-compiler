@@ -708,16 +708,18 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                 )
                 first = (atom_gain * d + innovation) >> atom_steps
                 difference = first - d
-                repetitions = remaining // atom_steps
+                # The source defect admits a prefix up to the first
+                # mismatching bit, including a partial last motif. Keep the
+                # temporal action and its physical endpoint source-bound.
+                length = remaining
                 if difference:
-                    repetitions = min(
-                        repetitions, 1 + v2_positive(difference) // atom_steps
-                    )
-                length = atom_steps * repetitions
+                    length = min(length, atom_steps + v2_positive(difference))
+                repetitions, tail = divmod(length, atom_steps)
+                full_length = atom_steps * repetitions
                 scratch.require_bits(8 * (d.bit_length() + 3 * length + 64))
-                upper = 3**length
+                upper = 3**full_length
                 geometric, remainder = divmod(
-                    upper - (1 << length), atom_gain - (1 << atom_steps)
+                    upper - (1 << full_length), atom_gain - (1 << atom_steps)
                 )
                 if remainder:
                     raise ArithmeticError("repeat geometric factor is not integral")
@@ -726,12 +728,27 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                 )
                 delta = repetitions * block_delta
                 minimum = block_minimum + min(0, (repetitions - 1) * block_delta)
+                odd_steps = repetitions * block_odd
+                # A tail is shorter than one admitted motif. Traverse its
+                # actual centered inlet and join its ordered minimum once.
+                tail_operand_bits = 0
+                for _ in range(tail):
+                    prior_bits = endpoint.bit_length()
+                    parity = endpoint & 1
+                    endpoint = (3 * endpoint + parity) >> 1
+                    tail_operand_bits += prior_bits + endpoint.bit_length() + 1
+                    delta += 2 if parity else -1
+                    minimum = min(minimum, delta)
+                    odd_steps += 1 - parity
                 self.bump_metric("temporal_run_actions")
                 self.bump_metric(
                     "temporal_run_operand_bits",
-                    endpoint.bit_length() + upper.bit_length() + length,
+                    endpoint.bit_length()
+                    + upper.bit_length()
+                    + length
+                    + tail_operand_bits,
                 )
-                yield length, delta, minimum, repetitions * block_odd, endpoint
+                yield length, delta, minimum, odd_steps, endpoint
                 d = endpoint
                 remaining -= length
         if repeat_only:

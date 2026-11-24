@@ -390,6 +390,51 @@ def _decimal_slp_from_cells(
             rows.clear()
 
 
+def _exact_periodic_cell_source(arena: LedgerSLPArena, cells: tuple[int, ...]) -> int:
+    """Compile an *authenticated finite* periodic cell source before H work.
+
+    The source has already been decoded at the inlet. Check actual equality
+    against candidate periods (including at most two exceptional cells at
+    either physical end) before issuing any REPEAT node. This is not temporal
+    cycle discovery: it never extends the given finite word or replays H.
+    Small/dense inputs use the original word constructor unchanged.
+    """
+    size = len(cells)
+    if size < 128:
+        return arena.word(cells)
+    comparisons_left = 4 * size
+    for period in range(1, min(16, size // 4) + 1):
+        for total_fringe in range(5):
+            for left in range(min(2, total_fringe) + 1):
+                right = total_fringe - left
+                if right > 2:
+                    continue
+                length = size - left - right
+                if length < 4 * period or length % period:
+                    continue
+                for index in range(left + period, size - right):
+                    if comparisons_left == 0:
+                        return arena.word(cells)
+                    comparisons_left -= 1
+                    if cells[index] != cells[left + (index - left) % period]:
+                        break
+                else:
+                    center = arena.repeat(
+                        arena.word(cells[left : left + period]),
+                        length // period,
+                    )
+                    return arena.concat_many(
+                        (
+                            arena.word(cells[:left]),
+                            center,
+                            arena.word(cells[size - right :])
+                            if right
+                            else arena.empty_id,
+                        )
+                    )
+    return arena.word(cells)
+
+
 def _padded_h_inlet(
     digits: tuple[int, ...], generation: int, multiplier: int
 ) -> tuple[tuple[int, ...], int]:
@@ -475,8 +520,8 @@ def _padded_h_execute_slp(
         )
     with ledger.reservation(
         scratch_owner,
-        entries=4 * (width_bound + generation + 1),
-        nodes=4 * (width_bound + generation + 1),
+        entries=4 * (width_bound + 4),
+        nodes=4 * (width_bound + 4),
     ):
         source, steps = _admit_padded_h_inlet(
             seed, generation, multiplier, max_state_bits
@@ -495,7 +540,10 @@ def _padded_h_execute_slp(
 
         try:
             cell_root = normalize_reflected_cell_slp(
-                cell_arena, cell_arena.word(source), ledger, scratch_owner
+                cell_arena,
+                _exact_periodic_cell_source(cell_arena, source),
+                ledger,
+                scratch_owner,
             )
             with TemporalSquareScratchReservation(reservation) as scratch:
                 bank = CarrySpacetimePower(scratch, None, None, cell_action=transition)

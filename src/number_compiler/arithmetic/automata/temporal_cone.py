@@ -11,6 +11,9 @@ from typing import Literal
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp_interval import fold_slp_interval
 from number_compiler.arithmetic.automata.slp_walks import iter_symbols, symbol_at
+from number_compiler.arithmetic.automata.temporal_cone_periodic import (
+    advance_periodic_blocks_slp,
+)
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.lifecycle import cleanup_all
 from number_compiler.resources.owned_memo import LedgerReservation
@@ -751,12 +754,37 @@ class CarrySpacetimePower:
                     raise
                 finally:
                     self._scratch.release(held, held)
+        try:
+            periodic = advance_periodic_blocks_slp(
+                arena,
+                source_root,
+                span,
+                scratch=self._scratch,
+                pair=self.pair,
+                tile_from_slp=self._tile_from_cell_slp,
+                publish=self.publish,
+                middle=self.middle,
+            )
+            if periodic is not None:
+                return periodic
+        except BaseException as error:
+            try:
+                cleanup_all(
+                    (
+                        lambda: arena.rollback_unpublished_suffix(checkpoint),
+                        self._discard_published,
+                    )
+                )
+            except BaseException as cleanup_error:
+                raise error from cleanup_error
+            if not isinstance(error, TemporalSquareScratchCapacityRefused):
+                raise
         reserve = 2 * (blocks + 1) + span.bit_length() + 16
         stream_reserve = reserve + 3 * span
         stream_inlet = (
             node.kind != "REPEAT"
             and cells < _MAX_CELLS
-            and cells % span != 0
+            and (cells % span != 0 or span == 1)
             and self._scratch.try_acquire(stream_reserve, stream_reserve)
         )
         if stream_inlet:
@@ -800,15 +828,23 @@ class CarrySpacetimePower:
                     if start < cells:
                         if symbols is not None:
                             width = min(cells - start, span)
-                            row = list(islice(symbols, width))
-                            if len(row) != width or any(
-                                type(cell) is not int or not 0 <= cell < 100
-                                for cell in row
-                            ):
-                                raise ValueError(
-                                    "padded H source contains an invalid inlet"
-                                )
-                            current = self._padded_cell_tile(row, span)
+                            if span == 1:
+                                cell = next(symbols, None)
+                                if type(cell) is not int or not 0 <= cell < 100:
+                                    raise ValueError(
+                                        "padded H source contains an invalid inlet"
+                                    )
+                                current = cell
+                            else:
+                                row = list(islice(symbols, width))
+                                if len(row) != width or any(
+                                    type(cell) is not int or not 0 <= cell < 100
+                                    for cell in row
+                                ):
+                                    raise ValueError(
+                                        "padded H source contains an invalid inlet"
+                                    )
+                                current = self._padded_cell_tile(row, span)
                         else:
                             section = interval(start, min(cells, start + span))
                             missing = span - arena.nodes[section].length

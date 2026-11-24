@@ -90,21 +90,19 @@ class SuccessorCongruenceAudit:
             self.semantic_aliases += 1
         sources.add(observation.source_occurrence_key)
 
-        prior_semantic = self._semantic_target.get(key)
-        if prior_semantic is None:
+        if key not in self._semantic_target:
             self._semantic_target[key] = observation.target_semantic_key
         elif (
-            prior_semantic != observation.target_semantic_key
+            self._semantic_target[key] != observation.target_semantic_key
             and key not in self._semantic_conflict_keys
         ):
             self.successor_conflicts += 1
             self._semantic_conflict_keys.add(key)
 
-        prior_exact = self._exact_target.get(key)
-        if prior_exact is None:
+        if key not in self._exact_target:
             self._exact_target[key] = observation.target_occurrence_key
         elif (
-            prior_exact != observation.target_occurrence_key
+            self._exact_target[key] != observation.target_occurrence_key
             and key not in self._exact_conflict_keys
         ):
             self.exact_target_conflicts += 1

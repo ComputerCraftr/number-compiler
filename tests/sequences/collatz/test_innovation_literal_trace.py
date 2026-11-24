@@ -110,6 +110,7 @@ def test_guarded_mixed_macro_is_the_production_action_and_signed_word() -> None:
         include_f5=True,
         include_innovation_tape=True,
         innovation_modulus=7,
+        require_mixed_prefix=True,
     )
     expected_word = _literal_word(source, 128, 7)
     assert result.normalized_symbols == 128

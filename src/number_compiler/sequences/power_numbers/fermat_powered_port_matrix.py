@@ -7,8 +7,8 @@ rows are represented by their ENDPOINTS, not by materialized full histories.
 
 The registry supplies exact low-prime clocks, a guarded initial radial
 language, and independently certified dyadic XOR metadata.  ``then`` checks
-both true physical adjacency and every conditional port, and ``square``
-issues the actual second-half action.  No root's high radial word, signed
+true physical adjacency and every conditional port. Explicit powers compile
+one exact extended span from the issued root. No root's high radial word, signed
 phase histogram, or prime bit is guessed at later ordinary-tripling ticks.
 """
 
@@ -17,7 +17,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
-from number_compiler.arithmetic.automata.affine_port_action import AffinePortAction
+from number_compiler.arithmetic.automata.affine_port_action import (
+    AffinePortAction,
+    canonical_radix_digit_response,
+)
 from number_compiler.arithmetic.contracts.family_identity import FamilyId
 from number_compiler.arithmetic.fields.radix import compose_radix_endpoint_rows
 from number_compiler.hashlife.interfaces.border_macros import (
@@ -214,22 +217,33 @@ class FermatPoweredPortMatrix:
             raise ArithmeticError("Fermat child-summary join publication failed")
         return joined
 
-    def square(self) -> FermatPoweredPortMatrix:
-        """Double physical duration, without rebuilding the signed root."""
+    def power(self, repetitions: int) -> FermatPoweredPortMatrix:
+        """Issue the final fixed-tripling span at this authenticated source."""
+        if type(repetitions) is not int or repetitions < 1:
+            raise ValueError("Fermat matrix power requires a positive repeat count")
         if not self.producer_verified:
-            raise ValueError("square requires an issued Fermat temporal matrix")
-        if 2 * self.physical_steps > MAX_POWERED_PHYSICAL_STEPS:
+            raise ValueError("power requires an issued Fermat temporal matrix")
+        remaining = MAX_POWERED_PHYSICAL_STEPS - self.physical_offset
+        if repetitions > remaining // self.physical_steps:
             raise ValueError("powered physical duration exceeds production bound")
-        later = self.rebase(self.physical_offset + self.physical_steps)
-        return self.then(later)
+        if repetitions == 1:
+            return self
+        return _compile_at(
+            self.macro,
+            self.base,
+            self.position,
+            self.physical_offset,
+            self.physical_steps * repetitions,
+        )
+
+    def square(self) -> FermatPoweredPortMatrix:
+        """Double the exact span from its source."""
+        return self.power(2)
 
     def power_of_two(self, squarings: int) -> FermatPoweredPortMatrix:
         if type(squarings) is not int or not 0 <= squarings <= 12:
             raise ValueError("invalid Fermat physical squaring count")
-        result = self
-        for _ in range(squarings):
-            result = result.square()
-        return result
+        return self.power(1 << squarings)
 
     def _selected_trace(
         self,
@@ -338,6 +352,22 @@ class FermatPoweredPortMatrix:
 _POWERED_ISSUER = new_harmonic_issuer(FermatPoweredPortMatrix)
 
 
+def _source_residue(
+    source: FermatAlgebraicRoot | SourceWeightedTriplingAction,
+    base: int,
+    places: int,
+    modulus: int,
+) -> int:
+    """Project the admitted input bank when it covers the receiving radix."""
+    if type(source) is SourceWeightedTriplingAction and base in (2, 5, 10):
+        origin = source.origin
+        bank = origin.binary_phase_bank if base == 2 else origin.decimal_phase_bank
+        if bank is not None and bank.depth >= places:
+            return bank.source_prefix % modulus
+    period = _totient_prime_power_base(base, places)
+    return exact_three_power_residue(source.level, modulus, period)
+
+
 def _compile_at(
     macro: FermatBorderMacro,
     base: int,
@@ -358,21 +388,31 @@ def _compile_at(
         or (base == 7 and position >= 19)
     ):
         raise ValueError("Fermat powered carry request exceeds its admitted domain")
-    offsets = tuple(offset + tick for tick in dyadic_puncture_offsets(steps))
+    relative = dyadic_puncture_offsets(steps)
+    offsets = tuple(offset + tick for tick in relative)
     issued_ports = macro.certified_checkpoint_ports(offsets)
     lower = base**position
     modulus = base ** (position + 1)
-    phi = _totient_prime_power_base(base, position + 1)
-    source_level: int = macro.source.level
-    root: int = exact_three_power_residue(source_level, modulus, phi)
-    start = root * int.__pow__(3, offset, modulus) % modulus
-    factor = int.__pow__(3, steps, modulus)
+    root = _source_residue(macro.source, base, position + 1, modulus)
+    start = root * int.__pow__(3, offset, modulus) % modulus if offset else root
+    factors = [1]
+    factor = 3 % modulus
+    for _ in range(len(relative) - 2):
+        factors.append(factor)
+        factor = factor * factor % modulus
+    if steps & (steps - 1):
+        factor = int.__pow__(3, steps, modulus)
+    factors.append(factor)
     end: int = start * factor % modulus
     low: int = start % lower
     response = AffinePortAction.reduced(base, factor, factor * low // lower)
     endpoint_low = low * factor % lower
+    # The conditional high-digit action depends only on its canonical Moore
+    # response ID. The source low endpoint and its guard remain issued by the
+    # caller; neither occurrence rank nor a separate row trace enters this key.
+    high_digits = canonical_radix_digit_response(base, response.gain, response.carry)
     endpoints: tuple[int, ...] = tuple(
-        endpoint_low + lower * response.apply(digit) for digit in range(base)
+        endpoint_low + lower * digit for digit in high_digits
     )
     selected: int = start // lower
     if endpoints[selected] != end:
@@ -390,13 +430,10 @@ def _compile_at(
         ):
             raise ArithmeticError("root radial carry ingress is forbidden")
     points: list[FermatPuncturedPort] = []
-    for absolute, (clocks, radial) in zip(offsets, issued_ports, strict=True):
-        if absolute == offset:
-            value = start
-        elif absolute == offset + steps:
-            value = end
-        else:
-            value = root * int.__pow__(3, absolute, modulus) % modulus
+    for absolute, multiplier, (clocks, radial) in zip(
+        offsets, factors, issued_ports, strict=True
+    ):
+        value = start * multiplier % modulus
         digit, cin, cout = _carry_port(value, base, lower, modulus)
         clock_values = dict(clocks)
         if (
@@ -490,6 +527,7 @@ def demand_fermat_powered_port_matrix(
         try:
             source = spec.demand_three_power_signed_border_action(
                 level,
+                include_moore_periods=False,
                 phase_binary_places=max(64, position + 1 if base == 2 else 64),
                 phase_decimal_places=max(6, position + 1 if base in (5, 10) else 6),
                 low_binary_places=1,

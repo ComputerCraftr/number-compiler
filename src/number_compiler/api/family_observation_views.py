@@ -163,5 +163,22 @@ _VIEWS: dict[FamilyId, tuple[ViewSpec, ...]] = {
             "dyadic-source-and-rational-fiber",
             "finite-guard",
         ),
+        ViewSpec(
+            View.FINITE_SAFETY,
+            "pointed-rational-mahler-safety",
+            "physical-recurrence-ticks",
+            "centered-endpoint-and-fractional-tail",
+            "finite-rational-safety",
+            options=("safety_horizon", "fractional_tail"),
+        ),
+        ViewSpec(
+            View.GRAPH_ACTION,
+            "pointed-mahler-closed-row",
+            "physical-recurrence-ticks",
+            "centered-endpoint-and-fractional-tail",
+            "finite-admitted-graph-action",
+            default=True,
+            options=("temporal_macro_copies", "fractional_tail"),
+        ),
     ),
 }

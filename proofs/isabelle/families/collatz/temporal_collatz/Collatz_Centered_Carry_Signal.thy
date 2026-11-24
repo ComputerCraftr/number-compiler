@@ -164,6 +164,28 @@ theorem collatz_centered_signal_at_admitted_phase:
   using collatz_centered_numerator_physical[OF headroom(1) tick]
     collatz_centered_carry_correction[OF headroom tick gain] by blast+
 
+theorem collatz_valuation_covered_first_carry_event:
+  fixes x h :: nat and cuts :: "nat list"
+  assumes source: "2^h dvd x + 1" and positive: "0 < h"
+    and covered: "\<And>cut. cut \<in> set cuts \<Longrightarrow> cut \<le> h"
+  shows "2 * (physical_collatz ^^ 2) x = 3 * (x+1) - 2"
+    and "\<And>cut gain. cut \<in> set cuts \<Longrightarrow> gain \<in> {3,5,15} \<Longrightarrow>
+      (gain * ((x+1) mod 2^cut)) div 2^cut = 0"
+    and "\<And>cut. cut \<in> set cuts \<Longrightarrow>
+      (3 * ((x+1) mod 2^cut) + (2^cut - 2)) div 2^cut = 0"
+proof -
+  have "1 \<le> h" using positive by simp
+  then show "2 * (physical_collatz ^^ 2) x = 3 * (x+1) - 2"
+    using collatz_centered_numerator_physical[OF source, of 1] by simp
+  show "(gain * ((x+1) mod 2^cut)) div 2^cut = 0"
+    if "cut \<in> set cuts" "gain \<in> {3,5,15}" for cut gain
+    by (rule collatz_centered_cut_below_headroom(2)[OF source covered[OF that(1)]])
+  show "(3 * ((x+1) mod 2^cut) + (2^cut - 2)) div 2^cut = 0"
+    if "cut \<in> set cuts" for cut
+    using collatz_centered_cut_below_headroom(3)[OF source covered[OF that], of 3 1]
+    by simp
+qed
+
 lemma collatz_pending_odd_input_has_even_output:
   assumes "odd x"
   shows "even (physical_collatz x)"
@@ -173,7 +195,7 @@ ML \<open>
   val checked = @{thms collatz_centered_carry_correction
     collatz_centered_cut_below_headroom
     collatz_carry_cut_multiplier_reduction collatz_centered_numerator_physical
-    collatz_centered_signal_at_admitted_phase
+    collatz_centered_signal_at_admitted_phase collatz_valuation_covered_first_carry_event
     collatz_pending_odd_input_has_even_output};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Collatz corrected carry signal depends on an oracle";

@@ -501,8 +501,210 @@ def test_frontier_does_not_publish_cancelled_suffix() -> None:
         with completed_continuation(
             frame, 16, shared_cache=True, carry_window=True, before_step=account
         ) as (_, reused):
-            assert reused == 12
-            assert len(work) == 4
+            assert reused == 16
+            assert not work
+
+
+def test_h12_retains_physical_power_of_two_landmark(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.resources.process_cache import (
+        ProcessCache,
+        temporary_process_cache,
+    )
+    from number_compiler.sequences.reverse_add.q19_carry_window import (
+        completed_continuation,
+    )
+
+    frame = PackedQ19.from_digits((6, 9, 1))
+    work: list[int] = []
+
+    def account(count: int, _rounds: int) -> None:
+        work.append(count)
+
+    with temporary_process_cache(ProcessCache()):
+        with completed_continuation(
+            frame, 108, shared_cache=True, carry_window=True, before_step=account
+        ):
+            pass
+        work.clear()
+        decode = PackedQ19.from_record
+        decoded: list[object] = []
+
+        def count_decode(cls: type[PackedQ19], record: object) -> PackedQ19:
+            decoded.append(record)
+            return decode(record)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(PackedQ19, "from_record", classmethod(count_decode))
+            with completed_continuation(
+                frame, 64, shared_cache=True, carry_window=True, before_step=account
+            ) as (target, reused):
+                assert target == frame.advance_repeated(64)
+                assert reused == 64
+                assert not work
+        assert len(decoded) == 2
+
+
+def test_optional_physical_landmarks_release_space_for_local_checkpoints() -> None:
+    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.resources.process_cache import (
+        ProcessCache,
+        temporary_process_cache,
+    )
+    from number_compiler.sequences.reverse_add.q19_carry_window import (
+        completed_continuation,
+    )
+
+    frame = PackedQ19.from_digits((5, 9))
+    ledger = ResourceLedger(max_cache_entries=6)
+    owner = ledger.register("q19-limited-checkpoints", "scratch")
+    try:
+        with temporary_process_cache(ProcessCache()):
+            with completed_continuation(
+                frame,
+                64,
+                shared_cache=True,
+                carry_window=True,
+                before_step=lambda _count, _rounds: None,
+                ledger=ledger,
+                scratch_owner=owner,
+            ) as (target, _reused):
+                assert target == frame.advance_repeated(64)
+        assert ledger.account_usage(owner) == (0, 0)
+    finally:
+        ledger.mark_disposed(owner)
+
+
+def test_failed_physical_bundle_publication_is_atomic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.resources.process_cache import (
+        CacheLease,
+        ImmutableValue,
+        ProcessCache,
+        temporary_process_cache,
+    )
+    from number_compiler.sequences.reverse_add import q19_carry_window as window
+
+    frame = PackedQ19.from_digits((6, 9, 1))
+    original = CacheLease.update_issued
+
+    def fail_bundle(
+        self: CacheLease,
+        key: tuple[ImmutableValue, ...],
+        issuer: object,
+        update: Callable[[object], tuple[object, None]],
+    ) -> tuple[bool | None, None]:
+        if key[-2:] == (-2, window.DECIMAL_CARRY_WINDOW):
+            raise RuntimeError("bundle publication failed")
+        return original(self, key, issuer, update)
+
+    cache = ProcessCache()
+    with temporary_process_cache(cache):
+        with monkeypatch.context() as patch:
+            patch.setattr(CacheLease, "update_issued", fail_bundle)
+            with pytest.raises(RuntimeError, match="bundle publication failed"):
+                with window.completed_continuation(
+                    frame,
+                    108,
+                    shared_cache=True,
+                    carry_window=True,
+                    before_step=lambda _count, _rounds: None,
+                ):
+                    pass
+        with window.completed_continuation(
+            frame,
+            64,
+            shared_cache=True,
+            carry_window=True,
+            before_step=lambda _count, _rounds: None,
+        ) as (target, reused):
+            assert target == frame.advance_repeated(64)
+            assert reused == 32
+
+
+def test_nested_publication_preserves_newer_physical_landmarks() -> None:
+    from number_compiler.resources.process_cache import (
+        ProcessCache,
+        temporary_process_cache,
+    )
+    from number_compiler.sequences.reverse_add.q19_carry_window import (
+        completed_continuation,
+    )
+
+    frame = PackedQ19.from_digits((6, 9, 1))
+    work: list[int] = []
+
+    def account(count: int, _rounds: int) -> None:
+        work.append(count)
+
+    with temporary_process_cache(ProcessCache()):
+        with completed_continuation(
+            frame, 108, shared_cache=True, carry_window=True, before_step=account
+        ):
+            with completed_continuation(
+                frame, 140, shared_cache=True, carry_window=True, before_step=account
+            ):
+                pass
+        work.clear()
+        with completed_continuation(
+            frame, 128, shared_cache=True, carry_window=True, before_step=account
+        ) as (target, reused):
+            assert target == frame.advance_repeated(128)
+            assert reused == 128
+            assert not work
+
+
+def test_failed_endpoint_publication_does_not_publish_physical_landmarks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.resources.process_cache import (
+        CacheLease,
+        ImmutableValue,
+        ProcessCache,
+        temporary_process_cache,
+    )
+    from number_compiler.sequences.reverse_add.q19_carry_window import (
+        completed_continuation,
+    )
+
+    frame = PackedQ19.from_digits((6, 9, 1))
+    original = CacheLease.put_issued
+
+    def fail_endpoint(
+        self: CacheLease,
+        key: tuple[ImmutableValue, ...],
+        payload: ImmutableValue,
+        issuer: object,
+        *,
+        accounted_bytes: int | None = None,
+    ) -> bool:
+        if key[-1] == 96:
+            raise RuntimeError("endpoint publication failed")
+        return original(self, key, payload, issuer, accounted_bytes=accounted_bytes)
+
+    with temporary_process_cache(ProcessCache()):
+        with monkeypatch.context() as patch:
+            patch.setattr(CacheLease, "put_issued", fail_endpoint)
+            with pytest.raises(RuntimeError, match="endpoint publication failed"):
+                with completed_continuation(
+                    frame,
+                    108,
+                    shared_cache=True,
+                    carry_window=True,
+                    before_step=lambda _count, _rounds: None,
+                ):
+                    pass
+        with completed_continuation(
+            frame,
+            64,
+            shared_cache=True,
+            carry_window=True,
+            before_step=lambda _count, _rounds: None,
+        ) as (target, reused):
+            assert target == frame.advance_repeated(64)
+            assert reused == 32
 
 
 def test_nested_frontier_publication_keeps_the_longer_completed_action() -> None:

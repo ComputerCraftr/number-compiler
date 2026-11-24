@@ -120,6 +120,50 @@ proof -
     by (simp add: mult.assoc)
 qed
 
+lemma mersenne_trace_gradient_zero_persists:
+  fixes base x :: int
+  assumes "base dvd mersenne_trace_gradient prefix x"
+  shows "base dvd mersenne_trace_gradient (prefix + remaining) x"
+  using assms by (induction remaining) auto
+
+theorem mersenne_trace_source_zero_gradient_rows:
+  fixes base block source digit :: int
+  assumes divides: "base dvd block"
+    and prefix: "prefix \<le> steps"
+    and zero: "base dvd mersenne_trace_gradient prefix source"
+  shows "(lucas_trace_step ^^ steps) (source + digit * block) mod (base * block) =
+    (lucas_trace_step ^^ steps) source mod (base * block)"
+proof -
+  obtain remaining where count: "steps = prefix + remaining"
+    using prefix by (auto simp: le_iff_add)
+  have gradient: "base dvd mersenne_trace_gradient steps source"
+    unfolding count by (rule mersenne_trace_gradient_zero_persists[OF zero])
+  then obtain factor where
+    factor: "mersenne_trace_gradient steps source = base * factor"
+    by (auto elim: dvdE)
+  have vanishes:
+    "(digit * block * mersenne_trace_gradient steps source) mod (base * block) = 0"
+    using factor by (simp add: algebra_simps)
+  have collapse:
+    "((lucas_trace_step ^^ steps) source +
+        digit * block * mersenne_trace_gradient steps source) mod (base * block) =
+      (lucas_trace_step ^^ steps) source mod (base * block)"
+  proof -
+    have "((lucas_trace_step ^^ steps) source +
+        digit * block * mersenne_trace_gradient steps source) mod (base * block) =
+      (((lucas_trace_step ^^ steps) source mod (base * block)) +
+        ((digit * block * mersenne_trace_gradient steps source) mod (base * block)))
+          mod (base * block)"
+      by (rule mod_add_eq[symmetric])
+    also have "... = (lucas_trace_step ^^ steps) source mod (base * block)"
+      by (simp only: vanishes add_0_right mod_mod_trivial)
+    finally show ?thesis .
+  qed
+  show ?thesis
+    by (rule trans[OF mersenne_trace_child_gradient[OF divides, of steps source digit]
+        collapse])
+qed
+
 definition mersenne_trace_source_residue :: "nat \<Rightarrow> nat \<Rightarrow> nat"
     where
   "mersenne_trace_source_residue modulus exponent =
@@ -468,6 +512,7 @@ corollary checked_mersenne_dyadic_matrix_power_reduction:
 
 ML \<open>
   val checked = @{thms mersenne_trace_child_gradient mersenne_trace_two_child_affine
+    mersenne_trace_gradient_zero_persists mersenne_trace_source_zero_gradient_rows
     mersenne_trace_source_residue_power_form
     mersenne_matrix2_determinant_square_iterate
     mersenne_companion_trace_square

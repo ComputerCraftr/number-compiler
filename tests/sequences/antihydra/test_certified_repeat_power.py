@@ -183,3 +183,50 @@ def test_all_four_step_phases_preserve_original_source_and_safety() -> None:
             )
             value = endpoint + 1
         assert value == literal_antihydra_summary(source, 28)[0]
+
+
+@pytest.mark.parametrize("low", (2, 39, 74, 127, 198, 255))
+@pytest.mark.parametrize("width", (25, 31, 63, 65, 127))
+def test_repeat_consumes_the_admitted_partial_motif(low: int, width: int) -> None:
+    source = repeated_source(low, 136)
+    term = AntihydraArithmeticTerm(0)
+    workspace = term.arithmetic_image()
+    scratch = RunArithmeticWorkspace.for_ledger(term.ledger, workspace.counter_prefix)
+    with scratch.scope():
+        parts = tuple(workspace.punctured_steps(source, width, scratch))
+    expected, delta, minimum, odd, _ = literal_antihydra_summary(source, width)
+    assert parts == ((width, delta, minimum, odd, expected - 1),)
+
+
+@pytest.mark.parametrize("boundary", (25, 29, 37))
+def test_repeat_stops_at_the_first_uncertified_partial_bit(boundary: int) -> None:
+    source = repeated_source(39, 136) ^ (1 << boundary)
+    term = AntihydraArithmeticTerm(0)
+    workspace = term.arithmetic_image()
+    scratch = RunArithmeticWorkspace.for_ledger(term.ledger, workspace.counter_prefix)
+    with scratch.scope():
+        parts = tuple(workspace.punctured_steps(source, boundary + 7, scratch))
+    assert parts[0][0] == boundary
+    position = source
+    for length, delta, minimum, odd, endpoint in parts:
+        expected, actual_delta, actual_minimum, actual_odd, _ = (
+            literal_antihydra_summary(position, length)
+        )
+        assert (endpoint, delta, minimum, odd) == (
+            expected - 1,
+            actual_delta,
+            actual_minimum,
+            actual_odd,
+        )
+        position = expected
+
+
+def test_repeat_only_returns_the_certified_partial_leaf() -> None:
+    source = repeated_source(39, 136)
+    term = AntihydraArithmeticTerm(0)
+    workspace = term.arithmetic_image()
+    scratch = RunArithmeticWorkspace.for_ledger(term.ledger, workspace.counter_prefix)
+    with scratch.scope():
+        parts = tuple(workspace.punctured_steps(source, 127, scratch, repeat_only=True))
+    expected, delta, minimum, odd, _ = literal_antihydra_summary(source, 127)
+    assert parts == ((127, delta, minimum, odd, expected - 1),)

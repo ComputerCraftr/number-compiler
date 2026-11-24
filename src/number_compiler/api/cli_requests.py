@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Mapping
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 from number_compiler.api.cli_types import (
     IndexPresentation,
@@ -42,6 +43,9 @@ from number_compiler.arithmetic.contracts.family_identity import (
     family_id,
 )
 from number_compiler.arithmetic.contracts.input_validation import require_integer
+
+if TYPE_CHECKING:
+    from fractions import Fraction
 
 
 def cli_index_token(text: str) -> str:
@@ -102,8 +106,23 @@ def cli_integer(text: str) -> int:
         raise argparse.ArgumentTypeError("integer token exceeds parser budget") from exc
 
 
+def cli_rational(text: str) -> Fraction:
+    """Parse a bounded exact fraction at the external input boundary."""
+    from fractions import Fraction
+
+    if len(text) > 2475 or text.count("/") != 1:
+        raise argparse.ArgumentTypeError("expected a bounded fraction P/Q")
+    numerator, denominator = map(cli_integer, text.split("/"))
+    if (
+        denominator <= 0
+        or max(abs(numerator).bit_length(), denominator.bit_length()) > 4096
+    ):
+        raise argparse.ArgumentTypeError("fraction denominator or precision is invalid")
+    return Fraction(numerator, denominator)
+
+
 def cli_integer_vector(text: str) -> tuple[int, ...]:
-    """Bounded exact polynomial coefficients, in increasing p-degree order."""
+    """Bounded exact integer vector for a registered observation."""
     if len(text) > 1200:
         raise argparse.ArgumentTypeError("coefficient vector exceeds parser budget")
     pieces = text.split(",")
@@ -217,6 +236,15 @@ def _add_family_options(command: argparse.ArgumentParser, spec: FamilySpec) -> N
     for name, option in spec.parser_options().items():
         if not option.name:
             raise ValueError(f"registry option {name!r} has no canonical name")
+        if option.value_kind is OptionValueKind.RATIONAL:
+            command.add_argument(
+                option.flag,
+                dest=option.name,
+                type=cli_rational,
+                action=UniqueValue,
+                help=option.help,
+            )
+            continue
         if option.value_kind is not OptionValueKind.INTEGER:
             if option.value_kind is OptionValueKind.INTEGER_VECTOR:
                 command.add_argument(

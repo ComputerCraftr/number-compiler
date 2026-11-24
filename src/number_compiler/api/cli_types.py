@@ -22,6 +22,8 @@ from number_compiler.arithmetic.contracts.input_validation import (
 )
 
 if TYPE_CHECKING:
+    from fractions import Fraction
+
     from number_compiler.api.output_schema import IndexValue
 
 
@@ -281,6 +283,11 @@ class AntihydraObservationOptions:
     time_width: int = 2
     time_sign: int = 1
     max_observer_terms: int = 1_000_000
+    safety_horizon: int | None = None
+    fractional_tail: Fraction | None = None
+    temporal_macro_copies: int | None = None
+    continued_fraction_band: tuple[int, ...] | None = None
+    continued_fraction_max_coefficients: int | None = None
 
     def __post_init__(self) -> None:
         _validate_info_names(self.info)
@@ -324,6 +331,66 @@ class AntihydraObservationOptions:
             and pow(2, self.width, modulus) != self.sign % modulus
         ):
             raise ValueError("factor target is incompatible with the tape cylinder")
+
+    def validate_mahler_views(self, views: tuple[ObservationView, ...]) -> None:
+        finite = ObservationView.FINITE_SAFETY in views
+        graph = ObservationView.GRAPH_ACTION in views
+        fraction = self.fractional_tail
+        if finite or graph:
+            from fractions import Fraction
+
+            if type(fraction) is not Fraction or not 0 <= fraction < 1:
+                raise ValueError("a fractional tail in [0, 1) is required")
+            if (
+                max(fraction.numerator.bit_length(), fraction.denominator.bit_length())
+                > 4096
+            ):
+                raise ValueError("fractional tail exceeds its precision budget")
+        elif fraction is not None:
+            raise ValueError("--fractional-tail requires finite-safety or graph-action")
+        if graph:
+            require_integer(
+                self.temporal_macro_copies, "--temporal-macro-copies", 1, 2048
+            )
+        elif self.temporal_macro_copies is not None:
+            raise ValueError("--temporal-macro-copies requires graph-action")
+
+        band = self.continued_fraction_band
+        continued_fraction = ObservationId.ARITHMETIC_CONTINUED_FRACTION in self.info
+        cylinder = continued_fraction and band is None
+        if finite or cylinder:
+            require_integer(self.safety_horizon, "--safety-horizon", 0, 4096)
+        elif self.safety_horizon is not None:
+            raise ValueError("--safety-horizon requires finite-safety or a CF cylinder")
+        coefficient_limit = self.continued_fraction_max_coefficients
+        if coefficient_limit is not None:
+            if not cylinder:
+                raise ValueError(
+                    "--continued-fraction-max-coefficients requires a CF cylinder"
+                )
+            require_integer(
+                coefficient_limit, "--continued-fraction-max-coefficients", 1, 100000
+            )
+        if continued_fraction and band is not None:
+            if not is_exact_integer_tuple(band) or len(band) != 4:
+                raise ValueError(
+                    "arithmetic.continued-fraction requires a band N,CUT,WIDTH,ROWS"
+                )
+            exponent, cut, width, rows = band
+            if not (
+                1 <= width <= 128
+                and width <= cut <= exponent
+                and 1 <= rows
+                and exponent + rows - 1 <= 4096
+                and width * rows <= 4096
+            ):
+                raise ValueError(
+                    "continued-fraction band exceeds its coordinate limits"
+                )
+        elif band is not None:
+            raise ValueError(
+                "--continued-fraction-band requires arithmetic.continued-fraction"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -459,6 +526,8 @@ class QueryRequest:
             "views",
             spec.selected_views(selector, self.observations.info, self.views),
         )
+        if isinstance(self.observations, AntihydraObservationOptions):
+            self.observations.validate_mahler_views(self.views)
         if {
             ObservationId.TEMPORAL_MATRIX,
             ObservationId.TEMPORAL_MATRIX_TRACE,

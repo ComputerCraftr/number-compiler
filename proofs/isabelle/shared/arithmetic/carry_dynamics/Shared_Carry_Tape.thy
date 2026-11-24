@@ -706,6 +706,33 @@ lemma binary_carry_plan_prefix_reassociate:
       (take k (binary_carry_plan_word (Binary_Carry_Join a (Binary_Carry_Join b c))))"
   by (simp only: binary_carry_plan_word.simps append_assoc)
 
+text \<open>Reducing a signed affine numerator at the joint cut and demand
+precision preserves the low divisibility guard and the demanded high
+quotient. It supplies a value response inside the original cylinder.\<close>
+
+lemma dyadic_affine_upper_port_reduction:
+  fixes gain low offset cut demand :: int
+  assumes cut: "0 < cut" and demand: "0 < demand"
+  defines "modulus \<equiv> cut * demand"
+  shows "((gain mod modulus) * low + offset mod modulus) div cut mod demand =
+      (gain * low + offset) div cut mod demand"
+proof -
+  have chop: "(numeral_arg mod modulus) div cut = numeral_arg div cut mod demand" for numeral_arg
+  proof -
+    have "numeral_arg mod modulus = cut * (numeral_arg div cut mod demand) + numeral_arg mod cut"
+      unfolding modulus_def by (rule zmod_zmult2_eq) (use demand in simp)
+    then show ?thesis using cut by (simp add: add.commute)
+  qed
+  have "((gain mod modulus) * low + offset mod modulus) mod modulus =
+      (((gain mod modulus) * low) mod modulus + offset mod modulus) mod modulus"
+    by (rule mod_add_left_eq[symmetric])
+  also have "... = ((gain * low) mod modulus + offset mod modulus) mod modulus"
+    by (simp only: mod_mult_left_eq)
+  also have "... = (gain * low + offset) mod modulus"
+    by (rule mod_add_eq)
+  finally show ?thesis by (metis chop)
+qed
+
 ML \<open>
   val checked = @{thms carry_finish_fold carry_finish_append
     advance_phase_append advance_phase_by_length carry_finish_equal_prefix
@@ -730,7 +757,8 @@ ML \<open>
     binary_normalized_carry_seam binary_signed_minus_one_seam
     binary_carry_word_repeat_length binary_coefficient_repeated_word binary_carry_plan_summary_exact
     binary_carry_plan_application_exact binary_carry_plan_reassociate
-    binary_carry_plan_repeat_split binary_carry_plan_prefix_reassociate};
+    binary_carry_plan_repeat_split binary_carry_plan_prefix_reassociate
+    dyadic_affine_upper_port_reduction};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Shared carry-tape proof depends on an oracle";
 \<close>

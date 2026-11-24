@@ -357,8 +357,6 @@ def _joined(
         if resolved_tape is not None and (
             resolved_tape.steps != joined.port.action.steps
             or resolved_tape.odds != joined.port.odd_events
-            or resolved_tape.action().coefficient_snapshot()
-            != joined.port.action.coefficient_snapshot()
         ):
             raise ValueError("conditional parity tape differs from its issued port")
 

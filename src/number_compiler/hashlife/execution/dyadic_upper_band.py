@@ -36,9 +36,14 @@ def certified_lower_upper_action(
         or (lower_bits & ((1 << width) - 1)) != lower.residue
     ):
         raise ValueError("upper band lacks its aligned lower cylinder")
-    numerator = lower.transfer.upper * lower_bits + lower.transfer.offset
+    gain, offset = lower.transfer.upper, lower.transfer.offset
+    precision = cut + demand_width
+    if gain.bit_length() > precision:
+        # Preserve the low dyadic guard and exactly the bits above the cut.
+        mask = (1 << precision) - 1
+        gain &= mask
+        offset &= mask
+    numerator = gain * lower_bits + offset
     if numerator % (1 << width):
         raise ArithmeticError("lower block lost its exact dyadic endpoint")
-    return AffinePortAction.reduced(
-        1 << demand_width, lower.transfer.upper, numerator >> cut
-    )
+    return AffinePortAction.reduced(1 << demand_width, gain, numerator >> cut)

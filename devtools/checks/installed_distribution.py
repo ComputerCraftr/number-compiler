@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
 
@@ -16,6 +17,20 @@ from devtools.checks.package_contracts import DEVELOPER_ROOTS
 from number_compiler.api.family_registry import family_spec
 from number_compiler.arithmetic.contracts.family_identity import family_id
 from number_compiler.arithmetic.contracts.input_validation import string_keyed_mapping
+
+COMMA_RELEASE_ASSET = "comma_semantic_future_v4.json"
+COMMA_NATIVE_EXPORT = "comma-semantic-future-v4.json"
+
+
+def verify_comma_native_export(export_root: Path, packaged_asset: Path) -> str:
+    """Bind the wheel's source asset to the exact guarded native export."""
+    candidates = tuple(export_root.rglob(COMMA_NATIVE_EXPORT))
+    if len(candidates) != 1 or not candidates[0].is_file():
+        raise ValueError("expected one symbolic comma artifact from the native build")
+    native = candidates[0].read_bytes()
+    if native != packaged_asset.read_bytes():
+        raise ValueError("packaged comma artifact differs from the native export")
+    return sha256(native).hexdigest()
 
 
 def _report_stage(stage: str) -> None:
@@ -75,7 +90,9 @@ def verify_wheel(
         raise ValueError("installed distribution has no immutable kernel resources")
     if any(Path(name).name.startswith("base10_t2_") for name in resources):
         raise ValueError("retired reverse/add proof-machine resource was packaged")
-    required_future_asset = "number_compiler/kernels/comma_semantic_future_v3.json"
+    required_future_asset = f"number_compiler/kernels/{COMMA_RELEASE_ASSET}"
+    if "number_compiler/kernels/comma_semantic_future_v3.json" in members:
+        raise ValueError("retired comma future artifact was packaged")
     if required_future_asset not in members:
         raise ValueError("installed distribution lacks the admitted comma future")
     environment = dict(os.environ)
@@ -170,7 +187,8 @@ from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.comma import future_provider
 global_digest = future_provider.registered_global_release_artifact_sha256()
 assert global_digest is not None
-future_asset = files('number_compiler').joinpath('kernels/comma_semantic_future_v3.json')
+assert future_provider.FUTURE_PROVIDER_ASSET == sys.argv[1]
+future_asset = files('number_compiler').joinpath('kernels', future_provider.FUTURE_PROVIDER_ASSET)
 future_record = json.loads(future_asset.read_text())
 provider_store = future_provider.SemanticFutureProviderStore(ResourceLedger())
 future_instance = provider_store.load_record(
@@ -234,7 +252,7 @@ expected_fork_children = (
     (6999999999999, 7000000000000),
     (19999999999999, 20000000000000),
 )
-# Authored rank rows fix N(2,10) to slot 0 and N(7,12) to slot 1.
+# The ordered source actions select slot 0 at N(2,10) and slot 1 at N(7,12).
 expected_fork_slots = (0, 1)
 expected_selected_literals = (6999999999999, 20000000000000)
 transition_counts = []
@@ -265,12 +283,12 @@ later_index = 412987860 + sum(transition_counts)
 expected_later_output = 20000000000000
 assert source.value() == expected_later_output
 observed_fork_sources = []
-original_select = SemanticFutureProvider.select_unique_unranked_child
+original_select = future_provider.SemanticFutureProvider.select_unique_unranked_child
 def traced_select(self, state, *, charge_work):
     observed_fork_sources.append(state)
     return original_select(self, state, charge_work=charge_work)
 later_output = StringIO()
-with patch.object(SemanticFutureProvider, 'select_unique_unranked_child', traced_select):
+with patch.object(future_provider.SemanticFutureProvider, 'select_unique_unranked_child', traced_select):
     with redirect_stdout(later_output):
         assert main(['a367620', '--nth', str(later_index), '--format', 'json']) == 0
 later_packet = json.loads(later_output.getvalue())
@@ -315,7 +333,7 @@ mahler_metrics = arithmetic['info']['metrics']['execution_metrics']
 assert mahler_metrics['schema_version'] == 8
 assert mahler_metrics['construction']['source_image_adapter_registrations'] == 1
 assert mahler_metrics['construction']['arithmetic_result_publications'] == 1
-assert mahler_metrics['projection']['publications'] >= 2
+assert mahler_metrics['projection']['publications'] == 1
 assert mahler_metrics['observations']['physical_roof_evaluations'] is None
 assert mahler_metrics['observations']['mahler_source_composed_image_reads'] == 1
 assert mahler_metrics['observations']['mahler_associated_action_demands'] == 1
@@ -423,6 +441,7 @@ finally:
 api.NumberCompiler.clear_shared_cache()
 print(json.dumps({'python_version': list(sys.version_info[:3]), 'public_exports': len(api.__all__), 'kernel_left_states': kernel.left_count, 'kernel_right_states': kernel.right_count, 'installed_path': api.__file__, 'arithmetic_cli_roof_poison': 'passed', 'homogeneous_run_cli_actions': reuse['collatz_physical_temporal_run_actions'], 'mahler_composed_image': 'passed', 'cross_seed_macrocells': 'passed', 'antihydra_digit_parent_reuse': 'passed'}))
 """,
+                COMMA_RELEASE_ASSET,
             ],
             cwd=work,
             env=environment,
@@ -756,7 +775,7 @@ print(json.dumps({'python_version': list(sys.version_info[:3]), 'public_exports'
                     or construction["arithmetic_result_publications"] != 1
                     or observations["mahler_source_composed_image_reads"] != 1
                     or observations["mahler_associated_action_demands"] != 1
-                    or execution["projection"]["publications"] < 2
+                    or execution["projection"]["publications"] != 1
                 ):
                     raise ValueError(
                         "installed Mahler consumer bypassed the shared scheduler"

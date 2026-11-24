@@ -16,7 +16,11 @@ from number_compiler.arithmetic.contracts.ordered_output import (
     OrderedBandOutput,
     OrderedSourceCoverage,
 )
-from number_compiler.arithmetic.fields.ordered_matrix import Matrix2, OrderedCovector
+from number_compiler.arithmetic.fields.ordered_matrix import (
+    Matrix2,
+    OrderedCovector,
+    ordered_decimal_continuant,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,8 +137,8 @@ def ordered_digit_band_output(
                     frame.upper_source_letters, "upper source letters", 0, width
                 )
 
-                lower_action = _digit_word_matrix(frame.lower_digits, modulus)
-                upper_action = _digit_word_matrix(frame.upper_digits, modulus)
+                lower_action = ordered_decimal_continuant(frame.lower_digits, modulus)
+                upper_action = ordered_decimal_continuant(frame.upper_digits, modulus)
                 lower_total = lower_total.then(lower_action)
                 upper_total = upper_total.then(upper_action)
                 matrix_multiplications += 2 * (width + 1)
@@ -173,15 +177,6 @@ def ordered_digit_band_output(
             )
         finally:
             frames.close()
-
-
-def _digit_word_matrix(digits: tuple[int, ...], modulus: int) -> Matrix2:
-    """Build an MSD-first fixed-width decimal continuant."""
-
-    result = Matrix2.identity(modulus)
-    for digit in digits:
-        result = result.multiply(Matrix2.digit(digit + 1, modulus))
-    return result
 
 
 def _limbs(bits: int) -> int:

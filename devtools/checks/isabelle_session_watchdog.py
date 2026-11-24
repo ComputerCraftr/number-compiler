@@ -6,6 +6,7 @@ import math
 import re
 
 from devtools.checks.isabelle_proof_progress import ProofProgressFile
+from devtools.checks.validation_policy import ISABELLE_SESSION_SECONDS
 
 SESSION_STATUS = re.compile(
     r"^\s*(Running|Building|Finished|Failed|FAILED|Unfinished)\s+"
@@ -17,7 +18,93 @@ SESSION_NAME_FIRST_TERMINAL = re.compile(
 )
 SESSION_DURATION = re.compile(r"\((\d+:\d{2}:\d{2}(?:\.\d+)?) elapsed time")
 SESSION_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.+-]*$")
+_UNFINISHED_LIST = re.compile(r"^\s*Unfinished session\(s\):\s*(.+)$")
 _MAX_PARTIAL_LINE_BYTES = 64 * 1024
+
+
+def parse_session_inventory(
+    text: str, required_sessions: tuple[str, ...]
+) -> tuple[str, ...]:
+    """Parse Isabelle's authoritative topological `sessions -b` output."""
+    names = tuple(
+        line.strip()
+        for line in text.splitlines()
+        if SESSION_NAME.fullmatch(line.strip())
+    )
+    if not names or len(names) != len(set(names)):
+        raise ValueError("Isabelle session inventory is empty or contains duplicates")
+    missing = sorted(set(required_sessions) - set(names))
+    if missing:
+        raise ValueError(
+            "native Isabelle inventory omitted requested sessions: "
+            + ", ".join(missing)
+        )
+    return names
+
+
+def session_build_summary(
+    text: str, inventory: tuple[str, ...], *, succeeded: bool
+) -> dict[str, object]:
+    """Separate rebuilt, reused and unclassified heaps from native build logs."""
+    started: set[str] = set()
+    finished: set[str] = set()
+    failed: set[str] = set()
+    durations: dict[str, float] = {}
+    for line in text.splitlines():
+        unfinished_match = _UNFINISHED_LIST.match(line)
+        if unfinished_match:
+            failed.update(
+                name.strip()
+                for name in unfinished_match.group(1).split(",")
+                if name.strip()
+            )
+            continue
+        match = SESSION_STATUS.match(line)
+        if match is None:
+            continue
+        status, name = match.groups()
+        if status == "Finished" and name == "at" and name not in inventory:
+            # Isabelle's build footer is a timestamp, not a rebuilt session.
+            continue
+        if status in {"Running", "Building"}:
+            started.add(name)
+        elif status == "Finished":
+            finished.add(name)
+            duration_match = SESSION_DURATION.search(line)
+            if duration_match:
+                hours, minutes, seconds = duration_match.group(1).split(":")
+                durations[name] = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+        else:
+            failed.add(name)
+    rebuilt = started | finished
+    unknown = sorted(set(inventory) - rebuilt - failed)
+    unmatched = sorted((started | finished | failed) - set(inventory))
+    if succeeded and not failed:
+        reused: list[str] | None = sorted(set(inventory) - rebuilt)
+        inferred = "successful native build; inventory minus reported built sessions"
+        not_attempted: list[str] = []
+    else:
+        reused = None
+        inferred = None
+        not_attempted = unknown
+    return {
+        "inventory_sessions": list(inventory),
+        "inventory_count": len(inventory),
+        "started_sessions": sorted(started),
+        "rebuilt_sessions": sorted(rebuilt),
+        "finished_sessions": sorted(finished),
+        "failed_sessions": sorted(failed),
+        "unmatched_native_session_statuses": unmatched,
+        "reused_sessions": reused,
+        "reused_inference": inferred,
+        "not_attempted_or_unclassified_sessions": not_attempted,
+        "finished_session_elapsed_seconds": durations or None,
+        "over_budget_finished_sessions": sorted(
+            name
+            for name, seconds in durations.items()
+            if seconds > ISABELLE_SESSION_SECONDS
+        ),
+    }
 
 
 class IsabelleSessionWatchdog:

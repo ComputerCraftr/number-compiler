@@ -62,15 +62,26 @@ def prepare_antihydra(context: QueryContext, term: ProjectedNumberTerm) -> None:
 def admit_antihydra(context: QueryContext) -> None:
     from number_compiler.api.number_api import AntihydraTermPayload
 
-    term = context.raw_projected_term()
-    if context.request.family is not FamilyId.ANTIHYDRA or not isinstance(
-        term.payload, AntihydraTermPayload
+    if context.request.family is not FamilyId.ANTIHYDRA:
+        raise TypeError("Antihydra query received a foreign context")
+    if context.request.presentation.no_value and context.request.observations.info == (
+        ObservationId.ARITHMETIC_CONTINUED_FRACTION,
     ):
+        return
+    term = context.raw_projected_term()
+    if not isinstance(term.payload, AntihydraTermPayload):
         raise TypeError("Antihydra query published a foreign term payload")
 
 
 def observe_antihydra(context: QueryContext, name: ObservationId) -> Packet:
     options = observation_options(context, AntihydraObservationOptions)
+    if name is ObservationId.ARITHMETIC_CONTINUED_FRACTION:
+        from number_compiler.api.mahler_compact_observation import (
+            observe_continued_fraction,
+        )
+
+        return observe_continued_fraction(context, options)
+
     from number_compiler.api.number_api import AntihydraTermPayload
 
     alias = (
@@ -95,6 +106,10 @@ def observe_antihydra(context: QueryContext, name: ObservationId) -> Packet:
     payload = context.term.payload
     if not isinstance(payload, AntihydraTermPayload):
         raise TypeError("Antihydra query published a foreign term payload")
+    if name is ObservationId.TEMPORAL_MACRO:
+        from number_compiler.api.mahler_compact_observation import observe_powered_graph
+
+        return observe_powered_graph(context, options, payload.term.result())
     if name is ObservationId.TEMPORAL_DIAGONAL_CARRY:
         from number_compiler.api.json_output import json_value
         from number_compiler.api.output_schema import AntihydraDiagonalPacket
@@ -170,9 +185,11 @@ def observe_antihydra(context: QueryContext, name: ObservationId) -> Packet:
         )
         if name is ObservationId.ARITHMETIC_MODULAR:
             return publish_views(context, name, {View.ENDPOINT_RESIDUE: packet})
-        if View.FINITE_GUARD in context.views_for(name):
+        requested = context.views_for(name)
+        views: dict[View, Packet] = {}
+        if View.FINITE_GUARD in requested:
             projection = result.finite_safety_guard()
-            guard = publish_observation(
+            views[View.FINITE_GUARD] = publish_observation(
                 context,
                 name,
                 {
@@ -184,9 +201,16 @@ def observe_antihydra(context: QueryContext, name: ObservationId) -> Packet:
                     ).value,
                 },
             )
-            packet["views"] = publish_views(context, name, {View.FINITE_GUARD: guard})[
-                "views"
-            ]
+        if View.FINITE_SAFETY in requested:
+            from number_compiler.api.mahler_compact_observation import (
+                observe_finite_safety,
+            )
+
+            safety = observe_finite_safety(context, options, result)
+            views[View.FINITE_SAFETY] = safety
+            packet["status"] = safety["status"]
+        if views:
+            packet["views"] = publish_views(context, name, views)["views"]
         return packet
 
     from number_compiler.api.antihydra_observation import (

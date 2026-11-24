@@ -8,7 +8,11 @@ import pytest
 from number_compiler.api.cli import main
 from number_compiler.api.cli_requests import parse_request
 from number_compiler.api.matrix_contracts import NegacyclicMatrixRequest
-from number_compiler.sequences.power_numbers import fermat_negacyclic_halo
+from number_compiler.sequences.power_numbers import (
+    fermat_negacyclic_halo,
+    fermat_powered_port_matrix,
+    three_power_inward_phase_bank,
+)
 from number_compiler.sequences.power_numbers.numbers import FermatNumberSpec
 
 _HALO = (
@@ -117,6 +121,38 @@ def test_ordinary_fermat_matrix_does_not_open_the_halo(
     assert matrix["matrix_kind"] == "source-transfer"
 
 
+def test_ordinary_matrix_uses_the_issued_positional_bank(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(
+        fermat_powered_port_matrix, "exact_three_power_residue", _forbidden
+    )
+    assert (
+        main(
+            [
+                "fermat",
+                "--nth",
+                "3",
+                "--no-value",
+                "--info",
+                "temporal.matrix",
+                "--temporal-matrix-steps",
+                "127",
+                "--temporal-matrix-digit-position",
+                "12",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    matrix = json.loads(capsys.readouterr().out)["info"]["temporal.matrix"]
+    modulus = 10**13
+    assert matrix["source_residue"] == pow(3, 128, modulus)
+    assert matrix["selected_endpoint_residue"] == pow(3, 128 + 127, modulus)
+    assert matrix["puncture_count"] == 9
+
+
 def test_fermat_help_and_metrics_do_not_open_the_halo(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -145,3 +181,34 @@ def test_negacyclic_cli_supports_the_full_bounded_horizon(
         (canonical_source * 3**4096 // modulus) % (1 << 32)
     )
     assert matrix["horizon"]["ticks"] == 4096
+
+
+def test_direct_fermat_matrix_does_not_build_moore_observers(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        three_power_inward_phase_bank, "minimize_finite_orbit", _forbidden
+    )
+    assert (
+        main(
+            [
+                "fermat",
+                "--nth",
+                "5",
+                "--no-value",
+                "--info",
+                "temporal.matrix",
+                "--temporal-matrix-steps",
+                "4096",
+                "--temporal-matrix-digit-position",
+                "8",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    packet = json.loads(capsys.readouterr().out)["info"]["temporal.matrix"]
+    modulus = 10**9
+    assert packet["source_residue"] == pow(3, 2**31, modulus)
+    assert packet["selected_endpoint_residue"] == pow(3, 2**31 + 4096, modulus)

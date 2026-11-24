@@ -264,8 +264,10 @@ def test_repeated_completed_demand_reuses_exact_word_fiber_projection(
         second = certified_completed_reverse_add_seed_morphism(term)
         after = workspace.ledger.snapshot().counters
 
-        assert second.first is first.first
-        assert second.last is first.last
+        assert second.first == first.first
+        assert second.last == first.last
+        assert second.first.occurrence is first.first.occurrence
+        assert second.last.occurrence is first.last.occurrence
         assert (
             after[_reverse_add_keys.REVERSE_Q19_WORD_FIBER_CACHE_HITS]
             == before.get(_reverse_add_keys.REVERSE_Q19_WORD_FIBER_CACHE_HITS, 0) + 2
@@ -275,6 +277,23 @@ def test_repeated_completed_demand_reuses_exact_word_fiber_projection(
             _reverse_add_keys.REVERSE_Q19_WORD_FIBER_INTERVAL_NODES_VISITED,
         ):
             assert after[key] == before[key]
+
+
+def test_cached_port_image_rejects_changed_value() -> None:
+    with _term(196, 17) as term:
+        certified_completed_reverse_add_seed_morphism(term)
+        owner = term.source_workspace().adapter.audit_snapshot().q19_owner
+        assert owner is not None
+        key, (image, binding) = next(iter(owner.word_fiber_cache.items()))
+        owner.word_fiber_cache[key] = (
+            replace(image, residue99=(image.residue99 + 1) % 99),
+            binding,
+        )
+        try:
+            with pytest.raises(ValueError):
+                certified_completed_reverse_add_seed_morphism(term)
+        finally:
+            owner.word_fiber_cache[key] = (image, binding)
 
 
 def test_independent_outer_carry_witnesses_are_not_a_radius_one_stencil() -> None:

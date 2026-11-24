@@ -13,3 +13,4 @@ session Five_Reverse in five_reverse = Shared_Carry_Dynamics +
     Five_Reverse_Compiled_Word
     Five_Reverse_Bounds
     Five_Reverse_Window_Consumer
+    Five_Reverse_Ordered_Band

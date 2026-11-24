@@ -1622,6 +1622,459 @@ phase-12 children. It checked North as the live arm for that row and
 phase, swapped order and wrong elapsed weight. This covers one arc.
 See `results/nc-comma-symbolic-cutover/anchor-weighted-receipt-v3-build.log`.
 
+On receiving revision `b68468f9`, the release gate now checks the symbolic
+authorities through production theory imports, attached ML resources, and
+native theorem dependencies. A guarded native fixture rejected retired
+Bellman authority reached through an intermediate theorem. The installed
+release gate requires the v4 asset and compares its bytes with the export
+from the guarded build. The production dependency regression is red while
+the legacy B32, rank, and writer authorities remain. The guarded receiving
+selection passed 180 checks alongside that failure, and strict mypy and
+Pyright passed for the changed Python files.
+
+The registered `Comma_Semantic_B1` build passed in 216 seconds after
+checking the phase-134 termination proof and the source-bound typed Stop
+provider. Its proof dependency audit excludes packed termination authority.
+The registered `Comma_C1_Occurrence` build passed in 87 seconds and
+checked exact elapsed time and earliest crossing within one sector.
+The receiving `Comma_Semantic_Future` session passed in 30 seconds on
+warm parents. Its typed provider and ordered-child theorem use the
+authenticated crossing seam. Explicit induction replaced a uniqueness
+proof that exceeded the memory guard. Exact B32 coverage and source-wide
+elapsed transport remain open.
+
+The isolated rank-free Future graph checked all 4,716 class rows in a
+25.279-second guarded registered build. The issuer discarded the proposed
+rank fields before proof construction. It still needs source-wide physical
+ordering before it can authorize release. A separate 10.270-second guarded
+fixture checked writer composition and demanded cuts for already admitted
+adjacent actions. A second native fixture checked the direct Entry cut from
+a period quotient and bounded remainder, together with both literal paths
+at every cut through the Near seam. A 12.407-second guarded fixture on
+warm parents checked the direct Near cut and its composition with Entry
+through the first-sector preterminal. The concrete ordered cycle, exact
+weights, width transport, and v4 export are still required. See
+`results/nc-comma-production-cutover`.
+
+### November 22 quotient-first family ports
+
+The receiving baseline was `b68468f9f944d6a332aad75a8ea3b367b2faa598`.
+The four donor patches target different predecessors. The receiving tree
+uses its existing source, action and publication owners.
+
+- The reflected H compiler evaluates one inlet per reached block phase
+  in certified repeated SLP regions and preserves both finite seams.
+  The 5rev10 terminal transfer uses the issued source action and requests
+  a chronological history only for a trace.
+- The Collatz cyclic action projects an admitted partial motif alongside
+  the complete repeats, sharing its source endpoint across consumers.
+  An explicit boundary witness retains the existing packet and position
+  harmonics.
+- The Mahler root action uses the existing transfer's safety evidence.
+  An empty real guard stops further rational guard pullback.
+- Fermat compiles a requested power as one final source-bound span.
+  Its matrix compiler shares dyadic checkpoint factors and uses a signed
+  positional bank where it covers the requested modulus.
+
+The donor cyclic carry-sheet and Fermat wrapped-product engines have no
+live counterpart on this baseline. The scope here is the authenticated
+paths exposed by the receiving tree.
+
+The guarded family and CLI selection passed 3,272 tests in 50.75 seconds,
+with 140 validation cases deselected. The registered Isabelle sessions
+for Double Reverse, Five Reverse, Collatz, Mahler and Étale passed.
+The complete Collatz source-wide partial-tail refinement remains open.
+
+Five interleaved trials on identical inputs matched every compared packet.
+Median time for the pre-issued Fermat power fell from 445.15 to 16.06 ms,
+with checkpoint batches reduced from 12 to one. The reflected H compiler
+published five blocks instead of 1,537 and took 3.93 ms for ×2 and 3.41 ms
+for ×5, down from 13.47 and 12.86 ms. The 5rev10 terminal observer fell
+from 8.17 to 2.82 ms. The Collatz combined compiler fell from 9.52 to
+7.74 ms on seed 1486 at 24 ticks. The Mahler observer published one source
+projection instead of two. Cold process medians across the five CLI
+controls changed by less than 5%.
+
+Strict typing and Ruff passed for the changed family files. A freshly
+installed wheel returned all six checked family results and shared one
+Mahler source projection across combined observations. The complete
+wheel release gate still requires the admitted Comma v4 artifact.
+
+### November 23 production quotient ports
+
+The receiving revision was `b68468f9f944d6a332aad75a8ea3b367b2faa598`.
+The isolated receiving snapshot `35d77a91` includes the unstaged November 22
+ports. Its guarded CLI baseline passed 124 tests. The six donor patches
+were reconciled against the snapshot's existing consumers.
+
+- Direct Fermat matrix requests omit the unused Moore periods. Explicit
+  phase requests retain them. The conditional affine row shares the
+  existing exact low endpoint and checkpoint authority.
+- Collatz conditional snapshots reuse the sealed tape action and retain
+  the shape check. Issued cyclic prefixes support exact suffix and
+  moving-cut transport. The stamped boundary candidate changed the public
+  observation packet on source 352164 at tick 30, so the existing path
+  remains selected for that demand.
+- Repeated Mahler associated-action requests reuse a charged, evictable
+  response after authenticating the receiving source. On the 1,024-return
+  benchmark, composed-image reads fell from 26 to one and the warm median
+  fell from 0.543 to 0.470 ms. The matched cold controls stayed within 0.5%.
+- Repeated Q19 fields reuse an ordered base-64 motif and remainder. The
+  owner binds cached numeric responses to the receiving occurrence.
+  Source-qualified physical landmarks publish as one charged bundle.
+  The reverse/add modular observation keeps its existing no-term path.
+
+The 4,096-tick F5 direct matrix matched every packet in five paired trials.
+Cold CLI median fell from 213.17 to 173.40 ms and the in-process request
+from 75.45 to 34.30 ms. Cache bypass fell from 111.39 to 67.21 ms. The
+baseline built 490 orbit observers per demand and the replacement built
+zero. The matched Collatz snapshot fell from 0.585 to 0.053 ms and removed
+all 25 redundant tape folds while preserving the checked snapshot.
+
+Repeated Q19 publication and recovery fell from 38.03 to 28.26 ms on
+the 2,048-digit repeated source. The warm H12 request from generation 108
+to 64 fell from 0.218 to 0.105 ms and skipped all 52 remaining physical
+callbacks. Cache bypass still performed 64 callbacks in both arms. The
+dense seed-196 owner median rose from 9.30 to 9.90 ms with the same 511
+successors. All six matched cold CLI controls stayed within 1%.
+
+The guarded family unit selection passed 4,426 cases and the applicable
+P0 selection passed 32. The exhaustive selection passed 104 cases with
+one retained route-counter failure, reproduced at the same assertion on
+the receiving baseline. The registered Reverse, Collatz, Étale and Mahler
+sessions passed. The Reverse build checked the exact geometric division
+used for the packed repeat and the H12 physical seam. The Collatz build
+checked the moving-cut numerator and retains the existing midpoint
+composition theorem for typed suffix transport.
+
+The lower 5rev10 adapter bands failed the performance gate. Matched
+medians rose from 1.24 to 1.72 ms at 1,536 bits and 32 ticks, and from
+1.96 to 2.28 ms at 3,072 bits and 16 ticks. The 64-tick cutoff stays.
+The Antihydra cyclic trial also missed the gate across the tested
+authenticated 8-bit classes. The existing transient owner remains in use.
+Strict mypy, two serial Pyright batches, Ruff, formatting, and docs passed
+for the changed sources. The fresh wheel matched seven family CLI
+requests. Full package admission still requires the Comma v4 artifact.
+Source policy reported the existing Comma findings. Evidence is in
+`results/nc41-nov23-integration`.
+
+### November 23 cyclic diagonal follow-up
+
+The guard runs compared the dirty receiving tree at `b68468f9` with
+the frozen receiving snapshot `f1573456`. The Collatz scheduler now
+selects primitive ordered rotations and uses their source defect to
+compute the exact extent and Laurent fields. The diagonal CLI reads
+low bits of the already-issued normalized endpoint. It keeps the
+physical half-step and source checks. Antihydra's existing repeat
+producer folds a final incomplete motif into the admitted action
+with its exact ledger minimum and elapsed weight. The shared upper
+port reduces wide coefficients before multiplying at the demanded
+precision.
+
+Five paired trials preserved the exact outputs. Collatz cyclic
+field construction fell from 0.066 to 0.011 ms on the seed-1486
+fixture. The certified 127-tick Antihydra action fell from five
+pieces to one and from 0.0111 to 0.0067 ms. The narrow shared cut
+fell from 0.044 to 0.032 ms. Final cold CLI medians stayed within
+1% on all five controls. The Collatz diagonal CLI median changed from
+2.82 to 2.76 ms warm and 2.84 to 2.77 ms with shared-cache bypass.
+
+The native Shared Carry Dynamics, Collatz Cylinder Refinement, and
+Antihydra sessions checked the modular cut, rotated source defect,
+and ordered partial-repeat seam. The guarded checks passed 1,929
+affected units, 181 validation cases, and eight P0 cases. Strict typing,
+Ruff, formatting, and docs passed for the changed sources. Four
+installed-wheel CLI packets matched. Repository-wide source policy
+still reports the existing Comma findings. The graph and continued-fraction
+patches require source owners absent from this checkout. The live
+Mahler matrix request retains its direct constructor. Whole-package
+release still requires Comma v4 admission. Evidence is in
+`results/nc41-diagonal-followup`.
+
+### November 23 Mahler finite quotient integration
+
+The receiving HEAD was `b68468f9` and the isolated dirty-source snapshot
+was `0881877d`. The donor dependency chain supplied the compact arithmetic
+laws. The installed CLI uses the existing registry and arithmetic result
+owner. Finite safety and graph actions share the selected centered source
+and an exact fractional tail. The graph catalogue covers the two rotations
+of the 60/40 row. The independent ×5 diagonal band shares the existing
+ordered matrix algebra and charges its result through the query scope.
+
+Five matched construction trials measured 0.654 to 0.315 ms for an
+80-copy rational safety run and 1.584 to 0.116 ms for 128 checked graph
+row joins. The six-row CF band at exponent 1530 took 0.096 to 0.024 ms.
+These are component timings. The final ordinary CLI comparison used five
+interleaved windows of three fresh process pairs. All four outputs matched
+and their median wall times were within 3%. Width-one CF bands at exponent
+1024 or higher and at least six rows use the compact action. Other admitted
+bands use the exact ordered row fold.
+
+The registered Mahler source session checks the finite failure boundary,
+ordered graph source and rotation, and the exact CF lift, width, split,
+and repetition. Guarded checks passed 600 affected units and 170 validation
+cases. Five fresh-wheel queries matched. Strict typing, Ruff, formatting,
+and documentation passed. Source policy reports the existing Comma findings.
+The P0 selection has the same source-7
+certificate failure as its receiving baseline. The whole-wheel admission
+gate still requires Comma v4.
+
+### November 23 finite continued-fraction cylinder
+
+The receiving HEAD was `b68468f9` and the isolated dirty-source snapshot
+was `9d321dc0`. The existing continued-fraction observation accepts a
+finite physical horizon. Its ×5 publisher advances the shared grammar
+with the reached inlet, compacts obsolete roots, and reuses the bounded
+low suffix at an authenticated cut. The cylinder preserves the ordered
+continuant and retains the first decisive prefix. Multi-tick temporal
+tiles stayed experimental after their longer-row trials regressed.
+
+`Mahler_Source_Transport` rebuilt in 19 seconds under the standard
+guard. It checked the carry-selected publisher, low-period transport,
+and midpoint refinement on the canonical ×5 stream. The guarded
+selections passed 503 units and 189 validation cases. Five fresh-wheel
+queries matched, including coefficient exhaustion and the full
+4,096-tick result. The latter uses 540 coefficients. The preceding
+prefix fails the independent rational check. Ruff, formatting, strict
+mypy, and Pyright passed on the changed sources.
+
+Five matched construction trials measured 14.5 to 11.6 ms at 512 ticks
+and 839 to 621 ms at 4,096 ticks. At 20 ticks the authenticated setup
+added about 0.18 ms. The largest median change on ordinary cold controls
+was under 4%. Source-7 non-halting and Comma v4 package admission remain
+separate holds. Evidence is in `results/nc41-cf-cylinder`.
+
+### November 23 wide continued-fraction tiles
+
+The receiving HEAD was `b68468f9` and the isolated snapshot was
+`acac507b`. The shared one-tick tile engine now streams a dense inlet
+once through its charged grammar iterator. At source exponent 512 the
+profile found 360 interval walks and 129,236 length callbacks. Five
+matched tile trials including halo trim and cleanup took 31.28 to
+6.32 ms median. Source preparation was measured separately.
+
+The continued-fraction band CLI uses the existing ordered split on
+admitted wide requests with 16–128 digits per row and at least 1,024
+digits in the band. It preserves the direct admission budget and keeps
+the receiving phase in the ordered product. Both phases of the 6/3
+repeat match independent physical digits and give different matrices.
+With the default 10,000-node cap, three wide fixtures took 1.93 to 1.70,
+1.88 to 1.63, and 1.89 to 1.58 ms in the matrix phase. Cold CLI packets
+matched across five paired trials. The largest median increases were
+1.6% on a wide band and 2.4% on an ordinary control.
+
+`Mahler_Source_Transport` rebuilt in 33 seconds. It checked the dyadic
+tile output through both zero halos, exact high trim, physical exponent,
+and ordered CF slice.
+Ordinary cylinder rows still favor the pointed source, and the existing
+modular lift wins on a one-row band. The whole-row multi-tick CLI
+dispatch remains held on those performance results.
+
+The guarded affected sweep passed 1,327 tests, followed by 123 focused
+checks of the final runtime and tests. Six fresh-wheel packets matched.
+Strict typing and pinned lint passed for the four changed Python files.
+The existing Comma v4 package admission hold remains. Evidence is in
+`results/nc41-cf-tiles`.
+
+### November 23 ordered ×5 cylinder
+
+The receiving HEAD was `b68468f9` and the isolated snapshot was
+`c530515d`. The existing finite CF CLI admits bounded packed ×5 blocks.
+Each block folds all intervening rows in physical order into one content
+grammar. The consumer extends its affine guard once per block and searches
+within the first decisive block. Tight remaining ledgers select the pointed
+source before allocating packed staging.
+
+The independent 4,096-tick fixture forces the horizon at coefficient 540.
+Coefficient 539 is insufficient. The production query issued 11 blocks and
+bounded final-block lookahead to 24 additional coefficients. The 54 matched
+budget cases preserved exact answers and refusals. Peak ledger charges for
+the full fixture were 5,420 nodes on the pointed source and 8,779 on packed
+staging under the standard 10,000-node cap.
+
+Five interleaved cold CLI trials gave 166 to 143 ms at 20 ticks, 188 to
+171 ms at 512 ticks, and 897 to 162 ms at 4,096 ticks. All packets and exits
+matched, as did ordinary term and help output. The largest increase on a
+control was 4.4%. These measurements cover the geometric packed producer
+and the lean guard together. The separate spatial tile replay trial was
+9–31% slower when it retained all intermediate rows.
+
+
+The 39-row source-and-continuant phase took 15.63 to 6.25 ms. Genuine
+bypass took 6.34 ms. Repeated partial-prefix projections took 11 µs
+median with the issued content map and 81 µs with bypass.
+
+The guarded `Mahler_Source_Transport` build passed in 31.9 seconds. Both
+new theories passed the oracle and skipped-proof audits. The checked
+producer compiles the three guarded batch forms into the exact physical
+clock, affine action and half-open guard. A stalled earlier block cannot
+contain that completed guard. The binary consumer selects the least
+prefix of the canonical ordered rows that does contain it.
+
+The affected selection passed 783 tests. Ruff, formatting, strict mypy
+and Pyright passed for the changed Python files. Nine fresh-wheel checks
+matched, including the coefficient-539 refusal. The repository's Comma
+v4 admission and baseline source-policy findings remain separate holds.
+Evidence is in `results/nc41-cf-ordered`.
+
+### Spatial ×5 rows for CF cylinders
+
+The follow-up against receiving snapshot `daa73c8efd51` uses the spatial
+producer for admitted horizons from 64 through 4,096 physical ticks.
+Earlier horizons use geometric rows. The whole-inlet convolution, halo
+and ordered byte continuant retain their checked laws. Fixed lane masks
+are reused, the zero-run test cancels a common factor of two, and the
+final residue powers the inverse of 3 modulo the physical dyadic modulus.
+
+The shared-cache query phase fell from 0.589 to 0.213 ms at 64 ticks and
+from 9.391 to 7.372 ms at 4,096. With the same compact publisher at 4,096,
+geometric and spatial totals were 7.610 and 7.557 ms, and spatial source
+construction took 0.357 ms against 0.416 ms for geometric. Cold CLI
+medians across both matched samples were 132.91 to 131.93 ms at 64 ticks
+and 147.78 to 142.31 ms at 4,096. The first 1,024-tick cold sample rose
+5.8 percent. Its paired confirmation and pooled comparison gave
+143.77 to 130.35 ms and 133.66 to 133.59 ms respectively. All packets and
+exit statuses matched.
+
+The registered `Mahler_Source_Transport` build passed in
+84.4 seconds, including the endpoint cancellation
+and inverse-power checks. The affected guarded selection passed 798
+tests, including cutoff and lane boundaries. Evidence is in
+`results/nc41-cf-tuning`.
+
+### Shared ordered bands and guarded row rotation
+
+The receiving HEAD was `b68468f9`, with dirty-tree snapshot `140d8006`.
+The shared matrix owner now compiles shifted decimal bands, fixed-width
+rows, and ordered decimal words. The CF band and block publishers consume
+these operations. The existing reverse/add and 2rev10 digit-band publisher
+and the 5rev10 digit-band producer share the same continuant, with their
+respective digit orders.
+
+Across five exact-output pairs, CF width-16 and width-32 band construction
+took 1.854 to 0.690 ms and 1.845 to 0.603 ms. The 5rev10 band used
+1,056 products instead of 2,048 and its construction took 2.831 to
+1.867 ms. Its cold CLI median was 141.57 to 133.30 ms. Reverse/add's
+cross-center Q19 guard shared one admitted grammar fold across rotations,
+reducing visits from 108 to 54 and taking 0.120 to 0.081 ms. Collatz
+shared the primitive-word rotation and checked binary content on cache
+misses. The 510-word construction median fell from 2.029 to 1.846 ms.
+
+The adaptive CF trial preserved the 540-coefficient result and reduced
+spatial leaf evaluations from 16 to 14 at 4,096 ticks. The tuned
+block-construction median was 377.9 to 377.2 µs with sharing. The
+canonical workload supplied zero reusable entries to the selector probes.
+The adaptive path missed the 5% speed gate. The existing 64-tick spatial
+policy stays in production. Antihydra graph actions and Fermat/Mersenne
+rotation reuse still need checked receiving seams.
+
+The registered shared carry, 2rev10, 5rev10, Collatz, Mahler, and reverse/add
+sessions passed under the native guard. The new rotation, source transport, and modular band facts passed their
+local oracle audits. The guarded selection passed 841 tests and 35 P0
+checks. Strict mypy, Pyright, Ruff and formatting passed for the 15
+changed Python files. Seventeen fresh-wheel comparisons matched. The
+repository source and proof-index diagnostics match the receiving tree.
+The package release check remains blocked on Comma admission.
+
+The cold requests above the 5% threshold got one five-pair confirmation.
+Both samples are retained. The last column uses the median relative
+change across the ten matched pairs.
+
+| Request | First cold medians, ms | Confirmation, ms | Matched change |
+| --- | ---: | ---: | ---: |
+| CF 63 ticks | 124.50 → 132.61 | 131.38 → 133.23 | +1.25% |
+| CF 128 ticks | 123.25 → 130.41 | 123.61 → 124.75 | +1.42% |
+| CF band | 136.86 → 161.47 | 116.28 → 113.98 | −0.95% |
+| Help | 77.43 → 87.44 | 71.60 → 70.98 | +1.47% |
+| Collatz term | 314.78 → 342.35 | 264.98 → 265.08 | +1.10% |
+
+Evidence against the snapshot is in `results/nc-cf-band`.
+
+### Source-qualified CF band reuse and cold audit
+
+The live diagonal band publisher uses the existing process lease before
+building the lift. Its binding records the diagonal origin, width, and final
+cut. The issued payload retains the exact continuant and the lifted value
+required by the CLI packet. An identical warm request does no row decoding
+or matrix joins. A one-row advance with the same endpoint shifts the lift
+by one bit and cancels the first row using its signed adjugate. The registered
+`Mahler_Source_Transport` build checked the preserved significant-width
+guard and exact chronological tail.
+
+Five matched trials put eligible repeated producer calls at 0.038–0.042 ms,
+down from 0.50–4.78 ms. The three eligible shifted cases went from
+2.09–4.79 ms to 0.063–0.071 ms. Fresh CLI band and ordinary controls stayed
+within the 5% limit, with equal packets. The regressions poison lift and
+recursive band construction, count the one boundary join, and exercise
+changed origins, endpoints, widths, and reduced budgets.
+
+The spatial CF cylinder remains on the 64-tick policy. A census of 4,033
+default-cap horizons found zero repeated root or leaf keys across 32,300
+spatial issues and 15,706 split-leaf lookups. The 56 clipped cases also
+found zero hits. A separate same-owner tile fixture showed a root hit
+at 0.67 µs against 13.71 µs with bypass. The 4,096-tick cylinder selector
+trial went from 7.71 to 7.65 ms. Fractional guard extension accounted
+for about 71% of the profiled current call.
+
+The `pow5q` donor's floor sum counts complete rows. At horizon 64 those
+rows have 1,485 coefficients, while the live cylinder certifies its physical
+horizon at coefficient 10. A lower dyadic phase alone also leaves full-row
+weights undetermined. For example, powers 40 and 48 have the same residue
+1 modulo 32 and widths 28 and 34. Cold CF and Collatz carry-event powering
+still need an ordered source-bound action in the requested ring. The
+donor supplies a cold-linear hold and no native proof of that action.
+
+That audit held Mahler graph rotation pending an admitted adjoining source
+and ordered safety transport. Centered source 16 returns to its displayed port at 36
+with a different mod-80 admission. Fermat and Mersenne still need complete
+signed or borrow-puncture seams. Their existing exact adjacent joins
+already share the ordered row helpers.
+
+The audit repaired transactional cache recency, null-target conflict
+detection, and CF and Bellman reservation cleanup. The affected guarded
+selection passed 742 tests and 35 P0 checks. Fresh-wheel cold, warm, and
+shifted band checks matched. The package-wide Comma admission hold
+continues. Evidence is in `results/nc-cf-band/reuse-audit`.
+
+### November 24 bounded CF and rotation seams
+
+The receiving snapshot `2e095975` captures dirty `main` at `b68468f9`.
+The tested candidate is `d0209743`. Four bounded changes reached the
+existing production callers.
+
+| Consumer | Admitted reuse | Matched targeted median |
+| --- | --- | --- |
+| Exact CF diagonal band | Issued following cut with the same origin, width and endpoint, within existing cache limits. Recover one lift bit and prepend one ordered row. | 0.527→0.064 ms, 0.740→0.085 ms, and 1.534→0.063 ms |
+| Mahler graph | Complete adjoining copies of the 60/40 row with checked source valuation and fractional guard. The shared zero-run action supplies the closed form and preserves ordered safety. | 19.97→11.46 µs at two copies and 102.88→17.00 µs at 128 copies |
+| Collatz carry event | Every demanded cut is within the admitted centered valuation. Phase construction is deferred and the first positive hit and moving correction remain exact. | 15.88→12.87 µs |
+| Mersenne trace matrix | Positive position with zero gradient in the first two trace phases. Reuse the authenticated endpoint for every conditional high digit. | 0.769→0.255 ms for pointed and conditional powers at exponent 44, with calls reduced from three to one |
+
+The CF result retains its exact lifted value and the forward adjugate
+transport. Identical warm, bypass, and cold producer controls held steady,
+with the same retained cache bytes. Five interleaved fresh-process trials
+matched the CLI packets. The initial power-number cold controls exceeded
+5%. A confirmation with bytecode prepared in both trees stayed within
+2.42%. CF cold controls stayed within 2.6%, and the final radial controls
+stayed within 1.67% regression.
+
+The registered `Collatz_Cylinder_Refinement`, `Temporal_Clock_Jumps`, and
+`Mahler_Source_Transport` sessions passed in 28, 56, and 115 seconds
+respectively, including the affected oracle and skipped-proof audits.
+The guarded affected selection passed 1,129 tests. Strict mypy, changed-file
+strict Pyright, Ruff, formatting and docs checks passed. The P0 selection
+reproduced the baseline's nine non-halting and primality failures with
+13 passing checks. The source-policy report matched the baseline and the
+broader proof index still has inherited failures. The graph theory now
+has an oracle audit.
+
+The fresh wheel matched the twelve affected CLI fixtures. The package-wide
+check remains held on Comma admission. The 64-tick CF cylinder policy
+continues. The transient four/eight-step action needs an admission path
+that reaches reuse affordably before the parity probe. The Fermat
+wrapped-product seam still lacks a checked receiving CLI consumer, and
+the larger Mersenne trace rotation needs checked source-local period
+transport. Evidence is in `results/nc-bounded-seams/2e095975`.
+
 ## Cross-family ownership review
 
 The consolidation from `62cbc714760a6f074f5a955f0efeac6afa1e5e27`

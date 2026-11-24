@@ -1,8 +1,7 @@
 """Production issue/consume for source-guarded non-border Collatz cyclic rows.
 
-The scalar route needs no physical parity history. An optional F5
-projection uses the same row, while joint, width, innovation and root-checkpoint
-consumers retain their prior authoritative publishers.
+The authenticated cyclic row supplies the scalar endpoint and demanded
+field, width and parity projections without a physical parity history.
 """
 
 from __future__ import annotations
@@ -10,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.arithmetic.fields.blank_ledger import BlankLedger
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import collatz as _keys
 from number_compiler.sequences.collatz.cyclic_abc_grammar import (
@@ -20,12 +20,18 @@ from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
 from number_compiler.sequences.collatz.temporal_f5_observer import (
-    project_dyadic_fields_f5,
+    CollatzF5AffineAction,
 )
 
 if TYPE_CHECKING:
     from number_compiler.hashlife.execution.dyadic_return_runs import (
         RunArithmeticWorkspace,
+    )
+    from number_compiler.sequences.collatz.innovation_input_tape import (
+        ParityProgramBuilder,
+    )
+    from number_compiler.sequences.collatz.joint_temporal_action import (
+        CollatzJointTemporalBuilder,
     )
     from number_compiler.sequences.collatz.tape_width import (
         CollatzWidthSpineAccumulator,
@@ -34,37 +40,66 @@ if TYPE_CHECKING:
 
 
 def issued_field_prefix(admitted: CyclicRowAdmission) -> DyadicTerminalFieldAction:
-    """Reuse the pre-existing checked ordered field-action monoid.
+    """Project the issued Laurent endpoint, predecessor and geometric sum."""
+    return DyadicTerminalFieldAction.from_cyclic_admission(admitted)
 
-    The producer first checks the full dyadic guard and exact affine
-    coefficients; only the bounded motif is decoded into field letters.
+
+def exact_cyclic_width_ledger(admitted: CyclicRowAdmission) -> BlankLedger:
+    """Exact physical width extrema from first/last motif phases, not history.
+
+    Let P be the normalized affine motif. On authenticated complete copies,
+    X_{m+1}=P(X_m) has positive slope. The sign of X_{m+1}-X_m is constant
+    for all m, because differences are multiplied by that positive slope.
+    Every phase prefix and the intermediate 3*x+1 in an odd shortcut is an
+    increasing affine function of X_m. Hence each phase's minimum/maximum
+    across whole copies occurs in the FIRST or LAST copy. The incomplete
+    final copy is traversed once. Work: O(motif length + log copies), not
+    O(physical ticks); no width occurrence tape is retained.
     """
-    row = admitted.row
-    length = admitted.action.steps
-    grammar = row.abc
-    factor = DyadicTerminalFieldAction.identity()
-    zero = DyadicTerminalFieldAction.zero_run(1)
-    one = DyadicTerminalFieldAction.one_run(1)
-    for word, count in zip(grammar.words, grammar.counts, strict=True):
-        if not count:
-            continue
-        letter_action = DyadicTerminalFieldAction.identity()
+    if type(admitted) is not CyclicRowAdmission:
+        raise TypeError("width ledger requires an authenticated cyclic admission")
+    admitted.require_issued()
+    row, source, action = admitted.guard.action, admitted.source, admitted.action
+    if action.steps < 1:
+        raise ValueError("width ledger lacks the exact source/endpoint guard")
+    source_width = source.bit_length()
+    minimum = maximum = source_width
+
+    def observe(word: str, inlet: int) -> int:
+        nonlocal minimum, maximum
+        value = inlet
         for bit in word:
-            letter_action = letter_action.then(one if bit == "1" else zero)
-        factor = factor.then(letter_action.power(count))
-    copies, tail = divmod(length, len(row.word))
-    result = factor.power(copies)
-    for bit in row.word[:tail]:
-        result = result.then(one if bit == "1" else zero)
-    if (
-        result.steps != length
-        or result.gain != admitted.action.gain
-        or result.offset != admitted.action.offset
-        or not result.certifies(admitted.source)
-        or result.endpoint(admitted.source) != admitted.endpoint
-    ):
-        raise AssertionError("periodic grammar lost the authenticated ordered action")
-    return result
+            if (value & 1) != int(bit):
+                raise AssertionError("width phase differs from the issued parity row")
+            if bit == "1":
+                value = 3 * value + 1
+                width = value.bit_length()
+                minimum = min(minimum, width)
+                maximum = max(maximum, width)
+            value >>= 1
+            width = value.bit_length()
+            minimum = min(minimum, width)
+            maximum = max(maximum, width)
+        return value
+
+    copies, tail = divmod(action.steps, len(row.word))
+    after_copies = source
+    if copies:
+        first_endpoint = observe(row.word, source)
+        if copies > 1:
+            last_steps = (copies - 1) * len(row.word)
+            last_source, _ = admitted.guard.point(last_steps, 3 ** row.odds(last_steps))
+            after_copies = observe(row.word, last_source)
+        else:
+            after_copies = first_endpoint
+    final = observe(row.word[:tail], after_copies) if tail else after_copies
+    if final != admitted.endpoint:
+        raise AssertionError("width extrema lost the exact powered endpoint")
+    return BlankLedger(
+        final.bit_length() - source_width,
+        minimum - source_width,
+        maximum - source_width,
+    )
 
 
 def consume_source_cyclic_abc_row(
@@ -73,9 +108,11 @@ def consume_source_cyclic_abc_row(
     ledger: ResourceLedger,
     scratch: RunArithmeticWorkspace,
     width_spine: CollatzWidthSpineAccumulator,
+    joint_builder: CollatzJointTemporalBuilder,
+    parity_builder: ParityProgramBuilder | None,
     macros_present: bool,
     require_mixed_prefix: bool,
-    parity_requested: bool,
+    require_boundary_witness: bool,
 ) -> bool:
     """Replace long mixed classifications with one certified row/phase action."""
     if (
@@ -83,12 +120,10 @@ def consume_source_cyclic_abc_row(
         or control.pending_normalized_source is not None
         or control.remaining < 16
         or not 10 <= control.current.bit_length() <= 4096
-        or control.joint_requested
-        or width_spine.requested
-        or control.include_innovation_tape
-        or parity_requested
+        or (control.include_innovation_tape and parity_builder is None)
         or macros_present
         or require_mixed_prefix
+        or require_boundary_witness
     ):
         return False
 
@@ -115,21 +150,38 @@ def consume_source_cyclic_abc_row(
         return False
     action = admission.action
     endpoint = admission.endpoint
-    if endpoint <= 0 or not action.certifies(source):
+    if endpoint <= 0:
         raise AssertionError("mixed row lacks its exact source guard")
 
     # Prepare optional projections before publishing any scalar state.
-    fields = (
-        issued_field_prefix(admission) if control.normalized_f5 is not None else None
-    )
+    if control.joint_requested:
+        joint_builder.require_steps(source, action.steps)
+    width_piece = exact_cyclic_width_ledger(admission) if width_spine.complete else None
     next_normalized_f5 = control.normalized_f5
     next_physical_f5 = control.physical_f5
     if next_normalized_f5 is not None or next_physical_f5 is not None:
-        if fields is None or next_normalized_f5 is None or next_physical_f5 is None:
+        if next_normalized_f5 is None or next_physical_f5 is None:
             raise AssertionError("F5 demand lacks its source-issued paired action")
-        f5 = project_dyadic_fields_f5(fields)
+        inverse = pow(2, -action.steps, 5)
+        f5 = CollatzF5AffineAction(
+            action.gain * inverse % 5, action.offset * inverse % 5
+        )
         next_normalized_f5 = next_normalized_f5.then(f5)
         next_physical_f5 = next_physical_f5.then(f5)
+    if parity_builder is not None:
+        parity_builder.append_cyclic_row(admission)
+        ledger.bump(_keys.COLLATZ_CYCLIC_GRAMMAR_PARITY_PROJECTIONS)
+    if control.joint_requested:
+        joint_builder.append_cyclic(admission)
+        ledger.bump(_keys.COLLATZ_CYCLIC_GRAMMAR_JOINT_PROJECTIONS)
+    if width_piece is not None:
+        width_spine.record(width_piece)
+        copies, tail = divmod(action.steps, len(admission.guard.action.word))
+        ledger.bump(
+            _keys.COLLATZ_CYCLIC_GRAMMAR_WIDTH_PHASE_STEPS,
+            min(copies, 2) * len(admission.guard.action.word) + tail,
+        )
+        ledger.bump(_keys.COLLATZ_CYCLIC_GRAMMAR_WIDTH_PROJECTIONS)
     control.current = endpoint
     control.remaining -= admission.physical_ticks
     control.normalized += action.steps
@@ -150,4 +202,8 @@ def consume_source_cyclic_abc_row(
     return True
 
 
-__all__ = ["consume_source_cyclic_abc_row", "issued_field_prefix"]
+__all__ = [
+    "consume_source_cyclic_abc_row",
+    "exact_cyclic_width_ledger",
+    "issued_field_prefix",
+]

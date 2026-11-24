@@ -92,6 +92,69 @@ def test_value_and_innovation_keep_physical_endpoint(
     assert packet["info"]["temporal.innovation-borrow"]["index"] == 13
 
 
+def test_cyclic_source_innovation_preserves_boundary_witness(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
+        cli.main(
+            [
+                "collatz",
+                "--seed",
+                "1486",
+                "--nth",
+                "24",
+                "--info",
+                "temporal.innovation-borrow",
+                "--temporal-innovation-borrow-modulus",
+                "49",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    packet = json.loads(capsys.readouterr().out)
+    assert packet["value"] == "5366"
+    observation = packet["info"]["temporal.innovation-borrow"]
+    assert observation["status"] == "available"
+    assert observation["index"] == 24
+    assert observation["index_unit"] == "physical_iterations"
+    assert observation["first_executed_macro"]["physical_ticks"] == 21
+    assert observation["first_executed_macro"]["endpoint"] == 7154
+    assert observation["position_cycle_harmonics"]["status"] == "complete"
+    assert observation["normalized_signed_tape"]["normalized_steps"] == 14
+
+
+def test_complete_innovation_without_boundary_witness_has_valid_status(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
+        cli.main(
+            [
+                "collatz",
+                "--seed",
+                "27",
+                "--nth",
+                "4",
+                "--info",
+                "temporal.innovation-borrow",
+                "--temporal-innovation-borrow-modulus",
+                "49",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    observation = json.loads(capsys.readouterr().out)["info"][
+        "temporal.innovation-borrow"
+    ]
+    assert observation["first_executed_macro"] is None
+    assert observation["status"] == "available"
+    assert observation["normalized_tape_coverage"] == "complete"
+    assert observation["borrow_clock_status"] == "unresolved"
+
+
 def test_ordinary_value_does_not_prepare_innovation(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

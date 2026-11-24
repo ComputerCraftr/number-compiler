@@ -244,6 +244,7 @@ class FermatNumberSpec:
         self,
         level: int,
         *,
+        include_moore_periods: bool = True,
         phase_binary_places: int = 64,
         phase_decimal_places: int = 6,
         binary_windows: tuple[tuple[int, int], ...] = (),
@@ -261,6 +262,7 @@ class FermatNumberSpec:
         return demand_signed_tripling_action(
             self.index,
             level,
+            include_moore_periods=include_moore_periods,
             phase_binary_places=phase_binary_places,
             phase_decimal_places=phase_decimal_places,
             binary_windows=binary_windows,

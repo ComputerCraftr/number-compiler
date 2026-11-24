@@ -6,7 +6,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
-from number_compiler.arithmetic.fields.dyadic_unit_phase import DyadicUnitPhase
+from number_compiler.arithmetic.fields.dyadic_unit_phase import (
+    MAX_DYADIC_PHASE_PRECISION,
+    DyadicUnitPhase,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +45,6 @@ class CenteredCarryFuture:
     centered: int
     precision: int
     headroom: int
-    period: int
 
     @classmethod
     def from_normalized_source(cls, source: int, precision: int) -> CenteredCarryFuture:
@@ -52,12 +54,18 @@ class CenteredCarryFuture:
             raise ValueError("centered carry precision must be positive")
         centered = source + 1
         headroom = (centered & -centered).bit_length() - 1
-        active = max(1, precision - headroom)
+        if precision - headroom > MAX_DYADIC_PHASE_PRECISION:
+            raise ValueError("dyadic phase precision is outside the supported bound")
+        return cls(centered, precision, headroom)
+
+    @property
+    def period(self) -> int:
+        """Joint multiplier period at the cuts above the source valuation."""
+        active = max(1, self.precision - self.headroom)
         bases: tuple[Literal[3, 5, 15], ...] = (3, 5, 15)
-        period = max(
+        return max(
             DyadicUnitPhase.from_exponent(base, 0, active).order for base in bases
         )
-        return cls(centered, precision, headroom, period)
 
     def first_same_time_even(
         self,
@@ -93,7 +101,8 @@ class CenteredCarryFuture:
         mask = (1 << self.precision) - 1
         multiplier3 = multiplier5 = 1
         homogeneous = corrected = None
-        limit = min(horizon, self.period, max_phase_states)
+        period = self.period
+        limit = min(horizon, period, max_phase_states)
         for tick in range(1, limit + 1):
             multiplier3 = multiplier3 * 3 & mask
             multiplier5 = multiplier5 * 5 & mask
@@ -120,7 +129,7 @@ class CenteredCarryFuture:
                     not include_correction or corrected is not None
                 ):
                     return CarryEventHits(homogeneous, corrected)
-        if limit < min(horizon, self.period):
+        if limit < min(horizon, period):
             raise ValueError("future carry phase budget exceeded")
         return CarryEventHits(homogeneous, corrected)
 

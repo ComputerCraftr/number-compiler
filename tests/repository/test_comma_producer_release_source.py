@@ -178,28 +178,25 @@ def test_concrete_decade_summary_producer_bridge_is_registered(
     audit_start = release.index("val endpoints =")
     audit_end = release.index("\\<close>", audit_start)
     expected_audit = release[audit_start:audit_end]
-    for global_authority in (
-        "comma_semantic_global_release_safety",
-        "comma_semantic_concrete_future_rank_check",
-        "comma_future_m204_rank_native",
-        "comma_future_m204_source_rank_lift",
-        "comma_future_m204_checked_rank",
-        "comma_semantic_concrete_boundary_strong_occurrence_bridge",
-        "comma_frontier_m204_bellman_native",
-        "comma_frontier_m204_exact_stop_from_checked_bellman",
-        "comma_semantic_phase_class_B32_exact_output_checked",
-        "comma_semantic_b1_action_b32_stop242_checked",
-        "comma_semantic_decade_summary_provider_exact",
-        "comma_semantic_p5_entry_future_open_checked",
-        "comma_semantic_p5_entry_infinite_imp_open",
+    assert "require_symbolic_closed_expected_paths" in expected_audit
+    for authority in (
+        "comma_symbolic_b32_provider_exact",
+        "comma_future_symbolic_crossing_ordered_children",
+        "comma_future_m204_live_native",
+        "comma_future_m204_ordered_source_native",
+        "comma_symbolic_writer_exact",
         "comma_semantic_unique_infinite_decimal_root",
         "comma_semantic_concrete_source20_infinite_path",
-        "comma_semantic_concrete_source20_z_no_infinite_path",
         "comma_semantic_concrete_future_paths_agree",
-        "comma_every_positive_has_decimal_root",
         "comma_source20_to_fork_unique",
     ):
-        assert global_authority in expected_audit
+        assert authority in expected_audit
+    for retired in (
+        "comma_frontier_m204_bellman_native",
+        "comma_future_m204_rank_native",
+        "comma_python_first_terminal_walk_result_unique",
+    ):
+        assert retired not in expected_audit
 
 
 def test_b32_bridge_covers_the_concrete_ungrouped_boundary_chart_loop() -> None:

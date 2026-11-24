@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from contextlib import AbstractContextManager, contextmanager
+from functools import partial
 
 import pytest
 
@@ -12,6 +13,52 @@ from number_compiler.arithmetic.fields.ordered_band import (
     ordered_digit_band_frame,
     ordered_digit_band_output,
 )
+from number_compiler.arithmetic.fields.ordered_matrix import (
+    Matrix2,
+    compile_dyadic_ordered_band,
+    ordered_decimal_continuant,
+)
+
+
+def _record_reservation(
+    calls: list[tuple[int, int, int]], q: int, count: int, retained: int
+) -> None:
+    calls.append((q, count, retained))
+
+
+@pytest.mark.parametrize("modulus", [None, 2, 97, 1000])
+def test_ordered_continuant_matches_independent_matrix_products(
+    modulus: int | None,
+) -> None:
+    for digits in ((), (0,), (1, 4, 2, 9), (8, 3, 8, 3, 8)):
+        expected = Matrix2.identity(modulus)
+        for digit in digits:
+            expected = expected.multiply(Matrix2.digit(digit + 1, modulus))
+        assert ordered_decimal_continuant(digits, modulus) == expected
+
+
+@pytest.mark.parametrize("shared", [False, True])
+def test_dyadic_band_matches_direct_shifted_rows(shared: bool) -> None:
+    for width in (1, 2, 5):
+        base = 10**width
+        for source in (0, 9, 76123, 10**16 + 1285):
+            for rows in (1, 2, 3, 7, 16):
+                calls: list[tuple[int, int, int]] = []
+
+                observed = compile_dyadic_ordered_band(
+                    source,
+                    rows,
+                    width,
+                    partial(_record_reservation, calls),
+                    use_memo=shared,
+                )
+                expected = Matrix2.identity()
+                for row in range(rows):
+                    digits = f"{(source >> row) % base:0{width}d}"
+                    for digit in digits:
+                        expected = expected.multiply(Matrix2.digit(int(digit) + 1))
+                assert observed == expected
+                assert calls
 
 
 def test_frame_generator_is_closed_before_reservation_release_on_failure() -> None:

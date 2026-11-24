@@ -376,6 +376,12 @@ class AntihydraArithmeticTerm:
         return None if workspace is None else workspace.window_memo_container
 
     @property
+    def mahler_root_action_memo(self) -> object | None:
+        """Expose the exact ledger container for the source-bound action."""
+        workspace = self.mahler_workspace
+        return None if workspace is None else workspace.root_action_memo_container
+
+    @property
     def segments(self) -> LedgerList[ArithmeticSegment]:
         """Publish bounded chronological cylinders only for explicit consumers."""
         return self.materialize_segments(self.result())
@@ -541,11 +547,11 @@ class AntihydraArithmeticTerm:
         from number_compiler.hashlife.execution.dyadic_return_runs import (
             RunArithmeticWorkspace,
         )
+        from number_compiler.sequences.antihydra.mahler_carry_quotient import (
+            root_safety_from_authenticated_image,
+        )
         from number_compiler.sequences.antihydra.mahler_joint_future import (
             MahlerJointFutureAction,
-        )
-        from number_compiler.sequences.antihydra.mahler_source_actions import (
-            MahlerSourceBoundSafetyAction,
         )
 
         result = self.result()
@@ -565,19 +571,12 @@ class AntihydraArithmeticTerm:
                     + 32
                 )
             )
-            innovation = transfer.upper + transfer.offset - transfer.lower
-            safety = (
-                MahlerSourceBoundSafetyAction(
-                    self.requested,
-                    -12 * innovation,
-                    6 * transfer.upper - 12 * innovation,
-                )
-                if self.requested
-                else MahlerSourceBoundSafetyAction()
-            )
+            safety = root_safety_from_authenticated_image(workspace, result.h)
             action = MahlerJointFutureAction.from_admitted_root_workspace(
-                workspace, result.h, safety, transfer
+                workspace, result.h, safety.margin, transfer
             )
+            if action.guard != safety.guard:
+                raise ArithmeticError("finite guard differs from its source carry")
             projected = action.finite_safety_projection(interval_complete=True)
             if projected.source_residue != 7 % projected.source_modulus:
                 raise ArithmeticError("finite safety guard lost its issued source")

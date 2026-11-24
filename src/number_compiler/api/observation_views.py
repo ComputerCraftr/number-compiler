@@ -25,6 +25,8 @@ class ObservationView(Enum):
     CLOSED_ENDPOINT = (ObservationId.TEMPORAL_CLOSED_FORM, "endpoint")
     SOURCE_ACTION = (ObservationId.TEMPORAL_CLOSED_FORM, "source-action")
     FINITE_GUARD = (ObservationId.SAFETY_LEDGER, "finite-guard")
+    FINITE_SAFETY = (ObservationId.SAFETY_LEDGER, "finite-safety")
+    GRAPH_ACTION = (ObservationId.TEMPORAL_MACRO, "graph-action")
     EXECUTED_MACROS = (ObservationId.TEMPORAL_MACRO, "executed")
 
     def __init__(self, category: ObservationId, label: str) -> None:

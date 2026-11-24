@@ -352,6 +352,35 @@ next
     by (simp add: antihydra_cyclic_repeat_gain.simps algebra_simps)
 qed
 
+theorem antihydra_cyclic_repeat_partial_source:
+  assumes first: "antihydra_family_orbit h atom = h + (2^atom)^r * k"
+  defines "whole \<equiv> atom * Suc r"
+    and "seam \<equiv> h + antihydra_cyclic_repeat_gain atom (Suc r) * k"
+  shows "antihydra_family_orbit h (whole + tail) = antihydra_family_orbit seam tail"
+    and "antihydra_family_balance h 0 (whole + tail) =
+      antihydra_family_balance h 0 whole + antihydra_family_balance seam 0 tail"
+    and "antihydra_family_minimum h 0 (whole + tail) =
+      min (antihydra_family_minimum h 0 whole)
+        (antihydra_family_balance h 0 whole + antihydra_family_minimum seam 0 tail)"
+proof -
+  have endpoint: "antihydra_family_orbit h whole = seam"
+    unfolding whole_def seam_def
+    by (rule antihydra_cyclic_repeat_source_endpoint[OF first])
+  show "antihydra_family_orbit h (whole + tail) = antihydra_family_orbit seam tail"
+    using antihydra_family_orbit_add[of h whole tail] endpoint by simp
+  have bits: "antihydra_family_bits h (whole + tail) =
+      antihydra_family_bits h whole @ antihydra_family_bits seam tail"
+    using antihydra_family_bits_append[of h whole tail] endpoint by simp
+  show "antihydra_family_balance h 0 (whole + tail) =
+      antihydra_family_balance h 0 whole + antihydra_family_balance seam 0 tail"
+    using bits by (simp add: antihydra_family_balance_def ledger_word_delta_append)
+  show "antihydra_family_minimum h 0 (whole + tail) =
+      min (antihydra_family_minimum h 0 whole)
+        (antihydra_family_balance h 0 whole + antihydra_family_minimum seam 0 tail)"
+    using bits by (simp add: antihydra_family_balance_def antihydra_family_minimum_def
+        ledger_word_minprefix_append)
+qed
+
 lemma antihydra_eight_repeat_gain:
   "antihydra_cyclic_repeat_gain 8 r = antihydra_repeat_gain r"
   by (induction r) simp_all
@@ -375,6 +404,7 @@ ML \<open>
     antihydra_repeat_low24_difference_mod16
     antihydra_repeat_affine_difference antihydra_repeat_prefix_extremes
     antihydra_repeat_gain_geometric antihydra_cyclic_repeat_source_endpoint
+    antihydra_cyclic_repeat_partial_source
     antihydra_eight_repeat_gain antihydra_repeat_source_endpoint};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Antihydra exact run candidate refinement depends on an oracle";

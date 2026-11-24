@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
+from number_compiler.arithmetic.automata.slp_interval import (
+    SLPNodeArena,
+    fold_slp_interval,
+)
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
 from number_compiler.arithmetic.automata.temporal_cone import (
     CarrySpacetimePower,
@@ -51,8 +57,9 @@ def test_slp_cells_match_exact_tuple_action(
 
 
 @pytest.mark.parametrize("stream_inlet", [True, False])
-def test_unaligned_literal_slp_streams_or_uses_exact_slices(
-    monkeypatch: pytest.MonkeyPatch, stream_inlet: bool
+@pytest.mark.parametrize("span", [1, 4])
+def test_literal_slp_streams_or_uses_exact_slices(
+    monkeypatch: pytest.MonkeyPatch, stream_inlet: bool, span: int
 ) -> None:
     if not stream_inlet:
 
@@ -80,10 +87,68 @@ def test_unaligned_literal_slp_streams_or_uses_exact_slices(
                 cell_action=lambda a, b: padded_h_cell(a, b, 2),
             )
             try:
-                endpoint = bank.advance_blocks_slp(arena, root, 4)
-                assert arena.materialize(endpoint) == bank.advance_blocks(cells, 4)
+                endpoint = bank.advance_blocks_slp(arena, root, span)
+                assert arena.materialize(endpoint) == bank.advance_blocks(cells, span)
                 if stream_inlet:
                     assert bank.stats.source_traversal_tasks == 2 * len(cells) - 1
+            finally:
+                bank.release_temporary_storage()
+        assert ledger.account_usage(owner) == (0, 0)
+    finally:
+        arena.dispose()
+        ledger.mark_disposed(owner)
+
+
+def test_single_tick_streams_source_without_repeated_interval_discovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.automata import temporal_cone
+
+    ledger = ResourceLedger()
+    owner = ledger.register("single-tick", "scratch")
+    arena = LedgerSLPArena(ledger, "single-tick-source", "grammar")
+    cells = tuple((37 * index + 11) % 100 for index in range(83))
+    original = fold_slp_interval
+    try:
+        root = arena.word(cells)
+
+        def checked(
+            source: SLPNodeArena,
+            node: int,
+            begin: int,
+            end: int,
+            *,
+            identity: int,
+            length: Callable[[int], int],
+            full_value: Callable[[int, bool], int],
+            compose: Callable[[int, int], int],
+            repeat: Callable[[int, int], int],
+        ) -> int:
+            if source is arena and node == root:
+                raise AssertionError("source interval discovery was repeated")
+            return original(
+                source,
+                node,
+                begin,
+                end,
+                identity=identity,
+                length=length,
+                full_value=full_value,
+                compose=compose,
+                repeat=repeat,
+            )
+
+        monkeypatch.setattr(temporal_cone, "fold_slp_interval", checked)
+        with TemporalSquareScratchReservation(
+            LedgerReservation(ledger, owner)
+        ) as scratch:
+            bank = CarrySpacetimePower(
+                scratch, None, None, cell_action=lambda a, b: padded_h_cell(a, b, 5)
+            )
+            try:
+                output = bank.advance_blocks_slp(arena, root, 1)
+                assert arena.materialize(output) == bank.advance_blocks(cells, 1)
+                assert bank.stats.source_traversal_tasks > 0
             finally:
                 bank.release_temporary_storage()
         assert ledger.account_usage(owner) == (0, 0)

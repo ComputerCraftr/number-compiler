@@ -142,7 +142,7 @@ class FiveReverseSourceAdapter:
             raise ValueError("five-reversal primitive must be identity or one tick")
         cumulative = self.compose_actions(source.binding.action, exact_action)
         return self._candidate(
-            self._apply_steps(cast(int, source.payload), exact_action.steps),
+            self.apply_steps(cast(int, source.payload), exact_action.steps),
             cumulative,
         )
 
@@ -245,10 +245,13 @@ class FiveReverseSourceAdapter:
         exact = cast(FiveReverseAction, action)
         cumulative = self.compose_actions(source.binding.action, exact)
         return self._candidate(
-            self._apply_steps(cast(int, source.payload), exact.steps), cumulative
+            self.apply_steps(cast(int, source.payload), exact.steps), cumulative
         )
 
-    def _apply_steps(self, source: int, steps: int) -> int:
+    def apply_steps(self, source: int, steps: int) -> int:
+        """Apply a bounded physical action through this live source owner."""
+        self.term.check_open()
+        self.validate_action(FiveReverseAction(steps))
         self.validate_payload(source)
         if (
             steps >= _MIN_PACKED_STEPS

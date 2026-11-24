@@ -831,6 +831,7 @@ def demand_signed_tripling_action(
     index: int,
     level: int,
     *,
+    include_moore_periods: bool = True,
     phase_binary_places: int = 64,
     phase_decimal_places: int = 6,
     binary_windows: tuple[tuple[int, int], ...] = (),
@@ -844,6 +845,7 @@ def demand_signed_tripling_action(
     interior = demand_three_power_inward_phase_quotient(
         index,
         level,
+        include_moore_periods=include_moore_periods,
         phase_binary_places=phase_binary_places,
         phase_decimal_places=phase_decimal_places,
         binary_windows=binary_windows,

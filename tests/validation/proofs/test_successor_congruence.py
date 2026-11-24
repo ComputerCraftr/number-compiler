@@ -32,6 +32,24 @@ def test_audit_never_promotes_sampling_to_a_global_congruence_proof() -> None:
     audit.require_global_proof(carrier_complete=True)
 
 
+@pytest.mark.parametrize("first,second", [(None, "b"), ("b", None)])
+def test_audit_preserves_null_successor_and_exact_target(
+    first: str | None, second: str | None
+) -> None:
+    audit = SuccessorCongruenceAudit()
+    audit.observe(SuccessorObservation("a", "x", first, first))
+    audit.observe(SuccessorObservation("a", "y", first, first))
+    assert audit.semantic_successor_closed("a")
+    assert audit.exact_target_closed("a")
+    audit.observe(SuccessorObservation("a", "z", second, second))
+    assert not audit.semantic_successor_closed("a")
+    assert not audit.exact_target_closed("a")
+    with pytest.raises(
+        SuccessorCongruenceViolation, match="semantic successor conflicts"
+    ):
+        audit.require_global_proof(carrier_complete=True)
+
+
 def test_collatz_carry_action_alias_is_not_a_temporal_state_quotient() -> None:
     engine = CollatzCausalSpacetimeEngine()
     three = engine.forcing_image(CollatzRadixField.from_value(3))

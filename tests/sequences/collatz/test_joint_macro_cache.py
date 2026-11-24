@@ -16,6 +16,10 @@ from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.resources.process_cache import ProcessCache, clear_process_cache
 from number_compiler.sequences.collatz import joint_cylinder_cache
 from number_compiler.sequences.collatz.block_power import PoweredCollatzTerm
+from number_compiler.sequences.collatz.cyclic_abc_grammar import (
+    ShortcutAffine,
+    issue_cyclic_row,
+)
 from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
     DyadicTerminalFieldAction,
 )
@@ -33,7 +37,6 @@ from number_compiler.sequences.collatz.temporal_dyadic import (
     D8CylinderFrame,
     D8TemporalTable,
 )
-from tests.support.collatz_affine_fixtures import alternating_collatz_source_action
 from tests.support.private_attributes import private_test_attribute
 
 
@@ -481,8 +484,11 @@ def test_warm_joint_macro_is_consumed_without_reopening_d8(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clear_process_cache()
-    _, first_source = alternating_collatz_source_action(32, 128)
+    word = "01110101100000011010100101110011"
+    first_source = (1 << 128) + ShortcutAffine.from_word(word).source_residue
     receiving_source = first_source + (1 << 128)
+    assert issue_cyclic_row(first_source, 48) is None
+    assert issue_cyclic_row(receiving_source, 48) is None
     first = PoweredCollatzTerm(first_source, 48, shared_cache=True)
     first.prepare_joint_cocycle()
     first.accumulator(257)

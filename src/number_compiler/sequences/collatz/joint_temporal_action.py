@@ -297,6 +297,21 @@ class JointTemporalSpine:
         self._append_frontier(action, odd_symbols)
         self._cursor_source = action.endpoint(source)
 
+    def append_cyclic(self, admitted: object) -> None:
+        """Consume the sealed root carry and joint fields without a second fold."""
+        from number_compiler.sequences.collatz.cyclic_abc_grammar import (
+            CyclicRowAdmission,
+        )
+
+        if not self.requested or type(admitted) is not CyclicRowAdmission:
+            raise ValueError("joint spine requires an issued cyclic admission")
+        admitted.require_issued()
+        if admitted.source != self._cursor_source:
+            raise ValueError("cyclic joint block lost its exact source seam")
+        fields = DyadicTerminalFieldAction.from_cyclic_admission(admitted)
+        self._append_frontier(fields, admitted.action.odds)
+        self._cursor_source = admitted.endpoint
+
     def append_checked_d8_batch(
         self,
         action: DyadicTerminalFieldAction,
@@ -589,6 +604,11 @@ class CollatzJointTemporalBuilder:
             self.cache.observe(
                 source, action, odd_symbols, endpoint, anchor=self.source
             )
+
+    def append_cyclic(self, admitted: object) -> None:
+        if not self.requested or self.spine is None:
+            raise RuntimeError("cyclic joint spine was not requested")
+        self.spine.append_cyclic(admitted)
 
     def begin_d8_batch(self, source: int) -> None:
         levels = self._d8_batch_levels

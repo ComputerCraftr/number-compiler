@@ -11,17 +11,18 @@ No historical parity tape is needed to issue that finite prefix.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Final
 
-_MOTIF_PHASE_KIND: Final[str] = "collatz-abc-motif-phase-v1"
+from number_compiler.arithmetic.automata.affine_port_action import AffinePortAction
+from number_compiler.sequences.collatz.cyclic_diagonal import (
+    CyclicDefectGuard,
+    CyclicLaurentAction,
+)
 
-
-def _valuation(value: int) -> int:
-    if value == 0:
-        raise ValueError("zero defect has unbounded valuation")
-    return (value & -value).bit_length() - 1
+_MOTIF_PHASE_KIND: Final[str] = "collatz-abc-motif-phase-v2"
+_CYCLIC_ISSUER = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,15 +197,12 @@ class CyclicGuardedRow:
 
     @property
     def canonical_phase(self) -> tuple[str, int]:
-        rotations = [self.word[i:] + self.word[:i] for i in range(len(self.word))]
-        canonical = min(rotations)
-        # The phase is the index rotating the canonical *to this entry row*.
-        phase = next(
-            i
-            for i in range(len(self.word))
-            if canonical[i:] + canonical[:i] == self.word
-        )
-        return canonical, phase
+        action = self.laurent_action
+        return action.necklace.word, action.phase
+
+    @property
+    def laurent_action(self) -> CyclicLaurentAction:
+        return CyclicLaurentAction.from_word(self.word)
 
     def rotated(self, phase: int) -> CyclicGuardedRow:
         if type(phase) is not int:
@@ -238,8 +236,7 @@ class CyclicGuardedRow:
 
     def matched_steps(self, source: int) -> int | None:
         """Exact number of matching periodic symbols; None means infinite."""
-        d = self.defect(source)
-        return None if d == 0 else _valuation(d)
+        return CyclicDefectGuard(self.laurent_action, source).first_mismatch
 
     def prefix_odds(self, length: int) -> int:
         if type(length) is not int or length < 0:
@@ -253,8 +250,9 @@ class CyclicGuardedRow:
     def prefix_action(self, length: int) -> ShortcutAffine:
         if type(length) is not int or length < 0:
             raise ValueError("prefix length must be nonnegative")
-        copies, tail = divmod(length, len(self.word))
-        return self.motif.power(copies).then(ShortcutAffine.from_word(self.word[:tail]))
+        law = self.laurent_action
+        odds = law.odds(length)
+        return ShortcutAffine(length, odds, law.prefix_offset(length, 3**odds))
 
     def admitted_prefix(
         self,
@@ -262,6 +260,7 @@ class CyclicGuardedRow:
         remaining_ticks: int,
         *,
         maximum_steps: int = 8192,
+        minimum_steps: int = 1,
         reserve_bits: Callable[[int], None] | None = None,
     ) -> CyclicRowAdmission | None:
         if (
@@ -269,32 +268,24 @@ class CyclicGuardedRow:
             or remaining_ticks < 0
             or type(maximum_steps) is not int
             or maximum_steps < 0
+            or type(minimum_steps) is not int
+            or minimum_steps < 1
         ):
             raise ValueError("invalid physical clock or power limit")
-        matched = self.matched_steps(source)
-        max_steps = min(
-            remaining_ticks,
+        guard = CyclicDefectGuard(self.laurent_action, source)
+        matched = guard.first_mismatch
+        if matched is not None and matched < minimum_steps:
+            return None
+        steps = min(
+            guard.action.steps_for_ticks(remaining_ticks),
             maximum_steps,
             matched if matched is not None else remaining_ticks,
         )
-        low, high = 0, max_steps
-        while low < high:
-            mid = (low + high + 1) // 2
-            if self.prefix_ticks(mid) <= remaining_ticks:
-                low = mid
-            else:
-                high = mid - 1
-        # The kernel theorem authenticates complete copies. Leave the bounded
-        # incomplete tail to the existing physical executor.
-        low -= low % len(self.word)
-        if low == 0:
+        if steps < minimum_steps:
             return None
         if reserve_bits is not None:
-            reserve_bits(low)
-        action = self.prefix_action(low)
-        if not action.certifies(source):
-            raise AssertionError("cyclotomic defect failed its dyadic prefix guard")
-        return CyclicRowAdmission(self, source, action, self.prefix_ticks(low), matched)
+            reserve_bits(steps)
+        return _issue_cyclic_row(self, guard, steps)
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,14 +295,156 @@ class CyclicRowAdmission:
     action: ShortcutAffine
     physical_ticks: int
     maximum_match: int | None
+    _authority: object = field(default=None, init=False, repr=False, compare=False)
+    _endpoint: int | None = field(default=None, init=False, repr=False, compare=False)
+    _guard: CyclicDefectGuard | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _seal: tuple[object, ...] = field(default=(), init=False, repr=False, compare=False)
+
+    def require_issued(self) -> None:
+        if self._authority is not _CYCLIC_ISSUER or self._seal != _admission_seal(
+            self, self._endpoint, self._guard
+        ):
+            raise ValueError("cyclic action lacks its source issuer")
+
+    @property
+    def guard(self) -> CyclicDefectGuard:
+        self.require_issued()
+        assert self._guard is not None
+        return self._guard
 
     @property
     def endpoint(self) -> int:
-        return self.action.endpoint(self.source)
+        self.require_issued()
+        assert self._endpoint is not None
+        return self._endpoint
 
     @property
     def suffix_phase(self) -> int:
+        self.require_issued()
         return self.action.steps % len(self.row.word)
+
+    @property
+    def canonical_action_id(self) -> tuple[str, str, int]:
+        """Identify the ordered motif and phase independently of its inlet."""
+        self.require_issued()
+        return self.row.motif_phase_id
+
+    def advance(
+        self, normalized_steps: int, *, reserve_bits: Callable[[int], None]
+    ) -> CyclicRowAdmission | None:
+        """Transport an admitted prefix to its exact source-bound suffix."""
+        self.require_issued()
+        if (
+            type(normalized_steps) is not int
+            or not 0 <= normalized_steps <= self.action.steps
+        ):
+            raise ValueError("cyclic advance exceeds certified future")
+        if not callable(reserve_bits):
+            raise TypeError("symbolic advance requires a scratch owner")
+        if normalized_steps == 0:
+            return self
+        if normalized_steps == self.action.steps:
+            return None
+        reserve_bits(8 * (self.source.bit_length() + 4 * self.action.steps + 128))
+        guard = self.guard
+        following, transported = guard.point(
+            normalized_steps, 3 ** guard.action.odds(normalized_steps)
+        )
+        rotated = self.row.rotated(normalized_steps)
+        next_guard = CyclicDefectGuard(
+            guard.action.rotated(normalized_steps), following
+        )
+        if next_guard.defect != transported:
+            raise AssertionError("cyclic successor lost its Laurent defect transport")
+        issued = _issue_cyclic_row(
+            rotated, next_guard, self.action.steps - normalized_steps
+        )
+        if issued.endpoint != self.endpoint:
+            raise AssertionError("symbolic cyclic advancement changed endpoint")
+        return issued
+
+    def moving_cut(
+        self, cut: int, *, reserve_bits: Callable[[int], None]
+    ) -> MixedUpperBand:
+        """Project an admitted lower source to its moving upper response."""
+        self.require_issued()
+        if type(cut) is not int or cut < self.action.steps:
+            raise ValueError("moving cut would discard a source-guarded low bit")
+        if not callable(reserve_bits):
+            raise TypeError("moving cut requires its scratch owner")
+        reserve_bits(8 * (cut + self.source.bit_length() + 4 * self.action.steps + 128))
+        port, lower = self.guard.exact_lower_response(
+            self.action.steps, cut, self.action.gain
+        )
+        return MixedUpperBand(
+            self.action,
+            cut,
+            self.source & ((1 << cut) - 1),
+            port.gain,
+            port.carry,
+            lower,
+        )
+
+
+def _admission_seal(
+    admission: CyclicRowAdmission, endpoint: int | None, guard: CyclicDefectGuard | None
+) -> tuple[object, ...]:
+    action = admission.action
+    binding = None
+    if guard is not None:
+        law = guard.action
+        binding = (
+            guard.source,
+            guard.defect,
+            guard.first_mismatch,
+            law.phase,
+            law.necklace.word,
+            law.delta,
+            law.necklace.offsets,
+            law.necklace.odd_prefix,
+        )
+    return (
+        admission.row.word,
+        admission.source,
+        (action.steps, action.odds, action.offset),
+        admission.physical_ticks,
+        admission.maximum_match,
+        endpoint,
+        binding,
+    )
+
+
+def _issue_cyclic_row(
+    row: CyclicGuardedRow, guard: CyclicDefectGuard, steps: int
+) -> CyclicRowAdmission:
+    if (
+        type(row) is not CyclicGuardedRow
+        or type(guard) is not CyclicDefectGuard
+        or guard.action != row.laurent_action
+        or type(steps) is not int
+        or steps <= 0
+    ):
+        raise ValueError("cyclic source guard cannot issue this future action")
+    guard.require_steps(steps)
+    odds = guard.action.odds(steps)
+    gain = 3**odds
+    action = ShortcutAffine(steps, odds, guard.action.prefix_offset(steps, gain))
+    port, lower = guard.exact_lower_response(steps, steps, gain)
+    if lower:
+        raise ArithmeticError("terminal moving cut retained a nonempty lower band")
+    endpoint = port.apply(guard.source >> steps)
+    if endpoint <= 0:
+        raise ValueError("cyclic endpoint is not a positive physical value")
+    out = CyclicRowAdmission(
+        row, guard.source, action, steps + odds, guard.first_mismatch
+    )
+    object.__setattr__(out, "_authority", _CYCLIC_ISSUER)
+    object.__setattr__(out, "_endpoint", endpoint)
+    object.__setattr__(out, "_guard", guard)
+    object.__setattr__(out, "_seal", _admission_seal(out, endpoint, guard))
+    return out
 
 
 @dataclass(frozen=True, slots=True)
@@ -351,8 +484,13 @@ class MixedUpperBand:
         """
         if type(output_bits) is not int or output_bits < 1:
             raise ValueError("upper output demand must have positive precision")
-        mask = (1 << output_bits) - 1
-        return (output_bits, self.upper_gain & mask, self.carry & mask)
+        response = self.projected_response(output_bits)
+        return (output_bits, response.gain, response.carry)
+
+    def projected_response(self, output_bits: int) -> AffinePortAction:
+        if type(output_bits) is not int or output_bits < 1:
+            raise ValueError("upper output demand must have positive precision")
+        return AffinePortAction.reduced(1 << output_bits, self.upper_gain, self.carry)
 
     def upper_endpoint(self, upper_source: int) -> int:
         if type(upper_source) is not int or upper_source < 0:
@@ -418,13 +556,11 @@ def issue_cyclic_row(
         if not ("0" in word and "1" in word):
             continue
         row = CyclicGuardedRow(word)
-        maximum = row.matched_steps(source)
-        if maximum is not None and maximum < max(minimum_steps, 2 * period):
-            continue
         admitted = row.admitted_prefix(
             source,
             remaining_ticks,
             maximum_steps=maximum_steps,
+            minimum_steps=max(minimum_steps, 2 * period),
             reserve_bits=reserve_bits,
         )
         if admitted is not None and admitted.action.steps >= max(

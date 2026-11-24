@@ -20,6 +20,7 @@ from typing import (
     runtime_checkable,
 )
 
+from number_compiler.arithmetic.automata.word_period import least_rotation_index
 from number_compiler.arithmetic.contracts.family_identity import (
     FamilyId as _FamilyId,
 )
@@ -194,10 +195,7 @@ def canonical_cycle_rotation(
     if type(ports) is not tuple or not ports:
         raise ValueError("a guarded border cycle cannot be empty")
     keys = tuple(_wire_order_key(guard_key(port)) for port in ports)
-    offset = min(
-        range(len(ports)),
-        key=lambda start: keys[start:] + keys[:start],
-    )
+    offset = least_rotation_index(keys)
     return ports[offset:] + ports[:offset], offset
 
 

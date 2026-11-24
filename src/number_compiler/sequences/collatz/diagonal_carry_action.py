@@ -385,19 +385,9 @@ class CollatzDiagonalSeam:
             raise ValueError("endpoint suffix exceeds its requested width")
         if bits == 0:
             return 0
-        span = self._action.steps + bits
-        _validate_event_span(span)
-        reserve_bits(
-            8
-            * (
-                self.source.bit_length()
-                + self._action.gain.bit_length()
-                + self._action.offset.bit_length()
-                + 3 * span
-                + 64
-            )
-        )
-        return self._endpoint_residue_reserved(bits)
+        _validate_event_span(self._action.steps + bits)
+        reserve_bits(8 * (2 * bits + 64))
+        return self.normalized_endpoint & ((1 << bits) - 1)
 
     def phase_fraction(
         self,
@@ -434,18 +424,8 @@ class CollatzDiagonalSeam:
         if width > max_width:
             raise ValueError("diagonal field exceeds its requested width")
         _validate_event_span(self._action.steps + width)
-        reserve_bits(
-            8
-            * (
-                self.source.bit_length()
-                + self._action.gain.bit_length()
-                + self._action.offset.bit_length()
-                + 3 * (self._action.steps + width)
-                + 64 * width
-                + 96
-            )
-        )
-        value = self._endpoint_residue_reserved(width)
+        reserve_bits(8 * (66 * width + 96))
+        value = self.normalized_endpoint & ((1 << width) - 1)
         digits = tuple((value >> position) & 1 for position in range(width))
         multiply_coefficients = tuple(
             3 * bit + int(position == 0) for position, bit in enumerate(digits)
@@ -684,17 +664,6 @@ class CollatzDiagonalSeam:
         return CollatzWeightedLaurentDefect(
             moving_cut, defect, quotient, symmetric, antisymmetric
         )
-
-    def _endpoint_residue_reserved(self, bits: int) -> int:
-        span = self._action.steps + bits
-        modulus = 1 << span
-        numerator = (
-            self._action.gain * (self.source % modulus) + self._action.offset
-        ) % modulus
-        divisor = 1 << self._action.steps
-        if numerator % divisor:
-            raise ValueError("diagonal seam lost its exact source cylinder")
-        return numerator >> self._action.steps
 
 
 def _validate_query_width(max_width: int) -> None:

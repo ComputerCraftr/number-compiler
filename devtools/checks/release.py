@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import shutil
 import signal
 import sys
@@ -19,17 +18,13 @@ from uuid import uuid4
 
 from devtools.checks.isabelle_proof_progress import (
     ProofProgressFile,
+    profile_log_path,
     proof_progress_mode,
 )
 from devtools.checks.isabelle_session_watchdog import (
-    SESSION_DURATION as _SESSION_DURATION,
-)
-from devtools.checks.isabelle_session_watchdog import SESSION_NAME as _SESSION_NAME
-from devtools.checks.isabelle_session_watchdog import (
-    SESSION_STATUS as _SESSION_STATUS,
-)
-from devtools.checks.isabelle_session_watchdog import (
     IsabelleSessionWatchdog,
+    parse_session_inventory,
+    session_build_summary,
 )
 from devtools.checks.process_guard import (
     DEADLINE_ENV,
@@ -96,7 +91,6 @@ P0 = (
     "tests/validation/research/collatz/test_harmonic_ports.py",
 )
 ACCEPTANCE_ROOT_ENV = "NUMBER_COMPILER_ACCEPTANCE_ROOT"
-_UNFINISHED_LIST = re.compile(r"^\s*Unfinished session\(s\):\s*(.+)$")
 
 
 def _git_revision_stable(
@@ -219,26 +213,6 @@ def _acceptance_environment(root: Path, environment: dict[str, str]) -> None:
     environment[PROVENANCE_MODE_ENV] = "acceptance"
 
 
-def parse_session_inventory(
-    text: str, required_sessions: tuple[str, ...]
-) -> tuple[str, ...]:
-    """Parse Isabelle's authoritative topological `sessions -b` output."""
-    names = tuple(
-        line.strip()
-        for line in text.splitlines()
-        if _SESSION_NAME.fullmatch(line.strip())
-    )
-    if not names or len(names) != len(set(names)):
-        raise ValueError("Isabelle session inventory is empty or contains duplicates")
-    missing = sorted(set(required_sessions) - set(names))
-    if missing:
-        raise ValueError(
-            "native Isabelle inventory omitted requested sessions: "
-            + ", ".join(missing)
-        )
-    return names
-
-
 def _isabelle_environment_command(
     executable: str,
     assignments: tuple[str, ...],
@@ -246,98 +220,6 @@ def _isabelle_environment_command(
 ) -> tuple[str, ...]:
     """Run an Isabelle tool after setting its environment in Isabelle's env."""
     return (executable, "env", *assignments, executable, *arguments)
-
-
-def _profile_log_path(
-    run: EvidenceRun, *, force: bool = False
-) -> tuple[str | None, bool]:
-    """Resolve ISABELLE_PROOF_PROFILE_LOG, reserving a fresh run-local file for ``1``.
-
-    Explicit nonempty values remain caller-owned paths.  The sentinel ``1``
-    requests an exclusive file under this evidence run so timeout diagnostics
-    can be inspected even if the guarded process is terminated.
-    """
-    setting = os.environ.get("ISABELLE_PROOF_PROFILE_LOG", "")
-    if not setting and force:
-        setting = "1"
-    if not setting:
-        return None, False
-    if setting != "1":
-        return setting, True
-    for _attempt in range(32):
-        path = run.path / f"isabelle-profile-{uuid4().hex}.log"
-        try:
-            with path.open("x", encoding="utf-8"):
-                pass
-        except FileExistsError:
-            continue
-        return str(path), True
-    raise FileExistsError("could not reserve a fresh Isabelle profile log")
-
-
-def session_build_summary(
-    text: str, inventory: tuple[str, ...], *, succeeded: bool
-) -> dict[str, object]:
-    """Separate rebuilt, reused and unclassified heaps from native build logs."""
-    started: set[str] = set()
-    finished: set[str] = set()
-    failed: set[str] = set()
-    durations: dict[str, float] = {}
-    for line in text.splitlines():
-        unfinished_match = _UNFINISHED_LIST.match(line)
-        if unfinished_match:
-            failed.update(
-                name.strip()
-                for name in unfinished_match.group(1).split(",")
-                if name.strip()
-            )
-            continue
-        match = _SESSION_STATUS.match(line)
-        if match is None:
-            continue
-        status, name = match.groups()
-        if status == "Finished" and name == "at" and name not in inventory:
-            # Isabelle's build footer is a timestamp, not a rebuilt session.
-            continue
-        if status in {"Running", "Building"}:
-            started.add(name)
-        elif status == "Finished":
-            finished.add(name)
-            duration_match = _SESSION_DURATION.search(line)
-            if duration_match:
-                hours, minutes, seconds = duration_match.group(1).split(":")
-                durations[name] = int(hours) * 3600 + int(minutes) * 60 + float(seconds)
-        else:
-            failed.add(name)
-    rebuilt = started | finished
-    unknown = sorted(set(inventory) - rebuilt - failed)
-    unmatched = sorted((started | finished | failed) - set(inventory))
-    if succeeded and not failed:
-        reused: list[str] | None = sorted(set(inventory) - rebuilt)
-        inferred = "successful native build; inventory minus reported built sessions"
-        not_attempted: list[str] = []
-    else:
-        reused = None
-        inferred = None
-        not_attempted = unknown
-    return {
-        "inventory_sessions": list(inventory),
-        "inventory_count": len(inventory),
-        "started_sessions": sorted(started),
-        "rebuilt_sessions": sorted(rebuilt),
-        "finished_sessions": sorted(finished),
-        "failed_sessions": sorted(failed),
-        "unmatched_native_session_statuses": unmatched,
-        "reused_sessions": reused,
-        "reused_inference": inferred,
-        "not_attempted_or_unclassified_sessions": not_attempted,
-        "finished_session_elapsed_seconds": durations or None,
-        "over_budget_finished_sessions": sorted(
-            name
-            for name, seconds in durations.items()
-            if seconds > ISABELLE_SESSION_SECONDS
-        ),
-    }
 
 
 def execute(
@@ -732,8 +614,8 @@ def proofs(
         return False
     # Preserve the active theory in the log even if the external guard must
     # terminate Poly/ML before Isabelle can write its session database.
-    profile_path, profiling = _profile_log_path(
-        run, force=os.environ.get("NUMBER_COMPILER_PROOF_PROGRESS") == "detailed"
+    profile_path, profiling = profile_log_path(
+        run.path, force=os.environ.get("NUMBER_COMPILER_PROOF_PROGRESS") == "detailed"
     )
     run.manifest["profile_path"] = profile_path
     run.record(
@@ -894,6 +776,67 @@ def proofs(
     return completed and timed_out_session is None
 
 
+def comma_release_export(run: EvidenceRun, executable: str) -> bool:
+    """Compare the current guarded build's export with the wheel source asset."""
+    from devtools.checks.installed_distribution import (
+        COMMA_NATIVE_EXPORT,
+        COMMA_RELEASE_ASSET,
+        verify_comma_native_export,
+    )
+    from number_compiler.sequences.comma.future_authority import (
+        GLOBAL_RELEASE_SESSION_ID,
+        GLOBAL_RELEASE_THEOREM_ID,
+    )
+
+    export_root = run.path / "comma-native-export"
+    export_root.mkdir()
+    release_theory = GLOBAL_RELEASE_THEOREM_ID.rpartition(".")[0]
+    if not execute(
+        run,
+        "comma-native-export",
+        _isabelle_environment_command(
+            executable,
+            (f"ISABELLE_TOOL_JAVA_OPTIONS={ISABELLE_JAVA_OPTIONS}",),
+            (
+                "export",
+                "-n",
+                "-d",
+                str(isabelle_root(run.root)),
+                "-O",
+                str(export_root),
+                "-x",
+                f"{GLOBAL_RELEASE_SESSION_ID}.{release_theory}:{COMMA_NATIVE_EXPORT}",
+                GLOBAL_RELEASE_SESSION_ID,
+            ),
+        ),
+        PYTHON_COMMAND,
+        acceptance=True,
+    ):
+        return False
+    try:
+        digest = verify_comma_native_export(
+            export_root,
+            run.root / "src" / "number_compiler" / "kernels" / COMMA_RELEASE_ASSET,
+        )
+    except (OSError, ValueError) as error:
+        run.record(
+            {
+                "name": "comma-native-package-identity",
+                "outcome": "rejected",
+                "detail": str(error),
+            }
+        )
+        return False
+    run.record(
+        {
+            "name": "comma-native-package-identity",
+            "outcome": "verified",
+            "artifact_sha256": digest,
+        }
+    )
+    return True
+
+
 def _output_path(
     repository: Path, requested: Path | None, acceptance: bool
 ) -> Path | None:
@@ -948,16 +891,24 @@ def _run(
                 )
                 and passed
             )
-        if options.suite in ("proofs", "all"):
-            passed = (
-                proofs(
-                    run,
-                    options.isabelle,
-                    tuple(options.session),
-                    acceptance=acceptance,
-                )
-                and passed
+        if acceptance and options.suite == "all" and not passed:
+            run.record(
+                {
+                    "name": "proofs",
+                    "outcome": "blocked",
+                    "detail": "Complete release acceptance requires passing source and package gates",
+                }
             )
+        elif options.suite in ("proofs", "all"):
+            proof_passed = proofs(
+                run,
+                options.isabelle,
+                tuple(options.session),
+                acceptance=acceptance,
+            )
+            passed = proof_passed and passed
+            if proof_passed and acceptance and options.suite == "all":
+                passed = comma_release_export(run, options.isabelle) and passed
         run.finish("completed" if passed else "failed")
         print(run.path)
         status = 0 if passed and run.manifest["outcome"] == "completed" else 1

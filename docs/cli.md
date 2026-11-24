@@ -168,8 +168,8 @@ one source preparation. Each value retains its own precision and coverage.
 | `temporal.clock` | `--temporal-clock-detail` | `residue-period` (2rev10), `defect-samples` (2rev10) |
 | `temporal.accumulator` | `--temporal-accumulator-kind` | `alternating` (reverse-add, 2rev10, collatz), `single` (collatz) |
 | `temporal.closed-form` | `--temporal-closed-form-kind` | `source-action` (reverse-add, 2rev10), `endpoint` (2rev10, 5rev10) |
-| `safety.ledger` | `--safety-ledger-detail` | `finite-guard` (antihydra) |
-| `temporal.macro` | `--temporal-macro-kind` | `executed` (collatz) |
+| `safety.ledger` | `--safety-ledger-detail` | `finite-guard` (antihydra), `finite-safety` (antihydra) |
+| `temporal.macro` | `--temporal-macro-kind` | `executed` (collatz), `graph-action` (antihydra) |
 <!-- cli-views:end -->
 
 The family listing shows supported choices. Antihydra always reports the
@@ -177,6 +177,42 @@ arithmetic ledger when requested. Its optional finite guard reports the
 weighted source action. For the authenticated source 7 the fractional
 interval is certified empty from two steps onward. The ledger continues
 to report the physical prefix and first failure independently.
+
+Finite rational safety and closed graph actions share the exact fractional tail
+at the selected centered endpoint. Their results count physical ticks. The
+graph view covers the certified 60/40 row and its rotation, up to 2,048 copies.
+
+```sh
+number-compiler antihydra --nth 254 --no-value --format json \
+  --info safety.ledger --safety-ledger-detail finite-safety --safety-horizon 4 \
+  --info temporal.macro --temporal-macro-kind graph-action --temporal-macro-copies 2 \
+  --fractional-tail 1/57
+```
+
+The continued-fraction band takes the starting power-of-five exponent, the
+decimal cut, the digit width, and the row count. The cut advances one place per
+row. The packet contains the exact MSD-first continuant for the ordered rows.
+An information-only band request can run independently of the Antihydra term.
+
+```sh
+number-compiler antihydra --nth 0 --no-value --format json \
+  --info arithmetic.continued-fraction --continued-fraction-band 1530,33,1,6
+```
+
+A finite continued-fraction cylinder uses `--safety-horizon` in physical
+ticks, from 0 through 4,096. Its input concatenates the decimal digits of
+`5^1, 5^2, ...` in most-significant-first order within each power and adds
+one to each digit. The packet gives the shortest prefix that determines the
+safe path, its ordered continuant, and exact rational bounds. Set
+`--continued-fraction-max-coefficients` to bound the search. It accepts
+1–100,000 and defaults to 20,000. An exhausted search reports `unknown`.
+Use `--no-value` to request the independent cylinder without computing the
+Antihydra term.
+
+```sh
+number-compiler antihydra --nth 0 --no-value --format json \
+  --info arithmetic.continued-fraction --safety-horizon 96
+```
 
 Reverse/add and `2rev10` support `--info arithmetic.modular --arithmetic-modular-kind residue`
 without rendering an endpoint. Reverse/add predicts modulo 99. The certified 2rev10
@@ -382,7 +418,7 @@ The ordinary `temporal.open-ring` demand retains its 32-F-step limit.
 | `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.matrix`, `temporal.closed-form`, `arithmetic.modular`, `temporal.accumulator`, `temporal.clock`, `temporal.carry-safety`, `spatial.stencil`, `temporal.bank`, `temporal.open-ring`, `temporal.birth-layers`, `spatial.pair-bank`, `spatial.bank-morphism`, `spatial.bank-window`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift`, `temporal.matrix.trace` | — |
 | `5rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.bank`, `arithmetic.modular`, `temporal.closed-form`, `temporal.matrix`, `temporal.matrix.trace` | — |
 | `collatz` | `physical_iterations` | `--seed`, `--radix` | `temporal`, `metrics`, `temporal.matrix`, `temporal.clock`, `temporal.accumulator`, `temporal.diagonal-carry`, `temporal.carry-bellman`, `temporal.macro`, `temporal.innovation-borrow`, `temporal.matrix.trace` | `temporal`, `temporal.clock`, `arithmetic.modular`, `arithmetic.twisted`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.tropical`, `arithmetic.factor`, `safety.execution` |
-| `antihydra` | `macro_returns_after_startup` | — | `temporal`, `metrics`, `temporal.matrix`, `safety.ledger`, `temporal.clock`, `arithmetic.modular`, `spatial.tape`, `arithmetic.twisted`, `temporal.spacetime`, `temporal.diagonal-carry`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.mahler`, `arithmetic.tropical`, `arithmetic.factor`, `temporal.matrix.trace` | — |
+| `antihydra` | `macro_returns_after_startup` | — | `temporal`, `metrics`, `temporal.matrix`, `safety.ledger`, `temporal.clock`, `arithmetic.modular`, `spatial.tape`, `arithmetic.twisted`, `temporal.spacetime`, `temporal.diagonal-carry`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.mahler`, `arithmetic.continued-fraction`, `temporal.macro`, `arithmetic.tropical`, `arithmetic.factor`, `temporal.matrix.trace` | — |
 | `a367620` | `oeis_index` | — | `temporal`, `metrics`, `temporal.clock`, `arithmetic.tropical`, `safety.certificate` | — |
 | `prime` | `prime_index` | `--start` | `metrics` | — |
 | `fermat` | `fermat_index` | — | `temporal`, `metrics`, `temporal.matrix`, `number-theory.primality`, `number-theory.factor`, `number-theory.root`, `temporal.matrix.trace` | — |

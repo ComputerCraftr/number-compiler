@@ -284,7 +284,7 @@ class InwardTemporalPhaseBank:
 
 
 def demand_inward_temporal_phase_bank(
-    base: int, level: int, depth: int
+    base: int, level: int, depth: int, *, include_moore_periods: bool = True
 ) -> InwardTemporalPhaseBank:
     """Authenticate nested digit/carry/H5 constraints without source replay.
 
@@ -305,7 +305,17 @@ def demand_inward_temporal_phase_bank(
         raise ValueError("inward bank precision exceeds the source budget")
     if level.bit_length() > _MAX_SOURCE_LEVEL_BITS:
         raise ValueError("inward bank source level exceeds its bit budget")
-    periods = tuple(_certified_temporal_signal_periods(base, i) for i in range(depth))
+    if type(include_moore_periods) is not bool:
+        raise TypeError("Moore period demand must be boolean")
+    # The exact 2/5-adic source phase, carry rows and H5 are independent of
+    # minimal Moore period discovery. The latter constructs seven complete
+    # finite orbit observers per position and is OPTIONAL metadata, not a
+    # prerequisite for a fixed-multiplier endpoint or physical checkpoint.
+    periods = (
+        tuple(_certified_temporal_signal_periods(base, i) for i in range(depth))
+        if include_moore_periods
+        else (None,) * depth
+    )
     return _phase_bank_from_periods(base, level, depth, periods)
 
 

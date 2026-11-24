@@ -323,6 +323,33 @@ proof -
     by (simp add: root_shell_guard_def)
 qed
 
+text \<open>The physical source-eight transfer and the centered carry are
+different views of the same admitted root.  The elapsed extent remains an
+application parameter, and the empty fractional guard does not determine
+the separate ledger safety.\<close>
+
+theorem source_eight_root_transfer_centered_guard:
+  fixes gain offset :: int
+  assumes extent: "2 \<le> n"
+    and endpoint: "(2::int)^n * (int (mahler_orbit 7 n) + 1) =
+      8 * gain + offset"
+  shows "(2::int)^n * int (mahler_orbit 7 n) =
+      7 * gain + (gain + offset - (2::int)^n)"
+    and "\<not> cylinder_guard 7 n t"
+proof -
+  show "(2::int)^n * int (mahler_orbit 7 n) =
+      7 * gain + (gain + offset - (2::int)^n)"
+    using endpoint by (simp add: algebra_simps; linarith)
+  show "\<not> cylinder_guard 7 n t"
+    by (rule source7_fractional_guard_empty_after_prefix[OF extent])
+qed
+
+theorem source_seven_one_return_guard:
+  assumes "0 \<le> t" "t < 1/2"
+  shows "cylinder_guard 7 1 t \<longleftrightarrow> 1/3 \<le> t"
+  using source_event_exact_guard[where k=0 and u=7 and t=t] assms
+  by (simp; linarith)
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms branch_suffix_then branch_then_assoc encoded_branch_then_python
@@ -333,7 +360,8 @@ ML \<open>
       joint_lanes_bind_both_sources
       joint_observer_source_scope
       source7_arithmetic_successor_without_safe_fraction
-      source7_fractional_guard_empty_after_prefix})
+      source7_fractional_guard_empty_after_prefix
+      source_eight_root_transfer_centered_guard source_seven_one_return_guard})
     then () else error "Joint quotient algebra depends on an oracle";
 \<close>
 

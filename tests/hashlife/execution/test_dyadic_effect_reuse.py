@@ -11,10 +11,16 @@ from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.dyadic_return_images import (
     DyadicReturnImageWorkspace,
 )
-from number_compiler.hashlife.execution.dyadic_return_records import DyadicReturnLaw
+from number_compiler.hashlife.execution.dyadic_return_records import (
+    DyadicReturnLaw,
+    DyadicReturnSupportRecord,
+)
 from number_compiler.hashlife.execution.dyadic_return_transport import (
     residue_macro,
     transport_low,
+)
+from number_compiler.hashlife.execution.dyadic_upper_band import (
+    certified_lower_upper_action,
 )
 from number_compiler.hashlife.execution.source_bound_images import (
     SourceBoundSchedulerCore,
@@ -56,6 +62,40 @@ def test_short_residue_transport_charges_operands_not_requested_precision() -> N
         transport_low(workspace, SkewTransfer(3, 1, 2), 2, 10**12)
     workspace.dispose()
     assert ledger.entries == ledger.nodes == 0
+
+
+def test_narrow_upper_band_projects_before_the_large_affine_product() -> None:
+    width, demand = 1024, 7
+    residue = (1 << (width - 2)) + 12345
+    law = ANTIHYDRA_ARITHMETIC_LAW
+    endpoint, _, odd, delta, minimum = literal_dyadic_orbit(residue, width, law)
+    gain = 3**width
+    shift = 1 << width
+    offset = shift * endpoint - gain * residue
+    assert gain.bit_length() > width + demand and offset < 0
+    lower = DyadicReturnSupportRecord(
+        width,
+        residue,
+        SkewTransfer(gain, offset, shift),
+        odd,
+        delta,
+        minimum,
+        None,
+        None,
+        None,
+        True,
+    )
+    response = certified_lower_upper_action(
+        lower, residue, cut=width, demand_width=demand
+    )
+    for upper in (0, 1, 93, (1 << 129) + 3):
+        source = shift * upper + residue
+        expected, *_ = literal_dyadic_orbit(source, width, law)
+        assert response.apply(upper) == expected % (1 << demand)
+
+    corrupted = replace(lower, transfer=SkewTransfer(gain, offset + 1, shift))
+    with pytest.raises(ArithmeticError, match="dyadic endpoint"):
+        certified_lower_upper_action(corrupted, residue, cut=width, demand_width=demand)
 
 
 @pytest.mark.parametrize("law", (COLLATZ_PHYSICAL_LAW, ANTIHYDRA_ARITHMETIC_LAW))

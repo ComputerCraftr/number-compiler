@@ -23,7 +23,11 @@ from number_compiler.arithmetic.automata.slp_interval import (
     fold_slp_dag,
     fold_slp_interval,
 )
-from number_compiler.arithmetic.automata.word_period import primitive_period
+from number_compiler.arithmetic.automata.word_period import (
+    canonical_primitive_rotation,
+    primitive_period,
+)
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.sequences.reverse_add.q19_conditional_stencil import (
@@ -187,23 +191,37 @@ def _match_region(
     if lo == hi:
         return True
     with _fold_match(owner, root, pattern) as cache:
-        if not 0 <= lo < hi <= cache[root].length:
-            raise ValueError("periodic region exceeds encoded pair SLP")
-        report = fold_slp_interval(
-            owner.arena,
-            root,
-            lo,
-            hi,
-            identity=_Match.identity(len(pattern)),
-            length=lambda node_id: cache[node_id].length,
-            full_value=lambda node_id, _reverse: cache[node_id],
-            compose=lambda left, right: left.then(right),
-            repeat=lambda summary, count: summary.repeat(count),
-            on_visit=lambda: owner.ledger.bump(
-                _reverse_add_keys.REVERSE_Q19_PERIODIC_GUARD_REGION_VISITS
-            ),
-        )
-    return report.accepts[lo % len(pattern)]
+        return _match_cached_region(owner, root, lo, hi, pattern, 0, cache)
+
+
+def _match_cached_region(
+    owner: ReversePairQ19OutputOwner,
+    root: int,
+    lo: int,
+    hi: int,
+    pattern: tuple[int, ...],
+    phase: int,
+    cache: dict[int, _Match],
+) -> bool:
+    if lo == hi:
+        return True
+    if not 0 <= lo < hi <= cache[root].length:
+        raise ValueError("periodic region exceeds encoded pair SLP")
+    report = fold_slp_interval(
+        owner.arena,
+        root,
+        lo,
+        hi,
+        identity=_Match.identity(len(pattern)),
+        length=lambda node_id: cache[node_id].length,
+        full_value=lambda node_id, _reverse: cache[node_id],
+        compose=lambda left, right: left.then(right),
+        repeat=lambda summary, count: summary.repeat(count),
+        on_visit=lambda: owner.ledger.bump(
+            _reverse_add_keys.REVERSE_Q19_PERIODIC_GUARD_REGION_VISITS
+        ),
+    )
+    return report.accepts[(lo + phase) % len(pattern)]
 
 
 def periodic_guard(
@@ -220,6 +238,37 @@ def periodic_guard(
         pattern = pattern[:period]
         w = source.pair_width
         half = (w + 1) // 2
+        if lo < half and hi > half and hi - lo >= 4 * period:
+            try:
+                node_bound = len(owner.arena.nodes) + 1
+                owner.ledger.check_capacity(
+                    nodes=12 * period + 8 * node_bound, entries=4 * node_bound
+                )
+            except BlockContextBudgetExceeded:
+                pass
+            else:
+                with owner.ledger.reservation(owner.scratch_owner, nodes=12 * period):
+                    mirror = tuple(pattern[(w - 1 - j) % period] for j in range(period))
+                    canonical, phase, _ = canonical_primitive_rotation(
+                        pattern, guard_key=lambda value: value
+                    )
+                    reverse_canonical, reverse_phase, _ = canonical_primitive_rotation(
+                        mirror, guard_key=lambda value: value
+                    )
+                    if canonical == reverse_canonical:
+                        with _fold_match(owner, source.root, canonical) as cache:
+                            return _match_cached_region(
+                                owner, source.root, lo, half, canonical, phase, cache
+                            ) and _match_cached_region(
+                                owner,
+                                source.root,
+                                w - hi,
+                                w - half,
+                                canonical,
+                                reverse_phase,
+                                cache,
+                            )
+
         if lo < half and not _match_region(
             owner, source.root, lo, min(hi, half), pattern
         ):

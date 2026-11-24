@@ -202,3 +202,87 @@ def test_mixed_cell_records_are_live_owner_checked_observations(
     assert ledger.entries == ledger.nodes == 0
     with pytest.raises(ValueError, match="disposed"):
         cert.at(1)
+
+
+def _periodic_source(repeats: int) -> tuple[int, ...]:
+    half = (1, 2) * repeats + (1,)
+    return half + half[-2::-1]
+
+
+def test_rotated_reflected_period_shares_the_checked_source_fold() -> None:
+    from number_compiler.resources.metric_keys import reverse_add as metric_keys
+
+    ledger = ResourceLedger()
+    owner = ReversePairQ19OutputOwner(ledger, _periodic_source(96), base=10)
+    key = metric_keys.REVERSE_Q19_PERIODIC_GUARD_SLP_NODE_VISITS
+    try:
+        width = owner.initial.pair_width
+        half = (width + 1) // 2
+        assert match_region(owner, owner.initial.root, 0, half, (2, 4))
+        assert match_region(owner, owner.initial.root, 0, width - half, (2, 4))
+        separate = ledger.counters[key]
+        assert q19_periodic_cone.periodic_guard(
+            owner, owner.initial, 0, width, (2, 4, 2, 4)
+        )
+        assert ledger.counters[key] - separate == separate // 2
+        assert not q19_periodic_cone.periodic_guard(
+            owner, owner.initial, 0, width, (4, 2)
+        )
+    finally:
+        owner.dispose()
+    assert ledger.entries == ledger.nodes == 0
+
+
+@pytest.mark.parametrize("cut", [0, 1, 2, 7, 15])
+@pytest.mark.parametrize("pattern", [(2, 4), (4, 2), (2, 4, 2, 4), (2, 6)])
+def test_reflected_period_guards_match_literal_at_each_entry_phase(
+    cut: int, pattern: tuple[int, ...]
+) -> None:
+    digits = _periodic_source(8)
+    ledger = ResourceLedger()
+    owner = ReversePairQ19OutputOwner(ledger, digits, base=10)
+    try:
+        width = owner.initial.pair_width
+        stop = width - cut
+        pair_sums = tuple(digits[i] + digits[width - i - 1] for i in range(width))
+        expected = all(
+            pair_sums[i] == pattern[i % len(pattern)] for i in range(cut, stop)
+        )
+        assert (
+            q19_periodic_cone.periodic_guard(owner, owner.initial, cut, stop, pattern)
+            is expected
+        )
+    finally:
+        owner.dispose()
+    assert ledger.entries == ledger.nodes == 0
+
+
+def test_rotated_guard_capacity_miss_keeps_exact_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.contracts.block_effect import (
+        BlockContextBudgetExceeded,
+    )
+    from number_compiler.resources.metric_keys import reverse_add as metric_keys
+
+    ledger = ResourceLedger()
+    owner = ReversePairQ19OutputOwner(ledger, _periodic_source(16), base=10)
+    original = ResourceLedger.check_capacity
+
+    def refuse_optional(
+        candidate: ResourceLedger, *, entries: int = 0, nodes: int = 0
+    ) -> None:
+        if candidate is ledger and entries and nodes:
+            raise BlockContextBudgetExceeded("optional rotated matcher capacity")
+        original(candidate, entries=entries, nodes=nodes)
+
+    try:
+        monkeypatch.setattr(ResourceLedger, "check_capacity", refuse_optional)
+        assert q19_periodic_cone.periodic_guard(
+            owner, owner.initial, 0, owner.initial.pair_width, (2, 4)
+        )
+        visits = ledger.counters[metric_keys.REVERSE_Q19_PERIODIC_GUARD_SLP_NODE_VISITS]
+        assert visits > 0 and visits % 2 == 0
+    finally:
+        owner.dispose()
+    assert ledger.entries == ledger.nodes == 0

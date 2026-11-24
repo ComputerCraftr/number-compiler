@@ -1,6 +1,7 @@
 """Distribution inventory comes from source, including non-Python resources."""
 
 import sys
+from hashlib import sha256
 from io import StringIO
 from pathlib import Path
 from zipfile import ZipFile
@@ -67,3 +68,28 @@ def test_wheel_verification_keeps_flushed_last_stage_on_failure(
 
     assert stderr.getvalue() == "package-stage: wheel-content-validation:start\n"
     assert stderr.flush_count == 1
+
+
+@pytest.mark.parametrize("fault", ("missing", "duplicate", "stale", "identical"))
+def test_comma_release_binds_packaged_bytes_to_the_native_export(
+    tmp_path: Path, fault: str
+) -> None:
+    export = tmp_path / "export"
+    export.mkdir()
+    asset = tmp_path / installed_distribution.COMMA_RELEASE_ASSET
+    payload = b'{"artifact":"native fixture"}\n'
+    asset.write_bytes(b"stale wheel data" if fault == "stale" else payload)
+    if fault != "missing":
+        (export / installed_distribution.COMMA_NATIVE_EXPORT).write_bytes(payload)
+    if fault == "duplicate":
+        other = export / "second-theory"
+        other.mkdir()
+        (other / installed_distribution.COMMA_NATIVE_EXPORT).write_bytes(payload)
+    if fault == "identical":
+        assert (
+            installed_distribution.verify_comma_native_export(export, asset)
+            == sha256(payload).hexdigest()
+        )
+    else:
+        with pytest.raises(ValueError, match="native (build|export)"):
+            installed_distribution.verify_comma_native_export(export, asset)

@@ -96,7 +96,8 @@ def _evaluate_carry_signal(
         f"collatz-future-carry-{ledger.owner_count}", "temporal_signal_scratch"
     )
     try:
-        with LedgerReservation(ledger, owner) as scratch:
+        scratch = LedgerReservation(ledger, owner)
+        try:
             # The centered source, its valuation and the phase period are
             # allocated after their conservative bit capacity is reserved.
             scratch.reserve(nodes=(3 * source.bit_length() + precision + 29) // 30)
@@ -128,5 +129,7 @@ def _evaluate_carry_signal(
                     pow(3, horizon, modulus) * (future.centered % modulus) - moving_cut
                 ) % modulus
             return hits, numerator
+        finally:
+            scratch.retire()
     finally:
         ledger.mark_disposed(owner)

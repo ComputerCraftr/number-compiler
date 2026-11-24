@@ -7,9 +7,11 @@ threshold is a consumer; neither it nor the ledger authorizes another source.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.arithmetic.fields.affine_high_digits import (
     affine_high_digit_transport,
@@ -36,6 +38,10 @@ from number_compiler.resources.metric_keys import antihydra as _antihydra_keys
 from number_compiler.sequences.antihydra.arithmetic_images import (
     AntihydraArithmeticImageWorkspace,
 )
+from number_compiler.sequences.antihydra.mahler_carry_quotient import (
+    RootMahlerSafety,
+    root_safety_from_authenticated_image,
+)
 from number_compiler.sequences.antihydra.runtime import authenticated_arithmetic_result
 
 if TYPE_CHECKING:
@@ -59,6 +65,7 @@ def _action_packet(
     semantic: SaturatingAffineAction,
     first_failure: int | None,
     *,
+    root_safety: RootMahlerSafety,
     include_radix_ports: bool = False,
     include_source_cylinder: bool = False,
     window_memo: OwnedMemo[tuple[object, ...], MahlerJointInteriorWindow] | None = None,
@@ -71,15 +78,17 @@ def _action_packet(
         raise TypeError("two-sided source-cylinder demand must be Boolean")
     if include_source_cylinder and not include_radix_ports:
         raise ValueError("source cylinders require the detailed Mahler port demand")
-    # The authenticated centered source is 7, whose first two bits are 11.
-    # Their exact theta guards are [2/3,1) then empty. The root chart uses
-    # r^2=theta=2t, while the existing margin action has offset -3*C.
+    if (
+        root_safety.extent != result.returns
+        or root_safety.first_failure != first_failure
+    ):
+        raise ValueError("Mahler action is detached from its source carry")
     root_offset = ExactRational(2, 3) * semantic.offset
     root = GuardedAffineAction(
         SaturatingAffineAction(semantic.scale, root_offset),
         HalfOpenInterval(
-            ExactRational(0) if result.returns != 1 else ExactRational(2, 3),
-            ExactRational(1) if result.returns < 2 else ExactRational(0),
+            ExactRational(2) * root_safety.guard.lower,
+            ExactRational(2) * root_safety.guard.upper,
         ),
     )
     result.ledger.bump(_antihydra_keys.MAHLER_ROOT_SHELL_PROJECTIONS)
@@ -414,6 +423,17 @@ def _action_packet(
     }
 
 
+def _root_action_node_cost(_key: int, action: SaturatingAffineAction) -> int:
+    rationals: tuple[ExactRational, ...] = (action.scale, action.offset)
+    if action.cap is not None:
+        rationals += (action.cap,)
+    bits = sum(
+        abs(value.numerator).bit_length() + value.denominator.bit_length()
+        for value in rationals
+    )
+    return max(1, (bits + 63) // 64)
+
+
 class MahlerWorkspace:
     """Demand one finite consumer from the source scheduler's published image."""
 
@@ -428,6 +448,35 @@ class MahlerWorkspace:
             OwnedMemo[tuple[object, ...], MahlerJointInteriorWindow] | None
         ) = None
         self._window_contract_registered = False
+        self._root_action_memo: OwnedMemo[int, SaturatingAffineAction] | None = None
+        self._root_action_contract_registered = False
+
+    @property
+    def root_action_memo_container(self) -> object | None:
+        memo = self._root_action_memo
+        return None if memo is None else memo.audit_snapshot().container
+
+    @property
+    def root_action_memo_owner(self) -> int | None:
+        memo = self._root_action_memo
+        return None if memo is None else memo.owner
+
+    @property
+    def root_action_contract_registered(self) -> bool:
+        return self._root_action_contract_registered
+
+    def root_action_entries(self) -> tuple[tuple[int, SaturatingAffineAction], ...]:
+        memo = self._root_action_memo
+        return () if memo is None else tuple(memo.items())
+
+    def root_action_audit_entries(self) -> tuple[tuple[int, object], ...]:
+        memo = self._root_action_memo
+        return () if memo is None else tuple(memo.audit_snapshot().container.items())
+
+    def mark_root_action_contract_registered(self) -> None:
+        if self._root_action_memo is None:
+            raise ValueError("cannot register an absent Mahler action memo")
+        self._root_action_contract_registered = True
 
     @property
     def window_memo_container(self) -> object | None:
@@ -471,9 +520,38 @@ class MahlerWorkspace:
             result.h.bit_length(),
         )
 
+    def _checked_root_memo(
+        self, result: ArithmeticResult
+    ) -> OwnedMemo[int, SaturatingAffineAction] | None:
+        memo = self._root_action_memo
+        if memo is not None and (
+            type(memo) is not OwnedMemo
+            or memo.ledger is not result.ledger
+            or result.ledger.registered_container(memo.owner)
+            is not memo.audit_snapshot().container
+            or len(memo) > 1
+            or any(type(key) is not int or key != 0 for key in memo)
+        ):
+            raise ValueError("Mahler root action memo lost its owner")
+        return memo
+
     def validate(self, result: ArithmeticResult) -> None:
         self._validate_binding(result)
         self.source_workspace.validate()
+        root_memo = self._checked_root_memo(result)
+        if root_memo is not None:
+            for key, action in root_memo.items():
+                if (
+                    type(key) is not int
+                    or key != 0
+                    or type(action) is not SaturatingAffineAction
+                ):
+                    raise ValueError("Mahler root action memo lost its source")
+                action.__post_init__()
+                if not root_safety_from_authenticated_image(
+                    self.source_workspace, result.h
+                ).matches(action):
+                    raise ValueError("Mahler root action memo lost its source")
         memo = self._window_memo
         owner = self._window_owner
         if memo is None:
@@ -606,10 +684,65 @@ class MahlerWorkspace:
         return memo
 
     def dispose(self) -> None:
+        root_memo = self._root_action_memo
+        self._root_action_memo = None
+        self._root_action_contract_registered = False
         memo = self._window_memo
         self._window_memo = None
         self._window_owner = None
         self._window_contract_registered = False
+        from number_compiler.resources.lifecycle import cleanup_all
+
+        cleanup_all(
+            tuple(item.dispose for item in (memo, root_memo) if item is not None)
+        )
+
+    def discard_window_memo(self) -> None:
+        memo = self._window_memo
+        self._window_memo = None
+        self._window_owner = None
+        self._window_contract_registered = False
+        if memo is not None:
+            memo.dispose()
+
+    def retain_root_action(self, action: SaturatingAffineAction) -> bool:
+        """Retain a source-checked response under the existing query ledger."""
+        if not self.source_workspace.shared_cache:
+            return False
+        existing = self._root_action_memo
+        if existing is not None:
+            if 0 not in existing:
+                try:
+                    existing[0] = action
+                except BlockContextBudgetExceeded:
+                    return False
+            return False
+        ledger = self.result.ledger
+        owner = ledger.register(
+            f"mahler-root-action-{len(ledger.inventory())}", "query_memo"
+        )
+        try:
+            memo = OwnedMemo[int, SaturatingAffineAction](
+                ledger, owner, node_cost=_root_action_node_cost, evictable=True
+            )
+        except BaseException:
+            ledger.mark_disposed(owner)
+            raise
+        try:
+            memo[0] = action
+        except BlockContextBudgetExceeded:
+            memo.dispose()
+            return False
+        except BaseException:
+            memo.dispose()
+            raise
+        self._root_action_memo = memo
+        return True
+
+    def discard_root_action(self) -> None:
+        memo = self._root_action_memo
+        self._root_action_memo = None
+        self._root_action_contract_registered = False
         if memo is not None:
             memo.dispose()
 
@@ -634,47 +767,61 @@ class MahlerWorkspace:
         include_radix_ports: bool = False,
         include_source_cylinder: bool = False,
     ) -> dict[str, object]:
+        packet, _action = self.build_packet_after_source_validation(
+            result,
+            include_radix_ports=include_radix_ports,
+            include_source_cylinder=include_source_cylinder,
+        )
+        return packet
+
+    def build_packet_after_source_validation(
+        self,
+        result: ArithmeticResult,
+        *,
+        include_radix_ports: bool = False,
+        include_source_cylinder: bool = False,
+    ) -> tuple[dict[str, object], SaturatingAffineAction]:
         # Call only after ``require_source`` (directly or through the public
         # source adapter), which validates the complete dyadic image once.
         self._validate_binding(result)
         workspace = self.source_workspace
-        projected: object
         try:
-            if result.returns == 1:
-                # Source validation above authenticates the pinned seed and
-                # return extent. Its only centered bit is (8 - 1) mod 2 = 1,
-                # so construct this leaf directly in the shared source-action
-                # normal form instead of requesting a second projection.
-                from number_compiler.sequences.antihydra.mahler_source_actions import (
-                    MahlerSourceBoundSafetyAction,
+            proof = root_safety_from_authenticated_image(workspace, result.h)
+            retained = workspace.scheduler.cached_source_projection(
+                workspace, workspace.root_image, _MAHLER_DEMAND
+            )
+            memo = self._checked_root_memo(result)
+            cached = None if memo is None else memo.get(0)
+            if cached is not None:
+                if type(cached) is not SaturatingAffineAction:
+                    raise ValueError("Mahler cached root action is malformed")
+                cached.__post_init__()
+                projected = cached
+            elif result.returns == 1:
+                projected = proof.action()
+            else:
+                from number_compiler.sequences.antihydra.mahler_cache import (
+                    cached_associated_action,
                 )
 
-                if workspace.seed != 8 or workspace.returns != result.returns:
-                    raise ValueError("Mahler one-bit leaf has another admitted source")
-                first_bit = (workspace.seed - 1) & 1
-                projected = MahlerSourceBoundSafetyAction.one_bit(first_bit).to_action()
-            else:
-                projected = workspace.scheduler.source_projection(
-                    workspace, workspace.root_image, _MAHLER_DEMAND
-                ).value
+                projected = cached_associated_action(workspace)
+            if not proof.matches(projected) or (
+                retained is not None
+                and (
+                    type(retained.value) is not SaturatingAffineAction
+                    or retained.value != projected
+                )
+            ):
+                raise ValueError("Mahler action disagrees with its source carry")
         except BaseException:
             result.ledger.bump(_antihydra_keys.MAHLER_ASSOCIATED_PUBLICATION_ROLLBACKS)
             raise
-        if type(projected) is not SaturatingAffineAction:
-            raise TypeError("Mahler source projected another action sort")
-        # The authenticated h=8 source has centered prefix 11. The first
-        # margin cap is 3/4 and the second is -3/8; later increasing actions
-        # cannot repair that first failure.
-        failure = 2 if result.returns >= 2 else None
-        if (projected.cap is not None and projected.cap <= ExactRational(0)) != (
-            failure is not None
-        ):
-            raise ArithmeticError("Mahler source projection lost first failure")
         result.ledger.bump(_antihydra_keys.MAHLER_ASSOCIATED_ACTION_DEMANDS)
-        return _action_packet(
+        packet = _action_packet(
             result,
             projected,
-            failure,
+            proof.first_failure,
+            root_safety=proof,
             include_radix_ports=include_radix_ports,
             include_source_cylinder=include_source_cylinder,
             window_memo=(
@@ -683,6 +830,7 @@ class MahlerWorkspace:
                 else None
             ),
         )
+        return packet, projected
 
 
 def associated_action(
@@ -704,32 +852,48 @@ def associated_action(
     if workspace is None:
         workspace = MahlerWorkspace(arithmetic)
     memo_before = workspace.window_memo_container
+    root_memo_before = workspace.root_action_memo_container
     try:
-        packet = workspace.packet_after_source_validation(
+        packet, projected = workspace.build_packet_after_source_validation(
             arithmetic,
             include_radix_ports=include_radix_ports,
             include_source_cylinder=include_source_cylinder,
         )
         if created_workspace:
             arithmetic.source_term.mahler_workspace = workspace
+        workspace.retain_root_action(projected)
         if (
             workspace.window_memo_container is not None
             and not workspace.window_contract_registered
+            or workspace.root_action_memo_container is not None
+            and not workspace.root_action_contract_registered
         ):
             from number_compiler.sequences.antihydra.payload_audit import (
                 refresh_antihydra_payload_contract,
             )
 
             refresh_antihydra_payload_contract(arithmetic.source_term)
-            workspace.mark_window_contract_registered()
+            if workspace.window_memo_container is not None:
+                workspace.mark_window_contract_registered()
+            if workspace.root_action_memo_container is not None:
+                workspace.mark_root_action_contract_registered()
     except BaseException:
         # A failed first memo publication must not leave an existing source
         # workspace holding a store that the restored pre-memo contract does
         # not own.  Preserve an older memo if this was a repeat demand.
+        from number_compiler.resources.lifecycle import cleanup_all
+
+        cleanups: list[Callable[[], object]] = []
         if memo_before is None and workspace.window_memo_container is not None:
-            workspace.dispose()
+            cleanups.append(workspace.discard_window_memo)
+        if (
+            root_memo_before is None
+            and workspace.root_action_memo_container is not None
+        ):
+            cleanups.append(workspace.discard_root_action)
         if created_workspace:
             arithmetic.source_term.mahler_workspace = None
+        cleanup_all(cleanups)
         raise
     packet["source_binding"] = source_binding
     return packet

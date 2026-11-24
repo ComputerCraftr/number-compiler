@@ -64,7 +64,7 @@ class CacheStats:
     enabled: bool
 
 
-CacheRecord = tuple[PartitionKey, ImmutableValue, int, int, object | None]
+CacheRecord = tuple[PartitionKey, ImmutableValue, int, int, object | None, int]
 
 
 class CacheRecordIssuerMismatch(ValueError):
@@ -589,6 +589,29 @@ class ProcessCache:
             raise TypeError("cache key must be a tuple")
         return partition, local
 
+    def _refresh_record(self, key: FullKey, record: CacheRecord) -> None:
+        if record[3] == self._tick:
+            return
+        refreshed: CacheRecord = (
+            record[0],
+            record[1],
+            record[2],
+            self._next_tick(),
+            record[4],
+            record[5],
+        )
+        try:
+            self._entries[key] = refreshed
+        except BaseException:
+            if self._entries.get(key) is refreshed:
+                try:
+                    self._entries[key] = record
+                except BaseException:
+                    if self._entries.get(key) is not record:
+                        self._reset_pending = True
+                    raise
+            raise
+
     def get_for_lease(
         self,
         partition: PartitionKey,
@@ -619,6 +642,7 @@ class ProcessCache:
                 raise CacheRecordIssuerMismatch(
                     "process-cache record has another publisher capability"
                 )
+            self._refresh_record(full_key, record)
             self._hits += 1
             return record[1]
 
@@ -675,8 +699,9 @@ class ProcessCache:
                 partition,
                 admitted_payload,
                 cost,
-                tick if old is None else old[3],
+                tick,
                 issuer,
+                tick,
             )
             try:
                 if extra_bytes > 0:
@@ -728,11 +753,17 @@ class ProcessCache:
             # stale authority cannot be reported as a successful lookup.
             self.validate_lease(lease_identity, token, partition, generation)
             current_after = self._entries.get(full_key)
-            if current_after is not current:
+            if (current_after is None) != (current is None) or (
+                current_after is not None
+                and current is not None
+                and current_after[5] != current[5]
+            ):
                 # A nested same-key write is already authoritative. Preserve
                 # it and report this outer publication as not stored.
                 return False, metadata
             if replacement is MISSING:
+                if current_after is not None:
+                    self._refresh_record(full_key, current_after)
                 return None, metadata
             admitted_replacement = cast(ImmutableValue, replacement)
             stored = self.put_for_lease(

@@ -11,6 +11,7 @@ from number_compiler.arithmetic.automata.slp import BimachineSLPProjector, SLPNo
 from number_compiler.arithmetic.automata.slp_interval import fold_slp_dag
 from number_compiler.arithmetic.automata.slp_walks import iter_symbols
 from number_compiler.arithmetic.automata.slp_walks import symbol_at as slp_symbol_at
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.scoped_handles import ArenaToken
 from number_compiler.resources.ledger import OwnedMemo, ResourceLedger
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
@@ -132,6 +133,25 @@ class Q19OutputPublicationMixin:
         )
 
         self.validate_issued_occurrence(occurrence)
+        if occurrence.pair_width >= 256:
+            from .q19_periodic_packing import (
+                has_nearby_repeat,
+                recover_repeated_word,
+            )
+
+            if has_nearby_repeat(self.arena, occurrence.root):
+                try:
+                    return recover_repeated_word(
+                        self.arena,
+                        occurrence.root,
+                        occurrence.pair_width,
+                        self.ledger,
+                        self._scratch_owner,
+                    )
+                except BlockContextBudgetExceeded:
+                    # A bounded algebraic fold is optional. Its reservation
+                    # has closed, so retry the exact streaming decoder.
+                    pass
         count = occurrence.pair_width // 2
         odd = bool(occurrence.pair_width & 1)
         packed = bytearray()
@@ -308,7 +328,13 @@ class Q19OutputPublicationMixin:
                             yield 2 * target.center
                         yield 21
 
-                    root = self._word(symbols())
+                    root = None
+                    if target.count >= 128:
+                        from .q19_periodic_packing import publish_packed_word
+
+                        root = publish_packed_word(self.arena, target)
+                    if root is None:
+                        root = self._word(symbols())
                     issue_key = (root, temporal_steps)
                     previous_publication = self.issued_occurrence(issue_key)
                     published = self._issue(*issue_key)

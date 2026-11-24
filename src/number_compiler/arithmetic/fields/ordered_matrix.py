@@ -6,6 +6,7 @@ its formal repetition never certifies a physical recurrence or a future digit.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from math import comb
 
@@ -98,6 +99,126 @@ class Matrix2:
         if self.modulus is not None:
             return left % self.modulus, right % self.modulus
         return left, right
+
+
+def ordered_decimal_continuant(
+    digits: Iterable[int], modulus: int | None = None
+) -> Matrix2:
+    """Fold validated decimal digits into an MSD-first right product.
+
+    Digit validation belongs to the issuing source or admitted frame. The
+    modulus is checked by the returned matrix's coefficient-ring owner.
+    """
+    if modulus is None:
+        return _exact_continuant(digits, (1, 0, 0, 1))
+    result = Matrix2.identity(modulus)
+    for digit in digits:
+        result = result.multiply(Matrix2.digit(digit + 1, modulus))
+    return result
+
+
+def _exact_continuant(
+    digits: Iterable[int], entries: tuple[int, int, int, int]
+) -> Matrix2:
+    q, r, p, s = entries
+    for digit in digits:
+        coefficient = digit + 1
+        q, r, p, s = q * coefficient + r, q, p * coefficient + s, p
+    return Matrix2((q, r, p, s))
+
+
+def _fixed_decimal_digits(value: int, place: int) -> Iterator[int]:
+    while place:
+        digit, value = divmod(value, place)
+        yield digit
+        place //= 10
+
+
+def fold_fixed_decimal_row(value: int, first_place: int, product: Matrix2) -> Matrix2:
+    """Append one admitted fixed-width row, preserving its leading zeroes."""
+    digits = _fixed_decimal_digits(value, first_place)
+    if product.modulus is None:
+        return _exact_continuant(digits, product.entries)
+    return product.multiply(ordered_decimal_continuant(digits, product.modulus))
+
+
+def compile_dyadic_ordered_band(
+    quotient: int,
+    rows: int,
+    width: int,
+    reserve: Callable[[int, int, int], None],
+    *,
+    use_memo: bool,
+) -> Matrix2:
+    """Compile admitted dyadic shifts in chronological row order.
+
+    The caller authenticates the quotient and coverage. Each working state
+    and retained result is charged through ``reserve`` before allocation.
+    """
+    base = 10**width
+    first_place = 10 ** (width - 1)
+    memo: dict[tuple[int, int], Matrix2] = {}
+    retained_bits = 0
+    pending: list[tuple[int, int, int, tuple[int, int, int] | None]] = [
+        (quotient, rows, 0, None)
+    ]
+    values: list[Matrix2] = []
+    while pending:
+        q, count, stage, repeat = pending.pop()
+        key = (q, count)
+        if stage == 0 and use_memo and key in memo:
+            values.append(memo[key])
+            continue
+        reserve(q, count, retained_bits)
+        if stage == 0 and count == 1:
+            if width == 1:
+                result = Matrix2.digit(q % base + 1)
+            else:
+                result = fold_fixed_decimal_row(
+                    q % base, first_place, Matrix2.identity()
+                )
+        elif stage == 0:
+            period = 0
+            for candidate in range(1, min(32, count // 2) + 1):
+                ring = base << (count - candidate - 1)
+                if q % ring == (q >> candidate) % ring:
+                    period = candidate
+                    break
+            if period:
+                copies, tail = divmod(count, period)
+                pending.append((q, count, 2, (period, copies, tail)))
+                if tail:
+                    pending.append((q >> (period * copies), tail, 0, None))
+                pending.append((q % (base << (period - 1)), period, 0, None))
+            else:
+                left = count // 2
+                pending.append((q, count, 1, None))
+                pending.append((q >> left, count - left, 0, None))
+                pending.append((q % (base << (left - 1)), left, 0, None))
+            continue
+        elif stage == 1:
+            right, left_matrix = values.pop(), values.pop()
+            result = left_matrix.multiply(right)
+        else:
+            assert repeat is not None
+            _, copies, tail = repeat
+            suffix = values.pop() if tail else None
+            initial = values.pop()
+            result = initial.power(copies)
+            if suffix is not None:
+                result = result.multiply(suffix)
+        if use_memo:
+            retained_bits += 8 * (
+                q.bit_length()
+                + sum(value.bit_length() for value in result.entries)
+                + 256
+            )
+            reserve(q, count, retained_bits)
+            memo[key] = result
+        values.append(result)
+    if len(values) != 1:
+        raise ArithmeticError("ordered source fold did not produce one action")
+    return values.pop()
 
 
 @dataclass(frozen=True, slots=True)

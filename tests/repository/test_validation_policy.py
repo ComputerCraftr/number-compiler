@@ -17,7 +17,12 @@ from uuid import uuid4
 import pytest
 
 from devtools import runs
-from devtools.checks import process_guard, pytest_policy, release
+from devtools.checks import (
+    isabelle_session_watchdog,
+    process_guard,
+    pytest_policy,
+    release,
+)
 from devtools.checks.test_run_evidence import PROVENANCE_MODE_ENV
 from devtools.checks.validation_policy import (
     ISABELLE_JOBS,
@@ -192,7 +197,7 @@ def test_runner_rejects_inherited_pytest_environment_overrides() -> None:
 
 
 def test_native_isabelle_inventory_includes_external_parents() -> None:
-    inventory = release.parse_session_inventory(
+    inventory = isabelle_session_watchdog.parse_session_inventory(
         "HOL\nHOL-Number_Theory\nHOL-Computational_Algebra\nComma_Check\n",
         ("Comma_Check",),
     )
@@ -205,11 +210,11 @@ def test_native_isabelle_inventory_includes_external_parents() -> None:
 
 
 def test_native_inventory_does_not_require_syntactic_but_unbuilt_ancestors() -> None:
-    assert release.parse_session_inventory(
+    assert isabelle_session_watchdog.parse_session_inventory(
         "HOL\nSelected_Check\n", ("Selected_Check",)
     ) == ("HOL", "Selected_Check")
     try:
-        release.parse_session_inventory("HOL\n", ("Selected_Check",))
+        isabelle_session_watchdog.parse_session_inventory("HOL\n", ("Selected_Check",))
     except ValueError as error:
         assert "omitted requested sessions" in str(error)
     else:
@@ -240,7 +245,7 @@ def test_isabelle_environment_command_executes_tool_after_assignments() -> None:
 
 def test_native_build_summary_separates_rebuilds_reuse_and_failure() -> None:
     inventory = ("HOL", "HOL-Library", "Theory_Check")
-    success = release.session_build_summary(
+    success = isabelle_session_watchdog.session_build_summary(
         "Building HOL-Library\n"
         "Finished HOL-Library (0:00:12.50 elapsed time, 0:00:08 cpu time)\n"
         "Running Theory_Check\n"
@@ -256,7 +261,7 @@ def test_native_build_summary_separates_rebuilds_reuse_and_failure() -> None:
         "HOL-Library": 12.5,
         "Theory_Check": 3.0,
     }
-    failure = release.session_build_summary(
+    failure = isabelle_session_watchdog.session_build_summary(
         "Building Theory_Check ...\n"
         'Theory_Check FAILED (see also "isabelle build_log -H Error Theory_Check")\n'
         "Unfinished session(s): Theory_Check\n",
@@ -273,7 +278,7 @@ def test_native_build_summary_separates_rebuilds_reuse_and_failure() -> None:
 
 
 def test_native_build_footer_preserves_registered_at_session() -> None:
-    summary = release.session_build_summary(
+    summary = isabelle_session_watchdog.session_build_summary(
         "Finished at (0:00:01 elapsed time, 0:00:01 cpu time)\n"
         "Finished Unexpected_Check (0:00:02 elapsed time, 0:00:01 cpu time)\n",
         ("at",),
@@ -284,7 +289,7 @@ def test_native_build_footer_preserves_registered_at_session() -> None:
 
 
 def test_native_success_keeps_reported_elapsed_budget_failures_visible() -> None:
-    summary = release.session_build_summary(
+    summary = isabelle_session_watchdog.session_build_summary(
         "Finished At_Limit (0:05:00 elapsed time, 0:04:58 cpu time)\n"
         "Finished Too_Slow (0:05:00.01 elapsed time, 0:04:58 cpu time)\n",
         ("At_Limit", "Too_Slow", "Cached"),

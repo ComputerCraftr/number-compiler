@@ -23,6 +23,11 @@ from typing import TYPE_CHECKING, Final
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
+from number_compiler.arithmetic.fields.consumer_pullback import (
+    ExactRational,
+    HalfOpenInterval,
+    SaturatingAffineAction,
+)
 from number_compiler.arithmetic.fields.skew_transfer import SkewTransfer
 from number_compiler.hashlife.execution.dyadic_return_records import (
     DyadicReturnActionID,
@@ -40,6 +45,7 @@ from number_compiler.hashlife.execution.source_image_inventory import (
 from number_compiler.resources.metric_keys import antihydra as _keys
 from number_compiler.sequences.antihydra.mahler_source_actions import (
     MAX_MAHLER_SOURCE_EXTENT,
+    MahlerSourceBoundSafetyAction,
 )
 
 if TYPE_CHECKING:
@@ -54,6 +60,115 @@ if TYPE_CHECKING:
 
 MAX_WEIGHTED_CARRY_EXTENT: Final[int] = MAX_MAHLER_SOURCE_EXTENT
 _WEIGHTED_CARRY_ISSUANCE_SEAL: Final[object] = object()
+
+
+def root_guard_from_carry(
+    extent: int, innovation: int
+) -> tuple[HalfOpenInterval, int | None]:
+    """Derive the pinned source-seven fractional guard from its weighted carry."""
+    if type(extent) is not int or extent < 0:
+        raise ValueError("Mahler guard extent must be a natural integer")
+    if type(innovation) is not int or innovation < 0:
+        raise ValueError("Mahler guard carry must be a natural integer")
+    zero = ExactRational(0)
+    if extent == 0:
+        if innovation != 0:
+            raise ArithmeticError("zero-length source has a carry")
+        return HalfOpenInterval(), None
+    if extent == 1:
+        if innovation != 1:
+            raise ArithmeticError("root carry disagrees with source seven")
+        return HalfOpenInterval(ExactRational(1, 3), ExactRational(1, 2)), None
+    normalized = innovation * (3 if (extent - 2) & 1 else 1) & 3
+    if normalized != 1:
+        raise ArithmeticError("root carry lost its centered two-bit prefix")
+    return HalfOpenInterval(zero, zero), 2
+
+
+@dataclass(frozen=True, slots=True)
+class RootMahlerSafety:
+    """Finite safety consequence of an authenticated source transfer."""
+
+    extent: int
+    gain: int
+    innovation: int
+    guard: HalfOpenInterval
+    first_failure: int | None
+    margin: MahlerSourceBoundSafetyAction
+
+    def action(self) -> SaturatingAffineAction:
+        denominator = 1 << (self.extent + 2)
+        cap = self.margin.cap_hat
+        return SaturatingAffineAction(
+            ExactRational(self.gain, 1 << self.extent),
+            ExactRational(self.margin.offset_hat, denominator),
+            None if cap is None else ExactRational(cap, denominator),
+        )
+
+    def matches(self, action: object) -> bool:
+        """Compare a cached action with the issued integer coefficients."""
+        if type(action) is not SaturatingAffineAction:
+            return False
+        denominator = 1 << (self.extent + 2)
+        scale, offset, cap = action.scale, action.offset, action.cap
+        expected_cap = self.margin.cap_hat
+        return (
+            scale.numerator * (1 << self.extent) == self.gain * scale.denominator
+            and offset.numerator * denominator
+            == self.margin.offset_hat * offset.denominator
+            and (
+                cap is None
+                if expected_cap is None
+                else cap is not None
+                and cap.numerator * denominator == expected_cap * cap.denominator
+            )
+        )
+
+
+def root_safety_from_authenticated_image(
+    workspace: object, endpoint_h: int
+) -> RootMahlerSafety:
+    """Consume the root after its source owner has authenticated the image."""
+    from number_compiler.sequences.antihydra.arithmetic_images import (
+        ANTIHYDRA_ARITHMETIC_LAW,
+        AntihydraArithmeticImageWorkspace,
+    )
+
+    if (
+        type(workspace) is not AntihydraArithmeticImageWorkspace
+        or type(endpoint_h) is not int
+        or endpoint_h < 1
+        or workspace.seed != 8
+        or workspace.law != ANTIHYDRA_ARITHMETIC_LAW
+    ):
+        raise ValueError("Mahler safety needs its authenticated source")
+    summary = workspace.image_node(workspace.root_payload).summary
+    transfer = summary.transfer
+    extent = workspace.returns
+    denominator = 1 << extent
+    if (
+        type(transfer) is not SkewTransfer
+        or summary.width != extent
+        or transfer.lower != denominator
+    ):
+        raise ValueError("Mahler safety lost its authenticated transfer")
+    gain = transfer.upper
+    innovation = gain + transfer.offset - denominator
+    if (
+        not 0 <= innovation <= gain - denominator
+        or gain * 7 + innovation != denominator * (endpoint_h - 1)
+    ):
+        raise ValueError("Mahler safety lost its centered source congruence")
+    guard, failure = root_guard_from_carry(extent, innovation)
+    if extent:
+        cap = 6 if extent == 1 else 6 * gain - 12 * innovation
+        if extent >= 2 and cap >= 0:
+            raise ArithmeticError("Mahler guard and negative cap disagree")
+        margin = MahlerSourceBoundSafetyAction(extent, -12 * innovation, cap)
+    else:
+        margin = MahlerSourceBoundSafetyAction()
+    return RootMahlerSafety(extent, gain, innovation, guard, failure, margin)
+
 
 _METRICS: Final[tuple[str, ...]] = (
     _keys.ANTIHYDRA_WEIGHTED_CARRY_REQUESTS,

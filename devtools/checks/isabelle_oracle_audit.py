@@ -341,6 +341,7 @@ def audited_theorems(
             "require_expected_paths",
             "require_closed_expected_paths",
             "require_native_closed_expected_paths",
+            "require_symbolic_closed_expected_paths",
             "require_paths",
         }
         query_methods = {"names", "checked_names"}
@@ -442,6 +443,7 @@ def audited_theorems(
             r"Comma_Proof_Dependency_Audit\.(?:require_native_clean|"
             r"audit_fuel_free_global|require_expected_paths|"
             r"require_closed_expected_paths|require_native_closed_expected_paths|"
+            r"require_symbolic_closed_expected_paths|"
             r"require_paths)\b",
             re.DOTALL,
         )

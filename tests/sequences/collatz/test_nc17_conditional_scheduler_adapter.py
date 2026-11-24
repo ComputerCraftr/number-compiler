@@ -73,6 +73,48 @@ def issue_candidate(
         )
 
 
+def test_conditional_snapshot_consumes_issued_tape_without_refold() -> None:
+    from number_compiler.sequences.collatz.conditional_candidate_seal import (
+        snapshot_scheduler_candidate,
+    )
+    from number_compiler.sequences.collatz.parity_carry_tape import ParityCarryTape
+    from tests.support.reference_arithmetic import normalized_collatz_word
+
+    source, ticks = long_guarded_6305_source(64)
+    ledger = ResourceLedger()
+    scratch = RunArithmeticWorkspace.for_ledger(ledger, "conditional-tape-test")
+    with scratch.scope():
+        candidate = issue_conditional_scheduler_candidate(
+            source,
+            ticks,
+            scratch=scratch,
+            ledger=ledger,
+            max_coefficient_bits=8192,
+            include_f5=True,
+            include_joint=True,
+        )
+    assert candidate is not None and candidate.joined_port is not None
+    _, letters = normalized_collatz_word(source, candidate.normalized_steps)
+    tape = ParityCarryTape.sequence(
+        tuple(
+            ParityCarryTape.letters(letters[start : start + 64])
+            for start in range(0, len(letters), 64)
+        )
+    )
+    candidate = replace(
+        candidate, joined_port=replace(candidate.joined_port, parity_tape=tape)
+    )
+    with patch.object(
+        ParityCarryTape,
+        "action",
+        side_effect=AssertionError("scheduler refolded its authenticated tape"),
+    ):
+        first = snapshot_scheduler_candidate(candidate, validate_tape_action=True)
+        second = snapshot_scheduler_candidate(candidate, validate_tape_action=True)
+    assert first.parity_work > 0
+    assert second.parity_work == first.parity_work
+
+
 @pytest.mark.parametrize("motif", ((0, 1), (1, 2)))
 @pytest.mark.parametrize(
     "flags",

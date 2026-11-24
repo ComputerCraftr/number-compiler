@@ -198,6 +198,14 @@ def register_term_contract(root: AntihydraArithmeticTerm) -> None:
         stores.append(
             PayloadAuditStoreBinding(window_owner, "mahler_window_memo", "query_memo")
         )
+    action_memo = getattr(root, "mahler_root_action_memo", None)
+    action_owner = getattr(workspace, "root_action_memo_owner", None)
+    if action_memo is not None and type(action_owner) is int:
+        stores.append(
+            PayloadAuditStoreBinding(
+                action_owner, "mahler_root_action_memo", "query_memo"
+            )
+        )
     _register_exact_root_contract(
         root, AntihydraArithmeticTerm, tuple(stores), audit_antihydra_term
     )
@@ -813,6 +821,14 @@ def audit_antihydra_term(ledger: object, root: object) -> PayloadAuditContributi
                         for key, window in mahler.window_memo_entries():
                             approve_payload(approved, window_owner, key)
                             approve_payload(approved, window_owner, window)
+                action_owner = mahler.root_action_memo_owner
+                if mahler.root_action_memo_container is not None:
+                    if type(action_owner) is not int:
+                        valid = False
+                    else:
+                        for action_key, action in mahler.root_action_audit_entries():
+                            approve_payload(approved, action_owner, action_key)
+                            approve_payload(approved, action_owner, action)
 
     physicals = term.physical_publications
     if physicals:

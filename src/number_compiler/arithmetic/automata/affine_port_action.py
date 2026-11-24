@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Self
 
 
@@ -45,3 +46,20 @@ class AffinePortAction:
         if self.modulus is None:
             return AffinePortAction(None, gain, carry)
         return AffinePortAction.reduced(self.modulus, gain, carry)
+
+
+@lru_cache(maxsize=256, typed=True)
+def canonical_radix_digit_response(
+    radix: int, gain: int, carry: int
+) -> tuple[int, ...]:
+    """Return a reduced affine response row without source authority."""
+    if (
+        type(radix) is not int
+        or not 2 <= radix <= 256
+        or type(gain) is not int
+        or not 0 <= gain < radix
+        or type(carry) is not int
+        or not 0 <= carry < radix
+    ):
+        raise ValueError("digit response requires reduced affine coefficients")
+    return tuple((gain * digit + carry) % radix for digit in range(radix))

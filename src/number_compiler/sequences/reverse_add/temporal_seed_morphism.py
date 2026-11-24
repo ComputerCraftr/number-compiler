@@ -15,7 +15,7 @@ materialized for this fold.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeAlias
 from weakref import ReferenceType, ref
 
 from number_compiler.arithmetic.automata.slp_interval import (
@@ -167,27 +167,111 @@ class Q19WordFiber:
             self.occurrence,
             self.generation,
             self.root,
-            self.width,
-            self.pair_width,
-            self.center,
-            self.residue99,
-            self.residue198,
-            self.reverse_residue198,
-            self.reflected_carry_parity,
-            self.next_raw_residue198,
-            self.exterior99,
-            self.exterior198,
-            self.carry_into_center,
-            self.carry_out_of_center,
-            self.carry_out_of_pairs,
-            self.leading_carry_digit,
-            self.first_pair_sum,
-            self.border_pairs,
-            self.low_border_carry,
-            self.middle_carry_map,
-            self.upper_border_ingress,
-            self.first_non9_from_upper,
+            *_port_values(self),
         )
+
+
+@dataclass(frozen=True, slots=True)
+class Q19BandPortImage:
+    """Occurrence-free source-issued numeric/carry port *output image*.
+
+    This is a read-only effect writer, not a future-right-congruent source
+    state.  Exact values remain for consumers, but no source root, seed,
+    generation, historic carry row or occurrence belongs to its identity.
+    Pointed Q19WordFiber values authenticate the image at each invocation.
+    """
+
+    width: int
+    pair_width: int
+    center: tuple[int, ...]
+    residue99: int
+    residue198: int
+    reverse_residue198: int
+    reflected_carry_parity: int
+    next_raw_residue198: int
+    exterior99: int
+    exterior198: int
+    carry_into_center: int
+    carry_out_of_center: int
+    carry_out_of_pairs: int
+    leading_carry_digit: int
+    first_pair_sum: int
+    border_pairs: int
+    low_border_carry: int
+    middle_carry_map: tuple[int, int]
+    upper_border_ingress: int
+    first_non9_from_upper: int | None
+
+    @classmethod
+    def from_fiber(cls, fiber: Q19WordFiber) -> Q19BandPortImage:
+        if type(fiber) is not Q19WordFiber:
+            raise TypeError("Q19 port image requires an issued fiber witness")
+        return cls(*_port_values(fiber))
+
+    def audit_binding(self) -> tuple[object, ...]:
+        return _port_values(self)
+
+    def bind(self, occurrence: ReversePairOutputOccurrence) -> Q19WordFiber:
+        if (
+            self.width != occurrence.output_width
+            or self.pair_width != occurrence.pair_width
+        ):
+            raise ValueError("Q19 port image has incompatible source geometry")
+        return Q19WordFiber(
+            occurrence,
+            occurrence.temporal_steps,
+            occurrence.root,
+            *_port_values(self),
+        )
+
+
+_Q19PortValues: TypeAlias = tuple[
+    int,
+    int,
+    tuple[int, ...],
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    int,
+    tuple[int, int],
+    int,
+    int | None,
+]
+
+
+def _port_values(image: Q19WordFiber | Q19BandPortImage) -> _Q19PortValues:
+    return (
+        image.width,
+        image.pair_width,
+        image.center,
+        image.residue99,
+        image.residue198,
+        image.reverse_residue198,
+        image.reflected_carry_parity,
+        image.next_raw_residue198,
+        image.exterior99,
+        image.exterior198,
+        image.carry_into_center,
+        image.carry_out_of_center,
+        image.carry_out_of_pairs,
+        image.leading_carry_digit,
+        image.first_pair_sum,
+        image.border_pairs,
+        image.low_border_carry,
+        image.middle_carry_map,
+        image.upper_border_ingress,
+        image.first_non9_from_upper,
+    )
 
 
 def _fiber(
@@ -203,26 +287,31 @@ def _fiber(
         if (
             type(cached) is not tuple
             or len(cached) != 2
-            or type(cached[0]) is not Q19WordFiber
-            or cached[0].occurrence is not occurrence
+            or type(cached[0]) is not Q19BandPortImage
             or cached[1] != cached[0].audit_binding()
         ):
             owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_WORD_FIBER_FAILED_WORK)
-            raise ValueError("cached Q19 word fiber failed its source binding")
+            raise ValueError("cached Q19 port image failed its binding")
+        try:
+            # The semantic image carries no occurrence. Rebind it only to
+            # an independently issuer-validated request-local witness.
+            fiber = cached[0].bind(occurrence)
+        except ValueError:
+            owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_WORD_FIBER_FAILED_WORK)
+            raise
         owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_WORD_FIBER_CACHE_HITS)
-        return cached[0]
+        return fiber
 
     owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_WORD_FIBER_CACHE_MISSES)
     try:
         result = _compute_fiber(owner, seed, occurrence)
+        image = Q19BandPortImage.from_fiber(result)
     except BaseException:
         owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_WORD_FIBER_FAILED_WORK)
         raise
     try:
-        memo[key] = (result, result.audit_binding())
+        memo[key] = (image, image.audit_binding())
     except BlockContextBudgetExceeded:
-        # The fiber is an optional observation cache. Its exact cold result is
-        # still valid when the ledger cannot retain another memo entry.
         owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_WORD_FIBER_CACHE_BYPASSES)
     else:
         owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_WORD_FIBER_CACHE_PUBLICATIONS)

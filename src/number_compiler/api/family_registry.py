@@ -7,8 +7,8 @@ from dataclasses import replace
 from types import MappingProxyType
 from typing import Final
 
+from number_compiler.api.antihydra_registry import antihydra_spec
 from number_compiler.api.cli_types import (
-    AntihydraObservationOptions,
     CollatzEventObservationOptions,
     CollatzTermObservationOptions,
     CommaObservationOptions,
@@ -48,8 +48,6 @@ from number_compiler.api.observation_types import (
     SelectorId,
 )
 from number_compiler.api.query_types import (
-    AntihydraTermQuery,
-    AntihydraVerifyQuery,
     CollatzEventQuery,
     CollatzTermQuery,
     CommaTermQuery,
@@ -738,81 +736,8 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
             law=MatrixLaw.PARITY_WEIGHTED_CARRY,
         ),
     ),
-    FamilyId.ANTIHYDRA: FamilySpec(
-        FamilyCapability(
-            IndexUnit.MACRO_RETURNS_AFTER_STARTUP,
-            (),
-            (
-                ObservationId.METRICS,
-                ObservationId.TEMPORAL_MATRIX,
-                ObservationId.SAFETY_LEDGER,
-                ObservationId.TEMPORAL_CLOCK,
-                ObservationId.ARITHMETIC_MODULAR,
-                ObservationId.SPATIAL_TAPE,
-                ObservationId.ARITHMETIC_TWISTED,
-                ObservationId.TEMPORAL_SPACETIME,
-                ObservationId.TEMPORAL_DIAGONAL_CARRY,
-                ObservationId.ARITHMETIC_HASSE,
-                ObservationId.ARITHMETIC_HENSEL,
-                ObservationId.ARITHMETIC_MAHLER,
-                ObservationId.ARITHMETIC_TROPICAL,
-                ObservationId.ARITHMETIC_FACTOR,
-            ),
-        ),
-        AntihydraTermQuery,
-        AdapterBinding("number_compiler.api.projections.antihydra", "project"),
-        _observation(
-            "prepare_antihydra",
-            "admit_antihydra",
-            "observe_antihydra",
-            module="number_compiler.api.antihydra_adapters",
-        ),
-        verify_query_type=AntihydraVerifyQuery,
-        verify_flag="verify_nonhalting",
-        verification=AdapterBinding(
-            "number_compiler.api.observation_adapters", "verify_antihydra"
-        ),
-        description=(
-            "antihydra: --nth uses macro_returns_after_startup; term zero is the seed. "
-            "Certificate verification is a separate selector."
-        ),
-        views=family_observation_views(FamilyId.ANTIHYDRA),
-        term_observation=ObservationValueBinding(
-            AntihydraObservationOptions,
-            (
-                "modulus",
-                "width",
-                "sign",
-                "precision",
-                "time_width",
-                "time_sign",
-                "max_observer_terms",
-            ),
-        ),
-        observer_options=_opts(
-            "modulus", "width", "sign", "precision", "time_width", "time_sign"
-        )
-        + (
-            (
-                "max_observer_terms",
-                OptionSpec(
-                    1_000_000,
-                    (
-                        ObservationId.TEMPORAL_SPACETIME,
-                        ObservationId.TEMPORAL_DIAGONAL_CARRY,
-                    ),
-                ),
-            ),
-        ),
-        matrix=MatrixCapability(
-            "number_compiler.api.matrix_observation",
-            "antihydra_transfer",
-            MatrixCoordinate.CENTER_SPLIT,
-            32,
-            256,
-            default_coordinate=None,
-            law=MatrixLaw.AFFINE_PREFIX_SAFETY,
-        ),
+    FamilyId.ANTIHYDRA: antihydra_spec(
+        _opts("modulus", "width", "sign", "precision", "time_width", "time_sign")
     ),
     FamilyId.A367620: FamilySpec(
         FamilyCapability(

@@ -29,6 +29,7 @@ from number_compiler.arithmetic.fields.ordered_band import (
 from number_compiler.arithmetic.fields.ordered_matrix import (
     Matrix2,
     OrderedCovector,
+    ordered_decimal_continuant,
 )
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.hashlife.execution.source_image_inventory import (
@@ -660,8 +661,10 @@ class FiveReverseTerm:
             raise TypeError("source-transfer trace demand must be Boolean")
         if trace and steps > MAX_FIVE_REVERSE_TRACE_STEPS:
             raise ValueError("five-reversal trace exceeds 128 physical ticks")
+        # A terminal-only demand retains two ports, not one source row per
+        # tick. Reserve occurrence-sized history only for an explicit trace.
         entries = 1 + (steps if trace else 0)
-        nodes = 4 + 2 * steps + (3 * steps if trace else 0)
+        nodes = 4 + (5 * steps if trace else 0)
         with self._lock:
             self.check_open()
             with self.resource_ledger.reservation(
@@ -676,11 +679,40 @@ class FiveReverseTerm:
         transitions: list[FivePortTransition] = []
         if guarded is not None and steps <= len(guarded.remaining_inlets):
             initial: FiveBorderPort | FiveCarryPort = self._guarded_port(guarded)
-            cursor = guarded
-            for offset in range(steps):
-                source_port = self._guarded_port(cursor)
-                cursor, _growth = self._advance_guarded_window(cursor)
-                if trace:
+            if not trace:
+                # Project the sealed finite source action at its target stage.
+                # Revalidate only the incoming boundary seam; the immutable
+                # certificate already authenticates every intermediate row.
+                stage = guarded.stage + steps
+                if stage == guarded.stage:
+                    terminal_cursor = guarded
+                else:
+                    certificate = guarded.certificate
+                    prior_head, prior_tail = certificate.borders[stage - 1]
+                    head, tail, growth = self._advance_guarded_border(
+                        prior_head, prior_tail, certificate.inlets[stage - 1]
+                    )
+                    if (head, tail) != certificate.borders[stage]:
+                        raise ValueError("guarded terminal border seam is invalid")
+                    terminal_cursor = _GuardedWindow(
+                        certificate,
+                        guarded.source,
+                        guarded.seed,
+                        guarded.generation + steps,
+                        stage,
+                        head,
+                        tail,
+                        certificate.inlets[stage:],
+                        growth,
+                    )
+                terminal: FiveBorderPort | FiveCarryPort = self._guarded_port(
+                    terminal_cursor
+                )
+            else:
+                cursor = guarded
+                for offset in range(steps):
+                    source_port = self._guarded_port(cursor)
+                    cursor, _growth = self._advance_guarded_window(cursor)
                     transitions.append(
                         FivePortTransition(
                             self.generation + offset,
@@ -688,7 +720,7 @@ class FiveReverseTerm:
                             self._guarded_port(cursor),
                         )
                     )
-            terminal: FiveBorderPort | FiveCarryPort = self._guarded_port(cursor)
+                terminal = self._guarded_port(cursor)
             self.resource_ledger.bump(_keys.FIVE_REVERSE_SOURCE_TRANSFER_TICKS, steps)
             return FiveSourceTransfer(
                 self.generation,
@@ -702,11 +734,18 @@ class FiveReverseTerm:
             )
         value = self._endpoint_value()
         initial = self._port(value)
-        start_generation = self.generation
-        for offset in range(steps):
-            previous = value
-            value = self._next(previous)
-            if trace:
+        if not trace:
+            # One source-bound endpoint action is sufficient for a terminal
+            # port. Replaying a second independent chronological observer
+            # discarded the already-admitted packed/H production executor.
+            # The adapter still checks every intermediate state-bit bound.
+            terminal_value = self._adapter.apply_steps(value, steps)
+            terminal = initial if steps == 0 else self._port(terminal_value)
+        else:
+            start_generation = self.generation
+            for offset in range(steps):
+                previous = value
+                value = self._next(previous)
                 transitions.append(
                     FivePortTransition(
                         start_generation + offset,
@@ -714,7 +753,7 @@ class FiveReverseTerm:
                         self._port(value),
                     )
                 )
-        terminal = initial if steps == 0 else self._port(value)
+            terminal = initial if steps == 0 else self._port(value)
         self.resource_ledger.bump(_keys.FIVE_REVERSE_SOURCE_TRANSFER_TICKS, steps)
         return FiveSourceTransfer(
             self.generation,
@@ -799,15 +838,18 @@ class FiveReverseTerm:
                     raise AssertionError("exact five-reversal cursor is missing")
                 following = self._next(current)
                 low = following
-            step_matrix = Matrix2.identity(modulus)
+            digits: list[int] = []
             for _digit in range(digit_width):
-                digit = low % 10
-                low //= 10
-                letter = Matrix2.digit(digit + 1, modulus)
-                matrix = matrix.then(letter)
-                step_matrix = step_matrix.then(letter)
-                source_letters += 1
-                self.resource_ledger.bump(_keys.FIVE_REVERSE_ORDERED_MATRIX_PRODUCTS, 2)
+                low, digit = divmod(low, 10)
+                digits.append(digit)
+            # This family reads its physical word LSD first. The shared
+            # continuant right product therefore consumes the reverse word.
+            step_matrix = ordered_decimal_continuant(reversed(digits), modulus)
+            matrix = matrix.then(step_matrix)
+            source_letters += digit_width
+            self.resource_ledger.bump(
+                _keys.FIVE_REVERSE_ORDERED_MATRIX_PRODUCTS, digit_width + 1
+            )
             if trace:
                 trace_rows.append((step_matrix,))
             if following is not None:
@@ -829,7 +871,7 @@ class FiveReverseTerm:
                 if use_guarded
                 else OrderedSourceCoverage.EXACT_BOUNDED_WINDOW
             ),
-            matrix_multiplications=2 * source_letters,
+            matrix_multiplications=source_letters + steps,
             source_letters_read=source_letters,
             trace=tuple(trace_rows),
             phase_coordinate=OrderedPhaseCoordinate.SOURCE_MOD45,

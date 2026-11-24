@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
     from number_compiler.api.cylinder_observation import CollatzObservationContext
     from number_compiler.api.registry_adapters import ResolvedObservationAdapter
-    from number_compiler.resources.ledger import ResourceLedger
+    from number_compiler.resources.ledger import LedgerReservation, ResourceLedger
     from number_compiler.sequences.collatz.parity_carry_tape_actions import (
         LedgeredParityTapeActions,
     )
@@ -62,6 +62,7 @@ class QueryContext:
         self._matrix_observation: dict[str, object] | None = None
         self.unresolved_boundary: UnresolvedSequenceTerm | None = None
         self._parity_actions: LedgeredParityTapeActions | None = None
+        self._observation_storage: list[LedgerReservation] | None = None
         self._closed = False
 
     def _require_open(self) -> None:
@@ -93,9 +94,38 @@ class QueryContext:
         self._closed = True
         self._double_reverse_morphism = None
         self._double_reverse_residue = None
+        if self._observation_storage is None:
+            self._close_parity_actions()
+        else:
+            from number_compiler.resources.lifecycle import cleanup_all
+
+            cleanup_all((self._close_observation_storage, self._close_parity_actions))
+
+    def _close_parity_actions(self) -> None:
         if self._parity_actions is not None:
             self._parity_actions.dispose()
             self._parity_actions = None
+
+    def _close_observation_storage(self) -> None:
+        from number_compiler.resources.lifecycle import cleanup_all
+
+        if self._observation_storage is not None:
+            cleanup_all(reservation.retire for reservation in self._observation_storage)
+            self._observation_storage = None
+
+    def reserve_observation_storage(self, ledger: ResourceLedger, nodes: int) -> None:
+        """Keep a completed packet's storage charged through the query scope."""
+        from number_compiler.resources.ledger import LedgerReservation
+        from number_compiler.resources.lifecycle import cleanup_on_error
+
+        self._require_open()
+        owner = ledger.register("observation-packet", "observer-output")
+        if self._observation_storage is None:
+            self._observation_storage = []
+        reservation = LedgerReservation(ledger, owner)
+        with cleanup_on_error(reservation.retire):
+            self._observation_storage.append(reservation)
+            reservation.reserve(nodes=nodes)
 
     def __enter__(self) -> QueryContext:
         self._require_open()

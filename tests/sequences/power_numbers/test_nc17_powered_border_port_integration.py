@@ -688,6 +688,85 @@ def test_mersenne_children_use_exact_low_digit_or_two_child_lift(
         assert child_calls == 10
 
 
+@pytest.mark.parametrize(
+    ("exponent", "base", "steps"),
+    ((31, 2, 3), (4, 5, 3), (4, 10, 3), (3, 7, 3)),
+)
+def test_mersenne_zero_gradient_uses_issued_endpoint_for_all_rows(
+    exponent: int,
+    base: int,
+    steps: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.power_numbers import mersenne_trace_port_matrix
+
+    original = mersenne_trace_port_matrix.trace_squaring_power
+    calls: list[tuple[int, int]] = []
+
+    def counted(start: int, count: int, radix: int, places: int) -> int:
+        calls.append((start, count))
+        return original(start, count, radix, places)
+
+    monkeypatch.setattr(mersenne_trace_port_matrix, "trace_squaring_power", counted)
+    position = 2
+    matrix = MersenneNumberSpec(exponent).demand_mersenne_trace_matrix(
+        steps, base=base, position=position
+    )
+    lower = base**position
+    modulus = base * lower
+    low = matrix.source_residue % lower
+    expected: list[int] = []
+    for digit in range(base):
+        value = low + digit * lower
+        for _ in range(steps):
+            value = (value * value - 2) % modulus
+        expected.append(value)
+    assert matrix.conditional_endpoints == tuple(expected)
+    assert set(expected) == {matrix.endpoint_residue}
+    assert sum(count == steps for _, count in calls) == 1
+    assert matrix.producer_verified
+
+
+def test_mersenne_nonzero_gradient_retains_distinct_conditional_rows() -> None:
+    matrix = MersenneNumberSpec(31).demand_mersenne_trace_matrix(3, base=10, position=2)
+    assert len(set(matrix.conditional_endpoints)) > 1
+
+
+def test_mersenne_gradient_prefix_guard_against_literal_rows() -> None:
+    from number_compiler.sequences.power_numbers.mersenne_trace_port_matrix import (
+        trace_zero_gradient_prefix,
+    )
+
+    for base in (2, 5, 7, 10):
+        modulus = base * base
+        for source in range(modulus):
+            for steps in range(1, 5):
+                if not trace_zero_gradient_prefix(source, steps, base):
+                    continue
+                endpoints: set[int] = set()
+                for digit in range(base):
+                    value = source % base + digit * base
+                    for _ in range(steps):
+                        value = (value * value - 2) % modulus
+                    endpoints.add(value)
+                assert len(endpoints) == 1
+
+
+@pytest.mark.parametrize(
+    ("source", "steps", "base"),
+    ((True, 1, 2), (0, True, 2), (0, -1, 2), (0, 4097, 2), (0, 1, 3)),
+)
+def test_mersenne_gradient_guard_rejects_invalid_coordinates(
+    source: int, steps: int, base: int
+) -> None:
+    from number_compiler.sequences.power_numbers.mersenne_trace_port_matrix import (
+        trace_zero_gradient_prefix,
+    )
+
+    with pytest.raises(ValueError):
+        trace_zero_gradient_prefix(source, steps, base)
+
+
 def test_fermat_clock_declarations_share_construction_and_recheck_puncture(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -71,6 +71,7 @@ class OptionValueKind(StrEnum):
     BOOLEAN = "boolean"
     CHOICE = "choice"
     INTEGER_VECTOR = "integer-vector"
+    RATIONAL = "rational"
     REPEATED_CHOICE = "repeated-choice"
 
 
@@ -127,6 +128,7 @@ class ObservationId(StrEnum):
     ARITHMETIC_HASSE = "arithmetic.hasse"
     ARITHMETIC_HENSEL = "arithmetic.hensel"
     ARITHMETIC_MAHLER = "arithmetic.mahler"
+    ARITHMETIC_CONTINUED_FRACTION = "arithmetic.continued-fraction"
     ARITHMETIC_TROPICAL = "arithmetic.tropical"
     ARITHMETIC_FACTOR = "arithmetic.factor"
     SAFETY_EXECUTION = "safety.execution"
@@ -178,6 +180,8 @@ class OptionSpec:
                 raise TypeError("choice option default must be a string value")
             if self.default is not None and self.default not in self.choices:
                 raise ValueError("choice option default must be one of its choices")
+        elif self.value_kind is OptionValueKind.RATIONAL and self.default is not None:
+            raise ValueError("rational options require explicit input")
         elif self.value_kind is OptionValueKind.INTEGER_VECTOR:
             if self.default is not None and not is_exact_integer_tuple(self.default):
                 raise TypeError("integer vector default must be an integer tuple")
@@ -268,6 +272,7 @@ _CATEGORIES: Final[dict[ObservationCategory, tuple[ObservationId, ...]]] = {
         ObservationId.ARITHMETIC_HASSE,
         ObservationId.ARITHMETIC_HENSEL,
         ObservationId.ARITHMETIC_MAHLER,
+        ObservationId.ARITHMETIC_CONTINUED_FRACTION,
         ObservationId.ARITHMETIC_TROPICAL,
         ObservationId.ARITHMETIC_FACTOR,
     ),

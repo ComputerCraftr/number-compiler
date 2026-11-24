@@ -63,6 +63,18 @@ COLLATZ_CYCLIC_GRAMMAR_CLASSIFICATIONS_ELIDED: Final = (
 )
 COLLATZ_CYCLIC_GRAMMAR_SHORTCUT_STEPS: Final = "collatz_cyclic_grammar_shortcut_steps"
 COLLATZ_CYCLIC_GRAMMAR_PHYSICAL_TICKS: Final = "collatz_cyclic_grammar_physical_ticks"
+COLLATZ_CYCLIC_GRAMMAR_PARITY_PROJECTIONS: Final = (
+    "collatz_cyclic_grammar_parity_projections"
+)
+COLLATZ_CYCLIC_GRAMMAR_JOINT_PROJECTIONS: Final = (
+    "collatz_cyclic_grammar_joint_projections"
+)
+COLLATZ_CYCLIC_GRAMMAR_WIDTH_PROJECTIONS: Final = (
+    "collatz_cyclic_grammar_width_projections"
+)
+COLLATZ_CYCLIC_GRAMMAR_WIDTH_PHASE_STEPS: Final = (
+    "collatz_cyclic_grammar_width_phase_steps"
+)
 COLLATZ_DECIMAL_BOUNDARY_OPERAND_BITS: Final = "collatz_decimal_boundary_operand_bits"
 COLLATZ_DECIMAL_BOUNDARY_SOURCE_CLASSIFICATIONS: Final = (
     "collatz_decimal_boundary_source_classifications"

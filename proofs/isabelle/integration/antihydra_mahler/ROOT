@@ -23,3 +23,14 @@ session Mahler_Source_Transport in mahler_transport = Mahler_Safety_Cylinders +
     Mahler_Joint_Quotient_Algebra
     Mahler_Reachable_Repetition
     Mahler_Spatial_Carry_Pump
+    Mahler_Finite_Safety_Refinement
+    Mahler_Powered_Graph_Refinement
+    Mahler_Continued_Fraction_Refinement
+    Mahler_CF_Pow5_Source
+    Mahler_CF_Multitick_Tiles
+    Mahler_CF_Low_Period
+    Mahler_CF_Minimal_Prefix
+    Mahler_CF_Ordered_Row_Blocks
+    Mahler_CF_Fractional_Guard_Compiler
+    Mahler_CF_Spatial_Intermediate_Rows
+    Mahler_CF_Spatial_Consumer

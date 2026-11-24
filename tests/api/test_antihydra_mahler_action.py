@@ -312,10 +312,141 @@ def test_mahler_demand_reuses_source_support(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(term.engine, "arithmetic_cylinder", forbidden)
     first = associated_action(result)
+
+    def forbidden_action(*args: object, **kwargs: object) -> None:
+        raise AssertionError("retained Mahler response was reconstructed")
+
+    from number_compiler.sequences.antihydra import mahler_cache
+
+    monkeypatch.setattr(mahler_cache, "cached_associated_action", forbidden_action)
     second = associated_action(result)
     assert first == second
     assert term.ledger.counters["mahler_source_composed_image_reads"] == 1
-    assert term.ledger.counters["source_image_projection_hits"] >= 1
+    assert term.ledger.counters["source_image_projection_publications"] == 1
+
+
+def test_mahler_root_action_rejects_a_foreign_cached_response() -> None:
+    first_term = AntihydraArithmeticTerm(64)
+    second_term = AntihydraArithmeticTerm(65)
+    first = first_term.result()
+    second = second_term.result()
+    associated_action(first)
+    associated_action(second)
+    first_workspace = first_term.mahler_workspace
+    second_workspace = second_term.mahler_workspace
+    assert first_workspace is not None and second_workspace is not None
+    retained = first_workspace.root_action_entries()
+    foreign = second_workspace.root_action_entries()
+    assert len(retained) == len(foreign) == 1
+    object.__setattr__(retained[0][1], "scale", foreign[0][1].scale)
+    with pytest.raises(ValueError, match="source"):
+        associated_action(first)
+
+
+def test_mahler_root_action_reissues_after_eviction() -> None:
+    term = AntihydraArithmeticTerm(64)
+    result = term.result()
+    before = associated_action(result)
+    workspace = term.mahler_workspace
+    assert workspace is not None
+    owner = workspace.root_action_memo_owner
+    assert owner is not None
+    assert owner in term.ledger.evict_query_memos()
+    assert workspace.root_action_entries() == ()
+    assert associated_action(result) == before
+    assert len(workspace.root_action_entries()) == 1
+    report = audit_registered_payloads(term.ledger)
+    assert report.forbidden_future_payloads == report.unknown_payloads == 0
+
+
+def test_mahler_root_action_rejects_malformed_rational() -> None:
+    term = AntihydraArithmeticTerm(64)
+    result = term.result()
+    associated_action(result)
+    workspace = term.mahler_workspace
+    assert workspace is not None
+    action = workspace.root_action_entries()[0][1]
+    object.__setattr__(action.scale, "denominator", 0)
+    with pytest.raises(ValueError, match="normalized"):
+        associated_action(result)
+
+
+def test_mahler_root_action_failed_contract_releases_its_charge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.antihydra import payload_audit
+
+    term = AntihydraArithmeticTerm(64)
+    result = term.result()
+    before = term.ledger.entries, term.ledger.nodes
+
+    def fail_contract(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("interrupted contract publication")
+
+    monkeypatch.setattr(
+        payload_audit, "refresh_antihydra_payload_contract", fail_contract
+    )
+    with pytest.raises(RuntimeError, match="interrupted"):
+        associated_action(result)
+    assert term.mahler_workspace is None
+    assert (term.ledger.entries, term.ledger.nodes) == before
+    monkeypatch.undo()
+    assert associated_action(result)["first_failure"] == 2
+
+
+@pytest.mark.parametrize("extent", (0, 1, 2, 8, 64, 128))
+def test_mahler_consumes_root_without_issuing_another_projection(
+    extent: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    term = AntihydraArithmeticTerm(extent, shared_cache=False)
+    result = term.result()
+    workspace = term.arithmetic_workspace
+    assert workspace is not None
+    before = term.ledger.counters["source_image_projection_publications"]
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("root observation issued another source projection")
+
+    monkeypatch.setattr(type(workspace.scheduler), "source_projection", forbidden)
+    packet = associated_action(result)
+    assert packet["first_failure"] == (2 if extent >= 2 else None)
+    assert term.ledger.counters["source_image_projection_publications"] == before
+
+
+def test_mahler_checks_cached_action_without_reconstructing_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.antihydra.mahler_carry_quotient import (
+        RootMahlerSafety,
+    )
+
+    term = AntihydraArithmeticTerm(128, shared_cache=False)
+    result = term.result()
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("source coefficient check rebuilt the rational action")
+
+    monkeypatch.setattr(RootMahlerSafety, "action", forbidden)
+    assert associated_action(result)["first_failure"] == 2
+
+
+def test_validated_mahler_packet_does_not_repeat_payload_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.antihydra.mahler_action import MahlerWorkspace
+
+    term = AntihydraArithmeticTerm(64, shared_cache=False)
+    result = term.result()
+    workspace = term.arithmetic_workspace
+    assert workspace is not None
+    result.require_source()
+    consumer = MahlerWorkspace(result)
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("packet repeated authenticated payload validation")
+
+    monkeypatch.setattr(type(workspace), "validate_payload", forbidden)
+    assert consumer.packet_after_source_validation(result)["first_failure"] == 2
 
 
 def test_mahler_uses_arithmetic_scheduler_without_second_action_arena(
@@ -373,7 +504,7 @@ def test_mahler_rejected_publication_releases_its_stores() -> None:
     limit = ledger.max_cache_entries
     ledger.max_cache_entries = ledger.entries
     with pytest.raises(BlockContextBudgetExceeded):
-        associated_action(result)
+        associated_action(result, include_radix_ports=True)
     assert (ledger.entries, ledger.nodes) == before
     assert term.mahler_workspace is None
     ledger.max_cache_entries = limit

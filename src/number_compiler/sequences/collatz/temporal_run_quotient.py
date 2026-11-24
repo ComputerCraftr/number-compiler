@@ -50,6 +50,7 @@ def compile_collatz_temporal_run_quotient(
     include_width_spine: bool = False,
     include_joint_cocycle: bool = False,
     include_innovation_tape: bool = False,
+    require_boundary_witness: bool = False,
     require_mixed_prefix: bool = False,
     innovation_modulus: int | None = None,
     prefer_source_closed_d8: bool = False,
@@ -77,6 +78,8 @@ def compile_collatz_temporal_run_quotient(
         raise TypeError("joint-cocycle demand must be Boolean")
     if type(include_innovation_tape) is not bool:
         raise TypeError("innovation-tape demand must be Boolean")
+    if type(require_boundary_witness) is not bool:
+        raise TypeError("boundary-witness demand must be Boolean")
     if type(require_mixed_prefix) is not bool:
         raise TypeError("mixed-prefix routing mode must be Boolean")
     if type(prefer_source_closed_d8) is not bool:
@@ -130,6 +133,7 @@ def compile_collatz_temporal_run_quotient(
             include_width_spine=include_width_spine,
             include_joint_cocycle=include_joint_cocycle,
             include_innovation_tape=include_innovation_tape,
+            require_boundary_witness=require_boundary_witness,
             require_mixed_prefix=require_mixed_prefix,
             innovation_modulus=innovation_modulus,
             prefer_source_closed_d8=prefer_source_closed_d8,

@@ -12,8 +12,14 @@ from number_compiler.api.number_api import NumberCompiler
 from tests.support.observation_views import information_only_view
 
 
+@pytest.mark.parametrize(
+    ("selector", "value"), (("--nth", str(10**12)), ("--nth-power10", "12"))
+)
 def test_reverse_add_temporal_residue99_cli_is_predictive(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    selector: str,
+    value: str,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("no whole-number publisher is permitted")
@@ -26,8 +32,8 @@ def test_reverse_add_temporal_residue99_cli_is_predictive(
                 "reverse-add",
                 "--seed",
                 "196",
-                "--nth",
-                str(10**12),
+                selector,
+                value,
                 "--no-value",
                 "--info",
                 "arithmetic.modular",

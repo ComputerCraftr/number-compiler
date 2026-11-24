@@ -36,7 +36,7 @@ if TYPE_CHECKING:
         ReverseAddTemporalRingBank,
     )
     from number_compiler.sequences.reverse_add.temporal_seed_morphism import (
-        Q19WordFiber,
+        Q19BandPortImage,
     )
 
 
@@ -66,10 +66,10 @@ class ReversePairQ19OutputAuditSnapshot:
     frontiers: OwnedMemoAuditSnapshot[int, tuple[int, bool]]
     word_fibers_owner: int
     word_fibers: OwnedMemoAuditSnapshot[
-        tuple[int, int, int], tuple[Q19WordFiber, tuple[object, ...]]
+        tuple[int, int, int], tuple[Q19BandPortImage, tuple[object, ...]]
     ]
     word_fibers_binding: OwnedMemo[
-        tuple[int, int, int], tuple[Q19WordFiber, tuple[object, ...]]
+        tuple[int, int, int], tuple[Q19BandPortImage, tuple[object, ...]]
     ]
     border_certificates_owner: int
     border_certificates: OwnedMemoAuditSnapshot[

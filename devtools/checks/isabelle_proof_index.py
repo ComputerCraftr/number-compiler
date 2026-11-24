@@ -23,6 +23,7 @@ from devtools.checks.isabelle_source_analysis import (
 )
 from devtools.checks.isabelle_syntax import (
     Session,
+    dynamic_cartouche_spans,
     executable_text,
     first_documentation_scope,
     global_simp_registrations,
@@ -56,6 +57,37 @@ _COMMA_RELEASE_SESSION_ROOTS = (
     "Comma_Semantic_B1_Instance",
     "Comma_Semantic_Future_Instance",
 )
+COMMA_SYMBOLIC_RELEASE_AUTHORITIES = (
+    "comma_symbolic_b32_provider_exact",
+    "comma_future_symbolic_crossing_ordered_children",
+    "comma_future_m204_live_native",
+    "comma_future_m204_ordered_source_native",
+    "comma_symbolic_writer_exact",
+    "comma_semantic_producer_global_live_release_contract",
+)
+_COMMA_RETIRED_RELEASE_THEORIES = frozenset(
+    {
+        "Comma_Continue_Frontier24_Source_Bridge",
+        "Comma_Continue_Image_Instance",
+        "Comma_Frontier_M204_Direct_Bellman_Concrete",
+        "Comma_Future_Checked_Instance",
+        "Comma_Future_Structural_Instance",
+    }
+)
+_COMMA_RETIRED_RELEASE_AUTHORITY = re.compile(
+    r"\b(?:comma_frontier_m204_(?:bellman|weight|exact_\w+_from_checked_bellman)"
+    r"|comma_phase_class_survival_(?:lengths|rank)"
+    r"|comma_semantic_b1_action_b32_stop242"
+    r"|comma_future_m204_(?:checked_rank|rank_native|source_rank_lift)"
+    r"|comma_semantic_concrete_(?:future_rank_check|boundary_strong_occurrence_bridge)"
+    r"|comma_future_descent_check"
+    r"|comma_finite_(?:weighted_)?macro"
+    r"|comma_root_forest|comma_forest_certificate"
+    r"|comma_python_(?:first_terminal_walk|writer_run|boundary_indexed_macro_fields))\w*\b"
+)
+_ML_STRING_LITERAL = re.compile(r'"(?:\\.|[^"\\])*"')
+_ML_RESOLVED_FACT = re.compile(r'\bProof_Context\.get_thms?\s+\w+\s+"([^"\\]+)"')
+_ML_NOTED_FACT = re.compile(r'\bLocal_Theory\.note\s*\(\(Binding\.name\s+"(\w+)"')
 
 # This intentionally bounded source check describes the expensive ownership
 # shape, not particular resource filenames. It is not an ML parser or a proof
@@ -82,7 +114,7 @@ def _release_proof_replay_findings(source: str) -> tuple[str, ...]:
     kernel builds remain the authority for theorem validity.
     """
     code = mask_comments(source)
-    code = re.sub(r'"(?:\\.|[^"\\])*"', lambda match: " " * len(match.group()), code)
+    code = _ML_STRING_LITERAL.sub(lambda match: " " * len(match.group()), code)
     findings: list[str] = []
     if _PRIORITY_REPLAY_OWNER.search(code) is not None:
         findings.append(
@@ -113,9 +145,11 @@ def comma_release_owner_audit(
     imports_by_theory: dict[str, tuple[str, ...]],
     ml_references: dict[Path, list[str]],
     ml_sources: dict[Path, str],
+    theory_sources: dict[str, str],
+    theorem_owners: dict[str, list[str]],
     repository: Path,
 ) -> dict[str, object]:
-    """Report retired proof engines in production Comma closures.
+    """Check required symbolic authorities and retired production dependencies.
 
     The graph is derived from current ROOT session edges, theory imports, and
     ML_file references. Audit-only sessions that are not dependencies of a
@@ -138,6 +172,35 @@ def comma_release_owner_audit(
             "violations": [],
         }
 
+    def retired_references(source: str) -> tuple[str, ...]:
+        return tuple(sorted(set(_COMMA_RETIRED_RELEASE_AUTHORITY.findall(source))))
+
+    def ml_artifact(source: str) -> tuple[tuple[str, ...], set[str]]:
+        names = [item[1] for item in unquoted_matches(_ML_RESOLVED_FACT, source)]
+        notes = {item[1] for item in unquoted_matches(_ML_NOTED_FACT, source)}
+        code = _ML_STRING_LITERAL.sub(" ", source) + " " + " ".join(names)
+        return retired_references(code), notes
+
+    def theory_artifact(source: str) -> tuple[tuple[str, ...], set[str]]:
+        clean = executable_text(source)
+        references: set[str] = set()
+        notes: set[str] = set()
+        previous_end = 0
+        for start, end, block in dynamic_cartouche_spans(clean):
+            references.update(retired_references(clean[previous_end:start]))
+            found, published = ml_artifact(block)
+            references.update(found)
+            notes.update(published)
+            previous_end = end
+        references.update(retired_references(clean[previous_end:]))
+        return tuple(sorted(references)), notes
+
+    theory_artifacts = {
+        name: theory_artifact(source)
+        for name, source in theory_sources.items()
+        if _COMMA_RETIRED_RELEASE_AUTHORITY.search(source) is not None
+        or _ML_NOTED_FACT.search(source) is not None
+    }
     violations: list[str] = []
     root_reports: list[dict[str, object]] = []
     missing_roots = [
@@ -167,6 +230,21 @@ def comma_release_owner_audit(
             }
         )
         root_findings: list[dict[str, str]] = []
+        notes: set[str] = set()
+        for name in sorted(reached_theories):
+            if name in _COMMA_RETIRED_RELEASE_THEORIES:
+                root_findings.append(
+                    {"resource": name, "finding": "retired concrete release theory"}
+                )
+            references, published = theory_artifacts.get(name, ((), set()))
+            notes.update(published)
+            for reference in references:
+                root_findings.append(
+                    {
+                        "resource": name,
+                        "finding": f"retired release authority: {reference}",
+                    }
+                )
         for resource in reached_resources:
             source = ml_sources.get(resource)
             findings: tuple[str, ...]
@@ -175,16 +253,31 @@ def comma_release_owner_audit(
                     "referenced ML_file resource is absent from the source snapshot",
                 )
             else:
-                findings = _release_proof_replay_findings(source)
+                references, published = ml_artifact(mask_comments(source))
+                notes.update(published)
+                findings = _release_proof_replay_findings(source) + tuple(
+                    f"retired release authority: {reference}"
+                    for reference in references
+                )
             for finding in findings:
                 relative_resource = resource.relative_to(
                     repository.resolve()
                 ).as_posix()
-                rendered = f"{root_name}: {relative_resource}: {finding}"
-                violations.append(rendered)
                 root_findings.append(
                     {"resource": relative_resource, "finding": finding}
                 )
+        if root_name == _COMMA_RELEASE_SESSION_ROOTS[1]:
+            for name in COMMA_SYMBOLIC_RELEASE_AUTHORITIES:
+                if name not in notes and reached_theories.isdisjoint(
+                    theorem_owners.get(name, ())
+                ):
+                    root_findings.append(
+                        {"resource": name, "finding": "missing symbolic authority"}
+                    )
+        violations.extend(
+            f"{root_name}: {item['resource']}: {item['finding']}"
+            for item in root_findings
+        )
         root_reports.append(
             {
                 "root": root_name,
@@ -527,18 +620,21 @@ def build_index() -> dict[str, object]:
         for name in reachable
         if not declared[name][3] and name not in delegated_theories
     )
-    if missing_audits:
-        raise ValueError(
-            f"reachable theories without an oracle audit: {missing_audits}"
-        )
     comma_release_owner = comma_release_owner_audit(
         sessions=sessions,
         registered=registered,
         imports_by_theory=imports_by_theory,
         ml_references=ml_references,
         ml_sources=ml_sources,
+        theory_sources=source_texts,
+        theorem_owners=theorem_owners,
         repository=ROOT,
     )
+    if missing_audits:
+        raise ValueError(
+            f"reachable theories without an oracle audit: {missing_audits}; "
+            f"Comma release owner: {comma_release_owner['violations']}"
+        )
     entries: list[dict[str, object]] = []
     token_uses: dict[str, set[str]] = {}
     for theory, contents in source_texts.items():
@@ -619,7 +715,7 @@ def main() -> int:
     parser.add_argument(
         "--require-comma-release-owner",
         action="store_true",
-        help="fail if B1 or future production reaches retired proof replay engines",
+        help="require symbolic Comma authority and exclude retired release dependencies",
     )
     options = parser.parse_args()
     index = build_index()

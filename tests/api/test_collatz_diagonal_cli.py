@@ -3,6 +3,7 @@
 import json
 import subprocess
 import sys
+from collections.abc import Callable
 
 import pytest
 
@@ -88,3 +89,58 @@ def test_diagonal_cli_reports_bounded_prefix_as_incomplete(
     assert packet["complete"] is False
     assert packet["weighted_laurent_complete"] is False
     assert packet["weighted_laurent_aggregate"] is None
+
+
+def test_diagonal_cli_reuses_issued_endpoint(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from number_compiler.sequences.collatz.diagonal_carry_action import (
+        CollatzDiagonalField,
+        CollatzDiagonalSeam,
+    )
+
+    observed: list[int] = []
+    reservations: list[int] = []
+    original = CollatzDiagonalSeam.field
+
+    def checked(
+        seam: CollatzDiagonalSeam,
+        bits: int,
+        *,
+        reserve_bits: Callable[[int], None],
+        max_width: int,
+    ) -> CollatzDiagonalField:
+        observed.append(bits)
+
+        def capture(amount: int) -> None:
+            reservations.append(amount)
+            reserve_bits(amount)
+
+        return original(seam, bits, reserve_bits=capture, max_width=max_width)
+
+    monkeypatch.setattr(CollatzDiagonalSeam, "field", checked)
+    assert (
+        main(
+            [
+                "collatz",
+                "--seed",
+                "1486",
+                "--nth",
+                "24",
+                "--no-value",
+                "--info",
+                "temporal.diagonal-carry",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    packet = json.loads(capsys.readouterr().out)["info"]["temporal.diagonal-carry"]
+    expected = 1486
+    for _ in range(24):
+        expected = 3 * expected + 1 if expected & 1 else expected // 2
+    assert packet["physical_endpoint"] == expected == 5366
+    assert packet["physical_ticks"] == 24
+    assert observed
+    assert reservations == [8 * (66 * width + 96) for width in observed]

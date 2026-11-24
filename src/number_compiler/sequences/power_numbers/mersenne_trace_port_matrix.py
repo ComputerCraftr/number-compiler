@@ -123,6 +123,26 @@ def trace_squaring_power(
     return cast(int, (product[0] + product[3]) % modulus)
 
 
+def trace_zero_gradient_prefix(source: int, steps: int, base: int) -> bool:
+    """Detect a zero conditional derivative with at most two source phases."""
+    if (
+        type(source) is not int
+        or type(steps) is not int
+        or not 0 <= steps <= MAX_TRACE_STEPS
+        or type(base) is not int
+        or base not in TRACE_BASES
+    ):
+        raise ValueError("invalid trace gradient source or coordinate")
+    value = source % base
+    derivative = 1
+    for _ in range(min(steps, 2)):
+        derivative = (2 * value * derivative) % base
+        if derivative == 0:
+            return True
+        value = (value * value - 2) % base
+    return False
+
+
 @dataclass(frozen=True, slots=True)
 class CertifiedTraceClock:
     identity: MersenneClockId
@@ -513,7 +533,12 @@ def _compile(
     root = trace_squaring_power(initial, offset, base, position + 1)
     endpoint = trace_squaring_power(root, steps, base, position + 1)
     low = root % lower
-    if position:
+    if position and trace_zero_gradient_prefix(root, steps, base):
+        # Each higher digit differs by lower, whose square vanishes modulo
+        # base*lower. A zero derivative on a certified source prefix then
+        # persists through every remaining trace-squaring step.
+        conditional = (endpoint,) * base
+    elif position:
         # The iterated integer polynomial has an affine response in the high
         # digit because lower**2 is divisible by base*lower.
         selected = root // lower

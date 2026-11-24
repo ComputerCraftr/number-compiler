@@ -2,9 +2,11 @@
 
 from collections.abc import Callable, Generator
 from contextlib import contextmanager, nullcontext
-from typing import Final
+from heapq import merge
+from typing import Final, cast
 
 from number_compiler.arithmetic.carry.event_memory import pair_plane_bits
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.owned_memo import LedgerReservation
@@ -46,6 +48,45 @@ def _frontier_record(value: object) -> tuple[int, tuple[object, object, object]]
     return age, (pairs, count, center)
 
 
+def _physical_landmarks(
+    value: object, offset: int
+) -> tuple[tuple[int, tuple[int, int, int | None]], ...]:
+    """Read one issuer-owned bundle of physical dyadic checkpoints."""
+    if value is MISSING:
+        return ()
+    if not is_exact_object_tuple(value):
+        raise ValueError("invalid issued Q19 physical landmarks")
+    previous = 0
+    for item in value:
+        if not is_exact_object_tuple(item) or len(item) != 2:
+            raise ValueError("invalid issued Q19 physical landmark")
+        age, raw = item
+        if (
+            type(age) is not int
+            or age <= previous
+            or (age + offset) & (age + offset - 1)
+        ):
+            raise ValueError("invalid issued Q19 physical landmark age")
+        if not is_exact_object_tuple(raw) or len(raw) != 3:
+            raise ValueError("invalid issued Q19 physical landmark payload")
+        pairs, count, center = raw
+        if (
+            type(pairs) is not int
+            or pairs < 0
+            or type(count) is not int
+            or count < 0
+            or pairs.bit_length() > 6 * count
+            or (
+                center is not None and (type(center) is not int or not 0 <= center <= 9)
+            )
+            or (count == 0 and center is None)
+            or (count > 0 and pairs & 63 == 0)
+        ):
+            raise ValueError("invalid issued Q19 physical landmark payload")
+        previous = age
+    return cast(tuple[tuple[int, tuple[int, int, int | None]], ...], value)
+
+
 def _image_guard(source: PackedQ19, target: PackedQ19) -> None:
     # An exact cached endpoint, even one issued by the direct route, must not
     # inherit H12 authority unless this physical birth guard holds.
@@ -62,6 +103,27 @@ def _dyadic_durations(steps: int) -> Generator[int, None, None]:
 
 
 @contextmanager
+def _continuation_scratch(
+    ledger: ResourceLedger | None, owner: int | None, shared_cache: bool
+) -> Generator[LedgerReservation | None, None, None]:
+    """Charge staged checkpoints even when the caller has no ledger."""
+    temporary = ledger is None and shared_cache
+    if temporary:
+        ledger = ResourceLedger()
+        owner = ledger.register("q19-continuation", "checkpoint-scratch")
+    if ledger is None:
+        yield None
+        return
+    assert owner is not None
+    try:
+        with LedgerReservation(ledger, owner) as scratch:
+            yield scratch
+    finally:
+        if temporary:
+            ledger.mark_disposed(owner)
+
+
+@contextmanager
 def _segment(
     lease: CacheLease | None,
     source: PackedQ19,
@@ -70,6 +132,7 @@ def _segment(
     *,
     carry_window: bool = False,
     scratch: LedgerReservation | None = None,
+    landmark_offset: int = 0,
 ) -> Generator[tuple[PackedQ19, int], None, None]:
     """Issue exact source-selected endpoints, never an inferred temporal period.
 
@@ -90,7 +153,10 @@ def _segment(
         return
 
     reused = 0
-    pending: list[tuple[int, tuple[int, int, int | None]]] = []
+    pending: list[tuple[int, tuple[int, int, int | None], bool, int]] = []
+    landmark_key = (*source_key, -2, landmark_offset)
+    raw_physical: object = MISSING
+    physical_landmarks: tuple[tuple[int, tuple[int, int, int | None]], ...] = ()
     try:
         if carry_window:
             # This guard must not be replaced by a bare same-residue or carry-mask
@@ -99,6 +165,12 @@ def _segment(
         elif lease is None or steps == 0:
             target = source.advance_repeated(steps, before_step=before_step)
         else:
+            raw_physical = (
+                lease.get_issued(landmark_key, _CONTINUATION_ISSUER)
+                if landmark_offset
+                else MISSING
+            )
+            physical_landmarks = _physical_landmarks(raw_physical, landmark_offset)
             frontier = lease.get_issued((*source_key, -1), _CONTINUATION_ISSUER)
             start = 0
             frame = source
@@ -111,8 +183,32 @@ def _segment(
             # use the largest stored binary landmark that fits. These are full
             # semantic Q19 states, not materialized physical occurrence histories.
             if start == 0:
-                for age in _dyadic_durations(steps):
+                # Both local dyadic steps and physical dyadic checkpoints
+                # after the authenticated H12 prefix are valid.  The latter
+                # lets a warm N+delta query answer physical N=2^k without
+                # replaying a non-power-of-two suffix from the H12 boundary.
+                physical_powers = (
+                    (
+                        age - landmark_offset
+                        for age in _dyadic_durations(steps + landmark_offset)
+                        if landmark_offset < age <= steps + landmark_offset
+                    )
+                    if landmark_offset
+                    else ()
+                )
+                for age in merge(
+                    _dyadic_durations(steps), physical_powers, reverse=True
+                ):
                     known = lease.get_issued((*source_key, age), _CONTINUATION_ISSUER)
+                    if known is MISSING:
+                        known = next(
+                            (
+                                payload
+                                for item_age, payload in physical_landmarks
+                                if item_age == age
+                            ),
+                            MISSING,
+                        )
                     if known is not MISSING:
                         frame = PackedQ19.from_record(known)
                         start = age
@@ -121,20 +217,50 @@ def _segment(
             position = start
             while position < steps:
                 next_power = 1 << position.bit_length()
-                stop = min(steps, next_power)
+                next_physical_power = (
+                    (1 << (position + landmark_offset).bit_length()) - landmark_offset
+                    if landmark_offset
+                    else next_power
+                )
+                stop = min(steps, next_power, next_physical_power)
                 frame = frame.advance_repeated(stop - position, before_step=before_step)
                 position = stop
-                if position & (position - 1) == 0 and scratch is not None:
-                    scratch.reserve(
-                        entries=1, nodes=4 + (frame.pairs.bit_length() + 63) // 64
-                    )
-                    pending.append((position, _record(frame)))
+                local = position & (position - 1) == 0
+                physical = bool(
+                    landmark_offset
+                    and (position + landmark_offset) & (position + landmark_offset - 1)
+                    == 0
+                )
+                if local or physical:
+                    # Retain source-authenticated local and physical dyadic
+                    # landmarks. The image is a complete checked Q19 state,
+                    # not an occurrence history or a future period guess.
+                    assert scratch is not None
+                    nodes = 4 + (frame.pairs.bit_length() + 63) // 64
+                    try:
+                        scratch.reserve(entries=1, nodes=nodes)
+                    except BlockContextBudgetExceeded:
+                        if not local:
+                            continue
+                        discarded = tuple(item for item in pending if item[2])
+                        if not discarded:
+                            raise
+                        scratch.release(
+                            entries=len(discarded),
+                            nodes=sum(item[3] for item in discarded),
+                        )
+                        pending[:] = (item for item in pending if not item[2])
+                        scratch.reserve(entries=1, nodes=nodes)
+                    pending.append((position, _record(frame), not local, nodes))
             target = frame
 
         yield target, reused
         if lease is not None:
-            for duration, payload in pending:
-                lease.put_issued((*source_key, duration), payload, _CONTINUATION_ISSUER)
+            for duration, payload, is_optional, _nodes in pending:
+                if not is_optional:
+                    lease.put_issued(
+                        (*source_key, duration), payload, _CONTINUATION_ISSUER
+                    )
             lease.put_issued(key, _record(target), _CONTINUATION_ISSUER)
             if steps > 0:
                 # Atomic max-frontier update under the source-qualified lease. A
@@ -150,6 +276,35 @@ def _segment(
                 lease.update_issued(
                     (*source_key, -1), _CONTINUATION_ISSUER, advance_frontier
                 )
+            staged_landmarks = tuple(
+                (age, payload)
+                for age, payload, is_optional, _ in pending
+                if is_optional
+            )
+            if staged_landmarks and not carry_window:
+                assert scratch is not None
+                try:
+                    scratch.reserve(
+                        entries=len(physical_landmarks) + len(staged_landmarks) + 1,
+                        nodes=len(physical_landmarks) + len(staged_landmarks) + 1,
+                    )
+                except BlockContextBudgetExceeded:
+                    pass
+                else:
+                    merged = dict(physical_landmarks)
+                    merged.update(staged_landmarks)
+                    bundle = tuple(sorted(merged.items()))
+
+                    def update_landmarks(old: object) -> tuple[object, None]:
+                        # Do not overwrite a concurrent receiving source's
+                        # longer set of already-issued landmarks.
+                        if old != raw_physical:
+                            return MISSING, None
+                        return bundle, None
+
+                    lease.update_issued(
+                        landmark_key, _CONTINUATION_ISSUER, update_landmarks
+                    )
     finally:
         pending.clear()
 
@@ -180,11 +335,7 @@ def completed_continuation(
     if (ledger is None) != (scratch_owner is None):
         raise ValueError("checkpoint reservation requires a ledger and owner")
     with (
-        (
-            LedgerReservation(ledger, scratch_owner)
-            if ledger is not None and scratch_owner is not None
-            else nullcontext(None)
-        ) as scratch,
+        _continuation_scratch(ledger, scratch_owner, shared_cache) as scratch,
         (
             get_process_cache().acquire("reverse-add", _CONTINUATION_KIND, (10,))
             if shared_cache
@@ -221,7 +372,14 @@ def completed_continuation(
             if remaining == DECIMAL_CARRY_WINDOW and image == source:
                 yield image, prefix_reused + remaining
                 return
-            with _segment(lease, image, remaining, before_step, scratch=scratch) as (
+            with _segment(
+                lease,
+                image,
+                remaining,
+                before_step,
+                scratch=scratch,
+                landmark_offset=DECIMAL_CARRY_WINDOW,
+            ) as (
                 target,
                 suffix_reused,
             ):

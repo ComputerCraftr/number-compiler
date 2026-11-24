@@ -154,6 +154,71 @@ proof -
   show ?thesis by (simp only: exponent)
 qed
 
+lemma fermat_source_tripling_position_transport:
+  fixes t offset steps copies bank_modulus modulus :: nat
+  assumes precision: "modulus dvd bank_modulus"
+  shows "((((3::nat)^(2^t) mod bank_modulus) mod modulus) *
+    3^offset * 3^(steps*copies)) mod modulus =
+    3^(2^t + offset + steps*copies) mod modulus"
+proof -
+  have root: "((3::nat)^(2^t) mod bank_modulus) mod modulus =
+      3^(2^t) mod modulus"
+    by (rule mod_mod_cancel[OF precision])
+  show ?thesis
+    by (simp only: root power_add mult.assoc mod_mult_left_eq)
+qed
+
+text \<open>The conditional digit readout uses the exact source prefix and
+ordinary tripling gain. Its inputs do not include any period of an
+observer of the inward bank.\<close>
+
+lemma fermat_tripling_radix_response:
+  fixes ticks source place radix digit :: nat
+  assumes positive: "0 < place"
+  defines "gain \<equiv> (3::nat)^ticks"
+    and "scaled_low \<equiv> (3::nat)^ticks * (source mod place)"
+  shows "(gain * (source mod place + place * digit)) mod (place * radix) =
+    scaled_low mod place + place *
+      (((gain mod radix) * digit + (scaled_low div place) mod radix) mod radix)"
+proof -
+  let ?total = "gain * (source mod place + place * digit)"
+  let ?upper = "gain * digit + scaled_low div place"
+  have split: "?total = scaled_low mod place + place * ?upper"
+    using div_mult_mod_eq[of scaled_low place]
+    by (simp add: gain_def scaled_low_def algebra_simps)
+  have lower: "?total mod place = scaled_low mod place"
+    by (subst split) simp
+  have upper: "?total div place = ?upper"
+    using positive by (subst split) (simp add: div_mult_self2)
+  have product: "(gain mod radix * digit) mod radix = (gain * digit) mod radix"
+    by (rule mod_mult_left_eq)
+  have reduced: "?upper mod radix =
+      ((gain mod radix) * digit + (scaled_low div place) mod radix) mod radix"
+  proof -
+    have "?upper mod radix =
+        ((gain * digit) mod radix + (scaled_low div place) mod radix) mod radix"
+      by (rule mod_add_eq[symmetric])
+    also have "... =
+        ((gain mod radix * digit) mod radix + (scaled_low div place) mod radix) mod radix"
+      by (simp only: product)
+    also have "... = ((gain mod radix) * digit + (scaled_low div place) mod radix) mod radix"
+      by (rule mod_add_left_eq)
+    finally show ?thesis .
+  qed
+  have "?total mod (place * radix) =
+      place * (?total div place mod radix) + ?total mod place"
+    by (rule mod_mult2_eq)
+  also have "... =
+      place * (((gain mod radix) * digit + (scaled_low div place) mod radix) mod radix)
+        + scaled_low mod place"
+    by (simp only: lower upper reduced)
+  also have "... =
+      scaled_low mod place + place *
+        (((gain mod radix) * digit + (scaled_low div place) mod radix) mod radix)"
+    by (rule add.commute)
+  finally show ?thesis .
+qed
+
 lemma four_power_is_dyadic_bound:
   "(4::nat)^(2^t) = (2::nat)^(2^(Suc t))"
   by (simp add: power_mult power_Suc algebra_simps)
@@ -396,7 +461,7 @@ ML \<open>
     @{thms fermat_inner_square_step fermat_inner_temporal_power
       fermat_normalized_source_root_square
       fermat_source_tripling_progression fermat_outer_source_clock_advance
-      fermat_outer_source_clock_dyadic_successor
+      fermat_outer_source_clock_dyadic_successor fermat_source_tripling_position_transport
       four_power_is_dyadic_bound
       fermat_inner_source_bound mersenne_inner_trace_lower dyadic_bound_square
       mersenne_inner_trace_bound mersenne_inner_successor_gap

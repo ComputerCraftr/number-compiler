@@ -5,6 +5,18 @@ import pytest
 from devtools.checks import isabelle_oracle_audit
 
 
+def test_symbolic_release_audit_counts_only_the_checked_endpoint() -> None:
+    source = (
+        "ML \\<open>"
+        "Comma_Proof_Dependency_Audit.require_symbolic_closed_expected_paths "
+        '@{context} "symbolic release" ["typed_first_hit", "ordered_future", "writer"] '
+        "@{thms symbolic_global_release}\\<close>"
+    )
+    assert isabelle_oracle_audit.audited_theorems(source) == (
+        "symbolic_global_release",
+    )
+
+
 @pytest.mark.parametrize(
     "wrapper", ["(* {} *)", "(* outer (* {} *) *)", "text \\<open>{}\\<close>"]
 )

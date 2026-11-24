@@ -1,6 +1,7 @@
 """Source-authenticated inward temporal harmonics, not a prime predicate."""
 
 from collections.abc import Callable
+from dataclasses import replace
 from typing import cast
 
 import pytest
@@ -356,3 +357,19 @@ def test_harmonic_snapshot_rejects_mutable_enum_values() -> None:
 
     with pytest.raises(TypeError, match="unsupported value"):
         snapshot_harmonic_payload((MutableClock.DECIMAL,))
+
+
+@pytest.mark.parametrize(("radix", "depth"), ((2, 12), (10, 4)))
+def test_lean_phase_bank_keeps_exact_issued_ports(radix: int, depth: int) -> None:
+    full = demand_inward_temporal_phase_bank(radix, 31, depth)
+    lean = demand_inward_temporal_phase_bank(
+        radix, 31, depth, include_moore_periods=False
+    )
+    assert full.producer_verified and lean.producer_verified
+    assert any(point.moore_periods for point in full.positions)
+    assert lean.source_prefix == full.source_prefix
+    assert lean.carry_vector == full.carry_vector
+    assert lean.carry_h5 == full.carry_h5
+    assert lean.positions == tuple(
+        replace(point, moore_periods=None) for point in full.positions
+    )

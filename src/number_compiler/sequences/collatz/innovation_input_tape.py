@@ -565,6 +565,28 @@ class ParityProgramBuilder:
             odd_symbols=repetitions,
         )
 
+    def append_cyclic_row(self, admitted: object) -> None:
+        """Append an issued cyclic word as one repeated motif and a tail."""
+        from number_compiler.sequences.collatz.cyclic_abc_grammar import (
+            CyclicRowAdmission,
+        )
+
+        if type(admitted) is not CyclicRowAdmission:
+            raise TypeError("cyclic parity grammar requires an issued row")
+        admitted.require_issued()
+        row = admitted.guard.action
+        action = admitted.action
+        copies, tail = divmod(action.steps, len(row.word))
+        motif = tuple(int(bit) for bit in row.word)
+        specs: tuple[tuple[tuple[int, ...], int], ...] = ()
+        if copies:
+            specs += ((motif, copies),)
+        if tail:
+            specs += ((motif[:tail], 1),)
+        self._append_admitted(
+            admitted.source, admitted.endpoint, specs, odd_symbols=action.odds
+        )
+
     def append_boundary_macro(self, macro: object) -> None:
         from number_compiler.sequences.collatz.boundary_macros import (
             CollatzBoundaryMacro,

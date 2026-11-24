@@ -649,18 +649,11 @@ class MahlerJointFutureAction:
         residue = (-innovation * pow(p, -1, q)) % q
         if residue != 7 % q or innovation < 0:
             raise ValueError("admitted root action contradicts centered source seven")
-        # The authenticated centered source is 7.  Its first two emitted
-        # bits are both one (7 -> 11), whose chronological fractional guards
-        # have empty intersection.  Every longer guard is a subset of that
-        # prefix; computing further source occurrences cannot restore it.
-        if extent == 1:
-            guard = cls.bit(1).guard
-        else:
-            if residue % 4 != 3:
-                raise ValueError("root action lost its two-bit source prefix")
-            guard = cls.bit(1).then(cls.bit(1)).guard
-            if not guard.empty:
-                raise ArithmeticError("source-seven fractional prefix is not empty")
+        from number_compiler.sequences.antihydra.mahler_carry_quotient import (
+            root_guard_from_carry,
+        )
+
+        guard, _ = root_guard_from_carry(extent, innovation)
         result = cls.with_gain(
             extent,
             residue,
@@ -694,17 +687,16 @@ class MahlerJointFutureAction:
             after.gain * self.innovation + self.source_modulus * after.innovation
         )
         # The fractional map is increasing: t'=(3**a*t-Ja)/2**a.
-        pullback = (
-            Interval(
+        if self.guard.empty or after.guard.empty:
+            guard = Interval(_ZERO, _ZERO)
+        else:
+            pullback = Interval(
                 (Q(self.source_modulus) * after.guard.lower + Q(self.innovation))
                 / Q(self.gain),
                 (Q(self.source_modulus) * after.guard.upper + Q(self.innovation))
                 / Q(self.gain),
             )
-            if not after.guard.empty
-            else Interval(_ZERO, _ZERO)
-        )
-        guard = self.guard.intersect(pullback)
+            guard = self.guard.intersect(pullback)
         return MahlerJointFutureAction.with_gain(
             self.extent + after.extent,
             residue,

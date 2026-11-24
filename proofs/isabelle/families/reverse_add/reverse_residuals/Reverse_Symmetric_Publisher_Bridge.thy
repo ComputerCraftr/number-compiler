@@ -194,6 +194,110 @@ lemma reverse_q19_upper_loop_terminal_growth:
     carry_out incoming (rev pair_sums)"
   using reverse_q19_upper_loop_emits_source_and_terminal_growth by simp
 
+fun reverse_q19_pack_pairs :: "nat list \<Rightarrow> nat" where
+  "reverse_q19_pack_pairs [] = 0"
+| "reverse_q19_pack_pairs (digit # rest) =
+    digit + 64 * reverse_q19_pack_pairs rest"
+
+lemma reverse_q19_pack_pairs_append:
+  "reverse_q19_pack_pairs (first @ second) =
+    reverse_q19_pack_pairs first + 64 ^ length first * reverse_q19_pack_pairs second"
+  by (induction first) (simp_all add: power_Suc algebra_simps)
+
+theorem reverse_q19_repeated_pair_field:
+  "reverse_q19_pack_pairs (concat (replicate count motif) @ tail) =
+    ((\<lambda>suffix. reverse_q19_pack_pairs motif +
+      64 ^ length motif * suffix) ^^ count) (reverse_q19_pack_pairs tail)"
+proof (induction count)
+  case 0
+  then show ?case by simp
+next
+  case (Suc count)
+  then show ?case
+    by (simp add: reverse_q19_pack_pairs_append funpow_Suc_right)
+qed
+
+lemma reverse_q19_replicate_sum:
+  "reverse_q19_pack_pairs (concat (replicate count motif)) =
+    reverse_q19_pack_pairs motif * (\<Sum>i<count. (64 ^ length motif) ^ i)"
+proof (induction count)
+  case 0
+  then show ?case by simp
+next
+  case (Suc count)
+  have split:
+    "concat (replicate (Suc count) motif) =
+      concat (replicate count motif) @ motif"
+  proof -
+    have "replicate count motif @ [motif] = motif # replicate count motif"
+      by (rule replicate_append_same)
+    then have "concat (replicate count motif @ [motif]) =
+        concat (motif # replicate count motif)" by (rule arg_cong)
+    then show ?thesis by simp
+  qed
+  have reorder_power: "((64::nat) ^ count) ^ length motif =
+      (64 ^ length motif) ^ count"
+    by (simp only: power_mult[symmetric] mult.commute)
+  show ?case
+    using Suc.IH
+    by (simp only: split reverse_q19_pack_pairs_append)
+       (simp add: length_concat sum_list_replicate power_mult reorder_power algebra_simps)
+qed
+
+lemma reverse_q19_geometric_nat:
+  fixes a :: nat
+  assumes "1 < a"
+  shows "a - 1 > 0"
+    "(a - 1) * (\<Sum>i<count. a ^ i) = a ^ count - 1"
+  using assms by (induction count) (auto simp: power_Suc algebra_simps)
+
+theorem reverse_q19_concrete_repeat_quotient:
+  assumes "motif \<noteq> []"
+  shows "reverse_q19_pack_pairs (concat (replicate count motif) @ tail) =
+    reverse_q19_pack_pairs motif * ((64 ^ (length motif * count) - 1)
+      div (64 ^ length motif - 1)) +
+      64 ^ (length motif * count) * reverse_q19_pack_pairs tail"
+proof -
+  have positive: "0 < length motif" using assms by simp
+  have bound: "1 < (64::nat) ^ length motif"
+    by (rule one_less_power[OF _ positive]) simp
+  have divisor: "0 < 64 ^ length motif - (1::nat)"
+    by (rule reverse_q19_geometric_nat(1)[OF bound])
+  let ?base = "(64::nat) ^ length motif"
+  let ?sum = "(\<Sum>i<count. ?base ^ i)"
+  have product: "(?base - 1) * ?sum = ?base ^ count - 1"
+    by (rule reverse_q19_geometric_nat(2)[OF bound])
+  have geometric: "((64::nat) ^ (length motif * count) - 1) div
+      (?base - 1) = ?sum"
+  proof -
+    have "((64::nat) ^ (length motif * count) - 1) div (?base - 1) =
+        (?base ^ count - 1) div (?base - 1)"
+      by (simp only: power_mult)
+    also have "... = ((?base - 1) * ?sum) div (?base - 1)"
+      by (simp only: product)
+    also have "... = ?sum" using divisor by simp
+    finally show ?thesis .
+  qed
+  have width: "length (concat (replicate count motif)) = length motif * count"
+    by (simp add: length_concat sum_list_replicate mult.commute)
+  show ?thesis by (simp only: reverse_q19_pack_pairs_append reverse_q19_replicate_sum width geometric)
+qed
+
+theorem reverse_q19_h12_physical_landmark:
+  fixes step :: "'a \<Rightarrow> 'a"
+    and exponent :: nat
+  assumes "12 \<le> (2::nat) ^ exponent"
+  shows "(step ^^ ((2::nat) ^ exponent - 12)) ((step ^^ 12) source) =
+    (step ^^ ((2::nat) ^ exponent)) source"
+proof -
+  have "(step ^^ ((2::nat) ^ exponent - 12)) ((step ^^ 12) source) =
+      (step ^^ (((2::nat) ^ exponent - 12) + 12)) source"
+    by (simp only: funpow_add comp_apply)
+  also have "... = (step ^^ ((2::nat) ^ exponent)) source"
+    using assms by simp
+  finally show ?thesis .
+qed
+
 text \<open>The list-level model follows the right-to-left carry recurrence used
 by `_candidate_pairs`. Its scan theorem relates that modeled word and final
 carry to the abstract `emit` and `carry_out` definitions. This is a semantic
@@ -208,7 +312,9 @@ ML \<open>
     reverse_q19_emitted_growth_pair_matches_upper_source
     reverse_q19_upper_scan_is_emission_and_carry
     reverse_q19_upper_loop_emits_source_and_terminal_growth
-    reverse_q19_upper_loop_terminal_growth};
+    reverse_q19_upper_loop_terminal_growth reverse_q19_pack_pairs_append
+    reverse_q19_repeated_pair_field reverse_q19_concrete_repeat_quotient
+    reverse_q19_h12_physical_landmark};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Reverse Q19 symmetric publisher bridge depends on an oracle";
   val _ = if Thm_Deps.has_skip_proof checked

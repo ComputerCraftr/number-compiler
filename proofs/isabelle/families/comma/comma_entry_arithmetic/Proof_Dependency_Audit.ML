@@ -62,6 +62,25 @@ struct
   val native_paths =
     fuel_forest_paths @ candidate_paths @ structural_paths @ representation_paths
 
+  val symbolic_release_paths =
+    ["Comma_Continue_Frontier24_Source_Bridge",
+     "Comma_Continue_Image_Instance",
+     "comma_frontier_m204_bellman",
+     "comma_frontier_m204_weight",
+     "comma_frontier_m204_exact_stop_from_checked_bellman",
+     "comma_frontier_m204_exact_weight_from_checked_bellman",
+     "comma_phase_class_survival_lengths",
+     "comma_phase_class_survival_rank",
+     "comma_semantic_b1_action_b32_stop242",
+     "comma_future_m204_checked_rank",
+     "comma_future_m204_rank_native",
+     "comma_future_m204_source_rank_lift",
+     "comma_semantic_concrete_future_rank_check",
+     "comma_semantic_concrete_boundary_strong_occurrence_bridge",
+     "comma_python_first_terminal_walk",
+     "comma_python_writer_run",
+     "comma_python_boundary_indexed_macro_fields"]
+
   fun retired paths name =
     exists (fn path => String.isSubstring path name) paths
 
@@ -184,7 +203,7 @@ struct
   (* One-pass endpoint gate for release theorems that must be closed, depend
      on named semantic authorities, and avoid every retired production path.
      The proof-term graph and oracle closure are each traversed exactly once. *)
-  fun require_native_closed_expected_paths ctxt label expected thms =
+  fun require_closed_authorities paths ctxt label expected thms =
     let
       val thy = Proof_Context.theory_of ctxt
       val _ = if null expected then
@@ -196,10 +215,15 @@ struct
       val _ = check_hypotheses label thms
       val _ = check_premises label thms
       val actual = checked_names thy label thms
-      val _ = check_paths label native_paths actual
+      val _ = check_paths label paths actual
     in
       check_expected_names ctxt label expected actual
     end
+
+  val require_native_closed_expected_paths = require_closed_authorities native_paths
+
+  val require_symbolic_closed_expected_paths =
+    require_closed_authorities (native_paths @ symbolic_release_paths)
 
   fun audit_fuel_free_global ctxt label thms =
     require_paths ctxt label fuel_forest_paths thms

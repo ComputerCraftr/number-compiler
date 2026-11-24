@@ -617,6 +617,7 @@ def demand_three_power_bilateral_interior(
     max_work_units: int = 25_000_000,
     phase_binary_places: int | None = None,
     phase_decimal_places: int | None = None,
+    include_moore_periods: bool = True,
 ) -> ThreePowerBilateralInteriorQuotient:
     _validate_middle_windows_shape(binary_windows)
     _validate_middle_windows_shape(decimal_windows)
@@ -655,7 +656,12 @@ def demand_three_power_bilateral_interior(
         depth = min(places, border.source_digits - border.high_places)
         if depth < border.low_places:
             raise ValueError("no legal interior for the temporal bank")
-        bank = demand_inward_temporal_phase_bank(border.base, border.level, depth)
+        bank = demand_inward_temporal_phase_bank(
+            border.base,
+            border.level,
+            depth,
+            include_moore_periods=include_moore_periods,
+        )
         if bank.source_prefix % (border.base**border.low_places) != border.low_source:
             raise ArithmeticError("positional temporal bank contradicts the low border")
         combined = list(windows)
@@ -712,6 +718,7 @@ def demand_three_power_inward_phase_quotient(
     index: int,
     level: int,
     *,
+    include_moore_periods: bool = True,
     phase_binary_places: int = 64,
     phase_decimal_places: int = 6,
     binary_windows: tuple[tuple[int, int], ...] = (),
@@ -740,6 +747,7 @@ def demand_three_power_inward_phase_quotient(
         max_work_units=max_work_units,
         phase_binary_places=phase_binary_places,
         phase_decimal_places=phase_decimal_places,
+        include_moore_periods=include_moore_periods,
     )
 
 

@@ -37,7 +37,7 @@ if TYPE_CHECKING:
         ReverseAddTemporalRingBank,
     )
     from number_compiler.sequences.reverse_add.temporal_seed_morphism import (
-        Q19WordFiber,
+        Q19BandPortImage,
     )
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
@@ -184,7 +184,7 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
                 prefix + "-word-fibers", "observation_memo"
             )
             self.word_fiber_cache: OwnedMemo[
-                tuple[int, int, int], tuple[Q19WordFiber, tuple[object, ...]]
+                tuple[int, int, int], tuple[Q19BandPortImage, tuple[object, ...]]
             ] = OwnedMemo(
                 ledger, self.word_fiber_cache_owner, nodes_per_entry=32, evictable=True
             )

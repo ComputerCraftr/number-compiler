@@ -826,6 +826,7 @@ class CollatzPhysicalImageWorkspace(
                 include_width_spine=demand_width,
                 include_joint_cocycle=demand_joint,
                 include_innovation_tape=demand_innovation,
+                require_boundary_witness=demand_innovation,
                 require_mixed_prefix=require_mixed_prefix,
                 innovation_modulus=(
                     self._innovation_modulus if demand_innovation else None

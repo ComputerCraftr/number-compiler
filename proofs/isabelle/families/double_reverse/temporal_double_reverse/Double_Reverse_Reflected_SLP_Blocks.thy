@@ -107,6 +107,61 @@ proof -
       reflected_cell_overlap_iter of_nat_0 diff_zero)
 qed
 
+text \<open>The periodic block publisher retains both ordered inlets. Its
+phase cycle comes from the length of the certified finite repeated source;
+the remainder is a finite prefix of the same ordered ring.\<close>
+
+definition reflected_slp_pair_emit ::
+  "nat \<Rightarrow> nat \<Rightarrow> nat list \<Rightarrow> nat list \<Rightarrow> nat \<Rightarrow> nat" where
+  "reflected_slp_pair_emit m order previous current offset =
+    (let span = (2::nat)^order; inlet = previous @ current
+     in overlap_recursive order (\<lambda>current previous. reflected_H_cell m previous current)
+       (\<lambda>back. inlet ! (span+offset-back)) 0)"
+
+theorem reflected_slp_pair_emit_source:
+  assumes offset: "offset < (2::nat)^order"
+    and inlet: "double_reverse_source_slp_word
+      (reflected_slp_block_inlet source (int (block*2^order)-int (2^order))
+        (2*2^order)) = previous @ current"
+  shows "reflected_slp_pair_emit m order previous current offset =
+    reflected_cell_iter m (2^order)
+      (reflected_cell_at (double_reverse_source_slp_word source))
+      (int (block*2^order+offset))"
+proof -
+  have exact:
+    "overlap_recursive order (\<lambda>current previous. reflected_H_cell m previous current)
+      (\<lambda>back. double_reverse_source_slp_word
+        (reflected_slp_block_inlet source (int (block*2^order)-int (2^order))
+          (2*2^order)) ! (2^order+offset-back)) 0 =
+      reflected_cell_iter m (2^order)
+        (reflected_cell_at (double_reverse_source_slp_word source))
+        (int (block*2^order+offset))"
+    by (rule reflected_slp_block_output_exact[OF offset])
+  show ?thesis using exact inlet by (simp add: reflected_slp_pair_emit_def Let_def)
+qed
+
+lemma reflected_slp_block_phase_cycle:
+  assumes "0 < length motif"
+  shows "(phase + (block + double_reverse_source_phase_cycle (length motif) span) * span)
+      mod length motif = (phase + block * span) mod length motif"
+proof -
+  have zero: "(double_reverse_source_phase_cycle (length motif) span * span)
+      mod length motif = 0"
+    by (rule double_reverse_source_phase_cycle_annihilates[OF assms])
+  have remainder:
+    "(phase + block * span +
+       (double_reverse_source_phase_cycle (length motif) span * span)
+         mod length motif) mod length motif =
+      (phase + block * span) mod length motif"
+    by (simp add: zero)
+  have unreduced:
+    "(phase + block * span +
+       double_reverse_source_phase_cycle (length motif) span * span)
+       mod length motif = (phase + block * span) mod length motif"
+    using remainder by (simp only: mod_add_right_eq)
+  show ?thesis using unreduced by (simp only: add_mult_distrib add.assoc)
+qed
+
 lemma reflected_lsd_cells_decoded:
   "reflected_padded_source (reflected_lsd_digits_of_cells cells) (2*i) =
       reflected_padded_source cells i mod 10 \<and>
@@ -299,7 +354,9 @@ qed
 
 ML \<open>
   val checked = @{thms reflected_slp_block_inlet_exact reflected_cell_overlap_iter
-    reflected_slp_block_output_exact reflected_cell_iter_digits
+    reflected_slp_block_output_exact reflected_slp_pair_emit_source
+    reflected_slp_block_phase_cycle double_reverse_source_repeat_word_take double_reverse_adjacent_repeat
+    reflected_cell_iter_digits
     reflected_slp_stage_cell_exact reflected_slp_stage_cell_compiled reflected_slp_stage_word_compiled};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Reflected SLP block refinement depends on an oracle";

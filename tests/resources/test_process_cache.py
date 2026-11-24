@@ -12,6 +12,7 @@ from number_compiler.api.query_types import FermatTermQuery
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
+from number_compiler.resources.owned_memo import OwnedMemo
 from number_compiler.resources.ownership import audit_execution_ownership
 from number_compiler.resources.process_cache import (
     MISSING,
@@ -307,6 +308,123 @@ def test_lru_eviction_is_deterministic_and_never_evicts_a_leased_partition() -> 
     with cache.acquire("counts", "1", ("old",)) as old:
         assert old.get(("a",)) is MISSING
         assert old.get(("b",)) == 2
+
+
+@pytest.mark.parametrize("operation", ("read", "issued", "update", "replace"))
+def test_lru_refreshes_successful_access_before_eviction(operation: str) -> None:
+    cache = ProcessCache(max_entries=5, max_bytes=100_000)
+    issuer = object()
+    with cache.acquire("counts", "1", ("old",)) as old:
+        for key in ("a", "b", "c"):
+            if operation == "read":
+                assert old.put((key,), key)
+            else:
+                assert old.put_issued((key,), key, issuer)
+    with cache.acquire("counts", "1", ("old",)) as old:
+        if operation == "read":
+            assert old.get(("a",)) == "a"
+        elif operation == "issued":
+            assert old.get_issued(("a",), issuer) == "a"
+        elif operation == "update":
+            assert old.update_issued(("a",), issuer, lambda _: (MISSING, 7)) == (
+                None,
+                7,
+            )
+        else:
+            assert old.put_issued(("a",), "replacement", issuer)
+    with cache.acquire("counts", "1", ("new",)) as new:
+        assert new.put(("d",), 4)
+    with cache.acquire("counts", "1", ("old",)) as old:
+        if operation == "read":
+            assert old.get(("a",)) == "a"
+            assert old.get(("b",)) is MISSING
+            assert old.get(("c",)) == "c"
+        else:
+            assert old.get_issued(("a",), issuer) == (
+                "replacement" if operation == "replace" else "a"
+            )
+            assert old.get_issued(("b",), issuer) is MISSING
+            assert old.get_issued(("c",), issuer) == "c"
+    cache.reset()
+    assert cache.ledger.nodes == cache.ledger.entries == 0
+
+
+def test_nested_read_during_issued_update_preserves_outer_publication() -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    issuer = object()
+    with cache.acquire("counts", "1", ("source",)) as lease:
+        assert lease.put_issued(("a",), 1, issuer)
+        assert lease.put_issued(("b",), 3, issuer)
+
+        def update(value: object) -> tuple[ImmutableValue, str]:
+            assert value == 1
+            assert lease.get_issued(("a",), issuer) == 1
+            return 2, "updated"
+
+        assert lease.update_issued(("a",), issuer, update) == (True, "updated")
+        assert lease.get_issued(("a",), issuer) == 2
+
+
+def test_latest_record_hit_needs_no_store_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = ProcessCache(max_entries=8, max_bytes=100_000)
+    issuer = object()
+    with cache.acquire("counts", "1", ("source",)) as lease:
+        assert lease.put_issued(("a",), 1, issuer)
+
+        def forbidden(*_args: object, **_kwargs: object) -> None:
+            raise AssertionError("latest record does not need refreshing")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(OwnedMemo, "__setitem__", forbidden)
+            assert lease.get_issued(("a",), issuer) == 1
+            assert lease.update_issued(("a",), issuer, lambda _: (MISSING, 7)) == (
+                None,
+                7,
+            )
+
+
+@pytest.mark.parametrize("after_apply", (False, True))
+def test_failed_lru_refresh_preserves_prior_record_and_order(
+    after_apply: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cache = ProcessCache(max_entries=5, max_bytes=100_000)
+    with cache.acquire("counts", "1", ("old",)) as old:
+        for key in ("a", "b", "c"):
+            assert old.put((key,), key)
+    entry_owner = next(
+        item.owner
+        for item in cache.ledger.inventory()
+        if item.name == "process-cache-entries"
+    )
+    original = OwnedMemo[object, object].__setitem__
+    failed = False
+
+    def interrupt(memo: OwnedMemo[object, object], key: object, value: object) -> None:
+        nonlocal failed
+        if memo.owner == entry_owner and not failed:
+            failed = True
+            if after_apply:
+                original(memo, key, value)
+            raise RuntimeError("injected refresh failure")
+        original(memo, key, value)
+
+    with cache.acquire("counts", "1", ("old",)) as old:
+        before = cache.stats()
+        with monkeypatch.context() as patch:
+            patch.setattr(OwnedMemo, "__setitem__", interrupt)
+            with pytest.raises(RuntimeError, match="refresh failure"):
+                old.get(("a",))
+        assert cache.stats().hits == before.hits
+    with cache.acquire("counts", "1", ("new",)) as new:
+        assert new.put(("d",), 4)
+    with cache.acquire("counts", "1", ("old",)) as old:
+        assert old.get(("a",)) is MISSING
+        assert old.get(("b",)) == "b"
+        assert old.get(("c",)) == "c"
+    cache.reset()
+    assert cache.ledger.nodes == cache.ledger.entries == 0
 
 
 def test_all_pinned_capacity_refuses_publication_without_mutation() -> None:

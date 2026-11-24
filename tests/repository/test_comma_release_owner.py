@@ -37,6 +37,9 @@ def _release_owner_fixture(
     audit_compiler: bool,
     future_imports: str = "B1",
     production_source_override: str | None = None,
+    symbolic_authority: bool = True,
+    audit_theory_body: str = "",
+    bridge_body: str = "",
 ) -> None:
     proof_root = isabelle_root(root)
     comma = proof_root / "families" / "comma"
@@ -68,10 +71,24 @@ def _release_owner_fixture(
     resource_name = "renamed_action_resource.ML"
     (b1 / "B1.thy").write_text(audited_theory("B1", "Bridge"))
     production_ml_file = f'ML_file "{resource_name}"\n' if production_compiler else ""
-    (b1 / "Bridge.thy").write_text(audited_theory("Bridge", "Main", production_ml_file))
-    (future / "Future.thy").write_text(audited_theory("Future", future_imports))
+    (b1 / "Bridge.thy").write_text(
+        audited_theory("Bridge", "Main", production_ml_file + bridge_body)
+    )
+    future_body = (
+        "".join(
+            f'lemma {name}: "True" by simp\n'
+            for name in index.COMMA_SYMBOLIC_RELEASE_AUTHORITIES
+        )
+        if symbolic_authority
+        else ""
+    )
+    (future / "Future.thy").write_text(
+        audited_theory("Future", future_imports, future_body)
+    )
     audit_ml_file = 'ML_file "audit_action_resource.ML"\n' if audit_compiler else ""
-    (audit / "Audit.thy").write_text(audited_theory("Audit", "Main", audit_ml_file))
+    (audit / "Audit.thy").write_text(
+        audited_theory("Audit", "Main", audit_ml_file + audit_theory_body)
+    )
 
     action_source = """
 fun compile_program frame memo active env key program source =
@@ -240,3 +257,118 @@ def test_release_audit_requires_priority_replay_to_stay_outside_production(
         assert all("recursive CRT priority proof replay" in item for item in violations)
     else:
         assert not violations
+
+
+@pytest.mark.parametrize("reachable", (False, True))
+def test_symbolic_release_rejects_legacy_authority_through_theory_import(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reachable: bool
+) -> None:
+    legacy = 'lemma comma_frontier_m204_bellman_native: "True" by simp\n'
+    _release_owner_fixture(
+        tmp_path,
+        monkeypatch,
+        production_compiler=False,
+        audit_compiler=False,
+        audit_theory_body=legacy if not reachable else "",
+    )
+    if reachable:
+        comma = isabelle_root(tmp_path) / "families/comma"
+        bridge = comma / "b1/Bridge.thy"
+        bridge.write_text(
+            bridge.read_text().replace("imports Main", "imports Imported_Proof")
+        )
+        imported = (comma / "audit/Audit.thy").read_text()
+        (comma / "b1/Imported_Proof.thy").write_text(
+            imported.replace("theory Audit", "theory Imported_Proof")
+            .replace("audit_safe", "imported_safe")
+            .removesuffix("end\n")
+            + legacy
+            + "end\n"
+        )
+    gate = string_keyed_mapping(index.build_index()["comma_release_owner"])
+    assert gate is not None
+    assert gate["status"] == ("FAIL" if reachable else "PASS")
+    violations = gate["violations"]
+    assert _strings(violations)
+    assert (
+        any("Imported_Proof: retired release authority" in item for item in violations)
+        == reachable
+    )
+
+
+def test_symbolic_release_rejects_wrapped_rank_and_writer_dependencies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _release_owner_fixture(
+        tmp_path,
+        monkeypatch,
+        production_compiler=True,
+        audit_compiler=False,
+        production_source_override=(
+            "fun renamed_owner ctxt = Proof_Context.get_thm ctxt "
+            '"comma_future_m204_rank_native"\n'
+        ),
+        bridge_body=(
+            "lemmas renamed_writer = comma_python_first_terminal_walk_result_unique\n"
+            "text \\<open>Retired history: comma_finite_macro\\<close>\n"
+        ),
+    )
+    gate = string_keyed_mapping(index.build_index()["comma_release_owner"])
+    assert gate is not None
+    violations = gate["violations"]
+    assert _strings(violations)
+    assert any("comma_future_m204_rank_native" in item for item in violations)
+    assert any("comma_python_first_terminal_walk" in item for item in violations)
+    assert not any("comma_finite_macro" in item for item in violations)
+
+
+def test_symbolic_release_requires_concrete_authorities_in_production(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _release_owner_fixture(
+        tmp_path,
+        monkeypatch,
+        production_compiler=False,
+        audit_compiler=False,
+        symbolic_authority=False,
+        audit_theory_body='lemma comma_symbolic_writer_exact: "True" by simp\n',
+    )
+    gate = string_keyed_mapping(index.build_index()["comma_release_owner"])
+    assert gate is not None
+    assert gate["status"] == "FAIL"
+    violations = gate["violations"]
+    assert _strings(violations)
+    assert any(
+        "comma_symbolic_writer_exact: missing symbolic authority" in item
+        for item in violations
+    )
+
+
+def test_symbolic_release_recognizes_checked_ml_publication_bindings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    notes = "".join(
+        f'val (_,lthy) = Local_Theory.note ((Binding.name "{name}",[]),[fact]) lthy\n'
+        for name in index.COMMA_SYMBOLIC_RELEASE_AUTHORITIES
+    )
+    _release_owner_fixture(
+        tmp_path,
+        monkeypatch,
+        production_compiler=True,
+        audit_compiler=False,
+        symbolic_authority=False,
+        production_source_override=notes,
+        bridge_body=(
+            'ML \\<open>val retired = ["comma_frontier_m204_bellman_native"]\\<close>\n'
+        ),
+    )
+    gate = string_keyed_mapping(index.build_index()["comma_release_owner"])
+    assert gate is not None
+    assert gate["status"] == "PASS"
+
+
+@pytest.mark.validation
+def test_production_comma_release_uses_only_symbolic_authority() -> None:
+    gate = string_keyed_mapping(index.build_index()["comma_release_owner"])
+    assert gate is not None
+    assert gate["status"] == "PASS", gate["violations"]

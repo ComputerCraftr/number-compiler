@@ -242,6 +242,7 @@ def execute_collatz_temporal_run(
     include_width_spine: bool,
     include_joint_cocycle: bool,
     include_innovation_tape: bool,
+    require_boundary_witness: bool,
     require_mixed_prefix: bool,
     innovation_modulus: int | None,
     prefer_source_closed_d8: bool,
@@ -429,9 +430,11 @@ def execute_collatz_temporal_run(
             ledger=ledger,
             scratch=scratch,
             width_spine=width_spine,
+            joint_builder=joint_builder,
+            parity_builder=parity_builder,
             macros_present=macros is not None,
             require_mixed_prefix=require_mixed_prefix,
-            parity_requested=parity_builder is not None,
+            require_boundary_witness=require_boundary_witness,
         ):
             continue
 

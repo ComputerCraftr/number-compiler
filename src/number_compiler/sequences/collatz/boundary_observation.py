@@ -363,7 +363,10 @@ def observe_guarded_boundary(
         packet.update(
             borrow_scope="no executed boundary witness is certified",
             borrow_clock_status="unresolved",
-            status="complete" if global_tape is not None else "partial",
+            status="available" if global_tape is not None else "unknown",
+            normalized_tape_coverage="complete"
+            if global_tape is not None
+            else "partial",
         )
     else:
         from number_compiler.sequences.collatz.border_return_grammar import (

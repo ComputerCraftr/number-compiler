@@ -284,7 +284,7 @@ def test_seed_196_digit_band_uses_guarded_ports_and_exact_fallback_after_exit() 
     assert len(packet.trace) == 4
     assert packet.phase_coordinate is OrderedPhaseCoordinate.SOURCE_MOD45
     assert (packet.start_phase, packet.terminal_phase) == (25, 10)
-    assert packet.matrix_multiplications == 24
+    assert packet.matrix_multiplications == 16
     assert packet.source_letters_read == 12
     assert len(term.digit_band(4, 4, 97).matrices) == 1
 
@@ -440,3 +440,34 @@ def test_five_reverse_retries_scratch_release_after_initialization_failure(
     )
     assert (scratch.entries, scratch.nodes) == (0, 0)
     assert scratch.disposed
+
+
+@pytest.mark.parametrize("seed", [0, 6, 71, 196])
+@pytest.mark.parametrize("digit_width", [1, 2, 4])
+def test_digit_band_composes_lsd_first_physical_actions(
+    seed: int, digit_width: int
+) -> None:
+    from number_compiler.arithmetic.fields.ordered_matrix import Matrix2
+
+    steps = 4
+    modulus = 97
+    value = seed
+    expected = Matrix2.identity(modulus)
+    expected_trace: list[tuple[Matrix2]] = []
+    for _ in range(steps):
+        value = 5 * int(str(value)[::-1])
+        current = value
+        row = Matrix2.identity(modulus)
+        for _ in range(digit_width):
+            current, digit = divmod(current, 10)
+            letter = Matrix2.digit(digit + 1, modulus)
+            row = row.then(letter)
+            expected = expected.then(letter)
+        expected_trace.append((row,))
+
+    with FiveReverseTerm(seed, 0, max_steps=steps) as term:
+        packet = term.digit_band(steps, digit_width, modulus, trace=True)
+    assert packet.matrices == (expected,)
+    assert packet.trace == tuple(expected_trace)
+    assert packet.source_letters_read == steps * digit_width
+    assert packet.matrix_multiplications == steps * (digit_width + 1)
