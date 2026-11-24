@@ -123,9 +123,23 @@ def consume_source_cyclic_abc_row(
         or (control.include_innovation_tape and parity_builder is None)
         or macros_present
         or require_mixed_prefix
-        or require_boundary_witness
     ):
         return False
+
+    if require_boundary_witness:
+        # An innovation request may use the cyclic continuation only AFTER
+        # its first physical boundary macro was stamped by the original
+        # selector. Cyclic affine equality alone cannot issue that stamp.
+        stamp = control.first_boundary_stamp
+        macro = control.first_boundary_macro
+        if (
+            stamp is None
+            or macro is None
+            or not stamp.certifies(
+                control.seed, control.physical_ticks, stamp.occurrence, macro
+            )
+        ):
+            return False
 
     source = control.current
     ledger.bump(_keys.COLLATZ_CYCLIC_GRAMMAR_SOURCE_QUERIES)

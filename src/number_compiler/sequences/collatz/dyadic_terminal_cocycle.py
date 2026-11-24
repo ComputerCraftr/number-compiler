@@ -205,6 +205,13 @@ class DyadicTerminalFieldAction:
     )
     _word_issuer: object = field(default=None, init=False, repr=False, compare=False)
 
+    _cyclic_phase: tuple[str, int] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _issued_cyclic_phase: tuple[str, int] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+
     def __init__(
         self,
         steps: int,
@@ -217,6 +224,7 @@ class DyadicTerminalFieldAction:
         *,
         _issuer: object | None = None,
         _word_issuer: object | None = None,
+        _cyclic_phase: tuple[str, int] | None = None,
     ) -> None:
         if _issuer is not _FIELD_ACTION_ISSUER:
             raise TypeError("dyadic field actions must come from a checked producer")
@@ -232,6 +240,8 @@ class DyadicTerminalFieldAction:
             object.__setattr__(self, name, value)
         object.__setattr__(self, "_issuer", _FIELD_ACTION_ISSUER)
         object.__setattr__(self, "_word_issuer", _word_issuer)
+        object.__setattr__(self, "_cyclic_phase", _cyclic_phase)
+        object.__setattr__(self, "_issued_cyclic_phase", _cyclic_phase)
         object.__setattr__(
             self,
             "_issued_coefficients",
@@ -257,6 +267,8 @@ class DyadicTerminalFieldAction:
         sum_offset: int,
         previous_gain: int,
         previous_offset: int,
+        *,
+        cyclic_phase: tuple[str, int] | None = None,
     ) -> DyadicTerminalFieldAction:
         return cls(
             steps,
@@ -268,6 +280,7 @@ class DyadicTerminalFieldAction:
             previous_offset,
             _issuer=_FIELD_ACTION_ISSUER,
             _word_issuer=_FIELD_WORD_ISSUER,
+            _cyclic_phase=cyclic_phase,
         )
 
     @classmethod
@@ -299,6 +312,7 @@ class DyadicTerminalFieldAction:
             sum_offset,
             previous_gain,
             previous_offset,
+            cyclic_phase=(law.necklace.word, law.phase),
         )
 
     @classmethod
@@ -382,7 +396,15 @@ class DyadicTerminalFieldAction:
             self._issuer is _FIELD_ACTION_ISSUER
             and self._word_issuer is _FIELD_WORD_ISSUER
             and self._issued_coefficients == self.coefficient_snapshot()
+            and self._issued_cyclic_phase == self._cyclic_phase
         )
+
+    @property
+    def cyclic_phase(self) -> tuple[str, int] | None:
+        """Static source-law binding, issued only by a checked cyclic producer."""
+        if not self.producer_issued:
+            raise ValueError("cyclic field binding is not producer issued")
+        return self._cyclic_phase
 
     def coefficient_snapshot(self) -> tuple[int, ...]:
         """Return the exact affine fields for an outer publication seal."""
@@ -530,6 +552,11 @@ class DyadicTerminalFieldAction:
             else after.previous_gain * self.offset
             + left_denominator * after.previous_offset
         )
+        cyclic_phase = self._cyclic_phase
+        if cyclic_phase is not None:
+            word, phase = cyclic_phase
+            if after._cyclic_phase != (word, (phase + self.steps) % len(word)):
+                cyclic_phase = None
         return self._create(
             self.steps + after.steps,
             after.gain * self.gain,
@@ -540,6 +567,7 @@ class DyadicTerminalFieldAction:
             + left_denominator * after.sum_offset,
             previous_gain,
             previous_offset,
+            cyclic_phase=cyclic_phase,
         )
 
     def power(

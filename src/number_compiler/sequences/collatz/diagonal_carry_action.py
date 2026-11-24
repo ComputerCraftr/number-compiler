@@ -26,6 +26,7 @@ from number_compiler.sequences.collatz.dyadic_terminal_cocycle import (
 )
 
 if TYPE_CHECKING:
+    from number_compiler.sequences.collatz.cyclic_diagonal import CyclicDefectGuard
     from number_compiler.sequences.collatz.joint_temporal_action import (
         CollatzJointRunAction,
     )
@@ -137,6 +138,7 @@ class _DiagonalSeamCertificate:
     workspace_binding: tuple[object, ...]
     joint_payload: tuple[int, ...]
     action_coefficients: tuple[int, ...]
+    action_cyclic_phase: tuple[str, int] | None
     source: int
     normalized_endpoint: int
     physical_endpoint: int
@@ -227,6 +229,7 @@ class CollatzDiagonalSeam:
             workspace_binding,
             joint_payload,
             action.fields.coefficient_snapshot(),
+            action.fields.cyclic_phase,
             action.source,
             action.normalized_endpoint,
             action.endpoint,
@@ -320,6 +323,7 @@ class CollatzDiagonalSeam:
             or type(self._action) is not DyadicTerminalFieldAction
             or not self._action.producer_issued
             or self._action.coefficient_snapshot() != certificate.action_coefficients
+            or self._action.cyclic_phase != certificate.action_cyclic_phase
             or self._action.coefficient_snapshot()
             != (self.normalized_steps, *certificate.joint_payload[7:])
             or type(self.source) is not int
@@ -664,6 +668,76 @@ class CollatzDiagonalSeam:
         return CollatzWeightedLaurentDefect(
             moving_cut, defect, quotient, symmetric, antisymmetric
         )
+
+    def cyclic_moving_band(
+        self,
+        radix: int,
+        cut: int,
+        width: int,
+        *,
+        reserve_bits: Callable[[int], None],
+        max_width: int,
+        normalized_offset: int | None = None,
+    ) -> int:
+        """A binary or decimal band from the SAME issued cyclic joint action.
+
+        ``cut`` is in entry numerator coordinates; the physical cut is
+        ``cut - normalized_offset``. No new parity discovery is permitted.
+        """
+        self.require_issued()
+        _validate_query_width(max_width)
+        steps = (
+            self.normalized_steps if normalized_offset is None else normalized_offset
+        )
+        if (
+            type(steps) is not int
+            or not 0 <= steps <= self.normalized_steps
+            or type(radix) is not int
+            or radix not in (2, 10)
+            or type(cut) is not int
+            or cut < steps
+            or type(width) is not int
+            or not 1 <= width <= max_width
+            or cut - steps + width > max_width
+        ):
+            raise ValueError("cyclic moving band exceeds its precision demand")
+        _validate_event_span(cut + width)
+        phase = self._action.cyclic_phase
+        if phase is None:
+            raise ValueError("joint action has no issued cyclic Laurent binding")
+        reserve_bits(
+            16
+            * (
+                self.source.bit_length()
+                + 4 * (cut - steps + width)
+                + 4 * len(phase[0])
+                + 128
+            )
+        )
+        if steps == self.normalized_steps:
+            place: int = radix ** (cut - steps)
+            modulus: int = radix**width
+            return self.normalized_endpoint // place % modulus
+        guard = self._cyclic_guard()
+        assert guard is not None
+        return guard.rebased_state(steps, radix, cut - steps + width).band(
+            cut - steps, width
+        )
+
+    def _cyclic_guard(self) -> CyclicDefectGuard | None:
+        phase = self._action.cyclic_phase
+        if phase is None:
+            return None
+        from number_compiler.sequences.collatz.cyclic_diagonal import (
+            CyclicDefectGuard,
+            CyclicLaurentAction,
+        )
+
+        word, rotation = phase
+        law = CyclicLaurentAction.from_word(word).rotated(rotation)
+        guard = CyclicDefectGuard(law, self.source)
+        guard.require_steps(self.normalized_steps)
+        return guard
 
 
 def _validate_query_width(max_width: int) -> None:

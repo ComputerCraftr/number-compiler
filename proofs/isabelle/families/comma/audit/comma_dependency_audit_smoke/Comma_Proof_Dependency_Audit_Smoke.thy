@@ -28,6 +28,14 @@ lemma comma_dependency_smoke_retired_grandchild:
   "(0::nat) = 0"
   by (rule comma_total_macro_hidden)
 
+lemma comma_phase_class_survival_rank_hidden:
+  "(0::nat) = 0"
+  by (rule comma_dependency_smoke_atom)
+
+lemma comma_dependency_smoke_symbolic_wrapper:
+  "(0::nat) = 0"
+  by (rule comma_phase_class_survival_rank_hidden)
+
 lemma comma_dependency_smoke_open:
   assumes premise: "P"
   shows "(0::nat) = 0"
@@ -115,6 +123,24 @@ ML \<open>
         if String.isSubstring "retired production paths" message then ()
         else error "combined retired-path gate rejected for the wrong reason"
     | _ => error "combined retired-path gate missed a named grandchild")
+
+  val _ = Comma_Proof_Dependency_Audit.require_native_closed_expected_paths @{context}
+    "representation-only native dependency" ["comma_dependency_smoke_atom"]
+    @{thms comma_dependency_smoke_symbolic_wrapper}
+
+  val _ = Comma_Proof_Dependency_Audit.require_symbolic_closed_expected_paths @{context}
+    "positive symbolic dependency" ["comma_dependency_smoke_atom"]
+    @{thms comma_dependency_smoke_grandchild}
+
+  val retired_symbolic = Exn.capture (fn () =>
+    Comma_Proof_Dependency_Audit.require_symbolic_closed_expected_paths @{context}
+      "symbolic retired grandchild" ["comma_dependency_smoke_atom"]
+      @{thms comma_dependency_smoke_symbolic_wrapper}) ()
+  val _ = (case retired_symbolic of
+      Exn.Exn (ERROR message) =>
+        if String.isSubstring "retired production paths" message then ()
+        else error "symbolic dependency gate rejected for the wrong reason"
+    | _ => error "symbolic dependency gate missed a hidden rank theorem")
 
   val open_ok = Exn.capture (fn () =>
     Comma_Proof_Dependency_Audit.require_expected_paths @{context}

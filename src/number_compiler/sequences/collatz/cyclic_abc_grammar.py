@@ -18,6 +18,7 @@ from typing import Final
 from number_compiler.arithmetic.automata.affine_port_action import AffinePortAction
 from number_compiler.sequences.collatz.cyclic_diagonal import (
     CyclicDefectGuard,
+    CyclicDiagonalState,
     CyclicLaurentAction,
 )
 
@@ -314,6 +315,77 @@ class CyclicRowAdmission:
         assert self._guard is not None
         return self._guard
 
+    def _require_projection(self, steps: int) -> CyclicDefectGuard:
+        guard = self.guard
+        if type(steps) is not int or not 0 <= steps <= self.action.steps:
+            raise ValueError("cyclic projection exceeds certified admission")
+        return guard
+
+    def point_at(self, steps: int, *, reserve_bits: Callable[[int], None]) -> int:
+        guard = self._require_projection(steps)
+        if not callable(reserve_bits):
+            raise TypeError("cyclic projection requires a scratch owner")
+        reserve_bits(8 * (self.source.bit_length() + 4 * steps + 128))
+        if steps == self.action.steps:
+            return self.endpoint
+        return guard.point(steps, 3 ** guard.action.odds(steps))[0]
+
+    def diagonal_state(
+        self,
+        steps: int,
+        radix: int,
+        precision: int,
+        *,
+        reserve_bits: Callable[[int], None],
+    ) -> CyclicDiagonalState:
+        guard = self._require_projection(steps)
+        if (
+            not callable(reserve_bits)
+            or type(precision) is not int
+            or precision < 0
+            or type(radix) is not int
+            or radix not in (2, 10)
+        ):
+            raise ValueError(
+                "diagonal projection requires radix, precision and scratch owner"
+            )
+        reserve_bits(
+            16
+            * (self.source.bit_length() + 4 * precision + len(guard.action.word) + 128)
+        )
+        return guard.state(steps, radix, precision)
+
+    def projected_upper_action(
+        self,
+        steps: int,
+        radix: int,
+        cut: int,
+        width: int,
+        *,
+        reserve_bits: Callable[[int], None],
+    ) -> AffinePortAction:
+        guard = self._require_projection(steps)
+        if (
+            not callable(reserve_bits)
+            or type(cut) is not int
+            or cut < steps
+            or type(width) is not int
+            or width < 1
+            or type(radix) is not int
+            or radix not in (2, 10)
+        ):
+            raise ValueError("moving cut requires a guarded seam and precision owner")
+        reserve_bits(
+            16
+            * (
+                4 * self.source.bit_length()
+                + 4 * (cut - steps + width)
+                + 4 * len(guard.action.necklace.word)
+                + 128
+            )
+        )
+        return guard.upper_response(steps, radix, cut, width)
+
     @property
     def endpoint(self) -> int:
         self.require_issued()
@@ -323,7 +395,7 @@ class CyclicRowAdmission:
     @property
     def suffix_phase(self) -> int:
         self.require_issued()
-        return self.action.steps % len(self.row.word)
+        return self.action.steps % len(self.guard.action.necklace.word)
 
     @property
     def canonical_action_id(self) -> tuple[str, str, int]:

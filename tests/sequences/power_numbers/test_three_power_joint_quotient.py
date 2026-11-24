@@ -263,7 +263,7 @@ def test_joint_source_authenticity_and_terminal_fail_closed() -> None:
         changes: dict[str, object] = {"walsh64": replace(f4.walsh64, source_bits=0)}
         unchecked_replace = cast(Callable[..., object], replace)
         unchecked_replace(f4, **changes)
-    for n in (4, 5):
+    for n in (4, 6):
         certificate = fermat_depth_certificate(n)
         assert certificate.status == "unknown"
         assert certificate.specialization_raw_squarings == 0

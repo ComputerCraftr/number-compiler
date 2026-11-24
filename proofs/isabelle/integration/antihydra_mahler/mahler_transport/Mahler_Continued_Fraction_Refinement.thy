@@ -1,7 +1,10 @@
 theory Mahler_Continued_Fraction_Refinement
   imports Mahler_Joint_Quotient_Algebra
     "Shared_Carry_Dynamics.Ordered_Matrix_Program_Algebra"
+    "HOL.Bit_Operations"
 begin
+
+unbundle bit_operations_syntax
 
 text \<open>A finite ×5 source band is projected from one dyadic lift. The
 source admits no temporal extension merely from a matching output digit.\<close>
@@ -140,6 +143,54 @@ proof -
   have "(source mod (divisor*factor)) div divisor = (source div divisor) mod factor"
     using positive by (simp add: mod_mult2_eq)
   then show ?thesis using mod_mod_cancel[OF divides, of "source div divisor"] by simp
+qed
+
+lemma mahler_cf_overlap_bit_filter:
+  fixes q shifted :: nat
+  assumes ordered: "shifted \<le> q"
+    and bits: "((q XOR shifted) AND (2^m - 1)) = 0"
+    and upper: "((q - shifted) div 2^m) mod odd_part = 0"
+  shows "q mod (2^m * odd_part) = shifted mod (2^m * odd_part)"
+proof -
+  have mask:
+    "((q XOR shifted) AND (2^m - 1)) = take_bit m (q XOR shifted)"
+    by (simp add: take_bit_eq_mask mask_eq_exp_minus_1)
+  have xor_zero: "take_bit m q XOR take_bit m shifted = 0"
+    using bits mask by simp
+  have same: "take_bit m q = take_bit m shifted"
+    using xor_zero by (auto simp: bit_eq_iff bit_simps)
+  have low: "q mod 2^m = shifted mod 2^m"
+    using same by (simp add: take_bit_eq_mod)
+  have dvd: "2^m dvd q - shifted"
+    using low ordered by (simp add: mod_eq_dvd_iff_nat)
+  then obtain k where diff: "q-shifted = 2^m*k"
+    by (auto simp: dvd_def)
+  have k: "k mod odd_part = 0" using upper diff by simp
+  then obtain j where factor: "k = odd_part*j"
+    by (auto simp: dvd_eq_mod_eq_0 dvd_def)
+  have decomposed: "q = shifted + (q-shifted)"
+    using ordered by simp
+  have "q = shifted + (2^m * odd_part)*j"
+    using decomposed diff factor by (simp add: algebra_simps)
+  then show ?thesis by simp
+qed
+
+theorem mahler_cf_detected_dyadic_period:
+  fixes q width rows period m shifted :: nat
+  defines "m \<equiv> rows - period - 1 + width"
+    and "shifted \<equiv> q div 2^period"
+  assumes bits: "((q XOR shifted) AND (2^m - 1)) = 0"
+    and upper: "((q - shifted) div 2^m) mod 5^width = 0"
+  shows "q mod (10^width * 2^(rows-period-1)) =
+    shifted mod (10^width * 2^(rows-period-1))"
+proof -
+  have order: "shifted \<le> q" unfolding shifted_def by simp
+  have equal: "q mod (2^m * 5^width) = shifted mod (2^m * 5^width)"
+    by (rule mahler_cf_overlap_bit_filter[OF order bits upper])
+  have ring: "(2::nat)^m * 5^width = 10^width * 2^(rows-period-1)"
+    unfolding m_def
+    by (simp add: power_add mahler_cf_ten_power mult.assoc mult.commute mult.left_commute)
+  show ?thesis using equal by (simp only: ring)
 qed
 
 lemma mahler_cf_period_observations:
@@ -704,6 +755,48 @@ lemma mahler_cf_integer_tail_from_word:
   by (simp only: mahler_cf_natural_word_to_integer mahler_cf_integer_word_append
       ordered_matrix2_multiply_associative[symmetric] ordered_matrix2_identity_left)
 
+theorem mahler_cf_integer_rotate_from_prefix:
+  assumes width: "length left = width"
+  shows "ordered_matrix2_multiply
+      (ordered_matrix2_multiply
+        (mahler_cf_integer_adjugate width
+          (mahler_cf_matrix_to_integer (mahler_cf_word left)))
+        (mahler_cf_matrix_to_integer (mahler_cf_word (left @ right))))
+      (mahler_cf_matrix_to_integer (mahler_cf_word left)) =
+    mahler_cf_matrix_to_integer (mahler_cf_word (right @ left))"
+  using mahler_cf_integer_tail_from_word[OF width]
+  by (simp only: mahler_cf_natural_word_to_integer mahler_cf_integer_word_append)
+
+theorem mahler_cf_integer_rotated_power:
+  assumes width: "length left = width"
+  shows "ordered_matrix2_multiply
+      (ordered_matrix2_multiply
+        (mahler_cf_integer_adjugate width (mahler_cf_integer_word left))
+        (ordered_matrix2_power (mahler_cf_integer_word (left @ right)) copies))
+      (mahler_cf_integer_word left) =
+    ordered_matrix2_power (mahler_cf_integer_word (right @ left)) copies"
+proof (induction copies)
+  case 0
+  show ?case using mahler_cf_integer_adjugate_inverse_left[OF width] by simp
+next
+  case (Suc n)
+  let ?I = "mahler_cf_integer_adjugate width (mahler_cf_integer_word left)"
+  let ?U = "mahler_cf_integer_word left"
+  let ?V = "mahler_cf_integer_word right"
+  let ?P = "ordered_matrix2_power (ordered_matrix2_multiply ?U ?V) n"
+  have regroup:
+    "ordered_matrix2_multiply
+        (ordered_matrix2_multiply ?I
+          (ordered_matrix2_multiply ?P (ordered_matrix2_multiply ?U ?V))) ?U =
+      ordered_matrix2_multiply
+        (ordered_matrix2_multiply (ordered_matrix2_multiply ?I ?P) ?U)
+        (ordered_matrix2_multiply ?V ?U)"
+    by (simp only: ordered_matrix2_multiply_associative)
+  show ?case
+    using Suc.IH
+    by (simp only: ordered_matrix2_power.simps mahler_cf_integer_word_append regroup)
+qed
+
 definition mahler_cf_moving_cut_word :: "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat list" where
   "mahler_cf_moving_cut_word q width rows = concat (map (\<lambda>t.
     mahler_cf_decimal_digits width ((q div 2^t) mod 10^width)) [0..<rows])"
@@ -810,12 +903,14 @@ ML \<open>
     mahler_cf_lifted_source_row mahler_cf_physical_row
     mahler_cf_significant_last_cut mahler_cf_last_cut_covers_all_rows
     mahler_cf_left_child_row mahler_cf_right_child_row mahler_cf_band_split_consumer
+    mahler_cf_overlap_bit_filter mahler_cf_detected_dyadic_period
     mahler_cf_period_observations
     mahler_cf_word_append mahler_cf_word_repeat mahler_cf_periodic_band_power
     mahler_cf_rotated_source_period
     mahler_cf_lifted_word_consumer
     mahler_cf_band_selected_source_refinement
     mahler_cf_integer_word_determinant mahler_cf_integer_adjugate_inverse_left
+    mahler_cf_integer_rotate_from_prefix mahler_cf_integer_rotated_power
     mahler_cf_moving_cut_source_transport mahler_cf_moving_cut_source_prepend};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Mahler CF refinement depends on an oracle";

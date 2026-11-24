@@ -406,6 +406,25 @@ and the terminal event directly from the exact source. They do not claim
 that the odd-macro selector is complete or that a source action transports
 to another source.\<close>
 
+theorem antihydra_source_cylinder_action_consumer:
+  fixes h span :: nat
+  defines "action \<equiv> antihydra_arithmetic_block h span"
+  shows "(2::int)^span * int (antihydra_family_orbit h span) =
+      (3::int)^span * int h + sk_J action"
+    "sk_delta action = antihydra_family_balance h 0 span"
+    "sk_minprefix action = antihydra_family_minimum h 0 span"
+proof -
+  show "(2::int)^span * int (antihydra_family_orbit h span) =
+      (3::int)^span * int h + sk_J action"
+    using antihydra_arithmetic_block_skew_application[of h span]
+    by (simp add: action_def antihydra_arithmetic_block_def
+        skew_numerator_def algebra_simps)
+  show "sk_delta action = antihydra_family_balance h 0 span"
+    and "sk_minprefix action = antihydra_family_minimum h 0 span"
+    using antihydra_arithmetic_block_ledger_projection[of h span]
+    by (simp_all add: action_def)
+qed
+
 ML \<open>
   val checked = @{thms antihydra_family_orbit_cylinder_transport
     antihydra_family_bits_cylinder_transport
@@ -417,7 +436,8 @@ ML \<open>
     antihydra_even_terminal_run_word_exact
     antihydra_source_selected_odd_zero_run
     antihydra_source_selected_even_terminal_run
-    antihydra_source_zero_fixed_run};
+    antihydra_source_zero_fixed_run
+    antihydra_source_cylinder_action_consumer};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Antihydra valuation-run refinement depends on an oracle";
   val _ = if Thm_Deps.has_skip_proof checked

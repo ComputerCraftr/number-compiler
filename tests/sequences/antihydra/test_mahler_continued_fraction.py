@@ -112,7 +112,7 @@ def test_bands_match_independent_decimal_powers() -> None:
             assert result["matrix"] == expected
 
 
-def test_short_and_multicolumn_bands_use_exact_fallback(
+def test_short_and_multicolumn_nonperiodic_bands(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def forbidden(_matrix: Matrix2, _count: int) -> Matrix2:
@@ -208,7 +208,7 @@ def test_wide_split_preserves_direct_admission(
         else:
             result = continued_fraction_band(1530, 32, 16, 64, ledger=ledger)
             assert result["matrix"] == literal_band_matrix(1530, 32, 16, 64)
-            assert len(attempts) > 3
+            assert len(attempts) == 2
     cache.reset()
     assert ledger.nodes == ledger.entries == 0
 
@@ -222,7 +222,7 @@ def test_interrupted_balanced_fold_releases_scratch(
     def fail(matrix: Matrix2, right: Matrix2) -> Matrix2:
         nonlocal calls
         calls += 1
-        if calls == 20:
+        if calls == 2:
             raise RuntimeError("interrupted ordered fold")
         return original(matrix, right)
 

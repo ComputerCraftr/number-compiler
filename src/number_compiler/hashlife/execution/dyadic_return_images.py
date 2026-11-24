@@ -372,6 +372,12 @@ class DyadicReturnImageWorkspace(
         """Offer an exact bounded family fold for a nonretained child."""
         return None
 
+    def transient_powered_effect(
+        self, width: int, residue: int
+    ) -> DyadicReturnSupportRecord | None:
+        """Offer a source-admitted action before opening a nonretained subtree."""
+        return None
+
     def retain_chronological_support(self) -> bool:
         """Whether complete composite publication retains its support tree."""
         return True
@@ -455,10 +461,8 @@ class DyadicReturnImageWorkspace(
     ) -> SourceImageCandidate | None:
         """Compress a directly admitted exact singleton cycle.
 
-        This hook deliberately accepts only an exact source already equal to a
-        pinned cycle state. Prefix discovery belongs to the normal scheduler
-        leaves; this hook never re-enters the scheduler or infers a cycle from
-        a residue class.
+        Accept only an exact pinned cycle state. Prefix discovery stays in the
+        scheduler. A residue class cannot authorize a cycle.
         """
         cycle = self.law.cycle
         if cycle is None or type(action) is not DyadicReturnActionID:

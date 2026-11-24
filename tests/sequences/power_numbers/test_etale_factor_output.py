@@ -145,7 +145,7 @@ def test_no_split_is_cached_without_becoming_a_prime_certificate(
     )
 
 
-@pytest.mark.parametrize("family,parameter", [("fermat", 5), ("mersenne", 11)])
+@pytest.mark.parametrize("family,parameter", [("fermat", 6), ("mersenne", 11)])
 def test_factor_enriches_cached_primality_without_terminal_reconstruction(
     family: str, parameter: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -204,3 +204,59 @@ def test_factor_reuse_respects_terminal_policy(monkeypatch: pytest.MonkeyPatch) 
         compiler.resolve_special_theorem("mersenne", 13, collect_etale_factor=True)
     assert called == [True]
     monkeypatch.setattr(theorem_query, "resolve_special_theorem", original)
+
+
+@pytest.mark.parametrize("factor_first", [False, True])
+def test_signed_fermat_factor_retains_authority_across_demands(
+    factor_first: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from number_compiler.sequences.power_numbers import (
+        certificate,
+        etale_factor,
+        theorem_query,
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("signed Fermat factor opened a terminal or étale replay")
+
+    monkeypatch.setattr(certificate, "terminal_threshold_probe", forbidden)
+    monkeypatch.setattr(
+        etale_factor, "fermat_additive_etale_frobenius_probe", forbidden
+    )
+    compiler = CanonicalSequenceCompiler()
+    first = compiler.resolve_special_theorem(
+        "fermat", 5, collect_etale_factor=factor_first, max_factor_products=0
+    )
+    monkeypatch.setattr(theorem_query, "resolve_special_theorem", forbidden)
+    second = compiler.resolve_special_theorem(
+        "fermat", 5, collect_etale_factor=not factor_first, max_factor_products=0
+    )
+    plain, factor = (second, first) if factor_first else (first, second)
+    assert plain.primality is factor.primality
+    assert plain.primality is not None and plain.primality.status == "composite"
+    witness = factor.factor_witness
+    assert witness == 641 and plain.factor_witness == witness
+    assert plain.factor_query_status == "not-requested"
+    assert factor.factor_query_status == "available"
+    assert factor.etale_ring_multiplications == 0
+    assert ((1 << 32) + 1) % witness == 0
+
+
+@pytest.mark.parametrize("forged", [643, 6700417])
+def test_fermat_factor_reuse_checks_policy_budget_and_witness(forged: int) -> None:
+    compiler = CanonicalSequenceCompiler()
+    assert not compiler.resolve_special_theorem(
+        "fermat", 5, use_terminal_certificate=False
+    ).decided
+    base = compiler.resolve_special_theorem("fermat", 5)
+    assert base.factor_witness == 641 and base.primality is not None
+    restricted = compiler.resolve_special_theorem(
+        "fermat", 5, use_terminal_certificate=False, collect_etale_factor=False
+    )
+    assert restricted.primality is None and restricted.factor_witness is None
+    with pytest.raises(ValueError, match="candidate exceeds"):
+        compiler.resolve_special_theorem("fermat", 5, max_candidate_bits=32)
+    object.__setattr__(base.primality, "factor_witness", forged)
+    object.__setattr__(base, "factor_witness", forged)
+    with pytest.raises(ValueError, match="invalid cached Fermat terminal factor"):
+        compiler.resolve_special_theorem("fermat", 5, collect_etale_factor=True)

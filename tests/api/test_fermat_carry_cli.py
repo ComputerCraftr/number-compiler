@@ -1,4 +1,4 @@
-"""Fermat's optional carry tape cannot decide its unresolved prime bit."""
+"""Fermat's optional carry tape does not supply primality authority."""
 
 import json
 
@@ -23,7 +23,7 @@ def test_fermat_ordered_carry_is_explicit_and_nondeciding(
         "--format",
         "json",
     ]
-    assert main(arguments + ["--ordered-carry-windows"]) == 3
+    assert main(arguments + ["--ordered-carry-windows"]) == 0
     demanded = json.loads(capsys.readouterr().out)["info"]["number-theory.primality"]
     packet = demanded["ordered_carry_windows"]
     assert packet["primality_authority"] is False
@@ -39,10 +39,12 @@ def test_fermat_ordered_carry_is_explicit_and_nondeciding(
         raise AssertionError("ordinary primality query demanded carry tape")
 
     monkeypatch.setattr(observer, "fermat_carry_packet", forbidden)
-    assert main(arguments) == 3
+    assert main(arguments) == 0
     ordinary = json.loads(capsys.readouterr().out)["info"]["number-theory.primality"]
     assert "ordered_carry_windows" not in ordinary
-    assert demanded["status"] == ordinary["status"]
+    assert demanded["status"] == ordinary["status"] == "composite"
+    assert demanded["factor_witness"] == ordinary["factor_witness"] == 641
+    assert ordinary["factor_proof"] == "fermat-binomial-signed-factor"
 
 
 @pytest.mark.parametrize(

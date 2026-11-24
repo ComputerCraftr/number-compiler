@@ -191,37 +191,22 @@ def _band_action(
     modulus = 1 << (cut + rows - 1)
     quotient = base * int.__pow__(5, exponent - cut, modulus) >> cut
 
-    first_place = 10 ** (width - 1)
+    def reserve_action(_q: int, _count: int, retained_bits: int) -> None:
+        # The direct admission bound already covers disjoint pending children
+        # and their ordered products. Charge only additional retained motifs.
+        scratch.require_bits(direct_bits + retained_bits)
 
-    wide_split = exponent >= 1024 and rows >= 6 and width >= 16 and rows * width >= 1024
-    if wide_split:
-        # Preserve the existing exact admission before trying the split.
-        scratch.require_bits(direct_bits)
-        # The root dominates both child quotient widths and their output
-        # lengths. Admit the complete split before constructing a child.
-        root_bits = 16 * (3 * exponent + cut + rows + 4 * width + 128)
-        root_bits += 32 * (quotient.bit_length() + 8 * rows * width + 512)
-        try:
-            scratch.require_bits(root_bits)
-        except BlockContextBudgetExceeded:
-            wide_split = False
-    if (width != 1 and not wide_split) or exponent < 1024 or rows < 6:
-        # Reading each row directly from the admitted lift avoids node
-        # and repeat-probe overhead on short or multi-column workloads.
-        scratch.require_bits(direct_bits)
-        source = quotient
-        product = Matrix2.identity()
-        for _ in range(rows):
-            product = fold_fixed_decimal_row(source % base, first_place, product)
-            source >>= 1
-        return quotient, product, False
-
-    def reserve_node(q: int, count: int, retained_bits: int) -> None:
-        reserve = 16 * (3 * exponent + cut + rows + 4 * width + 128)
-        reserve += 32 * (q.bit_length() + 8 * count * width + 512)
-        scratch.require_bits(reserve + retained_bits)
-
-    product = compile_dyadic_ordered_band(
-        quotient, rows, width, reserve_node, use_memo=shared_cache and width == 1
-    )
+    memo = shared_cache and width == 1
+    try:
+        product = compile_dyadic_ordered_band(
+            quotient, rows, width, reserve_action, use_memo=memo
+        )
+    except BlockContextBudgetExceeded:
+        if not memo:
+            raise
+        # Optional memo admission must not reject a previously feasible
+        # exact action. Retry before opening any children, without memo.
+        product = compile_dyadic_ordered_band(
+            quotient, rows, width, reserve_action, use_memo=False
+        )
     return quotient, product, False

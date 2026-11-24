@@ -62,10 +62,8 @@ if TYPE_CHECKING:
 ANTIHYDRA_ARITHMETIC_SEMANTIC_VERSION: Final[str] = (
     "antihydra-arithmetic-source-image-v2-dyadic"
 )
-_REPEAT_ATOM_STEPS: Final[int] = 8
 _SHORT_REPEAT_ATOM_STEPS: Final[int] = 4
 _REPEAT_MIN_COPIES: Final[int] = 3
-
 ANTIHYDRA_ARITHMETIC_LAW = DyadicReturnLaw(
     family="antihydra-arithmetic-source-image",
     semantic_version=ANTIHYDRA_ARITHMETIC_SEMANTIC_VERSION,
@@ -254,6 +252,56 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         self.bump_metric("temporal_run_actions")
         self.bump_metric("temporal_run_operand_bits", length.bit_length())
 
+    def transient_powered_effect(
+        self, width: int, residue: int
+    ) -> DyadicReturnSupportRecord | None:
+        """Admit a majority cyclic cylinder before opening its descendants."""
+        if not 12 <= width <= MAX_MAHLER_SOURCE_EXTENT or residue <= 1:
+            return None
+        centered_low = (residue - 1) & ((1 << 12) - 1)
+        if centered_low in (0, (1 << 12) - 1):
+            return None
+        from number_compiler.sequences.antihydra.mahler_transient_carry_sheet import (
+            select_repeat_response,
+        )
+
+        selected = select_repeat_response(residue, width)
+        if selected is None:
+            return None
+        self.validate_law()
+        scratch = RunArithmeticWorkspace.for_ledger(
+            self.ledger, f"{self.counter_prefix}-transient-power"
+        )
+        with scratch.scope() as work:
+            try:
+                work.require_bits(8 * (6 * width + 128))
+            except BlockContextBudgetExceeded:
+                return None
+            length, delta, minimum, odd_steps, centered = self._evaluate_repeat(
+                residue, width, selected, work
+            )
+            if length < (width + 1) // 2:
+                return None
+            denominator = 1 << length
+            gain = 3**length
+            offset = denominator * (centered + 1) - gain * residue
+            self.bump_metric("finite_block_lookups")
+            self.bump_metric("finite_block_misses")
+            self.bump_metric("finite_block_cold_atoms")
+            self.bump_metric("transient_leaf_steps", length)
+            return DyadicReturnSupportRecord(
+                length,
+                residue & (denominator - 1),
+                SkewTransfer(gain, offset, denominator),
+                odd_steps,
+                delta,
+                minimum,
+                None,
+                None,
+                None,
+                True,
+            )
+
     def transient_leaf_effect(
         self, width: int, residue: int
     ) -> DyadicReturnSupportRecord | None:
@@ -261,7 +309,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         from number_compiler.sequences.antihydra.mahler_transient_carry_sheet import (
             LEAF_BITS,
             LEAF_GAIN,
-            eight_step_carry_sheet,
+            physical_carry_sheet,
         )
 
         self.validate_law()
@@ -305,7 +353,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                     length, delta, minimum, odd_steps, centered = repeated
                     h = centered + 1
                     remaining -= length
-            sheet = eight_step_carry_sheet() if remaining >= LEAF_BITS else ()
+            sheet = physical_carry_sheet(LEAF_BITS) if remaining >= LEAF_BITS else ()
             while remaining >= LEAF_BITS:
                 correction, local_delta, local_minimum, local_odd = sheet[h & 255]
                 prior_bits = h.bit_length()
@@ -646,6 +694,24 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         if operand_bits:
             self.bump_metric("temporal_odd_macro_selector_operand_bits", operand_bits)
 
+    def _evaluate_repeat(
+        self,
+        h: int,
+        width: int,
+        selected: tuple[int, int, int, int, int],
+        scratch: RunArithmeticWorkspace,
+    ) -> tuple[int, int, int, int, int]:
+        from number_compiler.sequences.antihydra.mahler_transient_carry_sheet import (
+            evaluate_repeat_response,
+        )
+
+        result, operand_bits = evaluate_repeat_response(
+            h, width, selected, scratch.require_bits
+        )
+        self.bump_metric("temporal_run_actions")
+        self.bump_metric("temporal_run_operand_bits", operand_bits)
+        return result
+
     def punctured_steps(
         self,
         h: int,
@@ -666,92 +732,29 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
         """
         d = self._centered_source(h, scratch)
         remaining = width
-        # One source probe supplies the four-step prefix and the eight-step
-        # action. A short phase is admitted from that same physical prefix.
-        if d and remaining >= _SHORT_REPEAT_ATOM_STEPS * _REPEAT_MIN_COPIES:
-            atom_steps = (
-                _REPEAT_ATOM_STEPS
-                if remaining >= _REPEAT_ATOM_STEPS * _REPEAT_MIN_COPIES
-                else _SHORT_REPEAT_ATOM_STEPS
+        # A homogeneous inlet already has a closed valuation action (and
+        # possibly one puncture). Do not choose a repeated mixed-row atom
+        # ahead of that larger symbolic action or build its carry sheet.
+        repeat_floor = _SHORT_REPEAT_ATOM_STEPS * _REPEAT_MIN_COPIES
+        homogeneous_mask = (1 << repeat_floor) - 1
+        homogeneous = (
+            bool(d)
+            and remaining >= repeat_floor
+            and (not (d & homogeneous_mask) or not ((d + 1) & homogeneous_mask))
+        )
+        if d and remaining >= repeat_floor and not homogeneous:
+            from number_compiler.sequences.antihydra.mahler_transient_carry_sheet import (
+                select_repeat_response,
             )
-            probe_width = atom_steps * _REPEAT_MIN_COPIES
-            start = d & ((1 << probe_width) - 1)
-            probe = start
-            block_delta = block_minimum = block_odd = 0
-            probe_bits = 0
-            short_phase: tuple[int, int, int, int] | None = None
-            for position in range(atom_steps):
-                probe_bits += probe.bit_length()
-                parity = probe & 1
-                probe = (3 * probe + parity) >> 1
-                block_delta += 2 if parity else -1
-                block_minimum = min(block_minimum, block_delta)
-                block_odd += 1 - parity
-                if position + 1 == _SHORT_REPEAT_ATOM_STEPS:
-                    short_phase = (probe, block_delta, block_minimum, block_odd)
-            self.bump_metric("temporal_run_operand_bits", probe_bits)
-            repeat_bits = atom_steps * (_REPEAT_MIN_COPIES - 1)
-            if (
-                (probe - start) & ((1 << repeat_bits) - 1)
-                and atom_steps == _REPEAT_ATOM_STEPS
-                and short_phase is not None
-            ):
-                atom_steps = _SHORT_REPEAT_ATOM_STEPS
-                probe, block_delta, block_minimum, block_odd = short_phase
-                repeat_bits = atom_steps * (_REPEAT_MIN_COPIES - 1)
-            if (probe - start) & ((1 << repeat_bits) - 1) == 0:
-                scratch.require_bits(8 * (d.bit_length() + probe_width + 16))
-                atom_gain = 3**atom_steps
-                innovation = (probe << atom_steps) - atom_gain * start
-                self.bump_metric(
-                    "temporal_run_operand_bits", d.bit_length() + atom_gain.bit_length()
+
+            selected = select_repeat_response(h, remaining)
+            if selected is not None:
+                length, delta, minimum, odd_steps, d = self._evaluate_repeat(
+                    h, remaining, selected, scratch
                 )
-                first = (atom_gain * d + innovation) >> atom_steps
-                difference = first - d
-                # The source defect admits a prefix up to the first
-                # mismatching bit, including a partial last motif. Keep the
-                # temporal action and its physical endpoint source-bound.
-                length = remaining
-                if difference:
-                    length = min(length, atom_steps + v2_positive(difference))
-                repetitions, tail = divmod(length, atom_steps)
-                full_length = atom_steps * repetitions
-                scratch.require_bits(8 * (d.bit_length() + 3 * length + 64))
-                upper = 3**full_length
-                geometric, remainder = divmod(
-                    upper - (1 << full_length), atom_gain - (1 << atom_steps)
-                )
-                if remainder:
-                    raise ArithmeticError("repeat geometric factor is not integral")
-                endpoint = d + geometric * (
-                    difference >> (atom_steps * (repetitions - 1))
-                )
-                delta = repetitions * block_delta
-                minimum = block_minimum + min(0, (repetitions - 1) * block_delta)
-                odd_steps = repetitions * block_odd
-                # A tail is shorter than one admitted motif. Traverse its
-                # actual centered inlet and join its ordered minimum once.
-                tail_operand_bits = 0
-                for _ in range(tail):
-                    prior_bits = endpoint.bit_length()
-                    parity = endpoint & 1
-                    endpoint = (3 * endpoint + parity) >> 1
-                    tail_operand_bits += prior_bits + endpoint.bit_length() + 1
-                    delta += 2 if parity else -1
-                    minimum = min(minimum, delta)
-                    odd_steps += 1 - parity
-                self.bump_metric("temporal_run_actions")
-                self.bump_metric(
-                    "temporal_run_operand_bits",
-                    endpoint.bit_length()
-                    + upper.bit_length()
-                    + length
-                    + tail_operand_bits,
-                )
-                yield length, delta, minimum, odd_steps, endpoint
-                d = endpoint
+                yield length, delta, minimum, odd_steps, d
                 remaining -= length
-        if repeat_only:
+        if repeat_only and not homogeneous:
             return
         while remaining:
             source_bits = d.bit_length()
@@ -792,6 +795,8 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
             )
             yield length, delta, minimum, odd_steps, d
             remaining -= length
+            if repeat_only:
+                return
 
     def retain_chronological_support(self) -> bool:
         """Retain only the complete affine and ledger effect until explicit demand."""

@@ -1,8 +1,9 @@
 """Fermat/Mersenne theorem certificates with explicit finite proof boundaries.
 
 Production uses a fully source-covered Boolean counter and Pépin's sufficient
-criterion for Fermat indices 1–3.  Other indices use the constrained terminal
-étale threshold; incomplete source recovery is reported as ``UNKNOWN``.
+criterion for Fermat indices 1–3 and a signed binomial factor for F5.
+Other indices use the constrained terminal étale threshold. Incomplete
+source recovery is reported as ``UNKNOWN``.
 Finite residue windows never stand in for global coverage, and reference
 special-form recurrences cannot complete this certificate path.
 """
@@ -30,6 +31,26 @@ from number_compiler.sequences.power_numbers.terminal_threshold import (
 _BOUNDED_BOOLEAN_FULL_COVERAGE_PEPIN_METHOD: Final[str] = (
     "bounded-boolean-counter-full-coverage-pepin"
 )
+FERMAT_FIVE_BINOMIAL_FACTOR: Final = (5 << 7) + 1
+FERMAT_FIVE_BINOMIAL_METHOD: Final = "fermat-binomial-signed-factor"
+
+
+def _fermat_five_binomial_factor(width: int) -> int:
+    """Check the admitted signed terminal in the divisor ring of F5."""
+    base, shift, power, tail = 5, 7, 4, 4
+    factor = FERMAT_FIVE_BINOMIAL_FACTOR
+    opposite = 1 << tail
+    # (base * 2**shift)**power = 1 and base**power = -2**tail
+    # in the divisor ring. The terminal exponent is shift*power + tail.
+    if (
+        width != shift * power + tail
+        or factor != (base << shift) + 1
+        or factor != base**power + opposite
+        or not 1 < factor < 1 << width
+        or pow(2, width, factor) != factor - 1
+    ):
+        raise ArithmeticError("invalid Fermat signed binomial factor")
+    return factor
 
 
 def _proved_pure_clock_shape(family: str, parameter: int) -> PureTwoPrimaryClockShape:
@@ -133,8 +154,8 @@ def fermat_depth_certificate(
 
     Indices 1–3 may use the bounded Boolean-counter proof only after every
     signed transition through the terminal unit is source-authenticated.  The
-    terminal threshold handles remaining indices and can return ``UNKNOWN``
-    when its finite source demand is incomplete. ``max_exact_width`` is kept
+    terminal threshold handles indices outside the admitted certificates and
+    can return ``UNKNOWN`` when its finite source demand is incomplete. ``max_exact_width`` is kept
     as a compatibility keyword but ignored. Production never re-enters the
     old exhaustive bounded carrier or factor-slot tropical scan.
 
@@ -197,6 +218,17 @@ def fermat_depth_certificate(
                 image_depth_classes=shape.image_depth_classes,
                 moore_equals_image_depth=True,
             )
+
+    if n == 5:
+        return SpecialDepthCertificateSummary(
+            FamilyId.FERMAT,
+            n,
+            modulus_bits,
+            "composite",
+            FERMAT_FIVE_BINOMIAL_METHOD,
+            scalable_construction=True,
+            factor_witness=_fermat_five_binomial_factor(width),
+        )
 
     threshold = terminal_threshold_probe(
         "fermat", n, max_candidate_bits=max_candidate_bits

@@ -21,7 +21,6 @@ from number_compiler.arithmetic.contracts.block_effect import _effect_key, _stat
 from number_compiler.arithmetic.contracts.block_kernel import BaseBlockEffect
 from number_compiler.arithmetic.fields.radix import digits_lsd
 from number_compiler.arithmetic.fields.symbolic_extent import DyadicExtent
-from tests.support.special_theorem_assertions import assert_unknown_resolution
 
 
 @pytest.mark.parametrize(
@@ -187,11 +186,11 @@ def test_fermat_and_mersenne_are_actual_symbolic_radix_compilations_not_material
     assert f5.radix_word.factored_projection is None and f5.source_guard is None
     assert f5.digit_projection is None
     lazy_f5 = compiler.resolve_special_theorem("fermat", 5)
-    assert lazy_f5.projection_method.startswith("terminal-threshold:")
-    assert lazy_f5.factor_witness is None
-    primality = assert_unknown_resolution(lazy_f5)
-    assert not primality.scalable_construction
-    assert lazy_f5.source_guard.failure_bit is None
+    assert lazy_f5.factor_witness == 641
+    primality = lazy_f5.primality
+    assert primality is not None and primality.status == "composite"
+    assert primality.specialization_raw_squarings == 0
+    assert lazy_f5.source_guard.failure_bit is True
 
     mersenne = compiler.compile_diagnostic(
         MersenneSequenceSpec((11, 13, 15, 8191), test_through=31)
@@ -316,10 +315,10 @@ def test_special_theorem_query_leaves_unproved_special_cases_unknown() -> None:
     assert compiler.theorem_cache_size == 0
 
     f5 = compiler.resolve_special_theorem("fermat", 5)
-    assert f5.projection_method.startswith("terminal-threshold:")
-    assert f5.factor_witness is None
-    assert_unknown_resolution(f5)
-    assert f5.source_guard.failure_bit is None
+    assert f5.factor_witness == 641
+    assert f5.primality is not None and f5.primality.status == "composite"
+    assert f5.primality.specialization_raw_squarings == 0
+    assert f5.source_guard.failure_bit is True
 
     raw = compiler.compile_diagnostic(
         MersenneSequenceSpec((11, 23, 31), test_through=31)

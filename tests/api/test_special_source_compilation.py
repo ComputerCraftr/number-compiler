@@ -106,9 +106,9 @@ def test_special_source_compiler_defers_theorems_until_concrete_output_is_demand
     assert (
         compiler.resolve_special_theorem("fermat", 2).source_guard.failure_bit is False
     )
-    assert (
-        compiler.resolve_special_theorem("fermat", 5).source_guard.failure_bit is None
-    )
+    f5_decision = compiler.resolve_special_theorem("fermat", 5)
+    assert f5_decision.source_guard.failure_bit is True
+    assert f5_decision.factor_witness == 641
     assert (
         compiler.resolve_special_theorem("mersenne", 11).source_guard.failure_bit
         is None

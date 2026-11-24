@@ -220,6 +220,26 @@ def _selected_child_for_mutation(
     )
 
 
+def _select_ordered_test_child(
+    source: BoundaryOccurrence,
+    prefix: OccurrencePrefixReturn,
+    literals: tuple[int, int],
+    provider: future_provider.SemanticFutureProviderLease,
+    charge_work: Callable[[int], None],
+) -> SemanticMacroChild:
+    selected = select_semantic_macro_child(
+        source,
+        prefix,
+        fork_value=prefix.terminal_value,
+        ordered_literal_children=literals,
+        provider=provider,
+        charge_work=charge_work,
+    )
+    assert selected.selection.selected_slot == 1
+    assert selected.literal_value == literals[1]
+    return selected
+
+
 def test_semantic_branch_binds_ordered_literal_choice_and_weighted_event(
     monkeypatch: pytest.MonkeyPatch,
     request: pytest.FixtureRequest,
@@ -259,17 +279,10 @@ def test_semantic_branch_binds_ordered_literal_choice_and_weighted_event(
         reject_legacy_child_view,
     )
 
-    selected = select_semantic_macro_child(
-        source,
-        prefix,
-        fork_value=prefix.terminal_value,
-        ordered_literal_children=literal_children,
-        provider=provider,
-        charge_work=charge_work,
+    selected = _select_ordered_test_child(
+        source, prefix, literal_children, provider, charge_work
     )
 
-    assert selected.selection.selected_slot == 1
-    assert selected.literal_value == literal_children[1]
     assert selected.occurrence.target.state == prefix.template.ordered_children[1]
     assert selected.occurrence.target.exponent == source.exponent + prefix.width_delta
     assert selected.fork_event_offset == prefix.transition_count
@@ -293,16 +306,9 @@ def test_compact_return_uses_existing_ordered_semantic_selection(
         request,
     )
     literals = _literal_children(prefix)
-    selected = select_semantic_macro_child(
-        source,
-        prefix,
-        fork_value=prefix.terminal_value,
-        ordered_literal_children=literals,
-        provider=provider,
-        charge_work=charge_work,
+    selected = _select_ordered_test_child(
+        source, prefix, literals, provider, charge_work
     )
-    assert selected.selection.selected_slot == 1
-    assert selected.literal_value == literals[1]
     assert selected.weighted_action.weight.evaluate(source.exponent) == (
         prefix.transition_count + 1
     )

@@ -407,9 +407,9 @@ def test_cyclic_action_supplies_joint_width_and_innovation(
     assert ledger.counters["collatz_cyclic_grammar_width_phase_steps"] <= 16
 
 
-def test_boundary_witness_keeps_physical_observation_path() -> None:
+def test_boundary_witness_allows_authenticated_cyclic_continuation() -> None:
     # At tick 7 the selected macro reaches 99047, a certified cyclic source.
-    # The complete innovation packet still needs the existing physical path.
+    # The initial physical witness remains authoritative; continuation is cyclic.
     source, ticks = 352164, 30
     ledger = ResourceLedger()
     result = compile_collatz_temporal_run_quotient(
@@ -428,7 +428,8 @@ def test_boundary_witness_keeps_physical_observation_path() -> None:
     assert stamp.occurrence[:3] == (0, source, 7)
     assert result.first_boundary_macro.endpoint == 99047
     assert issue_cyclic_row(99047, 23) is not None
-    assert ledger.counters.get("collatz_cyclic_grammar_admitted_actions", 0) == 0
+    assert ledger.counters.get("collatz_cyclic_grammar_admitted_actions", 0) == 1
+    assert result.run_actions == 2
 
 
 def test_cyclic_width_rejects_tampered_admission() -> None:

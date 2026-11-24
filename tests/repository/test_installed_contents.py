@@ -1,5 +1,7 @@
 """Distribution inventory comes from source, including non-Python resources."""
 
+import shutil
+import subprocess
 import sys
 from hashlib import sha256
 from io import StringIO
@@ -10,6 +12,13 @@ import pytest
 
 from devtools.checks import installed_distribution
 from devtools.checks.installed_distribution import validate_wheel_contents
+from devtools.paths import repository_root
+from number_compiler.sequences.comma import future_provider
+from number_compiler.sequences.comma.future_artifact import (
+    FUTURE_NATIVE_EXPORT,
+    FUTURE_PROVIDER_ASSET,
+    RETIRED_FUTURE_PROVIDER_ASSET,
+)
 
 
 @pytest.mark.parametrize("fault", ["extra", "missing", "stale", "proofs", "none"])
@@ -93,3 +102,57 @@ def test_comma_release_binds_packaged_bytes_to_the_native_export(
     else:
         with pytest.raises(ValueError, match="native (build|export)"):
             installed_distribution.verify_comma_native_export(export, asset)
+
+
+def test_comma_release_filename_is_shared_by_runtime_and_native_checks() -> None:
+    assert future_provider.FUTURE_PROVIDER_ASSET == FUTURE_PROVIDER_ASSET
+    assert installed_distribution.COMMA_RELEASE_ASSET == FUTURE_PROVIDER_ASSET
+    assert installed_distribution.COMMA_NATIVE_EXPORT == FUTURE_NATIVE_EXPORT
+    assert FUTURE_PROVIDER_ASSET != RETIRED_FUTURE_PROVIDER_ASSET
+
+
+def test_wheel_packages_the_reviewed_comma_name_from_project_metadata(
+    tmp_path: Path,
+) -> None:
+    """Exercise setuptools with both candidate names and inspect its wheel."""
+    source = repository_root()
+    stage = tmp_path / "source"
+    stage.mkdir()
+    for name in ("pyproject.toml", "README.md", "LICENSE"):
+        shutil.copy2(source / name, stage / name)
+    package = stage / "src" / "number_compiler"
+    kernels = package / "kernels"
+    kernels.mkdir(parents=True)
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "py.typed").write_text("", encoding="utf-8")
+    expected = b'{"untrusted":true}\n'
+    (kernels / FUTURE_PROVIDER_ASSET).write_bytes(expected)
+    (kernels / RETIRED_FUTURE_PROVIDER_ASSET).write_bytes(b"retired")
+    wheels = tmp_path / "wheels"
+    subprocess.run(
+        (
+            sys.executable,
+            "-m",
+            "pip",
+            "wheel",
+            "--no-index",
+            "--no-deps",
+            "--no-build-isolation",
+            "--wheel-dir",
+            str(wheels),
+            str(stage),
+        ),
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=45,
+    )
+    (built,) = wheels.glob("*.whl")
+    with ZipFile(built) as archive:
+        assert (
+            archive.read(f"number_compiler/kernels/{FUTURE_PROVIDER_ASSET}") == expected
+        )
+        assert (
+            f"number_compiler/kernels/{RETIRED_FUTURE_PROVIDER_ASSET}"
+            not in archive.namelist()
+        )

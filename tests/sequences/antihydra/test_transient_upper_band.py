@@ -17,7 +17,8 @@ from number_compiler.sequences.antihydra.arithmetic_images import (
     AntihydraArithmeticImageWorkspace,
 )
 from number_compiler.sequences.antihydra.mahler_transient_carry_sheet import (
-    eight_step_carry_sheet,
+    LEAF_BITS,
+    physical_carry_sheet,
 )
 
 
@@ -55,7 +56,7 @@ def _assert_cylinder_lifts(
 
 
 def test_sheet_and_wider_cylinders_agree_with_literal_high_lifts() -> None:
-    sheet = eight_step_carry_sheet()
+    sheet = physical_carry_sheet(LEAF_BITS)
     assert len(sheet) == 256
     for source, (correction, delta, minimum, odd) in enumerate(sheet):
         for lift in (0, 1, 3):
@@ -154,10 +155,10 @@ def test_transient_uniform_cylinder_does_not_construct_carry_sheet(
 ) -> None:
     import number_compiler.sequences.antihydra.mahler_transient_carry_sheet as carry_sheet
 
-    def forbid_sheet() -> tuple[tuple[int, int, int, int], ...]:
+    def forbid_sheet(_steps: int) -> tuple[tuple[int, int, int, int], ...]:
         raise AssertionError("fixed point reconstructed the carry sheet")
 
-    monkeypatch.setattr(carry_sheet, "eight_step_carry_sheet", forbid_sheet)
+    monkeypatch.setattr(carry_sheet, "physical_carry_sheet", forbid_sheet)
     workspace = AntihydraArithmeticImageWorkspace(
         ResourceLedger(), 0, shared_cache=False
     )

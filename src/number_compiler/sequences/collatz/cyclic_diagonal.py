@@ -28,6 +28,11 @@ def _nonnegative(value: int, name: str) -> None:
         raise ValueError(f"{name} must be a nonnegative integer")
 
 
+def _radix(radix: int) -> None:
+    if type(radix) is not int or radix not in (2, 10):
+        raise ValueError("cyclic diagonal radix must be 2 or 10")
+
+
 def _exact_divide(numerator: int, denominator: int) -> int:
     quotient, remainder = divmod(numerator, denominator)
     if remainder:
@@ -197,6 +202,20 @@ class CyclicLaurentAction:
         )
         return sum_gain, sum_offset
 
+    def initial_state(
+        self, source: int, radix: int, precision: int
+    ) -> CyclicDiagonalState:
+        """Algebraic finite-ring inlet; physical admission is checked by caller."""
+        _radix(radix)
+        _nonnegative(precision, "diagonal precision")
+        ring = radix**precision
+        # In binary delta is a unit.  Decimal uses a division lift even when
+        # delta shares factors with ten.  This is required for signed delta too.
+        modulus = ring if radix == 2 else abs(self.delta) * ring
+        seam = 1 % ring
+        residue = (self.delta * (source % ring) + self.offset * seam) % modulus
+        return CyclicDiagonalState(self, radix, precision, modulus, residue, seam)
+
 
 def _uncached_action(word: str) -> CyclicLaurentAction:
     if word.strip("01"):
@@ -212,6 +231,64 @@ def _uncached_action(word: str) -> CyclicLaurentAction:
 def _small_action(word: str) -> CyclicLaurentAction:
     # 510 possible nonempty words of length <= 8. Static law, not source work.
     return _uncached_action(word)
+
+
+@dataclass(frozen=True, slots=True)
+class CyclicDiagonalState:
+    """Successor-closed response in a fixed precision ring, not a time trace.
+
+    Equality includes phase, homogeneous residue AND seam clock. It is a
+    sufficient right congruence, not asserted to be globally Moore-minimal.
+    The residue and seam are both bounded by the requested precision.
+    """
+
+    action: CyclicLaurentAction
+    radix: int
+    precision: int
+    modulus: int
+    residue: int
+    seam: int
+
+    def advance(self, steps: int) -> CyclicDiagonalState:
+        _nonnegative(steps, "diagonal advance")
+        if not steps:
+            return self
+        mod = self.modulus
+        gain = pow(3, self.action.odds(steps), mod)
+        if self.radix == 10:
+            gain = gain * pow(5, steps, mod) % mod
+        following = self.action.rotated(steps)
+        residue = gain * self.residue % mod
+        lifted_seam = self.seam * pow(self.radix, steps, mod) % mod
+        # Quotient the artificial decimal division lift too. Changing the
+        # seam by a ring multiple requires exactly the matching J correction.
+        # The physical numerator and every future numerator then agree.
+        ring = mod if self.radix == 2 else mod // abs(self.action.delta)
+        seam = lifted_seam % ring
+        residue = (residue - (lifted_seam - seam) * following.offset) % mod
+        return CyclicDiagonalState(
+            following, self.radix, self.precision, mod, residue, seam
+        )
+
+    def numerator_residue(self) -> int:
+        difference = self.residue - self.seam * self.action.offset
+        delta = self.action.delta
+        if self.radix == 2:
+            if self.modulus == 1:
+                return 0
+            return difference * pow(delta, -1, self.modulus) % self.modulus
+        signed = difference if delta > 0 else -difference
+        return _exact_divide(signed % self.modulus, abs(delta))
+
+    def band(self, cut: int, width: int) -> int:
+        """Band in moving numerator coordinates (the physical cut is cut-t)."""
+        _nonnegative(cut, "diagonal cut")
+        _nonnegative(width, "diagonal width")
+        if cut + width > self.precision:
+            raise ValueError("band exceeds the diagonal ring precision")
+        place: int = self.radix**cut
+        modulus: int = self.radix**width
+        return self.numerator_residue() // place % modulus
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,6 +320,24 @@ class CyclicDefectGuard:
         self.require_steps(steps)
         return self.action.point(self.defect, steps, gain)
 
+    def state(self, steps: int, radix: int, precision: int) -> CyclicDiagonalState:
+        self.require_steps(steps)
+        return self.action.initial_state(self.source, radix, precision).advance(steps)
+
+    def rebased_state(
+        self, steps: int, radix: int, precision: int
+    ) -> CyclicDiagonalState:
+        """Remove the consumed cut using the guard BEFORE building a modulus.
+
+        D is divisible by 2**steps. Once that exact division has been taken,
+        only the demanded physical precision (and the fixed delta lift) is
+        needed; a large accepted horizon does not enlarge the ring.
+        """
+        self.require_steps(steps)
+        _radix(radix)
+        _nonnegative(precision, "diagonal precision")
+        return _rebased_defect_state(self.action, self.defect, steps, radix, precision)
+
     def exact_lower_response(
         self, steps: int, cut: int, gain: int
     ) -> tuple[AffinePortAction, int]:
@@ -255,3 +350,51 @@ class CyclicDefectGuard:
         lower_endpoint, _ = self.action.point(self.action.defect(lower), steps, gain)
         carry, low = divmod(lower_endpoint, 1 << (cut - steps))
         return AffinePortAction(None, gain, carry), low
+
+    def upper_response(
+        self, steps: int, radix: int, cut: int, width: int
+    ) -> AffinePortAction:
+        """Minimal all-upper-inlet affine response at the demanded precision.
+
+        Guard inheritance: radix**cut is divisible by 2**steps when cut>=steps.
+        Only the lower source modulo radix**cut enters the carry.  The response
+        is computed before any upper child or full affine numerator is built.
+        """
+        self.require_steps(steps)
+        _radix(radix)
+        _nonnegative(cut, "moving cut")
+        if cut < steps or type(width) is not int or width < 1:
+            raise ValueError("moving cut discards guarded bits or lacks precision")
+        # The lower inlet is congruent to the authenticated source mod 2**steps.
+        # Divide that centered defect BEFORE choosing the physical output ring.
+        # The consumed diagonal cut must not inflate the modular power precision.
+        lower = (
+            self.source if cut >= self.source.bit_length() else self.source % radix**cut
+        )
+        physical_cut = cut - steps
+        state = _rebased_defect_state(
+            self.action, self.action.defect(lower), steps, radix, physical_cut + width
+        )
+        mod: int = radix**width
+        gain: int = pow(3, self.action.odds(steps), mod)
+        if radix == 10:
+            gain = gain * pow(5, steps, mod) % mod
+        return AffinePortAction.reduced(mod, gain, state.band(physical_cut, width))
+
+
+def _rebased_defect_state(
+    action: CyclicLaurentAction, defect: int, steps: int, radix: int, precision: int
+) -> CyclicDiagonalState:
+    """Project an admitted Laurent defect after exact division by 2**steps."""
+    if defect and (defect & -defect).bit_length() - 1 < steps:
+        raise ValueError("rebased defect exceeds its physical guard")
+    following = action.rotated(steps)
+    ring: int = radix**precision
+    modulus: int = ring if radix == 2 else abs(following.delta) * ring
+    seam = 1 % ring
+    residue = (
+        (pow(3, action.odds(steps), modulus) * ((defect >> steps) % modulus)) % modulus
+        if seam
+        else 0
+    )
+    return CyclicDiagonalState(following, radix, precision, modulus, residue, seam)

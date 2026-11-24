@@ -21,7 +21,7 @@ def test_demanded_depth_certificates_never_fall_back_from_missing_extractor() ->
     f3 = fermat_depth_certificate(3)
     assert f3.status == "prime"
     assert f3.method == "bounded-boolean-counter-full-coverage-pepin"
-    for n in (4, 5):
+    for n in (4, 6):
         cert = fermat_depth_certificate(n)
         assert cert.status == "unknown"
         assert cert.method.startswith("terminal-threshold:")

@@ -523,6 +523,37 @@ class CanonicalSequenceCompiler:
         )
 
         require_special_candidate_budget(family, parameter, max_candidate_bits)
+        from number_compiler.sequences.power_numbers.theorem_query import (
+            SpecialTheoremResolution,
+            fermat_binomial_resolution,
+            with_etale_factor,
+        )
+        from number_compiler.sequences.power_numbers.theorem_query import (
+            resolve_special_theorem as resolve_special_theorem_query,
+        )
+
+        factor_key = factor_limit if use_factor_projection else 0
+        base_key = (
+            family,
+            parameter,
+            factor_key,
+            use_factor_projection,
+            use_terminal_certificate,
+        )
+        base_result_key = (*base_key, False, 0)
+        key = (
+            *base_key,
+            collect_etale_factor,
+            max_factor_products if collect_etale_factor else 0,
+        )
+        base = self._theorem_cache.get(base_result_key)
+        state = self._special_constraint_state(family, parameter)
+        if base is not None and state.support_gcd is None and use_terminal_certificate:
+            terminal = fermat_binomial_resolution(
+                base, family, parameter, include_factor=collect_etale_factor
+            )
+            if terminal is not None:
+                return terminal
         factor_witness_key = ("etale-factor-witness", family, parameter)
         factor_cache_key = (
             "etale-factor-output",
@@ -540,7 +571,6 @@ class CanonicalSequenceCompiler:
             if known_witness is not None and known_witness.factor_witness is not None:
                 return known_witness
             cached_factor = self._theorem_cache.get(factor_cache_key)
-        state = self._special_constraint_state(family, parameter)
         pulled_bit = state.constraint_failure_bit
         if collect_etale_factor and cached_factor is not None:
             support = state.support_gcd
@@ -551,9 +581,6 @@ class CanonicalSequenceCompiler:
                 return cached_factor
         if pulled_bit is not None:
             from number_compiler.projection.output_quotient import SpecialSourceGuard
-            from number_compiler.sequences.power_numbers.theorem_query import (
-                SpecialTheoremResolution,
-            )
 
             support = state.support_gcd
             modulus = state.support_modulus
@@ -576,46 +603,15 @@ class CanonicalSequenceCompiler:
                 factor_witness=proper_support,
             )
             if collect_etale_factor:
-                from number_compiler.sequences.power_numbers.theorem_query import (
-                    with_etale_factor,
-                )
-
                 result = with_etale_factor(result, max_products=max_factor_products)
                 self._theorem_cache[factor_cache_key] = result
                 if result.factor_witness is not None:
                     self._theorem_cache[factor_witness_key] = result
             return result
-        # A factor limit is semantically irrelevant when the optional factor
-        # projection is disabled.  Normalize it out of theorem-cache identity.
-        factor_key = factor_limit if use_factor_projection else 0
-        base_key = (
-            family,
-            parameter,
-            factor_key,
-            use_factor_projection,
-            use_terminal_certificate,
-        )
-        key = (
-            *base_key,
-            collect_etale_factor,
-            max_factor_products if collect_etale_factor else 0,
-        )
         old = self._theorem_cache.get(key)
         if old is not None:
             return old
-        from number_compiler.sequences.power_numbers.theorem_query import (
-            resolve_special_theorem as resolve_special_theorem_query,
-        )
-        from number_compiler.sequences.power_numbers.theorem_query import (
-            with_etale_factor,
-        )
-
         # Enrich the admitted base result, charging only new witness work.
-        base = (
-            self._theorem_cache.get((*base_key, False, 0))
-            if collect_etale_factor
-            else None
-        )
         if collect_etale_factor and base is not None:
             out = with_etale_factor(base, max_products=max_factor_products)
         else:
@@ -638,9 +634,17 @@ class CanonicalSequenceCompiler:
             )
             self._refine_special_constraint_mask(family, parameter, theorem_mask)
         if collect_etale_factor:
-            self._theorem_cache[factor_cache_key] = out
-            if out.factor_witness is not None:
-                self._theorem_cache[factor_witness_key] = out
+            terminal = (
+                fermat_binomial_resolution(out, family, parameter, include_factor=False)
+                if use_terminal_certificate
+                else None
+            )
+            if terminal is not None:
+                self._theorem_cache[base_result_key] = terminal
+            else:
+                self._theorem_cache[factor_cache_key] = out
+                if out.factor_witness is not None:
+                    self._theorem_cache[factor_witness_key] = out
         self._theorem_cache[key] = out
         return out
 

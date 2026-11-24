@@ -141,15 +141,14 @@ class Pow5SpatialTrace:
             if width + span <= _LEAF_WIDTH:
                 packed = _trace_leaf(source24, width + span, 0, span)
             else:
-
-                def visit(lo: int, hi: int) -> tuple[int, ...]:
+                pending = [(0, width + span)]
+                packed_rows = [0] * span
+                while pending:
+                    lo, hi = pending.pop()
                     if hi - lo > _LEAF_WIDTH:
                         mid = (lo + hi) // 2
-                        left, right = visit(lo, mid), visit(mid, hi)
-                        return tuple(
-                            a | (b << (_LANE_BITS * (mid - lo)))
-                            for a, b in zip(left, right, strict=True)
-                        )
+                        pending.extend(((mid, hi), (lo, mid)))
+                        continue
                     below = min(lo, span)
                     inlet_width = hi - lo + below
                     inlet = (source24 >> (_LANE_BITS * (lo - below))) & _LOW_MASKS[
@@ -163,9 +162,9 @@ class Pow5SpatialTrace:
                         found = _trace_leaf(*leaf_key)
                     if self._shared_cache:
                         next_memo[leaf_key] = found
-                    return found
-
-                packed = visit(0, width + span)
+                    for tick, lane in enumerate(found):
+                        packed_rows[tick] |= lane << (_LANE_BITS * lo)
+                packed = tuple(packed_rows)
             rows = tuple(
                 (row, max(1, (row.bit_length() + _LANE_BITS - 1) // _LANE_BITS))
                 for row in packed

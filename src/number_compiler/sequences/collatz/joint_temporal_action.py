@@ -359,15 +359,21 @@ class JointTemporalSpine:
 
     @staticmethod
     def action_nodes(action: DyadicTerminalFieldAction) -> int:
-        return 8 + sum(
-            (max(1, value.bit_length()) + 63) // 64
-            for value in (
-                action.gain,
-                action.offset,
-                action.sum_gain,
-                action.sum_offset,
-                action.previous_gain,
-                action.previous_offset,
+        phase = action.cyclic_phase
+        phase_nodes = 0 if phase is None else 6 + (len(phase[0]) + 7) // 8
+        return (
+            8
+            + phase_nodes
+            + sum(
+                (max(1, value.bit_length()) + 63) // 64
+                for value in (
+                    action.gain,
+                    action.offset,
+                    action.sum_gain,
+                    action.sum_offset,
+                    action.previous_gain,
+                    action.previous_offset,
+                )
             )
         )
 

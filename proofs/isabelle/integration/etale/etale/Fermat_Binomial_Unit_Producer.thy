@@ -334,16 +334,27 @@ proof -
     using parameter_bounds unfolding p_def .
 qed
 
+theorem fermat_five_signed_binomial_factor:
+  shows "(641::nat) = 5 * 2^7 + 1"
+    and "(641::nat) = 5^4 + 2^4"
+    and "(7::nat) * 4 + 4 = 2^5"
+    and "(2::nat)^(2^5) mod 641 = 641 - 1"
+    and "1 < (641::nat) \<and> 641 < (2::nat)^(2^5) + 1
+      \<and> 641 dvd (2::nat)^(2^5) + 1"
+  by (simp add: dvd_eq_mod_eq_0)+
+
 ML \<open>
-  val _ = if null (Thm_Deps.all_oracles
-    @{thms fermat_binomial_python_continues_through_support
+  val checked = @{thms fermat_binomial_python_continues_through_support
       fermat_binomial_python_stops_after_support
       fermat_unit_complete_width_exceeds_source_scale
       fermat_bounded_source_precision_values
       fermat_bounded_python_parameter_bounds
       fermat_bounded_source_values
-      fermat_bounded_python_source_exact}) then ()
+      fermat_bounded_python_source_exact fermat_five_signed_binomial_factor};
+  val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Bounded Fermat binomial source laws depend on an oracle";
+  val _ = if Thm_Deps.has_skip_proof @{thms fermat_five_signed_binomial_factor}
+    then error "Skipped Fermat signed binomial factor proof" else ();
 \<close>
 
 end

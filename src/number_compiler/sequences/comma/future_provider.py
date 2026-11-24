@@ -38,6 +38,9 @@ from number_compiler.sequences.comma.boundary_quotient import (
     boundary_source_index,
     boundary_state_signature,
 )
+from number_compiler.sequences.comma.future_artifact import (
+    FUTURE_PROVIDER_ASSET as FUTURE_PROVIDER_ASSET,
+)
 from number_compiler.sequences.comma.future_authority import (
     FutureClass,
     FutureControl,
@@ -91,7 +94,6 @@ from number_compiler.sequences.comma.future_provider_memory import (
 )
 from number_compiler.sequences.comma.future_source_mdd import FutureSourceMDD
 
-FUTURE_PROVIDER_ASSET: Final[str] = "comma_semantic_future_v3.json"
 FUTURE_PROVIDER_CONTRACT: Final[str] = "comma-semantic-future-provider-exact-v1"
 FUTURE_PROVIDER_AUDIT_FAMILY: Final[str] = "comma"
 FUTURE_PROVIDER_STORE_ROLE: Final[str] = "semantic_future_provider"
@@ -539,12 +541,7 @@ class SemanticFutureProvider:
     def select_unique_unranked_child(
         self, source: BoundaryState, *, charge_work: WorkCharger
     ) -> UnrankedChildSelection:
-        """Return the unique unranked ordered slot for this admitted source.
-
-        The caller supplies its exact literal children to
-        ``selection.select_literal``.  This method never constructs children,
-        weights, phases, or extents.
-        """
+        """Select the checked ordered slot for the caller’s literal children."""
         self.require_runtime_admission()
         if type(source) is not BoundaryState:
             raise TypeError("future lookup requires a validated BoundaryState")

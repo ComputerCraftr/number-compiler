@@ -36,6 +36,7 @@ def test_numeric_case_fact_requires_quotes_without_scanning_documentation() -> N
         "require_expected_paths",
         "require_closed_expected_paths",
         "require_native_closed_expected_paths",
+        "require_symbolic_closed_expected_paths",
         "require_paths",
     ],
 )
@@ -51,7 +52,12 @@ def test_authority_audit_records_endpoints_not_expected_dependencies(
 
 
 @pytest.mark.parametrize(
-    "method", ["require_expected_paths", "require_native_closed_expected_paths"]
+    "method",
+    [
+        "require_expected_paths",
+        "require_native_closed_expected_paths",
+        "require_symbolic_closed_expected_paths",
+    ],
 )
 @pytest.mark.parametrize("authorities", ["[]", "required", '["one"] @ more'])
 def test_authority_audit_rejects_unknown_or_empty_authority_lists(
@@ -67,7 +73,12 @@ def test_authority_audit_rejects_unknown_or_empty_authority_lists(
 
 
 @pytest.mark.parametrize(
-    "method", ["require_expected_paths", "require_native_closed_expected_paths"]
+    "method",
+    [
+        "require_expected_paths",
+        "require_native_closed_expected_paths",
+        "require_symbolic_closed_expected_paths",
+    ],
 )
 def test_captured_authority_failure_is_not_a_release_audit(method: str) -> None:
     text = (
@@ -120,7 +131,7 @@ def test_required_audits_share_one_local_dependency_and_oracle_walk() -> None:
     for method in (
         "require_paths",
         "require_expected_paths",
-        "require_native_closed_expected_paths",
+        "require_closed_authorities",
     ):
         body = audit.split(f"fun {method}", maxsplit=1)[1].split(
             "\n  fun ", maxsplit=1
@@ -133,6 +144,15 @@ def test_required_audits_share_one_local_dependency_and_oracle_walk() -> None:
     assert "Thm_Deps.all_oracles" not in audit
     assert "fun names thy thms =" not in audit
     assert "fun require_native_clean ctxt label thms =\n    require_paths" in audit
+    compact = " ".join(audit.split())
+    assert (
+        "val require_native_closed_expected_paths = "
+        "require_closed_authorities native_paths"
+    ) in compact
+    assert (
+        "val require_symbolic_closed_expected_paths = "
+        "require_closed_authorities (native_paths @ symbolic_release_paths)"
+    ) in compact
     assert (
         "fun require_closed_expected_paths ctxt label expected thms =\n    let\n      val _ = require_expected_paths"
         in audit

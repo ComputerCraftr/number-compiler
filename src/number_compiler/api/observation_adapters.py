@@ -703,6 +703,16 @@ def observe_special(context: QueryContext, name: ObservationId) -> Packet:
         )
         failure = resolution.source_guard.failure_bit
         status = "unknown" if failure is None else "composite" if failure else "prime"
+        certificate = resolution.primality
+        factor_proof = None
+        if resolution.factor_witness is not None:
+            factor_proof = "proper-coefficient-gcd"
+            if (
+                certificate is not None
+                and certificate.factor_witness == resolution.factor_witness
+                and certificate.gcd_witnesses == 0
+            ):
+                factor_proof = certificate.method
         return {
             "family": request.family.value,
             "index": request.index,
@@ -710,19 +720,13 @@ def observe_special(context: QueryContext, name: ObservationId) -> Packet:
             "decided": resolution.decided,
             "method": resolution.projection_method,
             "factor_query_status": resolution.factor_query_status,
-            "certificate": (
-                None if resolution.primality is None else asdict(resolution.primality)
-            ),
+            "certificate": None if certificate is None else asdict(certificate),
             "factor_witness": resolution.factor_witness,
             "factor_target": {
                 "family": request.family.value,
                 "parameter": request.index,
             },
-            "factor_proof": (
-                "proper-coefficient-gcd"
-                if resolution.factor_witness is not None
-                else None
-            ),
+            "factor_proof": factor_proof,
             "factor_expression": (
                 None
                 if resolution.composite_exponent_factor is None

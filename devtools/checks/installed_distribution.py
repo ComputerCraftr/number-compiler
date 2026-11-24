@@ -17,9 +17,14 @@ from devtools.checks.package_contracts import DEVELOPER_ROOTS
 from number_compiler.api.family_registry import family_spec
 from number_compiler.arithmetic.contracts.family_identity import family_id
 from number_compiler.arithmetic.contracts.input_validation import string_keyed_mapping
+from number_compiler.sequences.comma.future_artifact import (
+    FUTURE_NATIVE_EXPORT,
+    FUTURE_PROVIDER_ASSET,
+    RETIRED_FUTURE_PROVIDER_ASSET,
+)
 
-COMMA_RELEASE_ASSET = "comma_semantic_future_v4.json"
-COMMA_NATIVE_EXPORT = "comma-semantic-future-v4.json"
+COMMA_NATIVE_EXPORT = FUTURE_NATIVE_EXPORT
+COMMA_RELEASE_ASSET = FUTURE_PROVIDER_ASSET
 
 
 def verify_comma_native_export(export_root: Path, packaged_asset: Path) -> str:
@@ -91,7 +96,7 @@ def verify_wheel(
     if any(Path(name).name.startswith("base10_t2_") for name in resources):
         raise ValueError("retired reverse/add proof-machine resource was packaged")
     required_future_asset = f"number_compiler/kernels/{COMMA_RELEASE_ASSET}"
-    if "number_compiler/kernels/comma_semantic_future_v3.json" in members:
+    if f"number_compiler/kernels/{RETIRED_FUTURE_PROVIDER_ASSET}" in members:
         raise ValueError("retired comma future artifact was packaged")
     if required_future_asset not in members:
         raise ValueError("installed distribution lacks the admitted comma future")

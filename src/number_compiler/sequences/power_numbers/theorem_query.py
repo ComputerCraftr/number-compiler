@@ -50,6 +50,49 @@ class SpecialTheoremResolution:
         return self.source_guard.resolved
 
 
+def fermat_binomial_resolution(
+    result: SpecialTheoremResolution,
+    family: str,
+    parameter: int,
+    *,
+    include_factor: bool,
+) -> SpecialTheoremResolution | None:
+    """Transport the complete F5 terminal witness through the query cache."""
+    certificate = result.primality
+    if family != "fermat" or parameter != 5 or certificate is None:
+        return None
+    from number_compiler.sequences.power_numbers.certificate import (
+        FERMAT_FIVE_BINOMIAL_FACTOR,
+        FERMAT_FIVE_BINOMIAL_METHOD,
+    )
+
+    factor = certificate.factor_witness
+    guard = result.source_guard
+    if (
+        type(factor) is not int
+        or factor != FERMAT_FIVE_BINOMIAL_FACTOR
+        or result.factor_witness != factor
+        or result.family != family
+        or result.parameter != parameter
+        or result.etale_ring_multiplications != 0
+        or certificate.parameter != parameter
+        or certificate.family.value != family
+        or certificate.modulus_bits != (1 << parameter) + 1
+        or certificate.status != "composite"
+        or certificate.method != FERMAT_FIVE_BINOMIAL_METHOD
+        or guard.family != family
+        or guard.parameter != parameter
+        or guard.failure_bit is not True
+        or guard.method != certificate.method
+        or result.projection_method != certificate.method
+    ):
+        raise ValueError("invalid cached Fermat terminal factor")
+    status = "available" if include_factor else "not-requested"
+    if result.factor_query_status == status:
+        return result
+    return replace(result, factor_query_status=status)
+
+
 def _factored_projection(
     family: str,
     parameter: int,

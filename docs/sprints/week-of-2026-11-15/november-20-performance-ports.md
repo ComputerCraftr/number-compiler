@@ -2075,6 +2075,109 @@ wrapped-product seam still lacks a checked receiving CLI consumer, and
 the larger Mersenne trace rotation needs checked source-local period
 transport. Evidence is in `results/nc-bounded-seams/2e095975`.
 
+### November 24 NC43 production repairs
+
+The receiving checkout was clean at `af2000d338`. The isolated runtime
+candidate is `03328a90`, with the final fixture typing check at
+`8960cb53`. The five donor patches were checked individually and
+reconciled at their live producers and proof owners.
+
+| Consumer | Validated scope |
+| --- | --- |
+| CF diagonal band | A complete lifted overlap admits the primitive product. The ordered compiler probes completed children before period discovery, uses an exact rotated product and remainder, and retains both cache-cut directions. |
+| Antihydra/Mahler | The nonretaining scheduler accepts a complete or majority four/eight-step source period before descending. A single bounded response supplies the guard and arithmetic. Ordered minima and first-failure descent retain their physical coverage. |
+| Collatz | The first physical boundary stamp precedes the cyclic suffix. The issued action preserves the source, clock, phase, and weighted carry. Binary and decimal moving cuts remain bounded by the admitted action. |
+| Fermat | The signed binomial certificate proves F5 composite with proper divisor 641. Either theorem demand order can reuse the issued witness with a zero ring-product budget. Harmonic matrix verification compares the issued structure without producing a second token stream. |
+
+Five interleaved matched trials measured the 1,024-row CF band at 3.51 to
+0.31 ms and a warm repeated request at roughly 0.04 ms in both trees. Both
+cache-cut directions kept their retained bytes and results. The Antihydra
+full and partial 1,024-tick effects went from 94.0 to 34.2 µs and 154.5 to
+93.5 µs. The ordinary arithmetic controls cost about 13% more in that
+producer. Their fresh CLI and safety controls stayed within 1%. For Collatz
+seed 352164 at 30 ticks, the exact guarded work dropped from three actions
+to two and from 2.62 to 1.85 ms. The innovation packet's executed 6305R count
+dropped by one with the endpoint and projections equal. The Fermat F5
+matrix went from 162.2 to 150.7 ms in fresh processes. Its source-matrix
+phase went from 32.2 to 20.9 ms.
+
+The registered `Collatz_Cylinder_Refinement`, `Mahler_Source_Transport`,
+and `Etale_Primary_Carry` sessions checked the consumer refinements with
+oracle and skipped-proof auditing. Their changed builds took 24, 45, and
+94 seconds respectively.
+
+The default selection finished in 218.80 seconds with 13,812 passing
+tests and seven inherited failures. All three Antihydra puncture
+regressions closed. The affected exhaustive selection passed 5,087 tests
+with the same two Q19 failures. Canonical P0 moved from 75 to 77 passing
+checks and from 15 to 13 failures. The two F5 checks closed, and there
+were no new failing IDs in any selection. The final focused recheck
+passed 100 tests.
+
+Strict mypy, Pyright across 2,617 files in 105 guarded batches, pinned
+Ruff, formatting, and docs checks passed. Source policy and the broad
+proof index reproduced the baseline findings. The fresh wheel matched
+eleven family CLI packets and returned the new F5 result with zero
+charged products. The installed API reused the same witness in both
+demand orders at product budget zero. The package-wide admission check
+still lacks the accepted Comma future.
+
+The reciprocal CF cylinder missed the 5% gate at longer horizons. The
+64-tick receiving policy stays in use. The Q19 rotation improved 2.5%
+and the protected stencil regressed 6%. The reflected publisher improved
+on the standalone 129-generation case, but its live 256-tick CLI
+request regressed 30.5%. The traced publisher time was 27.4 to 110.5 ms,
+including a 0.14-ms admission probe. The reversal candidates and the
+lower packed `5rev10` cutoffs were held. No additional wrapped-product
+consumer had a complete checked receiving seam. Comma admission,
+source-7 non-halting, unrestricted future closure, F4/F6 and unresolved
+Mersenne primality remain separate obligations.
+
+Evidence is in `results/nc43-production-af2000d3`.
+
+### November 24 Comma cutover integration and source repair
+
+The receiving source matched `8b06f497` over the affected paths. The isolated
+runtime and quality candidate `73001f83` aligned the packaged and runtime
+v4 filename and preserved the distinct native export name. Its wheel fixture
+checks the real package manifest with temporary, untrusted bytes. Global
+admission still requires the symbolic v4 codec, checked liveness and writer,
+and the exact native export.
+
+The Comma diagnostic bind and shift walkers and the explicit Mahler Pow5
+trace now use iterative traversal. The tests check ordered mappings at all
+924 phases, the true fallback, and preservation of an issued trace when a
+later tile fails. The direct Mahler cylinder and band regressions passed.
+The CRT replay support moved to its own file and compiled in the 148-second
+native B1 build. The native dependency smoke rejected a hidden retired rank
+theorem through a wrapper. The repository-policy scan reported zero findings.
+The integrated selection passed 194 tests, and the receiving Mahler,
+Antihydra, and audit selection passed 1,054. The full guarded default suite
+finished in 220 seconds with 13,826 passes and six Comma admission failures.
+The clean baseline had ten failures. The three Antihydra failures and the
+dependency-audit test failure were resolved. Canonical P0 retained the same
+13 failure IDs as the preceding candidate. Strict mypy, changed-file
+Pyright, Ruff, formatting, and documentation checks passed.
+
+On isolated revision `4b53bdc6`, the decade-summary producer uses the
+source-bound symbolic Stop. Native B1, C1, and Future sessions passed in
+161, 83, and 30 seconds. The source provider excludes packed Stop and rank
+authority, and the first-sector bridge checks the ordered physical crossing.
+
+The revised Future session passed in 31 seconds at `14a10b9f`. The
+rank-free graph checked 4,402 finite and 314 live classes in 18 seconds.
+That graph proof covers the ordered candidate table. At `76fcad10`, the
+first-sector writer passed in eight seconds. It checks the source-bound
+duration, exact selected cut, and ordered Fork, Landmine, or Continue result
+for one Entry/Near sector. The existing Entry-open publisher still uses
+the removed packed summary equation. Release needs an authenticated physical
+correspondence for all sixteen roots, the weighted cycle writer, and a checked
+v4 export and decoder. The symbolic proof candidate remains isolated. Public
+`a367620 --nth 1` returns status 3 because global admission is empty.
+
+Evidence is in `results/nc43-symbolic-integration` and
+`results/comma-nc43-production-proof-integration`.
+
 ## Cross-family ownership review
 
 The consolidation from `62cbc714760a6f074f5a955f0efeac6afa1e5e27`

@@ -153,3 +153,28 @@ def test_single_tick_all_adjacent_decimal_cells() -> None:
                 packed, width = _packed(decimal)
                 result = owner.issue(packed, width, 1)
                 assert _integer(*result[0]) == 5 * decimal
+
+
+def test_failed_tile_construction_preserves_completed_trace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = ResourceLedger()
+    original, width = _packed(123456789012345678901234567890)
+    different, _ = _packed(923456789012345678901234567890)
+    with Pow5SpatialTrace(ledger) as owner:
+        completed = owner.issue(original, width, 4)
+        retained = (ledger.nodes, ledger.entries)
+
+        def fail_tile(*_args: int) -> tuple[int, ...]:
+            raise RuntimeError("injected tile failure")
+
+        with monkeypatch.context() as faults:
+            faults.setattr(
+                "number_compiler.arithmetic.automata.carry_spacetime_trace._trace_leaf",
+                fail_tile,
+            )
+            with pytest.raises(RuntimeError, match="injected tile failure"):
+                owner.issue(different, width, 4)
+            assert owner.issue(original, width, 4) is completed
+            assert (ledger.nodes, ledger.entries) == retained
+    assert ledger.nodes == ledger.entries == 0

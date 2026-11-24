@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from dataclasses import replace
-from typing import cast
+from typing import Never, cast
 
 import pytest
 
@@ -343,6 +343,35 @@ def test_harmonic_snapshot_does_not_alias_mutated_enum_payload() -> None:
     assert harmonic_snapshot_matches(payload, snapshot)
     object.__setattr__(Clock.DECIMAL, "_value_", (1000, 400))
     assert not harmonic_snapshot_matches(payload, snapshot)
+
+
+def test_harmonic_verification_consumes_the_issued_structure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dataclasses import dataclass
+
+    from number_compiler.sequences.power_numbers import _harmonic_authority as authority
+
+    @dataclass(frozen=True, slots=True)
+    class Payload:
+        field: object
+
+    leaf = Payload((17, float("nan"), b"carry"))
+    payload = (leaf, True)
+    snapshot = authority.snapshot_harmonic_payload(payload)
+
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail("verification emitted a replacement token program")
+
+    monkeypatch.setattr(authority, "_iter_tokens", forbidden)
+    assert authority.harmonic_snapshot_matches(payload, snapshot)
+    assert not authority.harmonic_snapshot_matches((leaf, 1), snapshot)
+    assert not authority.harmonic_snapshot_matches(
+        payload,
+        snapshot._replace(retained_bytes=snapshot.retained_bytes + 1),
+    )
+    object.__setattr__(leaf, "field", (leaf, float("nan"), b"carry"))
+    assert not authority.harmonic_snapshot_matches(payload, snapshot)
 
 
 def test_harmonic_snapshot_rejects_mutable_enum_values() -> None:

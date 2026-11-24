@@ -323,7 +323,31 @@ def _balanced_residue_build(
                 "balanced_effect_memo_lookup_operand_bits",
                 span.bit_length() + source.bit_length(),
             )
-            if cached is not None:
+            powered = (
+                workspace.transient_powered_effect(span, source)
+                if cached is None
+                and not retain
+                and (
+                    span > workspace.MAX_TRANSIENT_FOLD_STEPS
+                    or (span == width and span > workspace.MAX_LEAF_STEPS)
+                )
+                else None
+            )
+            current_result: tuple[
+                DyadicReturnSupportRecord, DyadicReturnSupportID | None
+            ]
+            if powered is not None:
+                workspace.bump_metric("balanced_effect_memo_misses")
+                current_result = (powered, None)
+                if powered.width != span:
+                    if not (span + 1) // 2 <= powered.width < span:
+                        raise ArithmeticError("powered prefix is not a balanced split")
+                    remember(current_result)
+                    push(span, source, current_result)
+                    span -= powered.width
+                    source = upper_band_transport(powered, source, span)
+                    continue
+            elif cached is not None:
                 current_result = cached
                 workspace.bump_metric("balanced_effect_memo_hits")
                 workspace.bump_metric("reused_temporal_extent", span)

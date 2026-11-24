@@ -155,10 +155,12 @@ developer modules unique identities. No shell `MYPYPATH`, `PYTHONPATH` or runtim
 `sys.path` modification is required. Invoke developer tools with `python -m` and
 their canonical module name, not by executing a file path.
 
-Only generated build products, external environments and tool caches are outside
-authored-source checks. All authored Python shares the 1,000-line limit and the
-prohibition on direct or mutual recursion. Formatting is not compressed to evade
-that limit.
+Source discovery covers tracked and nonignored working-tree files outside
+generated directories. Python, Python stubs, Isabelle theories, ML, and Isabelle
+`ROOT` and `ROOTS` files share a limit of 1,000 physical lines. The AST call graph
+checks Python implementation files for statically resolvable direct and mutual
+recursion. Dynamic dispatch can fall outside the call graph. Formatting is not
+compressed to evade the line limit.
 
 Historical evidence keeps its original source attribution and limits. It cannot
 certify the current commit.

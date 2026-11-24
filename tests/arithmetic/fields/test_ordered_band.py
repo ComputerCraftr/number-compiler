@@ -167,3 +167,62 @@ def test_source_frames_read_little_endian_positions_with_exact_padding(
     )
     assert frame.lower_source_letters == frame.upper_source_letters == min(width, 4)
     assert len(visited) == 2 * min(width, 4)
+
+
+def test_rotated_dyadic_repeat_reserves_and_folds_only_primitive_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.fields import ordered_matrix as owner
+
+    count = 512
+    original = owner.fold_dyadic_leaf
+    leaves: list[tuple[int, int]] = []
+
+    def checked(q: int, rows: int, width: int, base: int) -> Matrix2:
+        assert rows <= 2, "repeated row occurrences were opened"
+        leaves.append((q, rows))
+        return original(q, rows, width, base)
+
+    monkeypatch.setattr(owner, "fold_dyadic_leaf", checked)
+    primitive_ids: set[tuple[int, int]] = set()
+    for phase in (0, 1):
+        digits = (6, 3) if phase == 0 else (3, 6)
+        q = (digits[1] << (count - 1)) + sum(
+            (digits[t % 2] & 1) << t for t in range(count - 1)
+        )
+        calls: list[tuple[int, int, int]] = []
+        leaves.clear()
+        observed = compile_dyadic_ordered_band(
+            q, count, 1, partial(_record_reservation, calls), use_memo=True
+        )
+        expected = ordered_decimal_continuant(digits).power(count // 2)
+        assert observed == expected
+        assert len(calls) == 1
+        assert len(leaves) <= 2
+        primitive_ids.add(leaves[0])
+    assert len(primitive_ids) == 1
+
+
+def test_completed_leaf_is_probed_before_period_rediscovery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.fields import ordered_matrix as owner
+
+    leaf = 5 * 12345678901234567
+    source = leaf * (1 + 2**64)
+    period = owner.dyadic_band_period
+    calls: list[tuple[int, int]] = []
+
+    def observe(q: int, rows: int, width: int, odd_base: int) -> int:
+        calls.append((q, rows))
+        return period(q, rows, width, odd_base)
+
+    monkeypatch.setattr(owner, "dyadic_band_period", observe)
+    reservations: list[tuple[int, int, int]] = []
+    actual = owner.compile_dyadic_ordered_band(
+        source, 128, 1, partial(_record_reservation, reservations), use_memo=True
+    )
+    rows = ((source >> i) % 10 for i in range(128))
+    expected = owner.ordered_decimal_continuant(rows)
+    assert actual == expected
+    assert calls.count((leaf, 64)) == 1

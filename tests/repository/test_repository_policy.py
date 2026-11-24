@@ -441,6 +441,26 @@ def test_recursion_cycle_checker_detects_direct_and_cross_module_mutual_cycles(
     assert ("a:f", "b:g") in cycles
 
 
+@pytest.mark.parametrize("level", (1, 2))
+def test_relative_imports_from_package_initializers_are_checked(
+    tmp_path: Path, level: int
+) -> None:
+    package = tmp_path / "outer" / "inner"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text(
+        f"def f():\n    from {'.' * level}implementation import g\n    return g()\n"
+    )
+    implementation = package if level == 1 else package.parent
+    origin = "." if level == 1 else ".inner"
+    (implementation / "implementation.py").write_text(
+        f"def g():\n    from {origin} import f\n    return f()\n"
+    )
+    expected_module = "outer.inner" if level == 1 else "outer"
+    assert recursion_cycles(tmp_path) == (
+        tuple(sorted(("outer.inner:f", f"{expected_module}.implementation:g"))),
+    )
+
+
 @pytest.mark.parametrize("line_count", [1000, 1001])
 @pytest.mark.parametrize("final_newline", [False, True])
 @pytest.mark.parametrize(

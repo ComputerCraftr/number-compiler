@@ -49,46 +49,70 @@ class ShiftTraversal:
         self.visits = 0
 
     def node_period(self, root: int) -> int:
-        period = self.periods.get(root)
-        if period is None:
-            node = self.nodes[root]
+        pending = [(root, False)]
+        while pending:
+            index, ready = pending.pop()
+            if index in self.periods:
+                continue
+            node = self.nodes[index]
             if isinstance(node, SourceLeaf):
-                period = 1
+                self.periods[index] = 1
+            elif ready:
+                self.periods[index] = lcm(
+                    RADICES[node.axis],
+                    *(self.periods[child] for child in node.children),
+                )
             else:
-                period = lcm(RADICES[node.axis], *map(self.node_period, node.children))
-            self.periods[root] = period
-        return period
+                pending.append((index, True))
+                pending.extend((child, False) for child in reversed(node.children))
+        return self.periods[root]
+
+    def _shift_key(
+        self, root: int, shift: int, delta: int, normalize: bool
+    ) -> tuple[int, int, int]:
+        return root, shift % self.node_period(root) if normalize else shift, delta
 
     def visit(self, root: int, shift: int, delta: int, *, normalize: bool) -> int:
-        if normalize:
-            shift %= self.node_period(root)
-        key = (root, shift, delta)
-        cached = self.cache.get(key)
-        if cached is not None:
-            return cached
-        self.visits += 1
-        node = self.nodes[root]
-        if isinstance(node, SourceLeaf):
-            encoded: SourceNode = SourceLeaf(node.cid + delta)
-        else:
-            width = RADICES[node.axis]
-            children = tuple(
-                self.visit(
-                    node.children[(slot + shift) % width],
-                    shift,
-                    delta,
-                    normalize=normalize,
+        key = self._shift_key(root, shift, delta, normalize)
+        pending: list[
+            tuple[tuple[int, int, int], tuple[tuple[int, int, int], ...] | None]
+        ] = [(key, None)]
+        while pending:
+            current, children = pending.pop()
+            if current in self.cache:
+                continue
+            index, phase, increment = current
+            node = self.nodes[index]
+            if children is not None:
+                assert isinstance(node, SourceBranch)
+                encoded: SourceNode = SourceBranch(
+                    node.axis, tuple(self.cache[child] for child in children)
                 )
-                for slot in range(width)
-            )
-            encoded = SourceBranch(node.axis, children)
-        result = self.interned.get(encoded)
-        if result is None:
-            result = len(self.nodes)
-            self.interned[encoded] = result
-            self.nodes.append(encoded)
-        self.cache[key] = result
-        return result
+            else:
+                self.visits += 1
+                if isinstance(node, SourceLeaf):
+                    encoded = SourceLeaf(node.cid + increment)
+                else:
+                    width = RADICES[node.axis]
+                    children = tuple(
+                        self._shift_key(
+                            node.children[(slot + phase) % width],
+                            phase,
+                            increment,
+                            normalize,
+                        )
+                        for slot in range(width)
+                    )
+                    pending.append((current, children))
+                    pending.extend((child, None) for child in reversed(children))
+                    continue
+            result = self.interned.get(encoded)
+            if result is None:
+                result = len(self.nodes)
+                self.interned[encoded] = result
+                self.nodes.append(encoded)
+            self.cache[current] = result
+        return self.cache[key]
 
     def run(self, request: Request, mode: Mode) -> int:
         if mode == "split":
@@ -199,4 +223,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

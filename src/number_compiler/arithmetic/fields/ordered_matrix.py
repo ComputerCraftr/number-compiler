@@ -134,12 +134,96 @@ def _fixed_decimal_digits(value: int, place: int) -> Iterator[int]:
         place //= 10
 
 
+def append_decimal_value(
+    value: int, place: int, entries: MatrixEntries
+) -> MatrixEntries:
+    a, b, c, d = entries
+    while place:
+        digit, value = divmod(value, place)
+        x = digit + 1
+        a, b, c, d = a * x + b, a, c * x + d, c
+        place //= 10
+    return a, b, c, d
+
+
 def fold_fixed_decimal_row(value: int, first_place: int, product: Matrix2) -> Matrix2:
     """Append one admitted fixed-width row, preserving its leading zeroes."""
-    digits = _fixed_decimal_digits(value, first_place)
     if product.modulus is None:
-        return _exact_continuant(digits, product.entries)
-    return product.multiply(ordered_decimal_continuant(digits, product.modulus))
+        return Matrix2(append_decimal_value(value, first_place, product.entries))
+    return product.multiply(
+        ordered_decimal_continuant(
+            _fixed_decimal_digits(value, first_place), product.modulus
+        )
+    )
+
+
+def dyadic_band_period(q: int, count: int, width: int, odd_base: int) -> int:
+    """Prove repetition in the lifted word before opening either child."""
+    limit = min(32, count // 2)
+    shift = count - 2 + width
+    mask = (1 << shift) - 1
+    for period in range(1, limit + 1):
+        shifted = q >> period
+        if not ((q ^ shifted) & mask) and ((q - shifted) >> shift) % odd_base == 0:
+            return period
+        shift -= 1
+        mask >>= 1
+    return 0
+
+
+def _canonical_dyadic_motif(q: int, period: int, base: int) -> tuple[int, int]:
+    """Return a least cyclic lift and the original word's receiving phase.
+
+    A rotation shifts the low parity coordinates and appends the first row
+    as the new high coordinate. No row spelling is constructed.
+    """
+    best, rotation = q, 0
+    mask = (1 << (period - 1)) - 1
+    for step in range(1, period):
+        q = ((q >> 1) & mask) | ((q % base) << (period - 1))
+        if q < best:
+            best, rotation = q, step
+    return best, (-rotation) % period
+
+
+def _append_dyadic_digits(q: int, count: int, entries: MatrixEntries) -> MatrixEntries:
+    """Fused terminal action for a bounded single-column dyadic word."""
+    a, b, c, d = entries
+    for _ in range(count):
+        x = q % 10 + 1
+        a, b, c, d = a * x + b, a, c * x + d, c
+        q >>= 1
+    return a, b, c, d
+
+
+# This immutable finite alphabet is source independent, not a history cache.
+_DYADIC_FOUR_ROW = tuple(_append_dyadic_digits(q, 4, (1, 0, 0, 1)) for q in range(80))
+
+
+def fold_dyadic_leaf(q: int, count: int, width: int, base: int) -> Matrix2:
+    """Fused arithmetic leaf, not a DAG node or digit object per coefficient."""
+    a, b, c, d = 1, 0, 0, 1
+    if width == 1:
+        groups, tail = divmod(count, 4)
+        for _ in range(groups):
+            e, f, g, h = _DYADIC_FOUR_ROW[q % 80]
+            a, b, c, d = a * e + b * g, a * f + b * h, c * e + d * g, c * f + d * h
+            q >>= 4
+        if tail:
+            a, b, c, d = _append_dyadic_digits(q, tail, (a, b, c, d))
+    else:
+        first_place = base // 10
+        for _ in range(count):
+            a, b, c, d = append_decimal_value(q % base, first_place, (a, b, c, d))
+            q >>= 1
+    return Matrix2((a, b, c, d))
+
+
+def _conjugate_by_prefix(value: Matrix2, prefix: Matrix2, parity: int) -> Matrix2:
+    a, b, c, d = prefix.entries
+    sign = -1 if parity else 1
+    inverse = Matrix2((sign * d, -sign * b, -sign * c, sign * a))
+    return inverse.multiply(value).multiply(prefix)
 
 
 def compile_dyadic_ordered_band(
@@ -150,72 +234,69 @@ def compile_dyadic_ordered_band(
     *,
     use_memo: bool,
 ) -> Matrix2:
-    """Compile admitted dyadic shifts in chronological row order.
+    """Compile a lifted diagonal with bounded, source-independent tile reuse.
 
-    The caller authenticates the quotient and coverage. Each working state
-    and retained result is charged through ``reserve`` before allocation.
+    The caller supplies the physical source guard. Reserve the simultaneous
+    root/child operands and bounded motif cache before any split. Repeats are
+    recognized on Q, and rotations reuse a primitive orbit matrix. Only a
+    nonrepeating terminal tile opens its bounded digit factors.
     """
-    base = 10**width
-    first_place = 10 ** (width - 1)
+    require_integer(rows, "ordered band rows", 1)
+    require_integer(width, "ordered band width", 1)
+    require_integer(quotient, "ordered band quotient", 0)
+    # A depth-first binary fold holds disjoint completed children plus one
+    # working product. The caller's root bit reservation bounds those limbs.
+    # The extra fixed-size cache can retain only small primitive/leaf actions.
+    capacity = min(16, max(1, rows // 16)) if use_memo else 0
+    leaf_rows = max(2, min(64, 128 // width))
+    cache_bits = capacity * 8 * (256 + min(rows, 64) * (16 * width + 1))
+    reserve(quotient, rows, cache_bits)
+    base, odd_base = 10**width, 5**width
+    quotient %= base << (rows - 1)
     memo: dict[tuple[int, int], Matrix2] = {}
-    retained_bits = 0
-    pending: list[tuple[int, int, int, tuple[int, int, int] | None]] = [
-        (quotient, rows, 0, None)
-    ]
+
+    def small(q: int, count: int) -> Matrix2:
+        key = (q, count)
+        value = memo.get(key)
+        if value is None:
+            value = fold_dyadic_leaf(q, count, width, base)
+            if len(memo) < capacity:
+                memo[key] = value
+        return value
+
+    # Pending entries are symbolic split/return actions, not physical rows.
+    pending: list[tuple[int, int, int]] = [(quotient, rows, 0)]
     values: list[Matrix2] = []
     while pending:
-        q, count, stage, repeat = pending.pop()
-        key = (q, count)
-        if stage == 0 and use_memo and key in memo:
-            values.append(memo[key])
+        q, count, stage = pending.pop()
+        if stage == 1:
+            right_product, left_product = values.pop(), values.pop()
+            values.append(left_product.multiply(right_product))
             continue
-        reserve(q, count, retained_bits)
-        if stage == 0 and count == 1:
-            if width == 1:
-                result = Matrix2.digit(q % base + 1)
-            else:
-                result = fold_fixed_decimal_row(
-                    q % base, first_place, Matrix2.identity()
-                )
-        elif stage == 0:
-            period = 0
-            for candidate in range(1, min(32, count // 2) + 1):
-                ring = base << (count - candidate - 1)
-                if q % ring == (q >> candidate) % ring:
-                    period = candidate
-                    break
-            if period:
-                copies, tail = divmod(count, period)
-                pending.append((q, count, 2, (period, copies, tail)))
-                if tail:
-                    pending.append((q >> (period * copies), tail, 0, None))
-                pending.append((q % (base << (period - 1)), period, 0, None))
-            else:
-                left = count // 2
-                pending.append((q, count, 1, None))
-                pending.append((q >> left, count - left, 0, None))
-                pending.append((q % (base << (left - 1)), left, 0, None))
-            continue
-        elif stage == 1:
-            right, left_matrix = values.pop(), values.pop()
-            result = left_matrix.multiply(right)
+        if capacity:
+            cached = memo.get((q, count))
+            if cached is not None:
+                values.append(cached)
+                continue
+        period = dyadic_band_period(q, count, width, odd_base)
+        if period:
+            copies, tail = divmod(count, period)
+            motif = q % (base << (period - 1))
+            canonical, phase = _canonical_dyadic_motif(motif, period, base)
+            product = small(canonical, period).power(copies)
+            if phase:
+                prefix = small(canonical % (base << (phase - 1)), phase)
+                product = _conjugate_by_prefix(product, prefix, phase * width & 1)
+            if tail:
+                product = product.multiply(small(q >> (copies * period), tail))
+            values.append(product)
+        elif count <= leaf_rows:
+            values.append(small(q, count))
         else:
-            assert repeat is not None
-            _, copies, tail = repeat
-            suffix = values.pop() if tail else None
-            initial = values.pop()
-            result = initial.power(copies)
-            if suffix is not None:
-                result = result.multiply(suffix)
-        if use_memo:
-            retained_bits += 8 * (
-                q.bit_length()
-                + sum(value.bit_length() for value in result.entries)
-                + 256
-            )
-            reserve(q, count, retained_bits)
-            memo[key] = result
-        values.append(result)
+            left_rows = count // 2
+            pending.append((q, count, 1))
+            pending.append((q >> left_rows, count - left_rows, 0))
+            pending.append((q % (base << (left_rows - 1)), left_rows, 0))
     if len(values) != 1:
         raise ArithmeticError("ordered source fold did not produce one action")
     return values.pop()

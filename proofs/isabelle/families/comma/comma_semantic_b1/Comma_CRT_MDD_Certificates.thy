@@ -114,6 +114,7 @@ lemma comma_crt_mdd_selected_branch_cofactor:
   shows "comma_crt_mdd_cofactor radices nodes axis slot root = Some child"
   using assms by (simp add: comma_crt_mdd_cofactor_def)
 
+ML_file "crt_mdd_bind_replay_support.ML"
 ML_file "crt_mdd_bind_replay.ML"
 
 ML \<open>

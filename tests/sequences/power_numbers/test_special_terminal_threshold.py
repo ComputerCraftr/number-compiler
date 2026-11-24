@@ -117,7 +117,7 @@ def test_production_certificate_keeps_missing_terminal_extractor_unresolved() ->
     assert f2.construction_raw_squarings == 0
 
     # Missing candidate recovery cannot be replaced with a recurrence.
-    for n in (4, 5):
+    for n in (4, 6):
         cert = fermat_depth_certificate(n)
         assert cert.status == "unknown"
         assert cert.method.startswith("terminal-threshold:")

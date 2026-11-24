@@ -110,15 +110,21 @@ class BindTraversal:
         self.selected_rows = 0
 
     def support(self, root: int) -> frozenset[int]:
-        if root not in self.supports:
-            node = self.nodes[root]
-            self.supports[root] = (
-                frozenset((node.cid,))
-                if isinstance(node, SourceLeaf)
-                else frozenset().union(
-                    *(self.support(child) for child in node.children)
+        pending = [(root, False)]
+        while pending:
+            index, ready = pending.pop()
+            if index in self.supports:
+                continue
+            node = self.nodes[index]
+            if isinstance(node, SourceLeaf):
+                self.supports[index] = frozenset((node.cid,))
+            elif ready:
+                self.supports[index] = frozenset().union(
+                    *(self.supports[child] for child in node.children)
                 )
-            )
+            else:
+                pending.append((index, True))
+                pending.extend((child, False) for child in reversed(node.children))
         return self.supports[root]
 
     def cofactor(self, root: int, axis: int, slot: int) -> int:
@@ -130,22 +136,41 @@ class BindTraversal:
             else root
         )
 
-    def bind(self, key: BindKey) -> int:
+    def _restricted(self, key: BindKey) -> BindKey:
         support = self.support(key.source)
-        key = BindKey(
+        return BindKey(
             key.source,
             key.fallback,
             tuple(row for row in key.mapping if row[0] in support),
         )
-        cached = self.binds.get(key)
-        if cached is not None:
-            return cached
-        route = dict(key.mapping)
-        source = self.nodes[key.source]
-        if isinstance(source, SourceLeaf):
-            result = route.get(source.cid, key.fallback)
-        else:
-            roots = (key.fallback, *(target for _, target in key.mapping))
+
+    def _branch(self, axis: int, children: tuple[int, ...]) -> int:
+        if all(root == children[0] for root in children):
+            return children[0]
+        branch = SourceBranch(axis, children)
+        result = self.interned.setdefault(branch, len(self.nodes))
+        if result == len(self.nodes):
+            self.nodes.append(branch)
+        return result
+
+    def bind(self, key: BindKey) -> int:
+        key = self._restricted(key)
+        pending: list[tuple[BindKey, int, tuple[BindKey, ...]]] = [(key, -1, ())]
+        while pending:
+            current, axis, child_keys = pending.pop()
+            if current in self.binds:
+                continue
+            if axis >= 0:
+                self.binds[current] = self._branch(
+                    axis, tuple(self.binds[child] for child in child_keys)
+                )
+                continue
+            route = dict(current.mapping)
+            source = self.nodes[current.source]
+            if isinstance(source, SourceLeaf):
+                self.binds[current] = route.get(source.cid, current.fallback)
+                continue
+            roots = (current.fallback, *(target for _, target in current.mapping))
             axis = min(
                 (
                     source.axis,
@@ -156,40 +181,36 @@ class BindTraversal:
                     ),
                 )
             )
-            source_rows = tuple(
-                self.cofactor(key.source, axis, slot) for slot in range(RADICES[axis])
+            rows = tuple(
+                self.cofactor(current.source, axis, slot)
+                for slot in range(RADICES[axis])
             )
-            sources = tuple(self.nodes[row] for row in source_rows)
+            sources = tuple(self.nodes[row] for row in rows)
             if self.selected and all(isinstance(node, SourceLeaf) for node in sources):
                 children = tuple(
-                    self.cofactor(route.get(node.cid, key.fallback), axis, slot)
+                    self.cofactor(route.get(node.cid, current.fallback), axis, slot)
                     for slot, node in enumerate(sources)
                     if isinstance(node, SourceLeaf)
                 )
                 self.selected_rows += len(children)
-            else:
-                children = tuple(
-                    self.bind(
-                        BindKey(
-                            row,
-                            self.cofactor(key.fallback, axis, slot),
-                            tuple(
-                                (label, self.cofactor(target, axis, slot))
-                                for label, target in key.mapping
-                            ),
-                        )
+                self.binds[current] = self._branch(axis, children)
+                continue
+            child_keys = tuple(
+                self._restricted(
+                    BindKey(
+                        row,
+                        self.cofactor(current.fallback, axis, slot),
+                        tuple(
+                            (label, self.cofactor(target, axis, slot))
+                            for label, target in current.mapping
+                        ),
                     )
-                    for slot, row in enumerate(source_rows)
                 )
-            if all(root == children[0] for root in children):
-                result = children[0]
-            else:
-                branch = SourceBranch(axis, children)
-                result = self.interned.setdefault(branch, len(self.nodes))
-                if result == len(self.nodes):
-                    self.nodes.append(branch)
-        self.binds[key] = result
-        return result
+                for slot, row in enumerate(rows)
+            )
+            pending.append((current, axis, child_keys))
+            pending.extend((child, -1, ()) for child in reversed(child_keys))
+        return self.binds[key]
 
 
 def main() -> None:
@@ -244,4 +265,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from devtools.runs import run_reported
+
+    raise SystemExit(run_reported(main))

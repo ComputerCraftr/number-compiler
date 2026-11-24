@@ -12,6 +12,7 @@ import sys
 from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
+from importlib.util import resolve_name as resolve_import_name
 from pathlib import Path
 from time import perf_counter
 
@@ -139,7 +140,7 @@ def source_line_violations(
     authored_files: tuple[Path, ...] | None = None,
     line_counts: Mapping[Path, int] | None = None,
 ) -> tuple[tuple[str, int], ...]:
-    """Check every authored Python source, including tests and developer tools."""
+    """Check physical line counts for all discovered authored source files."""
     root = Path(root).resolve()
     violations: list[tuple[str, int]] = []
     for path in (
@@ -223,6 +224,7 @@ def _function_catalog(
     )
     for path, tree in sorted(sources.items()):
         module = _module_name(root, path)
+        package = module if path.name == "__init__.py" else module.rpartition(".")[0]
         module_defs.setdefault(module, {})
         imports.setdefault(module, {})
         module_aliases.setdefault(module, {})
@@ -317,10 +319,10 @@ def _function_catalog(
             elif isinstance(node, ast.ImportFrom):
                 base = node.module or ""
                 if node.level:
-                    mod_parts = module.split(".")[:-1]
-                    keep = max(0, len(mod_parts) - (node.level - 1))
-                    prefix = mod_parts[:keep]
-                    base = ".".join(prefix + ([base] if base else []))
+                    try:
+                        base = resolve_import_name("." * node.level + base, package)
+                    except ImportError:
+                        continue
                 for alias in node.names:
                     if alias.name != "*":
                         imports[import_scope][alias.asname or alias.name] = (

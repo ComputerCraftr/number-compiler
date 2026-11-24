@@ -7,10 +7,12 @@ prefix data and legacy forest session have been removed. The replacement uses
 the existing authenticated global-provider interface.
 
 The source registry in `future_provider.py` remains empty. Public value
-queries require admitted global authority. The receiving package still
-reserves the v3 path while the replacement is under development. The
-release gate requires v4 and rejects the retired v3 asset. The former
-candidate JSON did not come from a kernel proof.
+queries require admitted global authority. The runtime and package
+manifest reserve `kernels/comma_semantic_future_v4.json`. The native
+export uses `comma-semantic-future-v4.json`. The v3 decoder still
+serves candidate diagnostics and provider fixtures. Public admission
+requires the v4 codec, checked liveness and writer, and an admitted
+native export.
 
 ## Required release-artifact finalization
 
@@ -31,8 +33,8 @@ walks in the release proof.
    graph, finite/live disposition and the native weighted writer data.
 3. Review the proof-source identity, theorem, contract and claim set.
    Bind the exact export bytes to the immutable kernel admission registry.
-   Package those bytes as `kernels/comma_semantic_future_v4.json` and switch
-   the runtime asset name with the registry in the same change.
+   Package those bytes as `kernels/comma_semantic_future_v4.json`.
+   Deliver the v4 decoder and liveness-based consumer with registry admission.
 4. Run the existing full acceptance runner on the clean candidate.
    It compares the packaged source asset byte-for-byte with the guarded
    native export. The installed-wheel checks verify admission and run

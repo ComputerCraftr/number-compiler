@@ -458,16 +458,54 @@ proof -
     using refinement .
 qed
 
+theorem collatz_witness_then_cyclic_source_consumer:
+  assumes witness: "seam = (physical_collatz ^^ prefix_ticks) seed"
+    and source_word:
+      "bits = dyadic_source_word collatz_temporal_source_step odd seam (length bits)"
+    and defect:
+      "(2::int)^(repetitions * length bits) dvd
+        collatz_temporal_word_defect bits seam"
+  shows "collatz_guarded_normalized_word_endpoint
+      (concat (replicate repetitions bits)) seam =
+    (physical_collatz ^^ (prefix_ticks +
+      repetitions * collatz_physical_ticks bits)) seed"
+    "collatz_normalized_clock (concat (replicate repetitions bits)) =
+      (repetitions * count_list bits True, repetitions * length bits)"
+proof -
+  let ?duration = "repetitions * collatz_physical_ticks bits"
+  have transport:
+    "(physical_collatz ^^ ?duration) ((physical_collatz ^^ prefix_ticks) seed) =
+      (physical_collatz ^^ (prefix_ticks + ?duration)) seed"
+  proof -
+    have "(physical_collatz ^^ ?duration) ((physical_collatz ^^ prefix_ticks) seed) =
+        (physical_collatz ^^ (?duration + prefix_ticks)) seed"
+      by (simp only: funpow_add comp_apply)
+    then show ?thesis by (simp only: add.commute)
+  qed
+  show "collatz_guarded_normalized_word_endpoint
+      (concat (replicate repetitions bits)) seam =
+    (physical_collatz ^^ (prefix_ticks + ?duration)) seed"
+    using collatz_cyclic_source_consumer(2)[OF source_word defect] witness transport
+    by simp
+  show "collatz_normalized_clock (concat (replicate repetitions bits)) =
+      (repetitions * count_list bits True, repetitions * length bits)"
+    by (rule collatz_cyclic_source_consumer(3)[OF source_word defect])
+qed
+
 ML \<open>
   val _ = if null (Thm_Deps.all_oracles
     @{thms collatz_cyclic_phase_extrema collatz_cyclic_rotated_defect_source_step
       collatz_guarded_moving_cut_numerator
       collatz_guarded_word_endpoint_progression
       collatz_cyclic_source_consumer collatz_canonical_rotation_source_consumer
+      collatz_witness_then_cyclic_source_consumer
       collatz_guarded_word_midpoint_composition
       collatz_6305_mixed_return_clocks
       collatz_6305_mixed_returns_refine_physical}) then ()
     else error "Guarded Collatz word progression depends on an oracle";
+  val _ = if Thm_Deps.has_skip_proof
+    @{thms collatz_witness_then_cyclic_source_consumer}
+    then error "Skipped Collatz witness continuation proof" else ();
 \<close>
 
 end

@@ -296,12 +296,12 @@ def test_unified_compiler_retains_shared_sensitivity_and_digit_projection_interf
     assert fermat.terms[0].factor_witness is None
     assert fermat.terms[0].digit_projection is None
     f5 = compiler.resolve_special_theorem("fermat", 5)
-    assert f5.projection_method.startswith("terminal-threshold:")
+    assert f5.projection_method == "fermat-binomial-signed-factor"
     assert f5.primality is not None
-    assert f5.factor_witness is None and f5.primality.status == "unknown"
+    assert f5.factor_witness == 641 and f5.primality.status == "composite"
     assert f5.primality.specialization_raw_squarings == 0
-    assert not f5.primality.decided and f5.primality.target_depth is None
-    assert f5.source_guard.failure_bit is None
+    assert f5.primality.decided and f5.primality.target_depth is None
+    assert f5.source_guard.failure_bit is True
     # The historical packed factor projection remains an explicit opt-in tool;
     # it is no longer charged to the default theorem path.
     f5_factor = CanonicalSequenceCompiler().resolve_special_theorem(
