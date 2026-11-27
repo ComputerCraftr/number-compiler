@@ -305,3 +305,37 @@ def test_cli_reuses_an_issued_diagonal_band_before_lifting(
         assert main(shifted) == 0
         assert json.loads(capsys.readouterr().out) == expected_shift
     cache.reset()
+
+
+@pytest.mark.parametrize(("exponent", "cut", "lift"), [(16, 4, 370), (3000, 64, 1099)])
+def test_eight_row_terminal_uses_admitted_physical_lift(
+    exponent: int,
+    cut: int,
+    lift: int,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.fields import dyadic_eight_rows, ordered_matrix
+
+    original = dyadic_eight_rows.eight_row_interval
+    calls: list[int] = []
+
+    def terminal(q: int) -> ordered_matrix.Matrix2:
+        calls.append(q)
+        return original(q)
+
+    def forbidden(*_args: object) -> None:
+        raise AssertionError("generic leaf fold on admitted eight-row terminal")
+
+    monkeypatch.setattr(dyadic_eight_rows, "eight_row_interval", terminal)
+    monkeypatch.setattr(ordered_matrix, "fold_dyadic_leaf", forbidden)
+    band = f"{exponent},{cut},1,8"
+    assert main([*_BASE, "--nth", "0", *_CF, "--continued-fraction-band", band]) == 0
+    packet = mapping(mapping(json.loads(capsys.readouterr().out))["info"])
+    action = mapping(packet["arithmetic.continued-fraction"])
+    assert calls == [lift]
+    a, b, c, d = 1, 0, 0, 1
+    for offset in range(8):
+        coefficient = (5 ** (exponent + offset) // 10 ** (cut + offset - 1)) % 10 + 1
+        a, b, c, d = a * coefficient + b, a, c * coefficient + d, c
+    assert action["matrix"] == [[a, b], [c, d]]

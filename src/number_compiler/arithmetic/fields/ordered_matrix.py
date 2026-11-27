@@ -259,7 +259,7 @@ def _append_dyadic_digits(q: int, count: int, entries: MatrixEntries) -> MatrixE
 
 
 # This immutable finite alphabet is source independent, not a history cache.
-_DYADIC_FOUR_ROW = tuple(_append_dyadic_digits(q, 4, (1, 0, 0, 1)) for q in range(80))
+DYADIC_FOUR_ROW = tuple(_append_dyadic_digits(q, 4, (1, 0, 0, 1)) for q in range(80))
 
 
 def fold_dyadic_leaf(q: int, count: int, width: int, base: int) -> Matrix2:
@@ -268,7 +268,7 @@ def fold_dyadic_leaf(q: int, count: int, width: int, base: int) -> Matrix2:
     if width == 1:
         groups, tail = divmod(count, 4)
         for _ in range(groups):
-            e, f, g, h = _DYADIC_FOUR_ROW[q % 80]
+            e, f, g, h = DYADIC_FOUR_ROW[q % 80]
             a, b, c, d = a * e + b * g, a * f + b * h, c * e + d * g, c * f + d * h
             q >>= 4
         if tail:
@@ -306,6 +306,20 @@ def compile_dyadic_ordered_band(
     require_integer(rows, "ordered band rows", 1)
     require_integer(width, "ordered band width", 1)
     require_integer(quotient, "ordered band quotient", 0)
+    if rows == 8 and width == 1:
+        # Two 640 × 16-byte buffers coexist while freezing the alphabet.
+        # Include 4 KiB for the builder frame, operands and result.
+        try:
+            reserve(quotient, rows, (2 * 640 * 16 + 4096) * 8)
+        except BlockContextBudgetExceeded:
+            pass
+        else:
+            from number_compiler.arithmetic.fields.dyadic_eight_rows import (
+                eight_row_interval,
+            )
+
+            return eight_row_interval(quotient)
+
     # A depth-first binary fold holds disjoint completed children plus one
     # working product. The caller's root bit reservation bounds those limbs.
     # The extra fixed-size cache can retain only small primitive/leaf actions.
