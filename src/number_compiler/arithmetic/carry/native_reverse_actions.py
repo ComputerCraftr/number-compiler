@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass
@@ -57,6 +58,11 @@ class _Kernels(Protocol):
     def guard98(
         self, interior: bytes, returns: int, endpoint: bool, node_cap: int
     ) -> tuple[int, int, int]: ...
+
+
+def native_reverse_enabled() -> bool:
+    """Whether the caller opted into bounded reversal kernels for this query."""
+    return os.environ.get("NUMBER_COMPILER_ENABLE_NATIVE_REVERSE") == "1"
 
 
 @cache
