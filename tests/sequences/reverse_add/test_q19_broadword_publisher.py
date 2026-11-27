@@ -1,12 +1,16 @@
 """Exact source tests for the width-growing Q19 pair-sum publisher."""
 
+from collections.abc import Iterator
 from itertools import product
 from random import Random
 
 import pytest
 
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.reverse_add.q19_broadword_publisher import PackedQ19
+from number_compiler.sequences.reverse_add.q19_broadword_publisher import (
+    PackedQ19,
+    pack_q19_pair_lanes,
+)
 from number_compiler.sequences.reverse_add.q19_output import (
     ReversePairQ19OutputOwner,
 )
@@ -14,6 +18,20 @@ from tests.support.reference_arithmetic import (
     literal_reverse_add_digits,
     radix_digits_lsd,
 )
+
+
+def test_pair_lane_packing_streams_once_across_byte_boundaries() -> None:
+    def streamed(values: tuple[int, ...], seen: list[int]) -> Iterator[int]:
+        for value in values:
+            seen.append(value)
+            yield value
+
+    for count in range(20):
+        values = tuple((7 * i + 3) % 19 for i in range(count))
+        seen: list[int] = []
+        actual = pack_q19_pair_lanes(streamed(values, seen))
+        assert actual == sum(value << (6 * i) for i, value in enumerate(values))
+        assert seen == list(values)
 
 
 def test_packed_q19_successor_matches_independent_decimal_oracle() -> None:

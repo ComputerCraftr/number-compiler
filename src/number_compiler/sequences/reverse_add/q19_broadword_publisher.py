@@ -11,8 +11,25 @@ linear in the requested generation; it does not assert a future period.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+
+
+def pack_q19_pair_lanes(values: Iterable[int]) -> int:
+    """Pack an already authenticated stream of pair sums into six-bit lanes."""
+    encoded = bytearray()
+    accumulator = 0
+    bits = 0
+    for value in values:
+        accumulator |= value << bits
+        bits += 6
+        if bits >= 8:
+            encoded.append(accumulator & 255)
+            accumulator >>= 8
+            bits -= 8
+    if bits:
+        encoded.append(accumulator)
+    return int.from_bytes(encoded, "little")
 
 
 def _is_tuple(value: object) -> bool:

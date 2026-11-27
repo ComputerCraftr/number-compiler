@@ -15,7 +15,10 @@ from number_compiler.resources.process_cache import (
     CacheLease,
     get_process_cache,
 )
-from number_compiler.sequences.reverse_add.q19_broadword_publisher import PackedQ19
+from number_compiler.sequences.reverse_add.q19_broadword_publisher import (
+    PackedQ19,
+    pack_q19_pair_lanes,
+)
 
 DECIMAL_CARRY_WINDOW = 12
 
@@ -149,19 +152,7 @@ def _native_segment(
 
     def receive(pairs: bytes, _work: object) -> PackedQ19:
         count = len(pairs) // 2
-        encoded = bytearray()
-        accumulator = 0
-        bits = 0
-        for value in pairs[:count]:
-            accumulator |= value << bits
-            bits += 6
-            if bits >= 8:
-                encoded.append(accumulator & 255)
-                accumulator >>= 8
-                bits -= 8
-        if bits:
-            encoded.append(accumulator)
-        lanes = int.from_bytes(encoded, "little")
+        lanes = pack_q19_pair_lanes(memoryview(pairs)[:count])
         center = pairs[count] // 2 if len(pairs) & 1 else None
         if len(pairs) & 1 and pairs[count] % 2:
             raise ValueError("native Q19 center does not encode a decimal digit")

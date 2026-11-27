@@ -130,6 +130,7 @@ class Q19OutputPublicationMixin:
         """Decode the complete pair state from one authenticated endpoint."""
         from number_compiler.sequences.reverse_add.q19_broadword_publisher import (
             PackedQ19,
+            pack_q19_pair_lanes,
         )
 
         self.validate_issued_occurrence(occurrence)
@@ -154,9 +155,6 @@ class Q19OutputPublicationMixin:
                     pass
         count = occurrence.pair_width // 2
         odd = bool(occurrence.pair_width & 1)
-        packed = bytearray()
-        accumulator = 0
-        bits = 0
         with closing(
             iter_symbols(
                 self.arena,
@@ -167,16 +165,17 @@ class Q19OutputPublicationMixin:
         ) as symbols:
             if next(symbols, None) != 19 + int(odd):
                 raise ValueError("issued Q19 frontier has another width or parity")
-            for _ in range(count):
-                coefficient = next(symbols, None)
-                if type(coefficient) is not int or not 0 <= coefficient <= 18:
-                    raise ValueError("issued Q19 frontier has an invalid coefficient")
-                accumulator |= coefficient << bits
-                bits += 6
-                if bits >= 8:
-                    packed.append(accumulator & 255)
-                    accumulator >>= 8
-                    bits -= 8
+
+            def checked_pairs() -> Iterator[int]:
+                for _ in range(count):
+                    coefficient = next(symbols, None)
+                    if type(coefficient) is not int or not 0 <= coefficient <= 18:
+                        raise ValueError(
+                            "issued Q19 frontier has an invalid coefficient"
+                        )
+                    yield coefficient
+
+            pairs = pack_q19_pair_lanes(checked_pairs())
             center = None
             if odd:
                 middle = next(symbols, None)
@@ -185,9 +184,6 @@ class Q19OutputPublicationMixin:
                 center = middle // 2
             if next(symbols, None) != 21 or next(symbols, None) is not None:
                 raise ValueError("issued Q19 frontier has an invalid terminal")
-        if bits:
-            packed.append(accumulator)
-        pairs = int.from_bytes(packed, "little")
         return PackedQ19.from_record((pairs, count, center))
 
     def _publish_broadword_source(
