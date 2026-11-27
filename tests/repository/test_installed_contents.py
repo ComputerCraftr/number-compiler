@@ -78,11 +78,34 @@ def test_wheel_native_reversal_has_one_opt_in_abi_member(
 
     native_reverse = shape in {"native", "missing", "wrong-abi"}
     if shape in {"pure", "native"}:
-        members = validate_wheel_contents(wheel, source, native_reverse=native_reverse)
+        members = validate_wheel_contents(
+            wheel, source, extensions=("_reverse_quotients",) if native_reverse else ()
+        )
         assert (native_name in members) is native_reverse
     else:
         with pytest.raises(ValueError, match=r"(extra|missing)_package_files"):
-            validate_wheel_contents(wheel, source, native_reverse=native_reverse)
+            validate_wheel_contents(
+                wheel,
+                source,
+                extensions=("_reverse_quotients",) if native_reverse else (),
+            )
+
+
+def test_combined_wheel_requires_each_selected_kernel(tmp_path: Path) -> None:
+    source = tmp_path / "src"
+    package = source / "number_compiler" / "kernels"
+    package.mkdir(parents=True)
+    modules = ("_reverse_quotients", "_reflected_multiply")
+    wheel = tmp_path / "combined.whl"
+    with ZipFile(wheel, "w") as output:
+        for name in modules:
+            output.writestr(
+                f"number_compiler/kernels/{name}{sysconfig.get_config_var('EXT_SUFFIX')}",
+                b"extension",
+            )
+    assert len(validate_wheel_contents(wheel, source, extensions=modules)) == 2
+    with pytest.raises(ValueError, match="extra_package_files"):
+        validate_wheel_contents(wheel, source, extensions=modules[:1])
 
 
 def test_wheel_verification_keeps_flushed_last_stage_on_failure(
@@ -101,9 +124,9 @@ def test_wheel_verification_keeps_flushed_last_stage_on_failure(
     stderr = FlushTrackingStderr()
 
     def reject_contents(
-        _wheel: Path, _source: Path, *, native_reverse: bool = False
+        _wheel: Path, _source: Path, *, extensions: tuple[str, ...] = ()
     ) -> list[str]:
-        assert not native_reverse
+        assert not extensions
         raise ValueError("controlled content-validation failure")
 
     monkeypatch.setattr(sys, "stderr", stderr)

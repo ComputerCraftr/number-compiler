@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -12,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 from devtools.checks.installed_distribution import (
-    NATIVE_REVERSE_BUILD_FLAG,
+    requested_extensions,
     verify_wheel,
 )
 from devtools.paths import report_directory, repository_root
@@ -66,9 +65,7 @@ def main() -> int:
     if len(wheels) != 1:
         raise ValueError("clean staging must produce exactly one wheel")
     _report_stage("wheel-verification:start")
-    result = verify_wheel(
-        wheels[0], native_reverse=os.environ.get(NATIVE_REVERSE_BUILD_FLAG) == "1"
-    )
+    result = verify_wheel(wheels[0], extensions=requested_extensions())
     _report_stage("wheel-verification:complete")
     _report_stage("report-write:start")
     (output / "verification.json").write_text(json.dumps(result, indent=2) + "\n")
