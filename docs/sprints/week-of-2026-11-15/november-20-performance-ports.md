@@ -128,7 +128,12 @@ three births and physical center-digit readout (`0fee9f01`). The
 guarded run took 95.03 s including prerequisites. The independent
 compiled-hinge refinements cover the two-tick singleton response,
 the height-one append for both inlets (`84fce845`), and the height-two
-compiler's transport to its successor half-word (`79697379`).
+compiler's transport to its successor half-word (`79697379`). The
+source inlet laws (`f88d2935`) and physical-prefix induction close the
+two-tick clock in `d6aaab26`. For arbitrary folded halves, the compiled
+column pull returns each physical birth in order and their sum gives the
+exact width change. The final registered build took 152.55 s including
+prerequisites and passed the oracle and skipped-proof checks.
 
 On the 1,085-digit source at 1,024 ticks, the installed CLI used one
 joint action over 439 core columns, made 544 admission probes, visited
@@ -178,8 +183,8 @@ peak increased from 361,172 to 425,940 bytes. Five interleaved installed
 CLI pairs took 243.61 → 242.76 ms cold. Extending a warm owner to 2,048
 ticks took 6.76 → 6.14 ms, with 326,691 → 162,705 joins. The two-pass source theorem (`9765ed99`) proves the ordered physical
 birth bits, width and endpoint. It distinguishes `[18]` and `[9,9]`,
-whose birth counts agree. The compiled hinge-to-clock refinement and
-protected four-tick slab remain open.
+whose birth counts agree. The later `d6aaab26` and `0fee9f01` refinements cover the compiled
+hinge clock and the protected four-tick slab, respectively.
 
 The opt-in `5rev10` word-RAM route now admits eligible requests from
 128 ticks (`3e040acc`). The 153-digit, 128-tick fixture replaced 64
