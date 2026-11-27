@@ -10,6 +10,7 @@ from number_compiler.arithmetic.fields.ordered_matrix import (
     Matrix2,
     MatrixEntries,
     append_decimal_value,
+    multiply_entries,
 )
 from number_compiler.sequences.antihydra.mahler_cf_low_period import (
     SETTLED_TENS_ACTION,
@@ -131,32 +132,18 @@ class ReciprocalTile:
                     if entries == (1, 0, 0, 1):
                         entries = head_action
                     else:
-                        e, f, g, h = head_action
-                        a, b, c, d = entries
-                        entries = (
-                            a * e + b * g,
-                            a * f + b * h,
-                            c * e + d * g,
-                            c * f + d * h,
-                        )
+                        entries = multiply_entries(entries, head_action)
                     prefix_count -= 16
                 if native is None or prefix_count < 4:
                     entries = append_decimal_value(
                         value, 10 ** (prefix_count - 1), entries
                     )
                 else:
-                    e, f, g, h = native.ordered_product(value, prefix_count)
-                    a, b, c, d = entries
-                    entries = (
-                        a * e + b * g,
-                        a * f + b * h,
-                        c * e + d * g,
-                        c * f + d * h,
+                    entries = multiply_entries(
+                        entries, native.ordered_product(value, prefix_count)
                     )
             if action is not None:
-                e, f, g, h = action
-                a, b, c, d = entries
-                entries = (a * e + b * g, a * f + b * h, c * e + d * g, c * f + d * h)
+                entries = multiply_entries(entries, action)
             remaining -= count
             if self._building and row == 0 and start + count == width:
                 object.__setattr__(self, "first_row_prefix", (count, entries))

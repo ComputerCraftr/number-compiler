@@ -17,6 +17,13 @@ from number_compiler.arithmetic.fields.morphism_core import binary_power
 MatrixEntries = tuple[int, int, int, int]
 
 
+def multiply_entries(left: MatrixEntries, right: MatrixEntries) -> MatrixEntries:
+    """Return the row-major integer product of two admitted actions."""
+    a, b, c, d = left
+    e, f, g, h = right
+    return a * e + b * g, a * f + b * h, c * e + d * g, c * f + d * h
+
+
 def _ring(modulus: int | None) -> None:
     if modulus is not None:
         require_integer(modulus, "matrix modulus", 2)
@@ -67,11 +74,7 @@ class Matrix2:
     def multiply(self, right: Matrix2) -> Matrix2:
         if type(right) is not Matrix2 or self.modulus != right.modulus:
             raise ValueError("ordered matrices require the same coefficient ring")
-        a, b, c, d = self.entries
-        e, f, g, h = right.entries
-        return Matrix2(
-            (a * e + b * g, a * f + b * h, c * e + d * g, c * f + d * h), self.modulus
-        )
+        return Matrix2(multiply_entries(self.entries, right.entries), self.modulus)
 
     def then(self, later: Matrix2) -> Matrix2:
         """Apply this action first, then later: the product is later*self."""
