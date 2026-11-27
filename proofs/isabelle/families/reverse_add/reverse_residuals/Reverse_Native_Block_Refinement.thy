@@ -577,6 +577,100 @@ next
         reverse_native_hinge_next_half_snoc Let_def first inlet split: prod.splits)
 qed
 
+text \<open>The center closes the inward carry.  With no middle digit,
+reflection returns the outgoing forward carry.  With middle digit d the
+carry through the middle coefficient 2*d is exactly d >= 5.\<close>
+
+definition reverse_native_hinge_source :: "nat list \<Rightarrow> nat option \<Rightarrow> nat list" where
+  "reverse_native_hinge_source half center =
+    half @ (case center of None \<Rightarrow> [] | Some d \<Rightarrow> [2*d]) @ rev half"
+
+definition reverse_native_hinge_inner_inlet :: "nat list \<Rightarrow> nat option \<Rightarrow> bool" where
+  "reverse_native_hinge_inner_inlet half center =
+    (case center of None \<Rightarrow> carry_out False half | Some d \<Rightarrow> 5 \<le> d)"
+
+lemma reverse_native_center_inlet_exact:
+  "carry_apply (domain (2*d)) carry = (5 \<le> d)"
+proof (cases "d < 5")
+  case True
+  then have lo: "2*d < (9::nat)" by arith
+  show ?thesis using True lo by (simp add: domain_def)
+next
+  case False
+  then have hi: "9 < (2*d::nat)" by arith
+  show ?thesis using hi False by (simp add: domain_def)
+qed
+
+lemma reverse_native_hinge_source_outer_birth:
+  "carry_out False (reverse_native_hinge_source half center) =
+    carry_out (reverse_native_hinge_inner_inlet half center) (rev half)"
+  by (cases center) (simp_all add: reverse_native_hinge_source_def
+      reverse_native_hinge_inner_inlet_def carry_out_append carry_out_def
+      reverse_native_center_inlet_exact)
+
+theorem reverse_native_hinge2_first_physical_birth:
+  "(snd (fst (reverse_native_hinge2_compile half
+      (reverse_native_hinge_inner_inlet half center))) \<noteq> 0) =
+    carry_out False (reverse_native_hinge_source half center)"
+proof -
+  let ?b = "reverse_native_hinge_inner_inlet half center"
+  have compiler: "fst (reverse_native_hinge2_compile half ?b) =
+      reverse_native_hinge1_compile half ?b"
+    using reverse_native_hinge2_compiled_child by blast
+  have response: "snd (reverse_native_hinge1_compile half ?b) =
+     (if carry_out ?b (rev half) then
+       (if half = [] then 2 else 1 + (last half + (if ?b then 1 else 0)) mod 10)
+      else 0)"
+    using reverse_native_hinge1_source_response by blast
+  show ?thesis
+    by (simp add: compiler response reverse_native_hinge_source_outer_birth)
+qed
+
+text \<open>The native height-two hinge closes the second physical inlet after
+the center word is emitted.  A birth at an odd center creates two equal
+middle pair coefficients; both carry applications remain ordered.\<close>
+
+definition reverse_native_hinge2_middle ::
+  "nat option \<Rightarrow> bool \<Rightarrow> nat \<Rightarrow> nat list" where
+  "reverse_native_hinge2_middle center a high =
+    (case center of
+      None \<Rightarrow> (if high = 0 then [] else [2 * (high - 1)])
+    | Some d \<Rightarrow>
+        (let digit = (2 * d + (if a then 1 else 0)) mod 10 in
+         if high = 0 then [2 * digit] else [digit + (high - 1), digit + (high - 1)]))"
+
+definition reverse_native_hinge2_second_inlet ::
+  "reverse_hinge1 \<Rightarrow> nat option \<Rightarrow> bool \<Rightarrow> nat \<Rightarrow> bool" where
+  "reverse_native_hinge2_second_inlet child center a high =
+    (case center of
+      None \<Rightarrow> (if high = 0 then fst (child False) else 5 \<le> high - 1)
+    | Some d \<Rightarrow>
+        (let digit = (2 * d + (if a then 1 else 0)) mod 10 in
+         if high = 0 then 5 \<le> digit else
+           (let pair = digit + (high - 1);
+                appended = reverse_native_hinge1_append child pair;
+                middle_carry = fst (appended False)
+            in carry_apply (domain pair) middle_carry)))"
+
+lemma reverse_native_hinge2_second_inlet_exact:
+  "reverse_native_hinge2_second_inlet (reverse_native_hinge1_compile successor)
+      center a high =
+    carry_out (carry_out False successor) (reverse_native_hinge2_middle center a high)"
+proof (cases center)
+  case None
+  then show ?thesis
+    by (simp add: reverse_native_hinge2_second_inlet_def reverse_native_hinge2_middle_def
+        reverse_native_hinge1_source_response reverse_native_center_inlet_exact
+        carry_out_def split: if_splits)
+next
+  case (Some d)
+  then show ?thesis
+    by (simp add: reverse_native_hinge2_second_inlet_def reverse_native_hinge2_middle_def
+        reverse_native_hinge1_compile_snoc[symmetric] reverse_native_hinge1_source_response
+        reverse_native_center_inlet_exact carry_out_append_one carry_out_def Let_def
+        split: if_splits)
+qed
+
 ML \<open>
   val checked = @{thms punctured_expand_singleton_runs
     reverse_add_run_last_step
@@ -588,7 +682,8 @@ ML \<open>
     reverse_native_folded_endpoint_clock reverse_native_two_pass_source_ports
     reverse_native_two_pass_birth_order_distinguishes
     reverse_native_seed_hinge_two_source reverse_native_hinge1_source_response
-    reverse_native_hinge2_compiled_child};
+    reverse_native_hinge2_compiled_child reverse_native_hinge2_first_physical_birth
+    reverse_native_hinge2_second_inlet_exact};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Reverse native block refinement depends on an oracle";
   val _ = if Thm_Deps.has_skip_proof checked
