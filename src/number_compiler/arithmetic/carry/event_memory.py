@@ -27,7 +27,7 @@ reverse/add has an exact order-20 nonlinear recurrence on binary carry fields.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Sequence
 
 from number_compiler.arithmetic.formula.skew_residue_laws import (
     pair_growth_edge,
@@ -233,46 +233,150 @@ def endpoint_width_from_event_window(events: Sequence[Sequence[int]]) -> int:
     return len(events[-1])
 
 
+class _ForcingFold:
+    """One coefficient image and a saturated zero-forcing multiplier.
+
+    Lanes have two spare bits: 2*a+b and a+shift(a)+b never spill.
+    This is an arithmetic action, not a cache of previous temporal rows.
+    """
+
+    def __init__(self, bits: int) -> None:
+        self.bits = bits
+        self.coefficient_mask = (1 << bits) - 1
+        self.lane_bytes = (bits + 9) // 8
+        self.lane_bits = 8 * self.lane_bytes
+        self.width = 0
+        self.image = 0
+        self.pending = 0
+        self.mask = 0
+        self.lanes = 0
+
+    def _resize(self, width: int) -> None:
+        self.width = width
+        self.lanes = ((1 << (self.lane_bits * width)) - 1) // (
+            (1 << self.lane_bits) - 1
+        )
+        self.mask = self.coefficient_mask * self.lanes
+
+    def quiet(self, duration: int) -> None:
+        """Compose (2**duration, 0); duration >= bits is the same action."""
+        if self.image:
+            self.pending = min(self.bits, self.pending + duration)
+            if self.pending == self.bits:
+                self.image = self.pending = 0
+
+    def _flush(self) -> None:
+        if self.pending:
+            # Mask the lanes before a multi-bit shift. The two guard bits
+            # suffice for one affine sum, not an arbitrary pending power.
+            keep = self.lanes * (self.coefficient_mask >> self.pending)
+            self.image = (self.image & keep) << self.pending
+            self.pending = 0
+
+    def append(self, row: tuple[int, ...] | None, width: int) -> None:
+        if not width or (row is not None and len(row) != width):
+            raise ValueError("event fields must be nonempty")
+        growth = width - self.width if self.width else 0
+        if growth not in (0, 1):
+            raise ValueError(
+                "event widths do not encode a valid reverse/add growth schedule"
+            )
+        if self.width != width:
+            self._flush()
+            self._resize(width)
+        if row is None or not any(row):
+            if growth:
+                self.image = (self.image + (self.image << self.lane_bits)) & self.mask
+            else:
+                self.quiet(1)
+            return
+        self._flush()
+        if self.lane_bytes == 1:
+            payload = bytes(value & self.coefficient_mask for value in row)
+        else:
+            payload = b"".join(
+                (value & self.coefficient_mask).to_bytes(self.lane_bytes, "little")
+                for value in row
+            )
+        forcing = int.from_bytes(payload, "little")
+        homogeneous = (
+            self.image + (self.image << self.lane_bits) if growth else self.image << 1
+        )
+        self.image = (homogeneous + forcing) & self.mask
+
+    def finish(self) -> tuple[int, ...]:
+        if not self.width:
+            raise ValueError("a forcing fold requires nonempty event rows")
+        self._flush()
+        if not self.image:
+            return (0,) * self.width
+        raw = self.image.to_bytes(self.width * self.lane_bytes, "little")
+        if self.lane_bytes == 1:
+            return tuple(raw)
+        return tuple(
+            int.from_bytes(raw[i : i + self.lane_bytes], "little")
+            for i in range(0, len(raw), self.lane_bytes)
+        )
+
+
+def _live_event_start(events: Sequence[Sequence[int]], bits: int) -> int:
+    """Validate the complete geometry; find the first surviving contribution.
+
+    This only reads widths. It does not construct a history of growth bits.
+    """
+    quiet = 0
+    start = 0
+    later_width = 0
+    for i in range(len(events) - 1, -1, -1):
+        width = len(events[i])
+        if not width:
+            raise ValueError("event fields must be nonempty")
+        if later_width:
+            growth = later_width - width
+            if growth not in (0, 1):
+                raise ValueError(
+                    "event widths do not encode a valid reverse/add growth schedule"
+                )
+            quiet = min(bits, quiet + 1 - growth)
+        if quiet == bits and not start:
+            start = i + 1
+        later_width = width
+    return start
+
+
 def fold_forcing_events(
     events: Iterable[Sequence[int]],
     *,
     base: int = 10,
     record_updates: Callable[[int], None] | None = None,
 ) -> tuple[int, ...]:
-    """Fold a finite chronological forcing word with zero initial field.
+    """Fold only the live modular forcing action, with zero initial field.
 
-    This is polynomial arithmetic, not trajectory admission. Recovering a
-    physical endpoint additionally requires a source-bound proof that the
-    omitted homogeneous contribution vanishes. Updates count evaluated
-    coefficient cells, including initialization, rather than logical Green
-    convolution terms.
+    Supplied sequences permit algebraic elimination of an extinct prefix
+    *before* coefficient arithmetic. A streaming producer instead retains
+    only the current image. Zero rows compose a saturated homogeneous
+    multiplier, not another full-width carry field. The update counter
+    counts coefficients supplied to the retained fold (including zeros),
+    not Python iterations or the work of validating the discarded input.
+    Neither route authenticates a trajectory or infers its future forcing.
     """
-    modulus = 1 << pair_plane_bits(base)
+    bits = pair_plane_bits(base)
+    fold = _ForcingFold(bits)
     updates = 0
-    image: list[int] = []
     try:
-        for event in events:
+        start = _live_event_start(events, bits) if isinstance(events, Sequence) else 0
+        for i, event in enumerate(events):
+            if i < start:
+                # Keep the former integer-conversion contract on untrusted
+                # extinct inputs, but do not build or apply their fields.
+                for value in event:
+                    if type(value) is not int:
+                        int(value)
+                continue
             row = tuple(map(int, event))
-            if not row:
-                raise ValueError("event fields must be nonempty")
-            if not image:
-                image = [value % modulus for value in row]
-            elif len(row) == len(image):
-                for i, value in enumerate(row):
-                    image[i] = (2 * image[i] + value) % modulus
-            elif len(row) == len(image) + 1:
-                image.append((image[-1] + row[-1]) % modulus)
-                for i in range(len(row) - 2, 0, -1):
-                    image[i] = (image[i] + image[i - 1] + row[i]) % modulus
-                image[0] = (image[0] + row[0]) % modulus
-            else:
-                raise ValueError(
-                    "event widths do not encode a valid reverse/add growth schedule"
-                )
+            fold.append(row, len(row))
             updates += len(row)
-        if not image:
-            raise ValueError("a forcing fold requires nonempty event rows")
-        return tuple(image)
+        return fold.finish()
     finally:
         if record_updates is not None:
             record_updates(updates)
@@ -281,49 +385,63 @@ def fold_forcing_events(
 def forcing_image_from_certified_carry_suffix(
     carries: Iterable[Sequence[int]], *, source_width: int, base: int = 10
 ) -> tuple[int, ...]:
-    """Recover a pair field after its omitted source is killed by quiet steps.
+    """Recover a pair field from authenticated contiguous carry actions.
 
-    The caller must authenticate a contiguous source-issued interval beginning
-    at ``source_width`` coefficients. This arithmetic helper checks width
-    continuity through each final carry bit; it does not issue authority.
-    A nongrowth row multiplies the old
-    polynomial by two; a growth row multiplies it by ``1 + z``.  Once the
-    interval contains ``pair_plane_bits(base)`` nongrowths, the initial field
-    vanishes modulo the coefficient modulus and the shared Horner fold is the
-    exact endpoint forcing image.
-
-    This finite witness does not infer future carries or authorize a temporal
-    repetition.  Fewer quiet steps fail closed; there is no H-row fallback.
+    All supplied rows must satisfy the original binary and width guard.
+    For a sequence, discard annihilated forcing *before* constructing any
+    of its events. An all-zero carry track issues the homogeneous action
+    directly, with no event-row allocation. Unknown future rows are not
+    inferred. Iterators use the same action in a single streaming pass.
     """
     if type(source_width) is not int or source_width < 1:
         raise ValueError("positive exact initial coefficient width required")
     if type(base) is not int:
         raise TypeError("base must be an exact integer")
     bits = pair_plane_bits(base)
-    quiet = 0
+    fold = _ForcingFold(bits)
 
-    def forcing_rows() -> Iterator[tuple[int, ...]]:
-        nonlocal quiet
-        width = source_width
+    def validate(row: Sequence[int], width: int) -> int:
+        if any(type(bit) is not int for bit in row):
+            raise TypeError("carry bits must be exact integers")
+        if not row or row[0] != 0 or any(bit not in (0, 1) for bit in row):
+            raise ValueError("invalid forward carry geometry")
+        if len(row) != width + 1:
+            raise ValueError("carry suffix has inconsistent consecutive widths")
+        return row[-1]
+
+    def consume(row: Sequence[int]) -> None:
+        width = len(row) - 1 + row[-1]
+        # Zero carries imply no growth and zero nonlinear forcing. There is
+        # no need to construct a row of zeros in the coefficient alphabet.
+        event = forcing_event_from_carry(row, base=base) if any(row) else None
+        fold.append(event, width)
+
+    quiet = 0
+    width = source_width
+    if isinstance(carries, Sequence):
+        for row in carries:
+            growth = validate(row, width)
+            width += growth
+            quiet = min(bits, quiet + 1 - growth)
+        if quiet < bits:
+            raise ValueError("carry suffix has not annihilated its unknown source")
+        later_quiet = 0
+        start = len(carries)
+        while later_quiet < bits:
+            start -= 1
+            later_quiet += 1 - carries[start][-1]
+        for i in range(start, len(carries)):
+            consume(carries[i])
+    else:
         for carry in carries:
             row = tuple(carry)
-            if any(type(bit) is not int for bit in row):
-                raise TypeError("carry bits must be exact integers")
-            if not row or row[0] != 0 or any(bit not in (0, 1) for bit in row):
-                raise ValueError("invalid forward carry geometry")
-            if len(row) != width + 1:
-                raise ValueError("carry suffix has inconsistent consecutive widths")
-            growth = row[-1]
+            growth = validate(row, width)
             width += growth
-            quiet += 1 - growth
-            event = forcing_event_from_carry(row, base=base)
-            if len(event) != width:
-                raise AssertionError("signed forcing has incorrect growth geometry")
-            yield event
-
-    image = fold_forcing_events(forcing_rows(), base=base)
-    if quiet < bits:
-        raise ValueError("carry suffix has not annihilated its unknown source")
+            quiet = min(bits, quiet + 1 - growth)
+            consume(row)
+        if quiet < bits:
+            raise ValueError("carry suffix has not annihilated its unknown source")
+    image = fold.finish()
     pair_max = 2 * (base - 1)
     if image != image[::-1] or any(not 0 <= value <= pair_max for value in image):
         raise ValueError("certified suffix does not reconstruct a canonical pair field")
@@ -373,8 +491,9 @@ def reconstruct_pair_from_carry_window(
     horizon = event_memory_horizon(base)
     if len(rows) != horizon:
         raise ValueError(f"expected exactly {horizon} carry fields, got {len(rows)}")
-    events = tuple(forcing_event_from_carry(row, base=base) for row in rows)
-    return reconstruct_pair_from_event_window(events, base=base)
+    return forcing_image_from_certified_carry_suffix(
+        rows, source_width=len(rows[0]) - 1, base=base
+    )
 
 
 def next_carry_from_window(
