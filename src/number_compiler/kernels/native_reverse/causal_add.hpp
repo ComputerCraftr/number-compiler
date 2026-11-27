@@ -18,6 +18,15 @@ struct Result {
 Result advance(const std::vector<std::uint8_t> &source, std::uint64_t steps,
                int height, int block_width, std::uint64_t byte_cap,
                bool emit_digits = true);
+struct FoldedResult {
+    std::vector<std::uint8_t> pairs;
+    int center = -1;
+    Work work;
+};
+// Source and endpoint hold the outer half in LSD-first order. The optional
+// center is an ordinary decimal digit, or -1 for an even-width source.
+FoldedResult advance_folded(const std::vector<std::uint8_t> &half, int center,
+                            std::uint64_t steps, std::uint64_t byte_cap);
 struct GuardResult {
     std::uint32_t
         mask; // bit 0 failure, bit q+1 successful first-interior endpoint

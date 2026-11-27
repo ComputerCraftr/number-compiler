@@ -147,16 +147,11 @@ def _native_segment(
         return None
 
     from number_compiler.arithmetic.carry.native_reverse_actions import (
-        native_pair_action,
+        native_folded_pair_action,
     )
 
-    def receive(pairs: bytes, _work: object) -> PackedQ19:
-        count = len(pairs) // 2
-        lanes = pack_q19_pair_lanes(memoryview(pairs)[:count])
-        center = pairs[count] // 2 if len(pairs) & 1 else None
-        if len(pairs) & 1 and pairs[count] % 2:
-            raise ValueError("native Q19 center does not encode a decimal digit")
-        return PackedQ19(lanes, count, center)
+    def receive(pairs: bytes, center: int | None, _work: object) -> PackedQ19:
+        return PackedQ19(pack_q19_pair_lanes(pairs), len(pairs), center)
 
     def materialize() -> bytes:
         packed = source.pairs.to_bytes((6 * source.count + 7) // 8, "little")
@@ -174,11 +169,16 @@ def _native_segment(
                 outer.append(accumulator & 63)
                 accumulator >>= 6
                 bits -= 6
-        center = b"" if source.center is None else bytes((2 * source.center,))
-        return bytes(outer) + center + outer[::-1]
+        return bytes(outer)
 
-    return native_pair_action(
-        ledger, owner, materialize, steps, receive, source_width=source.width
+    return native_folded_pair_action(
+        ledger,
+        owner,
+        materialize,
+        source.center,
+        steps,
+        receive,
+        source_width=source.width,
     )
 
 

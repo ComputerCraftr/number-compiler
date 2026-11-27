@@ -108,6 +108,44 @@ PyObject *add(PyObject * /*unused*/, PyObject *args) {
     }
 }
 
+PyObject *add_folded(PyObject * /*unused*/, PyObject *args) {
+    const char *source = nullptr;
+    Py_ssize_t size = 0;
+    int center = -1;
+    unsigned long long steps = 0, cap = 0;
+    if (PyArg_ParseTuple(args, "y#iKK", &source, &size, &center, &steps,
+                         &cap) == 0)
+        return nullptr;
+    if (size < 0 || size > 32000000 || steps > 65536 || cap == 0 ||
+        cap > 4ULL * 1024 * 1024) {
+        PyErr_SetString(PyExc_ValueError,
+                        "native folded band exceeds its finite limits");
+        return nullptr;
+    }
+    try {
+        const auto result = causal_add::advance_folded(symbols(source, size),
+                                                       center, steps, cap);
+        if (PyErr_CheckSignals() < 0)
+            return nullptr;
+        const auto &work = result.work;
+        return Py_BuildValue(
+            "y#i(KKKKKK)",
+            result.pairs.empty()
+                ? ""
+                : reinterpret_cast<const char *>(result.pairs.data()),
+            static_cast<Py_ssize_t>(result.pairs.size()), result.center,
+            static_cast<unsigned long long>(work.states),
+            static_cast<unsigned long long>(work.bands),
+            static_cast<unsigned long long>(work.joins),
+            static_cast<unsigned long long>(work.pulls),
+            static_cast<unsigned long long>(work.births),
+            static_cast<unsigned long long>(work.peak_table_bytes));
+    } catch (...) {
+        translate_exception(std::current_exception());
+        return nullptr;
+    }
+}
+
 PyObject *guard98(PyObject * /*unused*/, PyObject *args) {
     const char *source = nullptr;
     Py_ssize_t size = 0;
@@ -146,6 +184,8 @@ PyMethodDef methods[] = {
         "Compute a bounded diagonal endpoint.",
     },
     {"add", add, METH_VARARGS, "Compute a bounded causal pair field."},
+    {"add_folded", add_folded, METH_VARARGS,
+     "Compute a folded causal pair field."},
     {
         "guard98",
         guard98,

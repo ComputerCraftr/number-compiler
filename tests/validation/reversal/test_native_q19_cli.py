@@ -51,7 +51,7 @@ def test_native_pair_continuation_and_failed_receiver_release(
         raise KeyboardInterrupt
 
     with monkeypatch.context() as patch, pytest.raises(KeyboardInterrupt):
-        patch.setattr(native_reverse_actions, "native_pair_action", interrupted)
+        patch.setattr(native_reverse_actions, "native_folded_pair_action", interrupted)
         with completed_continuation(
             frame,
             512,
@@ -96,7 +96,7 @@ for module in (number_compiler, native):
     assert any(path.is_relative_to(root) for root in roots), path
 calls = []
 def profile(frame, event, arg):
-    if event == 'c_call' and arg is native.add:
+    if event == 'c_call' and arg is native.add_folded:
         calls.append(1)
 sys.setprofile(profile)
 try:
@@ -169,7 +169,7 @@ def test_warm_q19_frontier_uses_native_suffix_without_step_replay(
             map(int, reversed(str(_literal(196, 2048))))
         )
         monkeypatch.setattr(
-            "number_compiler.arithmetic.carry.native_reverse_actions.native_pair_action",
+            "number_compiler.arithmetic.carry.native_reverse_actions.native_folded_pair_action",
             forbid,
         )
         assert (
@@ -212,3 +212,105 @@ def test_native_refusal_precedes_mirrored_source_construction(
     finally:
         ledger.mark_disposed(owner)
     assert ledger.nodes == ledger.entries == 0
+
+
+def test_folded_kernel_matches_full_pair_field_and_rejects_bad_centers() -> None:
+    import random
+
+    native = pytest.importorskip("number_compiler.kernels._reverse_quotients")
+    rng = random.Random(43)
+    sources = (0, 1, 9, 10, 50, 95, 98, 104, 196, 9999, 190999)
+    for seed in (*sources, *(rng.randrange(10**20) for _ in range(50))):
+        digits = str(seed)
+        full = bytes(int(a) + int(b) for a, b in zip(digits, digits[::-1], strict=True))
+        half = full[: len(full) // 2]
+        center = int(digits[len(half)]) if len(full) % 2 else -1
+        for ticks in (0, 1, 2, 3, 4, 5, 7, 16, 17, 31, 64, 128, 512):
+            expected, _ = native.add(full, ticks, 2, 1, 4 << 20)
+            pairs, result_center, _ = native.add_folded(half, center, ticks, 4 << 20)
+            midpoint = bytes((2 * result_center,)) if result_center >= 0 else b""
+            assert pairs + midpoint + pairs[::-1] == expected
+            if ticks in (1, 7, 512):
+                literal = str(_literal(seed, ticks))
+                assert expected == bytes(
+                    int(a) + int(b) for a, b in zip(literal, literal[::-1], strict=True)
+                )
+    for bad_center in (-2, 10):
+        with pytest.raises(ValueError, match="invalid folded causal extent"):
+            native.add_folded(b"\x01", bad_center, 2, 4 << 20)
+    with pytest.raises(ValueError, match="invalid pair coefficient"):
+        native.add_folded(b"\x13", -1, 2, 4 << 20)
+
+
+def test_old_native_module_falls_back_before_unfolding_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.carry import native_reverse_actions
+
+    monkeypatch.setattr(native_reverse_actions, "_load", lambda: object())
+    ledger = ResourceLedger()
+    owner = ledger.register("old native module", "scratch")
+
+    def forbid() -> bytes:
+        pytest.fail("old native module opened the source")
+
+    assert (
+        native_reverse_actions.native_folded_pair_action(
+            ledger, owner, forbid, 6, 512, lambda p, c, w: p, source_width=3
+        )
+        is None
+    )
+    assert ledger.nodes == ledger.entries == 0
+
+
+@pytest.mark.parametrize("seed,clock", ((909, "1011"), (99, "1110"), (59, "1010")))
+def test_adjacent_folded_bands_preserve_physical_births(seed: int, clock: str) -> None:
+    native = pytest.importorskip("number_compiler.kernels._reverse_quotients")
+    digits = str(seed)
+    complete = bytes(int(a) + int(b) for a, b in zip(digits, digits[::-1], strict=True))
+    count = len(complete) // 2
+    half = complete[:count]
+    center = int(digits[count]) if len(complete) % 2 else -1
+    widths = [len(digits)]
+    current = seed
+    for _ in range(4):
+        current += int(str(current)[::-1])
+        widths.append(len(str(current)))
+    assert (
+        "".join(str(int(b > a)) for a, b in zip(widths, widths[1:], strict=False))
+        == clock
+    )
+    for band in range(2):
+        half, center, work = native.add_folded(half, center, 2, 4 << 20)
+        assert work[4] == widths[2 * band + 2] - widths[2 * band]
+        full = half + (bytes((2 * center,)) if center >= 0 else b"") + half[::-1]
+        text = str(_literal(seed, 2 * band + 2))
+        assert full == bytes(
+            int(a) + int(b) for a, b in zip(text, text[::-1], strict=True)
+        )
+
+
+def test_band_birth_totals_do_not_authorize_a_four_tick_schedule() -> None:
+    native = pytest.importorskip("number_compiler.kernels._reverse_quotients")
+    observed = []
+    for seed in (9, 18):
+        digits = str(seed)
+        full = bytes(int(a) + int(b) for a, b in zip(digits, digits[::-1], strict=True))
+        count = len(full) // 2
+        half = full[:count]
+        center = int(digits[count]) if len(full) % 2 else -1
+        totals = []
+        for _ in range(2):
+            half, center, work = native.add_folded(half, center, 2, 4 << 20)
+            totals.append(work[4])
+        observed.append(totals)
+    assert observed == [[1, 2], [1, 2]]
+    clocks = []
+    for seed in (9, 18):
+        clock = ""
+        for _ in range(4):
+            successor = seed + int(str(seed)[::-1])
+            clock += str(int(len(str(successor)) > len(str(seed))))
+            seed = successor
+        clocks.append(clock)
+    assert clocks == ["1011", "0111"]

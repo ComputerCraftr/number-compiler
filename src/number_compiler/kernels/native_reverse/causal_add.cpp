@@ -168,6 +168,76 @@ std::vector<Cells> compile_cells(const std::vector<Level> &levels,
     }
     return all;
 }
+// The hinge summarizes the exact center and birth response of an ordered
+// band. It retains both incoming carry ports and the number of width births.
+struct Hinge {
+    U digits = 0;
+    unsigned ports = 0, births = 0;
+};
+using Hinges = std::vector<Hinge>;
+U decimal_power(unsigned n) {
+    U result = 1;
+    while (n-- != 0U)
+        result *= 10;
+    return result;
+}
+std::vector<Hinges> compile_hinges(const std::vector<Level> &levels,
+                                   const std::vector<Cells> &cells,
+                                   Budget &budget) {
+    std::vector<Hinges> all(1, Hinges(11));
+    for (int d = 0; d < 10; ++d)
+        all[0][std::size_t(d + 1)].digits = U(d);
+    for (std::size_t h = 1; h < levels.size(); ++h) {
+        const auto &lv = levels[h];
+        const auto &prev = levels[h - 1];
+        budget.take(checked_product(lv.nodes.size(), 11 * sizeof(Hinge)));
+        Hinges table(lv.nodes.size() * 11);
+        for (I q = 0; q < lv.nodes.size(); ++q) {
+            const int a = int(lv.edge(q, 0) & 1U);
+            require(a == int(lv.edge(q, 1) & 1U), "acausal hinge response");
+            for (int d = -1; d < 10; ++d) {
+                const int b = d < 0 ? a : int(d >= 5);
+                const U edge = lv.edge(q, b);
+                const I child = I(edge >> 5U);
+                const int high = int((edge & 31U) >> 1U);
+                const bool born = high != 0;
+                const int center = d < 0 ? -1 : (2 * d + a) % 10;
+                Hinge out;
+                if (born && d >= 0) {
+                    const int v = high - 1, sum = center + v;
+                    if (h == 1) {
+                        out.digits = U(center + 10 * v);
+                    } else {
+                        const auto &next =
+                            all[h - 1]
+                               [U(prev.append[child][std::size_t(sum)]) * 11];
+                        const Cell c =
+                            unpack_cell(cells[h - 1][((U(child) * 19 + U(sum)) *
+                                                      (U(1) << (h - 1))) +
+                                                     next.ports]);
+                        require(c.growth == int(next.births),
+                                "hinge pullback width mismatch");
+                        require(c.sum >= c.low && c.sum - c.low <= 9,
+                                "invalid hinge digit");
+                        out = {U(c.low) + 10 * next.digits +
+                                   decimal_power(1 + next.births) *
+                                       U(c.sum - c.low),
+                               unsigned(c.left), next.births};
+                    }
+                } else {
+                    const int next_center = born ? high - 1 : center;
+                    out = all[h - 1][U(child) * 11 + U(next_center + 1)];
+                }
+                out.ports = (out.ports << 1U) | unsigned(b);
+                out.births += unsigned(born);
+                table[U(q) * 11 + U(d + 1)] = out;
+            }
+        }
+        all.push_back(std::move(table));
+    }
+    return all;
+}
+
 struct BlockTable {
     int h, b;
     U radix = 1, decimal = 1, ports;
@@ -282,6 +352,37 @@ struct BlockTable {
         return birth;
     }
 };
+// Folded width-one bands do not allocate the reflected second half.
+Hinge run_folded(const BlockTable &table, std::vector<I> &state, int center,
+                 const Hinges &hinges, std::vector<U> &addresses, Work &work) {
+    addresses.resize(state.size());
+    I q = 0;
+    for (std::size_t i = 0; i < state.size(); ++i) {
+        const U index = U(q) * table.radix + state[i];
+        addresses[i] = index;
+        q = table.join[index];
+    }
+    const Hinge result = hinges[U(q) * 11 + U(center + 1)];
+    U r = result.ports;
+    for (std::size_t i = state.size(); i-- > 0;) {
+        const U address = addresses[i] * table.ports + r;
+        const U value =
+            table.compact ? table.emit32[address] : table.emit64[address];
+        r = value & (table.ports - 1);
+        require(((value >> unsigned(table.h)) & table.growth_mask) ==
+                    result.births,
+                "inconsistent folded birth count");
+        state[i] = I((value >> (unsigned(table.h) + table.growth_bits)) &
+                     table.sum_mask);
+    }
+    require(unsigned(std::popcount(r)) == result.births,
+            "outer birth port mismatch");
+    work.joins += state.size();
+    work.pulls += state.size();
+    ++work.bands;
+    work.births += result.births;
+    return result;
+}
 // Guard-only canonical residuals. Terminal bitsets are distinct from
 // nonterminal IDs; a child with a constant answer has no observable ports.
 constexpr I TERMINAL = I(1) << 31U;
@@ -580,6 +681,62 @@ Result advance(const Word &source, U steps, int height, int block_width, U cap,
             "invalid endpoint symmetry");
     require(width % 2 == 0 || result.pairs[width / 2] % 2 == 0,
             "invalid endpoint center");
+    return result;
+}
+FoldedResult advance_folded(const Word &half, int center, U steps, U cap) {
+    require(center >= -1 && center <= 9 && (!half.empty() || center >= 0) &&
+                half.size() <= 50000000 && steps <= 65536,
+            "invalid folded causal extent");
+    for (Byte value : half)
+        require(value < 19, "invalid pair coefficient");
+    require(half.empty() || half.front() != 0, "noncanonical zero exterior");
+    FoldedResult result;
+    result.pairs = half;
+    result.center = center;
+    if (steps == 0 || (half.empty() && center == 0))
+        return result;
+    const int height = int(std::min<U>(2, steps));
+    Budget budget{cap};
+    auto levels = compile_levels(height, budget, result.work);
+    auto cells = compile_cells(levels, budget, result.work);
+    auto hinges = compile_hinges(levels, cells, budget);
+    BlockTable main(levels[std::size_t(height)], cells[std::size_t(height)],
+                    height, 1, budget, result.work);
+    std::vector<BlockTable> tail;
+    if (steps % U(height)) {
+        tail.emplace_back(levels[1], cells[1], 1, 1, budget, result.work);
+    }
+    result.work.peak_table_bytes = budget.peak;
+    std::vector<I> state(half.begin(), half.end());
+    std::vector<U> addresses;
+    std::size_t count = half.size(), width = 2 * count + unsigned(center >= 0);
+    for (U done = 0; done < steps;) {
+        const bool complete = steps - done >= U(height);
+        const BlockTable &table = complete ? main : tail.front();
+        const auto &hinge = hinges[std::size_t(table.h)];
+        const Hinge close =
+            run_folded(table, state, center, hinge, addresses, result.work);
+        const unsigned inner = unsigned(center >= 0) + close.births;
+        U digits = close.digits;
+        width += close.births;
+        const std::size_t next_count = width / 2;
+        state.resize(next_count, 0);
+        U scale = inner ? decimal_power(inner - 1) : 1;
+        for (unsigned j = 0; j < inner / 2; ++j) {
+            const int a = int(digits % 10), b = int(digits / scale);
+            state[count++] = I(a + b);
+            digits = (digits % scale) / 10;
+            scale /= 100;
+        }
+        center = inner % 2 ? int(digits) : -1;
+        require(count == next_count && center < 10,
+                "invalid moving center endpoint");
+        done += U(table.h);
+    }
+    result.pairs.assign(state.begin(), state.end());
+    result.center = center;
+    require(result.pairs.empty() ? center >= 0 : result.pairs.front() > 0,
+            "invalid endpoint exterior");
     return result;
 }
 GuardResult guard98(const Word &interior, int returns, bool endpoint, U cap) {

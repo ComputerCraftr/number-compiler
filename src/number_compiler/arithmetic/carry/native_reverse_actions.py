@@ -54,6 +54,10 @@ class _Kernels(Protocol):
         self, source: bytes, steps: int, height: int, width: int, max_bytes: int
     ) -> tuple[bytes, tuple[int, int, int, int, int, int]]: ...
 
+    def add_folded(
+        self, half: bytes, center: int, steps: int, max_bytes: int
+    ) -> tuple[bytes, int, tuple[int, int, int, int, int, int]]: ...
+
     def guard98(
         self, interior: bytes, returns: int, endpoint: bool, node_cap: int
     ) -> tuple[int, int, int]: ...
@@ -139,6 +143,27 @@ def diagonal_endpoint(
         return receive(digits, work)
 
 
+def _pair_admission(
+    ledger: ResourceLedger, width: int, steps: int
+) -> tuple[_Kernels, int] | None:
+    if not 512 <= steps <= 65536 or width <= 0:
+        return None
+    if ledger.max_nodes is not None or ledger.max_cache_entries is not None:
+        return None
+    slots = _TABLE_CAP + 128 * (width + steps + 16)
+    if slots > _SCRATCH_CAP:
+        return None
+    native = _load()
+    return None if native is None else (native, slots)
+
+
+def _record_pair_work(ledger: ResourceLedger, work: PairWork) -> None:
+    ledger.bump(_keys.NATIVE_PAIR_BANDS, work.bands)
+    ledger.bump(_keys.NATIVE_PAIR_JOINS, work.joins)
+    ledger.bump(_keys.NATIVE_PAIR_PULLS, work.pulls)
+    ledger.bump(_keys.NATIVE_PAIR_TABLE_BYTES, work.table_bytes)
+
+
 def native_pair_action(
     ledger: ResourceLedger,
     scratch_owner: int,
@@ -152,16 +177,10 @@ def native_pair_action(
     width = len(source_pairs) if isinstance(source_pairs, bytes) else source_width
     if width is None:
         raise ValueError("deferred Q19 pairs require an authenticated width")
-    if not 512 <= steps <= 65536 or width <= 0:
+    admitted = _pair_admission(ledger, width, steps)
+    if admitted is None:
         return None
-    if ledger.max_nodes is not None or ledger.max_cache_entries is not None:
-        return None
-    slots = _TABLE_CAP + 128 * (width + steps + 16)
-    if slots > _SCRATCH_CAP:
-        return None
-    native = _load()
-    if native is None:
-        return None
+    native, slots = admitted
     with ExitStack() as stack:
         if not _reserve(stack, ledger, scratch_owner, slots):
             return None
@@ -181,11 +200,48 @@ def native_pair_action(
             or work.table_bytes > _TABLE_CAP
         ):
             raise RuntimeError("invalid native causal endpoint")
-        ledger.bump(_keys.NATIVE_PAIR_BANDS, work.bands)
-        ledger.bump(_keys.NATIVE_PAIR_JOINS, work.joins)
-        ledger.bump(_keys.NATIVE_PAIR_PULLS, work.pulls)
-        ledger.bump(_keys.NATIVE_PAIR_TABLE_BYTES, work.table_bytes)
+        _record_pair_work(ledger, work)
         return receive(pairs, work)
+
+
+def native_folded_pair_action(
+    ledger: ResourceLedger,
+    scratch_owner: int,
+    source_half: Callable[[], bytes],
+    center: int | None,
+    steps: int,
+    receive: Callable[[bytes, int | None, PairWork], _T],
+    *,
+    source_width: int,
+) -> _T | None:
+    """Run an authenticated half-field and return its exact center and half."""
+    admitted = _pair_admission(ledger, source_width, steps)
+    if admitted is None:
+        return None
+    native, slots = admitted
+    if not callable(getattr(native, "add_folded", None)):
+        return None
+    with ExitStack() as stack:
+        if not _reserve(stack, ledger, scratch_owner, slots):
+            return None
+        half = source_half()
+        if 2 * len(half) + (center is not None) != source_width:
+            raise ValueError("native Q19 source width changed during admission")
+        pairs, raw_center, counters = native.add_folded(
+            half, -1 if center is None else center, steps, _TABLE_CAP
+        )
+        work = PairWork(*counters)
+        if (
+            not -1 <= raw_center <= 9
+            or not 0 <= work.births <= steps
+            or 2 * len(pairs) + (raw_center >= 0) != source_width + work.births
+            or (pairs and (not 0 < pairs[0] <= 18 or max(pairs) > 18))
+            or (not pairs and raw_center < 0)
+            or work.table_bytes > _TABLE_CAP
+        ):
+            raise RuntimeError("invalid native folded causal endpoint")
+        _record_pair_work(ledger, work)
+        return receive(pairs, None if raw_center < 0 else raw_center, work)
 
 
 @dataclass(frozen=True, slots=True)
