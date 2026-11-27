@@ -59,7 +59,7 @@ def wrapped(*args):
 native.add_folded_joint4=wrapped
 status=main(sys.argv[1:])
 print('JOINT_CALLS',len(calls),sum(x[7] for x in calls),sum(x[8] for x in calls),file=sys.stderr)
-print('PROBES',sum(x[9] for x in calls),'TWO_BIRTHS',sum(x[13] for x in calls),file=sys.stderr)
+print('PROBES',sum(x[9] for x in calls),'TWO_BIRTHS',sum(x[13] for x in calls),'ONE_BIRTH',sum(x[14] for x in calls),file=sys.stderr)
 raise SystemExit(status)
 """
     seed = _seed()
@@ -71,6 +71,8 @@ raise SystemExit(status)
         ("two-birth-fallback", False, _two_birth_seed(), 1024),
         ("two-birth-eq", True, _two_birth_seed(65), 1024),
         ("two-birth-eq-fallback", False, _two_birth_seed(65), 1024),
+        ("one-birth", True, _two_birth_seed(18), 1024),
+        ("one-birth-fallback", False, _two_birth_seed(18), 1024),
         ("unprotected", True, 196, 1024),
         ("short-collar", True, int("809" * 47), 1024),
         ("short", True, seed, 16),
@@ -101,10 +103,12 @@ raise SystemExit(status)
         counts, probes = (
             result.stderr.strip().split("JOINT_CALLS ")[-1].split("PROBES ")
         )
-        probe_count, two_birth_count = map(int, probes.split("TWO_BIRTHS "))
+        probe_values, one_birth_value = probes.split("ONE_BIRTH ")
+        probe_count, two_birth_count = map(int, probe_values.split("TWO_BIRTHS "))
+        one_birth_count = int(one_birth_value)
         parts = counts.split()
         calls, bands, columns = map(int, parts)
-        if label in {"joint", "two-birth", "two-birth-eq"}:
+        if label in {"joint", "two-birth", "two-birth-eq", "one-birth"}:
             assert calls > 0 and bands > 0 and columns >= 48
         else:
             assert bands == columns == 0
@@ -112,12 +116,16 @@ raise SystemExit(status)
             assert calls == 0
         if label == "short-collar":
             assert calls == 1 and 0 < probe_count <= 10
-        assert two_birth_count == (1 if label in {"two-birth", "two-birth-eq"} else 0)
+        assert two_birth_count == (
+            1 if label in {"two-birth", "two-birth-eq", "one-birth"} else 0
+        )
+        assert one_birth_count == (1 if label == "one-birth" else 0)
         assert json.loads(result.stdout)["value"] == str(_literal(value, ticks))
         outputs[label] = result
     assert outputs["joint"].stdout == outputs["fallback"].stdout
     assert outputs["two-birth"].stdout == outputs["two-birth-fallback"].stdout
     assert outputs["two-birth-eq"].stdout == outputs["two-birth-eq-fallback"].stdout
+    assert outputs["one-birth"].stdout == outputs["one-birth-fallback"].stdout
 
 
 def test_joint_native_both_clocks_and_rejected_eq_core() -> None:
@@ -232,7 +240,14 @@ assert ledger.nodes==ledger.entries==0
 
 
 @pytest.mark.parametrize(
-    "fault", ["missing_clock", "short_core", "negative_clock", "residual_birth"]
+    "fault",
+    [
+        "missing_clock",
+        "short_core",
+        "negative_clock",
+        "negative_one_birth",
+        "residual_birth",
+    ],
 )
 def test_joint_rejects_forged_work_receipt_before_publication(
     fault: str, monkeypatch: pytest.MonkeyPatch
@@ -254,6 +269,12 @@ def test_joint_rejects_forged_work_receipt_before_publication(
                     bytes([18] * 129),
                     0,
                     (0, 1, 0, 0, 3, 0, 0, 1, 48, 64, 0, -1, 2, 0),
+                )
+            if fault == "negative_one_birth":
+                return (
+                    bytes([18] * 129),
+                    0,
+                    (0, 1, 0, 0, 3, 0, 0, 1, 48, 64, 0, 0, 0, 2, -1),
                 )
             if fault == "residual_birth":
                 return (
@@ -306,7 +327,7 @@ for j in range(500):
                [r.choice((8,17,18)) for _ in range(96+j%29)]+
                [r.randrange(19) for _ in range(j%13)])
     center=-1 if j%2==0 else j%10
-    low=[min(x,9) for x in half]
+    low=[max(x-9,0) for x in half]
     high=[x-y for x,y in zip(half,low)]
     value=int(''.join(map(str,high))+('' if center<0 else str(center))+
               ''.join(map(str,reversed(low))))
@@ -327,7 +348,7 @@ for j in range(500):
         produced=got[0]+(b'' if got[1]<0 else bytes([2*got[1]]))+got[0][::-1]
         assert physical==produced and got[2][4]==births
         if got[2][7]: clocks[clock]+=1
-assert clocks[5]>0 and clocks[9]>0
+assert clocks[1]>0 and clocks[5]>0 and clocks[9]>0
 # Two source-admitted two-birth slabs followed by the exact continuation.
 half=bytes([13,17,18,3,6,12,6,4,4]+[18]*100)
 result=native.add_folded_joint4(half,-1,16,4<<20)
@@ -361,3 +382,44 @@ for center in (-1, 3):
     )
 """
     subprocess.run([interpreter, "-I", "-c", program], check=True)
+
+
+def test_one_birth_slab_uses_physical_collars_and_center() -> None:
+    interpreter = os.environ.get("NUMBER_COMPILER_INSTALLED_PYTHON")
+    if not interpreter:
+        pytest.skip("set NUMBER_COMPILER_INSTALLED_PYTHON to the native wheel")
+    program = """\\
+import sys
+from number_compiler.kernels import _reverse_quotients as native
+
+source=int(sys.argv[1])
+for _ in range(12): source+=int(str(source)[::-1])
+digits=str(source)
+half=bytes(int(a)+int(b) for a,b in zip(digits[:len(digits)//2],reversed(digits)))
+for center in (-1, 4):
+    low=[max(x-9,0) for x in half]
+    high=[x-y for x,y in zip(half,low)]
+    value=int(''.join(map(str,high))+('' if center<0 else str(center))+
+              ''.join(map(str,reversed(low))))
+    got=native.add_folded_joint4(half,center,4,4<<20)
+    assert got[:2]==native.add_folded(half,center,4,4<<20)[:2]
+    assert got[2][7]==got[2][14]==1 and got[2][8]>=48
+    clock=0
+    for k in range(4):
+        after=value+int(str(value)[::-1])
+        clock|=(len(str(after))-len(str(value)))<<k
+        value=after
+    assert clock==1
+    output=str(value)
+    assert bytes(int(a)+int(b) for a,b in zip(output,output[::-1]))==(
+        got[0]+(b'' if got[1]<0 else bytes([2*got[1]]))+got[0][::-1])
+    broken=bytearray(half)
+    for i in range(90,len(broken)): broken[i]=9
+    rejected=native.add_folded_joint4(bytes(broken),center,4,4<<20)
+    assert rejected[2][7]==0
+    assert rejected[:2]==native.add_folded(bytes(broken),center,4,4<<20)[:2]
+
+"""
+    subprocess.run(
+        [interpreter, "-I", "-c", program, str(_two_birth_seed(18))], check=True
+    )

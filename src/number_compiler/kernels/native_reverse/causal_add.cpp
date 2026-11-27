@@ -727,6 +727,7 @@ FoldedResult advance_folded(const Word &half, int center, U steps, U cap,
     result.work.joint_clock_13 = joint_work.clock_13;
     result.work.joint_clock_7 = joint_work.clock_7;
     result.work.joint_clock_two_births = joint_work.clock_two_births;
+    result.work.joint_clock_one_birth = joint_work.clock_one_birth;
     result.work.births = joint_work.births;
     result.work.bands = joint_work.bands;
     if (done < steps) {

@@ -18,3 +18,5 @@ NATIVE_PAIR_JOINT_COLLAR_CELLS: Final = "native_pair_joint_collar_cells"
 NATIVE_PAIR_JOINT_CLOCK_13: Final = "native_pair_joint_clock_13"
 NATIVE_PAIR_JOINT_CLOCK_7: Final = "native_pair_joint_clock_7"
 NATIVE_PAIR_JOINT_CLOCK_TWO_BIRTHS: Final = "native_pair_joint_clock_two_births"
+
+NATIVE_PAIR_JOINT_CLOCK_ONE_BIRTH: Final = "native_pair_joint_clock_one_birth"

@@ -16,6 +16,7 @@ struct Work {
     std::uint64_t clock_13 = 0;
     std::uint64_t clock_7 = 0;
     std::uint64_t clock_two_births = 0;
+    std::uint64_t clock_one_birth = 0;
     std::uint64_t births = 0;
 };
 
@@ -90,7 +91,7 @@ inline bool apply(std::vector<std::uint32_t> &state, int &center, Work &work) {
         return false;
     }
     if (clock != 13U && clock != 7U && clock != 5U && clock != 3U &&
-        clock != 9U) {
+        clock != 9U && clock != 1U) {
         return false;
     }
     // Start four pairs inside the protected core. Each physical tick
@@ -141,11 +142,13 @@ inline bool apply(std::vector<std::uint32_t> &state, int &center, Work &work) {
     for (std::size_t i = cut; i < inner; ++i) {
         mask = ((mask << 1U) | static_cast<unsigned>(state[i] != 18U)) &
                ((1U << (births + 1U)) - 1U);
-        const unsigned weighted =
-            births == 3U ? (mask & 1U) + (3U * ((mask >> 1U) & 1U)) +
-                               (3U * ((mask >> 2U) & 1U)) + ((mask >> 3U) & 1U)
-                         : (mask & 1U) + (2U * ((mask >> 1U) & 1U)) +
-                               ((mask >> 2U) & 1U);
+        unsigned weighted = (mask & 1U) + ((mask >> 1U) & 1U);
+        if (births == 2U) {
+            weighted += ((mask >> 1U) & 1U) + ((mask >> 2U) & 1U);
+        } else if (births == 3U) {
+            weighted += (2U * ((mask >> 1U) & 1U)) +
+                        (3U * ((mask >> 2U) & 1U)) + ((mask >> 3U) & 1U);
+        }
         next[i] = 18U - ((1U << (4U - births)) * weighted);
     }
     for (std::size_t i = 0; i < middle.size() / 2; ++i) {
@@ -165,8 +168,10 @@ inline bool apply(std::vector<std::uint32_t> &state, int &center, Work &work) {
         ++work.clock_13;
     } else if (clock == 7U) {
         ++work.clock_7;
-    } else {
+    } else if (births == 2U) {
         ++work.clock_two_births;
+    } else {
+        ++work.clock_one_birth;
     }
     state.swap(next);
     center = next_center;
