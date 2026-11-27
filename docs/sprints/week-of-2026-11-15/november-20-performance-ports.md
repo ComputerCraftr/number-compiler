@@ -130,6 +130,51 @@ installed/dispatch selection passed 57. Full default validation passed
 14,089 with six Comma failures. Canonical P0 passed 77 with 13 failures.
 Both failing ID sets matched the recorded baseline.
 
+### Four-tick folded Q19 on seed 196
+
+On `5d9b418f`, the opt-in native reverse/add publisher reads up to eight
+outer pair sums to certify four width changes. It applies a shared
+64-bit carry circuit to guarded 32-column outputs. The aperture shrinks
+at each tick, and a birth shifts the reflected digit by one. An
+incomplete tile discards the provisional output and resumes the exact
+two-tick fold. An admitted run retains its bitplanes across adjacent
+actions. The registered `Reverse_Residuals` session checked the clock,
+carry arithmetic, four-tick projection, and physical width and center
+readout from `e2e08ff3` in 59 seconds (2.46 GiB sampled process peak).
+
+| Seed 196 index | Admitted four-tick actions | Remaining scalar joins | Kernel median, ms | Installed CLI warm, ms | Installed CLI cold, ms |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1,024 | 220 | 55,857 → 1,357 | 0.406 → 0.214 | 8.957 → 9.013 | 246.388 → 245.415 |
+| 2,048 | 476 | 218,687 → 1,574 | 1.181 → 0.389 | 16.143 → 16.230 | 254.244 → 253.808 |
+| 4,096 | 988 | 878,123 → 2,002 | 4.140 → 0.998 | 29.785 → 29.825 | 269.647 → 267.128 |
+
+Baseline `b0cd5084` and candidate used identical physical inputs. Forty
+interleaved kernel pairs start at generation 12. The installed CLI starts
+its native continuation at generation 13. Twenty warm and five fresh
+process pairs put whole-request timings within noise. At 4,096 the CLI
+returned the exact 1,712-digit term, executed 14,208 word tiles and
+charged 1,120 peak bitplane bytes. Pure, native-disabled and native-enabled
+macOS wheel packets matched. Linux ARM64 native entry and fallback passed.
+All 37 reversal P0 cases passed. The default suite passed 14,089 tests and
+failed six comma admission tests. All six failed at the same IDs on
+`b0cd5084`.
+
+The width guard matched every admitted literal clock over 3,583 of 3,584
+consecutive starts at generations 512–4,095, including all 224
+stride-16 controls. The single-tick plane remainder took 1,042 ns
+against 958 ns in place on the final 210-pair input. The CF width-12
+memo had 30 cold builds and zero cross-row hits. Its cache-free split
+decoded the same 339 digits and raised joins from 62 to 77 at cap 540.
+Both CF trials preserved the installed packets and stayed outside dispatch.
+
+
+A bounded reflected fringe cache keyed each ordered transfer by phase,
+relative final cut and both inlet ranks. On the actual `2rev10` seed-73
+suffix at index 1,024, 99 hits saved 211 fringe gates. Setup initialized
+6,144 bytes and lookup made 343 probes. Kernel time rose from 30.25 to
+30.79 µs. The `5rev10` control rose from 15.79 to 16.71 µs. The installed
+packets matched. Both families retain their existing eligibility rules.
+
 ### Folded Q19 and reflected multiplier joins after `bc4cb376`
 
 The installed native reverse/add path in `7c5fcdd4` consumes the issued
