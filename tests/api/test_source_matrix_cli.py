@@ -7,6 +7,54 @@ import pytest
 from number_compiler.api.cli import main
 
 
+def test_reverse_source_matrix_uses_emitted_growth_guard(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from number_compiler.sequences.reverse_add.q19_conditional_stencil import (
+        GuardedPairStencil,
+    )
+    from number_compiler.sequences.reverse_add.q19_output import (
+        ReversePairQ19OutputOwner,
+    )
+
+    calls: list[int] = []
+    original = GuardedPairStencil.next_carry_domain_at
+
+    def tracked(
+        self: GuardedPairStencil, owner: ReversePairQ19OutputOwner, coordinate: int
+    ) -> int | None:
+        calls.append(coordinate)
+        return original(self, owner, coordinate)
+
+    monkeypatch.setattr(GuardedPairStencil, "next_carry_domain_at", tracked)
+    assert (
+        main(
+            [
+                "reverse-add",
+                "--seed",
+                "9999",
+                "--nth",
+                "2",
+                "--no-value",
+                "--info",
+                "temporal.matrix",
+                "--temporal-matrix-kind",
+                "source-transfer",
+                "--temporal-matrix-steps",
+                "1",
+                "--temporal-matrix-pair-depth",
+                "1",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+    packet = json.loads(capsys.readouterr().out)
+    assert "temporal.matrix" in packet["info"]
+    assert calls
+
+
 @pytest.mark.parametrize(
     ("seed", "index", "source", "endpoint"), [(7, 0, 7, 11), (11, 2, 17, 26)]
 )

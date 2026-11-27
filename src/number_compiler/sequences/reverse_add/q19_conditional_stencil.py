@@ -204,6 +204,47 @@ class GuardedPairStencil:
             target == 9,
         )
 
+    def next_carry_domain_at(
+        self, owner: ReversePairQ19OutputOwner, coordinate: int
+    ) -> int | None:
+        """Return the exact next-cell carry domain without demanding its value.
+
+        ``None`` denotes the EQ-9 wire.  A growth interior is evaluated as
+        the two source-conditioned carry cofactors; physical source inlets
+        are demanded only where those cofactors differ.  This is a guard
+        response, not an authority for the target pair coefficient.
+        """
+        self._assert_owner(owner)
+        w = self.source_width
+        if type(coordinate) is not int or not 0 <= coordinate < self.target_pair_width:
+            raise IndexError(coordinate)
+        if not self.source_growth or coordinate == 0 or coordinate == w:
+            coefficient = self.cell_at(owner, coordinate).coefficient
+            return None if coefficient == 9 else int(coefficient > 9)
+
+        left = owner.pair_value_at(self.source, coordinate)
+        right = owner.pair_value_at(self.source, coordinate - 1)
+
+        if left == right == 9:
+            low_boundary = coordinate - 1
+            reflected_boundary = w - coordinate - 1
+            u = self.carry_at(owner, low_boundary)
+            v = (
+                u
+                if low_boundary == reflected_boundary
+                else self.carry_at(owner, reflected_boundary)
+            )
+            return 1 if not u and not v else 0 if u and v else None
+        if right == 9 and left in (0, 18):
+            u = self.carry_at(owner, coordinate - 1)
+            return (1 if u else None) if left == 0 else (None if u else 0)
+        if left == 9 and right in (0, 18):
+            v = self.carry_at(owner, w - coordinate - 1)
+            return (1 if v else None) if right == 0 else (None if v else 0)
+
+        coefficient = (left + int(right > 9)) % 10 + (right + int(left > 9)) % 10
+        return None if coefficient == 9 else int(coefficient > 9)
+
     def inward_bank_at(
         self,
         owner: ReversePairQ19OutputOwner,

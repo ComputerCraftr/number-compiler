@@ -945,9 +945,13 @@ def _source_inner_carry(
         owner.ledger.bump(
             _reverse_add_keys.REVERSE_Q19_BORDER_CONTROL_SOURCE_PAIR_INSPECTIONS
         )
-        coefficient = stencil.cell_at(owner, index).coefficient
-        if coefficient != 9:
-            return int(coefficient > 9), inspections
+        if stencil.source_growth and 0 < index < stencil.source_width:
+            domain = stencil.next_carry_domain_at(owner, index)
+        else:
+            coefficient = stencil.cell_at(owner, index).coefficient
+            domain = None if coefficient == 9 else int(coefficient > 9)
+        if domain is not None:
+            return domain, inspections
     return 0, inspections
 
 
