@@ -30,6 +30,8 @@ session Reverse_Residuals in reverse_residuals = Shared_Carry_Dynamics +
     Reverse_Center11_Controlled_Action
     Reverse_Center11_Source_Refinement
     Reverse_Native_Block_Refinement
+    Reverse_Native_Hinge_Center
+    Reverse_Native_Hinge_Successor
     Reverse_Native_Slab_Clock
     Reverse_Conditioned_Birth_Carry
     Reverse_Native_Slab_Core
@@ -82,4 +84,5 @@ session Reverse_Growth_Admission in reverse_growth = Reverse_Residuals +
     Reverse_Native_Slab_Seam_Ports
     Reverse_Native_Slab_Collars
     Reverse_Native_Slab_Joint
+    Reverse_Native_Hinge_Physical_Clock
     Weighted_Partial_Growth_Action
