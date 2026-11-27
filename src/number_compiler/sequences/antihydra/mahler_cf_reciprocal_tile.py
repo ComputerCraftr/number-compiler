@@ -94,7 +94,7 @@ class ReciprocalTile:
             # Only an interval ending at the physical low edge admits the
             # settled suffix action directly; a moving cut uses the exact path.
             suffix_count = (
-                min(4, count, width, exponent)
+                min(6, count, width, exponent)
                 if exponent is not None and start + count == width
                 else 0
             )

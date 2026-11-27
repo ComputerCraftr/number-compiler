@@ -45,12 +45,18 @@ _SETTLED_ACTIONS = (
 
 
 def settled_low_action(exponent: int, columns: int) -> MatrixEntries:
-    """Select the immutable ordered action at a settled one-to-four digit cut."""
+    """Select the immutable ordered action at a settled one-to-six digit cut."""
     if type(columns) is not int or type(exponent) is not int:
         raise TypeError("settled suffix needs integral width and exponent")
-    if not 1 <= columns <= len(_SETTLED_ACTIONS) or exponent < columns:
+    if not 1 <= columns <= 6 or exponent < columns:
         raise ValueError("unsettled low-column phase")
-    actions = _SETTLED_ACTIONS[columns - 1]
+    actions: tuple[MatrixEntries, ...]
+    if columns <= len(_SETTLED_ACTIONS):
+        actions = _SETTLED_ACTIONS[columns - 1]
+    else:
+        from .mahler_cf_low_phase56 import ACTIONS
+
+        actions = ACTIONS[columns - 5]
     return actions[(exponent - columns) % len(actions)]
 
 
@@ -71,7 +77,7 @@ def low_suffix_response(
     if not callable(reserve_bits):
         raise TypeError("low-column response requires a scratch owner")
     reserve_bits(32 * (columns + exponent.bit_length() + 128))
-    if columns <= len(_SETTLED_ACTIONS):
+    if columns <= 6:
         return Matrix2(settled_low_action(exponent, columns))
     period = 1 << (columns - 2)
     phase = (exponent - columns) % period

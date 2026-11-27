@@ -222,6 +222,45 @@ proof -
     by (simp add: mahler_cf_low_phase_actions_def positive)
 qed
 
+definition mahler_cf_low_phase5_front :: "nat list" where
+  "mahler_cf_low_phase5_front = [0,1,7,9,5,6,2,4]"
+
+definition mahler_cf_low_phase6_front :: "nat list" where
+  "mahler_cf_low_phase6_front = [0,0,3,9,7,8,1,7,5,5,8,4,2,3,6,2]"
+
+definition mahler_cf_low_phase5_actions :: "nat ordered_matrix2 list" where
+  "mahler_cf_low_phase5_actions = map (\<lambda>r.
+     ordered_matrix2_multiply (mahler_cf_digit (mahler_cf_low_phase5_front ! r))
+       (mahler_cf_low_phase_actions 4 ! ((r+1) mod 4))) [0..<8]"
+
+definition mahler_cf_low_phase6_actions :: "nat ordered_matrix2 list" where
+  "mahler_cf_low_phase6_actions = map (\<lambda>r.
+     ordered_matrix2_multiply (mahler_cf_digit (mahler_cf_low_phase6_front ! r))
+       (mahler_cf_low_phase5_actions ! ((r+1) mod 8))) [0..<16]"
+
+lemma mahler_cf_low_phase56_checked:
+  "mahler_cf_low_phase_actions 5 = mahler_cf_low_phase5_actions"
+  "mahler_cf_low_phase_actions 6 = mahler_cf_low_phase6_actions"
+  by (simp_all add: mahler_cf_low_phase_actions_def
+      mahler_cf_low_phase5_actions_def mahler_cf_low_phase6_actions_def
+      mahler_cf_low_phase5_front_def mahler_cf_low_phase6_front_def
+      dyadic_unit_phase_period_def mahler_cf_decimal_digits_def
+      mahler_cf_word_def mahler_cf_digit_def ordered_matrix2_identity_def upt_rec)
+
+theorem mahler_cf_low_phase56_physical:
+  assumes "5 \<le> n"
+  shows "mahler_cf_word (mahler_cf_decimal_digits 5 (5^n mod 10^5)) =
+    mahler_cf_low_phase5_actions ! ((n-5) mod 8)"
+  using mahler_cf_low_phase_selection[of 5 n] assms
+  by (simp add: mahler_cf_low_phase56_checked dyadic_unit_phase_period_def)
+
+theorem mahler_cf_low_phase56_physical_six:
+  assumes "6 \<le> n"
+  shows "mahler_cf_word (mahler_cf_decimal_digits 6 (5^n mod 10^6)) =
+    mahler_cf_low_phase6_actions ! ((n-6) mod 16)"
+  using mahler_cf_low_phase_selection[of 6 n] assms
+  by (simp add: mahler_cf_low_phase56_checked dyadic_unit_phase_period_def)
+
 theorem mahler_cf_small_suffix_moore_id:
   assumes width: "w \<in> {1,2,3,4}" and sources: "w \<le> n" "w \<le> m"
   shows "(mahler_cf_word (mahler_cf_decimal_digits w (5^n mod 10^w)) =
@@ -650,7 +689,9 @@ qed
 
 ML \<open>
   val checked = @{thms cf_half_phase_unit cf_context_half_observer_delta cf_four_column_lattice mahler_cf_low_source_half_shift_three mahler_cf_lift_separation mahler_cf_ordered_row_moore_id
-    mahler_cf_low_phase_table_checked mahler_cf_low_phase_selection mahler_cf_small_suffix_moore_id
+    mahler_cf_low_phase_table_checked mahler_cf_low_phase_selection
+    mahler_cf_low_phase56_checked mahler_cf_low_phase56_physical
+    mahler_cf_low_phase56_physical_six mahler_cf_small_suffix_moore_id
     cf_fixed_context_pullback cf_half_three_exact cf_half_four_exact cf_source_half_fixed_cut
     cf_half_common_ordered_word cf_source_half_observer_sufficient cf_source_three_half_exact
     cf_25_singleton_actions cf_source_four_half_exact};
