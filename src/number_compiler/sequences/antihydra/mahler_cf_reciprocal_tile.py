@@ -43,6 +43,10 @@ def reciprocal_row_interval(q: int, t: int, width: int, start: int, count: int) 
         upper: int = (q >> t) // 10 ** (skip - t)
     else:
         upper = (q * 5 ** (t - skip)) >> skip
+    # 2**83 < 10**25. This conservative bit bound proves that the
+    # leading cut already fits, including zero-padded physical heads.
+    if start == 0 and upper >= 0 and upper.bit_length() <= (83 * count) // 25:
+        return upper
     modulus: int = 10**count
     return upper % modulus
 

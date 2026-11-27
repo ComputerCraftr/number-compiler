@@ -274,3 +274,21 @@ def test_reciprocal_owner_rejects_unsealed_row_action() -> None:
         with pytest.raises(ValueError, match="source binding changed"):
             block.prefix(1)
     assert ledger.nodes == ledger.entries == 0
+
+
+def test_reciprocal_leading_cut_conservative_bit_bound() -> None:
+    from number_compiler.sequences.antihydra.mahler_cf_reciprocal_tile import (
+        reciprocal_row_interval,
+    )
+
+    assert 2**83 < 10**25
+    for width in range(1, 33):
+        for count in range(1, width + 1):
+            for t in range(4):
+                for value in (0, 5**width, 10**width - 1, 10 ** (width + 2), -1):
+                    whole = value * 5**t
+                    skip = width - count
+                    expected = (whole // 10**skip) % 10**count
+                    assert (
+                        reciprocal_row_interval(value, t, width, 0, count) == expected
+                    )
