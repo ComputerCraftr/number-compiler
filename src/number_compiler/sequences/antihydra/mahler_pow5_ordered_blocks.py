@@ -62,6 +62,17 @@ class Pow5OrderedBlock:
         return self._owner.checked_segment(self, self._epoch, start, length)
 
 
+def _pack_settled_decimal(value: int) -> int:
+    """Encode a source-qualified at-most-four-digit value into decimal lanes."""
+    packed = 0
+    shift = 0
+    while value:
+        value, digit = divmod(value, 10)
+        packed |= digit << shift
+        shift += 24
+    return packed
+
+
 class Pow5OrderedBlockSource:
     """Publish bounded ordered actions from one canonical ×5 source."""
 
@@ -179,7 +190,7 @@ class Pow5OrderedBlockSource:
             raise RuntimeError("ordered CF source is closed")
         if block is not self._block or epoch != self._epoch:
             raise ValueError("ordered CF block is stale or foreign")
-        if self._reciprocal:
+        if self._tile is not None or self._tile_binding is not None or self._reciprocal:
             tile = self._tile
             binding = self._tile_binding
             if (
@@ -320,14 +331,26 @@ class Pow5OrderedBlockSource:
         ):
             raise ValueError("reciprocal CF source cursor binding changed")
         first = self._exponent if self._offset else self._exponent + 1
-        rows = min(max_rows, 4, _MAX_EXPONENT - first + 1)
-        estimated = min(max_coefficients, rows * (first + rows + 1))
-        bits = 4 * (first + rows) + 64 * estimated
-        node_bound = 128 + 8 * ((bits + 63) // 64)
+        if self._spatial_value:
+            source = 5**self._exponent
+            if self._value != _pack_settled_decimal(source):
+                raise ValueError("settled spatial source cursor binding changed")
+            rows = min(max_rows, 6 - first)
+            estimated = min(
+                max_coefficients, max_rows * (self._exponent + max_rows + 1)
+            )
+            bits = 4 * (self._exponent + max_rows + 1) * max_rows
+            node_bound = 128 + estimated + 8 * (bits + 63) // 64
+        else:
+            source = self._value
+            rows = min(max_rows, 4, _MAX_EXPONENT - first + 1)
+            estimated = min(max_coefficients, rows * (first + rows + 1))
+            bits = 4 * (first + rows) + 64 * estimated
+            node_bound = 128 + 8 * ((bits + 63) // 64)
 
         with self._reserve_candidate(node_bound) as reservation:
             start = self._offset
-            quotient = self._value if start else 5 * self._value
+            quotient = source if start else 5 * source
             value = quotient
             width = self._width
             threshold = self._threshold
@@ -383,12 +406,14 @@ class Pow5OrderedBlockSource:
                     tile.first_exponent,
                 )
                 self._block = block
-                self._value = value
+                self._value = (
+                    _pack_settled_decimal(value) if self._spatial_value else value
+                )
                 self._exponent = last
                 self._offset = offset
                 self._width = width
                 self._threshold = threshold
-                self._source_binding = (value, last, offset, width, threshold)
+                self._source_binding = (self._value, last, offset, width, threshold)
                 self._epoch += 1
         return block
 
@@ -402,6 +427,10 @@ class Pow5OrderedBlockSource:
             raise StopIteration("power-of-five source exponent exceeds 4096")
 
         if self._reciprocal:
+            return self._next_reciprocal(max_rows, max_coefficients)
+        if self._spatial_value and (
+            self._exponent < 5 or self._offset and self._exponent == 5
+        ):
             return self._next_reciprocal(max_rows, max_coefficients)
 
         # The same reservation covers the packed lanes, content-action map,
@@ -564,6 +593,8 @@ class Pow5OrderedBlockSource:
                         if self.shared_cache or arena is None
                         else {root: values[root]}
                     )
+                    self._tile = None
+                    self._tile_binding = None
                     self._word = word
                     self._word_product = word_product
                     self._block = block

@@ -172,7 +172,8 @@ def test_full_horizon_consumes_spatial_children_and_compact_word(
 
 
 @pytest.mark.parametrize(
-    ("horizon", "uses_spatial"), [(0, False), (63, False), (64, True), (65, True)]
+    ("horizon", "uses_spatial"),
+    [(0, False), (63, False), (64, False), (65, False), (128, True)],
 )
 def test_short_horizon_spatial_admission(
     horizon: int, uses_spatial: bool, monkeypatch: pytest.MonkeyPatch

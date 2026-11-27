@@ -75,3 +75,72 @@ def test_public_cylinder_reuses_settled_suffix_before_decode(
             assert expected_status == 3
             assert view["status"] == "unknown" and view["coefficient_count"] == cap
     assert phases == {3, 4}
+
+
+def test_public_spatial_cylinder_uses_settled_action_before_trace(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from number_compiler.arithmetic.automata.carry_spacetime_trace import (
+        Pow5SpatialTrace,
+    )
+    from number_compiler.sequences.antihydra.mahler_pow5_ordered_blocks import (
+        Pow5OrderedBlockSource,
+    )
+
+    observed: list[tuple[int, int]] = []
+    phases: set[int] = set()
+    suffix = settled_low_action(3, 2)
+    select_action = settled_low_action
+    select_interval = tiles.reciprocal_row_interval
+    issue = Pow5OrderedBlockSource._next_reciprocal
+
+    def watch_action(exponent: int, columns: int) -> tuple[int, int, int, int]:
+        action = select_action(exponent, columns)
+        if exponent in (3, 4) and columns in (2, 3):
+            phases.add(exponent)
+            assert select_action(exponent, 2) is suffix
+        return action
+
+    def watch_interval(q: int, t: int, width: int, start: int, count: int) -> int:
+        if q * 5**t in (125, 625):
+            assert start + count <= width - 2
+        return select_interval(q, t, width, start, count)
+
+    def watched(source: Pow5OrderedBlockSource, rows: int, limit: int) -> object:
+        block = issue(source, rows, limit)
+        assert source._tile is not None
+        observed.append((source._tile.first_exponent or 0, source._exponent))
+        return block
+
+    def no_trace(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("the settled prefix cannot open the spatial trace")
+
+    monkeypatch.setattr(Pow5OrderedBlockSource, "_next_reciprocal", watched)
+    monkeypatch.setattr(Pow5SpatialTrace, "issue", no_trace)
+    monkeypatch.setattr(tiles, "settled_low_action", watch_action)
+    monkeypatch.setattr(tiles, "reciprocal_row_interval", watch_interval)
+    assert (
+        main(
+            [
+                "antihydra",
+                "--nth",
+                "0",
+                "--no-value",
+                "--format",
+                "json",
+                "--info",
+                "arithmetic.continued-fraction",
+                "--safety-horizon",
+                "64",
+            ]
+        )
+        == 0
+    )
+    packet = json.loads(capsys.readouterr().out)
+    view = packet["info"]["arithmetic.continued-fraction"]
+    count, matrix = literal_cylinder(64, 500)
+    assert view["coefficient_count"] == count
+    assert view["matrix"] == [list(row) for row in matrix]
+    assert observed and min(first for first, _ in observed) == 1
+    assert max(last for _, last in observed) >= 4
+    assert phases == {3, 4}

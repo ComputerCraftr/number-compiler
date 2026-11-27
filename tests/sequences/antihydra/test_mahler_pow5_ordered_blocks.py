@@ -264,3 +264,40 @@ def test_failed_candidate_reservation_close_is_retained_for_retry(
         _ = block.product
     source.close()
     assert ledger.nodes == ledger.entries == 0
+
+
+def test_settled_spatial_prefix_bypasses_trace_and_keeps_exact_clips(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("settled prefix must not discover spatial rows")
+
+    monkeypatch.setattr(Pow5SpatialTrace, "issue", forbidden)
+    ledger = ResourceLedger(max_nodes=10_000)
+    with Pow5OrderedBlockSource(ledger, spatial=True) as source:
+        word = "5251256253125"
+        cursor = 0
+        for limit in (1, 2, 1, 2, 1, 2, 4):
+            block = source.next_block(4, limit)
+            count = block.coefficient_count
+            assert block.product == literal_action(word[cursor : cursor + count])
+            for i in range(count + 1):
+                assert block.prefix(i) == literal_action(word[cursor : cursor + i])
+            cursor += count
+        assert cursor == len(word)
+    assert ledger.nodes == ledger.entries == 0
+
+
+def test_settled_spatial_rejects_changed_cursor_and_foreign_tile() -> None:
+    ledger = ResourceLedger(max_nodes=10_000)
+    with Pow5OrderedBlockSource(ledger, spatial=True) as source:
+        block = source.next_block(1, 1)
+        tile = source._tile
+        source._tile = None
+        with pytest.raises(ValueError, match="source binding changed"):
+            _ = block.product
+        source._tile = tile
+        source._value += 1
+        with pytest.raises(ValueError, match="source cursor binding changed"):
+            source.next_block(1, 1)
+    assert ledger.nodes == ledger.entries == 0
