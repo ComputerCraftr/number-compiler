@@ -1,6 +1,10 @@
 """Source-bound reciprocal row intervals and ordered decimal actions."""
 
+import os
 from dataclasses import dataclass, field
+from functools import cache
+from importlib import import_module
+from typing import Protocol, cast
 
 from number_compiler.arithmetic.fields.ordered_matrix import (
     Matrix2,
@@ -10,6 +14,22 @@ from number_compiler.sequences.antihydra.mahler_cf_low_period import (
     SETTLED_TENS_ACTION,
     settled_low_action,
 )
+
+
+class _NativeContinuant(Protocol):
+    def ordered_product(self, value: int, width: int) -> tuple[int, int, int, int]: ...
+
+
+@cache
+def _native_continuant() -> _NativeContinuant | None:
+    try:
+        return cast(
+            _NativeContinuant, import_module("number_compiler.kernels._cf_continuant")
+        )
+    except ModuleNotFoundError as error:
+        if error.name != "number_compiler.kernels._cf_continuant":
+            raise
+        return None
 
 
 def reciprocal_row_interval(q: int, t: int, width: int, start: int, count: int) -> int:
@@ -80,7 +100,25 @@ class ReciprocalTile:
                 value = reciprocal_row_interval(
                     self.quotient, row, width, start, prefix_count
                 )
-                entries = append_decimal_value(value, 10 ** (prefix_count - 1), entries)
+                native = (
+                    _native_continuant()
+                    if 4 <= prefix_count <= 16
+                    and os.environ.get("NUMBER_COMPILER_ENABLE_CF_CONTINUANT") == "1"
+                    else None
+                )
+                if native is None:
+                    entries = append_decimal_value(
+                        value, 10 ** (prefix_count - 1), entries
+                    )
+                else:
+                    e, f, g, h = native.ordered_product(value, prefix_count)
+                    a, b, c, d = entries
+                    entries = (
+                        a * e + b * g,
+                        a * f + b * h,
+                        c * e + d * g,
+                        c * f + d * h,
+                    )
             if action is not None:
                 e, f, g, h = action
                 a, b, c, d = entries

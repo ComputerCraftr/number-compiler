@@ -1,1 +1,2 @@
 recursive-include src/number_compiler/kernels/native_reverse *.cpp *.hpp
+recursive-include src/number_compiler/kernels/native_cf *.cpp
