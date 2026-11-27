@@ -114,6 +114,27 @@ and 38.47 → 13.11 ms. The installed CLI also checked the exact refusal
 at 255 and native admission at 257. Both integrations preserve the
 existing default dispatch.
 
+The opt-in folded Q19 action (`96ab70d1`) now applies a four-tick
+binomial core with two authenticated collars. The source determines
+the four ordered physical birth flags (`44343958`). The registered
+`Reverse_Growth_Admission` build accepted the full ordered pair field,
+three births and physical center-digit readout (`0fee9f01`). The
+guarded run took 95.03 s including prerequisites. The independent
+compiled-hinge refinements cover the two-tick singleton response,
+the height-one append for both inlets (`84fce845`), and the height-two
+compiler's transport to its successor half-word (`79697379`).
+
+On the 1,085-digit source at 1,024 ticks, the installed CLI used one
+joint action over 439 core columns, made 544 admission probes, visited
+478 collar cells, and reduced ordered joins from 330,144 to 329,053.
+Seed 196 took the folded fallback. Five paired cold trials measured
+273.40 → 274.25 ms on macOS and 247.01 → 244.95 ms on Linux. First
+publication in the same owner took 6.672 → 6.599 ms and a completed
+endpoint hit took 0.01525 → 0.01438 ms. The guarded selection passed
+46 tests. Pure and native installed wheels matched literal endpoints
+and full packets on both platforms. The tests observed native entry,
+source refusal, and zero native entry on a short request.
+
 ### CF continuation and folded reversal after `907aa90e`
 
 The reciprocal cylinder selects a carry-preserving binary cut from the
