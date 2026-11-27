@@ -93,6 +93,27 @@ and found zero recursion cycles and package violations. Its remaining
 finding is the pre-existing 1,017-line double-reverse ring theory. The
 global proof index still reports inherited audit and Comma authority gaps.
 
+### Irregular CF heads and wide reflected endpoints after `8fa3153f`
+
+The opt-in reciprocal CF cylinder now sends 17–32-digit upper heads to
+the bounded native continuant (`bb7adcd4`). It takes the carry from the
+original inlet at the requested cut, preserves zeros at the split, and
+composes the two-digit actions in coefficient order. At horizon 4,096
+all 36 upper intervals were distinct. Reuse across rows occurred at the
+two-digit action. Native calls rose from 21 to 33, Python digit folds
+fell from 168 to 21, and cross-row repeated pair lookups rose from 33
+to 82. The complete 540-coefficient packet agreed. Five paired trials
+took 172.37 → 175.19 ms cold and 8.272 → 8.245 ms warm.
+
+Wide non-C0 `2rev10` can use the existing opt-in word-RAM kernel from
+256 ticks (`16fe50ac`). On the 153-digit installed CLI fixture at 256,
+16,234 Python cell transitions gave way to 6,111 tile lookups and 870
+fringe gates. Five paired trials took 176.45 → 171.05 ms cold and
+24.97 → 11.60 ms warm. At 511 ticks the medians were 191.84 → 167.14 ms
+and 38.47 → 13.11 ms. The installed CLI also checked the exact refusal
+at 255 and native admission at 257. Both integrations preserve the
+existing default dispatch.
+
 ### CF continuation and folded reversal after `907aa90e`
 
 The reciprocal cylinder selects a carry-preserving binary cut from the
