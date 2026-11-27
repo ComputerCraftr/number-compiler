@@ -13,6 +13,35 @@ carry and scheduler improvements into the existing query owners.
 
 ## Changes
 
+### Bounded CF and reversal delivery on local main
+
+The eight-row CF terminal (`36d3226c`) passed all 57,600 lift and clip
+comparisons. The two installed band controls used lifts 370 and 1099.
+The five-inlet trial stays outside dispatch on `15,4,1,14`. It increased
+median owner time from 12.16 to 22.33 µs and peak ledger nodes from 168
+to 944. Reciprocal CF source authentication landed in `500cba34`.
+
+The optional C++ wheel builds one bounded reflected ×2 kernel with
+`NUMBER_COMPILER_BUILD_REFLECTED_MULTIPLY=1`. On that wheel,
+`NUMBER_COMPILER_ENABLE_REFLECTED_MULTIPLY=1` opts into eligible C0
+actions. Python remains the default. With seed 73 at 1,024 ticks the
+installed CLI entered the kernel three times and matched the literal
+endpoint. The same wheel made zero native calls with the opt-in disabled
+and zero on the enabled 16-tick request. Five alternating cold pairs at
+1,024 ticks measured medians of 250.15 ms for Python and 253.93 ms with
+the kernel enabled. On the combined wheel from `5d964b18`, five fresh
+pairs measured 186.70 ms and 181.63 ms respectively. The 16-tick
+control, which takes the Python route in both modes, measured 161.02 ms
+and 161.37 ms. Automatic dispatch remains disabled.
+
+Both the pure and opt-in wheels built from `5d964b18` passed fresh
+installed console-script checks on macOS and Linux ARM64. The cylinder
+used 540 coefficients at horizon 4,096. The multiplier and reverse/add
+checks compared physical endpoints against literal decimal arithmetic.
+The combined changed Python test selection passed 219 tests. The
+registered `Mahler_Source_Transport` build passed in 148.58 seconds on
+the combined CF proof tree.
+
 ### NC41 reconciliation
 
 The port starts from `02fefff9`. The guarded baseline selection recorded
