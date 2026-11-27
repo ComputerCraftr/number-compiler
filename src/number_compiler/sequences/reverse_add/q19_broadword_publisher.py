@@ -363,9 +363,10 @@ class PackedQ19:
     ) -> PackedQ19:
         """Apply a bounded sequence while reusing masks at each pair width.
 
-        The callback receives the current lane count and prefix-round count
-        immediately before each physical transition. It supports honest
-        caller-owned work accounting without exposing unchecked packed masks.
+        The callback receives the logical lane count and prefix-round charge
+        before each represented transition. The admitted homogeneous prefix
+        uses one multiplication with zero carry rounds; its legacy callback
+        count is bounded by four. Remaining nonlinear transitions are exact.
         """
         if type(steps) is not int or steps < 0:
             raise ValueError("Q19 repeated transition count must be nonnegative")
@@ -374,6 +375,37 @@ class PackedQ19:
 
         frame = self
         ones, lane_mask = _lane_masks(frame.count) if frame.count else (0, 0)
+        if not steps:
+            return frame
+        if not frame.count and frame.center == 0 and before_step is None:
+            return frame  # the zero homogeneous state is an exact fixed point
+        # Resolve the maximal initial carry-free run algebraically. For a
+        # nonzero decimal word it has at most four ticks, so this guard has
+        # fixed cost. The entire pair field is multiplied by 2**quiet once.
+        # The legacy observer still receives its bounded logical accounting
+        # callbacks; no intermediate pair/forcing rows are constructed.
+        if (
+            steps > 1
+            and (frame.center is None or frame.center < 5)
+            and not ((frame.pairs + 22 * ones) & (ones << 5))
+        ):
+            quiet = 1
+            while quiet < min(steps, 4):
+                limit = 9 >> quiet
+                if (frame.center or 0) * 2 > limit or (
+                    frame.pairs + (31 - limit) * ones
+                ) & (ones << 5):
+                    break
+                quiet += 1
+            if before_step is not None:
+                for _ in range(quiet):  # at most four logical observer calls
+                    before_step(frame.count, 0)
+            frame = PackedQ19._from_trusted(
+                frame.pairs << quiet,
+                frame.count,
+                None if frame.center is None else frame.center << quiet,
+            )
+            steps -= quiet
         for _ in range(steps):
             rounds = (frame.count - 1).bit_length() if frame.count else 0
             if before_step is not None:
@@ -417,6 +449,22 @@ class PackedQ19:
         # Since s<=18, the bit-5 threshold comparison cannot spill lanes.
         threshold_bit = ones << 5
         forced = ((source + 22 * ones) & threshold_bit) >> 5
+        # With no generating coefficient and an initially zero carry, all
+        # forward and reflected carry ports are identically zero, even on
+        # runs of 9s. E=0: the exact pair action is just multiplication by 2.
+        if (
+            not forced
+            and (center is None or center < 5)
+            and not emit_digits
+            and not emit_ports
+        ):
+            return (
+                PackedQ19._from_trusted(
+                    source << 1, count, None if center is None else 2 * center
+                ),
+                None,
+                None,
+            )
         propagate = (((source + 23 * ones) & threshold_bit) >> 5) ^ forced
 
         # A radix-64 addition carries directly between packed lanes. Adding

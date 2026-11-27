@@ -23,7 +23,15 @@ DECIMAL_CARRY_WINDOW = 12
 def physical_carry_image(
     source: PackedQ19, before_step: Callable[[int, int], None] | None = None
 ) -> PackedQ19:
-    """Evaluate reverse_q19_twelve_image_exact on its packed source representative."""
+    """Evaluate the guarded H12 image using the packed homogeneous quotient.
+
+    The zero source has a closed all-horizon action. Nonzero unknown carry
+    rows still require their exact transition; the packed executor consumes
+    any admitted carry-free prefix without constructing those rows.
+    """
+    if source.count == 0 and source.center == 0:
+        _image_guard(source, source)
+        return source
     image = source.advance_repeated(DECIMAL_CARRY_WINDOW, before_step=before_step)
     # Each physical step grows by zero or one. The total width change counts
     # births, so the annihilation guard needs neither carry rows nor a trace.
@@ -334,6 +342,11 @@ def completed_continuation(
         raise ValueError("a carry-window continuation needs twelve physical steps")
     if (ledger is None) != (scratch_owner is None):
         raise ValueError("checkpoint reservation requires a ledger and owner")
+    if source.count == 0 and source.center == 0:
+        # Exact self-loop, not a discovered occurrence/frontier. Report its
+        # represented span as reused rather than charging physical ticks.
+        yield source, steps
+        return
     with (
         _continuation_scratch(ledger, scratch_owner, shared_cache) as scratch,
         (

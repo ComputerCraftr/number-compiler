@@ -227,7 +227,11 @@ class Q19OutputPublicationMixin:
                 self.validate_issued_occurrence(existing)
                 return existing
 
-        width_bound = len(self._digits) + temporal_steps - 1
+        # The authenticated zero source never grows; do not reserve a
+        # horizon-sized image or prefix ledger for its absorbing action.
+        width_bound = (
+            1 if self._digits == (0,) else len(self._digits) + temporal_steps - 1
+        )
         scratch_nodes = 16 * (width_bound + 3)
         first_new_node = len(self.arena.nodes)
         rollback_publication: ReversePairOutputOccurrence | None = None
@@ -282,8 +286,8 @@ class Q19OutputPublicationMixin:
                     resumed_age = hint[0]
 
                 def record_step_work(count: int, rounds: int) -> None:
-                    # Count each requested recurrence before running it so an
-                    # exception later in construction does not erase work.
+                    # Logical recurrence accounting, including the bounded
+                    # homogeneous prefix; its carry-round charge is zero.
                     self.ledger.bump(
                         _reverse_add_keys.REVERSE_Q19_BROADWORD_SEMANTIC_STEPS
                     )
