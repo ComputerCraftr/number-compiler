@@ -2,6 +2,7 @@
 // Diagonal boundary actions adapted from the supplied collision prototype.
 // Finite Laurent support; no physical width replay or temporal carry bank.
 #include "rev10.hpp"
+#include "relative_return.hpp"
 #ifdef __ARM_NEON
 #include <arm_neon.h>
 #endif
@@ -351,8 +352,7 @@ static void full_wave(const Table &t, int p, int lo, int hi, const int *west,
         north[k] = a.second;
     }
 }
-static string wave_tiled(const Table &t, string seed, I n, Stats &st) {
-    seed = core(std::move(seed));
+static string wave_raw(const Table &t, const string &seed, I n, Stats &st) {
     const I source_end = static_cast<I>(seed.size()) - 1;
     const I output_end = source_end + n;
     const int b = t.b;
@@ -455,6 +455,31 @@ static string wave_tiled(const Table &t, string seed, I n, Stats &st) {
         lo = nl;
         hi = nh;
     }
+    return out;
+}
+
+static string wave_tiled(const Table &t, const string &seed, I n, Stats &st,
+                         RelativeRun run) {
+    if (run.hi == run.lo) {
+        return physical_readout(wave_raw(t, seed, n, st), t.m, n);
+    }
+    // The checked source triples form a protected cone. Recompute both full
+    // fringes and preserve their physical overlap with the translated center.
+    const I left = run.lo + n, right = run.hi, start = right - n;
+    const I turns = n / 2;
+    string out = wave_raw(t, seed.substr(0, size_t(left)), n, st);
+    out.resize(size_t(seed.size() + n));
+    for (I i = left; i < right; ++i) {
+        const I k = i - run.shift * turns;
+        int digit = seed[size_t(k)] - '0';
+        if (n & 1) {
+            digit =
+                t.m * (digit % t.base) + (seed[size_t(k - 1)] - '0') / t.base;
+        }
+        out[size_t(i)] = char('0' + digit);
+    }
+    auto tail = wave_raw(t, seed.substr(size_t(start)), n, st);
+    std::copy(tail.begin() + n, tail.end(), out.begin() + right);
     return physical_readout(std::move(out), t.m, n);
 }
 
@@ -463,6 +488,8 @@ static string diagonal(string seed, int m, I n, int side, Stats &st) {
         return seed;
     }
     auto a = Clock::now();
+    seed = core(std::move(seed));
+    const auto run = relative_run(seed, m, n);
     Table f = Table::forward(side);
     st.table_entries = std::uint64_t(f.tot / 2);
     if (m == 5) {
@@ -472,14 +499,14 @@ static string diagonal(string seed, int m, I n, int side, Stats &st) {
         st.table_bytes = inv.payload_bytes();
         auto b = Clock::now();
         st.setup_ms = ms(a, b);
-        auto s = wave_tiled(inv, std::move(seed), n, st);
+        auto s = wave_tiled(inv, seed, n, st, run);
         st.eval_ms = ms(b, Clock::now());
         return s;
     }
     st.table_bytes = f.payload_bytes();
     auto b = Clock::now();
     st.setup_ms = ms(a, b);
-    auto s = wave_tiled(f, std::move(seed), n, st);
+    auto s = wave_tiled(f, seed, n, st, run);
     st.eval_ms = ms(b, Clock::now());
     return s;
 }

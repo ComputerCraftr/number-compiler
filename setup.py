@@ -15,7 +15,7 @@ if os.environ.get("NUMBER_COMPILER_BUILD_REFLECTED_MULTIPLY") == "1":
                 source + "reflected_multiply_bindings.cpp",
                 source + "rev10.cpp",
             ],
-            depends=[source + "rev10.hpp"],
+            depends=[source + name for name in ("rev10.hpp", "relative_return.hpp")],
             define_macros=[("PY_SSIZE_T_CLEAN", None)],
             extra_compile_args=["-std=c++20"],
             language="c++",
@@ -32,7 +32,12 @@ if os.environ.get("NUMBER_COMPILER_BUILD_NATIVE_REVERSE") == "1":
             ],
             depends=[
                 source + name
-                for name in ("causal_add.hpp", "pair_half_kick.hpp", "rev10.hpp")
+                for name in (
+                    "causal_add.hpp",
+                    "pair_half_kick.hpp",
+                    "rev10.hpp",
+                    "relative_return.hpp",
+                )
             ],
             define_macros=[("PY_SSIZE_T_CLEAN", None)],
             extra_compile_args=["-std=c++20"],

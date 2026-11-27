@@ -313,6 +313,17 @@ next
         reflected_source_two_gate_def funpow_Suc_right Let_def add.commute diff_diff_add)
 qed
 
+theorem reflected_single_run_even_relative:
+  fixes a b shift i :: int
+  assumes shift: "0 \<le> shift" "shift \<le> 2"
+    and returns: "\<And>j. a + 2 \<le> j \<Longrightarrow> j < b \<Longrightarrow>
+      reflected_relative_two (reflected_source_two_gate m) source j = source (j - shift)"
+    and bounds: "a + 2 * int n \<le> i" "i < b"
+  shows "reflected_single_run (reflected_alternating_gate m) (2 * n) source i =
+    source (i - int n * shift)"
+  using reflected_relative_interval[OF shift returns bounds]
+  by (simp add: reflected_single_run_even)
+
 theorem reflected_single_run_odd_relative:
   fixes a b shift i :: int
   assumes shift: "0 \<le> shift" "shift \<le> 2"
@@ -434,7 +445,7 @@ ML \<open>
     reflected_relative_two_H_iter reflected_source_relative_H_interior
     reflected_single_run_locality reflected_single_run_clip reflected_prefix_fringe
     reflected_suffix_fringe reflected_single_two_gates reflected_single_run_even
-    reflected_single_run_odd_relative
+    reflected_single_run_even_relative reflected_single_run_odd_relative
     reflected_H_cell_decodes_pairs reflected_H_cell_predecessor_factor
     reflected_H_pair_digit_bridge reflected_H_pair_zero_bridge
     reflected_H_pair_parts_bridge reflected_H_pair_parts_zero
