@@ -346,6 +346,57 @@ proof -
   show ?thesis using valid decode width parity opposite center by blast
 qed
 
+text \<open>Two physical pair publishers form a bounded receiving contract.
+The first physical carry is the low bit. The next carry is the high bit.
+The source is decoded from its issued symmetric half before either pass.\<close>
+
+definition reverse_native_two_pass_ports :: "nat list \<Rightarrow> nat list \<times> nat" where
+  "reverse_native_two_pass_ports source =
+    (let decoded = punctured_q19_decode_half (reverse_laurent_source_half source)
+          (reverse_laurent_source_odd source);
+         first = reverse_two_port_publisher decoded;
+         port = (if carry_out False decoded then 1 else 0) +
+           2 * (if carry_out False first then 1 else 0)
+     in (reverse_two_port_publisher first, port))"
+
+theorem reverse_native_two_pass_source_ports:
+  assumes valid: "valid_pair source"
+  defines "result \<equiv> reverse_native_two_pass_ports source"
+  shows "fst result = step (step source) \<and>
+    snd result mod 2 = (if carry_out False source then 1 else 0) \<and>
+    snd result div 2 = (if carry_out False (step source) then 1 else 0) \<and>
+    length (fst result) = length source + snd result mod 2 + snd result div 2 \<and>
+    valid_pair (fst result)"
+proof -
+  have symmetric: "rev source = source" using valid by (simp add: valid_pair_def)
+  have decoded: "punctured_q19_decode_half (reverse_laurent_source_half source)
+      (reverse_laurent_source_odd source) = source"
+    by (rule reverse_laurent_half_reconstructs_symmetric_source[OF symmetric])
+  have first: "reverse_two_port_publisher source = step source"
+    by (rule reverse_two_port_publisher_refines_step[OF valid])
+  have first_valid: "valid_pair (step source)"
+    by (rule valid_pair_successor[OF valid])
+  have second: "reverse_two_port_publisher (step source) = step (step source)"
+    by (rule reverse_two_port_publisher_refines_step[OF first_valid])
+  show ?thesis using valid
+    by (simp add: result_def reverse_native_two_pass_ports_def Let_def decoded first second
+        length_step_exact length_digits_exact valid_pair_successor)
+qed
+
+lemma reverse_native_two_pass_birth_order_distinguishes:
+  "snd (reverse_native_two_pass_ports [18]) mod 2 = 1 \<and>
+   snd (reverse_native_two_pass_ports [18]) div 2 = 0 \<and>
+   snd (reverse_native_two_pass_ports [9,9]) mod 2 = 0 \<and>
+   snd (reverse_native_two_pass_ports [9,9]) div 2 = 1"
+proof -
+  have a: "valid_pair [18]" and b: "valid_pair [9,9]"
+    by (simp_all add: valid_pair_def)
+  note first = reverse_native_two_pass_source_ports[OF a]
+  note second = reverse_native_two_pass_source_ports[OF b]
+  show ?thesis using first second
+    by (simp add: carry_out_def domain_def)
+qed
+
 ML \<open>
   val checked = @{thms punctured_expand_singleton_runs
     reverse_add_run_last_step
@@ -354,9 +405,12 @@ ML \<open>
     reverse_add_decimal_tick_value
     reverse_laurent_native_block_scalar_to_pair
     reverse_native_opposite_digit_from_pair reverse_native_center_pair_even
-    reverse_native_folded_endpoint_clock};
+    reverse_native_folded_endpoint_clock reverse_native_two_pass_source_ports
+    reverse_native_two_pass_birth_order_distinguishes};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Reverse native block refinement depends on an oracle";
+  val _ = if Thm_Deps.has_skip_proof checked
+    then error "Skipped reverse native block refinement proof" else ();
 \<close>
 
 end
