@@ -43,6 +43,7 @@ def test_native_pair_continuation_and_failed_receiver_release(
         assert target == expected
         assert reused == 0
     assert ledger.counters["native_pair_bands"] > 0
+    assert ledger.counters["native_pair_hinge_cells"] > 0
     assert ledger.nodes == ledger.entries == 0
 
     from number_compiler.arithmetic.carry import native_reverse_actions
@@ -236,7 +237,7 @@ def test_folded_kernel_matches_full_pair_field_and_rejects_bad_centers() -> None
                     int(a) + int(b) for a, b in zip(literal, literal[::-1], strict=True)
                 )
     for bad_center in (-2, 10):
-        with pytest.raises(ValueError, match="invalid folded causal extent"):
+        with pytest.raises(ValueError, match="folded"):
             native.add_folded(b"\x01", bad_center, 2, 4 << 20)
     with pytest.raises(ValueError, match="invalid pair coefficient"):
         native.add_folded(b"\x13", -1, 2, 4 << 20)
@@ -292,20 +293,20 @@ def test_adjacent_folded_bands_preserve_physical_births(seed: int, clock: str) -
 
 def test_band_birth_totals_do_not_authorize_a_four_tick_schedule() -> None:
     native = pytest.importorskip("number_compiler.kernels._reverse_quotients")
-    observed = []
+    observed: list[list[int]] = []
     for seed in (9, 18):
         digits = str(seed)
         full = bytes(int(a) + int(b) for a, b in zip(digits, digits[::-1], strict=True))
         count = len(full) // 2
         half = full[:count]
         center = int(digits[count]) if len(full) % 2 else -1
-        totals = []
+        totals: list[int] = []
         for _ in range(2):
             half, center, work = native.add_folded(half, center, 2, 4 << 20)
-            totals.append(work[4])
+            totals.append(int(work[4]))
         observed.append(totals)
     assert observed == [[1, 2], [1, 2]]
-    clocks = []
+    clocks: list[str] = []
     for seed in (9, 18):
         clock = ""
         for _ in range(4):
@@ -314,3 +315,19 @@ def test_band_birth_totals_do_not_authorize_a_four_tick_schedule() -> None:
             seed = successor
         clocks.append(clock)
     assert clocks == ["1011", "0111"]
+
+
+@pytest.mark.parametrize("slot", (1, 2, 3))
+@pytest.mark.parametrize("bad", (True, False, -1, 2**64 + 1))
+def test_folded_binding_rejects_non_exact_and_overflowing_controls(
+    slot: int, bad: int
+) -> None:
+    native = pytest.importorskip("number_compiler.kernels._reverse_quotients")
+    args: list[object] = [b"\x01", 5, 512, 4 << 20]
+    args[slot] = bad
+    # Center -1 is the valid even-width sentinel.
+    if slot == 1 and bad == -1 and type(bad) is int:
+        assert native.add_folded(*args)[1] in range(-1, 10)
+    else:
+        with pytest.raises((TypeError, ValueError, OverflowError)):
+            native.add_folded(*args)

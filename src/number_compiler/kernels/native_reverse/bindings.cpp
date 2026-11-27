@@ -111,25 +111,46 @@ PyObject *add(PyObject * /*unused*/, PyObject *args) {
 PyObject *add_folded(PyObject * /*unused*/, PyObject *args) {
     const char *source = nullptr;
     Py_ssize_t size = 0;
-    int center = -1;
-    unsigned long long steps = 0, cap = 0;
-    if (PyArg_ParseTuple(args, "y#iKK", &source, &size, &center, &steps,
-                         &cap) == 0)
+    PyObject *center_obj = nullptr, *steps_obj = nullptr, *cap_obj = nullptr;
+    if (PyArg_ParseTuple(args, "y#OOO", &source, &size, &center_obj, &steps_obj,
+                         &cap_obj) == 0) {
         return nullptr;
-    if (size < 0 || size > 32000000 || steps > 65536 || cap == 0 ||
-        cap > 4ULL * 1024 * 1024) {
+    }
+    if (!PyLong_CheckExact(center_obj) || !PyLong_CheckExact(steps_obj) ||
+        !PyLong_CheckExact(cap_obj)) {
+        PyErr_SetString(PyExc_TypeError,
+                        "folded center, steps and cap require exact integers");
+        return nullptr;
+    }
+    const long center = PyLong_AsLong(center_obj);
+    if (center == -1 && (PyErr_Occurred() != nullptr)) {
+        return nullptr;
+    }
+    const auto steps = PyLong_AsUnsignedLongLong(steps_obj);
+    if (steps == static_cast<unsigned long long>(-1) &&
+        (PyErr_Occurred() != nullptr)) {
+        return nullptr;
+    }
+    const auto cap = PyLong_AsUnsignedLongLong(cap_obj);
+    if (cap == static_cast<unsigned long long>(-1) &&
+        (PyErr_Occurred() != nullptr)) {
+        return nullptr;
+    }
+    if (size < 0 || size > 32000000 || center < -1 || center > 9 ||
+        steps > 65536 || cap == 0 || cap > 4ULL * 1024 * 1024) {
         PyErr_SetString(PyExc_ValueError,
                         "native folded band exceeds its finite limits");
         return nullptr;
     }
     try {
         const auto result = causal_add::advance_folded(symbols(source, size),
-                                                       center, steps, cap);
-        if (PyErr_CheckSignals() < 0)
+                                                       int(center), steps, cap);
+        if (PyErr_CheckSignals() < 0) {
             return nullptr;
+        }
         const auto &work = result.work;
         return Py_BuildValue(
-            "y#i(KKKKKK)",
+            "y#i(KKKKKKK)",
             result.pairs.empty()
                 ? ""
                 : reinterpret_cast<const char *>(result.pairs.data()),
@@ -139,7 +160,8 @@ PyObject *add_folded(PyObject * /*unused*/, PyObject *args) {
             static_cast<unsigned long long>(work.joins),
             static_cast<unsigned long long>(work.pulls),
             static_cast<unsigned long long>(work.births),
-            static_cast<unsigned long long>(work.peak_table_bytes));
+            static_cast<unsigned long long>(work.peak_table_bytes),
+            static_cast<unsigned long long>(work.hinge_cells));
     } catch (...) {
         translate_exception(std::current_exception());
         return nullptr;
@@ -184,8 +206,12 @@ PyMethodDef methods[] = {
         "Compute a bounded diagonal endpoint.",
     },
     {"add", add, METH_VARARGS, "Compute a bounded causal pair field."},
-    {"add_folded", add_folded, METH_VARARGS,
-     "Compute a folded causal pair field."},
+    {
+        "add_folded",
+        add_folded,
+        METH_VARARGS,
+        "Compute a folded causal pair field.",
+    },
     {
         "guard98",
         guard98,

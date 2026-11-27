@@ -43,6 +43,7 @@ class PairWork:
     pulls: int
     births: int
     table_bytes: int
+    hinge_cells: int = 0
 
 
 class _Kernels(Protocol):
@@ -56,7 +57,7 @@ class _Kernels(Protocol):
 
     def add_folded(
         self, half: bytes, center: int, steps: int, max_bytes: int
-    ) -> tuple[bytes, int, tuple[int, int, int, int, int, int]]: ...
+    ) -> tuple[bytes, int, tuple[int, int, int, int, int, int, int]]: ...
 
     def guard98(
         self, interior: bytes, returns: int, endpoint: bool, node_cap: int
@@ -162,6 +163,8 @@ def _record_pair_work(ledger: ResourceLedger, work: PairWork) -> None:
     ledger.bump(_keys.NATIVE_PAIR_JOINS, work.joins)
     ledger.bump(_keys.NATIVE_PAIR_PULLS, work.pulls)
     ledger.bump(_keys.NATIVE_PAIR_TABLE_BYTES, work.table_bytes)
+    if work.hinge_cells:
+        ledger.bump(_keys.NATIVE_PAIR_HINGE_CELLS, work.hinge_cells)
 
 
 def native_pair_action(

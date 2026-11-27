@@ -7,7 +7,7 @@ namespace causal_add {
 struct Work {
     std::uint64_t states = 0, transition_cells = 0, endpoint_cells = 0,
                   block_cells = 0, bands = 0, joins = 0, pulls = 0, births = 0;
-    std::uint64_t peak_table_bytes = 0;
+    std::uint64_t peak_table_bytes = 0, hinge_cells = 0;
 };
 struct Result {
     std::string digits; // MSD-first; empty if the input is already the endpoint
