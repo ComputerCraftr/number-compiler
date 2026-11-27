@@ -2,6 +2,7 @@
 
 from fractions import Fraction
 from random import Random
+from struct import Struct
 
 import pytest
 
@@ -17,7 +18,8 @@ from number_compiler.sequences.antihydra import (
 
 
 def test_compiled_responses_match_all_physical_intermediate_guards() -> None:
-    keys, actions = fractional.branch_chart()
+    keys, raw = fractional.branch_chart()
+    actions = [(i, k // 2, u) for k, i, u in Struct("=III").iter_unpack(raw)]
     assert len(actions) == 40
     assert keys == tuple(sorted(keys))
     gain = fractional.BRANCH_BLOCK_GAIN
@@ -39,7 +41,8 @@ def test_chart_and_scalar_have_same_guards_including_boundary_ties() -> None:
     intervals = [(Fraction(0), Fraction(1, 3)), (Fraction(1, 3), Fraction(1, 2))]
     gain = fractional.BRANCH_BLOCK_GAIN
     epsilon = Fraction(1, 4 * gain * 1000)
-    for _, lower, upper in chart[1]:
+    for key, _, upper in Struct("=III").iter_unpack(chart[1]):
+        lower = key // 2
         low = Fraction(lower, gain)
         high = Fraction(upper, 2 * gain)
         intervals.append((low, high))
@@ -89,13 +92,13 @@ def test_live_cylinder_skips_scalar_branch_search_and_preserves_packet(
         return original(numerator, denominator, remaining)
 
     monkeypatch.setattr(fractional, "max_zero_run", counted)
-    chart = fractional.branch_chart
-    monkeypatch.setattr(fractional, "branch_chart", lambda: ((), ()))
+    chart = fractional.packed_branch_chart
+    monkeypatch.setattr(fractional, "packed_branch_chart", lambda: b"")
     scalar_ledger = ResourceLedger(max_nodes=10000)
     expected = cf.continued_fraction_cylinder(4096, 20000, ledger=scalar_ledger)
     scalar_calls = calls
     calls = 0
-    monkeypatch.setattr(fractional, "branch_chart", chart)
+    monkeypatch.setattr(fractional, "packed_branch_chart", chart)
     ledger = ResourceLedger(max_nodes=10000)
     actual = cf.continued_fraction_cylinder(4096, 20000, ledger=ledger)
     assert actual == expected
@@ -108,17 +111,17 @@ def test_live_cylinder_skips_scalar_branch_search_and_preserves_packet(
 def test_chart_is_built_once_after_admission_and_small_cap_stays_lazy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fractional.branch_chart.cache_clear()
+    fractional.packed_branch_chart.cache_clear()
     with monkeypatch.context() as scoped:
-        original = fractional.branch_chart
+        original = fractional.packed_branch_chart
         calls = 0
 
-        def counted() -> tuple[tuple[int, ...], tuple[tuple[int, int, int], ...]]:
+        def counted() -> bytes:
             nonlocal calls
             calls += 1
             return original()
 
-        scoped.setattr(fractional, "branch_chart", counted)
+        scoped.setattr(fractional, "packed_branch_chart", counted)
         for budget in (1, 7, 32):
             cf.continued_fraction_cylinder(4096, budget, ledger=ResourceLedger())
         assert calls == 0
@@ -147,7 +150,7 @@ def test_optional_chart_capacity_refusal_restores_scalar_path(
     monkeypatch.setattr(RunArithmeticWorkspace, "require_bits", refuse_chart)
     ledger = ResourceLedger(max_nodes=10000)
     assert cf.continued_fraction_cylinder(4096, 20000, ledger=ledger) == expected
-    assert calls == 1
+    assert calls == 2
     assert ledger.nodes == ledger.entries == 0
 
 
@@ -172,11 +175,11 @@ def test_public_cli_reports_exact_first_exclusion(
         "--format",
         "json",
     ]
-    original = fractional.branch_chart
-    monkeypatch.setattr(fractional, "branch_chart", lambda: ((), ()))
+    original = fractional.packed_branch_chart
+    monkeypatch.setattr(fractional, "packed_branch_chart", lambda: b"")
     scalar_status = main(args)
     scalar_packet = json.loads(capsys.readouterr().out)
-    monkeypatch.setattr(fractional, "branch_chart", original)
+    monkeypatch.setattr(fractional, "packed_branch_chart", original)
     assert main(args) == scalar_status
     assert json.loads(capsys.readouterr().out) == scalar_packet
     assert scalar_status == 3
@@ -186,11 +189,104 @@ def test_public_cli_reports_exact_first_exclusion(
 def test_chart_interruption_releases_all_query_reservations(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def interrupted() -> tuple[tuple[int, ...], tuple[tuple[int, int, int], ...]]:
+    def interrupted() -> bytes:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(fractional, "branch_chart", interrupted)
+    monkeypatch.setattr(fractional, "packed_branch_chart", interrupted)
     ledger = ResourceLedger(max_nodes=10000)
     with pytest.raises(KeyboardInterrupt):
         cf.continued_fraction_cylinder(4096, 20000, ledger=ledger)
+    assert ledger.nodes == ledger.entries == 0
+
+
+def test_packed_chart_matches_all_physical_words_and_ordered_boundaries() -> None:
+    record = Struct("=III")
+    raw = fractional.packed_branch_chart()
+    assert len(raw) == 12 * (40 + 1018)
+    rows = list(record.iter_unpack(raw))
+    assert raw[: 40 * record.size] == fractional.branch_chart()[1]
+    wide = rows[40:]
+    gain = 3**16
+    assert wide[0][0] == 0 and wide[-1][2] == gain
+    assert all(a[2] == b[0] for a, b in zip(wide[:-1], wide[1:], strict=True))
+    for key, innovation, upper in wide:
+        value = Fraction(key + upper, 4 * gain)
+        original = value
+        for _ in range(16):
+            assert 0 <= value <= Fraction(1, 2)
+            bit = int(3 * value >= 1)
+            value = (3 * value - bit) / 2
+        assert value == (gain * original - innovation) / 2**16
+        low = Fraction(key, 2 * gain)
+        high = Fraction(upper, 2 * gain)
+        scalar = fractional.FractionalPath()
+        packed = fractional.FractionalPath(packed_chart=raw)
+        scalar.extend(low, high, 16)
+        packed.extend(low, high, 16)
+        assert (
+            packed.extent,
+            packed.gain,
+            packed.modulus,
+            packed.innovation,
+            packed.lower,
+            packed.upper,
+        ) == (
+            scalar.extent,
+            scalar.gain,
+            scalar.modulus,
+            scalar.innovation,
+            scalar.lower,
+            scalar.upper,
+        )
+
+
+def test_packed_chart_rejects_intervals_crossing_each_wide_boundary() -> None:
+    raw = fractional.packed_branch_chart()
+    rows = list(Struct("=III").iter_unpack(raw))[40:]
+    gain = 3**16
+    for key, _, _ in rows[1:]:
+        low, high = Fraction(key - 1, 2 * gain), Fraction(key + 1, 2 * gain)
+        scalar = fractional.FractionalPath()
+        packed = fractional.FractionalPath(packed_chart=raw)
+        scalar.extend(low, high, 16)
+        packed.extend(low, high, 16)
+        assert (
+            packed.extent,
+            packed.gain,
+            packed.modulus,
+            packed.innovation,
+            packed.lower,
+            packed.upper,
+        ) == (
+            scalar.extent,
+            scalar.gain,
+            scalar.modulus,
+            scalar.innovation,
+            scalar.lower,
+            scalar.upper,
+        )
+        assert packed.extent < 16
+
+
+def test_packed_refusal_uses_short_chart_before_scalar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = RunArithmeticWorkspace.require_bits
+    wide_refusals = 0
+    short_admissions = 0
+
+    def refuse_wide(self: RunArithmeticWorkspace, bits: int) -> None:
+        nonlocal wide_refusals, short_admissions
+        if self.prefix == "mahler-cf-branch-chart":
+            if bits == fractional.PACKED_CHART_SCRATCH_BITS:
+                wide_refusals += 1
+                raise BlockContextBudgetExceeded("wide action cannot fit")
+            short_admissions += 1
+        original(self, bits)
+
+    expected = cf.continued_fraction_cylinder(4096, 20000, ledger=ResourceLedger())
+    monkeypatch.setattr(RunArithmeticWorkspace, "require_bits", refuse_wide)
+    ledger = ResourceLedger(max_nodes=10000)
+    assert cf.continued_fraction_cylinder(4096, 20000, ledger=ledger) == expected
+    assert wide_refusals == 1 and short_admissions > 0
     assert ledger.nodes == ledger.entries == 0

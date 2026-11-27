@@ -4,31 +4,51 @@ from bisect import bisect_right
 from dataclasses import dataclass
 from fractions import Fraction
 from functools import cache
+from io import BytesIO
+from struct import Struct
 
 BRANCH_BLOCK_TICKS = 8
 BRANCH_BLOCK_GAIN = 3**BRANCH_BLOCK_TICKS
 BRANCH_BLOCK_MODULUS = 2**BRANCH_BLOCK_TICKS
-BRANCH_CHART_SCRATCH_BITS = 128 * 1024
+BRANCH_CHART_SCRATCH_BITS = 96 * 1024
+PACKED_CHART_SCRATCH_BITS = 128 * 1024
+_PACKED_ROW = Struct("=III")
+_SHORT_RECORDS = 40
+_WIDE_TICKS = 16
+_WIDE_GAIN = 3**_WIDE_TICKS
 
 
-@cache
-def branch_chart() -> tuple[tuple[int, ...], tuple[tuple[int, int, int], ...]]:
-    """Compile complete eight-tick actions and their exact input intervals."""
-    actions = [(0, 0, 1)]
-    modulus = 1
-    for _ in range(BRANCH_BLOCK_TICKS):
-        following: list[tuple[int, int, int]] = []
-        for innovation, lower, upper in actions:
-            for bit in (0, 1):
+def _build_branch_chart(horizons: tuple[int, ...]) -> bytes:
+    """Enumerate viable guards in increasing inlet order into fixed-width rows."""
+    output = BytesIO()
+    for horizon in horizons:
+        stack = [(0, 0, 0, 1)]
+        while stack:
+            tick, innovation, lower, upper = stack.pop()
+            if tick == horizon:
+                output.write(_PACKED_ROW.pack(2 * lower, innovation, upper))
+                continue
+            modulus = 1 << tick
+            for bit in (1, 0):
                 next_innovation = 3 * innovation + bit * modulus
                 next_lower = max(3 * lower, next_innovation)
                 next_upper = min(3 * upper, 2 * next_innovation + 2 * modulus)
                 if 2 * next_lower < next_upper:
-                    following.append((next_innovation, next_lower, next_upper))
-        actions = following
-        modulus *= 2
-    actions.sort(key=lambda action: action[1])
-    return tuple(2 * action[1] for action in actions), tuple(actions)
+                    stack.append((tick + 1, next_innovation, next_lower, next_upper))
+    return output.getvalue()
+
+
+@cache
+def branch_chart() -> tuple[tuple[int, ...], bytes]:
+    """Compile eight-tick actions and their exact input intervals."""
+    rows = _build_branch_chart((BRANCH_BLOCK_TICKS,))
+    return tuple(key for key, _, _ in _PACKED_ROW.iter_unpack(rows)), rows
+
+
+@cache
+def packed_branch_chart() -> bytes:
+    """Build immutable ordered 8- and 16-tick guards within the chart reservation."""
+    return _build_branch_chart((BRANCH_BLOCK_TICKS, _WIDE_TICKS))
 
 
 @dataclass(slots=True)
@@ -46,7 +66,8 @@ class FractionalPath:
     innovation: int = 0
     lower: int = 0
     upper: int = 1
-    chart: tuple[tuple[int, ...], tuple[tuple[int, int, int], ...]] | None = None
+    chart: tuple[tuple[int, ...], bytes] | None = None
+    packed_chart: bytes | None = None
 
     def endpoint(self, source: Fraction) -> tuple[int, int]:
         return (
@@ -57,42 +78,83 @@ class FractionalPath:
     def extend(self, low: Fraction, high: Fraction, horizon: int) -> None:
         left_n, left_d = self.endpoint(low)
         right_n, right_d = self.endpoint(high)
+        packed = self.packed_chart
+        packed_rows = memoryview(packed).cast("I") if packed is not None else None
+        short_keys = None
+        wide_keys = None
+        if packed_rows is not None:
+            short_keys = packed_rows[: 3 * _SHORT_RECORDS : 3]
+            wide_keys = packed_rows[3 * _SHORT_RECORDS :: 3]
         while self.extent < horizon and left_n >= 0 and 2 * right_n <= right_d:
             remaining = horizon - self.extent
-            if self.chart is not None and remaining >= BRANCH_BLOCK_TICKS:
+            match = None
+            if (
+                packed_rows is not None
+                and short_keys is not None
+                and wide_keys is not None
+            ):
+                for ticks, begin, gain, packed_keys in (
+                    (_WIDE_TICKS, _SHORT_RECORDS, _WIDE_GAIN, wide_keys),
+                    (BRANCH_BLOCK_TICKS, 0, BRANCH_BLOCK_GAIN, short_keys),
+                ):
+                    if remaining < ticks:
+                        continue
+                    position = (
+                        bisect_right(packed_keys, 2 * gain * left_n // left_d) - 1
+                    )
+                    if position >= 0:
+                        key, innovation, upper = _PACKED_ROW.unpack_from(
+                            packed_rows, (begin + position) * _PACKED_ROW.size
+                        )
+                        if (
+                            gain * left_n * 2 >= key * left_d
+                            and 2 * gain * right_n <= upper * right_d
+                        ):
+                            match = (ticks, gain, innovation, key // 2, upper)
+                            break
+            elif self.chart is not None and remaining >= BRANCH_BLOCK_TICKS:
                 keys, actions = self.chart
                 position = (
                     bisect_right(keys, 2 * BRANCH_BLOCK_GAIN * left_n // left_d) - 1
                 )
                 if position >= 0:
-                    innovation, lower, upper = actions[position]
+                    key, innovation, upper = _PACKED_ROW.unpack_from(
+                        actions, position * _PACKED_ROW.size
+                    )
+                    lower = key // 2
                     if (
                         BRANCH_BLOCK_GAIN * left_n >= lower * left_d
                         and 2 * BRANCH_BLOCK_GAIN * right_n <= upper * right_d
                     ):
-                        gain = BRANCH_BLOCK_GAIN
-                        modulus = BRANCH_BLOCK_MODULUS
-                        left_n = gain * left_n - innovation * left_d
-                        right_n = gain * right_n - innovation * right_d
-                        left_d *= modulus
-                        right_d *= modulus
-                        old_innovation = self.innovation
-                        old_modulus = self.modulus
-                        self.innovation = (
-                            gain * old_innovation + old_modulus * innovation
+                        match = (
+                            BRANCH_BLOCK_TICKS,
+                            BRANCH_BLOCK_GAIN,
+                            innovation,
+                            lower,
+                            upper,
                         )
-                        self.gain *= gain
-                        self.modulus *= modulus
-                        self.extent += BRANCH_BLOCK_TICKS
-                        self.lower = max(
-                            gain * self.lower,
-                            gain * old_innovation + old_modulus * lower,
-                        )
-                        self.upper = min(
-                            gain * self.upper,
-                            2 * gain * old_innovation + old_modulus * upper,
-                        )
-                        continue
+            if match is not None:
+                ticks, gain, innovation, lower, upper = match
+                modulus = 1 << ticks
+                left_n = gain * left_n - innovation * left_d
+                right_n = gain * right_n - innovation * right_d
+                left_d *= modulus
+                right_d *= modulus
+                old_innovation = self.innovation
+                old_modulus = self.modulus
+                self.innovation = gain * old_innovation + old_modulus * innovation
+                self.gain *= gain
+                self.modulus *= modulus
+                self.extent += ticks
+                self.lower = max(
+                    gain * self.lower,
+                    gain * old_innovation + old_modulus * lower,
+                )
+                self.upper = min(
+                    gain * self.upper,
+                    2 * gain * old_innovation + old_modulus * upper,
+                )
+                continue
             ticks = max_zero_run(right_n, right_d, remaining)
             if ticks:
                 scale: int = 3**ticks

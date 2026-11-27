@@ -149,6 +149,7 @@ def continued_fraction_cylinder(
     prefix = Matrix2.identity()
     chart_scratch: RunArithmeticWorkspace | None = None
     chart_refused = False
+    wide_refused = False
     with scratch.scope(), ExitStack() as resources:
         next_block = _ordered_blocks(
             resources, ledger, scratch, horizon, shared_cache=shared_cache
@@ -176,18 +177,34 @@ def continued_fraction_cylinder(
                         ledger, "mahler-cf-branch-chart"
                     )
                 with chart_scratch.scope():
+                    wide = horizon >= 2048 and not wide_refused
                     try:
-                        chart_scratch.require_bits(fractional.BRANCH_CHART_SCRATCH_BITS)
+                        if wide:
+                            try:
+                                chart_scratch.require_bits(
+                                    fractional.PACKED_CHART_SCRATCH_BITS
+                                )
+                            except BlockContextBudgetExceeded:
+                                wide = False
+                                wide_refused = True
+                        if not wide:
+                            chart_scratch.require_bits(
+                                fractional.BRANCH_CHART_SCRATCH_BITS
+                            )
                     except BlockContextBudgetExceeded:
                         # Optional pre-work capacity refusal leaves the exact
                         # source and its existing scalar action untouched.
                         chart_refused = True
                     else:
-                        action.chart = fractional.branch_chart()
+                        if wide:
+                            action.packed_chart = fractional.packed_branch_chart()
+                        else:
+                            action.chart = fractional.branch_chart()
                         try:
                             action.extend(low, high, horizon)
                         finally:
                             action.chart = None
+                            action.packed_chart = None
                 if chart_refused:
                     action.extend(low, high, horizon)
             else:
