@@ -2,6 +2,9 @@
 // Diagonal boundary actions adapted from the supplied collision prototype.
 // Finite Laurent support; no physical width replay or temporal carry bank.
 #include "rev10.hpp"
+#ifdef __ARM_NEON
+#include <arm_neon.h>
+#endif
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
@@ -313,7 +316,36 @@ struct Table {
 // The four frontier arrays represent adjacent diagonal tile boundaries.
 static void full_wave(const Table &t, int p, int lo, int hi, const int *west,
                       const int *south, int *east, int *north) {
-    for (int k = lo; k <= hi; k++) {
+    int k = lo;
+#ifdef __ARM_NEON
+    // Transposition exchanges both inputs and both outputs. Each stored rank
+    // fits its own 16-bit field, so packed complement has no cross-field
+    // borrow.
+    const int *first = p == 0 ? west : south;
+    const int *second = p == 0 ? south : west;
+    int *low = p == 0 ? east : north;
+    int *high = p == 0 ? north : east;
+    const auto last = vdupq_n_s32(t.tot - 1);
+    const auto top = vdupq_n_u32(Table::code(t.E[0] - 1, t.N[0] - 1));
+    for (; k <= hi - 3; k += 4) {
+        const auto rank =
+            vmlaq_n_s32(vld1q_s32(first + k), vld1q_s32(second + k), t.W[0]);
+        const auto reflected = vsubq_s32(last, rank);
+        const auto index = vminq_s32(rank, reflected);
+        const uint32x4_t entries = {
+            t.tab[static_cast<size_t>(vgetq_lane_s32(index, 0))],
+            t.tab[static_cast<size_t>(vgetq_lane_s32(index, 1))],
+            t.tab[static_cast<size_t>(vgetq_lane_s32(index, 2))],
+            t.tab[static_cast<size_t>(vgetq_lane_s32(index, 3))],
+        };
+        const auto response = vbslq_u32(vcgtq_s32(rank, reflected),
+                                        vsubq_u32(top, entries), entries);
+        vst1q_s32(low + k, vreinterpretq_s32_u32(
+                               vandq_u32(response, vdupq_n_u32(RANK_MASK))));
+        vst1q_s32(high + k, vreinterpretq_s32_u32(vshrq_n_u32(response, 16)));
+    }
+#endif
+    for (; k <= hi; k++) {
         auto a = t.eval(p, west[k], south[k]);
         east[k] = a.first;
         north[k] = a.second;
