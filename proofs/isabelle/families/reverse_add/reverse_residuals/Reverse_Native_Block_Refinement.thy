@@ -496,6 +496,86 @@ next
     by (simp add: reverse_native_hinge1_compile_snoc reverse_native_hinge1_append_def
         carry_out_append_one reverse_native_carry_out_cons Let_def q)
 qed
+text \<open>The height-two child is the height-one residual for the first
+successor half.  This records the exact native append equation without
+storing a physical row.\<close>
+
+type_synonym reverse_hinge1 = "bool \<Rightarrow> bool \<times> nat"
+type_synonym reverse_hinge2 = "bool \<Rightarrow> (bool \<times> nat) \<times> reverse_hinge1"
+
+definition reverse_native_hinge2_seed :: reverse_hinge2 where
+  "reverse_native_hinge2_seed b = (reverse_native_hinge1_seed b, reverse_native_hinge1_seed)"
+
+definition reverse_native_hinge2_append :: "reverse_hinge2 \<Rightarrow> nat \<Rightarrow> reverse_hinge2" where
+  "reverse_native_hinge2_append response s b =
+    (let inlet = carry_apply (domain s) b;
+         (old, child) = response inlet;
+         (a, high) = old;
+         low = (s + (if a then 1 else 0)) mod 10;
+         next = low + (if high = 0 then (s + (if b then 1 else 0)) mod 10 else high - 1)
+     in (reverse_native_hinge1_append (\<lambda>r. fst (response r)) s b,
+         reverse_native_hinge1_append child next))"
+
+definition reverse_native_hinge2_compile :: "nat list \<Rightarrow> reverse_hinge2" where
+  "reverse_native_hinge2_compile half =
+    fold (\<lambda>s q. reverse_native_hinge2_append q s) half reverse_native_hinge2_seed"
+
+fun reverse_native_hinge_next_half_rev :: "nat list \<Rightarrow> bool \<Rightarrow> nat list" where
+  "reverse_native_hinge_next_half_rev [] b = []"
+| "reverse_native_hinge_next_half_rev (s # rest) b =
+    (let inlet = carry_apply (domain s) b;
+         (a, high) = reverse_native_hinge1_compile (rev rest) inlet;
+         low = (s + (if a then 1 else 0)) mod 10;
+         next = low + (if high = 0 then (s + (if b then 1 else 0)) mod 10 else high - 1)
+     in next # reverse_native_hinge_next_half_rev rest inlet)"
+
+definition reverse_native_hinge_next_half :: "nat list \<Rightarrow> bool \<Rightarrow> nat list" where
+  "reverse_native_hinge_next_half half b = rev (reverse_native_hinge_next_half_rev (rev half) b)"
+
+lemma reverse_native_hinge_next_half_snoc:
+  "reverse_native_hinge_next_half (half @ [s]) b =
+    (let inlet = carry_apply (domain s) b;
+         (a, high) = reverse_native_hinge1_compile half inlet;
+         low = (s + (if a then 1 else 0)) mod 10;
+         next = low + (if high = 0 then (s + (if b then 1 else 0)) mod 10 else high - 1)
+     in reverse_native_hinge_next_half half inlet @ [next])"
+  by (simp add: reverse_native_hinge_next_half_def Let_def split: prod.splits)
+
+lemma reverse_native_hinge2_compile_snoc:
+  "reverse_native_hinge2_compile (half @ [s]) b =
+    reverse_native_hinge2_append (reverse_native_hinge2_compile half) s b"
+  by (simp add: reverse_native_hinge2_compile_def fold_append)
+
+lemma reverse_native_hinge1_compile_snoc_function:
+  "reverse_native_hinge1_compile (half @ [s]) =
+    reverse_native_hinge1_append (reverse_native_hinge1_compile half) s"
+  by (rule ext) (simp add: reverse_native_hinge1_compile_snoc)
+
+theorem reverse_native_hinge2_compiled_child:
+  "fst (reverse_native_hinge2_compile half b) = reverse_native_hinge1_compile half b \<and>
+   snd (reverse_native_hinge2_compile half b) =
+      reverse_native_hinge1_compile (reverse_native_hinge_next_half half b)"
+proof (induction half arbitrary: b rule: rev_induct)
+  case Nil
+  then show ?case
+    by (simp add: reverse_native_hinge1_compile_def reverse_native_hinge2_compile_def
+        reverse_native_hinge2_seed_def reverse_native_hinge_next_half_def)
+next
+  case (snoc s half)
+  let ?inlet = "carry_apply (domain s) b"
+  have first: "(\<lambda>r. fst (reverse_native_hinge2_compile half r)) =
+      reverse_native_hinge1_compile half"
+    using snoc.IH by (auto simp: fun_eq_iff)
+  have inlet: "reverse_native_hinge2_compile half ?inlet =
+      (reverse_native_hinge1_compile half ?inlet,
+       reverse_native_hinge1_compile (reverse_native_hinge_next_half half ?inlet))"
+    using snoc.IH[of ?inlet]
+    by (cases "reverse_native_hinge2_compile half ?inlet") auto
+  show ?case
+    by (simp add: reverse_native_hinge2_compile_snoc reverse_native_hinge2_append_def
+        reverse_native_hinge1_compile_snoc reverse_native_hinge1_compile_snoc_function
+        reverse_native_hinge_next_half_snoc Let_def first inlet split: prod.splits)
+qed
 
 ML \<open>
   val checked = @{thms punctured_expand_singleton_runs
@@ -507,7 +587,8 @@ ML \<open>
     reverse_native_opposite_digit_from_pair reverse_native_center_pair_even
     reverse_native_folded_endpoint_clock reverse_native_two_pass_source_ports
     reverse_native_two_pass_birth_order_distinguishes
-    reverse_native_seed_hinge_two_source reverse_native_hinge1_source_response};
+    reverse_native_seed_hinge_two_source reverse_native_hinge1_source_response
+    reverse_native_hinge2_compiled_child};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Reverse native block refinement depends on an oracle";
   val _ = if Thm_Deps.has_skip_proof checked
