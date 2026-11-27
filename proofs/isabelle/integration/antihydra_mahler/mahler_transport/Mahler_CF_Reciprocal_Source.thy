@@ -101,6 +101,85 @@ proof -
     by (simp add: numerator ten)
 qed
 
+text \<open>Python's nonnegative integer bit length is the least exponent of
+  two whose power is strictly above the value. The 83/25 bound is a
+  conservative integer comparison and applies independently of source width.\<close>
+
+definition mahler_cf_bit_length :: "nat \<Rightarrow> nat" where
+  "mahler_cf_bit_length n = (LEAST k. n < 2^k)"
+
+lemma mahler_cf_bit_length_bound: "n < 2 ^ mahler_cf_bit_length n"
+  unfolding mahler_cf_bit_length_def
+  by (rule LeastI_ex) (rule exI[of _ n], rule less_exp)
+
+lemma mahler_cf_power_83_25_bound: "(2::nat)^83 < 10^25"
+  by simp
+
+lemma mahler_cf_bit_count_decimal_bound: "(2::nat) ^ ((83 * count) div 25) \<le> 10^count"
+proof -
+  have exps: "25 * ((83 * count) div 25) \<le> 83 * count"
+    by (simp add: mult.commute)
+  have power_exp: "(2::nat) ^ (25 * ((83 * count) div 25)) \<le> 2^(83*count)"
+    by (rule power_increasing[OF exps]) simp
+  have constant_le: "(2::nat)^83 \<le> 10^25" by (rule less_imp_le[OF mahler_cf_power_83_25_bound])
+  have power_base: "((2::nat)^83)^count \<le> ((10::nat)^25)^count"
+    by (rule power_mono[OF constant_le]) simp
+  have powers: "((2::nat)^((83*count) div 25))^25 \<le> (10^count)^25"
+  proof -
+    have "((2::nat)^((83*count) div 25))^25 = 2^(25*((83*count) div 25))"
+      by (simp only: power_mult[symmetric] mult.commute)
+    also have "... \<le> 2^(83*count)" by (rule power_exp)
+    also have "... = ((2::nat)^83)^count" by (simp only: power_mult)
+    also have "... \<le> ((10::nat)^25)^count" by (rule power_base)
+    also have "... = (10^count)^25" by (simp only: power_mult[symmetric] mult.commute)
+    finally show ?thesis .
+  qed
+  show ?thesis by (rule power_le_imp_le_base[where n=24]) (use powers in simp_all)
+qed
+
+theorem mahler_cf_bounded_modulus_elision:
+  assumes "mahler_cf_bit_length n \<le> (83 * count) div 25"
+  shows "n mod 10^count = n"
+proof -
+  have "n < 2^((83*count) div 25)"
+    using mahler_cf_bit_length_bound[of n] assms power_increasing[of "mahler_cf_bit_length n" "(83*count) div 25" "2::nat"]
+    by linarith
+  also have "... \<le> 10^count" by (rule mahler_cf_bit_count_decimal_bound)
+  finally show ?thesis by simp
+qed
+
+definition mahler_cf_moving_upper :: "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat" where
+  "mahler_cf_moving_upper q t skip =
+    (if t \<le> skip then (q div 2^t) div 10^(skip-t)
+     else (q * 5^(t-skip)) div 2^skip)"
+
+lemma mahler_cf_moving_upper_selected_mod:
+  "mahler_cf_moving_upper q t skip mod base =
+    (mahler_cf_reciprocal_row q t div 10^skip) mod base"
+proof (cases "t \<le> skip")
+  case True
+  have eq: "t + (skip-t) = skip" using True by simp
+  show ?thesis
+    using mahler_cf_reciprocal_upper_cut(1)[of q t "skip-t" base]
+    by (simp only: mahler_cf_moving_upper_def if_P[OF True] eq)
+next
+  case False
+  have eq: "skip + (t-skip) = t" using False by simp
+  show ?thesis
+    using mahler_cf_reciprocal_upper_cut(2)[of q skip "t-skip" base]
+    by (simp only: mahler_cf_moving_upper_def if_not_P[OF False] eq)
+qed
+
+theorem mahler_cf_leading_cut_checked_bit_length:
+  assumes "mahler_cf_bit_length (mahler_cf_moving_upper q t (width-count))
+    \<le> (83*count) div 25"
+  shows "mahler_cf_reciprocal_selected_digits q t width 0 count =
+    mahler_cf_moving_upper q t (width-count)"
+  unfolding mahler_cf_reciprocal_selected_digits_def
+  using mahler_cf_moving_upper_selected_mod[of q t "width-count" "10^count"]
+    mahler_cf_bounded_modulus_elision[OF assms]
+  by simp
+
 lemma mahler_cf_pow5_settled_two_columns:
   "((5::nat) ^ (n + 2)) mod 100 = 25"
 proof (induction n)
@@ -251,7 +330,8 @@ proof -
 qed
 
 ML \<open>
-  val checked = @{thms mahler_cf_reciprocal_upper_cut mahler_cf_inlet_width_window
+  val checked = @{thms mahler_cf_leading_cut_checked_bit_length
+    mahler_cf_reciprocal_upper_cut mahler_cf_inlet_width_window
     mahler_cf_reciprocal_first_selected_digits mahler_cf_width_clock_step mahler_cf_reciprocal_row_exact
     mahler_cf_reciprocal_physical_source mahler_cf_reciprocal_lower_fits
     mahler_cf_pow5_settled_two_columns mahler_cf_reciprocal_settled_two_columns
