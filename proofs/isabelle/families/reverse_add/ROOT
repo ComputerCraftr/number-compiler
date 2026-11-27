@@ -32,6 +32,8 @@ session Reverse_Residuals in reverse_residuals = Shared_Carry_Dynamics +
     Reverse_Native_Block_Refinement
     Reverse_Native_Hinge_Center
     Reverse_Native_Hinge_Successor
+    Reverse_Q19_Bitplane_Arithmetic
+    Reverse_Q19_Packed_Aperture
     Reverse_Native_Slab_Clock
     Reverse_Conditioned_Birth_Carry
     Reverse_Native_Slab_Core
