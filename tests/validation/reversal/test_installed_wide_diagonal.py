@@ -14,7 +14,15 @@ _WIDE = "314159265358979323846264338327950288419716939937510" * 3
 
 @pytest.mark.parametrize(
     ("ticks", "enabled", "expected_calls"),
-    [(512, True, 1), (513, True, 1), (511, True, 0), (512, False, 0)],
+    [
+        (255, True, 0),
+        (256, True, 1),
+        (257, True, 1),
+        (511, True, 1),
+        (512, True, 1),
+        (513, True, 1),
+        (256, False, 0),
+    ],
 )
 def test_installed_wide_diagonal(
     ticks: int, enabled: bool, expected_calls: int

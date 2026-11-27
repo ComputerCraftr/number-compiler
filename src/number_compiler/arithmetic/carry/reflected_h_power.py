@@ -616,7 +616,6 @@ def _padded_h_execute(
     if (
         publish_physical is not None
         and multiplier == 2
-        and generation >= 512
         and padded_h_workload(seed, generation, max_state_bits)
     ):
         from number_compiler.kernels import native_reverse_enabled
