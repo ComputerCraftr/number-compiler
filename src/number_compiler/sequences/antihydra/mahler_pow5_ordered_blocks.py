@@ -33,6 +33,8 @@ if TYPE_CHECKING:
 _MAX_EXPONENT = 4096
 _MAX_BLOCK_ROWS = 64
 _MAX_SPATIAL_WIDTH = 32
+# 5**8 is the last whole row with a six-column settled action.
+_SETTLED_SPATIAL_END = 8
 _SPATIAL_DIGIT_BITS = 24
 _ASCII_DECIMAL = bytes(range(48, 58))
 _NUMERIC_TO_ASCII = bytes.maketrans(bytes(range(10)), _ASCII_DECIMAL)
@@ -63,7 +65,7 @@ class Pow5OrderedBlock:
 
 
 def _pack_settled_decimal(value: int) -> int:
-    """Encode a source-qualified at-most-four-digit value into decimal lanes."""
+    """Encode a source-qualified settled value into decimal lanes."""
     packed = 0
     shift = 0
     while value:
@@ -170,7 +172,7 @@ class Pow5OrderedBlockSource:
         self._reservation: LedgerReservation | None = None
         self._pending_reservation: LedgerReservation | None = None
         self._spatial_trace: Pow5SpatialTrace | None = None
-        self._spatial_value = spatial
+        self._spatial_value = False
         self._word: bytes | None = None
         self._word_product: Matrix2 | None = None
         if spatial:
@@ -366,18 +368,17 @@ class Pow5OrderedBlockSource:
         ):
             raise ValueError("reciprocal CF source cursor binding changed")
         first = self._exponent if self._offset else self._exponent + 1
-        if self._spatial_value:
-            source = 5**self._exponent
-            if self._value != _pack_settled_decimal(source):
+        source = self._value
+        if self._spatial_trace is not None:
+            if self._spatial_value or source != 5**self._exponent:
                 raise ValueError("settled spatial source cursor binding changed")
-            rows = min(max_rows, 6 - first)
+            rows = min(max_rows, 5, _SETTLED_SPATIAL_END + 1 - first)
             estimated = min(
                 max_coefficients, max_rows * (self._exponent + max_rows + 1)
             )
             bits = 4 * (self._exponent + max_rows + 1) * max_rows
             node_bound = 128 + estimated + 8 * (bits + 63) // 64
         else:
-            source = self._value
             rows = min(max_rows, 4, _MAX_EXPONENT - first + 1)
             estimated = min(max_coefficients, rows * (first + rows + 1))
             bits = 4 * (first + rows) + 64 * estimated
@@ -430,6 +431,11 @@ class Pow5OrderedBlockSource:
                     tile.first_row_prefix,
                 )
                 self._block = block
+                self._spatial_value = (
+                    self._spatial_trace is not None
+                    and last == _SETTLED_SPATIAL_END
+                    and offset == 0
+                )
                 self._value = (
                     _pack_settled_decimal(value) if self._spatial_value else value
                 )
@@ -452,8 +458,10 @@ class Pow5OrderedBlockSource:
 
         if self._reciprocal:
             return self._next_reciprocal(max_rows, max_coefficients)
-        if self._spatial_value and (
-            self._exponent < 5 or self._offset and self._exponent == 5
+        if self._spatial_trace is not None and (
+            self._exponent < _SETTLED_SPATIAL_END
+            or self._offset
+            and self._exponent == _SETTLED_SPATIAL_END
         ):
             return self._next_reciprocal(max_rows, max_coefficients)
 

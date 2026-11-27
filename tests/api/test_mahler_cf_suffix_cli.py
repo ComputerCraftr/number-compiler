@@ -223,7 +223,7 @@ def test_opt_in_cylinder_reuses_completed_row_before_reopening_cut(
 
     def checked_interval(q: int, t: int, width: int, start: int, count: int) -> int:
         nonlocal reads
-        if q == 5**38 and (t, width, start, count) == (0, 27, 0, 23):
+        if q == 5**38 and (t, width, start) == (0, 27, 0):
             reads += 1
             if reads > 1:
                 pytest.fail("completed row action reopened its source cut")

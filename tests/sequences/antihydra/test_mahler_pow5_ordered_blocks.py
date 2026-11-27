@@ -303,3 +303,39 @@ def test_settled_spatial_rejects_changed_cursor_and_foreign_tile() -> None:
         with pytest.raises(ValueError, match="source cursor binding changed"):
             source.next_block(1, 1)
     assert ledger.nodes == ledger.entries == 0
+
+
+def test_settled_six_column_cursor_packs_only_on_exact_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int] = []
+    spatial_widths: list[int] = []
+    issue = Pow5SpatialTrace.issue
+
+    def pack(value: int) -> int:
+        calls.append(value)
+        return sum(int(digit) << (24 * i) for i, digit in enumerate(str(value)[::-1]))
+
+    def watch(
+        trace: Pow5SpatialTrace, source: int, width: int, span: int
+    ) -> tuple[tuple[int, int], ...]:
+        spatial_widths.append(width)
+        return issue(trace, source, width, span)
+
+    monkeypatch.setattr(
+        "number_compiler.sequences.antihydra.mahler_pow5_ordered_blocks._pack_settled_decimal",
+        pack,
+    )
+    monkeypatch.setattr(Pow5SpatialTrace, "issue", watch)
+    ledger = ResourceLedger(max_nodes=10_000)
+    with Pow5OrderedBlockSource(ledger, spatial=True) as source:
+        for exponent in range(1, 9):
+            for digit in str(5**exponent):
+                assert source.next_block(4, 1).product == literal_action(digit)
+            assert calls == ([5**8] if exponent == 8 else [])
+        assert spatial_widths == []
+        block = source.next_block(1, 20)
+        assert block.product == literal_action(str(5**9))
+        assert spatial_widths == [6]
+        assert calls == [5**8]
+    assert ledger.nodes == ledger.entries == 0
