@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 import subprocess
@@ -341,3 +342,129 @@ def test_folded_two_tick_action_reuses_issued_cells_under_tight_table_cap() -> N
     assert work[5] == 290128
     with pytest.raises(ValueError, match="budget exceeded"):
         native.add_folded(half, center, 3, work[5] - 1)
+
+
+@pytest.mark.parametrize("seed", (73, 196))
+def test_guarded_folded_pair_bank_matches_direct_and_keeps_the_clock(seed: int) -> None:
+    native = pytest.importorskip("number_compiler.kernels._reverse_quotients")
+    source = _literal(seed, 12)
+    full, half, center = _literal_pair_fields(source)
+    direct = native.add_folded(half, center, 4083, 300000)
+    banked = native.add_folded(half, center, 4083, 4 << 20)
+    assert banked[:2] == direct[:2]
+    assert banked[2][:5] == direct[2][:5]
+    assert banked[2][15] > 0
+    assert 0 < banked[2][16] < banked[2][15]
+    assert banked[2][17] > 0 and banked[2][18] == 33212
+    assert direct[2][15] == 0
+    assert direct[2][16] == direct[2][18] == 0
+    expected, _ = native.add(full, 4083, 2, 1, 4 << 20)
+    midpoint = bytes((2 * banked[1],)) if banked[1] >= 0 else b""
+    assert banked[0] + midpoint + banked[0][::-1] == expected
+    assert native.add_folded(half, center, 1011, 4 << 20)[2][15] == 0
+
+
+def test_folded_bank_uses_full_ordered_rows_at_admission_boundary() -> None:
+    native = pytest.importorskip("number_compiler.kernels._reverse_quotients")
+    seed = int("1" + "37" * 1024)
+    full, half, center = _literal_pair_fields(seed)
+    assert center >= 0
+    below = native.add_folded(half, center, 511, 4 << 20)
+    assert below[2][15:] == (0, 0, 0, 0)
+    for cap in (300000, 4 << 20):
+        got = native.add_folded(half, center, 512, cap)
+        expected, _ = native.add(full, 512, 2, 1, 4 << 20)
+        midpoint = bytes((2 * got[1],)) if got[1] >= 0 else b""
+        assert got[0] + midpoint + got[0][::-1] == expected
+        if cap == 300000:
+            assert got[2][15] == 0
+        else:
+            assert 0 < got[2][16] <= got[2][15]
+            assert got[2][18] == 33212
+
+
+def test_installed_cli_enters_long_folded_pair_bank() -> None:
+    interpreter = os.environ.get("NUMBER_COMPILER_INSTALLED_PYTHON")
+    if not interpreter:
+        pytest.skip("set NUMBER_COMPILER_INSTALLED_PYTHON to a native-wheel venv")
+    program = """\
+import sys
+from number_compiler.kernels import _reverse_quotients as native
+from number_compiler.api.cli import main
+original = native.add_folded
+counts = []
+def observed(*args):
+    result = original(*args)
+    counts.append(result[2][15:])
+    return result
+native.add_folded = observed
+status = main(sys.argv[1:])
+print("BANK", repr(counts), file=sys.stderr)
+raise SystemExit(status)
+"""
+    env = dict(os.environ, NUMBER_COMPILER_ENABLE_NATIVE_REVERSE="1")
+    env.pop("NUMBER_COMPILER_ENABLE_Q19_JOINT4", None)
+    for ticks in (1024, 4096):
+        result = subprocess.run(
+            [
+                interpreter,
+                "-I",
+                "-c",
+                program,
+                "reverse-add",
+                "--seed",
+                "196",
+                "--nth",
+                str(ticks),
+                "--format",
+                "json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert json.loads(result.stdout)["value"] == str(_literal(196, ticks))
+        receipt = ast.literal_eval(result.stderr.removeprefix("BANK "))
+        assert len(receipt) == 1
+        probes, builds, comparisons, slots = receipt[0]
+        if ticks == 1024:
+            assert probes == builds == comparisons == slots == 0
+        else:
+            assert 0 < builds < probes
+            assert comparisons > 0 and slots == 33212
+
+
+@pytest.mark.parametrize(
+    "bank",
+    (
+        (1, 2, 1, 2),
+        (1, 1, 1, 0),
+        (11, 1, 1, 2),
+        (-1, 0, 1, 2),
+        (1, 1, -1, 2),
+    ),
+)
+def test_invalid_folded_bank_receipt_does_not_publish(
+    bank: tuple[int, ...], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from number_compiler.arithmetic.carry import native_reverse_actions as actions
+
+    class Native:
+        @staticmethod
+        def add_folded(*_args: object) -> tuple[bytes, int, tuple[int, ...]]:
+            return b"\x01\x01", -1, (1, 256, 20, 20, 0, 1, 1, *([0] * 8), *bank)
+
+    monkeypatch.setattr(actions, "_load", lambda: Native())
+    monkeypatch.delenv("NUMBER_COMPILER_ENABLE_Q19_JOINT4", raising=False)
+    ledger = ResourceLedger()
+    owner = ledger.register("invalid folded bank receipt", "scratch")
+
+    def receive(_half: bytes, _center: int | None, _work: actions.PairWork) -> None:
+        pytest.fail("invalid bank receipt reached the consumer")
+
+    with pytest.raises(RuntimeError, match="invalid native folded causal endpoint"):
+        actions.native_folded_pair_action(
+            ledger, owner, lambda: b"\x01\x01", None, 512, receive, source_width=4
+        )
+    assert ledger.nodes == ledger.entries == 0

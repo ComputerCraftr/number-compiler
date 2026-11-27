@@ -20,3 +20,8 @@ NATIVE_PAIR_JOINT_CLOCK_7: Final = "native_pair_joint_clock_7"
 NATIVE_PAIR_JOINT_CLOCK_TWO_BIRTHS: Final = "native_pair_joint_clock_two_births"
 
 NATIVE_PAIR_JOINT_CLOCK_ONE_BIRTH: Final = "native_pair_joint_clock_one_birth"
+
+NATIVE_PAIR_BANK_PROBES: Final = "native_pair_bank_probes"
+NATIVE_PAIR_BANK_BUILDS: Final = "native_pair_bank_builds"
+NATIVE_PAIR_BANK_ROW_COMPARES: Final = "native_pair_bank_row_compares"
+NATIVE_PAIR_BANK_SLOTS: Final = "native_pair_bank_slots"

@@ -361,16 +361,104 @@ struct BlockTable {
         return birth;
     }
 };
+
+// Fully compared ordered response rows are safe to share, while every
+// receiving q remains authenticated on the physical pull.
+// A two-column response retains both the exact intermediate state and the
+// successor. Only identical complete ordered rows share an action.
+struct PairJoinBank {
+    static constexpr U min_columns = U(1) << 18U;
+    static constexpr U sum_pairs = 19U * 19U;
+    static constexpr U max_rows = U(1) << 7U;
+    static constexpr U max_states = U(1) << 9U;
+    std::vector<I> joins, row_ids;
+    bool attempted = false;
+
+    void admit(const Level &level, Budget &budget, Work &work) {
+        attempted = true;
+        const auto &rows = level.append;
+        const U row_cost = U(rows.size()) * sizeof(I) * 2U;
+        const U worst = row_cost + max_rows * sum_pairs * sizeof(I);
+        if (rows.size() > max_states || worst > budget.cap - budget.held) {
+            return;
+        }
+        budget.take(row_cost);
+        {
+            std::vector<I> representatives;
+            representatives.reserve(rows.size());
+            row_ids.reserve(rows.size());
+            for (I q = 0; q < rows.size(); ++q) {
+                I ordinal = 0;
+                for (; ordinal < representatives.size(); ++ordinal) {
+                    ++work.join_bank_row_compares;
+                    if (rows[q] == rows[representatives[ordinal]])
+                        break;
+                }
+                if (ordinal == representatives.size())
+                    representatives.push_back(q);
+                row_ids.push_back(ordinal);
+            }
+            if (representatives.size() <= max_rows) {
+                const U slots = U(representatives.size()) * sum_pairs;
+                budget.take(slots * sizeof(I));
+                joins.resize(slots);
+                work.join_bank_slots = joins.size();
+            }
+        }
+        if (joins.empty()) {
+            std::vector<I>().swap(row_ids);
+            budget.release(row_cost);
+        }
+        work.peak_table_bytes = budget.peak;
+    }
+};
+
+struct PairJoinResponse {
+    I middle, end, row;
+};
+
+constexpr I pack_pair_join(PairJoinResponse value) {
+    return 1U + (value.middle | (value.end << 9U) | (value.row << 18U));
+}
+
+constexpr PairJoinResponse unpack_pair_join(I value) {
+    --value;
+    return {value & 511U, (value >> 9U) & 511U, value >> 18U};
+}
+
 // Folded width-one bands do not allocate the reflected second half.
 Hinge run_folded(const Level &level, const Cells &cells, unsigned height,
                  std::vector<I> &state, int center, const Hinges &hinges,
-                 std::vector<U> &addresses, Work &work) {
+                 std::vector<U> &addresses, Work &work, std::vector<I> &joins,
+                 const std::vector<I> &row_ids) {
     addresses.resize(state.size());
     I q = 0;
-    for (std::size_t i = 0; i < state.size(); ++i) {
+    std::size_t i = 0;
+    I row = joins.empty() ? 0U : row_ids[0];
+    while (!joins.empty() && i + 1U < state.size()) {
+        const I first = state[i], second = state[i + 1U];
+        const U key = U(row) * PairJoinBank::sum_pairs + first * 19U + second;
+        ++work.join_bank_probes;
+        I value = joins[key];
+        if (value == 0U) {
+            ++work.join_bank_builds;
+            const I middle = level.append[q][first];
+            const I end = level.append[middle][second];
+            value = pack_pair_join({middle, end, row_ids[end]});
+            joins[key] = value;
+        }
+        const PairJoinResponse response = unpack_pair_join(value);
+        addresses[i] = U(q) * 19U + first;
+        addresses[i + 1U] = U(response.middle) * 19U + second;
+        q = response.end;
+        row = response.row;
+        i += 2;
+    }
+    for (; i < state.size(); ++i) {
         addresses[i] = U(q) * 19U + state[i];
         q = level.append[q][state[i]];
     }
+    work.joins += state.size();
     const Hinge result = hinges[(U(q) * 11) + U(center + 1)];
     U r = result.ports;
     const U ports = U(1) << height;
@@ -383,7 +471,6 @@ Hinge run_folded(const Level &level, const Cells &cells, unsigned height,
     }
     require(unsigned(std::popcount(r)) == result.births,
             "outer birth port mismatch");
-    work.joins += state.size();
     work.pulls += state.size();
     ++work.bands;
     work.births += result.births;
@@ -733,15 +820,24 @@ FoldedResult advance_folded(const Word &half, int center, U steps, U cap,
         auto levels = compile_levels(height, budget, result.work);
         auto cells = compile_cells(levels, budget, result.work);
         auto hinges = compile_hinges(levels, cells, budget, result.work);
+        PairJoinBank bank;
         result.work.peak_table_bytes = budget.peak;
         std::vector<U> addresses;
+        std::vector<I> empty_joins;
         for (; done < steps;) {
             const int action_height = int(std::min<U>(U(height), steps - done));
+            if (!bank.attempted && action_height == 2 &&
+                ((steps - done) / 2U) * state.size() >=
+                    PairJoinBank::min_columns) {
+                bank.admit(levels[std::size_t(height)], budget, result.work);
+            }
             const auto &hinge = hinges[std::size_t(action_height)];
             const Hinge close = run_folded(
                 levels[std::size_t(action_height)],
                 cells[std::size_t(action_height)], unsigned(action_height),
-                state, center, hinge, addresses, result.work);
+                state, center, hinge, addresses, result.work,
+                action_height == height ? bank.joins : empty_joins,
+                bank.row_ids);
             const unsigned inner = unsigned(center >= 0) + close.births;
             U digits = close.digits;
             width += close.births;

@@ -11,6 +11,8 @@ struct Work {
     std::uint64_t joint_bands = 0, joint_columns = 0, joint_probes = 0;
     std::uint64_t joint_collar_cells = 0, joint_clock_13 = 0, joint_clock_7 = 0,
                   joint_clock_two_births = 0, joint_clock_one_birth = 0;
+    std::uint64_t join_bank_probes = 0, join_bank_builds = 0,
+                  join_bank_row_compares = 0, join_bank_slots = 0;
 };
 struct Result {
     std::string digits; // MSD-first; empty if the input is already the endpoint

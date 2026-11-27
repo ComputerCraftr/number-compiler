@@ -53,6 +53,10 @@ class PairWork:
     joint_clock_7: int = 0
     joint_clock_two_births: int = 0
     joint_clock_one_birth: int = 0
+    join_bank_probes: int = 0
+    join_bank_builds: int = 0
+    join_bank_row_compares: int = 0
+    join_bank_slots: int = 0
 
 
 class _Kernels(Protocol):
@@ -66,7 +70,7 @@ class _Kernels(Protocol):
 
     def add_folded(
         self, half: bytes, center: int, steps: int, max_bytes: int
-    ) -> tuple[bytes, int, tuple[int, int, int, int, int, int, int]]: ...
+    ) -> tuple[bytes, int, tuple[int, ...]]: ...
 
     def guard98(
         self, interior: bytes, returns: int, endpoint: bool, node_cap: int
@@ -176,6 +180,11 @@ def _record_pair_work(ledger: ResourceLedger, work: PairWork) -> None:
     ledger.bump(_keys.NATIVE_PAIR_JOINS, work.joins)
     ledger.bump(_keys.NATIVE_PAIR_PULLS, work.pulls)
     ledger.bump(_keys.NATIVE_PAIR_TABLE_BYTES, work.table_bytes)
+    if work.join_bank_probes or work.join_bank_row_compares:
+        ledger.bump(_keys.NATIVE_PAIR_BANK_PROBES, work.join_bank_probes)
+        ledger.bump(_keys.NATIVE_PAIR_BANK_BUILDS, work.join_bank_builds)
+        ledger.bump(_keys.NATIVE_PAIR_BANK_ROW_COMPARES, work.join_bank_row_compares)
+        ledger.bump(_keys.NATIVE_PAIR_BANK_SLOTS, work.join_bank_slots)
     if work.hinge_cells:
         ledger.bump(_keys.NATIVE_PAIR_HINGE_CELLS, work.hinge_cells)
     if work.joint_bands or work.joint_probes:
@@ -286,6 +295,18 @@ def native_folded_pair_action(
             or (pairs and (not 0 < pairs[0] <= 18 or max(pairs) > 18))
             or (not pairs and raw_center < 0)
             or work.table_bytes > _TABLE_CAP
+            or min(
+                work.join_bank_probes,
+                work.join_bank_builds,
+                work.join_bank_row_compares,
+                work.join_bank_slots,
+            )
+            < 0
+            or work.join_bank_builds > work.join_bank_probes
+            or work.join_bank_builds > work.join_bank_slots
+            or 2 * work.join_bank_probes > work.joins
+            or work.join_bank_slots > _TABLE_CAP // 4
+            or (work.join_bank_slots == 0 and work.join_bank_probes != 0)
             or 4 * work.joint_bands > steps
             or not 0 <= work.joint_bands <= work.bands
             or min(

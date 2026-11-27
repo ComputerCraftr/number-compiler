@@ -149,31 +149,8 @@ PyObject *add_folded_impl(PyObject *args, bool joint_enabled) {
             return nullptr;
         }
         const auto &work = result.work;
-        if (joint_enabled) {
-            return Py_BuildValue(
-                "y#i(KKKKKKKKKKKKKKK)",
-                result.pairs.empty()
-                    ? ""
-                    : reinterpret_cast<const char *>(result.pairs.data()),
-                static_cast<Py_ssize_t>(result.pairs.size()), result.center,
-                static_cast<unsigned long long>(work.states),
-                static_cast<unsigned long long>(work.bands),
-                static_cast<unsigned long long>(work.joins),
-                static_cast<unsigned long long>(work.pulls),
-                static_cast<unsigned long long>(work.births),
-                static_cast<unsigned long long>(work.peak_table_bytes),
-                static_cast<unsigned long long>(work.hinge_cells),
-                static_cast<unsigned long long>(work.joint_bands),
-                static_cast<unsigned long long>(work.joint_columns),
-                static_cast<unsigned long long>(work.joint_probes),
-                static_cast<unsigned long long>(work.joint_collar_cells),
-                static_cast<unsigned long long>(work.joint_clock_13),
-                static_cast<unsigned long long>(work.joint_clock_7),
-                static_cast<unsigned long long>(work.joint_clock_two_births),
-                static_cast<unsigned long long>(work.joint_clock_one_birth));
-        }
         return Py_BuildValue(
-            "y#i(KKKKKKK)",
+            "y#i(KKKKKKKKKKKKKKKKKKK)",
             result.pairs.empty()
                 ? ""
                 : reinterpret_cast<const char *>(result.pairs.data()),
@@ -184,7 +161,19 @@ PyObject *add_folded_impl(PyObject *args, bool joint_enabled) {
             static_cast<unsigned long long>(work.pulls),
             static_cast<unsigned long long>(work.births),
             static_cast<unsigned long long>(work.peak_table_bytes),
-            static_cast<unsigned long long>(work.hinge_cells));
+            static_cast<unsigned long long>(work.hinge_cells),
+            static_cast<unsigned long long>(work.joint_bands),
+            static_cast<unsigned long long>(work.joint_columns),
+            static_cast<unsigned long long>(work.joint_probes),
+            static_cast<unsigned long long>(work.joint_collar_cells),
+            static_cast<unsigned long long>(work.joint_clock_13),
+            static_cast<unsigned long long>(work.joint_clock_7),
+            static_cast<unsigned long long>(work.joint_clock_two_births),
+            static_cast<unsigned long long>(work.joint_clock_one_birth),
+            static_cast<unsigned long long>(work.join_bank_probes),
+            static_cast<unsigned long long>(work.join_bank_builds),
+            static_cast<unsigned long long>(work.join_bank_row_compares),
+            static_cast<unsigned long long>(work.join_bank_slots));
     } catch (...) {
         translate_exception(std::current_exception());
         return nullptr;
