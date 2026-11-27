@@ -382,6 +382,79 @@ proof -
         Let_def new_innovation_def algebra_simps)+
 qed
 
+definition mahler_cf_packed_chart_bounds :: "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> bool" where
+  "mahler_cf_packed_chart_bounds ticks innovation low high \<longleftrightarrow>
+    innovation \<le> low \<and> 2*low < high \<and> high \<le> 3^ticks"
+
+lemma mahler_cf_packed_chart_initial:
+  "mahler_cf_packed_chart_bounds 0 0 0 1"
+  by (simp add: mahler_cf_packed_chart_bounds_def)
+
+lemma mahler_cf_packed_chart_step:
+  fixes ticks innovation low high :: nat and is_odd :: bool
+  assumes bounds: "mahler_cf_packed_chart_bounds ticks innovation low high"
+  defines "new_innovation \<equiv> 3*innovation + (if is_odd then 2^ticks else 0)"
+    and "new_low \<equiv> max (3*low) (3*innovation + (if is_odd then 2^ticks else 0))"
+    and "new_high \<equiv> min (3*high) (2*(3*innovation + (if is_odd then 2^ticks else 0)) + 2*2^ticks)"
+  assumes admitted: "2*new_low < new_high"
+  shows "mahler_cf_packed_chart_bounds (Suc ticks) new_innovation new_low new_high"
+proof -
+  have upper: "high \<le> 3^ticks" using bounds
+    by (simp add: mahler_cf_packed_chart_bounds_def)
+  have "3*high \<le> 3*3^ticks" using upper by simp
+  then have bound: "new_high \<le> 3^(Suc ticks)"
+    by (simp add: new_high_def power_Suc mult.commute)
+  show ?thesis using admitted bound
+    by (auto simp: mahler_cf_packed_chart_bounds_def new_low_def new_innovation_def)
+qed
+
+inductive mahler_cf_packed_chart_reachable :: "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> bool" where
+  initial: "mahler_cf_packed_chart_reachable 0 0 0 1"
+| edge: "mahler_cf_packed_chart_reachable ticks innovation low high \<Longrightarrow>
+    j = 3*innovation + (if is_odd then 2^ticks else 0) \<Longrightarrow>
+    l = max (3*low) j \<Longrightarrow>
+    u = min (3*high) (2*j + 2*2^ticks) \<Longrightarrow>
+    2*l < u \<Longrightarrow> mahler_cf_packed_chart_reachable (Suc ticks) j l u"
+
+lemma mahler_cf_packed_reachable_bounds:
+  assumes "mahler_cf_packed_chart_reachable ticks innovation low high"
+  shows "mahler_cf_packed_chart_bounds ticks innovation low high"
+  using assms
+proof (induction rule: mahler_cf_packed_chart_reachable.induct)
+  case initial
+  show ?case by (rule mahler_cf_packed_chart_initial)
+next
+  case (edge ticks innovation low high j is_odd l u)
+  have upper: "high \<le> 3^ticks"
+    using edge.IH by (simp add: mahler_cf_packed_chart_bounds_def)
+  have ub: "u \<le> 3*high" using edge.hyps by simp
+  have size: "u \<le> 3^(Suc ticks)"
+    using upper ub by (simp add: power_Suc; arith)
+  have ordered: "j \<le> l" using edge.hyps by simp
+  show ?case using edge.hyps size ordered
+    by (simp add: mahler_cf_packed_chart_bounds_def)
+qed
+
+lemma mahler_cf_packed_chart_u32:
+  assumes "mahler_cf_packed_chart_bounds 16 innovation low high"
+  shows "innovation < 2^32" "low < 2^32" "high < 2^32"
+proof -
+  have ib: "innovation \<le> low" and lb: "2*low < high" and hb: "high \<le> 3^16"
+    using assms by (simp_all add: mahler_cf_packed_chart_bounds_def)
+  have size: "(3::nat)^16 < 2^32" by simp
+  show "innovation < 2^32" "low < 2^32" "high < 2^32" using ib lb hb size by arith+
+qed
+
+lemma mahler_cf_packed_chart_u32_edge:
+  assumes "mahler_cf_packed_chart_bounds 16 innovation low high"
+  shows "2*low < 2^32"
+proof -
+  have lb: "2*low < high" and hb: "high \<le> 3^16"
+    using assms by (simp_all add: mahler_cf_packed_chart_bounds_def)
+  have size: "(3::nat)^16 < 2^32" by simp
+  show ?thesis using lb hb size by arith
+qed
+
 lemma mahler_cf_chart_complete_word:
   "mahler_cf_guard_invariant
     (mahler_cf_guard_compile (map mahler_cf_chart_edge choices))"
@@ -547,6 +620,26 @@ next
   show "cf_lower state \<le> left \<and> right \<le> cf_upper state" using lower upper by simp
 qed
 
+lemma mahler_cf_packed_chart_interval_exact:
+  fixes choices :: "bool list" and state :: mahler_cf_compiled_guard
+    and gain low high left right :: real
+  defines "state \<equiv> mahler_cf_guard_compile (map mahler_cf_chart_edge choices)"
+  assumes positive: "0 < gain" and ordered: "left < right"
+    and represented: "cf_lower state = low / gain"
+      "cf_upper state = high / (2*gain)"
+  shows "(low \<le> gain*left \<and> 2*gain*right \<le> high) \<longleftrightarrow>
+    (\<forall>x. left \<le> x \<and> x < right \<longrightarrow> mahler_cf_physical_safe (cf_word state) x)"
+proof -
+  have lo: "cf_lower state \<le> left \<longleftrightarrow> low \<le> gain*left"
+    using positive by (simp add: represented(1) divide_le_eq mult.commute)
+  have hi: "right \<le> cf_upper state \<longleftrightarrow> 2*gain*right \<le> high"
+    using positive by (simp add: represented(2) le_divide_eq algebra_simps)
+  have valid: "(cf_lower state \<le> left \<and> right \<le> cf_upper state) \<longleftrightarrow>
+    (\<forall>x. left \<le> x \<and> x < right \<longrightarrow> mahler_cf_physical_safe (cf_word state) x)"
+    using mahler_cf_chart_interval_exact[OF ordered, of choices] by (simp add: state_def)
+  show ?thesis using lo hi valid by blast
+qed
+
 lemma mahler_cf_guard_pullback:
   fixes gain modulus innovation x edge :: real
   assumes gain: "0 < gain" and modulus: "0 < modulus"
@@ -703,7 +796,8 @@ lemma mahler_cf_three_dyadic_coprime:
   by (simp add: coprime_power_right_iff)
 
 ML \<open>
-  val checked = @{thms mahler_cf_chart_source_action mahler_cf_guard_compose_exact
+  val checked = @{thms mahler_cf_packed_chart_interval_exact mahler_cf_packed_chart_initial mahler_cf_packed_chart_step mahler_cf_packed_reachable_bounds
+    mahler_cf_packed_chart_u32 mahler_cf_packed_chart_u32_edge mahler_cf_chart_source_action mahler_cf_guard_compose_exact
     mahler_cf_chart_edge_scaled mahler_cf_chart_interval_exact
     mahler_cf_chart_safe_words_unique mahler_cf_chart_rejected_width
     mahler_cf_guard_compose_invariant mahler_cf_inverse_unit_modulus mahler_cf_three_dyadic_coprime
