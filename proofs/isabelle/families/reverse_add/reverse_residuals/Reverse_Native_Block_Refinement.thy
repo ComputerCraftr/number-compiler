@@ -397,6 +397,106 @@ proof -
     by (simp add: carry_out_def domain_def)
 qed
 
+text \<open>With an empty half and a decimal center the compiled two-level
+hinge has its empty-prefix action at both levels.  The first branch is the
+compiled center digit and next center response.  The second branch is the
+compiled birth response with its paired inner digits.  Ports are packed with
+the first physical tick in the low bit.\<close>
+
+definition reverse_native_seed_hinge_two :: "nat \<Rightarrow> nat \<times> nat \<times> nat" where
+  "reverse_native_seed_hinge_two d =
+    (let c = (2 * d) mod 10 in
+      if d < 5 then
+        (let second = (if c < 5 then 0 else 1)
+         in ((2 * c) mod 10 + 10 * second, 2 * second, second))
+      else (11 * (c + 1), 1, 1))"
+
+definition reverse_native_seed_hinge_output :: "nat \<Rightarrow> nat list \<times> nat" where
+  "reverse_native_seed_hinge_output d =
+    (let (encoded, ports, births) = reverse_native_seed_hinge_two d;
+         pair = encoded mod 10 + encoded div 10
+     in (if births = 0 then [2 * encoded] else [pair, pair], ports))"
+
+theorem reverse_native_seed_hinge_two_source:
+  assumes digit: "d < 10"
+  shows "reverse_native_seed_hinge_output d = reverse_native_two_pass_ports [2 * d]"
+proof -
+  have valid: "valid_pair [2 * d]" using digit by (simp add: valid_pair_def)
+  have symmetric: "rev [2 * d] = [2 * d]" by simp
+  have decoded: "punctured_q19_decode_half (reverse_laurent_source_half [2 * d])
+      (reverse_laurent_source_odd [2 * d]) = [2 * d]"
+    by (rule reverse_laurent_half_reconstructs_symmetric_source[OF symmetric])
+  have first: "reverse_two_port_publisher [2 * d] = step [2 * d]"
+    by (rule reverse_two_port_publisher_refines_step[OF valid])
+  have first_valid: "valid_pair (step [2 * d])" by (rule valid_pair_successor[OF valid])
+  have second: "reverse_two_port_publisher (step [2 * d]) = step (step [2 * d])"
+    by (rule reverse_two_port_publisher_refines_step[OF first_valid])
+  have concrete: "reverse_native_two_pass_ports [2 * d] =
+    (step (step [2 * d]), (if carry_out False [2 * d] then 1 else 0) +
+      2 * (if carry_out False (step [2 * d]) then 1 else 0))"
+    by (simp add: reverse_native_two_pass_ports_def Let_def decoded first second)
+  have cases: "d = 0 \<or> d = 1 \<or> d = 2 \<or> d = 3 \<or> d = 4 \<or>
+      d = 5 \<or> d = 6 \<or> d = 7 \<or> d = 8 \<or> d = 9"
+    using digit by arith
+  show ?thesis using cases
+    by (auto simp: concrete reverse_native_seed_hinge_output_def
+        reverse_native_seed_hinge_two_def Let_def step_def digits_def carry_out_def
+        domain_def)
+qed
+
+text \<open>The height-one response node stores the forward carry and a
+conditional high-side output.  This unpacked equation is the source-level
+form of the packed two-branch append in the native table compiler.\<close>
+
+definition reverse_native_hinge1_seed :: "bool \<Rightarrow> bool \<times> nat" where
+  "reverse_native_hinge1_seed b = (False, if b then 2 else 0)"
+
+definition reverse_native_hinge1_append ::
+  "(bool \<Rightarrow> bool \<times> nat) \<Rightarrow> nat \<Rightarrow> bool \<Rightarrow> bool \<times> nat" where
+  "reverse_native_hinge1_append response s b =
+    (let (a, high) = response (carry_apply (domain s) b)
+     in (carry_apply (domain s) a,
+       if high = 0 then 0 else 1 + (s + (if b then 1 else 0)) mod 10))"
+
+definition reverse_native_hinge1_compile :: "nat list \<Rightarrow> bool \<Rightarrow> bool \<times> nat" where
+  "reverse_native_hinge1_compile half =
+    fold (\<lambda>s q. reverse_native_hinge1_append q s) half reverse_native_hinge1_seed"
+
+lemma reverse_native_hinge1_compile_snoc:
+  "reverse_native_hinge1_compile (half @ [s]) b =
+    reverse_native_hinge1_append (reverse_native_hinge1_compile half) s b"
+  by (simp add: reverse_native_hinge1_compile_def fold_append)
+
+lemma reverse_native_carry_out_cons:
+  "carry_out b (s # half) = carry_out (carry_apply (domain s) b) half"
+  by (simp add: carry_out_def)
+
+theorem reverse_native_hinge1_source_response:
+  "fst (reverse_native_hinge1_compile half b) = carry_out False half \<and>
+   snd (reverse_native_hinge1_compile half b) =
+     (if carry_out b (rev half) then
+       (if half = [] then 2 else 1 + (last half + (if b then 1 else 0)) mod 10)
+      else 0)"
+proof (induction half arbitrary: b rule: rev_induct)
+  case Nil
+  then show ?case
+    by (cases b) (simp_all add: reverse_native_hinge1_compile_def
+        reverse_native_hinge1_seed_def carry_out_def)
+next
+  case (snoc s half)
+  let ?inlet = "carry_apply (domain s) b"
+  have q: "reverse_native_hinge1_compile half ?inlet =
+    (carry_out False half,
+     if carry_out ?inlet (rev half) then
+       (if half = [] then 2 else 1 + (last half + (if ?inlet then 1 else 0)) mod 10)
+     else 0)"
+    using snoc.IH[of ?inlet]
+    by (cases "reverse_native_hinge1_compile half ?inlet") auto
+  show ?case
+    by (simp add: reverse_native_hinge1_compile_snoc reverse_native_hinge1_append_def
+        carry_out_append_one reverse_native_carry_out_cons Let_def q)
+qed
+
 ML \<open>
   val checked = @{thms punctured_expand_singleton_runs
     reverse_add_run_last_step
@@ -406,7 +506,8 @@ ML \<open>
     reverse_laurent_native_block_scalar_to_pair
     reverse_native_opposite_digit_from_pair reverse_native_center_pair_even
     reverse_native_folded_endpoint_clock reverse_native_two_pass_source_ports
-    reverse_native_two_pass_birth_order_distinguishes};
+    reverse_native_two_pass_birth_order_distinguishes
+    reverse_native_seed_hinge_two_source reverse_native_hinge1_source_response};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Reverse native block refinement depends on an oracle";
   val _ = if Thm_Deps.has_skip_proof checked
