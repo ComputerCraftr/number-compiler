@@ -413,6 +413,45 @@ lemma diagonal_word_payload_extract:
     and "(east + 2 ^ 16 * north) div (2 ^ 16) = north"
   using assms by simp_all
 
+text \<open>Each packed table lookup in the four-lane wave carries two
+unsigned 16-bit responses. Subtracting from the packed maxima complements
+the coordinates independently, including zero and the maximum rank.\<close>
+
+theorem diagonal_packed_complement_response:
+  fixes east north east_max north_max packed_max packed_entry :: nat
+  assumes east: "east \<le> east_max" "east_max < 2 ^ 16"
+    and north: "north \<le> north_max" "north_max < 2 ^ 16"
+  defines "packed_max \<equiv> east_max + 2 ^ 16 * north_max"
+    and "packed_entry \<equiv> east + 2 ^ 16 * north"
+  shows "packed_entry \<le> packed_max" "packed_max < 2 ^ 32"
+    "(packed_max - packed_entry) mod (2 ^ 16) = east_max - east"
+    "(packed_max - packed_entry) div (2 ^ 16) = north_max - north"
+proof -
+  have radix: "(2::nat)^16 = 65536" "(2::nat)^32 = 4294967296" by simp_all
+  show "packed_entry \<le> packed_max"
+    unfolding packed_entry_def packed_max_def
+    by (intro add_mono mult_left_mono east north; simp)
+  have e_bound: "east_max \<le> 65535" using east(2) by (simp only: radix; arith)
+  have n_bound: "north_max \<le> 65535" using north(2) by (simp only: radix; arith)
+  show "packed_max < 2 ^ 32"
+    using e_bound n_bound unfolding packed_max_def by (simp only: radix; linarith)
+  have diff: "packed_max - packed_entry = (east_max - east) + 2 ^ 16 * (north_max - north)"
+  proof -
+    have "packed_entry + ((east_max - east) + 2 ^ 16 * (north_max - north)) =
+        (east + (east_max - east)) + 2 ^ 16 * (north + (north_max - north))"
+      unfolding packed_entry_def by (simp add: algebra_simps)
+    also have "\<dots> = packed_max" using east(1) north(1) by (simp add: packed_max_def)
+    finally have "packed_entry + ((east_max - east) + 2 ^ 16 * (north_max - north)) =
+        packed_max" .
+    then show ?thesis by arith
+  qed
+  have low: "east_max - east < 2 ^ 16" using east by arith
+  show "(packed_max - packed_entry) mod (2 ^ 16) = east_max - east"
+    unfolding diff by (rule diagonal_word_payload_extract(1)[OF low])
+  show "(packed_max - packed_entry) div (2 ^ 16) = north_max - north"
+    unfolding diff by (rule diagonal_word_payload_extract(2)[OF low])
+qed
+
 lemma diagonal_word_payload_overflow_negative:
   "(2 ^ 16 + 2 ^ 16 * north) mod (2 ^ 16::nat) \<noteq> 2 ^ 16"
   by simp
@@ -492,7 +531,8 @@ ML \<open>
     diagonal_boundary_rank_below_size diagonal_boundary_rank_split diagonal_boundary_rank_complement
     diagonal_table_rect_zero diagonal_table_rect_quarters diagonal_table_receiving_rectangle_transpose
     diagonal_rank_digits_join diagonal_table_ranked_quarters
-    diagonal_word_payload_extract diagonal_word_payload_overflow_negative
+    diagonal_word_payload_extract diagonal_packed_complement_response
+    diagonal_word_payload_overflow_negative
     diagonal_rank_order_negative diagonal_rank_width_negative
     diagonal_fringe_order_two_negative diagonal_fringe_order_five_negative
     diagonal_word_bitwise_or_exact
