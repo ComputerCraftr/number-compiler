@@ -12,16 +12,16 @@ struct RelativeRun {
     int shift = 0;
 };
 
-inline int relative_matches(std::string_view source, std::int64_t i,
-                            int multiplier, int base) {
+inline unsigned relative_matches(std::string_view source, std::int64_t i,
+                                 int multiplier, int base) {
     const int left = source[static_cast<std::size_t>(i - 2)] - '0';
     const int digit = source[static_cast<std::size_t>(i - 1)] - '0';
     const int right = source[static_cast<std::size_t>(i)] - '0';
-    const int x = multiplier * (digit % base) + left / base;
-    const int y = multiplier * (right % base) + digit / base;
-    const int result = multiplier * (x % base) + y / base;
-    return (result == right ? 1 : 0) | (result == digit ? 2 : 0) |
-           (result == left ? 4 : 0);
+    const int x = (multiplier * (digit % base)) + (left / base);
+    const int y = (multiplier * (right % base)) + (digit / base);
+    const int result = (multiplier * (x % base)) + (y / base);
+    return (result == right ? 1U : 0U) | (result == digit ? 2U : 0U) |
+           (result == left ? 4U : 0U);
 }
 
 // Check the exact two-tick nearest-neighbour action at every covered source
@@ -29,10 +29,10 @@ inline int relative_matches(std::string_view source, std::int64_t i,
 inline RelativeRun relative_run(std::string_view source, int multiplier,
                                 std::int64_t steps) {
     const auto size = static_cast<std::int64_t>(source.size());
-    if (steps < 64 || size < 8 * steps + 64) {
+    if (steps < 64 || size < (8 * steps) + 64) {
         return {};
     }
-    const auto threshold = 8 * steps + 64;
+    const auto threshold = (8 * steps) + 64;
     const int base = 10 / multiplier;
     // Every threshold-length interval contains a complete aligned half-span.
     // If each full half-span fails a few exact triples, no eligible interval
@@ -41,9 +41,9 @@ inline RelativeRun relative_run(std::string_view source, int multiplier,
     bool possible = false;
     for (std::int64_t begin = 0; begin + block <= size && !possible;
          begin += block) {
-        int shifts = 7;
-        for (int probe = 0; probe < 8 && shifts; ++probe) {
-            const auto i = begin + 2 + (block - 3) * probe / 7;
+        unsigned shifts = 7U;
+        for (int probe = 0; probe < 8 && (shifts != 0); ++probe) {
+            const auto i = begin + 2 + ((block - 3) * probe / 7);
             shifts &= relative_matches(source, i, multiplier, base);
         }
         possible = shifts != 0;
@@ -54,16 +54,16 @@ inline RelativeRun relative_run(std::string_view source, int multiplier,
     RelativeRun best;
     std::int64_t start[3] = {0, 0, 0};
     for (std::int64_t i = 2; i < size; ++i) {
-        const int matches = relative_matches(source, i, multiplier, base);
-        for (int shift = 0; shift < 3; ++shift) {
-            if (!(matches & (1 << shift))) {
+        const unsigned matches = relative_matches(source, i, multiplier, base);
+        for (unsigned shift = 0; shift < 3; ++shift) {
+            if ((matches & (1U << shift)) == 0) {
                 start[shift] = i - 1;
             } else if (i + 1 - start[shift] > best.hi - best.lo) {
-                best = {start[shift], i + 1, shift};
+                best = {start[shift], i + 1, static_cast<int>(shift)};
             }
         }
     }
-    return best.hi - best.lo < 8 * steps + 64 ? RelativeRun{} : best;
+    return best.hi - best.lo < (8 * steps) + 64 ? RelativeRun{} : best;
 }
 } // namespace rev10
 #endif

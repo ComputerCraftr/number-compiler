@@ -38,6 +38,7 @@ number_compiler = [
 
 [tool.setuptools.exclude-package-data]
 "number_compiler.kernels.native_reverse" = ["*.cpp", "*.hpp"]
+"number_compiler.kernels.native_cf" = ["*.cpp", "*.hpp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

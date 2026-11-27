@@ -29,8 +29,9 @@ COMMA_RELEASE_ASSET = FUTURE_PROVIDER_ASSET
 _EXTENSION_FLAGS = {
     "_reverse_quotients": "NUMBER_COMPILER_BUILD_NATIVE_REVERSE",
     "_reflected_multiply": "NUMBER_COMPILER_BUILD_REFLECTED_MULTIPLY",
+    "_cf_continuant": "NUMBER_COMPILER_BUILD_CF_CONTINUANT",
 }
-_NATIVE_REVERSE_ROOT = Path("number_compiler/kernels")
+_NATIVE_ROOT = Path("number_compiler/kernels")
 
 
 def requested_extensions() -> tuple[str, ...]:
@@ -63,12 +64,12 @@ def validate_wheel_contents(
     suffix = sysconfig.get_config_var("EXT_SUFFIX")
     if not set(extensions) <= _EXTENSION_FLAGS.keys():
         raise ValueError("unknown native extension requested")
-    binaries = {
-        (_NATIVE_REVERSE_ROOT / (name + str(suffix))).as_posix() for name in extensions
-    }
+    binaries = {(_NATIVE_ROOT / (name + str(suffix))).as_posix() for name in extensions}
     if extensions and (not isinstance(suffix, str) or not suffix):
-        raise ValueError("native reversal wheel requires a known extension ABI")
-    native_sources = source / _NATIVE_REVERSE_ROOT / "native_reverse"
+        raise ValueError("native wheel requires a known extension ABI")
+    native_sources = {
+        source / _NATIVE_ROOT / name for name in ("native_reverse", "native_cf")
+    }
     expected = {
         path.relative_to(source).as_posix(): path
         for path in (source / "number_compiler").rglob("*")
@@ -77,7 +78,7 @@ def validate_wheel_contents(
         and path.name != ".DS_Store"
         and not path.name.startswith("._")
         and path.suffix not in (".so", ".pyd")
-        and not (path.parent == native_sources and path.suffix in (".cpp", ".hpp"))
+        and not (path.parent in native_sources and path.suffix in (".cpp", ".hpp"))
     }
     expected_names = set(expected) | binaries
     with zipfile.ZipFile(wheel) as archive:

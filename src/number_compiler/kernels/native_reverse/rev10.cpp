@@ -468,13 +468,13 @@ static string wave_tiled(const Table &t, const string &seed, I n, Stats &st,
     const I left = run.lo + n, right = run.hi, start = right - n;
     const I turns = n / 2;
     string out = wave_raw(t, seed.substr(0, size_t(left)), n, st);
-    out.resize(size_t(seed.size() + n));
+    out.resize(seed.size() + static_cast<size_t>(n));
     for (I i = left; i < right; ++i) {
-        const I k = i - run.shift * turns;
+        const I k = i - (run.shift * turns);
         int digit = seed[size_t(k)] - '0';
-        if (n & 1) {
-            digit =
-                t.m * (digit % t.base) + (seed[size_t(k - 1)] - '0') / t.base;
+        if ((n % 2) != 0) {
+            digit = (t.m * (digit % t.base)) +
+                    ((seed[size_t(k - 1)] - '0') / t.base);
         }
         out[size_t(i)] = char('0' + digit);
     }

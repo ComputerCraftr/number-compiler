@@ -91,11 +91,45 @@ def test_wheel_native_reversal_has_one_opt_in_abi_member(
             )
 
 
+def test_cf_build_flag_requests_its_abi(monkeypatch: pytest.MonkeyPatch) -> None:
+    for flag in (
+        "NUMBER_COMPILER_BUILD_CF_CONTINUANT",
+        "NUMBER_COMPILER_BUILD_NATIVE_REVERSE",
+        "NUMBER_COMPILER_BUILD_REFLECTED_MULTIPLY",
+    ):
+        monkeypatch.delenv(flag, raising=False)
+    assert installed_distribution.requested_extensions() == ()
+    monkeypatch.setenv("NUMBER_COMPILER_BUILD_CF_CONTINUANT", "1")
+    assert installed_distribution.requested_extensions() == ("_cf_continuant",)
+    monkeypatch.setenv("NUMBER_COMPILER_BUILD_NATIVE_REVERSE", "1")
+    assert installed_distribution.requested_extensions() == (
+        "_reverse_quotients",
+        "_cf_continuant",
+    )
+
+
+@pytest.mark.parametrize("leak", [False, True])
+def test_cf_native_sources_are_excluded_from_wheel(tmp_path: Path, leak: bool) -> None:
+    source = tmp_path / "src"
+    native = source / "number_compiler" / "kernels" / "native_cf"
+    native.mkdir(parents=True)
+    (native / "continuant.cpp").write_text("int cf();\n")
+    wheel = tmp_path / "package.whl"
+    with ZipFile(wheel, "w") as archive:
+        if leak:
+            archive.writestr("number_compiler/kernels/native_cf/continuant.cpp", "")
+    if leak:
+        with pytest.raises(ValueError, match="extra_package_files"):
+            validate_wheel_contents(wheel, source)
+    else:
+        assert validate_wheel_contents(wheel, source) == []
+
+
 def test_combined_wheel_requires_each_selected_kernel(tmp_path: Path) -> None:
     source = tmp_path / "src"
     package = source / "number_compiler" / "kernels"
     package.mkdir(parents=True)
-    modules = ("_reverse_quotients", "_reflected_multiply")
+    modules = ("_reverse_quotients", "_reflected_multiply", "_cf_continuant")
     wheel = tmp_path / "combined.whl"
     with ZipFile(wheel, "w") as output:
         for name in modules:
@@ -103,9 +137,16 @@ def test_combined_wheel_requires_each_selected_kernel(tmp_path: Path) -> None:
                 f"number_compiler/kernels/{name}{sysconfig.get_config_var('EXT_SUFFIX')}",
                 b"extension",
             )
-    assert len(validate_wheel_contents(wheel, source, extensions=modules)) == 2
-    with pytest.raises(ValueError, match="extra_package_files"):
-        validate_wheel_contents(wheel, source, extensions=modules[:1])
+    assert len(validate_wheel_contents(wheel, source, extensions=modules)) == len(
+        modules
+    )
+    for omitted in modules:
+        with pytest.raises(ValueError, match="extra_package_files"):
+            validate_wheel_contents(
+                wheel,
+                source,
+                extensions=tuple(module for module in modules if module != omitted),
+            )
 
 
 def test_wheel_verification_keeps_flushed_last_stage_on_failure(

@@ -1,4 +1,4 @@
-"""Check the optional C++20 reversal extension with Clang diagnostics."""
+"""Check the optional C++20 kernels with Clang diagnostics."""
 
 import argparse
 import subprocess
@@ -8,7 +8,10 @@ from pathlib import Path
 
 from devtools.runs import run_reported
 
-_NATIVE = Path("src/number_compiler/kernels/native_reverse")
+_NATIVE = (
+    Path("src/number_compiler/kernels/native_reverse"),
+    Path("src/number_compiler/kernels/native_cf"),
+)
 _WARNINGS = (
     "-Wall",
     "-Wextra",
@@ -93,8 +96,10 @@ def main() -> int:
     clang = str(tools / "clang++")
     clang_format = str(tools / "clang-format")
     clang_tidy = str(tools / "clang-tidy")
-    units = sorted(str(source) for source in _NATIVE.glob("[!.]*.cpp"))
-    headers = sorted(str(source) for source in _NATIVE.glob("[!.]*.hpp"))
+    units = sorted(str(source) for root in _NATIVE for source in root.glob("[!.]*.cpp"))
+    headers = sorted(
+        str(source) for root in _NATIVE for source in root.glob("[!.]*.hpp")
+    )
     if not units or not headers:
         parser.error("run from the repository root with the native sources present")
     compile_options = _compile_options()
@@ -137,7 +142,7 @@ def main() -> int:
             check=True,
         )
     except (OSError, subprocess.CalledProcessError) as error:
-        print(f"Native reversal quality checks failed: {error}", file=sys.stderr)
+        print(f"Native kernel quality checks failed: {error}", file=sys.stderr)
         return 1
     return 0
 
