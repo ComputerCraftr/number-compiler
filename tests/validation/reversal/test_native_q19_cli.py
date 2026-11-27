@@ -391,20 +391,24 @@ def test_installed_cli_enters_long_folded_pair_bank() -> None:
 import sys
 from number_compiler.kernels import _reverse_quotients as native
 from number_compiler.api.cli import main
-original = native.add_folded
+import os
+name = "add_folded_joint4" if os.environ.get("NUMBER_COMPILER_ENABLE_Q19_JOINT4") == "1" else "add_folded"
+original = getattr(native, name)
 counts = []
 def observed(*args):
     result = original(*args)
     counts.append(result[2][15:])
     return result
-native.add_folded = observed
+setattr(native, name, observed)
 status = main(sys.argv[1:])
 print("BANK", repr(counts), file=sys.stderr)
 raise SystemExit(status)
 """
     env = dict(os.environ, NUMBER_COMPILER_ENABLE_NATIVE_REVERSE="1")
     env.pop("NUMBER_COMPILER_ENABLE_Q19_JOINT4", None)
-    for ticks in (1024, 4096):
+    for ticks, joint in ((1024, False), (4096, False), (4096, True)):
+        if joint:
+            env["NUMBER_COMPILER_ENABLE_Q19_JOINT4"] = "1"
         result = subprocess.run(
             [
                 interpreter,

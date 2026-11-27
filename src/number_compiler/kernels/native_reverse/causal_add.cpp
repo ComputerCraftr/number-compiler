@@ -391,11 +391,13 @@ struct PairJoinBank {
                 I ordinal = 0;
                 for (; ordinal < representatives.size(); ++ordinal) {
                     ++work.join_bank_row_compares;
-                    if (rows[q] == rows[representatives[ordinal]])
+                    if (rows[q] == rows[representatives[ordinal]]) {
                         break;
+                    }
                 }
-                if (ordinal == representatives.size())
+                if (ordinal == representatives.size()) {
                     representatives.push_back(q);
+                }
                 row_ids.push_back(ordinal);
             }
             if (representatives.size() <= max_rows) {
@@ -462,12 +464,13 @@ Hinge run_folded(const Level &level, const Cells &cells, unsigned height,
     const Hinge result = hinges[(U(q) * 11) + U(center + 1)];
     U r = result.ports;
     const U ports = U(1) << height;
-    for (std::size_t i = state.size(); i-- > 0;) {
-        const Cell response = unpack_cell(cells[(addresses[i] * ports) + r]);
+    for (std::size_t column = state.size(); column-- > 0;) {
+        const Cell response =
+            unpack_cell(cells[(addresses[column] * ports) + r]);
         r = U(response.left);
         require(unsigned(response.growth) == result.births,
                 "inconsistent folded birth count");
-        state[i] = I(response.sum);
+        state[column] = I(response.sum);
     }
     require(unsigned(std::popcount(r)) == result.births,
             "outer birth port mismatch");
