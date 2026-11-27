@@ -93,6 +93,56 @@ and found zero recursion cycles and package violations. Its remaining
 finding is the pre-existing 1,017-line double-reverse ring theory. The
 global proof index still reports inherited audit and Comma authority gaps.
 
+### Folded Q19 and reflected multiplier joins after `bc4cb376`
+
+The installed native reverse/add path in `7c5fcdd4` consumes the issued
+one-column transition and packed return cell directly. For seed 196 at
+index 1,024 it covered 1,011 ticks after H12 with 506 bands, 55,857 joins
+and 55,857 pulls. Removing a second copy of the action lowered the charged
+table peak from 425,940 to 290,128 bytes. Warm whole-request medians were
+8.937 → 8.971 ms and cold medians were 245.153 → 244.167 ms.
+
+On longer continuations, `b61a1c26` shares a two-column response after
+checking all 19 ordered successors of its inlet row. Each hit retains
+the exact intermediate and ending state for the receiving carry and
+width checks. At seed 196 and index 4,096, 424,043 probes produced 23,385
+first builds and **400,658 hits**. Setup compared 16,774 rows and initialized
+33,212 words. The receipt counts 878,123 logical joins and pulls and 1,704
+births. Peak tables occupied 425,720 bytes. A 300,000-byte cap keeps the
+direct fold. The registered `Reverse_Residuals` build checked the
+physical successor and birth refinement in `4b847c32` in 57.00 s.
+
+On the initial bank build, seed 196 kernel medians fell from 4.272 to 4.211 ms. Whole installed
+CLI medians were 29.667 → 29.844 ms warm (20 pairs) and 272.938 →
+270.214 ms cold (five pairs, one 656 ms candidate outlier). These
+measurements overlap. On the final native wheel at `db7cc9f4`, a fresh
+matched run gave 4.264 → 4.161 ms in the kernel, 30.179 → 30.105 ms
+warm and 273.745 → 275.572 ms cold. The ordinary Python default keeps
+its exact route.
+
+In `f70a144b` the optional reflected multipliers use precompiled
+side-three action tables. For `5rev10` seed 73 at index 1,024, table
+entries fell from 1,000 to 500 with the same 13,803 tiles and 486 fringe
+gates. Native setup fell from 6.042 to 0.146 µs. Installed CLI medians
+were 0.923 → 0.905 ms warm and 114.20 → 113.94 ms cold. For the
+153-digit `2rev10` input at 256 ticks they were 6.952 → 6.938 ms warm
+and 158.24 → 157.64 ms cold. Both comparisons used 20 warm and seven
+cold pairs. Existing threshold and intermediate bit-budget refusals apply.
+
+The trial 53-record CF chart matched full 4,096-tick packets at caps
+539 and 540. At cap 540 its predecessor searches rose from 289 to 584,
+and from 340 to 1,017 with a 6,000-node ledger. Installed medians were
+5.492 → 5.434 ms warm and 129.549 → 128.577 ms cold at cap 540.
+The existing 16-tick dispatch remains in use.
+
+Pure and native installed consoles matched on macOS and Linux ARM64.
+The final native-wheel selection passed all 52 cases, including both folded
+entry points and intermediate-budget refusal. The two registered reflected
+sessions passed, as did strict Clang, Linux compiler, changed-file Python
+typing and repository source checks. The full default run on `b61a1c26`
+passed 14,089 tests with six Comma failures. Canonical P0 passed 77 with
+13 failures. Both sets of failing test IDs matched the baseline.
+
 ### Packed 16-tick CF branch intervals and seed-196 coverage
 
 Starting from `bba17590`, the finite CF cylinder in `6cc4c6aa` admits
