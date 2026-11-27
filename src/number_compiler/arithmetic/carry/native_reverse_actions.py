@@ -112,6 +112,8 @@ def diagonal_endpoint(
     if multiplier not in (2, 5) or value < 0:
         raise ValueError("invalid reflected diagonal source")
     minimum_steps = 128 if multiplier == 5 else 512
+    if multiplier == 5 and value.bit_length() <= 512:
+        minimum_steps = 64
     if multiplier == 2 and value.bit_length() >= 425:
         minimum_steps = 256
     if not minimum_steps <= steps <= 1_000_000 or value == 0:

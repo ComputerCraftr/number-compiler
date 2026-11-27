@@ -51,7 +51,15 @@ raise SystemExit(status)
         ("native", True, 73, 1024, 8192),
         ("fallback", False, 73, 1024, 8192),
         ("short", True, 73, 16, 8192),
-        ("prethreshold", True, 73, 127, 8192),
+        ("prethreshold", True, 73, 63, 8192),
+        ("native_short", True, 73, 64, 8192),
+        ("native_short_fallback", False, 73, 64, 8192),
+        ("native_middle", True, 73, 96, 8192),
+        ("native_before_old_threshold", True, 73, 127, 8192),
+        ("native_short_wide", True, int("123456789" * 17), 64, 8192),
+        ("unmeasured_width", True, 1 << 512, 64, 8192),
+        ("bounded_short_fallback", True, 73, 64, 128),
+        ("zero_short", True, 0, 64, 8192),
         ("native_threshold", True, 73, 128, 8192),
         ("native_wide", True, int("123456789" * 17), 128, 8192),
         ("bounded_fallback", True, 73, 512, 512),
@@ -87,7 +95,9 @@ raise SystemExit(status)
         ]
         result = subprocess.run(command, capture_output=True, text=True, env=env)
         calls = int(result.stderr.strip().split("NATIVE_C_CALLS ")[-1])
-        assert (calls > 0) == label.startswith("native")
+        assert (calls > 0) == (
+            label.startswith("native") and label != "native_short_fallback"
+        )
         if label.startswith("refused"):
             assert result.returncode != 0
         else:
@@ -95,6 +105,7 @@ raise SystemExit(status)
             assert json.loads(result.stdout)["value"] == str(_literal(seed, ticks))
         results[label] = result
     assert results["native"].stdout == results["fallback"].stdout
+    assert results["native_short"].stdout == results["native_short_fallback"].stdout
     assert results["refused"].returncode == results["refused_fallback"].returncode
     assert (
         results["refused_short"].returncode

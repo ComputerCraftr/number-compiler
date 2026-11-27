@@ -32,10 +32,12 @@ def test_native_threshold_is_five_reverse_only(monkeypatch: pytest.MonkeyPatch) 
 
     action = native_reverse_actions.diagonal_endpoint
     assert action(ledger, owner, 73, 2, 128, 8192, receive) is None
-    assert action(ledger, owner, 73, 5, 127, 8192, receive) is None
+    assert action(ledger, owner, 73, 5, 63, 8192, receive) is None
+    assert action(ledger, owner, 1 << 512, 5, 64, 8192, receive) is None
     assert action(ledger, owner, 6, 5, 128, 4, receive) is None
     assert not calls
+    assert action(ledger, owner, 73, 5, 64, 8192, receive) == value
     assert action(ledger, owner, 73, 5, 128, 8192, receive) == value
-    assert calls == [("73", 5, 128, 3)]
+    assert calls == [("73", 5, 64, 3), ("73", 5, 128, 3)]
     assert ledger.entries == ledger.nodes == 0
     ledger.mark_disposed(owner)
