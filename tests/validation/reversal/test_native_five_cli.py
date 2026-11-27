@@ -51,8 +51,13 @@ raise SystemExit(status)
         ("native", True, 73, 1024, 8192),
         ("fallback", False, 73, 1024, 8192),
         ("short", True, 73, 16, 8192),
+        ("prethreshold", True, 73, 127, 8192),
+        ("native_threshold", True, 73, 128, 8192),
+        ("native_wide", True, int("123456789" * 17), 128, 8192),
         ("bounded_fallback", True, 73, 512, 512),
         ("native_odd", True, 30, 513, 8192),
+        ("refused_short", True, 6, 128, 4),
+        ("refused_short_fallback", False, 6, 128, 4),
         ("refused", True, 6, 512, 4),
         ("refused_fallback", False, 6, 512, 4),
     ):
@@ -91,3 +96,7 @@ raise SystemExit(status)
         results[label] = result
     assert results["native"].stdout == results["fallback"].stdout
     assert results["refused"].returncode == results["refused_fallback"].returncode
+    assert (
+        results["refused_short"].returncode
+        == results["refused_short_fallback"].returncode
+    )

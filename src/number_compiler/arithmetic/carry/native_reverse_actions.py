@@ -99,7 +99,8 @@ def diagonal_endpoint(
     """Apply a bounded diagonal and give its result to the charged receiver."""
     if multiplier not in (2, 5) or value < 0:
         raise ValueError("invalid reflected diagonal source")
-    if not 512 <= steps <= 1_000_000 or value == 0:
+    minimum_steps = 128 if multiplier == 5 else 512
+    if not minimum_steps <= steps <= 1_000_000 or value == 0:
         return None
     bits = value.bit_length()
     width = (bits * 30103 + 99999) // 100000
