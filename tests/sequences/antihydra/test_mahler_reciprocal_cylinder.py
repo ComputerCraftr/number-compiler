@@ -386,3 +386,26 @@ def test_indexed_prefix_admission_falls_back_before_opening_row(
         assert block.product == literal_action(str(5**38) + str(5**39))
         assert block.segment(27, 4) == literal_action(str(5**39)[:4])
     assert ledger.nodes == ledger.entries == 0
+
+
+def test_native_first_head_does_not_multiply_the_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.fields.ordered_matrix import (
+        MatrixEntries,
+        multiply_entries,
+    )
+    from number_compiler.sequences.antihydra import mahler_cf_reciprocal_tile as tiles
+    from tests.sequences.antihydra.test_mahler_pow5_ordered_blocks import literal_action
+
+    enable_prefix_bank(monkeypatch)
+
+    def multiply(left: MatrixEntries, right: MatrixEntries) -> MatrixEntries:
+        assert left != (1, 0, 0, 1)
+        return multiply_entries(left, right)
+
+    monkeypatch.setattr(tiles, "multiply_entries", multiply)
+    value = 5**18
+    word = str(value)
+    tile = tiles.ReciprocalTile(value, (len(word),), 0, len(word))
+    assert tile.product == literal_action(word)

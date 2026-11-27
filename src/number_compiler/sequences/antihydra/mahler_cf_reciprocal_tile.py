@@ -219,9 +219,11 @@ class ReciprocalTile:
                         value, 10 ** (prefix_count - 1), entries
                     )
                 else:
-                    entries = multiply_entries(
-                        entries, native.ordered_product(value, prefix_count)
-                    )
+                    native_action = native.ordered_product(value, prefix_count)
+                    if entries == (1, 0, 0, 1):
+                        entries = native_action
+                    else:
+                        entries = multiply_entries(entries, native_action)
             if action is not None:
                 entries = multiply_entries(entries, action)
             remaining -= count
