@@ -138,10 +138,7 @@ def _native_segment(
     owner: int | None,
 ) -> PackedQ19 | None:
     """Evaluate an admitted physical pair field in the bounded native kernel."""
-    from number_compiler.arithmetic.carry.native_reverse_actions import (
-        native_pair_action,
-        native_reverse_enabled,
-    )
+    from number_compiler.kernels import native_reverse_enabled
 
     if (
         not native_reverse_enabled()
@@ -152,6 +149,10 @@ def _native_segment(
         or ledger.max_cache_entries is not None
     ):
         return None
+
+    from number_compiler.arithmetic.carry.native_reverse_actions import (
+        native_pair_action,
+    )
 
     def receive(pairs: bytes, _work: object) -> PackedQ19:
         count = len(pairs) // 2

@@ -619,9 +619,11 @@ def _padded_h_execute(
         and generation >= 512
         and padded_h_workload(seed, generation, max_state_bits)
     ):
-        from .native_reverse_actions import diagonal_endpoint, native_reverse_enabled
+        from number_compiler.kernels import native_reverse_enabled
 
         if native_reverse_enabled():
+            from .native_reverse_actions import diagonal_endpoint
+
             root = diagonal_endpoint(
                 ledger,
                 scratch_owner,

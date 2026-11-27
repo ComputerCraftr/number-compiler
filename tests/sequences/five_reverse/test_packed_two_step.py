@@ -231,3 +231,29 @@ def test_native_unavailable_uses_exact_packed_action(
         )
         ledger = term.resource_ledger
     assert ledger.entries == ledger.nodes == 0
+
+
+def test_native_output_obeys_python_decimal_conversion_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.carry import native_reverse_actions
+    from number_compiler.arithmetic.fields.radix import value_from_lsd_digits
+
+    class Native:
+        @staticmethod
+        def multiply(
+            source: str, multiplier: int, steps: int, side: int
+        ) -> tuple[object, ...]:
+            assert (source, multiplier, steps, side) == ("73", 5, 1024, 3)
+            return "9" * 700, (1, 1, 0, 0, 1, 1, 0.0, 0.0)
+
+    monkeypatch.setenv("NUMBER_COMPILER_ENABLE_NATIVE_REVERSE", "1")
+    monkeypatch.setattr(native_reverse_actions, "_load", lambda: Native())
+    expected = value_from_lsd_digits((9 for _ in range(700)), 10)
+    limit = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(640)
+        with FiveReverseTerm(73, 1024, max_steps=1024, max_state_bits=8192) as term:
+            assert term.packed_value(73, 1024) == expected
+    finally:
+        sys.set_int_max_str_digits(limit)
