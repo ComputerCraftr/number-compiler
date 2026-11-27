@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Generator, Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from types import TracebackType
 from typing import TYPE_CHECKING, Self
@@ -24,6 +25,9 @@ from number_compiler.resources.lifecycle import cleanup_all, cleanup_on_error
 if TYPE_CHECKING:
     from number_compiler.arithmetic.automata.carry_spacetime_trace import (
         Pow5SpatialTrace,
+    )
+    from number_compiler.sequences.antihydra.mahler_cf_reciprocal_tile import (
+        ReciprocalTile,
     )
 
 _MAX_EXPONENT = 4096
@@ -51,7 +55,11 @@ class Pow5OrderedBlock:
 
     def prefix(self, length: int) -> Matrix2:
         """Return the first length coefficients in physical order."""
-        return self._owner.checked_prefix(self, self._epoch, length)
+        return self.segment(0, length)
+
+    def segment(self, start: int, length: int) -> Matrix2:
+        """Return a source-authenticated interval in physical order."""
+        return self._owner.checked_segment(self, self._epoch, start, length)
 
 
 class Pow5OrderedBlockSource:
@@ -63,28 +71,50 @@ class Pow5OrderedBlockSource:
         *,
         shared_cache: bool = True,
         spatial: bool = False,
+        reciprocal: bool = False,
     ) -> None:
         if (
             type(ledger) is not ResourceLedger
             or type(shared_cache) is not bool
             or type(spatial) is not bool
+            or type(reciprocal) is not bool
+            or spatial
+            and reciprocal
         ):
             raise TypeError(
                 "ordered CF source requires a ledger and Boolean cache policy"
             )
         self.ledger = ledger
         self.shared_cache = shared_cache
+        self._reciprocal = reciprocal
+        self._tile: ReciprocalTile | None = None
+        self._tile_binding: (
+            tuple[
+                ReciprocalTile,
+                int,
+                tuple[int, ...],
+                int,
+                int,
+                tuple[int, int, int, int],
+                int | None,
+                int | None,
+            ]
+            | None
+        ) = None
         self._owner = ledger.register(
             f"mahler-cf-ordered-{ledger.owner_count}", "ordered-cf-source"
         )
         self._exponent = 0
         self._value: int = 1
         self._offset = 0
+        self._width = 1
+        self._threshold = 10
+        self._source_binding: tuple[int, int, int, int, int] | None = (1, 0, 0, 1, 10)
         self._epoch = 0
         self._closed = False
         self._block: Pow5OrderedBlock | None = None
         self._arenas: tuple[LedgerSLPArena, LedgerSLPArena] | None = None
-        if not spatial:
+        if not spatial and not reciprocal:
             prefix = f"mahler-cf-block-{ledger.owner_count}"
             first = LedgerSLPArena(ledger, prefix + "-a", "ordered-cf")
             with cleanup_on_error(first.dispose):
@@ -129,6 +159,9 @@ class Pow5OrderedBlockSource:
         self._value = 0
         self._word = None
         self._word_product = None
+        self._tile = None
+        self._tile_binding = None
+        self._source_binding = None
         arenas = self._arenas
         cleanups = [] if arenas is None else [arenas[0].dispose, arenas[1].dispose]
         if self._spatial_trace is not None:
@@ -146,9 +179,30 @@ class Pow5OrderedBlockSource:
             raise RuntimeError("ordered CF source is closed")
         if block is not self._block or epoch != self._epoch:
             raise ValueError("ordered CF block is stale or foreign")
+        if self._reciprocal:
+            tile = self._tile
+            binding = self._tile_binding
+            if (
+                tile is None
+                or binding is None
+                or tile is not binding[0]
+                or (
+                    tile.quotient,
+                    tile.widths,
+                    tile.start,
+                    tile.length,
+                    tile.product.entries,
+                    tile.product.modulus,
+                    tile.first_exponent,
+                )
+                != binding[1:]
+            ):
+                raise ValueError("reciprocal CF block source binding changed")
 
     def checked_count(self, block: Pow5OrderedBlock, epoch: int) -> int:
         self._authenticate(block, epoch)
+        if self._tile is not None:
+            return self._tile.length
         if self._word is not None:
             return len(self._word)
         assert self._arenas is not None
@@ -156,28 +210,32 @@ class Pow5OrderedBlockSource:
 
     def checked_product(self, block: Pow5OrderedBlock, epoch: int) -> Matrix2:
         self._authenticate(block, epoch)
+        if self._tile is not None:
+            return self._tile.product
         if self._word_product is not None:
             return self._word_product
         return self._values[self._root]
 
-    def checked_prefix(
-        self, block: Pow5OrderedBlock, epoch: int, length: int
+    def checked_segment(
+        self, block: Pow5OrderedBlock, epoch: int, start: int, length: int
     ) -> Matrix2:
-        self._authenticate(block, epoch)
+        count = self.checked_count(block, epoch)
+        require_integer(start, "ordered block segment start", 0, count)
+        require_integer(length, "ordered block segment length", 0, count - start)
+        if self._tile is not None:
+            if start == 0 and length == count:
+                return self._tile.product
+            return self._tile.segment(start, length)
         if self._word is not None:
-            require_integer(length, "ordered block prefix", 0, len(self._word))
-            if length == len(self._word):
+            if start == 0 and length == count:
                 assert self._word_product is not None
                 return self._word_product
-            return ordered_decimal_continuant(self._word[:length])
+            return ordered_decimal_continuant(self._word[start : start + length])
         assert self._arenas is not None
         arena = self._arenas[self._active]
-        require_integer(
-            length, "ordered block prefix", 0, arena.nodes[self._root].length
-        )
         if length == 0:
             return Matrix2.identity()
-        if length == arena.nodes[self._root].length:
+        if start == 0 and length == count:
             return self._values[self._root]
         values = self._values if self.shared_cache else {}
 
@@ -193,8 +251,8 @@ class Pow5OrderedBlockSource:
         return fold_slp_interval(
             arena,
             self._root,
-            0,
-            length,
+            start,
+            start + length,
             identity=Matrix2.identity(),
             length=lambda node: arena.nodes[node].length,
             full_value=full_value,
@@ -226,6 +284,114 @@ class Pow5OrderedBlockSource:
         if packed:
             raise ArithmeticError("geometric ×5 lanes did not close")
 
+    @contextmanager
+    def _reserve_candidate(
+        self, node_bound: int
+    ) -> Generator[LedgerReservation, None, None]:
+        reservation = LedgerReservation(self.ledger, self._owner)
+        self._pending_reservation = reservation
+
+        def rollback() -> None:
+            try:
+                reservation.close()
+            except BaseException:
+                self._closed = True
+                self._block = None
+                raise
+            self._pending_reservation = None
+
+        with cleanup_on_error(rollback):
+            reservation.reserve(nodes=node_bound)
+            yield reservation
+
+    def _next_reciprocal(
+        self, max_rows: int, max_coefficients: int
+    ) -> Pow5OrderedBlock:
+        from number_compiler.sequences.antihydra.mahler_cf_reciprocal_tile import (
+            ReciprocalTile,
+        )
+
+        if (
+            type(self._value) is not int
+            or type(self._exponent) is not int
+            or type(self._offset) is not int
+            or (self._value, self._exponent, self._offset, self._width, self._threshold)
+            != self._source_binding
+        ):
+            raise ValueError("reciprocal CF source cursor binding changed")
+        first = self._exponent if self._offset else self._exponent + 1
+        rows = min(max_rows, 4, _MAX_EXPONENT - first + 1)
+        estimated = min(max_coefficients, rows * (first + rows + 1))
+        bits = 4 * (first + rows) + 64 * estimated
+        node_bound = 128 + 8 * ((bits + 63) // 64)
+
+        with self._reserve_candidate(node_bound) as reservation:
+            start = self._offset
+            quotient = self._value if start else 5 * self._value
+            value = quotient
+            width = self._width
+            threshold = self._threshold
+            if value >= threshold:
+                width += 1
+                threshold *= 10
+            offset = start
+            remaining = max_coefficients
+            widths: list[int] = []
+            for index in range(rows):
+                if not threshold // 10 <= value < threshold:
+                    raise ArithmeticError("power-of-five width admission failed")
+                widths.append(width)
+                consumed = min(width - offset, remaining)
+                remaining -= consumed
+                offset += consumed
+                if offset == width:
+                    offset = 0
+                if remaining == 0 or index + 1 == rows:
+                    break
+                value *= 5
+                if value >= threshold:
+                    width += 1
+                    threshold *= 10
+            length = max_coefficients - remaining
+            last = first + len(widths) - 1
+            tile = ReciprocalTile(quotient, tuple(widths), start, length, first)
+            block = Pow5OrderedBlock(self, self._epoch + 1)
+
+            def revoke() -> None:
+                self._closed = True
+                self._block = None
+                self._tile = None
+                self._tile_binding = None
+                self._source_binding = None
+                self._value = 0
+
+            with cleanup_on_error(revoke):
+                self._block = None
+                if self._reservation is not None:
+                    self._reservation.close()
+                self._reservation = reservation
+                self._pending_reservation = None
+                self._tile = tile
+                self._tile_binding = (
+                    tile,
+                    tile.quotient,
+                    tile.widths,
+                    tile.start,
+                    tile.length,
+                    tile.product.entries,
+                    tile.product.modulus,
+                    tile.first_exponent,
+                )
+                self._block = block
+                self._value = value
+                self._exponent = last
+                self._offset = offset
+                self._width = width
+                self._threshold = threshold
+                self._source_binding = (value, last, offset, width, threshold)
+                self._epoch += 1
+        return block
+
     def next_block(self, max_rows: int, max_coefficients: int) -> Pow5OrderedBlock:
         """Issue a bounded block, preserving the prior source on admission failure."""
         if self._closed:
@@ -234,6 +400,9 @@ class Pow5OrderedBlockSource:
         require_integer(max_coefficients, "ordered coefficient bound", 1, 100000)
         if self._exponent >= _MAX_EXPONENT and self._offset == 0:
             raise StopIteration("power-of-five source exponent exceeds 4096")
+
+        if self._reciprocal:
+            return self._next_reciprocal(max_rows, max_coefficients)
 
         # The same reservation covers the packed lanes, content-action map,
         # and the transient interval traversal for any prefix of this block.
@@ -249,20 +418,8 @@ class Pow5OrderedBlockSource:
             node_bound = 128 + 12 * estimated
             node_bound += 2 * estimated * estimated.bit_length() // 64
         node_bound += 8 * (bits + 63) // 64
-        reservation = LedgerReservation(self.ledger, self._owner)
-        self._pending_reservation = reservation
 
-        def release_candidate_reservation() -> None:
-            try:
-                reservation.close()
-            except BaseException:
-                self._closed = True
-                self._block = None
-                raise
-            self._pending_reservation = None
-
-        with cleanup_on_error(release_candidate_reservation):
-            reservation.reserve(nodes=node_bound)
+        with self._reserve_candidate(node_bound) as reservation:
             spare = 1 - self._active
             arena = arenas[spare] if arenas is not None else None
 

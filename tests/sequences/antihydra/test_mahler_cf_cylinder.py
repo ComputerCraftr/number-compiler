@@ -107,7 +107,7 @@ def test_full_horizon_cylinder_is_decisive_at_exactly_its_last_coefficient(
     blocks: list[Pow5OrderedBlock] = []
     refined_blocks: list[Pow5OrderedBlock] = []
     next_block = Pow5OrderedBlockSource.next_block
-    prefix = Pow5OrderedBlock.prefix
+    segment = Pow5OrderedBlock.segment
 
     def issued(
         source: Pow5OrderedBlockSource, max_rows: int, max_coefficients: int
@@ -116,13 +116,13 @@ def test_full_horizon_cylinder_is_decisive_at_exactly_its_last_coefficient(
         blocks.append(result)
         return result
 
-    def refined(block: Pow5OrderedBlock, length: int) -> Matrix2:
+    def refined(block: Pow5OrderedBlock, start: int, length: int) -> Matrix2:
         assert 0 < length < block.coefficient_count
         refined_blocks.append(block)
-        return prefix(block, length)
+        return segment(block, start, length)
 
     monkeypatch.setattr(Pow5OrderedBlockSource, "next_block", issued)
-    monkeypatch.setattr(Pow5OrderedBlock, "prefix", refined)
+    monkeypatch.setattr(Pow5OrderedBlock, "segment", refined)
     ledger = ResourceLedger(max_nodes=10_000)
     result = continued_fraction_cylinder(4096, 20000, ledger=ledger)
     assert result["status"] == "available"

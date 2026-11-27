@@ -32,7 +32,7 @@ class _OrderedCFBlock(Protocol):
     @property
     def product(self) -> Matrix2: ...
 
-    def prefix(self, length: int) -> Matrix2: ...
+    def segment(self, start: int, length: int) -> Matrix2: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,10 +43,14 @@ class _PointedRowSlice:
 
     @property
     def product(self) -> Matrix2:
-        return self.prefix(self.coefficient_count)
+        return self.segment(0, self.coefficient_count)
 
-    def prefix(self, length: int) -> Matrix2:
-        return self.row.segment(self.start, length)
+    def segment(self, start: int, length: int) -> Matrix2:
+        require_integer(start, "pointed segment start", 0, self.coefficient_count)
+        require_integer(
+            length, "pointed segment length", 0, self.coefficient_count - start
+        )
+        return self.row.segment(self.start + start, length)
 
 
 def _ordered_blocks(
@@ -94,6 +98,7 @@ def _ordered_blocks(
             ledger,
             shared_cache=shared_cache,
             spatial=horizon >= _SPATIAL_CYLINDER_MIN_HORIZON,
+            reciprocal=horizon < _SPATIAL_CYLINDER_MIN_HORIZON,
         )
     )
 
@@ -246,17 +251,19 @@ def continued_fraction_cylinder(
             # All previous blocks stopped before forcing the full horizon.
             # This block fixes the complete path, so its exact guard decides
             # which inside prefix is sufficient without replaying the path.
-            lower = 1
-            while lower < length:
+            lower = 0
+            lower_product = prefix
+            while lower + 1 < length:
                 middle = (lower + length) // 2
-                candidate = prefix.multiply(block.prefix(middle))
+                candidate = lower_product.multiply(block.segment(lower, middle - lower))
                 smaller_low, smaller_high = _interval(candidate)
                 if action.contains(smaller_low, smaller_high):
                     product = candidate
                     low, high = smaller_low, smaller_high
                     length = middle
                 else:
-                    lower = middle + 1
+                    lower = middle
+                    lower_product = candidate
             endpoint_lower = Fraction(*action.endpoint(low))
             endpoint_upper = Fraction(*action.endpoint(high))
             return {

@@ -59,3 +59,66 @@ def test_unsettled_suffix_and_reservation_refusal() -> None:
 
     with pytest.raises(MemoryError, match="scratch refused"):
         low_suffix_response(4096, 16, reserve_bits=refuse)
+
+
+def test_settled_phase_returns_the_shared_complete_operator() -> None:
+    from number_compiler.sequences.antihydra.mahler_cf_low_period import (
+        settled_low_action,
+    )
+
+    assert settled_low_action(3, 2) is settled_low_action(4, 2)
+    assert settled_low_action(3, 3) != settled_low_action(4, 3)
+    for width in range(1, 5):
+        period = 1 << max(width - 2, 0)
+        phases = [settled_low_action(width + i, width) for i in range(period)]
+        assert len(set(phases)) == period
+        for phase, response in enumerate(phases):
+            assert response == literal_action(width + phase, width).entries
+            assert settled_low_action(width + phase + period, width) is response
+    with pytest.raises(ValueError, match="unsettled"):
+        settled_low_action(3, 4)
+
+
+def test_exact_suffix_context_and_modular_precision_controls() -> None:
+    from number_compiler.sequences.antihydra.mahler_cf_low_period import (
+        settled_low_action,
+    )
+
+    first = settled_low_action(8, 4)
+    later = settled_low_action(10, 4)
+    values = tuple(a + 3 * b for a, b, _, _ in (first, later))
+    assert values == (233, 1258)
+    assert values[0] % 25 == values[1] % 25
+    assert values[0] % 125 != values[1] % 125
+
+    first = settled_low_action(3, 3)
+    later = settled_low_action(4, 3)
+    assert first[2:] == later[2:] == (19, 3)
+    # Weights (2, -11) annihilate the raw-digit row (11, 2).
+    assert tuple((2 * a - 11 * b) % 125 for a, b, _, _ in (first, later)) == (11, 36)
+    prefix = Matrix2.digit(2)
+    early_row = prefix.multiply(Matrix2(first)).entries[2:]
+    late_row = prefix.multiply(Matrix2(later)).entries[2:]
+    assert early_row == (44, 7)
+    assert late_row == (139, 22)
+    assert early_row[0] % 25 != late_row[0] % 25
+
+
+@pytest.mark.parametrize("modulus", [2, 5, 10, 25, 125])
+def test_complete_modular_action_period(modulus: int) -> None:
+    def reserve(_bits: int) -> None:
+        pass
+
+    for width in range(3, 10):
+        period = 1 << (width - 2)
+        expected = period // 2 if modulus == 5 else period
+        rows = [
+            Matrix2(
+                low_suffix_response(n, width, reserve_bits=reserve).entries, modulus
+            )
+            for n in range(width, width + 2 * period)
+        ]
+        assert rows[:period] == rows[expected : expected + period]
+        if expected > 1:
+            shorter = expected // 2
+            assert rows[:period] != rows[shorter : shorter + period]

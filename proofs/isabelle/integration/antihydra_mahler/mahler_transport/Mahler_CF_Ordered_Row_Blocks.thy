@@ -73,6 +73,18 @@ theorem mahler_cf_ordered_block_inside_prefix_action:
           (mahler_cf_word (take (count - length left) right)))"
   by (simp add: mahler_cf_ordered_block_inside_prefix mahler_cf_word_append Let_def)
 
+theorem mahler_cf_retained_lower_prefix_action:
+  fixes digits :: "nat list" and lower middle :: nat
+  assumes ordered: "lower \<le> middle"
+  shows "mahler_cf_word (take middle digits) =
+    ordered_matrix2_multiply (mahler_cf_word (take lower digits))
+      (mahler_cf_word (take (middle - lower) (drop lower digits)))"
+proof -
+  have "take middle digits =
+      take lower digits @ take (middle - lower) (drop lower digits)"
+    using take_add[of lower "middle - lower" digits] ordered by simp
+  then show ?thesis by (simp only: mahler_cf_word_append)
+qed
 text \<open>Each block leaf is the selected physical tile output with its full
 low and high halo. The theorem names both exponent and chronological
 continued-fraction action, so a matching numeric endpoint alone cannot
@@ -531,7 +543,6 @@ proof -
     using mahler_cf_packed_stream_exact[OF bound] by (simp only: emitted_def)
 qed
 
-
 theorem mahler_cf_block_prefix_global_earliest:
   fixes prefix emitted :: "nat list" and low_bound high_bound :: real and index :: nat
   assumes old: "\<not> mahler_cf_guard_contains_prefix low_bound high_bound prefix"
@@ -965,11 +976,11 @@ proof -
       OF gain modulus prefix] stalled bit continuation
     by (simp add: F_def)
 qed
-
 ML \<open>
   val checked = @{thms mahler_cf_ordered_row_block_exact
     mahler_cf_ordered_block_word_split mahler_cf_ordered_block_action_split
     mahler_cf_ordered_block_inside_prefix mahler_cf_ordered_block_inside_prefix_action
+    mahler_cf_retained_lower_prefix_action
     mahler_cf_ordered_block_leaf_tile
     mahler_cf_lean_action_composition mahler_cf_lean_zero_run_complete_guard
     mahler_cf_lean_odd_pair_bounds mahler_cf_lean_odd_pair_composition

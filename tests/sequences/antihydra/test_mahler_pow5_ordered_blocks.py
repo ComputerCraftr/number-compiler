@@ -1,6 +1,7 @@
 """Independent chronological oracles for bounded ordered ×5 actions."""
 
 from dataclasses import replace
+from fractions import Fraction
 from unittest.mock import patch
 
 import pytest
@@ -21,6 +22,30 @@ def literal_action(word: str) -> Matrix2:
     for digit in word:
         value = value.multiply(Matrix2.digit(int(digit) + 1))
     return value
+
+
+@pytest.mark.parametrize("spatial,reciprocal", [(True, False), (False, True)])
+def test_first_decisive_cut_within_125(spatial: bool, reciprocal: bool) -> None:
+    ledger = ResourceLedger()
+    with Pow5OrderedBlockSource(
+        ledger, spatial=spatial, reciprocal=reciprocal
+    ) as source:
+        source.next_block(1, 1)
+        source.next_block(1, 2)
+        row = source.next_block(1, 3)
+        assert row.segment(1, 1) == Matrix2.digit(3)
+        assert row.segment(2, 1) == Matrix2.digit(6)
+        assert row.segment(1, 2).entries == (19, 3, 6, 1)
+        # The live cylinder uses reciprocals of the ordinary CF endpoints.
+        for target, expected in ((Fraction(2, 5), 2), (Fraction(10, 23), 3)):
+            for length in range(1, 4):
+                q, previous_q, p, previous_p = row.prefix(length).entries
+                low, high = sorted(
+                    (Fraction(p, q), Fraction(p + previous_p, q + previous_q))
+                )
+                inside = low <= target <= high
+                assert inside == (length < expected)
+    assert ledger.nodes == ledger.entries == 0
 
 
 @pytest.mark.parametrize("shared", [False, True])
@@ -94,8 +119,34 @@ def test_foreign_or_stale_block_and_bad_lengths_are_rejected() -> None:
         for invalid in (-1, block.coefficient_count + 1):
             with pytest.raises(ValueError):
                 block.prefix(invalid)
+            with pytest.raises(ValueError):
+                block.segment(invalid, 0)
+        with pytest.raises(ValueError):
+            block.segment(block.coefficient_count, 1)
     with pytest.raises(RuntimeError, match="closed"):
         _ = block.product
+
+
+@pytest.mark.parametrize("spatial", [False, True])
+@pytest.mark.parametrize("shared", [False, True])
+def test_segments_preserve_order_and_source_authentication(
+    spatial: bool, shared: bool
+) -> None:
+    ledger = ResourceLedger(max_nodes=10_000)
+    with Pow5OrderedBlockSource(ledger, spatial=spatial, shared_cache=shared) as source:
+        block = source.next_block(8, 10_000)
+        word = "".join(str(5**exponent) for exponent in range(1, 9))[
+            : block.coefficient_count
+        ]
+        for start in range(len(word) + 1):
+            for end in range(start, len(word) + 1):
+                assert block.segment(start, end - start) == literal_action(
+                    word[start:end]
+                )
+        source.next_block(1, 10)
+        with pytest.raises(ValueError, match="stale or foreign"):
+            block.segment(0, 0)
+    assert ledger.nodes == ledger.entries == 0
 
 
 @pytest.mark.parametrize("shared", [False, True])

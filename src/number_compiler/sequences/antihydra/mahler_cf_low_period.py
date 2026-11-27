@@ -8,7 +8,50 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from number_compiler.arithmetic.fields.ordered_matrix import Matrix2
+from number_compiler.arithmetic.fields.ordered_matrix import (
+    Matrix2,
+    MatrixEntries,
+    append_decimal_value,
+)
+
+# Each phase adds its most significant digit to an already shared suffix.
+# For four columns, the settled cycle in exponent order starts at 0625.
+_FINAL_5 = Matrix2.digit(6)
+_FINAL_2 = Matrix2.digit(3)
+SETTLED_TENS_ACTION = _FINAL_2.entries
+_FINAL_25 = _FINAL_2.multiply(_FINAL_5)
+_FINAL_125 = Matrix2.digit(2).multiply(_FINAL_25)
+
+
+def _half_turn(matrix: MatrixEntries) -> MatrixEntries:
+    a, b, c, d = matrix
+    return a + 5 * c, b + 5 * d, c, d
+
+
+_FINAL_625 = Matrix2(_half_turn(_FINAL_125.entries))
+_FINAL_0625 = Matrix2.digit(1).multiply(_FINAL_625).entries
+_FINAL_3125 = Matrix2.digit(4).multiply(_FINAL_125).entries
+_SETTLED_ACTIONS = (
+    (_FINAL_5.entries,),
+    (_FINAL_25.entries,),
+    (_FINAL_125.entries, _FINAL_625.entries),
+    (
+        _FINAL_0625,
+        _FINAL_3125,
+        _half_turn(_FINAL_0625),
+        _half_turn(_FINAL_3125),
+    ),
+)
+
+
+def settled_low_action(exponent: int, columns: int) -> MatrixEntries:
+    """Select the immutable ordered action at a settled one-to-four digit cut."""
+    if type(columns) is not int or type(exponent) is not int:
+        raise TypeError("settled suffix needs integral width and exponent")
+    if not 1 <= columns <= len(_SETTLED_ACTIONS) or exponent < columns:
+        raise ValueError("unsettled low-column phase")
+    actions = _SETTLED_ACTIONS[columns - 1]
+    return actions[(exponent - columns) % len(actions)]
 
 
 def low_suffix_response(
@@ -28,14 +71,10 @@ def low_suffix_response(
     if not callable(reserve_bits):
         raise TypeError("low-column response requires a scratch owner")
     reserve_bits(32 * (columns + exponent.bit_length() + 128))
-    period = 1 if columns <= 2 else 1 << (columns - 2)
+    if columns <= len(_SETTLED_ACTIONS):
+        return Matrix2(settled_low_action(exponent, columns))
+    period = 1 << (columns - 2)
     phase = (exponent - columns) % period
     binary_residue = int.__pow__(5, phase, 1 << columns)
     value = 5**columns * binary_residue
-    place = 10 ** (columns - 1)
-    result = Matrix2.identity()
-    while place:
-        digit, value = divmod(value, place)
-        result = result.multiply(Matrix2.digit(digit + 1))
-        place //= 10
-    return result
+    return Matrix2(append_decimal_value(value, 10 ** (columns - 1), (1, 0, 0, 1)))
