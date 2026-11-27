@@ -141,8 +141,59 @@ proof -
     by (simp add: slab_source_clock_def run)
 qed
 
+theorem slab_joint_four_two_birth_from_source_clock:
+  fixes src :: "nat list" and left right :: nat and core :: "nat list"
+    and c k inner :: nat and ports :: "nat \<Rightarrow> bool"
+    and init product :: "nat list \<times> nat list"
+  assumes valid: "valid_pair src"
+
+    and positive: "0 < left" and span: "left + 64 \<le> right"
+    and half: "2*right \<le> Suc (length src)"
+    and symbols: "\<And>i. left \<le> i \<Longrightarrow> i < right \<Longrightarrow> reverse_native_slab_source_symbol (src!i)"
+  defines "c \<equiv> left+8" and "k \<equiv> right-12" and "inner \<equiv> k+4"
+    and "ports \<equiv> \<lambda>t::nat. t \<noteq> 0 \<or> 9 < src!c"
+    and "init \<equiv> (take c src, slab_center k src)"
+    and "product \<equiv> slab_collar_run ports init 4"
+    and "core \<equiv> map (slab_two_birth_value src) [c..<inner]"
+  assumes first: "slab_source_clock ports init 0"
+    and clock: "(\<not> slab_source_clock ports init 1 \<and> slab_source_clock ports init 2 \<and> \<not> slab_source_clock ports init 3) \<or>
+      (\<not> slab_source_clock ports init 1 \<and> \<not> slab_source_clock ports init 2 \<and> slab_source_clock ports init 3) \<or>
+      (slab_source_clock ports init 1 \<and> \<not> slab_source_clock ports init 2 \<and> \<not> slab_source_clock ports init 3)"
+  shows "(step ^^ 4) src = fst product @ core @ snd product @ rev core @ rev (fst product)"
+    and "length ((step ^^ 4) src) = length src + 2"
+    and "let last = slab_collar_run ports init 3;
+             low = slab_inner_low (snd last) (carry_out (ports 3) (rev (fst last)))
+        in low ! (length low div 2) = digits ((step ^^ 3) src) ! (length (digits ((step ^^ 3) src)) div 2)"
+proof -
+  have extent: "2*c < length src"
+    using span half unfolding c_def by arith
+  have reset: "src!c \<noteq> 9"
+    using symbols[of c] span unfolding c_def reverse_native_slab_source_symbol_def by auto
+  have first_matches: "slab_source_clock ports init 0 = carry_out False src"
+    using slab_outer_collar_at(1)[OF valid extent reset]
+    by (simp add: slab_source_clock_def init_def ports_def)
+  have growth: "carry_out False src" using first first_matches by simp
+  have match: "slab_source_clock ports init t = carry_out False ((step ^^ t) src)" if "t < 4" for t
+    using slab_source_clock_matches_physical[OF valid growth positive span half symbols that]
+    by (simp add: c_def k_def ports_def init_def)
+  have physical: "(\<not> carry_out False (step src) \<and> carry_out False (step (step src)) \<and> \<not> carry_out False (step (step (step src)))) \<or>
+      (\<not> carry_out False (step src) \<and> \<not> carry_out False (step (step src)) \<and> carry_out False (step (step (step src)))) \<or>
+      (carry_out False (step src) \<and> \<not> carry_out False (step (step src)) \<and> \<not> carry_out False (step (step (step src))))"
+    using clock match[of 1] match[of 2] match[of 3]
+    by (simp add: eval_nat_numeral)
+  note joint = slab_joint_four_two_birth[OF valid growth physical positive span half symbols]
+  show "(step ^^ 4) src = fst product @ core @ snd product @ rev core @ rev (fst product)"
+    using joint(1) by (simp add: c_def k_def inner_def ports_def init_def product_def core_def)
+  show "length ((step ^^ 4) src) = length src + 2"
+    using joint(2) by simp
+  show "let last = slab_collar_run ports init 3;
+             low = slab_inner_low (snd last) (carry_out (ports 3) (rev (fst last)))
+        in low ! (length low div 2) = digits ((step ^^ 3) src) ! (length (digits ((step ^^ 3) src)) div 2)"
+    using joint(3) by (simp add: c_def k_def ports_def init_def)
+qed
+
 ML \<open>
-  val checked = @{thms slab_source_clock_matches_physical slab_joint_four_two_birth};
+  val checked = @{thms slab_source_clock_matches_physical slab_joint_four_two_birth slab_joint_four_two_birth_from_source_clock};
   val _ = if null (Thm_Deps.all_oracles checked) then () else error "Joint slab oracle";
   val _ = if Thm_Deps.has_skip_proof checked then error "Skipped joint slab proof" else ();
 \<close>
