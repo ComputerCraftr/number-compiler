@@ -10,7 +10,7 @@ constructor, not an all-depth period certificate.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
@@ -30,6 +30,10 @@ from .temporal_packed_diagonal import (
     publish_packed_diagonal,
     record_square_work,
 )
+
+if TYPE_CHECKING:
+    from .source_adapter import DoubleReverseSourceAdapter
+
 
 _MAX_CELLS = 4096
 _MAX_T2_STEPS = 1024
@@ -376,8 +380,80 @@ def try_native_reflected_endpoint(
 ) -> int | None:
     """Optionally publish one bounded, source-checked C0 reflected endpoint."""
     import os
-    from contextlib import ExitStack, closing
+
+    if os.environ.get("NUMBER_COMPILER_ENABLE_REFLECTED_MULTIPLY") != "1":
+        return None
+    return _native_reflected_endpoint(arena, root, steps, phase, scratch_owner)
+
+
+def _reflected_kernel() -> _ReflectedMultiply | None:
     from importlib import import_module
+
+    try:
+        return cast(
+            _ReflectedMultiply,
+            import_module("number_compiler.kernels._reflected_multiply"),
+        )
+    except ModuleNotFoundError as error:
+        if error.name != "number_compiler.kernels._reflected_multiply":
+            raise
+        return None
+
+
+def try_native_source_suffix(
+    adapter: DoubleReverseSourceAdapter, ticks: int
+) -> int | None:
+    """Bind one native endpoint to the authenticated C0 suffix of the initial source."""
+    import os
+
+    from .temporal_hashlife_types import UncertifiedPointedStencilError
+
+    if os.environ.get("NUMBER_COMPILER_ENABLE_REFLECTED_MULTIPLY", "1") != "1":
+        return None
+    ledger = adapter.ledger
+    if ledger.max_nodes is not None or ledger.max_cache_entries is not None:
+        return None
+    native = _reflected_kernel()
+    if native is None:
+        return None
+    try:
+        entry = adapter.certified_prefix_entry(
+            ticks, max_prefix=16, require_even_remainder=True
+        )
+    except UncertifiedPointedStencilError:
+        return None
+    engine = adapter.temporal_hashlife
+    phase = entry.certified_phase
+    if phase is None or engine.validate_source_prefix(entry) is not entry:
+        raise ValueError("native reflected suffix requires its issued border")
+    root = engine.root_of(entry.target)
+    remaining = ticks - entry.physical_steps
+    if remaining <= 0 or remaining % 2:
+        raise ValueError("issued reflected suffix has the wrong physical clock")
+    return _native_reflected_endpoint(
+        adapter.arena,
+        root,
+        remaining // 2,
+        phase,
+        adapter.scratch_owner,
+        native,
+        suffix_width_admitted=lambda width: (
+            adapter.width_bits(width) <= adapter.max_state_bits
+        ),
+    )
+
+
+def _native_reflected_endpoint(
+    arena: LedgerSLPArena,
+    root: int,
+    steps: int,
+    phase: int,
+    scratch_owner: int,
+    native: _ReflectedMultiply | None = None,
+    *,
+    suffix_width_admitted: Callable[[int], bool] | None = None,
+) -> int | None:
+    from contextlib import ExitStack, closing
 
     from number_compiler.arithmetic.automata.slp_walks import iter_symbols
     from number_compiler.arithmetic.contracts.block_effect import (
@@ -386,8 +462,6 @@ def try_native_reflected_endpoint(
 
     from .temporal_hashlife_borders import edge_phase, growth_ports
 
-    if os.environ.get("NUMBER_COMPILER_ENABLE_REFLECTED_MULTIPLY") != "1":
-        return None
     ticks = 2 * steps
     width = arena.nodes[root].length
     if not 128 <= ticks <= 8192 or not 4 <= width <= 32 * ticks:
@@ -395,17 +469,16 @@ def try_native_reflected_endpoint(
     ledger = arena.ledger
     if ledger.max_nodes is not None or ledger.max_cache_entries is not None:
         return None
-    try:
-        native = cast(
-            _ReflectedMultiply,
-            import_module("number_compiler.kernels._reflected_multiply"),
-        )
-    except ModuleNotFoundError as error:
-        if error.name != "number_compiler.kernels._reflected_multiply":
-            raise
-        return None
+    if native is None:
+        native = _reflected_kernel()
+        if native is None:
+            return None
     slots = 128 * 1000 + 256 * (width + ticks + 256)
     if slots > 64 * 1024 * 1024:
+        return None
+    left, right = growth_ports(phase, steps)
+    final_width = width + left + right
+    if suffix_width_admitted is not None and not suffix_width_admitted(final_width):
         return None
     checkpoint = len(arena.nodes)
     try:
@@ -426,17 +499,25 @@ def try_native_reflected_endpoint(
                 raise ValueError("native reflected source has another issued phase")
             word = bytes(digit + 48 for digit in digits).decode("ascii")
             result = native.multiply(word, ticks)
-            left, right = growth_ports(phase, steps)
             if (
                 type(result) is not str
                 or not result.isascii()
                 or not result.isdecimal()
-                or len(result) != width + left + right
+                or len(result) != final_width
                 or edge_phase(divmod(int(result[:2]), 10), divmod(int(result[-2:]), 10))
                 != (phase + 2 * steps) % 4
             ):
                 raise ValueError("native reflected endpoint changed its issued borders")
-            return arena.word(tuple(ord(char) - 48 for char in result))
+            target = arena.word(tuple(ord(char) - 48 for char in result))
+            if suffix_width_admitted is not None:
+                ledger.bump(
+                    double_reverse_keys.DOUBLE_REVERSE_NATIVE_SUFFIX_TICKS, ticks
+                )
+                ledger.bump(
+                    double_reverse_keys.DOUBLE_REVERSE_REPRESENTED_GROWTH_CELLS,
+                    left + right,
+                )
+            return target
     except BaseException:
         arena.rollback_unpublished_suffix(checkpoint)
         raise

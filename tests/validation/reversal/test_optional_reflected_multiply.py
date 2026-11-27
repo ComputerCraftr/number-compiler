@@ -25,7 +25,7 @@ def _literal(seed: int, ticks: int) -> int:
     return seed
 
 
-def test_optional_reflected_is_called_only_when_enabled(
+def test_reflected_suffix_honors_explicit_opt_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     native = pytest.importorskip("number_compiler.kernels._reflected_multiply")
@@ -44,19 +44,62 @@ def test_optional_reflected_is_called_only_when_enabled(
         sys.setprofile(trace)
         with DoubleReverseTerm(73, 1024, max_steps=1024, max_state_bits=8192) as term:
             assert term.materialize(max_bits=8192) == expected
+            assert term.metrics()["double_reverse_native_suffix_ticks"] == 1016
+            assert term.metrics()["double_reverse_packed_diagonal_row_evaluations"] == 0
     finally:
         sys.setprofile(None)
     assert calls
 
     calls.clear()
-    monkeypatch.delenv("NUMBER_COMPILER_ENABLE_REFLECTED_MULTIPLY")
+    monkeypatch.setenv("NUMBER_COMPILER_ENABLE_REFLECTED_MULTIPLY", "0")
     try:
         sys.setprofile(trace)
         with DoubleReverseTerm(73, 1024, max_steps=1024, max_state_bits=8192) as term:
             assert term.materialize(max_bits=8192) == expected
+            assert term.metrics()["double_reverse_native_suffix_ticks"] == 0
+            assert (
+                term.metrics()["double_reverse_packed_diagonal_row_evaluations"] == 896
+            )
     finally:
         sys.setprofile(None)
     assert not calls
+
+
+def test_source_suffix_rejects_issued_border_on_wrong_clock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    native = pytest.importorskip("number_compiler.kernels._reflected_multiply")
+    from number_compiler.sequences.double_reverse.source_adapter import (
+        DoubleReverseSourceAdapter,
+    )
+    from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
+        DoubleReverseSourcePrefix,
+    )
+
+    issue = DoubleReverseSourceAdapter.certified_prefix_entry
+
+    def wrong_clock(
+        self: DoubleReverseSourceAdapter,
+        generation: int,
+        *,
+        max_prefix: int,
+        require_even_remainder: bool,
+    ) -> DoubleReverseSourcePrefix:
+        return issue(
+            self, generation, max_prefix=max_prefix, require_even_remainder=False
+        )
+
+    def forbidden(*_args: object) -> str:
+        raise AssertionError("foreign phase reached native multiplication")
+
+    monkeypatch.delenv("NUMBER_COMPILER_ENABLE_REFLECTED_MULTIPLY", raising=False)
+    monkeypatch.setattr(
+        DoubleReverseSourceAdapter, "certified_prefix_entry", wrong_clock
+    )
+    monkeypatch.setattr(native, "multiply", forbidden)
+    with DoubleReverseTerm(196, 513, max_steps=513, max_state_bits=8192) as term:
+        with pytest.raises(ValueError, match="wrong physical clock"):
+            term.materialize(max_bits=8192)
 
 
 def test_optional_reflected_bounds_and_missing_extension_fall_back(
@@ -160,6 +203,7 @@ def test_native_rejects_wrong_ordered_outlet_before_publication(
         @staticmethod
         def multiply(word: str, ticks: int) -> str:
             output = native.multiply(word, ticks)
+            assert isinstance(output, str)
             return output[:-2] + "0" + output[-1]
 
     def fake(name: str, package: str | None = None) -> object:
@@ -193,7 +237,7 @@ def test_same_installed_cli_opt_in_and_fallback_have_exact_output() -> None:
 
         assert Path(installed_python).is_absolute() and Path(installed_python).is_file()
     program = """\
-import pathlib, sys, sysconfig
+import json, pathlib, sys, sysconfig
 import number_compiler
 from number_compiler.kernels import _reflected_multiply as native
 if sys.argv.pop(1) == 'installed':
@@ -202,27 +246,30 @@ if sys.argv.pop(1) == 'installed':
         assert path is not None and any(pathlib.Path(path).resolve().is_relative_to(root) for root in roots)
 from number_compiler.api.cli import main
 calls = []
-def profile(frame, event, arg):
-    if event == 'c_call' and arg is native.multiply:
-        calls.append(1)
-sys.setprofile(profile)
-try:
-    status = main(sys.argv[1:])
-finally:
-    sys.setprofile(None)
-print('NATIVE_C_CALLS', len(calls), file=sys.stderr)
+multiply = native.multiply
+def observe(word, ticks):
+    calls.append([word,ticks])
+    return multiply(word, ticks)
+native.multiply = observe
+status = main(sys.argv[1:])
+print("NATIVE_SPANS", json.dumps(calls), file=sys.stderr)
 raise SystemExit(status)
 """
     outputs: dict[str, object] = {}
-    for label, enabled, ticks in (
-        ("enabled", True, 1024),
-        ("disabled", False, 1024),
-        ("short", True, 16),
+    for label, seed, enabled, ticks, spans in (
+        ("enabled", 73, "1", 1024, [1016]),
+        ("disabled", 73, "0", 1024, []),
+        ("default", 73, None, 1024, [1016]),
+        ("prefix16", 196, None, 1024, [1008]),
+        ("odd_clock", 73, None, 513, [504]),
+        ("missed_border", 11, None, 512, []),
+        ("short", 73, None, 16, []),
     ):
         env = dict(os.environ)
-        env.pop("NUMBER_COMPILER_ENABLE_REFLECTED_MULTIPLY", None)
-        if enabled:
-            env["NUMBER_COMPILER_ENABLE_REFLECTED_MULTIPLY"] = "1"
+        if enabled is None:
+            env.pop("NUMBER_COMPILER_ENABLE_REFLECTED_MULTIPLY", None)
+        else:
+            env["NUMBER_COMPILER_ENABLE_REFLECTED_MULTIPLY"] = enabled
         command = [
             installed_python or sys.executable,
             *(["-I"] if installed_python is not None else []),
@@ -231,7 +278,7 @@ raise SystemExit(status)
             "installed" if installed_python is not None else "source",
             "2rev10",
             "--seed",
-            "73",
+            str(seed),
             "--nth",
             str(ticks),
             "--max-steps",
@@ -246,9 +293,9 @@ raise SystemExit(status)
         result = subprocess.run(
             command, capture_output=True, text=True, check=True, env=env
         )
-        calls = int(result.stderr.strip().split("NATIVE_C_CALLS ")[-1])
-        assert (calls > 0) == (label == "enabled")
+        calls = json.loads(result.stderr.strip().split("NATIVE_SPANS ")[-1])
+        assert calls == [[str(_literal(seed, ticks - span)), span] for span in spans]
         output = json.loads(result.stdout)
-        assert output["value"] == str(_literal(73, ticks))
+        assert output["value"] == str(_literal(seed, ticks))
         outputs[label] = output
-    assert outputs["enabled"] == outputs["disabled"]
+    assert outputs["enabled"] == outputs["disabled"] == outputs["default"]

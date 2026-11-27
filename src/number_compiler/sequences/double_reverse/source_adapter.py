@@ -704,6 +704,15 @@ class DoubleReverseSourceAdapter:
         result: int | None = None
         powered_action: DoubleReversePortAction | None = None
         if (
+            prior.action.steps == 0
+            and prior.root == self.source.root
+            and 512 <= exact_action.steps <= 1024
+            and 0 < self.source.seed.bit_length() <= 16
+        ):
+            from .temporal_carry_spacetime import try_native_source_suffix
+
+            result = try_native_source_suffix(self, exact_action.steps)
+        if (
             exact_action.steps >= 256
             and self.source.seed.bit_length() >= 425
             and prior.action.steps == 0
@@ -731,7 +740,7 @@ class DoubleReverseSourceAdapter:
                         )
                     except UncertifiedPointedStencilError:
                         return self.padded_source_candidate(exact_action, source)
-        if exact_action.steps >= 2 and exact_action.steps % 2 == 0:
+        if result is None and exact_action.steps >= 2 and exact_action.steps % 2 == 0:
             phase = self.temporal_hashlife.certify(prior.root)
             if phase is not None:
                 f_steps = exact_action.steps // 2

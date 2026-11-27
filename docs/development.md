@@ -44,7 +44,12 @@ NUMBER_COMPILER_ENABLE_CF_RECIPROCAL=1 NUMBER_COMPILER_ENABLE_CF_CONTINUANT=1 nu
 
 The reciprocal CF producer also works in pure Python. The separate
 reflected C0 extension uses `NUMBER_COMPILER_BUILD_REFLECTED_MULTIPLY=1`
-at build time and `NUMBER_COMPILER_ENABLE_REFLECTED_MULTIPLY=1` at runtime.
+at build time. When installed, it automatically handles initial-source
+`2rev10` scheduler actions of 512–1,024 physical ticks for positive seeds
+of at most 16 bits. The issuer must reach a protected border within 16
+ticks with an even remainder, admit the physical widths and have an uncapped
+ledger. `NUMBER_COMPILER_ENABLE_REFLECTED_MULTIPLY=0` forces the Python
+route. Setting it to `1` also allows the existing bounded dyadic C0 calls.
 
 Use four-space indentation for C++. On macOS, use Homebrew LLVM to check
 formatting, C++20 compiler warnings, and clang-tidy under the command guard.
