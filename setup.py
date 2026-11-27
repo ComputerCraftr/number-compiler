@@ -37,6 +37,7 @@ if os.environ.get("NUMBER_COMPILER_BUILD_NATIVE_REVERSE") == "1":
                     "pair_half_kick.hpp",
                     "rev10.hpp",
                     "relative_return.hpp",
+                    "joint_slab.hpp",
                 )
             ],
             define_macros=[("PY_SSIZE_T_CLEAN", None)],

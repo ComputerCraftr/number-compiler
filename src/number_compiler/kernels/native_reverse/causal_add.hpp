@@ -8,6 +8,8 @@ struct Work {
     std::uint64_t states = 0, transition_cells = 0, endpoint_cells = 0,
                   block_cells = 0, bands = 0, joins = 0, pulls = 0, births = 0;
     std::uint64_t peak_table_bytes = 0, hinge_cells = 0;
+    std::uint64_t joint_bands = 0, joint_columns = 0, joint_probes = 0;
+    std::uint64_t joint_collar_cells = 0, joint_clock_13 = 0, joint_clock_7 = 0;
 };
 struct Result {
     std::string digits; // MSD-first; empty if the input is already the endpoint
@@ -26,7 +28,8 @@ struct FoldedResult {
 // Source and endpoint hold the outer half in LSD-first order. The optional
 // center is an ordinary decimal digit, or -1 for an even-width source.
 FoldedResult advance_folded(const std::vector<std::uint8_t> &half, int center,
-                            std::uint64_t steps, std::uint64_t byte_cap);
+                            std::uint64_t steps, std::uint64_t byte_cap,
+                            bool joint_enabled = false);
 struct GuardResult {
     std::uint32_t
         mask; // bit 0 failure, bit q+1 successful first-interior endpoint

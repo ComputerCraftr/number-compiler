@@ -108,7 +108,7 @@ PyObject *add(PyObject * /*unused*/, PyObject *args) {
     }
 }
 
-PyObject *add_folded(PyObject * /*unused*/, PyObject *args) {
+PyObject *add_folded_impl(PyObject *args, bool joint_enabled) {
     const char *source = nullptr;
     Py_ssize_t size = 0;
     PyObject *center_obj = nullptr, *steps_obj = nullptr, *cap_obj = nullptr;
@@ -143,12 +143,33 @@ PyObject *add_folded(PyObject * /*unused*/, PyObject *args) {
         return nullptr;
     }
     try {
-        const auto result = causal_add::advance_folded(symbols(source, size),
-                                                       int(center), steps, cap);
+        const auto result = causal_add::advance_folded(
+            symbols(source, size), int(center), steps, cap, joint_enabled);
         if (PyErr_CheckSignals() < 0) {
             return nullptr;
         }
         const auto &work = result.work;
+        if (joint_enabled) {
+            return Py_BuildValue(
+                "y#i(KKKKKKKKKKKKK)",
+                result.pairs.empty()
+                    ? ""
+                    : reinterpret_cast<const char *>(result.pairs.data()),
+                static_cast<Py_ssize_t>(result.pairs.size()), result.center,
+                static_cast<unsigned long long>(work.states),
+                static_cast<unsigned long long>(work.bands),
+                static_cast<unsigned long long>(work.joins),
+                static_cast<unsigned long long>(work.pulls),
+                static_cast<unsigned long long>(work.births),
+                static_cast<unsigned long long>(work.peak_table_bytes),
+                static_cast<unsigned long long>(work.hinge_cells),
+                static_cast<unsigned long long>(work.joint_bands),
+                static_cast<unsigned long long>(work.joint_columns),
+                static_cast<unsigned long long>(work.joint_probes),
+                static_cast<unsigned long long>(work.joint_collar_cells),
+                static_cast<unsigned long long>(work.joint_clock_13),
+                static_cast<unsigned long long>(work.joint_clock_7));
+        }
         return Py_BuildValue(
             "y#i(KKKKKKK)",
             result.pairs.empty()
@@ -166,6 +187,14 @@ PyObject *add_folded(PyObject * /*unused*/, PyObject *args) {
         translate_exception(std::current_exception());
         return nullptr;
     }
+}
+
+PyObject *add_folded(PyObject * /*unused*/, PyObject *args) {
+    return add_folded_impl(args, false);
+}
+
+PyObject *add_folded_joint4(PyObject * /*unused*/, PyObject *args) {
+    return add_folded_impl(args, true);
 }
 
 PyObject *guard98(PyObject * /*unused*/, PyObject *args) {
@@ -211,6 +240,13 @@ PyMethodDef methods[] = {
         add_folded,
         METH_VARARGS,
         "Compute a folded causal pair field.",
+    },
+    {
+        "add_folded_joint4",
+        add_folded_joint4,
+        METH_VARARGS,
+        "Compute a folded causal field using an admitted joint four-tick "
+        "action.",
     },
     {
         "guard98",

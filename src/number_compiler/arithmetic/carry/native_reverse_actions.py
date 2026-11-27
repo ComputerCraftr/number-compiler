@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass
@@ -44,6 +45,12 @@ class PairWork:
     births: int
     table_bytes: int
     hinge_cells: int = 0
+    joint_bands: int = 0
+    joint_columns: int = 0
+    joint_probes: int = 0
+    joint_collar_cells: int = 0
+    joint_clock_13: int = 0
+    joint_clock_7: int = 0
 
 
 class _Kernels(Protocol):
@@ -167,6 +174,13 @@ def _record_pair_work(ledger: ResourceLedger, work: PairWork) -> None:
     ledger.bump(_keys.NATIVE_PAIR_TABLE_BYTES, work.table_bytes)
     if work.hinge_cells:
         ledger.bump(_keys.NATIVE_PAIR_HINGE_CELLS, work.hinge_cells)
+    if work.joint_bands or work.joint_probes:
+        ledger.bump(_keys.NATIVE_PAIR_JOINT_BANDS, work.joint_bands)
+        ledger.bump(_keys.NATIVE_PAIR_JOINT_COLUMNS, work.joint_columns)
+        ledger.bump(_keys.NATIVE_PAIR_JOINT_PROBES, work.joint_probes)
+        ledger.bump(_keys.NATIVE_PAIR_JOINT_COLLAR_CELLS, work.joint_collar_cells)
+        ledger.bump(_keys.NATIVE_PAIR_JOINT_CLOCK_13, work.joint_clock_13)
+        ledger.bump(_keys.NATIVE_PAIR_JOINT_CLOCK_7, work.joint_clock_7)
 
 
 def native_pair_action(
@@ -232,9 +246,21 @@ def native_folded_pair_action(
         half = source_half()
         if 2 * len(half) + (center is not None) != source_width:
             raise ValueError("native Q19 source width changed during admission")
-        pairs, raw_center, counters = native.add_folded(
-            half, -1 if center is None else center, steps, _TABLE_CAP
-        )
+        joint = getattr(native, "add_folded_joint4", None)
+        if os.environ.get("NUMBER_COMPILER_ENABLE_Q19_JOINT4") == "1" and callable(
+            joint
+        ):
+            apply_joint = cast(
+                Callable[[bytes, int, int, int], tuple[bytes, int, tuple[int, ...]]],
+                joint,
+            )
+            pairs, raw_center, counters = apply_joint(
+                half, -1 if center is None else center, steps, _TABLE_CAP
+            )
+        else:
+            pairs, raw_center, counters = native.add_folded(
+                half, -1 if center is None else center, steps, _TABLE_CAP
+            )
         work = PairWork(*counters)
         if (
             not -1 <= raw_center <= 9
@@ -243,6 +269,11 @@ def native_folded_pair_action(
             or (pairs and (not 0 < pairs[0] <= 18 or max(pairs) > 18))
             or (not pairs and raw_center < 0)
             or work.table_bytes > _TABLE_CAP
+            or 4 * work.joint_bands > steps
+            or work.joint_bands > work.bands
+            or 3 * work.joint_bands > work.births
+            or work.joint_columns < 48 * work.joint_bands
+            or work.joint_clock_13 + work.joint_clock_7 != work.joint_bands
         ):
             raise RuntimeError("invalid native folded causal endpoint")
         _record_pair_work(ledger, work)

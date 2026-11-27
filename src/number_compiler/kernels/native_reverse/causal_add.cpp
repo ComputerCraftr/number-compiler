@@ -1,4 +1,5 @@
 #include "causal_add.hpp"
+#include "joint_slab.hpp"
 #include "pair_half_kick.hpp"
 #include <algorithm>
 #include <array>
@@ -691,7 +692,8 @@ Result advance(const Word &source, U steps, int height, int block_width, U cap,
             "invalid endpoint center");
     return result;
 }
-FoldedResult advance_folded(const Word &half, int center, U steps, U cap) {
+FoldedResult advance_folded(const Word &half, int center, U steps, U cap,
+                            bool joint_enabled) {
     require(center >= -1 && center <= 9 && (!half.empty() || center >= 0) &&
                 half.size() <= 50000000 && steps <= 65536,
             "invalid folded causal extent");
@@ -705,44 +707,64 @@ FoldedResult advance_folded(const Word &half, int center, U steps, U cap) {
     if (steps == 0 || (half.empty() && center == 0)) {
         return result;
     }
-    const int height = int(std::min<U>(2, steps));
-    Budget budget{cap};
-    auto levels = compile_levels(height, budget, result.work);
-    auto cells = compile_cells(levels, budget, result.work);
-    auto hinges = compile_hinges(levels, cells, budget, result.work);
-    BlockTable main(levels[std::size_t(height)], cells[std::size_t(height)],
-                    height, 1, budget, result.work);
-    std::vector<BlockTable> tail;
-    if ((steps % U(height)) != 0U) {
-        tail.emplace_back(levels[1], cells[1], 1, 1, budget, result.work);
-    }
-    result.work.peak_table_bytes = budget.peak;
     std::vector<I> state(half.begin(), half.end());
-    std::vector<U> addresses;
-    std::size_t count = half.size(),
-                width = (2 * count) + unsigned(center >= 0);
-    for (U done = 0; done < steps;) {
-        const bool complete = steps - done >= U(height);
-        const BlockTable &table = complete ? main : tail.front();
-        const auto &hinge = hinges[std::size_t(table.h)];
-        const Hinge close =
-            run_folded(table, state, center, hinge, addresses, result.work);
-        const unsigned inner = unsigned(center >= 0) + close.births;
-        U digits = close.digits;
-        width += close.births;
-        const std::size_t next_count = width / 2;
-        state.resize(next_count, 0);
-        U scale = (inner != 0U) ? decimal_power(inner - 1) : 1;
-        for (unsigned j = 0; j < inner / 2; ++j) {
-            const int a = int(digits % 10), b = int(digits / scale);
-            state[count++] = I(a + b);
-            digits = (digits % scale) / 10;
-            scale /= 100;
+    std::size_t count = half.size();
+    std::size_t width = (2 * count) + unsigned(center >= 0);
+    U done = 0;
+    joint::Work joint_work;
+    if (joint_enabled) {
+        while ((steps - done) >= 4U &&
+               joint::apply(state, center, joint_work)) {
+            done += 4U;
+            count = state.size();
+            width = (2 * count) + unsigned(center >= 0);
         }
-        center = ((inner % 2) != 0U) ? int(digits) : -1;
-        require(count == next_count && center < 10,
-                "invalid moving center endpoint");
-        done += U(table.h);
+    }
+    result.work.joint_bands = joint_work.bands;
+    result.work.joint_columns = joint_work.columns;
+    result.work.joint_probes = joint_work.probes;
+    result.work.joint_collar_cells = joint_work.collar_cells;
+    result.work.joint_clock_13 = joint_work.clock_13;
+    result.work.joint_clock_7 = joint_work.clock_7;
+    result.work.births = 3U * joint_work.bands;
+    result.work.bands = joint_work.bands;
+    if (done < steps) {
+        const int height = int(std::min<U>(2, steps - done));
+        Budget budget{cap};
+        auto levels = compile_levels(height, budget, result.work);
+        auto cells = compile_cells(levels, budget, result.work);
+        auto hinges = compile_hinges(levels, cells, budget, result.work);
+        BlockTable main(levels[std::size_t(height)], cells[std::size_t(height)],
+                        height, 1, budget, result.work);
+        std::vector<BlockTable> tail;
+        if (((steps - done) % U(height)) != 0U) {
+            tail.emplace_back(levels[1], cells[1], 1, 1, budget, result.work);
+        }
+        result.work.peak_table_bytes = budget.peak;
+        std::vector<U> addresses;
+        for (; done < steps;) {
+            const bool complete = steps - done >= U(height);
+            const BlockTable &table = complete ? main : tail.front();
+            const auto &hinge = hinges[std::size_t(table.h)];
+            const Hinge close =
+                run_folded(table, state, center, hinge, addresses, result.work);
+            const unsigned inner = unsigned(center >= 0) + close.births;
+            U digits = close.digits;
+            width += close.births;
+            const std::size_t next_count = width / 2;
+            state.resize(next_count, 0);
+            U scale = (inner != 0U) ? decimal_power(inner - 1) : 1;
+            for (unsigned j = 0; j < inner / 2; ++j) {
+                const int a = int(digits % 10), b = int(digits / scale);
+                state[count++] = I(a + b);
+                digits = (digits % scale) / 10;
+                scale /= 100;
+            }
+            center = ((inner % 2) != 0U) ? int(digits) : -1;
+            require(count == next_count && center < 10,
+                    "invalid moving center endpoint");
+            done += U(table.h);
+        }
     }
     result.pairs.assign(state.begin(), state.end());
     result.center = center;
