@@ -89,12 +89,13 @@ def test_tight_remaining_budget_keeps_pointed_source(
     ) -> Pow5OrderedBlock:
         pytest.fail("packed lookahead must follow capacity admission")
 
+    monkeypatch.setenv("NUMBER_COMPILER_ENABLE_CF_RECIPROCAL", "1")
     monkeypatch.setattr(Pow5OrderedBlockSource, "next_block", eager_block)
     ledger = ResourceLedger(max_nodes=max_nodes)
     owner = ledger.register("test live owner", "cf test")
     ledger.reserve(owner, nodes=already_used)
-    result = continued_fraction_cylinder(20, 64, ledger=ledger)
-    count, matrix = literal_cylinder(20, 64)
+    result = continued_fraction_cylinder(128, 64, ledger=ledger)
+    count, matrix = literal_cylinder(128, 64)
     assert result["coefficient_count"] == count
     assert result["matrix"] == matrix
     assert ledger.nodes == already_used
@@ -196,4 +197,21 @@ def test_short_horizon_spatial_admission(
     assert result["coefficient_count"] == count
     assert result["matrix"] == matrix
     assert bool(issued) is uses_spatial
+    assert ledger.nodes == ledger.entries == 0
+
+
+def test_full_horizon_uses_reciprocal_source_without_spatial_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("reciprocal source must not construct spatial rows")
+
+    monkeypatch.setenv("NUMBER_COMPILER_ENABLE_CF_RECIPROCAL", "1")
+    monkeypatch.setattr(Pow5SpatialTrace, "__init__", forbidden)
+    ledger = ResourceLedger(max_nodes=10_000)
+    result = continued_fraction_cylinder(4096, 20_000, ledger=ledger)
+    assert result["status"] == "available"
+    assert result["coefficient_count"] == 540
+    digits = "".join(str(5**n) for n in range(1, 50))[:540]
+    assert result["matrix"] == literal_matrix([int(d) for d in digits])
     assert ledger.nodes == ledger.entries == 0

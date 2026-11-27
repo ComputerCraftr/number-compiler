@@ -144,3 +144,76 @@ def test_public_spatial_cylinder_uses_settled_action_before_trace(
     assert observed and min(first for first, _ in observed) == 1
     assert max(last for _, last in observed) >= 4
     assert phases == {3, 4}
+
+
+def test_opt_in_cylinder_uses_reciprocal_actions_at_full_horizon(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from number_compiler.arithmetic.automata.carry_spacetime_trace import (
+        Pow5SpatialTrace,
+    )
+    from number_compiler.sequences.antihydra.mahler_pow5_ordered_blocks import (
+        Pow5OrderedBlockSource,
+    )
+
+    args = [
+        "antihydra",
+        "--nth",
+        "0",
+        "--no-value",
+        "--format",
+        "json",
+        "--info",
+        "arithmetic.continued-fraction",
+        "--safety-horizon",
+        "4096",
+    ]
+    monkeypatch.delenv("NUMBER_COMPILER_ENABLE_CF_RECIPROCAL", raising=False)
+    assert main(args) == 0
+    expected = json.loads(capsys.readouterr().out)
+    calls = 0
+    issue = Pow5OrderedBlockSource._next_reciprocal
+
+    def watched(source: Pow5OrderedBlockSource, rows: int, limit: int) -> object:
+        nonlocal calls
+        calls += 1
+        return issue(source, rows, limit)
+
+    def no_trace(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("reciprocal source cannot construct a spatial trace")
+
+    monkeypatch.setenv("NUMBER_COMPILER_ENABLE_CF_RECIPROCAL", "1")
+    monkeypatch.setattr(Pow5OrderedBlockSource, "_next_reciprocal", watched)
+    monkeypatch.setattr(Pow5SpatialTrace, "__init__", no_trace)
+    assert main(args) == 0
+    actual = json.loads(capsys.readouterr().out)
+    assert actual == expected
+    assert calls > 0
+    assert actual["info"]["arithmetic.continued-fraction"]["coefficient_count"] == 540
+
+
+def test_opt_in_cylinder_preserves_bounded_unknown_packet(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    args = [
+        "antihydra",
+        "--nth",
+        "0",
+        "--no-value",
+        "--format",
+        "json",
+        "--info",
+        "arithmetic.continued-fraction",
+        "--safety-horizon",
+        "4096",
+        "--continued-fraction-max-coefficients",
+        "1",
+    ]
+    monkeypatch.delenv("NUMBER_COMPILER_ENABLE_CF_RECIPROCAL", raising=False)
+    expected_status = main(args)
+    expected = json.loads(capsys.readouterr().out)
+    monkeypatch.setenv("NUMBER_COMPILER_ENABLE_CF_RECIPROCAL", "1")
+    assert main(args) == expected_status == 3
+    actual = json.loads(capsys.readouterr().out)
+    assert actual == expected
+    assert actual["info"]["arithmetic.continued-fraction"]["status"] == "unknown"

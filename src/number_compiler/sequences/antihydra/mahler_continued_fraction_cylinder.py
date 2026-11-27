@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass
@@ -93,12 +94,16 @@ def _ordered_blocks(
         Pow5OrderedBlockSource,
     )
 
+    reciprocal = (
+        horizon < _SPATIAL_CYLINDER_MIN_HORIZON
+        or os.environ.get("NUMBER_COMPILER_ENABLE_CF_RECIPROCAL") == "1"
+    )
     packed = resources.enter_context(
         Pow5OrderedBlockSource(
             ledger,
             shared_cache=shared_cache,
-            spatial=horizon >= _SPATIAL_CYLINDER_MIN_HORIZON,
-            reciprocal=horizon < _SPATIAL_CYLINDER_MIN_HORIZON,
+            spatial=not reciprocal,
+            reciprocal=reciprocal,
         )
     )
 
