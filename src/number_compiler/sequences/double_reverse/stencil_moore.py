@@ -31,22 +31,25 @@ def stencil_from_ports(left_high: int, digit: int, right_f5: int) -> int:
     return _stencil_kernel(left_high, digit, right_f5)
 
 
-# Each neighboring output uses the same 100 one-cell responses. Factoring
-# the ordered two-output port this way also preserves its left/right order.
-_STENCIL_ROWS = bytes(
-    stencil_from_ports(left_high, digit, right_f5)
-    for left_high in range(2)
-    for digit in range(10)
-    for right_f5 in range(5)
+# The right inlet can force zero, select the center threshold, or force one.
+_RIGHT_CLASS = bytes((0, 0, 1, 2, 2)) * 2
+# The even base digit and the carry at the tie identify each response row.
+_PORT_RESPONSES = tuple(
+    bytes((base, base + tie, base + 1)) for base in range(0, 10, 2) for tie in (0, 1)
 )
+_CENTER_ROWS = tuple(
+    tuple(
+        _PORT_RESPONSES[(4 * center + 2 * high) % 10 + (center >= 5)]
+        for center in range(10)
+    )
+    for high in (0, 1)
+)
+_LEFT_ROWS = (_CENTER_ROWS[0],) * 5 + (_CENTER_ROWS[1],) * 5
 
 
 def f_port_cell(a: int, b: int, c: int, d: int) -> tuple[int, int]:
     """Resolve two adjacent F responses on an admitted four-digit window."""
-    return (
-        _STENCIL_ROWS[((a >= 5) * 10 + b) * 5 + c % 5],
-        _STENCIL_ROWS[((b >= 5) * 10 + c) * 5 + d % 5],
-    )
+    return _LEFT_ROWS[a][b][_RIGHT_CLASS[c]], _LEFT_ROWS[b][c][_RIGHT_CLASS[d]]
 
 
 def stencil_cell(left: int, digit: int, right: int) -> int:
