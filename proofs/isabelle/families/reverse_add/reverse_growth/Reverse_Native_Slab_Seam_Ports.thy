@@ -2,46 +2,21 @@ theory Reverse_Native_Slab_Seam_Ports
   imports Reverse_Native_Slab_Outer_Packet
 begin
 
-text \<open>The source interval supplies both physical seam ports and the
-four-tick clock. The index bounds below refer to the original physical source;
-no intermediate row or selected port is assumed by the caller.\<close>
-
-theorem slab_outer_source_seam_ports:
-  assumes valid: "valid_pair (18 # z # rest)"
-      and positive: "0 < left"
-      and span: "left + 16 \<le> right"
-      and upper: "right \<le> length (18 # z # rest)"
+theorem slab_first_birth_source_seam_ports:
+  assumes valid: "valid_pair source" and growth: "carry_out False source"
+      and positive: "0 < left" and span: "left + 16 \<le> right"
+      and upper: "right \<le> length source"
       and symbols: "\<And>j. left \<le> j \<Longrightarrow> j < right \<Longrightarrow>
-        reverse_native_slab_source_symbol ((18 # z # rest) ! j)"
-  shows "slab_core_clock_admitted
-      [carry_out False (18 # z # rest),
-       carry_out False (step (18 # z # rest)),
-       carry_out False (step (step (18 # z # rest))),
-       carry_out False (step (step (step (18 # z # rest))))]"
-    and "carry_out False (18 # z # rest) \<and>
-      carry_out False (step (step (18 # z # rest))) \<and>
-      (carry_out False (step (18 # z # rest)) \<noteq>
-        carry_out False (step (step (step (18 # z # rest)))))"
-    and "length (step (step (step (step (18 # z # rest))))) =
-      length (18 # z # rest) + 3"
-    and "\<forall>t<4. let row = (step ^^ t) (18 # z # rest);
-          fixed = left + 8; middle = right - 12 + t
-        in valid_pair row \<and> fixed < length row \<and> middle < length row \<and>
-          (if t = 0 then reverse_native_slab_source_symbol (row ! fixed)
-            else 9 < row ! fixed) \<and>
-          (if t = 0 then reverse_native_slab_source_symbol (row ! middle)
-            else 9 < row ! middle)"
+        reverse_native_slab_source_symbol (source ! j)"
+  shows "\<forall>t<4. let row = (step ^^ t) source; fixed = left + 8; middle = right - 12 + t in
+      valid_pair row \<and> fixed < length row \<and> middle < length row \<and>
+      (if t = 0 then reverse_native_slab_source_symbol (row ! fixed) else 9 < row ! fixed) \<and>
+      (if t = 0 then reverse_native_slab_source_symbol (row ! middle) else 9 < row ! middle)"
 proof -
-  let ?s = "18 # z # rest"
+  let ?s = "source"
   let ?s1 = "step ?s"
   let ?s2 = "step ?s1"
   let ?s3 = "step ?s2"
-  have admitted: "slab_core_clock_admitted
-    [carry_out False ?s, carry_out False ?s1,
-     carry_out False ?s2, carry_out False ?s3]"
-    by (rule slab_outer_eighteen_physical_clock_admitted[OF valid])
-  have growth: "carry_out False ?s"
-    using admitted by (auto simp: slab_core_clock_admitted_def)
   have v1: "valid_pair ?s1" by (rule valid_pair_successor[OF valid])
   have v2: "valid_pair ?s2" by (rule valid_pair_successor[OF v1])
   have v3: "valid_pair ?s3" by (rule valid_pair_successor[OF v2])
@@ -77,14 +52,6 @@ proof -
     show "reverse_native_slab_source_symbol (?s ! j)"
       by (rule symbols) (use lower high span in arith)+
   qed
-  show "slab_core_clock_admitted
-      [carry_out False ?s, carry_out False ?s1,
-       carry_out False ?s2, carry_out False ?s3]" by (rule admitted)
-  show "carry_out False ?s \<and> carry_out False ?s2 \<and>
-      (carry_out False ?s1 \<noteq> carry_out False ?s3)"
-    using admitted by (auto simp: slab_core_clock_admitted_def)
-  show "length (step (step (step (step ?s)))) = length ?s + 3"
-    using admitted by (auto simp: slab_core_clock_admitted_def length_digits_exact)
   show "\<forall>t<4. let row = (step ^^ t) ?s; fixed = left + 8; middle = right - 12 + t
         in valid_pair row \<and> fixed < length row \<and> middle < length row \<and>
           (if t = 0 then reverse_native_slab_source_symbol (row ! fixed)
@@ -152,8 +119,62 @@ proof -
   qed
 qed
 
+
+text \<open>The source interval supplies both physical seam ports and the
+four-tick clock. The index bounds below refer to the original physical source;
+no intermediate row or selected port is assumed by the caller.\<close>
+
+theorem slab_outer_source_seam_ports:
+  assumes valid: "valid_pair (18 # z # rest)"
+      and positive: "0 < left"
+      and span: "left + 16 \<le> right"
+      and upper: "right \<le> length (18 # z # rest)"
+      and symbols: "\<And>j. left \<le> j \<Longrightarrow> j < right \<Longrightarrow>
+        reverse_native_slab_source_symbol ((18 # z # rest) ! j)"
+  shows "slab_core_clock_admitted
+      [carry_out False (18 # z # rest),
+       carry_out False (step (18 # z # rest)),
+       carry_out False (step (step (18 # z # rest))),
+       carry_out False (step (step (step (18 # z # rest))))]"
+    and "carry_out False (18 # z # rest) \<and>
+      carry_out False (step (step (18 # z # rest))) \<and>
+      (carry_out False (step (18 # z # rest)) \<noteq>
+        carry_out False (step (step (step (18 # z # rest)))))"
+    and "length (step (step (step (step (18 # z # rest))))) =
+      length (18 # z # rest) + 3"
+    and "\<forall>t<4. let row = (step ^^ t) (18 # z # rest);
+          fixed = left + 8; middle = right - 12 + t
+        in valid_pair row \<and> fixed < length row \<and> middle < length row \<and>
+          (if t = 0 then reverse_native_slab_source_symbol (row ! fixed)
+            else 9 < row ! fixed) \<and>
+          (if t = 0 then reverse_native_slab_source_symbol (row ! middle)
+            else 9 < row ! middle)"
+proof -
+  let ?s = "18 # z # rest"
+  have admitted: "slab_core_clock_admitted
+    [carry_out False ?s, carry_out False (step ?s),
+     carry_out False (step (step ?s)), carry_out False (step (step (step ?s)))]"
+    by (rule slab_outer_eighteen_physical_clock_admitted[OF valid])
+  have growth: "carry_out False ?s"
+    using admitted by (auto simp: slab_core_clock_admitted_def)
+  show "slab_core_clock_admitted
+      [carry_out False ?s, carry_out False (step ?s),
+       carry_out False (step (step ?s)), carry_out False (step (step (step ?s)))]"
+    by (rule admitted)
+  show "carry_out False ?s \<and> carry_out False (step (step ?s)) \<and>
+      (carry_out False (step ?s) \<noteq> carry_out False (step (step (step ?s))))"
+    using admitted by (auto simp: slab_core_clock_admitted_def)
+  show "length (step (step (step (step ?s)))) = length ?s + 3"
+    using admitted by (auto simp: slab_core_clock_admitted_def length_digits_exact)
+  show "\<forall>t<4. let row = (step ^^ t) ?s; fixed = left + 8; middle = right - 12 + t
+        in valid_pair row \<and> fixed < length row \<and> middle < length row \<and>
+          (if t = 0 then reverse_native_slab_source_symbol (row ! fixed) else 9 < row ! fixed) \<and>
+          (if t = 0 then reverse_native_slab_source_symbol (row ! middle) else 9 < row ! middle)"
+    by (rule slab_first_birth_source_seam_ports[OF valid growth positive span upper symbols])
+qed
+
 ML \<open>
-  val checked = @{thms slab_outer_source_seam_ports};
+  val checked = @{thms slab_first_birth_source_seam_ports slab_outer_source_seam_ports};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Native slab seam ports depend on an oracle";
   val _ = if Thm_Deps.has_skip_proof checked then error "Skipped native slab seam ports" else ();

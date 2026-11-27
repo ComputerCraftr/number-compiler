@@ -80,6 +80,8 @@ session Reverse_Growth_Admission in reverse_growth = Reverse_Residuals +
     Reverse_Native_Slab_Intervals
     Reverse_Native_Slab_Fourth_Row
     Reverse_Native_Slab_Physical_Packet
+    Reverse_Native_Slab_Two_Birth
+    Reverse_Native_Slab_Generic_Joint
     Reverse_Native_Slab_Outer_Packet
     Reverse_Native_Slab_Seam_Ports
     Reverse_Native_Slab_Collars

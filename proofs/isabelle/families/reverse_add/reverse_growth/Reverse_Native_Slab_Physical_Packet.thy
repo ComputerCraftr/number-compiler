@@ -45,20 +45,55 @@ qed
 
 text \<open>For an authenticated resetting collar, the four physical rows
 select the two closed packets using the source's actual carry clock.\<close>
-theorem slab_core_physical_four_packet:
+lemma slab_core_1010_packet:
+  fixes b c d :: bool
+  shows "slab_core_quiet (slab_core_birth
+      (slab_core_quiet (slab_core_initial b c))
+      (slab_core_quiet (slab_core_initial c d))) =
+    18 - 4 * (slab_core_bit b + 2 * slab_core_bit c + slab_core_bit d)"
+  unfolding slab_core_initial_def slab_core_bit_def slab_core_birth_def
+    slab_core_quiet_def reverse_native_slab_birth_def reverse_native_slab_quiet_def
+    reverse_native_slab_digit_def carry_bit_def
+  by (cases b; cases c; cases d; simp_all)
+
+lemma slab_core_1001_packet:
+  fixes b c d :: bool
+  shows "slab_core_birth
+      (slab_core_quiet (slab_core_quiet (slab_core_initial b c)))
+      (slab_core_quiet (slab_core_quiet (slab_core_initial c d))) =
+    18 - 4 * (slab_core_bit b + 2 * slab_core_bit c + slab_core_bit d)"
+  unfolding slab_core_initial_def slab_core_bit_def slab_core_birth_def
+    slab_core_quiet_def reverse_native_slab_birth_def reverse_native_slab_quiet_def
+    reverse_native_slab_digit_def carry_bit_def
+  by (cases b; cases c; cases d; simp_all)
+
+lemma slab_core_1100_packet:
+  fixes b c d :: bool
+  shows "slab_core_quiet (slab_core_quiet (slab_core_birth
+      (slab_core_initial b c) (slab_core_initial c d))) =
+    18 - 4 * (slab_core_bit b + 2 * slab_core_bit c + slab_core_bit d)"
+  unfolding slab_core_initial_def slab_core_bit_def slab_core_birth_def
+    slab_core_quiet_def reverse_native_slab_birth_def reverse_native_slab_quiet_def
+    reverse_native_slab_digit_def carry_bit_def
+  by (cases b; cases c; cases d; simp_all)
+
+theorem slab_core_physical_four_packets:
   assumes valid: "valid_pair source" and lower: "5 < i" and upper: "i + 4 < length source"
     and symbols: "\<And>j. i - 4 \<le> j \<Longrightarrow> j < i + 4 \<Longrightarrow>
       reverse_native_slab_source_symbol (source ! j)"
     and growth: "carry_out False source"
-    and clock: "(\<not> carry_out False (step source) \<and> carry_out False (step (step source)) \<and> carry_out False (step (step (step source)))) \<or>
-       (carry_out False (step source) \<and> carry_out False (step (step source)) \<and> \<not> carry_out False (step (step (step source))))"
+
   defines "s1 \<equiv> step source" and "s2 \<equiv> step (step source)" and "s3 \<equiv> step (step (step source))"
     and "a \<equiv> source ! (i - 3) \<noteq> 18"
     and "b \<equiv> source ! (i - 2) \<noteq> 18"
     and "c \<equiv> source ! (i - 1) \<noteq> 18"
     and "d \<equiv> source ! i \<noteq> 18"
-  shows "step s3 ! i = 18 - 2 * (slab_core_bit a + 3 * slab_core_bit b +
-      3 * slab_core_bit c + slab_core_bit d)"
+  shows "(((\<not> carry_out False (step source) \<and> carry_out False (step (step source)) \<and> carry_out False (step (step (step source)))) \<or>
+       (carry_out False (step source) \<and> carry_out False (step (step source)) \<and> \<not> carry_out False (step (step (step source))))) \<longrightarrow> step s3 ! i = 18 - 2 * (slab_core_bit a + 3 * slab_core_bit b +
+      3 * slab_core_bit c + slab_core_bit d)) \<and>
+    (((\<not> carry_out False (step source) \<and> carry_out False (step (step source)) \<and> \<not> carry_out False (step (step (step source)))) \<or>
+      (\<not> carry_out False (step source) \<and> \<not> carry_out False (step (step source)) \<and> carry_out False (step (step (step source)))) \<or>
+      (carry_out False (step source) \<and> \<not> carry_out False (step (step source)) \<and> \<not> carry_out False (step (step (step source))))) \<longrightarrow> step s3 ! i = 18 - 4 * (slab_core_bit b + 2 * slab_core_bit c + slab_core_bit d))"
 proof -
   have valid1: "valid_pair s1" unfolding s1_def by (rule valid_pair_successor[OF valid])
   have valid2: "valid_pair s2" using valid_pair_successor[OF valid1] by (simp add: s2_def s1_def)
@@ -140,9 +175,31 @@ proof -
   have b3: "s3 ! i = (if carry_out False s2 then slab_core_birth (s2 ! (i - 1)) (s2 ! i) else slab_core_quiet (s2 ! i))"
     using e3[rule_format, OF t2] by simp
   show ?thesis
-    using clock e4 a1 b1 c1 z2 a2 b2 a3 b3 slab_core_1011_packet[where a=a and b=b and c=c and d=d] slab_core_1110_packet[where a=a and b=b and c=c and d=d]
+    using e4 a1 b1 c1 z2 a2 b2 a3 b3
+      slab_core_1011_packet[where a=a and b=b and c=c and d=d]
+      slab_core_1110_packet[where a=a and b=b and c=c and d=d]
+      slab_core_1010_packet[where b=b and c=c and d=d]
+      slab_core_1001_packet[where b=b and c=c and d=d]
+      slab_core_1100_packet[where b=b and c=c and d=d]
     by (auto simp: slab_core_birth_commute s1_def s2_def s3_def)
 qed
+
+theorem slab_core_physical_four_packet:
+  assumes valid: "valid_pair source" and lower: "5 < i" and upper: "i + 4 < length source"
+    and symbols: "\<And>j. i - 4 \<le> j \<Longrightarrow> j < i + 4 \<Longrightarrow>
+      reverse_native_slab_source_symbol (source ! j)"
+    and growth: "carry_out False source"
+    and clock: "(\<not> carry_out False (step source) \<and> carry_out False (step (step source)) \<and> carry_out False (step (step (step source)))) \<or>
+       (carry_out False (step source) \<and> carry_out False (step (step source)) \<and> \<not> carry_out False (step (step (step source))))"
+  defines "s1 \<equiv> step source" and "s2 \<equiv> step (step source)" and "s3 \<equiv> step (step (step source))"
+    and "a \<equiv> source ! (i - 3) \<noteq> 18"
+    and "b \<equiv> source ! (i - 2) \<noteq> 18"
+    and "c \<equiv> source ! (i - 1) \<noteq> 18"
+    and "d \<equiv> source ! i \<noteq> 18"
+  shows "step s3 ! i = 18 - 2 * (slab_core_bit a + 3 * slab_core_bit b +
+      3 * slab_core_bit c + slab_core_bit d)"
+  using slab_core_physical_four_packets[OF valid lower upper symbols growth] clock
+  by (simp add: s1_def s2_def s3_def a_def b_def c_def d_def)
 
 ML \<open>
   val checked = @{thms slab_core_birth_commute slab_core_step_interval_equations slab_core_first_interval_equations slab_core_physical_four_packet};
