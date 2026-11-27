@@ -93,6 +93,55 @@ and found zero recursion cycles and package violations. Its remaining
 finding is the pre-existing 1,017-line double-reverse ring theory. The
 global proof index still reports inherited audit and Comma authority gaps.
 
+### Final reciprocal tile and two-birth Q19 slabs after `cf8547fd`
+
+At horizon 4,096 the opt-in reciprocal cylinder retains the first 14
+ordered head prefixes of the final row plus the identity in a 480-byte
+native buffer. The tile authenticates the buffer and reserves up to 105
+ledger slots. Its six reads of the 22-digit irregular head became one
+read at acquisition and five clipped actions during descent. The complete
+540-coefficient packet matched. The existing settled suffix handles the
+last six digits. Capped requests can take the previous exact route.
+
+On the installed wheel at `40a76e15`, median final-tile acquisition
+took 24.83 to 30.33 μs. The six checked segment requests, including
+the first-row boundary, took 16.58 to 11.33 μs. Median combined owner
+time was 41.71 to 41.92 μs. Five paired cold/warm trials took
+125.37 to 125.82 ms and 7.269 to 7.253 ms. A second installed comparison
+gave 128.19 to 128.10 ms and 7.221 to 7.239 ms. The registered
+`Mahler_Source_Transport` theorem recovers the physical clip from the
+ordered prefix matrices and their determinant signs. Dispatch is limited
+to an admitted complete two-row tile with a 28–32-digit second row.
+
+For the opt-in Q19 four-tick action, `Reverse_Growth_Admission` checked
+the complete pair field, both collars, center digit and exact width
+increase for chronological clocks 1010, 1001 and 1100. The compact
+outer-collar clock also establishes the initial birth when the outer
+pair sum is nine. The previous three-birth clocks retain their own guard.
+Installed 1010 and 1100 CLI fixtures each entered a two-birth slab and
+matched literal 1,024-step endpoints. On 1010 the slab consumed 437
+core columns, made 544 admission probes and visited 484 collar cells.
+Joins fell from 329,398 to 328,308. Five cold pairs took 275.05 to
+271.99 ms. Seven same-owner pairs took 6.841 to 6.851 ms for the first
+publication and 0.01183 to 0.01154 ms for a completed hit.
+
+Seed 196 reached clocks 1010 and 0101 at generations 1,023 and 1,024.
+Its longest protected folded run through generation 4,096 was eight. The
+installed CLI used its folded fallback. The 1000 clock remains outside
+slab dispatch. A side-four reflected trial at 4,096 ticks on the
+153-digit source cut tile lookups from 535,711 to 301,530 and increased
+setup from 500 to 5,000 table entries. Cold CLI rose from 188.12 to
+189.61 ms and warm from 34.78 to 36.29 ms. The receiving reflected
+selection remains in use.
+
+The CF execution and proof landed in `6316930` and `40a76e15`.
+The Q19 changes landed in `22d82383`, `9d4fff64` and `2e270d5b`.
+Pure-Python and native wheels passed installed CLI checks on macOS and
+Linux. The focused installed selection passed 51 tests. The default
+suite on `c0f42c0f` passed 14,077 tests and reproduced all six baseline
+failures by test ID. P0 passed 77 and reproduced its thirteen baseline
+failures.
+
 ### Changing CF clips and short reflected admission after `e826457a`
 
 The 4,096-tick reciprocal cylinder issued eleven tiles. Only the last
