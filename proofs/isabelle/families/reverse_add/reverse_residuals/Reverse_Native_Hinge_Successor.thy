@@ -96,8 +96,50 @@ proof -
     using hinge_physical_list_half[of half "case center of None \<Rightarrow> [] | Some d \<Rightarrow> [2*d]"]
     by (cases center) (simp_all add: reverse_native_hinge_source_def reverse_native_hinge_inner_inlet_def carry_out_def middle)
 qed
+
+text \<open>An ordered pair of columns can share the forward action of a
+representative with the same nineteen labelled append results.  The first
+pull still uses the receiving prefix.  The second pull uses the exact
+middle state, even when distinct prefixes have a common final state.\<close>
+
+theorem reverse_native_ordered_pair_source:
+  fixes prefix tail half :: "nat list" and x y :: nat and center :: "nat option"
+    and representative middle finish action :: reverse_hinge2
+  assumes first: "x < 19" and row: "\<And>s. s < 19 \<Longrightarrow>
+    reverse_native_hinge2_append representative s =
+    reverse_native_hinge2_append (reverse_native_hinge2_compile prefix) s"
+  defines "middle \<equiv> reverse_native_hinge2_append representative x"
+    and "finish \<equiv> reverse_native_hinge2_append middle y"
+    and "half \<equiv> prefix @ [x,y] @ tail"
+    and "action \<equiv> fold (\<lambda>s q. reverse_native_hinge2_append q s) tail finish"
+  shows "middle = reverse_native_hinge2_compile (prefix @ [x])"
+    and "finish = reverse_native_hinge2_compile (prefix @ [x,y])"
+    and "snd (action (reverse_native_hinge_inner_inlet half center)) =
+         reverse_native_hinge1_compile
+           (take (length half) (step (reverse_native_hinge_source half center)))"
+    and "(snd (fst (action (reverse_native_hinge_inner_inlet half center))) \<noteq> 0) =
+         carry_out False (reverse_native_hinge_source half center)"
+proof -
+  have m: "middle = reverse_native_hinge2_append (reverse_native_hinge2_compile prefix) x"
+    using row[OF first] by (simp only: middle_def)
+  show "middle = reverse_native_hinge2_compile (prefix @ [x])"
+    by (simp add: m reverse_native_hinge2_compile_def fold_append)
+  show "finish = reverse_native_hinge2_compile (prefix @ [x,y])"
+    by (simp add: finish_def m reverse_native_hinge2_compile_def fold_append)
+  have a: "action = reverse_native_hinge2_compile half"
+    by (simp add: action_def half_def finish_def m reverse_native_hinge2_compile_def fold_append)
+  show "snd (action (reverse_native_hinge_inner_inlet half center)) =
+      reverse_native_hinge1_compile (take (length half) (step (reverse_native_hinge_source half center)))"
+    using reverse_native_hinge2_compiled_child[of half "reverse_native_hinge_inner_inlet half center"]
+    by (simp add: a reverse_native_hinge_physical_half)
+  show "(snd (fst (action (reverse_native_hinge_inner_inlet half center))) \<noteq> 0) =
+      carry_out False (reverse_native_hinge_source half center)"
+    by (simp only: a reverse_native_hinge2_first_physical_birth)
+qed
+
 ML \<open>
-  val thms = @{thms hinge_emit_general hinge_physical_list_half reverse_native_hinge_physical_half};
+  val thms = @{thms hinge_emit_general hinge_physical_list_half reverse_native_hinge_physical_half
+    reverse_native_ordered_pair_source};
   val _ = if null (Thm_Deps.all_oracles thms) andalso not (Thm_Deps.has_skip_proof thms)
     then () else error "hinge physical proof audit failed";
 \<close>
