@@ -93,6 +93,43 @@ and found zero recursion cycles and package violations. Its remaining
 finding is the pre-existing 1,017-line double-reverse ring theory. The
 global proof index still reports inherited audit and Comma authority gaps.
 
+### One reflected wave from a bounded source prefix
+
+Starting from `a8568d95`, `ec57c72f` routes eligible initial-source
+`2rev10` actions directly from the issued C0 prefix to the physical endpoint.
+The installed reflected extension admits a 512–1,024-tick scheduler action
+for a positive seed of at most 16 bits when both border pairs certify an
+even suffix within the first 16 ticks. Exact final-width admission covers
+intermediate growth. A capped ledger, absent extension or missed border
+retains the existing route. The explicit runtime setting `0` disables it.
+`d8e07230` joins the prefix clock to the ordered tile and fringe equations.
+The registered Isabelle session passed in 126.36 s including its oracle audit.
+
+At index 1,024 the seed-196 issuer reached 173488 after 16 ticks. One
+native call covered the remaining 1,008 ticks, taking the packed-row count
+from 896 to zero. Seed 73 reached 17788 after eight ticks and used one
+1,016-tick wave. The suffix counter measures physical duration without
+chronological row construction. The kernel still evaluates causal tiles
+and their fringes. One instrumented fresh macOS seed-196 call spent
+0.60 ms loading the extension, 0.65 ms certifying the prefix and 0.027 ms
+inside the native call.
+
+On macOS, eight paired warm requests and five paired cold processes matched complete
+installed packets. Seed-196 warm/cold medians fell from 30.39/180.54 to
+8.01/158.46 ms. Seed 73 fell from 29.23/179.87 to 7.90/158.77 ms.
+Seed 11 missed admission at 512 ticks and took 26.88/178.15 ms against
+26.59/176.83 ms. Pure and native wheels passed installed admission, refusal
+and exact-output checks on macOS and Linux ARM64.
+
+The `5rev10` auto-dispatch trial reduced warm time at 512, 768 and 1,024
+ticks, but added 1.6–1.7 ms to each cold median. It remains opt-in. The
+folded reverse/add and CF dispatches were unchanged.
+
+The guarded native family selection passed 876 cases and the focused
+installed/dispatch selection passed 57. Full default validation passed
+14,089 with six Comma failures. Canonical P0 passed 77 with 13 failures.
+Both failing ID sets matched the recorded baseline.
+
 ### Folded Q19 and reflected multiplier joins after `bc4cb376`
 
 The installed native reverse/add path in `7c5fcdd4` consumes the issued
