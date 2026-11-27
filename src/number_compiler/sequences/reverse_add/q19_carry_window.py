@@ -131,6 +131,70 @@ def _continuation_scratch(
             ledger.mark_disposed(owner)
 
 
+def _native_segment(
+    source: PackedQ19,
+    steps: int,
+    ledger: ResourceLedger | None,
+    owner: int | None,
+) -> PackedQ19 | None:
+    """Evaluate an admitted physical pair field in the bounded native kernel."""
+    from number_compiler.arithmetic.carry.native_reverse_actions import (
+        native_pair_action,
+        native_reverse_enabled,
+    )
+
+    if (
+        not native_reverse_enabled()
+        or ledger is None
+        or owner is None
+        or not 512 <= steps <= 65536
+        or ledger.max_nodes is not None
+        or ledger.max_cache_entries is not None
+    ):
+        return None
+
+    def receive(pairs: bytes, _work: object) -> PackedQ19:
+        count = len(pairs) // 2
+        encoded = bytearray()
+        accumulator = 0
+        bits = 0
+        for value in pairs[:count]:
+            accumulator |= value << bits
+            bits += 6
+            if bits >= 8:
+                encoded.append(accumulator & 255)
+                accumulator >>= 8
+                bits -= 8
+        if bits:
+            encoded.append(accumulator)
+        lanes = int.from_bytes(encoded, "little")
+        center = pairs[count] // 2 if len(pairs) & 1 else None
+        if len(pairs) & 1 and pairs[count] % 2:
+            raise ValueError("native Q19 center does not encode a decimal digit")
+        return PackedQ19(lanes, count, center)
+
+    with ledger.reservation(owner, nodes=4 * source.width + 8, entries=4):
+        packed = source.pairs.to_bytes((6 * source.count + 7) // 8, "little")
+        outer = bytearray()
+        accumulator = 0
+        bits = 0
+        for value in packed:
+            accumulator |= value << bits
+            bits += 8
+            if bits >= 6 and len(outer) < source.count:
+                outer.append(accumulator & 63)
+                accumulator >>= 6
+                bits -= 6
+            if bits >= 6 and len(outer) < source.count:
+                outer.append(accumulator & 63)
+                accumulator >>= 6
+                bits -= 6
+        center = b"" if source.center is None else bytes((2 * source.center,))
+        return native_pair_action(
+            ledger, owner, bytes(outer) + center + outer[::-1], steps, receive
+        )
+
+
 @contextmanager
 def _segment(
     lease: CacheLease | None,
@@ -141,6 +205,8 @@ def _segment(
     carry_window: bool = False,
     scratch: LedgerReservation | None = None,
     landmark_offset: int = 0,
+    ledger: ResourceLedger | None = None,
+    owner: int | None = None,
 ) -> Generator[tuple[PackedQ19, int], None, None]:
     """Issue exact source-selected endpoints, never an inferred temporal period.
 
@@ -171,7 +237,12 @@ def _segment(
             # return. Its source-to-image certificate is genuinely physical.
             target = physical_carry_image(source, before_step)
         elif lease is None or steps == 0:
-            target = source.advance_repeated(steps, before_step=before_step)
+            native_target = _native_segment(source, steps, ledger, owner)
+            target = (
+                native_target
+                if native_target is not None
+                else source.advance_repeated(steps, before_step=before_step)
+            )
         else:
             raw_physical = (
                 lease.get_issued(landmark_key, _CONTINUATION_ISSUER)
@@ -223,6 +294,10 @@ def _segment(
                         break
             reused = start
             position = start
+            accelerated = _native_segment(frame, steps - start, ledger, owner)
+            if accelerated is not None:
+                frame = accelerated
+                position = steps
             while position < steps:
                 next_power = 1 << position.bit_length()
                 next_physical_power = (
@@ -363,6 +438,8 @@ def completed_continuation(
                 before_step,
                 carry_window=carry_window,
                 scratch=scratch,
+                ledger=ledger,
+                owner=scratch_owner,
             ) as result:
                 yield result
             return
@@ -380,6 +457,8 @@ def completed_continuation(
             before_step,
             carry_window=True,
             scratch=scratch,
+            ledger=ledger,
+            owner=scratch_owner,
         ) as (image, prefix_reused):
             remaining = steps - DECIMAL_CARRY_WINDOW
             if remaining == DECIMAL_CARRY_WINDOW and image == source:
@@ -392,6 +471,8 @@ def completed_continuation(
                 before_step,
                 scratch=scratch,
                 landmark_offset=DECIMAL_CARRY_WINDOW,
+                ledger=ledger,
+                owner=scratch_owner,
             ) as (
                 target,
                 suffix_reused,
