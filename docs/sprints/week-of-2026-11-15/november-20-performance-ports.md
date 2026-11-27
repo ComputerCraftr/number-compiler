@@ -93,6 +93,55 @@ and found zero recursion cycles and package violations. Its remaining
 finding is the pre-existing 1,017-line double-reverse ring theory. The
 global proof index still reports inherited audit and Comma authority gaps.
 
+### Fractional branch intervals and the quiet Q19 trial after `a8755047`
+
+On `877637fc` the finite CF cylinder selects a reusable eight-tick affine action from
+40 disjoint half-open inlet intervals. Each action carries its accumulated
+innovation and complete guard. Selection uses the lower inlet, then checks
+both ends before composing with the receiving physical action. An upper
+endpoint at a boundary is admissible. An interval straddling that boundary
+returns to the exact scalar rule to find the first undecided branch.
+The fixed chart is built on first admitted use, after reserving 16 KiB
+of scratch. Each extension releases its optional charge before the next
+source block. In `4e01c9e5`, `mahler_cf_guard_compose_exact` proves
+that composition preserves both boundaries, and
+`mahler_cf_chart_source_action` connects a physically admitted source
+to the selected word and endpoint. The registered
+`Mahler_Source_Transport` build passed in 134.17 s, including the oracle
+and skipped-proof checks.
+
+At horizon 4,096 the installed default CLI took 498 chart actions (3,984
+ticks) and 50 scalar probes, down from 1,586. With a coefficient cap of
+539 it stopped at physical tick 4,095 and returned `unknown` with exit
+code 3. Cap 540 gave the exact full packet. Ten interleaved warm and five
+cold whole-request pairs took 9.225 → 6.525 ms warm and 124.078 →
+121.757 ms cold. The reciprocal opt-in used 496 chart actions and took
+9.145 → 6.484 ms warm. At horizon 512 the default took 2.184 →
+2.114 ms warm. A separate 40-pair timing isolated the eleven branch
+extensions at horizon 4,096 and measured 5.674 → 2.936 ms per request.
+Horizon 63 and caps 1, 7, and 32 used the scalar route.
+
+A separate folded Q19 prototype recognized the four-tick `0000` clock
+on perturbation 47 of the physical collar fixture. At 1,024 ticks it
+entered that slab and an existing three-birth slab, covering 875 core
+columns. Folded joins fell from 329,168 to 326,987, while probes rose
+by 1,633 and collar-cell visits by 1,378. Sixteen interleaved batches
+of ten complete native calls took 1.455 → 1.445 ms per call on the
+authenticated field after the 12-tick prefix. The 0.7% improvement
+missed the 5% target. Installed cold medians were 281.15 → 278.22 ms
+and warm medians were 28.57 → 28.95 ms. Seed 196 retained zero slabs
+and 55,857 folded joins. The existing Isabelle seam requires a first-tick
+birth. The prototype stays outside production.
+
+Fresh pure and native wheels on macOS ARM64 and Linux ARM64 under
+Colima matched all 16 reference CLI packets and exit codes. The default
+and reciprocal dispatch counts agreed across all four installations.
+All 44 matched finite-budget checks returned the original outcome and
+released their reservations. Strict mypy and Pyright, Ruff, documentation
+and source policy passed. The default suite passed 14,086 tests and
+retained the same six baseline failures. P0 passed 77 with the same
+13 failing test IDs.
+
 ### CF acquisition and the one-birth Q19 slab after `146aa973`
 
 On `efdfaaed`, the opt-in CF cylinder takes the first native head product
