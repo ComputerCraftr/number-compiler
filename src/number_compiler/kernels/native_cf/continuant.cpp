@@ -1,6 +1,9 @@
 #include <Python.h>
 #include <array>
 #include <cstdint>
+#if defined(__ARM_NEON)
+#include <arm_neon.h>
+#endif
 
 namespace {
 struct SmallMatrix {
@@ -71,6 +74,35 @@ PyObject *ordered_product(PyObject *, PyObject *args) {
         d = c;
         c = next_c;
     }
+#if defined(__ARM_NEON)
+    if (width <= 9) {
+        // The two lanes are the upper and lower rows of each column.
+        // Every entry is at most 11^9, so uint32 lanes are exact here.
+        const std::uint32_t first[] = {static_cast<std::uint32_t>(a),
+                                       static_cast<std::uint32_t>(c)};
+        const std::uint32_t second[] = {static_cast<std::uint32_t>(b),
+                                        static_cast<std::uint32_t>(d)};
+        uint32x2_t column0 = vld1_u32(first);
+        uint32x2_t column1 = vld1_u32(second);
+        while (place) {
+            const auto lower = place / 10;
+            const auto index = static_cast<std::size_t>(value / lower);
+            value %= lower;
+            const auto word = alphabet[index];
+            const uint32x2_t next0 =
+                vmla_n_u32(vmul_n_u32(column0, word.a), column1, word.c);
+            const uint32x2_t next1 =
+                vmla_n_u32(vmul_n_u32(column0, word.b), column1, word.d);
+            column0 = next0;
+            column1 = next1;
+            place /= 100;
+        }
+        a = vget_lane_u32(column0, 0);
+        c = vget_lane_u32(column0, 1);
+        b = vget_lane_u32(column1, 0);
+        d = vget_lane_u32(column1, 1);
+    }
+#endif
     while (place) {
         const auto lower = place / 10;
         const auto index = static_cast<std::size_t>(value / lower);
