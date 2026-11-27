@@ -215,6 +215,14 @@ def test_native_refusal_precedes_mirrored_source_construction(
     assert ledger.nodes == ledger.entries == 0
 
 
+def _literal_pair_fields(seed: int) -> tuple[bytes, bytes, int]:
+    digits = str(seed)
+    field = bytes(int(a) + int(b) for a, b in zip(digits, digits[::-1], strict=True))
+    half = field[: len(field) // 2]
+    center = int(digits[len(half)]) if len(field) % 2 else -1
+    return field, half, center
+
+
 def test_folded_kernel_matches_full_pair_field_and_rejects_bad_centers() -> None:
     import random
 
@@ -222,10 +230,7 @@ def test_folded_kernel_matches_full_pair_field_and_rejects_bad_centers() -> None
     rng = random.Random(43)
     sources = (0, 1, 9, 10, 50, 95, 98, 104, 196, 9999, 190999)
     for seed in (*sources, *(rng.randrange(10**20) for _ in range(50))):
-        digits = str(seed)
-        full = bytes(int(a) + int(b) for a, b in zip(digits, digits[::-1], strict=True))
-        half = full[: len(full) // 2]
-        center = int(digits[len(half)]) if len(full) % 2 else -1
+        full, half, center = _literal_pair_fields(seed)
         for ticks in (0, 1, 2, 3, 4, 5, 7, 16, 17, 31, 64, 128, 512):
             expected, _ = native.add(full, ticks, 2, 1, 4 << 20)
             pairs, result_center, _ = native.add_folded(half, center, ticks, 4 << 20)
@@ -267,12 +272,8 @@ def test_old_native_module_falls_back_before_unfolding_source(
 @pytest.mark.parametrize("seed,clock", ((909, "1011"), (99, "1110"), (59, "1010")))
 def test_adjacent_folded_bands_preserve_physical_births(seed: int, clock: str) -> None:
     native = pytest.importorskip("number_compiler.kernels._reverse_quotients")
-    digits = str(seed)
-    complete = bytes(int(a) + int(b) for a, b in zip(digits, digits[::-1], strict=True))
-    count = len(complete) // 2
-    half = complete[:count]
-    center = int(digits[count]) if len(complete) % 2 else -1
-    widths = [len(digits)]
+    _, half, center = _literal_pair_fields(seed)
+    widths = [len(str(seed))]
     current = seed
     for _ in range(4):
         current += int(str(current)[::-1])
@@ -295,11 +296,7 @@ def test_band_birth_totals_do_not_authorize_a_four_tick_schedule() -> None:
     native = pytest.importorskip("number_compiler.kernels._reverse_quotients")
     observed: list[list[int]] = []
     for seed in (9, 18):
-        digits = str(seed)
-        full = bytes(int(a) + int(b) for a, b in zip(digits, digits[::-1], strict=True))
-        count = len(full) // 2
-        half = full[:count]
-        center = int(digits[count]) if len(full) % 2 else -1
+        _, half, center = _literal_pair_fields(seed)
         totals: list[int] = []
         for _ in range(2):
             half, center, work = native.add_folded(half, center, 2, 4 << 20)

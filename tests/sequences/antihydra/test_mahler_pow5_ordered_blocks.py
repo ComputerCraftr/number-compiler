@@ -12,6 +12,7 @@ from number_compiler.arithmetic.automata.slp_interval import fold_slp_dag
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.ordered_matrix import Matrix2
 from number_compiler.resources.ledger import LedgerReservation, ResourceLedger
+from number_compiler.sequences.antihydra.mahler_cf_reciprocal_tile import ReciprocalTile
 from number_compiler.sequences.antihydra.mahler_pow5_ordered_blocks import (
     Pow5OrderedBlockSource,
 )
@@ -22,6 +23,12 @@ def literal_action(word: str) -> Matrix2:
     for digit in word:
         value = value.multiply(Matrix2.digit(int(digit) + 1))
     return value
+
+
+def literal_segment(tile: ReciprocalTile, begin: int, length: int) -> Matrix2:
+    digits = "".join(str(tile.quotient * 5**row) for row in range(len(tile.widths)))
+    start = tile.start + begin
+    return literal_action(digits[start : start + length])
 
 
 @pytest.mark.parametrize("spatial,reciprocal", [(True, False), (False, True)])

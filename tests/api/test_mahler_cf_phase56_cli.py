@@ -7,18 +7,9 @@ import json
 import pytest
 
 from number_compiler.api.cli import main
-from number_compiler.arithmetic.fields.ordered_matrix import Matrix2
 from number_compiler.sequences.antihydra import mahler_cf_reciprocal_tile as tiles
 from number_compiler.sequences.antihydra.mahler_cf_low_period import settled_low_action
-
-
-def _literal_segment(tile: tiles.ReciprocalTile, begin: int, length: int) -> Matrix2:
-    digits = "".join(str(tile.quotient * 5**row) for row in range(len(tile.widths)))
-    start = tile.start + begin
-    action = Matrix2.identity()
-    for digit in digits[start : start + length]:
-        action = action.multiply(Matrix2.digit(int(digit) + 1))
-    return action
+from tests.sequences.antihydra.test_mahler_pow5_ordered_blocks import literal_segment
 
 
 def test_public_cylinder_reads_heads_after_complete_phase_actions(
@@ -39,7 +30,7 @@ def test_public_cylinder_reads_heads_after_complete_phase_actions(
         "4096",
     ]
     with monkeypatch.context() as oracle:
-        oracle.setattr(tiles.ReciprocalTile, "segment", _literal_segment)
+        oracle.setattr(tiles.ReciprocalTile, "segment", literal_segment)
         assert main(args) == 0
         expected = json.loads(capsys.readouterr().out)
 

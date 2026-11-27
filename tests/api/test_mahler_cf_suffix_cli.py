@@ -10,16 +10,10 @@ from number_compiler.arithmetic.fields.ordered_matrix import Matrix2
 from number_compiler.sequences.antihydra import mahler_cf_reciprocal_tile as tiles
 from number_compiler.sequences.antihydra.mahler_cf_low_period import settled_low_action
 from tests.sequences.antihydra.test_mahler_cf_cylinder import literal_cylinder
-from tests.sequences.antihydra.test_mahler_pow5_ordered_blocks import literal_action
-
-
-def _literal_segment(tile: tiles.ReciprocalTile, begin: int, length: int) -> Matrix2:
-    digits = "".join(str(tile.quotient * 5**row) for row in range(len(tile.widths)))
-    start = tile.start + begin
-    result = Matrix2.identity()
-    for digit in digits[start : start + length]:
-        result = result.multiply(Matrix2.digit(int(digit) + 1))
-    return result
+from tests.sequences.antihydra.test_mahler_pow5_ordered_blocks import (
+    literal_action,
+    literal_segment,
+)
 
 
 def test_public_cylinder_reuses_settled_suffix_before_decode(
@@ -58,7 +52,7 @@ def test_public_cylinder_reuses_settled_suffix_before_decode(
             str(cap),
         ]
         with monkeypatch.context() as literal:
-            literal.setattr(tiles.ReciprocalTile, "segment", _literal_segment)
+            literal.setattr(tiles.ReciprocalTile, "segment", literal_segment)
             expected_status = main(args)
             expected = json.loads(capsys.readouterr().out)
         with monkeypatch.context() as observed:
