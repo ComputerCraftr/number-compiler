@@ -26,7 +26,7 @@ def test_installed_five_reverse_native_and_refused_paths() -> None:
     else:
         assert Path(installed).is_absolute() and Path(installed).is_file()
     program = """\
-import pathlib,sys,sysconfig
+import json,pathlib,sys,sysconfig
 import number_compiler
 from number_compiler.kernels import _reverse_quotients as native
 if sys.argv.pop(1) == 'installed':
@@ -35,8 +35,14 @@ if sys.argv.pop(1) == 'installed':
         assert path is not None and any(pathlib.Path(path).resolve().is_relative_to(root) for root in roots)
 from number_compiler.api.cli import main
 calls=[]
+original=native.multiply
+def measured(*args):
+    answer=original(*args)
+    print('NATIVE_WORK',json.dumps(answer[1]),file=sys.stderr)
+    return answer
+native.multiply=measured
 def profile(frame,event,arg):
-    if event == 'c_call' and arg is native.multiply:
+    if event == 'c_call' and arg is original:
         calls.append(1)
 sys.setprofile(profile)
 try:
@@ -103,6 +109,9 @@ raise SystemExit(status)
         else:
             assert result.returncode == 0
             assert json.loads(result.stdout)["value"] == str(_literal(seed, ticks))
+        if label == "native":
+            work = json.loads(result.stderr.split("NATIVE_WORK ")[1].splitlines()[0])
+            assert work[:6] == [13803, 486, 0, 0, 500, 2000]
         results[label] = result
     assert results["native"].stdout == results["fallback"].stdout
     assert results["native_short"].stdout == results["native_short_fallback"].stdout

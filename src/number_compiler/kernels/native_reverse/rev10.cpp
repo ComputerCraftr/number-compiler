@@ -7,6 +7,7 @@
 #include <arm_neon.h>
 #endif
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -26,7 +27,71 @@ using Clock = chrono::steady_clock;
 constexpr int MAX_SIDE = 7;
 constexpr u32 RANK_MASK = 0xFFFF;
 
-static int phase_at(I position) { return static_cast<int>(position % 2 != 0); }
+static constexpr int phase_at(I position) {
+    return static_cast<int>(position % 2 != 0);
+}
+
+static constexpr pair<int, int> gate(int multiplier, int base, bool odd,
+                                     int inlet, int digit) {
+    const int combined =
+        odd ? (multiplier * digit) + inlet : (multiplier * inlet) + digit;
+    return odd ? pair{combined % base, combined / base}
+               : pair{combined / base, combined % base};
+}
+
+// The same exact cell law describes both the finite table and its scalar
+// oracle. Boundary ranks use least-significant mixed-radix digits first.
+static constexpr pair<int, int> direct_square(int side, int multiplier,
+                                              int phase, int west, int south) {
+    if (side < 1 || side > MAX_SIDE || (multiplier != 2 && multiplier != 5)) {
+        throw runtime_error("invalid diagonal square");
+    }
+    const int base = 10 / multiplier;
+    int west_radix[MAX_SIDE]{}, south_radix[MAX_SIDE]{};
+    int inlet[MAX_SIDE]{}, row[MAX_SIDE]{}, east[MAX_SIDE]{};
+    for (int i = 0; i < side; ++i) {
+        west_radix[i] = phase_at(phase + i) != 0 ? multiplier : base;
+        south_radix[i] = 10 / west_radix[i];
+        inlet[i] = west % west_radix[i];
+        west /= west_radix[i];
+        row[i] = south % south_radix[i];
+        south /= south_radix[i];
+    }
+    for (int y = 0; y < side; ++y) {
+        int carry = inlet[y];
+        for (int x = 0; x < side; ++x) {
+            const auto out = gate(multiplier, base,
+                                  phase_at(phase + x + y) != 0, carry, row[x]);
+            carry = out.first;
+            row[x] = out.second;
+        }
+        east[y] = carry;
+    }
+    const bool swap_radix = phase_at(side - 1) != 0;
+    int e = 0, n = 0;
+    for (int i = side - 1; i >= 0; --i) {
+        e = (e * (swap_radix ? west_radix[i] : south_radix[i])) + east[i];
+        n = (n * (swap_radix ? south_radix[i] : west_radix[i])) + row[i];
+    }
+    return {e, n};
+}
+
+static constexpr array<u32, 500> side_three_table(int multiplier) {
+    array<u32, 500> table{};
+    const int west_ranks = multiplier == 2 ? 50 : 20;
+    for (int j = 0; j < 500; ++j) {
+        const auto [east, north] =
+            direct_square(3, multiplier, 0, j % west_ranks, j / west_ranks);
+        table[static_cast<size_t>(j)] =
+            static_cast<u32>(east) | (static_cast<u32>(north) << 16U);
+    }
+    return table;
+}
+
+// Both tables contain only source-independent actions, and the query still
+// reserves and owns its copied table before the native call.
+static constexpr auto SIDE_THREE_DOUBLE = side_three_table(2);
+static constexpr auto SIDE_THREE_FIVE = side_three_table(5);
 
 static int complement_rank(int rank, int total, u32 mask) {
     const auto direct = static_cast<u32>(rank);
@@ -209,27 +274,23 @@ struct Table {
         return (p != 0) ? make_pair(north, a) : make_pair(a, north);
     }
     pair<int, int> direct(int p, int w, int s) const {
-        int we[MAX_SIDE], row[MAX_SIDE], ea[MAX_SIDE];
-        unpack(w, rad[p][0], we);
-        unpack(s, rad[p][1], row);
-        for (int j = 0; j < b; j++) {
-            int a = we[j];
-            for (int i = 0; i < b; i++) {
-                bool odd = phase_at(p + i + j) != 0;
-                int d = odd ? (m * row[i]) + a : (m * a) + row[i];
-                a = odd ? d % base : d / base;
-                row[i] = odd ? d / base : d % base;
-            }
-            ea[j] = a;
-        }
-        int r = phase_at(p + b - 1);
-        return {pack(ea, rad[r][1]), pack(row, rad[r][0])};
+        return direct_square(b, m, p, w, s);
     }
     void store(int j, int e, int n) { tab[std::size_t(j)] = code(e, n); }
     size_t payload_bytes() const { return tab.size() * sizeof(u32); }
+    static Table side_three(int multiplier) {
+        Table table(3, multiplier);
+        const auto &precomputed =
+            multiplier == 2 ? SIDE_THREE_DOUBLE : SIDE_THREE_FIVE;
+        std::copy(precomputed.begin(), precomputed.end(), table.tab.begin());
+        return table;
+    }
     static Table forward(int side) {
         require(side >= 1 && side <= MAX_SIDE,
                 "invalid diagonal boundary width");
+        if (side == 3) {
+            return side_three(2);
+        }
         int base_side = side;
         while (base_side % 2 == 0) {
             base_side /= 2;
@@ -490,9 +551,10 @@ static string diagonal(string seed, int m, I n, int side, Stats &st) {
     auto a = Clock::now();
     seed = core(std::move(seed));
     const auto run = relative_run(seed, m, n);
-    Table f = Table::forward(side);
+    Table f =
+        (m == 5 && side == 3) ? Table::side_three(5) : Table::forward(side);
     st.table_entries = std::uint64_t(f.tot / 2);
-    if (m == 5) {
+    if (m == 5 && side != 3) {
         auto inv = f.inverse5();
         st.table_entries += std::uint64_t(inv.tot / 2);
         vector<u32>().swap(f.tab);

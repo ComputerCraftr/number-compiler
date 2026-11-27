@@ -56,6 +56,19 @@ def test_even_square_composes_the_odd_base_table(multiplier: int) -> None:
         assert digits == str(_literal(seed, multiplier, steps))
 
 
+@pytest.mark.parametrize("multiplier", [2, 5])
+def test_side_three_table_matches_physical_steps_for_all_three_digit_inlets(
+    multiplier: int,
+) -> None:
+    native = import_module("number_compiler.kernels._reverse_quotients")
+    for seed in range(1000):
+        steps = 8 + seed % 2
+        digits, work = native.multiply(str(seed), multiplier, steps, 3)
+        assert digits == str(_literal(seed, multiplier, steps))
+        if seed:
+            assert work[4] == 500
+
+
 def test_diagonal_charges_receiver_and_rolls_back_on_cancellation() -> None:
     ledger = ResourceLedger()
     owner = ledger.register("native test scratch", "scratch")
