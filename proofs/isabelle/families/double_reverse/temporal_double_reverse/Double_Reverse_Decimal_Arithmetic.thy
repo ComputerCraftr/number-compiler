@@ -14,6 +14,25 @@ definition double_reverse_T :: "nat \<Rightarrow> nat" where
 definition double_reverse_T_run :: "nat \<Rightarrow> nat \<Rightarrow> nat" where
   "double_reverse_T_run steps source = (double_reverse_T ^^ steps) source"
 
+theorem double_reverse_T_run_source_root_square:
+  "double_reverse_T_run (first + second) source =
+    double_reverse_T_run second (double_reverse_T_run first source)"
+proof -
+  have exponent: "first + second = second + first"
+    by (simp add: add.commute)
+  show ?thesis
+    unfolding double_reverse_T_run_def
+    by (simp only: exponent funpow_add comp_apply)
+qed
+
+corollary double_reverse_T_run_actual_midpoint_square:
+  "double_reverse_T_run (2 * steps) source =
+    double_reverse_T_run steps (double_reverse_T_run steps source)"
+proof -
+  have "2 * steps = steps + steps" by simp
+  then show ?thesis by (simp only: double_reverse_T_run_source_root_square)
+qed
+
 lemma double_reverse_T_ignores_trailing_zero:
   "double_reverse_T (10*n) = double_reverse_T n"
   by (simp only: double_reverse_T_def decimal_reverse_ignores_trailing_zero)

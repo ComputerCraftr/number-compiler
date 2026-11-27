@@ -4,25 +4,6 @@ begin
 
 unbundle bit_operations_syntax
 
-theorem double_reverse_T_run_source_root_square:
-  "double_reverse_T_run (first + second) source =
-    double_reverse_T_run second (double_reverse_T_run first source)"
-proof -
-  have exponent: "first + second = second + first"
-    by (simp add: add.commute)
-  show ?thesis
-    unfolding double_reverse_T_run_def
-    by (simp only: exponent funpow_add comp_apply)
-qed
-
-corollary double_reverse_T_run_actual_midpoint_square:
-  "double_reverse_T_run (2 * steps) source =
-    double_reverse_T_run steps (double_reverse_T_run steps source)"
-proof -
-  have "2 * steps = steps + steps" by simp
-  then show ?thesis by (simp only: double_reverse_T_run_source_root_square)
-qed
-
 text \<open>The NC15 periodic-core executor applies the exact T-squared local
 digit law to a finite cyclic word after an external source certificate proves
 that the demanded causal cones stay inside a periodic interior.  This theory
