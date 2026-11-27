@@ -10,6 +10,7 @@ constructor, not an all-depth period certificate.
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Protocol, cast
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
 from number_compiler.arithmetic.automata.temporal_cone import (
@@ -273,4 +274,80 @@ __all__ = [
     "TemporalSquareScratchCapacityRefused",
     "temporal_square_cone",
     "try_source_bound_square_cone",
+    "try_native_reflected_endpoint",
 ]
+
+
+class _ReflectedMultiply(Protocol):
+    def multiply(self, source: str, ticks: int) -> str: ...
+
+
+def try_native_reflected_endpoint(
+    arena: LedgerSLPArena, root: int, steps: int, phase: int, scratch_owner: int
+) -> int | None:
+    """Optionally publish one bounded, source-checked C0 reflected endpoint."""
+    import os
+    from contextlib import ExitStack, closing
+    from importlib import import_module
+
+    from number_compiler.arithmetic.automata.slp_walks import iter_symbols
+    from number_compiler.arithmetic.contracts.block_effect import (
+        BlockContextBudgetExceeded,
+    )
+
+    from .temporal_hashlife_borders import edge_phase, growth_ports
+
+    if os.environ.get("NUMBER_COMPILER_ENABLE_REFLECTED_MULTIPLY") != "1":
+        return None
+    ticks = 2 * steps
+    width = arena.nodes[root].length
+    if not 128 <= ticks <= 8192 or not 4 <= width <= 32 * ticks:
+        return None
+    ledger = arena.ledger
+    if ledger.max_nodes is not None or ledger.max_cache_entries is not None:
+        return None
+    try:
+        native = cast(
+            _ReflectedMultiply,
+            import_module("number_compiler.kernels._reflected_multiply"),
+        )
+    except ModuleNotFoundError as error:
+        if error.name != "number_compiler.kernels._reflected_multiply":
+            raise
+        return None
+    slots = 128 * 1000 + 256 * (width + ticks + 256)
+    if slots > 64 * 1024 * 1024:
+        return None
+    checkpoint = len(arena.nodes)
+    try:
+        with ExitStack() as stack:
+            try:
+                stack.enter_context(
+                    ledger.reservation(scratch_owner, nodes=slots, entries=slots)
+                )
+            except BlockContextBudgetExceeded:
+                return None
+            with closing(
+                iter_symbols(arena, root, ledger=ledger, owner=scratch_owner)
+            ) as source:
+                digits = bytes(source)
+            if len(digits) != width or any(digit > 9 for digit in digits):
+                raise ValueError("native reflected source width or digit mismatch")
+            if edge_phase((digits[0], digits[1]), (digits[-2], digits[-1])) != phase:
+                raise ValueError("native reflected source has another issued phase")
+            word = bytes(digit + 48 for digit in digits).decode("ascii")
+            result = native.multiply(word, ticks)
+            left, right = growth_ports(phase, steps)
+            if (
+                type(result) is not str
+                or not result.isascii()
+                or not result.isdecimal()
+                or len(result) != width + left + right
+                or edge_phase(divmod(int(result[:2]), 10), divmod(int(result[-2:]), 10))
+                != (phase + 2 * steps) % 4
+            ):
+                raise ValueError("native reflected endpoint changed its issued borders")
+            return arena.word(tuple(ord(char) - 48 for char in result))
+    except BaseException:
+        arena.rollback_unpublished_suffix(checkpoint)
+        raise

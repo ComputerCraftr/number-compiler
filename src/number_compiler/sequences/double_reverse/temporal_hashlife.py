@@ -730,6 +730,20 @@ class DoubleReverseTemporalHashlife(TemporalHashlifeAuditBase):
     def _power_of_two(self, root: int, steps: int, phase: int) -> int:
         """Produce the physical SLP from a guarded F^steps causal cone."""
         width = self.arena.nodes[root].length
+        if steps >= 64:
+            from .temporal_carry_spacetime import try_native_reflected_endpoint
+
+            native = try_native_reflected_endpoint(
+                self.arena, root, steps, phase, self.scratch_owner
+            )
+            if native is not None:
+                self.ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWERED_T2_STEPS, steps
+                )
+                self.ledger.bump(
+                    _double_reverse_keys.DOUBLE_REVERSE_HASHLIFE_POWER_CHUNKS
+                )
+                return native
         zero = self.arena.terminal(0)
         pad = self.arena.repeat(zero, 2 * steps)
         padded = self.arena.concat_many((pad, root, self.arena.repeat(zero, 4 * steps)))
