@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 
 import pytest
 
@@ -339,3 +340,40 @@ def test_eight_row_terminal_uses_admitted_physical_lift(
         coefficient = (5 ** (exponent + offset) // 10 ** (cut + offset - 1)) % 10 + 1
         a, b, c, d = a * coefficient + b, a, c * coefficient + d, c
     assert action["matrix"] == [[a, b], [c, d]]
+
+
+def test_wide_diagonal_head_keeps_the_carry_at_each_physical_clip(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def request(
+        exponent: int, cut: int, rows: int, *, status: int = 0
+    ) -> Mapping[object, object]:
+        band = f"{exponent},{cut},33,{rows}"
+        assert (
+            main([*_BASE, "--nth", "0", *_CF, "--continued-fraction-band", band])
+            == status
+        )
+        envelope = mapping(json.loads(capsys.readouterr().out))
+        return mapping(mapping(envelope["info"])["arithmetic.continued-fraction"])
+
+    assert len(str(5**57)) == 40
+    for start, rows in ((57, 3), (57, 2), (58, 2)):
+        cut = start - 17
+        packet = request(start, cut, rows)
+        assert packet["status"] == "available"
+        assert packet["coefficient_count"] == 33 * rows
+        lift = packet["lifted_source"]
+        assert isinstance(lift, int)
+        a, b, c, d = 1, 0, 0, 1
+        for tick in range(rows):
+            physical = str(5 ** (start + tick))
+            begin = len(physical) - (cut + tick)
+            assert begin >= 0
+            digits = physical[begin : begin + 33]
+            assert len(digits) == 33
+            assert (lift >> tick) % 10**33 == int(digits)
+            for digit in digits:
+                coefficient = int(digit) + 1
+                a, b, c, d = a * coefficient + b, a, c * coefficient + d, c
+        assert packet["matrix"] == [[a, b], [c, d]]
+    assert request(57, 40, 4, status=3)["status"] == "unavailable"
