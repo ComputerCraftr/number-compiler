@@ -42,6 +42,57 @@ The combined changed Python test selection passed 219 tests. The
 registered `Mahler_Source_Transport` build passed in 148.58 seconds on
 the combined CF proof tree.
 
+### November 27 production CLI follow-up
+
+The receiving revision was `a6ad6056`. The default CF cylinder now issues
+settled actions through the fifth power of five. At horizon 64 this
+eliminated all five spatial trace calls. At 4,096 the count fell from
+eleven to nine. The wider reciprocal route and all new native routes
+are opt-in. Limited CF ledgers retain the pointed fallback.
+
+| Installed query | Verified execution | Matched medians |
+| --- | --- | --- |
+| CF at 4,096 ticks (`c5e657c1`, `a907a69b`) | The reciprocal owner used 40 cuts and eliminated 34 spatial rows and 14 leaf builds. Both packets selected 540 coefficients. | Cold CLI 124.68 → 123.02 ms. |
+| Native CF at 4,096 ticks (`1161479f`, `aa839254`) | 20 native calls replaced 203 individual digit factors with 97 two-digit actions and nine leading digits. Ten calls qualified for two-lane Arm NEON. At 63 ticks the CLI made zero native calls. | Native scalar → SIMD cold CLI 129.89 → 128.61 ms on the quiet confirmation, 141.56 → 147.67 ms under load. |
+| Wide non-C0 `2rev10`, 153 digits, 4,096 ticks (`2eafa4c8`, `30bc7d69`) | 1,273,772 Python primitive transitions → 535,711 native tile lookups and 4,710 fringe gates. | Cold CLI 955.70 ms Python, 199.32 ms native scalar, 191.92 ms Arm NEON. |
+| `2rev10`, framed period-13 source, 128 ticks (`470ff98f`) | A source-side two-tick check reduced interior tile lookups from 16,513 to 4,439 and fringe gates from 6,011 to 1,694. | Kernel 40.09 → 19.83 µs. Cold CLI 173.22 → 174.36 ms. |
+| `5rev10`, seed 73, 1,024 ticks (`67cd2185`) | 512 Python packed pairs → 13,803 native tiles and 486 fringe gates. | Owner 1.057 → 0.456 ms. Cold CLI 113.35 → 114.63 ms. At 512 ticks cold CLI was 113.06 → 121.35 ms. |
+| `reverse-add`, seed 196 (`4846844e`, `8e7e2145`, `3e2ff847`) | H12 supplied the first 12 carry-window ticks. At 1,024 the continuation issued 506 native causal bands. Q19 now packs both receiving paths through the same streaming function. | Warm extension from 1,024 to 2,048 ticks 11.56 → 7.20 ms. |
+
+Build the general reversal extension with `NUMBER_COMPILER_BUILD_NATIVE_REVERSE=1`
+and enable it with `NUMBER_COMPILER_ENABLE_NATIVE_REVERSE=1`. For native
+CF, build with `NUMBER_COMPILER_BUILD_CF_CONTINUANT=1` and set both
+`NUMBER_COMPILER_ENABLE_CF_RECIPROCAL=1` and
+`NUMBER_COMPILER_ENABLE_CF_CONTINUANT=1`. The reciprocal option alone
+works with the pure wheel. The 800-byte native CF table preserves MSD
+order and leading zeros. Widths 4–9 qualify for NEON, and 10–16 use
+64-bit scalar arithmetic.
+
+The registered Isabelle builds completed in 58 s for the final shared-carry
+audit, 189.5 s for double reverse, 124.3 s for five reverse, 98.8 s for
+Mahler source transport and 154.9 s for reverse growth admission.
+The checked relative-interior and packed-complement lemmas cover the
+algebra used by the kernel. The binaries were tested against literal
+arithmetic. A full source-to-four-tick folded Q19 slab, general spatial
+reuse on changing CF upper bands, and end-to-end asymptotic bounds remain open.
+
+Fresh pure and three-extension wheels at `3e2ff847` passed installed
+console checks on macOS ARM64 and Linux ARM64. The checks compared
+complete packets and counted actual C++ calls, including zero on
+refusal. They covered nine CF horizons from 20 to 4,096, wide ×2 at
+511/513/4,096 ticks, ×5 and reverse/add at 16/1,024, and the period-13
+fixture. The combined guarded selection passed 331 tests. Strict mypy,
+Pyright (25 files then two), Ruff and the guarded Clang checks passed.
+
+The full default suite passed 14,058 tests in 225.07 s. All six failures
+were Comma admission tests and reproduced on the receiving baseline.
+Canonical P0 matched the receiving baseline by test ID, with 77 passes
+and 13 failures in Comma admission, Antihydra non-halting and prime
+certificates. The source-policy scan cleared the Q19 packing duplicate
+and found zero recursion cycles and package violations. Its remaining
+finding is the pre-existing 1,017-line double-reverse ring theory. The
+global proof index still reports inherited audit and Comma authority gaps.
+
 ### NC41 reconciliation
 
 The port starts from `02fefff9`. The guarded baseline selection recorded

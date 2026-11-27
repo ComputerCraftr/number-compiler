@@ -26,13 +26,25 @@ separately by installing the wheel with the minimum interpreter. The existing
 installed-distribution checker accepts `--python-executable /path/to/python3.11`
 for that smoke check; it remains subject to the normal command guard.
 
-Default wheels are pure Python. To build the optional reversal extension on
-macOS or Linux with a C++20 compiler, set the build-time option when creating
-the wheel. Use a fresh build directory for each variant.
+Default wheels are pure Python. To include the optional reversal and CF
+extensions, use a C++20 compiler and a fresh build directory. Each build
+option can be set independently.
 
 ```bash
-NUMBER_COMPILER_BUILD_NATIVE_REVERSE=1 python -m pip wheel --no-deps .
+NUMBER_COMPILER_BUILD_NATIVE_REVERSE=1 NUMBER_COMPILER_BUILD_CF_CONTINUANT=1 python -m pip wheel --no-deps .
 ```
+
+After installing the wheel, these commands opt into the bounded native
+routes. A refused request uses the existing exact route within its budget.
+
+```bash
+NUMBER_COMPILER_ENABLE_NATIVE_REVERSE=1 number-compiler 5rev10 --seed 73 --nth 1024
+NUMBER_COMPILER_ENABLE_CF_RECIPROCAL=1 NUMBER_COMPILER_ENABLE_CF_CONTINUANT=1 number-compiler antihydra --nth 0 --no-value --info arithmetic.continued-fraction --safety-horizon 4096
+```
+
+The reciprocal CF producer also works in pure Python. The separate
+reflected C0 extension uses `NUMBER_COMPILER_BUILD_REFLECTED_MULTIPLY=1`
+at build time and `NUMBER_COMPILER_ENABLE_REFLECTED_MULTIPLY=1` at runtime.
 
 Use four-space indentation for C++. On macOS, use Homebrew LLVM to check
 formatting, C++20 compiler warnings, and clang-tidy under the command guard.
