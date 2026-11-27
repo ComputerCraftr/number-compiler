@@ -151,7 +151,7 @@ PyObject *add_folded_impl(PyObject *args, bool joint_enabled) {
         const auto &work = result.work;
         if (joint_enabled) {
             return Py_BuildValue(
-                "y#i(KKKKKKKKKKKKK)",
+                "y#i(KKKKKKKKKKKKKK)",
                 result.pairs.empty()
                     ? ""
                     : reinterpret_cast<const char *>(result.pairs.data()),
@@ -168,7 +168,8 @@ PyObject *add_folded_impl(PyObject *args, bool joint_enabled) {
                 static_cast<unsigned long long>(work.joint_probes),
                 static_cast<unsigned long long>(work.joint_collar_cells),
                 static_cast<unsigned long long>(work.joint_clock_13),
-                static_cast<unsigned long long>(work.joint_clock_7));
+                static_cast<unsigned long long>(work.joint_clock_7),
+                static_cast<unsigned long long>(work.joint_clock_two_births));
         }
         return Py_BuildValue(
             "y#i(KKKKKKK)",

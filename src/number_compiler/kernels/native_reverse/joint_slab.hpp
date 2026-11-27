@@ -15,6 +15,8 @@ struct Work {
     std::uint64_t bands = 0;
     std::uint64_t clock_13 = 0;
     std::uint64_t clock_7 = 0;
+    std::uint64_t clock_two_births = 0;
+    std::uint64_t births = 0;
 };
 
 constexpr bool admitted(std::uint32_t sum) {
@@ -28,7 +30,7 @@ inline bool apply(std::vector<std::uint32_t> &state, int &center, Work &work) {
     constexpr std::size_t collar = 128, margin = 8, minimum = 48;
     constexpr std::size_t span = minimum + (2 * margin);
     const auto count = state.size();
-    if (count < span || state[0] != 18U) {
+    if (count < span || state[0] < 9U) {
         return false;
     }
     std::size_t left = 1, right = 1;
@@ -84,7 +86,11 @@ inline bool apply(std::vector<std::uint32_t> &state, int &center, Work &work) {
         work.collar_cells += cut;
     }
     // 13 encodes 1011 in chronological order, 7 encodes 1110.
-    if (births != 3U || (clock != 13U && clock != 7U)) {
+    if ((clock == 13U || clock == 7U) && state[0] != 18U) {
+        return false;
+    }
+    if (clock != 13U && clock != 7U && clock != 5U && clock != 3U &&
+        clock != 9U) {
         return false;
     }
     // Start four pairs inside the protected core. Each physical tick
@@ -129,15 +135,18 @@ inline bool apply(std::vector<std::uint32_t> &state, int &center, Work &work) {
         next[i] = static_cast<std::uint32_t>(outer[i]);
     }
     unsigned mask = 0;
-    for (std::size_t i = cut - 3; i < cut; ++i) {
+    for (std::size_t i = cut - births; i < cut; ++i) {
         mask = (mask << 1U) | static_cast<unsigned>(state[i] != 18U);
     }
     for (std::size_t i = cut; i < inner; ++i) {
-        mask = ((mask << 1U) | static_cast<unsigned>(state[i] != 18U)) & 15U;
-        const unsigned weighted = (mask & 1U) + (3U * ((mask >> 1U) & 1U)) +
-                                  (3U * ((mask >> 2U) & 1U)) +
-                                  ((mask >> 3U) & 1U);
-        next[i] = 18U - (2U * weighted);
+        mask = ((mask << 1U) | static_cast<unsigned>(state[i] != 18U)) &
+               ((1U << (births + 1U)) - 1U);
+        const unsigned weighted =
+            births == 3U ? (mask & 1U) + (3U * ((mask >> 1U) & 1U)) +
+                               (3U * ((mask >> 2U) & 1U)) + ((mask >> 3U) & 1U)
+                         : (mask & 1U) + (2U * ((mask >> 1U) & 1U)) +
+                               ((mask >> 2U) & 1U);
+        next[i] = 18U - ((1U << (4U - births)) * weighted);
     }
     for (std::size_t i = 0; i < middle.size() / 2; ++i) {
         next[inner + i] = static_cast<std::uint32_t>(middle[i]);
@@ -145,16 +154,19 @@ inline bool apply(std::vector<std::uint32_t> &state, int &center, Work &work) {
     const int next_center =
         (middle.size() % 2U) != 0U ? middle_digits[middle.size() / 2] : -1;
     if ((2 * next.size()) + static_cast<unsigned>(next_center >= 0) !=
-            (2 * count) + static_cast<unsigned>(center >= 0) + 3U ||
+            (2 * count) + static_cast<unsigned>(center >= 0) + births ||
         next.empty() || next.front() == 0U) {
         return false;
     }
     work.columns += inner - cut;
     ++work.bands;
+    work.births += births;
     if (clock == 13U) {
         ++work.clock_13;
-    } else {
+    } else if (clock == 7U) {
         ++work.clock_7;
+    } else {
+        ++work.clock_two_births;
     }
     state.swap(next);
     center = next_center;

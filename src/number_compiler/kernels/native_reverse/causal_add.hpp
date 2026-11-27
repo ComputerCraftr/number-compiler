@@ -9,7 +9,8 @@ struct Work {
                   block_cells = 0, bands = 0, joins = 0, pulls = 0, births = 0;
     std::uint64_t peak_table_bytes = 0, hinge_cells = 0;
     std::uint64_t joint_bands = 0, joint_columns = 0, joint_probes = 0;
-    std::uint64_t joint_collar_cells = 0, joint_clock_13 = 0, joint_clock_7 = 0;
+    std::uint64_t joint_collar_cells = 0, joint_clock_13 = 0, joint_clock_7 = 0,
+                  joint_clock_two_births = 0;
 };
 struct Result {
     std::string digits; // MSD-first; empty if the input is already the endpoint

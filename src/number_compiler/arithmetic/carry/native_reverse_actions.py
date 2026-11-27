@@ -51,6 +51,7 @@ class PairWork:
     joint_collar_cells: int = 0
     joint_clock_13: int = 0
     joint_clock_7: int = 0
+    joint_clock_two_births: int = 0
 
 
 class _Kernels(Protocol):
@@ -183,6 +184,10 @@ def _record_pair_work(ledger: ResourceLedger, work: PairWork) -> None:
         ledger.bump(_keys.NATIVE_PAIR_JOINT_COLLAR_CELLS, work.joint_collar_cells)
         ledger.bump(_keys.NATIVE_PAIR_JOINT_CLOCK_13, work.joint_clock_13)
         ledger.bump(_keys.NATIVE_PAIR_JOINT_CLOCK_7, work.joint_clock_7)
+        if work.joint_clock_two_births:
+            ledger.bump(
+                _keys.NATIVE_PAIR_JOINT_CLOCK_TWO_BIRTHS, work.joint_clock_two_births
+            )
 
 
 def native_pair_action(
@@ -264,6 +269,9 @@ def native_folded_pair_action(
                 half, -1 if center is None else center, steps, _TABLE_CAP
             )
         work = PairWork(*counters)
+        joint_births = 3 * (work.joint_clock_13 + work.joint_clock_7) + (
+            2 * work.joint_clock_two_births
+        )
         if (
             not -1 <= raw_center <= 9
             or not 0 <= work.births <= steps
@@ -272,10 +280,15 @@ def native_folded_pair_action(
             or (not pairs and raw_center < 0)
             or work.table_bytes > _TABLE_CAP
             or 4 * work.joint_bands > steps
-            or work.joint_bands > work.bands
-            or 3 * work.joint_bands > work.births
+            or not 0 <= work.joint_bands <= work.bands
+            or min(work.joint_clock_13, work.joint_clock_7, work.joint_clock_two_births)
+            < 0
+            or not 0 <= work.births - joint_births <= steps - 4 * work.joint_bands
+            or work.joint_probes < 0
+            or work.joint_collar_cells < 0
             or work.joint_columns < 48 * work.joint_bands
-            or work.joint_clock_13 + work.joint_clock_7 != work.joint_bands
+            or work.joint_clock_13 + work.joint_clock_7 + work.joint_clock_two_births
+            != work.joint_bands
         ):
             raise RuntimeError("invalid native folded causal endpoint")
         _record_pair_work(ledger, work)
