@@ -93,6 +93,33 @@ and found zero recursion cycles and package violations. Its remaining
 finding is the pre-existing 1,017-line double-reverse ring theory. The
 global proof index still reports inherited audit and Comma authority gaps.
 
+### Changing CF clips and short reflected admission after `e826457a`
+
+The 4,096-tick reciprocal cylinder issued eleven tiles. Only the last
+retained a standalone first-row product, so no later tile could consume
+it. The independent six-clip displacement fixture used three shears to
+recover `(5692378,1638537,927557,266995)`. Cross-exponent transport
+stays outside dispatch. At the live leading cut, `0c1915a1` elides
+the decimal modulus when the exact carried value already fits. The
+installed cylinder skipped 29 reductions in 36 cuts and returned the same
+540-coefficient packet. Five matched trials took 123.91 to 124.02 ms
+cold and 7.063 to 7.032 ms warm.
+
+The Q19 collar scan (`43a8c381`) refuses a start as soon as fewer than
+64 cells remain for its protected run. This also prevents unsigned
+subtraction of an exhausted candidate's endpoints. At 1,024 ticks the
+installed CLI on the seed formed by repeating `809` 47 times made nine
+probes, issued zero slabs, and returned the exact folded endpoint.
+
+The existing opt-in native `5rev10` endpoint (`ec5a1789`) admits
+64–127 ticks up to 512 source bits. At 64 ticks on seed 73 the installed
+CLI replaced 32 packed updates with 85 tiles and 42 fringe operations,
+including a 1,000-entry table setup. Five paired trials took 111.33 to
+111.22 ms cold and 0.778 to 0.710 ms warm. The 153-digit fixture took
+111.64 to 114.64 ms cold and 0.936 to 0.903 ms warm. The tests observed
+actual native entry on admission and exact fallback at 63 ticks and
+above the short band's width or budget limits.
+
 ### Irregular CF heads and wide reflected endpoints after `8fa3153f`
 
 The opt-in reciprocal CF cylinder now sends 17–32-digit upper heads to
