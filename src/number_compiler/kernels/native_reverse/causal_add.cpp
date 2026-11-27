@@ -1,6 +1,8 @@
 #include "causal_add.hpp"
+#include "guarded_q19_clock.hpp"
 #include "joint_slab.hpp"
 #include "pair_half_kick.hpp"
+#include "q19_four_tile.hpp"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -821,14 +823,77 @@ FoldedResult advance_folded(const Word &half, int center, U steps, U cap,
     if (done < steps) {
         const int height = int(std::min<U>(2, steps - done));
         Budget budget{cap};
-        auto levels = compile_levels(height, budget, result.work);
-        auto cells = compile_cells(levels, budget, result.work);
-        auto hinges = compile_hinges(levels, cells, budget, result.work);
+        std::vector<Level> levels;
+        std::vector<Cells> cells;
+        std::vector<Hinges> hinges;
         PairJoinBank bank;
+        q19_tile::Work tile_work;
         result.work.peak_table_bytes = budget.peak;
         std::vector<U> addresses;
         std::vector<I> empty_joins;
         for (; done < steps;) {
+            const bool enough = width >= 64U && steps - done >= 4U;
+            int issued_clock = enough ? guarded_clock::four(state) : -1;
+            if (enough && issued_clock < 0) {
+                ++tile_work.attempts;
+                ++tile_work.refused;
+            }
+            if (issued_clock >= 0) {
+                q19_tile::Field packed(width);
+                for (std::size_t i = 0; i < state.size(); ++i) {
+                    packed.put(i, state[i]);
+                }
+                if (center >= 0) {
+                    packed.put(state.size(), unsigned(2 * center));
+                }
+                tile_work.converted_pairs += state.size();
+                bool admitted = false;
+                while (steps - done >= 4U) {
+                    q19_tile::Field next(0);
+                    const bool valid =
+                        q19_tile::four(packed, next, tile_work, issued_clock);
+                    issued_clock = -1;
+                    const U bytes =
+                        U(packed.words.capacity() + next.words.capacity()) *
+                        sizeof(q19_tile::Planes);
+                    tile_work.peak_bytes =
+                        std::max(tile_work.peak_bytes, bytes);
+                    if (!valid) {
+                        break;
+                    }
+                    admitted = true;
+                    result.work.births += next.width - packed.width;
+                    ++result.work.bands;
+                    done += 4U;
+                    packed = std::move(next);
+                }
+                if (admitted) {
+                    width = packed.width;
+                    count = width / 2U;
+                    state.resize(count);
+                    for (std::size_t i = 0; i < count; ++i) {
+                        state[i] = packed.get(i);
+                        require(state[i] <= 18U, "invalid packed pair sum");
+                    }
+                    center = -1;
+                    if ((width & 1U) != 0U) {
+                        const unsigned middle = packed.get(count);
+                        require(middle <= 18U && (middle & 1U) == 0U,
+                                "invalid packed center");
+                        center = int(middle / 2U);
+                    }
+                    tile_work.converted_pairs += count;
+                    if (done == steps) {
+                        break;
+                    }
+                }
+            }
+            if (levels.empty()) {
+                levels = compile_levels(height, budget, result.work);
+                cells = compile_cells(levels, budget, result.work);
+                hinges = compile_hinges(levels, cells, budget, result.work);
+                result.work.peak_table_bytes = budget.peak;
+            }
             const int action_height = int(std::min<U>(U(height), steps - done));
             if (!bank.attempted && action_height == 2 &&
                 ((steps - done) / 2U) * state.size() >=
@@ -859,6 +924,12 @@ FoldedResult advance_folded(const Word &half, int center, U steps, U cap,
                     "invalid moving center endpoint");
             done += U(action_height);
         }
+        result.work.tile_attempts = tile_work.attempts;
+        result.work.tile_actions = tile_work.actions;
+        result.work.tile_cores = tile_work.tiles;
+        result.work.tile_refusals = tile_work.refused;
+        result.work.tile_converted_pairs = tile_work.converted_pairs;
+        result.work.tile_peak_bytes = tile_work.peak_bytes;
     }
     result.pairs.assign(state.begin(), state.end());
     result.center = center;

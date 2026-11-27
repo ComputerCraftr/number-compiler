@@ -423,3 +423,139 @@ for center in (-1, 4):
     subprocess.run(
         [interpreter, "-I", "-c", program, str(_two_birth_seed(18))], check=True
     )
+
+
+def test_installed_seed196_uses_four_tick_action_with_exact_fallback() -> None:
+    interpreter = os.environ.get("NUMBER_COMPILER_INSTALLED_PYTHON")
+    if not interpreter:
+        pytest.skip("set NUMBER_COMPILER_INSTALLED_PYTHON to the native wheel")
+    program = """\
+import json,sys
+from number_compiler.api.cli import main
+from number_compiler.kernels import _reverse_quotients as native
+calls=[]
+original=native.add_folded
+def checked(*args):
+    result=original(*args)
+    calls.append(result[2])
+    return result
+native.add_folded=checked
+status=main(sys.argv[1:])
+print("Q19_RECEIPTS",json.dumps(calls),file=sys.stderr)
+raise SystemExit(status)
+"""
+    for seed, ticks in (
+        (196, 511),
+        (196, 1024),
+        (196, 2048),
+        (196, 4096),
+        (73, 1024),
+        (0, 1024),
+    ):
+        packets: list[object] = []
+        for enabled in (False, True):
+            env = dict(os.environ)
+            env.pop("NUMBER_COMPILER_ENABLE_NATIVE_REVERSE", None)
+            env.pop("NUMBER_COMPILER_ENABLE_Q19_JOINT4", None)
+            if enabled:
+                env["NUMBER_COMPILER_ENABLE_NATIVE_REVERSE"] = "1"
+            proc = subprocess.run(
+                [
+                    interpreter,
+                    "-I",
+                    "-c",
+                    program,
+                    "reverse-add",
+                    "--seed",
+                    str(seed),
+                    "--nth",
+                    str(ticks),
+                    "--format",
+                    "json",
+                    "--max-output-bits",
+                    "10000",
+                ],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            packet = json.loads(proc.stdout)
+            assert packet["value"] == str(_literal(seed, ticks))
+            receipts = json.loads(proc.stderr.removeprefix("Q19_RECEIPTS ").strip())
+            packets.append(packet)
+            if not enabled or ticks < 512 or seed == 0:
+                assert not receipts
+            else:
+                assert len(receipts) == 1
+                attempts, actions, cores, refused, converted, peak = receipts[0][19:25]
+                assert actions > 0 and cores >= actions
+                assert attempts == actions + refused
+                assert converted > 0 and peak > 0
+        assert packets[0] == packets[1]
+
+
+def test_four_tick_carries_match_literal_width_and_center_transitions() -> None:
+    interpreter = os.environ.get("NUMBER_COMPILER_INSTALLED_PYTHON")
+    if not interpreter:
+        pytest.skip("set NUMBER_COMPILER_INSTALLED_PYTHON to the native wheel")
+    program = """\
+import random
+from number_compiler.kernels import _reverse_quotients as native
+r=random.Random(11319)
+admitted=refused=0
+for width in (64,65,95,96,127,128,129,160,193):
+    for case in range(40):
+        values=bytes([r.randrange(1,19)]+[r.randrange(19) for _ in range(width//2-1)])
+        center=r.randrange(10) if width%2 else -1
+        high=[min(s,9) for s in values]
+        low=[s-d for s,d in zip(values,high)]
+        source=int(''.join(map(str,high))+('' if center<0 else str(center))+''.join(map(str,reversed(low))))
+        for ticks in (4,5,9,16):
+            result=native.add_folded(values,center,ticks,4<<20)
+            number=source
+            for _ in range(ticks):
+                number+=int(str(number)[::-1])
+            digits=str(number)
+            physical=bytes(int(a)+int(b) for a,b in zip(digits,digits[::-1]))
+            got=result[0]+(b'' if result[1]<0 else bytes([2*result[1]]))+result[0][::-1]
+            assert physical==got,(width,case,ticks)
+            attempts,actions,tiles,declined,_,_=result[2][19:25]
+            assert attempts==actions+declined
+            assert tiles>=actions
+            admitted+=actions
+            refused+=declined
+assert admitted>0 and refused>0
+"""
+    subprocess.run([interpreter, "-I", "-c", program], check=True)
+
+
+def test_four_tick_failed_publication_releases_native_reservation() -> None:
+    interpreter = os.environ.get("NUMBER_COMPILER_INSTALLED_PYTHON")
+    if not interpreter:
+        pytest.skip("set NUMBER_COMPILER_INSTALLED_PYTHON to the native wheel")
+    program = """\
+from number_compiler.arithmetic.carry.native_reverse_actions import native_folded_pair_action
+from number_compiler.resources.ledger import ResourceLedger
+
+ledger=ResourceLedger()
+owner=ledger.register("four tick publication","scratch")
+def publish(half,center,work):
+    assert half and center in (None, *range(10))
+    assert work.tile_actions == 128 and work.tile_refusals == 0
+    assert work.states == work.joins == work.table_bytes == 0
+    raise RuntimeError("publication interrupted")
+try:
+    try:
+        native_folded_pair_action(
+            ledger,owner,lambda: bytes([18]*128),None,512,publish,source_width=256
+        )
+    except RuntimeError as error:
+        assert str(error)=="publication interrupted"
+    else:
+        raise AssertionError("publication fault was lost")
+    assert ledger.nodes==ledger.entries==0
+finally:
+    ledger.mark_disposed(owner)
+"""
+    subprocess.run([interpreter, "-I", "-c", program], check=True)

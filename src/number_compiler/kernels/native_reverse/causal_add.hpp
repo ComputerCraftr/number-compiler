@@ -13,6 +13,9 @@ struct Work {
                   joint_clock_two_births = 0, joint_clock_one_birth = 0;
     std::uint64_t join_bank_probes = 0, join_bank_builds = 0,
                   join_bank_row_compares = 0, join_bank_slots = 0;
+    std::uint64_t tile_attempts = 0, tile_actions = 0, tile_cores = 0,
+                  tile_refusals = 0, tile_converted_pairs = 0,
+                  tile_peak_bytes = 0;
 };
 struct Result {
     std::string digits; // MSD-first; empty if the input is already the endpoint

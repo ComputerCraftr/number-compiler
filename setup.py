@@ -38,6 +38,8 @@ if os.environ.get("NUMBER_COMPILER_BUILD_NATIVE_REVERSE") == "1":
                     "rev10.hpp",
                     "relative_return.hpp",
                     "joint_slab.hpp",
+                    "guarded_q19_clock.hpp",
+                    "q19_four_tile.hpp",
                 )
             ],
             define_macros=[("PY_SSIZE_T_CLEAN", None)],

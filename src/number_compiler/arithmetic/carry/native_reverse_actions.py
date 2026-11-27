@@ -57,6 +57,12 @@ class PairWork:
     join_bank_builds: int = 0
     join_bank_row_compares: int = 0
     join_bank_slots: int = 0
+    tile_attempts: int = 0
+    tile_actions: int = 0
+    tile_cores: int = 0
+    tile_refusals: int = 0
+    tile_converted_pairs: int = 0
+    tile_peak_bytes: int = 0
 
 
 class _Kernels(Protocol):
@@ -180,6 +186,13 @@ def _record_pair_work(ledger: ResourceLedger, work: PairWork) -> None:
     ledger.bump(_keys.NATIVE_PAIR_JOINS, work.joins)
     ledger.bump(_keys.NATIVE_PAIR_PULLS, work.pulls)
     ledger.bump(_keys.NATIVE_PAIR_TABLE_BYTES, work.table_bytes)
+    if work.tile_attempts:
+        ledger.bump(_keys.NATIVE_PAIR_TILE_ATTEMPTS, work.tile_attempts)
+        ledger.bump(_keys.NATIVE_PAIR_TILE_ACTIONS, work.tile_actions)
+        ledger.bump(_keys.NATIVE_PAIR_TILE_CORES, work.tile_cores)
+        ledger.bump(_keys.NATIVE_PAIR_TILE_REFUSALS, work.tile_refusals)
+        ledger.bump(_keys.NATIVE_PAIR_TILE_CONVERTED_PAIRS, work.tile_converted_pairs)
+        ledger.bump(_keys.NATIVE_PAIR_TILE_PEAK_BYTES, work.tile_peak_bytes)
     if work.join_bank_probes or work.join_bank_row_compares:
         ledger.bump(_keys.NATIVE_PAIR_BANK_PROBES, work.join_bank_probes)
         ledger.bump(_keys.NATIVE_PAIR_BANK_BUILDS, work.join_bank_builds)
@@ -307,6 +320,20 @@ def native_folded_pair_action(
             or 2 * work.join_bank_probes > work.joins
             or work.join_bank_slots > _TABLE_CAP // 4
             or (work.join_bank_slots == 0 and work.join_bank_probes != 0)
+            or min(
+                work.tile_attempts,
+                work.tile_actions,
+                work.tile_cores,
+                work.tile_refusals,
+                work.tile_converted_pairs,
+                work.tile_peak_bytes,
+            )
+            < 0
+            or work.tile_actions + work.tile_refusals != work.tile_attempts
+            or work.tile_cores < work.tile_actions
+            or 4 * (work.tile_actions + work.joint_bands) > steps
+            or work.tile_actions + work.joint_bands > work.bands
+            or work.tile_peak_bytes > slots - _TABLE_CAP
             or 4 * work.joint_bands > steps
             or not 0 <= work.joint_bands <= work.bands
             or min(

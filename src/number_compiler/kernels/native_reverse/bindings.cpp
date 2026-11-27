@@ -150,7 +150,7 @@ PyObject *add_folded_impl(PyObject *args, bool joint_enabled) {
         }
         const auto &work = result.work;
         return Py_BuildValue(
-            "y#i(KKKKKKKKKKKKKKKKKKK)",
+            "y#i(KKKKKKKKKKKKKKKKKKKKKKKKK)",
             result.pairs.empty()
                 ? ""
                 : reinterpret_cast<const char *>(result.pairs.data()),
@@ -173,7 +173,13 @@ PyObject *add_folded_impl(PyObject *args, bool joint_enabled) {
             static_cast<unsigned long long>(work.join_bank_probes),
             static_cast<unsigned long long>(work.join_bank_builds),
             static_cast<unsigned long long>(work.join_bank_row_compares),
-            static_cast<unsigned long long>(work.join_bank_slots));
+            static_cast<unsigned long long>(work.join_bank_slots),
+            static_cast<unsigned long long>(work.tile_attempts),
+            static_cast<unsigned long long>(work.tile_actions),
+            static_cast<unsigned long long>(work.tile_cores),
+            static_cast<unsigned long long>(work.tile_refusals),
+            static_cast<unsigned long long>(work.tile_converted_pairs),
+            static_cast<unsigned long long>(work.tile_peak_bytes));
     } catch (...) {
         translate_exception(std::current_exception());
         return nullptr;

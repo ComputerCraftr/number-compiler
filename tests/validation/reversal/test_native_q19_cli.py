@@ -345,7 +345,7 @@ def test_folded_two_tick_action_reuses_issued_cells_under_tight_table_cap() -> N
 
 
 @pytest.mark.parametrize("seed", (73, 196))
-def test_guarded_folded_pair_bank_matches_direct_and_keeps_the_clock(seed: int) -> None:
+def test_guarded_four_tick_tiles_match_direct_and_keep_the_clock(seed: int) -> None:
     native = pytest.importorskip("number_compiler.kernels._reverse_quotients")
     source = _literal(seed, 12)
     full, half, center = _literal_pair_fields(source)
@@ -353,11 +353,9 @@ def test_guarded_folded_pair_bank_matches_direct_and_keeps_the_clock(seed: int) 
     banked = native.add_folded(half, center, 4083, 4 << 20)
     assert banked[:2] == direct[:2]
     assert banked[2][:5] == direct[2][:5]
-    assert banked[2][15] > 0
-    assert 0 < banked[2][16] < banked[2][15]
-    assert banked[2][17] > 0 and banked[2][18] == 33212
-    assert direct[2][15] == 0
-    assert direct[2][16] == direct[2][18] == 0
+    assert banked[2][20] > 0
+    assert banked[2][15:19] == (0, 0, 0, 0)
+    assert direct[2][15:19] == (0, 0, 0, 0)
     expected, _ = native.add(full, 4083, 2, 1, 4 << 20)
     midpoint = bytes((2 * banked[1],)) if banked[1] >= 0 else b""
     assert banked[0] + midpoint + banked[0][::-1] == expected
@@ -366,11 +364,13 @@ def test_guarded_folded_pair_bank_matches_direct_and_keeps_the_clock(seed: int) 
 
 def test_folded_bank_uses_full_ordered_rows_at_admission_boundary() -> None:
     native = pytest.importorskip("number_compiler.kernels._reverse_quotients")
-    seed = int("1" + "37" * 1024)
-    full, half, center = _literal_pair_fields(seed)
-    assert center >= 0
+    # A source-ambiguous outer prefix forces the exact fallback before
+    # the later four-tick actions become available.
+    half = bytes([9] * 8 + [1] * 1016)
+    center = 0
+    full = half + bytes([2 * center]) + half[::-1]
     below = native.add_folded(half, center, 511, 4 << 20)
-    assert below[2][15:] == (0, 0, 0, 0)
+    assert below[2][15:19] == (0, 0, 0, 0)
     for cap in (300000, 4 << 20):
         got = native.add_folded(half, center, 512, cap)
         expected, _ = native.add(full, 512, 2, 1, 4 << 20)
@@ -383,7 +383,7 @@ def test_folded_bank_uses_full_ordered_rows_at_admission_boundary() -> None:
             assert got[2][18] == 33212
 
 
-def test_installed_cli_enters_long_folded_pair_bank() -> None:
+def test_installed_cli_prefers_source_guarded_four_tick_tiles() -> None:
     interpreter = os.environ.get("NUMBER_COMPILER_INSTALLED_PYTHON")
     if not interpreter:
         pytest.skip("set NUMBER_COMPILER_INSTALLED_PYTHON to a native-wheel venv")
@@ -397,7 +397,7 @@ original = getattr(native, name)
 counts = []
 def observed(*args):
     result = original(*args)
-    counts.append(result[2][15:])
+    counts.append(result[2][15:25])
     return result
 setattr(native, name, observed)
 status = main(sys.argv[1:])
@@ -431,12 +431,10 @@ raise SystemExit(status)
         assert json.loads(result.stdout)["value"] == str(_literal(196, ticks))
         receipt = ast.literal_eval(result.stderr.removeprefix("BANK "))
         assert len(receipt) == 1
-        probes, builds, comparisons, slots = receipt[0]
-        if ticks == 1024:
-            assert probes == builds == comparisons == slots == 0
-        else:
-            assert 0 < builds < probes
-            assert comparisons > 0 and slots == 33212
+        probes, builds, comparisons, slots, attempts, actions, cores, *_ = receipt[0]
+        assert probes == builds == comparisons == slots == 0
+        assert 0 < actions <= attempts
+        assert cores >= actions
 
 
 @pytest.mark.parametrize(
