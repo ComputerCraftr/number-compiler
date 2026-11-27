@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from contextlib import ExitStack
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
+from weakref import ReferenceType, ref
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.exact_tree_context import (
@@ -177,7 +178,11 @@ class ReverseSourceImageWorkspace:
             )
             self._audit_pointed_gt_banks = pointed_gt_banks.audit_container
             self._audit_source_contract_key: (
-                tuple[tuple[tuple[int, str, str], ...], tuple[int, ...]] | None
+                tuple[
+                    tuple[tuple[int, str, str], ...],
+                    tuple[ReferenceType[object], ...],
+                ]
+                | None
             ) = None
             rollback.callback(self._remove_source_payload_audit_contract)
             self.register_source_payload_audit_contract()
@@ -270,9 +275,19 @@ class ReverseSourceImageWorkspace:
         )
         q19_owner = adapter_audit.q19_owner
         dependencies = () if q19_owner is None else (q19_owner,)
-        dependency_key = tuple(id(dependency) for dependency in dependencies)
-        contract_key = (binding_key, dependency_key)
-        if contract_key == self._audit_source_contract_key:
+        current_key = self._audit_source_contract_key
+        if (
+            current_key is not None
+            and current_key[0] == binding_key
+            and self.ledger.payload_audit_contract_matches_root(self, "reverse_add")
+            and len(current_key[1]) == len(dependencies)
+            and all(
+                reference() is dependency
+                for reference, dependency in zip(
+                    current_key[1], dependencies, strict=True
+                )
+            )
+        ):
             return
         if self._audit_source_contract_key is not None:
             self.ledger.remove_payload_audit_contract(self, "reverse_add")
@@ -283,7 +298,10 @@ class ReverseSourceImageWorkspace:
             audit_reverse_source_owner,
             dependencies=dependencies,
         )
-        self._audit_source_contract_key = contract_key
+        self._audit_source_contract_key = (
+            binding_key,
+            tuple(ref(dependency) for dependency in dependencies),
+        )
 
     def check_open(self, *, check_image: bool = True) -> None:
         if self._disposed:

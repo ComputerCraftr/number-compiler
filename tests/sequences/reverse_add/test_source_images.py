@@ -18,6 +18,7 @@ from number_compiler.hashlife.execution.source_image_inventory import (
     SourceImageView,
 )
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.reverse_add import source_workspace
 from number_compiler.sequences.reverse_add.recursive_adapters import (
     ReverseRecursiveFieldAdapter,
 )
@@ -417,6 +418,44 @@ def test_zero_source_admits_huge_power_without_constructing_the_power() -> None:
     )
     assert workspace.adapter.audit_snapshot().q19_owner is None
     assert workspace.audit_snapshot().image is None
+
+
+def test_source_audit_contract_rebinds_after_q19_identity_collision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Simulate CPython reusing a released owner's address without relying on
+    # allocator timing. The ledger itself still sees the real identities.
+    def recycled_id(_value: object) -> int:
+        return 42
+
+    monkeypatch.setattr(source_workspace, "id", recycled_id, raising=False)
+    ledger = ResourceLedger()
+    workspace = ReverseSourceImageWorkspace(ledger, 196, 8)
+    source = workspace.actions.source(workspace.source)
+    try:
+        first = workspace.adapter.q19_output_owner(source)
+        workspace.register_source_payload_audit_contract()
+        workspace.adapter.clear_query_output()
+        second = workspace.adapter.q19_output_owner(source)
+        assert second is not first
+        workspace.register_source_payload_audit_contract()
+
+        assert ledger.audit_payload_contracts().owns_root("reverse_add", workspace)
+    finally:
+        workspace.dispose()
+
+
+def test_source_audit_contract_is_reinstalled_after_removal() -> None:
+    ledger = ResourceLedger()
+    workspace = ReverseSourceImageWorkspace(ledger, 196, 8)
+    try:
+        assert ledger.payload_audit_contract_matches_root(workspace, "reverse_add")
+        ledger.remove_payload_audit_contract(workspace, "reverse_add")
+        assert not ledger.payload_audit_contract_matches_root(workspace, "reverse_add")
+        workspace.register_source_payload_audit_contract()
+        assert ledger.payload_audit_contract_matches_root(workspace, "reverse_add")
+    finally:
+        workspace.dispose()
 
 
 @pytest.mark.parametrize("fail_after_registration", (False, True))
