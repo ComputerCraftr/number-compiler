@@ -10,7 +10,9 @@ import pytest
 
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.sequences.reverse_add.q19_broadword_publisher import PackedQ19
-from number_compiler.sequences.reverse_add.q19_carry_window import _native_segment
+from number_compiler.sequences.reverse_add.q19_carry_window import (
+    completed_continuation,
+)
 
 pytestmark = pytest.mark.validation
 
@@ -29,9 +31,17 @@ def test_native_pair_continuation_and_failed_receiver_release(
     ledger = ResourceLedger()
     owner = ledger.register("native Q19 test", "scratch")
     frame = PackedQ19.from_digits((6, 9, 1))
-    target = _native_segment(frame, 512, ledger, owner)
     expected = PackedQ19.from_digits(tuple(map(int, reversed(str(_literal(196, 512))))))
-    assert target == expected
+    with completed_continuation(
+        frame,
+        512,
+        shared_cache=False,
+        before_step=lambda _count, _rounds: None,
+        ledger=ledger,
+        scratch_owner=owner,
+    ) as (target, reused):
+        assert target == expected
+        assert reused == 0
     assert ledger.counters["native_pair_bands"] > 0
     assert ledger.nodes == ledger.entries == 0
 
@@ -40,10 +50,34 @@ def test_native_pair_continuation_and_failed_receiver_release(
     def interrupted(*args: object, **kwargs: object) -> None:
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(native_reverse_actions, "native_pair_action", interrupted)
-    with pytest.raises(KeyboardInterrupt):
-        _native_segment(frame, 512, ledger, owner)
+    with monkeypatch.context() as patch, pytest.raises(KeyboardInterrupt):
+        patch.setattr(native_reverse_actions, "native_pair_action", interrupted)
+        with completed_continuation(
+            frame,
+            512,
+            shared_cache=False,
+            before_step=lambda _count, _rounds: None,
+            ledger=ledger,
+            scratch_owner=owner,
+        ):
+            pytest.fail("interrupted native continuation returned")
     assert ledger.nodes == ledger.entries == 0
+
+    # A finite ledger refuses the optional native action before invoking it,
+    # and the exact continuation still produces the same endpoint.
+    bounded = ResourceLedger(max_nodes=128)
+    bounded_owner = bounded.register("bounded Q19 test", "scratch")
+    with completed_continuation(
+        frame,
+        512,
+        shared_cache=False,
+        before_step=lambda _count, _rounds: None,
+        ledger=bounded,
+        scratch_owner=bounded_owner,
+    ) as (fallback, reused):
+        assert fallback == expected
+        assert reused == 0
+    assert bounded.nodes == bounded.entries == 0
 
 
 def test_installed_cli_native_admission_and_refusals() -> None:
