@@ -130,6 +130,34 @@ installed/dispatch selection passed 57. Full default validation passed
 14,089 with six Comma failures. Canonical P0 passed 77 with 13 failures.
 Both failing ID sets matched the recorded baseline.
 
+### Fused reciprocal CF heads and decisive clips
+
+On `fc322a99` the opt-in native reciprocal cylinder composes four complete
+7–18 digit rows in one call. For an already-admitted indexed pair with a
+28–32 digit successor, one call returns both row products and the successor
+prefix bank. The six-column phase supplies the initial carry. A fixed
+500-entry base-100 alphabet advances both heads, preserving leading zeroes
+in lower fields. Both ordered folds execute. The native path requires
+CPython 3.13+ and unsigned 128-bit arithmetic.
+
+Against `15da7fef` at horizon 4,096 and the standard coefficient cap, the
+installed CLI issued four four-row actions and one indexed pair. Native
+calls fell from 31 to 19, Python matrix joins from 80 to 54, and Python
+row restrictions from 31 to 13. The five fused tiles use ten general
+matrix joins inside the extension. On the same five tiles and requested
+clips, first acquisition including lazy setup took 682.33 → 582.92 µs
+(15 fresh-process pairs). Warm acquisition took 46.19 → 18.90 µs
+(40 pairs). The full CLI took 5.396 → 5.374 ms warm (25 pairs) and
+124.523 → 125.391 ms cold (seven pairs).
+
+All 16 matched packets agreed. The native and pure macOS wheels and the
+native Linux ARM64 wheel preserved exit 3 at cap 539 and the exact
+540-coefficient result at cap 540. The guarded selection passed all 64
+tests, including every base-100 input/carry combination. The registered
+`Mahler_Source_Transport` build passed in 136 seconds with the oracle and
+skipped-proof audits. It proves the cut carry and ordered pair product.
+Literal comparisons cover the C++ implementation and the indexed clips.
+
 ### Four-tick folded Q19 on seed 196
 
 On `5d9b418f`, the opt-in native reverse/add publisher reads up to eight
