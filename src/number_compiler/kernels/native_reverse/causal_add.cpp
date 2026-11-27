@@ -368,7 +368,7 @@ struct BlockTable {
 // successor. Only identical complete ordered rows share an action.
 struct PairJoinBank {
     static constexpr U min_columns = U(1) << 18U;
-    static constexpr U sum_pairs = 19U * 19U;
+    static constexpr U sum_pairs = U(19) * 19U;
     static constexpr U max_rows = U(1) << 7U;
     static constexpr U max_states = U(1) << 9U;
     std::vector<I> joins, row_ids;
@@ -378,7 +378,7 @@ struct PairJoinBank {
         attempted = true;
         const auto &rows = level.append;
         const U row_cost = U(rows.size()) * sizeof(I) * 2U;
-        const U worst = row_cost + max_rows * sum_pairs * sizeof(I);
+        const U worst = row_cost + (max_rows * sum_pairs * sizeof(I));
         if (rows.size() > max_states || worst > budget.cap - budget.held) {
             return;
         }
@@ -439,7 +439,8 @@ Hinge run_folded(const Level &level, const Cells &cells, unsigned height,
     I row = joins.empty() ? 0U : row_ids[0];
     while (!joins.empty() && i + 1U < state.size()) {
         const I first = state[i], second = state[i + 1U];
-        const U key = U(row) * PairJoinBank::sum_pairs + first * 19U + second;
+        const U key =
+            (U(row) * PairJoinBank::sum_pairs) + (U(first) * 19U) + second;
         ++work.join_bank_probes;
         I value = joins[key];
         if (value == 0U) {
@@ -450,14 +451,14 @@ Hinge run_folded(const Level &level, const Cells &cells, unsigned height,
             joins[key] = value;
         }
         const PairJoinResponse response = unpack_pair_join(value);
-        addresses[i] = U(q) * 19U + first;
-        addresses[i + 1U] = U(response.middle) * 19U + second;
+        addresses[i] = (U(q) * 19U) + first;
+        addresses[i + 1U] = (U(response.middle) * 19U) + second;
         q = response.end;
         row = response.row;
         i += 2;
     }
     for (; i < state.size(); ++i) {
-        addresses[i] = U(q) * 19U + state[i];
+        addresses[i] = (U(q) * 19U) + state[i];
         q = level.append[q][state[i]];
     }
     work.joins += state.size();
