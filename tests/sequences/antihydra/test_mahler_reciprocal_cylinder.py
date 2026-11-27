@@ -294,7 +294,7 @@ def test_reciprocal_leading_cut_conservative_bit_bound() -> None:
                     )
 
 
-def _enable_prefix_bank(monkeypatch: pytest.MonkeyPatch) -> None:
+def enable_prefix_bank(monkeypatch: pytest.MonkeyPatch) -> None:
     from struct import pack
 
     from number_compiler.arithmetic.fields.ordered_matrix import (
@@ -322,7 +322,7 @@ def _enable_prefix_bank(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_issued_last_row_actions_cover_every_clipped_segment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _enable_prefix_bank(monkeypatch)
+    enable_prefix_bank(monkeypatch)
     from number_compiler.sequences.antihydra.mahler_cf_reciprocal_tile import (
         ReciprocalTile,
     )
@@ -352,7 +352,7 @@ def test_issued_last_row_actions_cover_every_clipped_segment(
 def test_indexed_prefixes_are_bound_to_the_receiving_owner(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _enable_prefix_bank(monkeypatch)
+    enable_prefix_bank(monkeypatch)
     ledger = ResourceLedger()
     with Pow5OrderedBlockSource(ledger, reciprocal=True) as source:
         for _ in range(9):
@@ -370,7 +370,7 @@ def test_indexed_prefixes_are_bound_to_the_receiving_owner(
 def test_indexed_prefix_admission_falls_back_before_opening_row(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _enable_prefix_bank(monkeypatch)
+    enable_prefix_bank(monkeypatch)
     from tests.sequences.antihydra.test_mahler_pow5_ordered_blocks import literal_action
 
     ledger = ResourceLedger()

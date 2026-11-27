@@ -256,10 +256,10 @@ def test_final_reciprocal_tile_reuses_issued_row_prefixes(
 ) -> None:
     """The decisive descent consumes its issued row without opening it twice."""
     from tests.sequences.antihydra.test_mahler_reciprocal_cylinder import (
-        _enable_prefix_bank,
+        enable_prefix_bank,
     )
 
-    _enable_prefix_bank(monkeypatch)
+    enable_prefix_bank(monkeypatch)
     monkeypatch.setenv("NUMBER_COMPILER_ENABLE_CF_RECIPROCAL", "1")
     observed: list[tuple[int, int, int, int, int]] = []
     select = tiles.reciprocal_row_interval
