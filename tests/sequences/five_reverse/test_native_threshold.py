@@ -13,7 +13,6 @@ def test_native_threshold_is_five_reverse_only(monkeypatch: pytest.MonkeyPatch) 
     value = 73
     for _ in range(128):
         value = 5 * int(str(value)[::-1])
-    expected = str(value)
 
     class Native:
         @staticmethod
@@ -21,7 +20,10 @@ def test_native_threshold_is_five_reverse_only(monkeypatch: pytest.MonkeyPatch) 
             source: str, multiplier: int, steps: int, side: int
         ) -> tuple[str, tuple[int, int, int, int, int, int, float, float]]:
             calls.append((source, multiplier, steps, side))
-            return expected, (1, 1, 0, 0, 1, 1, 0.0, 0.0)
+            result = int(source)
+            for _ in range(steps):
+                result = multiplier * int(str(result)[::-1])
+            return str(result), (1, 1, 0, 0, 1, 1, 0.0, 0.0)
 
     monkeypatch.setattr(native_reverse_actions, "_load", lambda: Native())
     ledger = ResourceLedger()
@@ -36,7 +38,10 @@ def test_native_threshold_is_five_reverse_only(monkeypatch: pytest.MonkeyPatch) 
     assert action(ledger, owner, 1 << 512, 5, 64, 8192, receive) is None
     assert action(ledger, owner, 6, 5, 128, 4, receive) is None
     assert not calls
-    assert action(ledger, owner, 73, 5, 64, 8192, receive) == value
+    expected_short = 73
+    for _ in range(64):
+        expected_short = 5 * int(str(expected_short)[::-1])
+    assert action(ledger, owner, 73, 5, 64, 8192, receive) == expected_short
     assert action(ledger, owner, 73, 5, 128, 8192, receive) == value
     assert calls == [("73", 5, 64, 3), ("73", 5, 128, 3)]
     assert ledger.entries == ledger.nodes == 0
