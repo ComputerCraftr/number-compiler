@@ -77,6 +77,16 @@ lemma slab_core_1100_packet:
     reverse_native_slab_digit_def carry_bit_def
   by (cases b; cases c; cases d; simp_all)
 
+lemma slab_core_1000_packet:
+  fixes c d :: bool
+  shows "slab_core_quiet (slab_core_quiet (slab_core_quiet
+    (slab_core_initial c d))) =
+    18 - 8 * (slab_core_bit c + slab_core_bit d)"
+  unfolding slab_core_initial_def slab_core_bit_def
+    slab_core_quiet_def reverse_native_slab_quiet_def
+    reverse_native_slab_digit_def carry_bit_def
+  by (cases c; cases d; simp_all)
+
 theorem slab_core_physical_four_packets:
   assumes valid: "valid_pair source" and lower: "5 < i" and upper: "i + 4 < length source"
     and symbols: "\<And>j. i - 4 \<le> j \<Longrightarrow> j < i + 4 \<Longrightarrow>
@@ -93,7 +103,9 @@ theorem slab_core_physical_four_packets:
       3 * slab_core_bit c + slab_core_bit d)) \<and>
     (((\<not> carry_out False (step source) \<and> carry_out False (step (step source)) \<and> \<not> carry_out False (step (step (step source)))) \<or>
       (\<not> carry_out False (step source) \<and> \<not> carry_out False (step (step source)) \<and> carry_out False (step (step (step source)))) \<or>
-      (carry_out False (step source) \<and> \<not> carry_out False (step (step source)) \<and> \<not> carry_out False (step (step (step source))))) \<longrightarrow> step s3 ! i = 18 - 4 * (slab_core_bit b + 2 * slab_core_bit c + slab_core_bit d))"
+      (carry_out False (step source) \<and> \<not> carry_out False (step (step source)) \<and> \<not> carry_out False (step (step (step source))))) \<longrightarrow> step s3 ! i = 18 - 4 * (slab_core_bit b + 2 * slab_core_bit c + slab_core_bit d)) \<and>
+    ((\<not> carry_out False (step source) \<and> (\<not> carry_out False (step (step source)) \<and> \<not> carry_out False (step (step (step source))))) \<longrightarrow>
+      step s3 ! i = 18 - 8 * (slab_core_bit c + slab_core_bit d))"
 proof -
   have valid1: "valid_pair s1" unfolding s1_def by (rule valid_pair_successor[OF valid])
   have valid2: "valid_pair s2" using valid_pair_successor[OF valid1] by (simp add: s2_def s1_def)
@@ -181,6 +193,7 @@ proof -
       slab_core_1010_packet[where b=b and c=c and d=d]
       slab_core_1001_packet[where b=b and c=c and d=d]
       slab_core_1100_packet[where b=b and c=c and d=d]
+      slab_core_1000_packet[where c=c and d=d]
     by (auto simp: slab_core_birth_commute s1_def s2_def s3_def)
 qed
 
