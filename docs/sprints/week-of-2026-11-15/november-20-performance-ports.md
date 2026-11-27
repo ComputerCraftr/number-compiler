@@ -93,6 +93,64 @@ and found zero recursion cycles and package violations. Its remaining
 finding is the pre-existing 1,017-line double-reverse ring theory. The
 global proof index still reports inherited audit and Comma authority gaps.
 
+### CF continuation and folded reversal after `907aa90e`
+
+The reciprocal cylinder selects a carry-preserving binary cut from the
+original inlet and jumps the cursor directly to the last issued row
+(`d3d13444`). It retains the exact first-row action on sealed two-row
+tiles for prefix descent (`12925b30`). Five- and six-column suffixes
+now share 8 and 16 phase actions respectively (`5aef32e6`). The
+operator is selected before the irregular upper digits are read.
+The source binding retains the physical exponent, width, clip and ledger
+owner. Irregular upper digits still require exact bounded evaluation.
+
+The default spatial source keeps its inlet numeric through exponent eight
+and packs once on handoff (`fa91a331`). At horizon 128 this removed both
+spatial issues and all ten packing calls. At 4,096, nine spatial issues
+and four packs became eight and one. Five interleaved fresh installed CLI
+pairs at 4,096 took 130.72 → 125.91 ms on default and 124.86 → 130.57 ms
+with reciprocal enabled. Fifteen warm invocations of each installed entry
+point took 9.15 → 9.22 ms and 9.66 → 9.62 ms respectively. Both returned
+the same complete 540-coefficient packet. On the reciprocal path, head
+intervals fell from 40 to 36 and head digits from 465 to 376. Thirty head
+source multiplications disappeared and noninitial cursor products fell
+from 28 to 10. Clipped right-adjugate transport saved some reads but
+slowed the tested two- and three-digit clips. A phase-and-clip cache had
+zero cold hits across the tested horizons. The live routes retain the
+direct exact clip.
+
+The folded Q19 continuation (`506850f9`, `24264d6b`) takes one half
+field and its center through the opt-in C++ publisher. At seed 196 and
+1,024 ticks, 506 bands required 55,857 pair joins and 4,037 hinge cells,
+compared with 112,969 pair joins on the full field. The native table
+peak increased from 361,172 to 425,940 bytes. Five interleaved installed
+CLI pairs took 243.61 → 242.76 ms cold. Extending a warm owner to 2,048
+ticks took 6.76 → 6.14 ms, with 326,691 → 162,705 joins. The two-pass source theorem (`9765ed99`) proves the ordered physical
+birth bits, width and endpoint. It distinguishes `[18]` and `[9,9]`,
+whose birth counts agree. The compiled hinge-to-clock refinement and
+protected four-tick slab remain open.
+
+The opt-in `5rev10` word-RAM route now admits eligible requests from
+128 ticks (`3e040acc`). The 153-digit, 128-tick fixture replaced 64
+packed pairs with 2,335 tile lookups and 888 fringe gates. The warm
+owner median changed from 0.596 to 0.520 ms. Cold timings were more
+variable (122.73 → 125.98 ms quiet and 162.80 → 176.35 ms under load).
+The installed CLI entered the kernel once at 128 ticks and zero times
+at 127. Automatic reflected dispatch has its own outstanding gate.
+
+Fresh pure-Python and native wheels at `fa91a331` passed on macOS ARM64
+and Linux ARM64 under Colima. Installed console probes observed the
+folded C++ entry at 1,024 and 2,048 ticks and pure fallback at 16.
+The CF native continuant ran 21 times at 4,096 ticks and zero times at
+63. The combined Mahler build passed in 166.76 seconds. The registered
+double-reverse build passed in 181.42 seconds after the two source
+composition laws moved next to the decimal recurrence (`2aa83138`).
+The registered reverse residuals build accepted the ordered two-pass
+theorem with its oracle and skipped-proof checks. The full default
+selection passed 14,071 tests and reproduced the same six Comma
+admission failures. Canonical P0 passed 77 and reproduced all 13
+baseline failures by test ID.
+
 ### NC41 reconciliation
 
 The port starts from `02fefff9`. The guarded baseline selection recorded
