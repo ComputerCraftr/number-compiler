@@ -119,11 +119,28 @@ class ReciprocalTile:
                 )
                 native = (
                     _native_continuant()
-                    if 4 <= prefix_count <= 16
+                    if 4 <= prefix_count <= 32
                     and os.environ.get("NUMBER_COMPILER_ENABLE_CF_CONTINUANT") == "1"
                     else None
                 )
-                if native is None:
+                if native is not None and prefix_count > 16:
+                    # Split at an exact decimal place and append the first
+                    # complete source-free ordered word before its remainder.
+                    head, value = divmod(value, 10 ** (prefix_count - 16))
+                    head_action = native.ordered_product(head, 16)
+                    if entries == (1, 0, 0, 1):
+                        entries = head_action
+                    else:
+                        e, f, g, h = head_action
+                        a, b, c, d = entries
+                        entries = (
+                            a * e + b * g,
+                            a * f + b * h,
+                            c * e + d * g,
+                            c * f + d * h,
+                        )
+                    prefix_count -= 16
+                if native is None or prefix_count < 4:
                     entries = append_decimal_value(
                         value, 10 ** (prefix_count - 1), entries
                     )

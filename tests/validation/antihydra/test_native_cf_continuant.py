@@ -113,6 +113,17 @@ for value,width in ((1,0),(1,17),(100,2),(-1,2),(2**64+7,2),(1,-1),(1,2**64+4),(
 import os
 os.environ['NUMBER_COMPILER_ENABLE_CF_CONTINUANT']='1'
 from number_compiler.sequences.antihydra.mahler_cf_reciprocal_tile import ReciprocalTile
+for width in range(17,33):
+    for value in (0,1,10**(width-2)+105,10**width-1):
+        source=ReciprocalTile(value,(width,),0,width)
+        for begin,end in ((0,width),(1,width),(0,width-1)):
+            digits=str(value).zfill(width)[begin:end]
+            entries=(1,0,0,1)
+            for digit in digits:
+                a,b,c,d=entries
+                k=int(digit)+1
+                entries=(a*k+b,a,c*k+d,c)
+            assert source.segment(begin,end-begin).entries == entries
 for q in (10002345, 123456789012):
     rows = [str(q*5**i) for i in range(3)]
     word = ''.join(rows)
