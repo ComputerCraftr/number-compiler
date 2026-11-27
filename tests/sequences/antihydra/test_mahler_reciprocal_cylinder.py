@@ -292,3 +292,97 @@ def test_reciprocal_leading_cut_conservative_bit_bound() -> None:
                     assert (
                         reciprocal_row_interval(value, t, width, 0, count) == expected
                     )
+
+
+def _enable_prefix_bank(monkeypatch: pytest.MonkeyPatch) -> None:
+    from struct import pack
+
+    from number_compiler.arithmetic.fields.ordered_matrix import (
+        ordered_decimal_continuant,
+    )
+    from number_compiler.sequences.antihydra import mahler_cf_reciprocal_tile as tiles
+
+    class Native:
+        @staticmethod
+        def ordered_product(value: int, width: int) -> tuple[int, int, int, int]:
+            return ordered_decimal_continuant(map(int, f"{value:0{width}d}")).entries
+
+        @staticmethod
+        def ordered_prefix_bank(value: int, width: int) -> bytes:
+            word = f"{value:0{width}d}"
+            return b"".join(
+                pack("=4Q", *ordered_decimal_continuant(map(int, word[:i])).entries)
+                for i in range(width + 1)
+            )
+
+    monkeypatch.setenv("NUMBER_COMPILER_ENABLE_CF_CONTINUANT", "1")
+    monkeypatch.setattr(tiles, "_native_continuant", Native)
+
+
+def test_issued_last_row_actions_cover_every_clipped_segment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_prefix_bank(monkeypatch)
+    from number_compiler.sequences.antihydra.mahler_cf_reciprocal_tile import (
+        ReciprocalTile,
+    )
+    from tests.sequences.antihydra.test_mahler_pow5_ordered_blocks import literal_action
+
+    for first in (9, 10, 38):
+        first_value = 5**first
+        last = str(first_value * 5)
+        for offset in (0, 3):
+            first_width = len(str(first_value))
+            tile = ReciprocalTile(
+                first_value,
+                (first_width, len(last)),
+                offset,
+                first_width - offset + len(last),
+                first,
+                True,
+            )
+            assert tile.last_prefixes is not None
+            for start in range(len(last) + 1):
+                for end in range(start, len(last) + 1):
+                    assert tile.segment(
+                        first_width - offset + start, end - start
+                    ) == literal_action(last[start:end])
+
+
+def test_indexed_prefixes_are_bound_to_the_receiving_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_prefix_bank(monkeypatch)
+    ledger = ResourceLedger()
+    with Pow5OrderedBlockSource(ledger, reciprocal=True) as source:
+        for _ in range(9):
+            source.next_block(4, 1000)
+        source.next_block(1, 1000)
+        block = source.next_block(2, 1000)
+        tile = object.__getattribute__(source, "_tile")
+        assert tile.last_prefixes is not None
+        object.__setattr__(tile, "last_prefixes", tile.last_prefixes[:-1])
+        with pytest.raises(ValueError, match="source binding changed"):
+            block.prefix(1)
+    assert ledger.nodes == ledger.entries == 0
+
+
+def test_indexed_prefix_admission_falls_back_before_opening_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _enable_prefix_bank(monkeypatch)
+    from tests.sequences.antihydra.test_mahler_pow5_ordered_blocks import literal_action
+
+    ledger = ResourceLedger()
+    with Pow5OrderedBlockSource(ledger, reciprocal=True) as source:
+        for _ in range(9):
+            source.next_block(4, 1000)
+        source.next_block(1, 1000)
+        # Exactly enough capacity for the regular two-row reservation.
+        ledger.tighten_limits(ledger.nodes + 808, None)
+        block = source.next_block(2, 1000)
+        tile = object.__getattribute__(source, "_tile")
+        assert not tile.index_last and tile.last_prefixes is None
+        assert block.product == literal_action(str(5**38) + str(5**39))
+        assert block.segment(27, 4) == literal_action(str(5**39)[:4])
+    assert ledger.nodes == ledger.entries == 0

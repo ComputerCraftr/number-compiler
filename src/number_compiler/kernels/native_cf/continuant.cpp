@@ -1,7 +1,9 @@
 #include <Python.h> // IWYU pragma: keep
 #include <array>
+#include <bytesobject.h>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #ifdef __ARM_NEON
 #include <arm_neon.h>
 #endif
@@ -38,38 +40,53 @@ constexpr auto make_alphabet() {
 }
 constexpr auto alphabet = make_alphabet();
 
-PyObject *ordered_product(PyObject * /*unused*/, PyObject *args) {
+struct DecimalWord {
+    std::uint64_t value = 0;
+    unsigned long width = 0;
+    std::uint64_t place = 1;
+};
+
+bool parse_word(PyObject *args, DecimalWord &input) {
     PyObject *value_object = nullptr;
     PyObject *width_object = nullptr;
     if (PyArg_ParseTuple(args, "OO", &value_object, &width_object) == 0) {
-        return nullptr;
+        return false;
     }
     if (!PyLong_CheckExact(value_object) || !PyLong_CheckExact(width_object)) {
         PyErr_SetString(PyExc_TypeError,
                         "ordered source and width must be integers");
-        return nullptr;
+        return false;
     }
-    auto value = PyLong_AsUnsignedLongLong(value_object);
+    input.value = PyLong_AsUnsignedLongLong(value_object);
     if (PyErr_Occurred() != nullptr) {
-        return nullptr;
+        return false;
     }
-    const auto width = PyLong_AsUnsignedLong(width_object);
+    input.width = PyLong_AsUnsignedLong(width_object);
     if (PyErr_Occurred() != nullptr) {
-        return nullptr;
+        return false;
     }
-    if (width == 0 || width > 16) {
+    if (input.width == 0 || input.width > 16) {
         PyErr_SetString(PyExc_ValueError,
                         "ordered digit width outside native range");
-        return nullptr;
+        return false;
     }
-    std::uint64_t place = 1;
-    for (unsigned long i = 1; i < width; ++i) {
-        place *= 10;
+
+    for (unsigned long i = 1; i < input.width; ++i) {
+        input.place *= 10;
     }
-    if (value / place >= 10) {
+    if (input.value / input.place >= 10) {
         PyErr_SetString(PyExc_ValueError, "ordered source exceeds digit width");
+        return false;
+    }
+    return true;
+}
+
+PyObject *ordered_product(PyObject * /*unused*/, PyObject *args) {
+    DecimalWord input;
+    if (!parse_word(args, input)) {
         return nullptr;
     }
+    auto [value, width, place] = input;
     // Every coefficient is at most 10, so each entry is bounded by 11^16
     // and fits in uint64_t throughout the admitted 16-digit product.
     std::uint64_t a = 1, b = 0, c = 0, d = 1;
@@ -137,12 +154,64 @@ PyObject *ordered_product(PyObject * /*unused*/, PyObject *args) {
                          static_cast<unsigned long long>(c),
                          static_cast<unsigned long long>(d));
 }
+// Each 32-byte record is the MSD-first continuant up to this cut. The
+// buffer is private to the issuing process and uses its native byte order.
+PyObject *ordered_prefix_bank(PyObject * /*unused*/, PyObject *args) {
+    DecimalWord input;
+    if (!parse_word(args, input)) {
+        return nullptr;
+    }
+    auto [value, width, place] = input;
+    using Matrix = std::array<std::uint64_t, 4>;
+    constexpr auto record_size = 4 * sizeof(std::uint64_t);
+    const auto bytes = static_cast<Py_ssize_t>((width + 1) * record_size);
+    PyObject *bank = PyBytes_FromStringAndSize(nullptr, bytes);
+    if (bank == nullptr) {
+        return nullptr;
+    }
+    char *record = PyBytes_AsString(bank);
+    Matrix matrix{1, 0, 0, 1};
+    std::memcpy(record, matrix.data(), record_size);
+    auto append = [&](std::uint64_t coefficient) {
+        const auto [top, previous_top, bottom, previous_bottom] = matrix;
+        matrix = {
+            (top * coefficient) + previous_top,
+            top,
+            (bottom * coefficient) + previous_bottom,
+            bottom,
+        };
+        record += record_size;
+        std::memcpy(record, matrix.data(), record_size);
+    };
+    if (width % 2 != 0) {
+        append((value / place) + 1);
+        value %= place;
+        place /= 10;
+    }
+    while (place != 0) {
+        const auto lower = place / 10;
+        const auto pair = alphabet[static_cast<std::size_t>(value / lower)];
+        // The off-diagonal entries of A(x)A(y) are x and y in order.
+        append(pair.b);
+        append(pair.c);
+        value %= lower;
+        place /= 100;
+    }
+    return bank;
+}
+
 PyMethodDef methods[] = {
     {
         "ordered_product",
         ordered_product,
         METH_VARARGS,
         "Compile a bounded decimal continuant.",
+    },
+    {
+        "ordered_prefix_bank",
+        ordered_prefix_bank,
+        METH_VARARGS,
+        "Compile all ordered prefixes of one bounded decimal word.",
     },
     {nullptr, nullptr, 0, nullptr},
 };

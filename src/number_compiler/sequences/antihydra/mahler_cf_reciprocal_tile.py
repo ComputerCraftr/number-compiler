@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass, field
 from functools import cache
 from importlib import import_module
+from struct import Struct
 from typing import Protocol, cast
 
 from number_compiler.arithmetic.fields.ordered_matrix import (
@@ -21,6 +22,11 @@ from number_compiler.sequences.antihydra.mahler_cf_low_period import (
 class _NativeContinuant(Protocol):
     def ordered_product(self, value: int, width: int) -> tuple[int, int, int, int]: ...
 
+    def ordered_prefix_bank(self, value: int, width: int) -> bytes: ...
+
+
+_PREFIX = Struct("=4Q")
+
 
 @cache
 def _native_continuant() -> _NativeContinuant | None:
@@ -32,6 +38,14 @@ def _native_continuant() -> _NativeContinuant | None:
         if error.name != "number_compiler.kernels._cf_continuant":
             raise
         return None
+
+
+def native_prefix_available() -> bool:
+    """Check the optional immutable native prefix bank before admission."""
+    if os.environ.get("NUMBER_COMPILER_ENABLE_CF_CONTINUANT") != "1":
+        return False
+    native = _native_continuant()
+    return callable(getattr(native, "ordered_prefix_bank", None))
 
 
 def reciprocal_row_interval(q: int, t: int, width: int, start: int, count: int) -> int:
@@ -60,10 +74,12 @@ class ReciprocalTile:
     start: int
     length: int
     first_exponent: int | None = None
+    index_last: bool = False
     product: Matrix2 = field(init=False)
     # This bounded response belongs to the issued tile, never to a shared
     # semantic key. The owner's staging reservation covers its integer limbs.
     first_row_prefix: tuple[int, MatrixEntries] | None = field(init=False)
+    last_prefixes: bytes | None = field(init=False, default=None)
     _building: bool = field(init=False, default=True, repr=False)
 
     def __post_init__(self) -> None:
@@ -79,6 +95,29 @@ class ReciprocalTile:
     def segment(self, begin: int, length: int) -> Matrix2:
         if length == 0:
             return Matrix2.identity()
+        if (
+            not self._building
+            and self.last_prefixes is not None
+            and begin >= self.widths[0] - self.start
+        ):
+            position = begin - self.widths[0] + self.start
+            prefixes = self.last_prefixes
+            if (position + length + 1) * _PREFIX.size <= len(prefixes):
+                if position == 0:
+                    return Matrix2(_PREFIX.unpack_from(prefixes, length * _PREFIX.size))
+                a, b, c, d = _PREFIX.unpack_from(prefixes, position * _PREFIX.size)
+                e, f, g, h = _PREFIX.unpack_from(
+                    prefixes, (position + length) * _PREFIX.size
+                )
+                sign = 1 if position % 2 == 0 else -1
+                return Matrix2(
+                    (
+                        sign * (d * e - b * g),
+                        sign * (d * f - b * h),
+                        sign * (a * g - c * e),
+                        sign * (a * h - c * f),
+                    )
+                )
         if not self._building and begin == 0:
             prefix = self.first_row_prefix
             if prefix is not None and prefix[0] == length:
@@ -118,6 +157,43 @@ class ReciprocalTile:
                 suffix_count = 1
                 action = SETTLED_TENS_ACTION
             prefix_count = count - suffix_count
+            if (
+                self._building
+                and self.index_last
+                and row == 1
+                and start == 0
+                and count == width
+                and prefix_count > 0
+            ):
+                value = reciprocal_row_interval(
+                    self.quotient, row, width, 0, prefix_count
+                )
+                indexed = min(width // 2, prefix_count)
+                remainder_count = prefix_count - indexed
+                value, remainder = divmod(value, 10**remainder_count)
+                native = _native_continuant()
+                if native is None:
+                    raise RuntimeError("native CF prefix owner disappeared")
+                prefixes = native.ordered_prefix_bank(value, indexed)
+                if (
+                    type(prefixes) is not bytes
+                    or len(prefixes) != (indexed + 1) * _PREFIX.size
+                ):
+                    raise RuntimeError("native CF prefix bank has invalid bounds")
+                object.__setattr__(self, "last_prefixes", prefixes)
+                entries = multiply_entries(
+                    entries, _PREFIX.unpack_from(prefixes, indexed * _PREFIX.size)
+                )
+                if remainder_count:
+                    entries = multiply_entries(
+                        entries, native.ordered_product(remainder, remainder_count)
+                    )
+                if action is not None:
+                    entries = multiply_entries(entries, action)
+                remaining -= count
+                if remaining == 0:
+                    return Matrix2(entries)
+                raise ArithmeticError("unexpected reciprocal tile tail")
             if prefix_count:
                 value = reciprocal_row_interval(
                     self.quotient, row, width, start, prefix_count

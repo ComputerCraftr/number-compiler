@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Generator, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from sys import getsizeof
 from types import TracebackType
 from typing import TYPE_CHECKING, Self
 
@@ -13,6 +14,7 @@ from number_compiler.arithmetic.automata.slp_interval import (
     fold_slp_dag,
     fold_slp_interval,
 )
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.ordered_matrix import (
     Matrix2,
@@ -38,6 +40,9 @@ _SETTLED_SPATIAL_END = 8
 _SPATIAL_DIGIT_BITS = 24
 _ASCII_DECIMAL = bytes(range(48, 58))
 _NUMERIC_TO_ASCII = bytes.maketrans(bytes(range(10)), _ASCII_DECIMAL)
+
+# Include the immutable native bank and bounded temporary endpoint tuples.
+_PREFIX_INDEX_WORDS = (getsizeof(b"") + 32 * 17 + 7) // 8 + 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +149,8 @@ class Pow5OrderedBlockSource:
                 int | None,
                 int | None,
                 tuple[int, tuple[int, int, int, int]] | None,
+                bool,
+                bytes | None,
             ]
             | None
         ) = None
@@ -234,6 +241,7 @@ class Pow5OrderedBlockSource:
                 or tile is not binding[0]
                 or not tile.sealed
                 or (
+                    tile,
                     tile.quotient,
                     tile.widths,
                     tile.start,
@@ -242,8 +250,10 @@ class Pow5OrderedBlockSource:
                     tile.product.modulus,
                     tile.first_exponent,
                     tile.first_row_prefix,
+                    tile.index_last,
+                    tile.last_prefixes,
                 )
-                != binding[1:]
+                != binding
             ):
                 raise ValueError("reciprocal CF block source binding changed")
 
@@ -357,6 +367,7 @@ class Pow5OrderedBlockSource:
     ) -> Pow5OrderedBlock:
         from number_compiler.sequences.antihydra.mahler_cf_reciprocal_tile import (
             ReciprocalTile,
+            native_prefix_available,
         )
 
         if (
@@ -384,6 +395,18 @@ class Pow5OrderedBlockSource:
             bits = 4 * (first + rows) + 64 * estimated
             node_bound = 128 + 8 * ((bits + 63) // 64)
 
+        # Predict only a complete two-row window near the measured width.
+        # Capped ledgers retain their existing admission and optional fallback.
+        staged_index = (
+            self.ledger.max_nodes is None
+            and self._offset == 0
+            and max_rows == 2
+            and 26 <= self._width <= 32
+            and max_coefficients >= 2 * (self._width + 2)
+            and native_prefix_available()
+        )
+        if staged_index:
+            node_bound += _PREFIX_INDEX_WORDS
         with self._reserve_candidate(node_bound) as reservation:
             start = self._offset
             quotient = source if start else 5 * source
@@ -401,7 +424,20 @@ class Pow5OrderedBlockSource:
             value = quotient * (1, 5, 25, 125, 625)[ticks] if ticks else quotient
             threshold *= 10 ** (widths[-1] - width)
             width = widths[-1]
-            tile = ReciprocalTile(quotient, widths, start, length, first)
+            index_last = (
+                len(widths) == 2
+                and 28 <= widths[-1] <= 32
+                and length == sum(widths) - start
+                and (staged_index or native_prefix_available())
+            )
+            if staged_index and not index_last:
+                reservation.release(nodes=_PREFIX_INDEX_WORDS)
+            elif index_last and not staged_index:
+                try:
+                    reservation.reserve(nodes=_PREFIX_INDEX_WORDS)
+                except BlockContextBudgetExceeded:
+                    index_last = False
+            tile = ReciprocalTile(quotient, widths, start, length, first, index_last)
             block = Pow5OrderedBlock(self, self._epoch + 1)
 
             def revoke() -> None:
@@ -429,6 +465,8 @@ class Pow5OrderedBlockSource:
                     tile.product.modulus,
                     tile.first_exponent,
                     tile.first_row_prefix,
+                    tile.index_last,
+                    tile.last_prefixes,
                 )
                 self._block = block
                 self._spatial_value = (

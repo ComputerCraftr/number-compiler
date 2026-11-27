@@ -20,7 +20,7 @@ def test_installed_native_continuant_cylinder_and_fallback() -> None:
     else:
         assert Path(installed).is_absolute() and Path(installed).is_file()
     program = """\
-import pathlib,sys,sysconfig
+import os,pathlib,sys,sysconfig
 import number_compiler
 from number_compiler.kernels import _cf_continuant as native
 if sys.argv.pop(1) == 'installed':
@@ -28,13 +28,25 @@ if sys.argv.pop(1) == 'installed':
     for path in (number_compiler.__file__,native.__file__):
         assert path is not None and any(pathlib.Path(path).resolve().is_relative_to(root) for root in roots)
 from number_compiler.api.cli import main
+from number_compiler.sequences.antihydra import mahler_cf_reciprocal_tile as tile
 calls=[]
+banks=[]
+opens=[]
+select=tile.reciprocal_row_interval
+def watch(q,t,width,start,count):
+    if q==5**38 and t==1:
+        opens.append((width,start,count))
+        if os.environ.get('NUMBER_COMPILER_ENABLE_CF_CONTINUANT')=='1':
+            assert opens==[(28,0,22)], 'issued head reopened during descent'
+    return select(q,t,width,start,count)
+tile.reciprocal_row_interval=watch
 def trace(frame,event,arg):
     if event == 'c_call' and arg is native.ordered_product:calls.append(1)
+    if event == 'c_call' and arg is native.ordered_prefix_bank:banks.append(1)
 sys.setprofile(trace)
 try:status=main(sys.argv[1:])
 finally:sys.setprofile(None)
-print('NATIVE_C_CALLS',len(calls),file=sys.stderr)
+print('NATIVE_C_CALLS',len(calls),len(banks),len(opens),file=sys.stderr)
 raise SystemExit(status)
 """
     results: dict[str, subprocess.CompletedProcess[str]] = {}
@@ -68,8 +80,13 @@ raise SystemExit(status)
         result = subprocess.run(
             cmd, capture_output=True, text=True, env=env, check=True
         )
-        calls = int(result.stderr.strip().split("NATIVE_C_CALLS ")[-1])
+        calls, banks, opens = map(
+            int, result.stderr.strip().split("NATIVE_C_CALLS ")[-1].split()
+        )
         assert (calls > 0) == (label == "native")
+        assert banks == (1 if label == "native" else 0)
+        if label == "native":
+            assert opens == 1
         value = json.loads(result.stdout)["info"]["arithmetic.continued-fraction"]
         assert value["status"] == "available"
         count = value["coefficient_count"]
@@ -97,18 +114,34 @@ def test_native_word_alphabet_and_leading_zero_clips() -> None:
         pytest.importorskip("number_compiler.kernels._cf_continuant")
     program = """\
 import random
-from number_compiler.kernels._cf_continuant import ordered_product
+import struct
+from number_compiler.kernels._cf_continuant import ordered_prefix_bank, ordered_product
 from number_compiler.arithmetic.fields.ordered_matrix import append_decimal_value
 rng = random.Random(43)
 for width in range(1,17):
     values = [0,1,10**width-1] + [rng.randrange(10**width) for _ in range(100)]
     if width == 2: values.extend(range(100))
     for value in values:
+        bank=ordered_prefix_bank(value,width)
+        assert type(bank) is bytes and len(bank)==32*(width+1)
+        expected=(1,0,0,1)
+        for cut,digit in enumerate(str(value).zfill(width)):
+            assert struct.unpack_from('=4Q',bank,32*cut)==expected
+            a,b,c,d=expected
+            x=int(digit)+1
+            expected=(a*x+b,a,c*x+d,c)
+        assert struct.unpack_from('=4Q',bank,32*width)==expected
         assert ordered_product(value,width) == append_decimal_value(value,10**(width-1),(1,0,0,1))
-for value,width in ((1,0),(1,17),(100,2),(-1,2),(2**64+7,2),(1,-1),(1,2**64+4),(True,2),(1,True)):
-    try: ordered_product(value,width)
-    except (ValueError, OverflowError, TypeError): pass
-    else: raise AssertionError((value,width))
+for fn in (ordered_product,ordered_prefix_bank):
+    for bad,width,err in ((1,0,ValueError),(1,17,ValueError),(100,2,ValueError),
+                          (-1,1,OverflowError),(2**64+7,2,OverflowError),(1,-1,OverflowError),
+                          (1,2**64+4,OverflowError),(True,1,TypeError),(1,True,TypeError)):
+        try:
+            fn(bad,width)
+        except err:
+            pass
+        else:
+            raise AssertionError((fn.__name__,bad,width))
 
 import os
 os.environ['NUMBER_COMPILER_ENABLE_CF_CONTINUANT']='1'

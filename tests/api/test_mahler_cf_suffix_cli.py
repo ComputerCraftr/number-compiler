@@ -249,3 +249,48 @@ def test_opt_in_cylinder_reuses_completed_row_before_reopening_cut(
     a, b, c, d = literal_action(digits).entries
     assert result["matrix"] == [[a, b], [c, d]]
     assert reads == 1
+
+
+def test_final_reciprocal_tile_reuses_issued_row_prefixes(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The decisive descent consumes its issued row without opening it twice."""
+    from tests.sequences.antihydra.test_mahler_reciprocal_cylinder import (
+        _enable_prefix_bank,
+    )
+
+    _enable_prefix_bank(monkeypatch)
+    monkeypatch.setenv("NUMBER_COMPILER_ENABLE_CF_RECIPROCAL", "1")
+    observed: list[tuple[int, int, int, int, int]] = []
+    select = tiles.reciprocal_row_interval
+    final_source = 5**38
+
+    def checked(q: int, t: int, width: int, start: int, count: int) -> int:
+        if q == final_source and t == 1:
+            observed.append((q, t, width, start, count))
+            assert len(observed) == 1
+            assert (width, start, count) == (28, 0, 22)
+        return select(q, t, width, start, count)
+
+    monkeypatch.setattr(tiles, "reciprocal_row_interval", checked)
+    status = main(
+        [
+            "antihydra",
+            "--nth",
+            "0",
+            "--no-value",
+            "--format",
+            "json",
+            "--info",
+            "arithmetic.continued-fraction",
+            "--safety-horizon",
+            "4096",
+        ]
+    )
+    result = json.loads(capsys.readouterr().out)
+    consumed, matrix = literal_cylinder(4096, 20000)
+    view = result["info"]["arithmetic.continued-fraction"]
+    assert status == 0
+    assert view["coefficient_count"] == consumed == 540
+    assert view["matrix"] == [list(row) for row in matrix]
+    assert len(observed) == 1
