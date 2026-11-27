@@ -597,6 +597,7 @@ def _padded_h_execute(
     scratch_owner: int,
     max_state_bits: int,
     emit: Callable[[list[int], bool], int],
+    publish_physical: Callable[[str], int] | None = None,
 ) -> int:
     """Compute a bounded physical endpoint via the same ledgered cone arena."""
     if (
@@ -612,6 +613,26 @@ def _padded_h_execute(
         raise ValueError("state-bit budget must be a positive integer")
     if seed.bit_length() > max_state_bits:
         raise BlockContextBudgetExceeded("reflected source exceeds state-bit budget")
+    if (
+        publish_physical is not None
+        and multiplier == 2
+        and generation >= 512
+        and padded_h_workload(seed, generation, max_state_bits)
+    ):
+        from .native_reverse_actions import diagonal_endpoint, native_reverse_enabled
+
+        if native_reverse_enabled():
+            root = diagonal_endpoint(
+                ledger,
+                scratch_owner,
+                seed,
+                multiplier,
+                generation,
+                max_state_bits,
+                lambda digits, _work: publish_physical(digits),
+            )
+            if root is not None:
+                return root
     width_bound = (seed.bit_length() * 30103 + 99999) // 100000 + 1
     if seed == 0 or generation == 0:
         with ledger.reservation(scratch_owner, nodes=2 * width_bound):
@@ -839,6 +860,9 @@ def padded_h_publish(
             scratch_owner=scratch_owner,
             max_state_bits=max_state_bits,
             emit=emit,
+            publish_physical=lambda digits: arena.word(
+                bytes(ord(d) - 48 for d in digits)
+            ),
         )
     except BaseException as error:
         try:
