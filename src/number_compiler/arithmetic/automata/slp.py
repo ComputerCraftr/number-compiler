@@ -19,6 +19,7 @@ from number_compiler.arithmetic.automata.slp_cache_audit import (
 )
 from number_compiler.arithmetic.automata.slp_node_storage import SLPNodeStorage
 from number_compiler.arithmetic.automata.transducer import (
+    BimachineLawBinding,
     transduction_midpoints,
 )
 from number_compiler.arithmetic.contracts.iterative_queries import push_binary_children
@@ -369,6 +370,7 @@ class BimachineSLPProjector:
         "_initial_node_storage",
         "_arena_node_id_generation",
         "_initial_machine",
+        "_machine_law",
         "arena",
         "machine",
         "section_calls",
@@ -382,6 +384,7 @@ class BimachineSLPProjector:
         self.machine = machine
         self.arena = arena
         self._initial_machine = machine
+        self._machine_law = BimachineLawBinding(machine)
         self._initial_arena = arena
         self._initial_node_storage = arena.nodes
         self._arena_node_id_generation = arena.node_id_generation
@@ -423,6 +426,8 @@ class BimachineSLPProjector:
             raise RuntimeError(
                 "projector machine or arena authority changed after construction"
             )
+        if not self._machine_law.matches():
+            raise RuntimeError("projector machine changed; clear caches before binding")
         self.arena.empty()
         if self.arena.node_id_generation != self._arena_node_id_generation:
             raise RuntimeError(
@@ -528,6 +533,7 @@ class BimachineSLPProjector:
         if (
             not self._cache_stores_bound
             or self.machine is not self._initial_machine
+            or not self._machine_law.matches()
             or self.arena is not self._initial_arena
             or self.arena.nodes is not self._initial_node_storage
             or claim is None
@@ -608,6 +614,7 @@ class BimachineSLPProjector:
             and self._arena_is_open()
         ):
             self._arena_node_id_generation = self.arena.node_id_generation
+            self._machine_law = BimachineLawBinding(self.machine)
 
     def _arena_is_open(self) -> bool:
         if (
@@ -635,6 +642,8 @@ class BimachineSLPProjector:
             raise RuntimeError(
                 "projector machine or arena authority changed after construction"
             )
+        if not self._machine_law.matches():
+            raise RuntimeError("projector machine changed; clear caches before reuse")
         self.arena.empty()
         if self.arena.node_id_generation != self._arena_node_id_generation:
             raise RuntimeError(

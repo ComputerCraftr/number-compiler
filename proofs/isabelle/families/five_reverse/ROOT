@@ -7,9 +7,14 @@ session Five_Reverse in five_reverse = Shared_Carry_Dynamics +
     Five_Reverse_Digit_Field
     Five_Reverse_Reflected_H
     Five_Reverse_Packed_Consumer
+    Five_Reverse_Bitplane_Lanes
+    Five_Reverse_Bitplane_Word
+    Five_Reverse_Bitplane_Sheets
     Five_Reverse_Packed_Word_Consumer
+    Five_Reverse_Bitplane_Clock
     Five_Reverse_Packed_Budget_Consumer
     Five_Reverse_Padded_H_Consumer
+    Five_Reverse_Wave_Readout
     Five_Reverse_Compiled_Word
     Five_Reverse_Bounds
     Five_Reverse_Window_Consumer

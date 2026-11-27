@@ -374,6 +374,32 @@ def test_projector_rejects_arena_retarget_after_warm_block_cache() -> None:
         _dispose(arena, stores)
 
 
+def test_cache_claim_rejects_replaced_machine_law_until_cleared() -> None:
+    _, arena, projector, stores = _new_binding()
+    try:
+        machine = projector.machine
+        assert isinstance(machine, LazyBimachine)
+        original = machine.resolver
+        machine.resolver = lambda left, symbol, right: original(left, symbol, right)
+        with pytest.raises(RuntimeError, match="machine changed"):
+            _bind(projector, stores)
+        projector.clear_caches()
+        _bind(projector, stores)
+        machine.resolver = original
+        _assert_unbound(projector, stores)
+        projector.clear_caches()
+        forward, reverse, block, forward_power, reverse_power = stores
+        assert projector.has_exact_owned_cache_binding(
+            forward=forward,
+            reverse=reverse,
+            block=block,
+            forward_power=forward_power,
+            reverse_power=reverse_power,
+        )
+    finally:
+        _dispose(arena, stores)
+
+
 def test_unbound_projector_requires_clear_after_ledgered_id_reuse() -> None:
     ledger = ResourceLedger()
     arena = LedgerSLPArena(ledger, "standalone-projector", "test")

@@ -7,7 +7,7 @@ does not grant an unbounded temporal cycle.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from dataclasses import dataclass
 from threading import RLock
@@ -65,6 +65,9 @@ from .source_window import (
 
 _GUARDED_WINDOW_ENTRIES = 1
 _GUARDED_WINDOW_NODES = 8
+# The bounded bitplane candidate is held until its physical consumer proof and
+# measured dispatch gate pass. Benchmark fixtures can select it explicitly.
+_BITPLANE_MIN_STEPS: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,6 +270,17 @@ class FiveReverseTerm:
         if steps > self.max_steps:
             raise BlockContextBudgetExceeded("packed action exceeds its step budget")
         work = PackedFiveWork()
+        execute = execute_packed_five
+        if (
+            _BITPLANE_MIN_STEPS is not None
+            and steps >= _BITPLANE_MIN_STEPS
+            and value != 0
+            and self.resource_ledger.max_nodes is None
+            and self.resource_ledger.max_cache_entries is None
+        ):
+            from .bitplane_two_step import execute_bitplane_five
+
+            execute = execute_bitplane_five
         held = 0
         try:
             with LedgerReservation(
@@ -282,7 +296,7 @@ class FiveReverseTerm:
                         held = required
 
                 try:
-                    return execute_packed_five(
+                    return execute(
                         value,
                         steps,
                         self.max_state_bits,
@@ -290,21 +304,26 @@ class FiveReverseTerm:
                         reserve_capacity=reserve_capacity,
                     )
                 finally:
-                    cleanup_all(
-                        (
+                    accounting: tuple[Callable[[], None], ...] = (
+                        lambda: self.resource_ledger.bump(
+                            _keys.FIVE_REVERSE_EXACT_STEPS, work.attempted
+                        ),
+                        lambda: self.resource_ledger.bump(
+                            _keys.FIVE_REVERSE_PACKED_LOGICAL_DIGIT_READS,
+                            work.digit_reads,
+                        ),
+                        lambda: self.resource_ledger.bump(
+                            _keys.FIVE_REVERSE_PACKED_EXECUTED_PAIRS,
+                            work.executed_pairs,
+                        ),
+                    )
+                    if work.bitplane_pairs:
+                        accounting += (
                             lambda: self.resource_ledger.bump(
-                                _keys.FIVE_REVERSE_EXACT_STEPS, work.attempted
-                            ),
-                            lambda: self.resource_ledger.bump(
-                                _keys.FIVE_REVERSE_PACKED_LOGICAL_DIGIT_READS,
-                                work.digit_reads,
-                            ),
-                            lambda: self.resource_ledger.bump(
-                                _keys.FIVE_REVERSE_PACKED_EXECUTED_PAIRS,
-                                work.executed_pairs,
+                                _keys.FIVE_REVERSE_BITPLANE_PAIRS, work.bitplane_pairs
                             ),
                         )
-                    )
+                    cleanup_all(accounting)
         except BaseException as error:
             try:
                 self.resource_ledger.bump(_keys.FIVE_REVERSE_FAILED_STEPS)

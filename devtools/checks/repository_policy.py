@@ -21,7 +21,7 @@ from devtools.checks import source_discovery
 MAX_SOURCE_LINES = 1000
 # Isabelle theories are authored source and share the physical line cap.  The
 # Python call-graph checker remains intentionally limited to Python modules.
-SOURCE_SUFFIXES = frozenset({".py", ".pyi", ".thy", ".ML", ".sml"})
+SOURCE_SUFFIXES = frozenset({".py", ".pyi", ".thy", ".ML", ".sml", ".cpp", ".hpp"})
 SOURCE_FILENAMES = frozenset({"ROOT", "ROOTS"})
 _PROFILE_ENV = "NUMBER_COMPILER_POLICY_PROFILE"
 

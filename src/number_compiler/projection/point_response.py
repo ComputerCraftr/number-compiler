@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, MutableSequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from number_compiler.arithmetic.contracts.scoped_handles import ActionProgramID
 from number_compiler.hashlife.actions.lazy_compiler import LazyCompiler
@@ -75,6 +75,8 @@ class PointResponseRegister:
             if last.program == program and last.position == position:
                 self.ledger.bump(_projection_keys.POINT_RESPONSE_CACHE_HITS)
                 return last.value
+        # The caller's handle must not be able to change the retained key.
+        program_key = replace(program)
         reserved = not self._value
         if reserved:
             self.ledger.reserve(self.owner, entries=1, nodes=1)
@@ -84,7 +86,7 @@ class PointResponseRegister:
                 raise ValueError(
                     "point evaluator returned a value outside its alphabet"
                 )
-            result = PointResponse(program, position, value)
+            result = PointResponse(program_key, position, value)
         except BaseException:
             if reserved:
                 self.ledger.release(self.owner, entries=1, nodes=1)

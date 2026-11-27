@@ -34,11 +34,8 @@ def test_reverse_fused_parent_bypasses_retired_provider_and_higher_point_routes(
     assert occurrence.temporal_steps == 64
     assert occurrence.output_width == 31
     counters = term.resource_ledger.counters
-    assert (
-        2 * counters.get("reverse_q19_punctured_t2_applications", 0)
-        + 4 * counters.get("reverse_q19_punctured_t4_applications", 0)
-        > 0
-    )
+    assert counters.get("reverse_q19_broadword_semantic_steps", 0) > 0
+    assert counters.get("reverse_q19_broadword_endpoint_publications", 0) > 0
     assert counters.get("source_image_primitive_applications", 0) == 0
     assert counters.get("provider_fused_point_evaluations", 0) == 0
     assert workspace is term.published_workspace

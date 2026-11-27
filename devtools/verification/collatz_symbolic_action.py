@@ -289,6 +289,6 @@ class CollatzSymbolicActionArena:
         )
 
     @property
-    def composition_cache(self) -> dict[tuple[int, int], int]:
-        """The single composition interner shared with temporal powering."""
-        return self._compositions
+    def composition_entries(self) -> int:
+        """Number of retained entries in the arena's composition interner."""
+        return len(self._compositions)

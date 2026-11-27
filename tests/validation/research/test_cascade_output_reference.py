@@ -101,11 +101,9 @@ def test_normalizer_rejects_mutated_inputs_and_external_publication() -> None:
     assert composition.machine is not None
     transition = next(iter(first.left.trans))
     old_target = first.left.trans[transition]
-    first.left.trans[transition] = old_target ^ 1
-    with pytest.raises(ValueError, match="changed after construction"):
-        normalize_unary_cascade_output(first, second, composition)
-    assert composition.machine.canonical_output is None
-    first.left.trans[transition] = old_target
+    with pytest.raises(TypeError):
+        first.left.trans[transition] = old_target ^ 1  # type: ignore[index]
+    assert first.left.trans[transition] == old_target
 
     composition.machine.canonical_output = first.canonical_output
     with pytest.raises(ValueError, match="published outside normalization"):

@@ -13,6 +13,7 @@ from collections.abc import Callable
 from typing import Protocol, cast
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
+from number_compiler.arithmetic.automata.slp_walks import symbol_at
 from number_compiler.arithmetic.automata.temporal_cone import (
     CarrySpacetimePower,
     TemporalSquarePublicationFailed,
@@ -20,6 +21,7 @@ from number_compiler.arithmetic.automata.temporal_cone import (
     TemporalSquareScratchReservation,
     TemporalSquareStats,
 )
+from number_compiler.resources.metric_keys import double_reverse as double_reverse_keys
 from number_compiler.resources.owned_memo import LedgerReservation
 
 from .stencil_moore import f_port_cell
@@ -32,6 +34,61 @@ from .temporal_packed_diagonal import (
 _MAX_CELLS = 4096
 _MAX_T2_STEPS = 1024
 _MAX_LARGE_PACKED_T2_STEPS = 16384
+_SHORT_RING_MIN_STEPS: int | None = None
+
+
+def _try_short_ring_cone(
+    arena: LedgerSLPArena,
+    root: int,
+    steps: int,
+    scratch: TemporalSquareScratchReservation,
+    on_source_task: Callable[[bool], None] | None,
+    account_semantic_metrics: bool,
+) -> tuple[int, TemporalSquareStats] | None:
+    """Use a complete repeated one/two-digit halo for a centered F action."""
+    node = arena.nodes[root]
+    if (
+        _SHORT_RING_MIN_STEPS is None
+        or steps < _SHORT_RING_MIN_STEPS
+        or node.kind != "REPEAT"
+        or arena.ledger.max_nodes is not None
+        or arena.ledger.max_cache_entries is not None
+    ):
+        return None
+    width = arena.nodes[node.child].length
+    if width not in (1, 2) or not scratch.try_acquire(32, 32):
+        return None
+    checkpoint = len(arena.nodes)
+    try:
+        from number_compiler.arithmetic.carry.decimal_ring_action import (
+            centered_short_ring,
+        )
+
+        motif = tuple(symbol_at(arena, node.child, index) for index in range(width))
+        target = centered_short_ring(motif, 2, steps)
+        phase = steps % width
+        target = target[phase:] + target[:phase]
+        if on_source_task is not None:
+            for _ in range(width):
+                on_source_task(True)
+        scratch.use_exact_growth()
+        result = arena.repeat(arena.word(target), 2 * steps // width)
+        if arena.nodes[result].length != 2 * steps:
+            raise AssertionError("short-ring cone changed the output width")
+        stats = TemporalSquareStats(0, 0, 0, width, 0)
+        if account_semantic_metrics:
+            record_square_work(arena, stats)
+            arena.ledger.bump(double_reverse_keys.DOUBLE_REVERSE_F_MODULAR_RING_POWERS)
+        return result, stats
+    except BaseException as error:
+        if len(arena.nodes) > checkpoint:
+            try:
+                arena.rollback_unpublished_suffix(checkpoint)
+            except BaseException as cleanup_error:
+                raise error from cleanup_error
+        raise
+    finally:
+        scratch.release(32, 32)
 
 
 def temporal_square_cone(
@@ -65,6 +122,31 @@ def temporal_square_cone(
     source_width = arena.nodes[root].length
     if source_width != 4 * steps or source_width > max_cells:
         raise ValueError("temporal square source is not its complete admitted halo")
+
+    if _SHORT_RING_MIN_STEPS is not None:
+        checkpoint = len(arena.nodes)
+        short_ring: tuple[int, TemporalSquareStats] | None = None
+        try:
+            with TemporalSquareScratchReservation(
+                LedgerReservation(arena.ledger, scratch_owner)
+            ) as scratch:
+                short_ring = _try_short_ring_cone(
+                    arena,
+                    root,
+                    steps,
+                    scratch,
+                    on_source_task,
+                    account_semantic_metrics,
+                )
+        except BaseException as error:
+            if short_ring is not None and len(arena.nodes) > checkpoint:
+                try:
+                    arena.rollback_unpublished_suffix(checkpoint)
+                except BaseException as cleanup_error:
+                    raise error from cleanup_error
+            raise
+        if short_ring is not None:
+            return short_ring
 
     reservation = LedgerReservation(arena.ledger, scratch_owner)
     with TemporalSquareScratchReservation(reservation) as scratch:
@@ -215,25 +297,32 @@ def try_source_bound_square_cone(
             with TemporalSquareScratchReservation(
                 LedgerReservation(arena.ledger, scratch_owner)
             ) as scratch:
-                try:
-                    published, _ = publish_packed_diagonal(
-                        arena,
-                        root,
-                        steps,
-                        scratch,
-                        None,
-                        stats,
-                    )
-                except TemporalSquareScratchCapacityRefused:
-                    if len(arena.nodes) != checkpoint:
-                        raise AssertionError(
-                            "packed scratch refusal occurred after publication"
-                        ) from None
+                short_ring = _try_short_ring_cone(
+                    arena, root, steps, scratch, None, True
+                )
+                if short_ring is not None:
+                    published = short_ring[0]
+                    work_recorded = True
+                else:
+                    try:
+                        published, _ = publish_packed_diagonal(
+                            arena,
+                            root,
+                            steps,
+                            scratch,
+                            None,
+                            stats,
+                        )
+                    except TemporalSquareScratchCapacityRefused:
+                        if len(arena.nodes) != checkpoint:
+                            raise AssertionError(
+                                "packed scratch refusal occurred after publication"
+                            ) from None
+                        work_recorded = True
+                        record_square_work(arena, stats)
+                        return None
                     work_recorded = True
                     record_square_work(arena, stats)
-                    return None
-                work_recorded = True
-                record_square_work(arena, stats)
         except BaseException as error:
             if not work_recorded:
                 try:

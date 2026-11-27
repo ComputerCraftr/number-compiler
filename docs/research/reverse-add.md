@@ -10,12 +10,90 @@ the powered 196 cutover. It keeps source authority, forcing bases, carry
 direction, radial sign extraction, temporal closure, and restricted chambers
 in one place so a component theorem cannot be mistaken for the final result.
 
+## Carry cofactors at a width birth
+
+Let $f_s(u)=[s+u\ge b]$ and $d_s(u)=(s+u)\bmod b$. At an interior birth
+cell, adjacent source sums $l,r$ and physical inlets $u,v$ give the new
+pair sum $q'=d_l(f_r(u))+d_r(f_l(v))$. Its two carry responses are
+$([q'\ge b],[q'+1\ge b])$, in order of the next inlet $c=0,1$.
+
+Among decimal pairs, 161 always return zero, 161 always return one, and
+34 return $c$. The remaining five have the following responses.
+
+| Source sums $(l,r)$ | Next carry |
+| --- | --- |
+| $(0,9)$ | $u\lor c$ |
+| $(9,0)$ | $v\lor c$ |
+| $(18,9)$ | $uc$ |
+| $(9,18)$ | $vc$ |
+| $(9,9)$ | $(1-u)(1-v)+c(u+v-2uv)$ |
+
+For $b\ge2$, a source sum other than $b-1$ fixes its outgoing carry, so
+at least one inlet drops out unless both sums equal $b-1$. At double EQ
+the responses for $(u,v)=00,01,10,11$ are $1,c,c,0$. A proven mixed
+inlet therefore selects $c$. The cubic coefficient over the integers
+is $-2$. At the center birth of $190999\to1190090$, all three inlets
+equal one. The physical carry is zero, while deleting the cubic term
+would give two modulo four.
+
+For a quiet cell put $d=s\bmod b$ and $e=(s+1)\bmod b$. Taking the
+difference between the two $c$ responses first gives the cubic coefficient
+$[2e=b-1]-2[d+e=b-1]+[2d=b-1]$. This gives $-2$ at decimal sums
+4 and 14 and $+1$ at ternary sum zero. These are local carry responses.
+Further steps require the new source sums, cut positions, widths, and
+the joint constraints on the inlets.
+
+For free quiet ports, write $P_{uv}$ for pullback by the ordered digit
+update with the two chosen inlets and $D=P_{11}-2P_{10}+P_{00}$. Over
+the integers the full degree-$2k$ coefficient at initial sum 2, for the
+terminal indicator $[s\ge10]$, is
+$(-1)^k5^{\lfloor(k-2)/2\rfloor}$ for $k\ge2$. The finite identity
+$D^4[c]=5D^2[c]$ on the 19 sums, together with the initial coefficients
+1 and $-1$ at depths 2 and 3, gives the recurrence. Modulo five the top
+coefficient vanishes starting at depth four. A selected coefficient uses
+$P_{00}$, $P_{10}-P_{00}$ or $D$ according to its two port bits, composed
+in physical order. Repeated equal factors can be powered in the chosen
+ring. The free-port calculation allows inlet assignments that a physical
+source may exclude.
+
 ## Reading guide
 
 - **Definitions:** `P` is the symmetric pair field, `Delta = P - 9 E_m` its centered residual, and `beta` the carry-induced innovation. The derivative `(1-z)Delta` is a different object.
 - **Checked theorem:** local carry, normalization, radial transport and supplied-word transduction have the scoped proofs below.
 - **Implemented construction:** authenticated primitive publication and restricted clauses are available; carry moves only from LSD to MSD.
 - **Open obligation:** construct the source-derived compressed residue grammar and its complete temporal return with successful work and storage bounds.
+
+### Cyclic relative returns for reflected multiplication
+
+For a cyclic decimal word, let each digit triple test whether the two-tick
+output equals its left, center or right input digit. Intersect the three
+equality bits over the word. Concatenation needs only the two end digits
+on each side of the join to check the crossing triples. Closing the word
+adds the two wraparound triples, or one repeated triple for a singleton.
+
+The center equality admits the uniform words on $0,3,6,9$. For the
+nonconstant neighbor equalities, the table gives the blocks of the cyclic
+language. Read a word up to rotation as a nonempty concatenation of blocks,
+choosing $a,b\geq 0$ independently in each block.
+
+| Multiplier | Output equals left input | Output equals right input |
+| --- | --- | --- |
+| 2 | $15\,3^a\,84\,6^b$ | $0\,3^a\,29\,6^b\,7$ |
+| 5 | $51\,6^a\,48\,3^b$ | $07\,6^a\,92\,3^b$ |
+
+Superscripts in the table repeat digits. The two-tick action shifts an
+admitted word by one site, so a primitive nonconstant word of length $p$
+first returns at even tick $2p$. An odd return would put the one-tick
+image on the same rotation orbit. Reflection reverses the rotation, which
+would make the two-tick image equal the original word. This contradicts
+a one-site shift on that primitive word.
+
+Digit equality includes the mixed carry terms. For example, reducing
+digits modulo five accepts the proposed right shifts of both `02925` and
+`00792`. Their actual two-tick cyclic images are `29700` for multiplier
+two and `52920` for multiplier five. Transport to a finite decimal source
+also requires its causal halo, physical carries, width changes and
+normalized readout.
 
 ### 2rev10 four-port successor and the mod-32 cut
 

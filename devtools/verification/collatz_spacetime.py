@@ -488,7 +488,7 @@ class CollatzCausalSpacetimeEngine:
             self.symbolic_actions.identity,
             self.symbolic_actions.compose,
             validate=self.symbolic_actions.validate,
-            composition_cache=self.symbolic_actions.composition_cache,
+            memoize_compositions=False,
         )
         self._endpoint_cache_limit = max(0, int(max_jump_entries))
         self._action_applications = 0
@@ -736,7 +736,7 @@ class CollatzCausalSpacetimeEngine:
             branches,
             powers.power_requests,
             powers.power_hits,
-            powers.composition_entries + powers.power_entries,
+            self.symbolic_actions.composition_entries + powers.power_entries,
         )
         return CollatzSpacetimeMetrics(
             self.primitive_field_steps,

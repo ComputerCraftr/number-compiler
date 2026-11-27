@@ -3,6 +3,7 @@
 import shutil
 import subprocess
 import sys
+import sysconfig
 from hashlib import sha256
 from io import StringIO
 from pathlib import Path
@@ -49,6 +50,41 @@ def test_wheel_rejects_obsolete_build_products(tmp_path: Path, fault: str) -> No
             validate_wheel_contents(wheel, source)
 
 
+@pytest.mark.parametrize(
+    "shape", ["pure", "native", "unrequested", "missing", "wrong-abi", "source-leak"]
+)
+def test_wheel_native_reversal_has_one_opt_in_abi_member(
+    tmp_path: Path, shape: str
+) -> None:
+    source = tmp_path / "src"
+    kernels = source / "number_compiler" / "kernels"
+    build_sources = kernels / "native_reverse"
+    build_sources.mkdir(parents=True)
+    (build_sources / "carry.cpp").write_text("int carry();\n")
+    (build_sources / "carry.hpp").write_text("int carry();\n")
+    (kernels / "__init__.py").write_text("")
+    suffix = sysconfig.get_config_var("EXT_SUFFIX")
+    native_name = f"number_compiler/kernels/_reverse_quotients{suffix}"
+    (source / native_name).write_bytes(b"checkout build product")
+    wheel = tmp_path / "package.whl"
+    with ZipFile(wheel, "w") as archive:
+        archive.writestr("number_compiler/kernels/__init__.py", "")
+        if shape in {"native", "unrequested"}:
+            archive.writestr(native_name, b"binary fixture")
+        if shape == "wrong-abi":
+            archive.writestr(f"{native_name}.wrong", b"wrong ABI")
+        if shape == "source-leak":
+            archive.writestr("number_compiler/kernels/native_reverse/carry.cpp", "")
+
+    native_reverse = shape in {"native", "missing", "wrong-abi"}
+    if shape in {"pure", "native"}:
+        members = validate_wheel_contents(wheel, source, native_reverse=native_reverse)
+        assert (native_name in members) is native_reverse
+    else:
+        with pytest.raises(ValueError, match=r"(extra|missing)_package_files"):
+            validate_wheel_contents(wheel, source, native_reverse=native_reverse)
+
+
 def test_wheel_verification_keeps_flushed_last_stage_on_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -64,7 +100,10 @@ def test_wheel_verification_keeps_flushed_last_stage_on_failure(
 
     stderr = FlushTrackingStderr()
 
-    def reject_contents(_wheel: Path, _source: Path) -> list[str]:
+    def reject_contents(
+        _wheel: Path, _source: Path, *, native_reverse: bool = False
+    ) -> list[str]:
+        assert not native_reverse
         raise ValueError("controlled content-validation failure")
 
     monkeypatch.setattr(sys, "stderr", stderr)

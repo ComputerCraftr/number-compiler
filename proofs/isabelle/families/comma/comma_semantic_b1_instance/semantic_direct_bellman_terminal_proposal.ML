@@ -12,7 +12,7 @@ struct
         else error "Bellman terminal projection needs 46 CRT roots"
       val _ = List.app (fn root => ignore (Arena.action_index arena root)) roots
       val invalid = Arena.action_some arena 242
-      val mapped_shift = Arena.make_action_shift_map arena (fn value => value+9)
+      val mapped_shift = Arena.make_action_shift_map arena (Arena.Shift_Add 9)
       val continuations = Unsynchronized.ref (Inttab.empty: continued Inttab.table)
       val requests = Unsynchronized.ref 0
       val hits = Unsynchronized.ref 0

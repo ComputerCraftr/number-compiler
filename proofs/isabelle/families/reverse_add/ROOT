@@ -30,6 +30,9 @@ session Reverse_Residuals in reverse_residuals = Shared_Carry_Dynamics +
     Reverse_Center11_Controlled_Action
     Reverse_Center11_Source_Refinement
     Reverse_Native_Block_Refinement
+    Reverse_Native_Slab_Clock
+    Reverse_Conditioned_Birth_Carry
+    Reverse_Native_Slab_Core
     Reverse_Laurent_Modular_Projection
     Reverse_Punctured_Event_Intervals
     Reverse_Growth_Coboundary
@@ -64,4 +67,16 @@ session Reverse_Growth_Admission in reverse_growth = Reverse_Residuals +
     Reverse_Joint_Output_Inverse
     Reverse_Growth_Run_Admission
     Reverse_Carry_Suffix_Refinement
+    Reverse_EQ_Phase_Guard
+    Reverse_EQ_Clock_Transport
+    Reverse_Native_Slab_Growth_Clock
+    Reverse_Native_Slab_Hinge
+    Reverse_Native_Slab_1011
+    Reverse_Native_Slab_Clock_Guard
+    Reverse_Native_Slab_Source_Transport
+    Reverse_Native_Slab_Indexed
+    Reverse_Native_Slab_Intervals
+    Reverse_Native_Slab_Fourth_Row
+    Reverse_Native_Slab_Physical_Packet
+    Reverse_Native_Slab_Outer_Packet
     Weighted_Partial_Growth_Action

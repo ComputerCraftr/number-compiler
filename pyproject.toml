@@ -36,6 +36,9 @@ number_compiler = [
     "py.typed",
 ]
 
+[tool.setuptools.exclude-package-data]
+"number_compiler.kernels.native_reverse" = ["*.cpp", "*.hpp"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-m 'not validation' --strict-markers"

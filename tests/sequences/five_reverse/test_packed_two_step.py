@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 
 import pytest
 
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.resources.ledger import ResourceLedger
 from number_compiler.resources.metric_keys import five_reverse as metrics
+from number_compiler.sequences.five_reverse.bitplane_two_step import (
+    execute_bitplane_five,
+)
 from number_compiler.sequences.five_reverse.packed_two_step import (
     PackedFiveWork,
     execute_packed_five,
@@ -33,10 +37,15 @@ def _literal(seed: int, steps: int) -> tuple[int, int]:
 
 @pytest.mark.parametrize("seed", [0, 1, 6, 10, 30, 50, 73, 196, 250, 909090])
 @pytest.mark.parametrize("steps", [0, 1, 2, 3, 16, 17, 64, 65, 128, 129])
-def test_packed_candidate_matches_literal(seed: int, steps: int) -> None:
+@pytest.mark.parametrize("execute", [execute_packed_five, execute_bitplane_five])
+def test_packed_candidate_matches_literal(
+    seed: int,
+    steps: int,
+    execute: Callable[[int, int, int, PackedFiveWork], int],
+) -> None:
     expected, reads = _literal(seed, steps)
     work = PackedFiveWork()
-    assert execute_packed_five(seed, steps, 4096, work) == expected
+    assert execute(seed, steps, 4096, work) == expected
     assert (work.attempted, work.digit_reads) == (steps, reads)
 
 

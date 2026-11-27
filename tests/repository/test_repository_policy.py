@@ -485,8 +485,8 @@ def test_source_line_cap_applies_to_all_authored_source(
     assert source_line_violations(tmp_path) == expected
 
 
-@pytest.mark.parametrize("suffix", [".thy", ".ML", ".sml", ".pyi"])
-def test_source_line_cap_rejects_an_oversized_isabelle_theory(
+@pytest.mark.parametrize("suffix", [".thy", ".ML", ".sml", ".pyi", ".cpp", ".hpp"])
+def test_source_line_cap_rejects_oversized_non_python_call_graph_sources(
     tmp_path: Path,
     suffix: str,
 ) -> None:

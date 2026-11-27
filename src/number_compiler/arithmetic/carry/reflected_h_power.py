@@ -585,6 +585,9 @@ def _single_cell_slp_emit(
         arena.dispose()
 
 
+_PACKED_H2_MIN_GENERATION: int | None = None
+
+
 def _padded_h_execute(
     seed: int,
     generation: int,
@@ -626,6 +629,26 @@ def _padded_h_execute(
         source, steps = _admit_padded_h_inlet(
             seed, generation, multiplier, max_state_bits
         )
+        if (
+            multiplier == 2
+            and seed.bit_length() >= 425
+            and _PACKED_H2_MIN_GENERATION is not None
+            and generation >= _PACKED_H2_MIN_GENERATION
+            and ledger.max_nodes is None
+            and ledger.max_cache_entries is None
+        ):
+            from number_compiler.arithmetic.carry.reflected_h_packed import (
+                publish_packed_h2,
+            )
+
+            return publish_packed_h2(
+                source,
+                steps,
+                generation % 2 == 0,
+                ledger=ledger,
+                scratch_owner=scratch_owner,
+                emit=emit,
+            )
         source = _normalize(source)
         reservation = LedgerReservation(ledger, scratch_owner)
         transitions = 0

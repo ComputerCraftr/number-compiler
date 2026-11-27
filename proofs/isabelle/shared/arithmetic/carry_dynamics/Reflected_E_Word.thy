@@ -213,10 +213,25 @@ proof -
     by simp
 qed
 
+theorem reflected_padded_relative_H_interior:
+  fixes a b shift i :: int
+  assumes m: "m = 2 \<or> m = 5" and digits: "list_all (\<lambda>d. d < 10) source"
+    and base: "0 \<le> a" and shift: "0 \<le> shift" "shift \<le> 2"
+    and returns: "\<And>j. a + 2 \<le> j \<Longrightarrow> j < b \<Longrightarrow>
+      reflected_relative_two (reflected_source_two_gate m)
+        (\<lambda>k. reflected_padded_source source (nat k)) j =
+      reflected_padded_source source (nat (j - shift))"
+    and bounds: "a + 2 * int n \<le> i" "i < b"
+  shows "reflected_padded_source (reflected_padded_H_iter m n source) (nat i) =
+    reflected_padded_source source (nat (i - int n * shift))"
+  using reflected_padded_H_iter_source_digit[OF m digits, of n "nat i"]
+    reflected_source_relative_H_interior[OF base shift returns bounds] by simp
+
 ML \<open>
   val checked = @{thms reflected_padded_multiply_length reflected_padded_E_source_index
     reflected_padded_E_interior_digit reflected_padded_E_source_digit
     reflected_padded_H_source_digit reflected_padded_H_iter_source_digit
+    reflected_padded_relative_H_interior
     reflected_padded_H_dyadic_source_window};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Reflected E index proof depends on an oracle";

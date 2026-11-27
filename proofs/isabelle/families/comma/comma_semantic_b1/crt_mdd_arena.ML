@@ -45,8 +45,9 @@ sig
   val action_support: arena -> action_root -> int list
   val boolean_support: arena -> boolean_root -> int list
   val shift_action: arena -> action_root -> int -> action_root
+  datatype action_shift_law = Shift_Add of int | Shift_Constant of int | Shift_Modulo of int
   type action_shift_map
-  val make_action_shift_map: arena -> (int -> int) -> action_shift_map
+  val make_action_shift_map: arena -> action_shift_law -> action_shift_map
   val shift_map_action: action_shift_map -> action_root -> int -> action_root
   val shift_boolean: arena -> boolean_root -> int -> boolean_root
   val bind_action_to_boolean: arena -> action_root -> boolean_root ->
@@ -158,8 +159,9 @@ struct
      bind_cache: bind_witness Bind_Table.table Unsynchronized.ref,
      priority_cache: priority_witness Priority_Table.table Unsynchronized.ref, counters: counters}
 
+  datatype action_shift_law = Shift_Add of int | Shift_Constant of int | Shift_Modulo of int
   datatype action_shift_map = Action_Shift_Map of
-    {arena:arena, encode:int -> int, cache:int Shift_Table.table Unsynchronized.ref}
+    {arena:arena, law:action_shift_law, cache:int Shift_Table.table Unsynchronized.ref}
 
   fun create_with_periods normalize_shift_periods radices =
     let
@@ -525,16 +527,25 @@ struct
   fun shift_action arena (Action_Root root) amount =
     Action_Root (shift_id arena (check_root arena root) amount)
 
-  fun make_action_shift_map arena encode = Action_Shift_Map
-    {arena=arena,encode=encode,cache=Unsynchronized.ref Shift_Table.empty}
+  fun make_action_shift_map arena law =
+    let
+      val _ = (case law of
+          Shift_Add offset => if offset >= 0 then () else error "Mapped shift offset is negative"
+        | Shift_Constant value => if value >= 0 then () else error "Mapped shift constant is negative"
+        | Shift_Modulo divisor => if divisor > 0 then () else error "Mapped shift modulus is not positive")
+    in Action_Shift_Map
+      {arena=arena,law=law,cache=Unsynchronized.ref Shift_Table.empty} end
 
-  fun shift_map_action (Action_Shift_Map {arena,encode,cache}) (Action_Root root) amount =
+  fun shift_map_action (Action_Shift_Map {arena,law,cache}) (Action_Root root) amount =
     let
       val source = check_root arena root
       val _ = if amount >= 0 then () else error "Mapped MDD shift amount is negative"
       val counters = #counters arena
       val _ = #mapped_shift_requests counters := !(#mapped_shift_requests counters) + 1
-      fun mapped_leaf label = let val mapped = encode label in
+      fun mapped_leaf label = let
+        val mapped = (case law of Shift_Add offset => label + offset
+          | Shift_Constant value => value | Shift_Modulo divisor => label mod divisor)
+      in
         if mapped >= 0 then store_node arena (Leaf mapped)
         else error "Mapped MDD payload is negative" end
       val result = traverse_shift arena cache source amount mapped_leaf

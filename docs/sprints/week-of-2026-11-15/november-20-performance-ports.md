@@ -2207,6 +2207,497 @@ v4 export and decoder. The symbolic proof candidate remains isolated. Public
 Evidence is in `results/nc43-symbolic-integration` and
 `results/comma-nc43-production-proof-integration`.
 
+### November 25 reversal integration
+
+The clean receiving baseline was `7f2d3db5`. At `3fcd9478`, the guarded
+default suite finished in 227 seconds with 13,978 passes and the same six
+Comma admission failures. P0 retained thirteen baseline failure IDs. The
+459-test affected selection passed, including 20,000 local H-cell cases
+across ×2 and ×5. The two long Q19 regression tests now check the issued
+broadword route, projection reuse, and the original poisoned routes. The
+short punctured test still admits and counts its T2 action.
+
+The shared decimal SLP compiler stores one reset word per node and
+publishes inlet variants at the root. Its action checks exact immutable
+source and result nodes across unrelated suffix rollback. Signed mod-32
+cuts use the existing cyclotomic owner. At `056396af`, the boundary fast
+path uses a canonical one-hot phase only for an unfactored power-one
+cyclotomic quotient. Arbitrary factors and jets retain exact boundary
+projection. The updated cut and carry selection passed 435 tests.
+Reverse/add batches the admitted carry-free prefix cases and handles zero
+without constructing a carry slab. Its supplied-row fold validates the
+schedule before discarding extinct coefficient work. The live H12
+endpoint still advances nonlinear carries without constructing a carry
+trace.
+
+Five interleaved target trials matched exact output and measured SLP
+compilation at 8.24 to 4.04 ms, the order-257 signed cut at 14.33 to 8.72 ms,
+and 400 zero Q19 images at 3.38 to 0.09 ms. Six ordinary cold CLI controls
+stayed within 0.4% of baseline after equalizing prepared bytecode caches.
+The initial full-component cut and unequal-cache CLI timings remain in
+the evidence and are excluded from the accepted comparisons.
+
+For the gated 153-digit `2rev10` fixture at 4,096 ticks, the cold CLI
+medians were 1,062 and 315 ms. For seed 196 at 16,384 ticks, the consolidated
+`5rev10` bitplane candidate measured 190 to 171 ms cold and 41.82 to
+22.71 ms for materialization with both owner and process caches bypassed.
+Cold 4,096-tick bitplane medians were flat. Warm queries reused the same
+owner. The long fixtures used extended explicit bounds and identical
+outputs. Automatic selection remains gated.
+
+The optional C++20 wheels provide bounded diagonal and causal kernels.
+The scalable word-RAM model uses `O(nN/b²)` interior lookups for reflected
+squares with side `b = Θ(log N)`, plus table setup, source, and fringe work.
+The two-pass reverse/add model retains a `log log N` factor in its
+interior time. The wheels use fixed shapes.
+
+The signed finite-cut and quiet-suffix theorems passed Isabelle. Checked
+bitplane lemmas cover the local carry truth table, ordered decimal word,
+and the clock under explicit transport laws. The packed shift and
+normalization connection, the complete physical periodic halo, and the
+C++ source-to-endpoint refinements remain open. The short-ring proof hit
+the unchanged 300-second gate, and its finite-table successor hit
+theory errors. The proof drafts are retained at `aa8d6828`; the active
+sessions exclude those drafts.
+
+The curated source at `78ae566b` passed strict mypy, both changed-file
+Pyright batches, Ruff, source policy, documentation, Homebrew clang-format
+and clang-tidy, and the guarded registered Isabelle build. The Colima
+Linux aarch64 default suite finished in 256 seconds with 13,981 passes and
+the same six Comma admission failures. Pure-Python and native builds on
+macOS and Colima returned matching installed CLI smoke outputs for all
+three reversal families. Each platform passed four guarded native-wheel
+tests.
+
+Evidence is in `results/nc43-reversal-7f2d3db5`.
+
+### November 25 diagonal and EQ follow-up
+
+The receiving snapshot was `97e7fec3`. Runtime validation used `82fd54ae`,
+and the wheel-verifier follow-up used `4d62df88`. The live Mahler cylinder
+retains the rejected lower-prefix product and projects only the adjacent
+authenticated segment. The 64-tick policy still selects the source route.
+At 4,096 ticks, the exact 540-coefficient result required 54 projected
+coefficients in the final descent, down from 198. Five matched trials
+and a confirmation measured a 5.5% median descent improvement. The
+512- and 2,048-tick cases improved by 21% and 33%, while the 1,024-tick
+case improved by 4.6%. Fresh installed CLI packets matched at every tested
+horizon, with the largest median control increase at 0.41%.
+
+The optional extension shares the checked pair digit and carry response
+across both native executors. The guard compiles only the atoms reachable
+from the selected root and transfers each completed child directly to its
+ordered parent slot. On the 16- and 17-return fixtures, node counts fell
+from 1,404 and 1,682 to 1,275 and 1,548. Both guard medians increased by
+less than 4%. The seed-196 causal kernel improved by 7.3% at 1,024 ticks.
+Guarded Clang formatting, warnings and tidy passed. The Colima GCC check
+passed with eight unavailable Clang diagnostics reported explicitly.
+
+Isabelle accepted the Mahler prefix composition and the source-bound
+reverse/add half-kick, quiet EQ and reset bridge. Both reflected family
+sessions completed. The affected selection passed 1,487 tests. The full
+default suite passed 13,985 tests in 225 seconds and retained the same
+six Comma failure IDs as the frozen baseline. P0 retained the same
+13 failures and 77 passes. Strict mypy, changed-file Pyright, Ruff,
+source policy and documentation checks passed. The aggregate proof-index
+failure matched the baseline exactly.
+
+The wheel verifier now treats C++ sources as build inputs and requires
+the specific extension ABI for an opt-in wheel. The packaging selection
+passed 24 tests. Fresh macOS and Colima pure and native wheels returned
+matching family smoke packets. Both standard package variants passed
+content validation before the existing Comma artifact gate.
+
+The reciprocal cylinder remains held on its width and ordered-repeat
+refinement and speed gate. The compressed guard prototype matched the
+two 28,014-digit source fixtures, with 107 grammar nodes and 314 export
+work units. The source-to-mask induction, general collar transport,
+folded Q19 hinge and joint slab proofs remain open, along with automatic
+selection of the staged reflected routes.
+
+Evidence is in `results/nc43-diagonal-eq-20261125`.
+
+### Follow-up source and native proof gates
+
+The receiving snapshot used `7f2d3db5` with the existing unstaged changes.
+`Reverse_Residuals` checked folded endpoint reconstruction, center parity,
+physical width, and the local slab carry-clock law in 109 seconds. The
+checked theory files are on local main. The compiled hinge and the source
+coverage for the four-tick slab still govern native publication.
+The isolated native drivers matched 1,280 folded endpoints and 160
+admitted slab endpoints. Five receiving-owner tests passed after fixing
+the folded eligibility check for the Boolean cache policy.
+
+`Reverse_Growth_Admission` checked ordered EQ grammar composition, the
+physical quiet-cell mask, reset clipping, and the first birth cell in
+47 seconds. This theory is on local main. The isolated issuer's 28,014-digit
+case agrees on the `1010` growth word. Its full native return-mask coverage
+and structural work gate remain open.
+
+`Five_Reverse` checked the concrete bitwise lane and first-sheet source
+equations in 196 seconds. The checked theories are on local main. Automatic
+selection still depends on the complete two-sheet and publisher refinement.
+`Double_Reverse_Temporal_Refinement` hit the 300-second limit before
+reaching the changed H2 theorem.
+
+`Mahler_Source_Transport` checked exact width, ordered repetition with
+the remainder, and the clipped earliest prefix in 68 seconds. The live
+CF cylinder on local main selects source-bound reciprocal blocks for
+positive horizons below 64 ticks when capacity permits. It keeps the
+existing route from 64 ticks and the exact pointed fallback for tight
+budgets. The final trial passed 86 focused checks, including cancellation
+and cleanup. Five interleaved comparisons reduced fresh-owner producer
+medians by 70.8% at 20 ticks and 69.8% at 63. Installed wheels emitted
+identical packets across all eight horizons, with a largest cold median
+increase of 0.56%. The 4,096-tick control still returned 540 coefficients.
+It exercised no dyadic period or matrix power. The guarded default suite
+passed 14,012 tests and P0 passed 77. The six default and thirteen P0
+failure IDs matched the receiving baseline.
+
+Evidence is in `results/nc43-proof-gates-20261125`.
+
+### Native reversal proof follow-up
+
+The receiving snapshot used `7f2d3db5` with the unstaged reversal work.
+`Reverse_Residuals` checked that each admitted 8/17/18 reset makes the
+following carry independent of the remote physical prefix. The 256-source
+literal clock selection passed. The isolated native Q19 owner also
+published the exact four-tick slab continuation from a 1,400-digit all-nine
+source with chronological continuation disabled. Five interleaved owner
+comparisons measured 20.143 ms for the exact route and 20.028 ms for the
+native trial, including construction, publication, and cleanup. This
+missed the 5% gate. The uniform four-tick Isabelle proof still has open
+carry-fold and pair reconstruction goals.
+
+`Reverse_Growth_Admission` checked quiet and growth EQ observations at
+the physical clock in 19.5 seconds after its prerequisites. The theorem
+preserves both outer sums after the two-tick return from outer sum 17.
+The native guard still needs physical-response inclusion in its terminal
+mask and separate accounting for live capacity and traversal work.
+Six focused source tests passed. A bounded search of 3,000 sources found
+no case where the native fallback resolved an ambiguous receiving frontier.
+
+A guarded endpoint-only Isabelle build checked the exact odd reflected
+value for both multipliers and each even value with its own inlet. It
+used the receiving endpoint theory and its imports. Full registered
+validation and the bridge to the live Python SLP writer and its
+intermediate budget checks remain release requirements. Registered
+`Five_Reverse` accepted the whole-word first and second sheets, their
+terminal carries, and the normalization cut derived from nonzero plane
+support in 114 seconds. The new theory replaces the separately checked
+second-sheet proof. The live odd-width readout and budget publication
+remain open.
+
+`Shared_Carry_Dynamics` accepted the reflected diagonal table theory in
+50 seconds. It checks one-cell digit and port transport, parity
+transposition, complementation, the quinary inverse, mixed-radix rank
+splits, ordered quarter assembly, zero tiles, and numerical trailing-zero
+restoration. The guarded table proof is on local main. Mapping the
+compiled wavefront and physical fringe to these equations remains the
+native endpoint gate.
+
+The bounded word-RAM trial checked 300 exact endpoints across both
+multipliers, tile sides 3–7, and two kernel variants. On the 153-digit
+`2rev10` source at 4,096 ticks, side four reduced the median kernel
+time from 0.743 to 0.441 ms including table construction. On `5rev10`
+seed 196 at 16,384 ticks, side five reduced it from 3.088 to 2.480 ms.
+The phase-hoisting trial regressed on the `2rev10` controls. The
+measurements cover the C++ kernel and leave CLI dispatch unchanged.
+
+### November 26 downloaded quotient ports
+
+On the unstaged receiving tree at `7f2d3db5`, the ordered CF band compiler
+now searches the full half-band for ordinary returns from 128 rows. A
+packed binary comparison proposes the lag. The complete lifted congruence
+checks the odd coordinate before the compiler powers the ordered body and
+appends the remainder. The CLI keeps its existing source and size bounds.
+
+A 148-row physical fixture with period 37 compiled in 16.02 µs median,
+down from 24.70 µs over five paired trials. With cache bypass the same
+comparison was 14.98 versus 41.01 µs. The large exponent in this fixture
+is admitted by the arithmetic API. All six in-range installed CLI band
+controls emitted identical packets. Their largest cold median increase was
+4.0% across shared and bypass modes. The focused band selection passed
+45 tests. Strict mypy, Pyright, Ruff and formatting passed on the four
+shared arithmetic and suffix implementation/test files.
+
+The settled one- through four-column CF suffix actions and their Moore
+separation theorem are on local main. Both phases reuse the same ordered
+product for `25`. Selecting the three-column suffix across 1,024 sources
+fell from 4,460 to 712 ns per call, including the scratch charge. The
+registered `Mahler_Source_Transport` build checked the physical width
+clock, clipped prefix and suffix products in 53.68 seconds under the guard.
+The short reciprocal cylinder on local main now consumes these actions
+before decoding the upper digits, including a cut on the tens digit.
+Its cursor authenticates exponent, width and the next decimal threshold.
+Across 91 public CLI queries all packets matched a literal row fold with
+settled suffix decoding disabled. The focused run passed 35 tests.
+At horizons 20 and 63 the producer fell from 46.38 to 43.79 µs and from
+78.96 to 72.71 µs respectively. On four cold CLI controls across the
+64-tick selector boundary the largest increase was 3.1%.
+
+The registered `Shared_Carry_Dynamics` build checked the protected
+two-tick interval by induction and its odd ordered gate in 56.02 seconds
+under the guard (2.38 GB sampled peak). The checked theory is on local
+main. A second registered build (55.79 seconds) connected this interval
+to the repeated H digit function at the same coordinates. A separate
+55.52-second build checked exact ordered rectangle transposition for
+both multipliers, including empty and one-column boundaries.
+
+The registered `Reverse_Growth_Admission` session checked the four-state
+ordered inverse-EQ walk, its physical mirrored carries, and the exact
+two-tick endpoint. Its proof is on local main. The isolated H12 publisher
+saved two physical calls on the admitted 512-digit fixture, but five cold
+trials including source construction and rendering rose from 12.05 to
+12.48 ms median. Seed 196 had no qualifying 64-cell slab core through
+2,048 frames. The exact receiving publisher remains active.
+
+The isolated native reversal wheel passed the authored LLVM checks. The
+153-digit `2rev10` case at 4,096 ticks took 208.38 ms cold versus
+967.53 ms on the receiving wheel. For `5rev10`, seed 196 at 16,384 ticks
+took 135.04 versus 170.86 ms. Seed 73 at 1,024 ticks was essentially flat
+for both multipliers. An exhaustive native comparison checked 444,440 ordered
+table outputs across both phases, multipliers and tile sides one to five.
+Pure and native Linux ARM64 wheels returned identical installed CLI output
+for seed 73 at 1,024 ticks. The native wheel also passed eight independent
+literal endpoint checks.
+Automatic native dispatch still depends on physical readout and fringe
+stitching. The registered shared proof checked prefix and suffix crop
+coordinates with zero extension and the alternating two-gate clock in
+56.53 seconds. The isolated native entry matched
+literal period-13 endpoints for both multipliers at 64 and 65 ticks.
+
+The isolated reciprocal cylinder with adaptive lookahead reached the exact
+540 coefficients at 4,096 ticks. Five interleaved installed-wheel trials
+reduced producer time from 372.42 to 333.05 µs with the shared cache and
+from 368.75 to 335.79 µs with bypass. Whole cold CLI time was 134.63
+versus 138.11 ms with sharing. The receiving cylinder keeps its spatial
+selector from 64 ticks. The isolated spatial variant passed 32 checks including unforced CLI
+packets at 64, 65 and 128 ticks. At 4,096 ticks its producer took
+432.67 µs versus 349.50 µs. A second implementation emitted only the
+upper lanes and supplied the two fixed digits as the stencil halo. It
+passed 35 guarded tests, including spans one through four and complete
+default CLI packets. Its 4,096-tick producer took 446.08 versus 353.46 µs
+with sharing and 441.50 versus 350.54 µs with bypass. The five-trial cold
+CLI medians with sharing were 126.41 versus 126.59 ms. Both spatial
+replacements remain isolated. The registered Mahler proof (64.47 s) now derives
+the physical upper recurrence `u → 5u + 1` at every admitted tick from
+`x = 100u + 25`. The spatial leaf's packed output still requires its
+source-to-projection refinement.
+
+The staged protected period-13 grammar matched all 164 literal two-step
+frames across the four border phases with chronological stepping disabled.
+A mutated digit inside each causal halo refused admission. The registered
+double-reverse session checked the finite-cone induction in 126.82 s.
+Given the complete one-step stencil miter and source halo, it proves the
+shifted digit after every admitted two-step update. The staged modulo-25
+Hasse filter has a collision on `(0,9,3)` and its successor `(1,7,4)`;
+the exact ordered miter rejects that rotation. The local Q19
+pair-four regression exercises both physical carry inlets and the next
+row's bilinear carry. A 57.47-second `Reverse_Residuals` build checked
+the physical one-step cell, including EQ propagation, and the conditional
+four-tick interior formulas for schedules `1011` and `1110`. The separate
+source-clock build (131.86 s including prerequisites) checked the physical
+`1110` branch and the first three bits of `1011`. The November 27 registered growth build (130.38 s)
+checked the index-one source transport and forced the fourth carry for
+the same admitted source with a quiet second tick. This completes its
+physical `1011` clock and excludes `1010`. A further 29.52-second build
+checked that every admitted `18 # c # rest` source selects one of the two
+schedules. A complete
+source-to-collar and folded-center proof still gates the live slab issuer.
+Installed reverse/add returned eight exact physical
+endpoints over the four inlet pairs. The staged protected grammar passed
+42 tests. Its five-trial cold medians at 82 and 162 physical ticks improved
+by 1.4% against the same grammar with bounded literal discovery. The
+period-13 dispatcher remains isolated.
+
+The November 27 source-DAG candidate intersects three exact digit-equality
+bits and checks at most two crossing triples per join, with cyclic wrap at
+the root. Both multipliers passed all 2,000 local cases together and the
+four period-26 controls. The four compressed controls of length
+`9 × 10^100 + 9` passed without motif expansion. The exact digit checks
+reject the false right shifts of `02925` and `00792`. Only the isolated
+`2rev10` protected bank consumes this admission. Five interleaved
+installed-wheel trials returned identical complete grammar packets across
+four border phases. At 82 and 162 physical ticks, median cold CLI times
+were 154.44 → 158.24 ms and 154.88 → 158.16 ms. At 82 ticks repeated
+same-owner issuance took 459.83 → 520.52 µs; first issuance in fresh
+processes took 622.42 → 3,769.08 µs. The candidate misses the target-phase
+speed gate. The final registered Python selection passed 56 tests. The
+registered double-reverse build (130.94 s) kernel-checked concatenation
+and the repeated-word seam for ordered triple predicates, including the
+two-tick digit specialization. The constant-work repeat implementation,
+root wrap and physical `5rev10` fringe and publisher still need their
+consumer refinements.
+
+The next registered `Reverse_Growth_Admission` build (147.09 s)
+checked the first physical birth at a specified split of the same valid
+source. Its global carry and two adjacent reset coefficients determine the
+new cell at that split. The theorem includes wrong-inlet and EQ-9 cases;
+two swapped inlets can give the same sum. Transport across the remaining
+three rows still gates four-tick Q19 endpoint publication.
+
+On the unstaged `7f2d3db5` receiver, the reverse/add source-transfer
+matrix now requests the conditioned carry at a Q19 growth interior
+before expanding the next cell. The registered `Reverse_Residuals`
+session checked the decimal selection rule and the radix-dependent
+cubic laws in 60.19 s. Fresh Linux wheels under Colima returned the
+same complete packets for seeds 196, 190999 and 9999. Each called
+the new guard; foreign ownership and forged width were rejected.
+On the matched reuse fixture, source lookups fell from four to one
+and median guard time from 172.67 to 26.74 µs. Across five interleaved
+macOS trials, cold installed CLI medians for the two growth requests
+went from 283.56 to 283.38 ms and 284.92 to 283.25 ms. The ordinary
+control went from 247.41 to 251.27 ms. This change covers a single
+next-carry observation. The multi-tick EQ mask and whole folded
+endpoint still require successor and width transport.
+
+The live `2rev10` F-port leaf now selects among ten distinct response
+rows and three right-inlet classes. The receiving
+`Double_Reverse_Temporal_Refinement` session checked the equivalence
+for adjacent outputs in 127.86 s. Across five matched trials the
+leaf median fell from 162.04 to 108.65 ns. Seed 73 at 1,024 ticks
+used the leaf 1,348 times and produced the same packet; its cold CLI
+median went from 187.02 to 188.07 ms. This measurement covers the
+local table change. Dense endpoint dispatch still uses its existing route.
+The shared session also checked disjoint 16-bit lane packing, transpose
+and reflected half-table indexing in 61.75 s. The lookup theorem still
+requires the rectangle complement law for the supplied table. The
+registered wave source, interior and fringe equations passed with that
+table in 58.98 s. Runtime frontier and endpoint dispatch remain separate
+proof obligations.
+
+An isolated CF handoff retired the spatial workspace on commit and
+produced all 540 coefficients at horizon 4,096 within the 10,000-node
+fixture. It reduced the shared producer median from 351.46 to 316.50 µs
+there but increased it from 91.00 to 99.38 µs at horizon 64. It also
+still folded the changing upper digits. The candidate remains isolated.
+
+The isolated four-tick Q19 proof derives the fourth cell from a physical
+reset collar, the actual birth clock and both inlets. The guarded
+`Reverse_Growth_Admission` run finished in 156.07 s. Separately, a native
+interval prototype matched folded endpoints and birth counts every four
+ticks for seeds 196, 190999, 98 and 108900989. For seed 196 from tick
+1,024 to 2,048, five paired kernel trials gave medians of 5.71 ms for
+packed advancement and 1.73 ms for the prototype, including conversion.
+On the isolated installed wheels, cold CLI medians were 268.56 to
+279.38 ms at tick 1,024 and 281.15 to 276.66 ms at tick 2,048. All
+packets matched. The ordinary 20-tick control went from 254.98 to
+256.79 ms. An installed, same-process request for 2,048 after 1,024
+fell from 24.27 to 19.46 ms. Disabling process cache retrieval and
+publication gave 192.47 and 191.13 ms. Whole-endpoint authority and
+native dispatch remain open.
+
+The November 27 Hasse/Hermite patch targets the downloaded quotient-first
+source. On the receiving CF cylinder, 315 requests at horizons 1–63 made
+201 reciprocal interval reads, all at row zero. Skipping multiplication by
+the initial power of five reduced median interval time from 120.56 to
+108.64 ns. Fresh wheels produced identical packets at 20, 63, 64 and
+4,096 ticks. At 20 and 63 ticks their cold CLI medians were 121.39 to
+123.13 ms and 122.48 to 124.33 ms. The two longer requests took the
+spatial route. The initial-row specialization is live on the unstaged
+receiver. Its `Mahler_Source_Transport` build passed in 104.29 s, and
+fresh Colima installs matched all four packets. The focused receiving
+selection passed 21 tests. The bounded exponent trial passed 33 tests.
+Its high-bit Hasse branch exceeds the public exponent limit.
+
+The registered Mahler session passed in 97.73 s and checked a sufficient
+physical half-shift condition for every fixed width from three upward.
+It established the exact guards at widths three and four, the two singleton restrictions and complete
+$25$ product with the live digit-plus-one convention. These theorems
+are on the unstaged receiver. A 38-test receiving selection passed,
+including the modulus-125 raw-digit counterexample, both clipped
+stops, and reference public packets.
+
+An isolated spatial range action for the settled suffix uses the same
+matrix for $25$ in $125$ and $625$ and restricts it to either singleton
+at a cut. The interval tests stop after $12$ and $125$ for targets $2/5$
+and $10/23$ in the cylinder's reciprocal coordinates. All eight matched
+fresh-wheel packets agreed. At 4,096 ticks generic continuant input fell
+from 618 digits to 540, while continuant calls rose from 17 to 44.
+Both paths still issued 39 packed rows of total width 564. Median
+shared-cache cylinder time was 14.01 to 13.87 ms, and bypass time was
+13.82 to 14.18 ms. This candidate remains outside default dispatch.
+
+The November 27 four-column spatial patch was tested separately against
+the receiving phase table. Sixty guarded tests passed. Five fresh-wheel
+pairs at each of eight horizons returned identical complete packets.
+At 64, 512 and 4,096 ticks, shared-cache cylinder construction rose from
+6.87 to 7.79 ms, 6.90 to 8.01 ms and 14.00 to 15.62 ms, respectively.
+The four-column dispatcher remains isolated.
+
+The receiving table now derives the three leading-digit half-turns by
+adding five times the lower matrix row to the upper row. It preserves
+the shared $25$ product. Median table initialization and first selection,
+with dependencies loaded, fell from 12.56 to 9.70 microseconds over five
+paired batches. All eight installed CLI controls returned identical
+packets, with cold medians between 2.3% faster and 1.7% slower.
+
+Two bounded one-column CF actions were tested on the unstaged
+`7f2d3db5` receiver. The eight-row terminal uses a 10 KiB fixed
+alphabet and reserves 24 KiB for simultaneous construction and output.
+All 57,600 lift and clip combinations agreed with literal digit products.
+The registered `Mahler_Source_Transport` build on the receiving tree
+passed in 95.52 s including prerequisites, with a 3.38 GiB peak. It
+checked the arbitrary-lift clip theorem, five-inlet source transfer and
+ordered square.
+The audit found zero oracle or skipped-proof dependencies.
+The installed CLI invoked the terminal for lifts 370 and 1099. Across five
+interleaved pairs, their warmed owner medians fell from 31.79 to 30.17 µs
+and 46.75 to 45.04 µs. Cold CLI medians rose from 116.55 to 118.37 ms
+and 115.05 to 116.73 ms. Both ledgers released their reservations.
+
+The five-inlet parity action admitted `15,4,1,14` with lift 43338 and
+parity period five. Its decimal letters have no admitted repeat. Building
+the five inlet responses with probe and action storage charged raised
+median owner time from 12.16 to 22.33 µs and peak ledger nodes from 168
+to 944. Cold CLI time rose from 119.98 to 121.24 ms over seven matched
+pairs. Both returned the existing packets. The eight-row terminal landed on
+main in `36d3226c`. The five-inlet candidate remains outside dispatch.
+
+The reflected donor adds a scalar miter table. An isolated port retained
+the existing NEON loop and used the table for the scalar fallback and
+tail. All 2,000 local masks and 24 physical endpoints matched. Five
+paired installed CLI trials on the 8,584-digit source gave medians of
+357.91 and 356.87 ms. The table remains isolated. At generation 82 the
+source-issued CRT bank cut counting from 0.319 to 0.157 ms, while its
+complete bank request rose from 7.620 to 8.076 ms. The isolated bank
+passed 44 guarded tests, including partial CRT wraps and long returns.
+The registered Five_Reverse build passed on the receiving fringe theories
+in 205.24 s including prerequisites. The new readout theorem recovers
+the physical orbit for either parity from the checked diagonal inlet
+and cell equations. Native dispatch still requires the C++ wavefront
+to satisfy those premises.
+
+The receiving `Reverse_Growth_Admission` build checked four physical
+updates for a selected interior coefficient. From an admitted outer-18
+source and its eight-position collar, the theorem derives the coefficient
+and a width increase of three under the source's 1011 or 1110 carry clock.
+The guarded build took 161.75 s including prerequisites (2.40 GiB peak).
+Whole-slab publication still requires coverage of the hinge and fringes.
+
+The reverse/add weighted bulk port required the predecessor's Laurent
+publisher and conditional guard translation unit. It passed 320 literal
+projection cases and 140 bulk cases. Six paired installed CLI trials
+on 10,000 nines reduced median time from 147.0 to 112.6 ms with the
+interpreter's decimal conversion limit disabled. At the 512-tick native
+threshold, bulk admission needs at least 8,224 source digits. The default
+CLI rejects this input. Seed 196 at 1,025 ticks admitted zero relative
+actions and rose from 122.6 to 129.9 ms. An isolated earlier admission
+reached the contraction under default parser limits. Matched installed
+CLI medians were 117.56 to 117.08 ms at 128 ticks. Moving the width
+check ahead of the native import gave 124.70 to 118.54 ms at 240 ticks
+on 4,000 nines. Both requests returned the same matrix as the receiving
+route. At 240 ticks the source owner took 13.64 to 8.23 ms and one
+contraction removed 1,512 pairs. The seed-196 owner control took
+9.07 to 9.56 ms. The weighted source-to-output proof remains open.
+The trial excluded the slower weighted inverse-EQ terminal.
+
+After the reciprocal-port change, 14,027 default tests passed in 243.55 s
+and 77 P0 tests passed. The six default failures and thirteen P0 failures
+matched the preceding snapshot by test ID. All six default failures
+exercise global Comma admission.
+
 ## Cross-family ownership review
 
 The consolidation from `62cbc714760a6f074f5a955f0efeac6afa1e5e27`

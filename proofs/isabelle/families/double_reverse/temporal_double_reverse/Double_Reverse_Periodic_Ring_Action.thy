@@ -112,6 +112,51 @@ proof -
       double_reverse_ring_inward_step_length)
 qed
 
+text \<open>For a protected ray the receiving miter checks every stencil center.
+Translation invariance then transports the same ordered action through the
+whole causal cone. An exterior digit may differ beyond the authenticated halo.\<close>
+
+lemma double_reverse_protected_relative_miter:
+  fixes ring source :: "int \<Rightarrow> nat" and shift center :: int
+    and step :: "(int \<Rightarrow> nat) \<Rightarrow> (int \<Rightarrow> nat)"
+  assumes local_rule: "\<And>x i. step x i =
+    double_reverse_t2_digit (x (i-1)) (x i) (x (i+1))"
+    and miter: "\<And>i. double_reverse_t2_digit (ring (i-1)) (ring i) (ring (i+1))
+      = ring (i + shift)"
+    and halo: "\<And>i. abs (i-center) \<le> int ticks \<Longrightarrow> source i = ring i"
+  shows "(step ^^ ticks) source center = ring (center + int ticks * shift)"
+  using halo
+proof (induction ticks arbitrary: center)
+  case 0
+  then show ?case by simp
+next
+  case (Suc n)
+  have inner: "\<And>j. abs (j-center) \<le> 1 \<Longrightarrow>
+    (step ^^ n) source j = ring (j + int n * shift)"
+  proof -
+    fix j assume bound: "abs (j-center) \<le> 1"
+    show "(step ^^ n) source j = ring (j + int n * shift)"
+    proof (rule Suc.IH)
+      fix i assume "abs (i-j) \<le> int n"
+      with bound have "abs (i-center) \<le> int (Suc n)" by (auto simp: abs_le_iff; linarith)
+      thus "source i = ring i" by (rule Suc.prems)
+    qed
+  qed
+  have left: "(step ^^ n) source (center-1) = ring (center-1 + int n * shift)"
+    by (rule inner) simp
+  have middle: "(step ^^ n) source center = ring (center + int n * shift)"
+    by (rule inner) simp
+  have right: "(step ^^ n) source (center+1) = ring (center+1 + int n * shift)"
+    by (rule inner) simp
+  have evaluated: "(step ^^ Suc n) source center =
+    double_reverse_t2_digit (ring ((center+int n*shift)-1))
+      (ring (center+int n*shift)) (ring ((center+int n*shift)+1))"
+    apply (simp only: funpow.simps comp_apply local_rule left middle right)
+    by (simp add: algebra_simps)
+  show ?case using evaluated miter[of "center+int n*shift"]
+    by (simp add: algebra_simps)
+qed
+
 lemma double_reverse_ring_step_length:
   "length (double_reverse_ring_step word) = length word"
   by (simp add: double_reverse_ring_step_def)
@@ -957,6 +1002,7 @@ ML \<open>
     double_reverse_packed_window_emits_requested_extent
     double_reverse_packed_window_point_refines_open_trace
     double_reverse_packed_window_periodic_ring_exact
+    double_reverse_protected_relative_miter
     double_reverse_ring_run_add double_reverse_ring_cycle_repeats
     double_reverse_ring_cycle_future_periodic
     double_reverse_ring_observation_periodic

@@ -61,6 +61,21 @@ proof (rule nth_equalityI)
         reflected_compiled_digit_exact[OF multiplier digits] reflected_padded_source_def nth_append)
 qed
 
+theorem reflected_compiled_relative_interior:
+  fixes a b shift :: int
+  assumes m: "m = 2 \<or> m = 5" and digits: "reflected_decimal source"
+    and base: "0 \<le> a" and shift: "0 \<le> shift" "shift \<le> 2"
+    and returns: "\<And>j. a + 2 \<le> j \<Longrightarrow> j < b \<Longrightarrow>
+      reflected_relative_two (reflected_source_two_gate m)
+        (\<lambda>k. reflected_padded_source source (nat k)) j =
+      reflected_padded_source source (nat (j - shift))"
+    and bounds: "a + 2 * int (2 ^ order) \<le> int i" "int i < b"
+  shows "reflected_compiled_digit m order source i =
+    reflected_padded_source source (nat (int i - int (2 ^ order) * shift))"
+  using reflected_compiled_digit_exact[OF m digits, of order i]
+    reflected_padded_relative_H_interior[OF m digits base shift returns bounds]
+  by simp
+
 lemma reflected_pad_H:
   assumes "m = 2 \<or> m = 5" "reflected_pad_equiv x y"
   shows "reflected_pad_equiv (reflected_padded_H m x) (reflected_padded_H m y)"
@@ -167,7 +182,7 @@ theorem reflected_compiled_even_value:
   by simp
 
 ML \<open>
-  val checked = @{thms reflected_compiled_word_exact reflected_compiled_levels_padding
+  val checked = @{thms reflected_compiled_relative_interior reflected_compiled_word_exact reflected_compiled_levels_padding
     reflected_compiled_levels_emit reflected_compiled_odd_value reflected_compiled_even_value};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Reflected compiled word proof depends on an oracle";

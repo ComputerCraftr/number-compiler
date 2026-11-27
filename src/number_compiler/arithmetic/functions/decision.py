@@ -20,6 +20,7 @@ from collections.abc import (
     Sequence,
 )
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import (
     Literal,
     cast,
@@ -824,7 +825,7 @@ class MultiTerminalDecisionArena:
         )
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class CanonicalOutputRelation:
     """Exact canonical output function attached to a bimachine.
 
@@ -839,13 +840,25 @@ class CanonicalOutputRelation:
     right_states: tuple[int, ...]
 
     def __post_init__(self) -> None:
-        self._left = {q: i for i, q in enumerate(self.left_states)}
-        self._symbol = {a: i for i, a in enumerate(self.alphabet)}
-        self._right = {q: i for i, q in enumerate(self.right_states)}
+        object.__setattr__(
+            self,
+            "_left",
+            MappingProxyType({q: i for i, q in enumerate(self.left_states)}),
+        )
+        object.__setattr__(
+            self,
+            "_symbol",
+            MappingProxyType({a: i for i, a in enumerate(self.alphabet)}),
+        )
+        object.__setattr__(
+            self,
+            "_right",
+            MappingProxyType({q: i for i, q in enumerate(self.right_states)}),
+        )
 
-    _left: dict[int, int] = field(init=False)
-    _symbol: dict[int, int] = field(init=False)
-    _right: dict[int, int] = field(init=False)
+    _left: Mapping[int, int] = field(init=False)
+    _symbol: Mapping[int, int] = field(init=False)
+    _right: Mapping[int, int] = field(init=False)
 
     def emit(self, left: int, symbol: int, right: int) -> tuple[int, ...] | None:
         return _output_word(

@@ -38,15 +38,19 @@ class ActionPowerArena:
         compose: Callable[[ActionProgramID, ActionProgramID], ActionProgramID],
         *,
         validate: Callable[[ActionProgramID], int],
-        composition_cache: dict[tuple[int, int], int] | None = None,
+        memoize_compositions: bool = True,
     ) -> None:
-        self._identity = identity
+        if type(identity) is not ActionProgramID:
+            raise TypeError("action powering requires a scoped program ID")
+        self._owner = identity.owner
+        self._kind = identity.kind
         self.resolve_index = validate
-        self._validate(identity)
+        self._identity_id = self._validate(identity)
         self._compose = compose
-        # An interner may also need these entries during canonicalization.
-        # Share that table rather than keeping a second copy of every pair.
-        self._compositions = {} if composition_cache is None else composition_cache
+        # An already memoized interner keeps its own arena-local keys.
+        self._compositions: dict[tuple[int, int], int] | None = (
+            {} if memoize_compositions else None
+        )
         self._powers: dict[tuple[int, int], int] = {}
         self.composition_requests = 0
         self.composition_hits = 0
@@ -55,19 +59,19 @@ class ActionPowerArena:
 
     @property
     def identity(self) -> ActionProgramID:
-        return self._identity
+        return ActionProgramID(self._owner, self._kind, self._identity_id)
 
     def _validate(self, handle: ActionProgramID) -> int:
         if type(handle) is not ActionProgramID:
             raise TypeError("action powering requires a scoped program ID")
-        ArenaHandle.validate(handle, self.identity.owner, self.identity.kind)
+        ArenaHandle.validate(handle, self._owner, self._kind)
         result = self.resolve_index(handle)
         if type(result) is not int or result != handle.local_id:
             raise ValueError("action resolver returned a different local identity")
         return result
 
     def scoped_handle(self, local_id: int) -> ActionProgramID:
-        result = ActionProgramID(self.identity.owner, self.identity.kind, local_id)
+        result = ActionProgramID(self._owner, self._kind, local_id)
         self._validate(result)
         return result
 
@@ -76,17 +80,20 @@ class ActionPowerArena:
     ) -> ActionProgramID:
         before_id, after_id = self._validate(before), self._validate(after)
         self.composition_requests += 1
-        if before == self.identity:
+        if before_id == self._identity_id:
             return after
-        if after == self.identity:
+        if after_id == self._identity_id:
             return before
         key = (before_id, after_id)
-        found = self._compositions.get(key)
+        compositions = self._compositions
+        found = None if compositions is None else compositions.get(key)
         if found is not None:
             self.composition_hits += 1
             return self.scoped_handle(found)
         result = self._compose(before, after)
-        self._compositions[key] = self._validate(result)
+        result_id = self._validate(result)
+        if compositions is not None:
+            compositions[key] = result_id
         return result
 
     def power(self, action_id: ActionProgramID, exponent: int) -> ActionProgramID:
@@ -115,7 +122,7 @@ class ActionPowerArena:
         return ActionPowerMetrics(
             self.composition_requests,
             self.composition_hits,
-            len(self._compositions),
+            len(self._compositions or ()),
             self.power_requests,
             self.power_hits,
             len(self._powers),
@@ -123,7 +130,7 @@ class ActionPowerArena:
 
     def composition_keys_snapshot(self) -> tuple[tuple[int, int], ...]:
         """Return immutable integer IDs retained by the composition cache."""
-        return tuple(self._compositions)
+        return tuple(self._compositions or ())
 
 
 __all__ = ["ActionPowerArena", "ActionPowerMetrics"]

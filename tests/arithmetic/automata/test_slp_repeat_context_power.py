@@ -12,6 +12,10 @@ from number_compiler.arithmetic.automata.transducer import (
     end_tag,
     parity_tag,
 )
+from number_compiler.arithmetic.functions.decision import (
+    CanonicalOutputRelation,
+    MultiTerminalDecisionArena,
+)
 from number_compiler.arithmetic.functions.residual import minimize_bimachine
 
 
@@ -94,6 +98,79 @@ def _partial_machine() -> LazyBimachine:
         lambda _left, symbol, _right: (symbol,),
         cache_enabled=False,
     )
+
+
+def _single_symbol_projector(
+    machine: LazyBimachine,
+) -> tuple[SLPArena, int, BimachineSLPProjector]:
+    arena = SLPArena()
+    return arena, arena.terminal(1), BimachineSLPProjector(machine, arena)
+
+
+def test_resolver_replacement_invalidates_cached_output_and_projector() -> None:
+    machine = _partial_machine()
+    machine.cache_enabled = True
+    assert machine.emit(0, 1, 0) == (1,)
+    arena, root, projector = _single_symbol_projector(machine)
+    assert arena.materialize(projector.block(root, 0, 0)) == (1,)
+
+    machine.resolver = lambda _left, _symbol, _right: (2,)
+    assert machine.emit(0, 1, 0) == (2,)
+    with pytest.raises(RuntimeError, match="machine changed"):
+        projector.block(root, 0, 0)
+    projector.clear_caches()
+    assert arena.materialize(projector.block(root, 0, 0)) == (2,)
+
+
+def test_projector_rejects_replaced_transition_owner_until_cache_clear() -> None:
+    machine = _partial_machine()
+    _, root, projector = _single_symbol_projector(machine)
+    assert projector.forward(root, 0) == 1
+
+    machine.left = DFA((1,), 0, {(0, 1): 0}, (0, 1))
+    with pytest.raises(RuntimeError, match="machine changed"):
+        projector.forward(root, 0)
+    projector.clear_caches()
+    assert projector.forward(root, 0) == 0
+
+
+def test_dfa_transition_snapshot_rejects_alias_mutation() -> None:
+    transitions = {(0, 1): 1}
+    machine = _partial_machine()
+    machine.left = DFA((1,), 0, transitions, (0, 1))
+    _, root, projector = _single_symbol_projector(machine)
+    assert projector.forward(root, 0) == 1
+
+    transitions[(0, 1)] = 0
+    assert machine.left.step(0, 1) == 1
+    assert projector.forward(root, 0) == 1
+    with pytest.raises(TypeError):
+        machine.left.trans[(0, 1)] = 0  # type: ignore[index]
+    object.__setattr__(machine.left, "trans", {(0, 1): 0})
+    with pytest.raises(RuntimeError, match="machine changed"):
+        projector.forward(root, 0)
+    projector.clear_caches()
+    with pytest.raises(RuntimeError, match="machine changed"):
+        projector.forward(root, 0)
+
+
+def test_projector_rejects_retargeted_canonical_output() -> None:
+    machine = _partial_machine()
+    arena = MultiTerminalDecisionArena((1, 1, 1))
+    first = arena.terminal((1,))
+    second = arena.terminal((2,))
+    relation = CanonicalOutputRelation(arena, first, (0,), (1,), (0,))
+    machine.install_canonical_output(relation)
+    words, root, projector = _single_symbol_projector(machine)
+    assert words.materialize(projector.block(root, 0, 0)) == (1,)
+
+    with pytest.raises(AttributeError):
+        relation.root = second  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        relation._symbol[1] = 1  # type: ignore[index]
+    object.__setattr__(relation, "root", second)
+    with pytest.raises(RuntimeError, match="machine changed"):
+        projector.block(root, 0, 0)
 
 
 def test_partial_dfa_may_reject_after_the_last_demanded_repeat() -> None:

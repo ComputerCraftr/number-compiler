@@ -185,6 +185,17 @@ def test_response_register_validates_foreign_handle_before_warm_lookup() -> None
     assert compiler.ledger.snapshot() == before
 
 
+def test_response_register_keeps_program_identity_after_caller_handle_changes() -> None:
+    compiler = LazyCompiler(ResourceLedger())
+    first = compiler.reference(compiler.atom(DigitNormalizeBlockEffect(10)))
+    second = compiler.reference(compiler.atom(DigitNormalizeBlockEffect(11)))
+    register = PointResponseRegister(compiler)
+    assert register.query(first, 0, lambda _: 2) == 2
+
+    object.__setattr__(first, "local_id", second.local_id)
+    assert register.query(second, 0, lambda _: 9) == 9
+
+
 def test_response_budget_rejects_before_evaluation_and_failed_evaluation_releases() -> (
     None
 ):

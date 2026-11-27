@@ -56,7 +56,7 @@ struct
       val mapped_weights = Unsynchronized.ref ([]: mapped_weight list)
       (* One traversal shifts the phase and adds the Future-specific +10.
          This is deliberately not the Bellman +9 encoding. *)
-      val shifted_weight_map = Arena.make_action_shift_map work (fn x => x+10)
+      val shifted_weight_map = Arena.make_action_shift_map work (Arena.Shift_Add 10)
       val fold_steps = Unsynchronized.ref ([]: fold_step list)
       val shift_cache = Unsynchronized.ref Pair_Table.empty
       val mask_cache = Unsynchronized.ref Pair_Table.empty

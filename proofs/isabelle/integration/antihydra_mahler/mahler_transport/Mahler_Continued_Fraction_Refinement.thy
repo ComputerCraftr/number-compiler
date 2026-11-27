@@ -898,6 +898,64 @@ text \<open>The finite source cut must be significant at every requested row.
 The final-cut inequality is a necessary and sufficient check because the
 width deficit can only increase by zero or one at each multiplication.\<close>
 
+text \<open>The production detector first checks complete bit and odd-factor
+overlap in the finite lift. This consumer connects that checked overlap to
+physical rows, significant width, and the ordered powered period.\<close>
+
+theorem mahler_cf_detected_physical_band_consumer:
+  fixes exponent cut rows width period lift :: nat
+  assumes cut: "1 \<le> cut" "cut \<le> exponent"
+    and span: "1 \<le> rows" "1 \<le> width" "width \<le> cut"
+    and significant: "2^(cut+rows-2) \<le> (5::nat)^(exponent-cut+1)"
+    and period: "0 < period" "period \<le> rows"
+    and bits: "((lift XOR (lift div 2^period)) AND
+      (2^(rows-period-1+width) - 1)) = 0"
+    and upper: "((lift - lift div 2^period) div 2^(rows-period-1+width))
+      mod 5^width = 0"
+    and lift_def: "lift =
+    (10^width * (5^(exponent-cut) mod 2^(cut+rows-1))) div 2^cut"
+  shows "mahler_cf_word (concat (map (\<lambda>time.
+      mahler_cf_decimal_digits width
+        ((5^(exponent+time) div 10^(cut+time-width)) mod 10^width))
+      [0..<rows])) =
+    ordered_matrix2_multiply
+      (ordered_matrix2_power (mahler_cf_word (concat (map (\<lambda>time.
+        mahler_cf_decimal_digits width ((lift div 2^time) mod 10^width))
+        [0..<period]))) (rows div period))
+      (mahler_cf_word (concat (take (rows mod period) (map (\<lambda>time.
+        mahler_cf_decimal_digits width ((lift div 2^time) mod 10^width))
+        [0..<period]))))"
+    "\<forall>time<rows. 10^(cut+time-1) \<le> (5::nat)^(exponent+time)"
+proof -
+  have overlap: "lift mod (10^width * 2^(rows-period-1)) =
+      (lift div 2^period) mod (10^width * 2^(rows-period-1))"
+    using mahler_cf_detected_dyadic_period[where q=lift and width=width
+      and rows=rows and period=period] bits upper by simp
+  have physical: "mahler_cf_word (concat (map (\<lambda>time.
+      mahler_cf_decimal_digits width ((lift div 2^time) mod 10^width)) [0..<rows])) =
+    mahler_cf_word (concat (map (\<lambda>time.
+      mahler_cf_decimal_digits width
+        ((5^(exponent+time) div 10^(cut+time-width)) mod 10^width))
+      [0..<rows]))"
+    using mahler_cf_band_selected_source_refinement(1)[OF cut span significant]
+    by (simp add: lift_def)
+  note powered = mahler_cf_periodic_band_power[OF period overlap]
+  show "mahler_cf_word (concat (map (\<lambda>time.
+      mahler_cf_decimal_digits width
+        ((5^(exponent+time) div 10^(cut+time-width)) mod 10^width))
+      [0..<rows])) =
+    ordered_matrix2_multiply
+      (ordered_matrix2_power (mahler_cf_word (concat (map (\<lambda>time.
+        mahler_cf_decimal_digits width ((lift div 2^time) mod 10^width))
+        [0..<period]))) (rows div period))
+      (mahler_cf_word (concat (take (rows mod period) (map (\<lambda>time.
+        mahler_cf_decimal_digits width ((lift div 2^time) mod 10^width))
+        [0..<period]))))"
+    using physical powered by simp
+  show "\<forall>time<rows. 10^(cut+time-1) \<le> (5::nat)^(exponent+time)"
+    using mahler_cf_band_selected_source_refinement(2)[OF cut span significant] .
+qed
+
 ML \<open>
   val checked = @{thms mahler_cf_scaled_source_remainder
     mahler_cf_lifted_source_row mahler_cf_physical_row
@@ -908,7 +966,7 @@ ML \<open>
     mahler_cf_word_append mahler_cf_word_repeat mahler_cf_periodic_band_power
     mahler_cf_rotated_source_period
     mahler_cf_lifted_word_consumer
-    mahler_cf_band_selected_source_refinement
+    mahler_cf_band_selected_source_refinement mahler_cf_detected_physical_band_consumer
     mahler_cf_integer_word_determinant mahler_cf_integer_adjugate_inverse_left
     mahler_cf_integer_rotate_from_prefix mahler_cf_integer_rotated_power
     mahler_cf_moving_cut_source_transport mahler_cf_moving_cut_source_prepend};

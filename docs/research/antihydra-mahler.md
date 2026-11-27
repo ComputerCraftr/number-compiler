@@ -175,6 +175,71 @@ than an uncapped replacement tail. This supports the root-action cap reduction.
 The source-to-action constructor and cache publication invariant still require
 their own refinement; the theorem makes no all-time safety claim.
 
+### Ordered decimal bands of powers of five
+
+For a positive width $w$, let $B=10^w$. A finite diagonal lift $Q$
+emits the ordered row values $u_i=\lfloor Q/2^i\rfloor\bmod B$ for
+$0\le i<h$. Two lifts have identical observations on all $h\ge1$ rows
+exactly when they agree modulo $B2^{h-1}$. The first observation fixes
+the low bit because $B$ is even. Removing that bit reduces the comparison
+to the remaining rows. Consequently a lag $p<h$ repeats the complete
+overlap exactly when $Q-\lfloor Q/2^p\rfloor$ is divisible by
+$B2^{h-p-1}$. Each row contributes exactly $w$ digits, including leading
+zeros. The continuant multiplies those digits in MSD-first order and
+appends the residual rows after the last complete period.
+
+A settled suffix of $5^n$, for $n\ge w$, has value
+$5^w(5^{n-w}\bmod 2^w)$. At width three, the two phases select
+$125$ and $625$. Both end with the same ordered action for $25$, whose
+matrix has rows $(19,3)$ and $(6,1)$ under the coefficient convention
+$e\mapsto e+1$. Their hundreds digits select distinct full products.
+Significant width and the physical cut remain separate assumptions on
+each use of the suffix. [Finite phase and separation proofs](../../proofs/isabelle/integration/antihydra_mahler/mahler_transport/Mahler_CF_Low_Period.thy)
+
+For a settled suffix of width $w\ge3$, the physical half-period
+$2^{w-3}$ changes the leading decimal digit by $+5$ or $-5$ and preserves
+the lower digits. If the matrix has lower row $(c,d)$, its upper row
+therefore changes by $\pm5(c,d)$. For an observation modulo $m$ with
+upper-row weights $(u,v)$, put $q=m/\gcd(m,5)$. A half-period is valid
+when every settled lower row satisfies $cu+dv=0\pmod q$. This gives an
+upper bound on the observation period.
+
+At width three the positive-coefficient condition is $19u+3v=0\pmod q$.
+For instance, weights $(2,-11)$ give 11 on $125$ and 36 on $625$ modulo
+125. The raw-digit lower row $(11,2)$ would merge those observations.
+At width four the lower rows are $(44,7)$ and $(139,22)$, so the first
+row and their difference $(95,15)$ generate the same lattice.
+Subtracting three times the first row from the second gives $(7,1)$.
+Subtracting seven times that vector from the first gives $(-5,0)$. With weights
+$(1,3)$ the upper rows for $0625$ and $5625$ give 233 and 1258, equal
+modulo 25 and distinct modulo 125. Raw-digit matrices would give 17
+and 567. At widths five and above, two lower rows separated by half the
+period of the **lower word** have determinant of magnitude five: only its
+leading digit changes and the remaining factors are unimodular. At a
+quarter of that period the remaining factors agree modulo five and the
+leading digit changes by a unit modulo five. That determinant is coprime
+to five. The index of the lattice spanned by all lower rows divides both
+determinants, so the half-period condition reduces to $u=v=0\pmod q$.
+
+In a fixed product $LMR$, an entrywise linear observation with
+weights $W$ acts on $M$ with weights $L^{T} W R^{T}$. A varying context
+requires a joint phase check. These statements concern the selected
+stationary suffix at its authenticated cut.
+
+For adjacent spans, write each row as the ordered product of its changing
+head and settled suffix. Let $P_i$ be the complete row product on span
+$i$, let $C_i$ be the ordered product of its suffixes, and put
+$K_i=P_iC_i^{-1}$. Every digit matrix has determinant $-1$, so these
+inverses exist over the integers. The normalized product on two spans is
+
+$$
+P_1P_2(C_1C_2)^{-1}=K_1 C_1 K_2 C_1^{-1}.
+$$
+
+This identity keeps each suffix in chronological order even when a width
+birth changes the next head. Powering a return still requires a source
+law for the normalized head response and its interior cuts.
+
 ## Shared Collatz F5 spatial action: checked transfer
 
 The shared [carry/F5 owner](../../src/number_compiler/arithmetic/carry/collatz_f5_quotient.py)

@@ -1,12 +1,17 @@
 """Differential and fail-closed tests for algebraic forcing-slab contraction."""
 
 from collections.abc import Sequence
+from math import comb
 from random import Random
 from typing import Never, cast
 
 import pytest
 
 from number_compiler.arithmetic.carry import event_memory as memory
+from number_compiler.arithmetic.carry.carry_itinerary import (
+    cyclic_transport_kernel,
+    negacyclic_transport_kernel,
+)
 
 
 def _literal_fold(rows: Sequence[Sequence[int]], base: int) -> tuple[int, ...]:
@@ -110,3 +115,23 @@ def test_carry_suffix_matches_physical_pair_recurrence() -> None:
             )
             == source
         )
+
+
+@pytest.mark.parametrize("negative", (False, True))
+def test_transport_power_matches_binomial(negative: bool) -> None:
+    kernel = negacyclic_transport_kernel if negative else cyclic_transport_kernel
+    for p in (1, 2, 3, 4, 7, 8):
+        for q in range(6):
+            for g in (0, 1, 2, 6, 17, 33):
+                for modulus in (3, 16, 25, 32):
+                    expected = [0] * p
+                    for j in range(g + 1):
+                        k, i = divmod(j, p)
+                        expected[i] += (
+                            (-1 if negative and k % 2 else 1) * comb(g, j) * 2**q
+                        )
+                    assert kernel(p, q, g, modulus=modulus) == tuple(
+                        v % modulus for v in expected
+                    )
+    for p in (1, 2, 4, 8, 16):
+        assert kernel(p, 0, 2**4096, modulus=32) == (0,) * p

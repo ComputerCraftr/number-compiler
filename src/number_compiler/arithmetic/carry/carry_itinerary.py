@@ -160,13 +160,57 @@ def _class_transport_kernel(
     )
     if classes <= 0 or no_growth < 0 or growth < 0 or modulus <= 1:
         raise ValueError((classes, no_growth, growth, modulus))
+    # Work on the transport operator itself, not the growth occurrences.
+    # In a cyclic one- or two-class ring the exact power is scalar.
+    if classes == 1:
+        return (
+            0
+            if negacyclic and growth
+            else pow(2, no_growth + (0 if negacyclic else growth), modulus),
+        )
     scale = pow(2, no_growth, modulus)
-    out = [0] * classes
-    for index in range(growth + 1):
-        quotient, remainder = divmod(index, classes)
-        sign = -1 if negacyclic and quotient & 1 else 1
-        out[remainder] = (out[remainder] + sign * scale * comb(growth, index)) % modulus
-    return tuple(out)
+    if not scale:
+        return (0,) * classes
+    if not growth:
+        return (scale,) + (0,) * (classes - 1)
+    if classes == 2 and not negacyclic:
+        value = pow(2, no_growth + growth - 1, modulus)
+        return value, value
+    # Over mod 2 both z**p+1 and z**p-1 give (1+z)**p=0 when
+    # p is a power of two. Discard the entire annihilated block before
+    # allocating a binomial kernel or opening any of its descendants.
+    if is_power_of_two(classes) and is_power_of_two(modulus):
+        if no_growth + growth // classes >= modulus.bit_length() - 1:
+            return (0,) * classes
+
+    # A fixed-size polynomial expansion avoids dense multiplication for
+    # small kernels. Its extent is capped independently of the horizon.
+    if growth <= 16:
+        out = [0] * classes
+        for j in range(growth + 1):
+            wraps, i = divmod(j, classes)
+            out[i] += (-1 if negacyclic and wraps & 1 else 1) * comb(growth, j)
+        return tuple(scale * v % modulus for v in out)
+
+    def compose(left: tuple[int, ...], right: tuple[int, ...]) -> tuple[int, ...]:
+        out = [0] * classes
+        live_right = tuple((j, y) for j, y in enumerate(right) if y)
+        for i, x in enumerate(left):
+            if not x:
+                continue
+            for j, y in live_right:
+                k = i + j
+                if k >= classes:
+                    k -= classes
+                    out[k] += (-x if negacyclic else x) * y
+                else:
+                    out[k] += x * y
+        return tuple(v % modulus for v in out)
+
+    identity = (1,) + (0,) * (classes - 1)
+    operator = (1, 1) + (0,) * (classes - 2)
+    power = binary_power(operator, growth, identity=identity, compose=compose)
+    return tuple(scale * v % modulus for v in power.value)
 
 
 def _adaptive_memory_horizon(

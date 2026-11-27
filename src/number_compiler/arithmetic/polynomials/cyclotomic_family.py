@@ -76,11 +76,24 @@ def normalization_component(
         length=length,
         **kwargs,
     )
-    boundary = CyclotomicDigitBlock.from_coefficients(
-        defect.boundary_term_lsf,
-        length=length + 1,
-        **kwargs,
-    )
+    if (
+        defect.base == 10
+        and modulus == 32
+        and difference.factor is None
+        and difference.power == 1
+        and length % difference.order < difference.degree
+    ):
+        boundary = difference.decimal_cut_boundary(
+            width=length,
+            incoming=defect.boundary_in,
+            outgoing=defect.boundary_out,
+        )
+    else:
+        boundary = CyclotomicDigitBlock.from_coefficients(
+            defect.boundary_term_lsf,
+            length=length + 1,
+            **kwargs,
+        )
     factor_times_carry = carry.apply_linear_factor(defect.base).with_length(length + 1)
     recovered = None
     if difference.linear_factor_is_unit(defect.base):

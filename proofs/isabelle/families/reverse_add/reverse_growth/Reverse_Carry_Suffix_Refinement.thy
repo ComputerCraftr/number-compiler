@@ -683,6 +683,42 @@ proof -
   show ?thesis using factor exponent by simp
 qed
 
+text \<open>A sufficiently quiet suffix erases any earlier coefficient image.  This
+allows an already supplied prefix of forcing rows to be discarded without
+replaying it; the suffix and its source-derived growth word remain fixed.\<close>
+
+lemma reverse_q19_quiet_suffix_discards_prefix:
+  assumes quiet: "5 \<le> source_no_growth_count n source"
+  shows "reverse_q19_source_horner n source left i mod 32 =
+    reverse_q19_source_horner n source right i mod 32"
+proof -
+  have difference:
+    "reverse_q19_source_horner n source left i -
+      reverse_q19_source_horner n source right i =
+      reverse_q19_homogeneous_horner n source (\<lambda>j. left j - right j) i"
+    by (rule reverse_q19_source_horner_difference)
+  have erased:
+    "reverse_q19_homogeneous_horner n source (\<lambda>j. left j - right j) i mod 32 = 0"
+    by (rule reverse_q19_homogeneous_horner_mod32_erasure[OF quiet])
+  have sum:
+    "reverse_q19_source_horner n source left i =
+      reverse_q19_homogeneous_horner n source (\<lambda>j. left j - right j) i +
+      reverse_q19_source_horner n source right i"
+    using difference by linarith
+  have add_left:
+    "(reverse_q19_homogeneous_horner n source (\<lambda>j. left j - right j) i mod 32 +
+      reverse_q19_source_horner n source right i) mod 32 =
+     (reverse_q19_homogeneous_horner n source (\<lambda>j. left j - right j) i +
+      reverse_q19_source_horner n source right i) mod 32"
+    by (rule mod_add_left_eq)
+  have reduced:
+    "(reverse_q19_homogeneous_horner n source (\<lambda>j. left j - right j) i +
+      reverse_q19_source_horner n source right i) mod 32 =
+      reverse_q19_source_horner n source right i mod 32"
+    using add_left erased by simp
+  show ?thesis using sum reduced by simp
+qed
+
 definition reverse_q19_source_forcing_image ::
     "nat \<Rightarrow> nat list \<Rightarrow> nat \<Rightarrow> int" where
   "reverse_q19_source_forcing_image n source i =
@@ -814,6 +850,7 @@ ML \<open>
     reverse_q19_source_horner_exact reverse_q19_source_horner_difference
     reverse_q19_homogeneous_horner_quiet_divisibility
     reverse_q19_homogeneous_horner_mod32_erasure
+    reverse_q19_quiet_suffix_discards_prefix
     reverse_q19_source_suffix_forcing_congruence
     reverse_q19_source_suffix_forcing_exact reverse_q19_twelve_image_continuation};
   val _ = if null (Thm_Deps.all_oracles checked) then ()

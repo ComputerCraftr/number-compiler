@@ -7,10 +7,15 @@ and temporal leaf descents alongside canonical spatial/temporal populations.
 
 from __future__ import annotations
 
+import argparse
 import itertools
 import json
 import os
+import subprocess
+import sys
 from collections.abc import Mapping, Sequence
+from hashlib import sha256
+from statistics import median
 from time import perf_counter
 
 from devtools.benchmarks.temporal_probe_support import (
@@ -321,9 +326,102 @@ def run_probe() -> dict[str, object]:
     }
 
 
+def compare_reversal_endpoints(*, wide_h: bool = False) -> dict[str, object]:
+    """Benchmark exact endpoint routes through the same cold CLI entrypoint."""
+    wide = int(("314159265358979323846264338327950288419716939937510" * 3)[:153])
+    candidates: tuple[tuple[int, int], ...]
+    if wide_h:
+        family = "2rev10"
+        candidates = ((73, 256), (wide, 255), (wide, 256), (wide, 4096))
+        routes = ("cone", "packed_h")
+        option = (
+            "from number_compiler.arithmetic.carry import reflected_h_power as owner; "
+            "owner._PACKED_H2_MIN_GENERATION = 256 "
+            "if sys.argv.pop(1) == 'packed_h' else None; "
+        )
+    else:
+        family = "5rev10"
+        candidates = (
+            (73, 256),
+            (196, 4095),
+            (196, 4096),
+            (196, 4097),
+            (wide, 4096),
+            (196, 8192),
+            (196, 16384),
+        )
+        routes = ("nibble", "bitplane")
+        option = (
+            "from number_compiler.sequences.five_reverse import term as owner; "
+            "owner._BITPLANE_MIN_STEPS = 4096 "
+            "if sys.argv.pop(1) == 'bitplane' else None; "
+        )
+    child = (
+        "import sys; "
+        + option
+        + "from number_compiler.api.cli import main; raise SystemExit(main(sys.argv[1:]))"
+    )
+    rows: list[dict[str, object]] = []
+    for seed, ticks in candidates:
+        arguments = (
+            family,
+            "--seed",
+            str(seed),
+            "--nth",
+            str(ticks),
+            "--max-steps",
+            str(ticks),
+            "--max-state-bits",
+            "65536",
+            "--max-output-bits",
+            "65536",
+        )
+        timings: dict[str, list[float]] = {route: [] for route in routes}
+        output: bytes | None = None
+        for trial in range(5):
+            order = routes if trial % 2 == 0 else routes[::-1]
+            for route in order:
+                started = perf_counter()
+                result = subprocess.run(
+                    (sys.executable, "-c", child, route, *arguments),
+                    cwd=ROOT,
+                    capture_output=True,
+                    check=True,
+                )
+                timings[route].append(perf_counter() - started)
+                if output is None:
+                    output = result.stdout
+                elif output != result.stdout:
+                    raise AssertionError(
+                        ("cold reversal endpoint mismatch", seed, ticks)
+                    )
+        assert output is not None
+        rows.append(
+            {
+                "seed": seed,
+                "physical_steps": ticks,
+                "endpoint_sha256": sha256(output).hexdigest(),
+                "samples": timings,
+                "median_seconds": {
+                    route: median(samples) for route, samples in timings.items()
+                },
+            }
+        )
+    return {"family": family, "cold_cli_endpoints": rows}
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    variants = parser.add_mutually_exclusive_group()
+    variants.add_argument("--five-bitplane-cli", action="store_true")
+    variants.add_argument("--wide-h-cli", action="store_true")
+    options = parser.parse_args()
     before = git_source(ROOT)
-    result = run_probe()
+    result = (
+        compare_reversal_endpoints(wide_h=options.wide_h_cli)
+        if options.five_bitplane_cli or options.wide_h_cli
+        else run_probe()
+    )
     after = git_source(ROOT)
     result["git_source_before"] = before.as_dict()
     result["git_source_after"] = after.as_dict()

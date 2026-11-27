@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import sysconfig
 import tempfile
 import zipfile
 from hashlib import sha256
@@ -25,6 +26,8 @@ from number_compiler.sequences.comma.future_artifact import (
 
 COMMA_NATIVE_EXPORT = FUTURE_NATIVE_EXPORT
 COMMA_RELEASE_ASSET = FUTURE_PROVIDER_ASSET
+NATIVE_REVERSE_BUILD_FLAG = "NUMBER_COMPILER_BUILD_NATIVE_REVERSE"
+_NATIVE_REVERSE_ROOT = Path("number_compiler/kernels")
 
 
 def verify_comma_native_export(export_root: Path, packaged_asset: Path) -> str:
@@ -43,29 +46,46 @@ def _report_stage(stage: str) -> None:
     print(f"package-stage: {stage}", file=sys.stderr, flush=True)
 
 
-def validate_wheel_contents(wheel: Path, source: Path) -> list[str]:
+def validate_wheel_contents(
+    wheel: Path, source: Path, *, native_reverse: bool = False
+) -> list[str]:
     """Reject stale build products and missing or changed package resources."""
+    suffix = sysconfig.get_config_var("EXT_SUFFIX")
+    extension = _NATIVE_REVERSE_ROOT / f"_reverse_quotients{suffix}"
+    if native_reverse and (not isinstance(suffix, str) or not suffix):
+        raise ValueError("native reversal wheel requires a known extension ABI")
+    native_sources = source / _NATIVE_REVERSE_ROOT / "native_reverse"
     expected = {
         path.relative_to(source).as_posix(): path
         for path in (source / "number_compiler").rglob("*")
         if path.is_file()
         and "__pycache__" not in path.parts
         and path.name != ".DS_Store"
+        and not path.name.startswith("._")
+        and path != source / extension
+        and not (path.parent == native_sources and path.suffix in (".cpp", ".hpp"))
     }
+    expected_names = set(expected)
+    if native_reverse:
+        expected_names.add(extension.as_posix())
     with zipfile.ZipFile(wheel) as archive:
         members = archive.namelist()
         if any(name.split("/")[0] in DEVELOPER_ROOTS for name in members):
             raise ValueError("developer or formal-proof files leaked into the wheel")
+        if native_reverse and members.count(extension.as_posix()) > 1:
+            raise ValueError(
+                "wheel contains multiple copies of the native reversal extension"
+            )
         packaged = {
             name
             for name in members
             if name.startswith("number_compiler/") and not name.endswith("/")
         }
-        if packaged != set(expected):
+        if packaged != expected_names:
             raise ValueError(
                 {
-                    "extra_package_files": sorted(packaged - expected.keys()),
-                    "missing_package_files": sorted(expected.keys() - packaged),
+                    "extra_package_files": sorted(packaged - expected_names),
+                    "missing_package_files": sorted(expected_names - packaged),
                 }
             )
         for name, path in expected.items():
@@ -75,14 +95,19 @@ def validate_wheel_contents(wheel: Path, source: Path) -> list[str]:
 
 
 def verify_wheel(
-    wheel: Path, *, python_executable: Path | None = None
+    wheel: Path,
+    *,
+    python_executable: Path | None = None,
+    native_reverse: bool = False,
 ) -> dict[str, object]:
     """Check package contents, resource admission, public imports, and the CLI."""
     wheel = wheel.resolve(strict=True)
     from devtools.paths import repository_root
 
     _report_stage("wheel-content-validation:start")
-    members = validate_wheel_contents(wheel, repository_root() / "src")
+    members = validate_wheel_contents(
+        wheel, repository_root() / "src", native_reverse=native_reverse
+    )
     _report_stage("wheel-content-validation:complete")
     if "number_compiler/py.typed" not in members:
         raise ValueError("installed distribution has no typing marker")
@@ -136,6 +161,20 @@ def verify_wheel(
             text=True,
         )
         _report_stage("wheel-install:complete")
+        if native_reverse:
+            subprocess.run(
+                [
+                    str(python),
+                    "-I",
+                    "-c",
+                    "from number_compiler.kernels import _reverse_quotients",
+                ],
+                cwd=work,
+                env=environment,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
         _report_stage("installed-smoke:start")
         smoke = subprocess.run(
             [
@@ -821,7 +860,11 @@ def main() -> int:
     args = parser.parse_args()
     print(
         json.dumps(
-            verify_wheel(args.wheel, python_executable=args.python_executable),
+            verify_wheel(
+                args.wheel,
+                python_executable=args.python_executable,
+                native_reverse=os.environ.get(NATIVE_REVERSE_BUILD_FLAG) == "1",
+            ),
             indent=2,
             sort_keys=True,
         )

@@ -26,6 +26,28 @@ separately by installing the wheel with the minimum interpreter. The existing
 installed-distribution checker accepts `--python-executable /path/to/python3.11`
 for that smoke check; it remains subject to the normal command guard.
 
+Default wheels are pure Python. To build the optional reversal extension on
+macOS or Linux with a C++20 compiler, set the build-time option when creating
+the wheel. Use a fresh build directory for each variant.
+
+```bash
+NUMBER_COMPILER_BUILD_NATIVE_REVERSE=1 python -m pip wheel --no-deps .
+```
+
+Use four-space indentation for C++. On macOS, use Homebrew LLVM to check
+formatting, C++20 compiler warnings, and clang-tidy under the command guard.
+
+```bash
+python -m devtools.checks.native_reverse_quality --llvm-bin "$(brew --prefix llvm)/bin"
+```
+
+On Linux, replace `--llvm-bin ...` with `--linux-compiler g++` to check the
+GCC-supported warning subset. The check reports compiler flags that Linux
+GCC lacks. After installing the native wheel, run the guarded
+`tests/validation/reversal/test_native_reverse.py` selection against it.
+Native endpoint selection follows the proof and timing gates recorded in
+the sprint.
+
 Use the environment's tools from the repository root:
 
 ```bash
@@ -156,8 +178,9 @@ developer modules unique identities. No shell `MYPYPATH`, `PYTHONPATH` or runtim
 their canonical module name, not by executing a file path.
 
 Source discovery covers tracked and nonignored working-tree files outside
-generated directories. Python, Python stubs, Isabelle theories, ML, and Isabelle
-`ROOT` and `ROOTS` files share a limit of 1,000 physical lines. The AST call graph
+generated directories. Python, Python stubs, Isabelle theories, ML, C++ sources
+and headers, and Isabelle `ROOT` and `ROOTS` files share a limit of 1,000 physical
+lines. The AST call graph
 checks Python implementation files for statically resolvable direct and mutual
 recursion. Dynamic dispatch can fall outside the call graph. Formatting is not
 compressed to evade the line limit.

@@ -47,6 +47,9 @@ session Shared_Carry_Dynamics in "arithmetic/carry_dynamics" = "HOL-Number_Theor
     Decimal_Word_Reversal
     Reflected_Physical_Parity
     Reflected_H_Cells
+    Reflected_Diagonal_Table
+    Reflected_Diagonal_Wave
+    Reflected_Wave_Readout
     Reflected_M_Word
     Reflected_E_Word
     Reflected_Padded_Halo

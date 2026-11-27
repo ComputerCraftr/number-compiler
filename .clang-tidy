@@ -1,0 +1,25 @@
+Checks: >
+  clang-analyzer-*,
+  bugprone-*,
+  performance-*,
+  misc-include-cleaner,
+  misc-no-recursion,
+  portability-*,
+  readability-*,
+  -bugprone-easily-swappable-parameters,
+  -clang-analyzer-security.VAList,
+  -readability-function-cognitive-complexity,
+  -readability-isolate-declaration,
+  -readability-magic-numbers
+HeaderFilterRegex: '(^|/)kernels/native_reverse/'
+SystemHeaders: false
+WarningsAsErrors: '*'
+CheckOptions:
+  # Python.h is the public umbrella for the CPython C API.
+  misc-include-cleaner.IgnoreHeaders: '(^|/)(pyport|pyerrors|pytypedefs|object|modsupport|ceval|methodobject|moduleobject|exports)\.h$'
+  # Keep conventional coordinates and ranks in the diagonal equations.
+  readability-identifier-length.MinimumParameterNameLength: '2'
+  readability-identifier-length.MinimumVariableNameLength: '2'
+  readability-identifier-length.IgnoredLoopCounterNames: '^[bdhijkpqrstuvxy_]$'
+  readability-identifier-length.IgnoredParameterNames: '^[abcdehijkmnpqrstuvwxyz]$'
+  readability-identifier-length.IgnoredVariableNames: '^[abcdefhijklmnpqrstuvwxyz]$'

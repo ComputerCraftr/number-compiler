@@ -113,6 +113,77 @@ next
   finally show ?case by (simp only: sum.lessThan_Suc) simp
 qed
 
+lemma decimal_normalization_signed_finite_cut:
+  fixes raw normalized carry :: "nat \<Rightarrow> 'a::comm_ring_1"
+    and z incoming :: 'a
+  assumes columns: "\<And>j. j<width \<Longrightarrow>
+    raw j - normalized j = 10 * carry j -
+      (if j=0 then incoming else carry (j-1))"
+  shows "(\<Sum>j<width. (raw j-normalized j)*z^j) =
+    (10-z)*(\<Sum>j<width. carry j*z^j) -
+      (if width=0 then 0 else incoming) +
+      (if width=0 then 0 else carry (width-1)*z^width)"
+  using columns
+proof (induction width)
+  case 0
+  then show ?case by simp
+next
+  case (Suc width)
+  have smaller: "\<And>j. j<width \<Longrightarrow>
+    raw j-normalized j = 10 * carry j -
+      (if j=0 then incoming else carry (j-1))"
+    using Suc.prems by auto
+  have previous:
+    "(\<Sum>j<width. (raw j-normalized j)*z^j) =
+      (10-z)*(\<Sum>j<width. carry j*z^j) -
+        (if width=0 then 0 else incoming) +
+        (if width=0 then 0 else carry (width-1)*z^width)"
+    by (rule Suc.IH[OF smaller])
+  have final_column:
+    "raw width-normalized width = 10 * carry width -
+      (if width=0 then incoming else carry (width-1))"
+    by (rule Suc.prems) simp
+  have "(\<Sum>j<Suc width. (raw j-normalized j)*z^j) =
+      (\<Sum>j<width. (raw j-normalized j)*z^j) +
+        (raw width-normalized width)*z^width"
+    by (simp only: sum.lessThan_Suc)
+  also have "... =
+      (10-z)*(\<Sum>j<width. carry j*z^j) -
+        (if width=0 then 0 else incoming) +
+        (if width=0 then 0 else carry (width-1)*z^width) +
+        (10*carry width - (if width=0 then incoming else carry (width-1)))*z^width"
+    by (simp only: previous final_column)
+  also have "... =
+      (10-z)*((\<Sum>j<width. carry j*z^j) + carry width*z^width) -
+        incoming + carry width*z^(Suc width)"
+    by (simp add: power_Suc algebra_simps split: if_splits)
+  finally show ?case by (simp only: sum.lessThan_Suc) simp
+qed
+
+theorem decimal_normalization_mod32_reconstruct_signed_cut:
+  fixes raw normalized carry :: "nat \<Rightarrow> 'a::comm_ring_1"
+    and z w incoming :: 'a
+  assumes characteristic: "(32::'a)=0" and inverse_root: "z*w=1"
+    and columns: "\<And>j. j<width \<Longrightarrow>
+      raw j-normalized j = 10 * carry j -
+        (if j=0 then incoming else carry (j-1))"
+  shows "(\<Sum>j<width. carry j*z^j) =
+    decimal_base_z_inverse_kernel w *
+      ((\<Sum>j<width. raw j*z^j) - (\<Sum>j<width. normalized j*z^j) -
+       (if width=0 then 0 else - incoming + carry (width-1)*z^width))"
+proof -
+  have defect:
+    "(\<Sum>j<width. raw j*z^j) - (\<Sum>j<width. normalized j*z^j) =
+      (10-z)*(\<Sum>j<width. carry j*z^j) +
+        (if width=0 then 0 else - incoming + carry (width-1)*z^width)"
+    using decimal_normalization_signed_finite_cut[where raw=raw and normalized=normalized
+        and carry=carry and width=width and z=z and incoming=incoming, OF columns]
+    by (simp only: left_diff_distrib sum_subtractf; simp split: if_splits)
+  show ?thesis
+    by (rule decimal_base_z_mod32_carry_reconstruction_from_inverse
+        [OF characteristic inverse_root defect])
+qed
+
 lemma decimal_mod32_erase_annihilated_coefficients:
   fixes coefficient residual z :: "nat \<Rightarrow> 'a::comm_ring_1"
   assumes characteristic: "(32::'a)=0"
@@ -166,6 +237,8 @@ qed
 ML \<open>
   val checked = @{thms decimal_multiplier_columns_exact
     decimal_normalization_finite_cut
+    decimal_normalization_signed_finite_cut
+    decimal_normalization_mod32_reconstruct_signed_cut
     decimal_mod32_erase_annihilated_coefficients
     decimal_normalization_mod32_reconstruct_cut};
   val _ = if null (Thm_Deps.all_oracles checked) then ()

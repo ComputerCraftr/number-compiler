@@ -42,6 +42,15 @@ def test_symbolic_power_retains_exponents_and_ids_without_coefficients() -> None
     )
 
 
+def test_spacetime_power_uses_the_symbolic_composition_interner() -> None:
+    engine = CollatzCausalSpacetimeEngine()
+    arena = engine.symbolic_actions
+    result = engine.action_power.power(arena.atom(2), 8)
+    assert arena.node(result).h == 8
+    assert arena.composition_entries > 0
+    assert engine.action_power.composition_keys_snapshot() == ()
+
+
 def test_production_symbolic_power_never_projects_intermediate_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -273,13 +273,88 @@ proof -
   show ?thesis using digit_path scalar_tick q19 by blast
 qed
 
+
+text \<open>The native endpoint stores the low-side digits and one symmetric
+half of the successor pair field.  These facts reconstruct the opposite digit
+without storing an intermediate row.  The source controls the birth bit.\<close>
+
+lemma reverse_native_pair_at_physical_digit:
+  assumes "i < length (digits source)"
+  shows "step source ! i = digits source ! i +
+    digits source ! (length (digits source) - Suc i)"
+  using assms by (simp add: step_def rev_nth)
+
+lemma reverse_native_opposite_digit_from_pair:
+  assumes "i < length (digits source)"
+  shows "digits source ! (length (digits source) - Suc i) =
+    step source ! i - digits source ! i"
+  using reverse_native_pair_at_physical_digit[OF assms] by simp
+
+lemma reverse_native_center_pair_even:
+  assumes "odd (length (digits source))"
+  shows "even (step source ! (length (digits source) div 2))"
+proof -
+  have bound: "length (digits source) div 2 < length (digits source)"
+    using assms by presburger
+  have center: "length (digits source) - Suc (length (digits source) div 2) =
+      length (digits source) div 2"
+    using assms by presburger
+  show ?thesis using reverse_native_pair_at_physical_digit[OF bound] center by simp
+qed
+
+theorem reverse_native_folded_endpoint_clock:
+  assumes initial_valid: "valid_pair initial" and duration: "0 < duration"
+  defines "current \<equiv> run step (duration - 1) initial"
+    and "endpoint \<equiv> run step duration initial"
+  shows "valid_pair endpoint \<and>
+    punctured_q19_decode_half (reverse_laurent_source_half endpoint)
+      (reverse_laurent_source_odd endpoint) = endpoint \<and>
+    length endpoint = length current + (if carry_out False current then 1 else 0) \<and>
+    (reverse_laurent_source_odd endpoint =
+      (reverse_laurent_source_odd current \<noteq> carry_out False current)) \<and>
+    (\<forall>i < length (digits current).
+      digits current ! (length (digits current) - Suc i) =
+        endpoint ! i - digits current ! i) \<and>
+    (reverse_laurent_source_odd endpoint \<longrightarrow>
+      even (endpoint ! (length endpoint div 2)))"
+proof -
+  have successor: "endpoint = step current"
+    unfolding endpoint_def current_def
+    using reverse_add_run_last_step[OF duration, of initial] by simp
+  have symmetric: "rev endpoint = endpoint"
+    unfolding successor by (rule step_symmetric)
+  have valid: "valid_pair endpoint"
+    unfolding endpoint_def by (rule valid_pair_run[OF initial_valid])
+  have width: "length endpoint =
+      length current + (if carry_out False current then 1 else 0)"
+    unfolding successor by (simp add: length_digits_exact)
+  have decode: "punctured_q19_decode_half (reverse_laurent_source_half endpoint)
+      (reverse_laurent_source_odd endpoint) = endpoint"
+    by (rule reverse_laurent_half_reconstructs_symmetric_source[OF symmetric])
+  have parity: "reverse_laurent_source_odd endpoint =
+      (reverse_laurent_source_odd current \<noteq> carry_out False current)"
+    using width by (cases "carry_out False current")
+      (simp_all add: reverse_laurent_source_odd_def)
+  have opposite: "\<forall>i < length (digits current).
+      digits current ! (length (digits current) - Suc i) =
+        endpoint ! i - digits current ! i"
+    unfolding successor using reverse_native_opposite_digit_from_pair by blast
+  have center: "reverse_laurent_source_odd endpoint \<longrightarrow>
+      even (endpoint ! (length endpoint div 2))"
+    unfolding successor reverse_laurent_source_odd_def
+    using reverse_native_center_pair_even[of current] by simp
+  show ?thesis using valid decode width parity opposite center by blast
+qed
+
 ML \<open>
   val checked = @{thms punctured_expand_singleton_runs
     reverse_add_run_last_step
     reverse_laurent_native_block_final_pair_refines
     reverse_add_decimal_digit_run_refines_pair_run
     reverse_add_decimal_tick_value
-    reverse_laurent_native_block_scalar_to_pair};
+    reverse_laurent_native_block_scalar_to_pair
+    reverse_native_opposite_digit_from_pair reverse_native_center_pair_even
+    reverse_native_folded_endpoint_clock};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Reverse native block refinement depends on an oracle";
 \<close>

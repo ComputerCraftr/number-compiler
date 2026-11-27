@@ -65,7 +65,7 @@ def test_hashlife_production_source_has_no_rle_or_generation_padding_carrier() -
 
 @pytest.mark.validation
 def test_reverse_q19_completed_occurrence_reuses_public_projection() -> None:
-    """The punctured producer publishes an exact output reused by demand."""
+    """The authenticated producer publishes an exact output reused by demand."""
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
     from tests.support.reverse_cutover import assert_q19_output_authority
 
@@ -78,10 +78,8 @@ def test_reverse_q19_completed_occurrence_reuses_public_projection() -> None:
     assert occurrence.output_width == exact_width
 
     counters = term.resource_ledger.counters
-    t2 = counters.get("reverse_q19_punctured_t2_applications", 0)
-    t4 = counters.get("reverse_q19_punctured_t4_applications", 0)
-    assert 2 * t2 + 4 * t4 > 0
-    assert counters.get("reverse_q19_punctured_emitted_grammar_nodes", 0) > 0
+    assert counters.get("reverse_q19_broadword_semantic_steps", 0) > 0
+    assert counters.get("reverse_q19_broadword_endpoint_publications", 0) > 0
 
     projection_hits = counters.get("source_image_projection_hits", 0)
     assert term.digit(position) == expected

@@ -36,14 +36,14 @@ struct
       val output = (case #terminal proposal arena expression_body 0 of
           SOME value => value | NONE => error "Continue proposal missing")
       val continuations = #continuations proposal ()
-      val constant_map = Arena.make_action_shift_map arena (fn _ => 4)
+      val constant_map = Arena.make_action_shift_map arena (Arena.Shift_Constant 4)
       val constant_output = Arena.shift_map_action constant_map source 1
       val constant_long = Arena.shift_map_action constant_map source 925
       val _ = if Arena.action_index arena constant_output = Arena.action_index arena constant_long
         then () else error "Periodic mapped shift changed its result"
       val _ = (case Arena.action_view arena constant_output of Arena.Leaf_Value 4 => ()
         | _ => error "Noninjective mapped shift did not reduce to a leaf")
-      val other_map = Arena.make_action_shift_map arena (fn x => x+10)
+      val other_map = Arena.make_action_shift_map arena (Arena.Shift_Add 10)
       val other_output = Arena.shift_map_action other_map source 1
       val two = Arena.action_some arena 1
       val three = Arena.action_some arena 2
@@ -56,7 +56,7 @@ struct
           andalso Arena.action_index arena lower_shift <> Arena.action_index arena lower_other
         then () else error "Later-axis shift period or phase was incorrect"
       val alias_source = Arena.action_branch arena 0 [lower_a,lower_b,lower_a]
-      val parity_map = Arena.make_action_shift_map arena (fn x => x mod 2)
+      val parity_map = Arena.make_action_shift_map arena (Arena.Shift_Modulo 2)
       val alias_output = Arena.shift_map_action parity_map alias_source 1
       val alias_long = Arena.shift_map_action parity_map alias_source 925
       val _ = if Arena.action_index arena alias_output = Arena.action_index arena alias_long
@@ -66,6 +66,25 @@ struct
         | _ => error "Mapped alias failed to retain the later branch")
       fun rejects label f = (case Exn.capture f () of Exn.Exn _ => ()
         | Exn.Res _ => error ("Indexed mapped shift accepted " ^ label))
+      val mutable_offset = Unsynchronized.ref 1
+      val frozen_map = Arena.make_action_shift_map arena (Arena.Shift_Add (!mutable_offset))
+      val mapped_once = Arena.shift_map_action frozen_map one 0
+      val _ = mutable_offset := 2
+      val mapped_again = Arena.shift_map_action frozen_map one 0
+      val fresh_map = Arena.make_action_shift_map arena (Arena.Shift_Add (!mutable_offset))
+      val mapped_fresh = Arena.shift_map_action fresh_map one 0
+      val _ = (case (Arena.action_view arena mapped_once, Arena.action_view arena mapped_again,
+          Arena.action_view arena mapped_fresh) of
+          (Arena.Leaf_Value 2, Arena.Leaf_Value 2, Arena.Leaf_Value 3) => ()
+        | _ => error "Mapped shift reused a different immutable arithmetic law")
+      val _ = rejects "negative shift offset" (fn () =>
+        Arena.make_action_shift_map arena (Arena.Shift_Add ~1))
+      val _ = rejects "negative shift constant" (fn () =>
+        Arena.make_action_shift_map arena (Arena.Shift_Constant ~1))
+      val _ = rejects "zero shift modulus" (fn () =>
+        Arena.make_action_shift_map arena (Arena.Shift_Modulo 0))
+      val _ = rejects "negative shift modulus" (fn () =>
+        Arena.make_action_shift_map arena (Arena.Shift_Modulo ~1))
       val foreign_arena = Arena.create [3,4,7,11]
       val foreign_root = Arena.action_none foreign_arena
       val _ = rejects "foreign Arena root" (fn () =>

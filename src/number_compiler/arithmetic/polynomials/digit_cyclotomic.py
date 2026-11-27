@@ -543,6 +543,12 @@ class CyclotomicDigitBlock:
         one = (1,) + (0,) * (degree - 1)
         if exponent == 0:
             return one
+        if self.factor is None and self.power == 1:
+            # Phi_n divides z**n - 1. A reduced exponent below the
+            # quotient degree is already the canonical monomial residue.
+            phase = exponent % self.order
+            if phase < degree:
+                return tuple(int(index == phase) for index in range(degree))
         if exponent < 0:
             minus_z_inverse = self.linear_factor_inverse_residue(0)
             base = tuple((-value) % self.modulus for value in minus_z_inverse)
@@ -763,7 +769,50 @@ class CyclotomicDigitBlock:
     def divide_linear_factor(
         self, base: int, *, result_length: int | None = None
     ) -> CyclotomicDigitBlock:
-        inverse = self.linear_factor_inverse_residue(int(base))
+        base = int(base)
+        if base == 10 and self.modulus == 32:
+            divisor = self.divisor
+            divisor_at_ten = (
+                sum(
+                    coefficient * 10**index
+                    for index, coefficient in enumerate(divisor[:5])
+                )
+                % 32
+            )
+            if gcd(divisor_at_ten, 32) != 1:
+                raise ValueError(
+                    ("nonunit-linear-normalization", 10, divisor_at_ten, 32)
+                )
+            residue_at_ten = (
+                sum(
+                    coefficient * 10**index
+                    for index, coefficient in enumerate(self.residue[:5])
+                )
+                % 32
+            )
+            correction = -residue_at_ten * pow(divisor_at_ten, -1, 32) % 32
+            quotient = [0] * len(self.residue)
+            quotient[-1] = -correction % 32
+            for index in range(len(quotient) - 1, 0, -1):
+                quotient[index - 1] = (
+                    10 * quotient[index]
+                    - self.residue[index]
+                    - correction * divisor[index]
+                ) % 32
+            length = self.length if result_length is None else int(result_length)
+            identity = len(quotient) == 1 and divisor[0] % 32 == 23
+            if identity and length == self.length:
+                return self
+            return CyclotomicDigitBlock(
+                self.order,
+                self.modulus,
+                length,
+                tuple(quotient),
+                self.compositions + int(not identity),
+                self.power,
+                self.factor,
+            )
+        inverse = self.linear_factor_inverse_residue(base)
         return (
             _affine_morphism()
             .from_residues(
@@ -777,6 +826,31 @@ class CyclotomicDigitBlock:
                 if result_length is None
                 else int(result_length),
             )
+        )
+
+    def decimal_cut_boundary(
+        self, *, width: int, incoming: int, outgoing: int
+    ) -> CyclotomicDigitBlock:
+        """Project both signed ports of a finite decimal normalization cut."""
+        if (
+            self.modulus != 32
+            or type(width) is not int
+            or width < 0
+            or self.length not in (width, width + 1)
+            or type(incoming) is not int
+            or type(outgoing) is not int
+        ):
+            raise ValueError("invalid decimal mod-32 cut")
+        residue = [outgoing * value % 32 for value in self.z_power_residue(width)]
+        residue[0] = (residue[0] - incoming) % 32
+        return CyclotomicDigitBlock(
+            self.order,
+            self.modulus,
+            width + 1,
+            tuple(residue),
+            0,
+            self.power,
+            self.factor,
         )
 
     @property

@@ -29,7 +29,7 @@ def _strip_zero_nibbles(packed: int) -> int:
     return packed
 
 
-def _to_packed(value: int) -> int:
+def decimal_to_packed(value: int) -> int:
     """Decimal integer -> BCD; chunk when Python's decimal limit is active."""
     try:
         return int(str(value), 16)
@@ -46,7 +46,7 @@ def _to_packed(value: int) -> int:
         return result
 
 
-def _from_packed(packed: int) -> int:
+def packed_to_decimal(packed: int) -> int:
     """BCD -> decimal integer, without modifying the interpreter's limit."""
     digits = format(packed, "x")
     try:
@@ -59,7 +59,7 @@ def _from_packed(packed: int) -> int:
         return value
 
 
-class _ExactBitBudget:
+class ExactBitBudget:
     __slots__ = (
         "bits",
         "safe_width",
@@ -77,7 +77,7 @@ class _ExactBitBudget:
         self._limit_digits: str | None = None
         self._limit_bcd: int | None = None
 
-    def _limit(self) -> str:
+    def limit(self) -> str:
         if self._limit_digits is None:
             value = (1 << self.bits) - 1
             # The source/endpoint conversions must also honor Python's
@@ -97,7 +97,7 @@ class _ExactBitBudget:
                     self._limit_digits = "".join(reversed(pieces))
         return self._limit_digits
 
-    def _check_width(self, width: int) -> bool:
+    def check_width(self, width: int) -> bool:
         if width <= self.safe_width:
             return False
         if width >= self.impossible_width:
@@ -107,19 +107,19 @@ class _ExactBitBudget:
         return True
 
     def check_even(self, packed: int) -> None:
-        if not self._check_width(_digits(packed)):
+        if not self.check_width(_digits(packed)):
             return
         if self._limit_bcd is None:
-            self._limit_bcd = int(self._limit(), 16)
+            self._limit_bcd = int(self.limit(), 16)
         if packed > self._limit_bcd:
             raise BlockContextBudgetExceeded(
                 "five-reversal next state exceeds its admitted bit budget"
             )
 
     def check_odd(self, conjugated: int, physical_width: int) -> None:
-        if not self._check_width(physical_width):
+        if not self.check_width(physical_width):
             return
-        bound = self._limit()
+        bound = self.limit()
         if physical_width != len(bound):
             if physical_width > len(bound):
                 raise BlockContextBudgetExceeded(
@@ -163,6 +163,23 @@ class PackedFiveWork:
     attempted: int = 0
     digit_reads: int = 0
     executed_pairs: int = 0
+    bitplane_pairs: int = 0
+
+
+def validate_packed_five_input(
+    seed: int, steps: int, max_state_bits: int, work: PackedFiveWork
+) -> None:
+    """Authenticate the common physical input and its local work owner."""
+    if type(seed) is not int or seed < 0:
+        raise ValueError("packed five-reversal needs a nonnegative seed")
+    if type(steps) is not int or steps < 0:
+        raise ValueError("packed five-reversal needs nonnegative steps")
+    if type(max_state_bits) is not int or max_state_bits < 1:
+        raise ValueError("packed five-reversal needs a positive bit budget")
+    if type(work) is not PackedFiveWork:
+        raise TypeError("packed five-reversal requires its local work ledger")
+    if seed.bit_length() > max_state_bits:
+        raise BlockContextBudgetExceeded("five-reversal input exceeds bit budget")
 
 
 def execute_packed_five(
@@ -178,16 +195,7 @@ def execute_packed_five(
     The source owner charges attempted work and completed digit reads even
     when a later state-bit check fails. No history of decimal words is kept.
     """
-    if type(seed) is not int or seed < 0:
-        raise ValueError("packed five-reversal needs a nonnegative seed")
-    if type(steps) is not int or steps < 0:
-        raise ValueError("packed five-reversal needs nonnegative steps")
-    if type(max_state_bits) is not int or max_state_bits < 1:
-        raise ValueError("packed five-reversal needs a positive bit budget")
-    if type(work) is not PackedFiveWork:
-        raise TypeError("packed five-reversal requires its local work ledger")
-    if seed.bit_length() > max_state_bits:
-        raise BlockContextBudgetExceeded("five-reversal input exceeds bit budget")
+    validate_packed_five_input(seed, steps, max_state_bits, work)
     if steps == 0:
         return seed
 
@@ -196,8 +204,8 @@ def execute_packed_five(
     capacity = max(8, (seed.bit_length() + 2) // 3 + 5)
     if reserve_capacity is not None:
         reserve_capacity(capacity)
-    packed = _to_packed(seed)
-    budget = _ExactBitBudget(max_state_bits)
+    packed = decimal_to_packed(seed)
+    budget = ExactBitBudget(max_state_bits)
     ones, evens = _lane_masks(capacity)
 
     def ensure_capacity(width: int) -> None:
@@ -236,4 +244,4 @@ def execute_packed_five(
         packed = _multiply_five(reflected, ones, evens)
         budget.check_even(packed)
         work.digit_reads += width
-    return _from_packed(packed)
+    return packed_to_decimal(packed)

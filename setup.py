@@ -21,5 +21,25 @@ if os.environ.get("NUMBER_COMPILER_BUILD_REFLECTED_MULTIPLY") == "1":
             )
         ]
     )
+elif os.environ.get("NUMBER_COMPILER_BUILD_NATIVE_REVERSE") == "1":
+    source = "src/number_compiler/kernels/native_reverse/"
+    setup(
+        ext_modules=[
+            Extension(
+                "number_compiler.kernels._reverse_quotients",
+                sources=[
+                    source + name
+                    for name in ("bindings.cpp", "causal_add.cpp", "rev10.cpp")
+                ],
+                depends=[
+                    source + name
+                    for name in ("causal_add.hpp", "pair_half_kick.hpp", "rev10.hpp")
+                ],
+                define_macros=[("PY_SSIZE_T_CLEAN", None)],
+                extra_compile_args=["-std=c++20"],
+                language="c++",
+            )
+        ]
+    )
 else:
     setup()

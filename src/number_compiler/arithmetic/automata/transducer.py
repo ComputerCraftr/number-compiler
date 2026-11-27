@@ -8,8 +8,9 @@ independent of the represented digit width.
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable, MutableMapping, Sequence
+from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
     Generic,
@@ -161,9 +162,14 @@ def end_tag(base: int) -> int:
 class DFA:
     alphabet: tuple[int, ...]
     start: int
-    trans: dict[tuple[int, int], int]
+    trans: Mapping[tuple[int, int], int]
     states: tuple[int, ...]
     right: bool = False
+
+    def __post_init__(self) -> None:
+        # A projector can memoize actions only while this finite law is fixed.
+        # Copy the caller's map before exposing an immutable transition view.
+        object.__setattr__(self, "trans", MappingProxyType(dict(self.trans)))
 
     def step(self, state: int, symbol: int) -> int | None:
         return self.trans.get((int(state), int(symbol)))
@@ -217,11 +223,15 @@ class LazyBimachine:
 
     def __post_init__(self) -> None:
         self._cache: dict[tuple[int, int, int], tuple[int, ...] | None] = {}
+        self._cache_resolver = self.resolver
 
     # dataclass(slots=True) does not include post-init dynamic fields, so declare
     # it as a class annotation to make the slot.
     _cache: dict[tuple[int, int, int], tuple[int, ...] | None] = field(
         default_factory=dict[tuple[int, int, int], tuple[int, ...] | None], init=False
+    )
+    _cache_resolver: Callable[[int, int, int], tuple[int, ...] | None] = field(
+        init=False, repr=False, compare=False
     )
 
     def emit(self, left: int, symbol: int, right: int) -> tuple[int, ...] | None:
@@ -231,6 +241,9 @@ class LazyBimachine:
             # Canonical semantic relation is authoritative.  Do not recreate a
             # parallel late tuple cache after quotienting/minimization.
             return relation.emit(*key)
+        if self.resolver is not self._cache_resolver:
+            self._cache.clear()
+            self._cache_resolver = self.resolver
         if self.cache_enabled and key in self._cache:
             return self._cache[key]
         out = self.resolver(*key)
@@ -264,6 +277,66 @@ class LazyBimachine:
             self.right.start,
             self.right.step,
             self.emit,
+        )
+
+
+class BimachineLawBinding:
+    """Bind computed actions to the exact transition and emission owners."""
+
+    __slots__ = (
+        "_machine",
+        "_left",
+        "_right",
+        "_left_transitions",
+        "_right_transitions",
+        "_resolver",
+        "_relation",
+        "_relation_arena",
+        "_relation_root",
+    )
+
+    def __init__(self, machine: BimachineProtocol) -> None:
+        self._machine = machine
+        self._left = left = machine.left
+        self._right = right = machine.right
+        self._left_transitions = left.trans if isinstance(left, DFA) else None
+        self._right_transitions = right.trans if isinstance(right, DFA) else None
+        self._resolver = (
+            machine.resolver if isinstance(machine, LazyBimachine) else None
+        )
+        self._relation = relation = (
+            machine.canonical_output if isinstance(machine, LazyBimachine) else None
+        )
+        self._relation_arena = relation.arena if relation is not None else None
+        self._relation_root = relation.root if relation is not None else None
+
+    def matches(self) -> bool:
+        machine = self._machine
+        left, right = machine.left, machine.right
+        relation = self._relation
+        return not (
+            left is not self._left
+            or right is not self._right
+            or isinstance(left, DFA)
+            and (
+                left.trans is not self._left_transitions
+                or type(left.trans) is not MappingProxyType
+            )
+            or isinstance(right, DFA)
+            and (
+                right.trans is not self._right_transitions
+                or type(right.trans) is not MappingProxyType
+            )
+            or isinstance(machine, LazyBimachine)
+            and (
+                machine.resolver is not self._resolver
+                or machine.canonical_output is not relation
+                or relation is not None
+                and (
+                    relation.arena is not self._relation_arena
+                    or relation.root is not self._relation_root
+                )
+            )
         )
 
 

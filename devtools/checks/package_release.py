@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-from devtools.checks.installed_distribution import verify_wheel
+from devtools.checks.installed_distribution import (
+    NATIVE_REVERSE_BUILD_FLAG,
+    verify_wheel,
+)
 from devtools.paths import report_directory, repository_root
 from devtools.runs import run_reported
 
@@ -27,12 +31,20 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="number-compiler-package-") as directory:
         staging = Path(directory)
         _report_stage("staging:start")
-        for name in ("pyproject.toml", "README.md", "LICENSE"):
+        for name in (
+            "pyproject.toml",
+            "setup.py",
+            "MANIFEST.in",
+            "README.md",
+            "LICENSE",
+        ):
             shutil.copy2(root / name, staging / name)
         shutil.copytree(
             root / "src",
             staging / "src",
-            ignore=shutil.ignore_patterns("__pycache__", "*.egg-info", ".DS_Store"),
+            ignore=shutil.ignore_patterns(
+                "__pycache__", "*.egg-info", ".DS_Store", "._*", "*.so", "*.pyd"
+            ),
         )
         _report_stage("staging:complete")
         _report_stage("wheel-build:start")
@@ -54,7 +66,9 @@ def main() -> int:
     if len(wheels) != 1:
         raise ValueError("clean staging must produce exactly one wheel")
     _report_stage("wheel-verification:start")
-    result = verify_wheel(wheels[0])
+    result = verify_wheel(
+        wheels[0], native_reverse=os.environ.get(NATIVE_REVERSE_BUILD_FLAG) == "1"
+    )
     _report_stage("wheel-verification:complete")
     _report_stage("report-write:start")
     (output / "verification.json").write_text(json.dumps(result, indent=2) + "\n")
