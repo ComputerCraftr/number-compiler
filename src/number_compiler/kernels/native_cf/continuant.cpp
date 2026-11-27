@@ -4,6 +4,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <patchlevel.h>
+#if defined(__SIZEOF_INT128__) && PY_VERSION_HEX >= 0x030D0000
+#if __has_include(<refcount.h>)
+#include <refcount.h>
+#endif
+#include <tupleobject.h>
+#endif
 #ifdef __ARM_NEON
 #include <arm_neon.h>
 #endif
@@ -156,11 +163,7 @@ PyObject *ordered_product(PyObject * /*unused*/, PyObject *args) {
 }
 // Each 32-byte record is the MSD-first continuant up to this cut. The
 // buffer is private to the issuing process and uses its native byte order.
-PyObject *ordered_prefix_bank(PyObject * /*unused*/, PyObject *args) {
-    DecimalWord input;
-    if (!parse_word(args, input)) {
-        return nullptr;
-    }
+PyObject *prefix_bank(DecimalWord input) {
     auto [value, width, place] = input;
     using Matrix = std::array<std::uint64_t, 4>;
     constexpr auto record_size = 4 * sizeof(std::uint64_t);
@@ -200,7 +203,272 @@ PyObject *ordered_prefix_bank(PyObject * /*unused*/, PyObject *args) {
     return bank;
 }
 
+PyObject *ordered_prefix_bank(PyObject * /*unused*/, PyObject *args) {
+    DecimalWord input;
+    return parse_word(args, input) ? prefix_bank(input) : nullptr;
+}
+#if defined(__SIZEOF_INT128__) && PY_VERSION_HEX >= 0x030D0000
+// Two adjacent rows can share their base-100 input. At the settled cut,
+// 5^n mod 10^6 = 15625 * (5^(n-6) mod 64). The high part of five
+// times that suffix is exactly the inlet to the successor head.
+using Row = std::array<std::uint64_t, 4>;
+constexpr Row prepend(SmallMatrix word, Row row) {
+    const auto [top, prior, bottom, previous] = row;
+    return {
+        (word.a * top) + (word.b * bottom),
+        (word.a * prior) + (word.b * previous),
+        (word.c * top) + (word.d * bottom),
+        (word.c * prior) + (word.d * previous),
+    };
+}
+struct Suffix {
+    Row matrix;
+    unsigned low, carry;
+};
+constexpr auto settled_phases() {
+    std::array<Suffix, 16> result{};
+    unsigned residue = 1;
+    for (auto &phase : result) {
+        unsigned value = 15625 * residue;
+        phase.low = value;
+        phase.carry = (5 * value) / 1000000;
+        Row row{1, 0, 0, 1};
+        for (unsigned pair = 0; pair < 3; ++pair) {
+            row = prepend(alphabet[value % 100], row);
+            value /= 100;
+        }
+        phase.matrix = row;
+        residue = (5 * residue) % 64;
+    }
+    return result;
+}
+constexpr auto suffixes = settled_phases();
+struct CarryWord {
+    SmallMatrix matrix;
+    unsigned carry;
+};
+constexpr auto successor_words() {
+    std::array<CarryWord, 500> result{};
+    for (unsigned input = 0; input < result.size(); ++input) {
+        result[input] = {alphabet[input % 100], input / 100};
+    }
+    return result;
+}
+constexpr auto successors = successor_words();
+constexpr SmallMatrix single(unsigned digit) {
+    return {static_cast<std::uint16_t>(digit + 1), 1, 1, 0};
+}
+// 11^18 < 2^64 for each row; the complete two-row product is bounded
+// by 11^36 < 2^128. Keep both rows in physical order and retain zeros.
+using Wide = __uint128_t;
+PyObject *integer(Wide value) {
+    if (value <= UINT64_MAX) {
+        return PyLong_FromUnsignedLongLong(
+            static_cast<unsigned long long>(value));
+    }
+    return PyLong_FromUnsignedNativeBytes(&value, sizeof(value), -1);
+}
+struct PairedRows {
+    Row old_row, next_row;
+    unsigned carry;
+};
+PairedRows lower_rows(std::uint64_t head, unsigned width, unsigned phase) {
+    Row old_row = suffixes[phase].matrix;
+    Row next_row = suffixes[(phase + 1) % 16].matrix;
+    unsigned carry = suffixes[phase].carry;
+    for (unsigned remaining = width - 6; remaining >= 2; remaining -= 2) {
+        const auto digits = static_cast<unsigned>(head % 100);
+        head /= 100;
+        const auto response = successors[(5 * digits) + carry];
+        old_row = prepend(alphabet[digits], old_row);
+        next_row = prepend(response.matrix, next_row);
+        carry = response.carry;
+    }
+    if (width % 2 != 0) {
+        const auto digit = static_cast<unsigned>(head);
+        const unsigned updated = (5 * digit) + carry;
+        old_row = prepend(single(digit), old_row);
+        next_row = prepend(single(updated % 10), next_row);
+        carry = updated / 10;
+    }
+    return {old_row, next_row, carry};
+}
+PyObject *join_rows(Row old_row, Row next_row) {
+    const auto [left00, left01, left10, left11] = old_row;
+    const auto [right00, right01, right10, right11] = next_row;
+    return Py_BuildValue(
+        "(NNNN)", integer((Wide{left00} * right00) + (Wide{left01} * right10)),
+        integer((Wide{left00} * right01) + (Wide{left01} * right11)),
+        integer((Wide{left10} * right00) + (Wide{left11} * right10)),
+        integer((Wide{left10} * right01) + (Wide{left11} * right11)));
+}
+PyObject *pair_action(std::uint64_t head, unsigned width, unsigned phase,
+                      unsigned next_width) {
+    auto [old_row, next_row, carry] = lower_rows(head, width, phase);
+    if (width + static_cast<unsigned>(carry != 0) != next_width) {
+        PyErr_SetString(PyExc_ValueError,
+                        "successor width disagrees with carry");
+        return nullptr;
+    }
+    if (carry != 0) {
+        next_row = prepend(single(carry), next_row);
+    }
+    return join_rows(old_row, next_row);
+}
+PyObject *settled_four(PyObject * /*unused*/, PyObject *args) {
+    PyObject *source_object = nullptr, *widths = nullptr,
+             *phase_object = nullptr;
+    if (PyArg_ParseTuple(args, "OOO", &source_object, &widths, &phase_object) ==
+        0) {
+        return nullptr;
+    }
+    if (!PyLong_CheckExact(source_object) || !PyLong_CheckExact(phase_object) ||
+        !PyTuple_CheckExact(widths) || PyTuple_Size(widths) != 4) {
+        PyErr_SetString(PyExc_TypeError,
+                        "expected a source, four widths and a phase");
+        return nullptr;
+    }
+    const auto source = PyLong_AsUnsignedLongLong(source_object);
+    const auto phase = PyLong_AsUnsignedLong(phase_object);
+    if (PyErr_Occurred() != nullptr) {
+        return nullptr;
+    }
+    if (phase >= 16 || source > 999999999999999999ULL) {
+        PyErr_SetString(PyExc_ValueError,
+                        "settled source or phase outside its bound");
+        return nullptr;
+    }
+    std::array<unsigned, 4> sizes{};
+    std::uint64_t value = source;
+    std::uint64_t place = 1000000;
+    unsigned width = 7;
+    for (unsigned i = 0; i < sizes.size(); ++i) {
+        while (value / place >= 10) {
+            place *= 10;
+            ++width;
+        }
+        auto *item = PyTuple_GetItem(widths, i);
+        if (!PyLong_CheckExact(item)) {
+            PyErr_SetString(PyExc_TypeError, "physical width must be integral");
+            return nullptr;
+        }
+        const auto stated = PyLong_AsUnsignedLong(item);
+        if (PyErr_Occurred() != nullptr) {
+            return nullptr;
+        }
+        if (width != stated || width > 18 || value < 1000000 ||
+            (i == 0 && value % 1000000 != suffixes[phase].low)) {
+            Py_RETURN_NONE;
+        }
+        sizes[i] = width;
+        if (i < 3) {
+            value *= 5;
+        }
+    }
+    PyObject *first = pair_action(source / 1000000, sizes[0],
+                                  static_cast<unsigned>(phase), sizes[1]);
+    if (first == nullptr) {
+        return nullptr;
+    }
+    PyObject *second =
+        pair_action(25 * source / 1000000, sizes[2],
+                    static_cast<unsigned>((phase + 2) % 16), sizes[3]);
+    if (second == nullptr) {
+        Py_DECREF(first);
+        return nullptr;
+    }
+    return Py_BuildValue("(NN)", first, second);
+}
+
+constexpr auto decimal_places() {
+    std::array<std::uint64_t, 19> places{};
+    places[0] = 1;
+    for (std::size_t i = 1; i < places.size(); ++i) {
+        places[i] = 10 * places[i - 1];
+    }
+    return places;
+}
+constexpr auto places = decimal_places();
+
+// The ledger has already admitted the indexed successor prefix. Split both
+// rows at its lower edge. Only the successor's upper word needs a prefix bank.
+PyObject *indexed_pair(PyObject * /*unused*/, PyObject *args) {
+    PyObject *high_obj = nullptr, *low_obj = nullptr, *width_obj = nullptr,
+             *next_obj = nullptr, *phase_obj = nullptr;
+    if (PyArg_ParseTuple(args, "OOOOO", &high_obj, &low_obj, &width_obj,
+                         &next_obj, &phase_obj) == 0) {
+        return nullptr;
+    }
+    for (auto *obj : {high_obj, low_obj, width_obj, next_obj, phase_obj}) {
+        if (!PyLong_CheckExact(obj)) {
+            PyErr_SetString(PyExc_TypeError,
+                            "expected integral indexed pair inputs");
+            return nullptr;
+        }
+    }
+    const auto high = PyLong_AsUnsignedLongLong(high_obj);
+    const auto low = PyLong_AsUnsignedLongLong(low_obj);
+    const auto width = PyLong_AsUnsignedLong(width_obj);
+    const auto next = PyLong_AsUnsignedLong(next_obj);
+    const auto phase = PyLong_AsUnsignedLong(phase_obj);
+    if (PyErr_Occurred() != nullptr) {
+        return nullptr;
+    }
+    if (next < 28 || next > 32 || width > next || width + 1 < next ||
+        phase >= 16) {
+        PyErr_SetString(PyExc_ValueError,
+                        "indexed pair outside the admitted geometry");
+        return nullptr;
+    }
+    const unsigned indexed = static_cast<unsigned>(next / 2);
+    const unsigned lower = static_cast<unsigned>(next) - indexed;
+    const unsigned upper = static_cast<unsigned>(width) - lower;
+    if (high < places[upper - 1] || high >= places[upper] ||
+        low >= places[lower] || low % 1000000 != suffixes[phase].low) {
+        Py_RETURN_NONE;
+    }
+    auto [lower_old, lower_next, carry] =
+        lower_rows(low / 1000000, lower, static_cast<unsigned>(phase));
+    const auto next_high = (5 * high) + carry;
+    if (next_high < places[indexed - 1] || next_high >= places[indexed]) {
+        Py_RETURN_NONE;
+    }
+    PyObject *bank = prefix_bank({next_high, indexed, places[indexed - 1]});
+    if (bank == nullptr) {
+        return nullptr;
+    }
+    Row upper_next{};
+    std::memcpy(upper_next.data(),
+                PyBytes_AsString(bank) + (indexed * sizeof(Row)), sizeof(Row));
+    Row upper_old{1, 0, 0, 1};
+    auto digits = high;
+    for (unsigned remaining = upper; remaining >= 2; remaining -= 2) {
+        upper_old = prepend(alphabet[digits % 100], upper_old);
+        digits /= 100;
+    }
+    if (upper % 2 != 0) {
+        upper_old = prepend(single(static_cast<unsigned>(digits)), upper_old);
+    }
+    return Py_BuildValue("(NNN)", join_rows(upper_old, lower_old),
+                         join_rows(upper_next, lower_next), bank);
+}
+#endif
+
 PyMethodDef methods[] = {
+#if defined(__SIZEOF_INT128__) && PY_VERSION_HEX >= 0x030D0000
+    {
+        "indexed_pair",
+        indexed_pair,
+        METH_VARARGS,
+        "Compile both rows and the admitted successor prefixes.",
+    },
+    {
+        "settled_four",
+        settled_four,
+        METH_VARARGS,
+        "Compile two ordered pairs of settled rows.",
+    },
+#endif
     {
         "ordered_product",
         ordered_product,

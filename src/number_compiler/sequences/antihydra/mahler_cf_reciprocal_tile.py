@@ -22,6 +22,14 @@ from number_compiler.sequences.antihydra.mahler_cf_low_period import (
 class _NativeContinuant(Protocol):
     def ordered_product(self, value: int, width: int) -> tuple[int, int, int, int]: ...
 
+    def indexed_pair(
+        self, upper: int, lower: int, width: int, next_width: int, phase: int
+    ) -> tuple[MatrixEntries, MatrixEntries, bytes] | None: ...
+
+    def settled_four(
+        self, value: int, widths: tuple[int, ...], phase: int
+    ) -> tuple[MatrixEntries, MatrixEntries] | None: ...
+
     def ordered_prefix_bank(self, value: int, width: int) -> bytes: ...
 
 
@@ -85,6 +93,56 @@ class ReciprocalTile:
     def __post_init__(self) -> None:
         object.__setattr__(self, "first_row_prefix", None)
         object.__setattr__(self, "_building", len(self.widths) == 2)
+        if (
+            self.index_last
+            and len(self.widths) == 2
+            and 28 <= self.widths[1] <= 32
+            and self.widths[1] - 1 <= self.widths[0] <= self.widths[1]
+            and self.start == 0
+            and self.length == sum(self.widths)
+            and self.first_exponent is not None
+            and self.first_exponent >= 6
+            and os.environ.get("NUMBER_COMPILER_ENABLE_CF_CONTINUANT") == "1"
+        ):
+            indexed_emit = getattr(_native_continuant(), "indexed_pair", None)
+            if indexed_emit is not None:
+                width, next_width = self.widths
+                indexed = next_width // 2
+                upper, lower = divmod(self.quotient, 10 ** (next_width - indexed))
+                response = indexed_emit(
+                    upper, lower, width, next_width, (self.first_exponent - 6) % 16
+                )
+                if response is not None:
+                    first, second, prefixes = response
+                    if (
+                        type(prefixes) is not bytes
+                        or len(prefixes) != (indexed + 1) * _PREFIX.size
+                    ):
+                        raise RuntimeError("native CF prefix bank has invalid bounds")
+                    object.__setattr__(self, "first_row_prefix", (width, first))
+                    object.__setattr__(self, "last_prefixes", prefixes)
+                    object.__setattr__(
+                        self, "product", Matrix2(multiply_entries(first, second))
+                    )
+                    object.__setattr__(self, "_building", False)
+                    return
+        if (
+            len(self.widths) == 4
+            and 7 <= self.widths[0] <= self.widths[-1] <= 18
+            and self.start == 0
+            and self.length == sum(self.widths)
+            and self.first_exponent is not None
+            and self.first_exponent >= 6
+            and os.environ.get("NUMBER_COMPILER_ENABLE_CF_CONTINUANT") == "1"
+        ):
+            emit = getattr(_native_continuant(), "settled_four", None)
+            if emit is not None:
+                pairs = emit(self.quotient, self.widths, (self.first_exponent - 6) % 16)
+                if pairs is not None:
+                    object.__setattr__(
+                        self, "product", Matrix2(multiply_entries(pairs[0], pairs[1]))
+                    )
+                    return
         object.__setattr__(self, "product", self.segment(0, self.length))
         object.__setattr__(self, "_building", False)
 

@@ -100,8 +100,43 @@ proof -
     by (simp only: take_add digits_def mahler_cf_reciprocal_selected_physical_source)
 qed
 
+text \<open>Multiplying the low field at a cut issues exactly the carry into
+the successor head. The same equation applies at each base-100 boundary
+and at the split used to index the successor's prefixes.\<close>
+
+lemma mahler_cf_head_carry_step:
+  fixes x radix :: nat
+  assumes "0 < radix"
+  shows "(5 * x) div radix =
+    5 * (x div radix) + (5 * (x mod radix)) div radix"
+proof -
+  have scaled: "5 * x = (5 * (x div radix)) * radix + 5 * (x mod radix)"
+    using arg_cong[OF div_mult_mod_eq[of x radix], of "(*) 5"]
+    by (simp only: algebra_simps)
+  show ?thesis by (subst scaled) (simp add: assms)
+qed
+
+theorem mahler_cf_paired_head_consumer:
+  fixes n h k low :: nat
+  shows "mahler_cf_word (mahler_cf_decimal_digits (h+low) (5^n) @
+        mahler_cf_decimal_digits (k+low) (5^Suc n)) =
+    ordered_matrix2_multiply
+      (mahler_cf_word (mahler_cf_decimal_digits h (5^n div 10^low) @
+        mahler_cf_decimal_digits low (5^n mod 10^low)))
+      (mahler_cf_word (mahler_cf_decimal_digits k
+        (5 * (5^n div 10^low) + (5 * (5^n mod 10^low)) div 10^low) @
+        mahler_cf_decimal_digits low ((5 * 5^n) mod 10^low)))"
+proof -
+  have succ: "(5::nat)^Suc n = 5 * 5^n" by (simp add: power_Suc mult.commute)
+  have step: "(5 * (5::nat)^n) div 10^low =
+      5 * (5^n div 10^low) + (5 * (5^n mod 10^low)) div 10^low"
+    by (rule mahler_cf_head_carry_step) simp
+  show ?thesis
+    by (simp only: mahler_cf_fixed_width_high_low_words mahler_cf_word_append succ step)
+qed
+
 ML \<open>
-  val checked = @{thms mahler_cf_reciprocal_indexed_clip mahler_cf_fixed_width_high_low_words
+  val checked = @{thms mahler_cf_head_carry_step mahler_cf_paired_head_consumer mahler_cf_reciprocal_indexed_clip mahler_cf_fixed_width_high_low_words
     mahler_cf_reciprocal_native_high16_consumer};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Native reciprocal head depends on an oracle";

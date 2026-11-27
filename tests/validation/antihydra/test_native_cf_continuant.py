@@ -31,22 +31,28 @@ from number_compiler.api.cli import main
 from number_compiler.sequences.antihydra import mahler_cf_reciprocal_tile as tile
 calls=[]
 banks=[]
+paired=[]
+indexed=[]
+fused=hasattr(native,'indexed_pair')
 opens=[]
 select=tile.reciprocal_row_interval
 def watch(q,t,width,start,count):
     if q==5**38 and t==1:
         opens.append((width,start,count))
         if os.environ.get('NUMBER_COMPILER_ENABLE_CF_CONTINUANT')=='1':
-            assert opens==[(28,0,22)], 'issued head reopened during descent'
+            assert not fused and opens==[(28,0,22)], 'issued head reopened during descent'
     return select(q,t,width,start,count)
 tile.reciprocal_row_interval=watch
 def trace(frame,event,arg):
     if event == 'c_call' and arg is native.ordered_product:calls.append(1)
     if event == 'c_call' and arg is native.ordered_prefix_bank:banks.append(1)
+    if event == 'c_call' and fused:
+        if arg is native.settled_four:paired.append(1)
+        if arg is native.indexed_pair:indexed.append(1)
 sys.setprofile(trace)
 try:status=main(sys.argv[1:])
 finally:sys.setprofile(None)
-print('NATIVE_C_CALLS',len(calls),len(banks),len(opens),file=sys.stderr)
+print('NATIVE_C_CALLS',len(calls),len(banks),len(opens),len(paired),len(indexed),int(fused),file=sys.stderr)
 raise SystemExit(status)
 """
     results: dict[str, subprocess.CompletedProcess[str]] = {}
@@ -80,13 +86,15 @@ raise SystemExit(status)
         result = subprocess.run(
             cmd, capture_output=True, text=True, env=env, check=True
         )
-        calls, banks, opens = map(
+        calls, banks, opens, pairs, indexed, fused = map(
             int, result.stderr.strip().split("NATIVE_C_CALLS ")[-1].split()
         )
         assert (calls > 0) == (label == "native")
-        assert banks == (1 if label == "native" else 0)
+        assert banks + indexed == int(label == "native")
+        assert pairs == (4 if label == "native" and fused else 0)
+        assert indexed == int(label == "native" and fused)
         if label == "native":
-            assert opens == 1
+            assert opens == 1 - indexed
         value = json.loads(result.stdout)["info"]["arithmetic.continued-fraction"]
         assert value["status"] == "available"
         count = value["coefficient_count"]
@@ -174,3 +182,105 @@ for q in (10002345, 123456789012):
         [installed or sys.executable, *(["-I"] if installed else []), "-c", program],
         check=True,
     )
+
+
+def test_native_settled_pairs_phases_carries_and_indexed_clips() -> None:
+    installed = os.environ.get("NUMBER_COMPILER_INSTALLED_PYTHON")
+    if installed is None:
+        pytest.importorskip("number_compiler.kernels._cf_continuant")
+    program = """\
+import random,struct
+from number_compiler.kernels import _cf_continuant as native
+if not hasattr(native,'indexed_pair'):
+    raise SystemExit(77)
+rng=random.Random(640)
+def product(word):
+    a,b,c,d=1,0,0,1
+    for digit in word:
+        k=int(digit)+1
+        a,b,c,d=a*k+b,a,c*k+d,c
+    return a,b,c,d
+# Exercise every base-100 carry-table entry through a complete ordered tile.
+phases={5*pow(5,i,64)//64:i for i in range(16)}
+assert set(phases)==set(range(5))
+for phase in phases.values():
+    for pair in range(100):
+        q=(100+pair)*1000000+15625*pow(5,phase,64)
+        words=[str(q*5**i) for i in range(4)]
+        got=native.settled_four(q,tuple(map(len,words)),phase)
+        assert got==(product(''.join(words[:2])),product(''.join(words[2:])))
+for phase in range(16):
+    suffix=15625*pow(5,phase,64)
+    for width in range(7,17):
+        for head in [10**(width-7),10**(width-6)-1,rng.randrange(10**(width-7),10**(width-6))]:
+            q=head*1000000+suffix
+            words=[str(q*5**i) for i in range(4)]
+            widths=tuple(map(len,words))
+            if widths[-1]>18:continue
+            assert native.settled_four(q,widths,phase)==(product(''.join(words[:2])),product(''.join(words[2:])))
+            assert native.settled_four(q,widths,(phase+1)%16) is None
+            assert native.settled_four(q,(*widths[:2],widths[2]+1,widths[3]),phase) is None
+    for width in range(27,33):
+        for _ in range(25):
+            q=rng.randrange(10**(width-7),10**(width-6))*1000000+suffix
+            first=str(q)
+            second=str(5*q)
+            w=len(second)
+            if not 28<=w<=32:continue
+            cut=w//2
+            high,low=divmod(q,10**(w-cut))
+            a,b,bank=native.indexed_pair(high,low,width,w,phase)
+            assert (a,b)==(product(first),product(second))
+            for i in range(cut+1):
+                assert struct.unpack_from('=4Q',bank,32*i)==product(second[:i])
+            assert native.indexed_pair(high,low,width,w,(phase+1)%16) is None
+            assert native.indexed_pair(high,low+1,width,w,phase) is None
+"""
+    result = subprocess.run(
+        [installed or sys.executable, *(["-I"] if installed else []), "-c", program],
+        check=False,
+    )
+    if result.returncode == 77:
+        pytest.skip(
+            "paired emitter requires native unsigned 128-bit arithmetic and CPython 3.13+"
+        )
+    assert result.returncode == 0
+
+
+@pytest.mark.parametrize("cap,status", [(539, "unknown"), (540, "available")])
+def test_installed_paired_cylinder_cap(cap: int, status: str) -> None:
+    installed = os.environ.get("NUMBER_COMPILER_INSTALLED_PYTHON")
+    if installed is None:
+        pytest.importorskip("number_compiler.kernels._cf_continuant")
+    args = [
+        installed or sys.executable,
+        *(["-I"] if installed else []),
+        "-c",
+        "from number_compiler.api.cli import main; raise SystemExit(main())",
+        "antihydra",
+        "--nth",
+        "0",
+        "--no-value",
+        "--format",
+        "json",
+        "--info",
+        "arithmetic.continued-fraction",
+        "--safety-horizon",
+        "4096",
+        "--continued-fraction-max-coefficients",
+        str(cap),
+    ]
+    env = dict(os.environ, NUMBER_COMPILER_ENABLE_CF_RECIPROCAL="1")
+    results = [
+        subprocess.run(
+            args,
+            env=dict(env, NUMBER_COMPILER_ENABLE_CF_CONTINUANT=flag),
+            check=False,
+            capture_output=True,
+        )
+        for flag in ("0", "1")
+    ]
+    assert all(result.returncode == (3 if cap == 539 else 0) for result in results)
+    assert results[0].stdout == results[1].stdout
+    packet = json.loads(results[0].stdout)["info"]["arithmetic.continued-fraction"]
+    assert (packet["status"], packet["coefficient_count"]) == (status, cap)
