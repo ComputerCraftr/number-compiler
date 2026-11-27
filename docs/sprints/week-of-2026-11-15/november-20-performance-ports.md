@@ -93,6 +93,48 @@ and found zero recursion cycles and package violations. Its remaining
 finding is the pre-existing 1,017-line double-reverse ring theory. The
 global proof index still reports inherited audit and Comma authority gaps.
 
+### Packed 16-tick CF branch intervals and seed-196 coverage
+
+Starting from `bba17590`, the finite CF cylinder in `6cc4c6aa` admits
+a 16-tick action from horizon 2,048. It checks the complete inlet interval
+before composing a chart action. A boundary or capacity miss can use the
+eight-tick level, followed by the scalar first-exclusion rule. Small
+coefficient caps still skip chart construction. The 1,018 wide and 40
+short records occupy 12,696 packed bytes. Building both chart caches in
+either order peaked at 15,958 bytes on macOS CPython 3.14, within the
+existing 16 KiB wide reservation. First construction of the short and
+combined charts took 0.034 and 0.886 ms respectively. `50a0f68b` proves
+the reachable 16-tick fields fit u32 and the endpoint inequalities characterize the
+half-open physical guard. The registered `Mahler_Source_Transport` session
+passed in 131.22 s with the oracle and skipped-proof checks. Independent
+inverse-branch enumeration matched every packed record.
+
+At 4,096 ticks the installed CLI composed 247 wide and four short actions,
+down from 498 short actions for the same 3,984 ticks. Both paths made 50
+scalar probes. Bypassing the source cache gave the same work counts.
+The complete request took 6.528 → 5.479 ms warm and 122.186 → 121.797 ms
+cold over 20 interleaved warm pairs and five fresh-process pairs. Clearing
+the chart caches before every cap-540 request gave 6.420 → 6.246 ms
+over 30 interleaved pairs, including chart reconstruction. At
+2,048 ticks the warm median was 3.202 → 2.966 ms. The eight-tick control
+at 512 took 2.106 → 2.160 ms warm. At horizon 4,096, cap 539 certified
+4,095 ticks and returned `unknown` with exit 3. Cap 540 gave the full packet.
+
+For reverse/add seed 196 at index 1,024, the native receipt recorded
+55,857 folded joins and zero joint slabs. Across 506 two-tick boundaries,
+only four initial EQ-free spans reached 64 cells. After eight collar cells
+at each end, even two passes plus shifted fringe cells could save at most
+428 joins (0.77%) before admission work. A smaller 32-cell threshold
+left 3,933 initial interior cells. The four-step screen for those cells
+used successor fields, so source-side carry and width transport remain
+open. Seed 196 continues to use its exact folded continuation.
+
+Fresh pure and native wheels on macOS and Linux ARM64 matched all 18 CF
+reference packets and exit codes. All 44 finite-budget comparisons preserved
+their results and released their ledger charges. The default suite passed
+14,089 tests with the same six failing test IDs as the baseline. P0 passed
+77 with the same 13 failing IDs.
+
 ### Fractional branch intervals and the quiet Q19 trial after `a8755047`
 
 On `877637fc` the finite CF cylinder selects a reusable eight-tick affine action from
