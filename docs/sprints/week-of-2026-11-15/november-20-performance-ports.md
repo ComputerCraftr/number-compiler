@@ -93,6 +93,46 @@ and found zero recursion cycles and package violations. Its remaining
 finding is the pre-existing 1,017-line double-reverse ring theory. The
 global proof index still reports inherited audit and Comma authority gaps.
 
+### CF acquisition and the one-birth Q19 slab after `146aa973`
+
+On `efdfaaed`, the opt-in CF cylinder takes the first native head product
+directly by left identity. The 4,096-tick packet kept 540 coefficients
+and used 63 matrix joins, down from 68. All 11 acquisitions and six
+clip requests together took 309.71 → 309.59 µs over 25 warm pairs.
+Five installed CLI pairs took 126.97 → 127.81 ms cold and 7.30 → 7.23 ms
+warm. In a separate 100-query profile, acquisition took 79 ms, including
+22 ms in reservation scopes. Extending the fractional path took 641 ms.
+
+The ordinary cylinder ends at physical width 28. The installed explicit
+band `57,40,33,3` returned 99 coefficients from 33-digit heads. Both
+end clips returned 66 and a fourth row refused with exit code 3.
+`mahler_cf_band_selected_source_refinement` covers the moving cut,
+significant width and ordered product. Advancing the installed reciprocal
+owner to exponents 57–58 also issued 34- and 35-digit irregular heads
+through the exact fallback. All 3,321 nonempty clips matched literal
+continuants, and the ledger closed empty.
+
+The opt-in folded Q19 kernel on `03189f14` accepts `1000` under its
+checked collars. The source-clock theorem in `2509d2e8` proves the
+four-tick ordered field, center, and one-digit width increase.
+At 1,024 ticks, perturbation 18 of the collar fixture entered one
+one-birth slab followed by one two-birth slab. Together they covered
+874 core columns. Folded joins fell from 329,326 to 327,149, with
+543 extra probes and 570 extra collar visits. Seed 196 at 1,024 and
+the new source at 16 entered zero slabs. Two five-pair cold comparisons
+gave 278.66 → 289.41 ms and 280.69 → 277.68 ms. Warm comparisons gave
+28.86 → 28.70 ms and 29.04 → 28.98 ms. The confirmation's native folded
+control took 278.39 ms cold and 28.63 ms warm. These measurements
+support the opt-in work reduction and leave default dispatch unchanged.
+
+On the integrated runtime, pure and native wheels passed the installed
+packet and dispatch checks on macOS ARM64 and Linux ARM64 under Colima.
+The registered Isabelle sessions passed (`Reverse_Growth_Admission`
+26 s, `Mahler_Source_Transport` 117 s). Native Clang checks, changed-file
+strict typing, Ruff, and repository source policy passed. The default
+suite passed 14,079 tests and failed the same six Comma tests as the
+baseline. P0 passed 77 and retained the same 13 failing test IDs.
+
 ### Final reciprocal tile and two-birth Q19 slabs after `cf8547fd`
 
 At horizon 4,096 the opt-in reciprocal cylinder retains the first 14
