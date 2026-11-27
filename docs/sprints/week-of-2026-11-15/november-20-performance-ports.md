@@ -112,7 +112,13 @@ fringe gates. Five paired trials took 176.45 → 171.05 ms cold and
 24.97 → 11.60 ms warm. At 511 ticks the medians were 191.84 → 167.14 ms
 and 38.47 → 13.11 ms. The installed CLI also checked the exact refusal
 at 255 and native admission at 257. Both integrations preserve the
-existing default dispatch.
+existing default dispatch. Isabelle checked the physical high-16 cut,
+padded remainder and ordered product in `Mahler_Source_Transport`
+(`51a73428`). The shared integer matrix product (`eadb93f5`) removed a
+duplicate caught by the source-policy scan. The revised scan found zero
+duplicates and recursion cycles. At horizon 4,096 the final refactor
+took 124.81 → 125.42 ms cold and 7.240 → 7.261 ms warm on five matched
+pairs, with the same cuts and the same 33 native calls.
 
 The opt-in folded Q19 action (`96ab70d1`) now applies a four-tick
 binomial core with two authenticated collars. The source determines
@@ -134,6 +140,9 @@ endpoint hit took 0.01525 → 0.01438 ms. The guarded selection passed
 46 tests. Pure and native installed wheels matched literal endpoints
 and full packets on both platforms. The tests observed native entry,
 source refusal, and zero native entry on a short request.
+The full default run at `96ab70d1` passed 14,072 tests and reproduced
+the six baseline Comma failures by test ID. Canonical P0 passed 77 and
+reproduced its 13 baseline failures.
 
 ### CF continuation and folded reversal after `907aa90e`
 
