@@ -73,8 +73,35 @@ proof -
     by (simp only: words mahler_cf_word_append)
 qed
 
+
+text \<open>The last tile may retain prefix actions up to the irregular head
+of its second row. Removing the left prefix from a longer prefix selects
+exactly the requested physical letters, including a cut before a leading zero.\<close>
+
+theorem mahler_cf_reciprocal_indexed_clip:
+  fixes n t width start count first len :: nat
+  assumes bounds: "start + count \<le> width" "first + len \<le> count"
+  defines "digits \<equiv> mahler_cf_decimal_digits count
+    (mahler_cf_reciprocal_selected_digits (5^n) t width start count)"
+  shows "ordered_matrix2_multiply
+      (mahler_cf_integer_adjugate first
+        (mahler_cf_matrix_to_integer (mahler_cf_word (take first digits))))
+      (mahler_cf_matrix_to_integer (mahler_cf_word (take (first + len) digits))) =
+    mahler_cf_matrix_to_integer (mahler_cf_word (take len (drop first
+      (mahler_cf_decimal_digits count
+        (5^(n+t) div 10^(width-start-count) mod 10^count)))))"
+proof -
+  have first: "first \<le> count" using bounds by arith
+  have length: "length (take first digits) = first"
+    using first by (simp add: digits_def mahler_cf_decimal_digits_def)
+  note clip = mahler_cf_integer_tail_from_word[OF length,
+    of "take len (drop first digits)"]
+  show ?thesis using clip
+    by (simp only: take_add digits_def mahler_cf_reciprocal_selected_physical_source)
+qed
+
 ML \<open>
-  val checked = @{thms mahler_cf_fixed_width_high_low_words
+  val checked = @{thms mahler_cf_reciprocal_indexed_clip mahler_cf_fixed_width_high_low_words
     mahler_cf_reciprocal_native_high16_consumer};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Native reciprocal head depends on an oracle";
