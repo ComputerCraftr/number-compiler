@@ -33,6 +33,24 @@ proof -
     using scaled by (simp only: algebra_simps)
 qed
 
+text \<open>The leading place of every selected physical row in a window of
+at most five is determined by the inlet alone. Equality at a threshold
+belongs to the wider row, including a cut exactly at its final digit.\<close>
+
+lemma mahler_cf_inlet_width_window:
+  fixes q place :: nat
+  assumes "0 < place" "place \<le> q" "q < 10 * place"
+  shows "(let p = (if 2 * place \<le> q then 10 * place else 1 * place);
+      v = mahler_cf_reciprocal_row q 1 in p \<le> v \<and> v < 10 * p)"
+    and "(let p = (if 4 * place \<le> q then 100 * place else 10 * place);
+      v = mahler_cf_reciprocal_row q 2 in p \<le> v \<and> v < 10 * p)"
+    and "(let p = (if 8 * place \<le> q then 1000 * place else 100 * place);
+      v = mahler_cf_reciprocal_row q 3 in p \<le> v \<and> v < 10 * p)"
+    and "(let p = (if 8 * place \<le> 5 * q then 1000 * place else 100 * place);
+      v = mahler_cf_reciprocal_row q 4 in p \<le> v \<and> v < 10 * p)"
+  by (use assms in \<open>auto simp: Let_def mahler_cf_reciprocal_row_exact
+      split: if_splits; linarith\<close>)+
+
 theorem mahler_cf_reciprocal_physical_source:
   "mahler_cf_reciprocal_row (5^n) t = 5^(n+t)"
   using mahler_cf_reciprocal_row_exact[of "5^n" t]
@@ -62,6 +80,26 @@ lemma mahler_cf_reciprocal_first_selected_digits:
   "mahler_cf_reciprocal_selected_digits q 0 width start count =
     q div 10^(width - start - count) mod 10^count"
   by (simp add: mahler_cf_reciprocal_selected_digits_def mahler_cf_reciprocal_row_exact)
+
+theorem mahler_cf_reciprocal_upper_cut:
+  "mahler_cf_reciprocal_row q t div 10^(t+k) mod base =
+     (q div 2^t div 10^k) mod base"
+  "mahler_cf_reciprocal_row q (t+k) div 10^t mod base =
+     ((q * 5^k) div 2^t) mod base"
+proof -
+  have ten: "(10::nat)^t = 5^t * 2^t"
+    by (simp flip: power_mult_distrib)
+  have denominator: "(10::nat)^(t+k) = 5^t * (2^t * 10^k)"
+    by (simp only: power_add ten mult.assoc)
+  show "mahler_cf_reciprocal_row q t div 10^(t+k) mod base =
+      (q div 2^t div 10^k) mod base"
+    by (simp add: mahler_cf_reciprocal_row_exact denominator div_mult2_eq[symmetric])
+  have numerator: "mahler_cf_reciprocal_row q (t+k) = 5^t * (q * 5^k)"
+    by (simp add: mahler_cf_reciprocal_row_exact power_add ac_simps)
+  show "mahler_cf_reciprocal_row q (t+k) div 10^t mod base =
+      ((q * 5^k) div 2^t) mod base"
+    by (simp add: numerator ten)
+qed
 
 lemma mahler_cf_pow5_settled_two_columns:
   "((5::nat) ^ (n + 2)) mod 100 = 25"
@@ -213,7 +251,8 @@ proof -
 qed
 
 ML \<open>
-  val checked = @{thms mahler_cf_reciprocal_first_selected_digits mahler_cf_width_clock_step mahler_cf_reciprocal_row_exact
+  val checked = @{thms mahler_cf_reciprocal_upper_cut mahler_cf_inlet_width_window
+    mahler_cf_reciprocal_first_selected_digits mahler_cf_width_clock_step mahler_cf_reciprocal_row_exact
     mahler_cf_reciprocal_physical_source mahler_cf_reciprocal_lower_fits
     mahler_cf_pow5_settled_two_columns mahler_cf_reciprocal_settled_two_columns
     mahler_cf_settled_upper_physical_run mahler_cf_settled_upper_step

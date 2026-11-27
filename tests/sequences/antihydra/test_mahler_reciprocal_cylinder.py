@@ -209,3 +209,23 @@ def test_initial_reciprocal_cut_uses_issued_source_directly() -> None:
     assert reciprocal_row_interval(source, 0, 6, 0, 2) == 39
     assert reciprocal_row_interval(source, 0, 6, 2, 2) == 6
     assert reciprocal_row_interval(source, 0, 6, 4, 2) == 25
+
+
+def test_upper_cuts_cancel_the_dyadic_inlet_before_row_construction() -> None:
+    from number_compiler.sequences.antihydra.mahler_cf_reciprocal_tile import (
+        reciprocal_row_interval,
+    )
+
+    class Inlet(int):
+        def __mul__(self, other: object) -> int:
+            raise AssertionError("upper-band selection multiplied the full inlet")
+
+    for source in (19999, 20000, 39999, 40000, 79999, 80000, 390625):
+        for tick in range(5):
+            row = str(source * 5**tick)
+            for start in range(len(row)):
+                for end in range(start + 1, len(row) + 1):
+                    inlet = Inlet(source) if len(row) - end >= tick else source
+                    assert reciprocal_row_interval(
+                        inlet, tick, len(row), start, end - start
+                    ) == int(row[start:end])

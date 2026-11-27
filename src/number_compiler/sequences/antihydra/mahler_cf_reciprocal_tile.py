@@ -34,14 +34,15 @@ def _native_continuant() -> _NativeContinuant | None:
 
 def reciprocal_row_interval(q: int, t: int, width: int, start: int, count: int) -> int:
     """Restrict the lifted source at its moving cut before digit decoding."""
-    # The checked reciprocal split equals q * 5**t. Restrict this
-    # source directly instead of reconstructing both sides of the cut.
     skip = width - start - count
-    if t == 0:
-        first: int = q // 10**skip % 10**count
-        return first
-    interval: int = (q * 5**t) // 10**skip % 10**count
-    return interval
+    if skip >= t:
+        # Cancel 5**t against the discarded decimal places before multiplying.
+        # The binary cut keeps the carry into the requested upper band.
+        upper: int = (q >> t) // 10 ** (skip - t)
+    else:
+        upper = (q * 5 ** (t - skip)) >> skip
+    modulus: int = 10**count
+    return upper % modulus
 
 
 @dataclass(frozen=True, slots=True)

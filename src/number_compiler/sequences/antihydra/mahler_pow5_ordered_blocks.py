@@ -73,6 +73,38 @@ def _pack_settled_decimal(value: int) -> int:
     return packed
 
 
+def _reciprocal_window(
+    quotient: int, width: int, threshold: int, start: int, rows: int, cap: int
+) -> tuple[tuple[int, ...], int, int]:
+    """Choose significant widths and the exact final cut from the first inlet."""
+    place = threshold // 10
+    if not place <= quotient < threshold:
+        raise ArithmeticError("power-of-five width admission failed")
+    if rows == 1 or cap <= width - start:
+        count = min(width - start, cap)
+        end = start + count
+        return (width,), count, 0 if end == width else end
+
+    # For t=1,2,3 the extra decade starts at input 2,4,8 times
+    # the leading place respectively. At t=4 it starts at 8/5.
+    widths = [width, width + (quotient >= 2 * place)]
+    if rows >= 3:
+        widths.append(width + 1 + (quotient >= 4 * place))
+    if rows >= 4:
+        widths.append(width + 2 + (quotient >= 8 * place))
+    if rows == 5:
+        widths.append(width + 2 + (5 * quotient >= 8 * place))
+    total = sum(widths) - start
+    if cap >= total:
+        return tuple(widths), total, 0
+    cut = cap + start
+    for index, selected in enumerate(widths):
+        if cut <= selected:
+            return tuple(widths[: index + 1]), cap, 0 if cut == selected else cut
+        cut -= selected
+    raise ArithmeticError("reciprocal cut outside admitted widths")
+
+
 class Pow5OrderedBlockSource:
     """Publish bounded ordered actions from one canonical ×5 source."""
 
@@ -357,27 +389,15 @@ class Pow5OrderedBlockSource:
             if value >= threshold:
                 width += 1
                 threshold *= 10
-            offset = start
-            remaining = max_coefficients
-            widths: list[int] = []
-            for index in range(rows):
-                if not threshold // 10 <= value < threshold:
-                    raise ArithmeticError("power-of-five width admission failed")
-                widths.append(width)
-                consumed = min(width - offset, remaining)
-                remaining -= consumed
-                offset += consumed
-                if offset == width:
-                    offset = 0
-                if remaining == 0 or index + 1 == rows:
-                    break
-                value *= 5
-                if value >= threshold:
-                    width += 1
-                    threshold *= 10
-            length = max_coefficients - remaining
-            last = first + len(widths) - 1
-            tile = ReciprocalTile(quotient, tuple(widths), start, length, first)
+            widths, length, offset = _reciprocal_window(
+                quotient, width, threshold, start, rows, max_coefficients
+            )
+            ticks = len(widths) - 1
+            last = first + ticks
+            value = quotient * (1, 5, 25, 125, 625)[ticks] if ticks else quotient
+            threshold *= 10 ** (widths[-1] - width)
+            width = widths[-1]
+            tile = ReciprocalTile(quotient, widths, start, length, first)
             block = Pow5OrderedBlock(self, self._epoch + 1)
 
             def revoke() -> None:
