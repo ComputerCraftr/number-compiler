@@ -141,32 +141,40 @@ def diagonal_endpoint(
 def native_pair_action(
     ledger: ResourceLedger,
     scratch_owner: int,
-    source_pairs: bytes,
+    source_pairs: bytes | Callable[[], bytes],
     steps: int,
     receive: Callable[[bytes, PairWork], _T],
+    *,
+    source_width: int | None = None,
 ) -> _T | None:
     """Run the finite causal kernel, keeping the exact pairs charged until use."""
-    if not 512 <= steps <= 65536 or not source_pairs:
+    width = len(source_pairs) if isinstance(source_pairs, bytes) else source_width
+    if width is None:
+        raise ValueError("deferred Q19 pairs require an authenticated width")
+    if not 512 <= steps <= 65536 or width <= 0:
         return None
     if ledger.max_nodes is not None or ledger.max_cache_entries is not None:
+        return None
+    slots = _TABLE_CAP + 128 * (width + steps + 16)
+    if slots > _SCRATCH_CAP:
         return None
     native = _load()
     if native is None:
         return None
-
-    slots = _TABLE_CAP + 128 * (len(source_pairs) + steps + 16)
-    if slots > _SCRATCH_CAP:
-        return None
     with ExitStack() as stack:
         if not _reserve(stack, ledger, scratch_owner, slots):
             return None
+        payload = source_pairs() if callable(source_pairs) else source_pairs
+        if len(payload) != width:
+            raise ValueError("native Q19 source width changed during admission")
         pairs, counters = native.add(
-            source_pairs, steps, 2, 2 if steps >= 32768 else 1, _TABLE_CAP
+            payload, steps, 2, 2 if steps >= 32768 else 1, _TABLE_CAP
         )
         work = PairWork(*counters)
         if (
             not pairs
-            or len(pairs) != len(source_pairs) + work.births
+            or not 0 <= work.births <= steps
+            or len(pairs) != width + work.births
             or pairs != pairs[::-1]
             or max(pairs) > 18
             or work.table_bytes > _TABLE_CAP

@@ -144,3 +144,37 @@ def test_warm_q19_frontier_uses_native_suffix_without_step_replay(
     finally:
         owner.dispose()
     assert ledger.nodes == ledger.entries == 0
+
+
+def test_native_refusal_precedes_mirrored_source_construction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.carry import native_reverse_actions as native
+
+    ledger = ResourceLedger()
+    owner = ledger.register("deferred Q19 validation", "scratch")
+
+    def forbid() -> bytes:
+        pytest.fail("refused Q19 source was materialized")
+
+    def no_module() -> None:
+        return None
+
+    try:
+        monkeypatch.setattr(native, "_load", no_module)
+        assert (
+            native.native_pair_action(
+                ledger, owner, forbid, 512, lambda p, w: p, source_width=5
+            )
+            is None
+        )
+        monkeypatch.setattr(native, "_load", forbid)
+        assert (
+            native.native_pair_action(
+                ledger, owner, forbid, 512, lambda p, w: p, source_width=1_000_000
+            )
+            is None
+        )
+    finally:
+        ledger.mark_disposed(owner)
+    assert ledger.nodes == ledger.entries == 0

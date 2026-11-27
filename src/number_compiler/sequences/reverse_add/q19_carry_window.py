@@ -140,14 +140,7 @@ def _native_segment(
     """Evaluate an admitted physical pair field in the bounded native kernel."""
     from number_compiler.kernels import native_reverse_enabled
 
-    if (
-        not native_reverse_enabled()
-        or ledger is None
-        or owner is None
-        or not 512 <= steps <= 65536
-        or ledger.max_nodes is not None
-        or ledger.max_cache_entries is not None
-    ):
+    if not native_reverse_enabled() or ledger is None or owner is None:
         return None
 
     from number_compiler.arithmetic.carry.native_reverse_actions import (
@@ -174,7 +167,7 @@ def _native_segment(
             raise ValueError("native Q19 center does not encode a decimal digit")
         return PackedQ19(lanes, count, center)
 
-    with ledger.reservation(owner, nodes=4 * source.width + 8, entries=4):
+    def materialize() -> bytes:
         packed = source.pairs.to_bytes((6 * source.count + 7) // 8, "little")
         outer = bytearray()
         accumulator = 0
@@ -191,9 +184,11 @@ def _native_segment(
                 accumulator >>= 6
                 bits -= 6
         center = b"" if source.center is None else bytes((2 * source.center,))
-        return native_pair_action(
-            ledger, owner, bytes(outer) + center + outer[::-1], steps, receive
-        )
+        return bytes(outer) + center + outer[::-1]
+
+    return native_pair_action(
+        ledger, owner, materialize, steps, receive, source_width=source.width
+    )
 
 
 @contextmanager
