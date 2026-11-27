@@ -328,3 +328,16 @@ def test_folded_binding_rejects_non_exact_and_overflowing_controls(
     else:
         with pytest.raises((TypeError, ValueError, OverflowError)):
             native.add_folded(*args)
+
+
+def test_folded_two_tick_action_reuses_issued_cells_under_tight_table_cap() -> None:
+    native = pytest.importorskip("number_compiler.kernels._reverse_quotients")
+    seed = _literal(196, 12)
+    field, half, center = _literal_pair_fields(seed)
+    expected, _ = native.add(field, 3, 2, 1, 4 << 20)
+    pairs, result_center, work = native.add_folded(half, center, 3, 300000)
+    midpoint = bytes((2 * result_center,)) if result_center >= 0 else b""
+    assert pairs + midpoint + pairs[::-1] == expected
+    assert work[5] == 290128
+    with pytest.raises(ValueError, match="budget exceeded"):
+        native.add_folded(half, center, 3, work[5] - 1)

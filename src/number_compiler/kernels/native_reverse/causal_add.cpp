@@ -362,27 +362,24 @@ struct BlockTable {
     }
 };
 // Folded width-one bands do not allocate the reflected second half.
-Hinge run_folded(const BlockTable &table, std::vector<I> &state, int center,
-                 const Hinges &hinges, std::vector<U> &addresses, Work &work) {
+Hinge run_folded(const Level &level, const Cells &cells, unsigned height,
+                 std::vector<I> &state, int center, const Hinges &hinges,
+                 std::vector<U> &addresses, Work &work) {
     addresses.resize(state.size());
     I q = 0;
     for (std::size_t i = 0; i < state.size(); ++i) {
-        const U index = (U(q) * table.radix) + state[i];
-        addresses[i] = index;
-        q = table.join[index];
+        addresses[i] = U(q) * 19U + state[i];
+        q = level.append[q][state[i]];
     }
     const Hinge result = hinges[(U(q) * 11) + U(center + 1)];
     U r = result.ports;
+    const U ports = U(1) << height;
     for (std::size_t i = state.size(); i-- > 0;) {
-        const U address = (addresses[i] * table.ports) + r;
-        const U value =
-            table.compact ? table.emit32[address] : table.emit64[address];
-        r = value & (table.ports - 1);
-        require(((value >> unsigned(table.h)) & table.growth_mask) ==
-                    result.births,
+        const Cell response = unpack_cell(cells[(addresses[i] * ports) + r]);
+        r = U(response.left);
+        require(unsigned(response.growth) == result.births,
                 "inconsistent folded birth count");
-        state[i] = I((value >> (unsigned(table.h) + table.growth_bits)) &
-                     table.sum_mask);
+        state[i] = I(response.sum);
     }
     require(unsigned(std::popcount(r)) == result.births,
             "outer birth port mismatch");
@@ -736,20 +733,15 @@ FoldedResult advance_folded(const Word &half, int center, U steps, U cap,
         auto levels = compile_levels(height, budget, result.work);
         auto cells = compile_cells(levels, budget, result.work);
         auto hinges = compile_hinges(levels, cells, budget, result.work);
-        BlockTable main(levels[std::size_t(height)], cells[std::size_t(height)],
-                        height, 1, budget, result.work);
-        std::vector<BlockTable> tail;
-        if (((steps - done) % U(height)) != 0U) {
-            tail.emplace_back(levels[1], cells[1], 1, 1, budget, result.work);
-        }
         result.work.peak_table_bytes = budget.peak;
         std::vector<U> addresses;
         for (; done < steps;) {
-            const bool complete = steps - done >= U(height);
-            const BlockTable &table = complete ? main : tail.front();
-            const auto &hinge = hinges[std::size_t(table.h)];
-            const Hinge close =
-                run_folded(table, state, center, hinge, addresses, result.work);
+            const int action_height = int(std::min<U>(U(height), steps - done));
+            const auto &hinge = hinges[std::size_t(action_height)];
+            const Hinge close = run_folded(
+                levels[std::size_t(action_height)],
+                cells[std::size_t(action_height)], unsigned(action_height),
+                state, center, hinge, addresses, result.work);
             const unsigned inner = unsigned(center >= 0) + close.births;
             U digits = close.digits;
             width += close.births;
@@ -765,7 +757,7 @@ FoldedResult advance_folded(const Word &half, int center, U steps, U cap,
             center = ((inner % 2) != 0U) ? int(digits) : -1;
             require(count == next_count && center < 10,
                     "invalid moving center endpoint");
-            done += U(table.h);
+            done += U(action_height);
         }
     }
     result.pairs.assign(state.begin(), state.end());
