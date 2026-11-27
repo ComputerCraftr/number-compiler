@@ -19,29 +19,44 @@ class _ActionRows:
 
 
 @dataclass(frozen=True, slots=True)
+class _ResetWord:
+    """A zero-inlet first digit, common suffix, and constant carry exit."""
+
+    first: int
+    tail: int
+    outgoing: int
+
+
+@dataclass(frozen=True, slots=True)
 class DecimalSLPAction:
-    """Arena-qualified emitted words and carry exits for one compilation."""
+    """Arena-qualified source and emitted words for one compilation."""
 
     _arena: LedgerSLPArena
-    _generation: int
+    _source_root: int
+    _source_node: object
     _rows: _ActionRows
     _output_nodes: tuple[object, ...]
 
     def resolve(self, arena: LedgerSLPArena, inlet: int) -> tuple[int, int]:
-        """Resolve one row after checking its arena, generation and node."""
+        """Resolve one row after authenticating its source and output nodes."""
         if arena is not self._arena:
             raise ValueError("decimal action belongs to another arena")
         arena.empty()
-        if arena.node_id_generation != self._generation:
+        if arena.node_storage_poisoned:
             raise ValueError("decimal action is stale after arena mutation")
         if type(inlet) is not int or not 0 <= inlet < len(self._rows.exits):
             raise ValueError("incoming carry is outside the action alphabet")
+        if (
+            not 0 <= self._source_root < len(arena.nodes)
+            or arena.nodes[self._source_root] is not self._source_node
+        ):
+            raise ValueError("decimal action is stale after source reclamation")
         root = self._rows.outputs[inlet]
         if (
             not 0 <= root < len(arena.nodes)
             or arena.nodes[root] is not self._output_nodes[inlet]
         ):
-            raise ValueError("decimal action output no longer belongs to its arena")
+            raise ValueError("decimal action is stale after output reclamation")
         return root, self._rows.exits[inlet]
 
 
@@ -67,51 +82,50 @@ def multiply_decimal_slp(
         raise ValueError("decimal action requires the arena's ledger")
     if type(max_power_bits) is not int or max_power_bits < 1:
         raise ValueError("decimal action power budget must be positive")
-    identity = _ActionRows(tuple(range(multiplier)), (arena.empty_id,) * multiplier)
+    identity = _ResetWord(-1, arena.empty_id, 0)
 
-    def then(first: _ActionRows, second: _ActionRows) -> _ActionRows:
-        return _ActionRows(
-            tuple(second.exits[first.exits[c]] for c in range(multiplier)),
-            tuple(
-                arena.concat(first.outputs[c], second.outputs[first.exits[c]])
-                for c in range(multiplier)
-            ),
+    def word(value: _ResetWord, inlet: int) -> int:
+        if value.first < 0:
+            return arena.empty_id
+        return arena.concat(arena.terminal(value.first + inlet), value.tail)
+
+    def then(first: _ResetWord, second: _ResetWord) -> _ResetWord:
+        if first.first < 0:
+            return second
+        if second.first < 0:
+            return first
+        return _ResetWord(
+            first.first,
+            arena.concat(first.tail, word(second, first.outgoing)),
+            second.outgoing,
         )
 
-    def atom(digit: int) -> _ActionRows:
+    def atom(digit: int) -> _ResetWord:
         if type(digit) is not int or not 0 <= digit < 10:
             raise ValueError("decimal SLP contains a nondecimal digit")
-        rows = tuple(divmod(multiplier * digit + c, 10) for c in range(multiplier))
-        return _ActionRows(
-            tuple(carry for carry, _ in rows),
-            tuple(arena.terminal(output) for _, output in rows),
-        )
+        carry, first = divmod(multiplier * digit, 10)
+        return _ResetWord(first, arena.empty_id, carry)
 
-    def repeat(value: _ActionRows, count: int) -> _ActionRows:
+    def repeat(value: _ResetWord, count: int) -> _ResetWord:
         if count.bit_length() > max_power_bits:
             raise ValueError("decimal SLP repetition exceeds its power budget")
-        if not count or value == identity:
+        if not count or value.first < 0:
             return identity
-        # For 2 and 5, each decimal column chooses the outgoing carry from
-        # its digit alone. After the first nonempty tile every inlet enters
-        # the same steady tile. Retain its emitted word as one repeat node.
-        steady = value.exits[0]
-        if any(exit_carry != steady for exit_carry in value.exits):
-            raise AssertionError(
-                "nonempty reflected multiplication tile kept its inlet"
-            )
-        repeats = arena.repeat(value.outputs[steady], count - 1)
-        return _ActionRows(
-            value.exits,
-            tuple(arena.concat(first, repeats) for first in value.outputs),
+        if count == 1:
+            return value
+        steady = word(value, value.outgoing)
+        return _ResetWord(
+            value.first,
+            arena.concat(value.tail, arena.repeat(steady, count - 1)),
+            value.outgoing,
         )
 
-    # The temporary result map has one bounded all-inlet row per arena node.
-    # Repeated-word outputs are stored in the independently ledgered arena.
+    # One reset action is retained per node. Inlet variants are issued only
+    # at the root, while the common suffix belongs to the ledgered arena.
     start = len(arena.nodes)
     with (
         cleanup_on_error(lambda: arena.rollback_unpublished_suffix(start)),
-        ledger.reservation(scratch_owner, nodes=4 * multiplier * (start + 1)),
+        ledger.reservation(scratch_owner, nodes=8 * (start + 1)),
     ):
         rows = fold_slp_dag(
             arena,
@@ -121,10 +135,17 @@ def multiply_decimal_slp(
             concatenate=then,
             repeat=repeat,
         )
-        result = rows[root]
+        value = rows[root]
+        result = _ActionRows(
+            tuple(range(multiplier))
+            if value.first < 0
+            else (value.outgoing,) * multiplier,
+            tuple(word(value, inlet) for inlet in range(multiplier)),
+        )
         return DecimalSLPAction(
             arena,
-            arena.node_id_generation,
+            root,
+            arena.nodes[root],
             result,
             tuple(arena.nodes[output] for output in result.outputs),
         )

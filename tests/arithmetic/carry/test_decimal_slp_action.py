@@ -74,3 +74,42 @@ def test_decimal_action_rejects_foreign_and_stale_arena() -> None:
         arena.dispose()
         foreign.dispose()
         ledger.mark_disposed(scratch)
+
+
+def test_decimal_action_survives_unrelated_rollback_but_rejects_reused_source_id() -> (
+    None
+):
+    ledger = ResourceLedger()
+    scratch = ledger.register("decimal-rollback-scratch", "workspace")
+    arena = LedgerSLPArena(ledger, "decimal-rollback", "arithmetic")
+    try:
+        root = arena.word((1, 2, 3))
+        action = multiply_decimal_slp(arena, root, 2, ledger, scratch)
+        expected = tuple(action.resolve(arena, inlet) for inlet in range(2))
+        checkpoint = len(arena.nodes)
+        arena.terminal(97)
+
+        def fail_removal(_node: int) -> None:
+            raise RuntimeError("injected removal failure")
+
+        with pytest.raises(RuntimeError, match="injected removal failure"):
+            arena.rollback_unpublished_suffix(checkpoint, before_remove=fail_removal)
+        assert tuple(action.resolve(arena, inlet) for inlet in range(2)) == expected
+        arena.rollback_unpublished_suffix(checkpoint)
+        assert tuple(action.resolve(arena, inlet) for inlet in range(2)) == expected
+
+        checkpoint = len(arena.nodes)
+        temporary_source = arena.word((8, 8, 8, 8, 8))
+        temporary_action = multiply_decimal_slp(
+            arena, temporary_source, 5, ledger, scratch
+        )
+        arena.rollback_unpublished_suffix(checkpoint)
+        replacement = arena.word((8, 8, 8, 8, 8))
+        assert replacement == temporary_source
+        with pytest.raises(ValueError, match="stale after source reclamation"):
+            temporary_action.resolve(arena, 0)
+        assert tuple(action.resolve(arena, inlet) for inlet in range(2)) == expected
+        assert ledger.account_usage(scratch) == (0, 0)
+    finally:
+        arena.dispose()
+        ledger.mark_disposed(scratch)
