@@ -14,6 +14,7 @@ from number_compiler.arithmetic.contracts.input_validation import require_intege
 from number_compiler.arithmetic.fields.ordered_matrix import Matrix2
 from number_compiler.hashlife.execution.dyadic_return_runs import RunArithmeticWorkspace
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.antihydra import mahler_cf_fractional_path as fractional
 from number_compiler.sequences.antihydra.mahler_continued_fraction import (
     continuant_rows,
     validate_cf_resources,
@@ -130,88 +131,6 @@ def _interval(matrix: Matrix2) -> tuple[Fraction, Fraction]:
     return low, high
 
 
-@dataclass(slots=True)
-class _FractionalPath:
-    """Finite CF projection with the complete fractional guard.
-
-    At extent t the map is (gain*x - innovation)/modulus, with
-    gain = 3**t and modulus = 2**t. The guard is half-open, using
-    numerators lower and upper over gain and 2*gain respectively.
-    """
-
-    extent: int = 0
-    gain: int = 1
-    modulus: int = 1
-    innovation: int = 0
-    lower: int = 0
-    upper: int = 1
-
-    def endpoint(self, source: Fraction) -> tuple[int, int]:
-        return (
-            self.gain * source.numerator - self.innovation * source.denominator,
-            self.modulus * source.denominator,
-        )
-
-    def extend(self, low: Fraction, high: Fraction, horizon: int) -> None:
-        left_n, left_d = self.endpoint(low)
-        right_n, right_d = self.endpoint(high)
-        while self.extent < horizon and left_n >= 0 and 2 * right_n <= right_d:
-            remaining = horizon - self.extent
-            ticks = _max_zero_run(right_n, right_d, remaining)
-            if ticks:
-                scale: int = 3**ticks
-                offset = 0
-            elif 3 * left_n >= left_d:
-                # The admitted odd map reaches [0, 1/4), so its
-                # next step is even when the request includes it.
-                ticks, scale, offset = (1, 3, 1) if remaining == 1 else (2, 9, 3)
-            else:
-                break
-
-            left_n = scale * left_n - offset * left_d
-            right_n = scale * right_n - offset * right_d
-            left_d <<= ticks
-            right_d <<= ticks
-            self.innovation = scale * self.innovation + self.modulus * offset
-            self.gain *= scale
-            self.modulus <<= ticks
-            self.extent += ticks
-            # The previous guard and the last endpoint imply all bounds
-            # of the selected zero run or odd/zero pair.
-            self.lower = max(scale * self.lower, self.innovation)
-            self.upper = min(scale * self.upper, 2 * self.innovation + self.modulus)
-
-    def contains(self, low: Fraction, high: Fraction) -> bool:
-        return (
-            self.lower * low.denominator <= low.numerator * self.gain
-            and high.numerator * (2 * self.gain) <= self.upper * high.denominator
-        )
-
-    def residue(self) -> int:
-        # Invert the base before powering the certified gain 3**extent.
-        inverse_gain = pow(3, -self.extent, self.modulus)
-        return (-self.innovation * inverse_gain) % self.modulus
-
-
-def _max_zero_run(numerator: int, denominator: int, remaining: int) -> int:
-    # Cancel the common factor of two in the first two admissible
-    # endpoints. Most calls finish at zero or one tick.
-    if 3 * numerator > denominator:
-        return 0
-    if remaining == 1 or 9 * numerator > denominator << 1:
-        return 1
-    low, high = 2, min(4, remaining)
-    while low < high and (3**high) * numerator <= denominator << (high - 1):
-        low, high = high, min(2 * high, remaining)
-    while low < high:
-        middle = (low + high + 1) // 2
-        if (3**middle) * numerator <= denominator << (middle - 1):
-            low = middle
-        else:
-            high = middle - 1
-    return low
-
-
 def continued_fraction_cylinder(
     horizon: int,
     max_coefficients: int,
@@ -225,9 +144,11 @@ def continued_fraction_cylinder(
     require_integer(max_coefficients, "coefficient budget", 1, 100000)
     scratch = RunArithmeticWorkspace.for_ledger(ledger, "mahler-cf-cylinder")
     reason = "continued-fraction coefficient budget exhausted"
-    action = _FractionalPath()
+    action = fractional.FractionalPath()
     count = 0
     prefix = Matrix2.identity()
+    chart_scratch: RunArithmeticWorkspace | None = None
+    chart_refused = False
     with scratch.scope(), ExitStack() as resources:
         next_block = _ordered_blocks(
             resources, ledger, scratch, horizon, shared_cache=shared_cache
@@ -243,7 +164,34 @@ def continued_fraction_cylinder(
             length = block.coefficient_count
             product = prefix.multiply(block.product)
             low, high = _interval(product)
-            action.extend(low, high, horizon)
+            use_chart = (
+                not chart_refused
+                and horizon >= 512
+                and max_coefficients >= 128
+                and action.extent >= 32
+            )
+            if use_chart:
+                if chart_scratch is None:
+                    chart_scratch = RunArithmeticWorkspace.for_ledger(
+                        ledger, "mahler-cf-branch-chart"
+                    )
+                with chart_scratch.scope():
+                    try:
+                        chart_scratch.require_bits(fractional.BRANCH_CHART_SCRATCH_BITS)
+                    except BlockContextBudgetExceeded:
+                        # Optional pre-work capacity refusal leaves the exact
+                        # source and its existing scalar action untouched.
+                        chart_refused = True
+                    else:
+                        action.chart = fractional.branch_chart()
+                        try:
+                            action.extend(low, high, horizon)
+                        finally:
+                            action.chart = None
+                if chart_refused:
+                    action.extend(low, high, horizon)
+            else:
+                action.extend(low, high, horizon)
             if action.extent < horizon:
                 prefix = product
                 count += length
