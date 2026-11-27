@@ -226,3 +226,54 @@ def test_completed_leaf_is_probed_before_period_rediscovery(
     expected = owner.ordered_decimal_continuant(rows)
     assert actual == expected
     assert calls.count((leaf, 64)) == 1
+
+
+def test_long_physical_return_compiles_one_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.fields import ordered_matrix as owner
+
+    exponent = 9364999200344104145518958726158206032905098070
+    rows, cut = 148, 8
+    q = 10 * pow(5, exponent - cut, 1 << (cut + rows - 1)) >> cut
+    literal = [(q >> index) % 10 for index in range(rows)]
+    assert owner.dyadic_band_period(q, rows, 1, 5) == 37
+    # The binary overlap survives this change to the high odd coordinate.
+    assert owner.dyadic_band_period(q ^ (1 << rows), rows, 1, 5) != 37
+    worked = 0
+    leaf = owner.fold_dyadic_leaf
+
+    def count_leaf(source: int, size: int, width: int, base: int) -> Matrix2:
+        nonlocal worked
+        worked += size
+        return leaf(source, size, width, base)
+
+    monkeypatch.setattr(owner, "fold_dyadic_leaf", count_leaf)
+    for clipped in (rows, rows - 1):
+        worked = 0
+        reservations: list[tuple[int, int, int]] = []
+        action = owner.compile_dyadic_ordered_band(
+            q, clipped, 1, partial(_record_reservation, reservations), use_memo=False
+        )
+        assert action == owner.ordered_decimal_continuant(literal[:clipped])
+        assert worked <= 37 + clipped % 37
+        assert len(reservations) == 1
+
+
+def test_long_probe_scratch_refusal_preserves_exact_band(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.fields import ordered_matrix as owner
+
+    def refuse_optional(_q: int, _rows: int, extra_bits: int) -> None:
+        if extra_bits:
+            raise BlockContextBudgetExceeded("optional source probe exceeds capacity")
+
+    def forbid(*_args: int) -> int:
+        pytest.fail("unreserved long-overlap probe was opened")
+
+    monkeypatch.setattr(owner, "_long_dyadic_band_period", forbid)
+    count, q = 256, 123456789
+    assert owner.compile_dyadic_ordered_band(
+        q, count, 1, refuse_optional, use_memo=False
+    ) == owner.ordered_decimal_continuant((q >> i) % 10 for i in range(count))

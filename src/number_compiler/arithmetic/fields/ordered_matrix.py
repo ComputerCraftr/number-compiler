@@ -10,6 +10,7 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from math import comb
 
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 
@@ -157,8 +158,69 @@ def fold_fixed_decimal_row(value: int, first_place: int, product: Matrix2) -> Ma
     )
 
 
+def _long_dyadic_band_period(q: int, rows: int, width: int, odd_base: int) -> int:
+    """Lift a binary overlap to the first full decimal return of the band."""
+    limit = rows // 2
+    size = rows - 1 + width
+    # Bit p survives exactly while the low source coordinates still match
+    # at lag p. Compare candidate positions in parallel in packed integers.
+    # The first full binary overlap is the primitive admissible binary lag.
+    probe = 24
+    head = q & ((1 << (limit + probe)) - 1)
+    candidates = (1 << (limit + 1)) - 2
+    for bit in range(probe):
+        column = head >> bit
+        candidates &= column if column & 1 else ~column
+        if not candidates:
+            return 0
+    while candidates:
+        selected = candidates & -candidates
+        lag = selected.bit_length() - 1
+        if not ((q ^ (q >> lag)) & ((1 << (size - lag)) - 1)):
+            break
+        candidates ^= selected
+    else:
+        return 0
+
+    # Fine-Wilf: every other admissible binary lag is a multiple of lag.
+    # At a multiple, the odd defect gains the geometric-sum factor.
+    defect = (
+        (pow(2, lag, odd_base) - 1) * (q % odd_base) + (q & ((1 << lag) - 1))
+    ) % odd_base
+    period = lag
+    if defect:
+        missing = width
+        while defect % 5 == 0:
+            defect //= 5
+            missing -= 1
+        if lag % 4 == 0:
+            period *= 5**missing
+        else:
+            unit = lag
+            while unit % 5 == 0:
+                unit //= 5
+                missing -= 1
+            period *= (4 if lag % 2 else 2) * 5 ** max(0, missing - 1)
+    if period <= limit:
+        # Only this complete congruence authorizes ordered powering.
+        shift = size - period
+        shifted = q >> period
+        if (
+            not ((q ^ shifted) & ((1 << shift) - 1))
+            and ((q - shifted) >> shift) % odd_base == 0
+        ):
+            return period
+    return 0
+
+
 def dyadic_band_period(q: int, count: int, width: int, odd_base: int) -> int:
     """Prove repetition in the lifted word before opening either child."""
+    if count >= 128:
+        return _long_dyadic_band_period(q, count, width, odd_base)
+    return _short_dyadic_band_period(q, count, width, odd_base)
+
+
+def _short_dyadic_band_period(q: int, count: int, width: int, odd_base: int) -> int:
     limit = min(32, count // 2)
     shift = count - 2 + width
     mask = (1 << shift) - 1
@@ -250,7 +312,16 @@ def compile_dyadic_ordered_band(
     capacity = min(16, max(1, rows // 16)) if use_memo else 0
     leaf_rows = max(2, min(64, 128 // width))
     cache_bits = capacity * 8 * (256 + min(rows, 64) * (16 * width + 1))
-    reserve(quotient, rows, cache_bits)
+    # Include the simultaneously live packed probe, lag mask, and lift checks.
+    probe_bits = 8 * (rows + 4 * width + 64) if rows >= 128 else 0
+    period_of = dyadic_band_period
+    try:
+        reserve(quotient, rows, cache_bits + probe_bits)
+    except BlockContextBudgetExceeded:
+        if not probe_bits:
+            raise
+        reserve(quotient, rows, cache_bits)
+        period_of = _short_dyadic_band_period
     base, odd_base = 10**width, 5**width
     quotient %= base << (rows - 1)
     memo: dict[tuple[int, int], Matrix2] = {}
@@ -269,6 +340,9 @@ def compile_dyadic_ordered_band(
     values: list[Matrix2] = []
     while pending:
         q, count, stage = pending.pop()
+        if stage == 2:
+            values.append(values.pop().power(count))
+            continue
         if stage == 1:
             right_product, left_product = values.pop(), values.pop()
             values.append(left_product.multiply(right_product))
@@ -278,10 +352,19 @@ def compile_dyadic_ordered_band(
             if cached is not None:
                 values.append(cached)
                 continue
-        period = dyadic_band_period(q, count, width, odd_base)
+        period = period_of(q, count, width, odd_base)
         if period:
             copies, tail = divmod(count, period)
             motif = q % (base << (period - 1))
+            if period > 32:
+                # A long return covers at least two copies. Compile its body
+                # once with the same balanced traversal and bounded leaf cache.
+                if tail:
+                    pending.append((0, 0, 1))
+                    pending.append((q >> (copies * period), tail, 0))
+                pending.append((0, copies, 2))
+                pending.append((motif, period, 0))
+                continue
             canonical, phase = _canonical_dyadic_motif(motif, period, base)
             product = small(canonical, period).power(copies)
             if phase:
