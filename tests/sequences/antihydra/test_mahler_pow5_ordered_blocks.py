@@ -292,12 +292,14 @@ def test_settled_spatial_rejects_changed_cursor_and_foreign_tile() -> None:
     ledger = ResourceLedger(max_nodes=10_000)
     with Pow5OrderedBlockSource(ledger, spatial=True) as source:
         block = source.next_block(1, 1)
-        tile = source._tile
-        source._tile = None
+        tile = object.__getattribute__(source, "_tile")
+        object.__setattr__(source, "_tile", None)
         with pytest.raises(ValueError, match="source binding changed"):
             _ = block.product
-        source._tile = tile
-        source._value += 1
+        object.__setattr__(source, "_tile", tile)
+        value = object.__getattribute__(source, "_value")
+        assert type(value) is int
+        object.__setattr__(source, "_value", value + 1)
         with pytest.raises(ValueError, match="source cursor binding changed"):
             source.next_block(1, 1)
     assert ledger.nodes == ledger.entries == 0

@@ -83,16 +83,13 @@ def test_public_spatial_cylinder_uses_settled_action_before_trace(
     from number_compiler.arithmetic.automata.carry_spacetime_trace import (
         Pow5SpatialTrace,
     )
-    from number_compiler.sequences.antihydra.mahler_pow5_ordered_blocks import (
-        Pow5OrderedBlockSource,
-    )
 
     observed: list[tuple[int, int]] = []
     phases: set[int] = set()
     suffix = settled_low_action(3, 2)
     select_action = settled_low_action
     select_interval = tiles.reciprocal_row_interval
-    issue = Pow5OrderedBlockSource._next_reciprocal
+    issue = tiles.ReciprocalTile.segment
 
     def watch_action(exponent: int, columns: int) -> tuple[int, int, int, int]:
         action = select_action(exponent, columns)
@@ -106,16 +103,17 @@ def test_public_spatial_cylinder_uses_settled_action_before_trace(
             assert start + count <= width - 2
         return select_interval(q, t, width, start, count)
 
-    def watched(source: Pow5OrderedBlockSource, rows: int, limit: int) -> object:
-        block = issue(source, rows, limit)
-        assert source._tile is not None
-        observed.append((source._tile.first_exponent or 0, source._exponent))
-        return block
+    def watched(tile: tiles.ReciprocalTile, start: int, length: int) -> Matrix2:
+        if tile.first_exponent is not None:
+            observed.append(
+                (tile.first_exponent, tile.first_exponent + len(tile.widths) - 1)
+            )
+        return issue(tile, start, length)
 
     def no_trace(*_args: object, **_kwargs: object) -> None:
         pytest.fail("the settled prefix cannot open the spatial trace")
 
-    monkeypatch.setattr(Pow5OrderedBlockSource, "_next_reciprocal", watched)
+    monkeypatch.setattr(tiles.ReciprocalTile, "segment", watched)
     monkeypatch.setattr(Pow5SpatialTrace, "issue", no_trace)
     monkeypatch.setattr(tiles, "settled_low_action", watch_action)
     monkeypatch.setattr(tiles, "reciprocal_row_interval", watch_interval)
@@ -152,9 +150,6 @@ def test_opt_in_cylinder_uses_reciprocal_actions_at_full_horizon(
     from number_compiler.arithmetic.automata.carry_spacetime_trace import (
         Pow5SpatialTrace,
     )
-    from number_compiler.sequences.antihydra.mahler_pow5_ordered_blocks import (
-        Pow5OrderedBlockSource,
-    )
 
     args = [
         "antihydra",
@@ -172,18 +167,18 @@ def test_opt_in_cylinder_uses_reciprocal_actions_at_full_horizon(
     assert main(args) == 0
     expected = json.loads(capsys.readouterr().out)
     calls = 0
-    issue = Pow5OrderedBlockSource._next_reciprocal
+    issue = tiles.ReciprocalTile.segment
 
-    def watched(source: Pow5OrderedBlockSource, rows: int, limit: int) -> object:
+    def watched(tile: tiles.ReciprocalTile, start: int, length: int) -> Matrix2:
         nonlocal calls
         calls += 1
-        return issue(source, rows, limit)
+        return issue(tile, start, length)
 
     def no_trace(*_args: object, **_kwargs: object) -> None:
         pytest.fail("reciprocal source cannot construct a spatial trace")
 
     monkeypatch.setenv("NUMBER_COMPILER_ENABLE_CF_RECIPROCAL", "1")
-    monkeypatch.setattr(Pow5OrderedBlockSource, "_next_reciprocal", watched)
+    monkeypatch.setattr(tiles.ReciprocalTile, "segment", watched)
     monkeypatch.setattr(Pow5SpatialTrace, "__init__", no_trace)
     assert main(args) == 0
     actual = json.loads(capsys.readouterr().out)

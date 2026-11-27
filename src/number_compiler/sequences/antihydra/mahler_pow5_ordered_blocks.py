@@ -115,7 +115,7 @@ class Pow5OrderedBlockSource:
         self._owner = ledger.register(
             f"mahler-cf-ordered-{ledger.owner_count}", "ordered-cf-source"
         )
-        self._exponent = 0
+        self._exponent: int = 0
         self._value: int = 1
         self._offset = 0
         self._width = 1
