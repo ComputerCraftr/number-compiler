@@ -7,6 +7,7 @@ does not grant an unbounded temporal cycle.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from dataclasses import dataclass
@@ -269,6 +270,43 @@ class FiveReverseTerm:
         steps = require_integer(steps, "packed physical steps", 0)
         if steps > self.max_steps:
             raise BlockContextBudgetExceeded("packed action exceeds its step budget")
+        if os.environ.get("NUMBER_COMPILER_ENABLE_NATIVE_REVERSE") == "1":
+            from number_compiler.arithmetic.carry.native_reverse_actions import (
+                diagonal_endpoint,
+                native_reverse_enabled,
+            )
+
+            try:
+                if native_reverse_enabled():
+
+                    def receive_native(digits: str, _work: object) -> int:
+                        try:
+                            return int(digits)
+                        except ValueError:
+                            result = 0
+                            for offset in range(0, len(digits), 250):
+                                part = digits[offset : offset + 250]
+                                result = result * 10 ** len(part) + int(part)
+                            return result
+
+                    result = diagonal_endpoint(
+                        self.resource_ledger,
+                        self._scratch_owner,
+                        value,
+                        5,
+                        steps,
+                        self.max_state_bits,
+                        receive_native,
+                    )
+                    if result is not None:
+                        self.resource_ledger.bump(_keys.FIVE_REVERSE_EXACT_STEPS, steps)
+                        return result
+            except BaseException as error:
+                try:
+                    self.resource_ledger.bump(_keys.FIVE_REVERSE_FAILED_STEPS)
+                except BaseException as accounting_error:
+                    raise accounting_error from error
+                raise
         work = PackedFiveWork()
         execute = execute_packed_five
         if (

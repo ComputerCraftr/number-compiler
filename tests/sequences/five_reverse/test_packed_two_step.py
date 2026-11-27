@@ -192,3 +192,42 @@ def test_short_or_capped_production_keeps_scalar_fallback(
             ledger = term.resource_ledger
             ledger.tighten_limits(ledger.nodes + 256, ledger.entries + 256)
         assert term.materialize(max_bits=4096) == 0
+
+
+def test_native_failure_is_counted_and_propagated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.carry import native_reverse_actions
+
+    monkeypatch.setenv("NUMBER_COMPILER_ENABLE_NATIVE_REVERSE", "1")
+
+    def interrupted(*_args: object, **_kwargs: object) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(native_reverse_actions, "diagonal_endpoint", interrupted)
+    with FiveReverseTerm(73, 512, max_steps=512, max_state_bits=8192) as term:
+        with pytest.raises(KeyboardInterrupt):
+            term.packed_value(73, 512)
+        assert term.resource_ledger.counters[metrics.FIVE_REVERSE_FAILED_STEPS] == 1
+        assert (
+            term.resource_ledger.counters.get(metrics.FIVE_REVERSE_EXACT_STEPS, 0) == 0
+        )
+        ledger = term.resource_ledger
+    assert ledger.entries == ledger.nodes == 0
+
+
+def test_native_unavailable_uses_exact_packed_action(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.arithmetic.carry import native_reverse_actions
+
+    monkeypatch.setenv("NUMBER_COMPILER_ENABLE_NATIVE_REVERSE", "1")
+    monkeypatch.setattr(native_reverse_actions, "_load", lambda: None)
+    with FiveReverseTerm(73, 512, max_steps=512, max_state_bits=8192) as term:
+        assert term.packed_value(73, 512) == _literal(73, 512)[0]
+        assert (
+            term.resource_ledger.counters[metrics.FIVE_REVERSE_PACKED_EXECUTED_PAIRS]
+            == 256
+        )
+        ledger = term.resource_ledger
+    assert ledger.entries == ledger.nodes == 0
