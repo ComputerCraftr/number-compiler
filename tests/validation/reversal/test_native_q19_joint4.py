@@ -46,6 +46,7 @@ def wrapped(*args):
 native.add_folded_joint4=wrapped
 status=main(sys.argv[1:])
 print('JOINT_CALLS',len(calls),sum(x[7] for x in calls),sum(x[8] for x in calls),file=sys.stderr)
+print('PROBES',sum(x[9] for x in calls),file=sys.stderr)
 raise SystemExit(status)
 """
     seed = _seed()
@@ -54,6 +55,7 @@ raise SystemExit(status)
         ("joint", True, seed, 1024),
         ("fallback", False, seed, 1024),
         ("unprotected", True, 196, 1024),
+        ("short-collar", True, int("809" * 47), 1024),
         ("short", True, seed, 16),
     ):
         env = dict(os.environ, NUMBER_COMPILER_ENABLE_NATIVE_REVERSE="1")
@@ -79,7 +81,10 @@ raise SystemExit(status)
             env=env,
             check=True,
         )
-        parts = result.stderr.strip().split("JOINT_CALLS ")[-1].split()
+        counts, probes = (
+            result.stderr.strip().split("JOINT_CALLS ")[-1].split("PROBES ")
+        )
+        parts = counts.split()
         calls, bands, columns = map(int, parts)
         if label == "joint":
             assert calls > 0 and bands > 0 and columns >= 48
@@ -87,6 +92,8 @@ raise SystemExit(status)
             assert bands == columns == 0
         if label in {"fallback", "short"}:
             assert calls == 0
+        if label == "short-collar":
+            assert calls == 1 and 0 < int(probes) <= 10
         assert json.loads(result.stdout)["value"] == str(_literal(value, ticks))
         outputs[label] = result
     assert outputs["joint"].stdout == outputs["fallback"].stdout
@@ -130,8 +137,11 @@ for i in range(100):
         assert (result[2][11],result[2][12]) == ((1,0) if clock==13 else (0,1))
         clocks.add(clock)
 assert clocks=={7,13}
-refused=native.add_folded_joint4(bytes([18]+[9]*100),-1,4,4<<20)
-assert refused[2][7]==0
+for size in (64,65,101,127,128):
+    half=bytes([18]+[9]*(size-1))
+    refused=native.add_folded_joint4(half,-1,4,4<<20)
+    assert refused[:2]==native.add_folded(half,-1,4,4<<20)[:2]
+    assert refused[2][7]==0 and refused[2][9]==size-64
 """
     subprocess.run([interpreter, "-I", "-c", program], check=True)
 

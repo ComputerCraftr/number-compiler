@@ -26,12 +26,17 @@ constexpr bool admitted(std::uint32_t sum) {
 // collars and the two carry inlets are checked before the endpoint is issued.
 inline bool apply(std::vector<std::uint32_t> &state, int &center, Work &work) {
     constexpr std::size_t collar = 128, margin = 8, minimum = 48;
+    constexpr std::size_t span = minimum + (2 * margin);
     const auto count = state.size();
-    if (count < minimum + (2 * margin) || state[0] != 18U) {
+    if (count < span || state[0] != 18U) {
         return false;
     }
     std::size_t left = 1, right = 1;
-    while (left < collar && left < count) {
+    for (;;) {
+        // A later start has even less room for the protected core.
+        if (left >= collar || left > count - span) {
+            return false;
+        }
         ++work.probes;
         if (!admitted(state[left])) {
             ++left;
@@ -42,13 +47,12 @@ inline bool apply(std::vector<std::uint32_t> &state, int &center, Work &work) {
             ++right;
             ++work.probes;
         }
-        if (right - left >= minimum + (2 * margin)) {
+        if (right - left >= span) {
             break;
         }
         left = right;
     }
-    if (left >= collar || right - left < minimum + (2 * margin) ||
-        count - right > collar) {
+    if (count - right > collar) {
         return false;
     }
     const std::size_t cut = left + margin, inner = right - margin;
