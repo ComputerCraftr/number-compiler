@@ -1,5 +1,6 @@
 """Source-bound branch-chart guards and the physical cylinder consumer."""
 
+from dataclasses import replace
 from fractions import Fraction
 from random import Random
 from struct import Struct
@@ -17,6 +18,25 @@ from number_compiler.sequences.antihydra import (
 )
 
 
+def _literal_endpoint(value: Fraction, ticks: int) -> Fraction:
+    for _ in range(ticks):
+        assert 0 <= value <= Fraction(1, 2)
+        bit = int(3 * value >= 1)
+        value = (3 * value - bit) / 2
+    assert 0 <= value <= Fraction(1, 2)
+    return value
+
+
+def _checked_extent(
+    action: fractional.FractionalPath, low: Fraction, high: Fraction, ticks: int
+) -> int:
+    scalar = fractional.FractionalPath()
+    scalar.extend(low, high, ticks)
+    action.extend(low, high, ticks)
+    assert replace(action, chart=None, packed_chart=None) == scalar
+    return action.extent
+
+
 def test_compiled_responses_match_all_physical_intermediate_guards() -> None:
     keys, raw = fractional.branch_chart()
     actions = [(i, k // 2, u) for k, i, u in Struct("=III").iter_unpack(raw)]
@@ -26,13 +46,10 @@ def test_compiled_responses_match_all_physical_intermediate_guards() -> None:
     for key, (innovation, lower, upper) in zip(keys, actions, strict=True):
         assert key == 2 * lower and 2 * lower < upper
         value = Fraction(2 * lower + upper, 4 * gain)
-        initial = value
-        for _ in range(fractional.BRANCH_BLOCK_TICKS):
-            assert 0 <= value <= Fraction(1, 2)
-            bit = int(3 * value >= 1)
-            value = (3 * value - bit) / 2
-        assert 0 <= value <= Fraction(1, 2)
-        assert value == (gain * initial - innovation) / fractional.BRANCH_BLOCK_MODULUS
+        assert (
+            _literal_endpoint(value, fractional.BRANCH_BLOCK_TICKS)
+            == (gain * value - innovation) / fractional.BRANCH_BLOCK_MODULUS
+        )
 
 
 def test_chart_and_scalar_have_same_guards_including_boundary_ties() -> None:
@@ -59,25 +76,7 @@ def test_chart_and_scalar_have_same_guards_including_boundary_ties() -> None:
                 (Fraction(lower, denominator), Fraction(upper, denominator))
             )
     for low, high in intervals:
-        scalar = fractional.FractionalPath()
-        powered = fractional.FractionalPath(chart=chart)
-        scalar.extend(low, high, 128)
-        powered.extend(low, high, 128)
-        assert (
-            powered.extent,
-            powered.gain,
-            powered.modulus,
-            powered.innovation,
-            powered.lower,
-            powered.upper,
-        ) == (
-            scalar.extent,
-            scalar.gain,
-            scalar.modulus,
-            scalar.innovation,
-            scalar.lower,
-            scalar.upper,
-        )
+        _checked_extent(fractional.FractionalPath(chart=chart), low, high, 128)
 
 
 def test_live_cylinder_skips_scalar_branch_search_and_preserves_packet(
@@ -211,33 +210,11 @@ def test_packed_chart_matches_all_physical_words_and_ordered_boundaries() -> Non
     assert all(a[2] == b[0] for a, b in zip(wide[:-1], wide[1:], strict=True))
     for key, innovation, upper in wide:
         value = Fraction(key + upper, 4 * gain)
-        original = value
-        for _ in range(16):
-            assert 0 <= value <= Fraction(1, 2)
-            bit = int(3 * value >= 1)
-            value = (3 * value - bit) / 2
-        assert value == (gain * original - innovation) / 2**16
+        assert _literal_endpoint(value, 16) == (gain * value - innovation) / 2**16
         low = Fraction(key, 2 * gain)
         high = Fraction(upper, 2 * gain)
-        scalar = fractional.FractionalPath()
         packed = fractional.FractionalPath(packed_chart=raw)
-        scalar.extend(low, high, 16)
-        packed.extend(low, high, 16)
-        assert (
-            packed.extent,
-            packed.gain,
-            packed.modulus,
-            packed.innovation,
-            packed.lower,
-            packed.upper,
-        ) == (
-            scalar.extent,
-            scalar.gain,
-            scalar.modulus,
-            scalar.innovation,
-            scalar.lower,
-            scalar.upper,
-        )
+        assert _checked_extent(packed, low, high, 16) == 16
 
 
 def test_packed_chart_rejects_intervals_crossing_each_wide_boundary() -> None:
@@ -246,26 +223,8 @@ def test_packed_chart_rejects_intervals_crossing_each_wide_boundary() -> None:
     gain = 3**16
     for key, _, _ in rows[1:]:
         low, high = Fraction(key - 1, 2 * gain), Fraction(key + 1, 2 * gain)
-        scalar = fractional.FractionalPath()
         packed = fractional.FractionalPath(packed_chart=raw)
-        scalar.extend(low, high, 16)
-        packed.extend(low, high, 16)
-        assert (
-            packed.extent,
-            packed.gain,
-            packed.modulus,
-            packed.innovation,
-            packed.lower,
-            packed.upper,
-        ) == (
-            scalar.extent,
-            scalar.gain,
-            scalar.modulus,
-            scalar.innovation,
-            scalar.lower,
-            scalar.upper,
-        )
-        assert packed.extent < 16
+        assert _checked_extent(packed, low, high, 16) < 16
 
 
 def test_packed_refusal_uses_short_chart_before_scalar(
