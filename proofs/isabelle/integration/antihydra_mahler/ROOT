@@ -33,6 +33,7 @@ session Mahler_Source_Transport in mahler_transport = Mahler_Safety_Cylinders +
     Mahler_CF_Minimal_Prefix
     Mahler_CF_Ordered_Row_Blocks
     Mahler_CF_Reciprocal_Source
+    Mahler_CF_Reciprocal_Native_Head
     Mahler_CF_Fractional_Guard_Compiler
     Mahler_CF_Spatial_Intermediate_Rows
     Mahler_CF_Spatial_Consumer
