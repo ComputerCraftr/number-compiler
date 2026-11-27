@@ -10,6 +10,7 @@ from number_compiler.arithmetic.fields.ordered_matrix import Matrix2
 from number_compiler.sequences.antihydra import mahler_cf_reciprocal_tile as tiles
 from number_compiler.sequences.antihydra.mahler_cf_low_period import settled_low_action
 from tests.sequences.antihydra.test_mahler_cf_cylinder import literal_cylinder
+from tests.sequences.antihydra.test_mahler_pow5_ordered_blocks import literal_action
 
 
 def _literal_segment(tile: tiles.ReciprocalTile, begin: int, length: int) -> Matrix2:
@@ -212,3 +213,45 @@ def test_opt_in_cylinder_preserves_bounded_unknown_packet(
     actual = json.loads(capsys.readouterr().out)
     assert actual == expected
     assert actual["info"]["arithmetic.continued-fraction"]["status"] == "unknown"
+
+
+def test_opt_in_cylinder_reuses_completed_row_before_reopening_cut(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    original = tiles.reciprocal_row_interval
+    reads = 0
+
+    def checked_interval(q: int, t: int, width: int, start: int, count: int) -> int:
+        nonlocal reads
+        if q == 5**38 and (t, width, start, count) == (0, 27, 0, 23):
+            reads += 1
+            if reads > 1:
+                pytest.fail("completed row action reopened its source cut")
+        return original(q, t, width, start, count)
+
+    monkeypatch.setenv("NUMBER_COMPILER_ENABLE_CF_RECIPROCAL", "1")
+    monkeypatch.setattr(tiles, "reciprocal_row_interval", checked_interval)
+    assert (
+        main(
+            [
+                "antihydra",
+                "--nth",
+                "0",
+                "--no-value",
+                "--format",
+                "json",
+                "--info",
+                "arithmetic.continued-fraction",
+                "--safety-horizon",
+                "4096",
+            ]
+        )
+        == 0
+    )
+    packet = json.loads(capsys.readouterr().out)
+    result = packet["info"]["arithmetic.continued-fraction"]
+    digits = "".join(str(5**n) for n in range(1, 50))[:540]
+    assert result["coefficient_count"] == 540
+    a, b, c, d = literal_action(digits).entries
+    assert result["matrix"] == [[a, b], [c, d]]
+    assert reads == 1

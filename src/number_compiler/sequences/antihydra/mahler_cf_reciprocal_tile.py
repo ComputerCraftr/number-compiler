@@ -8,6 +8,7 @@ from typing import Protocol, cast
 
 from number_compiler.arithmetic.fields.ordered_matrix import (
     Matrix2,
+    MatrixEntries,
     append_decimal_value,
 )
 from number_compiler.sequences.antihydra.mahler_cf_low_period import (
@@ -55,13 +56,28 @@ class ReciprocalTile:
     length: int
     first_exponent: int | None = None
     product: Matrix2 = field(init=False)
+    # This bounded response belongs to the issued tile, never to a shared
+    # semantic key. The owner's staging reservation covers its integer limbs.
+    first_row_prefix: tuple[int, MatrixEntries] | None = field(init=False)
+    _building: bool = field(init=False, default=True, repr=False)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "first_row_prefix", None)
+        object.__setattr__(self, "_building", len(self.widths) == 2)
         object.__setattr__(self, "product", self.segment(0, self.length))
+        object.__setattr__(self, "_building", False)
+
+    @property
+    def sealed(self) -> bool:
+        return not self._building
 
     def segment(self, begin: int, length: int) -> Matrix2:
         if length == 0:
             return Matrix2.identity()
+        if not self._building and begin == 0:
+            prefix = self.first_row_prefix
+            if prefix is not None and prefix[0] == length:
+                return Matrix2(prefix[1])
         start = begin + self.start
         row = 0
         while start >= self.widths[row]:
@@ -125,6 +141,8 @@ class ReciprocalTile:
                 a, b, c, d = entries
                 entries = (a * e + b * g, a * f + b * h, c * e + d * g, c * f + d * h)
             remaining -= count
+            if self._building and row == 0 and start + count == width:
+                object.__setattr__(self, "first_row_prefix", (count, entries))
             if remaining == 0:
                 return Matrix2(entries)
             start = 0

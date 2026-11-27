@@ -141,6 +141,7 @@ class Pow5OrderedBlockSource:
                 tuple[int, int, int, int],
                 int | None,
                 int | None,
+                tuple[int, tuple[int, int, int, int]] | None,
             ]
             | None
         ) = None
@@ -229,6 +230,7 @@ class Pow5OrderedBlockSource:
                 tile is None
                 or binding is None
                 or tile is not binding[0]
+                or not tile.sealed
                 or (
                     tile.quotient,
                     tile.widths,
@@ -237,6 +239,7 @@ class Pow5OrderedBlockSource:
                     tile.product.entries,
                     tile.product.modulus,
                     tile.first_exponent,
+                    tile.first_row_prefix,
                 )
                 != binding[1:]
             ):
@@ -424,6 +427,7 @@ class Pow5OrderedBlockSource:
                     tile.product.entries,
                     tile.product.modulus,
                     tile.first_exponent,
+                    tile.first_row_prefix,
                 )
                 self._block = block
                 self._value = (

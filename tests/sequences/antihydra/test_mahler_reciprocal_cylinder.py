@@ -229,3 +229,48 @@ def test_upper_cuts_cancel_the_dyadic_inlet_before_row_construction() -> None:
                     assert reciprocal_row_interval(
                         inlet, tick, len(row), start, end - start
                     ) == int(row[start:end])
+
+
+def test_completed_row_prefix_skips_reopening_the_upper_band(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.antihydra import mahler_cf_reciprocal_tile as tiles
+    from tests.sequences.antihydra.test_mahler_pow5_ordered_blocks import literal_action
+
+    source = 5**38
+    tile = tiles.ReciprocalTile(source, (27, 28), 0, 55, 38)
+    expected = literal_action(str(source))
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("the completed row prefix must not reopen its physical cut")
+
+    monkeypatch.setattr(tiles, "reciprocal_row_interval", forbidden)
+    assert tile.segment(0, 27) == expected
+    assert tile.segment(0, 0).entries == (1, 0, 0, 1)
+
+
+def test_reciprocal_owner_rejects_forged_completed_row_prefix() -> None:
+    from number_compiler.sequences.antihydra.mahler_cf_reciprocal_tile import (
+        ReciprocalTile,
+    )
+
+    ledger = ResourceLedger(max_nodes=10_000)
+    with Pow5OrderedBlockSource(ledger, reciprocal=True) as source:
+        block = source.next_block(2, 100)
+        tile = object.__getattribute__(source, "_tile")
+        assert type(tile) is ReciprocalTile and tile.first_row_prefix is not None
+        object.__setattr__(tile, "first_row_prefix", None)
+        with pytest.raises(ValueError, match="source binding changed"):
+            block.prefix(1)
+    assert ledger.nodes == ledger.entries == 0
+
+
+def test_reciprocal_owner_rejects_unsealed_row_action() -> None:
+    ledger = ResourceLedger(max_nodes=10_000)
+    with Pow5OrderedBlockSource(ledger, reciprocal=True) as source:
+        block = source.next_block(2, 100)
+        tile = object.__getattribute__(source, "_tile")
+        object.__setattr__(tile, "_building", True)
+        with pytest.raises(ValueError, match="source binding changed"):
+            block.prefix(1)
+    assert ledger.nodes == ledger.entries == 0
