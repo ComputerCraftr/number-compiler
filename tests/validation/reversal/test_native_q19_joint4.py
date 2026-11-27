@@ -142,6 +142,11 @@ for size in (64,65,101,127,128):
     refused=native.add_folded_joint4(half,-1,4,4<<20)
     assert refused[:2]==native.add_folded(half,-1,4,4<<20)[:2]
     assert refused[2][7]==0 and refused[2][9]==size-64
+for padding in (0,8,126,127):
+    half=bytes([18]+[9]*padding+[17]*64)
+    result=native.add_folded_joint4(half,-1,4,4<<20)
+    assert result[:2]==native.add_folded(half,-1,4,4<<20)[:2]
+    assert result[2][7:9]==((1,48) if padding<127 else (0,0))
 """
     subprocess.run([interpreter, "-I", "-c", program], check=True)
 
