@@ -538,8 +538,10 @@ ML \<open>
     diagonal_word_bitwise_or_exact
     diagonal_eval_reflected_half_ix diagonal_eval_complement_lookup
     diagonal_eval_transposed_phase diagonal_eval_half_open_negative};
-  val _ = if null (Thm_Deps.all_oracles checked) andalso not (Thm_Deps.has_skip_proof checked)
-    then () else error "Reflected diagonal table proof audit failed";
+  val _ = if null (Thm_Deps.all_oracles checked) then ()
+    else error "Reflected diagonal table proof depends on an oracle";
+  val _ = if Thm_Deps.has_skip_proof checked
+    then error "Skipped reflected diagonal table proof" else ();
 \<close>
 
 end
