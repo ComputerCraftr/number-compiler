@@ -3582,3 +3582,14 @@ open-inlet and unrelated-source refusal. The installed macOS pure wheel
 also matched the Q19 source-transfer result and default refusal. The
 seed-196 generation-48 control reproduces the eight-return carry failure
 with five exterior sums while the width pattern still agrees.
+
+The dependent 2rev10 and 5rev10 sessions also passed on the registered
+front proof. The macOS combined focused selection passed 63 tests. The
+Colima aggregate at `44b4ee48` passed strict mypy and all 108 Pyright
+batches across 2,686 files. Its full Python selection timed out at
+300.07 s with the eight previously observed Comma CLI failures and
+one Comma authority audit failure. The latter reproduced on the
+receiving baseline `1b2ab953` under the same runner. The package
+gate still requires the admitted Comma artifact. Source policy passed
+standalone after the test fixture consolidation at `4f8bbe44` in
+49.78 s on macOS and 41.12 s on Linux.
