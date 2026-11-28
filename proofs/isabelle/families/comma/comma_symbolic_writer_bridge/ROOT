@@ -9,3 +9,4 @@ session Comma_Symbolic_First_Sector_Writer = Comma_C1_Occurrence +
     Comma_Symbolic_Boundary_Entry
     Comma_Symbolic_Adjacent_Sectors
     Comma_Symbolic_Decisive_Entry
+    Comma_Symbolic_Boundary_Source
