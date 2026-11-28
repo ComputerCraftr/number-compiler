@@ -205,6 +205,32 @@ def test_delayed_quiet_controls_do_not_create_future_authority() -> None:
         assert first == expected
 
 
+def test_seed196_five_column_failure_precedes_width_divergence() -> None:
+    value = 196
+    for _ in range(48):
+        value += int(str(value)[::-1])
+    source = str(value)
+    assert tuple(int(source[i]) + int(source[~i]) for i in range(5)) == (
+        17,
+        4,
+        10,
+        9,
+        4,
+    )
+
+    quiet_inlets: list[int] = []
+    for _ in range(8):
+        quiet_row = str(value + int(str(value)[::-1]))
+        assert len(quiet_row) == len(str(value)) + 1
+        carry = 0
+        for low, high in zip(reversed(quiet_row[1:]), quiet_row[:-1], strict=True):
+            carry = (int(low) + int(high) + carry) // 10
+        quiet_inlets.append(carry)
+        value = int(quiet_row) + int(quiet_row[::-1])
+        assert len(str(value)) == len(quiet_row)
+    assert quiet_inlets == [1] * 7 + [0]
+
+
 def test_issued_noninitial_source_authenticates_the_born_inlet(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
