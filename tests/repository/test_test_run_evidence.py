@@ -244,21 +244,6 @@ def test_package_contract_changes_invalidate_passing_evidence(
         validate_evidence(path, root, nodes)
 
 
-def test_serial_release_reads_one_validated_junit_snapshot(tmp_path: Path) -> None:
-    root, path, suite, nodes = report(tmp_path)
-    suite.set("time", "1.0")
-    ET.SubElement(
-        _required(suite, "properties"),
-        "property",
-        name=EXECUTION_MODE,
-        value="serial-unfiltered",
-    )
-    save(path, suite)
-    with patch("xml.etree.ElementTree.parse", wraps=ET.parse) as parse:
-        assert validate_serial_release(path, root, nodes)["test_count"] == 2
-    assert parse.call_count == 1
-
-
 def test_serial_release_rejects_duplicate_execution_mode(tmp_path: Path) -> None:
     root, path, suite, nodes = report(tmp_path)
     suite.set("time", "1.0")
@@ -285,7 +270,9 @@ def test_serial_release_reports_actual_suite_time_and_strict_ceiling(
         value="serial-unfiltered",
     )
     save(path, suite)
-    result = validate_serial_release(path, root, nodes)
+    with patch.object(ET, "parse", wraps=ET.parse) as parse:
+        result = validate_serial_release(path, root, nodes)
+    assert parse.call_count == 1
     assert result["serial_time_gate_passed"] is passed
     assert result["complete_suite_seconds"] == float(seconds)
     assert result["slowest_20_seconds"] == 1.0
