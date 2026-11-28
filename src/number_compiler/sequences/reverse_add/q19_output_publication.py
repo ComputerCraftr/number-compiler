@@ -366,6 +366,12 @@ class Q19OutputPublicationMixin:
     def symbol_at(self, root: int, index: int) -> int:
         return slp_symbol_at(self.arena, root, index)
 
+    def root_width_parity(self, root: int) -> int:
+        parity = self.symbol_at(root, 0) - (2 * self.base - 1)
+        if parity not in (0, 1):
+            raise ValueError("pair output grammar has an invalid parity tag")
+        return parity
+
     def word_summary(self, root: int) -> WordSummary:
         found = self._summaries.get(root)
         if found is not None:
@@ -380,10 +386,7 @@ class Q19OutputPublicationMixin:
 
     def _full_summary(self, root: int) -> Q19Summary:
         encoded_summary = self.word_summary(root)
-        first = self.symbol_at(root, 0)
-        parity = first - (2 * self.base - 1)
-        if parity not in (0, 1):
-            raise ValueError("pair output grammar has an invalid parity tag")
+        parity = self.root_width_parity(root)
         half = encoded_summary.forward
         mirror = encoded_summary.prefix_reverse if parity else encoded_summary.reverse
         result = half.then(mirror)
@@ -636,10 +639,7 @@ class Q19OutputPublicationMixin:
                 )
                 self.validate_open()
                 half = values[occurrence.root]
-                first = self.symbol_at(occurrence.root, 0)
-                parity = first - (2 * self.base - 1)
-                if parity not in (0, 1):
-                    raise ValueError("pair output grammar has an invalid parity tag")
+                parity = self.root_width_parity(occurrence.root)
                 mirror = half.prefix_reverse if parity else half.reverse
                 result = half.forward.then(mirror, ledger=self.ledger)
                 self.validate_open()

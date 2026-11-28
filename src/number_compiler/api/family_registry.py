@@ -135,6 +135,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
             (
                 ObservationId.METRICS,
                 ObservationId.SPATIAL_MIRROR,
+                ObservationId.SPATIAL_CARRY_GRAM,
                 ObservationId.TEMPORAL_MACRO,
                 ObservationId.TEMPORAL_MATRIX,
                 ObservationId.ARITHMETIC_MODULAR,
@@ -209,6 +210,12 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
         ),
         output_bound=SizeBound.SEED,
         observation_constraints=(
+            (
+                ObservationId.SPATIAL_CARRY_GRAM,
+                "base",
+                10,
+                "carry Gram requires decimal base",
+            ),
             (
                 ObservationId.TEMPORAL_OPEN_RING,
                 "base",

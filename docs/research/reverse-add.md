@@ -57,6 +57,26 @@ in physical order. Repeated equal factors can be powered in the chosen
 ring. The free-port calculation allows inlet assignments that a physical
 source may exclude.
 
+## Ordered carry correlations
+
+For a physical pair-sum word in units-first order, let $A_i$ and $B_i$
+be the signs of the carries entering position $i$ from the units end
+and the opposite end respectively. A carry bit $c$ has sign $1-2c$.
+Fixing the two external carry bits selects one of four responses.
+Each response sums $A_i$, $B_i$, $A_i B_i$, $A_i B_{i+1}$ and
+$A_{i+1}B_i$ with positional weights $z^i$. The last two sums end
+one position earlier.
+
+At a join after $n$ positions, each half receives the other half's
+outgoing carry on the adjoining port. The right interior starts at
+$z^n$. Each adjacent channel has one cross-boundary term at $z^{n-1}$
+when both halves are nonempty. Substitution of $z=\sigma+\epsilon$
+in a truncated polynomial ring preserves the joins, including at
+$\sigma=1$ and at nonunits. On an odd-width physical source the
+reflected half omits the center already present in the first half.
+Extending these spatial observations across a width birth requires
+the successor pair field and its two boundary carries.
+
 ## Reading guide
 
 - **Definitions:** `P` is the symmetric pair field, `Delta = P - 9 E_m` its centered residual, and `beta` the carry-induced innovation. The derivative `(1-z)Delta` is a different object.

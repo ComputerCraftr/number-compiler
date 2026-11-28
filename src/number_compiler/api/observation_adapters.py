@@ -285,6 +285,12 @@ def observe_reverse(context: QueryContext, name: ObservationId) -> Packet:
     payload = context.term.payload
     if not isinstance(payload, PoweredReverseAddTermPayload):
         raise TypeError("reverse/add query published a foreign term payload")
+    if name is ObservationId.SPATIAL_CARRY_GRAM:
+        from number_compiler.api.bank_observation import reverse_carry_gram_packet
+
+        return publish_observation(
+            context, name, reverse_carry_gram_packet(payload.term)
+        )
     if name is ObservationId.TEMPORAL_MIRRORED_DIAGONAL:
         from number_compiler.sequences.reverse_add.temporal_mirrored_diagonal import (
             MAX_MIRRORED_TICKS,

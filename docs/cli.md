@@ -343,6 +343,16 @@ Python audited metrics remain available.
 Families without a live execution ledger report null execution metrics rather
 than invented zero work.
 
+The explicit `spatial.carry-gram` reverse/add observation folds the selected
+decimal pair field in least-significant-first order. It reports four ordered
+carry-inlet responses and five signed correlation polynomials evaluated at
+`1 + ε` modulo `ε^3` and 1,000,000,007. The two inlet bits enter from
+opposite ends. The coefficients are finite source observations.
+
+```sh
+number-compiler reverse-add --seed 599 --nth 3 --no-value --info spatial.carry-gram --format json
+```
+
 The following capability table is generated from the CLI registry. `number-theory.root` requires `--defect`; reverse/add and Collatz seed requirements are described above.
 
 `--info temporal.open-ring` demands a finite source-owned inward bank for
@@ -417,7 +427,7 @@ The ordinary `temporal.open-ring` demand retains its 32-F-step limit.
 <!-- cli-capabilities:start -->
 | Family | Index unit | Parameters | Term information | Event information |
 | --- | --- | --- | --- | --- |
-| `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `temporal.macro`, `temporal.matrix`, `arithmetic.modular`, `temporal.accumulator`, `temporal.mirrored-diagonal`, `temporal.open-ring`, `temporal.closed-form`, `temporal.stencil`, `spatial.bank-morphism`, `temporal.matrix.trace` | — |
+| `reverse-add` | `iterations` | `--seed`, `--base` | `temporal`, `metrics`, `spatial.mirror`, `spatial.carry-gram`, `temporal.macro`, `temporal.matrix`, `arithmetic.modular`, `temporal.accumulator`, `temporal.mirrored-diagonal`, `temporal.open-ring`, `temporal.closed-form`, `temporal.stencil`, `spatial.bank-morphism`, `temporal.matrix.trace` | — |
 | `2rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.matrix`, `temporal.closed-form`, `arithmetic.modular`, `temporal.accumulator`, `temporal.clock`, `temporal.carry-safety`, `spatial.stencil`, `temporal.bank`, `temporal.open-ring`, `temporal.birth-layers`, `spatial.pair-bank`, `spatial.bank-morphism`, `spatial.bank-window`, `temporal.grammar`, `temporal.radix-walsh`, `arithmetic.radix25-shift`, `temporal.matrix.trace` | — |
 | `5rev10` | `iterations` | `--seed` | `temporal`, `metrics`, `temporal.bank`, `arithmetic.modular`, `temporal.closed-form`, `temporal.matrix`, `temporal.matrix.trace` | — |
 | `collatz` | `physical_iterations` | `--seed`, `--radix` | `temporal`, `metrics`, `temporal.matrix`, `temporal.clock`, `temporal.accumulator`, `temporal.diagonal-carry`, `temporal.carry-bellman`, `temporal.macro`, `temporal.innovation-borrow`, `temporal.matrix.trace` | `temporal`, `temporal.clock`, `arithmetic.modular`, `arithmetic.twisted`, `arithmetic.hasse`, `arithmetic.hensel`, `arithmetic.tropical`, `arithmetic.factor`, `safety.execution` |

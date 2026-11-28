@@ -3388,3 +3388,27 @@ The affected guarded unit selection passed 1,447 tests and the reverse/add
 P0 selection passed 37. A separate installed native check matched 680
 literal bitplane runs and rejected five malformed calls. The ternary
 machine-code evidence is differential execution.
+
+### November 27 ordered carry actions
+
+Against clean baseline `9e124cd3`, the installed centered 2rev10 action
+in `b6707951` reduced cone builds from 6,679 to 1,716 for seed 196 at
+tick 1,056. Five interleaved whole CLI trials returned identical endpoint
+packets. Cold medians were 236.0 and 222.1 ms and warm medians were 71.4
+and 64.2 ms. Seed 73 at tick 1,024 reduced builds from 1,930 to 582.
+The state-bit refusal and index-zero control entered the action zero times.
+The registered temporal refinement finished within its 300-second limit.
+
+The opt-in native Q19 publisher in `e25f42ba` selected 176 four-tick
+width clocks from the outer pair in 768 tile attempts for seed 196 at
+4,096 ticks. Seven interleaved exact-output trials gave cold medians
+292.6 and 289.3 ms and warm medians 31.11 and 30.77 ms. The saving is
+width-guard work. Interior and fringe publication still run. The
+three-tick open-ring consumer in `830b3c71` returned widths 3, 4, 4, 5
+for seed 599 and retained the earlier budget refusal.
+
+The demanded Q19 carry Gram packet folds the issued pair-field grammar.
+For positive generations its source preparation still issues the selected
+pair field from the preceding Q19 root. The endpoint dispatch is unchanged.
+The cut-383 driver, the nonlocal inlet at cut 415, and the Q19 U/V protection
+through both collars remain open for source-wide temporal publication.

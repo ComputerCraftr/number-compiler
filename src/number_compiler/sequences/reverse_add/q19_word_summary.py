@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache
+from typing import Generic, Protocol, Self, TypeVar
 
 from number_compiler.arithmetic.automata.transducer import (
     build_pair_step_bimachine,
@@ -30,6 +31,28 @@ from number_compiler.resources.metric_keys import reverse_add as _reverse_add_ke
 _NEUTRAL = 0
 Q19_LOWER = -1
 Q19_UPPER = 1
+
+
+class OrderedCarryBlock(Protocol):
+    def then(
+        self, upper: Self, *, on_compose: Callable[[], None] | None = None
+    ) -> Self: ...
+
+
+_Block = TypeVar("_Block", bound=OrderedCarryBlock)
+
+
+@dataclass(frozen=True, slots=True)
+class FoldedPairAction(Generic[_Block]):
+    forward: _Block
+    reverse: _Block
+    prefix_reverse: _Block
+
+    def physical(self, parity: int, on_compose: Callable[[], None]) -> _Block:
+        """Restore the reflected field, including the center exactly once."""
+        return self.forward.then(
+            self.prefix_reverse if parity else self.reverse, on_compose=on_compose
+        )
 
 
 @dataclass(frozen=True, slots=True)

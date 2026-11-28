@@ -30,6 +30,8 @@ from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 from number_compiler.resources.owned_memo import LedgerReservation
 
+from .q19_word_summary import FoldedPairAction
+
 if TYPE_CHECKING:
     from .q19_occurrence import ReversePairOutputOccurrence
     from .q19_output import ReversePairQ19OutputOwner
@@ -178,13 +180,6 @@ class Radix19CarryBlock:
         ) % self.modulus
 
 
-@dataclass(frozen=True, slots=True)
-class _HalfSummary:
-    forward: Radix19CarryBlock
-    reverse: Radix19CarryBlock
-    prefix_reverse: Radix19CarryBlock
-
-
 # Streaming is bounded by expanded half length; REPEAT grammars stay compressed.
 _FINITE_HALF_LIMIT = 32
 
@@ -250,38 +245,45 @@ def fold_source_pair_cochain(
 ) -> Radix19CarryBlock:
     """Fold the authenticated physical palindrome and its center once."""
     owner.validate_issued_occurrence(source)
+    if owner.base != 10:
+        raise ValueError("Q19 decimal carry projection requires base 10")
     if type(z) is not int or type(modulus) is not int or modulus < 2:
         raise ValueError("integer evaluation and modulus >= 2 required")
     if owner.arena.nodes[source.root].length - 2 <= _FINITE_HALF_LIMIT:
         return _fold_finite_half(owner, source, z, modulus)
     zero = Radix19CarryBlock.identity(z, modulus)
-    identity = _HalfSummary(zero, zero, zero)
+    identity = FoldedPairAction(zero, zero, zero)
 
     def record_composition() -> None:
         owner.ledger.bump(_reverse_add_keys.REVERSE_RADIX19_COCHAIN_COMPOSITIONS)
 
-    def terminal(symbol: int) -> _HalfSummary:
+    def terminal(symbol: int) -> FoldedPairAction[Radix19CarryBlock]:
         if symbol in (19, 20, 21):
             return identity
         atom = Radix19CarryBlock.atom(symbol, z, modulus)
-        return _HalfSummary(atom, atom, zero)
+        return FoldedPairAction(atom, atom, zero)
 
-    def concatenate(left: _HalfSummary, right: _HalfSummary) -> _HalfSummary:
+    def concatenate(
+        left: FoldedPairAction[Radix19CarryBlock],
+        right: FoldedPairAction[Radix19CarryBlock],
+    ) -> FoldedPairAction[Radix19CarryBlock]:
         prefix_reverse = (
             right.prefix_reverse.then(left.reverse, on_compose=record_composition)
             if right.forward.length
             else left.prefix_reverse
         )
-        return _HalfSummary(
+        return FoldedPairAction(
             left.forward.then(right.forward, on_compose=record_composition),
             right.reverse.then(left.reverse, on_compose=record_composition),
             prefix_reverse,
         )
 
-    def repeat(value: _HalfSummary, count: int) -> _HalfSummary:
+    def repeat(
+        value: FoldedPairAction[Radix19CarryBlock], count: int
+    ) -> FoldedPairAction[Radix19CarryBlock]:
         if count == 0 or value.forward.length == 0:
             return identity
-        return _HalfSummary(
+        return FoldedPairAction(
             value.forward.repeat(count, on_compose=record_composition),
             value.reverse.repeat(count, on_compose=record_composition),
             value.prefix_reverse.then(
@@ -338,13 +340,8 @@ def fold_source_pair_cochain(
             on_value_release=release_value,
         )
         try:
-            half = summaries[source.root]
-            parity = owner.symbol_at(source.root, 0) - 19
-            if parity not in (0, 1):
-                raise ValueError("invalid Q19 parity tag")
-            result = half.forward.then(
-                half.prefix_reverse if parity else half.reverse,
-                on_compose=record_composition,
+            result = summaries[source.root].physical(
+                owner.root_width_parity(source.root), record_composition
             )
             return _verified_source_result(result, source)
         finally:

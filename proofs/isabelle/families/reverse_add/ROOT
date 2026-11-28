@@ -45,6 +45,7 @@ session Reverse_Residuals in reverse_residuals = Shared_Carry_Dynamics +
     Reverse_Mod9_Skew
     Reverse_Threshold_Geometry
     Reverse_Carry_Harmonic_Ports
+    Reverse_Ordered_Carry_Gram
     Reverse_Directed_Growth_Action
     Reverse_Inward_Constraint_Soundness
     Reverse_Symmetric_Transfer

@@ -116,6 +116,7 @@ class ObservationId(StrEnum):
     TEMPORAL_SPACETIME = "temporal.spacetime"
     TEMPORAL_DIAGONAL_CARRY = "temporal.diagonal-carry"
     TEMPORAL_CARRY_BELLMAN = "temporal.carry-bellman"
+    SPATIAL_CARRY_GRAM = "spatial.carry-gram"
     SPATIAL_MIRROR = "spatial.mirror"
     SPATIAL_STENCIL = "spatial.stencil"
     SPATIAL_PAIR_BANK = "spatial.pair-bank"
@@ -258,6 +259,7 @@ _CATEGORIES: Final[dict[ObservationCategory, tuple[ObservationId, ...]]] = {
         ObservationId.TEMPORAL_CARRY_BELLMAN,
     ),
     ObservationCategory.SPATIAL: (
+        ObservationId.SPATIAL_CARRY_GRAM,
         ObservationId.SPATIAL_MIRROR,
         ObservationId.SPATIAL_STENCIL,
         ObservationId.SPATIAL_PAIR_BANK,

@@ -2,6 +2,10 @@
 
 from typing import Final
 
+REVERSE_Q19_GRAM_ATOM_BUILDS: Final = "reverse_q19_gram_atom_builds"
+REVERSE_Q19_GRAM_NODE_VISITS: Final = "reverse_q19_gram_node_visits"
+REVERSE_Q19_GRAM_COMPOSITIONS: Final = "reverse_q19_gram_compositions"
+
 REVERSE_Q19_BROADWORD_SEMANTIC_STEPS: Final = "reverse_q19_broadword_semantic_steps"
 REVERSE_Q19_REUSED_CONTINUATION_STEPS: Final = "reverse_q19_reused_continuation_steps"
 REVERSE_Q19_BROADWORD_PREFIX_ROUNDS: Final = "reverse_q19_broadword_prefix_rounds"
