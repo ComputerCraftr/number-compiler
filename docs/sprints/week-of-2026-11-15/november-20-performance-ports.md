@@ -3800,3 +3800,10 @@ justify a retained interval cache. `f1709677` bounds the multiplication used
 for 5rev10 moving-cut work admission. The installed field at tick 209 matched
 with the default and with a 1,025-digit step budget. At tick 9,967 the two-place
 query still succeeds and the physical three-place query still refuses.
+
+`a6df8e46` binds the passing repository-policy report to the clean all-suite
+run, source tree, and guarded child. The selected real runner smoke made one
+43.26 s policy scan and passed the receiving fixture and 12 handoff controls
+in 0.23 s. The standalone fixture took 41.46 s. Invalid evidence and standalone
+selections still run the independent policy check. The aggregate release
+selection and gates are unchanged.
