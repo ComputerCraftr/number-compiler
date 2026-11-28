@@ -293,10 +293,12 @@ def observe_reverse(context: QueryContext, name: ObservationId) -> Packet:
         )
     if name is ObservationId.TEMPORAL_MIRRORED_DIAGONAL:
         from number_compiler.sequences.reverse_add.temporal_mirrored_diagonal import (
+            CENTER11_WORK_UNITS,
             MAX_MIRRORED_TICKS,
+            Center11WorkLimitExceeded,
         )
 
-        if not 1 <= payload.term.generation <= MAX_MIRRORED_TICKS:
+        if payload.term.generation < 1:
             return publish_observation(
                 context,
                 name,
@@ -306,9 +308,19 @@ def observe_reverse(context: QueryContext, name: ObservationId) -> Packet:
                     "max_physical_ticks": MAX_MIRRORED_TICKS,
                 },
             )
-        return publish_observation(
-            context, name, payload.term.temporal_mirrored_diagonal()
-        )
+        try:
+            center_packet = payload.term.temporal_mirrored_diagonal()
+        except Center11WorkLimitExceeded as error:
+            return publish_observation(
+                context,
+                name,
+                {
+                    "status": OutputStatus.UNAVAILABLE.value,
+                    "reason": str(error),
+                    "max_work_units": CENTER11_WORK_UNITS,
+                },
+            )
+        return publish_observation(context, name, center_packet)
     if name is ObservationId.TEMPORAL_CLOSED_FORM:
         from number_compiler.api.bank_observation import reverse_seed_orbit_packet
 

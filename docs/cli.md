@@ -244,8 +244,11 @@ bounded center-window scan, controlled by `--temporal-period-stride`,
 count is zero. Finite matching windows never certify an infinite period.
 
 `reverse-add --info temporal.mirrored-diagonal` requests a finite decimal
-center-carry action with a 512-physical-tick horizon, subject to the request's
-scratch budget; the default budget can refuse shorter intervals. Its `center11` packet includes
+center-carry action. Requests through 512 physical ticks keep the fixed horizon.
+Longer intervals require a seed of at most 256 bits and are capped at 331,264
+width-weighted work units, 10,000 scratch nodes, and any stricter request scratch
+budget. Admission is checked before each tick and can refuse shorter intervals.
+Its `center11` packet includes
 the two half-word residues and their accumulated difference, which differs from
 the difference at just the final endpoint. The action retains exact source and
 carry seams. This diagnostic evaluates the bounded seed trajectory, rather than

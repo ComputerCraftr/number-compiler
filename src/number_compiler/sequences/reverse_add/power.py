@@ -744,52 +744,23 @@ class ReverseAddPoweredTerm:
             raise ValueError("reverse/add term source/action binding changed")
         if self.base != 10:
             raise ValueError("mirrored diagonal is decimal-only")
-        from .temporal_mirrored_diagonal import (
-            MAX_MIRRORED_TICKS,
-            center11_interval_packet,
-            center11_scratch_nodes,
-        )
-        from .temporal_port_quotient import (
-            decimal_width_upper_bound,
-        )
+        from .temporal_mirrored_diagonal import center11_owned_interval
 
-        if max_steps is not None and type(max_steps) is not int:
-            raise ValueError("mirrored diagonal exceeds its finite source interval")
-        if max_steps is None:
-            max_steps = MAX_MIRRORED_TICKS
-        if (
-            not 1 <= max_steps <= MAX_MIRRORED_TICKS
-            or not 1 <= self.generation <= max_steps
-        ):
-            raise ValueError("mirrored diagonal exceeds its finite source interval")
-        max_width = decimal_width_upper_bound(self.seed) + self.generation
-        scratch_nodes = center11_scratch_nodes(max_width)
-        scratch_owner = self._center11_scratch_owner
-        if scratch_owner is None:
-            scratch_owner = self._ledger.register(
-                "reverse-center11-term-scratch",
-                "temporary_work",
-                scope=ResourceScope.INDEX_OWNED,
-            )
-            self._center11_scratch_owner = scratch_owner
-
-        def tick_started(_width: int) -> None:
-            self._ledger.bump(_reverse_add_keys.REVERSE_CENTER11_SOURCE_TICKS)
-
-        def coefficient_visits(count: int) -> None:
-            self._ledger.bump(
-                _reverse_add_keys.REVERSE_CENTER11_COEFFICIENT_VISITS, count
-            )
-
-        try:
-            with self._ledger.reservation(scratch_owner, nodes=scratch_nodes):
-                packet = center11_interval_packet(
-                    self.seed,
-                    self.generation,
-                    max_steps=max_steps,
-                    on_tick_start=tick_started,
-                    on_coefficient_visits=coefficient_visits,
+        def scratch_owner() -> int:
+            owner = self._center11_scratch_owner
+            if owner is None:
+                owner = self._ledger.register(
+                    "reverse-center11-term-scratch",
+                    "temporary_work",
+                    scope=ResourceScope.INDEX_OWNED,
                 )
+                self._center11_scratch_owner = owner
+            return owner
+
+        packet = center11_owned_interval(
+            self.seed, self.generation, max_steps, self._ledger, scratch_owner
+        )
+        try:
             if (self.seed, self.generation, self.base) != self._binding:
                 raise ValueError("reverse/add term changed during mirrored observation")
         except BaseException as error:

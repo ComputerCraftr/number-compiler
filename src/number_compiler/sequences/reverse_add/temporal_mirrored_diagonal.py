@@ -5,10 +5,33 @@ from __future__ import annotations
 from collections.abc import Callable
 from decimal import Decimal
 
+from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
+from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+
 from .temporal_center11 import Center11Action
-from .temporal_port_quotient import native_decimal_string_transport
+from .temporal_port_quotient import (
+    decimal_width_upper_bound,
+    native_decimal_string_transport,
+)
 
 MAX_MIRRORED_TICKS = 512
+# The prior 512-tick envelope for a three-digit seed with one birth per
+# tick, expressed as width-weighted work rather than a repetition authority.
+CENTER11_WORK_UNITS = 331_264
+CENTER11_EXTENDED_SEED_BITS = 256
+CENTER11_EXTENDED_SCRATCH_NODES = 10_000
+
+
+class Center11WorkLimitExceeded(ValueError):
+    """The next finite Center11 tick is outside its admitted work envelope."""
+
+
+def center11_tick_work(width: int) -> int:
+    """Charge two decimal passes and the center scan, before their allocation."""
+    if type(width) is not int or width < 1:
+        raise ValueError("center11 work requires a positive exact width")
+    return 2 * width + width // 2 + 1
 
 
 def center11_scratch_nodes(max_width: int) -> int:
@@ -22,6 +45,93 @@ def center11_scratch_nodes(max_width: int) -> int:
     if type(max_width) is not int or max_width < 1:
         raise ValueError("center11 scratch requires a positive exact width")
     return 24 * max_width + 512
+
+
+def center11_owned_interval(
+    seed: int,
+    steps: int,
+    max_steps: int | None,
+    ledger: ResourceLedger,
+    scratch_owner: Callable[[], int],
+) -> dict[str, object]:
+    """Admit and execute one finite physical interval under its owner's ledger.
+
+    The existing 24-per-digit scratch allowance covers the simultaneously live
+    old/new/reversed Decimal coefficients and strings. Width plus one reserves
+    their maximum size through a possible birth before each transition.
+    """
+    if max_steps is not None and type(max_steps) is not int:
+        raise ValueError("mirrored diagonal exceeds its finite source interval")
+    extended = max_steps is None and steps > MAX_MIRRORED_TICKS
+    if extended:
+        if (
+            seed.bit_length() > CENTER11_EXTENDED_SEED_BITS
+            or steps > CENTER11_WORK_UNITS // 3
+        ):
+            raise Center11WorkLimitExceeded(
+                "mirrored diagonal exceeds its finite work envelope"
+            )
+    elif max_steps is None:
+        max_steps = MAX_MIRRORED_TICKS
+    if not extended and (
+        max_steps is None
+        or not 1 <= max_steps <= MAX_MIRRORED_TICKS
+        or not 1 <= steps <= max_steps
+    ):
+        raise ValueError("mirrored diagonal exceeds its finite source interval")
+    initial_width = decimal_width_upper_bound(seed)
+    scratch = center11_scratch_nodes(initial_width + steps)
+    if extended:
+        scratch = min(scratch, CENTER11_EXTENDED_SCRATCH_NODES)
+        if ledger.max_nodes is not None:
+            scratch = min(scratch, max(0, ledger.max_nodes - ledger.nodes))
+    if extended and scratch < center11_scratch_nodes(initial_width + 1):
+        raise BlockContextBudgetExceeded("center11 scratch exceeds the node budget")
+    owner = scratch_owner()
+    work = 0
+
+    def tick_started(width: int) -> None:
+        nonlocal work
+        if extended:
+            cost = center11_tick_work(width)
+            if cost > CENTER11_WORK_UNITS - work:
+                raise Center11WorkLimitExceeded(
+                    "mirrored diagonal exceeds its finite work envelope"
+                )
+            if center11_scratch_nodes(width + 1) > scratch:
+                raise BlockContextBudgetExceeded(
+                    "center11 scratch exceeds the node budget"
+                )
+            work += cost
+        ledger.bump(_reverse_add_keys.REVERSE_CENTER11_SOURCE_TICKS)
+
+    def coefficient_visits(count: int) -> None:
+        ledger.bump(_reverse_add_keys.REVERSE_CENTER11_COEFFICIENT_VISITS, count)
+
+    try:
+        with ledger.reservation(owner, nodes=scratch):
+            if extended:
+                return _center11_interval_packet_source(
+                    seed,
+                    steps,
+                    start_generation=0,
+                    on_tick_start=tick_started,
+                    on_coefficient_visits=coefficient_visits,
+                )
+            assert max_steps is not None
+            return center11_interval_packet(
+                seed,
+                steps,
+                max_steps=max_steps,
+                on_tick_start=tick_started,
+                on_coefficient_visits=coefficient_visits,
+            )
+    except BaseException as error:
+        try:
+            ledger.bump(_reverse_add_keys.REVERSE_CENTER11_FAILED_WORK)
+        except BaseException as accounting_error:
+            raise accounting_error from error
+        raise
 
 
 def center11_interval_packet(

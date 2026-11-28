@@ -148,3 +148,47 @@ def test_center11_horizon_is_bounded() -> None:
     assert MAX_MIRRORED_TICKS == 512
     with pytest.raises(ValueError, match="finite horizon"):
         center11_interval_packet(196, MAX_MIRRORED_TICKS + 1)
+
+
+def test_center11_extended_refusal_before_next_tick_releases_scratch() -> None:
+    from number_compiler.sequences.reverse_add.temporal_mirrored_diagonal import (
+        Center11WorkLimitExceeded,
+    )
+
+    term = ReverseAddPoweredTerm(196, 779, max_context_nodes=10_000)
+    with pytest.raises(Center11WorkLimitExceeded, match="work envelope"):
+        term.temporal_mirrored_diagonal()
+    assert term.resource_ledger.counters["reverse_center11_source_ticks"] == 778
+    assert_empty_ledger_account(term.resource_ledger, "reverse-center11-term-scratch")
+
+
+def test_center11_extended_preserves_seed_and_explicit_step_limits() -> None:
+    from number_compiler.sequences.reverse_add.temporal_mirrored_diagonal import (
+        Center11WorkLimitExceeded,
+    )
+
+    term = ReverseAddPoweredTerm(196, 513)
+    with pytest.raises(ValueError, match="finite source interval"):
+        term.temporal_mirrored_diagonal(max_steps=512)
+    with pytest.raises(Center11WorkLimitExceeded, match="work envelope"):
+        ReverseAddPoweredTerm(1 << 256, 513).temporal_mirrored_diagonal()
+    for steps in (110_422, 10**80):
+        with pytest.raises(Center11WorkLimitExceeded, match="work envelope"):
+            ReverseAddPoweredTerm(196, steps).temporal_mirrored_diagonal()
+
+
+def test_center11_extended_refuses_before_unreserved_growth() -> None:
+    term = ReverseAddPoweredTerm(196, 513, max_context_nodes=608)
+    with pytest.raises(BlockContextBudgetExceeded, match="scratch"):
+        term.temporal_mirrored_diagonal()
+    assert term.resource_ledger.counters["reverse_center11_source_ticks"] < 513
+    assert_empty_ledger_account(term.resource_ledger, "reverse-center11-term-scratch")
+
+
+def test_center11_extended_respects_explicit_ten_thousand_node_cap() -> None:
+    term = ReverseAddPoweredTerm(196, 778, max_context_nodes=10_000)
+    packet = term.temporal_mirrored_diagonal()
+    assert packet["target_width"] == 333
+    assert term.resource_ledger.counters["reverse_center11_source_ticks"] == 778
+    assert term.resource_ledger.peak_nodes <= 10_000
+    assert_empty_ledger_account(term.resource_ledger, "reverse-center11-term-scratch")
