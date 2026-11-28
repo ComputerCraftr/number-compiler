@@ -43,6 +43,7 @@ class Q19OutputPublicationMixin:
     base: int
     _digits: tuple[int, ...]
     _authority: ArenaToken
+    _candidate_seal: ArenaToken
     arena: LedgerSLPArena
     projector: BimachineSLPProjector
     _summaries: OwnedMemo[int, WordSummary]
@@ -398,13 +399,23 @@ class Q19OutputPublicationMixin:
 
     def candidate(self, root: int, temporal_steps: int) -> ReversePairOutputOccurrence:
         self.validate_open()
+        if self.arena.node_storage_poisoned or not 0 <= root < len(self.arena.nodes):
+            raise ValueError("Q19 candidate root storage is stale")
+        generation = self.arena.node_id_generation
+        root_node = self.arena.nodes[root]
         summary = self._full_summary(root)
+        if (
+            self.arena.node_storage_poisoned
+            or self.arena.node_id_generation != generation
+            or self.arena.nodes[root] is not root_node
+        ):
+            raise ValueError("Q19 candidate root changed during summary construction")
         pair_width = summary.length
         output_width = pair_width + int(summary.domain == Q19_UPPER)
         growth = output_width - len(self._digits)
         if growth < 0 or growth > temporal_steps:
             raise AssertionError("Q19 width growth escaped the one-cell-per-step bound")
-        return ReversePairOutputOccurrence(
+        result = ReversePairOutputOccurrence(
             self._authority,
             root,
             temporal_steps,
@@ -414,16 +425,33 @@ class Q19OutputPublicationMixin:
             summary.domain,
             summary.f9,
         )
+        object.__setattr__(result, "_candidate_generation", generation)
+        object.__setattr__(result, "_candidate_seal", self._candidate_seal)
+        object.__setattr__(
+            result, "_candidate_binding", occurrence_publication_snapshot(result)
+        )
+        return result
 
     def publish(
         self, occurrence: ReversePairOutputOccurrence
     ) -> ReversePairOutputOccurrence:
         self.validate_open()
         occurrence.__post_init__()
+        if occurrence.owner is not self._authority:
+            raise ValueError("Q19 publication belongs to another owner")
         key = occurrence.root, occurrence.temporal_steps
-        binding = occurrence_publication_snapshot(occurrence)
+        if self.arena.node_storage_poisoned or not 0 <= occurrence.root < len(
+            self.arena.nodes
+        ):
+            raise ValueError("Q19 publication root storage is stale")
+        root_node = self.arena.nodes[occurrence.root]
+        binding = (*occurrence_publication_snapshot(occurrence), root_node)
         published_binding = occurrence.publication_binding
-        if published_binding is not None and published_binding != binding:
+        if published_binding is not None and (
+            len(published_binding) != len(binding)
+            or published_binding[:-1] != binding[:-1]
+            or published_binding[-1] is not root_node
+        ):
             raise ValueError("published Q19 occurrence metadata was altered")
         existing = self._issued.get(key)
         if existing is not None:
@@ -431,9 +459,17 @@ class Q19OutputPublicationMixin:
             # land on one key. Check the issued handle without re-folding the
             # full SLP; the incoming candidate already carries its exact fold.
             self.validate_issued_occurrence(existing)
-            if occurrence_publication_snapshot(existing) != binding:
+            if occurrence_publication_snapshot(existing) != binding[:-1]:
                 raise ValueError("Q19 occurrence key collides with different metadata")
             return existing
+        if (
+            occurrence._candidate_seal is not self._candidate_seal  # pyright: ignore[reportPrivateUsage]
+            or occurrence._candidate_generation  # pyright: ignore[reportPrivateUsage]
+            != self.arena.node_id_generation
+        ):
+            raise ValueError("Q19 candidate root generation is stale or foreign")
+        if occurrence._candidate_binding != binding[:-1]:  # pyright: ignore[reportPrivateUsage]
+            raise ValueError("Q19 candidate metadata was altered")
         if published_binding is None:
             occurrence.bind_publication(binding)
         self._issued[key] = occurrence
@@ -453,7 +489,10 @@ class Q19OutputPublicationMixin:
         self, key: tuple[int, int]
     ) -> ReversePairOutputOccurrence | None:
         """Read one owner-issued handle without exposing the mutable issue memo."""
-        return self._issued.get(key)
+        occurrence = self._issued.get(key)
+        if occurrence is not None:
+            self.validate_issued_occurrence(occurrence)
+        return occurrence
 
     def rollback_punctured_application(
         self,
@@ -464,7 +503,7 @@ class Q19OutputPublicationMixin:
         """Restore one failed punctured publication and its unpublished SLP suffix."""
         if published is not None:
             issue_key = published.root, published.temporal_steps
-            if self._issued.get(issue_key) == published:
+            if self._issued.get(issue_key) is published:
                 if previous_publication is None:
                     del self._issued[issue_key]
                 else:
@@ -487,10 +526,18 @@ class Q19OutputPublicationMixin:
             is not occurrence
         ):
             raise ValueError("Q19 output occurrence was not issued by this owner")
-        if occurrence.publication_binding != occurrence_publication_snapshot(
-            occurrence
+        binding = occurrence.publication_binding
+        if (
+            type(binding) is not tuple
+            or len(binding) != 9
+            or binding[:-1] != occurrence_publication_snapshot(occurrence)
         ):
             raise ValueError("published Q19 occurrence metadata was altered")
+        if (
+            self.arena.node_storage_poisoned
+            or binding[-1] is not self.arena.nodes[occurrence.root]
+        ):
+            raise ValueError("published Q19 occurrence root is stale")
 
     def _validated_full_summary(
         self, occurrence: ReversePairOutputOccurrence

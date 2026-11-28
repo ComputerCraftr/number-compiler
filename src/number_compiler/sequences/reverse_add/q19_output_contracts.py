@@ -48,6 +48,8 @@ class ReversePairQ19OutputAuditSnapshot:
     digits: tuple[int, ...]
     base: int
     authority: ArenaToken
+    candidate_seal: ArenaToken
+    cache_generation: int
     disposed: bool
     cleanup_complete: bool
     dispose_resources_complete: bool

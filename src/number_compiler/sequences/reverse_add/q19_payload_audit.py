@@ -319,7 +319,7 @@ def audit_reverse_pair_output_roots(
             and state.machine.base == 10
             and type(state.machine) is FrozenPairStepLaw
             and type(state.binding) is tuple
-            and len(state.binding) == 14
+            and len(state.binding) == 15
             and state.binding[0] is ledger
             and state.binding[1] is state.digits
             and state.binding[2] == 10
@@ -334,6 +334,8 @@ def audit_reverse_pair_output_roots(
             and state.binding[11] is state.temporal_ring_banks_binding
             and state.binding[12] is state.diagonal_comparisons_binding
             and state.binding[13] is state.word_fibers_binding
+            and state.binding[14] is state.candidate_seal
+            and state.cache_generation == arena.node_id_generation
             and type(state.audit_bindings) is tuple
             and len(state.audit_bindings) == len(expected_audit_bindings)
             and all(
@@ -526,8 +528,14 @@ def audit_reverse_pair_output_roots(
             except (TypeError, ValueError):
                 valid = False
                 continue
-            valid &= occurrence.publication_binding == occurrence_publication_snapshot(
-                occurrence
+            binding = occurrence.publication_binding
+            valid &= (
+                type(binding) is tuple
+                and len(binding) == 9
+                and binding[:-1] == occurrence_publication_snapshot(occurrence)
+                and 0 <= occurrence.root < size
+                and binding[-1] is arena.nodes[occurrence.root]
+                and not arena.node_storage_poisoned
             )
             try:
                 valid &= occurrence_summary(root, occurrence.root) == (

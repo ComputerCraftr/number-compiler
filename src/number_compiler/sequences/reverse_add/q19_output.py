@@ -97,6 +97,7 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
         self.base = base
         self._digits = digits_lsd
         self._authority = ArenaToken("reverse-pair-q19-output")
+        self._candidate_seal = ArenaToken("reverse-pair-q19-candidate")
         prefix = f"reverse-pair-q19-{ledger.owner_count}"
 
         # A construction scope records each ledger owner and weak root as it is
@@ -106,6 +107,7 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
             self.arena = LedgerSLPArena(
                 ledger, prefix, owner_kind="reverse_pair_output"
             )
+            self._cache_generation = self.arena.node_id_generation
             self.machine = pair_step_law()
             self.projector = BimachineSLPProjector(self.machine, self.arena)
 
@@ -172,7 +174,7 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
                 prefix + "-issued-occurrences", "reverse_pair_output_occurrence"
             )
             self._issued = OwnedMemo[tuple[int, int], ReversePairOutputOccurrence](
-                ledger, self._issued_owner, nodes_per_entry=1
+                ledger, self._issued_owner, nodes_per_entry=2
             )
             self._frontier_owner = ledger.register(
                 prefix + "-physical-frontiers", "observation_memo"
@@ -231,6 +233,7 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
                 self._temporal_ring_banks,
                 self._diagonal_comparisons,
                 self.word_fiber_cache,
+                self._candidate_seal,
             )
         with ExitStack() as rollback:
             rollback.enter_context(cleanup_on_error(self.dispose))
@@ -305,6 +308,8 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
             digits=self._digits,
             base=self.base,
             authority=self._authority,
+            candidate_seal=self._candidate_seal,
+            cache_generation=self._cache_generation,
             disposed=self._disposed,
             cleanup_complete=self._cleanup_complete,
             dispose_resources_complete=self._dispose_resources_complete,
@@ -388,12 +393,22 @@ class ReversePairQ19OutputOwner(Q19OutputPublicationMixin):
             self._temporal_ring_banks,
             self._diagonal_comparisons,
             self.word_fiber_cache,
+            self._candidate_seal,
         )
         if len(self._binding) != len(current) or any(
             original is not bound
             for original, bound in zip(self._binding, current, strict=True)
         ):
             raise ValueError("Q19 output owner or finite law binding changed")
+        if self.arena.node_storage_poisoned:
+            raise ValueError("Q19 pair grammar storage is stale")
+        generation = self.arena.node_id_generation
+        if self._cache_generation != generation:
+            self._summaries.clear()
+            self.projector.clear_caches()
+            self._frontiers.clear()
+            self.word_fiber_cache.clear()
+            self._cache_generation = generation
         self._issuance_registry.validate_stores(
             border_certificates=self._border_certificates,
             controlled_gt_banks=self._controlled_gt_banks,

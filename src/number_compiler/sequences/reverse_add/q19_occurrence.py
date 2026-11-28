@@ -22,6 +22,15 @@ class ReversePairOutputOccurrence:
     _publication_binding: tuple[object, ...] | None = field(
         init=False, default=None, repr=False, compare=False
     )
+    _candidate_generation: int | None = field(
+        init=False, default=None, repr=False, compare=False
+    )
+    _candidate_seal: object | None = field(
+        init=False, default=None, repr=False, compare=False
+    )
+    _candidate_binding: tuple[object, ...] | None = field(
+        init=False, default=None, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         if type(self.owner) is not ArenaToken:
@@ -57,13 +66,26 @@ class ReversePairOutputOccurrence:
 
     def bind_publication(self, snapshot: tuple[object, ...]) -> None:
         """Attach the canonical issue-time snapshot once, rejecting rebinding."""
-        if type(snapshot) is not tuple or snapshot != occurrence_publication_snapshot(
-            self
+        from number_compiler.arithmetic.automata.slp import SLPNode
+
+        if (
+            type(snapshot) is not tuple
+            or len(snapshot) != 9
+            or snapshot[:-1] != occurrence_publication_snapshot(self)
+            or type(snapshot[-1]) is not SLPNode
         ):
             raise ValueError("Q19 publication snapshot does not match this occurrence")
         current = self._publication_binding
-        if current is not None and current != snapshot:
-            raise ValueError("Q19 occurrence is already bound to another publication")
+        if current is not None:
+            if (
+                len(current) != len(snapshot)
+                or current[:-1] != snapshot[:-1]
+                or current[-1] is not snapshot[-1]
+            ):
+                raise ValueError(
+                    "Q19 occurrence is already bound to another publication"
+                )
+            return
         object.__setattr__(self, "_publication_binding", snapshot)
 
 
