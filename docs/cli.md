@@ -1,6 +1,6 @@
 # CLI reference
 
-Use `number-compiler FAMILY --nth N` for exact terms and demand information with repeated `--info NAME` options. `number-compiler --list-families` lists supported families; `FAMILY --help` lists applicable selectors and budgets. The public Python entry points are exported from `number_compiler`; the console entry point is `number_compiler.api.cli:main`. See the [metrics reference](metrics.md) for schema 8 accounting.
+Use `number-compiler FAMILY --nth N` for exact terms and request observations with repeated `--info NAME` options. `number-compiler --list-families` lists supported families. Use `number-compiler FAMILY --help` to see the selectors and budgets for that family. The public Python entry points are exported from `number_compiler`; the console entry point is `number_compiler.api.cli:main`. See the [metrics reference](metrics.md) for schema 8 accounting.
 
 ```sh
 number-compiler --list-families

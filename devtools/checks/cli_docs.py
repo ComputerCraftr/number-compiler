@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shlex
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
@@ -67,7 +68,7 @@ def check_cli_docs(root: Path) -> list[str]:
             errors.append(
                 "docs/cli.md:1: generated CLI observation view table is stale"
             )
-    for path in (root / "README.md", guide):
+    for path in (root / "README.md", guide, root / "docs/development.md"):
         if not path.exists():
             continue
         fenced = False
@@ -83,11 +84,15 @@ def check_cli_docs(root: Path) -> list[str]:
                 pending = command[:-1] + " "
                 continue
             pending = ""
-            if not command.startswith("number-compiler "):
+            # Validate the installed CLI examples with native feature flags too.
+            match = re.match(
+                r"(?:NUMBER_COMPILER_[A-Z0-9_]+=[01]\s+)*number-compiler\s+", command
+            )
+            if match is None:
                 continue
             try:
                 with redirect_stdout(StringIO()), redirect_stderr(StringIO()):
-                    parse_request(shlex.split(command)[1:])
+                    parse_request(shlex.split(command[match.end() :]))
             except (SystemExit, ValueError) as error:
                 if isinstance(error, SystemExit) and error.code == 0:
                     continue

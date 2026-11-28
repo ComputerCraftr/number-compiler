@@ -1,13 +1,15 @@
 # Development
 
-Create a virtual environment in `.venv` and install the exact development tools
+Create and activate a virtual environment in `.venv`, then install the development tools
 from `pyproject.toml`. The reproducible validation environment targets CPython
 3.14 on macOS arm64 or Linux aarch64:
 
 ```bash
-.venv/bin/python -m pip install -c devtools/typing/constraints-py314-macos.txt -e '.[dev,profile]'
+python3.14 -m venv .venv
+source .venv/bin/activate
+python -m pip install -c devtools/typing/constraints-py314-macos.txt -e '.[dev,profile]'
 npm ci --prefix devtools/typing --ignore-scripts
-.venv/bin/python -m pip check
+python -m pip check
 ```
 
 On Linux aarch64 (including Colima), use

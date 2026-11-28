@@ -162,6 +162,19 @@ def test_cli_example_validation_never_executes_arithmetic(tmp_path: Path) -> Non
     assert "invalid CLI example" in errors[0]
 
 
+def test_development_native_cli_examples_are_validated(tmp_path: Path) -> None:
+    from devtools.checks.cli_docs import check_cli_docs
+
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs/development.md").write_text(
+        "```bash\nNUMBER_COMPILER_ENABLE_NATIVE_REVERSE=1 "
+        "number-compiler 5rev10 --seed 73 --unsupported-selector\n```\n"
+    )
+    errors = check_cli_docs(tmp_path)
+    assert len(errors) == 1
+    assert "docs/development.md:2: invalid CLI example" in errors[0]
+
+
 def test_long_fences_keep_short_fence_examples_literal(tmp_path: Path) -> None:
     _fixture(tmp_path)
     (tmp_path / "docs/paper.md").write_text(

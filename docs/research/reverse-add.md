@@ -6,9 +6,10 @@ records mathematical scope and source connections.
 Scope: **component arithmetic and restricted clauses do not establish unrestricted temporal closure**.
 
 This synthesis is the maintained research account for decimal reverse/add and
-the powered 196 cutover. It keeps source authority, forcing bases, carry
-direction, radial sign extraction, temporal closure, and restricted chambers
-in one place so a component theorem cannot be mistaken for the final result.
+the powered 196 cutover. It covers source authority, forcing bases, carry
+direction, radial sign extraction, temporal closure, and restricted chambers.
+The separate [reflected multiplier research](rev10.md) covers `2rev10` and
+`5rev10`.
 
 ## Carry cofactors at a width birth
 
@@ -63,52 +64,7 @@ source may exclude.
 - **Implemented construction:** authenticated primitive publication and restricted clauses are available; carry moves only from LSD to MSD.
 - **Open obligation:** construct the source-derived compressed residue grammar and its complete temporal return with successful work and storage bounds.
 
-### Cyclic relative returns for reflected multiplication
-
-For a cyclic decimal word, let each digit triple test whether the two-tick
-output equals its left, center or right input digit. Intersect the three
-equality bits over the word. Concatenation needs only the two end digits
-on each side of the join to check the crossing triples. Closing the word
-adds the two wraparound triples, or one repeated triple for a singleton.
-
-The center equality admits the uniform words on $0,3,6,9$. For the
-nonconstant neighbor equalities, the table gives the blocks of the cyclic
-language. Read a word up to rotation as a nonempty concatenation of blocks,
-choosing $a,b\geq 0$ independently in each block.
-
-| Multiplier | Output equals left input | Output equals right input |
-| --- | --- | --- |
-| 2 | $15\,3^a\,84\,6^b$ | $0\,3^a\,29\,6^b\,7$ |
-| 5 | $51\,6^a\,48\,3^b$ | $07\,6^a\,92\,3^b$ |
-
-Superscripts in the table repeat digits. The two-tick action shifts an
-admitted word by one site, so a primitive nonconstant word of length $p$
-first returns at even tick $2p$. An odd return would put the one-tick
-image on the same rotation orbit. Reflection reverses the rotation, which
-would make the two-tick image equal the original word. This contradicts
-a one-site shift on that primitive word.
-
-Digit equality includes the mixed carry terms. For example, reducing
-digits modulo five accepts the proposed right shifts of both `02925` and
-`00792`. Their actual two-tick cyclic images are `29700` for multiplier
-two and `52920` for multiplier five. Transport to a finite decimal source
-also requires its causal halo, physical carries, width changes and
-normalized readout.
-
-### Periods conditioned on the two upstream ports
-
-Let $F$ be the centered two-tick gate. In either extreme moving frame
-the downstream digit $x$ evolves by $F(a,b,x)$ or $F(x,a,b)$. Fixing
-the ordered pair $(a,b)$ gives a map on ten digits with at most two
-outputs, for either multiplier. Composing a nonempty word of these
-maps preserves that bound. If $G$ is the response to one full period
-of the two authenticated input streams, then $G^4(x)=G^2(x)$.
-Indeed, among $G(x),G^2(x),G^3(x)$ two values coincide. After at most
-two input periods the downstream digit therefore returns in one or
-two input periods at the same phase. The upstream streams must cover
-the entire requested cone. On a coupled two-cell ring, multiplier two
-takes $11\to44\to77\to11$ in centered ticks, and multiplier five
-traverses the same cycle in reverse.
+### Periods conditioned on width and carry ports
 
 For reverse/add, let $s$ be a raw pair sum, $a$ its low carry, and
 $\beta$ the physical width birth. In a quiet row $v$ is the other carry.
@@ -121,86 +77,6 @@ period factors are $1,2,4,5,10$. Applying the same next port recovers
 the exact raw sum from the residue. The physical sources
 $1^k00\,8^k$ and $1^k55\,8^k$ have identical $k$ outer equality
 pairs for every $k\ge1$, while only the latter grows on the next tick.
-
-### 2rev10 four-port successor and the mod-32 cut
-
-For `2rev10`, the physical action is `2R`, not reverse/add's `I+R`.
-The two-step action has four incoming carry-port combinations.
-Concatenation transports
-the first carry left to right and the second right to left; a repeated spatial
-block uses binary action composition. Exact output also requires the source's
-zero-suffix contraction, boundary births and output normalization. Spatial
-REPEAT closure does not prove an all-depth temporal period.
-
-The finite interior cone now uses a separate exact temporal square. If `U_t`
-returns the middle `2t` digits after `t` two-step updates from a complete
-`4t`-digit halo, then for four equal quarters `A,B,C,D`, compute
-`u=U_s(AB)`, `v=U_s(BC)`, `w=U_s(CD)` and publish
-`U_(2s)(ABCD)=U_s(uv) ++ U_s(vw)`. The temporary perfect-binary tiles are
-interned by exact digit content, independently of source SLP grammar.
-Source-issued growth ports authorize border births and phase. The
-`Double_Reverse_Spacetime_Carry_Square` theory states the finite-window law
-with its complete halo, rather than assuming a future period.
-
-Production bounds, reservation and rollback behavior, and fresh-process CLI
-measurements belong to the
-[dated integration record](../sprints/week-of-2026-10-18/strict-toolchain-macro-identities.md#2rev10-four-port-and-outer-port-integration--2026-10-26).
-
-The base-`z` inverse modulo 32 was already present in
-`Shared_Decimal_Cocycle_Core` and `Decimal_Normalization_Morphism`. The family
-bridge is `Double_Reverse_Group_Ring_Carry_Cut`, consumed by
-`Double_Reverse_Group_Ring_Four_Port`: it specializes the finite normalization
-cut to source-selected doubling carries and connects the two-pass row to the
-existing decimal stencil. The escaping carry term must remain in
-the finite-cut equation. Reconstructing a carry polynomial in a finite quotient
-does not reconstruct an unread decimal tape or certify a future inlet word.
-Kernel acceptance is recorded in the release evidence, separately from these
-theorem interfaces.
-
-The source-conditioned matrix constructor also uses the exact two-bit outer
-port quotient before copying or advancing candidate halos. A birth shields the
-corresponding port; the other ports use canonical representatives `0/3` and
-`0/5`. This avoids rejected-candidate work while preserving the full halo,
-odd-generation and pointed-source checks. The quotient checks outer admission;
-candidate-specific inner output digits remain exact.
-
-The source-bound return period joins the border phase with the mod-99 and
-mod-198 projections. One bounded mod-198 orbit supplies both residue lassos
-without constructing the future digit word. Four physical ticks restore the
-border phase and add two digits of width, so width drift is tracked separately.
-The transient is an aligned upper bound in physical ticks, while the period is
-exact for this projection. Residue values and lasso data are separate
-observations, each limited to the admitted projection. The [CLI reference](../cli.md#grouped-result-views)
-gives the corresponding requests.
-
-### Reflected multipliers and packed two-step actions
-
-For `T_m(x)=m*reverse10(x)` with `m` equal to 2 or 5, a padded base-100
-carry sheet represents finite dyadic segments. Its inlet includes the source
-digits and its complete halo. Each stage normalizes the preceding word before
-the next stage is applied. The registered
-[`Double_Reverse_Reflected_SLP_Endpoint`](../../proofs/isabelle/families/double_reverse/temporal_double_reverse/Double_Reverse_Reflected_SLP_Endpoint.thy)
-theory proves exact numerical endpoints for odd and even physical clocks,
-including the two multipliers' different even inlets. The theorem preserves
-padding equivalence and requires the stated decimal source assumptions. It
-does not establish an unrestricted future period or a complexity bound.
-
-For multiplier 5, encode least-significant-first decimal digits as nibbles in
-`P`. Let `L` have one low bit in each nibble and set `U=14L`. The packed
-ordinary product and reflected digit action are
-
-```text
-M(P) = 5*(P & L) + 8*(P & U)
-E(P) = ((P & U) >> 1) + 80*(P & L)
-```
-
-Apply `M` to `E(P)` after removing its low zero nibbles. Decoding the
-resulting word gives exactly two physical `5rev10` steps. This normalization
-accounts for width changes caused by trailing zeros at the seam. The
-[`Five_Reverse_Packed_Word_Consumer`](../../proofs/isabelle/families/five_reverse/five_reverse/Five_Reverse_Packed_Word_Consumer.thy)
-theory establishes the word and first-refusal laws for valid packed decimal
-digits. Runtime admission and measured performance are recorded in the
-[integration record](../sprints/week-of-2026-11-15/november-20-performance-ports.md).
 
 ### Finite Pascal summaries and carry-event evaluation
 
@@ -251,69 +127,10 @@ value have different clock positions; the affine packet records that input
 position and the following output position explicitly. This one-step law
 does not supply an independently repeatable temporal action.
 
-For the distinct double-reverse recurrence `T(X)=2*reverse10(X)`, let `C`
-be the decimal threshold mask of a canonical whole source: its digit at each
-position is `[digit>=5]`. With nonzero source units, the four-port carry law
-gives `T²(X)=4X-198*(C div 10)` when the units are below five, and
-`T²(X)=40X-198*C` otherwise. The quotient branch needs the preceding
-threshold bit to reconstruct its units digit; `C mod 70` alone does not supply
-that bit. Zero-ending words require width-normalizing treatment. Applying
-these equations to a spatial subinterval requires its actual exterior seam;
-the subinterval residue is insufficient.
-
-Digitwise doubling as decimal glyphs is a different morphism from normalized
-multiplication: the glyph for six is `12`. Reflecting the source before that
-morphism leaves this glyph `12`, whereas reflecting the glyph gives `21`.
-Its length phase therefore includes the threshold count. A copy-count period
-of a supplied spatial band is not a physical recurrence period. For a fixed
-nonempty band, each mod-seven copy sum has ratio of order dividing six.
-Its geometric sum repeats after six copies when the ratio differs from one,
-or after seven copies when it equals one. Thus 42 is a common positive-copy
-period for the joined word, threshold and glyph projections; the exact word
-length still grows. This is a finite spatial algebra law, not a source-period
-certificate. Likewise, a
-strict-interior stencil needs its real exterior halo before it can predict
-an embedded band's boundary outputs. These factors do not establish a
-source-reachable all-future twisted return.
-
-The bank-stencil refinement can be expressed without a second physical tape.
-For a nonempty MSB-first band `W`, let `core(W)` emit only stencil cells whose
-two neighbors lie inside `W`. For nonempty adjacent bands `U,V`, concatenate
-`core(U)`, the cell `F(U[-2],U[-1],V[0])` when `len(U)>=2`, the cell
-`F(U[-1],V[0],V[1])` when `len(V)>=2`, and `core(V)`, in that order.
-This local seam law is associative. For `len(B)>=2` and positive `r`, it gives
-`core(B^r)=core(B)*(seam(B,B)*core(B))^(r-1)`. Exterior digits, width birth
-and leading-zero normalization remain separate source-bound obligations.
-In the truncated Pascal ring over F11 through order `j`, choose the least
-`e` with `11^e>j`. The substitution `z=-1-u` has multiplicative period
-dividing `2*11^e`; eleven such cycles annihilate the additive copy sum.
-Together with the mod-seven factors this gives the spatial-copy bound
-`42*11^(e+1)`. Neither that bound nor the interior seam law authorizes an
-all-future temporal return or a global mod-99/198 clock identification.
-
 For example, the Q19 carry-domain, F9, five-band and carry-Phi6 projections
 of `101` and `112` agree, while those projections of their reverse/add
 successors `202` and `323` differ. This particular finite observer therefore
 cannot be used alone as a physical-successor class ID.
-
-### Effective seam programs and finite period evidence
-
-For `2rev10`, an effective seam gate records the phase and the two emitted
-boundary digits. Inlets with the same gate produce the same retained bank
-successor under the admitted stencil. A finite repeated gate program can
-therefore have a conditional lasso on `(bank state, program position)`.
-Powering that lasso proves behavior for the supplied program, not that the
-original source supplies that program indefinitely. Independent source blocks
-must still validate their bank states and gates. A matching finite window is
-not an eventual-period certificate for the next inward layer.
-
-The four-step affine coefficient 160 also does not establish a rotation of
-the normalized mantissa: `168` reaches `16188` in four physical `2R` steps.
-After the two-digit width shift, the ratio is `1349/1400`, rather than `8/5`
-or its wrapped value `4/25`. The innovation correction must be retained.
-
-[Current bounded diagnostic and proof scope](../sprints/week-of-2026-11-01/prime-rank-effective-returns.md)
-keeps these claims separate from the source-closed outer-pair return.
 
 ### Spatial run responses versus temporal actions
 
@@ -359,22 +176,8 @@ recorded with the implementation evidence.
 
 ### Centered harmonic projections
 
-On the admitted four-physical-step `2rev10` growth sector `(1,0,0,1)`, the
-right centered digit has the forced recurrence
-`c' = 16*c + f (mod 10)`. For a finite issued interval of `k` blocks, its
-weighted forcing is `c_end - 16^k*c_start (mod 10)`. Modulo five, the forcing
-sum telescopes to `c_end-c_start`; modulo two, the last forcing equals
-`c_end`. Both conditions are required for a digit return. Mod-five
-cancellation alone does not establish an exact return.
-
-Let `a` be the leading `ceil(w/2)` decimal digits and `b` the reversed trailing
-`ceil(w/2)` digits. For `w=2h`, `a-b=(-1)^h X (mod 11)`; for `w=2h+1`, the
-halves overlap at `c` and `a+b=c+(-1)^h X (mod 11)`. These are projections of
-the existing whole-word clock and pointed center, not independent clocks or
-half-word scans.
-
-Reverse/add has a different controlled action: its actual central pair-sum
-coefficient, incoming/outgoing normalization carries and growth bit select
+The central pair-sum coefficient, incoming and outgoing normalization carries,
+and growth bit select
 the affine half-residue transformation. Its third output is the cumulative
 sum of successive half differences. Replacing that sum with the final
 half difference loses information. Chronological composition requires the
@@ -644,9 +447,7 @@ emission. [`Cascade_Output_Elimination.thy`](../../proofs/isabelle/integration/t
 proves two-stage semantic equality only when the component soundness and
 coverage assumptions hold. Functional overlap is proved separately.
 
-### Carry sheets and finite palindrome searches
-
-For a reflected multiplier $m$ equal to 2 or 5, put $q=10/m$. In multiplication-input order, digit $d$ with inlet $0\le c<m$ emits $m(d\bmod q)+c$ and leaves carry $\lfloor d/q\rfloor$. Consequently the last digit of any nonempty tile fixes its exit carry. In a repeated tile the first copy consumes the incoming seam. Every subsequent copy consumes the exit of the preceding copy. Reading the other end of a word changes the input order. Physical zero trimming occurs before the final multiplication, which may itself produce a trailing zero.
+### Carry forcing and finite palindrome searches
 
 For reverse/add let $S$ be the full symmetric pair-sum field, including twice the middle digit at odd width. A quiet step doubles its homogeneous contribution. A width birth multiplies it by $1+z$. After five quiet steps, the homogeneous contribution vanishes modulo 32. In a source-issued twelve-step interval with this property, the signed carry forcing therefore recovers every endpoint coefficient exactly, since each lies between 0 and 18. Two sources with the same recovered field have equal subsequent emissions at the same positive offset. Equal XOR masks alone do not identify this field.
 

@@ -177,6 +177,14 @@ status = "current"
 date = "2026-09-20"
 
 [[document]]
+id = "research-rev10"
+path = "docs/research/rev10.md"
+kind = "research"
+topic = "reflected-decimal-multipliers"
+status = "current"
+date = "2026-11-27"
+
+[[document]]
 id = "research-collatz"
 path = "docs/research/collatz.md"
 kind = "research"
