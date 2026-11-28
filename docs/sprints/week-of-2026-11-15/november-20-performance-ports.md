@@ -3432,3 +3432,73 @@ The cut-383 action still needs an issued lower drive, and cut 415 needs
 the nonlocal inlet and its moving-chart transport. The GF(4) sheet controls
 supply finite comparisons. None of these probes changes rev10 period
 admission.
+
+### November 27 mixed-EQ and reflected carry actions
+
+The receiving baseline was `512b49ed`. The mixed-EQ bank at `61850a10`
+selects an ordered three-column response for the supplied growth bit. A
+growth-only CLI request can use the source-certified first three bits
+`101`. Python callers that request inward digit constraints retain the full
+border certificate. The installed Linux ARM64 CLI made 94 phase calls on
+the admitted fixture and 49 on the quiet fallback. Both complete packets
+matched the reference. Finite inverse-language checks at `36f7b16d` cover
+all 19 output sums. Sources with equal final sums can still have different
+intermediate carries and physical center fringes.
+
+The native dense path and periodic front at `a148e9f9` require explicit
+opt-in. On the 3,800-digit source at 2,048 physical ticks, the installed
+ARM64 CLI matched independent decimal arithmetic. A matched source motif
+and both incoming carry sheets admitted the suffix. Against the dense
+front without suffix transport, word updates fell from 38,176 to 36,986
+for ×2 and 36,974 for ×5. The suffix covered 341 and 342 columns. Six
+interleaved Mac trials gave cold medians of 575 to 561 ms and 367 to
+353 ms, respectively. Warm medians were 153 to 164 ms and 55 to 57 ms.
+These results support bounded work savings. Automatic dispatch is unchanged.
+
+The supplied-period three-step action at `a1ff6d90` checks both physical
+rays and the moving cut. The period-30 example required 90 local stencil
+evaluations to issue its translation. The shared seam theory at `b9f06db5`
+passed a native isolated session with oracle and skipped-proof audits.
+Its four-tick coordinate transport requires the calibrated digit and an
+authenticated inlet. Arbitrary open words and the cut-383/415 lower drives
+retain their prior admission requirements.
+
+The native readiness proof at `88adbcc8` checks 500 first-inlet cases and
+the ten finite phase charts used in the periodic transport. The front
+requires the ordered source motif and both incoming carry sheets at application.
+
+Rollback tests at `0e713f72` reproduce a different word receiving the
+same SLP root number. The temporal owner now retires numeric slice and
+cone entries on rollback and validates the allocation of each issued
+source and target. The surrounding Mac selection passed 149 tests. The
+five rollback regressions and eight residue/SLP tests passed on Linux.
+Shared grammar nodes can still hit within an arena.
+
+The native quality check at `78f99d2c` passed with Homebrew Clang 23.1.6
+and Linux ARM64 GCC 14.2.0. The optimizing GCC compile used 299 MiB and
+6.27 seconds under the command guard. The installed test harness checks
+native module paths against the wheel manifest. The chart audit checks
+the Python loop, condition and fallback through the AST.
+
+The registered doubling session passed in 151 s at `70560d96`. Its
+three-step translation uses a supplied cyclic word, signed shift, both
+source halos and the remainder in the centered clock. On the Linux ARM64
+receiving build 228 affected cases passed. On macOS 127 installed-fixture,
+rollback and checker cases passed without skips. The isolated pytest
+selection exercised the native wheel's actual entry points.
+
+The typed reversal probes at `40471f9e` expose their fixture setup to source
+policy. Three duplicate groups shared one literal digit oracle after
+`da5d6e68`. All 14 installed joint-slab tests passed and the full Linux
+policy scan passed in 49.54 s. In the baseline and receiving field-growth
+probe, both families published zero recursive field images at horizons
+16 and 32. The scaling gate remains red. Its real and synthetic blocker
+checks passed at `2a7d7f66`.
+
+The registered mixed-EQ proof at `0cee0075` passed in `Reverse_Residuals`
+in 129 s.
+It identifies the selected physical output, both ordered carries and the
+width change under the source, predecessor and inlet assumptions. The
+guarded build with the shared parent used 2.43 GiB. General inverse source
+admission, arbitrary packet contacts and unissued cut-383/415 drives remain
+open. Native train dispatch retains its opt-in.
