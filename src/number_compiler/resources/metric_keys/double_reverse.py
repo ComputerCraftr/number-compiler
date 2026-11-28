@@ -353,3 +353,11 @@ DOUBLE_REVERSE_INITIAL_COUNTERS: Final[tuple[str, ...]] = (
     DOUBLE_REVERSE_PERIODIC_BANK_MOORE_REFINEMENT_SWEEPS,
     DOUBLE_REVERSE_PERIODIC_BANK_MOORE_REFINEMENT_ROUNDS,
 )
+
+DOUBLE_REVERSE_PERIODIC_BANK_RELATIVE_CHECKS: Final = (
+    "double_reverse_periodic_bank_relative_checks"
+)
+
+DOUBLE_REVERSE_PERIODIC_BANK_RELATIVE_ACTIONS: Final = (
+    "double_reverse_periodic_bank_relative_actions"
+)

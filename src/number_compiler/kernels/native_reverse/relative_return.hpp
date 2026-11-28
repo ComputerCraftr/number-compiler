@@ -10,6 +10,7 @@ struct RelativeRun {
     std::int64_t lo = 0;
     std::int64_t hi = 0;
     int shift = 0;
+    bool uniform = false;
 };
 
 inline unsigned relative_matches(std::string_view source, std::int64_t i,
@@ -21,11 +22,13 @@ inline unsigned relative_matches(std::string_view source, std::int64_t i,
     const int y = (multiplier * (right % base)) + (digit / base);
     const int result = (multiplier * (x % base)) + (y / base);
     return (result == right ? 1U : 0U) | (result == digit ? 2U : 0U) |
-           (result == left ? 4U : 0U);
+           (result == left ? 4U : 0U) |
+           (left == digit && digit == right ? 8U : 0U);
 }
 
 // Check the exact two-tick nearest-neighbour action at every covered source
-// triple. The source-specific carry inlet is encoded in the digit triple.
+// triple. Bits 0..2 identify translations. Bit 3 certifies the six-gate
+// uniform return. The digit triple supplies the physical carry inlet.
 inline RelativeRun relative_run(std::string_view source, int multiplier,
                                 std::int64_t steps) {
     const auto size = static_cast<std::int64_t>(source.size());
@@ -41,7 +44,7 @@ inline RelativeRun relative_run(std::string_view source, int multiplier,
     bool possible = false;
     for (std::int64_t begin = 0; begin + block <= size && !possible;
          begin += block) {
-        unsigned shifts = 7U;
+        unsigned shifts = 15U;
         for (int probe = 0; probe < 8 && (shifts != 0); ++probe) {
             const auto i = begin + 2 + ((block - 3) * probe / 7);
             shifts &= relative_matches(source, i, multiplier, base);
@@ -52,14 +55,19 @@ inline RelativeRun relative_run(std::string_view source, int multiplier,
         return {};
     }
     RelativeRun best;
-    std::int64_t start[3] = {0, 0, 0};
+    std::int64_t start[4] = {};
     for (std::int64_t i = 2; i < size; ++i) {
         const unsigned matches = relative_matches(source, i, multiplier, base);
-        for (unsigned shift = 0; shift < 3; ++shift) {
+        for (unsigned shift = 0; shift < 4; ++shift) {
             if ((matches & (1U << shift)) == 0) {
                 start[shift] = i - 1;
             } else if (i + 1 - start[shift] > best.hi - best.lo) {
-                best = {start[shift], i + 1, static_cast<int>(shift)};
+                best = {
+                    start[shift],
+                    i + 1,
+                    shift == 3U ? 0 : static_cast<int>(shift),
+                    shift == 3U,
+                };
             }
         }
     }

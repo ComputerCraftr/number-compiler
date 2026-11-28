@@ -48,6 +48,7 @@ from number_compiler.sequences.double_reverse.palindrome_event_cursor import (
 )
 from number_compiler.sequences.double_reverse.protected_temporal_bank import (
     MAX_PROTECTED_PERIOD,
+    MAX_RELATIVE_PERIOD,
     ProtectedPeriodicBank,
     protected_periodic_bank,
 )
@@ -628,7 +629,7 @@ class DoubleReverseTerm(DoubleReverseBankMixin):
         """
         self.check_open()
         pair_position = require_integer(pair_position, "pair position", 0)
-        period = require_integer(period, "bank period", 1, MAX_PROTECTED_PERIOD)
+        period = require_integer(period, "bank period", 1, MAX_RELATIVE_PERIOD)
         if self.generation < 2:
             raise UncertifiedPointedStencilError(
                 "protected temporal bank requires two physical generations"

@@ -451,3 +451,76 @@ def test_exact_pair_cli_observer(capsys: pytest.CaptureFixture[str]) -> None:
     assert result["eq"] == 0
     assert result["physical_prefix"] == 16
     assert result["digits"] == [7, 8]
+
+
+@pytest.mark.parametrize(
+    ("phase", "upper", "lower"),
+    ((0, "17", "88"), (1, "17", "42"), (2, "48", "42"), (3, "48", "88")),
+)
+def test_supplied_period_return_uses_both_physical_rays(
+    phase: int, upper: str, lower: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("source-relative admission opened temporal children")
+
+    monkeypatch.setattr(
+        protected_temporal_bank_module, "advance_periodic_state", forbidden
+    )
+    motif = "0332966666667"
+    other = "1533338466666" if phase == 3 else motif
+    source = upper + motif * 70 + other * 70 + lower
+    ticks, cut = 576, 350
+    with DoubleReverseTerm(int(source), ticks, max_state_bits=16384) as term:
+        bank = term.protected_temporal_bank(cut, period=13)
+        assert bank.relative is not None and bank.relative.return_multiple == 26
+        assert not (bank.motif or bank.prefix_frames or bank.suffix)
+        assert term.published_image is None
+        totals = {bank_channel_name(channel): 0 for channel in BANK_CHANNELS}
+        x = int(source)
+        for pair_time in range(ticks // 2):
+            left, right = growth_ports(phase, pair_time)
+            word = str(x)
+            before = (int(word[cut + left]), int(word[len(source) - 1 - cut + right]))
+            x = literal_t(literal_t(x))
+            nl, nr = growth_ports(phase, pair_time + 1)
+            word = str(x)
+            after = (int(word[cut + nl]), int(word[len(source) - 1 - cut + nr]))
+            frame = bank.at(pair_time)
+            assert frame.digits == before and frame.next_digits == after
+            assert (frame.growth_left, frame.growth_right) == (nl - left, nr - right)
+            assert frame.borrow_left == (
+                int(after[0] < before[0]),
+                int(after[0] <= before[0]),
+            )
+            assert frame.borrow_right == (
+                int(after[1] < before[1]),
+                int(after[1] <= before[1]),
+            )
+            for channel in BANK_CHANNELS:
+                totals[bank_channel_name(channel)] += frame.scalar(channel)
+        assert bank.counts() == totals
+
+
+def test_supplied_return_refuses_bad_halo_and_nonreturning_word() -> None:
+    motif = "0332966666667"
+    for middle in ("0123456789012" * 50, motif * 7 + "5" + (motif * 43)[1:]):
+        with DoubleReverseTerm(int("17" + middle + "88"), 82) as term:
+            with pytest.raises(UncertifiedPointedStencilError):
+                term.protected_temporal_bank(100, period=13)
+            assert term.published_image is None
+
+
+def test_two_oriented_halos_share_one_checked_128_slot_action() -> None:
+    motif = "0" + "3" * 60 + "29" + "6" * 64 + "7"
+    with DoubleReverseTerm(
+        int("17" + motif * 10 + "88"), 288, max_state_bits=8192
+    ) as term:
+        bank = term.protected_temporal_bank(200, period=128)
+        assert bank.relative is not None and bank.relative.left == bank.relative.right
+        assert bank.relative.left_entry != bank.relative.right_entry
+        counters = term.resource_ledger.counters
+        assert counters["double_reverse_periodic_bank_relative_checks"] == 128
+        assert counters["double_reverse_periodic_bank_relative_actions"] == 1
+        assert counters.get("double_reverse_periodic_bank_temporal_states", 0) == 0
+        with pytest.raises(ValueError):
+            term.protected_temporal_bank(200, period=129)

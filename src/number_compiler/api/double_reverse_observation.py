@@ -352,11 +352,14 @@ def _observe_double_reverse_cylinder(
             bank = term.protected_temporal_bank(
                 options.grammar_position, period=options.grammar_period
             )
+            shape = asdict(bank)
+            if bank.relative is None:
+                del shape["relative"]
             return publish_observation(
                 context,
                 name,
                 {
-                    **asdict(bank),
+                    **shape,
                     "counts": bank.counts(),
                     "represented_steps": bank.represented_steps,
                     "position_unit": "entry_outer_to_inner_pair",

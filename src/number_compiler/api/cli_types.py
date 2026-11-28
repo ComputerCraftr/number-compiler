@@ -167,8 +167,15 @@ class DoubleReverseObservationOptions:
         require_integer(self.walsh_start, "--temporal-walsh-start", 0)
         if self.radix_places > 256:
             raise ValueError("radix projection exceeds 256 places")
-        if self.grammar_period > 8:
-            raise ValueError("temporal bank period exceeds 8 cells")
+        supplied_return = (
+            ObservationId.TEMPORAL_GRAMMAR in self.info
+            and ObservationId.TEMPORAL_RADIX_WALSH not in self.info
+            and ObservationId.SPATIAL_BANK_MORPHISM not in self.info
+        )
+        if self.grammar_period > (128 if supplied_return else 8):
+            raise ValueError(
+                "temporal bank period exceeds the selected observation limit"
+            )
         if self.modulus is not None:
             require_integer(self.modulus, "--modulus", 1)
             if self.modulus.bit_length() > 4096:

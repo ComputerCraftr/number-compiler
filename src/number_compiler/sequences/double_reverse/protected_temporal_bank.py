@@ -18,6 +18,7 @@ from collections.abc import Mapping
 from contextlib import ExitStack, nullcontext
 from dataclasses import dataclass
 from enum import Enum
+from math import gcd, lcm
 from typing import TypeAlias, cast
 
 from number_compiler.arithmetic.automata.slp import SLPArena
@@ -26,6 +27,7 @@ from number_compiler.arithmetic.automata.slp_interval import (
     fold_slp_interval,
 )
 from number_compiler.arithmetic.automata.slp_walks import symbol_at
+from number_compiler.arithmetic.automata.word_period import canonical_primitive_rotation
 from number_compiler.arithmetic.fields.decimal_pair_partition import (
     DECIMAL_PAIR_BANDS,
     DecimalPairBand,
@@ -98,6 +100,7 @@ def parse_bank_channel(value: object) -> BankChannel:
 
 
 MAX_PROTECTED_PERIOD = 8
+MAX_RELATIVE_PERIOD = 128
 MAX_PROTECTED_TEMPORAL_STATES = 4096
 
 
@@ -184,10 +187,10 @@ def certified_periodic_regions(
         if (
             type(pattern) is not tuple
             or not pattern
-            or len(pattern) > MAX_PROTECTED_PERIOD
+            or len(pattern) > MAX_RELATIVE_PERIOD
             or any(type(d) is not int or not 0 <= d <= 9 for d in pattern)
         ):
-            raise ValueError("period must contain 1..8 decimal digits")
+            raise ValueError("period must contain 1..128 decimal digits")
         if (
             type(lo) is not int
             or type(hi) is not int
@@ -382,6 +385,28 @@ class SourceAuthorizedFrameWindow(SourceAuthorizedRecord):
 _PeriodicState: TypeAlias = tuple[tuple[int, ...], tuple[int, ...], int, int, int]
 
 
+def _bank_frame(
+    before: tuple[int, int], after: tuple[int, int], birth_left: int, birth_right: int
+) -> PeriodicBankFrame:
+    pair = sum(before)
+    projection = decimal_pair_partition(pair)
+    carries = tuple(int(d >= 5) for d in before)
+    return PeriodicBankFrame(
+        pair,
+        projection.f5,
+        *projection.masks,
+        before,
+        after,
+        carries[0],
+        carries[1],
+        carries[0] ^ carries[1],
+        (int(after[0] < before[0]), int(after[0] < before[0] + 1)),
+        (int(after[1] < before[1]), int(after[1] < before[1] + 1)),
+        birth_left,
+        birth_right,
+    )
+
+
 def advance_periodic_state(
     state: _PeriodicState, *, ledger: ResourceLedger | None = None
 ) -> tuple[_PeriodicState, PeriodicBankFrame]:
@@ -408,23 +433,7 @@ def advance_periodic_state(
     next_right_index = (offset_right + birth_right - birth_left) % len(right)
     before = (left[offset_left], right[offset_right])
     after = (left_new[next_left_index], right_new[next_right_index])
-    pair = sum(before)
-    projection = decimal_pair_partition(pair)
-    carries = tuple(int(d >= 5) for d in before)
-    frame = PeriodicBankFrame(
-        pair,
-        projection.f5,
-        *projection.masks,
-        before,
-        after,
-        carries[0],
-        carries[1],
-        carries[0] ^ carries[1],
-        (int(after[0] < before[0]), int(after[0] < before[0] + 1)),
-        (int(after[1] < before[1]), int(after[1] < before[1] + 1)),
-        birth_left,
-        birth_right,
-    )
+    frame = _bank_frame(before, after, birth_left, birth_right)
     return (
         left_new,
         right_new,
@@ -539,6 +548,87 @@ class ExactTemporalPairPort:
 
 
 @dataclass(frozen=True, slots=True)
+class RelativePairAction:
+    """Guarded primitive spatial motifs with a rotation per F=T**2.
+
+    The physical query horizon is deliberately not part of this generator.
+    A separate source-issued ProtectedPeriodicBank owns that extent.
+    """
+
+    left: tuple[int, ...]
+    right: tuple[int, ...]
+    left_entry: int
+    right_entry: int
+    left_shift: int
+    right_shift: int
+    phase: int
+
+    @property
+    def return_multiple(self) -> int:
+        return lcm(
+            2,
+            len(self.left) // gcd(len(self.left), self.left_shift),
+            len(self.right) // gcd(len(self.right), self.right_shift),
+        )
+
+    def digits(self, tick: int) -> tuple[int, int]:
+        left_births, right_births = growth_ports(self.phase, tick)
+        return (
+            self.left[(self.left_entry + self.left_shift * tick) % len(self.left)],
+            self.right[
+                (
+                    self.right_entry
+                    + self.right_shift * tick
+                    + right_births
+                    - left_births
+                )
+                % len(self.right)
+            ],
+        )
+
+    def frame(self, tick: int) -> PeriodicBankFrame:
+        return _bank_frame(
+            self.digits(tick),
+            self.digits(tick + 1),
+            *growth_ports((self.phase + 2 * tick) % 4, 1),
+        )
+
+    def counts(self, extent: int) -> dict[str, int]:
+        # Both primitive periods divide the supplied spatial motif length.
+        # Contract the two parity-track source residue classes with their
+        # exact multiplicities. No requested temporal interval is expanded,
+        # no successor states or temporal frame word are retained.
+        result = {bank_channel_name(c): 0 for c in BANK_CHANNELS}
+        track = self.return_multiple // 2
+        for parity in (0, 1):
+            copies, tail = divmod((extent + 1 - parity) // 2, track)
+            for j in range(track if copies else tail):
+                weight = copies + int(j < tail)
+                if not weight:
+                    continue
+                f = self.frame(2 * j + parity)
+                for c in BANK_CHANNELS:
+                    result[bank_channel_name(c)] += weight * f.scalar(c)
+        return result
+
+
+def _checked_shift(word: tuple[int, ...], ledger: ResourceLedger | None) -> int | None:
+    size = len(word)
+    target = tuple(
+        stencil_cell(word[i - 1], digit, word[(i + 1) % size])
+        for i, digit in enumerate(word)
+    )
+    if ledger is not None:
+        ledger.bump(
+            _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_RELATIVE_CHECKS, size
+        )
+    for shift in (0, 1, -1):
+        if all(digit == word[(i + shift) % size] for i, digit in enumerate(target)):
+            return shift
+    return None
+
+
+@dataclass(frozen=True, slots=True)
 class ProtectedPeriodicBank(SourceAuthorizedRecord):
     """Finite-halo, source-root-specific lasso of exact temporal output frames."""
 
@@ -555,6 +645,7 @@ class ProtectedPeriodicBank(SourceAuthorizedRecord):
     repeat_count: int
     suffix: tuple[PeriodicBankFrame, ...]
     moore_classes: Mapping[str, int] | None
+    relative: RelativePairAction | None = None
 
     def __post_init__(self) -> None:
         if self.moore_classes is not None and not isinstance(
@@ -569,6 +660,8 @@ class ProtectedPeriodicBank(SourceAuthorizedRecord):
 
     def structural_steps(self) -> int:
         """Compute structural lasso length; this alone grants no source authority."""
+        if self.relative is not None:
+            return self.f_steps
         return (
             len(self.prefix_frames)
             + len(self.motif) * self.repeat_count
@@ -583,6 +676,8 @@ class ProtectedPeriodicBank(SourceAuthorizedRecord):
         """Read a frame after one source-authority check at the API boundary."""
         if type(tick) is not int or not 0 <= tick < self.f_steps:
             raise IndexError(tick)
+        if self.relative is not None:
+            return self.relative.frame(tick)
         if tick < len(self.prefix_frames):
             return self.prefix_frames[tick]
         tick -= len(self.prefix_frames)
@@ -613,6 +708,8 @@ class ProtectedPeriodicBank(SourceAuthorizedRecord):
 
     def counts(self) -> dict[str, int]:
         validate_source_record(self)
+        if self.relative is not None:
+            return self.relative.counts(self.f_steps)
         return {
             bank_channel_name(channel): (
                 sum(frame.scalar(channel) for frame in self.prefix_frames)
@@ -643,8 +740,8 @@ def protected_periodic_bank(
     """
     if type(f_steps) is not int or f_steps < 1:
         raise ValueError("positive two-step temporal duration required")
-    if type(period) is not int or not 1 <= period <= MAX_PROTECTED_PERIOD:
-        raise ValueError("protected temporal bank requires period 1..8")
+    if type(period) is not int or not 1 <= period <= MAX_RELATIVE_PERIOD:
+        raise ValueError("protected temporal bank requires period 1..128")
     if type(phase) is not int or phase not in range(4):
         raise ValueError("source must have a certified four-phase boundary")
     if type(source_root) is not int or not 0 <= source_root < len(arena.nodes):
@@ -712,6 +809,58 @@ def protected_periodic_bank(
         raise ProtectedPeriodicBankRefused(
             "source periodic halo does not match its GT/EQ/LT bank"
         )
+
+    if period > MAX_PROTECTED_PERIOD:
+        # Longer source periods are admitted only by the algebraic return
+        # theorem. The legacy discovery bound is not raised.
+        context = (
+            nullcontext()
+            if ledger is None
+            else ledger.reservation(
+                cast(int, scratch_owner), entries=8 * period, nodes=8 * period
+            )
+        )
+        with context:
+            left, left_entry, _ = canonical_primitive_rotation(
+                left_period, guard_key=int
+            )
+            right, right_entry, _ = canonical_primitive_rotation(
+                right_period, guard_key=int
+            )
+            left_shift = _checked_shift(left, ledger)
+            right_shift = left_shift if left == right else _checked_shift(right, ledger)
+            if left_shift is None or right_shift is None:
+                raise ProtectedPeriodicBankRefused(
+                    "long period lacks a relative-return miter"
+                )
+            action = RelativePairAction(
+                left, right, left_entry, right_entry, left_shift, right_shift, phase
+            )
+            result = ProtectedPeriodicBank(
+                pair_position,
+                width,
+                phase,
+                physical_prefix,
+                f_steps,
+                period,
+                left_bounds,
+                right_bounds,
+                (),
+                (),
+                0,
+                (),
+                None,
+                action,
+            )
+        issue_source_record(
+            result, arena, source_root, source_generation=physical_prefix
+        )
+        if ledger is not None:
+            ledger.bump(_double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_PUBLICATIONS)
+            ledger.bump(
+                _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_RELATIVE_ACTIONS
+            )
+        return result
 
     with ExitStack() as scratch:
         frames: list[PeriodicBankFrame] = []

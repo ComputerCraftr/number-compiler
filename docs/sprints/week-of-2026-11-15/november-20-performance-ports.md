@@ -42,6 +42,45 @@ The combined changed Python test selection passed 219 tests. The
 registered `Mahler_Source_Transport` build passed in 148.58 seconds on
 the combined CF proof tree.
 
+### Source-derived reflected returns on 83f29817
+
+The optional reflected endpoint accepts a constant-digit causal interior for
+either multiplier. Six physical gates return every constant decimal inlet.
+The native wave applies the residual gates and computes both physical fringes.
+The centered local translation test still advances two physical ticks per
+action. The supplied-period `2rev10` grammar uses that clock, the two moving
+halos, and the signed right-minus-left birth drift. On a 576-tick installed
+request, periods 13 and 128 required 13 and 128 primitive slot evaluations,
+respectively. Each published one relative action, visited zero temporal states,
+and succeeded with temporal successor construction disabled. Aggregate channel
+counts evaluate the demanded residues of the action. The unclassified motif
+`0123456789012` published zero actions and returned exit 3.
+
+A four-step border return alone loses information. At generations 160 and
+736, seed 73 in `2rev10` agrees in the lowest 14 digits, then differs by
+0 versus 8. Its signed Laurent defects agree at those 14 places and then
+differ by 0 versus 4. In `5rev10` the same seed agrees on two places and
+differs at the third. For seed 196 the four-step offsets 12, 36, 72, 144,
+and 288 at generation 160 preserve 14 low digits and fail at the next place.
+The seed-196 certificates retain their original scope.
+
+For the installed 144-tick endpoint on `17` + 1,800 ones + `88`, the
+shared native wave reduced tile evaluations from 28,245 to 5,602 for
+`2rev10` and from 27,972 to 5,092 for `5rev10`. On the equally wide
+mixed-digit control, tile counts stayed at 28,245 and 27,970.
+Five interleaved cold console-script trials included setup and rendering.
+On the final wheel, median times were 207.8 → 216.8 ms and
+132.0 → 132.9 ms. The earlier sample gave 221.1 → 228.1 ms and
+140.0 → 136.1 ms. Warm installed CLI medians with process-cache bypass
+were 44.94 → 44.73 ms and 6.94 → 6.83 ms on the uniform interior.
+Dispatch remains opt-in.
+
+The shared arithmetic, double-reverse temporal, and five-reverse Isabelle
+sessions passed their guarded builds in 60.3, 212.5, and 158.3 seconds.
+The reversal and CLI selection passed 1,235 tests. Installed macOS and
+Linux ARM64 native wheels entered both kernels on eligible inputs. Linux
+pure-Python and short native-wheel controls used the exact fallback.
+
 ### November 27 production CLI follow-up
 
 The receiving revision was `a6ad6056`. The default CF cylinder now issues

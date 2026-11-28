@@ -1,5 +1,5 @@
 theory Double_Reverse_Four_Port_Defect_Refinement
-  imports Double_Reverse_Four_Port_Numeric_Refinement
+  imports Double_Reverse_Four_Port_Numeric_Refinement Shared_Carry_Dynamics.Reflected_Annulus_Return
 begin
 
 text \<open>This theory proves the concrete source-carry refinement for the
@@ -545,6 +545,42 @@ proof -
   qed
 qed
 
+lemma reflected_source_double_stencil:
+  assumes "l < 10" "d < 10" "r < 10"
+  shows "reflected_source_two_gate 2 l d r =
+    (4*d + 2*(if l>=5 then 1 else 0) +
+      (if r mod 5 >= 3 \<or> (r mod 5 = 2 \<and> d >= 5) then 1 else 0)) mod 10"
+proof -
+  have left: "l div 5 = (if 5 \<le> l then 1 else 0)" using assms(1) by presburger
+  have mid: "d=0 \<or> d=1 \<or> d=2 \<or> d=3 \<or> d=4 \<or> d=5 \<or> d=6 \<or> d=7 \<or> d=8 \<or> d=9"
+    using assms(2) by arith
+  have right: "r mod 5=0 \<or> r mod 5=1 \<or> r mod 5=2 \<or> r mod 5=3 \<or> r mod 5=4"
+    by presburger
+  from mid right show ?thesis
+    by (elim disjE; cases "5 \<le> l"; simp add: reflected_source_two_gate_def left)
+qed
+
+corollary double_reverse_one_birth_annulus_digit:
+  assumes src: "double_reverse_canonical_source source"
+    and succ: "double_reverse_canonical_source successor"
+    and link: "successor = double_reverse_four_port_closed_word (double_reverse_four_port_row source 0 0)"
+    and birth: "threshold5_digit (last source) + threshold5_digit (last successor) = 1"
+    and positive: "0 < (scale :: int)"
+  defines "x \<equiv> int (double_reverse_msf_value source)"
+    and "c \<equiv> int (double_reverse_source_carry_mask source)"
+    and "d \<equiv> int (if threshold5_digit (last successor) = 0
+      then double_reverse_source_carry_mask successor div 10 else double_reverse_source_carry_mask successor)"
+  shows "int (double_reverse_msf_value (double_reverse_four_port_closed_word
+      (double_reverse_four_port_row successor 0 0))) div scale mod 10 =
+    (160*(x div scale) + (160*(x mod scale) - 198*(4*c+d)) div scale) mod 10"
+proof -
+  have endpoint: "int (double_reverse_msf_value (double_reverse_four_port_closed_word
+      (double_reverse_four_port_row successor 0 0))) = 160*x - 198*(4*c+d)"
+    using double_reverse_four_port_two_macro_defect_exact[OF src succ link birth]
+    by (simp add: x_def c_def d_def)
+  show ?thesis unfolding endpoint by (rule four_tick_laurent_annulus_digit[OF positive])
+qed
+
 text \<open>The carry correction in the source-affine action prevents its
 coefficient from being read as an exact normalized mantissa rotation.  This
 bounded seed calculation records the concrete counterexample; it asserts no
@@ -592,7 +628,7 @@ lemmas double_reverse_four_port_defect_refinement_audit_bundle =
   double_reverse_seed_168_four_step_rotation_correction
 
 ML \<open>
-  val checked = @{thms double_reverse_four_port_defect_refinement_audit_bundle};
+  val checked = @{thms reflected_source_double_stencil double_reverse_one_birth_annulus_digit double_reverse_four_port_defect_refinement_audit_bundle};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Double-reverse four-port defect refinement depends on an oracle";
   val _ = if Thm_Deps.has_skip_proof checked

@@ -130,8 +130,11 @@ conditional observers. Both share bounded, charged entry discovery and avoid
 rendering the full endpoint. A source without a certified entry returns an
 unavailable observation with exit 3. `spatial.pair-bank` uses a final
 outer-to-inner pair coordinate. `temporal.grammar` uses an entry-source
-coordinate and `--temporal-grammar-period` (1–8) to certify both finite causal
-halos before publishing a repeated motif. Their coordinate units are explicit
+coordinate and a supplied `--temporal-grammar-period`. Periods 1–8 support
+bounded orbit discovery. Periods 9–128 require an exact one-pair rotation
+on both source-certified halos. This route reports the two oriented words,
+their entry offsets and shifts, and keeps the moving reflected cut in its
+physical phase. Their coordinate units are explicit
 in JSON.
 
 `temporal.carry-safety` on `2rev10` reports the source-derived three-cell
