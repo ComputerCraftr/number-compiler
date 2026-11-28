@@ -1,12 +1,18 @@
 """Independent rational checks for the finite powers-of-five CF cylinder."""
 
+from collections.abc import Callable
 from fractions import Fraction
+from typing import cast
 
 import pytest
 
 from number_compiler.arithmetic.automata.carry_spacetime_trace import Pow5SpatialTrace
 from number_compiler.arithmetic.fields.ordered_matrix import Matrix2
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.sequences.antihydra import (
+    mahler_continued_fraction_cylinder as cylinder,
+)
+from number_compiler.sequences.antihydra.mahler_cf_fractional_path import FractionalPath
 from number_compiler.sequences.antihydra.mahler_continued_fraction_cylinder import (
     continued_fraction_cylinder,
 )
@@ -15,6 +21,7 @@ from number_compiler.sequences.antihydra.mahler_pow5_ordered_blocks import (
     Pow5OrderedBlockSource,
 )
 from tests.sequences.antihydra.test_mahler_continued_fraction import literal_matrix
+from tests.support.private_attributes import private_test_attribute
 
 
 def literal_forces(
@@ -107,8 +114,13 @@ def test_full_horizon_cylinder_is_decisive_at_exactly_its_last_coefficient(
 ) -> None:
     blocks: list[Pow5OrderedBlock] = []
     refined_blocks: list[Pow5OrderedBlock] = []
+    compared_counts: list[int] = []
     next_block = Pow5OrderedBlockSource.next_block
     segment = Pow5OrderedBlock.segment
+    prepare = cast(
+        Callable[[Matrix2, FractionalPath], Callable[[Matrix2, int], bool]],
+        private_test_attribute(cylinder, "_prepared_prefix_contains"),
+    )
 
     def issued(
         source: Pow5OrderedBlockSource, max_rows: int, max_coefficients: int
@@ -122,13 +134,31 @@ def test_full_horizon_cylinder_is_decisive_at_exactly_its_last_coefficient(
         refined_blocks.append(block)
         return segment(block, start, length)
 
+    def checked(
+        prefix: Matrix2, action: FractionalPath
+    ) -> Callable[[Matrix2, int], bool]:
+        prepared = prepare(prefix, action)
+
+        def compare(tail: Matrix2, count: int) -> bool:
+            q, r, p, s = prefix.multiply(tail).entries
+            low, high = sorted((Fraction(p, q), Fraction(p + s, q + r)))
+            result = prepared(tail, count)
+            assert result == action.contains(low, high)
+            compared_counts.append(count)
+            return result
+
+        return compare
+
     monkeypatch.setattr(Pow5OrderedBlockSource, "next_block", issued)
     monkeypatch.setattr(Pow5OrderedBlock, "segment", refined)
+    monkeypatch.setenv("NUMBER_COMPILER_ENABLE_CF_PREPARED_PREFIX", "1")
+    monkeypatch.setattr(cylinder, "_prepared_prefix_contains", checked)
     ledger = ResourceLedger(max_nodes=10_000)
     result = continued_fraction_cylinder(4096, 20000, ledger=ledger)
     assert result["status"] == "available"
     assert len(blocks) < 39
     assert refined_blocks and all(block is blocks[-1] for block in refined_blocks)
+    assert {count % 2 for count in compared_counts} == {0, 1}
     count = result["coefficient_count"]
     assert isinstance(count, int) and count == 540
     digits: list[int] = []

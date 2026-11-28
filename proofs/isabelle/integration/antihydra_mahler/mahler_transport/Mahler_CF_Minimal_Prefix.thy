@@ -636,13 +636,68 @@ proof -
 qed
 
 
+lemma mahler_cf_pulled_boundary:
+  fixes q r p s u v n d :: real
+  assumes q: "0 < q*u+r*v" and d: "0 < d"
+  shows "n/d \<le> (p*u+s*v)/(q*u+r*v) \<longleftrightarrow>
+      0 \<le> u*(p*d-q*n)+v*(s*d-r*n)"
+    "(p*u+s*v)/(q*u+r*v) \<le> n/d \<longleftrightarrow>
+      u*(p*d-q*n)+v*(s*d-r*n) \<le> 0"
+  using q d by (simp_all add: field_simps algebra_simps)
+
+lemma mahler_cf_second_endpoint_first:
+  fixes q r p s :: real
+  assumes positive: "0 < q + r" "0 < q"
+  shows "(p+s)/(q+r) \<le> p/q \<longleftrightarrow> q*s-r*p \<le> 0"
+proof -
+  have "(p+s)/(q+r) \<le> p/q \<longleftrightarrow>
+      (p+s)*q \<le> p*(q+r)"
+    using positive by (simp add: field_simps)
+  also have "\<dots> \<longleftrightarrow> q*s-r*p \<le> 0"
+    by (simp add: algebra_simps)
+  finally show ?thesis .
+qed
+
+theorem mahler_cf_pulled_interval:
+  fixes q r p s u v x y lo ld hi hd :: real
+  assumes lower: "0 < ld" and upper: "0 < hd"
+    and first: "0 < q*u+r*v" and second: "0 < q*(u+x)+r*(v+y)"
+    and orientation: "rev_order \<longleftrightarrow>
+      (p*(u+x)+s*(v+y))/(q*(u+x)+r*(v+y)) \<le> (p*u+s*v)/(q*u+r*v)"
+  shows "(let a = (p*u+s*v)/(q*u+r*v);
+             b = (p*(u+x)+s*(v+y))/(q*(u+x)+r*(v+y))
+         in lo/ld \<le> min a b \<and> max a b \<le> hi/hd) \<longleftrightarrow>
+       (let a = p*ld-q*lo; b = s*ld-r*lo; c = p*hd-q*hi; d = s*hd-r*hi
+        in if rev_order then 0 \<le> (u+x)*a+(v+y)*b \<and> u*c+v*d \<le> 0
+           else 0 \<le> u*a+v*b \<and> (u+x)*c+(v+y)*d \<le> 0)"
+proof (cases rev_order)
+  case True
+  then have ordered: "(p*(u+x)+s*(v+y))/(q*(u+x)+r*(v+y)) \<le> (p*u+s*v)/(q*u+r*v)"
+    using orientation by blast
+  show ?thesis
+    unfolding Let_def min_absorb2[OF ordered] max_absorb1[OF ordered]
+    using True by (simp only: if_True
+      mahler_cf_pulled_boundary(1)[OF second lower]
+      mahler_cf_pulled_boundary(2)[OF first upper])
+next
+  case False
+  then have ordered: "(p*u+s*v)/(q*u+r*v) \<le> (p*(u+x)+s*(v+y))/(q*(u+x)+r*(v+y))"
+    using orientation by simp
+  show ?thesis
+    unfolding Let_def min_absorb1[OF ordered] max_absorb2[OF ordered]
+    using False by (simp only: if_False
+      mahler_cf_pulled_boundary(1)[OF first lower]
+      mahler_cf_pulled_boundary(2)[OF second upper])
+qed
+
 ML \<open>
   val checked = @{thms mahler_cf_prefix_is_ordered_continuant
     mahler_cf_digit_cylinder_nested mahler_cf_source_prefix_nested
     mahler_cf_physical_prefix_decision_monotone
     mahler_cf_source_consumer_first_decisive mahler_cf_pow5_stream_consumer_first_decisive
     mahler_cf_source_consumer_skip
-    mahler_cf_complete_source_guard mahler_cf_budget_unknown};
+    mahler_cf_complete_source_guard mahler_cf_budget_unknown
+    mahler_cf_second_endpoint_first mahler_cf_pulled_interval};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Mahler CF prefix refinement depends on an oracle";
   val _ = if Thm_Deps.has_skip_proof checked

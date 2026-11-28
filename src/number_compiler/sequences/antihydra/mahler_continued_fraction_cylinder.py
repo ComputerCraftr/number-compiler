@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
 _MAX_CYLINDER_HORIZON = 4096
 _SPATIAL_CYLINDER_MIN_HORIZON = 64
+_PREPARED_PREFIX_MIN_COUNT = 256
 
 
 class _OrderedCFBlock(Protocol):
@@ -131,6 +132,36 @@ def _interval(matrix: Matrix2) -> tuple[Fraction, Fraction]:
     return low, high
 
 
+def _prepared_prefix_contains(
+    committed: Matrix2, action: fractional.FractionalPath
+) -> Callable[[Matrix2, int], bool]:
+    """Pull both guard boundaries through the same committed prefix."""
+    q, previous_q, p, previous_p = committed.entries
+    high_denominator = 2 * action.gain
+    low_current = p * action.gain - q * action.lower
+    low_previous = previous_p * action.gain - previous_q * action.lower
+    high_current = p * high_denominator - q * action.upper
+    high_previous = previous_p * high_denominator - previous_q * action.upper
+
+    def contains(suffix: Matrix2, count: int) -> bool:
+        u, previous_u, v, previous_v = suffix.entries
+        following_u = u + previous_u
+        following_v = v + previous_v
+        # In the live convention q,p are the first column. Odd-length
+        # continuants put the endpoint of the summed column first.
+        if count & 1:
+            return (
+                following_u * low_current + following_v * low_previous >= 0
+                and u * high_current + v * high_previous <= 0
+            )
+        return (
+            u * low_current + v * low_previous >= 0
+            and following_u * high_current + following_v * high_previous <= 0
+        )
+
+    return contains
+
+
 def continued_fraction_cylinder(
     horizon: int,
     max_coefficients: int,
@@ -222,18 +253,36 @@ def continued_fraction_cylinder(
             # This block fixes the complete path, so its exact guard decides
             # which inside prefix is sufficient without replaying the path.
             lower = 0
-            lower_product = prefix
+            prepared = (
+                _prepared_prefix_contains(prefix, action)
+                if count >= _PREPARED_PREFIX_MIN_COUNT
+                and length > 2
+                and os.environ.get("NUMBER_COMPILER_ENABLE_CF_PREPARED_PREFIX") == "1"
+                else None
+            )
+            lower_product = prefix if prepared is None else Matrix2.identity()
+            selected_suffix: Matrix2 | None = None
             while lower + 1 < length:
                 middle = (lower + length) // 2
                 candidate = lower_product.multiply(block.segment(lower, middle - lower))
-                smaller_low, smaller_high = _interval(candidate)
-                if action.contains(smaller_low, smaller_high):
-                    product = candidate
-                    low, high = smaller_low, smaller_high
+                if prepared is None:
+                    smaller_low, smaller_high = _interval(candidate)
+                    accepted = action.contains(smaller_low, smaller_high)
+                    if accepted:
+                        product = candidate
+                        low, high = smaller_low, smaller_high
+                else:
+                    accepted = prepared(candidate, count + middle)
+                    if accepted:
+                        selected_suffix = candidate
+                if accepted:
                     length = middle
                 else:
                     lower = middle
                     lower_product = candidate
+            if selected_suffix is not None:
+                product = prefix.multiply(selected_suffix)
+                low, high = _interval(product)
             endpoint_lower = Fraction(*action.endpoint(low))
             endpoint_upper = Fraction(*action.endpoint(high))
             return {
