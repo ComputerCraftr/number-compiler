@@ -3264,3 +3264,50 @@ The registered `Five_Reverse` session completed in 113 seconds on
 the cross-family revision. It checked the migrated window consumer,
 its four-stage source outcomes, and the new padding and admission
 examples. See `results/nc-cross-family-debt-native`.
+
+### NC43 binary and ternary reverse/add production report
+
+The November 27 port starts at `9719a2c2`. It integrates
+`NC43_binary_ternary_production.patch` (SHA-256 prefix `1275f7519545`)
+and the [archived donor report](../../archive/reverse-add/NC43_binary_ternary_production_report.md)
+(`cc9e37ba195a`). The three conflicting hunks affected the metric
+registry, extension dependencies, and Python extension method table.
+The receiving tree shares word reflection with the existing Q19 kernel.
+
+The source image now issues a four-phase binary endpoint for exact run
+matches and the two checked seed entries. A short unrecognized binary
+source can spend at most 64 charged physical rows looking for entry.
+Seed 196 joins after six. Positive modular queries consume the issued
+endpoint through the existing `arithmetic.modular` endpoint view. Its
+CLI modulus range starts at two. The geometric law and width are
+described in [the reverse/add research note](../../research/reverse-add.md#binary-four-generation-return).
+
+The portable executor is the default for a generic long base-2 or base-3
+source. Build the optional extension with
+`NUMBER_COMPILER_BUILD_NATIVE_REVERSE=1` and set
+`NUMBER_COMPILER_ENABLE_NATIVE_REVERSE=1` to use it. Non-admitted
+queries through generation 128 retain the short exact path.
+Generic execution admits at most one million ticks, four million columns
+including potential growth, and 200 million word updates at the worst-case
+width. Scratch and retained endpoint storage use the source ledger.
+
+Fresh pure and native wheels on macOS arm64 and Linux aarch64 each
+matched 41 public CLI fixture packets. The four phases starting at
+(10^{80}) matched the independent recurrence for moduli 1,000,003,
+(2^{64}), and 64,000,192. Nine middle bits per phase were checked
+through the installed term API. Seed 22 at (10^{80}) issued one
+powered endpoint with zero physical rows. Ternary seed 196 used the
+short route at 128. At 129 it processed 158 word tiles, and at 1,000
+it processed 5,240. Each run advanced exactly the requested number of
+physical rows. Installed decimal controls matched literal recurrence at
+1,024 ticks for reverse/add seed 196 and both reflected multipliers
+with seed 73.
+
+The registered `Reverse_Residuals` session passed in 74 seconds under
+the 300-second guard. Isabelle checked the four width-aligned physical
+successors and the normalized binary paths from seeds 22 and 1 to their
+entries. The new theorems passed the oracle and skipped-proof audit.
+The affected guarded unit selection passed 1,447 tests and the reverse/add
+P0 selection passed 37. A separate installed native check matched 680
+literal bitplane runs and rejected five malformed calls. The ternary
+machine-code evidence is differential execution.

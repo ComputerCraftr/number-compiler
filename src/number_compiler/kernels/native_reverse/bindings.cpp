@@ -2,6 +2,7 @@
 
 #include "causal_add.hpp"
 #include "rev10.hpp"
+#include "small_radix.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -224,7 +225,56 @@ PyObject *guard98(PyObject * /*unused*/, PyObject *args) {
     }
 }
 
+PyObject *add_small_radix(PyObject * /*unused*/, PyObject *args) {
+    const char *source = nullptr;
+    Py_ssize_t size = 0;
+    PyObject *radix = nullptr, *duration = nullptr;
+    if (PyArg_ParseTuple(args, "y#OO", &source, &size, &radix, &duration) ==
+        0) {
+        return nullptr;
+    }
+    if (!PyLong_CheckExact(radix) || !PyLong_CheckExact(duration)) {
+        PyErr_SetString(PyExc_TypeError,
+                        "radix and step count must be integers");
+        return nullptr;
+    }
+    const auto base = PyLong_AsLong(radix);
+    const auto steps = PyLong_AsUnsignedLongLong(duration);
+    if (PyErr_Occurred() != nullptr) {
+        return nullptr;
+    }
+    if ((base != 2 && base != 3) || size < 1 || size > 4000000 ||
+        steps > 1000000) {
+        PyErr_SetString(PyExc_ValueError, "invalid small radix request");
+        return nullptr;
+    }
+    try {
+        const auto word = symbols(source, size);
+        const auto result = base == 2 ? small_radix::advance<2>(word, steps)
+                                      : small_radix::advance<3>(word, steps);
+        if (PyErr_CheckSignals() < 0) {
+            return nullptr;
+        }
+        return Py_BuildValue(
+            "y#(KKKK)", reinterpret_cast<const char *>(result.digits.data()),
+            static_cast<Py_ssize_t>(result.digits.size()),
+            static_cast<unsigned long long>(result.rows),
+            static_cast<unsigned long long>(result.words),
+            static_cast<unsigned long long>(result.full_words),
+            static_cast<unsigned long long>(result.births));
+    } catch (...) {
+        translate_exception(std::current_exception());
+        return nullptr;
+    }
+}
+
 PyMethodDef methods[] = {
+    {
+        "add_small_radix",
+        add_small_radix,
+        METH_VARARGS,
+        "Exact Q3/Q5 packed bitplane endpoint.",
+    },
     {
         "multiply",
         multiply,

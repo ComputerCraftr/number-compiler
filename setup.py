@@ -34,6 +34,8 @@ if os.environ.get("NUMBER_COMPILER_BUILD_NATIVE_REVERSE") == "1":
                 source + name
                 for name in (
                     "causal_add.hpp",
+                    "small_radix.hpp",
+                    "bitplane_word.hpp",
                     "pair_half_kick.hpp",
                     "rev10.hpp",
                     "relative_return.hpp",

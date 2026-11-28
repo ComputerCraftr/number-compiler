@@ -136,9 +136,16 @@ class ReverseSourceImageWorkspace:
             )
             rollback.callback(pointed_gt_banks.dispose)
             if base != 10 and 3 <= steps <= MAX_COMPLETED_CHILD_FALLBACK_STEPS:
-                adapter.prepare_recursive_authority(
-                    actions.source(source), steps, source_construction
-                )
+                from .binary_phase import admit as admit_binary
+
+                if (
+                    source_construction is not None
+                    or base != 2
+                    or admit_binary(actions.source(source).digits, steps) is None
+                ):
+                    adapter.prepare_recursive_authority(
+                        actions.source(source), steps, source_construction
+                    )
             scheduler.register_source_image_adapter(adapter)
             self.actions = actions
             self.source = source
@@ -753,6 +760,9 @@ class ReverseSourceImageWorkspace:
         image = self._demanded_image(SourceImageDemand("width"))
         view = self.scheduler.source_image_core().view(image)
         payload = cast(ReverseImagePayload, view.payload)
+        if payload.radix_output is not None:
+            yield from payload.radix_output.iter_digits()
+            return
         if payload.pair_output is not None:
             owner = self.adapter.audit_snapshot().q19_owner
             if owner is None:
@@ -776,6 +786,23 @@ class ReverseSourceImageWorkspace:
             )
             return
         yield from self.adapter.iter_primitive_digits(self.actions.source(self.source))
+
+    def modular_residue(self, modulus: int) -> int:
+        """Project the already-issued phase or packed output, not a second orbit."""
+        modulus = require_integer(modulus, "output modulus", 1)
+        image = self._demanded_image(SourceImageDemand("width"))
+        view = self.scheduler.source_image_core().view(image)
+        payload = self.adapter.validate_view(view)
+        if payload.radix_output is not None:
+            demand = SourceImageDemand("modulus", (modulus,))
+            return cast(
+                int, self.scheduler.source_projection(self.adapter, image, demand).value
+            )
+        value, power = 0, 1 % modulus
+        for digit in self.iter_digits():
+            value = (value + power * digit) % modulus
+            power = power * self.base % modulus
+        return value
 
     def dispose(self) -> None:
         if self._cleanup_complete:

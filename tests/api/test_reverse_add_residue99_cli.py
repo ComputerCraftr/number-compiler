@@ -69,3 +69,58 @@ def test_nondecimal_source_rejected_before_term_execution() -> None:
                 "residue",
             ]
         )
+
+
+@pytest.mark.parametrize(
+    ("base", "seed", "index", "modulus", "width", "residue"),
+    (
+        (2, 22, 8, 1000003, 10, 744),
+        (2, 1, 21, 1000003, 16, 48960),
+        (2, 22, 10**80 + 1, 2**64, 5 * 10**79 + 6, 2**64 - 3),
+        (2, 22, 10**80 + 2, 64000192, 5 * 10**79 + 7, 52221568),
+        (3, 1, 128, 1000003, 78, 436721),
+        (3, 1, 129, 1000003, 78, 916856),
+    ),
+)
+def test_small_radix_endpoint_view(
+    base: int,
+    seed: int,
+    index: int,
+    modulus: int,
+    width: int,
+    residue: int,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
+        cli.main(
+            [
+                "reverse-add",
+                "--base",
+                str(base),
+                "--seed",
+                str(seed),
+                "--nth",
+                str(index),
+                "--no-value",
+                "--format",
+                "json",
+                "--info",
+                "arithmetic.modular",
+                "--arithmetic-modular-kind",
+                "endpoint",
+                "--modulus",
+                str(modulus),
+            ],
+            shared_cache=False,
+        )
+        == 0
+    )
+    view = information_only_view(
+        json.loads(capsys.readouterr().out), "arithmetic.modular", "endpoint"
+    )
+    assert {key: view[key] for key in ("base", "width", "modulus", "residue")} == {
+        "base": base,
+        "width": width,
+        "modulus": modulus,
+        "residue": residue,
+    }

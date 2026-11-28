@@ -254,6 +254,11 @@ class ReverseAddPoweredTerm:
             return
         if self._source_construction is not None:
             return
+        if self.base == 2:
+            from .binary_phase import admit
+
+            if admit(digits_lsd(self.seed, 2), self.generation) is not None:
+                return
         pair = pair_field_from_integer(self.seed, self.base)
         blank = 2 * self.base - 1
         required = max(1, len(pair) + self.generation)
@@ -894,6 +899,13 @@ class ReverseAddPoweredTerm:
                 )
         finally:
             self._ledger.mark_disposed(workspace_owner)
+
+    def modular_residue(self, modulus: int) -> int:
+        """Exact source-owned residue; certified binary phases power directly."""
+        self.validate_source_binding()
+        modulus = require_integer(modulus, "output modulus", 1)
+        self.prepare_recursive_source_authority()
+        return self.source_workspace().modular_residue(modulus)
 
     def materialize(self, *, max_bits: int) -> int:
         max_bits = require_integer(max_bits, "output bit cap", 0)

@@ -509,3 +509,25 @@ REVERSE_CENTER11_PREFIX: Final = "reverse_center11_"
 REVERSE_CENTER11_SOURCE_TICKS: Final = "reverse_center11_source_ticks"
 REVERSE_CENTER11_COEFFICIENT_VISITS: Final = "reverse_center11_coefficient_visits"
 REVERSE_CENTER11_FAILED_WORK: Final = "reverse_center11_failed_work"
+
+# Exact nondecimal source execution and admitted binary phase returns.
+REVERSE_SMALL_RADIX_BINARY_ENTRY_ROWS: Final = "reverse_small_radix_binary_entry_rows"
+REVERSE_SMALL_RADIX_BINARY_POWERED_PUBLICATIONS: Final = (
+    "reverse_small_radix_binary_powered_publications"
+)
+REVERSE_SMALL_RADIX_BIRTHS: Final = "reverse_small_radix_births"
+REVERSE_SMALL_RADIX_FULL_WORD_COLUMNS: Final = "reverse_small_radix_full_word_columns"
+REVERSE_SMALL_RADIX_NATIVE_PUBLICATIONS: Final = (
+    "reverse_small_radix_native_publications"
+)
+REVERSE_SMALL_RADIX_NATIVE_WORD_TILES: Final = "reverse_small_radix_native_word_tiles"
+REVERSE_SMALL_RADIX_PHYSICAL_ROWS: Final = "reverse_small_radix_physical_rows"
+REVERSE_SMALL_RADIX_PORTABLE_PUBLICATIONS: Final = (
+    "reverse_small_radix_portable_publications"
+)
+REVERSE_SMALL_RADIX_PORTABLE_WORD_EQUIVALENTS: Final = (
+    "reverse_small_radix_portable_word_equivalents"
+)
+REVERSE_SMALL_RADIX_ZERO_FIXED_PUBLICATIONS: Final = (
+    "reverse_small_radix_zero_fixed_publications"
+)

@@ -20,8 +20,9 @@ from number_compiler.sequences.reverse_add.source_audit_bindings import (
 )
 from number_compiler.sequences.reverse_add.source_workspace_payload_audit import (
     audit_reverse_source_workspaces,
-    store_valid_for_audit,
 )
+
+from .source_store_audit import store_valid_for_audit
 
 
 def audit_reverse_source_payloads(

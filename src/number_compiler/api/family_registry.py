@@ -156,6 +156,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
             (
                 "width",
                 "max_digits",
+                "modulus",
                 "pair_bank_position",
                 "bank_morphism_count",
                 "grammar_period",
@@ -163,6 +164,7 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
         ),
         observer_options=_opts("width")
         + (
+            ("modulus", OptionSpec(None, (ObservationId.ARITHMETIC_MODULAR,))),
             (
                 "max_digits",
                 OptionSpec(
@@ -242,12 +244,6 @@ _CAPABILITY_ENTRIES: dict[FamilyId, FamilySpec] = {
                 "base",
                 10,
                 "temporal-stencil requires decimal base",
-            ),
-            (
-                ObservationId.ARITHMETIC_MODULAR,
-                "base",
-                10,
-                "temporal residue99 requires decimal base",
             ),
             (
                 ObservationId.TEMPORAL_ACCUMULATOR,

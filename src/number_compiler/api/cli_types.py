@@ -526,6 +526,19 @@ class QueryRequest:
             "views",
             spec.selected_views(selector, self.observations.info, self.views),
         )
+        if isinstance(self.observations, ReverseAddObservationOptions):
+            from number_compiler.api.query_types import ReverseAddTermQuery
+
+            if isinstance(self.execution, ReverseAddTermQuery):
+                if ObservationView.RESIDUE in self.views and self.execution.base != 10:
+                    raise ValueError("temporal residue99 requires decimal base")
+                if (
+                    ObservationView.ENDPOINT_RESIDUE in self.views
+                    and self.execution.base not in (2, 3)
+                ):
+                    raise ValueError(
+                        "reverse/add modular endpoint requires base 2 or 3"
+                    )
         if isinstance(self.observations, AntihydraObservationOptions):
             self.observations.validate_mahler_views(self.views)
         if {

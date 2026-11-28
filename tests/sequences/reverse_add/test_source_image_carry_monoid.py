@@ -22,7 +22,7 @@ def test_source_image_normalization_matches_exact_divmod_for_all_pair_symbols() 
                     quotient, digit = divmod(pair + incoming, base)
                     normalize = cast(
                         Callable[[int, int, int], tuple[int, int]],
-                        private_test_attribute(workspace.adapter, "_normalized"),
+                        private_test_attribute(workspace.adapter, "normalize_pair"),
                     )
                     assert normalize(pair, incoming, base) == (quotient, digit)
     finally:

@@ -247,6 +247,27 @@ def admit_reverse(context: QueryContext) -> None:
 
 def observe_reverse(context: QueryContext, name: ObservationId) -> Packet:
     options = observation_options(context, ReverseAddObservationOptions)
+    from number_compiler.api.number_api import PoweredReverseAddTermPayload
+
+    if (
+        name is ObservationId.ARITHMETIC_MODULAR
+        and View.ENDPOINT_RESIDUE in context.request.views
+    ):
+        payload = context.raw_projected_term().payload
+        if not isinstance(payload, PoweredReverseAddTermPayload):
+            raise TypeError("reverse/add modular endpoint requires a powered term")
+        modulus = options.modulus if options.modulus is not None else 257
+        packet = publish_observation(
+            context,
+            name,
+            {
+                "base": payload.term.base,
+                "modulus": modulus,
+                "residue": payload.term.modular_residue(modulus),
+                "width": payload.term.width(),
+            },
+        )
+        return publish_views(context, name, {View.ENDPOINT_RESIDUE: packet})
     if name is ObservationId.ARITHMETIC_MODULAR:
         from number_compiler.sequences.reverse_add.temporal_residue99 import from_seed
 
@@ -260,7 +281,6 @@ def observe_reverse(context: QueryContext, name: ObservationId) -> Packet:
             coordinates=(("duration",),),
         )
         return publish_views(context, name, {View.RESIDUE: packet})
-    from number_compiler.api.number_api import PoweredReverseAddTermPayload
 
     payload = context.term.payload
     if not isinstance(payload, PoweredReverseAddTermPayload):

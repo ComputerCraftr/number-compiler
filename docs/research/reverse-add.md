@@ -1198,3 +1198,32 @@ ownership must be charged separately from terminal emission. Concrete defects
 in earlier observer candidates are recorded in the
 [integration audit](../sprints/week-of-2026-09-27/reverse-add.md#september-30--all-level-terminal-observer-integration-audit),
 not treated as current production failures here.
+
+### Binary four-generation return
+
+Write the generation from binary seed 22 as (4k+r), with (k\ge2),
+(0\le r<4), and (t=2^k). Reading the full physical width gives the
+following values. Leading zeroes in the reflected word contribute zero.
+
+| Phase | Value | Binary reversal |
+| --- | --- | --- |
+| 0 | (48t^2-6t) | (24t-3) |
+| 1 | (48t^2+18t-3) | (48t^2-30t+3) |
+| 2 | (96t^2-12t) | (24t-3) |
+| 3 | (96t^2+12t-3) | (96t^2-24t+3) |
+
+In each row the sum is the next source. The fourth sum starts the first
+row with twice the previous (t). The width is (2k+6+[r\ge2]).
+Seed 22 enters at generation 8 with value 744. Seed 1 enters the same
+family at generation 21 with value 48960 and (k=5). An arbitrary
+source qualifies if its complete ordered binary runs match a phase word.
+The finite run lengths determine a requested bit by its position.
+Modular evaluation needs only (2^k\bmod m), including for even (m).
+
+For general binary and ternary words, column sums generate a carry above
+the radix-minus-one threshold and propagate a carry at equality.
+For disjoint generate and propagate masks (G,E), put (A=G\lor E).
+The incoming carry bits are the active part of
+((A+G+\mathrm{inlet})\mathbin{\mathrm{xor}} A\mathbin{\mathrm{xor}}G).
+Overflow supplies the next word inlet. This action processes one physical
+generation across many columns at once.

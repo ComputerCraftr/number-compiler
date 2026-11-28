@@ -164,7 +164,7 @@ one source preparation. Each value retains its own precision and coverage.
 <!-- cli-views:start -->
 | Category | View flag | Views |
 | --- | --- | --- |
-| `arithmetic.modular` | `--arithmetic-modular-kind` | `residue` (reverse-add, 2rev10), `mixed-adic` (2rev10), `endpoint` (5rev10, collatz, antihydra), `digit-field` (5rev10) |
+| `arithmetic.modular` | `--arithmetic-modular-kind` | `endpoint` (reverse-add, 5rev10, collatz, antihydra), `residue` (reverse-add, 2rev10), `mixed-adic` (2rev10), `digit-field` (5rev10) |
 | `temporal.clock` | `--temporal-clock-detail` | `residue-period` (2rev10), `defect-samples` (2rev10) |
 | `temporal.accumulator` | `--temporal-accumulator-kind` | `alternating` (reverse-add, 2rev10, collatz), `single` (collatz) |
 | `temporal.closed-form` | `--temporal-closed-form-kind` | `source-action` (reverse-add, 2rev10), `endpoint` (2rev10, 5rev10) |
@@ -777,3 +777,10 @@ constructors reject invalid external integers, including Booleans; cache admissi
 still checks source, generation, budget and consumer authority. JSON serialization
 copies demanded packets, preserves null measurements and encodes oversized integers
 exactly. Compact indices replace only explicitly declared index fields.
+
+For binary or ternary reverse/add, select the modular endpoint explicitly
+to query the residue and physical width without rendering the integer.
+
+```sh
+number-compiler reverse-add --base 2 --seed 22 --nth-power10 80 --no-value --info arithmetic.modular --arithmetic-modular-kind endpoint --modulus 1000003 --format json
+```

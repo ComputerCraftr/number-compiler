@@ -115,7 +115,7 @@ def test_length_queries_never_normalize_or_emit_digits(
         raise AssertionError("length query entered digit normalization")
 
     monkeypatch.setattr(skew, "skew_normalized_digit", forbidden)
-    monkeypatch.setattr(images.ReverseSourceImageAdapter, "_normalized", forbidden)
+    monkeypatch.setattr(images.ReverseSourceImageAdapter, "normalize_pair", forbidden)
     monkeypatch.setattr(
         images.ReverseSourceImageAdapter, "iter_primitive_digits", forbidden
     )
@@ -324,7 +324,7 @@ def test_scheduler_width_demand_never_calls_digit_consumers(
 
     for method in (
         "_carry_and_digit",
-        "_normalized",
+        "normalize_pair",
         "iter_primitive_digits",
         "iter_second_digits",
         "iter_same_carry_digits",

@@ -178,7 +178,7 @@ def test_ports_never_normalize_or_emit_output_digits(
         raise AssertionError("carry ports entered output normalization")
 
     monkeypatch.setattr(skew, "skew_normalized_digit", forbidden)
-    monkeypatch.setattr(images.ReverseSourceImageAdapter, "_normalized", forbidden)
+    monkeypatch.setattr(images.ReverseSourceImageAdapter, "normalize_pair", forbidden)
     monkeypatch.setattr(
         images.ReverseSourceImageAdapter, "iter_primitive_digits", forbidden
     )

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
-from typing import Protocol, TypeGuard, TypeVar, cast
+from collections.abc import Mapping
+from typing import TypeGuard, cast
 
 from number_compiler.resources.ledger import (
-    OwnedMemo,
     ResourceInventory,
     ResourceLedger,
 )
@@ -14,118 +13,15 @@ from number_compiler.resources.owned_memo import (
     DynamicMemoValue,
     OwnedMemoAuditSnapshot,
 )
-from number_compiler.resources.stores import LedgerDict, LedgerList
 from number_compiler.sequences.reverse_add.source_workspace_core_audit import (
     source_image_core_storage_valid,
 )
 
-_AuditKey = TypeVar("_AuditKey")
-_AuditValue = TypeVar("_AuditValue")
-
-
-class _LedgerSizedStore(Protocol):
-    owner: int
-    ledger: ResourceLedger
-    nodes_per_entry: int
-
-    def __len__(self) -> int: ...
-
-
-def _audit_payload_items(
-    snapshot: OwnedMemoAuditSnapshot[_AuditKey, _AuditValue],
-) -> Iterator[tuple[_AuditKey, object]]:
-    """Read current memo payloads while preserving malformed-wrapper evidence."""
-    view = snapshot.payload_view
-    for key in snapshot.container:
-        try:
-            yield key, view[key]
-        except TypeError:
-            # Keep malformed dynamic entries visible to exact payload checks.
-            yield key, snapshot.container[key]
-
-
-def _audit_payload_value(
-    snapshot: OwnedMemoAuditSnapshot[_AuditKey, _AuditValue], key: _AuditKey
-) -> object:
-    if key not in snapshot.container:
-        return _MISSING
-    try:
-        return snapshot.payload_view[key]
-    except TypeError:
-        return snapshot.container[key]
-
-
-_MISSING = object()
-
-
-def store_valid_for_audit(
-    ledger: ResourceLedger,
-    owner: object,
-    store: object,
-    expected_role: str,
-    containers: Mapping[int, object],
-    inventory: Mapping[int, object],
-) -> bool:
-    if type(ledger) is not ResourceLedger or type(owner) is not int:
-        return False
-    item = inventory.get(owner)
-    if type(item) is not ResourceInventory:
-        return False
-    owned_container: object | None = None
-    entries = 0
-    expected_nodes = 0
-    if type(store) is OwnedMemo:
-        snapshot = cast(OwnedMemo[object, object], store).audit_snapshot()
-    elif type(store) is OwnedMemoAuditSnapshot:
-        snapshot = cast(OwnedMemoAuditSnapshot[object, object], store)
-    else:
-        snapshot = None
-    if snapshot is not None:
-        data: Mapping[object, object] = snapshot.container
-        if (
-            snapshot.ledger is not ledger
-            or snapshot.owner != owner
-            or snapshot.disposed
-        ):
-            return False
-        owned_container = data
-        entries = len(data)
-        if not snapshot.dynamic_cost:
-            expected_nodes = entries * snapshot.nodes_per_entry
-        else:
-            expected_nodes = snapshot.dynamic_nodes
-            measured_nodes = 0
-            for raw_value in data.values():
-                value: object = raw_value
-                if type(value) is not DynamicMemoValue:
-                    return False
-                if type(value.nodes) is not int or value.nodes < 1:
-                    return False
-                measured_nodes += value.nodes
-            if measured_nodes != expected_nodes:
-                return False
-    elif isinstance(store, (LedgerList, LedgerDict)):
-        owned_store = cast(_LedgerSizedStore, store)
-        owned_container = cast(object, store)
-        entries = len(owned_store)
-        expected_nodes = entries * owned_store.nodes_per_entry
-        if owned_store.owner != owner or owned_store.ledger is not ledger:
-            return False
-    else:
-        return False
-    try:
-        registered_container = ledger.registered_container(owner)
-    except (IndexError, RuntimeError, TypeError, ValueError):
-        return False
-    return (
-        containers.get(owner) is owned_container
-        and registered_container is owned_container
-        and not item.disposed
-        and item.payloads_registered
-        and item.role == expected_role
-        and item.entries == entries
-        and item.nodes == expected_nodes
-    )
+from .source_store_audit import (
+    audit_payload_items,
+    audit_payload_value,
+    store_valid_for_audit,
+)
 
 
 def audit_reverse_source_workspaces(
@@ -168,6 +64,7 @@ def audit_reverse_source_workspaces(
         publication_matches_readonly,
     )
     from number_compiler.hashlife.execution.tile_scheduler import TileScheduler
+    from number_compiler.sequences.reverse_add.binary_phase import admit as admit_binary
     from number_compiler.sequences.reverse_add.higher_interface import (
         ReverseHigherInterfaceCompilation,
     )
@@ -185,6 +82,7 @@ def audit_reverse_source_workspaces(
         ReverseRecursiveOccurrence,
         ReverseRecursiveTemporalCutover,
     )
+    from number_compiler.sequences.reverse_add.small_radix import SmallRadixImage
     from number_compiler.sequences.reverse_add.source_actions import (
         ReverseSourceRecord,
     )
@@ -285,7 +183,7 @@ def audit_reverse_source_workspaces(
                 else:
                     approved.add(id(store))
         valid &= stores_valid
-        for bank_key, bank_action in _audit_payload_items(state.pointed_gt_banks):
+        for bank_key, bank_action in audit_payload_items(state.pointed_gt_banks):
             recognized.update((id(bank_key), id(bank_action)))
             action_owner = adapter_state.q19_owner
             q19_state = (
@@ -347,7 +245,7 @@ def audit_reverse_source_workspaces(
             and type(root.source.local_id) is int
         ):
             try:
-                source_record = _audit_payload_value(
+                source_record = audit_payload_value(
                     action_state.sources, root.source.local_id
                 )
                 source_authority = action_state.source_authority
@@ -374,7 +272,7 @@ def audit_reverse_source_workspaces(
                 valid &= type(digit) is int and remainder == digit
             valid &= remaining_seed == 0 and source.base == root.base
         if action_handle_valid(root.root_action):
-            root_action = _audit_payload_value(
+            root_action = audit_payload_value(
                 action_state.nodes, root.root_action.local_id
             )
         if (
@@ -396,6 +294,59 @@ def audit_reverse_source_workspaces(
             or root.adapter.actions is not actions
             or root.adapter.ledger is not ledger
         ):
+            valid = False
+        radix_store = adapter_state.radix_outputs
+        if radix_store is not None:
+            radix_valid = store_valid_for_audit(
+                ledger,
+                radix_store.owner,
+                radix_store,
+                "reverse_small_radix_output",
+                containers,
+                inventory,
+            ) and (
+                adapter_state.radix_source is actions.source(root.source)
+                or (adapter_state.radix_source is None and not radix_store.container)
+            )
+            if radix_valid:
+                approved.add(id(radix_store.container))
+            for duration, output in audit_payload_items(radix_store):
+                recognized.update((id(duration), id(output)))
+                output_valid = False
+                if (
+                    type(duration) is int
+                    and duration >= 3
+                    and type(output) is SmallRadixImage
+                    and output.base == root.base
+                    and (
+                        duration > MAX_COMPLETED_CHILD_FALLBACK_STEPS
+                        or output.phase is not None
+                    )
+                ):
+                    try:
+                        SmallRadixImage.__post_init__(output)
+                        source_digits = actions.source(root.source).digits
+                        radix_record = radix_store.container[duration]
+                        output_valid = (
+                            isinstance(radix_record, DynamicMemoValue)
+                            and output.width <= len(source_digits) + duration
+                            and radix_record.nodes == output.retained_words + 1
+                        )
+                        if output.phase is not None:
+                            direct = admit_binary(source_digits, duration)
+                            # The scheduler may enter a phase from an already-issued
+                            # exact endpoint; check the direct guard when it exists.
+                            if direct is not None:
+                                output_valid &= output.phase == direct
+                    except (TypeError, ValueError, AttributeError, IndexError):
+                        output_valid = False
+                if output_valid and radix_valid:
+                    approved.update((id(duration), id(output)))
+                else:
+                    valid = False
+                    invalid.add((radix_store.owner, id(output)))
+            valid &= radix_valid
+        elif adapter_state.radix_source is not None:
             valid = False
         recursive_store = adapter_state.recursive_occurrences
         recursive_owner = recursive_store.owner
@@ -473,7 +424,7 @@ def audit_reverse_source_workspaces(
             if recursive_valid:
                 valid &= recursive_valid
                 recognized.add(id(recursive))
-                for steps, occurrence in _audit_payload_items(
+                for steps, occurrence in audit_payload_items(
                     adapter_state.recursive_occurrences
                 ):
                     recognized.add(id(occurrence))
@@ -492,7 +443,7 @@ def audit_reverse_source_workspaces(
                     )
                     try:
                         recursive.validate_occurrence(occurrence)
-                        expected_action = _audit_payload_value(
+                        expected_action = audit_payload_value(
                             recursive_state.pair_actions, steps
                         )
                         occurrence_valid &= (
@@ -537,7 +488,7 @@ def audit_reverse_source_workspaces(
                     )
                 )
                 valid &= composer_store_valid
-                composer_items = _audit_payload_items(composer_store)
+                composer_items = audit_payload_items(composer_store)
                 published_kernels: dict[FieldCellActionID, str] = {}
                 published_morphism_sorts: dict[
                     FieldCellActionID, HigherMorphismSort
@@ -668,7 +619,7 @@ def audit_reverse_source_workspaces(
                     if type(geometry) is FieldGeometry
                 }
                 signatures_valid = True
-                signature_items = _audit_payload_items(signature_store)
+                signature_items = audit_payload_items(signature_store)
                 for signature_key, signature in signature_items:
                     recognized.update((id(signature_key), id(signature)))
                     if not (
@@ -770,7 +721,7 @@ def audit_reverse_source_workspaces(
                     for digit in source.digits
                 )
                 and root.root_action
-                is _audit_payload_value(action_state.normal, root.steps)
+                is audit_payload_value(action_state.normal, root.steps)
             )
         q19_owner = adapter_state.q19_owner
         if q19_owner is not None:
@@ -796,7 +747,7 @@ def audit_reverse_source_workspaces(
                 and ports.audit_snapshot().ledger is ledger
             )
 
-        for index, node in _audit_payload_items(action_state.nodes):
+        for index, node in audit_payload_items(action_state.nodes):
             recognized.update((id(index), id(node)))
             if (
                 type(index) is not int
@@ -809,7 +760,7 @@ def audit_reverse_source_workspaces(
                 continue
             action_id = ReverseActionID(actions.owner, action_state.kind, index)
             node_valid = action_handle_valid(action_id) and (
-                _audit_payload_value(action_state.nodes, index) is node
+                audit_payload_value(action_state.nodes, index) is node
             )
             if node_valid and index == 0:
                 node_valid &= node == ReverseActionNode(0, None, None, 0)
@@ -823,10 +774,10 @@ def audit_reverse_source_workspaces(
                 else:
                     before_id = before
                     after_id = after
-                    before_node = _audit_payload_value(
+                    before_node = audit_payload_value(
                         action_state.nodes, before_id.local_id
                     )
-                    after_node = _audit_payload_value(
+                    after_node = audit_payload_value(
                         action_state.nodes, after_id.local_id
                     )
                     if (
@@ -858,11 +809,11 @@ def audit_reverse_source_workspaces(
                 invalid.add((action_state.nodes.owner, id(index)))
                 invalid.add((action_state.nodes.owner, id(node)))
 
-        for steps, normal_action in _audit_payload_items(action_state.normal):
+        for steps, normal_action in audit_payload_items(action_state.normal):
             recognized.update((id(steps), id(normal_action)))
             action_valid = False
             if type(steps) is int and action_handle_valid(normal_action):
-                node = _audit_payload_value(action_state.nodes, normal_action.local_id)
+                node = audit_payload_value(action_state.nodes, normal_action.local_id)
                 action_valid = type(node) is ReverseActionNode and node.steps == steps
             valid &= action_valid
             if action_valid:
@@ -871,7 +822,7 @@ def audit_reverse_source_workspaces(
                 invalid.add((action_state.normal.owner, id(steps)))
                 invalid.add((action_state.normal.owner, id(normal_action)))
 
-        for index, record in _audit_payload_items(action_state.sources):
+        for index, record in audit_payload_items(action_state.sources):
             recognized.update((id(index), id(record)))
             record_valid = False
             exact = None
@@ -950,6 +901,17 @@ def audit_reverse_source_workspaces(
                         type(payload) is ReverseImagePayload
                         and payload.action == expected_reverse_action
                     )
+                    if (
+                        type(payload) is ReverseImagePayload
+                        and payload.radix_output is not None
+                    ):
+                        duration = actions.node(expected_reverse_action).steps
+                        cached_valid &= (
+                            radix_store is not None
+                            and adapter_state.radix_source is source
+                            and audit_payload_value(radix_store, duration)
+                            is payload.radix_output
+                        )
                     pair_output = (
                         payload.pair_output
                         if type(payload) is ReverseImagePayload

@@ -25,7 +25,7 @@ from number_compiler.hashlife.execution.recursive_outputs import (
 )
 from number_compiler.hashlife.execution.tile_causal import CausalTileEngine
 from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.reverse_add import source_images
+from number_compiler.sequences.reverse_add import source_image_projection, source_images
 from number_compiler.sequences.reverse_add.cylinder_innovation import (
     PrimitiveSuccessorClause,
 )
@@ -65,8 +65,8 @@ def generic_only(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(residual, "minimize_bimachine", _forbidden)
     for name in ("second_pair", "second_carry", "second_width"):
         monkeypatch.setattr(SourceCarryPorts, name, _forbidden)
-    for name in ("validate_same_carry_chamber", "same_carry_digit"):
-        monkeypatch.setattr(source_images, name, _forbidden)
+    monkeypatch.setattr(source_images, "validate_same_carry_chamber", _forbidden)
+    monkeypatch.setattr(source_image_projection, "same_carry_digit", _forbidden)
     adapter = source_images.ReverseSourceImageWorkspace
     workspace = adapter(ResourceLedger(), 196, 0)
     adapter_type = type(workspace.adapter)

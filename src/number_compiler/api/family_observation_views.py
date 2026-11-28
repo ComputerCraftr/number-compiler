@@ -15,6 +15,14 @@ def family_observation_views(family: FamilyId) -> tuple[ViewSpec, ...]:
 _VIEWS: dict[FamilyId, tuple[ViewSpec, ...]] = {
     FamilyId.REVERSE_ADD: (
         ViewSpec(
+            View.ENDPOINT_RESIDUE,
+            "small-radix-reverse-add-endpoint",
+            _TICKS,
+            "coefficient-ring",
+            "completed-source",
+            options=("modulus",),
+        ),
+        ViewSpec(
             View.RESIDUE,
             "decimal-reverse-add-residue",
             _TICKS,

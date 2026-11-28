@@ -98,7 +98,7 @@ def test_fused_second_step_matches_reference_without_midpoint(
     monkeypatch.setattr(adapter_type, "apply_primitive", forbidden)
     monkeypatch.setattr(adapter_type, "iter_primitive_digits", forbidden)
     monkeypatch.setattr(adapter_type, "_carry_and_digit", forbidden, raising=False)
-    monkeypatch.setattr(adapter_type, "_width", forbidden)
+    monkeypatch.setattr(adapter_type, "primitive_width", forbidden)
     expected = literal_reverse_add_digits(seed, 2, base)
     assert_exact_digit_observers(workspace, expected)
     assert workspace.ledger.counters.get("source_image_primitive_applications", 0) == 0

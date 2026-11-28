@@ -34,6 +34,9 @@ def source_audit_owners(roots: tuple[object, ...]) -> set[int]:
                 state.pointed_gt_banks,
             ):
                 add_store(store)
+            radix = state.adapter.audit_snapshot().radix_outputs
+            if radix is not None:
+                add_store(radix)
             recursive = state.adapter.audit_snapshot().recursive
             if recursive is not None:
                 recursive_adapter = recursive.adapter.audit_snapshot()
@@ -52,25 +55,38 @@ def _nested_stores(
     if type(root) is not ReverseSourceImageWorkspace:
         return ()
     state = root.audit_snapshot()
-    recursive = state.adapter.audit_snapshot().recursive
-    if recursive is None:
-        return ()
-    adapter = recursive.adapter.audit_snapshot()
-    nested = (
-        (
-            adapter.composers.owner,
-            adapter.composers.container,
-            "_audit_recursive_composers",
-            "reverse_recursive_composer_memo",
-        ),
-        (
-            adapter.signatures.owner,
-            adapter.signatures.container,
-            "_audit_recursive_signatures",
-            "reverse_recursive_signature_memo",
-        ),
-    )
-    return nested
+    adapter_state = state.adapter.audit_snapshot()
+    nested: list[tuple[int, object, str, str]] = []
+    radix = adapter_state.radix_outputs
+    if radix is not None:
+        nested.append(
+            (
+                radix.owner,
+                radix.container,
+                "_audit_small_radix_outputs",
+                "reverse_small_radix_output",
+            )
+        )
+    recursive = adapter_state.recursive
+    if recursive is not None:
+        adapter = recursive.adapter.audit_snapshot()
+        nested.extend(
+            (
+                (
+                    adapter.composers.owner,
+                    adapter.composers.container,
+                    "_audit_recursive_composers",
+                    "reverse_recursive_composer_memo",
+                ),
+                (
+                    adapter.signatures.owner,
+                    adapter.signatures.container,
+                    "_audit_recursive_signatures",
+                    "reverse_recursive_signature_memo",
+                ),
+            )
+        )
+    return tuple(nested)
 
 
 def bind_nested_source_stores(
