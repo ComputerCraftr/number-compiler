@@ -339,3 +339,25 @@ def test_seed196_bounded_growth_refuses_when_later_boundary_is_ambiguous(
     finally:
         owner.dispose()
     assert ledger.nodes == ledger.entries == 0
+
+
+def test_seed196_first_bad_is_a_physical_inward_carry_not_a_width_change() -> None:
+    value = 196
+    for _ in range(48):
+        value += int(str(value)[::-1])
+    assert value == 92502871604050616929528
+    carries: list[int] = []
+    for _ in range(8):
+        born = value + int(str(value)[::-1])
+        digits = str(born)
+        pairs = (
+            int(a) + int(b) for a, b in zip(digits[1:], digits[-2::-1], strict=True)
+        )
+        carry = next((int(pair > 9) for pair in pairs if pair != 9), 0)
+        carries.append(carry)
+        successor = born + int(str(born)[::-1])
+        if len(carries) == 8:
+            assert len(str(born)) == len(str(value)) + 1
+            assert len(str(successor)) == len(str(born))
+        value = successor
+    assert carries == [1] * 7 + [0]
