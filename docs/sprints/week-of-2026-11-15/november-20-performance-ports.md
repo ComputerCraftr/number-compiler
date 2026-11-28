@@ -3593,3 +3593,76 @@ receiving baseline `1b2ab953` under the same runner. The package
 gate still requires the admitted Comma artifact. Source policy passed
 standalone after the test fixture consolidation at `4f8bbe44` in
 49.78 s on macOS and 41.12 s on Linux.
+
+### Sealed CF gain and source-bound Comma Stop
+
+At `65190552`, the CF cylinder lifts the inverse of its issued odd gain
+and uses the floor selector for its inclusive lower bound. The upper
+bound uses exact cross-products. CF-only queries load the
+physical Antihydra runtime only if a requested observation needs it.
+On Linux ARM64, fresh isolated wheels matched all 88 full packets.
+The 4,096-tick medians were 103.30 to 95.61 ms cold and 4.48 to
+4.10 ms warm. The CLI regression reaches the final reciprocal tile's
+indexed prefix, forbids digit reopening during the hit, and checks the
+full 540-coefficient matrix. Irregular upper-band action reuse remains open.
+The registered `Mahler_Source_Transport` build at `dd8ad2c4`
+checked the inclusive bound, clipped Newton step, and final residue
+in 151.64 s. The associated macOS selection passed 43 tests. The later
+Colima selection passed 166 tests on `0ea6ea2f`. At `25ea35d1` the
+cold-import child launches with the receiving checkout's source path
+and checks its origin.
+
+The registered symbolic B1 session passed in 175 s at `1a617a20`.
+Its checked source-bound provider uses the phase-134 termination
+barrier and preserves typed Stop without a packed Bellman value
+or survival-count premise. The production Future contract still
+imports the occurrence lift. The old v3 rank exporter cannot supply
+the v4 ordered authority the package requires.
+The source-certified first-sector and North-boundary cuts at
+`33babe25` passed their registered writer session in 9 s. They
+preserve the exact clause duration, ordered endpoint, and requested
+interior value without publishing an event list. The ordered
+source-wide composition remains the next required consumer proof.
+`24e26e4c` adds the local phase-barrier oracle audit. `0ea6ea2f`
+checks a selected cut across two authenticated sectors, including
+the physical clock, ordered transition and exact remainder.
+The changed B1 session passed in 166 s. The combined writer
+check stayed within the same session limits.
+
+At `baf2304d`, the transient Antihydra leaf can use the optional native
+eight-return carry fold inside the existing scratch reservation. Fresh
+macOS and Linux ARM64 native wheels matched 256 leaf receipts and seven
+installed CLI packets, with 64 native calls. The over-precision and
+budget refusal controls verified the portable fallback and the early
+CLI refusal. Guarded Clang and GCC diagnostics passed. Linux at 4,092
+ticks measured 7.44 ms portable and 7.58 ms native warm, so the native
+leaf remains opt-in.
+
+The registered `Reverse_Residuals` build at `66c23492` checked the
+ordered all-inlet birth fold, stable singleton response, and the physical
+birth-cell equation. The guarded Colima oracle matched 290 seed launches
+and reproduced first failures at returns 8, 140, and 131. A complete
+physical aperture join and the dyadic first-bad consumer remain open.
+`4206cf46` checks the return-8 positional failure while its width
+pattern still agrees. The installed one-birth opt-in selected endpoint
+pair `[3,1]` on the existing source-transfer fixture. Its default
+request returned the guarded refusal.
+
+The shared ordered-overlap law at `fa70ca67` passed as a registered
+dependency of `Reverse_Residuals`. The `2rev10` family candidate hit
+its 300 s session limit at the pointed-support introduction. The default
+installed seed-1 request at generation 9,967 refused on its physical
+step budget. The all-inlet 144-phase source guard still needs a complete
+physical join, so this tranche added no cut-415 dispatch.
+
+The full clean Colima run used `1a617a20` and passed strict mypy,
+108 serial Pyright batches, source policy, Ruff, and docs. The
+300.05 s Python selection recorded 6,544 passes and the eight inherited
+Comma CLI failures before stopping during the release-authority test.
+The isolated authority test at `0ea6ea2f` failed in 33.28 s.
+The phase barrier is now audited. The check reports 37 reachable
+theories without audit coverage, with legacy dependencies still in
+the production Comma release closure. The package could not admit
+a Comma future artifact.
+Canonical P0 on `66c23492` retained exactly the baseline's 13 failure
+IDs, with 77 passes on both `da7dbbd3` and the receiving revision.
