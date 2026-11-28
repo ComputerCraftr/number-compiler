@@ -3511,3 +3511,74 @@ out at 60.14 s. Both full Python selections timed out at 300.10 s and
 reported the same eight Comma failure IDs as their respective baselines.
 The proof index and package gates still reject the release closure and
 missing admitted Comma artifact.
+
+### November 27 source-first follow-up
+
+The worktree inventory started at `1b2ab953` with 94 registrations.
+Git removed one inactive clean checkout and 43 registrations whose
+directories were already absent. Each removed HEAD and reflog was
+reachable from a preserved ref. The 50 retained registrations include
+`main`, 26 clean checkouts with unique tips, ten dirty checkouts, six
+with build or test evidence, and seven with missing directories and
+unresolved index or history. The audit preserves the original index and
+reflog metadata of each removed registration.
+
+The prepared CF comparison pulls both exact rational boundaries through
+the committed continuant before searching the final tile. At horizon 4096,
+the installed Linux spatial route reduced interval constructions from 15
+to 13, and the reciprocal route from 16 to 11. Both routes matched 44
+packets, including refusal at coefficient cap 539 and completion at 540.
+The matched warm comparisons were approximately flat. The experiment
+requires `NUMBER_COMPILER_ENABLE_CF_PREPARED_PREFIX=1` and a committed
+prefix of at least 256 coefficients. At `77ddb8f2` the registered
+`Mahler_Source_Transport` session and oracle audit passed in 142 s.
+
+The Antihydra ARM64 trial matched 1,024 independently generated literal
+endpoints, balance minima and first failures. Linux arithmetic-only
+medians at 4,092 returns were 20.66 μs for portable eight-return leaves,
+11.77 μs for portable sixteen-return leaves and 8.08 μs for NEON sixteen.
+At the live nonretaining leaf limit of 128, portable sixteen took 0.094 μs
+and NEON sixteen took 0.122 μs before Python conversion or ledger costs.
+The Python sixteen-return formula matched all 65,536 low residues with
+high lifts. It was slower at reachable operand widths, so the existing
+eight-return compiler remains the live fallback.
+
+At `1efe2aa2` the unbounded 2rev10 bank-window consumer uses one
+pointed window per side and physical frame for each adjacent chunk.
+It retains distinct left and right transport and the next frame's
+birth displacement. Finite ledgers use per-point execution. For seed
+196 at generation 64 with 14 pairs, the installed Linux route reduced
+cone misses from 4,094 to 410 and peak nodes from 12,440 to 3,368.
+The final installed cold median moved from 208 to 168 ms. At
+generation 96, the two measured windows moved from 225 to 166 ms
+and 247 to 169 ms. All 15 paired packets and 34 focused cases passed.
+The cut-415 relational singleton needs a live authenticated lower
+drive and complete seam. The supplied large operands were local
+research fixtures outside ordinary seed admission.
+
+The installed 2rev10 warm-process comparison was 48.75 to 10.29 ms for
+seed 196 at generation 64 with 14 pairs. Each request used a fresh query
+owner. The independent 5rev10 seed-73 control remained flat.
+
+The Q19 inlet experiment at `44b4ee48` keeps the two-digit border and
+charges the additional inward reads. It uses a carry only when all inlet
+choices agree after the first authenticated birth. With
+`NUMBER_COMPILER_ENABLE_Q19_ONE_BIRTH_INGRESS=1`, the installed Linux
+source-transfer query at seed 82000123499 and generation 1 reported
+growth `[0,1]` and the literal endpoint pair `[3,1]`. The default
+request retained its refusal. The 41 guarded checks include delayed
+quiet and opposite-inlet controls. The general first-failure source
+bridge remains open.
+
+The physical-front theorem at `da042047` reuses the exact joint step
+to calibrate the five-phase orbit. Its one- and two-block collapse proof
+assumes four authenticated upstream trajectories. It identifies the
+selected physical column under the four-tick clock, with distinct
+multipliers and ordered ports. The new theory checked in 7.26 s and the
+registered shared session passed in 108 s under the existing oracle
+audit. The native train remains opt-in.
+The installed native selection passed eight cases, including wrong
+open-inlet and unrelated-source refusal. The installed macOS pure wheel
+also matched the Q19 source-transfer result and default refusal. The
+seed-196 generation-48 control reproduces the eight-return carry failure
+with five exterior sums while the width pattern still agrees.

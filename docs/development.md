@@ -69,8 +69,12 @@ The reciprocal CF producer also works in pure Python.
 boundary pullback in the final CF block search after at least 256
 coefficients have been committed. Short prefixes keep the existing comparison.
 
-The separate
-reflected C0 extension uses `NUMBER_COMPILER_BUILD_REFLECTED_MULTIPLY=1`
+`NUMBER_COMPILER_ENABLE_Q19_ONE_BIRTH_INGRESS=1` enables the bounded
+two-digit Q19 inlet check for source-transfer queries. The check requires
+an authenticated first birth and agreement across the inlet alternatives.
+
+The separate reflected C0 extension uses
+`NUMBER_COMPILER_BUILD_REFLECTED_MULTIPLY=1`
 at build time. When installed, it automatically handles initial-source
 `2rev10` scheduler actions of 512–1,024 physical ticks for positive seeds
 of at most 16 bits. The issuer must reach a protected border within 16
