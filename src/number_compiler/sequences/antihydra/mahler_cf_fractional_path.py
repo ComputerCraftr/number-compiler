@@ -99,31 +99,26 @@ class FractionalPath:
                 ):
                     if remaining < ticks:
                         continue
-                    position = (
-                        bisect_right(packed_keys, 2 * gain * left_n // left_d) - 1
-                    )
+                    selector = 2 * gain * left_n // left_d
+                    position = bisect_right(packed_keys, selector) - 1
                     if position >= 0:
                         key, innovation, upper = _PACKED_ROW.unpack_from(
                             packed_rows, (begin + position) * _PACKED_ROW.size
                         )
-                        if (
-                            gain * left_n * 2 >= key * left_d
-                            and 2 * gain * right_n <= upper * right_d
-                        ):
+                        if selector >= key and 2 * gain * right_n <= upper * right_d:
                             match = (ticks, gain, innovation, key // 2, upper)
                             break
             elif self.chart is not None and remaining >= BRANCH_BLOCK_TICKS:
                 keys, actions = self.chart
-                position = (
-                    bisect_right(keys, 2 * BRANCH_BLOCK_GAIN * left_n // left_d) - 1
-                )
+                selector = 2 * BRANCH_BLOCK_GAIN * left_n // left_d
+                position = bisect_right(keys, selector) - 1
                 if position >= 0:
                     key, innovation, upper = _PACKED_ROW.unpack_from(
                         actions, position * _PACKED_ROW.size
                     )
                     lower = key // 2
                     if (
-                        BRANCH_BLOCK_GAIN * left_n >= lower * left_d
+                        selector >> 1 >= lower
                         and 2 * BRANCH_BLOCK_GAIN * right_n <= upper * right_d
                     ):
                         match = (
@@ -186,9 +181,15 @@ class FractionalPath:
         )
 
     def residue(self) -> int:
-        # Invert the base before powering the certified gain 3**extent.
-        inverse_gain = pow(3, -self.extent, self.modulus)
-        return (-self.innovation * inverse_gain) % self.modulus
+        # The action already owns the odd gain 3**extent. Each Newton
+        # multiplication squares the inverse defect and doubles precision.
+        inverse = 1
+        precision = 1
+        while precision < self.extent:
+            precision = min(2 * precision, self.extent)
+            mask = (1 << precision) - 1
+            inverse = (inverse * (2 - inverse * (self.gain & mask))) & mask
+        return (-self.innovation * inverse) & (self.modulus - 1)
 
 
 def max_zero_run(numerator: int, denominator: int, remaining: int) -> int:

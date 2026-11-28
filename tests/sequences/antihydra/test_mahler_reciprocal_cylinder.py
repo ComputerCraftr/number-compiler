@@ -12,6 +12,7 @@ from number_compiler.sequences.antihydra.mahler_pow5_ordered_blocks import (
     Pow5OrderedBlockSource,
 )
 from tests.sequences.antihydra.test_mahler_cf_cylinder import literal_cylinder
+from tests.sequences.antihydra.test_mahler_continued_fraction import literal_matrix
 
 
 @pytest.mark.parametrize("horizon", (0, 20, 63))
@@ -365,6 +366,66 @@ def test_indexed_prefixes_are_bound_to_the_receiving_owner(
         with pytest.raises(ValueError, match="source binding changed"):
             block.prefix(1)
     assert ledger.nodes == ledger.entries == 0
+
+
+def test_live_cylinder_uses_indexed_final_row_without_reopening_digits(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import json
+
+    from number_compiler.api.cli import main
+    from number_compiler.arithmetic.fields.ordered_matrix import Matrix2
+    from number_compiler.sequences.antihydra import mahler_cf_reciprocal_tile as tiles
+
+    enable_prefix_bank(monkeypatch)
+    monkeypatch.setenv("NUMBER_COMPILER_ENABLE_CF_RECIPROCAL", "1")
+    original = tiles.ReciprocalTile.segment
+    hits: list[tuple[int, int]] = []
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("indexed segment reopened physical digits")
+
+    def segment(tile: tiles.ReciprocalTile, begin: int, length: int) -> Matrix2:
+        if (
+            not tile.sealed
+            or tile.last_prefixes is None
+            or begin < tile.widths[0] - tile.start
+            or length == 0
+        ):
+            return original(tile, begin, length)
+        with monkeypatch.context() as patch:
+            patch.setattr(tiles, "reciprocal_row_interval", forbidden)
+            result = original(tile, begin, length)
+        hits.append((begin, length))
+        return result
+
+    monkeypatch.setattr(tiles.ReciprocalTile, "segment", segment)
+    assert (
+        main(
+            [
+                "antihydra",
+                "--nth",
+                "0",
+                "--no-value",
+                "--format",
+                "json",
+                "--info",
+                "arithmetic.continued-fraction",
+                "--safety-horizon",
+                "4096",
+            ]
+        )
+        == 0
+    )
+    packet = json.loads(capsys.readouterr().out)["info"][
+        "arithmetic.continued-fraction"
+    ]
+    stream = "".join(str(5**n) for n in range(1, 50))
+    assert packet["coefficient_count"] == 540
+    assert packet["matrix"] == [
+        list(row) for row in literal_matrix(list(map(int, stream[:540])))
+    ]
+    assert hits
 
 
 def test_indexed_prefix_admission_falls_back_before_opening_row(

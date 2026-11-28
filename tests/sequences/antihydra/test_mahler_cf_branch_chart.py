@@ -16,6 +16,29 @@ from number_compiler.sequences.antihydra import (
 from number_compiler.sequences.antihydra import (
     mahler_continued_fraction_cylinder as cf,
 )
+from tests.support.cold_import import assert_import_stays_lazy
+
+
+def test_fractional_source_import_keeps_physical_runtime_lazy() -> None:
+    assert_import_stays_lazy(
+        fractional.__name__, "number_compiler.sequences.antihydra.runtime"
+    )
+
+
+def test_lifted_residue_matches_modular_power_at_every_precision_seam() -> None:
+    widths = set(range(65))
+    for power in range(1, 13):
+        widths.update(range(2**power - 1, 2**power + 2))
+    for width in sorted(widths):
+        gain = 3**width
+        modulus = 1 << width
+        for innovation in (-1, 0, 1, modulus - 1, modulus, 3 * gain - 1):
+            path = fractional.FractionalPath(
+                extent=width, gain=gain, modulus=modulus, innovation=innovation
+            )
+            residue = path.residue()
+            assert residue == -innovation * pow(3, -width, modulus) % modulus
+            assert (gain * residue + innovation) % modulus == 0
 
 
 def _literal_endpoint(value: Fraction, ticks: int) -> Fraction:
