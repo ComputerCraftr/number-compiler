@@ -162,12 +162,12 @@ def _declaration_reference_text(declaration: DeclarationReference) -> str:
 
 def _dynamic_lookups_in_block(
     code: str,
+    locator: str,
     source_offset: int,
     text: str,
     path: Path,
 ) -> tuple[DynamicFactLookup, ...]:
     lookups: list[DynamicFactLookup] = []
-    locator = mask_ml_strings(code)
     for match in _ML_FACT_LOOKUP_RE.finditer(locator):
         literal = _ML_FACT_LOOKUP_LITERAL_RE.match(code[match.end() :])
         name = None
@@ -192,7 +192,7 @@ def analyze_references(
     if path.suffix.lower() in {".ml", ".sml"}:
         code = mask_comments(clean)
         reference_source = mask_ml_strings(code)
-        lookups.extend(_dynamic_lookups_in_block(code, 0, text, path))
+        lookups.extend(_dynamic_lookups_in_block(code, reference_source, 0, text, path))
     else:
         output = list(clean)
         for start, end, body in dynamic_cartouche_spans(clean):
@@ -205,7 +205,9 @@ def analyze_references(
                 "\n" if char == "\n" else " " for char in clean[start:end]
             ]
             output[body_start : body_start + len(masked)] = masked
-            lookups.extend(_dynamic_lookups_in_block(code, body_start, text, path))
+            lookups.extend(
+                _dynamic_lookups_in_block(code, masked, body_start, text, path)
+            )
         reference_source = "".join(output)
     counts = _reference_counts(reference_source)
     own_counts: Counter[str] = Counter()

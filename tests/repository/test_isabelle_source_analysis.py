@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from devtools.checks import isabelle_references
 from devtools.checks.isabelle_references import ReferenceEvidence
 from devtools.checks.isabelle_source_analysis import (
     analyze_isabelle_source,
@@ -202,6 +203,52 @@ def test_dynamic_theorem_lookup_is_reported_across_files_as_review_only(
         "dynamic theorem lookup may reference 'looked_up'" in item["reason"]
         for item in report["unknown_references"]
     )
+
+
+@pytest.mark.parametrize(
+    ("path", "source"),
+    (
+        (
+            Path("Lookup.ML"),
+            r"""(* fake Proof_Context.get_thm ctxt "commented" (* nested *) *)
+val note = "Proof_Context.get_thm ctxt \"quoted_fake\""
+val fact = Proof_Context.get_thm ctxt "looked_up"
+""",
+        ),
+        (
+            Path("Lookup.thy"),
+            r"""ML \<open>
+  val note = "Proof_Context.get_thm ctxt \"quoted_fake\""
+  val fact = Proof_Context.get_thm ctxt "looked_up"
+\<close>
+""",
+        ),
+    ),
+)
+def test_dynamic_lookup_reuses_one_offset_preserving_ml_mask(
+    monkeypatch: pytest.MonkeyPatch, path: Path, source: str
+) -> None:
+    original_mask = isabelle_references.mask_ml_strings
+    masked_inputs: list[str] = []
+
+    def count_mask(text: str) -> str:
+        masked_inputs.append(text)
+        return original_mask(text)
+
+    monkeypatch.setattr(isabelle_references, "mask_ml_strings", count_mask)
+    evidence = isabelle_references.analyze_references(source, path, ())
+
+    assert len(masked_inputs) == 1
+    assert evidence.dynamic_lookups == (
+        isabelle_references.DynamicFactLookup(path=str(path), line=3, name="looked_up"),
+    )
+
+
+def test_dynamic_lookup_mask_rejects_unterminated_ml_string() -> None:
+    with pytest.raises(ValueError, match="unterminated ML string"):
+        isabelle_references.analyze_references(
+            'val fact = "unterminated\n', Path("Broken.ML"), ()
+        )
 
 
 def test_nonliteral_dynamic_theorem_lookup_downgrades_tree_theorem_candidates(
