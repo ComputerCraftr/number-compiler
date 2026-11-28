@@ -10,7 +10,8 @@ import pytest
 def _field(value: int) -> tuple[bytes, int]:
     digits = str(value)
     half = bytes(
-        int(a) + int(b) for a, b in zip(digits[: len(digits) // 2], reversed(digits))
+        int(a) + int(b)
+        for a, b in zip(digits[: len(digits) // 2], reversed(digits), strict=False)
     )
     center = int(digits[len(half)]) if len(digits) % 2 else -1
     return half, center
