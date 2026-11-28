@@ -1,4 +1,4 @@
-"""Check an installed reciprocal cylinder cut crossing the indexed head."""
+"""Check installed reciprocal cylinder cuts through issued row actions."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def main() -> None:
         group="console_scripts", name="number-compiler"
     )
     run = entry.load()
-    args = [
+    args_prefix = [
         "antihydra",
         "--nth",
         "0",
@@ -29,7 +29,6 @@ def main() -> None:
         "--info",
         "arithmetic.continued-fraction",
         "--safety-horizon",
-        "2048",
     ]
 
     hits: list[tuple[int, int]] = []
@@ -47,22 +46,42 @@ def main() -> None:
             return result
         return original(tile, start, length)
 
-    with (
-        patch.dict(os.environ, {"NUMBER_COMPILER_ENABLE_CF_CONTINUANT": "0"}),
-        redirect_stdout(StringIO()) as portable,
-    ):
-        assert run(args, shared_cache=False) == 0
-    with (
-        patch.dict(os.environ, {"NUMBER_COMPILER_ENABLE_CF_CONTINUANT": "1"}),
-        patch.object(tiles.ReciprocalTile, "segment", segment),
-        redirect_stdout(StringIO()) as native,
-    ):
-        assert run(args, shared_cache=False) == 0
-    assert native.getvalue() == portable.getvalue()
-    packet = json.loads(native.getvalue())["info"]["arithmetic.continued-fraction"]
-    assert packet["coefficient_count"] == 269
+    opens: list[tuple[int, int, int]] = []
+    raw_interval = tiles.reciprocal_row_interval
+
+    def row_interval(q: int, row: int, width: int, start: int, count: int) -> int:
+        assert (row, start, count) == (2, 0, 1)
+        opens.append((row, start, count))
+        return raw_interval(q, row, width, start, count)
+
+    def boundary_segment(
+        tile: tiles.ReciprocalTile, start: int, length: int
+    ) -> Matrix2:
+        if tile.sealed and tile.first_exponent == 34 and (start, length) == (0, 50):
+            assert tile.widths == (24, 25, 26, 26) and len(tile.row_prefixes) == 4
+            with patch.object(tiles, "reciprocal_row_interval", row_interval):
+                return original(tile, start, length)
+        return original(tile, start, length)
+
+    for horizon, count, check in ((2048, 269, segment), (3584, 471, boundary_segment)):
+        args = [*args_prefix, str(horizon)]
+        with (
+            patch.dict(os.environ, {"NUMBER_COMPILER_ENABLE_CF_CONTINUANT": "0"}),
+            redirect_stdout(StringIO()) as portable,
+        ):
+            assert run(args, shared_cache=False) == 0
+        with (
+            patch.dict(os.environ, {"NUMBER_COMPILER_ENABLE_CF_CONTINUANT": "1"}),
+            patch.object(tiles.ReciprocalTile, "segment", check),
+            redirect_stdout(StringIO()) as native,
+        ):
+            assert run(args, shared_cache=False) == 0
+        assert native.getvalue() == portable.getvalue()
+        packet = json.loads(native.getvalue())["info"]["arithmetic.continued-fraction"]
+        assert packet["coefficient_count"] == count
     assert (28, 5) in hits
-    print(f"{len(hits)} installed irregular clips before digit production")
+    assert opens == [(2, 0, 1)]
+    print(f"{len(hits)} installed irregular clips and 2 reused complete rows")
 
 
 if __name__ == "__main__":

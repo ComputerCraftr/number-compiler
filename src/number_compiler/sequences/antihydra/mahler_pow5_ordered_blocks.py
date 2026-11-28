@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Generator, Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from sys import getsizeof
+from sys import getsizeof, int_info
 from types import TracebackType
 from typing import TYPE_CHECKING, Self
 
@@ -19,6 +19,7 @@ from number_compiler.arithmetic.contracts.block_effect import BlockContextBudget
 from number_compiler.arithmetic.contracts.input_validation import require_integer
 from number_compiler.arithmetic.fields.ordered_matrix import (
     Matrix2,
+    MatrixEntries,
     ordered_decimal_continuant,
 )
 from number_compiler.arithmetic.fields.radix import radix_width
@@ -44,6 +45,16 @@ _NUMERIC_TO_ASCII = bytes.maketrans(bytes(range(10)), _ASCII_DECIMAL)
 
 # Include the immutable native bank and bounded temporary endpoint tuples.
 _PREFIX_INDEX_WORDS = (getsizeof(b"") + 32 * 17 + 7) // 8 + 32
+
+
+def _row_prefix_words(rows: int, coefficients: int) -> int:
+    digits = (4 * coefficients + int_info.bits_per_digit - 1) // int_info.bits_per_digit
+    matrix_bytes = getsizeof((0, 0, 0, 0)) + 4 * (
+        getsizeof(0) + digits * int_info.sizeof_digit
+    )
+    # Include both prefix tuples during construction, including their references.
+    prefix_bytes = 2 * (getsizeof(()) + rows * (getsizeof((0,)) - getsizeof(())))
+    return (prefix_bytes + rows * matrix_bytes + 7) // 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,6 +163,8 @@ class Pow5OrderedBlockSource:
                 tuple[int, tuple[int, int, int, int]] | None,
                 bool,
                 bytes | None,
+                bool,
+                tuple[MatrixEntries, ...],
             ]
             | None
         ) = None
@@ -267,6 +280,8 @@ class Pow5OrderedBlockSource:
                     tile.first_row_prefix,
                     tile.index_last,
                     tile.last_prefixes,
+                    tile.retain_row_prefixes,
+                    tile.row_prefixes,
                 )
                 != binding
             ):
@@ -453,7 +468,21 @@ class Pow5OrderedBlockSource:
                     reservation.reserve(nodes=_PREFIX_INDEX_WORDS)
                 except BlockContextBudgetExceeded:
                     index_last = False
-            tile = ReciprocalTile(quotient, widths, start, length, first, index_last)
+            retain_rows = (
+                len(widths) >= 3
+                and start == 0
+                and length == sum(widths)
+                and 19 <= widths[0] <= widths[-1] <= 32
+                and native_prefix_available()
+            )
+            if retain_rows:
+                try:
+                    reservation.reserve(nodes=_row_prefix_words(len(widths), length))
+                except BlockContextBudgetExceeded:
+                    retain_rows = False
+            tile = ReciprocalTile(
+                quotient, widths, start, length, first, index_last, retain_rows
+            )
             block = Pow5OrderedBlock(self, self._epoch + 1)
 
             def revoke() -> None:
@@ -483,6 +512,8 @@ class Pow5OrderedBlockSource:
                     tile.first_row_prefix,
                     tile.index_last,
                     tile.last_prefixes,
+                    tile.retain_row_prefixes,
+                    tile.row_prefixes,
                 )
                 self._block = block
                 self._spatial_value = (

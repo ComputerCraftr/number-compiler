@@ -97,16 +97,20 @@ class ReciprocalTile:
     length: int
     first_exponent: int | None = None
     index_last: bool = False
+    retain_row_prefixes: bool = False
     product: Matrix2 = field(init=False)
     # This bounded response belongs to the issued tile, never to a shared
     # semantic key. The owner's staging reservation covers its integer limbs.
     first_row_prefix: tuple[int, MatrixEntries] | None = field(init=False)
     last_prefixes: bytes | None = field(init=False, default=None)
+    row_prefixes: tuple[MatrixEntries, ...] = field(init=False, default=())
     _building: bool = field(init=False, default=True, repr=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "first_row_prefix", None)
-        object.__setattr__(self, "_building", len(self.widths) == 2)
+        object.__setattr__(
+            self, "_building", len(self.widths) == 2 or self.retain_row_prefixes
+        )
         if (
             self.index_last
             and len(self.widths) == 2
@@ -164,6 +168,14 @@ class ReciprocalTile:
     def sealed(self) -> bool:
         return not self._building
 
+    def _whole_rows(self, row: int, remaining: int) -> tuple[int, int]:
+        end = row + 1
+        count = self.widths[row]
+        while end < len(self.widths) and count + self.widths[end] <= remaining:
+            count += self.widths[end]
+            end += 1
+        return end, count
+
     def segment(self, begin: int, length: int) -> Matrix2:
         if length == 0:
             return Matrix2.identity()
@@ -208,6 +220,28 @@ class ReciprocalTile:
         while row < len(self.widths):
             width = self.widths[row]
             count = min(remaining, width - start)
+            if (
+                not self._building
+                and self.row_prefixes
+                and start == 0
+                and count == width
+            ):
+                end, consumed = self._whole_rows(row, remaining)
+                whole = self.row_prefixes[end - 1]
+                if row:
+                    # Cancel the already-issued left boundary in matrix order.
+                    offset = begin + length - remaining
+                    whole = multiply_entries(
+                        _adjugate(self.row_prefixes[row - 1], offset), whole
+                    )
+                entries = (
+                    whole if remaining == length else multiply_entries(entries, whole)
+                )
+                remaining -= consumed
+                if not remaining:
+                    return Matrix2(entries)
+                row = end
+                continue
             exponent = (
                 None if self.first_exponent is None else self.first_exponent + row
             )
@@ -305,8 +339,13 @@ class ReciprocalTile:
             if action is not None:
                 entries = multiply_entries(entries, action)
             remaining -= count
-            if self._building and row == 0 and start + count == width:
-                object.__setattr__(self, "first_row_prefix", (count, entries))
+            if self._building and start + count == width:
+                if self.retain_row_prefixes:
+                    object.__setattr__(
+                        self, "row_prefixes", (*self.row_prefixes, entries)
+                    )
+                elif row == 0:
+                    object.__setattr__(self, "first_row_prefix", (count, entries))
             if remaining == 0:
                 return Matrix2(entries)
             start = 0

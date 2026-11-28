@@ -368,6 +368,48 @@ def test_indexed_prefixes_are_bound_to_the_receiving_owner(
     assert ledger.nodes == ledger.entries == 0
 
 
+@pytest.mark.parametrize("capped", (False, True))
+def test_issued_row_boundaries_select_physical_intervals_without_decoding(
+    capped: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.antihydra import mahler_cf_reciprocal_tile as tiles
+    from tests.sequences.antihydra.test_mahler_pow5_ordered_blocks import literal_action
+
+    def forbidden(*_args: object) -> int:
+        pytest.fail("completed physical row was reopened")
+
+    enable_prefix_bank(monkeypatch)
+    ledger = ResourceLedger()
+    with Pow5OrderedBlockSource(ledger, reciprocal=True) as source:
+        for _ in range(8):
+            source.next_block(4, 1000)
+        source.next_block(1, 1000)
+        if capped:
+            # Enough for the ordinary staging window, excluding optional boundaries.
+            ledger.tighten_limits(ledger.nodes + 1400, None)
+        block = source.next_block(4, 1000)
+        tile = object.__getattribute__(source, "_tile")
+        assert tile.first_exponent == 34 and tile.widths == (24, 25, 26, 26)
+        word = "".join(str(5**n) for n in range(34, 38))
+        if capped:
+            assert not tile.row_prefixes
+        else:
+            assert len(tile.row_prefixes) == 4
+            with monkeypatch.context() as guarded:
+                guarded.setattr(tiles, "reciprocal_row_interval", forbidden)
+                for start, end in ((0, 49), (24, 75), (49, 75), (24, 101)):
+                    assert block.segment(start, end - start) == literal_action(
+                        word[start:end]
+                    )
+        assert block.segment(3, 90) == literal_action(word[3:93])
+        if not capped:
+            object.__setattr__(tile, "row_prefixes", tile.row_prefixes[::-1])
+            with pytest.raises(ValueError, match="source binding changed"):
+                block.prefix(49)
+    assert ledger.nodes == ledger.entries == 0
+
+
 @pytest.mark.parametrize(("horizon", "count"), ((2048, 269), (4096, 540)))
 def test_live_cylinder_uses_indexed_final_row_without_reopening_digits(
     horizon: int,

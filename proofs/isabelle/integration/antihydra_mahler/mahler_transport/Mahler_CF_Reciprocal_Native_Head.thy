@@ -106,6 +106,41 @@ lemma mahler_cf_reciprocal_adjugate_commutes:
     ordered_matrix2_multiply (mahler_cf_integer_adjugate k m) m"
   by (cases m) (simp add: mahler_cf_integer_adjugate_def algebra_simps)
 
+text \<open>The retained boundary products cover complete ordered rows. Remove
+the earlier boundary on the left, then append the exact clipped physical row.\<close>
+
+theorem mahler_cf_reciprocal_row_boundary_consumer:
+  fixes n t width start count :: nat and before selected :: "nat list"
+    and widths :: "nat \<Rightarrow> nat"
+  defines "issued \<equiv> \<lambda>positions. concat (map (\<lambda>r.
+    mahler_cf_decimal_digits (widths r) (mahler_cf_reciprocal_row (5^n) r)) positions)"
+  assumes clip: "start + count \<le> width"
+  shows "ordered_matrix2_multiply
+      (ordered_matrix2_multiply
+        (mahler_cf_integer_adjugate (length (issued before))
+          (mahler_cf_integer_word (issued before)))
+        (mahler_cf_integer_word (issued (before @ selected))))
+      (mahler_cf_integer_word (mahler_cf_decimal_digits count
+        (mahler_cf_reciprocal_selected_digits (5^n) t width start count))) =
+    mahler_cf_integer_word (concat (map (\<lambda>r.
+      mahler_cf_decimal_digits (widths r) (5^(n+r))) selected) @
+        mahler_cf_decimal_digits count (5^(n+t) div 10^(width-start-count) mod 10^count))"
+proof -
+  have split: "issued (before @ selected) = issued before @ issued selected"
+    by (simp add: issued_def)
+  have action: "ordered_matrix2_multiply
+      (mahler_cf_integer_adjugate (length (issued before))
+        (mahler_cf_integer_word (issued before)))
+      (mahler_cf_integer_word (issued (before @ selected))) =
+    mahler_cf_integer_word (issued selected)"
+    using mahler_cf_integer_tail_from_word[OF refl, of "issued before" "issued selected"]
+    by (simp only: split mahler_cf_natural_word_to_integer)
+  show ?thesis
+    apply (subst action)
+    by (simp only: mahler_cf_integer_word_append[symmetric]
+        issued_def mahler_cf_reciprocal_physical_source mahler_cf_reciprocal_selected_physical_source)
+qed
+
 theorem mahler_cf_reciprocal_indexed_head_settled_clip:
   fixes n t width start count split limit :: nat
   assumes bounds: "start + count \<le> width" "split \<le> limit" "limit \<le> count"
@@ -198,7 +233,8 @@ qed
 
 ML \<open>
   val checked = @{thms mahler_cf_head_carry_step mahler_cf_paired_head_consumer mahler_cf_reciprocal_indexed_clip mahler_cf_fixed_width_high_low_words
-    mahler_cf_reciprocal_native_high16_consumer mahler_cf_reciprocal_indexed_head_settled_clip};
+    mahler_cf_reciprocal_native_high16_consumer mahler_cf_reciprocal_indexed_head_settled_clip
+    mahler_cf_reciprocal_row_boundary_consumer};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Native reciprocal head depends on an oracle";
   val _ = if Thm_Deps.has_skip_proof checked then error "Skipped native reciprocal head" else ();
