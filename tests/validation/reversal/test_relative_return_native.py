@@ -218,3 +218,73 @@ for motif, admitted in [('0332966666667', True),
         assert packet['f_steps'] == 288 and packet['motif'] == []
 """
     subprocess.run([python, "-I", "-c", program], check=True, timeout=60)
+
+
+@pytest.mark.parametrize(
+    ("multiplier", "motif", "fringe_before"),
+    [
+        (2, "1", 2331),
+        (5, "1", 2061),
+        (2, "0333329666667", 2259),
+        (2, "1533338466666", 2331),
+        (5, "5166664833333", 2052),
+        (5, "0766669233333", 1997),
+    ],
+)
+def test_extreme_digit_consumes_source_ports_before_fringe(
+    multiplier: int, motif: str, fringe_before: int
+) -> None:
+    native = pytest.importorskip("number_compiler.kernels._reverse_quotients")
+    middle = motif * (1800 // len(motif))
+    for ticks in (144, 145):
+        for borders in (("17", "88"), ("18", "78"), ("", "9"), ("73", "")):
+            seed = str(int(borders[0] + middle + borders[1]))
+            actual, work = native.multiply(seed, multiplier, ticks, 3)
+            assert actual == _literal(seed, multiplier, ticks)
+            assert work[2:4] == (0, 0)
+            if ticks == 144 and borders == ("17", "88"):
+                # Baseline includes the exact two-sided fringe at 636cb438.
+                # The new counter includes every reduced fibre and drive gate.
+                assert work[1] < fringe_before
+
+
+def test_installed_five_fibre_work_and_short_fallback() -> None:
+    python = os.environ.get("NUMBER_COMPILER_INSTALLED_PYTHON")
+    if not python:
+        pytest.skip("set NUMBER_COMPILER_INSTALLED_PYTHON to the native wheel venv")
+    program = """\
+import io, json
+from contextlib import redirect_stdout
+from unittest.mock import patch
+from number_compiler.api.cli import main
+from number_compiler.kernels import _reverse_quotients as native
+
+source = '17' + '1'*1800 + '88'
+kernel = native.multiply
+for ticks in (144, 16):
+    counters = []
+    def measured(*args):
+        digits, work = kernel(*args)
+        counters.append(work)
+        return digits, work
+    output = io.StringIO()
+    with patch.object(native, 'multiply', measured), redirect_stdout(output):
+        status = main(['5rev10', '--seed', source, '--nth', str(ticks),
+                       '--max-steps', str(ticks), '--max-state-bits', '8192',
+                       '--max-output-bits', '8192', '--format', 'json'], shared_cache=False)
+    value = int(source)
+    for _ in range(ticks):
+        value = 5 * int(str(value)[::-1])
+    assert status == 0 and int(json.loads(output.getvalue())['value']) == value
+    if ticks == 144:
+        assert len(counters) == 1
+        assert counters[0][0] < 5092 and counters[0][1] < 2061, counters
+    else:
+        assert not counters
+"""
+    subprocess.run(
+        [python, "-I", "-c", program],
+        env=dict(os.environ, NUMBER_COMPILER_ENABLE_NATIVE_REVERSE="1"),
+        check=True,
+        timeout=60,
+    )

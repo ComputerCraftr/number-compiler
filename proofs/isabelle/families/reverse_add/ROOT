@@ -36,6 +36,7 @@ session Reverse_Residuals in reverse_residuals = Shared_Carry_Dynamics +
     Reverse_Binary_Phase_Return
     Reverse_Q19_Packed_Aperture
     Reverse_Native_Slab_Clock
+    Reverse_Conditioned_Port_Period
     Reverse_Conditioned_Birth_Carry
     Reverse_Native_Slab_Core
     Reverse_Laurent_Modular_Projection

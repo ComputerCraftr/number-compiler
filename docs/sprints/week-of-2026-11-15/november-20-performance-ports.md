@@ -42,6 +42,44 @@ The combined changed Python test selection passed 219 tests. The
 registered `Mahler_Source_Transport` build passed in 148.58 seconds on
 the combined CF proof tree.
 
+### Conditional downstream periods on 636cb438
+
+The opt-in reflected wave computes an additional adjacent endpoint digit
+before opening either exact fringe. A source translation in an extreme
+frame supplies two stationary upstream digits in that frame. A uniform
+interior supplies a three-pair drive on either side. The reduced block
+count is at most three, followed by the residual pairs and any last odd
+physical gate. Fringe counts include those gates. Center translations
+alone do not supply this drive.
+
+Complete-response closure on the ten digits gave 31 maps in each extreme
+frame for multiplier two. Multiplier five gave 31 for the right digit
+inlet and 21 for the left, including identity. The guarded Q19 closure
+test reached all five possible raw return factors. The physical width
+controls with equal outer pair sums passed through the installed
+reverse/add CLI. General Q19 execution still requires the source to
+supply the complete width and carry continuation.
+
+Five interleaved installed trials at 144 physical ticks included admission,
+table setup and rendering. The uniform-interior medians were 204.6 → 206.1 ms
+for `2rev10` and 138.4 → 135.4 ms for `5rev10`. Warm process-cache-bypass
+medians were 49.93 → 50.76 ms and 7.36 → 7.39 ms. Native tile and charged
+fringe-gate counts were 5,602/2,331 → 5,591/2,225 and
+5,092/2,061 → 5,065/2,025. The four directional period-13 controls saved
+32–78 fringe gates at 144 ticks. Tile alignment can change the tradeoff at
+odd horizons. On the right-shifting `2rev10` fixture at 145 ticks, tiles
+rose from 5,724 to 5,746 while fringe gates fell from 1,528 to 1,469.
+The 16-tick installed control used the existing exact fallback.
+
+On the mixed-digit `5rev10` control, cold medians were 141.0 → 148.9 ms
+in the original five pairs and 127.79 → 127.85 ms in five confirmation
+pairs. Both builds executed 27,970 tiles and 10,942 fringe gates. The
+registered shared carry and reverse residual sessions passed in 64.3 and
+106.5 seconds, including their oracle and skipped-proof audits. Fresh
+macOS and Linux ARM64 installations matched literal endpoints. Native
+entry was observed on admitted requests and the short controls used the
+portable path.
+
 ### Source-derived reflected returns on 83f29817
 
 The optional reflected endpoint accepts a constant-digit causal interior for

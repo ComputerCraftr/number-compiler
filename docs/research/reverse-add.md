@@ -95,6 +95,33 @@ two and `52920` for multiplier five. Transport to a finite decimal source
 also requires its causal halo, physical carries, width changes and
 normalized readout.
 
+### Periods conditioned on the two upstream ports
+
+Let $F$ be the centered two-tick gate. In either extreme moving frame
+the downstream digit $x$ evolves by $F(a,b,x)$ or $F(x,a,b)$. Fixing
+the ordered pair $(a,b)$ gives a map on ten digits with at most two
+outputs, for either multiplier. Composing a nonempty word of these
+maps preserves that bound. If $G$ is the response to one full period
+of the two authenticated input streams, then $G^4(x)=G^2(x)$.
+Indeed, among $G(x),G^2(x),G^3(x)$ two values coincide. After at most
+two input periods the downstream digit therefore returns in one or
+two input periods at the same phase. The upstream streams must cover
+the entire requested cone. On a coupled two-cell ring, multiplier two
+takes $11\to44\to77\to11$ in centered ticks, and multiplier five
+traverses the same cycle in reverse.
+
+For reverse/add, let $s$ be a raw pair sum, $a$ its low carry, and
+$\beta$ the physical width birth. In a quiet row $v$ is the other carry.
+In a growing row $v$ is the shifted high **emitted digit**. The next raw
+sum is $(s+a)\bmod10$ plus $(s+v)\bmod10$ on a quiet row or $v$ on
+a birth. Both cases induce $r' = ((2-\beta)r+a+v)\bmod10$ on the
+residue. A complete repeated port word induces $r\mapsto gr+d$ with
+$g\in\{1,2,4,6,8\}$. At the aligned boundary the possible eventual
+period factors are $1,2,4,5,10$. Applying the same next port recovers
+the exact raw sum from the residue. The physical sources
+$1^k00\,8^k$ and $1^k55\,8^k$ have identical $k$ outer equality
+pairs for every $k\ge1$, while only the latter grows on the next tick.
+
 ### 2rev10 four-port successor and the mod-32 cut
 
 For `2rev10`, the physical action is `2R`, not reverse/add's `I+R`.

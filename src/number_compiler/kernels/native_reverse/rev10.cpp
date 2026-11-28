@@ -519,6 +519,43 @@ static string wave_raw(const Table &t, const string &seed, I n, Stats &st) {
     return out;
 }
 
+// One cell outside a certified translating or uniform interval. In the
+// extreme frame the two upstream source digits are stationary, or follow
+// the same three-pair uniform clock. No downstream inlet is inferred.
+static char fibre_endpoint(const Table &t, const string &seed, RelativeRun run,
+                           I n, bool moving, Stats &st) {
+    const I edge = moving ? run.lo - 1 : run.hi;
+    int x = edge < 0 || edge >= static_cast<I>(seed.size())
+                ? 0
+                : seed[static_cast<size_t>(edge)] - '0';
+    int a = seed[static_cast<size_t>(moving ? edge + 1 : edge - 2)] - '0';
+    int b = seed[static_cast<size_t>(moving ? edge + 2 : edge - 1)] - '0';
+    const I period = run.uniform ? 3 : 1;
+    const I pairs = n / 2;
+    const I blocks = pairs / period;
+    // Every nonempty drive product maps the decimal alphabet into at most
+    // two digits. On the second image the square fixes every reached digit.
+    const I reduced = blocks < 2 ? blocks : 2 + (blocks % 2);
+    const I steps = (reduced * period) + (pairs % period);
+    st.fringe_gates +=
+        static_cast<u64>(((run.uniform ? 4 : 2) * steps) + (n % 2));
+    for (I j = 0; j < steps; ++j) {
+        x = moving ? relative_cell(t.m, t.base, x, a, b)
+                   : relative_cell(t.m, t.base, a, b, x);
+        if (run.uniform) {
+            for (int physical = 0; physical < 2; ++physical) {
+                a = (t.m * (a % t.base)) + (a / t.base);
+            }
+            b = a;
+        }
+    }
+    if ((n % 2) != 0) {
+        x = moving ? (t.m * (a % t.base)) + (x / t.base)
+                   : (t.m * (x % t.base)) + (b / t.base);
+    }
+    return static_cast<char>('0' + x);
+}
+
 static string wave_tiled(const Table &t, const string &seed, I n, Stats &st,
                          RelativeRun run) {
     if (run.hi == run.lo) {
@@ -526,9 +563,16 @@ static string wave_tiled(const Table &t, const string &seed, I n, Stats &st,
     }
     // The checked source triples form a protected cone. Recompute both full
     // fringes and preserve their physical overlap with the translated center.
-    const I left = run.lo + n, right = run.hi, start = right - n;
+    const I left = run.lo + n, right = run.hi;
+    const bool moving = run.uniform || run.shift == 2;
+    const bool stationary = run.uniform || run.shift == 0;
+    const char west = moving ? fibre_endpoint(t, seed, run, n, true, st) : '0';
+    const char east =
+        stationary ? fibre_endpoint(t, seed, run, n, false, st) : '0';
+    const I start = right + static_cast<I>(stationary) - n;
     const I turns = n / 2;
-    string out = wave_raw(t, seed.substr(0, size_t(left)), n, st);
+    string out = wave_raw(
+        t, seed.substr(0, size_t(left - static_cast<I>(moving))), n, st);
     out.resize(seed.size() + static_cast<size_t>(n));
     if (run.uniform) {
         int digit = seed[size_t(run.lo)] - '0';
@@ -548,8 +592,14 @@ static string wave_tiled(const Table &t, const string &seed, I n, Stats &st,
             out[size_t(i)] = char('0' + digit);
         }
     }
+    if (moving) {
+        out[size_t(left - 1)] = west;
+    }
+    if (stationary) {
+        out[size_t(right)] = east;
+    }
     auto tail = wave_raw(t, seed.substr(size_t(start)), n, st);
-    std::copy(tail.begin() + n, tail.end(), out.begin() + right);
+    std::copy(tail.begin() + n, tail.end(), out.begin() + (start + n));
     return physical_readout(std::move(out), t.m, n);
 }
 

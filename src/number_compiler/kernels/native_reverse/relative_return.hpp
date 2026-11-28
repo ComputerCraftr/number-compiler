@@ -13,14 +13,19 @@ struct RelativeRun {
     bool uniform = false;
 };
 
+inline int relative_cell(int multiplier, int base, int left, int digit,
+                         int right) {
+    const int x = (multiplier * (digit % base)) + (left / base);
+    const int y = (multiplier * (right % base)) + (digit / base);
+    return (multiplier * (x % base)) + (y / base);
+}
+
 inline unsigned relative_matches(std::string_view source, std::int64_t i,
                                  int multiplier, int base) {
     const int left = source[static_cast<std::size_t>(i - 2)] - '0';
     const int digit = source[static_cast<std::size_t>(i - 1)] - '0';
     const int right = source[static_cast<std::size_t>(i)] - '0';
-    const int x = (multiplier * (digit % base)) + (left / base);
-    const int y = (multiplier * (right % base)) + (digit / base);
-    const int result = (multiplier * (x % base)) + (y / base);
+    const int result = relative_cell(multiplier, base, left, digit, right);
     return (result == right ? 1U : 0U) | (result == digit ? 2U : 0U) |
            (result == left ? 4U : 0U) |
            (left == digit && digit == right ? 8U : 0U);
