@@ -362,6 +362,22 @@ def test_guarded_four_tick_tiles_match_direct_and_keep_the_clock(seed: int) -> N
     assert native.add_folded(half, center, 1011, 4 << 20)[2][15] == 0
 
 
+@pytest.mark.parametrize("edge", (13, 14, 15, 16, 17, 18))
+def test_four_tick_clock_from_outer_sum_with_unresolved_inner_carries(
+    edge: int,
+) -> None:
+    native = pytest.importorskip("number_compiler.kernels._reverse_quotients")
+    half = bytes([edge, *([9] * 7), 7, 18] + [4, 12] * 12)
+    for center in (-1, 0, 9):
+        middle = bytes([2 * center]) if center >= 0 else b""
+        field = half + middle + half[::-1]
+        expected, _ = native.add(field, 4, 2, 1, 4 << 20)
+        pairs, new_center, work = native.add_folded(half, center, 4, 4 << 20)
+        middle = bytes([2 * new_center]) if new_center >= 0 else b""
+        assert pairs + middle + pairs[::-1] == expected
+        assert work[25] == int(14 <= edge <= 17)
+
+
 def test_folded_bank_uses_full_ordered_rows_at_admission_boundary() -> None:
     native = pytest.importorskip("number_compiler.kernels._reverse_quotients")
     # A source-ambiguous outer prefix forces the exact fallback before
@@ -397,7 +413,7 @@ original = getattr(native, name)
 counts = []
 def observed(*args):
     result = original(*args)
-    counts.append(result[2][15:25])
+    counts.append(result[2][15:26])
     return result
 setattr(native, name, observed)
 status = main(sys.argv[1:])
@@ -435,6 +451,7 @@ raise SystemExit(status)
         assert probes == builds == comparisons == slots == 0
         assert 0 < actions <= attempts
         assert cores >= actions
+        assert 0 < receipt[0][-1] <= attempts
 
 
 @pytest.mark.parametrize(

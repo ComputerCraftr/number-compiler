@@ -63,6 +63,7 @@ class PairWork:
     tile_refusals: int = 0
     tile_converted_pairs: int = 0
     tile_peak_bytes: int = 0
+    tile_edge_clocks: int = 0
 
 
 class _Kernels(Protocol):
@@ -189,6 +190,8 @@ def _record_pair_work(ledger: ResourceLedger, work: PairWork) -> None:
     if work.tile_attempts:
         ledger.bump(_keys.NATIVE_PAIR_TILE_ATTEMPTS, work.tile_attempts)
         ledger.bump(_keys.NATIVE_PAIR_TILE_ACTIONS, work.tile_actions)
+        if work.tile_edge_clocks:
+            ledger.bump(_keys.NATIVE_PAIR_TILE_EDGE_CLOCKS, work.tile_edge_clocks)
         ledger.bump(_keys.NATIVE_PAIR_TILE_CORES, work.tile_cores)
         ledger.bump(_keys.NATIVE_PAIR_TILE_REFUSALS, work.tile_refusals)
         ledger.bump(_keys.NATIVE_PAIR_TILE_CONVERTED_PAIRS, work.tile_converted_pairs)
@@ -330,6 +333,7 @@ def native_folded_pair_action(
             )
             < 0
             or work.tile_actions + work.tile_refusals != work.tile_attempts
+            or not 0 <= work.tile_edge_clocks <= work.tile_attempts
             or work.tile_cores < work.tile_actions
             or 4 * (work.tile_actions + work.joint_bands) > steps
             or work.tile_actions + work.joint_bands > work.bands

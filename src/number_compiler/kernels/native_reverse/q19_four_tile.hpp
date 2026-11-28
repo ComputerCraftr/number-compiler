@@ -9,7 +9,6 @@
 #include <bit>
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <vector>
 
 namespace causal_add::q19_tile {
@@ -78,8 +77,24 @@ struct Field {
 
 struct Work {
     std::uint64_t attempts = 0, actions = 0, tiles = 0, refused = 0;
-    std::uint64_t converted_pairs = 0, peak_bytes = 0;
+    std::uint64_t converted_pairs = 0, peak_bytes = 0, edge_clocks = 0;
 };
+
+// The caller supplies an authenticated folded field at physical width >= 64.
+template <typename Read> inline int issue_clock(Read read, Work &work) {
+    std::array<std::uint32_t, 8> prefix{};
+    prefix[0] = read(0U);
+    if (prefix[0] >= 14U && prefix[0] <= 17U) {
+        // The first birth gives outer 5..8; the quiet step gives 10..17.
+        // Its birth leaves outer 1..8. Tick zero is the low bit.
+        ++work.edge_clocks;
+        return 5;
+    }
+    for (std::size_t i = 1; i < prefix.size(); ++i) {
+        prefix[i] = read(i);
+    }
+    return guarded_clock::four(prefix);
+}
 
 // One stage over bitplanes. A valid output interval starts after the first
 // exact carry reset and ends before the final reset, with a birth extending
@@ -139,12 +154,8 @@ inline bool four(const Field &input, Field &output, Work &work,
     }
     int clock = issued_clock;
     if (clock < 0) {
-        std::array<std::uint32_t, 8> prefix{};
-        const auto n = std::min<std::size_t>(prefix.size(), input.width / 2U);
-        for (std::size_t i = 0; i < n; ++i) {
-            prefix[i] = input.get(i);
-        }
-        clock = guarded_clock::four(std::span(prefix).first(n));
+        clock =
+            issue_clock([&input](std::size_t i) { return input.get(i); }, work);
     }
     if (clock < 0) {
         ++work.refused;

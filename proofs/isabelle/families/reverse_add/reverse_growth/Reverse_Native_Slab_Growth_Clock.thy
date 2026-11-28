@@ -83,8 +83,39 @@ proof -
   show "carry_out False (step (step source))" by (rule third)
 qed
 
+text \<open>For outer sums 14 through 17 the first birth leaves an
+outer sum from 5 through 8. The quiet step doubles it with at most
+one incoming carry, forcing the third birth and the final quiet step.\<close>
+
+theorem slab_outer_middle_physical_clock:
+  assumes valid: "valid_pair s" and edge: "14 \<le> hd s" "hd s \<le> 17"
+  shows "[carry_out False s, carry_out False (step s),
+          carry_out False (step (step s)), carry_out False (step (step (step s)))] =
+         [True, False, True, False]"
+proof -
+  let ?t = "step s"
+  let ?u = "step ?t"
+  let ?v = "step ?u"
+  have vt: "valid_pair ?t" and vu: "valid_pair ?u" and vv: "valid_pair ?v"
+    using valid by (auto intro: valid_pair_successor)
+  have first: "carry_out False s" using valid edge by (intro slab_core_outer_forces_birth) auto
+  have e1: "hd ?t = 1 + hd s mod 10"
+    using source_growth_edge_successor first valid by (auto simp: valid_pair_def)
+  have bounds: "5 \<le> hd ?t" "hd ?t \<le> 8" using e1 edge by presburger+
+  have quiet: "\<not> carry_out False ?t"
+    using bounds source_growth_requires_edge(1)[OF vt] by force
+  have e2: "10 \<le> hd ?u" "hd ?u \<le> 17"
+    using source_nongrowth_outer_coefficient_bounds[OF vt quiet] bounds by linarith+
+  have third: "carry_out False ?u" by (rule slab_core_outer_forces_birth[OF vu e2(1)])
+  have e3: "hd ?v = 1 + hd ?u mod 10"
+    using source_growth_edge_successor third vu by (auto simp: valid_pair_def)
+  have "hd ?v < 9" using e3 e2 by presburger
+  then have "\<not> carry_out False ?v" using source_growth_requires_edge(1)[OF vv] by force
+  with first quiet third show ?thesis by simp
+qed
+
 ML \<open>
-  val checked = @{thms slab_outer_nine_next_reset_forces_birth
+  val checked = @{thms slab_outer_middle_physical_clock slab_outer_nine_next_reset_forces_birth
     slab_outer_eighteen_second_birth_clock
     slab_outer_eighteen_second_quiet_prefix};
   val _ = if null (Thm_Deps.all_oracles checked) then ()

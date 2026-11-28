@@ -1,5 +1,4 @@
 #include "causal_add.hpp"
-#include "guarded_q19_clock.hpp"
 #include "joint_slab.hpp"
 #include "pair_half_kick.hpp"
 #include "q19_four_tile.hpp"
@@ -833,7 +832,11 @@ FoldedResult advance_folded(const Word &half, int center, U steps, U cap,
         std::vector<I> empty_joins;
         for (; done < steps;) {
             const bool enough = width >= 64U && steps - done >= 4U;
-            int issued_clock = enough ? guarded_clock::four(state) : -1;
+            int issued_clock =
+                enough ? q19_tile::issue_clock(
+                             [&state](std::size_t i) { return state[i]; },
+                             tile_work)
+                       : -1;
             if (enough && issued_clock < 0) {
                 ++tile_work.attempts;
                 ++tile_work.refused;
@@ -930,6 +933,7 @@ FoldedResult advance_folded(const Word &half, int center, U steps, U cap,
         result.work.tile_refusals = tile_work.refused;
         result.work.tile_converted_pairs = tile_work.converted_pairs;
         result.work.tile_peak_bytes = tile_work.peak_bytes;
+        result.work.tile_edge_clocks = tile_work.edge_clocks;
     }
     result.pairs.assign(state.begin(), state.end());
     result.center = center;
