@@ -359,7 +359,7 @@ def test_equal_initial_border_and_inlet_do_not_authorize_the_next_return() -> No
         assert inlet == _physical_carry(digits)
         assert inlet is not None
         initial_inlets.append(inlet)
-        growth = []
+        growth: list[int] = []
         for _ in range(2):
             successor = value + int(str(value)[::-1])
             growth.append(len(str(successor)) - len(str(value)))
