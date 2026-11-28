@@ -3502,3 +3502,12 @@ width change under the source, predecessor and inlet assumptions. The
 guarded build with the shared parent used 2.43 GiB. General inverse source
 admission, arbitrary packet contacts and unissued cut-383/415 drives remain
 open. Native train dispatch retains its opt-in.
+
+Fresh detached acceptance runs on `ccbcbc66` checked 2,682 files with
+strict mypy and 108 serial Pyright batches on both ARM64 hosts. Ruff,
+formatting and documentation checks passed. The Linux source-policy check
+passed in 56.29 s with no violations. The Mac source-policy command timed
+out at 60.14 s. Both full Python selections timed out at 300.10 s and
+reported the same eight Comma failure IDs as their respective baselines.
+The proof index and package gates still reject the release closure and
+missing admitted Comma artifact.
