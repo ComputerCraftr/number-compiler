@@ -70,6 +70,11 @@ def _first_birth_at(
     return None, inspected
 
 
+def one_birth_enabled() -> bool:
+    """Read the experimental admission once at a source request boundary."""
+    return os.environ.get("NUMBER_COMPILER_ENABLE_Q19_ONE_BIRTH_INGRESS") == "1"
+
+
 def bound_first_birth_inlet(
     owner: ReversePairQ19OutputOwner,
     source: ReversePairOutputOccurrence,
@@ -77,9 +82,11 @@ def bound_first_birth_inlet(
     border: BorderTile,
     horizon: int,
     remaining: int,
+    *,
+    enabled: bool,
 ) -> tuple[int | None, int]:
     """Apply the bounded check to the receiving owner's physical source."""
-    if os.environ.get("NUMBER_COMPILER_ENABLE_Q19_ONE_BIRTH_INGRESS") != "1":
+    if not enabled:
         return None, 0
     if horizon < 2 or border.k != 2 or border.high // 10 + border.low % 10 != 17:
         return None, 0

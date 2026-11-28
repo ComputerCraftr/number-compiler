@@ -7,6 +7,7 @@ from random import Random
 import pytest
 
 from number_compiler.resources.ledger import ResourceLedger
+from number_compiler.resources.metric_collection import collect_ledger_metrics
 from number_compiler.sequences.reverse_add import q19_one_birth_ingress as ingress
 from number_compiler.sequences.reverse_add.border_carry_safety import BorderTile
 from number_compiler.sequences.reverse_add.q19_occurrence import (
@@ -67,6 +68,8 @@ def test_live_border_uses_all_inlet_singleton_before_second_step(
         _border: object,
         _horizon: int,
         _remaining: int,
+        *,
+        enabled: bool,
     ) -> tuple[None, int]:
         return None, 0
 
@@ -244,7 +247,7 @@ def test_issued_noninitial_source_authenticates_the_born_inlet(
         emitted = tuple(owner.digit(source, i) for i in range(source.output_width))
         assert "".join(map(str, reversed(emitted))) == "900544455998"
         carry, visits = ingress.bound_first_birth_inlet(
-            owner, source, None, BorderTile(2, 90, 98), 2, 8192
+            owner, source, None, BorderTile(2, 90, 98), 2, 8192, enabled=True
         )
         assert visits > 0 and carry == _physical_carry(emitted)
         cert = owner.certify_border_growth(source, steps=5, window_digits=2)
@@ -271,8 +274,12 @@ def test_source_transfer_cli_consumes_the_bounded_physical_guard(
         border: BorderTile,
         horizon: int,
         remaining: int,
+        *,
+        enabled: bool,
     ) -> tuple[int | None, int]:
-        result = original(owner, source, digits, border, horizon, remaining)
+        result = original(
+            owner, source, digits, border, horizon, remaining, enabled=enabled
+        )
         if result[0] is not None:
             accepted.append(result[0])
         return result
@@ -361,3 +368,49 @@ def test_seed196_first_bad_is_a_physical_inward_carry_not_a_width_change() -> No
             assert len(str(successor)) == len(str(born))
         value = successor
     assert carries == [1] * 7 + [0]
+
+
+@pytest.mark.parametrize("guarded_first", (False, True))
+def test_birth_receipt_scope_survives_flag_changes_and_rejects_tampering(
+    monkeypatch: pytest.MonkeyPatch, guarded_first: bool
+) -> None:
+    flag = "NUMBER_COMPILER_ENABLE_Q19_ONE_BIRTH_INGRESS"
+    digits = tuple(map(int, "900544455998"[::-1]))
+    ledger = ResourceLedger()
+    owner = ReversePairQ19OutputOwner(ledger, digits, base=10)
+    try:
+        if guarded_first:
+            monkeypatch.setenv(flag, "1")
+        else:
+            monkeypatch.delenv(flag, raising=False)
+        first = owner.certify_border_growth(owner.initial, steps=8, window_digits=2)
+        if guarded_first:
+            assert first.birth_inlet == 0
+            monkeypatch.delenv(flag, raising=False)
+        else:
+            assert first.birth_inlet is None
+            monkeypatch.setenv(flag, "1")
+        second = owner.certify_border_growth(owner.initial, steps=8, window_digits=2)
+        if guarded_first:
+            assert second is not first and second.birth_inlet is None
+            monkeypatch.setenv(flag, "1")
+            assert (
+                owner.certify_border_growth(owner.initial, steps=8, window_digits=2)
+                is first
+            )
+        else:
+            assert second is first
+        first.validate(owner, owner.initial)
+        second.validate(owner, owner.initial)
+        audit = collect_ledger_metrics(ledger)
+        assert audit.resource_audit_complete == 1
+        assert audit.forbidden_future_payloads == 0
+        before = first.birth_inlet
+        object.__setattr__(first, "birth_inlet", 1)
+        with pytest.raises(ValueError, match="changed|altered|retained"):
+            first.validate(owner, owner.initial)
+        object.__setattr__(first, "birth_inlet", before)
+        first.validate(owner, owner.initial)
+    finally:
+        owner.dispose()
+    assert ledger.nodes == ledger.entries == 0

@@ -23,7 +23,6 @@ from number_compiler.arithmetic.carry.carry_monoid import CarryFn
 from number_compiler.arithmetic.contracts.block_effect import (
     BlockContextBudgetExceeded,
 )
-from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 
 from . import q19_one_birth_ingress as _birth
@@ -39,6 +38,12 @@ from .border_carry_safety import (
     conditional_return_from_trace,
 )
 from .diagonal_growth_bank import BorderWidthWork
+from .q19_border_snapshots import (
+    outer_pairs_snapshot,
+    tuple_snapshot,
+    typed_scalar_snapshot,
+    window_tiles_snapshot,
+)
 from .q19_growth_101 import try_issue_growth_101
 
 if TYPE_CHECKING:
@@ -105,48 +110,6 @@ def _border_width_scratch(
             owner.ledger.release(owner.scratch_owner, entries=entries, nodes=nodes)
 
 
-def _typed_scalar_snapshot(value: object) -> tuple[object, object]:
-    immutable_types = (int, bool, str, bytes, type(None))
-    if type(value) in immutable_types:
-        return type(value), value
-    return type(value), id(value)
-
-
-def _tuple_snapshot(value: object) -> tuple[object, ...]:
-    if not is_exact_object_tuple(value):
-        return type(value), id(value)
-    return tuple, tuple(_typed_scalar_snapshot(item) for item in value)
-
-
-def _outer_pairs_snapshot(value: object) -> tuple[object, ...]:
-    if not is_exact_object_tuple(value):
-        return type(value), id(value)
-    pairs: list[object] = []
-    for pair in value:
-        if is_exact_object_tuple(pair):
-            pairs.append((tuple, tuple(_typed_scalar_snapshot(item) for item in pair)))
-        else:
-            pairs.append(_typed_scalar_snapshot(pair))
-    return tuple, tuple(pairs)
-
-
-def _window_tile_snapshot(value: object) -> tuple[object, ...]:
-    if type(value) is not BorderTile:
-        return _typed_scalar_snapshot(value)
-    return (
-        BorderTile,
-        _typed_scalar_snapshot(value.k),
-        _typed_scalar_snapshot(value.high),
-        _typed_scalar_snapshot(value.low),
-    )
-
-
-def _window_tiles_snapshot(value: object) -> tuple[object, ...]:
-    if not is_exact_object_tuple(value):
-        return type(value), id(value)
-    return tuple, tuple(_window_tile_snapshot(tile) for tile in value)
-
-
 class BoundaryControlNotAuthorized(ValueError):
     """The finite boundary relation cannot certify every requested event."""
 
@@ -161,6 +124,7 @@ class CertifiedBorderGrowth:
     window_digits: int
     max_visited_states: int
     source_pair_inspections: int = 0
+    birth_inlet: int | None = None
     outer_pairs: tuple[tuple[int, int] | None, ...] = ()
     window_tiles: tuple[BorderTile | None, ...] = ()
     physical_growth_certified: Literal[True] = True
@@ -172,14 +136,15 @@ class CertifiedBorderGrowth:
         return (
             self.owner,
             self.source,
-            _tuple_snapshot(self.growth_word),
-            _typed_scalar_snapshot(self.window_digits),
-            _typed_scalar_snapshot(self.max_visited_states),
-            _typed_scalar_snapshot(self.source_pair_inspections),
-            _outer_pairs_snapshot(self.outer_pairs),
-            _window_tiles_snapshot(self.window_tiles),
-            _typed_scalar_snapshot(self.physical_growth_certified),
-            _typed_scalar_snapshot(self.full_integer_certified),
+            tuple_snapshot(self.growth_word),
+            typed_scalar_snapshot(self.window_digits),
+            typed_scalar_snapshot(self.max_visited_states),
+            typed_scalar_snapshot(self.source_pair_inspections),
+            typed_scalar_snapshot(self.birth_inlet),
+            outer_pairs_snapshot(self.outer_pairs),
+            window_tiles_snapshot(self.window_tiles),
+            typed_scalar_snapshot(self.physical_growth_certified),
+            typed_scalar_snapshot(self.full_integer_certified),
         )
 
     def publication_snapshot(self) -> tuple[object, ...]:
@@ -194,6 +159,12 @@ class CertifiedBorderGrowth:
             or self.max_visited_states < 1
             or type(self.source_pair_inspections) is not int
             or self.source_pair_inspections < 0
+            or (
+                self.birth_inlet is not None
+                and (
+                    type(self.birth_inlet) is not int or self.birth_inlet not in (0, 1)
+                )
+            )
             or type(self.outer_pairs) is not tuple
             or (self.outer_pairs and len(self.outer_pairs) != len(self.growth_word) + 1)
             or any(
@@ -717,7 +688,10 @@ def certify_border_growth(
         raise ValueError("edge windows must have width 1..12")
     if type(max_states) is not int or not 1 <= max_states <= 1000000:
         raise ValueError("invalid bounded boundary-state budget")
-    cached = owner.issuance_registry.lookup_border(source, steps, window_digits)
+    allow_birth = window_digits == 2 and steps >= 2 and _birth.one_birth_enabled()
+    cached = owner.issuance_registry.lookup_border(
+        source, steps, window_digits, allow_birth=allow_birth
+    )
     if cached is not None:
         cached.validate(owner, source)
         if max(cached.max_visited_states, cached.source_pair_inspections) > max_states:
@@ -757,6 +731,7 @@ def certify_border_growth(
             steps=steps,
             window_digits=window_digits,
             max_states=max_states,
+            allow_birth=allow_birth,
         )
 
 
@@ -767,6 +742,7 @@ def _certify_reserved(
     steps: int,
     window_digits: int,
     max_states: int,
+    allow_birth: bool,
 ) -> CertifiedBorderGrowth:
     digits = owner.initial_digits if source is owner.initial else None
     # A later issued pair root S_n emits the digits of X_(n+1), not X_n.
@@ -822,7 +798,13 @@ def _certify_reserved(
     visited = 1
     horizon = steps - len(first_growth)
     guarded_inlet, inspected = _birth.bound_first_birth_inlet(
-        owner, source, digits, border, horizon, max_states - source_pair_inspections
+        owner,
+        source,
+        digits,
+        border,
+        horizon,
+        max_states - source_pair_inspections,
+        enabled=allow_birth,
     )
     source_pair_inspections += inspected
     for tick in range(horizon):
@@ -864,6 +846,7 @@ def _certify_reserved(
         k,
         visited,
         source_pair_inspections=source_pair_inspections,
+        birth_inlet=guarded_inlet,
         outer_pairs=tuple(outer_trace),
         window_tiles=tuple(window_trace),
     )
@@ -965,6 +948,7 @@ def _issue_border(
     visited: int,
     *,
     source_pair_inspections: int = 0,
+    birth_inlet: int | None = None,
     outer_pairs: tuple[tuple[int, int] | None, ...] = (),
     window_tiles: tuple[BorderTile | None, ...] = (),
 ) -> CertifiedBorderGrowth:
@@ -976,6 +960,7 @@ def _issue_border(
         "window_digits": k,
         "max_visited_states": visited,
         "source_pair_inspections": source_pair_inspections,
+        "birth_inlet": birth_inlet,
         "outer_pairs": outer_pairs,
         "window_tiles": window_tiles,
         "physical_growth_certified": True,

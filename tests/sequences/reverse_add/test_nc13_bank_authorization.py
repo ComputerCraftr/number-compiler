@@ -51,6 +51,7 @@ def _copied_border_with_word(
         "window_digits",
         "max_visited_states",
         "source_pair_inspections",
+        "birth_inlet",
         "outer_pairs",
         "window_tiles",
         "physical_growth_certified",

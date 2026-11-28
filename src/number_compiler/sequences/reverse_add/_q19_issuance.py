@@ -39,9 +39,9 @@ _Record = TypeVar("_Record", bound=_SnapshotRecord)
 
 
 def _border_certificate_key(
-    source: ReversePairOutputOccurrence, steps: int, window_digits: int
-) -> tuple[int, int, int, int]:
-    return source.root, source.temporal_steps, steps, window_digits
+    source: ReversePairOutputOccurrence, steps: int, window_digits: int, guarded: bool
+) -> tuple[int, int, int, int, bool]:
+    return source.root, source.temporal_steps, steps, window_digits, guarded
 
 
 def _snapshot_matches(
@@ -73,7 +73,7 @@ class Q19IssuanceRegistry:
             prefix + "-border-certificates", "reverse_pair_q19_border_certificate"
         )
         self.border_certificates: OwnedMemo[
-            tuple[int, int, int, int],
+            tuple[int, int, int, int, bool],
             tuple[CertifiedBorderGrowth, tuple[object, ...]],
         ] = OwnedMemo(ledger, border_owner, node_cost=self._border_record_cost)
         diagonal_owner = ledger.register(
@@ -119,7 +119,7 @@ class Q19IssuanceRegistry:
         self,
         *,
         border_certificates: OwnedMemo[
-            tuple[int, int, int, int],
+            tuple[int, int, int, int, bool],
             tuple[CertifiedBorderGrowth, tuple[object, ...]],
         ],
         controlled_gt_banks: OwnedMemo[
@@ -151,7 +151,7 @@ class Q19IssuanceRegistry:
 
     @staticmethod
     def _border_record_cost(
-        _key: tuple[int, int, int, int],
+        _key: tuple[int, int, int, int, bool],
         issued: tuple[CertifiedBorderGrowth, tuple[object, ...]],
     ) -> int:
         record, binding = issued
@@ -325,13 +325,14 @@ class Q19IssuanceRegistry:
         source: ReversePairOutputOccurrence,
         steps: int,
         window_digits: int,
+        guarded: bool,
     ) -> tuple[
-        tuple[int, int, int, int],
+        tuple[int, int, int, int, bool],
         tuple[CertifiedBorderGrowth, tuple[object, ...]] | None,
     ]:
         self.check_open()
         self.owner.validate_occurrence(source)
-        key = _border_certificate_key(source, steps, window_digits)
+        key = _border_certificate_key(source, steps, window_digits, guarded)
         return key, self.border_certificates.get(key)
 
     def lookup_border(
@@ -339,8 +340,14 @@ class Q19IssuanceRegistry:
         source: ReversePairOutputOccurrence,
         steps: int,
         window_digits: int,
+        *,
+        allow_birth: bool = False,
     ) -> CertifiedBorderGrowth | None:
-        _key, issued = self._lookup_border_issuance(source, steps, window_digits)
+        key, issued = self._lookup_border_issuance(
+            source, steps, window_digits, allow_birth
+        )
+        if issued is None and allow_birth:
+            issued = self.border_certificates.get((*key[:4], False))
         if issued is None:
             return None
         record, binding = issued
@@ -357,6 +364,7 @@ class Q19IssuanceRegistry:
             certificate.source,
             len(certificate.growth_word),
             certificate.window_digits,
+            certificate.birth_inlet is not None,
         )
         if existing is not None:
             retained, binding = existing
@@ -380,6 +388,7 @@ class Q19IssuanceRegistry:
             certificate.source,
             len(certificate.growth_word),
             certificate.window_digits,
+            certificate.birth_inlet is not None,
         )
         if (
             issued is None
@@ -399,6 +408,7 @@ class Q19IssuanceRegistry:
             certificate.source,
             len(certificate.growth_word),
             certificate.window_digits,
+            certificate.birth_inlet is not None,
         )
         issued = self.border_certificates.get(key)
         if issued is not None and issued[0] is certificate:

@@ -643,6 +643,7 @@ def audit_reverse_pair_output_roots(
                     certificate.source.temporal_steps,
                     len(certificate.growth_word),
                     certificate.window_digits,
+                    certificate.birth_inlet is not None,
                 )
                 and certificate.owner is root
                 and certificate.source.owner is state.authority
@@ -660,6 +661,13 @@ def audit_reverse_pair_output_roots(
                 and certificate.max_visited_states >= 1
                 and type(certificate.source_pair_inspections) is int
                 and certificate.source_pair_inspections >= 0
+                and (
+                    certificate.birth_inlet is None
+                    or (
+                        type(certificate.birth_inlet) is int
+                        and certificate.birth_inlet in (0, 1)
+                    )
+                )
                 and type(certificate.outer_pairs) is tuple
                 and (
                     not certificate.outer_pairs
@@ -799,6 +807,7 @@ def audit_reverse_pair_output_roots(
                                 ring.certificate.source.temporal_steps,
                                 len(ring.certificate.growth_word),
                                 ring.certificate.window_digits,
+                                ring.certificate.birth_inlet is not None,
                             )
                         ),
                     )
@@ -851,6 +860,7 @@ def audit_reverse_pair_output_roots(
                                 comparison.certificate.source.temporal_steps,
                                 len(comparison.certificate.growth_word),
                                 comparison.certificate.window_digits,
+                                comparison.certificate.birth_inlet is not None,
                             )
                         ),
                     )

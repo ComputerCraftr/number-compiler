@@ -75,10 +75,12 @@ class ReversePairQ19OutputAuditSnapshot:
     ]
     border_certificates_owner: int
     border_certificates: OwnedMemoAuditSnapshot[
-        tuple[int, int, int, int], tuple[CertifiedBorderGrowth, tuple[object, ...]]
+        tuple[int, int, int, int, bool],
+        tuple[CertifiedBorderGrowth, tuple[object, ...]],
     ]
     border_certificates_binding: OwnedMemo[
-        tuple[int, int, int, int], tuple[CertifiedBorderGrowth, tuple[object, ...]]
+        tuple[int, int, int, int, bool],
+        tuple[CertifiedBorderGrowth, tuple[object, ...]],
     ]
     controlled_gt_banks_owner: int
     controlled_gt_banks: OwnedMemoAuditSnapshot[
