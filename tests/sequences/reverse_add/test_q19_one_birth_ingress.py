@@ -374,6 +374,50 @@ def test_equal_initial_border_and_inlet_do_not_authorize_the_next_return() -> No
     assert next_inlets == [1, 0]
 
 
+def test_equal_issued_half_summaries_do_not_authorize_successor_inlet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NUMBER_COMPILER_ENABLE_Q19_ONE_BIRTH_INGRESS", "1")
+    summaries: list[tuple[int, int, int]] = []
+    inlets: list[tuple[int | None, int | None]] = []
+    for value in (975386301448, 972893119448):
+        assert str(value)[:2] == "97" and str(value)[-2:] == "48"
+        ledger = ResourceLedger()
+        digits = tuple(map(int, str(value)[::-1]))
+        owner = ReversePairQ19OutputOwner(ledger, digits, base=10)
+        try:
+            source = owner.initial
+            owner.validate(source)
+            half = owner.range_summary(source.root, 0, 6)
+            summaries.append((half.length, half.domain, half.f9))
+            first = owner.certify_border_growth(source, steps=2, window_digits=2)
+            assert first.growth_word == (1, 0)
+            assert first.birth_inlet == _physical_carry(digits) == 0
+            first.validate(owner, source)
+            for _ in range(2):
+                value += int(str(value)[::-1])
+        finally:
+            owner.dispose()
+        assert ledger.nodes == ledger.entries == 0
+
+        returned = tuple(map(int, str(value)[::-1]))
+        next_ledger = ResourceLedger()
+        next_owner = ReversePairQ19OutputOwner(next_ledger, returned, base=10)
+        try:
+            next_source = next_owner.initial
+            successor = next_owner.certify_border_growth(
+                next_source, steps=2, window_digits=2
+            )
+            successor.validate(next_owner, next_source)
+            assert successor.birth_inlet == _physical_carry(returned)
+            inlets.append((first.birth_inlet, successor.birth_inlet))
+        finally:
+            next_owner.dispose()
+        assert next_ledger.nodes == next_ledger.entries == 0
+    assert summaries == [(6, -1, 1), (6, -1, 1)]
+    assert inlets == [(0, 0), (0, 1)]
+
+
 def test_seed196_first_bad_is_a_physical_inward_carry_not_a_width_change() -> None:
     value = 196
     for _ in range(48):
