@@ -117,14 +117,15 @@ def _physical_suffix(
             digit * 10**position
             for position, digit in enumerate(islice(payload.term.iter_digits(), digits))
         ), True
+    # Saturate the user-supplied step limit before multiplying by precision.
+    capped_steps = min(query.max_steps, MAX_MOVING_CUT_DIGIT_ACTIONS)
+    max_actions = max(1, min(MAX_MOVING_CUT_DIGIT_ACTIONS, capped_steps * max_places))
     return physical_low_band_from_h(
         query.seed,
         query.index,
         digits,
         max_places=max_places,
-        max_digit_actions=min(
-            MAX_MOVING_CUT_DIGIT_ACTIONS, max(1, query.max_steps * max_places)
-        ),
+        max_digit_actions=max_actions,
     ), False
 
 

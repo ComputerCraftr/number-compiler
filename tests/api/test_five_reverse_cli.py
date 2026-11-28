@@ -75,8 +75,10 @@ def test_five_reverse_explicit_budget_refusal(
     assert capsys.readouterr().err
 
 
+@pytest.mark.parametrize("step_budget", ("4096", "1" + "0" * 1024))
 def test_five_reverse_reflected_projection_uses_the_moving_cut(
     monkeypatch: pytest.MonkeyPatch,
+    step_budget: str,
 ) -> None:
     def forbidden(*args: object, **kwargs: object) -> None:
         raise AssertionError("moving-cut observations should bypass the physical term")
@@ -89,6 +91,8 @@ def test_five_reverse_reflected_projection_uses_the_moving_cut(
             "196",
             "--nth",
             "209",
+            "--max-steps",
+            step_budget,
             "--no-value",
             "--info",
             "temporal.closed-form",
