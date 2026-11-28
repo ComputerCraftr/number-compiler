@@ -26,6 +26,7 @@ from number_compiler.arithmetic.contracts.block_effect import (
 from number_compiler.arithmetic.contracts.input_validation import is_exact_object_tuple
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
 
+from . import q19_one_birth_ingress as _birth
 from ._q19_issuance import issue_q19_record
 from .border_carry_safety import (
     BilateralCarryAlternative,
@@ -801,6 +802,7 @@ def _certify_reserved(
     incoming, source_pair_inspections = _source_inner_carry(
         owner, source, width=width, k=k, max_states=max_states
     )
+    border = BorderTile(k, prefix, suffix)
     if digits is not None:
         middle = _initial_pair_interval(owner, source, k, width - k)
         middle_transfer = (
@@ -810,20 +812,22 @@ def _certify_reserved(
             if middle.domain == 1
             else CarryFn.ID
         )
-        joined = border_bilateral_port(BorderTile(k, prefix, suffix)).for_middle(
-            middle_transfer
-        )
+        joined = border_bilateral_port(border).for_middle(middle_transfer)
         if joined.high_carry != incoming:
             raise AssertionError("low overflow and source Q19 middle transfer disagree")
-
     tiles: set[tuple[int, int]] = {(prefix, suffix)}
     bits: list[int] = []
     outer_trace: list[tuple[int, int] | None] = [None] * len(first_growth)
     window_trace: list[BorderTile | None] = [None] * len(first_growth)
     visited = 1
-    for tick in range(steps - len(first_growth)):
+    horizon = steps - len(first_growth)
+    guarded_inlet, inspected = _birth.bound_first_birth_inlet(
+        owner, source, digits, border, horizon, max_states - source_pair_inspections
+    )
+    source_pair_inspections += inspected
+    for tick in range(horizon):
         owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_BORDER_CONTROL_STEPS)
-        outer_trace.append(_forced_outer_pair(tiles, k))
+        outer_trace.append(_birth.forced_outer_pair(tiles, k))
         window_trace.append(
             BorderTile(k, *next(iter(tiles))) if len(tiles) == 1 else None
         )
@@ -831,7 +835,7 @@ def _certify_reserved(
         possibilities: set[int] = set()
         for high_tile, low_tile in tiles:
             owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_BORDER_CONTROL_STATE_VISITS)
-            admitted = (incoming,) if tick == 0 else (0, 1)
+            admitted = _birth.border_inlets(tick, incoming, guarded_inlet)
             port = border_carry_port(BorderTile(k, high_tile, low_tile), admitted)
             for edge in port.edges:
                 owner.ledger.bump(
@@ -851,7 +855,7 @@ def _certify_reserved(
             )
         bits.append(possibilities.pop())
         tiles = future
-    outer_trace.append(_forced_outer_pair(tiles, k))
+    outer_trace.append(_birth.forced_outer_pair(tiles, k))
     window_trace.append(BorderTile(k, *next(iter(tiles))) if len(tiles) == 1 else None)
     return _issue_border(
         owner,
@@ -863,11 +867,6 @@ def _certify_reserved(
         outer_pairs=tuple(outer_trace),
         window_tiles=tuple(window_trace),
     )
-
-
-def _forced_outer_pair(tiles: set[tuple[int, int]], k: int) -> tuple[int, int] | None:
-    possibilities = {(high // (10 ** (k - 1)), low % 10) for high, low in tiles}
-    return next(iter(possibilities)) if len(possibilities) == 1 else None
 
 
 def _initial_pair_interval(
