@@ -1,12 +1,13 @@
 import ast
 import os
 import subprocess
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 
 import pytest
 
 from devtools.checks import source_discovery
+from devtools.checks.policy_report_handoff import load_policy_report
 from devtools.checks.repository_policy import (
     MAX_SOURCE_LINES,
     isabelle_session_option_violations,
@@ -24,15 +25,16 @@ ROOT = repository_root()
 
 
 @pytest.fixture(scope="module")
-def policy_report() -> dict[str, object]:
-    return repository_policy_report(ROOT)
+def policy_report() -> Mapping[str, object]:
+    report = load_policy_report(ROOT)
+    return report if report is not None else repository_policy_report(ROOT)
 
 
 # Release quality runs the same whole-tree report once; keep its individual
 # conformance assertions in the explicit validation selection, not default unit.
 @pytest.mark.validation
 def test_all_source_files_stay_at_or_below_the_single_global_line_cap(
-    policy_report: dict[str, object],
+    policy_report: Mapping[str, object],
 ) -> None:
     assert MAX_SOURCE_LINES == 1000
     assert policy_report["source_line_violations"] == ()
@@ -132,28 +134,28 @@ def test_optional_policy_profile_reports_existing_snapshot_without_changing_repo
 
 @pytest.mark.validation
 def test_repository_root_has_no_session_level_execution_overrides(
-    policy_report: dict[str, object],
+    policy_report: Mapping[str, object],
 ) -> None:
     assert policy_report["isabelle_session_option_violations"] == ()
 
 
 @pytest.mark.validation
 def test_shared_and_family_ownership_dependencies_are_respected(
-    policy_report: dict[str, object],
+    policy_report: Mapping[str, object],
 ) -> None:
     assert policy_report["ownership_violations"] == ()
 
 
 @pytest.mark.validation
 def test_repository_python_call_graph_has_no_direct_or_mutual_recursion(
-    policy_report: dict[str, object],
+    policy_report: Mapping[str, object],
 ) -> None:
     assert policy_report["recursion_cycles"] == ()
 
 
 @pytest.mark.validation
 def test_repository_has_no_substantial_alpha_equivalent_logic(
-    policy_report: dict[str, object],
+    policy_report: Mapping[str, object],
 ) -> None:
     assert policy_report["duplicate_bodies"] == (), (
         "Duplicate logic: run python -m devtools.checks.repository_policy for exact locations"

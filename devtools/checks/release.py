@@ -17,6 +17,7 @@ from pathlib import Path
 from types import FrameType
 from uuid import uuid4
 
+from devtools.checks import policy_report_handoff as policy_handoff
 from devtools.checks.isabelle_proof_progress import (
     ProofProgressFile,
     profile_log_path,
@@ -242,6 +243,7 @@ def execute(
     before = git_source(run.root).as_dict()
     generation = proof_generation if proof_generation is not None else uuid4().hex
     environment = pytest_environment()
+    policy_handoff.configure(run, name, pytest_run, before, generation, environment)
     environment[PROOF_GENERATION_ENV] = generation
     deadline = time.monotonic() + policy.timeout_seconds
     parent_deadline = os.environ.get(DEADLINE_ENV)
@@ -294,6 +296,7 @@ def execute(
         "proof_generation": generation,
         **(record_fields or {}),
     }
+    policy_handoff.bind_report(run, record)
     if progress_watchdog is not None:
         record["session_watchdog"] = progress_watchdog.report()
     if active_path.is_file():
