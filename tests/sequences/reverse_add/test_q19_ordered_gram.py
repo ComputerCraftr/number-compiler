@@ -8,6 +8,15 @@ import pytest
 from number_compiler.sequences.reverse_add.q19_ordered_gram import Q19OrderedGramAction
 
 
+def compile_word(
+    word: tuple[int, ...], z: int = 1, modulus: int = 1_000_000_007
+) -> Q19OrderedGramAction:
+    result = Q19OrderedGramAction.identity(z, modulus, 3)
+    for symbol in word:
+        result = result.then(Q19OrderedGramAction.atom(symbol, z, modulus, 3))
+    return result
+
+
 def literal(
     word: tuple[int, ...], a: int, b: int, z: int, m: int, degree: int
 ) -> tuple[tuple[int, int], tuple[tuple[int, ...], ...]]:
@@ -96,6 +105,25 @@ def test_order_and_ring_guards() -> None:
         Q19OrderedGramAction.atom(19, 1, 16, 2)
 
 
+def test_mixed_eq_shifted_phase_preserves_both_ordered_cross_terms() -> None:
+    from number_compiler.sequences.reverse_add.mixed_periodic_bank import (
+        MixedPeriodicCore,
+    )
+
+    first = (5, 9, 13)
+    later = MixedPeriodicCore(first).advance(0)[0].coefficients
+    assert later == (12, 9, 6)
+    left, right = compile_word(first, 2, 257), compile_word(later, 2, 257)
+    joined = left.then(right)
+    assert joined != right.then(left)
+    assert joined.rows[1].a_next_b != joined.rows[1].next_a_b
+    for a, b in product((0, 1), repeat=2):
+        row = joined.rows[2 * a + b]
+        exits, channels = literal(first + later, a, b, 2, 257, 3)
+        assert (row.left_exit, row.right_exit) == exits
+        assert (row.a, row.b, row.ab, row.a_next_b, row.next_a_b) == channels
+
+
 def test_ordered_34_column_tiles_and_physical_101_seams() -> None:
     from tests.support.q19_tiles import U as u
     from tests.support.q19_tiles import V as v
@@ -103,12 +131,6 @@ def test_ordered_34_column_tiles_and_physical_101_seams() -> None:
 
     assert len(u) == len(v) == 34
     assert u != v
-
-    def compile_word(word: tuple[int, ...]) -> Q19OrderedGramAction:
-        result = Q19OrderedGramAction.identity(1, 1_000_000_007, 3)
-        for symbol in word:
-            result = result.then(Q19OrderedGramAction.atom(symbol, 1, 1_000_000_007, 3))
-        return result
 
     u_action, v_action = compile_word(u), compile_word(v)
     assert u_action == v_action

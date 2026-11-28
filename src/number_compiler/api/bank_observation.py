@@ -149,6 +149,7 @@ def reverse_bank_packet(
         options.pair_bank_position,
         options.bank_morphism_count,
         period=options.grammar_period,
+        _growth_only=True,
     )
     words = bank.output_words(("coefficient", *_PAIR_DOMAINS))
     output = words["coefficient"]

@@ -30,6 +30,7 @@ from number_compiler.arithmetic.automata.word_period import (
 from number_compiler.arithmetic.contracts.block_effect import BlockContextBudgetExceeded
 from number_compiler.arithmetic.fields.morphism_core import binary_power
 from number_compiler.resources.metric_keys import reverse_add as _reverse_add_keys
+from number_compiler.sequences.reverse_add.mixed_periodic_bank import periodic_ingresses
 from number_compiler.sequences.reverse_add.q19_conditional_stencil import (
     next_quiet_joint_xor_response,
 )
@@ -56,23 +57,9 @@ def _digit(s: int, c: int) -> int:
 
 
 def _periodic_ingresses(period: tuple[int, ...]) -> tuple[tuple[int, int], ...]:
-    first = next((i for i, s in enumerate(period) if s != 9), None)
-    if first is None:
+    if all(s == 9 for s in period):
         raise UniformConeNotAuthorized("all-EQ core requires exterior carry ports")
-    last = next(i for i in range(len(period) - 1, -1, -1) if period[i] != 9)
-    left = [0] * len(period)
-    right = [0] * len(period)
-    c = int(period[last] > 9)
-    for i, s in enumerate(period):
-        left[i] = c
-        if s != 9:
-            c = int(s > 9)
-    c = int(period[first] > 9)
-    for i in range(len(period) - 1, -1, -1):
-        right[i] = c
-        if period[i] != 9:
-            c = int(period[i] > 9)
-    return tuple(zip(left, right, strict=True))
+    return periodic_ingresses(period)
 
 
 def _step(period: tuple[int, ...], growth: int) -> tuple[int, ...]:

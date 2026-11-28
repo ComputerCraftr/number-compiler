@@ -519,7 +519,7 @@ class ReverseSourceImageWorkspace:
         )
 
     def certified_spatial_bank_morphism(
-        self, start: int, count: int, *, period: int = 2
+        self, start: int, count: int, *, period: int = 2, growth_only: bool = False
     ) -> ReverseAddSpatialBankMorphism:
         """Publish a finite protected spatial output from the live source root."""
         self.check_open()
@@ -529,6 +529,7 @@ class ReverseSourceImageWorkspace:
             type(start) is not int
             or type(count) is not int
             or type(period) is not int
+            or type(growth_only) is not bool
             or start < 0
             or count < 1
             or not 1 <= period <= 32
@@ -545,8 +546,14 @@ class ReverseSourceImageWorkspace:
             )
         owner = self.adapter.q19_output_owner(source)
         self.register_source_payload_audit_contract()
+        # The original physical border alone certifies 101 for these sums.
+        # Retain the wider edge action for all other requests.
+        window = 6
+        if growth_only and self.steps == 3 and len(source.digits) <= 2048:
+            if 14 <= source.digits[0] + source.digits[-1] <= 17:
+                window = 1
         cert = owner.certify_border_growth(
-            owner.initial, steps=self.steps, window_digits=6, max_states=2048
+            owner.initial, steps=self.steps, window_digits=window, max_states=2048
         )
         return owner.authorize_spatial_bank_morphism(
             owner.initial,

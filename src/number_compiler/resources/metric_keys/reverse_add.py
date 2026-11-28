@@ -167,6 +167,7 @@ REVERSE_Q19_WORD_FIBER_INTERVAL_NODES_VISITED: Final = (
     "reverse_q19_word_fiber_interval_nodes_visited"
 )
 REVERSE_Q19_CONDITIONAL_GT_BANK_ISSUED: Final = "reverse_q19_conditional_gt_bank_issued"
+REVERSE_Q19_MIXED_EQ_PHASE_ADMISSIONS: Final = "reverse_q19_mixed_eq_phase_admissions"
 REVERSE_Q19_CONDITIONAL_GT_BANK_OUTPUT_NODES: Final = (
     "reverse_q19_conditional_gt_bank_output_nodes"
 )

@@ -573,6 +573,8 @@ def authorize_controlled_gt_bank(
             owner.issuance_registry.discard_bank(registry_key, record)
             raise
     owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_CONDITIONAL_GT_BANK_ISSUED)
+    if len(period) == 3 and period.count(9) == 1 and sum(period) == 27:
+        owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_MIXED_EQ_PHASE_ADMISSIONS)
     owner.ledger.bump(
         _reverse_add_keys.REVERSE_Q19_CONDITIONAL_GT_BANK_OUTPUT_NODES,
         action.program_nodes,

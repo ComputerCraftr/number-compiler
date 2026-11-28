@@ -404,7 +404,7 @@ class ReverseAddPoweredTerm:
             )
 
     def temporal_spatial_bank_morphism(
-        self, start: int, count: int, *, period: int = 2
+        self, start: int, count: int, *, period: int = 2, _growth_only: bool = False
     ) -> ReverseAddSpatialBankMorphism:
         """Publish a source-issued protected spatial bank without an integer."""
         if (self.seed, self.generation, self.base) != self._binding:
@@ -412,7 +412,7 @@ class ReverseAddPoweredTerm:
         if self.base != 10:
             raise ValueError("spatial bank morphism requires decimal reversal")
         return self.source_workspace().certified_spatial_bank_morphism(
-            start, count, period=period
+            start, count, period=period, growth_only=_growth_only
         )
 
     def temporal_ring_bank(

@@ -44,6 +44,78 @@ def _digit(s: int, ingress: int) -> int:
     return s + ingress - 10 * _bit(s, ingress)
 
 
+def _mixed_eq_phase(coefficients: tuple[int, ...]) -> tuple[int, int] | None:
+    """Recognize the exact ordered mixed-EQ phase and its preceding sum."""
+    a, b, c = coefficients
+    if a == 9 and b + c == 18 and b != 9:
+        return 0, c
+    if b == 9 and a + c == 18 and a != 9:
+        return 1, a
+    if c == 9 and a + b == 18 and b != 9:
+        return 2, b
+    return None
+
+
+def _mixed_eq_ports(phase: int, x: int) -> tuple[tuple[int, int], ...]:
+    high = int(x > 9)
+    equal = (high, 1 - high)
+    below = (1 - high, 1 - high)
+    above = (high, high)
+    if phase == 0:
+        return equal, above, below
+    if phase == 1:
+        return below, equal, above
+    return above, below, equal
+
+
+def _mixed_eq_target(
+    phase_source: tuple[int, int], growth: int
+) -> tuple[int, int, int]:
+    """Advance a complete mixed-EQ period with its ordered phase."""
+    phase, x = phase_source
+    high, digit = divmod(x, 10)
+    if growth:
+        phase = (phase - 1) % 3
+        x = 8 - digit + 10 * high
+    else:
+        x = 2 * (digit + 1 - high)
+    result = [0, 0, 0]
+    result[phase] = 9
+    result[(phase - 1) % 3] = x
+    result[(phase + 1) % 3] = 18 - x
+    return result[0], result[1], result[2]
+
+
+def _reset_ingresses(s: tuple[int, ...]) -> tuple[tuple[int, int], ...]:
+    """Sweep both directions from the period's decisive carry resets."""
+    p = len(s)
+    first = next(i for i, value in enumerate(s) if value != 9)
+    last = next(i for i in range(p - 1, -1, -1) if s[i] != 9)
+    left = [0] * p
+    right = [0] * p
+    carry = int(s[last] > 9)
+    for i, value in enumerate(s):
+        left[i] = carry
+        if value != 9:
+            carry = int(value > 9)
+    carry = int(s[first] > 9)
+    for i in range(p - 1, -1, -1):
+        right[i] = carry
+        if s[i] != 9:
+            carry = int(s[i] > 9)
+    return tuple(zip(left, right, strict=True))
+
+
+def periodic_ingresses(coefficients: tuple[int, ...]) -> tuple[tuple[int, int], ...]:
+    """Evaluate both carry inlets for a nonempty period containing a reset."""
+    phase = _mixed_eq_phase(coefficients) if len(coefficients) == 3 else None
+    return (
+        _mixed_eq_ports(*phase)
+        if phase is not None
+        else _reset_ingresses(coefficients)
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class MixedPeriodicCore:
     """One ordered period of the complete pair/F5 grammar, not an occurrence."""
@@ -72,23 +144,7 @@ class MixedPeriodicCore:
         period in opposing directions.  The right sweep is a view of the
         original physical forward carry, **not** a reversed arithmetic scan.
         """
-        s = self.coefficients
-        p = len(s)
-        first = next(i for i, value in enumerate(s) if value != 9)
-        last = next(i for i in range(p - 1, -1, -1) if s[i] != 9)
-        left = [0] * p
-        right = [0] * p
-        carry = int(s[last] > 9)
-        for i, value in enumerate(s):
-            left[i] = carry
-            if value != 9:
-                carry = int(value > 9)
-        carry = int(s[first] > 9)
-        for i in range(p - 1, -1, -1):
-            right[i] = carry
-            if s[i] != 9:
-                carry = int(s[i] > 9)
-        return tuple(zip(left, right, strict=True))
+        return periodic_ingresses(self.coefficients)
 
     @staticmethod
     def _require_growth_bit(growth: int) -> None:
@@ -131,7 +187,9 @@ class MixedPeriodicCore:
         self._require_growth_bit(growth)
         s = self.coefficients
         p = len(s)
-        ports = self.ingresses()
+        phase = _mixed_eq_phase(s) if p == 3 else None
+        ports = _mixed_eq_ports(*phase) if phase is not None else _reset_ingresses(s)
+        phase_target = _mixed_eq_target(phase, growth) if phase is not None else None
         next_values: list[int] = []
         low_digits: list[int] = []
         reflected_digits: list[int] = []
@@ -143,13 +201,16 @@ class MixedPeriodicCore:
                 high = _digit(s[(i - 1) % p], _bit(s[i], right))
             else:
                 high = _digit(s[i], right)
-            t = low + high
-            if not 0 <= t <= 18:
-                raise AssertionError("mixed pair stencil left decimal alphabet")
-            next_values.append(t)
+            if phase_target is None:
+                t = low + high
+                if not 0 <= t <= 18:
+                    raise AssertionError("mixed pair stencil left decimal alphabet")
+                next_values.append(t)
             low_digits.append(low)
             reflected_digits.append(high)
-        target = MixedPeriodicCore(tuple(next_values))
+        target = MixedPeriodicCore(
+            tuple(next_values) if phase_target is None else phase_target
+        )
         future_ports = target.ingresses()
         # These guards are for the subsequent *nongrowth* innovation borrow
         # comparison only. A growth comparison uses the shifted-width rule.
@@ -585,6 +646,7 @@ __all__ = [
     "MixedOutputArena",
     "MixedPeriodicCore",
     "MixedTemporalAction",
+    "periodic_ingresses",
     "required_protected_halo",
 ]
 
