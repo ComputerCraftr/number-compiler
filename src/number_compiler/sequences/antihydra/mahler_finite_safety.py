@@ -136,7 +136,8 @@ def certify_finite_safety(
                 else _first_zero_failure(fraction, action.extent)
             )
         else:
-            lo, hi = 0, copies
+            lo: int = 0
+            hi: int = copies
             while lo + 1 < hi:
                 mid = (lo + hi) // 2
                 if _admitted(current, fraction, ring.action(mid).joint):
