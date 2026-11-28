@@ -47,6 +47,7 @@ def main() -> None:
         return original(tile, start, length)
 
     opens: list[tuple[int, int, int]] = []
+    requested_clips: set[tuple[int, int]] = set()
     raw_interval = tiles.reciprocal_row_interval
 
     def row_interval(q: int, row: int, width: int, start: int, count: int) -> int:
@@ -57,10 +58,16 @@ def main() -> None:
     def boundary_segment(
         tile: tiles.ReciprocalTile, start: int, length: int
     ) -> Matrix2:
-        if tile.sealed and tile.first_exponent == 34 and (start, length) == (0, 50):
-            assert tile.widths == (24, 25, 26, 26) and len(tile.row_prefixes) == 4
-            with patch.object(tiles, "reciprocal_row_interval", row_interval):
-                return original(tile, start, length)
+        if tile.sealed and tile.first_exponent == 34:
+            clip = (start, length)
+            assert clip not in requested_clips, (
+                "the final tile requested an issued clip twice"
+            )
+            requested_clips.add(clip)
+            if clip == (0, 50):
+                assert tile.widths == (24, 25, 26, 26) and len(tile.row_prefixes) == 4
+                with patch.object(tiles, "reciprocal_row_interval", row_interval):
+                    return original(tile, start, length)
         return original(tile, start, length)
 
     for horizon, count, check in ((2048, 269, segment), (3584, 471, boundary_segment)):

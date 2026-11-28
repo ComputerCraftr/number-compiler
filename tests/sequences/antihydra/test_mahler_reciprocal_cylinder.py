@@ -398,7 +398,9 @@ def test_issued_row_boundaries_select_physical_intervals_without_decoding(
             assert len(tile.row_prefixes) == 4
             with monkeypatch.context() as guarded:
                 guarded.setattr(tiles, "reciprocal_row_interval", forbidden)
-                for start, end in ((0, 49), (24, 75), (49, 75), (24, 101)):
+                # The receiver may replay a selected complete range from its
+                # checked boundary actions, in either request order.
+                for start, end in ((0, 49), (24, 75), (49, 75), (24, 101), (24, 75)):
                     assert block.segment(start, end - start) == literal_action(
                         word[start:end]
                     )
