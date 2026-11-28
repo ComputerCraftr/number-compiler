@@ -31,34 +31,13 @@ def test_installed_wide_diagonal(
     if python is None:
         pytest.skip("requires the installed native-reverse wheel interpreter")
     assert Path(python).is_absolute()
-    program = """
-import sys
-from importlib.metadata import distribution
-from pathlib import Path
-from number_compiler.kernels import _reverse_quotients
-dist = distribution('number-compiler')
-assert Path(_reverse_quotients.__file__).resolve().is_relative_to(Path(dist.locate_file('')).resolve())
-cli, = dist.entry_points.select(group='console_scripts', name='number-compiler')
-calls = 0
-def probe(frame, event, fn):
-    global calls
-    if event == 'c_call' and fn is _reverse_quotients.multiply:
-        calls += 1
-sys.setprofile(probe)
-try:
-    status = cli.load()(sys.argv[1:])
-finally:
-    sys.setprofile(None)
-print(calls, file=sys.stderr)
-raise SystemExit(status)
-"""
     env = dict(os.environ, NUMBER_COMPILER_ENABLE_NATIVE_REVERSE=str(int(enabled)))
     proc = subprocess.run(
         [
             python,
             "-I",
-            "-c",
-            program,
+            str(Path(__file__).with_name("installed_native_cli_fixture.py")),
+            "wide",
             "2rev10",
             "--seed",
             _WIDE,

@@ -6,6 +6,7 @@ import ast
 import json
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -87,27 +88,6 @@ def test_installed_cli_native_admission_and_refusals() -> None:
     if not interpreter:
         pytest.skip("set NUMBER_COMPILER_INSTALLED_PYTHON to a native-wheel venv")
     assert os.path.isabs(interpreter)
-    program = """\
-import pathlib, sys, sysconfig
-import number_compiler
-from number_compiler.kernels import _reverse_quotients as native
-from number_compiler.api.cli import main
-roots = [pathlib.Path(sysconfig.get_path(key)).resolve() for key in ('purelib', 'platlib')]
-for module in (number_compiler, native):
-    path = pathlib.Path(module.__file__).resolve()
-    assert any(path.is_relative_to(root) for root in roots), path
-calls = []
-def profile(frame, event, arg):
-    if event == 'c_call' and arg is native.add_folded:
-        calls.append(1)
-sys.setprofile(profile)
-try:
-    status = main(sys.argv[1:])
-finally:
-    sys.setprofile(None)
-print('NATIVE_ADD_CALLS', len(calls), file=sys.stderr)
-raise SystemExit(status)
-"""
     outputs = {}
     for label, enabled, ticks in (
         ("enabled", True, 1024),
@@ -122,8 +102,8 @@ raise SystemExit(status)
             [
                 interpreter,
                 "-I",
-                "-c",
-                program,
+                str(Path(__file__).with_name("installed_native_cli_fixture.py")),
+                "q19",
                 "reverse-add",
                 "--seed",
                 "196",

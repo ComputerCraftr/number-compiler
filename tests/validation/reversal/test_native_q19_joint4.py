@@ -6,6 +6,7 @@ import json
 import os
 import random
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -42,26 +43,6 @@ def test_installed_cli_enters_joint_action_and_preserves_fallback() -> None:
     if not interpreter:
         pytest.skip("set NUMBER_COMPILER_INSTALLED_PYTHON to the native wheel")
     assert os.path.isabs(interpreter)
-    program = """\
-import pathlib,sys,sysconfig
-import number_compiler
-from number_compiler.kernels import _reverse_quotients as native
-from number_compiler.api.cli import main
-roots=[pathlib.Path(sysconfig.get_path(k)).resolve() for k in ('purelib','platlib')]
-for module in (number_compiler,native):
-    assert any(pathlib.Path(module.__file__).resolve().is_relative_to(root) for root in roots)
-original=native.add_folded_joint4
-calls=[]
-def wrapped(*args):
-    result=original(*args)
-    calls.append(result[2])
-    return result
-native.add_folded_joint4=wrapped
-status=main(sys.argv[1:])
-print('JOINT_CALLS',len(calls),sum(x[7] for x in calls),sum(x[8] for x in calls),file=sys.stderr)
-print('PROBES',sum(x[9] for x in calls),'TWO_BIRTHS',sum(x[13] for x in calls),'ONE_BIRTH',sum(x[14] for x in calls),file=sys.stderr)
-raise SystemExit(status)
-"""
     seed = _seed()
     outputs: dict[str, subprocess.CompletedProcess[str]] = {}
     for label, enabled, value, ticks in (
@@ -85,8 +66,8 @@ raise SystemExit(status)
             [
                 interpreter,
                 "-I",
-                "-c",
-                program,
+                str(Path(__file__).with_name("installed_native_cli_fixture.py")),
+                "joint",
                 "reverse-add",
                 "--seed",
                 str(value),

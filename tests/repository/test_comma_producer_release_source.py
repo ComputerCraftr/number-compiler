@@ -1,6 +1,9 @@
 """Guard the concrete comma writer bridge and its Isabelle symbol syntax."""
 
+import ast
 from collections.abc import Mapping
+
+import pytest
 
 from devtools.checks.isabelle_source_analysis import extract_isabelle_declarations
 from devtools.checks.isabelle_syntax import Session
@@ -13,6 +16,92 @@ from number_compiler.sequences.comma.future_authority import (
 )
 
 ISABELLE = isabelle_root()
+
+
+def _assert_chart_python_contract(source: str) -> None:
+    """Check executable chart branches inside their actual top-level owners."""
+    tree = ast.parse(source)
+    functions = {
+        node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    initial = functions["initial_chart"]
+    loop = functions["chart_moves"]
+    expected = ast.dump(
+        ast.parse(
+            'BoundaryChart("near", a - 1, 0, 1) if kind == "N" '
+            'else BoundaryChart("entry", a, 0, 0)',
+            mode="eval",
+        ).body
+    )
+    assert any(
+        isinstance(node, ast.Return)
+        and node.value is not None
+        and ast.dump(node.value) == expected
+        for node in initial.body
+    )
+    defaults = dict(
+        zip(
+            (arg.arg for arg in loop.args.kwonlyargs),
+            loop.args.kw_defaults,
+            strict=True,
+        )
+    )
+    grouped_default = defaults.get("grouped_near")
+    assert isinstance(grouped_default, ast.Constant)
+    assert grouped_default.value is False
+    expected_step = ast.dump(
+        ast.parse("move = chart_step(residue, chart, charge_bits=charge_bits)").body[0]
+    )
+    expected_guard = ast.dump(
+        ast.parse(
+            'grouped_near and chart.kind == "near" and chart.coordinate > '
+            "10 * ((-chart.coordinate) % 10) + chart.leading + int(chart.leading < 9)",
+            mode="eval",
+        ).body
+    )
+    assert any(
+        isinstance(node, ast.While)
+        and isinstance(node.test, ast.Constant)
+        and node.test.value is True
+        and any(
+            isinstance(branch, ast.If)
+            and ast.dump(branch.test) == expected_guard
+            and any(ast.dump(item) == expected_step for item in branch.orelse)
+            for branch in node.body
+        )
+        for node in loop.body
+    )
+
+
+def test_chart_contract_rejects_comment_and_nested_function_decoys() -> None:
+    source = """
+def initial_chart(kind, a):
+    return BoundaryChart("near", a - 1, 0, 1) if kind == "N" else BoundaryChart("entry", a, 0, 0)
+def chart_moves(*, grouped_near=False):
+    while True:
+        if grouped_near and chart.kind == "near" and chart.coordinate > 10 * ((-chart.coordinate) % 10) + chart.leading + int(chart.leading < 9):
+            pass
+        else:
+            move = chart_step(residue, chart, charge_bits=charge_bits)
+"""
+    _assert_chart_python_contract(source)
+    for replacement in (
+        "            pass  # move = chart_step(residue, chart, charge_bits=charge_bits)",
+        "            def decoy():\n                move = chart_step(residue, chart, charge_bits=charge_bits)",
+    ):
+        with pytest.raises(AssertionError):
+            _assert_chart_python_contract(
+                source.replace(
+                    "            move = chart_step(residue, chart, charge_bits=charge_bits)",
+                    replacement,
+                )
+            )
+    for changed in (
+        source.replace("if grouped_near and chart.kind", "if False and chart.kind"),
+        source.replace("while True:", "while False:"),
+    ):
+        with pytest.raises(AssertionError):
+            _assert_chart_python_contract(changed)
 
 
 def test_concrete_decade_summary_producer_bridge_is_registered(
@@ -242,16 +331,7 @@ def test_b32_bridge_covers_the_concrete_ungrouped_boundary_chart_loop() -> None:
     chart_source = (
         ISABELLE.parent.parent / "src/number_compiler/sequences/comma/boundary_chart.py"
     ).read_text()
-    initial_start = chart_source.index("def initial_chart(")
-    initial_end = chart_source.index("\n\ndef validate_chart", initial_start)
-    initial = chart_source[initial_start:initial_end]
-    assert 'BoundaryChart("near", a - 1, 0, 1)' in initial
-    assert 'BoundaryChart("entry", a, 0, 0)' in initial
-
-    loop_start = chart_source.index("def chart_moves(")
-    loop = chart_source[loop_start:]
-    assert "grouped_near: bool = False" in loop
-    assert "move = chart_step(residue, chart, charge_bits=charge_bits)" in loop
+    _assert_chart_python_contract(chart_source)
 
 
 def test_producer_near_increment_uses_one_isabelle_exists_symbol() -> None:

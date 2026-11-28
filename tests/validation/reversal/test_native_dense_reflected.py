@@ -29,48 +29,6 @@ def _installed_cli(
     portable: bool,
     front: bool = False,
 ) -> tuple[dict[str, object], list[tuple[int, int, int, int, int, int]]]:
-    program = """
-import json
-import sys
-from importlib.metadata import distribution
-from pathlib import Path
-from number_compiler.kernels import _reverse_quotients, _reflected_multiply
-dist = distribution('number-compiler')
-root = Path(dist.locate_file('')).resolve()
-assert Path(_reverse_quotients.__file__).resolve().is_relative_to(root)
-assert Path(_reflected_multiply.__file__).resolve().is_relative_to(root)
-work = []
-original_diagonal = _reverse_quotients.multiply
-original_reflected = _reflected_multiply.multiply_profiled
-original_diagonal_front = _reverse_quotients.multiply_front_profiled
-original_reflected_front = _reflected_multiply.multiply_front_profiled
-def diagonal(*args):
-    result = original_diagonal(*args)
-    work.append((result[1][3], 0, 0, 0, 0, 0))
-    return result
-def reflected(*args):
-    result = original_reflected(*args)
-    work.append((result[1], 0, 0, 0, 0, 0))
-    return result
-def diagonal_front(*args):
-    result = original_diagonal_front(*args)
-    work.append((result[1][3], *result[2:]))
-    return result
-def reflected_front(*args):
-    result = original_reflected_front(*args)
-    work.append(tuple(result[1:]))
-    return result
-_reverse_quotients.multiply = diagonal
-_reverse_quotients.multiply_front_profiled = diagonal_front
-_reflected_multiply.multiply_profiled = reflected
-_reflected_multiply.multiply_front_profiled = reflected_front
-entry, = dist.entry_points.select(group='console_scripts', name='number-compiler')
-try:
-    status = entry.load()(sys.argv[1:])
-finally:
-    print('DENSE_WORK', json.dumps(work), file=sys.stderr)
-raise SystemExit(status)
-"""
     env = dict(
         os.environ,
         NUMBER_COMPILER_ENABLE_NATIVE_REVERSE="1",
@@ -86,8 +44,8 @@ raise SystemExit(status)
         [
             python,
             "-I",
-            "-c",
-            program,
+            str(Path(__file__).with_name("installed_native_cli_fixture.py")),
+            "dense",
             family,
             "--seed",
             str(seed),
