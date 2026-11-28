@@ -3721,3 +3721,82 @@ guarded mypy run at `7601d822` passed all 2,690 sources. A fresh Linux
 native wheel and focused acceptance at that revision passed 86 tests.
 Source policy passed at `a1f18808`; the independent release proof index
 still rejected the production Comma authority.
+
+### Issued reciprocal rows and physical return guards
+
+At `e6535da4`, the opt-in reciprocal CF cylinder retains the ordered products
+it already computes at complete row boundaries in admitted three- and four-row
+tiles of width 19–32. Isabelle accepted left-boundary cancellation followed by
+the exact clipped physical row in `Mahler_Source_Transport`. On the fresh
+Linux ARM64 wheel, the 3,584-tick query used two issued rows before opening
+the remaining digit. Total row interval opens fell from 21 to 19 and the full
+packet matched. Cold medians over nine interleaved trials were
+113.94 and 113.66 ms. Warm medians over seven trial pairs were 3.755 and
+3.765 ms. All 91 focused tests passed, including capacity refusal and forged
+row-boundary evidence. The opt-in and default policies are unchanged.
+
+`f25535d5` proves the birth-first low readout from three ordered source
+digits and identifies its closed word as the exact physical two-step
+successor. The registered `Double_Reverse_Temporal_Refinement` build
+passed. Seed 1 enters C0 at tick 9, but its low-digit signal certifies only
+two digits. The existing pointed issuer requires an already-admitted
+physical cursor, and tick 9,967 exceeds its default 4,096 steps. The donor
+also uses a 4,983-digit full source, exceeding the default 4,096-bit state
+budget. A compressed source-bound 425-digit aperture certificate is still
+required. The odd 144-block guard and even 216-to-432 guard have no installed
+dispatch.
+
+`1da40e74` preserves the physical Q19 control where sources `947964476698`
+and `941849960998` have the same two-digit borders, the same first inlet, and
+the same birth/quiet word, then have different next-return inlets. The
+first-birth opt-in remains separate from dyadic return authority.
+`e79f86f3` extends only the finite Center11 observer. Seed 196 at tick 778
+gave width 333 and exact half-residues using 330,488 work units, with
+10,000 peak scratch nodes. Tick 779 was refused before execution because
+it would require 331,321 units against the 331,264-unit cap. Sixty focused
+tests and the installed Linux ARM64 comparisons passed. At 20, 256 and
+512 ticks the existing packets matched and cold medians stayed within 2%.
+
+`2793472f` proves the Entry and Near sector cuts and the source-first
+round receipt's typed control in the registered Comma writer session.
+`1cc28f6e` proves that the derived elapsed duration reaches the exact
+terminal source by the physical path. `541b0ac5` proves any cut in that
+round with exact physical prefix and remainder paths. Whole-decade
+composition, the ordered Future graph, v4 export, and installed admission
+remain open.
+
+`5459077c` validates serial JUnit release evidence from one immutable parsed
+snapshot. The 44 focused cases passed, including the single-read and duplicate
+execution-property regressions. `a48524a3` puts the single-read assertion in
+the existing serial scenarios, removing duplicate setup. The resulting
+43-case selection and strict typing passed. `e6068eee` shares one module
+discovery in the package ownership test. The aggregate AST inventory and test
+session fixture already use separate run-local snapshots. `8114e02a` shares one
+masked locator between ML reference and dynamic lookup scans. Literal theorem names still
+come from the original quoted source. Guarded parser tests covered standalone
+and embedded ML, nested comments, escapes, exact lines, and malformed strings.
+
+The clean Colima `e6068eee` run reached 6,552 test calls in its 300.10 s
+selection and recorded the same eight Comma CLI failures by test ID.
+Proof-index still rejects the retired Comma dependencies, and the wheel still
+lacks admitted Future authority. The run found one new Q19 fixture typing
+error and repeated JUnit setup. `b2e12714` and `a48524a3` address them.
+The focused Pyright and unit checks passed. The source policy passed on the
+isolated `1cc28f6e` tree. The aggregate Colima mypy command timed out, while
+standalone guarded mypy checked all 2,690 sources on macOS.
+
+The installed ARM64 CF probe matched 124 diagonal-band packets and six
+cylinders. Four bands invoked rotation, with zero cases where both operands
+were already issued. Two other bands refused under the existing node budget.
+No native phase-transport dispatch was promoted. The live 2rev10 mixed-adic
+action has its own modular authority. The proposed odd cut-415 scratch plan
+begins at tick 10,329 and so cannot certify the requested tick-9,967 aperture.
+
+At `dc83c74a` the receiving CF block reads repeated complete clips from its
+issued boundaries. Fifteen installed cylinder controls requested 114 distinct
+clips and reopened none of the 56 digit windows. The independent repeated
+partial-clip fixture still opens its digits twice, with no live repeat to
+justify a retained interval cache. `f1709677` bounds the multiplication used
+for 5rev10 moving-cut work admission. The installed field at tick 209 matched
+with the default and with a 1,025-digit step budget. At tick 9,967 the two-place
+query still succeeds and the physical three-place query still refuses.
