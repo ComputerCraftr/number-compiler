@@ -6,6 +6,7 @@ import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 import pytest
 
@@ -241,6 +242,32 @@ def test_package_contract_changes_invalidate_passing_evidence(
     target.write_text("changed package contract\n")
     with pytest.raises(ValueError, match="dirty|stale"):
         validate_evidence(path, root, nodes)
+
+
+def test_serial_release_reads_one_validated_junit_snapshot(tmp_path: Path) -> None:
+    root, path, suite, nodes = report(tmp_path)
+    suite.set("time", "1.0")
+    ET.SubElement(
+        _required(suite, "properties"),
+        "property",
+        name=EXECUTION_MODE,
+        value="serial-unfiltered",
+    )
+    save(path, suite)
+    with patch("xml.etree.ElementTree.parse", wraps=ET.parse) as parse:
+        assert validate_serial_release(path, root, nodes)["test_count"] == 2
+    assert parse.call_count == 1
+
+
+def test_serial_release_rejects_duplicate_execution_mode(tmp_path: Path) -> None:
+    root, path, suite, nodes = report(tmp_path)
+    suite.set("time", "1.0")
+    properties = _required(suite, "properties")
+    for mode in ("parallel", "serial-unfiltered"):
+        ET.SubElement(properties, "property", name=EXECUTION_MODE, value=mode)
+    save(path, suite)
+    with pytest.raises(ValueError, match="duplicate evidence property"):
+        validate_serial_release(path, root, nodes)
 
 
 @pytest.mark.parametrize(

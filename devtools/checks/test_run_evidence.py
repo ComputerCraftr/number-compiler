@@ -7,9 +7,10 @@ import json
 import os
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
-from devtools.git_source import git_source
+from devtools.git_source import GitSource, git_source
 from devtools.paths import repository_root
 from number_compiler.arithmetic.contracts.input_validation import (
     is_object_list,
@@ -112,6 +113,17 @@ def minimal_selectors(selectors: tuple[str, ...]) -> tuple[str, ...]:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _EvidenceSnapshot:
+    """The validated values from one JUnit read and one source inspection."""
+
+    durations: tuple[tuple[str, float], ...]
+    source: GitSource
+    provenance_mode: str
+    execution_mode: str | None
+    suite_time: str | None
+
+
 def validate_evidence(
     path: Path,
     root: Path,
@@ -126,6 +138,26 @@ def validate_evidence(
     ``require_acceptance_verified=False`` is reserved for the release runner's
     in-flight JUnit check, before detached-worktree cleanup has completed.
     """
+    snapshot = _validate_evidence_snapshot(
+        path,
+        root,
+        required,
+        require_clean=require_clean,
+        require_acceptance=require_acceptance,
+        require_acceptance_verified=require_acceptance_verified,
+    )
+    return dict(snapshot.durations)
+
+
+def _validate_evidence_snapshot(
+    path: Path,
+    root: Path,
+    required: tuple[str, ...] | None,
+    *,
+    require_clean: bool,
+    require_acceptance: bool,
+    require_acceptance_verified: bool | None,
+) -> _EvidenceSnapshot:
     tree = ET.parse(path).getroot()
     suites = tuple(tree.iter("testsuite"))
     if len(suites) != 1:
@@ -200,13 +232,18 @@ def validate_evidence(
         if mode != "acceptance":
             raise ValueError("reusable evidence requires acceptance provenance")
         _validate_acceptance_manifest(path, live)
-    return tests
+    assert mode is not None
+    return _EvidenceSnapshot(
+        durations=tuple(tests.items()),
+        source=live,
+        provenance_mode=mode,
+        execution_mode=properties.get(EXECUTION_MODE),
+        suite_time=suite.get("time"),
+    )
 
 
 def _validate_acceptance_manifest(path: Path, source: object) -> None:
     """Bind reusable JUnit to its completed, verified run manifest."""
-    from devtools.git_source import GitSource
-
     if not isinstance(source, GitSource):
         raise TypeError("source must be a GitSource")
     manifest_path = path.parent / "manifest.json"
@@ -260,7 +297,7 @@ def validate_serial_release(
     release run. Missing execution metadata cannot imply serial execution.
     The unverified-acceptance override is only for that in-flight runner path.
     """
-    durations = validate_evidence(
+    snapshot = _validate_evidence_snapshot(
         path,
         root,
         required,
@@ -268,32 +305,24 @@ def validate_serial_release(
         require_acceptance=require_acceptance,
         require_acceptance_verified=require_acceptance_verified,
     )
+    durations = dict(snapshot.durations)
     if required is not None and set(durations) != set(required):
         raise ValueError("serial release requires the exact unfiltered test manifest")
-    suite = next(ET.parse(path).getroot().iter("testsuite"))
-    properties = {
-        prop.get("name"): prop.get("value")
-        for prop in suite.findall("./properties/property")
-    }
-    if properties.get(EXECUTION_MODE) != "serial-unfiltered":
+    if snapshot.execution_mode != "serial-unfiltered":
         raise ValueError("serial release requires recorded unfiltered serial execution")
-    raw_time = suite.get("time")
+    raw_time = snapshot.suite_time
     if raw_time is None:
         raise ValueError("serial release has no complete-suite duration")
     suite_seconds = float(raw_time)
     if not 0 <= suite_seconds < float("inf"):
         raise ValueError("serial release has invalid complete-suite duration")
     slowest = sorted(durations.items(), key=lambda item: (-item[1], item[0]))[:20]
-    source = git_source(root)
-    properties = {
-        prop.get("name"): prop.get("value")
-        for prop in suite.findall("./properties/property")
-    }
-    acceptance = properties.get(PROVENANCE_MODE) == "acceptance"
+    source = snapshot.source
+    acceptance = snapshot.provenance_mode == "acceptance"
     acceptance_verified = acceptance and require_acceptance_verified is not False
     return {
         **source.as_dict(),
-        "provenance_mode": properties.get(PROVENANCE_MODE),
+        "provenance_mode": snapshot.provenance_mode,
         "acceptance_verified": acceptance_verified,
         "cacheable": acceptance_verified and not source.dirty,
         "reusable": acceptance_verified and not source.dirty,
