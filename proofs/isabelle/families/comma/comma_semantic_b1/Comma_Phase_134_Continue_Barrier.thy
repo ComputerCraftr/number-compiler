@@ -23,4 +23,12 @@ ML_file "semantic_phase_134_actions.ML"
 ML_file "semantic_phase_134_certificate.ML"
 local_setup \<open>Comma_Phase_134_Certificate.run\<close>
 
+ML \<open>
+  val checked = @{thms comma_continue_phase_134_checked};
+  val _ = if null (Thm_Deps.all_oracles checked) then ()
+    else error "Continue phase barrier depends on an oracle";
+  val _ = if Thm_Deps.has_skip_proof checked then
+    error "Continue phase barrier contains skipped proofs" else ();
+\<close>
+
 end
