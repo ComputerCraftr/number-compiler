@@ -7,7 +7,9 @@ namespace rev10 {
 struct Stats {
     std::uint64_t tiles = 0, fringe_cells = 0, fringe_gates = 0, rows = 0,
                   word_updates = 0, table_entries = 0, table_bytes = 0,
-                  table_aux_bytes = 0;
+                  table_aux_bytes = 0, front_columns = 0, front_probes = 0,
+                  train_columns = 0, train_words_skipped = 0,
+                  train_ready_lookups = 0;
     double setup_ms = 0, eval_ms = 0;
 };
 struct Result {

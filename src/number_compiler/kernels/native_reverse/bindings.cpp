@@ -30,7 +30,7 @@ void translate_exception(std::exception_ptr error) {
     }
 }
 
-PyObject *multiply(PyObject * /*unused*/, PyObject *args) {
+PyObject *multiply_impl(PyObject *args, bool report_front) {
     const char *source = nullptr;
     Py_ssize_t size = 0;
     int multiplier = 0;
@@ -55,8 +55,8 @@ PyObject *multiply(PyObject * /*unused*/, PyObject *args) {
         }
         const auto &work = result.stats;
         return Py_BuildValue(
-            "s#(KKKKKKdd)", result.digits.data(),
-            static_cast<Py_ssize_t>(result.digits.size()),
+            report_front ? "s#(KKKKKKdd)KKKKK" : "s#(KKKKKKdd)",
+            result.digits.data(), static_cast<Py_ssize_t>(result.digits.size()),
             static_cast<unsigned long long>(work.tiles),
             static_cast<unsigned long long>(work.fringe_gates),
             static_cast<unsigned long long>(work.rows),
@@ -64,11 +64,23 @@ PyObject *multiply(PyObject * /*unused*/, PyObject *args) {
             static_cast<unsigned long long>(work.table_entries),
             static_cast<unsigned long long>(work.table_bytes +
                                             work.table_aux_bytes),
-            work.setup_ms, work.eval_ms);
+            work.setup_ms, work.eval_ms,
+            static_cast<unsigned long long>(work.front_columns),
+            static_cast<unsigned long long>(work.front_probes),
+            static_cast<unsigned long long>(work.train_columns),
+            static_cast<unsigned long long>(work.train_words_skipped),
+            static_cast<unsigned long long>(work.train_ready_lookups));
     } catch (...) {
         translate_exception(std::current_exception());
         return nullptr;
     }
+}
+
+PyObject *multiply(PyObject * /*unused*/, PyObject *args) {
+    return multiply_impl(args, false);
+}
+PyObject *multiply_front_profiled(PyObject * /*unused*/, PyObject *args) {
+    return multiply_impl(args, true);
 }
 
 PyObject *add(PyObject * /*unused*/, PyObject *args) {
@@ -270,6 +282,8 @@ PyObject *add_small_radix(PyObject * /*unused*/, PyObject *args) {
 }
 
 PyMethodDef methods[] = {
+    {"multiply_front_profiled", multiply_front_profiled, METH_VARARGS,
+     "Bounded reflected multiply with periodic front work."},
     {
         "add_small_radix",
         add_small_radix,

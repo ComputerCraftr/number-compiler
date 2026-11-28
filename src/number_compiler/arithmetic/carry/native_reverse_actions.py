@@ -148,7 +148,54 @@ def diagonal_endpoint(
     with ExitStack() as stack:
         if not _reserve(stack, ledger, scratch_owner, slots):
             return None
-        digits, counters = native.multiply(_decimal(value), multiplier, steps, side)
+        front = getattr(native, "multiply_front_profiled", None)
+        front_columns = 0
+        front_probes = 0
+        train_columns = 0
+        train_words_skipped = 0
+        train_ready_lookups = 0
+        if os.environ.get("NUMBER_COMPILER_ENABLE_REV10_FRONT") == "1" and callable(
+            front
+        ):
+            typed_front = cast(
+                Callable[
+                    [str, int, int, int],
+                    tuple[
+                        str,
+                        tuple[int, int, int, int, int, int, float, float],
+                        int,
+                        int,
+                        int,
+                        int,
+                        int,
+                    ],
+                ],
+                front,
+            )
+            (
+                digits,
+                counters,
+                front_columns,
+                front_probes,
+                train_columns,
+                train_words_skipped,
+                train_ready_lookups,
+            ) = typed_front(_decimal(value), multiplier, steps, side)
+            if (
+                type(front_columns) is not int
+                or front_columns < 0
+                or type(front_probes) is not int
+                or front_probes < 0
+                or type(train_columns) is not int
+                or train_columns < 0
+                or type(train_words_skipped) is not int
+                or train_words_skipped < 0
+                or type(train_ready_lookups) is not int
+                or train_ready_lookups < 0
+            ):
+                raise RuntimeError("invalid native periodic front work")
+        else:
+            digits, counters = native.multiply(_decimal(value), multiplier, steps, side)
         work = DiagonalWork(*counters)
         if (
             not digits
@@ -157,10 +204,31 @@ def diagonal_endpoint(
             or (len(digits) > 1 and digits[0] == "0")
             or len(digits) > width + steps
             or work.rows
-            or work.word_updates
+            or type(work.word_updates) is not int
+            or work.word_updates < 0
+            or (
+                os.environ.get("NUMBER_COMPILER_ENABLE_REV10_DENSE") != "1"
+                and work.word_updates != 0
+            )
+            or train_columns > front_columns
+            or train_ready_lookups > width + steps
+            or front_probes > width + steps
             or work.table_bytes > slots
         ):
             raise RuntimeError("invalid native diagonal endpoint")
+        if train_columns:
+            ledger.bump(_keys.NATIVE_DENSE_TRAIN_COLUMNS, train_columns)
+        if train_words_skipped:
+            ledger.bump(_keys.NATIVE_DENSE_TRAIN_SKIPPED_WORDS, train_words_skipped)
+        if train_ready_lookups:
+            ledger.bump(_keys.NATIVE_DENSE_TRAIN_READY_LOOKUPS, train_ready_lookups)
+        if front_probes:
+            ledger.bump(_keys.NATIVE_DENSE_FRONT_PROBES, front_probes)
+        if front_columns:
+            ledger.bump(_keys.NATIVE_DENSE_FRONT_COLUMNS, front_columns)
+        if work.word_updates:
+            ledger.bump(_keys.NATIVE_DENSE_ENDPOINTS)
+            ledger.bump(_keys.NATIVE_DENSE_WORD_UPDATES, work.word_updates)
         ledger.bump(_keys.NATIVE_DIAGONAL_TILES, work.tiles)
         ledger.bump(_keys.NATIVE_DIAGONAL_FRINGE_GATES, work.fringe_gates)
         ledger.bump(_keys.NATIVE_DIAGONAL_TABLE_ENTRIES, work.table_entries)

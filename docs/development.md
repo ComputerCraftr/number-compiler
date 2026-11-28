@@ -44,6 +44,27 @@ NUMBER_COMPILER_ENABLE_NATIVE_REVERSE=1 number-compiler 5rev10 --seed 73 --nth 1
 NUMBER_COMPILER_ENABLE_CF_RECIPROCAL=1 NUMBER_COMPILER_ENABLE_CF_CONTINUANT=1 number-compiler antihydra --nth 0 --no-value --info arithmetic.continued-fraction --safety-horizon 4096
 ```
 
+For an installed native reversal wheel, `NUMBER_COMPILER_ENABLE_REV10_DENSE=1`
+selects the four-tick digitplane kernel on admitted reflected requests.
+The existing family and resource checks apply before entry. Set
+`NUMBER_COMPILER_DENSE_PORTABLE=1` to exercise the portable carry scan on
+the same input. On ARM64 the kernel checks PMULL availability at runtime.
+
+`NUMBER_COMPILER_ENABLE_REV10_FRONT=1` additionally enables the periodic
+front inside that kernel. It checks the receiving carry planes and ordered
+source digits before skipping work. From 2,048 ticks, a matched front
+with at least 512 further source digits can also skip settled word updates
+in that suffix. The native receipt counts the covered columns, word updates
+skipped, and readiness lookups. This example supplies the ×5 motif in
+physical source order:
+
+```bash
+seed=$(python -c 'print(("96702" * 240)[::-1])')
+NUMBER_COMPILER_ENABLE_NATIVE_REVERSE=1 NUMBER_COMPILER_ENABLE_REV10_DENSE=1 \
+  NUMBER_COMPILER_ENABLE_REV10_FRONT=1 number-compiler 5rev10 --seed "$seed" \
+  --nth 256 --max-state-bits 8192 --max-output-bits 8192 --format json
+```
+
 The reciprocal CF producer also works in pure Python. The separate
 reflected C0 extension uses `NUMBER_COMPILER_BUILD_REFLECTED_MULTIPLY=1`
 at build time. When installed, it automatically handles initial-source
@@ -165,6 +186,16 @@ complete unit or full-suite result:
 python -m devtools.checks.release --suite unit
 python -m devtools.checks.release --suite all
 python -m devtools.checks.release --suite unit --select tests/repository/test_process_guard.py
+```
+
+Run standalone research probes through the same process guard from the locked
+environment. A directly launched interpreter runs outside its process tree.
+Use a fresh directory for the command log and footprint report.
+
+```bash
+evidence=$(mktemp -d)
+python -m devtools.checks.process_guard --output "$evidence/probe.log" \
+  --report "$evidence/probe.json" -- python /path/to/probe.py
 ```
 
 Add `--unit-only` to a selected unit run to exclude validation-marked cases,

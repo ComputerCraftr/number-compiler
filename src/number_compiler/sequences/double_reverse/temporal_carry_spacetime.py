@@ -502,7 +502,84 @@ def _native_reflected_endpoint(
             if edge_phase((digits[0], digits[1]), (digits[-2], digits[-1])) != phase:
                 raise ValueError("native reflected source has another issued phase")
             word = bytes(digit + 48 for digit in digits).decode("ascii")
-            result = native.multiply(word, ticks)
+            import os
+
+            front = getattr(native, "multiply_front_profiled", None)
+            profiled = getattr(native, "multiply_profiled", None)
+            word_updates = 0
+            front_columns = 0
+            front_probes = 0
+            train_columns = 0
+            train_words_skipped = 0
+            train_ready_lookups = 0
+            if (
+                os.environ.get("NUMBER_COMPILER_ENABLE_REV10_DENSE") == "1"
+                and os.environ.get("NUMBER_COMPILER_ENABLE_REV10_FRONT") == "1"
+                and callable(front)
+            ):
+                (
+                    result,
+                    word_updates,
+                    front_columns,
+                    front_probes,
+                    train_columns,
+                    train_words_skipped,
+                    train_ready_lookups,
+                ) = cast(tuple[str, int, int, int, int, int, int], front(word, ticks))
+            elif os.environ.get(
+                "NUMBER_COMPILER_ENABLE_REV10_DENSE"
+            ) == "1" and callable(profiled):
+                result, word_updates = cast(tuple[str, int], profiled(word, ticks))
+            else:
+                result = native.multiply(word, ticks)
+            if (
+                type(word_updates) is not int
+                or word_updates < 0
+                or type(front_columns) is not int
+                or front_columns < 0
+                or type(front_probes) is not int
+                or front_probes < 0
+                or type(train_columns) is not int
+                or train_columns < 0
+                or type(train_words_skipped) is not int
+                or train_words_skipped < 0
+                or type(train_ready_lookups) is not int
+                or train_ready_lookups < 0
+                or train_columns > front_columns
+                or train_ready_lookups > width + ticks
+                or front_probes > width + ticks
+            ):
+                raise ValueError("native reflected work count is invalid")
+            if word_updates:
+                ledger.bump(
+                    double_reverse_keys.DOUBLE_REVERSE_NATIVE_DENSE_WORD_UPDATES,
+                    word_updates,
+                )
+                ledger.bump(double_reverse_keys.DOUBLE_REVERSE_NATIVE_DENSE_ENDPOINTS)
+            if train_columns:
+                ledger.bump(
+                    double_reverse_keys.DOUBLE_REVERSE_NATIVE_TRAIN_COLUMNS,
+                    train_columns,
+                )
+            if train_words_skipped:
+                ledger.bump(
+                    double_reverse_keys.DOUBLE_REVERSE_NATIVE_TRAIN_SKIPPED_WORDS,
+                    train_words_skipped,
+                )
+            if train_ready_lookups:
+                ledger.bump(
+                    double_reverse_keys.DOUBLE_REVERSE_NATIVE_TRAIN_READY_LOOKUPS,
+                    train_ready_lookups,
+                )
+            if front_probes:
+                ledger.bump(
+                    double_reverse_keys.DOUBLE_REVERSE_NATIVE_FRONT_PROBES, front_probes
+                )
+            if front_columns:
+                ledger.bump(
+                    double_reverse_keys.DOUBLE_REVERSE_NATIVE_FRONT_COLUMNS,
+                    front_columns,
+                )
             if (
                 type(result) is not str
                 or not result.isascii()

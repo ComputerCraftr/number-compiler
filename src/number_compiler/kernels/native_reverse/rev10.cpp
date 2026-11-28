@@ -2,6 +2,7 @@
 // Diagonal boundary actions adapted from the supplied collision prototype.
 // Finite Laurent support; no physical width replay or temporal carry bank.
 #include "rev10.hpp"
+#include "dense_digitplanes.hpp"
 #include "relative_return.hpp"
 #ifdef __ARM_NEON
 #include <arm_neon.h>
@@ -11,6 +12,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <limits>
 #include <ratio>
 #include <stdexcept>
@@ -603,6 +605,62 @@ static string wave_tiled(const Table &t, const string &seed, I n, Stats &st,
     return physical_readout(std::move(out), t.m, n);
 }
 
+// The centered action uses the reflected coordinate. Its right-zero inlet
+// is the complete finite physical halo, and reversal restores the raw wave
+// before the residual physical gates and ordinary normalization.
+static string dense_wave(const string &seed, int multiplier, I ticks,
+                         Stats &st) {
+    const auto begin = Clock::now();
+    const auto physical_ticks = static_cast<size_t>(ticks);
+    const char *front_option =
+        std::getenv("NUMBER_COMPILER_ENABLE_REV10_FRONT");
+    const bool enable_front =
+        front_option != nullptr && string_view(front_option) == "1";
+    u64 front_table_bytes = 0;
+    string raw = multiplier == 2
+                     ? dense::four_tick_wave<2>(
+                           seed, physical_ticks, st.word_updates,
+                           st.front_columns, st.front_probes, st.train_columns,
+                           st.train_words_skipped, st.train_ready_lookups,
+                           front_table_bytes, st.setup_ms, enable_front)
+                     : dense::four_tick_wave<5>(
+                           seed, physical_ticks, st.word_updates,
+                           st.front_columns, st.front_probes, st.train_columns,
+                           st.train_words_skipped, st.train_ready_lookups,
+                           front_table_bytes, st.setup_ms, enable_front);
+    reverse(raw.begin(), raw.end());
+    raw.resize(seed.size() + physical_ticks, '0');
+    const int base = 10 / multiplier;
+    if ((ticks % 4) >= 2) {
+        string next(raw.size(), '0');
+        for (size_t i = 0; i < raw.size(); ++i) {
+            const int a = i >= 2 ? raw[i - 2] - '0' : 0;
+            const int d = i >= 1 ? raw[i - 1] - '0' : 0;
+            const int c = raw[i] - '0';
+            next[i] = static_cast<char>(
+                '0' + relative_cell(multiplier, base, a, d, c));
+        }
+        st.fringe_gates += static_cast<u64>(raw.size()) * 2;
+        raw.swap(next);
+    }
+    if ((ticks % 2) != 0) {
+        string next(raw.size(), '0');
+        for (size_t i = 0; i < raw.size(); ++i) {
+            const int digit = raw[i] - '0';
+            const int previous = i >= 1 ? raw[i - 1] - '0' : 0;
+            next[i] = static_cast<char>('0' + (multiplier * (digit % base)) +
+                                        previous / base);
+        }
+        st.fringe_gates += static_cast<u64>(raw.size());
+        raw.swap(next);
+    }
+    st.table_bytes = static_cast<u64>((physical_ticks / 4 + 63) / 64) *
+                         sizeof(dense::State) +
+                     front_table_bytes;
+    st.eval_ms = max(0.0, ms(begin, Clock::now()) - st.setup_ms);
+    return physical_readout(std::move(raw), multiplier, ticks);
+}
+
 static string diagonal(string seed, int m, I n, int side, Stats &st) {
     if ((n == 0) || seed == "0") {
         return seed;
@@ -610,6 +668,12 @@ static string diagonal(string seed, int m, I n, int side, Stats &st) {
     auto a = Clock::now();
     seed = core(std::move(seed));
     const auto run = relative_run(seed, m, n);
+    const char *dense_enabled =
+        std::getenv("NUMBER_COMPILER_ENABLE_REV10_DENSE");
+    if (dense_enabled != nullptr && string_view(dense_enabled) == "1" &&
+        n >= 128 && n <= 8192 && run.lo == run.hi) {
+        return dense_wave(seed, m, n, st);
+    }
     Table f =
         (m == 5 && side == 3) ? Table::side_three(5) : Table::forward(side);
     st.table_entries = std::uint64_t(f.tot / 2);
