@@ -55,14 +55,13 @@ front inside that kernel. It checks the receiving carry planes and ordered
 source digits before skipping work. From 2,048 ticks, a matched front
 with at least 512 further source digits can also skip settled word updates
 in that suffix. The native receipt counts the covered columns, word updates
-skipped, and readiness lookups. This example supplies the ×5 motif in
-physical source order:
+skipped, and readiness lookups. The following command exercises the dense
+×5 kernel on seed 73. The installed front tests also cover the physical
+source motifs and refusal when the incoming carry planes differ.
 
 ```bash
-seed=$(python -c 'print(("96702" * 240)[::-1])')
 NUMBER_COMPILER_ENABLE_NATIVE_REVERSE=1 NUMBER_COMPILER_ENABLE_REV10_DENSE=1 \
-  NUMBER_COMPILER_ENABLE_REV10_FRONT=1 number-compiler 5rev10 --seed "$seed" \
-  --nth 256 --max-state-bits 8192 --max-output-bits 8192 --format json
+  number-compiler 5rev10 --seed 73 --nth 1024 --format json
 ```
 
 The reciprocal CF producer also works in pure Python. The separate
