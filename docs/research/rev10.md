@@ -39,6 +39,15 @@ two and `52920` for multiplier five. Transport to a finite decimal source
 also requires its causal halo, physical carries, width changes and
 normalized readout.
 
+For doubling, let $F$ be the centered two-tick digit action and $w$ a
+supplied nonempty cyclic word. Suppose every slot satisfies
+$F^3(w)_i=w_{i+s}$. Translation commutes with the local stencil, so
+$F^{3q+r}(w)_i=F^r(w)_{i+qs}$ for $q\geq0$ and $0\leq r<3$.
+On a finite source the same readout holds when its entire radius-$3q+r$
+halo agrees with the cyclic word about the requested center. Two moving
+cuts require a checked halo and signed shift for each side. The period of
+the supplied word need not be primitive.
+
 ## Periods conditioned on the two upstream ports
 
 Let $F$ be the centered two-tick gate. In either extreme moving frame
