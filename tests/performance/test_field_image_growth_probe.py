@@ -92,6 +92,22 @@ def test_unsupported_execution_is_not_reported_as_zero_growth() -> None:
     assert result["rejection_type"] == "UnsupportedInterfaceError"
 
 
+def test_higher_interface_work_outside_envelope_is_reported() -> None:
+    class _HigherWorkTerm(_Term):
+        def metrics(self) -> types.SimpleNamespace:
+            result = super().metrics()
+            result.higher_concrete_operation_evaluations = (
+                1 if self.horizon == 16 else 100
+            )
+            return result
+
+    result = cold_measurement("test", _HigherWorkTerm, (16, 32), order="ascending")
+    assert result["status"] == "RED"
+    assert "higher_interface_work_exceeds_doubling_envelope" in text_values(
+        result["release_blockers"]
+    )
+
+
 @pytest.mark.validation  # Real reverse/Collatz N=16,32 scaling workloads.
 def test_public_probe_reports_available_execution_but_keeps_scaling_red() -> None:
     from devtools.benchmarks.field_image_growth_probe import run_probe
@@ -107,7 +123,7 @@ def test_public_probe_reports_available_execution_but_keeps_scaling_red() -> Non
         assert family["status"] == "RED"
         assert family["measurements_complete"] is True
         assert family["rows"]
-        assert "higher_interface_work_exceeds_doubling_envelope" in text_values(
+        assert "certified_path_published_no_recursive_field_images" in text_values(
             family["release_blockers"]
         )
         assert family["successor_closure_proved"] is False
