@@ -4,7 +4,8 @@ The input is a physical source digit word in either orientation; symmetric
 pair sums are identical in both. A singleton result authorizes only the
 inner carry after the first birth at the two-digit border cut. Production
 use requires the explicit ``NUMBER_COMPILER_ENABLE_Q19_ONE_BIRTH_INGRESS=1``
-opt-in; the Isabelle source-to-inlet bridge remains open.
+opt-in. The checked physical-aperture bridge covers this first birth;
+subsequent return and width transport are separate obligations.
 """
 
 from __future__ import annotations
