@@ -110,9 +110,7 @@ def periodic_ingresses(coefficients: tuple[int, ...]) -> tuple[tuple[int, int], 
     """Evaluate both carry inlets for a nonempty period containing a reset."""
     phase = _mixed_eq_phase(coefficients) if len(coefficients) == 3 else None
     return (
-        _mixed_eq_ports(*phase)
-        if phase is not None
-        else _reset_ingresses(coefficients)
+        _mixed_eq_ports(*phase) if phase is not None else _reset_ingresses(coefficients)
     )
 
 

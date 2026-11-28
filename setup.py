@@ -15,7 +15,14 @@ if os.environ.get("NUMBER_COMPILER_BUILD_REFLECTED_MULTIPLY") == "1":
                 source + "reflected_multiply_bindings.cpp",
                 source + "rev10.cpp",
             ],
-            depends=[source + name for name in ("rev10.hpp", "relative_return.hpp", "dense_digitplanes.hpp")],
+            depends=[
+                source + name
+                for name in (
+                    "rev10.hpp",
+                    "relative_return.hpp",
+                    "dense_digitplanes.hpp",
+                )
+            ],
             define_macros=[("PY_SSIZE_T_CLEAN", None)],
             extra_compile_args=["-std=c++20"],
             language="c++",
