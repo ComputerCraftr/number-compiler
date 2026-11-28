@@ -3807,3 +3807,72 @@ run, source tree, and guarded child. The selected real runner smoke made one
 in 0.23 s. The standalone fixture took 41.46 s. Invalid evidence and standalone
 selections still run the independent policy check. The aggregate release
 selection and gates are unchanged.
+
+### Source cut continuation from `126c26b5`
+
+`a0de512a` reuses one exact reciprocal CF clip of at most sixteen letters
+within its authenticated block. The installed owner opened the irregular
+seven-digit clip of the `5^30` through `5^32` tile once on the first request
+and zero times on the second. Median acquisition time fell from 2.13 to
+1.02 µs on a repeated request. Thirteen installed opt-in cylinder horizons
+made 46 eligible clip requests with zero hits. At 4,096 ticks the matching
+packets took 101.84 and 100.29 ms cold, and 3.98 and 3.97 ms warm, over five
+interleaved trials. The 90 focused tests, six installed-wheel tests, strict
+typing on the changed files, and source policy passed. Clip reuse is opt-in.
+
+`a650c089` adds a physical Q19 successor control. Sources `975386301448`
+and `972893119448` agree on both two-digit borders, the whole-half transfer
+summary, the first birth inlet, and the birth–quiet width schedule. Their
+next authentic inlets are 0 and 1. The 14 focused tests passed. These
+observations cannot authorize the next dyadic return without an ordered
+successor aperture. The six-digit issuer for `9111111111111118` checked
+growth `101` and the quiet predecessor `(172222, 222237)`. Its two possible
+quiet targets `(904444, 444508)` and `(904445, 444508)` project to the same
+two-digit tile `(90, 08)`. The current receipt omits the ambiguous six-digit
+target. Applying this result to the next return requires an authenticated
+projection at the receiving seam.
+
+The existing 2rev10 cone was probed directly from seed 1's issued tick-9
+source with the bounded CLI's 10,000-node and 20,000-entry limits. For
+tick 9,967, an innermost 41-digit part of the required 425-digit aperture
+refused at node 10,001 after 3,258 distinct cone evaluations and 1,975 hits.
+This was an isolated capacity probe of the exact kernel. The public
+cut-415 query refused with the step budget error on the fresh installed
+wheel. The same seed and tick used nine physical admission steps and zero
+post-entry steps for `arithmetic.modular` kind `mixed-adic`, a separate
+modular result. An independent finite oracle gave cut-415 digits 6 and 4 at
+ticks 9,967 and 9,969. The 417-digit odd aperture agreed at a 144-block
+shift and differed at shifts 48, 72, and 216. From even tick 9,140, both
+216- and 432-block shifts matched the visible 415 digits and differed on
+the 434-digit collar. That even case needs ordered support transport.
+
+The registered `Five_Reverse` build and the installed tests in `f73f5701`
+passed. At tick 9,967 the CLI returned residue 175 for two places and exit 3
+for three places. An independent literal oracle
+at that tick gave physical low digits 60 and 65 for seeds 196 and 205.
+Both fields reduce to 175 modulo 225, while their exact residues modulo
+1,125 are 175 and 400. At auxiliary exponent 4,983, the existing bounded
+H evaluator first has potential nonzero output at 2,492 decimal places,
+charging 12,417,636 digit actions against a limit of 500,000. Admission
+requires a separate source-certified normalized low-band action.
+
+`faa321fa` checks crossing into the next decade's Entry and composes
+physical cuts across the two source-issued rounds. `aa6e03f4` proves the
+one-decade width increment and receiving offset bound directly from the
+source action. The existing cut now derives that bound. The registered
+`Comma_Symbolic_First_Sector_Writer` builds passed with their oracle and
+dependency checks. Source-wide termination and the complete ordered
+Future graph remain prerequisites for v4 export and installed admission.
+An isolated, oracle-clean source-to-class action morphism also passed in
+12.51 seconds in its native child. Its legacy B1 session still loads
+occurrence and rank theories, so that morphism remains outside the release
+closure.
+The guarded release proof-index check on the receiving baseline still
+reports retired Bellman, rank and terminal-walk dependencies alongside
+missing symbolic authorities. The fresh wheel refused indices 1, 20,000,
+and 412,987,859 through 412,987,861 with exit 3 and no admitted Future.
+
+The combined guarded Colima selection passed 112 tests on `f73f5701`.
+Strict mypy, Pyright, Ruff and formatting passed on the four changed Python
+files. The first combined source-policy check timed out at 60 seconds.
+The recheck passed in 44.01 seconds on the same tree.
