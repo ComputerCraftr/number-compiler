@@ -24,7 +24,10 @@ from devtools.checks.pyright_policy import (
     pyright_sources,
     validate_pyright_output,
 )
-from devtools.checks.pyright_runner import capture_batch_diagnostics
+from devtools.checks.pyright_runner import (
+    acceptance_pyright_environment,
+    capture_batch_diagnostics,
+)
 from devtools.checks.source_discovery import authored_files
 from devtools.checks.toolchain_policy import python_toolchain_violations
 from number_compiler.arithmetic.contracts.input_validation import string_keyed_mapping
@@ -55,6 +58,19 @@ def test_pyright_source_discovery_includes_untracked_and_excludes_generated(
         "tests/contract.pyi",
         "tests/untracked.py",
     ]
+
+
+def test_detached_pyright_config_uses_active_environment(tmp_path: Path) -> None:
+    configured = tmp_path / ".venv"
+    with pytest.raises(RuntimeError, match="interrupted"):
+        with acceptance_pyright_environment(tmp_path):
+            assert configured.samefile(sys.prefix)
+            raise RuntimeError("interrupted")
+    assert not configured.is_symlink()
+    configured.mkdir()
+    with pytest.raises(FileExistsError), acceptance_pyright_environment(tmp_path):
+        pytest.fail("overwrote an existing environment")
+    assert configured.is_dir()
 
 
 def test_pyright_batches_are_sorted_bounded_and_lossless() -> None:

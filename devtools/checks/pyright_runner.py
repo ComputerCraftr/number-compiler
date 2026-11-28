@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+import sys
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
@@ -76,6 +78,17 @@ def _write_report(run: EvidenceRun, report: Mapping[str, object]) -> None:
     (run.path / "pyright-diagnostics.json").write_text(
         json.dumps(report, indent=2) + "\n", encoding="utf-8"
     )
+
+
+@contextmanager
+def acceptance_pyright_environment(root: Path) -> Iterator[None]:
+    """Expose the selected interpreter at the path specified by pyproject.toml."""
+    env = root / ".venv"
+    env.symlink_to(Path(sys.prefix).resolve(), target_is_directory=True)
+    try:
+        yield
+    finally:
+        env.unlink()
 
 
 def run_pyright_quality(

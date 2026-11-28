@@ -10,6 +10,7 @@ import signal
 import sys
 import time
 from collections.abc import Mapping
+from contextlib import nullcontext
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,7 +34,10 @@ from devtools.checks.process_guard import (
     run_guarded,
 )
 from devtools.checks.pyright_policy import npm_install_command
-from devtools.checks.pyright_runner import run_pyright_quality
+from devtools.checks.pyright_runner import (
+    acceptance_pyright_environment,
+    run_pyright_quality,
+)
 from devtools.checks.pytest_policy import (
     ACTIVE_TEST_ENV,
     forbidden_environment_overrides,
@@ -374,10 +378,15 @@ def quality(run: EvidenceRun, *, acceptance: bool = False) -> bool:
     for name, command in commands:
         passed = execute(run, name, command, acceptance=acceptance) and passed
         if name == "mypy":
-            passed = (
-                run_pyright_quality(run, execute=execute, acceptance=acceptance)
-                and passed
-            )
+            with (
+                acceptance_pyright_environment(run.root)
+                if acceptance
+                else nullcontext()
+            ):
+                passed = (
+                    run_pyright_quality(run, execute=execute, acceptance=acceptance)
+                    and passed
+                )
     package = (
         sys.executable,
         "-m",
