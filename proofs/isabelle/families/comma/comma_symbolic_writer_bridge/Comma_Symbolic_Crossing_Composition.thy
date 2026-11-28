@@ -6,6 +6,68 @@ text \<open>Compose two source-issued whole-round actions across an actual
 9-to-1 crossing.  The point function descends into the demanded physical
 interval; it does not construct a list of crossings or occurrences.\<close>
 
+lemma comma_decisive_sector_target_delta:
+  "comma_round_delta (comma_decisive_sector_target r source) = comma_round_delta source"
+  by (cases source)
+    (auto simp: comma_decisive_sector_target.simps Let_def
+      split: option.splits prod.splits)
+
+theorem comma_decisive_cross_shape:
+  assumes source: "comma_round_admitted source"
+    and result: "comma_decisive_endpoint_round r source = Comma_Round_Cross successor"
+  shows "\<exists>offset\<le>90. successor = Comma_Entry 1 (Suc (comma_round_delta source)) offset"
+  using source result
+proof (induction r source arbitrary: successor rule: comma_decisive_endpoint_round.induct[case_names step])
+  case (step r source)
+  show ?case
+  proof -
+  note admitted = step.prems(1)
+  obtain target move where packet:
+    "comma_decisive_endpoint_packet r source = (target,move)"
+    by (cases "comma_decisive_endpoint_packet r source") auto
+  have target: "target = comma_decisive_sector_target r source"
+    using packet by (simp add: comma_decisive_endpoint_packet_def Let_def)
+  have target_admitted: "comma_round_admitted target"
+    using comma_decisive_packet_target_admitted[OF admitted, of r] packet by simp
+  have action: "comma_fast_step (r mod 924) target = move"
+    using packet target by (simp add: comma_decisive_endpoint_packet_def Let_def)
+  have round: "comma_decisive_endpoint_round r source =
+    (case move of
+       Comma_Next child => if comma_round_crossing target child then Comma_Round_Cross child
+         else comma_decisive_endpoint_round r child
+     | Comma_Fork a delta => Comma_Round_Fork a delta
+     | Comma_Landmine delta => Comma_Round_Landmine delta
+     | Comma_Invalid => Comma_Round_Invalid)"
+    using comma_decisive_endpoint_round_packet[OF admitted, of r] packet by simp
+  obtain child where move: "move = Comma_Next child"
+    using round step.prems(2) by (cases move) auto
+  have finite: "comma_finite_step (r mod 924) target = Comma_Next child"
+    using action move by (simp only: comma_fast_step_correct)
+  have delta: "comma_round_delta target = comma_round_delta source"
+    using target by (simp only: comma_decisive_sector_target_delta)
+  show ?case
+  proof (cases "comma_round_crossing target child")
+    case True
+    have "successor = child" using round step.prems(2) move True by simp
+    moreover obtain d h offset where "target = Comma_Near 9 d h"
+      and "child = Comma_Entry 1 (Suc d) offset" and "offset \<le> 90"
+      using comma_round_crossing_offset_bound[OF finite True] by blast
+    ultimately show ?thesis using delta by auto
+  next
+    case False
+    have next_admitted: "comma_round_admitted child"
+      by (rule comma_round_next_admitted[OF target_admitted finite])
+    have eq: "comma_decisive_endpoint_round r child = Comma_Round_Cross successor"
+      using round step.prems(2) move False by simp
+    have nd: "comma_round_delta child = comma_round_delta target"
+      using comma_round_next_delta[OF target_admitted finite] False by simp
+    have ih: "\<exists>offset\<le>90. successor = Comma_Entry 1 (Suc (comma_round_delta child)) offset"
+      using step.IH[OF admitted target] action move False next_admitted eq by simp
+    show ?thesis using ih nd delta by simp
+  qed
+  qed
+qed
+
 definition comma_symbolic_crossing_point ::
     "nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat \<Rightarrow> nat" where
   "comma_symbolic_crossing_point p offset next_offset j =
@@ -16,7 +78,7 @@ definition comma_symbolic_crossing_point ::
 
 theorem comma_symbolic_crossing_cut_exact:
   fixes p offset next_offset elapsed j :: nat
-  assumes exponent: "5 \<le> p" and offset: "offset \<le> 90" and next_offset_bound: "next_offset \<le> 90"
+  assumes exponent: "5 \<le> p" and offset: "offset \<le> 90"
     and crossing: "comma_symbolic_round_receipt p (Comma_Entry 1 0 offset) =
       (elapsed,Comma_Entry 1 1 next_offset,Comma_Round_Cross (Comma_Entry 1 1 next_offset))"
     and bound: "j \<le> elapsed + fst (comma_symbolic_round_receipt (Suc p) (Comma_Entry 1 0 next_offset))"
@@ -32,6 +94,12 @@ proof -
   let ?child = "Comma_Entry 1 0 next_offset"
   let ?duration = "fst (comma_symbolic_round_receipt (Suc p) ?child)"
   let ?last = "fst (snd (comma_symbolic_round_receipt (Suc p) ?child))"
+  have source_admitted: "comma_round_admitted ?source" using offset by simp
+  have source_cross: "comma_decisive_endpoint_round (p mod 924) ?source =
+      Comma_Round_Cross (Comma_Entry 1 1 next_offset)"
+    using comma_symbolic_round_receipt_control[of p ?source] crossing by simp
+  have next_offset_bound: "next_offset \<le> 90"
+    using comma_decisive_cross_shape[OF source_admitted source_cross] by auto
   have admitted: "comma_round_admitted ?source" "comma_round_admitted ?child"
     using offset next_offset_bound by simp_all
   have exponent_child: "5 \<le> Suc p" using exponent by simp
@@ -80,7 +148,7 @@ proof -
 qed
 
 ML \<open>
-  val checked = @{thms comma_symbolic_crossing_cut_exact};
+  val checked = @{thms comma_decisive_cross_shape comma_symbolic_crossing_cut_exact};
   val _ = if null (Thm_Deps.all_oracles checked) then () else error "Crossing cut used an oracle";
   val _ = if Thm_Deps.has_skip_proof checked then error "Crossing cut contains skipped proofs" else ();
   val _ = Comma_Proof_Dependency_Audit.require_paths @{context}
