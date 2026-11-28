@@ -81,4 +81,35 @@ struct
         else tactic
     in traced "expose" (ALLGOALS (simp_tac expose)) THEN
       REPEAT_DETERM (CHANGED_PROP (traced "layer" layer)) end
+
+  (* One context-owned store for kernel-checked class-step equations. A cache
+     hit must match the complete proposed action, including terminal delta and
+     ordered successor; the integer pair alone is never authority. *)
+  structure Class_Key = Table(type key = int * int val ord = prod_ord int_ord int_ord)
+
+  fun class_step_store ctxt =
+    let
+      val tactic = class_step_tactic ctxt
+      val cache = Unsynchronized.ref Class_Key.empty
+      fun natural n = HOLogic.mk_number @{typ nat} n
+      fun certify (key as (phase,cid)) action =
+        let
+          val _ = if 0 <= phase andalso phase < 924 andalso 0 <= cid andalso cid < 46
+            then () else error "Class-step source outside admitted quotient"
+          val proposition = HOLogic.mk_Trueprop (HOLogic.mk_eq
+            (@{term comma_semantic_phase_program_class_step} $ natural phase $ natural cid, action))
+          fun exact fact =
+            if Thm.prop_of fact aconv proposition andalso Thm.nprems_of fact = 0
+            then fact else error "Class-step proposal mismatches checked source action"
+        in
+          (case Class_Key.lookup (!cache) key of
+            SOME fact => exact fact
+          | NONE =>
+              let
+                val fact = exact (Goal.prove ctxt [] [] proposition (fn _ => tactic))
+                val _ = cache := Class_Key.update (key,fact) (!cache)
+              in fact end)
+        end
+    in certify end
+
 end

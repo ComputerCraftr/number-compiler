@@ -328,6 +328,10 @@ session Comma_Semantic_B1 in comma_semantic_b1 = Comma_Terminal_Weight +
     Comma_Frontier_M204_Checker
     Comma_Frontier_M204_Direct_Source_Morphism
     Comma_Continue_Image_Bridge
+    Comma_Phase_134_Continue_Barrier
+    Comma_Qualitative_Stop
+    Comma_Phase134_Qualitative_Stop
+    Comma_Symbolic_Decade_Provider
     Comma_Program_Continue_Guard
     Comma_Program_Continue_Guard_Exact
     Comma_Parametric_Continue_Action
