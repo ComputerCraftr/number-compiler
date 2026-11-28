@@ -383,6 +383,7 @@ class Pow5OrderedBlockSource:
         from number_compiler.sequences.antihydra.mahler_cf_reciprocal_tile import (
             ReciprocalTile,
             native_prefix_available,
+            reciprocal_indexed_columns,
         )
 
         if (
@@ -441,7 +442,7 @@ class Pow5OrderedBlockSource:
             width = widths[-1]
             index_last = (
                 len(widths) == 2
-                and 28 <= widths[-1] <= 32
+                and reciprocal_indexed_columns(widths[-1]) > 0
                 and length == sum(widths) - start
                 and (staged_index or native_prefix_available())
             )

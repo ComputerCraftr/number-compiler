@@ -33,6 +33,29 @@ class _NativeContinuant(Protocol):
 
 
 _PREFIX = Struct("=4Q")
+_SETTLED_COLUMNS = 6
+
+
+def reciprocal_indexed_columns(width: int) -> int:
+    """Number of prefix columns retained by the bounded reciprocal bank."""
+    if 14 <= width <= 22:
+        return width - _SETTLED_COLUMNS
+    if 28 <= width <= 32:
+        return width // 2
+    return 0
+
+
+def _adjugate(entries: MatrixEntries, length: int) -> MatrixEntries:
+    a, b, c, d = entries
+    return (-d, b, c, -a) if length & 1 else (d, -b, -c, a)
+
+
+def _indexed_interval(prefixes: bytes, start: int, length: int) -> MatrixEntries:
+    end = _PREFIX.unpack_from(prefixes, (start + length) * _PREFIX.size)
+    if start == 0:
+        return end
+    first = _PREFIX.unpack_from(prefixes, start * _PREFIX.size)
+    return multiply_entries(_adjugate(first, start), end)
 
 
 def _native_continuant() -> _NativeContinuant | None:
@@ -150,23 +173,27 @@ class ReciprocalTile:
             and begin >= self.widths[0] - self.start
         ):
             position = begin - self.widths[0] + self.start
-            prefixes = self.last_prefixes
-            if (position + length + 1) * _PREFIX.size <= len(prefixes):
-                if position == 0:
-                    return Matrix2(_PREFIX.unpack_from(prefixes, length * _PREFIX.size))
-                a, b, c, d = _PREFIX.unpack_from(prefixes, position * _PREFIX.size)
-                e, f, g, h = _PREFIX.unpack_from(
-                    prefixes, (position + length) * _PREFIX.size
-                )
-                sign = 1 if position % 2 == 0 else -1
-                return Matrix2(
-                    (
-                        sign * (d * e - b * g),
-                        sign * (d * f - b * h),
-                        sign * (a * g - c * e),
-                        sign * (a * h - c * f),
+            end = position + length
+            indexed = len(self.last_prefixes) // _PREFIX.size - 1
+            if end <= indexed:
+                return Matrix2(_indexed_interval(self.last_prefixes, position, length))
+            width = self.widths[1]
+            cut = width - _SETTLED_COLUMNS
+            if indexed >= cut and self.first_exponent is not None and end <= width:
+                # The retained irregular head and the settled suffix cover
+                # this clip. Remove the right tail in physical matrix order.
+                right = width - end
+                successor = self.first_exponent + 1
+                tail = settled_low_action(successor, width - max(position, cut))
+                if right:
+                    trailing = settled_low_action(successor, right)
+                    tail = multiply_entries(tail, _adjugate(trailing, right))
+                if position < cut:
+                    head = _indexed_interval(
+                        self.last_prefixes, position, cut - position
                     )
-                )
+                    tail = multiply_entries(head, tail)
+                return Matrix2(tail)
         if not self._building and begin == 0:
             prefix = self.first_row_prefix
             if prefix is not None and prefix[0] == length:
@@ -187,7 +214,7 @@ class ReciprocalTile:
             # Only an interval ending at the physical low edge admits the
             # settled suffix action directly; a moving cut uses the exact path.
             suffix_count = (
-                min(6, count, width, exponent)
+                min(_SETTLED_COLUMNS, count, width, exponent)
                 if exponent is not None and start + count == width
                 else 0
             )
@@ -217,7 +244,9 @@ class ReciprocalTile:
                 value = reciprocal_row_interval(
                     self.quotient, row, width, 0, prefix_count
                 )
-                indexed = min(width // 2, prefix_count)
+                indexed = min(
+                    reciprocal_indexed_columns(width) or width // 2, prefix_count
+                )
                 remainder_count = prefix_count - indexed
                 value, remainder = divmod(value, 10**remainder_count)
                 native = _native_continuant()

@@ -329,7 +329,7 @@ def test_issued_last_row_actions_cover_every_clipped_segment(
     )
     from tests.sequences.antihydra.test_mahler_pow5_ordered_blocks import literal_action
 
-    for first in (9, 10, 38):
+    for first in (9, 10, 18, 26, 30, 38):
         first_value = 5**first
         last = str(first_value * 5)
         for offset in (0, 3):
@@ -368,8 +368,12 @@ def test_indexed_prefixes_are_bound_to_the_receiving_owner(
     assert ledger.nodes == ledger.entries == 0
 
 
+@pytest.mark.parametrize(("horizon", "count"), ((2048, 269), (4096, 540)))
 def test_live_cylinder_uses_indexed_final_row_without_reopening_digits(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    horizon: int,
+    count: int,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     import json
 
@@ -412,7 +416,7 @@ def test_live_cylinder_uses_indexed_final_row_without_reopening_digits(
                 "--info",
                 "arithmetic.continued-fraction",
                 "--safety-horizon",
-                "4096",
+                str(horizon),
             ]
         )
         == 0
@@ -421,14 +425,21 @@ def test_live_cylinder_uses_indexed_final_row_without_reopening_digits(
         "arithmetic.continued-fraction"
     ]
     stream = "".join(str(5**n) for n in range(1, 50))
-    assert packet["coefficient_count"] == 540
+    assert packet["coefficient_count"] == count
     assert packet["matrix"] == [
-        list(row) for row in literal_matrix(list(map(int, stream[:540])))
+        list(row) for row in literal_matrix(list(map(int, stream[:count])))
     ]
     assert hits
+    if horizon == 2048:
+        # At 5**27 the 13-digit irregular head ends inside the length-five
+        # probe. It consumes the hit and a clipped settled action in order.
+        assert (28, 5) in hits
 
 
+@pytest.mark.parametrize(("exponent", "ordinary_nodes"), ((26, 608), (38, 808)))
 def test_indexed_prefix_admission_falls_back_before_opening_row(
+    exponent: int,
+    ordinary_nodes: int,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     enable_prefix_bank(monkeypatch)
@@ -436,16 +447,17 @@ def test_indexed_prefix_admission_falls_back_before_opening_row(
 
     ledger = ResourceLedger()
     with Pow5OrderedBlockSource(ledger, reciprocal=True) as source:
-        for _ in range(9):
+        for _ in range((exponent - 2) // 4):
             source.next_block(4, 1000)
         source.next_block(1, 1000)
         # Exactly enough capacity for the regular two-row reservation.
-        ledger.tighten_limits(ledger.nodes + 808, None)
+        ledger.tighten_limits(ledger.nodes + ordinary_nodes, None)
         block = source.next_block(2, 1000)
         tile = object.__getattribute__(source, "_tile")
         assert not tile.index_last and tile.last_prefixes is None
-        assert block.product == literal_action(str(5**38) + str(5**39))
-        assert block.segment(27, 4) == literal_action(str(5**39)[:4])
+        first, second = str(5**exponent), str(5 ** (exponent + 1))
+        assert block.product == literal_action(first + second)
+        assert block.segment(len(first), 4) == literal_action(second[:4])
     assert ledger.nodes == ledger.entries == 0
 
 

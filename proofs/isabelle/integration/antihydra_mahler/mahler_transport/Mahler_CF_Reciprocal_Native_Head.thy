@@ -100,6 +100,67 @@ proof -
     by (simp only: take_add digits_def mahler_cf_reciprocal_selected_physical_source)
 qed
 
+lemma mahler_cf_reciprocal_adjugate_commutes:
+  fixes m :: "int ordered_matrix2"
+  shows "ordered_matrix2_multiply m (mahler_cf_integer_adjugate k m) =
+    ordered_matrix2_multiply (mahler_cf_integer_adjugate k m) m"
+  by (cases m) (simp add: mahler_cf_integer_adjugate_def algebra_simps)
+
+theorem mahler_cf_reciprocal_indexed_head_settled_clip:
+  fixes n t width start count split limit :: nat
+  assumes bounds: "start + count \<le> width" "split \<le> limit" "limit \<le> count"
+  defines "digits \<equiv> mahler_cf_decimal_digits count
+    (mahler_cf_reciprocal_selected_digits (5^n) t width start count)"
+  shows "ordered_matrix2_multiply (mahler_cf_integer_word (take split digits))
+      (ordered_matrix2_multiply
+        (mahler_cf_integer_word (drop split digits))
+        (mahler_cf_integer_adjugate (count-limit)
+          (mahler_cf_integer_word (drop limit digits)))) =
+    mahler_cf_integer_word (take limit (mahler_cf_decimal_digits count
+      (5^(n+t) div 10^(width-start-count) mod 10^count)))"
+proof -
+  have tail: "length (drop limit digits) = count-limit"
+    by (simp add: digits_def mahler_cf_decimal_digits_def)
+  have cancel: "ordered_matrix2_multiply
+      (mahler_cf_integer_word (drop limit digits))
+      (mahler_cf_integer_adjugate (count-limit)
+        (mahler_cf_integer_word (drop limit digits))) = ordered_matrix2_identity"
+    by (subst mahler_cf_reciprocal_adjugate_commutes)
+      (rule mahler_cf_integer_adjugate_inverse_left[OF tail])
+  have take_cut: "split + (limit-split) = limit"
+    by (rule le_add_diff_inverse[OF bounds(2)])
+  have drop_cut: "(limit-split) + split = limit" using take_cut by (simp only: add.commute)
+  have rest: "drop split digits =
+      take (limit-split) (drop split digits) @ drop limit digits"
+    using append_take_drop_id[of "limit-split" "drop split digits", symmetric]
+    by (simp only: drop_drop drop_cut)
+  have head: "take split digits @ take (limit-split) (drop split digits) =
+      take limit digits"
+    using take_add[of split "limit-split" digits, symmetric] by (simp only: take_cut)
+  have narrowed: "ordered_matrix2_multiply
+        (mahler_cf_integer_word (drop split digits))
+        (mahler_cf_integer_adjugate (count-limit)
+          (mahler_cf_integer_word (drop limit digits))) =
+      mahler_cf_integer_word (take (limit-split) (drop split digits))"
+    by (subst (1) rest)
+      (simp only: mahler_cf_integer_word_append ordered_matrix2_multiply_associative
+        cancel ordered_matrix2_identity_right)
+  have joined: "ordered_matrix2_multiply (mahler_cf_integer_word (take split digits))
+      (mahler_cf_integer_word (take (limit-split) (drop split digits))) =
+      mahler_cf_integer_word (take limit digits)"
+    by (simp only: mahler_cf_integer_word_append[symmetric] head)
+  have "ordered_matrix2_multiply (mahler_cf_integer_word (take split digits))
+      (ordered_matrix2_multiply (mahler_cf_integer_word (drop split digits))
+        (mahler_cf_integer_adjugate (count-limit)
+          (mahler_cf_integer_word (drop limit digits)))) =
+      mahler_cf_integer_word (take limit digits)"
+    by (simp only: narrowed joined)
+  also have "... = mahler_cf_integer_word (take limit (mahler_cf_decimal_digits count
+      (5^(n+t) div 10^(width-start-count) mod 10^count)))"
+    by (simp only: digits_def mahler_cf_reciprocal_selected_physical_source)
+  finally show ?thesis .
+qed
+
 text \<open>Multiplying the low field at a cut issues exactly the carry into
 the successor head. The same equation applies at each base-100 boundary
 and at the split used to index the successor's prefixes.\<close>
@@ -137,7 +198,7 @@ qed
 
 ML \<open>
   val checked = @{thms mahler_cf_head_carry_step mahler_cf_paired_head_consumer mahler_cf_reciprocal_indexed_clip mahler_cf_fixed_width_high_low_words
-    mahler_cf_reciprocal_native_high16_consumer};
+    mahler_cf_reciprocal_native_high16_consumer mahler_cf_reciprocal_indexed_head_settled_clip};
   val _ = if null (Thm_Deps.all_oracles checked) then ()
     else error "Native reciprocal head depends on an oracle";
   val _ = if Thm_Deps.has_skip_proof checked then error "Skipped native reciprocal head" else ();

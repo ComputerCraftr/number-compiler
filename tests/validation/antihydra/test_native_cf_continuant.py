@@ -13,6 +13,14 @@ import pytest
 pytestmark = pytest.mark.validation
 
 
+def test_installed_irregular_head_crosses_into_settled_suffix() -> None:
+    installed = os.environ.get("NUMBER_COMPILER_INSTALLED_PYTHON")
+    if not installed:
+        pytest.skip("requires an installed native continuant wheel")
+    fixture = Path(__file__).with_name("native_cf_irregular_fixture.py")
+    subprocess.run((installed, "-I", str(fixture)), check=True)
+
+
 def test_installed_native_continuant_cylinder_and_fallback() -> None:
     installed = os.environ.get("NUMBER_COMPILER_INSTALLED_PYTHON")
     if installed is None:
