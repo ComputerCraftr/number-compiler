@@ -1,5 +1,6 @@
 theory Mahler_CF_Fractional_Guard_Compiler
   imports Mahler_CF_Ordered_Row_Blocks "HOL-Number_Theory.Modular_Inverse"
+    "HOL.Groebner_Basis"
 begin
 
 text \<open>Only the three physically issued batch forms are admitted. Their
@@ -795,6 +796,77 @@ lemma mahler_cf_three_dyadic_coprime:
   "coprime (3::int) (2^k)"
   by (simp add: coprime_power_right_iff)
 
+lemma mahler_cf_inclusive_floor_guard:
+  fixes key numerator denominator :: nat
+  assumes "0 < denominator"
+  shows "(key \<le> numerator div denominator) \<longleftrightarrow> key * denominator \<le> numerator"
+  using assms by (rule less_eq_div_iff_mult_less_eq)
+
+lemma mahler_cf_newton_inverse_lift:
+  fixes gain inverse :: int
+  assumes inverse: "(2^width) dvd (gain * inverse - 1)"
+      and clipped: "next \<le> 2 * width"
+  shows "(2^next) dvd (gain * (inverse * (2 - gain * inverse)) - 1)"
+proof -
+  have square: "(2^width)^2 dvd (gain * inverse - 1)^2"
+    using inverse by (rule dvd_power_same)
+  have effect: "gain * (inverse * (2 - gain * inverse)) - 1 = -((gain * inverse - 1)^2)"
+    by algebra
+  have bound: "(2::int)^next dvd 2^(width * 2)"
+    using clipped by (intro dvd_power_le) (simp_all add: mult.commute)
+  show ?thesis
+    using dvd_trans[OF bound square[unfolded power_mult[symmetric]]] effect by simp
+qed
+
+lemma mahler_cf_newton_masked_lift:
+  fixes gain inverse :: int
+  assumes inverse: "(2^width) dvd (gain * inverse - 1)"
+      and clipped: "next \<le> 2 * width"
+  defines "m \<equiv> (2::int)^next"
+  shows "m dvd (gain * ((inverse * (2 - (gain mod m) * inverse)) mod m) - 1)"
+proof -
+  let ?step = "inverse * (2 - gain * inverse)"
+  let ?masked = "(inverse * (2 - (gain mod m) * inverse)) mod m"
+  have lift: "m dvd (gain * ?step - 1)"
+    unfolding m_def by (rule mahler_cf_newton_inverse_lift[OF inverse clipped])
+  have product: "((gain mod m) * inverse) mod m = (gain * inverse) mod m"
+    by (rule mod_mult_left_eq)
+  have difference: "(2 - (gain mod m) * inverse) mod m =
+      (2 - gain * inverse) mod m"
+    by (rule mod_diff_cong[OF refl product])
+  have step: "?masked mod m = ?step mod m"
+    by (simp only: mod_mod_trivial mod_mult_cong[OF refl difference])
+  have equal: "(gain * ?masked - 1) mod m = (gain * ?step - 1) mod m"
+    by (rule mod_diff_cong[OF mod_mult_cong[OF refl step] refl])
+  have "(gain * ?step - 1) mod m = 0"
+    using lift by (rule dvd_eq_mod_eq_0[THEN iffD1])
+  from equal this have "(gain * ?masked - 1) mod m = 0" by (rule trans)
+  then show ?thesis by (rule dvd_eq_mod_eq_0[THEN iffD2])
+qed
+
+lemma mahler_cf_newton_initial:
+  "(2::int) dvd ((3::int)^extent * 1 - 1)"
+  by simp
+
+lemma mahler_cf_lifted_residue_exact:
+  fixes gain inverse innovation m :: int
+  assumes inverse: "m dvd (gain * inverse - 1)"
+  shows "(gain * ((-innovation * inverse) mod m) + innovation) mod m = 0"
+proof -
+  have "m dvd (-innovation * (gain * inverse - 1))"
+    using inverse by (rule dvd_mult)
+  moreover have "gain * (-innovation * inverse) + innovation =
+      -innovation * (gain * inverse - 1)"
+    by algebra
+  ultimately have "m dvd (gain * (-innovation * inverse) + innovation)" by simp
+  then have exact: "(gain * (-innovation * inverse) + innovation) mod m = 0"
+    by (rule dvd_eq_mod_eq_0[THEN iffD1])
+  have product: "(gain * ((-innovation * inverse) mod m)) mod m =
+      (gain * (-innovation * inverse)) mod m"
+    by (rule mod_mult_right_eq)
+  show ?thesis using mod_add_cong[OF product refl] exact by (rule trans)
+qed
+
 ML \<open>
   val checked = @{thms mahler_cf_packed_chart_interval_exact mahler_cf_packed_chart_initial mahler_cf_packed_chart_step mahler_cf_packed_reachable_bounds
     mahler_cf_packed_chart_u32 mahler_cf_packed_chart_u32_edge mahler_cf_chart_source_action mahler_cf_guard_compose_exact
@@ -805,7 +877,8 @@ ML \<open>
     mahler_cf_zero_endpoint_first mahler_cf_guard_compiler_correct
     mahler_cf_guard_compile_word
     mahler_cf_compiled_stall_not_guarded mahler_cf_compiled_later_ticks
-    mahler_cf_guard_scaled_update};
+    mahler_cf_guard_scaled_update mahler_cf_inclusive_floor_guard
+    mahler_cf_newton_masked_lift mahler_cf_newton_initial mahler_cf_lifted_residue_exact};
   val _ = if null (Thm_Deps.all_oracles checked) then () else error "CF guard compiler oracle";
   val _ = if Thm_Deps.has_skip_proof checked then error "CF guard compiler skipped proof" else ();
 \<close>

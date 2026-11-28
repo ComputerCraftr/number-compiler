@@ -118,7 +118,7 @@ class FractionalPath:
                     )
                     lower = key // 2
                     if (
-                        selector >> 1 >= lower
+                        selector >= key
                         and 2 * BRANCH_BLOCK_GAIN * right_n <= upper * right_d
                     ):
                         match = (
