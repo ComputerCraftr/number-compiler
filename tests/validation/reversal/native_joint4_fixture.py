@@ -29,7 +29,9 @@ def _literal_steps(source: int, ticks: int) -> tuple[int, int, int]:
     return source, clock, births
 
 
-def _assert_physical_fold(result: Any, source: int, context: object = None) -> None:
+def _assert_physical_fold(
+    result: tuple[bytes, int, tuple[int, ...]], source: int, context: object = None
+) -> None:
     digits = str(source)
     physical = bytes(
         int(a) + int(b) for a, b in zip(digits, digits[::-1], strict=False)
