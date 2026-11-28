@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -64,27 +65,7 @@ def test_installed_cli_enters_the_checked_relative_endpoint(
     if not python:
         pytest.skip("set NUMBER_COMPILER_INSTALLED_PYTHON to the native wheel venv")
     assert os.path.isabs(python)
-    program = """\
-import pathlib, sys, sysconfig
-import number_compiler
-if sys.argv[1] == '2rev10':
-    from number_compiler.kernels import _reflected_multiply as native
-else:
-    from number_compiler.kernels import _reverse_quotients as native
-from number_compiler.api.cli import main
-roots = [pathlib.Path(sysconfig.get_path(key)).resolve() for key in ('purelib', 'platlib')]
-for module in (number_compiler, native):
-    assert any(pathlib.Path(module.__file__).resolve().is_relative_to(root) for root in roots)
-calls = []
-def profile(frame, event, arg):
-    if event == 'c_call' and arg is native.multiply:
-        calls.append(1)
-sys.setprofile(profile)
-try: status = main(sys.argv[1:])
-finally: sys.setprofile(None)
-print('NATIVE_C_CALLS',len(calls),file=sys.stderr)
-raise SystemExit(status)
-"""
+    fixture = Path(__file__).with_name("installed_native_cli_fixture.py")
     source = "17" + core + "88"
     env = dict(
         os.environ,
@@ -95,8 +76,8 @@ raise SystemExit(status)
         [
             python,
             "-I",
-            "-c",
-            program,
+            str(fixture),
+            "relative",
             f"{multiplier}rev10",
             "--seed",
             source,
@@ -182,42 +163,11 @@ def test_installed_supplied_period_checks_each_oriented_word_once() -> None:
     python = os.environ.get("NUMBER_COMPILER_INSTALLED_PYTHON")
     if not python:
         pytest.skip("set NUMBER_COMPILER_INSTALLED_PYTHON to the wheel venv")
-    program = """\
-from contextlib import redirect_stdout
-from io import StringIO
-import json
-from unittest.mock import patch
-from number_compiler.api.cli import main
-from number_compiler.resources.ledger import ResourceLedger
-from number_compiler.sequences.double_reverse import protected_temporal_bank as bank
-
-for motif, admitted in [('0332966666667', True),
-                        ('0'+'3'*60+'29'+'6'*64+'7', True),
-                        ('0123456789012', False)]:
-    work = {}
-    bump = ResourceLedger.bump
-    def count(self, key, amount=1):
-        work[key] = work.get(key, 0) + amount
-        return bump(self, key, amount)
-    buf = StringIO()
-    with patch.object(ResourceLedger, 'bump', count), redirect_stdout(buf), \\
-         patch.object(bank, 'advance_periodic_state', side_effect=AssertionError('replay')):
-        rc = main(['2rev10', '--seed', '17'+motif*(1800//len(motif))+'88',
-                   '--nth', '576', '--max-state-bits', '16384', '--no-value',
-                   '--info', 'temporal.grammar', '--temporal-grammar-position', '350',
-                   '--temporal-grammar-period', str(len(motif)), '--format', 'json'],
-                  shared_cache=False)
-    packet = json.loads(buf.getvalue())['info']['temporal.grammar']
-    assert rc == (0 if admitted else 3)
-    assert packet['status'] == ('available' if admitted else 'unavailable')
-    prefix = 'double_reverse_periodic_bank_'
-    assert work[prefix+'relative_checks'] == len(motif)
-    assert work.get(prefix+'relative_actions', 0) == int(admitted)
-    assert work.get(prefix+'temporal_states', 0) == 0
-    if admitted:
-        assert packet['f_steps'] == 288 and packet['motif'] == []
-"""
-    subprocess.run([python, "-I", "-c", program], check=True, timeout=60)
+    fixture = Path(__file__).with_name("installed_native_cli_fixture.py")
+    task = "installed_supplied_period_checks_each_oriented_word_once"
+    subprocess.run(
+        [python, "-I", str(fixture), "relative-task", task], check=True, timeout=60
+    )
 
 
 @pytest.mark.parametrize(
@@ -252,38 +202,10 @@ def test_installed_five_fibre_work_and_short_fallback() -> None:
     python = os.environ.get("NUMBER_COMPILER_INSTALLED_PYTHON")
     if not python:
         pytest.skip("set NUMBER_COMPILER_INSTALLED_PYTHON to the native wheel venv")
-    program = """\
-import io, json
-from contextlib import redirect_stdout
-from unittest.mock import patch
-from number_compiler.api.cli import main
-from number_compiler.kernels import _reverse_quotients as native
-
-source = '17' + '1'*1800 + '88'
-kernel = native.multiply
-for ticks in (144, 16):
-    counters = []
-    def measured(*args):
-        digits, work = kernel(*args)
-        counters.append(work)
-        return digits, work
-    output = io.StringIO()
-    with patch.object(native, 'multiply', measured), redirect_stdout(output):
-        status = main(['5rev10', '--seed', source, '--nth', str(ticks),
-                       '--max-steps', str(ticks), '--max-state-bits', '8192',
-                       '--max-output-bits', '8192', '--format', 'json'], shared_cache=False)
-    value = int(source)
-    for _ in range(ticks):
-        value = 5 * int(str(value)[::-1])
-    assert status == 0 and int(json.loads(output.getvalue())['value']) == value
-    if ticks == 144:
-        assert len(counters) == 1
-        assert counters[0][0] < 5092 and counters[0][1] < 2061, counters
-    else:
-        assert not counters
-"""
+    fixture = Path(__file__).with_name("installed_native_cli_fixture.py")
+    task = "installed_five_fibre_work_and_short_fallback"
     subprocess.run(
-        [python, "-I", "-c", program],
+        [python, "-I", str(fixture), "relative-task", task],
         env=dict(os.environ, NUMBER_COMPILER_ENABLE_NATIVE_REVERSE="1"),
         check=True,
         timeout=60,

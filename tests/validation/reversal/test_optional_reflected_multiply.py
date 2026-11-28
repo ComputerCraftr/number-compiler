@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from types import FrameType
 
 import pytest
@@ -233,28 +234,8 @@ def test_same_installed_cli_opt_in_and_fallback_have_exact_output() -> None:
     if installed_python is None:
         pytest.importorskip("number_compiler.kernels._reflected_multiply")
     else:
-        from pathlib import Path
-
         assert Path(installed_python).is_absolute() and Path(installed_python).is_file()
-    program = """\
-import json, pathlib, sys, sysconfig
-import number_compiler
-from number_compiler.kernels import _reflected_multiply as native
-if sys.argv.pop(1) == 'installed':
-    roots = [pathlib.Path(sysconfig.get_path(key)).resolve() for key in ('purelib', 'platlib')]
-    for path in (number_compiler.__file__, native.__file__):
-        assert path is not None and any(pathlib.Path(path).resolve().is_relative_to(root) for root in roots)
-from number_compiler.api.cli import main
-calls = []
-multiply = native.multiply
-def observe(word, ticks):
-    calls.append([word,ticks])
-    return multiply(word, ticks)
-native.multiply = observe
-status = main(sys.argv[1:])
-print("NATIVE_SPANS", json.dumps(calls), file=sys.stderr)
-raise SystemExit(status)
-"""
+    fixture = Path(__file__).with_name("installed_native_cli_fixture.py")
     outputs: dict[str, object] = {}
     for label, seed, enabled, ticks, spans in (
         ("enabled", 73, "1", 1024, [1016]),
@@ -273,9 +254,8 @@ raise SystemExit(status)
         command = [
             installed_python or sys.executable,
             *(["-I"] if installed_python is not None else []),
-            "-c",
-            program,
-            "installed" if installed_python is not None else "source",
+            str(fixture),
+            "reflected" if installed_python is not None else "reflected-source",
             "2rev10",
             "--seed",
             str(seed),

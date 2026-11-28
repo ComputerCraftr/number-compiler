@@ -383,23 +383,7 @@ def test_installed_cli_prefers_source_guarded_four_tick_tiles() -> None:
     interpreter = os.environ.get("NUMBER_COMPILER_INSTALLED_PYTHON")
     if not interpreter:
         pytest.skip("set NUMBER_COMPILER_INSTALLED_PYTHON to a native-wheel venv")
-    program = """\
-import sys
-from number_compiler.kernels import _reverse_quotients as native
-from number_compiler.api.cli import main
-import os
-name = "add_folded_joint4" if os.environ.get("NUMBER_COMPILER_ENABLE_Q19_JOINT4") == "1" else "add_folded"
-original = getattr(native, name)
-counts = []
-def observed(*args):
-    result = original(*args)
-    counts.append(result[2][15:26])
-    return result
-setattr(native, name, observed)
-status = main(sys.argv[1:])
-print("BANK", repr(counts), file=sys.stderr)
-raise SystemExit(status)
-"""
+    fixture = Path(__file__).with_name("installed_native_cli_fixture.py")
     env = dict(os.environ, NUMBER_COMPILER_ENABLE_NATIVE_REVERSE="1")
     env.pop("NUMBER_COMPILER_ENABLE_Q19_JOINT4", None)
     for ticks, joint in ((1024, False), (4096, False), (4096, True)):
@@ -409,8 +393,8 @@ raise SystemExit(status)
             [
                 interpreter,
                 "-I",
-                "-c",
-                program,
+                str(fixture),
+                "q19-bank",
                 "reverse-add",
                 "--seed",
                 "196",

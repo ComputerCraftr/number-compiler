@@ -8,8 +8,8 @@ from typing import cast
 import pytest
 
 from tests.validation.reversal.installed_native_cli_fixture import (
-    _manifest,
-    _owned_module,
+    assert_owned_module,
+    installed_manifest,
 )
 
 pytestmark = pytest.mark.validation
@@ -25,10 +25,10 @@ def test_distribution_owner_rejects_unlisted_module_in_same_directory(
             return tmp_path / path
 
     dist = cast(Distribution, Installed())
-    owned = _manifest(dist)
+    owned = installed_manifest(dist)
     module = ModuleType("number_compiler")
     module.__file__ = str(tmp_path / "number_compiler/__init__.py")
-    _owned_module(owned, module)
+    assert_owned_module(owned, module)
     module.__file__ = str(tmp_path / "number_compiler/kernels/decoy.so")
     with pytest.raises(AssertionError, match="not owned"):
-        _owned_module(owned, module)
+        assert_owned_module(owned, module)

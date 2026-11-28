@@ -25,33 +25,7 @@ def test_installed_five_reverse_native_and_refused_paths() -> None:
         pytest.importorskip("number_compiler.kernels._reverse_quotients")
     else:
         assert Path(installed).is_absolute() and Path(installed).is_file()
-    program = """\
-import json,pathlib,sys,sysconfig
-import number_compiler
-from number_compiler.kernels import _reverse_quotients as native
-if sys.argv.pop(1) == 'installed':
-    roots = [pathlib.Path(sysconfig.get_path(key)).resolve() for key in ('purelib', 'platlib')]
-    for path in (number_compiler.__file__, native.__file__):
-        assert path is not None and any(pathlib.Path(path).resolve().is_relative_to(root) for root in roots)
-from number_compiler.api.cli import main
-calls=[]
-original=native.multiply
-def measured(*args):
-    answer=original(*args)
-    print('NATIVE_WORK',json.dumps(answer[1]),file=sys.stderr)
-    return answer
-native.multiply=measured
-def profile(frame,event,arg):
-    if event == 'c_call' and arg is original:
-        calls.append(1)
-sys.setprofile(profile)
-try:
-    status=main(sys.argv[1:])
-finally:
-    sys.setprofile(None)
-print('NATIVE_C_CALLS',len(calls),file=sys.stderr)
-raise SystemExit(status)
-"""
+    fixture = Path(__file__).with_name("installed_native_cli_fixture.py")
     results: dict[str, subprocess.CompletedProcess[str]] = {}
     for label, enabled, seed, ticks, bits in (
         ("native", True, 73, 1024, 8192),
@@ -82,9 +56,8 @@ raise SystemExit(status)
         command = [
             installed or sys.executable,
             *(["-I"] if installed else []),
-            "-c",
-            program,
-            "installed" if installed else "source",
+            str(fixture),
+            "five" if installed else "five-source",
             "5rev10",
             "--seed",
             str(seed),
