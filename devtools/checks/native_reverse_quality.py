@@ -1,9 +1,10 @@
-"""Check the optional C++20 kernels with Clang diagnostics."""
+"""Check the optional C++20 kernels with compiler-specific diagnostics."""
 
 import argparse
 import subprocess
 import sys
 import sysconfig
+import tempfile
 from pathlib import Path
 
 from devtools.runs import run_reported
@@ -12,7 +13,7 @@ _NATIVE = (
     Path("src/number_compiler/kernels/native_reverse"),
     Path("src/number_compiler/kernels/native_cf"),
 )
-_WARNINGS = (
+_COMMON_WARNINGS = (
     "-Wall",
     "-Wextra",
     "-Wpedantic",
@@ -37,6 +38,8 @@ _WARNINGS = (
     "-Wunused-variable",
     "-Wvla",
     "-Wwrite-strings",
+)
+_CLANG_WARNINGS = (
     "-Wcast-align",
     "-Wmissing-prototypes",
     "-Wnewline-eof",
@@ -48,6 +51,17 @@ _WARNINGS = (
     "-Wunused-lambda-capture",
     "-Wunused-private-field",
     "-Wunneeded-internal-declaration",
+)
+_GCC_WARNINGS = (
+    "-Wcast-align=strict",
+    "-Wduplicated-branches",
+    "-Wduplicated-cond",
+    "-Wformat-overflow=2",
+    "-Wformat-truncation=2",
+    "-Wlogical-op",
+    "-Wmissing-declarations",
+    "-Wshadow=local",
+    "-Wstringop-overflow=4",
 )
 
 
@@ -66,9 +80,26 @@ def _compile_options() -> list[str]:
 
 def _portable_warnings(compiler: str) -> list[str]:
     supported: list[str] = []
-    for warning in _WARNINGS:
+    macros = subprocess.check_output(
+        (compiler, "-dM", "-E", "-x", "c++", "-"), input=b""
+    ).splitlines()
+    defined = {line.split()[1] for line in macros if line.startswith(b"#define ")}
+    if b"__clang__" in defined:
+        specific = _CLANG_WARNINGS
+    elif b"__GNUC__" in defined:
+        specific = _GCC_WARNINGS
+    else:
+        raise ValueError(f"unsupported native quality compiler: {compiler}")
+    requested = (*_COMMON_WARNINGS, *specific)
+    check = (compiler, "-Werror", "-x", "c++", "-fsyntax-only", "-")
+    if (
+        subprocess.run((*check, *requested), input=b"", capture_output=True).returncode
+        == 0
+    ):
+        return list(requested)
+    for warning in requested:
         probe = subprocess.run(
-            (compiler, "-Werror", warning, "-x", "c++", "-fsyntax-only", "-"),
+            (*check, warning),
             input="",
             capture_output=True,
             text=True,
@@ -106,23 +137,31 @@ def main() -> int:
     try:
         if options.linux_compiler:
             supported = _portable_warnings(options.linux_compiler)
-            subprocess.run(
-                (
-                    options.linux_compiler,
-                    *compile_options,
-                    *supported,
-                    "-Werror",
-                    "-fsyntax-only",
-                    *units,
-                ),
-                check=True,
-            )
+            # GCC's overflow and range diagnostics need an optimizing compile.
+            with tempfile.TemporaryDirectory() as objects:
+                for unit in units:
+                    subprocess.run(
+                        (
+                            options.linux_compiler,
+                            *compile_options,
+                            *supported,
+                            "-Werror",
+                            "-O2",
+                            "-c",
+                            unit,
+                            "-o",
+                            str(Path(objects) / (Path(unit).name + ".o")),
+                        ),
+                        check=True,
+                    )
             return 0
         subprocess.run(
             (clang_format, "--dry-run", "--Werror", *units, *headers), check=True
         )
         clang_warnings = (
-            _WARNINGS if sys.platform == "darwin" else _portable_warnings(clang)
+            (*_COMMON_WARNINGS, *_CLANG_WARNINGS)
+            if sys.platform == "darwin"
+            else _portable_warnings(clang)
         )
         subprocess.run(
             (
@@ -141,7 +180,7 @@ def main() -> int:
             (clang_tidy, *units, "--", *compile_options),
             check=True,
         )
-    except (OSError, subprocess.CalledProcessError) as error:
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"Native kernel quality checks failed: {error}", file=sys.stderr)
         return 1
     return 0

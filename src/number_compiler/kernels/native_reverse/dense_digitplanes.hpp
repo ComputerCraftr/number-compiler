@@ -1,6 +1,8 @@
 #ifndef NUMBER_COMPILER_DENSE_DIGITPLANES_HPP
 #define NUMBER_COMPILER_DENSE_DIGITPLANES_HPP
 
+#include "relative_return.hpp"
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -15,7 +17,7 @@
 
 #if defined(__aarch64__) || defined(__arm64__)
 #include <arm_neon.h>
-#if defined(__APPLE__)
+#ifdef __APPLE__
 #include <sys/sysctl.h>
 #elif defined(__linux__)
 #include <asm/hwcap.h>
@@ -47,7 +49,7 @@ inline bool has_pmull() {
     if (portable != nullptr && std::string_view(portable) == "1") {
         return false;
     }
-#if defined(__APPLE__)
+#ifdef __APPLE__
     int available = 0;
     std::size_t size = sizeof(available);
     return sysctlbyname("hw.optional.arm.FEAT_PMULL", &available, &size,
@@ -81,7 +83,7 @@ inline Word prefix_parity(Word value, bool use_pmull) {
 // At each temporal position, y = b XOR (a AND inlet). The XOR prefix
 // removes invert transitions, leaving a kill/generate/propagate carry scan.
 inline Word carry_scan(Word a, Word b, int initial, bool use_pmull) {
-    const Word parity = prefix_parity(a & b, use_pmull) << 1;
+    const Word parity = prefix_parity(a & b, use_pmull) << 1U;
     const Word generate = (~a) & (b ^ parity);
     const Word propagate = a | generate;
     return (propagate + generate + static_cast<Word>(initial)) ^ propagate ^
@@ -89,21 +91,26 @@ inline Word carry_scan(Word a, Word b, int initial, bool use_pmull) {
 }
 
 inline Planes quotient_five(Word bit, const Planes &value) {
-    return {~bit & (value[0] | value[1]), ~bit & (value[2] | value[3]),
-            (~bit & value[4]) | (bit & value[0]), bit & (value[1] | value[2]),
-            bit & (value[3] | value[4])};
+    return {
+        ~bit & (value[0] | value[1]),         ~bit & (value[2] | value[3]),
+        (~bit & value[4]) | (bit & value[0]), bit & (value[1] | value[2]),
+        bit & (value[3] | value[4]),
+    };
 }
 
 inline Planes double_mod_five(const Planes &value, Word carry) {
-    return {(value[0] & ~carry) | (value[2] & carry),
-            (value[3] & ~carry) | (value[0] & carry),
-            (value[1] & ~carry) | (value[3] & carry),
-            (value[4] & ~carry) | (value[1] & carry),
-            (value[2] & ~carry) | (value[4] & carry)};
+    return {
+        (value[0] & ~carry) | (value[2] & carry),
+        (value[3] & ~carry) | (value[0] & carry),
+        (value[1] & ~carry) | (value[3] & carry),
+        (value[4] & ~carry) | (value[1] & carry),
+        (value[2] & ~carry) | (value[4] & carry),
+    };
 }
 
 template <int Multiplier>
 int digitplanes(State &state, int inlet, int count, bool emit, bool use_pmull) {
+    const auto last_lane = static_cast<unsigned>(count - 1);
     if constexpr (Multiplier == 2) {
         const Word c = state.c[1];
         const Word t = state.t[1];
@@ -117,9 +124,9 @@ int digitplanes(State &state, int inlet, int count, bool emit, bool use_pmull) {
             carry_scan((a0 ^ a1) & delta, beta, inlet / 5, use_pmull);
         const Word q2 = a0 ^ ((a0 ^ a1) & mask);
         const Planes b = double_mod_five(state.s, q2);
-        int result = static_cast<int>((t >> (count - 1)) & 1);
+        int result = static_cast<int>((t >> last_lane) & 1U);
         for (int i = 1; i < 5; ++i) {
-            if (((b[static_cast<std::size_t>(i)] >> (count - 1)) & 1) != 0) {
+            if (((b[static_cast<std::size_t>(i)] >> last_lane) & 1U) != 0) {
                 result += 2 * i;
             }
         }
@@ -129,7 +136,7 @@ int digitplanes(State &state, int inlet, int count, bool emit, bool use_pmull) {
         Planes r = double_mod_five(b, t);
         for (int i = 0; i < 5; ++i) {
             auto &plane = r[static_cast<std::size_t>(i)];
-            plane = (plane << 1) | static_cast<Word>(inlet % 5 == i);
+            plane = (plane << 1U) | static_cast<Word>(inlet % 5 == i);
         }
         const Word cc = state.r[3] | state.r[4] | (state.r[2] & mask);
         const Word tt = state.s[3] | state.s[4] | (state.s[2] & q2);
@@ -148,9 +155,9 @@ int digitplanes(State &state, int inlet, int count, bool emit, bool use_pmull) {
         const Word beta = (state.t[2] | state.t[3]) ^ (z0 & d1);
         const Word mask = carry_scan(d0 & d1, beta, (inlet / 2) % 2, use_pmull);
         const Word z = z0 ^ (mask & d0);
-        int result = static_cast<int>((z >> (count - 1)) & 1) * 5;
+        int result = static_cast<int>((z >> last_lane) & 1U) * 5;
         for (int i = 1; i < 5; ++i) {
-            if (((state.t[static_cast<std::size_t>(i)] >> (count - 1)) & 1) !=
+            if (((state.t[static_cast<std::size_t>(i)] >> last_lane) & 1U) !=
                 0) {
                 result += i;
             }
@@ -161,12 +168,12 @@ int digitplanes(State &state, int inlet, int count, bool emit, bool use_pmull) {
         Planes h = quotient_five(z, state.t);
         for (int i = 0; i < 5; ++i) {
             auto &plane = h[static_cast<std::size_t>(i)];
-            plane = (plane << 1) | static_cast<Word>(inlet / 2 == i);
+            plane = (plane << 1U) | static_cast<Word>(inlet / 2 == i);
         }
         const Word x = state.r[1] ^ mask;
         const Planes t = quotient_five(state.s[1], quotient_five(x, state.c));
         const Planes c = quotient_five(state.r[1], h);
-        const Word r = ((z ^ (state.t[1] | state.t[3])) << 1) |
+        const Word r = ((z ^ (state.t[1] | state.t[3])) << 1U) |
                        static_cast<Word>(inlet % 2);
         const Word s = x ^ (state.c[1] | state.c[3]);
         state.r[0] = ~r;
@@ -183,11 +190,10 @@ template <int Multiplier>
 constexpr int advance_uniform(std::array<int, 4> &state, int inlet) {
     constexpr int Base = 10 / Multiplier;
     int digit = inlet;
-    for (int i = 0; i < 4; i += 2) {
-        const auto left = static_cast<std::size_t>(i);
-        const auto right = static_cast<std::size_t>(i + 1);
-        const int intermediate = Multiplier * state[left] + digit / Base;
-        const int result = Multiplier * (intermediate % Base) + state[right];
+    for (std::size_t left = 0; left < state.size(); left += 2) {
+        const auto right = left + 1;
+        const int intermediate = (Multiplier * state[left]) + (digit / Base);
+        const int result = (Multiplier * (intermediate % Base)) + state[right];
         state[left] = digit % Base;
         state[right] = intermediate / Base;
         digit = result;
@@ -265,7 +271,7 @@ template <int Multiplier> class PeriodicFront {
     const std::size_t blocks_;
 
     static const State &window(std::size_t phase, std::size_t chunk) {
-        return windows[(phase + 4 * (chunk % 5)) % 5];
+        return windows[(phase + (4 * (chunk % 5))) % 5];
     }
 
   public:
@@ -278,7 +284,7 @@ template <int Multiplier> class PeriodicFront {
             return false;
         }
         for (std::size_t j = 0; j < current.size(); ++j) {
-            const auto count = std::min<std::size_t>(64, blocks_ - 64 * j);
+            const auto count = std::min<std::size_t>(64, blocks_ - (64 * j));
             const Word mask = count == 64 ? ~Word{0} : (Word{1} << count) - 1;
             const auto &expected = window(phase, j);
             const auto &actual = current[j];
@@ -304,58 +310,52 @@ template <int Multiplier> class PeriodicFront {
         return window(phase, chunk);
     }
 
-    static constexpr int gate2(int a, int d, int c) {
-        constexpr int B = 10 / Multiplier;
-        const int x = Multiplier * (d % B) + a / B;
-        const int y = Multiplier * (c % B) + d / B;
-        return Multiplier * (x % B) + y / B;
-    }
-
     static constexpr int gate4(int a, int b, int c, int d, int e) {
-        return gate2(gate2(e, d, c), gate2(d, c, b), gate2(c, b, a));
+        constexpr auto pair = [](int left, int digit, int right) {
+            return relative_cell(Multiplier, 10 / Multiplier, left, digit,
+                                 right);
+        };
+        return pair(pair(e, d, c), pair(d, c, b), pair(c, b, a));
     }
 
     static constexpr int port(int digit) {
-        if constexpr (Multiplier == 2)
+        if constexpr (Multiplier == 2) {
             return digit / 5;
-        else
+        } else {
             return (digit / 2) % 2;
+        }
     }
 
     static constexpr std::array<int, 5> train_base =
         Multiplier == 2 ? std::array<int, 5>{0, 0, 1, 0, 0}
                         : std::array<int, 5>{2, 0, 1, 0, 0};
 
-    static constexpr std::array<std::array<int, 12>, 5> train_table =
-        Multiplier == 2
-            ? std::array<std::array<int, 12>,
-                         5>{{{{2, 4, 5, 7, 8, 10, 11, 13, 14, 16, 17, 19}},
-                             {{1, 3, 4, 6, 7, 9, 10, 12, 13, 15, 16, 18}},
-                             {{1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17}},
-                             {{2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18}},
-                             {{1, 2, 4, 5, 7, 8, 10, 11, 13, 14, 16, 17}}}}
-            : std::array<std::array<int, 12>, 5>{
-                  {{{1, 2, 3, 4, 6, 7, 9, 10, 12, 13, 15, 16}},
-                   {{1, 3, 4, 6, 7, 9, 10, 12, 13, 15, 16, 18}},
-                   {{1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17}},
-                   {{2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18}},
-                   {{1, 2, 4, 5, 7, 8, 10, 11, 13, 14, 16, 17}}}};
+    using ReadyRow = std::array<int, 12>;
+    static constexpr std::array train_table{
+        Multiplier == 2 ? ReadyRow{2, 4, 5, 7, 8, 10, 11, 13, 14, 16, 17, 19}
+                        : ReadyRow{1, 2, 3, 4, 6, 7, 9, 10, 12, 13, 15, 16},
+        ReadyRow{1, 3, 4, 6, 7, 9, 10, 12, 13, 15, 16, 18},
+        ReadyRow{1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17},
+        ReadyRow{2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18},
+        ReadyRow{1, 2, 4, 5, 7, 8, 10, 11, 13, 14, 16, 17},
+    };
 
     static constexpr std::size_t train_table_bytes =
         sizeof(train_base) + sizeof(train_table);
 
     static constexpr std::size_t ready(std::size_t phase, std::size_t i) {
         const auto base = static_cast<std::size_t>(train_base[phase]);
-        if (i < base)
+        if (i < base) {
             return static_cast<std::size_t>(train_table[phase][i]);
+        }
         const auto offset = i - base;
         return static_cast<std::size_t>(
-                   train_table[phase][base + offset % 10]) +
-               15 * (offset / 10);
+                   train_table[phase][base + (offset % 10)]) +
+               (15 * (offset / 10));
     }
 
     static constexpr int train_value(int column, int tick) {
-        const int phase = ((column % 5) + 10 - (4 * (tick % 5)) % 5) % 5;
+        const int phase = ((column % 5) + 10 - ((4 * (tick % 5)) % 5)) % 5;
         return motif[static_cast<std::size_t>(phase)];
     }
 
@@ -375,18 +375,23 @@ template <int Multiplier> class PeriodicFront {
                               d = train_value(x - 1, t);
                     const int lo = gate4(a, b, c, d, 0),
                               hi = gate4(a, b, c, d, Multiplier == 2 ? 5 : 2);
-                    for (int z = 0; z < 10; ++z)
-                        if (gate4(a, b, c, d, z) != (port(z) == 0 ? lo : hi))
+                    for (int inlet = 0; inlet < 10; ++inlet) {
+                        if (gate4(a, b, c, d, inlet) !=
+                            (port(inlet) == 0 ? lo : hi)) {
                             return false;
-                    if (lo == hi)
+                        }
+                    }
+                    if (lo == hi) {
                         best = std::min(best, t + 1);
-                    else if (port(lo) == port(hi))
+                    } else if (port(lo) == port(hi)) {
                         best = std::min(best, t + 2);
+                    }
                 }
                 if (best !=
                     static_cast<int>(ready(static_cast<std::size_t>(phase),
-                                           static_cast<std::size_t>(i))))
+                                           static_cast<std::size_t>(i)))) {
                     return false;
+                }
                 state = {state[1], state[2], state[3], best};
             }
         }
@@ -417,7 +422,7 @@ std::string four_tick_wave(const std::string &seed, std::size_t ticks,
                            std::uint64_t &front_table_bytes, double &setup_ms,
                            bool enable_front) {
     const std::size_t blocks = ticks / 4;
-    const std::size_t width = seed.size() + 4 * blocks;
+    const std::size_t width = seed.size() + (4 * blocks);
     std::string output(width, '0');
     if (blocks == 0) {
         std::reverse_copy(seed.begin(), seed.end(), output.begin());
@@ -485,18 +490,19 @@ std::string four_tick_wave(const std::string &seed, std::size_t ticks,
                             const auto ready = PeriodicFront<Multiplier>::ready(
                                 origin_phase, i - origin);
                             const auto cap = std::min(blocks, ready);
-                            while (states.size() < (cap + 63) / 64)
+                            while (states.size() < (cap + 63) / 64) {
                                 states.push_back(
                                     PeriodicFront<Multiplier>::phase_word(
                                         phase, states.size()));
+                            }
                             train_words_skipped += static_cast<std::uint64_t>(
-                                (blocks + 63) / 64 - states.size());
+                                ((blocks + 63) / 64) - states.size());
                             int digit = i < seed.size()
                                             ? seed[seed.size() - i - 1] - '0'
                                             : 0;
                             for (std::size_t k = 0; k < states.size(); ++k) {
                                 const int count = static_cast<int>(
-                                    std::min<std::size_t>(64, cap - 64 * k));
+                                    std::min<std::size_t>(64, cap - (64 * k)));
                                 digit = digitplanes<Multiplier>(
                                     states[k], digit, count, i + 1 < width,
                                     use_pmull);
@@ -519,8 +525,9 @@ std::string four_tick_wave(const std::string &seed, std::size_t ticks,
                                         phase, states.size() - 1),
                                     mask);
                             }
-                            if (cap == blocks)
+                            if (cap == blocks) {
                                 break;
+                            }
                         }
                     }
                     continue;
@@ -534,7 +541,7 @@ std::string four_tick_wave(const std::string &seed, std::size_t ticks,
         int value = i < seed.size() ? seed[seed.size() - i - 1] - '0' : 0;
         for (std::size_t j = 0; j < states.size(); ++j) {
             const auto count =
-                static_cast<int>(std::min<std::size_t>(64, covered - 64 * j));
+                static_cast<int>(std::min<std::size_t>(64, covered - (64 * j)));
             value = digitplanes<Multiplier>(states[j], value, count,
                                             i + 1 < width, use_pmull);
             ++updates;

@@ -282,8 +282,12 @@ PyObject *add_small_radix(PyObject * /*unused*/, PyObject *args) {
 }
 
 PyMethodDef methods[] = {
-    {"multiply_front_profiled", multiply_front_profiled, METH_VARARGS,
-     "Bounded reflected multiply with periodic front work."},
+    {
+        "multiply_front_profiled",
+        multiply_front_profiled,
+        METH_VARARGS,
+        "Bounded reflected multiply with periodic front work.",
+    },
     {
         "add_small_radix",
         add_small_radix,

@@ -67,10 +67,18 @@ PyObject *multiply_front_profiled(PyObject * /*unused*/, PyObject *args) {
     return multiply_impl(args, 2);
 }
 PyMethodDef methods[] = {
-    {"multiply_front_profiled", multiply_front_profiled, METH_VARARGS,
-     "Bounded reflected multiply with periodic front work."},
-    {"multiply_profiled", multiply_profiled, METH_VARARGS,
-     "Bounded reflected multiply with dense word work."},
+    {
+        "multiply_front_profiled",
+        multiply_front_profiled,
+        METH_VARARGS,
+        "Bounded reflected multiply with periodic front work.",
+    },
+    {
+        "multiply_profiled",
+        multiply_profiled,
+        METH_VARARGS,
+        "Bounded reflected multiply with dense word work.",
+    },
     {"multiply", multiply, METH_VARARGS, "Bounded reflected multiply."},
     {nullptr, nullptr, 0, nullptr},
 };

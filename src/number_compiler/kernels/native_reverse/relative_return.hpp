@@ -13,8 +13,8 @@ struct RelativeRun {
     bool uniform = false;
 };
 
-inline int relative_cell(int multiplier, int base, int left, int digit,
-                         int right) {
+constexpr int relative_cell(int multiplier, int base, int left, int digit,
+                            int right) {
     const int x = (multiplier * (digit % base)) + (left / base);
     const int y = (multiplier * (right % base)) + (digit / base);
     return (multiplier * (x % base)) + (y / base);

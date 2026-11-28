@@ -82,8 +82,11 @@ python -m devtools.checks.native_reverse_quality --llvm-bin "$(brew --prefix llv
 ```
 
 On Linux, replace `--llvm-bin ...` with `--linux-compiler g++` to check the
-GCC-supported warning subset. The check reports compiler flags that Linux
-GCC lacks. After installing the native wheel, run the guarded
+common GNU warnings and supported GCC diagnostics. The optimized compile
+checks declarations, shadows, duplicated branches, format bounds, and
+string operations. The checker detects the compiler from its predefined
+macros and reports unavailable options. After installing the native wheel,
+run the guarded
 `tests/validation/reversal/test_native_reverse.py` selection against it.
 Native endpoint selection follows the proof and timing gates recorded in
 the sprint.

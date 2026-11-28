@@ -649,13 +649,13 @@ static string dense_wave(const string &seed, int multiplier, I ticks,
             const int digit = raw[i] - '0';
             const int previous = i >= 1 ? raw[i - 1] - '0' : 0;
             next[i] = static_cast<char>('0' + (multiplier * (digit % base)) +
-                                        previous / base);
+                                        (previous / base));
         }
         st.fringe_gates += static_cast<u64>(raw.size());
         raw.swap(next);
     }
-    st.table_bytes = static_cast<u64>((physical_ticks / 4 + 63) / 64) *
-                         sizeof(dense::State) +
+    st.table_bytes = (static_cast<u64>(((physical_ticks / 4) + 63) / 64) *
+                      sizeof(dense::State)) +
                      front_table_bytes;
     st.eval_ms = max(0.0, ms(begin, Clock::now()) - st.setup_ms);
     return physical_readout(std::move(raw), multiplier, ticks);
