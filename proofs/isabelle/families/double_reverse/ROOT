@@ -13,6 +13,7 @@ session Double_Reverse_Temporal_Refinement in temporal_double_reverse = Shared_C
     Double_Reverse_Odd_Border
     Double_Reverse_Bitplane_Refinement
     Double_Reverse_Source_Window_Refinement
+    Double_Reverse_Point_Support
     Double_Reverse_Reflected_SLP_Seams
     Double_Reverse_Reflected_SLP_Emission
     Double_Reverse_Reflected_SLP_Normalization
