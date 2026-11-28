@@ -1,0 +1,8 @@
+session Comma_Symbolic_First_Sector_Writer = Comma_C1_Occurrence +
+  options [document = false, quick_and_dirty = false]
+  theories
+    Comma_Symbolic_Writer
+    Comma_Symbolic_Entry_Cut
+    Comma_Symbolic_Near_Cut
+    Comma_Symbolic_First_Sector_Writer
+    Comma_Symbolic_Boundary_Entry

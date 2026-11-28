@@ -401,6 +401,52 @@ proof -
     by (simp_all add: comma_c1_first_sector_def Let_def h_def[symmetric] steps_def)
 qed
 
+text \<open>The first-sector packet retains the exact physical prefix weight and
+its first Near cut. The minimum is local to this sector; it is not a global
+termination or a bounded-B32 certificate.\<close>
+
+theorem comma_c1_first_sector_first_cut:
+  fixes f p delta offset elapsed t h d first steps :: nat
+    and event :: comma_finite_move
+  assumes sector: "1 \<le> f" "f \<le> 9"
+    and exponent: "5 \<le> p" and offset: "offset \<le> 98"
+    and packet: "comma_c1_first_sector f p delta offset = (elapsed,t,event)"
+  defines "h \<equiv> comma_finite_headroom f (p mod 924) delta offset"
+    and "d \<equiv> (10 - h mod 10) mod 10"
+    and "first \<equiv> comma_first_crossing_time f d (comma_cycle_length f)
+      (comma_finite_period f d) (h - (if f < 9 then 1 else 0))"
+    and "steps \<equiv> ((10 ^ (p + delta) - offset - h) div
+      comma_finite_period f (offset mod 10)) * comma_cycle_length f"
+  shows "elapsed + 1 = steps + first"
+    and "h - (if f < 9 then 1 else 0) \<le> comma_period_displacement f d first"
+    and "\<And>k. \<lbrakk>0 < k; k < first\<rbrakk> \<Longrightarrow>
+      comma_period_displacement f d k < h - (if f < 9 then 1 else 0)"
+proof -
+  have digit: "d < 10" by (simp add: d_def)
+  have length: "0 < comma_cycle_length f"
+    and closes: "10 dvd comma_cycle_length f * f"
+    using comma_cycle_length_admitted[OF sector] by auto
+  have period: "0 < comma_finite_period f d"
+    using comma_near_fast_period_positive_decimal(1)[OF sector digit]
+      comma_finite_period_fast_correct[OF sector digit] by simp
+  have displacement: "comma_finite_period f d =
+      comma_period_displacement f d (comma_cycle_length f)"
+    by (rule comma_finite_period_refines[OF sector digit])
+  note minimum = comma_first_crossing_minimum[OF length period closes displacement,
+      where threshold="h - (if f < 9 then 1 else 0)"]
+  have positive: "0 < first" using minimum(1) by (simp only: first_def)
+  have elapsed: "elapsed = steps + (first - 1)"
+    using comma_c1_first_sector_minimum_projection(2)[OF sector exponent offset packet]
+    by (simp only: h_def d_def first_def steps_def)
+  show "elapsed + 1 = steps + first" using elapsed positive by arith
+  show "h - (if f < 9 then 1 else 0) \<le> comma_period_displacement f d first"
+    using minimum(2) by (simp only: first_def)
+  fix k
+  assume k: "0 < k" "k < first"
+  show "comma_period_displacement f d k < h - (if f < 9 then 1 else 0)"
+    using minimum(3)[of k] k unfolding first_def by arith
+qed
+
 theorem comma_c1_first_sector_next:
   assumes sector: "1 \<le> f" "f \<le> 9"
     and exponent: "5 \<le> p" and offset: "offset \<le> 98"
