@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
-from number_compiler.sequences.double_reverse.temporal_hashlife import stencil_cell
+from number_compiler.sequences.double_reverse.stencil_moore import stencil_cell
 
 
 def test_rollback_recycles_slice_root_without_reusing_its_cached_output() -> None:
@@ -54,11 +54,11 @@ def test_recycled_cone_root_recomputes_its_ordered_stencil() -> None:
             arena.terminal(digit)
         checkpoint = len(arena.nodes)
         old = arena.word((0, 2, 5, 6))
-        engine._cone_step(old, 1)
+        engine.cone_step_for_pointed_window(old, 1)
         arena.rollback_unpublished_suffix(checkpoint)
         new = arena.word((0, 5, 2, 7))
         assert new == old
-        result = engine._cone_step(new, 1)
+        result = engine.cone_step_for_pointed_window(new, 1)
         assert arena.materialize(result) == (
             stencil_cell(0, 5, 2),
             stencil_cell(5, 2, 7),

@@ -84,6 +84,7 @@ def _portable_warnings(compiler: str) -> list[str]:
         (compiler, "-dM", "-E", "-x", "c++", "-"), input=b""
     ).splitlines()
     defined = {line.split()[1] for line in macros if line.startswith(b"#define ")}
+    specific: tuple[str, ...]
     if b"__clang__" in defined:
         specific = _CLANG_WARNINGS
     elif b"__GNUC__" in defined:
