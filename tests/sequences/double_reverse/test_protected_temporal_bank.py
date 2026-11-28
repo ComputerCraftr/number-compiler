@@ -28,7 +28,9 @@ from number_compiler.sequences.double_reverse._temporal_bank_authority import (
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
 from number_compiler.sequences.double_reverse.protected_temporal_bank import (
     BANK_CHANNELS,
+    PeriodicBankFrame,
     ProtectedPeriodicBank,
+    RelativePairAction,
     TemporalBankChannel,
     bank_channel_name,
     certified_periodic_region,
@@ -43,6 +45,35 @@ from number_compiler.sequences.double_reverse.temporal_hashlife_types import (
 
 def literal_t(x: int) -> int:
     return 2 * int(str(x)[::-1])
+
+
+def _assert_physical_bank(
+    bank: ProtectedPeriodicBank, source: str, phase: int, cut: int, ticks: int
+) -> None:
+    totals = {bank_channel_name(channel): 0 for channel in BANK_CHANNELS}
+    x = int(source)
+    for pair_time in range(ticks // 2):
+        left, right = growth_ports(phase, pair_time)
+        word = str(x)
+        before = (int(word[cut + left]), int(word[len(source) - 1 - cut + right]))
+        x = literal_t(literal_t(x))
+        nl, nr = growth_ports(phase, pair_time + 1)
+        word = str(x)
+        after = (int(word[cut + nl]), int(word[len(source) - 1 - cut + nr]))
+        frame = bank.at(pair_time)
+        assert frame.digits == before and frame.next_digits == after
+        assert (frame.growth_left, frame.growth_right) == (nl - left, nr - right)
+        assert frame.borrow_left == (
+            int(after[0] < before[0]),
+            int(after[0] <= before[0]),
+        )
+        assert frame.borrow_right == (
+            int(after[1] < before[1]),
+            int(after[1] <= before[1]),
+        )
+        for channel in BANK_CHANNELS:
+            totals[bank_channel_name(channel)] += frame.scalar(channel)
+    assert bank.counts() == totals
 
 
 def test_bank_channel_wire_spellings_parse_to_owner_identities() -> None:
@@ -475,30 +506,7 @@ def test_supplied_period_return_uses_both_physical_rays(
         assert bank.relative is not None and bank.relative.return_multiple == 26
         assert not (bank.motif or bank.prefix_frames or bank.suffix)
         assert term.published_image is None
-        totals = {bank_channel_name(channel): 0 for channel in BANK_CHANNELS}
-        x = int(source)
-        for pair_time in range(ticks // 2):
-            left, right = growth_ports(phase, pair_time)
-            word = str(x)
-            before = (int(word[cut + left]), int(word[len(source) - 1 - cut + right]))
-            x = literal_t(literal_t(x))
-            nl, nr = growth_ports(phase, pair_time + 1)
-            word = str(x)
-            after = (int(word[cut + nl]), int(word[len(source) - 1 - cut + nr]))
-            frame = bank.at(pair_time)
-            assert frame.digits == before and frame.next_digits == after
-            assert (frame.growth_left, frame.growth_right) == (nl - left, nr - right)
-            assert frame.borrow_left == (
-                int(after[0] < before[0]),
-                int(after[0] <= before[0]),
-            )
-            assert frame.borrow_right == (
-                int(after[1] < before[1]),
-                int(after[1] <= before[1]),
-            )
-            for channel in BANK_CHANNELS:
-                totals[bank_channel_name(channel)] += frame.scalar(channel)
-        assert bank.counts() == totals
+        _assert_physical_bank(bank, source, phase, cut, ticks)
 
 
 def test_supplied_return_refuses_bad_halo_and_nonreturning_word() -> None:
@@ -524,3 +532,123 @@ def test_two_oriented_halos_share_one_checked_128_slot_action() -> None:
         assert counters.get("double_reverse_periodic_bank_temporal_states", 0) == 0
         with pytest.raises(ValueError):
             term.protected_temporal_bank(200, period=129)
+
+
+@pytest.mark.parametrize(
+    ("upper", "lower", "expected_phase"),
+    (("17", "88", 0), ("17", "42", 1), ("48", "42", 2), ("48", "88", 3)),
+)
+@pytest.mark.parametrize("ray_case", ("both", "left", "right", "shifted"))
+def test_three_phase_source_return_matches_physical_rays(
+    upper: str,
+    lower: str,
+    expected_phase: int,
+    ray_case: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("three-phase return opened temporal children")
+
+    monkeypatch.setattr(
+        protected_temporal_bank_module, "advance_periodic_state", forbidden
+    )
+    motif = ("1" + "99875611" + "11" + "99875611" * 2 + "111")[::-1]
+    left = motif * 15 if ray_case != "right" else "3" * 450
+    right_motif = motif[7:] + motif[:7] if ray_case == "shifted" else motif
+    right = right_motif * 15 if ray_case != "left" else "3" * 450
+    source = upper + left + right + lower
+    ticks, cut = 180, 200
+    with DoubleReverseTerm(int(source), ticks, max_state_bits=8192) as term:
+        bank = term.protected_temporal_bank(cut, period=len(motif))
+        assert bank.relative is not None
+        assert bank.phase_in == expected_phase
+        assert bank.relative.block_ticks == 3
+        assert bank.relative.return_multiple == 90
+        assert not (bank.motif or bank.prefix_frames or bank.suffix)
+        expected_checks = 90 if ray_case in ("both", "shifted") else 91
+        assert (
+            term.resource_ledger.counters[
+                "double_reverse_periodic_bank_relative_checks"
+            ]
+            == expected_checks
+        )
+        _assert_physical_bank(bank, source, bank.phase_in, cut, ticks)
+
+
+def test_three_phase_return_grammar_cli_matches_literal_counts(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    motif = ("1" + "99875611" + "11" + "99875611" * 2 + "111")[::-1]
+    source = "17" + motif * 60 + "88"
+    arguments = [
+        "2rev10",
+        "--seed",
+        source,
+        "--nth",
+        "800",
+        "--max-state-bits",
+        "16384",
+        "--no-value",
+        "--info",
+        "temporal.grammar",
+        "--temporal-grammar-position",
+        "500",
+        "--temporal-grammar-period",
+        str(len(motif)),
+        "--format",
+        "json",
+    ]
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("three-phase return opened temporal children")
+
+    monkeypatch.setattr(
+        protected_temporal_bank_module, "advance_periodic_state", forbidden
+    )
+    original_frame = RelativePairAction.frame
+    evaluated = 0
+
+    def counted_frame(action: RelativePairAction, tick: int) -> PeriodicBankFrame:
+        nonlocal evaluated
+        evaluated += 1
+        return original_frame(action, tick)
+
+    monkeypatch.setattr(RelativePairAction, "frame", counted_frame)
+    assert cli.main(arguments) == 0
+    packet = json.loads(capsys.readouterr().out)["info"]["temporal.grammar"]
+    assert packet["relative"]["block_ticks"] == 3
+    assert packet["represented_steps"] == 400
+    assert packet["counts"]["carry_xor"] == 278
+    assert evaluated == 90
+    assert packet["prefix_frames"] == packet["motif"] == packet["suffix"] == []
+
+
+def test_three_phase_return_rejects_nonreturning_or_corrupt_halo() -> None:
+    motif = ("1" + "99875611" + "11" + "99875611" * 2 + "111")[::-1]
+    for middle in (
+        "012345678901234567890123456789" * 30,
+        motif * 10 + "9" + (motif * 20)[1:],
+    ):
+        with DoubleReverseTerm(
+            int("17" + middle + "88"), 180, max_state_bits=8192
+        ) as term:
+            with pytest.raises(UncertifiedPointedStencilError):
+                term.protected_temporal_bank(300, period=len(motif))
+            assert term.published_image is None
+
+
+def test_three_phase_miter_rejects_matching_single_sample() -> None:
+    from number_compiler.sequences.double_reverse.relative_stencil import (
+        checked_translation,
+    )
+    from number_compiler.sequences.double_reverse.stencil_moore import stencil_cell
+
+    word = tuple(map(int, "411116578991165789911116578991"))
+    target = word
+    for _ in range(3):
+        target = tuple(
+            stencil_cell(target[i - 1], digit, target[(i + 1) % len(target)])
+            for i, digit in enumerate(target)
+        )
+    assert target[0] == word[-2]
+    assert checked_translation(word, None) is None

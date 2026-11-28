@@ -355,6 +355,8 @@ def _observe_double_reverse_cylinder(
             shape = asdict(bank)
             if bank.relative is None:
                 del shape["relative"]
+            elif bank.relative.block_ticks == 1:
+                del shape["relative"]["block_ticks"]
             return publish_observation(
                 context,
                 name,

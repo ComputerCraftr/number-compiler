@@ -50,6 +50,7 @@ from ._temporal_bank_authority import (
     issue_source_record,
     validate_source_record,
 )
+from .relative_stencil import checked_translation, relative_digit
 from .stencil_moore import stencil_cell
 from .temporal_hashlife import edge_phase, growth_ports
 
@@ -562,28 +563,45 @@ class RelativePairAction:
     left_shift: int
     right_shift: int
     phase: int
+    block_ticks: int = 1
 
     @property
     def return_multiple(self) -> int:
         return lcm(
             2,
-            len(self.left) // gcd(len(self.left), self.left_shift),
-            len(self.right) // gcd(len(self.right), self.right_shift),
+            self.block_ticks * (len(self.left) // gcd(len(self.left), self.left_shift)),
+            self.block_ticks
+            * (len(self.right) // gcd(len(self.right), self.right_shift)),
         )
 
     def digits(self, tick: int) -> tuple[int, int]:
         left_births, right_births = growth_ports(self.phase, tick)
+        if self.block_ticks == 1:
+            return (
+                self.left[(self.left_entry + self.left_shift * tick) % len(self.left)],
+                self.right[
+                    (
+                        self.right_entry
+                        + self.right_shift * tick
+                        + right_births
+                        - left_births
+                    )
+                    % len(self.right)
+                ],
+            )
+        blocks, remainder = divmod(tick, self.block_ticks)
         return (
-            self.left[(self.left_entry + self.left_shift * tick) % len(self.left)],
-            self.right[
-                (
-                    self.right_entry
-                    + self.right_shift * tick
-                    + right_births
-                    - left_births
-                )
-                % len(self.right)
-            ],
+            relative_digit(
+                self.left, self.left_entry + self.left_shift * blocks, remainder
+            ),
+            relative_digit(
+                self.right,
+                self.right_entry
+                + self.right_shift * blocks
+                + right_births
+                - left_births,
+                remainder,
+            ),
         )
 
     def frame(self, tick: int) -> PeriodicBankFrame:
@@ -610,22 +628,6 @@ class RelativePairAction:
                 for c in BANK_CHANNELS:
                     result[bank_channel_name(c)] += weight * f.scalar(c)
         return result
-
-
-def _checked_shift(word: tuple[int, ...], ledger: ResourceLedger | None) -> int | None:
-    size = len(word)
-    target = tuple(
-        stencil_cell(word[i - 1], digit, word[(i + 1) % size])
-        for i, digit in enumerate(word)
-    )
-    if ledger is not None:
-        ledger.bump(
-            _double_reverse_keys.DOUBLE_REVERSE_PERIODIC_BANK_RELATIVE_CHECKS, size
-        )
-    for shift in (0, 1, -1):
-        if all(digit == word[(i + shift) % size] for i, digit in enumerate(target)):
-            return shift
-    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -827,14 +829,26 @@ def protected_periodic_bank(
             right, right_entry, _ = canonical_primitive_rotation(
                 right_period, guard_key=int
             )
-            left_shift = _checked_shift(left, ledger)
-            right_shift = left_shift if left == right else _checked_shift(right, ledger)
-            if left_shift is None or right_shift is None:
+            left_return = checked_translation(left, ledger)
+            right_return = (
+                left_return if left == right else checked_translation(right, ledger)
+            )
+            if left_return is None or right_return is None:
                 raise ProtectedPeriodicBankRefused(
                     "long period lacks a relative-return miter"
                 )
+            block_ticks = max(left_return[0], right_return[0])
+            left_shift = left_return[1] * (block_ticks // left_return[0])
+            right_shift = right_return[1] * (block_ticks // right_return[0])
             action = RelativePairAction(
-                left, right, left_entry, right_entry, left_shift, right_shift, phase
+                left,
+                right,
+                left_entry,
+                right_entry,
+                left_shift,
+                right_shift,
+                phase,
+                block_ticks,
             )
             result = ProtectedPeriodicBank(
                 pair_position,
