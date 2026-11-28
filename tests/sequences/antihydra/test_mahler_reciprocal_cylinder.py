@@ -412,6 +412,103 @@ def test_issued_row_boundaries_select_physical_intervals_without_decoding(
     assert ledger.nodes == ledger.entries == 0
 
 
+@pytest.mark.parametrize("policy", ("retain", "bypass", "tight"))
+def test_ordered_source_reuses_the_seven_digit_clip_before_opening_its_row(
+    policy: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.antihydra import mahler_cf_reciprocal_tile as tiles
+    from tests.sequences.antihydra.test_mahler_pow5_ordered_blocks import literal_action
+
+    ledger = ResourceLedger()
+    with Pow5OrderedBlockSource(
+        ledger, reciprocal=True, shared_cache=policy != "bypass"
+    ) as source:
+        for _ in range(7):
+            source.next_block(4, 1000)
+        source.next_block(1, 1000)
+        block = source.next_block(3, 1000)
+        first, middle, last = map(str, (5**30, 5**31, 5**32))
+        assert block.product == literal_action(first + middle + last)
+        start = len(first) + 2
+        reserved = ledger.nodes
+        if policy == "tight":
+            ledger.tighten_limits(reserved, None)
+        opens: list[tuple[int, int, int, int, int]] = []
+        open_digits = tiles.reciprocal_row_interval
+
+        def opening(q: int, row: int, width: int, at: int, count: int) -> int:
+            opens.append((q, row, width, at, count))
+            return open_digits(q, row, width, at, count)
+
+        monkeypatch.setattr(tiles, "reciprocal_row_interval", opening)
+        expected = literal_action(middle[2:9])
+        result = block.segment(start, 7)
+        assert result == expected
+        assert opens == [(5**30, 1, len(middle), 2, 7)]
+        opens.clear()
+        if policy == "retain":
+            object.__setattr__(result, "entries", (1, 0, 0, 1))
+        assert block.segment(start, 7) == expected
+        assert len(opens) == (0 if policy == "retain" else 1)
+        if policy == "retain":
+            charged = ledger.nodes
+            assert charged > reserved
+            assert block.segment(start + 1, 7) == literal_action(middle[3:10])
+            assert ledger.nodes == charged
+            following = source.next_block(3, 1000)
+            with pytest.raises(ValueError, match="stale or foreign"):
+                block.segment(start + 1, 7)
+            word = "".join(str(5**n) for n in range(33, 36))
+            assert following.segment(start + 1, 7) == literal_action(
+                word[start + 1 : start + 8]
+            )
+        else:
+            assert ledger.nodes == reserved
+    assert ledger.nodes == ledger.entries == 0
+
+
+def test_interrupted_first_reciprocal_clip_releases_optional_charge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from number_compiler.sequences.antihydra import mahler_cf_reciprocal_tile as tiles
+
+    def interrupted(*_args: object) -> int:
+        raise KeyboardInterrupt("clip interrupted")
+
+    ledger = ResourceLedger()
+    with Pow5OrderedBlockSource(ledger, reciprocal=True) as source:
+        block = source.next_block(4, 1000)
+        reserved = ledger.nodes
+        with monkeypatch.context() as patch:
+            patch.setattr(tiles, "reciprocal_row_interval", interrupted)
+            with pytest.raises(KeyboardInterrupt, match="clip interrupted"):
+                block.segment(3, 1)
+        assert ledger.nodes == reserved
+        assert block.segment(3, 1).entries == (2, 1, 1, 0)
+    assert ledger.nodes == ledger.entries == 0
+
+
+def test_optional_reciprocal_clip_yields_capacity_to_the_next_block() -> None:
+    reference = ResourceLedger()
+    with Pow5OrderedBlockSource(
+        reference, reciprocal=True, shared_cache=False
+    ) as source:
+        source.next_block(4, 1000)
+        before = reference.nodes
+        wanted = source.next_block(3, 1000).product
+        staging = reference.nodes
+
+    ledger = ResourceLedger(max_nodes=before + staging)
+    with Pow5OrderedBlockSource(ledger, reciprocal=True) as source:
+        first = source.next_block(4, 1000)
+        first.segment(3, 1)
+        assert ledger.nodes > before
+        assert source.next_block(3, 1000).product == wanted
+        assert ledger.nodes == staging
+    assert ledger.nodes == ledger.entries == 0
+
+
 @pytest.mark.parametrize(("horizon", "count"), ((2048, 269), (4096, 540)))
 def test_live_cylinder_uses_indexed_final_row_without_reopening_digits(
     horizon: int,

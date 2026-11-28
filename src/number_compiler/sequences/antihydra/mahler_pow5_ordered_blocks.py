@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator, Iterable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from sys import getsizeof, int_info
 from types import TracebackType
@@ -45,6 +45,7 @@ _NUMERIC_TO_ASCII = bytes.maketrans(bytes(range(10)), _ASCII_DECIMAL)
 
 # Include the immutable native bank and bounded temporary endpoint tuples.
 _PREFIX_INDEX_WORDS = (getsizeof(b"") + 32 * 17 + 7) // 8 + 32
+_CLIP_LETTERS = 16
 
 
 def _row_prefix_words(rows: int, coefficients: int) -> int:
@@ -55,6 +56,12 @@ def _row_prefix_words(rows: int, coefficients: int) -> int:
     # Include both prefix tuples during construction, including their references.
     prefix_bytes = 2 * (getsizeof(()) + rows * (getsizeof((0,)) - getsizeof(())))
     return (prefix_bytes + rows * matrix_bytes + 7) // 8
+
+
+# The replaced action and its replacement can coexist during publication.
+_CLIP_WORDS = _row_prefix_words(2, _CLIP_LETTERS) + 2 * (
+    (getsizeof((0, 0, 0, ())) + 3 * getsizeof(0) + 7) // 8
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,6 +187,7 @@ class Pow5OrderedBlockSource:
         self._epoch = 0
         self._closed = False
         self._block: Pow5OrderedBlock | None = None
+        self._clip: tuple[int, int, int, MatrixEntries] | None = None
         self._arenas: tuple[LedgerSLPArena, LedgerSLPArena] | None = None
         if not spatial and not reciprocal:
             prefix = f"mahler-cf-block-{ledger.owner_count}"
@@ -223,6 +231,7 @@ class Pow5OrderedBlockSource:
     def close(self) -> None:
         self._closed = True
         self._block = None
+        self._clip = None
         self._values.clear()
         self._arena_binding = None
         self._value = 0
@@ -313,6 +322,8 @@ class Pow5OrderedBlockSource:
         if self._tile is not None:
             if start == 0 and length == count:
                 return self._tile.product
+            if self._reciprocal and self.shared_cache and 0 < length <= _CLIP_LETTERS:
+                return self._reciprocal_clip(self._tile, epoch, start, length)
             return self._tile.segment(start, length)
         if self._word is not None:
             if start == 0 and length == count:
@@ -347,6 +358,32 @@ class Pow5OrderedBlockSource:
             compose=lambda left, right: left.multiply(right),
             repeat=lambda value, count: value if count == 1 else value.power(count),
         )
+
+    def _reciprocal_clip(
+        self, tile: ReciprocalTile, epoch: int, start: int, length: int
+    ) -> Matrix2:
+        # checked_segment authenticated this block and its MSD-first source.
+        previous = self._clip
+        if previous is not None and previous[:3] == (epoch, start, length):
+            return Matrix2(previous[3])
+        reservation = self._reservation
+        assert reservation is not None
+        if previous is None:
+            try:
+                reservation.reserve(nodes=_CLIP_WORDS)
+            except BlockContextBudgetExceeded:
+                return tile.segment(start, length)
+        rollback = (
+            cleanup_on_error(lambda: reservation.release(nodes=_CLIP_WORDS))
+            if previous is None
+            else nullcontext()
+        )
+        with rollback:
+            result = tile.segment(start, length)
+            # Keep only the exact integer entries. Returned Matrix2 objects
+            # cannot retarget the retained response.
+            self._clip = (epoch, start, length, result.entries)
+        return result
 
     @staticmethod
     def _compile(arena: LedgerSLPArena, root: int) -> dict[int, Matrix2]:
@@ -389,7 +426,18 @@ class Pow5OrderedBlockSource:
             self._pending_reservation = None
 
         with cleanup_on_error(rollback):
-            reservation.reserve(nodes=node_bound)
+            try:
+                reservation.reserve(nodes=node_bound)
+            except BlockContextBudgetExceeded:
+                if self._clip is None:
+                    raise
+                # Optional reuse may not crowd out an exact successor block.
+                active = self._reservation
+                assert active is not None
+                with cleanup_on_error(self.close):
+                    self._clip = None
+                    active.release(nodes=_CLIP_WORDS)
+                reservation.reserve(nodes=node_bound)
             yield reservation
 
     def _next_reciprocal(
@@ -495,6 +543,7 @@ class Pow5OrderedBlockSource:
 
             with cleanup_on_error(revoke):
                 self._block = None
+                self._clip = None
                 if self._reservation is not None:
                     self._reservation.close()
                 self._reservation = reservation
