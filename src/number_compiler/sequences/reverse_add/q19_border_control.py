@@ -38,6 +38,7 @@ from .border_carry_safety import (
     conditional_return_from_trace,
 )
 from .diagonal_growth_bank import BorderWidthWork
+from .q19_growth_101 import try_issue_growth_101
 
 if TYPE_CHECKING:
     from .conditional_f5_macro import SourceCertifiedF5Macro
@@ -731,6 +732,11 @@ def certify_border_growth(
                 "issued Q19 root has no exact one-bit width transition"
             )
         return _issue_border(owner, source, (growth,), window_digits, 1)
+    direct = try_issue_growth_101(
+        owner, source, steps, window_digits, max_states, _issue_border
+    )
+    if direct is not None:
+        return direct
     # Reserve the maximum live frontier, the current frontier, the finite
     # output word, and the source scan before allocating any of them.  This is
     # temporary scratch: all sets and the word builder die before the scope
@@ -739,8 +745,7 @@ def certify_border_growth(
         len(owner.initial_digits) if source is owner.initial else source.output_width
     )
     owner.ledger.bump(_reverse_add_keys.REVERSE_Q19_BORDER_CONTROL_ATTEMPTS)
-    # Live edge/frontier memory depends on the state budget and the actual
-    # inspected reset suffix, not the potentially gigantic virtual SLP width.
+    # Edge memory depends on the state budget and inspected reset suffix.
     scratch_nodes = (
         2 * max_states + 3 * steps + 6 * window_digits + min(width, max_states)
     )
@@ -779,8 +784,6 @@ def _certify_reserved(
             "source too narrow for independent edge tiles"
         )
 
-    # Original digits and later Q19-issued digits are both LSD-first.
-    # Random-access Q19 digits do not materialize an enormous source word.
     def digit_at(index: int) -> int:
         if digits is not None:
             return digits[index]
