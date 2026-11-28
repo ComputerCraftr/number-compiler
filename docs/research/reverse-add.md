@@ -110,6 +110,15 @@ the exact raw sum from the residue. The physical sources
 $1^k00\,8^k$ and $1^k55\,8^k$ have identical $k$ outer equality
 pairs for every $k\ge1$, while only the latter grows on the next tick.
 
+One protected three-column family has ordered sums $(c,9,18-c)$ with
+$c=u+10h$, $0\leq u<9$, and $h\in\{0,1\}$. With the certified incoming
+carries $(1-h,h)$, a quiet tick gives $(x,9,18-x)$ where
+$x=2(u+1-h)$. A birth gives $(9,18-c',c')$ where $c'=8-u+10h$.
+Rotation changes which exterior carries enter the block. Applying either
+formula to a physical position requires the ordered source, those carries,
+the preceding sum at a birth, and the actual width bit. After the first
+quiet tick the quiet phase $1+x/2$ doubles modulo 11 on another quiet tick.
+
 ### Finite Pascal summaries and carry-event evaluation
 
 A finite MSB-first word has signed Pascal moments
