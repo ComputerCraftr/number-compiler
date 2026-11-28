@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
-from collections.abc import Iterator, Mapping
+from collections.abc import Generator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
@@ -81,7 +81,7 @@ def _write_report(run: EvidenceRun, report: Mapping[str, object]) -> None:
 
 
 @contextmanager
-def acceptance_pyright_environment(root: Path) -> Iterator[None]:
+def acceptance_pyright_environment(root: Path) -> Generator[None, None, None]:
     """Expose the selected interpreter at the path specified by pyproject.toml."""
     env = root / ".venv"
     env.symlink_to(Path(sys.prefix).resolve(), target_is_directory=True)
