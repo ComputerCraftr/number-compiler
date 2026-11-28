@@ -38,6 +38,7 @@ session Shared_Carry_Dynamics in "arithmetic/carry_dynamics" = "HOL-Number_Theor
     Shared_Decimal_Reversal
     Reflected_Repeat_Sheets
     Overlap_Quarter
+    Ordered_Overlap_Support
     Decimal_Block_Action
     Decimal_Normalization_Morphism
     Reflected_Padded_Digit_Word
