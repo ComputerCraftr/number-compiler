@@ -222,7 +222,15 @@ class LedgerSLPArena(SLPArena):
         owner = self.owners[0]
         self.ledger.reserve(owner, entries=1, nodes=1)
         try:
-            self.nodes.append(SLPNode(node_id, kind, int(length), **fields))
+            self.nodes.append(
+                SLPNode(
+                    node_id,
+                    kind,
+                    int(length),
+                    birth_generation=self.node_id_generation,
+                    **fields,
+                )
+            )
         except BaseException:
             self._rollback_failed_node_publication(node_id)
             raise
@@ -284,7 +292,15 @@ class LedgerSLPArena(SLPArena):
         self.ledger.reserve(owner, entries=1, nodes=1)
         node_id = len(self.nodes)
         try:
-            self.nodes.append(SLPNode(node_id, kind, int(length), **fields))
+            self.nodes.append(
+                SLPNode(
+                    node_id,
+                    kind,
+                    int(length),
+                    birth_generation=self.node_id_generation,
+                    **fields,
+                )
+            )
             table[key] = node_id
         except BaseException as error:
             try:

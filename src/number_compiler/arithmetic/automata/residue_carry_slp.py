@@ -39,6 +39,7 @@ def _slp_node_units(node: SLPNode) -> int:
         node.right,
         node.child,
         node.count,
+        node.birth_generation,
     )
 
 

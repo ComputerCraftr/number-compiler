@@ -11,12 +11,16 @@ from number_compiler.arithmetic.contracts.scoped_handles import ArenaHandle
 
 @dataclass(frozen=True, slots=True)
 class DoubleReverseSLPID(ArenaHandle):
-    """Typed root handle for one double-reverse SLP arena generation."""
+    """Typed root handle authenticated to one allocation in its SLP arena."""
+
+    birth_generation: int = 0
 
     def __post_init__(self) -> None:
         ArenaHandle.__post_init__(self)
         if self.kind != "double_reverse_slp":
             raise ValueError("invalid double-reverse SLP handle kind")
+        if type(self.birth_generation) is not int or self.birth_generation < 0:
+            raise ValueError("invalid double-reverse SLP allocation generation")
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,9 +74,11 @@ def temporal_action_binding(action: DoubleReversePortAction) -> tuple[object, ..
         action.source.owner,
         action.source.kind,
         action.source.local_id,
+        action.source.birth_generation,
         action.target.owner,
         action.target.kind,
         action.target.local_id,
+        action.target.birth_generation,
         action.steps,
         action.phase_in,
         action.phase_out,
@@ -130,9 +136,11 @@ def source_prefix_binding(
         id(entry.source.owner),
         entry.source.kind,
         entry.source.local_id,
+        entry.source.birth_generation,
         id(entry.target.owner),
         entry.target.kind,
         entry.target.local_id,
+        entry.target.birth_generation,
         entry.physical_steps,
         entry.certified_phase,
         int(entry.palindrome_covered),
@@ -152,7 +160,9 @@ def source_prefix_node_cost(key: object, value: object) -> int:
     integers: tuple[int, ...] = (
         key,
         entry.source.local_id,
+        entry.source.birth_generation,
         entry.target.local_id,
+        entry.target.birth_generation,
         entry.physical_steps,
         0 if entry.certified_phase is None else entry.certified_phase,
         int(entry.palindrome_covered),
@@ -184,7 +194,9 @@ def temporal_action_node_cost(key: object, action: object) -> int:
     integers: tuple[int, ...] = (
         *exact_coordinates,
         exact_action.source.local_id,
+        exact_action.source.birth_generation,
         exact_action.target.local_id,
+        exact_action.target.birth_generation,
         exact_action.steps,
         exact_action.phase_in,
         exact_action.phase_out,

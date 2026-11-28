@@ -93,6 +93,7 @@ class DoubleReverseTemporalHashlife(TemporalHashlifeAuditBase):
         "_audit_prefixes",
         "_audit_slices",
         "_cone",
+        "_memo_generation",
         "_prefix_binding_snapshot",
         "_prefix_issued",
         "_prefixes",
@@ -129,6 +130,7 @@ class DoubleReverseTemporalHashlife(TemporalHashlifeAuditBase):
         self.source_root = source_root
         self._cone = cone_memo
         self._slices = slice_memo
+        self._memo_generation = arena.node_id_generation
         self._actions = action_memo
         self._prefixes = source_prefix_memo
         self._source_advancer: Callable[[int], int] | None = None
@@ -183,15 +185,40 @@ class DoubleReverseTemporalHashlife(TemporalHashlifeAuditBase):
         self.ledger.remove_payload_audit_contract(self, "double_reverse")
         self._source_advancer = None
 
+    def _refresh_node_memos(self) -> None:
+        """Retire integer-keyed results before any recycled node ID can hit."""
+        if self.arena.node_storage_poisoned:
+            raise ValueError("double-reverse SLP storage is stale")
+        generation = self.arena.node_id_generation
+        if self._memo_generation != generation:
+            self._slices.clear()
+            self._cone.clear()
+            self._memo_generation = generation
+
     def scoped_handle(self, root: int) -> DoubleReverseSLPID:
-        return DoubleReverseSLPID(self.issuer, "double_reverse_slp", root)
+        self._refresh_node_memos()
+        if type(root) is not int or not 0 <= root < len(self.arena.nodes):
+            raise ValueError("invalid double-reverse SLP root")
+        return DoubleReverseSLPID(
+            self.issuer,
+            "double_reverse_slp",
+            root,
+            self.arena.nodes[root].birth_generation,
+        )
 
     def _root(self, handle: DoubleReverseSLPID) -> int:
         if type(handle) is not DoubleReverseSLPID:
             raise ValueError("temporal action has a malformed SLP handle")
-        return handle.validate(
+        self._refresh_node_memos()
+        root = handle.validate(
             self.issuer, "double_reverse_slp", size=len(self.arena.nodes)
         ).local_id
+        if (
+            type(handle.birth_generation) is not int
+            or self.arena.nodes[root].birth_generation != handle.birth_generation
+        ):
+            raise ValueError("double-reverse SLP handle is stale")
+        return root
 
     def root_of(self, handle: DoubleReverseSLPID) -> int:
         """Resolve a local root handle after checking its arena generation."""
@@ -524,6 +551,7 @@ class DoubleReverseTemporalHashlife(TemporalHashlifeAuditBase):
 
     def part(self, root: int, begin: int, end: int) -> int:
         """Iteratively slice a compressed SLP without spelling repeats."""
+        self._refresh_node_memos()
         if type(root) is not int or not 0 <= root < len(self.arena.nodes):
             raise ValueError("invalid double-reverse SLP root")
         if type(begin) is not int or type(end) is not int:
@@ -631,6 +659,7 @@ class DoubleReverseTemporalHashlife(TemporalHashlifeAuditBase):
 
     def _cone_step(self, root: int, steps: int) -> int:
         """Iterative memoized dyadic space-time cone composition."""
+        self._refresh_node_memos()
         if type(steps) is not int or steps < 1 or steps & (steps - 1):
             raise ValueError("hashlife cone requires a positive power of two")
         if self.arena.nodes[root].length != 4 * steps:
@@ -817,6 +846,7 @@ class DoubleReverseTemporalHashlife(TemporalHashlifeAuditBase):
         ):
             raise ValueError("temporal port action requires a power of two")
         key = (root, steps, phase)
+        self._refresh_node_memos()
         issued = self._actions.get(key)
         if issued is not None:
             if type(issued) is not IssuedDoubleReversePortAction:

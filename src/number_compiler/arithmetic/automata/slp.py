@@ -8,7 +8,7 @@ emissions as SLP nodes rather than visiting every represented symbol.
 from __future__ import annotations
 
 from collections.abc import Iterable, MutableMapping, MutableSequence, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import lcm
 from typing import TYPE_CHECKING, Never, SupportsIndex, TypeVar, cast
 
@@ -44,6 +44,7 @@ class SLPNode:
     right: int = -1
     child: int = -1
     count: int = 0
+    birth_generation: int = field(default=0, compare=False, repr=False)
 
 
 def canonical_repeat_key(
@@ -178,7 +179,10 @@ class SLPArena:
     def _add(self, kind: str, length: int, **kw: int) -> int:
         self._require_coherent_interners()
         q = len(self.nodes)
-        self.nodes.append(SLPNode(q, kind, int(length), **kw))
+        generation = self.node_id_generation
+        self.nodes.append(
+            SLPNode(q, kind, int(length), birth_generation=generation, **kw)
+        )
         record_slp_metrics(nodes=1)
         return q
 
