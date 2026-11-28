@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
@@ -21,6 +22,9 @@ if TYPE_CHECKING:
         CertifiedResidueTemporalAction,
     )
     from number_compiler.sequences.reverse_add.power import ReverseAddPoweredTerm
+    from number_compiler.sequences.reverse_add.q19_ordered_gram import (
+        Q19OrderedGramAction,
+    )
 
 _PAIR_DOMAINS = DECIMAL_PAIR_BAND_NAMES
 _PAIR_CHANNELS = (*_PAIR_DOMAINS, "carry_xor")
@@ -401,6 +405,58 @@ def reverse_seed_orbit_packet(term: ReverseAddPoweredTerm) -> dict[str, object]:
     }
 
 
+def _gram_work(counters: dict[str, int]) -> dict[str, int]:
+    from number_compiler.resources.metric_keys import reverse_add as keys
+
+    return {
+        "conditional_atoms": counters.get(keys.REVERSE_Q19_GRAM_ATOM_BUILDS, 0),
+        "source_nodes": counters.get(keys.REVERSE_Q19_GRAM_NODE_VISITS, 0),
+        "ordered_compositions": counters.get(keys.REVERSE_Q19_GRAM_COMPOSITIONS, 0),
+        "source_guard_nodes": counters.get(keys.REVERSE_Q19_UV_GUARD_NODES, 0),
+        "physical_ticks_skipped": counters.get(
+            keys.REVERSE_Q19_UV_GRAM_SKIPPED_TICKS, 0
+        ),
+        "source_guard_transitions": counters.get(
+            keys.REVERSE_Q19_UV_GUARD_TRANSITIONS, 0
+        ),
+        "source_guard_precheck_reads": counters.get(keys.REVERSE_Q19_UV_GUARD_READS, 0),
+    }
+
+
+def _carry_gram_packet(
+    generation: int,
+    action: Q19OrderedGramAction,
+    counters: dict[str, int],
+    before: dict[str, int],
+) -> dict[str, object]:
+    return {
+        "source_generation": generation,
+        "source_width": action.length,
+        "source_positions": [0, action.length],
+        "position_order": "least-significant pair first",
+        "left_inlet": "carry from less-significant end",
+        "right_inlet": "carry from more-significant end",
+        "sigma": action.z,
+        "modulus": action.modulus,
+        "coefficient_order": list(range(action.degree)),
+        "channels": ["A", "B", "AB", "A_i B_(i+1)", "A_(i+1) B_i"],
+        "rows": [
+            {
+                "inlets": [index // 2, index % 2],
+                "outlets": [row.left_exit, row.right_exit],
+                "A": row.a,
+                "B": row.b,
+                "AB": row.ab,
+                "A_i B_(i+1)": row.a_next_b,
+                "A_(i+1) B_i": row.next_a_b,
+            }
+            for index, row in enumerate(action.rows)
+        ],
+        "work": {k: v - before[k] for k, v in _gram_work(counters).items()},
+        "scope": "source-issued pair field and conditional carry correlations",
+    }
+
+
 def reverse_carry_gram_packet(term: ReverseAddPoweredTerm) -> dict[str, object]:
     """Project both directed carry streams of the selected decimal pair field."""
     from number_compiler.sequences.reverse_add.q19_gram_observation import (
@@ -408,6 +464,21 @@ def reverse_carry_gram_packet(term: ReverseAddPoweredTerm) -> dict[str, object]:
     )
 
     workspace = term.source_workspace()
+    before: dict[str, int] | None = None
+    if (
+        term.generation in (3, 9)
+        and os.environ.get("NUMBER_COMPILER_ENABLE_UV_GRAM") == "1"
+    ):
+        from number_compiler.sequences.reverse_add.q19_uv_gram import source_uv_gram
+
+        source = workspace.actions.source(workspace.source)
+        owner = workspace.adapter.q19_output_owner(source)
+        workspace.register_source_payload_audit_contract()
+        counters = owner.ledger.counters
+        before = _gram_work(counters)
+        with source_uv_gram(owner, owner.initial, term.generation) as action:
+            if action is not None:
+                return _carry_gram_packet(term.generation, action, counters, before)
     if term.generation == 0:
         source = workspace.actions.source(workspace.source)
         owner = workspace.adapter.q19_output_owner(source)
@@ -415,52 +486,9 @@ def reverse_carry_gram_packet(term: ReverseAddPoweredTerm) -> dict[str, object]:
         workspace.register_source_payload_audit_contract()
     else:
         owner, occurrence, _reused, _work = term.completed_q19_occurrence()
-        # Each Q19 root describes the physical source of its one-step output.
-        # Issue the selected endpoint pair field before folding its carries.
         occurrence = owner.apply_pair_step(occurrence)
-    from number_compiler.resources.metric_keys import reverse_add as gram_metrics
-
     counters = owner.ledger.counters
-    before_atoms = counters.get(gram_metrics.REVERSE_Q19_GRAM_ATOM_BUILDS, 0)
-    before_visits = counters.get(gram_metrics.REVERSE_Q19_GRAM_NODE_VISITS, 0)
-    before_compositions = counters.get(gram_metrics.REVERSE_Q19_GRAM_COMPOSITIONS, 0)
+    if before is None:
+        before = _gram_work(counters)
     with source_carry_gram(owner, occurrence) as action:
-        return {
-            "source_generation": term.generation,
-            "source_width": occurrence.pair_width,
-            "source_positions": [0, occurrence.pair_width],
-            "position_order": "least-significant pair first",
-            "left_inlet": "carry from less-significant end",
-            "right_inlet": "carry from more-significant end",
-            "sigma": action.z,
-            "modulus": action.modulus,
-            "coefficient_order": list(range(action.degree)),
-            "channels": ["A", "B", "AB", "A_i B_(i+1)", "A_(i+1) B_i"],
-            "rows": [
-                {
-                    "inlets": [index // 2, index % 2],
-                    "outlets": [row.left_exit, row.right_exit],
-                    "A": row.a,
-                    "B": row.b,
-                    "AB": row.ab,
-                    "A_i B_(i+1)": row.a_next_b,
-                    "A_(i+1) B_i": row.next_a_b,
-                }
-                for index, row in enumerate(action.rows)
-            ],
-            "work": {
-                "conditional_atoms": counters.get(
-                    gram_metrics.REVERSE_Q19_GRAM_ATOM_BUILDS, 0
-                )
-                - before_atoms,
-                "source_nodes": counters.get(
-                    gram_metrics.REVERSE_Q19_GRAM_NODE_VISITS, 0
-                )
-                - before_visits,
-                "ordered_compositions": counters.get(
-                    gram_metrics.REVERSE_Q19_GRAM_COMPOSITIONS, 0
-                )
-                - before_compositions,
-            },
-            "scope": "source-issued pair field and conditional carry correlations",
-        }
+        return _carry_gram_packet(term.generation, action, counters, before)

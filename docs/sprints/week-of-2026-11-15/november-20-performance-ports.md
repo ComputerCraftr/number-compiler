@@ -3407,8 +3407,28 @@ width-guard work. Interior and fringe publication still run. The
 three-tick open-ring consumer in `830b3c71` returned widths 3, 4, 4, 5
 for seed 599 and retained the earlier budget refusal.
 
-The demanded Q19 carry Gram packet folds the issued pair-field grammar.
-For positive generations its source preparation still issues the selected
-pair field from the preceding Q19 root. The endpoint dispatch is unchanged.
-The cut-383 driver, the nonlocal inlet at cut 415, and the Q19 U/V protection
-through both collars remain open for source-wide temporal publication.
+The Q19 carry Gram packet in `e1441844` folds the source pair field into
+four inlet responses with both ordered lag products. With the U/V opt-in,
+an exact initial word of ordered tiles and both collars supplies this same
+packet at generations 3 and 9. Twelve alternating tiles used seven precheck
+reads, 67 grammar nodes and 9,200 DFA transitions including setup. At
+generation 9 the action used 35 Gram compositions and skipped nine physical
+ticks. A deep mutation fell back with zero skipped ticks. On the 820-digit
+source, five interleaved installed macOS ARM64 trials at generation 9 gave
+cold medians of 481.78 and 453.14 ms and warm medians of 21.55 and 13.02 ms.
+Warm requests used a persistent interpreter and a fresh query owner. The
+deep mutation took 24.80 and 32.58 ms warm. The source probe remains opt-in.
+The registered `Reverse_Residuals` build on `64b994db` with the U/V
+changes finished in 1 min 58 s. Its source-to-nine-tick theorem includes
+both ordered lag projections and checks for oracles and skipped proofs.
+Ten installed U/V and mutation packets matched independent literal arithmetic.
+
+The publication repair in `64b994db` rejects a rolled-back root even
+when the replacement has the same numeric ID and equal node contents.
+An unrelated suffix rollback preserves earlier issued roots. Interrupted
+cache invalidation and publication-budget retry have guarded regressions.
+
+The cut-383 action still needs an issued lower drive, and cut 415 needs
+the nonlocal inlet and its moving-chart transport. The GF(4) sheet controls
+supply finite comparisons. None of these probes changes rev10 period
+admission.

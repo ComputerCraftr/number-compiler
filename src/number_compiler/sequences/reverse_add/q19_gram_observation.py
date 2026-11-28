@@ -18,6 +18,25 @@ if TYPE_CHECKING:
     from .q19_output import ReversePairQ19OutputOwner
 
 
+class GramFoldCharges:
+    """Reserve the worklist and reference-count rows of one Q19 fold."""
+
+    def __init__(self, reservation: LedgerReservation) -> None:
+        self.reservation = reservation
+
+    def schedule(self, count: int) -> None:
+        self.reservation.reserve(entries=count, nodes=2 * count)
+
+    def unschedule(self, count: int) -> None:
+        self.reservation.release(entries=count, nodes=2 * count)
+
+    def reference_entry(self, _node: int) -> None:
+        self.reservation.reserve(entries=1, nodes=2)
+
+    def reference_release(self, _node: int) -> None:
+        self.reservation.release(entries=1, nodes=2)
+
+
 @contextmanager
 def source_carry_gram(
     owner: ReversePairQ19OutputOwner,
@@ -94,17 +113,7 @@ def source_carry_gram(
         identity = FoldedPairAction(zero, zero, zero)
         atoms: list[Q19OrderedGramAction | None] = [None, None, None]
 
-        def schedule(count: int) -> None:
-            reservation.reserve(entries=count, nodes=2 * count)
-
-        def unschedule(count: int) -> None:
-            reservation.release(entries=count, nodes=2 * count)
-
-        def reference_entry(_node: int) -> None:
-            reservation.reserve(entries=1, nodes=2)
-
-        def reference_release(_node: int) -> None:
-            reservation.release(entries=1, nodes=2)
+        charges = GramFoldCharges(reservation)
 
         def evaluate(_node: int) -> None:
             reservation.reserve(entries=1, nodes=nodes_per_half)
@@ -120,12 +129,12 @@ def source_carry_gram(
             terminal_value=terminal,
             concatenate=concatenate,
             repeat=repeat,
-            on_schedule=schedule,
+            on_schedule=charges.schedule,
             on_evaluate=evaluate,
-            on_unschedule=unschedule,
+            on_unschedule=charges.unschedule,
             reclaim_values=True,
-            on_reference_entry=reference_entry,
-            on_reference_release=reference_release,
+            on_reference_entry=charges.reference_entry,
+            on_reference_release=charges.reference_release,
             on_value_release=release_value,
         )
         try:

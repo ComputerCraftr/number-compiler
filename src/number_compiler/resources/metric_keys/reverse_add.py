@@ -2,6 +2,12 @@
 
 from typing import Final
 
+REVERSE_Q19_UV_GUARD_NODES: Final = "reverse_q19_uv_guard_nodes"
+REVERSE_Q19_UV_GUARD_TRANSITIONS: Final = "reverse_q19_uv_guard_transitions"
+REVERSE_Q19_UV_GUARD_READS: Final = "reverse_q19_uv_guard_reads"
+REVERSE_Q19_UV_GRAM_HITS: Final = "reverse_q19_uv_gram_hits"
+REVERSE_Q19_UV_GRAM_SKIPPED_TICKS: Final = "reverse_q19_uv_gram_skipped_ticks"
+
 REVERSE_Q19_GRAM_ATOM_BUILDS: Final = "reverse_q19_gram_atom_builds"
 REVERSE_Q19_GRAM_NODE_VISITS: Final = "reverse_q19_gram_node_visits"
 REVERSE_Q19_GRAM_COMPOSITIONS: Final = "reverse_q19_gram_compositions"

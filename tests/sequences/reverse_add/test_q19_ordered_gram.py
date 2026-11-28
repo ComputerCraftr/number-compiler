@@ -97,9 +97,10 @@ def test_order_and_ring_guards() -> None:
 
 
 def test_ordered_34_column_tiles_and_physical_101_seams() -> None:
-    a = (1, 9, 5, 9, 1, 3, 7, 3)
-    b = (1, 9, 5, 9, 5, 9, 1, 3, 7, 3)
-    u, v = a + a + b + a, a + b + a + a
+    from tests.support.q19_tiles import U as u
+    from tests.support.q19_tiles import V as v
+    from tests.support.q19_tiles import physical_seed
+
     assert len(u) == len(v) == 34
     assert u != v
 
@@ -121,13 +122,7 @@ def test_ordered_34_column_tiles_and_physical_101_seams() -> None:
             assert (row.a, row.b, row.ab, row.a_next_b, row.next_a_b) == channels
 
         # A physical source with the exact pair word and both end digits nonzero.
-        pair_field = (17,) + word + (11,)
-        low_digits = [max(0, symbol - 9) for symbol in pair_field]
-        high_digits = [
-            symbol - low for symbol, low in zip(pair_field, low_digits, strict=True)
-        ]
-        low_digits[0], high_digits[0] = 8, 9
-        source = int("".join(map(str, low_digits + high_digits[::-1])))
+        source = int(physical_seed(word))
         widths: list[int] = []
         for _ in range(3):
             digits = str(source)

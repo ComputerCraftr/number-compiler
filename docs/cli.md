@@ -348,6 +348,11 @@ decimal pair field in least-significant-first order. It reports four ordered
 carry-inlet responses and five signed correlation polynomials evaluated at
 `1 + ε` modulo `ε^3` and 1,000,000,007. The two inlet bits enter from
 opposite ends. The coefficients are finite source observations.
+At generations 3 and 9, setting `NUMBER_COMPILER_ENABLE_UV_GRAM=1` lets
+this observation check the initial decimal pair grammar for a complete
+ordered U/V tiling. An admitted source reports the number of skipped
+physical ticks in `work.physical_ticks_skipped`. Other sources use the
+ordinary Q19 projection under the same resource limits.
 
 ```sh
 number-compiler reverse-add --seed 599 --nth 3 --no-value --info spatial.carry-gram --format json

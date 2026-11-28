@@ -77,6 +77,18 @@ reflected half omits the center already present in the first half.
 Extending these spatial observations across a width birth requires
 the successor pair field and its two boundary carries.
 
+A finite family of even fields admits an explicit temporal contraction.
+Write its units-first half as $17\,W\,11$, where the outer and inner
+symbols are pair sums, and $W$ is a nonempty concatenation of the ordered
+tiles $AABA$ and $ABAA$. Here $A=(1,9,5,9,1,3,7,3)$ and
+$B=(1,9,5,9,5,9,1,3,7,3)$. Set $n=|W|$.
+After three physical steps the half is $(8,7,11)$, followed by $n-2$
+copies of 2 and $(3,10)$. Six further steps return the protected interior
+to 2. The outer fringe is then $(4,9,6,9,9,6,6)$, followed by $n-7$
+copies of 2 and $(4,5,4,8)$. A single center of 12 separates this half
+from its reflection. These formulas include the changing physical width
+and require both ordered collars.
+
 ## Reading guide
 
 - **Definitions:** `P` is the symmetric pair field, `Delta = P - 9 E_m` its centered residual, and `beta` the carry-induced innovation. The derivative `(1-z)Delta` is a different object.
