@@ -29,14 +29,17 @@ def _physical_carry(digits: tuple[int, ...]) -> int:
     return carry
 
 
+def _outward_birth_digits(random: Random, width: int) -> tuple[int, ...]:
+    interior = tuple(random.randrange(10) for _ in range(width - 2))
+    return (8, *interior, 9)
+
+
 def test_one_birth_singleton_matches_physical_inlet_and_budget() -> None:
     random = Random(20261127)
     hits = 0
     for width in range(8, 80):
         for _ in range(8):
-            values = [random.randrange(10) for _ in range(width)]
-            values[0], values[-1] = 8, 9
-            digits = tuple(values)
+            digits = _outward_birth_digits(random, width)
             inlet, visited = first_birth_inner_carry(digits, 8192)
             assert 0 <= visited <= width // 2 - 1
             if inlet is not None:
@@ -122,9 +125,7 @@ def test_singleton_matches_all_four_unconstrained_inlet_choices() -> None:
     random = Random(582311)
     for width in range(8, 60):
         for _ in range(16):
-            row = [random.randrange(10) for _ in range(width)]
-            row[0], row[-1] = 8, 9
-            digits = tuple(row)
+            digits = _outward_birth_digits(random, width)
             actual, _ = first_birth_inner_carry(digits, 8192)
             pairs = tuple(digits[i] + digits[-1 - i] for i in range(width // 2 - 1))
             if actual is not None:
