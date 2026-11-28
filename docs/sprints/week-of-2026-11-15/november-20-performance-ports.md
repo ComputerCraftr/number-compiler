@@ -3666,3 +3666,58 @@ the production Comma release closure. The package could not admit
 a Comma future artifact.
 Canonical P0 on `66c23492` retained exactly the baseline's 13 failure
 IDs, with 77 passes on both `da7dbbd3` and the receiving revision.
+
+### Irregular reciprocal clips
+
+At `df154fca`, an admitted reciprocal block combines its retained
+irregular head with the exact settled suffix in physical order. The
+integer adjugate removes the unused right tail. The consumer reaches
+these actions before opening digits. At horizon 2,048, the installed
+Linux ARM64 CLI's four final-row clips opened zero digit windows, down
+from four. The complete 269-coefficient packet matched the portable
+route. The warm median was 2.903 to 2.910 ms over seven interleaved
+batches. The 1,024 and 4,096 controls matched their complete packets.
+The 66-case selection also checked the narrower bank's capacity refusal.
+The registered `Mahler_Source_Transport` build checked the clip law,
+and its receiving-tree recheck passed.
+
+### Physical apertures and source-bound cuts
+
+`37071d74` connects the Q19 all-inlet fold to the two exact physical
+suffix carries across an admitted birth. The registered `Reverse_Residuals`
+session passed. `7601d822` seals which inlet authorized a cached receipt.
+Its 55 focused tests cover both opt-in flag orders and tampering. A fresh
+installed wheel refused the source-transfer fixture by default and
+admitted it with the opt-in, with width bits `[0,1]` and endpoint
+`[3,1]`. The complete dyadic first-failure action still lacks checked
+successor width and port transport.
+
+`ecb8113f` separates the ordered relative stencil from the physical
+two-step birth and border guard. The isolated registered split session
+passed. `a1f18808` binds the ordered stencil to an exact pointed
+source window. The full registered `Double_Reverse_Temporal_Refinement`
+session passed on that revision in 137 s.
+The independent tick-9,967 fixture check matched the +2 cut
+against tick 9,969, and the all-inlet 144-phase replay matched the
+retained source aperture. Its literal source acquisition used 9,967
+steps and 4,983 digits, outside the ordinary CLI budgets. Kernel closure
+of the aperture and a source issuer within budget remain required.
+
+`43c3dec6` binds the actual Comma decisive Entry packet to the exact
+physical event, elapsed clock, and selected writer cut. The registered
+writer session passed. At `09e32ca3`, that session also checked both
+North and Zero physical inlet actions and the first-sector writer cut
+for admitted coefficients 2–9 and widths at least five. Its dependency
+audit excludes the occurrence lift and legacy round authority. Whole
+decade composition, the rank-free Future graph, and v4 export remain open.
+
+The clean Colima aggregate at `df154fca` passed all 108 Pyright
+batches, source policy, Ruff and documentation. Its 300.07 s Python
+selection recorded 6,295 passes and the eight inherited Comma CLI
+failures. Proof-index and v4 package admission remained red, and the
+isolated Comma authority test also failed at `7601d822`. The
+aggregate mypy sampler reported unavailable memory data; the standalone
+guarded mypy run at `7601d822` passed all 2,690 sources. A fresh Linux
+native wheel and focused acceptance at that revision passed 86 tests.
+Source policy passed at `a1f18808`; the independent release proof index
+still rejected the production Comma authority.
