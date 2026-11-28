@@ -348,6 +348,32 @@ def test_seed196_bounded_growth_refuses_when_later_boundary_is_ambiguous(
     assert ledger.nodes == ledger.entries == 0
 
 
+def test_equal_initial_border_and_inlet_do_not_authorize_the_next_return() -> None:
+    first = (947964476698, 941849960998)
+    initial_inlets: list[int] = []
+    next_inlets: list[int] = []
+    for value in first:
+        digits = tuple(map(int, str(value)[::-1]))
+        assert str(value)[:2] == "94" and str(value)[-2:] == "98"
+        inlet, _ = first_birth_inner_carry(digits, 100)
+        assert inlet == _physical_carry(digits)
+        assert inlet is not None
+        initial_inlets.append(inlet)
+        growth = []
+        for _ in range(2):
+            successor = value + int(str(value)[::-1])
+            growth.append(len(str(successor)) - len(str(value)))
+            value = successor
+        assert growth == [1, 0]
+        returned = tuple(map(int, str(value)[::-1]))
+        next_inlet, _ = first_birth_inner_carry(returned, 100)
+        assert next_inlet == _physical_carry(returned)
+        assert next_inlet is not None
+        next_inlets.append(next_inlet)
+    assert initial_inlets == [0, 0]
+    assert next_inlets == [1, 0]
+
+
 def test_seed196_first_bad_is_a_physical_inward_carry_not_a_width_change() -> None:
     value = 196
     for _ in range(48):
