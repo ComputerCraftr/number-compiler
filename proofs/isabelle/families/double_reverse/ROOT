@@ -9,6 +9,8 @@ session Double_Reverse_Temporal_Refinement in temporal_double_reverse = Shared_C
     Double_Reverse_Three_Phase_Return
     Double_Reverse_Finite_Seam
     Double_Reverse_F_Port_Refinement
+    Double_Reverse_Overlap_Stencil
+    Double_Reverse_Odd_Border
     Double_Reverse_Bitplane_Refinement
     Double_Reverse_Source_Window_Refinement
     Double_Reverse_Reflected_SLP_Seams
