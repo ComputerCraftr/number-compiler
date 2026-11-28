@@ -149,6 +149,13 @@ records the effective toolchain. The timeout plugin is explicitly pinned and
 loaded by the shared runner. Runtime installation remains dependency-free and
 supports Python 3.11 and newer.
 
+## Commit subjects
+
+Start new commit subjects with one lowercase prefix for the primary family,
+including its proofs and tests. Use `comma:`, `rev10:`, `q19:`, `cf:`, or
+`antihydra:`. For example, `rev10: prove birth-first low-collar readout`.
+Use `docs:`, `tests:`, `build:`, or `devtools:` for standalone or cross-family work.
+
 ## Executable source policy
 
 The policy owner is [`repository_policy.py`](../devtools/checks/repository_policy.py),
