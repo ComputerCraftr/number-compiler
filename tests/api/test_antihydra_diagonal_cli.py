@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 
 import pytest
 
@@ -12,17 +10,16 @@ from number_compiler.api.cli import main
 from number_compiler.api.cli_requests import parse_request
 from number_compiler.api.cli_types import AntihydraObservationOptions
 from number_compiler.api.observation_types import ObservationId
+from tests.support.cold_import import assert_import_stays_lazy
 
 
 def test_antihydra_metadata_does_not_import_detailed_observers() -> None:
-    program = """
-import sys
-import number_compiler.api.antihydra_adapters
-assert 'number_compiler.sequences.antihydra.mahler' not in sys.modules
-assert 'number_compiler.sequences.antihydra.observers' not in sys.modules
-assert 'number_compiler.sequences.antihydra.mahler_diagonal_carry' not in sys.modules
-"""
-    subprocess.run([sys.executable, "-c", program], check=True, capture_output=True)
+    assert_import_stays_lazy(
+        "number_compiler.api.antihydra_adapters",
+        "number_compiler.sequences.antihydra.mahler",
+        "number_compiler.sequences.antihydra.observers",
+        "number_compiler.sequences.antihydra.mahler_diagonal_carry",
+    )
 
 
 def test_full_diagonal_width_does_not_authorize_other_zero_width_observers() -> None:

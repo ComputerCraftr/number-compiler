@@ -1,26 +1,18 @@
 """The diagonal consumer shares the issued run and distinguishes its clocks."""
 
 import json
-import subprocess
-import sys
 from collections.abc import Callable
 
 import pytest
 
 from number_compiler.api.cli import main
+from tests.support.cold_import import assert_import_stays_lazy
 
 
 def test_collatz_metadata_keeps_diagonal_projection_lazy() -> None:
-    subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "import sys; import number_compiler.api.family_registry; "
-            "assert 'number_compiler.sequences.collatz.diagonal_carry_action' "
-            "not in sys.modules",
-        ],
-        check=True,
-        capture_output=True,
+    assert_import_stays_lazy(
+        "number_compiler.api.family_registry",
+        "number_compiler.sequences.collatz.diagonal_carry_action",
     )
 
 
