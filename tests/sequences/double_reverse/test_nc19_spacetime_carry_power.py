@@ -16,7 +16,10 @@ from number_compiler.sequences.double_reverse import (
     temporal_carry_spacetime as temporal_carry_spacetime_module,
 )
 from number_compiler.sequences.double_reverse.power import DoubleReverseTerm
-from number_compiler.sequences.double_reverse.stencil_moore import stencil_cell
+from number_compiler.sequences.double_reverse.stencil_moore import (
+    f_eight_cell,
+    stencil_cell,
+)
 from number_compiler.sequences.double_reverse.temporal_carry_spacetime import (
     TemporalSquarePublicationFailed,
     TemporalSquareScratchCapacityRefused,
@@ -92,6 +95,56 @@ def test_temporal_square_matches_independent_stencil_replay(steps: int) -> None:
         else:
             assert stats.temporal_cones > 0
             assert stats.semantic_tiles >= 10
+        _assert_released(ledger, scratch_owner)
+    finally:
+        arena.dispose()
+        ledger.retire_unpublished_owner(scratch_owner)
+
+
+def test_seven_digit_ordered_image_is_consumed_before_subcones(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The complete local word, including its halo, determines the image."""
+    random = Random(383)
+    source = tuple(random.randrange(10) for _ in range(8))
+    original = f_eight_cell
+    seen: list[tuple[int, ...]] = []
+
+    def checked(digits: tuple[int, ...]) -> tuple[int, int, int, int]:
+        seen.append(digits)
+        return original(digits)
+
+    monkeypatch.setattr(temporal_carry_spacetime_module, "f_eight_cell", checked)
+    ledger, arena, scratch_owner = _arena_and_scratch()
+    try:
+        source_root = arena.word(source)
+        output, stats = temporal_square_cone(
+            arena, source_root, 2, scratch_owner=scratch_owner
+        )
+        assert seen == [source]
+        assert arena.materialize(output) == _replay(source, 2)
+        assert original(source)[:3] == _replay(source[:7], 2)
+        assert stats.temporal_cones == 1
+        _assert_released(ledger, scratch_owner)
+    finally:
+        arena.dispose()
+        ledger.retire_unpublished_owner(scratch_owner)
+
+
+def test_seven_digit_action_cancellation_releases_scratch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def cancel(_digits: tuple[int, ...]) -> tuple[int, int, int, int]:
+        raise KeyboardInterrupt("cancel local action")
+
+    monkeypatch.setattr(temporal_carry_spacetime_module, "f_eight_cell", cancel)
+    ledger, arena, scratch_owner = _arena_and_scratch()
+    try:
+        source_root = arena.word((1, 2, 3, 4, 5, 6, 7, 8))
+        checkpoint = len(arena.nodes)
+        with pytest.raises(KeyboardInterrupt, match="cancel local action"):
+            temporal_square_cone(arena, source_root, 2, scratch_owner=scratch_owner)
+        assert len(arena.nodes) == checkpoint
         _assert_released(ledger, scratch_owner)
     finally:
         arena.dispose()

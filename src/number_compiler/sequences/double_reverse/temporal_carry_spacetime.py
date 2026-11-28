@@ -24,7 +24,7 @@ from number_compiler.arithmetic.automata.temporal_cone import (
 from number_compiler.resources.metric_keys import double_reverse as double_reverse_keys
 from number_compiler.resources.owned_memo import LedgerReservation
 
-from .stencil_moore import f_port_cell
+from .stencil_moore import f_eight_cell, f_port_cell
 from .temporal_packed_diagonal import (
     PACKED_DIAGONAL_MIN_STEPS,
     publish_packed_diagonal,
@@ -197,7 +197,11 @@ def temporal_square_cone(
                         raise
         try:
             power = CarrySpacetimePower(
-                scratch, on_cone_visit, on_tile_pair, four_cell_action=f_port_cell
+                scratch,
+                on_cone_visit,
+                on_tile_pair,
+                four_cell_action=f_port_cell,
+                eight_cell_action=f_eight_cell,
             )
         except BaseException:
             if account_semantic_metrics and packed_attempt is not None:

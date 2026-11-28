@@ -213,6 +213,7 @@ class CarrySpacetimePower:
         "_tiles",
         "_cell_action",
         "_four_cell_action",
+        "_eight_cell_action",
         "_slp_tiles",
         "_slp_tile_entries",
         "_slp_published",
@@ -227,9 +228,13 @@ class CarrySpacetimePower:
         *,
         cell_action: Callable[[int, int], int] | None = None,
         four_cell_action: Callable[[int, int, int, int], tuple[int, int]] | None = None,
+        eight_cell_action: Callable[[tuple[int, ...]], tuple[int, int, int, int]]
+        | None = None,
     ) -> None:
         if (cell_action is None) == (four_cell_action is None):
             raise ValueError("a temporal cone requires exactly one local action")
+        if eight_cell_action is not None and four_cell_action is None:
+            raise ValueError("an eight-cell action needs its four-cell law")
         self._scratch = scratch
         self._on_cone_visit = on_cone_visit
         self._on_tile_pair = on_tile_pair
@@ -239,6 +244,7 @@ class CarrySpacetimePower:
         self._tiles = [_TileNode(0, digit, digit) for digit in range(alphabet_size)]
         self._cell_action = cell_action
         self._four_cell_action = four_cell_action
+        self._eight_cell_action = eight_cell_action
         self._intern: dict[tuple[int, int], int] = {}
         self._powers: dict[int, int] = {}
         self._retained_graph_entries = alphabet_size
@@ -475,15 +481,33 @@ class CarrySpacetimePower:
                             result = pair(
                                 self._cell_action(ab, bc), self._cell_action(bc, cd)
                             )
-                        self._scratch.acquire()
-                        self._retained_graph_entries += 1
-                        self._retained_graph_nodes += 1
-                        powers[frame.tile] = result
-                        frames.pop()
-                        returned = result
+                    elif node.level == 3 and self._eight_cell_action is not None:
+                        first = tiles[frame.a]
+                        second = tiles[frame.b]
+                        third = tiles[frame.c]
+                        fourth = tiles[frame.d]
+                        digits = (
+                            first.left,
+                            first.right,
+                            second.left,
+                            second.right,
+                            third.left,
+                            third.right,
+                            fourth.left,
+                            fourth.right,
+                        )
+                        a, b, c, d = self._eight_cell_action(digits)
+                        result = pair(pair(a, b), pair(c, d))
+                    else:
+                        frame.stage = 1
+                        frames.append(_ConeFrame(pair(frame.a, frame.b)))
                         continue
-                    frame.stage = 1
-                    frames.append(_ConeFrame(pair(frame.a, frame.b)))
+                    self._scratch.acquire()
+                    self._retained_graph_entries += 1
+                    self._retained_graph_nodes += 1
+                    powers[frame.tile] = result
+                    frames.pop()
+                    returned = result
                     continue
 
                 if returned is None:

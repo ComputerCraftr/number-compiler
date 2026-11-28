@@ -54,6 +54,32 @@ the entire requested cone. On a coupled two-cell ring, multiplier two
 takes $11\to44\to77\to11$ in centered ticks, and multiplier five
 traverses the same cycle in reverse.
 
+## Ordered support at a moving cut
+
+Pair projection can enlarge the language of a physical halo. At cut 383
+of the seed-1 four-step chart anchored at generation 8192, the two
+adjacent pair supports at positions 388–390 (counted from the units end)
+contain `12` and `22`. The corresponding triple support is
+`{123, 320, 322}`. Joining the pairs alone would also admit `122`.
+Restricting the seven-digit inlet to the admitted triples before taking
+its ordered image excludes this spurious case at both centered subphases.
+
+Sheet phase and inlet carry have different roles. For a three-sheet
+response on the nonzero elements of GF(4), write a binary channel as
+$X(u)=a+\operatorname{Tr}(bu)$ and take $u\mapsto\omega u$ on return.
+The shifted channel $Y(\omega u)$ has trace coefficient $\omega d$
+when $Y(u)=c+\operatorname{Tr}(du)$. An ordered cross-return
+correlation uses $X(u)Y(\omega u)$, even when an unshifted channel has the
+same period.
+
+At cut 415 of the seed-1 chart, the 216-block lower return can carry two
+distinct sheets. With 18 open columns, an all-zero inlet and an inlet
+pulsed at blocks 376, 383, 384, 387 and 388 first disagree in a seam
+carry at block 575. The next digit is 5 on the former and 7 on the
+latter. The 19-column closure uses the specified lower drive and
+moving chart. Extending it to a receiving source requires exact inlet,
+width and both centered carry transports.
+
 ## 2rev10 four-port successor and the mod-32 cut
 
 For `2rev10`, the physical action is `2R`. The two-step action has four

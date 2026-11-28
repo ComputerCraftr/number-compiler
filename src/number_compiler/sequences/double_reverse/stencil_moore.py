@@ -52,6 +52,17 @@ def f_port_cell(a: int, b: int, c: int, d: int) -> tuple[int, int]:
     return _LEFT_ROWS[a][b][_RIGHT_CLASS[c]], _LEFT_ROWS[b][c][_RIGHT_CLASS[d]]
 
 
+def f_eight_cell(digits: tuple[int, ...]) -> tuple[int, int, int, int]:
+    """Return four exact cells after two centered updates of an eight-digit halo."""
+    a, b, c, d, e, f, g, h = digits
+    p, q = f_port_cell(a, b, c, d)
+    r, s = f_port_cell(c, d, e, f)
+    t, u = f_port_cell(e, f, g, h)
+    v, w = f_port_cell(p, q, r, s)
+    x, y = f_port_cell(r, s, t, u)
+    return v, w, x, y
+
+
 def stencil_cell(left: int, digit: int, right: int) -> int:
     """Exact local action without assuming a border cycle."""
     if any(

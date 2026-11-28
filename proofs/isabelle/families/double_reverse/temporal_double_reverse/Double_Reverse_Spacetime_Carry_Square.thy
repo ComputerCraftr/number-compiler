@@ -94,6 +94,14 @@ lemma double_reverse_spacetime_power_one:
      double_reverse_t2_digit b c d]"
   by (simp add: double_reverse_spacetime_step_def)
 
+lemma double_reverse_spacetime_power_two_ordered_eight:
+  "double_reverse_spacetime_power 2 [a,b,c,d,e,f,g,h] =
+    (let F = double_reverse_t2_digit;
+         p = F a b c; q = F b c d; r = F c d e;
+         s = F d e f; t = F e f g; u = F f g h
+     in [F p q r, F q r s, F r s t, F s t u])"
+  by (simp add: numeral_2_eq_2 double_reverse_spacetime_step_def Let_def)
+
 lemma double_reverse_spacetime_power_content_congruent:
   assumes "left = right"
   shows "double_reverse_spacetime_power steps left =
