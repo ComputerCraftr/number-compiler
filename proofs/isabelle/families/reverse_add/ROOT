@@ -48,6 +48,7 @@ session Reverse_Residuals in reverse_residuals = Shared_Carry_Dynamics +
     Reverse_Ordered_Carry_Gram
     Reverse_Q19_Mixed_EQ_Phase
     Reverse_Q19_Birth_Ingress
+    Reverse_Q19_Birth_Aperture
     Reverse_Q19_UV_Nine_Refinement
     Reverse_Directed_Growth_Action
     Reverse_Inward_Constraint_Soundness

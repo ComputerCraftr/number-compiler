@@ -119,6 +119,18 @@ formula to a physical position requires the ordered source, those carries,
 the preceding sum at a birth, and the actual width bit. After the first
 quiet tick the quiet phase $1+x/2$ doubles modulo 11 on another quiet tick.
 
+### First-birth aperture carries
+
+Let $S$ be a valid symmetric decimal pair field whose first two coefficients
+are $(17,q)$, and suppose its first step has a width birth. Read a finite
+aperture $S_2,…,S_{n+1}$ in that order. At each coefficient retain the
+low source carry, the previous source residue, and both possible responses to
+the inward source carry. Each response is either the identity carry or a
+constant. If both responses become the same constant, the carry entering the
+born row at the two-column cut has that value for every continuation of the
+unread source and born-row inlets. The conclusion applies to this cut after
+one birth; it does not establish a later return or a first-failure position.
+
 ### Finite Pascal summaries and carry-event evaluation
 
 A finite MSB-first word has signed Pascal moments
