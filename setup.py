@@ -1,4 +1,4 @@
-"""Optional bounded native reflected-multiply extension."""
+"""Optional bounded native arithmetic extensions."""
 
 import os
 
@@ -62,7 +62,11 @@ if os.environ.get("NUMBER_COMPILER_BUILD_CF_CONTINUANT") == "1":
     extensions.append(
         Extension(
             "number_compiler.kernels._cf_continuant",
-            sources=["src/number_compiler/kernels/native_cf/continuant.cpp"],
+            sources=[
+                "src/number_compiler/kernels/native_cf/" + name
+                for name in ("continuant.cpp", "antihydra_leaf.cpp")
+            ],
+            depends=["src/number_compiler/kernels/native_cf/antihydra_leaf.hpp"],
             define_macros=[("PY_SSIZE_T_CLEAN", None)],
             extra_compile_args=["-std=c++20"],
             language="c++",

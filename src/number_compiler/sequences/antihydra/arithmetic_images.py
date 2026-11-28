@@ -307,9 +307,7 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
     ) -> DyadicReturnSupportRecord | None:
         """Fold one low cylinder without publishing its intermediate sources."""
         from number_compiler.sequences.antihydra.mahler_transient_carry_sheet import (
-            LEAF_BITS,
-            LEAF_GAIN,
-            physical_carry_sheet,
+            fold_transient_returns,
         )
 
         self.validate_law()
@@ -353,28 +351,17 @@ class AntihydraArithmeticImageWorkspace(DyadicReturnImageWorkspace):
                     length, delta, minimum, odd_steps, centered = repeated
                     h = centered + 1
                     remaining -= length
-            sheet = physical_carry_sheet(LEAF_BITS) if remaining >= LEAF_BITS else ()
-            while remaining >= LEAF_BITS:
-                correction, local_delta, local_minimum, local_odd = sheet[h & 255]
-                prior_bits = h.bit_length()
-                h = (LEAF_GAIN * h - correction) >> LEAF_BITS
-                minimum = min(minimum, delta + local_minimum)
-                delta += local_delta
-                odd_steps += local_odd
-                remaining -= LEAF_BITS
-                self.bump_metric("bounded_leaf_run_actions")
-                self.bump_metric(
-                    "transient_leaf_operand_bits",
-                    prior_bits + h.bit_length() + LEAF_BITS,
+            if remaining:
+                h, local_delta, local_minimum, local_odd, actions, bits = (
+                    fold_transient_returns(h, remaining)
                 )
-            while remaining:
-                parity = h & 1
-                h = (3 * h - parity) >> 1
-                delta += 2 - 3 * parity
-                minimum = min(minimum, delta)
-                odd_steps += parity
-                remaining -= 1
-                self.bump_metric("transient_leaf_operand_bits", h.bit_length() + 1)
+                delta, minimum = compose_prefix_safety_values(
+                    delta, minimum, local_delta, local_minimum
+                )
+                odd_steps += local_odd
+                if actions:
+                    self.bump_metric("bounded_leaf_run_actions", actions)
+                self.bump_metric("transient_leaf_operand_bits", bits)
             gain = 3**width
             denominator = 1 << width
             offset = denominator * h - gain * residue

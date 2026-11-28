@@ -2,8 +2,6 @@
 
 import os
 from dataclasses import dataclass, field
-from functools import cache
-from importlib import import_module
 from struct import Struct
 from typing import Protocol, cast
 
@@ -13,6 +11,7 @@ from number_compiler.arithmetic.fields.ordered_matrix import (
     append_decimal_value,
     multiply_entries,
 )
+from number_compiler.kernels import native_continuant_module
 from number_compiler.sequences.antihydra.mahler_cf_low_period import (
     SETTLED_TENS_ACTION,
     settled_low_action,
@@ -36,16 +35,8 @@ class _NativeContinuant(Protocol):
 _PREFIX = Struct("=4Q")
 
 
-@cache
 def _native_continuant() -> _NativeContinuant | None:
-    try:
-        return cast(
-            _NativeContinuant, import_module("number_compiler.kernels._cf_continuant")
-        )
-    except ModuleNotFoundError as error:
-        if error.name != "number_compiler.kernels._cf_continuant":
-            raise
-        return None
+    return cast(_NativeContinuant | None, native_continuant_module())
 
 
 def native_prefix_available() -> bool:

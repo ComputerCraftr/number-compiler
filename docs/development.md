@@ -69,6 +69,11 @@ The reciprocal CF producer also works in pure Python.
 boundary pullback in the final CF block search after at least 256
 coefficients have been committed. Short prefixes keep the existing comparison.
 
+`NUMBER_COMPILER_ENABLE_ANTIHYDRA_LEAF=1` opts into the eight-return
+carry fold in the same native wheel. The scratch owner keeps the 128-return
+leaf limit and the existing safety minimum. Requests outside the native
+precision or on a pure-Python wheel use the portable carry fold.
+
 `NUMBER_COMPILER_ENABLE_Q19_ONE_BIRTH_INGRESS=1` enables the bounded
 two-digit Q19 inlet check for source-transfer queries. The check requires
 an authenticated first birth and agreement across the inlet alternatives.

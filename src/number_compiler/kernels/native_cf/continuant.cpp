@@ -1,3 +1,4 @@
+#include "antihydra_leaf.hpp"
 #include <Python.h> // IWYU pragma: keep
 #include <array>
 #include <bytesobject.h>
@@ -456,6 +457,12 @@ PyObject *indexed_pair(PyObject * /*unused*/, PyObject *args) {
 
 PyMethodDef methods[] = {
 #if defined(__SIZEOF_INT128__) && PY_VERSION_HEX >= 0x030D0000
+    {
+        "antihydra_leaf",
+        number_compiler::antihydra_leaf,
+        METH_VARARGS,
+        "Fold a bounded Antihydra return leaf with its ordered safety minimum.",
+    },
     {
         "indexed_pair",
         indexed_pair,

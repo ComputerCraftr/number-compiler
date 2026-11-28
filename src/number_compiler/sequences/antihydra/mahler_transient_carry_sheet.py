@@ -8,8 +8,10 @@ No source occurrence, parity word, or intermediate level is retained.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from functools import lru_cache
+from typing import cast
 
 from number_compiler.arithmetic.fields.consumer_pullback import (
     compose_prefix_safety_values,
@@ -18,6 +20,47 @@ from number_compiler.arithmetic.fields.two_adic import v2_positive
 
 LEAF_BITS = 8
 LEAF_GAIN = 3**LEAF_BITS
+TransientFold = tuple[int, int, int, int, int, int]
+
+
+def fold_transient_returns(value: int, remaining: int) -> TransientFold:
+    """Fold an admitted leaf and return endpoint, safety and work totals."""
+    if (
+        remaining >= LEAF_BITS
+        and os.environ.get("NUMBER_COMPILER_ENABLE_ANTIHYDRA_LEAF") == "1"
+    ):
+        # The caller has already reserved the leaf's scratch and fixed its
+        # physical inlet. An older or portable wheel may omit the entry point.
+        from number_compiler.kernels import native_continuant_module
+
+        if value.bit_length() + remaining <= 256:
+            native = getattr(native_continuant_module(), "antihydra_leaf", None)
+            if callable(native):
+                folded = cast(TransientFold | None, native(value, remaining))
+                if folded is not None:
+                    return folded
+
+    delta = minimum = odd = actions = operand_bits = 0
+    sheet = physical_carry_sheet(LEAF_BITS) if remaining >= LEAF_BITS else ()
+    while remaining >= LEAF_BITS:
+        correction, local_delta, local_minimum, local_odd = sheet[value & 255]
+        prior_bits = value.bit_length()
+        value = (LEAF_GAIN * value - correction) >> LEAF_BITS
+        minimum = min(minimum, delta + local_minimum)
+        delta += local_delta
+        odd += local_odd
+        remaining -= LEAF_BITS
+        actions += 1
+        operand_bits += prior_bits + value.bit_length() + LEAF_BITS
+    while remaining:
+        parity = value & 1
+        value = (3 * value - parity) >> 1
+        delta += 2 - 3 * parity
+        minimum = min(minimum, delta)
+        odd += parity
+        remaining -= 1
+        operand_bits += value.bit_length() + 1
+    return value, delta, minimum, odd, actions, operand_bits
 
 
 def physical_carry_at(steps: int, residue: int) -> tuple[int, int, int, int]:
