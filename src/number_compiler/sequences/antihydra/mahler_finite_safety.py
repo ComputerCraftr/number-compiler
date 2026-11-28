@@ -68,6 +68,20 @@ def _first_odd_failure(fraction: Fraction, span: int) -> int:
     return 1 + _first_zero_failure((3 * fraction - 1) / 2, span - 1)
 
 
+def _admitted_odd_returns(
+    ring: MahlerFixedOddHarmonicRing, source: int, fraction: Fraction, copies: int
+) -> int:
+    """Find the longest safe prefix when the complete repeated action failed."""
+    lo, hi = 0, copies
+    while lo + 1 < hi:
+        mid = (lo + hi) // 2
+        if _admitted(source, fraction, ring.action(mid).joint):
+            lo = mid
+        else:
+            hi = mid
+    return lo
+
+
 def certify_finite_safety(
     source: int,
     tail: Fraction,
@@ -136,16 +150,9 @@ def certify_finite_safety(
                 else _first_zero_failure(fraction, action.extent)
             )
         else:
-            lo: int = 0
-            hi: int = copies
-            while lo + 1 < hi:
-                mid = (lo + hi) // 2
-                if _admitted(current, fraction, ring.action(mid).joint):
-                    lo = mid
-                else:
-                    hi = mid
-            if lo:
-                prior = ring.action(lo).joint
+            safe_returns = _admitted_odd_returns(ring, current, fraction, copies)
+            if safe_returns:
+                prior = ring.action(safe_returns).joint
                 current, fraction = _advance(current, fraction, prior)
                 completed += prior.extent
             failure_in_action = _first_odd_failure(fraction, ring.exponent)
