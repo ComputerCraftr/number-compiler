@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from fractions import Fraction
+from typing import cast
 from unittest.mock import patch
 
 import pytest
@@ -132,6 +133,48 @@ def test_foreign_or_stale_block_and_bad_lengths_are_rejected() -> None:
             block.segment(block.coefficient_count, 1)
     with pytest.raises(RuntimeError, match="closed"):
         _ = block.product
+
+
+@pytest.mark.parametrize("shared", [False, True])
+def test_ordered_block_rejects_reused_slp_node_id(shared: bool) -> None:
+    ledger = ResourceLedger()
+    with Pow5OrderedBlockSource(ledger, shared_cache=shared) as source:
+        block = source.next_block(1, 1)
+        assert block.product == literal_action("5")
+        arenas = cast(
+            tuple[LedgerSLPArena, LedgerSLPArena],
+            object.__getattribute__(source, "_arenas"),
+        )
+        arena = arenas[cast(int, object.__getattribute__(source, "_active"))]
+        old_root = cast(int, object.__getattribute__(source, "_root"))
+        arena.rollback_unpublished_suffix(1)
+        assert arena.terminal(9) == old_root
+        assert arena.nodes[old_root].symbol == 9
+
+        with pytest.raises(ValueError, match="source arena is stale"):
+            _ = block.coefficient_count
+        with pytest.raises(ValueError, match="source arena is stale"):
+            _ = block.product
+        with pytest.raises(ValueError, match="source arena is stale"):
+            block.segment(0, 1)
+        with pytest.raises(ValueError, match="source arena is stale"):
+            source.next_block(1, 1)
+    assert ledger.nodes == ledger.entries == 0
+
+
+def test_ordered_block_accepts_append_without_invalidating_existing_ids() -> None:
+    ledger = ResourceLedger()
+    with Pow5OrderedBlockSource(ledger) as source:
+        block = source.next_block(1, 1)
+        arenas = cast(
+            tuple[LedgerSLPArena, LedgerSLPArena],
+            object.__getattribute__(source, "_arenas"),
+        )
+        arena = arenas[cast(int, object.__getattribute__(source, "_active"))]
+        arena.terminal(9)
+        assert block.product == literal_action("5")
+        assert source.next_block(1, 2).product == literal_action("25")
+    assert ledger.nodes == ledger.entries == 0
 
 
 @pytest.mark.parametrize("spatial", [False, True])

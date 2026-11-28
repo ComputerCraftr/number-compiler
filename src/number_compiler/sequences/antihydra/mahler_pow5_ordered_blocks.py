@@ -10,6 +10,7 @@ from types import TracebackType
 from typing import TYPE_CHECKING, Self
 
 from number_compiler.arithmetic.automata.ledgered_slp import LedgerSLPArena
+from number_compiler.arithmetic.automata.slp import SLPNode
 from number_compiler.arithmetic.automata.slp_interval import (
     fold_slp_dag,
     fold_slp_interval,
@@ -176,6 +177,7 @@ class Pow5OrderedBlockSource:
         self._active = 0
         self._root = 0
         self._values: dict[int, Matrix2] = {}
+        self._arena_binding: tuple[LedgerSLPArena, int, int, SLPNode] | None = None
         self._reservation: LedgerReservation | None = None
         self._pending_reservation: LedgerReservation | None = None
         self._spatial_trace: Pow5SpatialTrace | None = None
@@ -209,6 +211,7 @@ class Pow5OrderedBlockSource:
         self._closed = True
         self._block = None
         self._values.clear()
+        self._arena_binding = None
         self._value = 0
         self._word = None
         self._word_product = None
@@ -232,6 +235,18 @@ class Pow5OrderedBlockSource:
             raise RuntimeError("ordered CF source is closed")
         if block is not self._block or epoch != self._epoch:
             raise ValueError("ordered CF block is stale or foreign")
+        if self._arena_binding is not None:
+            arena, generation, root, root_node = self._arena_binding
+            if (
+                self._arenas is None
+                or self._arenas[self._active] is not arena
+                or self._root != root
+                or arena.node_id_generation != generation
+                or arena.node_storage_poisoned
+                or not 0 <= root < len(arena.nodes)
+                or arena.nodes[root] is not root_node
+            ):
+                raise ValueError("ordered CF block source arena is stale")
         if self._tile is not None or self._tile_binding is not None or self._reciprocal:
             tile = self._tile
             binding = self._tile_binding
@@ -489,6 +504,8 @@ class Pow5OrderedBlockSource:
         """Issue a bounded block, preserving the prior source on admission failure."""
         if self._closed:
             raise RuntimeError("ordered CF source is closed")
+        if self._block is not None and self._arena_binding is not None:
+            self._authenticate(self._block, self._epoch)
         require_integer(max_rows, "ordered block row bound", 1, _MAX_BLOCK_ROWS)
         require_integer(max_coefficients, "ordered coefficient bound", 1, 100000)
         if self._exponent >= _MAX_EXPONENT and self._offset == 0:
@@ -640,6 +657,7 @@ class Pow5OrderedBlockSource:
                     self._word = None
                     self._word_product = None
                     self._values.clear()
+                    self._arena_binding = None
                     self._value = 0
 
                 with cleanup_on_error(revoke_failed_publication):
@@ -658,6 +676,11 @@ class Pow5OrderedBlockSource:
                     self._active = spare
                     self._reservation = reservation
                     self._root = root
+                    self._arena_binding = (
+                        None
+                        if arena is None
+                        else (arena, arena.node_id_generation, root, arena.nodes[root])
+                    )
                     self._values = (
                         values
                         if self.shared_cache or arena is None
