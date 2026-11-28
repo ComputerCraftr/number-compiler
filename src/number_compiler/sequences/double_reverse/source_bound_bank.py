@@ -334,9 +334,6 @@ def exact_temporal_bank_window(
         raise UncertifiedPointedStencilError(
             "pointed bank next-frame borrow exceeds the admitted bit budget"
         )
-    # Production cutover to the exact open input-driven temporal ring for
-    # modest, nonperiodic windows. The alternative is the established pointed
-    # cone path: neither mode ever guesses an inward digit or future carry.
     open_bank: CertifiedOpenTemporalBank | None = None
     if _try_open_ring_fast_candidate(source, final_pair_start, pair_count):
         try:
@@ -344,17 +341,26 @@ def exact_temporal_bank_window(
                 source, final_pair_start, pair_count
             )
         except OpenTemporalRingRefused:
-            # A guard refusal is not a proof of periodicity or an arithmetic
-            # error. Only exact source-cone fallback is admissible here.
             pass
     if open_bank is not None:
         source.ledger.bump(
             _double_reverse_keys.DOUBLE_REVERSE_OPEN_RING_WINDOW_PUBLICATIONS
         )
         frames = list(open_bank.frames)
-    else:
+    elif pair_count == 1:
         frames = []
-    for offset in range(0 if open_bank is not None else pair_count):
+    else:
+        from .temporal_bank_paired_window import batch_admitted, paired_window_frames
+
+        frames = (
+            paired_window_frames(
+                source,
+                (final_pair_start, pair_count, birth_left, birth_right, next_width),
+            )
+            if batch_admitted(source, pair_count)
+            else []
+        )
+    for offset in range(0 if frames else pair_count):
         coordinate = final_pair_start + offset
         following = coordinate + birth_left
         current_pair = (
