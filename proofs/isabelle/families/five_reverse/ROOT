@@ -6,6 +6,7 @@ session Five_Reverse in five_reverse = Shared_Carry_Dynamics +
     Five_Reverse_Mod45
     Five_Reverse_Digit_Field
     Five_Reverse_Reflected_H
+    Five_Reverse_Moving_Cut_Limits
     Five_Reverse_Packed_Consumer
     Five_Reverse_Bitplane_Lanes
     Five_Reverse_Bitplane_Word
