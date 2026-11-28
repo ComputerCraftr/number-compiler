@@ -16,7 +16,14 @@ def assert_import_stays_lazy(module: str, *excluded: str) -> None:
 
 
 if __name__ == "__main__":
-    import_module(sys.argv[1])
+    source = Path(__file__).resolve().parents[2] / "src"
+    # A subprocess does not inherit pytest's checkout source path.
+    sys.path.insert(0, str(source))
+    selected = import_module(sys.argv[1])
+    if selected.__file__ is None or not Path(
+        selected.__file__
+    ).resolve().is_relative_to(source):
+        raise AssertionError(f"{sys.argv[1]} did not load from {source}")
     unexpected = set(sys.argv[2:]).intersection(sys.modules)
     if unexpected:
         raise AssertionError(f"{sys.argv[1]} imported {sorted(unexpected)}")
